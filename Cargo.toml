@@ -3,6 +3,9 @@ name = "boost-and-broadside"
 version = "0.1.0"
 edition = "2024"
 
+[dependencies]
+bevy = "0.14"
+
 [dev-dependencies]
 criterion = "0.7.0"
 proptest = "1.7.0"
