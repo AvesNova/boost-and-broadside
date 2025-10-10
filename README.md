@@ -69,7 +69,7 @@
 ### Play Against a Scripted Opponent
 
 ```powershell
-python src/collect_data.py human_play
+python main.py play human
 ```
 
 **Controls:**
@@ -84,17 +84,63 @@ python src/collect_data.py human_play
 
 ```powershell
 # 1. Collect behavior cloning data
-python src/collect_data.py collect_bc --config src/unified_training.yaml
+python main.py collect bc --config src/unified_training.yaml
 
 # 2. Run full training pipeline (BC pretraining + RL)
-python src/unified_train.py full --config src/unified_training.yaml
+python main.py train full --config src/unified_training.yaml
 ```
 
 ### Watch a Trained Model
 
 ```powershell
 # Replay a recorded episode
-python src/collect_data.py playback --episode-file data/bc_pretraining/1v1_episodes.pkl.gz
+python main.py replay episode --episode-file data/bc_pretraining/1v1_episodes.pkl.gz
+```
+
+## Command Reference
+
+The unified command-line interface provides access to all functionality through `main.py`:
+
+### Training Commands
+```bash
+# Behavior cloning training
+python main.py train bc [--config CONFIG] [--run-name NAME]
+
+# Reinforcement learning training
+python main.py train rl [--config CONFIG] [--run-name NAME] [--bc-model PATH]
+
+# Full training pipeline
+python main.py train full [--config CONFIG] [--run-name NAME] [--skip-bc]
+```
+
+### Data Collection Commands
+```bash
+# Collect behavior cloning data
+python main.py collect bc [--config CONFIG] [--output DIR]
+
+# Collect self-play data
+python main.py collect selfplay [--config CONFIG] [--output DIR]
+```
+
+### Playing Commands
+```bash
+# Human vs AI play
+python main.py play human [--config CONFIG]
+```
+
+### Replay Commands
+```bash
+# Replay saved episode
+python main.py replay episode --episode-file PATH [--config CONFIG]
+
+# Browse episode data
+python main.py replay browse [--data-dir DIR] [--config CONFIG]
+```
+
+### Evaluation Commands
+```bash
+# Evaluate trained model
+python main.py evaluate model --model PATH [--config CONFIG]
 ```
 
 ## Usage
@@ -106,7 +152,7 @@ python src/collect_data.py playback --episode-file data/bc_pretraining/1v1_episo
 Collect expert demonstrations from scripted agents:
 
 ```powershell
-python src/collect_data.py collect_bc --config src/unified_training.yaml
+python main.py collect bc --config src/unified_training.yaml
 ```
 
 This generates training data in `data/bc_pretraining/` with episodes from various game modes (1v1, 2v2, 3v3, 4v4).
@@ -114,7 +160,7 @@ This generates training data in `data/bc_pretraining/` with episodes from variou
 Train the BC model:
 
 ```powershell
-python src/unified_train.py bc --config src/unified_training.yaml
+python main.py train bc --config src/unified_training.yaml
 ```
 
 #### Reinforcement Learning (RL) Training
@@ -122,13 +168,13 @@ python src/unified_train.py bc --config src/unified_training.yaml
 Train with PPO from scratch:
 
 ```powershell
-python src/unified_train.py rl --config src/unified_training.yaml
+python main.py train rl --config src/unified_training.yaml
 ```
 
 Or initialize from a BC checkpoint:
 
 ```powershell
-python src/unified_train.py rl --config src/unified_training.yaml --bc-model checkpoints/bc_model.pt
+python main.py train rl --config src/unified_training.yaml --bc-model checkpoints/bc_model.pt
 ```
 
 #### Full Pipeline
@@ -136,7 +182,7 @@ python src/unified_train.py rl --config src/unified_training.yaml --bc-model che
 Run both phases automatically:
 
 ```powershell
-python src/unified_train.py full --config src/unified_training.yaml
+python main.py train full --config src/unified_training.yaml
 ```
 
 **Training Modes:**
@@ -149,13 +195,13 @@ python src/unified_train.py full --config src/unified_training.yaml
 #### Human vs Scripted
 
 ```powershell
-python src/collect_data.py human_play
+python main.py play human
 ```
 
 #### Human vs Trained AI
 
 ```powershell
-python src/collect_data.py human_play --opponent-model checkpoints/best_model.pt
+python main.py play human --opponent-model checkpoints/best_model.pt
 ```
 
 ### Data Collection
