@@ -1,31 +1,14 @@
-[build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
-
 [project]
-name = "aves-horizons"
+name = "boost-and-broadside"
 version = "0.1.0"
-description = "Physics-based ship combat simulation with transformer-based AI agents"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
 dependencies = [
-    "torch",
-    "numpy", 
-    "gymnasium",
-    "stable-baselines3",
-    "PyYAML",
-    "matplotlib",
-    "tqdm",
-    "pygame",
+    "matplotlib>=3.10.7",
+    "pygame>=2.6.1",
+    "stable-baselines3>=2.7.0",
+    "torch>=2.8.0",
+    "tqdm>=4.67.1",
+    "wandb>=0.22.2",
 ]
-
-[project.optional-dependencies]
-dev = [
-    "pytest",
-    "black",
-]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = ["-v", "--tb=short"]
-
-[tool.setuptools]
-package-dir = {"" = "src"}

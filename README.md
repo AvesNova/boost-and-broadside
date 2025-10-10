@@ -5,18 +5,18 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-**Boost and Broadside** is a reinforcement learning research project featuring a custom Gymnasium environment where AI-controlled ships battle in 2D space using realistic physics. The project implements a transformer-based multi-agent system that learns coordinated team tactics through behavior cloning pretraining followed by PPO reinforcement learning.
+**Boost and Broadside** is a reinforcement learning research project featuring a custom Gymnasium environment where AI-controlled ships battle in 2D space using physics. The project implements a transformer-based multi-agent system that learns coordinated team tactics through behavior cloning pretraining followed by PPO reinforcement learning.
 
 ## Features
 
-- 🚀 **Realistic Ship Physics**: Complex aerodynamic model with thrust, drag, lift, and power management
-- 🤖 **Transformer-Based AI**: Multi-head self-attention architecture for team coordination
-- 🎯 **Multi-Agent Learning**: Supports 1v1 through 4v4 team battles with variable team sizes
-- 📊 **Two-Phase Training**: Behavior cloning pretraining → PPO reinforcement learning pipeline
-- 🎮 **Human Playable**: Interactive pygame interface for playing against AI or collecting demonstrations
-- 🔄 **Self-Play Support**: Maintains opponent memory pool for curriculum learning
-- 📹 **Episode Playback**: Record and replay episodes for analysis and debugging
-- 🏋️ **Gymnasium Compatible**: Standard RL interface with Stable-Baselines3 integration
+- **Ship Physics**: Complex aerodynamic model with thrust, drag, lift, and power management
+- **Transformer-Based AI**: Multi-head self-attention architecture for team coordination
+- **Multi-Agent Learning**: Supports 1v1 through 4v4 team battles with variable team sizes
+- **Two-Phase Training**: Behavior cloning pretraining → PPO reinforcement learning pipeline
+- **Human Playable**: Interactive pygame interface for playing against AI or collecting demonstrations
+- **Self-Play Support**: Maintains opponent memory pool for curriculum learning
+- **Episode Playback**: Record and replay episodes for analysis and debugging
+- **Gymnasium Compatible**: Standard RL interface with Stable-Baselines3 integration
 
 ## Table of Contents
 
