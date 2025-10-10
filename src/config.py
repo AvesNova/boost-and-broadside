@@ -77,6 +77,20 @@ def get_default_config(context: str = "full") -> Dict[str, Any]:
             "target_radius": 10.0,
             "radius_multiplier": 1.5,
         },
+        "parallel_processing": {
+            "enabled": True,
+            "num_workers": 4,  # Configurable number of workers
+            "data_collection": {
+                "episodes_per_worker": 250,
+                "checkpoint_frequency": 100,  # Episodes between checkpoints
+                "timeout": 3600,  # Timeout in seconds
+            },
+            "rl_training": {
+                "num_envs": 4,  # Number of parallel environments
+                "checkpoint_frequency": 25000,  # Timesteps between checkpoints
+                "gpu_memory_fraction": 0.9,  # Fraction of GPU memory to use
+            },
+        },
     }
 
     if context in ["full", "training"]:

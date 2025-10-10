@@ -197,6 +197,67 @@ class TestDataCollectionPipeline:
         assert result == 0
         mock_collect_bc_data.assert_called_once()
 
+    @patch("src.pipelines.data_collection.load_config")
+    @patch("src.pipelines.data_collection.setup_logging")
+    def test_collect_bc_parallel(self, mock_setup_logging, mock_load_config):
+        """Test BC data collection implementation with parallel processing."""
+        # Mock configuration with parallel processing enabled
+        mock_config = {
+            "data_collection": {
+                "bc_data": {
+                    "output_dir": "test_data",
+                    "episodes_per_mode": {"1v1": 100, "2v2": 100},
+                    "game_modes": ["1v1", "2v2"],
+                }
+            },
+            "parallel_processing": {
+                "enabled": True,
+                "num_workers": 2,
+                "data_collection": {
+                    "episodes_per_worker": 100,
+                    "checkpoint_frequency": 50,
+                },
+            },
+        }
+        mock_load_config.return_value = mock_config
+
+        mock_logger = MagicMock()
+        mock_setup_logging.return_value = mock_logger
+
+        args = argparse.Namespace(config="test.yaml", output="custom_output")
+
+        # Mock the WorkerPool to avoid actual multiprocessing
+        with patch("src.pipelines.data_collection.WorkerPool") as mock_pool_class:
+            mock_pool = MagicMock()
+            mock_pool_class.return_value = mock_pool
+
+            # Mock successful worker execution
+            mock_pool.start_workers.return_value = [MagicMock(), MagicMock()]
+            mock_pool.wait_for_completion.return_value = [
+                {"worker_id": 0, "status": "success"},
+                {"worker_id": 1, "status": "success"},
+            ]
+
+            # Mock aggregation
+            with patch(
+                "src.pipelines.data_collection.aggregate_worker_data"
+            ) as mock_aggregate:
+                mock_aggregate.return_value = {"total_episodes": 200}
+
+                # Mock the output directory creation to avoid file system issues
+                with patch("src.pipelines.data_collection.Path") as mock_path:
+                    mock_path.return_value.mkdir.return_value = None
+
+                    result = DataCollectionPipeline._collect_bc_parallel(
+                        mock_config, "test_run"
+                    )
+
+                    assert result == 0
+                    mock_pool_class.assert_called_once()
+                    mock_pool.start_workers.assert_called_once()
+                    mock_pool.wait_for_completion.assert_called_once()
+                    mock_aggregate.assert_called_once()
+
 
 class TestPlayPipeline:
     """Tests for the play pipeline."""

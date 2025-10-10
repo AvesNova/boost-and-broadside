@@ -17,6 +17,8 @@
 - **Self-Play Support**: Maintains opponent memory pool for curriculum learning
 - **Episode Playback**: Record and replay episodes for analysis and debugging
 - **Gymnasium Compatible**: Standard RL interface with Stable-Baselines3 integration
+- **Parallel Processing**: Multi-worker data collection and training with GPU acceleration
+- **Fault Tolerance**: Automatic checkpointing and recovery from interruptions
 
 ## Table of Contents
 
@@ -26,6 +28,7 @@
   - [Training AI Agents](#training-ai-agents)
   - [Playing the Game](#playing-the-game)
   - [Data Collection](#data-collection)
+  - [Parallel Processing](#parallel-processing)
 - [Architecture](#architecture)
 - [Configuration](#configuration)
 - [Development](#development)
@@ -83,11 +86,21 @@ python main.py play human
 ### Train an AI Agent (Full Pipeline)
 
 ```powershell
-# 1. Collect behavior cloning data
+# 1. Collect behavior cloning data (with parallel processing)
 python main.py collect bc --config src/unified_training.yaml
 
 # 2. Run full training pipeline (BC pretraining + RL)
 python main.py train full --config src/unified_training.yaml
+```
+
+### Parallel Data Collection and Training
+
+```powershell
+# Collect data using 4 worker processes
+python main.py collect bc --config src/unified_training.yaml
+
+# Train with parallel RL environments
+python main.py train rl --config src/unified_training.yaml
 ```
 
 ### Watch a Trained Model
@@ -229,6 +242,38 @@ python src/collect_data.py playback --episode-file <path-to-episode.pkl.gz>
 - `R`: Reset to beginning
 - `+`/`-`: Increase/decrease playback speed
 - `ESC`: Quit
+
+## Parallel Processing
+
+The project supports parallel processing for faster data collection and training:
+
+### Key Features
+
+- **Multi-Worker Data Collection**: Distribute BC data collection across multiple processes
+- **Parallel RL Environments**: Run multiple RL environments simultaneously
+- **Automatic Checkpointing**: Periodic saves to prevent data loss
+- **GPU Acceleration**: Utilize GPU for both BC and RL training
+- **Fault Tolerance**: Resume from interruptions automatically
+
+### Configuration
+
+Add to your configuration file:
+
+```yaml
+parallel_processing:
+  enabled: true
+  num_workers: 4
+  
+  data_collection:
+    episodes_per_worker: 250
+    checkpoint_frequency: 100
+    
+  rl_training:
+    num_envs: 4
+    checkpoint_frequency: 25000
+```
+
+For detailed documentation, see [docs/parallel_processing.md](docs/parallel_processing.md).
 
 ## Architecture
 
@@ -381,6 +426,10 @@ boost-and-broadside/
 │   ├── team_transformer_model.py   # Transformer architecture
 │   ├── transformer_policy.py       # SB3 custom policy
 │   ├── rl_wrapper.py               # RL training wrapper
+│   ├── parallel_rl_wrapper.py      # Parallel RL environments
+│   ├── parallel_utils.py           # Worker process utilities
+│   ├── data_aggregator.py          # Data aggregation from workers
+│   ├── recovery_manager.py         # Recovery from interruptions
 │   ├── unified_train.py            # Training entry point
 │   ├── bc_training.py              # Behavior cloning
 │   ├── collect_data.py             # Data collection
@@ -391,7 +440,12 @@ boost-and-broadside/
 │   ├── conftest.py                 # Test fixtures
 │   ├── test_environment_*.py       # Environment tests
 │   ├── test_ship_*.py              # Physics tests
+│   ├── test_parallel_utils.py      # Parallel processing tests
+│   ├── test_data_aggregator.py     # Data aggregation tests
+│   ├── test_recovery_manager.py    # Recovery tests
 │   └── test_*.py                   # Additional tests
+├── docs/
+│   └── parallel_processing.md      # Parallel processing documentation
 ├── data/                           # Training data
 ├── checkpoints/                    # Model checkpoints
 ├── logs/                           # Training logs

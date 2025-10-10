@@ -36,6 +36,9 @@ from bc_training import train_bc_model
 from rl_wrapper import create_unified_rl_env
 from transformer_policy import create_team_ppo_model
 
+# Import parallel processing utilities
+from ..parallel_rl_wrapper import create_parallel_rl_env
+
 
 class TrainingPipeline:
     """Handles all training-related operations"""
@@ -179,11 +182,45 @@ class TrainingPipeline:
         env_config = config["environment"]
         training_config = config["training"]["rl"]
 
-        train_env = create_unified_rl_env(
-            env_config=env_config,
-            learning_team_id=training_config["learning_team_id"],
-            opponent_config=training_config["opponent"],
-        )
+        # Check if parallel processing is enabled
+        parallel_config = config.get("parallel_processing", {})
+        if parallel_config.get("enabled", False):
+            # Use parallel environments
+            num_envs = parallel_config["rl_training"]["num_envs"]
+            print(f"Using parallel RL training with {num_envs} environments")
+
+            train_env = create_parallel_rl_env(
+                env_config=env_config,
+                num_envs=num_envs,
+                learning_team_id=training_config["learning_team_id"],
+                opponent_config=training_config["opponent"],
+            )
+
+            # Wrap for SB3
+            from stable_baselines3.common.vec_env import SubprocVecEnv
+
+            def make_env():
+                return create_unified_rl_env(
+                    env_config=env_config,
+                    learning_team_id=training_config["learning_team_id"],
+                    opponent_config=training_config["opponent"],
+                )
+
+            train_env = SubprocVecEnv([make_env for _ in range(num_envs)])
+        else:
+            # Use single environment
+            train_env = create_unified_rl_env(
+                env_config=env_config,
+                learning_team_id=training_config["learning_team_id"],
+                opponent_config=training_config["opponent"],
+            )
+
+            # Wrap environments for SB3
+            from stable_baselines3.common.monitor import Monitor
+            from stable_baselines3.common.vec_env import DummyVecEnv
+
+            train_env = Monitor(train_env, str(log_dir / "train"))
+            train_env = DummyVecEnv([lambda: train_env])
 
         # Create evaluation environment (always vs scripted for consistent metrics)
         eval_opponent_config = training_config["opponent"].copy()
@@ -196,13 +233,11 @@ class TrainingPipeline:
             opponent_config=eval_opponent_config,
         )
 
-        # Wrap environments for SB3
+        # Wrap evaluation environment
         from stable_baselines3.common.monitor import Monitor
         from stable_baselines3.common.vec_env import DummyVecEnv
 
-        train_env = Monitor(train_env, str(log_dir / "train"))
         eval_env = Monitor(eval_env, str(log_dir / "eval"))
-        train_env = DummyVecEnv([lambda: train_env])
         eval_env = DummyVecEnv([lambda: eval_env])
 
         # Create PPO model
@@ -230,10 +265,32 @@ class TrainingPipeline:
                 ppo_config=ppo_config,
             )
 
-        # Setup callbacks
+        # Setup callbacks with periodic checkpointing
+        checkpoint_freq = parallel_config.get("rl_training", {}).get(
+            "checkpoint_frequency", 25000
+        )
+        training_config["checkpoint_freq"] = checkpoint_freq
+
         callbacks = TrainingPipeline._setup_callbacks(
             training_config, checkpoint_dir, log_dir, train_env
         )
+
+        # Ensure GPU utilization
+        import torch
+
+        if torch.cuda.is_available():
+            print(f"Using GPU: {torch.cuda.get_device_name()}")
+            print(
+                f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB"
+            )
+
+            # Set GPU memory fraction if specified
+            gpu_memory_fraction = parallel_config.get("rl_training", {}).get(
+                "gpu_memory_fraction", 0.9
+            )
+            if gpu_memory_fraction < 1.0:
+                torch.cuda.set_per_process_memory_fraction(gpu_memory_fraction)
+                print(f"GPU memory fraction set to {gpu_memory_fraction}")
 
         # Start training
         print(
@@ -383,19 +440,61 @@ class TrainingPipeline:
 
     @staticmethod
     def _setup_callbacks(training_config, checkpoint_dir, log_dir, train_env):
-        """Setup training callbacks"""
-        from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
+        """Setup training callbacks with periodic checkpointing"""
+        from stable_baselines3.common.callbacks import (
+            EvalCallback,
+            CheckpointCallback,
+            BaseCallback,
+        )
         from callbacks import SelfPlayCallback
+        import torch
+        import os
 
         callbacks = []
 
+        # Enhanced checkpoint callback with GPU memory management
+        class EnhancedCheckpointCallback(CheckpointCallback):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+
+            def _on_step(self) -> bool:
+                result = super()._on_step()
+
+                # Clear GPU cache after checkpointing
+                if result and torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+
+                return result
+
         # Checkpoint callback
-        checkpoint_callback = CheckpointCallback(
-            save_freq=training_config["checkpoint_freq"],
+        checkpoint_freq = training_config.get("checkpoint_freq", 25000)
+        checkpoint_callback = EnhancedCheckpointCallback(
+            save_freq=checkpoint_freq,
             save_path=str(checkpoint_dir),
             name_prefix="rl_model",
+            save_replay_buffer=True,
         )
         callbacks.append(checkpoint_callback)
+
+        # GPU memory monitoring callback
+        class GPUMemoryCallback(BaseCallback):
+            def __init__(self, verbose: int = 0):
+                super().__init__(verbose)
+
+            def _on_step(self) -> bool:
+                if torch.cuda.is_available() and self.n_calls % 1000 == 0:
+                    memory_allocated = torch.cuda.memory_allocated() / 1e9
+                    memory_reserved = torch.cuda.memory_reserved() / 1e9
+
+                    if self.verbose > 0:
+                        print(
+                            f"GPU Memory - Allocated: {memory_allocated:.2f}GB, Reserved: {memory_reserved:.2f}GB"
+                        )
+
+                return True
+
+        gpu_callback = GPUMemoryCallback(verbose=1)
+        callbacks.append(gpu_callback)
 
         # Evaluation callback
         eval_callback = EvalCallback(
