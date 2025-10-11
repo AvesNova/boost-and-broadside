@@ -51,11 +51,11 @@ class TestDirectorySetup:
             with patch("src.utils.Path.cwd", return_value=Path(temp_dir)):
                 checkpoint_dir, log_dir = setup_directories(base_name)
 
-            # Check directories were created in current directory
+            # Check directories were created in centralized directories
             assert checkpoint_dir.exists()
             assert log_dir.exists()
-            assert checkpoint_dir.parent == Path(temp_dir)
-            assert log_dir.parent == Path(temp_dir)
+            assert checkpoint_dir.parent == Path(temp_dir) / "checkpoints"
+            assert log_dir.parent == Path(temp_dir) / "logs"
 
     def test_ensure_dir_new(self):
         """Test ensuring directory exists for new directory."""
@@ -126,8 +126,8 @@ class TestLoggingSetup:
                 logger = setup_logging(run_name)
 
             try:
-                # Check log file was created in current directory
-                log_file = Path(temp_dir) / f"{run_name}.log"
+                # Check log file was created in centralized logs directory
+                log_file = Path(temp_dir) / "logs" / f"{run_name}.log"
                 assert log_file.exists()
             finally:
                 # Properly close handlers to avoid Windows file lock issues

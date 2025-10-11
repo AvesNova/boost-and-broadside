@@ -22,12 +22,16 @@ def setup_directories(run_name: str, base_dir: str = "") -> Tuple[Path, Path]:
     Returns:
         Tuple of (checkpoint_dir, log_dir)
     """
+    # Use centralized directories
+    checkpoints_base = Path.cwd() / "checkpoints"
+    logs_base = Path.cwd() / "logs"
+
     if base_dir:
         checkpoint_dir = Path(base_dir) / f"{run_name}_checkpoints"
         log_dir = Path(base_dir) / f"{run_name}_logs"
     else:
-        checkpoint_dir = Path.cwd() / f"{run_name}_checkpoints"
-        log_dir = Path.cwd() / f"{run_name}_logs"
+        checkpoint_dir = checkpoints_base / f"{run_name}_checkpoints"
+        log_dir = logs_base / f"{run_name}_logs"
 
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -81,8 +85,10 @@ def setup_logging(
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
     else:
-        # If no log_dir specified, create in current directory
-        log_file = Path.cwd() / f"{run_name}.log"
+        # If no log_dir specified, create in centralized logs directory
+        logs_base = Path.cwd() / "logs"
+        logs_base.mkdir(parents=True, exist_ok=True)
+        log_file = logs_base / f"{run_name}.log"
         file_handler = logging.FileHandler(log_file)
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
