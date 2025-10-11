@@ -1,0 +1,113 @@
+command: bc
+data_collection:
+  bc_data:
+    compress: false
+    episodes_per_mode:
+      1v1: 12
+      2v2: 12
+      3v3: 12
+      4v4: 12
+    game_modes:
+    - 1v1
+    - 2v2
+    - 3v3
+    - 4v4
+    gamma: 0.99
+    output_dir: data/bc_pretraining
+  selfplay_data:
+    game_mode: nvn
+    gamma: 0.99
+    model_paths: []
+    output_dir: data/selfplay
+    total_episodes: 1000
+environment:
+  agent_dt: 0.04
+  max_episode_steps: 256
+  max_ships: 8
+  physics_dt: 0.02
+  world_size:
+  - 1200
+  - 800
+evaluation:
+  compare_models:
+    enabled: false
+    model_paths: []
+    output_dir: results/evaluation
+  episodes: 100
+  game_mode: 2v2
+  model_type: transformer
+logging:
+  console:
+    level: INFO
+    progress_bars: true
+  tensorboard:
+    enabled: true
+    log_dir: logs
+  wandb:
+    enabled: false
+    project: ship-combat-unified
+    tags:
+    - unified
+    - transformer
+model:
+  bc:
+    batch_size: 128
+    early_stopping_patience: 10
+    epochs: 50
+    learning_rate: 0.001
+    policy_weight: 1.0
+    validation_split: 0.2
+    value_weight: 0.5
+  ppo:
+    batch_size: 128
+    clip_range: 0.2
+    ent_coef: 0.01
+    gae_lambda: 0.95
+    gamma: 0.99
+    learning_rate: 0.0003
+    max_grad_norm: 0.5
+    n_epochs: 10
+    n_steps: 4096
+    vf_coef: 0.5
+  transformer:
+    dropout: 0.1
+    embed_dim: 64
+    max_ships: 8
+    num_actions: 6
+    num_heads: 4
+    num_layers: 3
+    token_dim: 10
+    use_layer_norm: true
+paths:
+  data: data
+  logs: logs
+  models: checkpoints
+  results: results
+scripted_agent:
+  angle_threshold: 5.0
+  bullet_speed: 500.0
+  max_shooting_range: 500.0
+  radius_multiplier: 1.5
+  target_radius: 10.0
+train_command: bc
+training:
+  mode: bc
+  rl:
+    checkpoint_freq: 100000
+    eval_episodes: 20
+    eval_freq: 25000
+    learning_team_id: 0
+    min_steps_before_selfplay: 50000
+    opponent:
+      opponent_update_freq: 10000
+      scripted_config:
+        angle_threshold: 5.0
+        bullet_speed: 500.0
+        max_shooting_range: 500.0
+        radius_multiplier: 1.5
+        target_radius: 10.0
+      scripted_mix_ratio: 0.3
+      selfplay_memory_size: 50
+      type: mixed
+    selfplay_update_freq: 20000
+    total_timesteps: 2000000

@@ -1,0 +1,18 @@
+defaults:
+  - base
+  - _self_
+
+# Self-play data collection specific configuration
+data_collection:
+  mode: "selfplay"
+  selfplay_data:
+    output_dir: "data/selfplay"
+    
+# Command detection
+collect_command: "selfplay"
+    
+# Data collection logging
+logging:
+  console:
+    level: "INFO"
+    progress_bars: true

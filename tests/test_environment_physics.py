@@ -5,7 +5,7 @@ Tests for environment physics integration and multi-step behavior.
 import pytest
 import torch
 
-from constants import Actions
+from src.constants import Actions
 
 
 class TestPhysicsIntegration:

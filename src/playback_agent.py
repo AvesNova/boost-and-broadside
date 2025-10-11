@@ -3,7 +3,7 @@ Playback Agent - replays saved episode data
 """
 
 import torch
-from agents import Agent
+from .agents import Agent
 
 
 class PlaybackAgent(Agent):

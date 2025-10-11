@@ -3,8 +3,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from constants import Actions
-from bullets import Bullets
+from .constants import Actions
+from .bullets import Bullets
 
 
 @dataclass

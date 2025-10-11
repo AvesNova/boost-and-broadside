@@ -6,8 +6,12 @@ import pytest
 import torch
 
 
-from game_runner import UnifiedGameRunner, create_standard_runner, create_human_runner
-from agents import Agent
+from src.game_runner import (
+    UnifiedGameRunner,
+    create_standard_runner,
+    create_human_runner,
+)
+from src.agents import Agent
 
 
 class MockAgent(Agent):

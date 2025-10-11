@@ -1,0 +1,15 @@
+# Base configuration for play commands
+# This file extends the base configuration with play-specific defaults
+
+# Inherits all defaults from base.yaml
+defaults:
+  - base
+  - _self_
+
+# Play-specific configuration
+play:
+  mode: human
+  human_config:
+    render_mode: human
+    fps: 60
+    zoom: 1.0

@@ -7,7 +7,7 @@ import torch
 import numpy as np
 from unittest.mock import Mock
 
-from agents import (
+from src.agents import (
     ScriptedAgentProvider,
     RLAgentProvider,
     HumanAgentProvider,
@@ -18,7 +18,7 @@ from agents import (
     create_human_agent,
     create_selfplay_agent,
 )
-from constants import Actions
+from src.constants import Actions
 
 
 class TestScriptedAgentProvider:

@@ -5,11 +5,11 @@ import numpy as np
 import torch
 from gymnasium import spaces
 
-from bullets import Bullets
-from ship import Ship, default_ship_config
-from renderer import create_renderer
-from constants import Actions, RewardConstants
-from state import State
+from .bullets import Bullets
+from .ship import Ship, default_ship_config
+from .renderer import create_renderer
+from .constants import Actions, RewardConstants
+from .state import State
 
 
 class Environment(gym.Env):

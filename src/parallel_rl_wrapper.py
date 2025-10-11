@@ -12,7 +12,7 @@ import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import time
 
-from rl_wrapper import UnifiedRLWrapper
+from .rl_wrapper import UnifiedRLWrapper
 from .parallel_utils import WorkerProcess, WorkerPool
 
 

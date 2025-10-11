@@ -7,8 +7,10 @@ import sys
 from pathlib import Path
 from typing import Dict, Any
 
+from omegaconf import DictConfig, OmegaConf
+
 # Import shared utilities
-from ..config import load_config, get_default_config
+# Removed old config import - now using Hydra DictConfig
 from ..utils import (
     setup_logging,
     generate_run_name,
@@ -18,7 +20,7 @@ from ..utils import (
 from ..cli_args import get_playback_arguments, get_evaluation_arguments
 
 # Import existing playback functions
-from collect_data import run_playback, browse_episodes, evaluate_model
+from ..collect_data import run_playback, browse_episodes, evaluate_model
 
 
 class PlaybackPipeline:
@@ -56,45 +58,51 @@ class PlaybackPipeline:
         return replay_parser
 
     @staticmethod
-    def execute(args) -> int:
-        """Execute the appropriate playback command"""
+    def execute(cfg: DictConfig) -> int:
+        """Execute the appropriate playback command with DictConfig"""
         try:
             with InterruptHandler("Playback interrupted by user"):
-                if args.replay_command == "episode":
-                    return PlaybackPipeline._replay_episode(args)
-                elif args.replay_command == "browse":
-                    return PlaybackPipeline._browse_episodes(args)
+                # Get command from config or from command structure
+                replay_command = None
+
+                # Try to get from config first
+                if cfg.get("replay", {}).get("mode"):
+                    replay_command = cfg.replay.mode
+                # Fallback to detecting from command structure
+                elif "replay_command" in cfg:
+                    replay_command = cfg.replay_command
+
+                if replay_command == "episode":
+                    return PlaybackPipeline._replay_episode(cfg)
+                elif replay_command == "browse":
+                    return PlaybackPipeline._browse_episodes(cfg)
                 else:
-                    print(f"Unknown replay command: {args.replay_command}")
+                    print(f"Unknown replay command: {replay_command}")
                     return 1
         except Exception as e:
             print(f"Error during playback: {e}")
             return 1
 
     @staticmethod
-    def _replay_episode(args) -> int:
-        """Execute episode replay"""
+    def _replay_episode(cfg: DictConfig) -> int:
+        """Execute episode replay with DictConfig"""
         # Validate episode file exists
-        episode_file = validate_file_exists(args.episode_file, "Episode file")
+        episode_file = validate_file_exists(cfg.get("episode_file"), "Episode file")
 
-        # Load configuration
-        if args.config:
-            config = load_config(args.config, get_default_config())
-        else:
-            config = get_default_config()
+        # Convert config to dict for compatibility
+        config_dict = OmegaConf.to_container(cfg, resolve=True)
 
         print("=" * 60)
         print("REPLAYING EPISODE")
         print("=" * 60)
         print(f"Episode file: {episode_file}")
-        print(f"Config: {args.config or 'default'}")
 
         # Setup logging
         run_name = generate_run_name("replay_episode")
         logger = setup_logging(run_name)
 
         try:
-            run_playback(config, str(episode_file))
+            run_playback(config_dict, str(episode_file))
             print("Episode replay completed successfully!")
             return 0
         except Exception as e:
@@ -102,32 +110,28 @@ class PlaybackPipeline:
             return 1
 
     @staticmethod
-    def _browse_episodes(args) -> int:
-        """Execute episode browsing"""
+    def _browse_episodes(cfg: DictConfig) -> int:
+        """Execute episode browsing with DictConfig"""
         # Validate data directory exists
-        data_dir = Path(args.data_dir)
+        data_dir = Path(cfg.get("data_dir", "data"))
         if not data_dir.exists():
             print(f"Error: Data directory not found: {data_dir}")
             return 1
 
-        # Load configuration
-        if args.config:
-            config = load_config(args.config, get_default_config())
-        else:
-            config = get_default_config()
+        # Convert config to dict for compatibility
+        config_dict = OmegaConf.to_container(cfg, resolve=True)
 
         print("=" * 60)
         print("BROWSING EPISODE DATA")
         print("=" * 60)
         print(f"Data directory: {data_dir}")
-        print(f"Config: {args.config or 'default'}")
 
         # Setup logging
         run_name = generate_run_name("browse_episodes")
         logger = setup_logging(run_name)
 
         try:
-            browse_episodes(config, str(data_dir))
+            browse_episodes(config_dict, str(data_dir))
             print("Episode browsing completed!")
             return 0
         except Exception as e:
@@ -156,43 +160,49 @@ class EvaluationPipeline:
         return eval_parser
 
     @staticmethod
-    def execute(args) -> int:
-        """Execute the appropriate evaluation command"""
+    def execute(cfg: DictConfig) -> int:
+        """Execute the appropriate evaluation command with DictConfig"""
         try:
             with InterruptHandler("Evaluation interrupted by user"):
-                if args.evaluate_command == "model":
-                    return EvaluationPipeline._evaluate_model(args)
+                # Get command from config or from command structure
+                evaluate_command = None
+
+                # Try to get from config first
+                if cfg.get("evaluate", {}).get("mode"):
+                    evaluate_command = cfg.evaluate.mode
+                # Fallback to detecting from command structure
+                elif "evaluate_command" in cfg:
+                    evaluate_command = cfg.evaluate_command
+
+                if evaluate_command == "model":
+                    return EvaluationPipeline._evaluate_model(cfg)
                 else:
-                    print(f"Unknown evaluation command: {args.evaluate_command}")
+                    print(f"Unknown evaluation command: {evaluate_command}")
                     return 1
         except Exception as e:
             print(f"Error during evaluation: {e}")
             return 1
 
     @staticmethod
-    def _evaluate_model(args) -> int:
-        """Execute model evaluation"""
+    def _evaluate_model(cfg: DictConfig) -> int:
+        """Execute model evaluation with DictConfig"""
         # Validate model file exists
-        model_file = validate_file_exists(args.model, "Model file")
+        model_file = validate_file_exists(cfg.get("model"), "Model file")
 
-        # Load configuration
-        if args.config:
-            config = load_config(args.config, get_default_config())
-        else:
-            config = get_default_config()
+        # Convert config to dict for compatibility
+        config_dict = OmegaConf.to_container(cfg, resolve=True)
 
         print("=" * 60)
         print("EVALUATING MODEL")
         print("=" * 60)
         print(f"Model: {model_file}")
-        print(f"Config: {args.config or 'default'}")
 
         # Setup logging
         run_name = generate_run_name("evaluate_model")
         logger = setup_logging(run_name)
 
         try:
-            stats = evaluate_model(str(model_file), config)
+            stats = evaluate_model(str(model_file), config_dict)
             print("Model evaluation completed successfully!")
             return 0
         except Exception as e:

@@ -1,0 +1,17 @@
+defaults:
+  - evaluate/base
+
+# Model evaluation specific configuration
+evaluation:
+  episodes: 100
+  game_mode: "2v2"
+  model_type: "transformer"
+  
+# Command detection
+evaluate_command: "model"
+  
+# Evaluation logging
+logging:
+  console:
+    level: "INFO"
+    progress_bars: true

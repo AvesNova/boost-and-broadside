@@ -13,8 +13,8 @@ from tqdm import tqdm
 import yaml
 from datetime import datetime
 
-from game_runner import create_standard_runner, create_human_runner
-from agents import (
+from .game_runner import create_standard_runner, create_human_runner
+from .agents import (
     create_scripted_agent,
     create_human_agent,
     create_rl_agent,
@@ -268,7 +268,7 @@ def evaluate_model(model_path: str, config: dict):
         model = PPO.load(model_path)
     else:
         # Transformer-based model (BC or direct transformer)
-        from team_transformer_model import create_team_model, TeamController
+        from .team_transformer_model import create_team_model, TeamController
 
         model_config = config.get("model_config", {"max_ships": 8})
         model = create_team_model(model_config)
@@ -288,7 +288,7 @@ def evaluate_model(model_path: str, config: dict):
     if model_type == "ppo":
         model_agent = create_rl_agent(model, None, "ppo")
     else:
-        from team_transformer_model import TeamController
+        from .team_transformer_model import TeamController
 
         team_controller = TeamController(team_assignments)
         model_agent = create_rl_agent(model, team_controller, "transformer")
@@ -360,7 +360,7 @@ def collect_selfplay_data(config: dict):
     runner.setup_environment()
 
     # Load models
-    from team_transformer_model import create_team_model, TeamController
+    from .team_transformer_model import create_team_model, TeamController
 
     models = []
     for model_path in model_paths:
@@ -438,7 +438,7 @@ def collect_selfplay_data(config: dict):
 def run_playback(config: dict, episode_file: str):
     """Run playback of a saved episode"""
     from pathlib import Path
-    from game_runner import create_playback_runner
+    from .game_runner import create_playback_runner
 
     print(f"Loading episode from: {episode_file}")
 

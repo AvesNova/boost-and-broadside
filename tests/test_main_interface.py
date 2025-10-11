@@ -59,9 +59,18 @@ class TestMainInterface:
         mock_eval.assert_called_once()
 
     @patch("src.pipelines.training.TrainingPipeline.execute")
-    def test_train_bc_command_routing(self, mock_execute):
+    @patch("main.initialize_config_dir")
+    @patch("main.compose")
+    @patch("main.GlobalHydra")
+    def test_train_bc_command_routing(
+        self, mock_hydra, mock_compose, mock_init, mock_execute
+    ):
         """Test that train bc command is routed correctly."""
         mock_execute.return_value = 0
+        mock_cfg = MagicMock()
+        mock_compose.return_value = mock_cfg
+        mock_init.return_value.__enter__ = MagicMock()
+        mock_init.return_value.__exit__ = MagicMock()
 
         with patch("sys.argv", ["main.py", "train", "bc", "--config", "test.yaml"]):
             from main import main
@@ -69,12 +78,21 @@ class TestMainInterface:
             result = main()
 
             # Should call the execute method
-            mock_execute.assert_called_once()
+            mock_execute.assert_called_once_with(mock_cfg)
 
     @patch("src.pipelines.data_collection.DataCollectionPipeline.execute")
-    def test_collect_bc_command_routing(self, mock_execute):
+    @patch("main.initialize_config_dir")
+    @patch("main.compose")
+    @patch("main.GlobalHydra")
+    def test_collect_bc_command_routing(
+        self, mock_hydra, mock_compose, mock_init, mock_execute
+    ):
         """Test that collect bc command is routed correctly."""
         mock_execute.return_value = 0
+        mock_cfg = MagicMock()
+        mock_compose.return_value = mock_cfg
+        mock_init.return_value.__enter__ = MagicMock()
+        mock_init.return_value.__exit__ = MagicMock()
 
         with patch("sys.argv", ["main.py", "collect", "bc", "--config", "test.yaml"]):
             from main import main
@@ -82,12 +100,21 @@ class TestMainInterface:
             result = main()
 
             # Should call the execute method
-            mock_execute.assert_called_once()
+            mock_execute.assert_called_once_with(mock_cfg)
 
     @patch("src.pipelines.training.TrainingPipeline.execute")
-    def test_train_rl_command_routing(self, mock_execute):
+    @patch("main.initialize_config_dir")
+    @patch("main.compose")
+    @patch("main.GlobalHydra")
+    def test_train_rl_command_routing(
+        self, mock_hydra, mock_compose, mock_init, mock_execute
+    ):
         """Test that train rl command is routed correctly."""
         mock_execute.return_value = 0
+        mock_cfg = MagicMock()
+        mock_compose.return_value = mock_cfg
+        mock_init.return_value.__enter__ = MagicMock()
+        mock_init.return_value.__exit__ = MagicMock()
 
         with patch("sys.argv", ["main.py", "train", "rl", "--config", "test.yaml"]):
             from main import main
@@ -95,12 +122,21 @@ class TestMainInterface:
             result = main()
 
             # Should call the execute method
-            mock_execute.assert_called_once()
+            mock_execute.assert_called_once_with(mock_cfg)
 
     @patch("src.pipelines.training.TrainingPipeline.execute")
-    def test_train_full_command_routing(self, mock_execute):
+    @patch("main.initialize_config_dir")
+    @patch("main.compose")
+    @patch("main.GlobalHydra")
+    def test_train_full_command_routing(
+        self, mock_hydra, mock_compose, mock_init, mock_execute
+    ):
         """Test that train full command is routed correctly."""
         mock_execute.return_value = 0
+        mock_cfg = MagicMock()
+        mock_compose.return_value = mock_cfg
+        mock_init.return_value.__enter__ = MagicMock()
+        mock_init.return_value.__exit__ = MagicMock()
 
         with patch("sys.argv", ["main.py", "train", "full", "--config", "test.yaml"]):
             from main import main
@@ -108,12 +144,21 @@ class TestMainInterface:
             result = main()
 
             # Should call the execute method
-            mock_execute.assert_called_once()
+            mock_execute.assert_called_once_with(mock_cfg)
 
     @patch("src.pipelines.data_collection.DataCollectionPipeline.execute")
-    def test_collect_selfplay_command_routing(self, mock_execute):
+    @patch("main.initialize_config_dir")
+    @patch("main.compose")
+    @patch("main.GlobalHydra")
+    def test_collect_selfplay_command_routing(
+        self, mock_hydra, mock_compose, mock_init, mock_execute
+    ):
         """Test that collect selfplay command is routed correctly."""
         mock_execute.return_value = 0
+        mock_cfg = MagicMock()
+        mock_compose.return_value = mock_cfg
+        mock_init.return_value.__enter__ = MagicMock()
+        mock_init.return_value.__exit__ = MagicMock()
 
         with patch(
             "sys.argv", ["main.py", "collect", "selfplay", "--config", "test.yaml"]
@@ -123,12 +168,21 @@ class TestMainInterface:
             result = main()
 
             # Should call the execute method
-            mock_execute.assert_called_once()
+            mock_execute.assert_called_once_with(mock_cfg)
 
     @patch("src.pipelines.data_collection.PlayPipeline.execute")
-    def test_play_human_command_routing(self, mock_execute):
+    @patch("main.initialize_config_dir")
+    @patch("main.compose")
+    @patch("main.GlobalHydra")
+    def test_play_human_command_routing(
+        self, mock_hydra, mock_compose, mock_init, mock_execute
+    ):
         """Test that play human command is routed correctly."""
         mock_execute.return_value = 0
+        mock_cfg = MagicMock()
+        mock_compose.return_value = mock_cfg
+        mock_init.return_value.__enter__ = MagicMock()
+        mock_init.return_value.__exit__ = MagicMock()
 
         with patch("sys.argv", ["main.py", "play", "human", "--config", "test.yaml"]):
             from main import main
@@ -136,12 +190,21 @@ class TestMainInterface:
             result = main()
 
             # Should call the execute method
-            mock_execute.assert_called_once()
+            mock_execute.assert_called_once_with(mock_cfg)
 
     @patch("src.pipelines.playback.PlaybackPipeline.execute")
-    def test_replay_episode_command_routing(self, mock_execute):
+    @patch("main.initialize_config_dir")
+    @patch("main.compose")
+    @patch("main.GlobalHydra")
+    def test_replay_episode_command_routing(
+        self, mock_hydra, mock_compose, mock_init, mock_execute
+    ):
         """Test that replay episode command is routed correctly."""
         mock_execute.return_value = 0
+        mock_cfg = MagicMock()
+        mock_compose.return_value = mock_cfg
+        mock_init.return_value.__enter__ = MagicMock()
+        mock_init.return_value.__exit__ = MagicMock()
 
         with patch(
             "sys.argv",
@@ -152,12 +215,21 @@ class TestMainInterface:
             result = main()
 
             # Should call the execute method
-            mock_execute.assert_called_once()
+            mock_execute.assert_called_once_with(mock_cfg)
 
     @patch("src.pipelines.playback.PlaybackPipeline.execute")
-    def test_replay_browse_command_routing(self, mock_execute):
+    @patch("main.initialize_config_dir")
+    @patch("main.compose")
+    @patch("main.GlobalHydra")
+    def test_replay_browse_command_routing(
+        self, mock_hydra, mock_compose, mock_init, mock_execute
+    ):
         """Test that replay browse command is routed correctly."""
         mock_execute.return_value = 0
+        mock_cfg = MagicMock()
+        mock_compose.return_value = mock_cfg
+        mock_init.return_value.__enter__ = MagicMock()
+        mock_init.return_value.__exit__ = MagicMock()
 
         with patch("sys.argv", ["main.py", "replay", "browse", "--data-dir", "data/"]):
             from main import main
@@ -165,12 +237,21 @@ class TestMainInterface:
             result = main()
 
             # Should call the execute method
-            mock_execute.assert_called_once()
+            mock_execute.assert_called_once_with(mock_cfg)
 
     @patch("src.pipelines.evaluation.EvaluationPipeline.execute")
-    def test_evaluate_model_command_routing(self, mock_execute):
+    @patch("main.initialize_config_dir")
+    @patch("main.compose")
+    @patch("main.GlobalHydra")
+    def test_evaluate_model_command_routing(
+        self, mock_hydra, mock_compose, mock_init, mock_execute
+    ):
         """Test that evaluate model command is routed correctly."""
         mock_execute.return_value = 0
+        mock_cfg = MagicMock()
+        mock_compose.return_value = mock_cfg
+        mock_init.return_value.__enter__ = MagicMock()
+        mock_init.return_value.__exit__ = MagicMock()
 
         with patch(
             "sys.argv",
@@ -189,7 +270,7 @@ class TestMainInterface:
             result = main()
 
             # Should call the execute method
-            mock_execute.assert_called_once()
+            mock_execute.assert_called_once_with(mock_cfg)
 
     @patch("sys.argv", ["main.py", "invalid_command"])
     @patch("argparse.ArgumentParser.print_help")
@@ -222,9 +303,18 @@ class TestMainInterface:
         mock_print_help.assert_called_once()
 
     @patch("src.pipelines.training.TrainingPipeline.execute")
-    def test_train_command_error_handling(self, mock_execute):
+    @patch("main.initialize_config_dir")
+    @patch("main.compose")
+    @patch("main.GlobalHydra")
+    def test_train_command_error_handling(
+        self, mock_hydra, mock_compose, mock_init, mock_execute
+    ):
         """Test that train command handles errors correctly."""
         mock_execute.side_effect = Exception("Test error")
+        mock_cfg = MagicMock()
+        mock_compose.return_value = mock_cfg
+        mock_init.return_value.__enter__ = MagicMock()
+        mock_init.return_value.__exit__ = MagicMock()
 
         with patch("sys.argv", ["main.py", "train", "bc", "--config", "test.yaml"]):
             from main import main
@@ -235,9 +325,18 @@ class TestMainInterface:
             assert result == 1
 
     @patch("src.pipelines.training.TrainingPipeline.execute")
-    def test_train_command_keyboard_interrupt(self, mock_execute):
+    @patch("main.initialize_config_dir")
+    @patch("main.compose")
+    @patch("main.GlobalHydra")
+    def test_train_command_keyboard_interrupt(
+        self, mock_hydra, mock_compose, mock_init, mock_execute
+    ):
         """Test that train command handles keyboard interrupt correctly."""
         mock_execute.side_effect = KeyboardInterrupt()
+        mock_cfg = MagicMock()
+        mock_compose.return_value = mock_cfg
+        mock_init.return_value.__enter__ = MagicMock()
+        mock_init.return_value.__exit__ = MagicMock()
 
         with patch("sys.argv", ["main.py", "train", "bc", "--config", "test.yaml"]):
             from main import main

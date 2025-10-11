@@ -7,8 +7,10 @@ import sys
 from pathlib import Path
 from typing import Dict, Any
 
+from omegaconf import DictConfig, OmegaConf
+
 # Import shared utilities
-from ..config import load_config, get_default_config
+# Removed old config import - now using Hydra DictConfig
 from ..utils import (
     setup_logging,
     generate_run_name,
@@ -18,7 +20,7 @@ from ..utils import (
 from ..cli_args import get_evaluation_arguments
 
 # Import existing evaluation functions
-from collect_data import evaluate_model
+from ..collect_data import evaluate_model
 
 
 class EvaluationPipeline:
@@ -42,43 +44,49 @@ class EvaluationPipeline:
         return eval_parser
 
     @staticmethod
-    def execute(args) -> int:
-        """Execute the appropriate evaluation command"""
+    def execute(cfg: DictConfig) -> int:
+        """Execute the appropriate evaluation command with DictConfig"""
         try:
             with InterruptHandler("Evaluation interrupted by user"):
-                if args.evaluate_command == "model":
-                    return EvaluationPipeline._evaluate_model(args)
+                # Get command from config or from command structure
+                evaluate_command = None
+
+                # Try to get from config first
+                if cfg.get("evaluate", {}).get("mode"):
+                    evaluate_command = cfg.evaluate.mode
+                # Fallback to detecting from command structure
+                elif "evaluate_command" in cfg:
+                    evaluate_command = cfg.evaluate_command
+
+                if evaluate_command == "model":
+                    return EvaluationPipeline._evaluate_model(cfg)
                 else:
-                    print(f"Unknown evaluation command: {args.evaluate_command}")
+                    print(f"Unknown evaluation command: {evaluate_command}")
                     return 1
         except Exception as e:
             print(f"Error during evaluation: {e}")
             return 1
 
     @staticmethod
-    def _evaluate_model(args) -> int:
-        """Execute model evaluation"""
+    def _evaluate_model(cfg: DictConfig) -> int:
+        """Execute model evaluation with DictConfig"""
         # Validate model file exists
-        model_file = validate_file_exists(args.model, "Model file")
+        model_file = validate_file_exists(cfg.get("model"), "Model file")
 
-        # Load configuration
-        if args.config:
-            config = load_config(args.config, get_default_config())
-        else:
-            config = get_default_config()
+        # Convert config to dict for compatibility
+        config_dict = OmegaConf.to_container(cfg, resolve=True)
 
         print("=" * 60)
         print("EVALUATING MODEL")
         print("=" * 60)
         print(f"Model: {model_file}")
-        print(f"Config: {args.config or 'default'}")
 
         # Setup logging
         run_name = generate_run_name("evaluate_model")
         logger = setup_logging(run_name)
 
         try:
-            stats = evaluate_model(str(model_file), config)
+            stats = evaluate_model(str(model_file), config_dict)
             print("Model evaluation completed successfully!")
             return 0
         except Exception as e:

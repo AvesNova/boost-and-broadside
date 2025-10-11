@@ -87,20 +87,20 @@ python main.py play human
 
 ```powershell
 # 1. Collect behavior cloning data (with parallel processing)
-python main.py collect bc --config src/unified_training.yaml
+python main.py collect bc
 
 # 2. Run full training pipeline (BC pretraining + RL)
-python main.py train full --config src/unified_training.yaml
+python main.py train full
 ```
 
 ### Parallel Data Collection and Training
 
 ```powershell
 # Collect data using 4 worker processes
-python main.py collect bc --config src/unified_training.yaml
+python main.py collect bc parallel_processing.num_workers=4
 
 # Train with parallel RL environments
-python main.py train rl --config src/unified_training.yaml
+python main.py train rl parallel_processing.enabled=true
 ```
 
 ### Watch a Trained Model
@@ -117,43 +117,55 @@ The unified command-line interface provides access to all functionality through 
 ### Training Commands
 ```bash
 # Behavior cloning training
-python main.py train bc [--config CONFIG] [--run-name NAME]
+python main.py train bc [--run-name NAME]
 
 # Reinforcement learning training
-python main.py train rl [--config CONFIG] [--run-name NAME] [--bc-model PATH]
+python main.py train rl [--run-name NAME] [--bc-model PATH]
 
 # Full training pipeline
-python main.py train full [--config CONFIG] [--run-name NAME] [--skip-bc]
+python main.py train full [--run-name NAME] [--skip-bc]
+
+# Hydra configuration overrides
+python main.py train bc model.transformer.embed_dim=128 model.ppo.learning_rate=0.0001
 ```
 
 ### Data Collection Commands
 ```bash
 # Collect behavior cloning data
-python main.py collect bc [--config CONFIG] [--output DIR]
+python main.py collect bc [--output DIR]
 
 # Collect self-play data
-python main.py collect selfplay [--config CONFIG] [--output DIR]
+python main.py collect selfplay [--output DIR]
+
+# Hydra configuration overrides
+python main.py collect bc data_collection.bc_data.episodes_per_mode.1v1=100
 ```
 
 ### Playing Commands
 ```bash
 # Human vs AI play
-python main.py play human [--config CONFIG]
+python main.py play human
+
+# Hydra configuration overrides
+python main.py play human environment.world_size=[1600,1200]
 ```
 
 ### Replay Commands
 ```bash
 # Replay saved episode
-python main.py replay episode --episode-file PATH [--config CONFIG]
+python main.py replay episode --episode-file PATH
 
 # Browse episode data
-python main.py replay browse [--data-dir DIR] [--config CONFIG]
+python main.py replay browse [--data-dir DIR]
 ```
 
 ### Evaluation Commands
 ```bash
 # Evaluate trained model
-python main.py evaluate model --model PATH [--config CONFIG]
+python main.py evaluate model --model PATH
+
+# Hydra configuration overrides
+python main.py evaluate model --model checkpoints/best_model.pt evaluation.num_episodes=50
 ```
 
 ## Usage
@@ -165,7 +177,7 @@ python main.py evaluate model --model PATH [--config CONFIG]
 Collect expert demonstrations from scripted agents:
 
 ```powershell
-python main.py collect bc --config src/unified_training.yaml
+python main.py collect bc
 ```
 
 This generates training data in `data/bc_pretraining/` with episodes from various game modes (1v1, 2v2, 3v3, 4v4).
@@ -173,7 +185,7 @@ This generates training data in `data/bc_pretraining/` with episodes from variou
 Train the BC model:
 
 ```powershell
-python main.py train bc --config src/unified_training.yaml
+python main.py train bc
 ```
 
 #### Reinforcement Learning (RL) Training
@@ -181,13 +193,13 @@ python main.py train bc --config src/unified_training.yaml
 Train with PPO from scratch:
 
 ```powershell
-python main.py train rl --config src/unified_training.yaml
+python main.py train rl
 ```
 
 Or initialize from a BC checkpoint:
 
 ```powershell
-python main.py train rl --config src/unified_training.yaml --bc-model checkpoints/bc_model.pt
+python main.py train rl --bc-model checkpoints/bc_model.pt
 ```
 
 #### Full Pipeline
@@ -195,7 +207,7 @@ python main.py train rl --config src/unified_training.yaml --bc-model checkpoint
 Run both phases automatically:
 
 ```powershell
-python main.py train full --config src/unified_training.yaml
+python main.py train full
 ```
 
 **Training Modes:**
@@ -222,10 +234,10 @@ python main.py play human --opponent-model checkpoints/best_model.pt
 #### Collect Custom Episodes
 
 ```powershell
-python src/collect_data.py collect_bc --config src/unified_training.yaml
+python main.py collect bc data_collection.bc_data.episodes_per_mode.1v1=100
 ```
 
-Modify `src/unified_training.yaml` to adjust:
+Modify configuration using Hydra overrides:
 - Number of episodes per game mode
 - Game modes to include
 - Output directory
@@ -233,7 +245,7 @@ Modify `src/unified_training.yaml` to adjust:
 #### Episode Playback
 
 ```powershell
-python src/collect_data.py playback --episode-file <path-to-episode.pkl.gz>
+python main.py replay episode --episode-file <path-to-episode.pkl.gz>
 ```
 
 **Playback Controls:**
@@ -257,7 +269,17 @@ The project supports parallel processing for faster data collection and training
 
 ### Configuration
 
-Add to your configuration file:
+Configure parallel processing using Hydra overrides:
+
+```bash
+# Enable parallel processing with 4 workers
+python main.py collect bc parallel_processing.enabled=true parallel_processing.num_workers=4
+
+# Configure RL training with parallel environments
+python main.py train rl parallel_processing.enabled=true parallel_processing.rl_training.num_envs=8
+```
+
+Or modify the configuration files in `src/config/`:
 
 ```yaml
 parallel_processing:
@@ -347,7 +369,7 @@ Unified interface supporting:
 
 ## Configuration
 
-All hyperparameters are in `src/unified_training.yaml`:
+The project uses Hydra for configuration management. Base configuration is in `src/config/base.yaml`:
 
 ```yaml
 environment:
@@ -375,7 +397,26 @@ training:
       scripted_mix_ratio: 0.3
 ```
 
-See the full configuration file for all options.
+### Hydra Configuration Structure
+
+- **Base Configuration**: `src/config/base.yaml` - Contains all default parameters
+- **Command-Specific Configs**: Located in subdirectories like `src/config/train/`, `src/config/collect/`, etc.
+- **Runtime Overrides**: Use command-line overrides to modify any parameter
+
+### Example Overrides
+
+```bash
+# Change model architecture
+python main.py train bc model.transformer.embed_dim=128 model.transformer.num_heads=8
+
+# Adjust training parameters
+python main.py train rl model.ppo.learning_rate=0.0001 training.rl.total_timesteps=5000000
+
+# Modify environment settings
+python main.py play human environment.world_size=[1600,1200] environment.max_ships=10
+```
+
+See the full configuration files in `src/config/` for all options.
 
 ## Development
 
@@ -419,6 +460,18 @@ The project includes `.vscode/launch.json` with configurations:
 ```
 boost-and-broadside/
 ├── src/
+│   ├── config/                     # Hydra configuration files
+│   │   ├── base.yaml               # Base configuration
+│   │   ├── train/                  # Training configurations
+│   │   ├── collect/                # Data collection configurations
+│   │   ├── play/                   # Play configurations
+│   │   ├── replay/                 # Replay configurations
+│   │   └── evaluate/               # Evaluation configurations
+│   ├── pipelines/                  # Pipeline modules
+│   │   ├── training.py             # Training pipeline
+│   │   ├── data_collection.py      # Data collection pipeline
+│   │   ├── playback.py             # Playback pipeline
+│   │   └── evaluation.py           # Evaluation pipeline
 │   ├── env.py                      # Gymnasium environment
 │   ├── ship.py                     # Ship physics
 │   ├── state.py                    # Game state
@@ -435,7 +488,8 @@ boost-and-broadside/
 │   ├── collect_data.py             # Data collection
 │   ├── game_runner.py              # Game orchestration
 │   ├── renderer.py                 # Pygame visualization
-│   └── unified_training.yaml       # Configuration
+│   ├── utils.py                    # Shared utilities
+│   └── cli_args.py                 # CLI argument definitions
 ├── tests/
 │   ├── conftest.py                 # Test fixtures
 │   ├── test_environment_*.py       # Environment tests
@@ -451,6 +505,7 @@ boost-and-broadside/
 ├── logs/                           # Training logs
 ├── pyproject.toml                  # Package configuration
 ├── pytest.ini                      # Test configuration
+├── main.py                         # Main entry point with Hydra
 └── README.md
 ```
 

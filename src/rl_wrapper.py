@@ -8,14 +8,14 @@ import torch
 from gymnasium import spaces
 from collections import deque
 
-from env import Environment
-from agents import (
+from .env import Environment
+from .agents import (
     Agent,
     create_scripted_agent,
     create_rl_agent,
     create_selfplay_agent,
 )
-from team_transformer_model import TeamController
+from .team_transformer_model import TeamController
 
 
 class UnifiedRLWrapper(gym.Env):

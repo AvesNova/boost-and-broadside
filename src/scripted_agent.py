@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from constants import Actions
+from .constants import Actions
 
 
 class ScriptedAgent(nn.Module):

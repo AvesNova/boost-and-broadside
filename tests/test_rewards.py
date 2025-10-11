@@ -5,10 +5,10 @@ Tests for the team-based reward system.
 import pytest
 from copy import deepcopy
 
-from constants import RewardConstants
-from env import Environment
-from ship import Ship, default_ship_config
-from state import State
+from src.constants import RewardConstants
+from src.env import Environment
+from src.ship import Ship, default_ship_config
+from src.state import State
 
 
 @pytest.fixture

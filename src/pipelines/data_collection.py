@@ -8,13 +8,15 @@ from pathlib import Path
 from typing import Dict, Any
 from datetime import datetime
 
+from omegaconf import DictConfig, OmegaConf
+
 # Import shared utilities
-from ..config import load_config, get_default_config
+# Removed old config import - now using Hydra DictConfig
 from ..utils import setup_logging, generate_run_name, InterruptHandler
 from ..cli_args import get_data_collection_arguments
 
 # Import existing data collection functions
-from collect_data import collect_bc_data, run_human_play, collect_selfplay_data
+from ..collect_data import collect_bc_data, run_human_play, collect_selfplay_data
 
 # Import parallel processing utilities
 from ..parallel_utils import WorkerPool, DataCollectionWorker, aggregate_worker_data
@@ -50,42 +52,53 @@ class DataCollectionPipeline:
         return collect_parser
 
     @staticmethod
-    def execute(args) -> int:
-        """Execute the appropriate data collection command"""
+    def execute(cfg: DictConfig) -> int:
+        """Execute the appropriate data collection command with DictConfig"""
         try:
             with InterruptHandler("Data collection interrupted by user"):
-                if args.collect_command == "bc":
-                    return DataCollectionPipeline._collect_bc(args)
-                elif args.collect_command == "selfplay":
-                    return DataCollectionPipeline._collect_selfplay(args)
+                # If config is nested under 'collect', extract it
+                if "collect" in cfg and isinstance(cfg.collect, DictConfig):
+                    cfg = cfg.collect
+
+                # Get command from config or from command structure
+                collect_command = None
+
+                # Try to get from collect_command first (directly from config)
+                if "collect_command" in cfg:
+                    collect_command = cfg.collect_command
+                # Try to get from command (from CLI args)
+                elif "command" in cfg:
+                    collect_command = cfg.command
+                # Fallback to data_collection.mode
+                elif cfg.get("data_collection", {}).get("mode"):
+                    collect_command = cfg.data_collection.mode
+
+                if collect_command == "bc":
+                    return DataCollectionPipeline._collect_bc(cfg)
+                elif collect_command == "selfplay":
+                    return DataCollectionPipeline._collect_selfplay(cfg)
                 else:
-                    print(f"Unknown collection command: {args.collect_command}")
+                    print(f"Unknown collection command: {collect_command}")
                     return 1
         except Exception as e:
             print(f"Error during data collection: {e}")
             return 1
 
     @staticmethod
-    def _collect_bc(args) -> int:
-        """Execute behavior cloning data collection"""
-        # Load configuration
-        if args.config:
-            config = load_config(args.config, get_default_config("data_collection"))
-        else:
-            config = get_default_config("data_collection")
-
-        # Override output directory if specified
-        if args.output:
-            if "data_collection" not in config:
-                config["data_collection"] = {}
-            if "bc_data" not in config["data_collection"]:
-                config["data_collection"]["bc_data"] = {}
-            config["data_collection"]["bc_data"]["output_dir"] = args.output
-
+    def _collect_bc(cfg: DictConfig) -> int:
+        """Execute behavior cloning data collection with DictConfig"""
         # Add timestamp to output directory
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        if "data_collection" in config and "bc_data" in config["data_collection"]:
-            bc_config = config["data_collection"]["bc_data"]
+
+        # Create a mutable copy of the config
+        config_dict = OmegaConf.to_container(cfg, resolve=True)
+
+        # Update output directory with timestamp
+        if (
+            "data_collection" in config_dict
+            and "bc_data" in config_dict["data_collection"]
+        ):
+            bc_config = config_dict["data_collection"]["bc_data"]
             bc_config["output_dir"] = (
                 f"{bc_config.get('output_dir', 'data/bc_pretraining')}_{timestamp}"
             )
@@ -93,21 +106,22 @@ class DataCollectionPipeline:
         print("=" * 60)
         print("COLLECTING BEHAVIOR CLONING DATA")
         print("=" * 60)
-        print(f"Config: {args.config or 'default'}")
-        print(f"Output directory: {config['data_collection']['bc_data']['output_dir']}")
+        print(
+            f"Output directory: {config_dict['data_collection']['bc_data']['output_dir']}"
+        )
 
         # Setup logging
         run_name = generate_run_name("collect_bc")
         logger = setup_logging(run_name)
 
         # Check if parallel processing is enabled
-        parallel_config = config.get("parallel_processing", {})
+        parallel_config = config_dict.get("parallel_processing", {})
         if parallel_config.get("enabled", False):
-            return DataCollectionPipeline._collect_bc_parallel(config, run_name)
+            return DataCollectionPipeline._collect_bc_parallel(config_dict, run_name)
         else:
             # Use original sequential collection
             try:
-                collect_bc_data(config)
+                collect_bc_data(config_dict)
                 print("BC data collection completed successfully!")
                 return 0
             except Exception as e:
@@ -237,27 +251,27 @@ class DataCollectionPipeline:
             worker_pool.stop_workers()
 
     @staticmethod
-    def _collect_selfplay(args) -> int:
-        """Execute self-play data collection"""
-        # Load configuration
-        if args.config:
-            config = load_config(args.config, get_default_config("data_collection"))
-        else:
-            config = get_default_config("data_collection")
+    def _collect_selfplay(cfg: DictConfig) -> int:
+        """Execute self-play data collection with DictConfig"""
+        # Create a mutable copy of the config
+        config_dict = OmegaConf.to_container(cfg, resolve=True)
 
-        # Override output directory if specified
-        if args.output:
-            config["output_dir"] = args.output
-        else:
-            # Add timestamp to output directory
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            config["output_dir"] = f"data/selfplay_{timestamp}"
+        # Add timestamp to output directory
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        if (
+            "data_collection" in config_dict
+            and "selfplay_data" in config_dict["data_collection"]
+        ):
+            config_dict["data_collection"]["selfplay_data"][
+                "output_dir"
+            ] = f"{config_dict['data_collection']['selfplay_data'].get('output_dir', 'data/selfplay')}_{timestamp}"
 
         print("=" * 60)
         print("COLLECTING SELF-PLAY DATA")
         print("=" * 60)
-        print(f"Config: {args.config or 'default'}")
-        print(f"Output directory: {config['output_dir']}")
+        print(
+            f"Output directory: {config_dict['data_collection']['selfplay_data']['output_dir']}"
+        )
 
         # Setup logging
         run_name = generate_run_name("collect_selfplay")
@@ -265,7 +279,7 @@ class DataCollectionPipeline:
 
         # Execute data collection
         try:
-            collect_selfplay_data(config)
+            collect_selfplay_data(config_dict)
             print("Self-play data collection completed successfully!")
             return 0
         except Exception as e:
@@ -291,27 +305,41 @@ class PlayPipeline:
         return play_parser
 
     @staticmethod
-    def execute(args) -> int:
-        """Execute the appropriate play command"""
+    def execute(cfg: DictConfig) -> int:
+        """Execute the appropriate play command with DictConfig"""
         try:
             with InterruptHandler("Game interrupted by user"):
-                if args.play_command == "human":
-                    return PlayPipeline._play_human(args)
+                # If config is nested under 'play', extract it
+                if "play" in cfg and isinstance(cfg.play, DictConfig):
+                    cfg = cfg.play
+
+                # Get command from config or from command structure
+                play_command = None
+
+                # Try to get from play_command first (directly from config)
+                if "play_command" in cfg:
+                    play_command = cfg.play_command
+                # Try to get from command (from CLI args)
+                elif "command" in cfg:
+                    play_command = cfg.command
+                # Fallback to play.mode
+                elif cfg.get("play", {}).get("mode"):
+                    play_command = cfg.play.mode
+
+                if play_command == "human":
+                    return PlayPipeline._play_human(cfg)
                 else:
-                    print(f"Unknown play command: {args.play_command}")
+                    print(f"Unknown play command: {play_command}")
                     return 1
         except Exception as e:
             print(f"Error during play: {e}")
             return 1
 
     @staticmethod
-    def _play_human(args) -> int:
-        """Execute human play"""
-        # Load configuration
-        if args.config:
-            config = load_config(args.config, get_default_config())
-        else:
-            config = get_default_config()
+    def _play_human(cfg: DictConfig) -> int:
+        """Execute human play with DictConfig"""
+        # Convert config to dict for compatibility
+        config_dict = OmegaConf.to_container(cfg, resolve=True)
 
         print("=" * 60)
         print("HUMAN VS AI PLAY")
@@ -324,7 +352,7 @@ class PlayPipeline:
         logger = setup_logging(run_name)
 
         try:
-            run_human_play(config)
+            run_human_play(config_dict)
             return 0
         except Exception as e:
             print(f"Error during human play: {e}")

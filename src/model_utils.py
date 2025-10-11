@@ -11,7 +11,7 @@ import json
 import yaml
 
 from stable_baselines3 import PPO
-from team_transformer_model import create_team_model, TeamController
+from .team_transformer_model import create_team_model, TeamController
 
 
 class ModelMetadata:
@@ -229,7 +229,7 @@ def create_ppo_model(
     Returns:
         Created PPO model
     """
-    from transformer_policy import create_team_ppo_model
+    from .transformer_policy import create_team_ppo_model
 
     model = create_team_ppo_model(
         env=env,
@@ -255,7 +255,7 @@ def create_bc_model(
     Returns:
         Created BC model
     """
-    from bc_training import create_bc_model as create_bc
+    from .bc_training import create_bc_model as create_bc
 
     model = create_bc(transformer_config, num_controlled_ships)
     return model

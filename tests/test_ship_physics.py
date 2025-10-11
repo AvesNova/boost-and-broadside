@@ -6,8 +6,8 @@ import pytest
 import numpy as np
 import torch
 
-from constants import Actions
-from ship import Ship
+from src.constants import Actions
+from src.ship import Ship
 
 
 class TestShipInitialization:

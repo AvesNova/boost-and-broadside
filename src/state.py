@@ -1,6 +1,6 @@
 import numpy as np
-from bullets import Bullets
-from ship import Ship
+from .bullets import Bullets
+from .ship import Ship
 
 
 class State:

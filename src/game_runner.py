@@ -8,9 +8,9 @@ from typing import Any
 import numpy as np
 import torch
 
-from env import Environment
-from agents import Agent, HumanAgentProvider
-from playback_agent import create_playback_agent
+from .env import Environment
+from .agents import Agent, HumanAgentProvider
+from .playback_agent import create_playback_agent
 
 
 class UnifiedGameRunner:

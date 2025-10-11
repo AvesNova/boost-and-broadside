@@ -1,0 +1,20 @@
+# Base configuration for replay commands
+# This file extends the base configuration with replay-specific defaults
+
+# Inherits all defaults from base.yaml
+defaults:
+  - base
+  - _self_
+
+# Replay-specific configuration
+replay:
+  mode: episode
+  episode_config:
+    render_mode: human
+    fps: 60
+    zoom: 1.0
+    loop: false
+  browse_config:
+    render_mode: human
+    fps: 60
+    zoom: 1.0

@@ -289,7 +289,7 @@ def aggregate_worker_data(output_dirs: List[str], output_path: str) -> Dict[str,
 
     if all_episodes:
         # Import save_episodes from collect_data to avoid circular import
-        from collect_data import save_episodes
+        from .collect_data import save_episodes
 
         save_episodes(all_episodes, output_path, compress=True)
 

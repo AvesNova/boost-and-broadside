@@ -7,8 +7,10 @@ import sys
 from pathlib import Path
 from typing import Dict, Any
 
+from omegaconf import DictConfig, OmegaConf
+
 # Import shared utilities
-from ..config import load_config, get_default_config
+# Removed old config import - now using Hydra DictConfig
 from ..utils import (
     setup_directories,
     setup_logging,
@@ -32,9 +34,9 @@ from ..cli_args import (
 )
 
 # Import existing training functions
-from bc_training import train_bc_model
-from rl_wrapper import create_unified_rl_env
-from transformer_policy import create_team_ppo_model
+from ..bc_training import train_bc_model
+from ..rl_wrapper import create_unified_rl_env
+from ..transformer_policy import create_team_ppo_model
 
 # Import parallel processing utilities
 from ..parallel_rl_wrapper import create_parallel_rl_env
@@ -73,69 +75,81 @@ class TrainingPipeline:
         return train_parser
 
     @staticmethod
-    def execute(args) -> int:
-        """Execute the appropriate training command"""
+    def execute(cfg: DictConfig) -> int:
+        """Execute the appropriate training command with DictConfig"""
         try:
             with InterruptHandler("Training interrupted by user"):
-                if args.train_command == "bc":
-                    return TrainingPipeline._train_bc(args)
-                elif args.train_command == "rl":
-                    return TrainingPipeline._train_rl(args)
-                elif args.train_command == "full":
-                    return TrainingPipeline._train_full(args)
+                # If config is nested under 'train', extract it
+                if "train" in cfg and isinstance(cfg.train, DictConfig):
+                    cfg = cfg.train
+
+                # Get command from config or from command structure
+                train_command = None
+
+                # Try to get from train_command first (directly from config)
+                if "train_command" in cfg:
+                    train_command = cfg.train_command
+                # Try to get from command (from CLI args)
+                elif "command" in cfg:
+                    train_command = cfg.command
+                # Fallback to training.mode
+                elif cfg.get("training", {}).get("mode"):
+                    train_command = cfg.training.mode
+
+                if train_command == "bc":
+                    return TrainingPipeline._train_bc(cfg)
+                elif train_command == "rl":
+                    return TrainingPipeline._train_rl(cfg)
+                elif train_command == "full":
+                    return TrainingPipeline._train_full(cfg)
                 else:
-                    print(f"Unknown training command: {args.train_command}")
+                    print(f"Unknown training command: {train_command}")
                     return 1
         except Exception as e:
             print(f"Error during training: {e}")
             return 1
 
     @staticmethod
-    def _train_bc(args) -> int:
-        """Execute behavior cloning training"""
-        # Load configuration
-        config = load_config(args.config, get_default_config("training"))
-
+    def _train_bc(cfg: DictConfig) -> int:
+        """Execute behavior cloning training with DictConfig"""
         # Generate run name if not provided
-        if args.run_name is None:
-            args.run_name = generate_run_name("bc")
+        run_name = cfg.get("run_name") or generate_run_name("bc")
 
         print("=" * 60)
         print("PHASE 1: BEHAVIOR CLONING PRETRAINING")
         print("=" * 60)
-        print(f"Run name: {args.run_name}")
-        print(f"Config: {args.config}")
+        print(f"Run name: {run_name}")
 
         # Setup directories and logging
-        checkpoint_dir, log_dir = setup_directories(f"{args.run_name}_bc")
-        logger = setup_logging(args.run_name, log_dir=log_dir)
+        checkpoint_dir, log_dir = setup_directories(f"{run_name}_bc")
+        logger = setup_logging(run_name, log_dir=log_dir)
 
         # Save config copy
-        save_config_copy(config, checkpoint_dir)
+        save_config_copy(OmegaConf.to_container(cfg, resolve=True), checkpoint_dir)
 
         # Check if BC data exists
-        data_dir = Path(config["data_collection"]["bc_data"]["output_dir"])
+        data_dir = Path(cfg.data_collection.bc_data.output_dir)
         data_files = list(data_dir.glob("*.pkl*"))
 
         if not data_files:
             print("No BC training data found. Please run data collection first:")
-            print("python main.py collect bc --config src/unified_training.yaml")
+            print("python main.py collect bc")
             return 1
 
         print(f"Found BC training data: {len(data_files)} files")
 
         # Create BC model
-        model_config = config["model"]["transformer"]
+        model_config = cfg.model.transformer
         bc_model = create_bc_model(model_config)
 
         # Train BC model
-        bc_config = config["model"]["bc"]
+        bc_config = cfg.model.bc
         trained_model_path = train_bc_model(
             model=bc_model,
             data_files=data_files,
             config=bc_config,
             output_dir=checkpoint_dir,
-            run_name=f"{args.run_name}_bc",
+            run_name=f"{run_name}_bc",
         )
 
         # Create and save metadata
@@ -151,39 +165,35 @@ class TrainingPipeline:
         return 0
 
     @staticmethod
-    def _train_rl(args) -> int:
-        """Execute reinforcement learning training"""
-        # Load configuration
-        config = load_config(args.config, get_default_config("training"))
-
+    def _train_rl(cfg: DictConfig) -> int:
+        """Execute reinforcement learning training with DictConfig"""
         # Generate run name if not provided
-        if args.run_name is None:
-            args.run_name = generate_run_name("rl")
+        run_name = cfg.get("run_name") or generate_run_name("rl")
 
         print("=" * 60)
         print("PHASE 2: REINFORCEMENT LEARNING TRAINING")
         print("=" * 60)
-        print(f"Run name: {args.run_name}")
-        print(f"Config: {args.config}")
+        print(f"Run name: {run_name}")
 
-        if args.bc_model:
-            print(f"Initializing from BC model: {args.bc_model}")
+        bc_model = cfg.get("bc_model")
+        if bc_model:
+            print(f"Initializing from BC model: {bc_model}")
         else:
             print("Training from scratch")
 
         # Setup directories and logging
-        checkpoint_dir, log_dir = setup_directories(f"{args.run_name}_rl")
-        logger = setup_logging(args.run_name, log_dir=log_dir)
+        checkpoint_dir, log_dir = setup_directories(f"{run_name}_rl")
+        logger = setup_logging(run_name, log_dir=log_dir)
 
         # Save config copy
-        save_config_copy(config, checkpoint_dir)
+        save_config_copy(OmegaConf.to_container(cfg, resolve=True), checkpoint_dir)
 
         # Create training environment
-        env_config = config["environment"]
-        training_config = config["training"]["rl"]
+        env_config = cfg.environment
+        training_config = cfg.training.rl
 
         # Check if parallel processing is enabled
-        parallel_config = config.get("parallel_processing", {})
+        parallel_config = cfg.get("parallel_processing", {})
         if parallel_config.get("enabled", False):
             # Use parallel environments
             num_envs = parallel_config["rl_training"]["num_envs"]
@@ -223,7 +233,9 @@ class TrainingPipeline:
             train_env = DummyVecEnv([lambda: train_env])
 
         # Create evaluation environment (always vs scripted for consistent metrics)
-        eval_opponent_config = training_config["opponent"].copy()
+        eval_opponent_config = OmegaConf.to_container(
+            training_config["opponent"], resolve=True
+        )
         eval_opponent_config["type"] = "scripted"
         eval_opponent_config["scripted_mix_ratio"] = 1.0
 
@@ -241,15 +253,15 @@ class TrainingPipeline:
         eval_env = DummyVecEnv([lambda: eval_env])
 
         # Create PPO model
-        model_config = config["model"]["transformer"]
-        ppo_config = config["model"]["ppo"]
+        model_config = cfg.model.transformer
+        ppo_config = cfg.model.ppo
         team_assignments = {0: [0, 1], 1: [2, 3]}  # Will be updated by nvn
 
-        if args.bc_model:
+        if bc_model:
             # Initialize PPO with BC weights
             model = TrainingPipeline._create_ppo_from_bc(
                 train_env,
-                args.bc_model,
+                bc_model,
                 model_config,
                 training_config["learning_team_id"],
                 ppo_config,
@@ -269,10 +281,13 @@ class TrainingPipeline:
         checkpoint_freq = parallel_config.get("rl_training", {}).get(
             "checkpoint_frequency", 25000
         )
-        training_config["checkpoint_freq"] = checkpoint_freq
+
+        # Convert training_config to dict for callbacks
+        training_config_dict = OmegaConf.to_container(training_config, resolve=True)
+        training_config_dict["checkpoint_freq"] = checkpoint_freq
 
         callbacks = TrainingPipeline._setup_callbacks(
-            training_config, checkpoint_dir, log_dir, train_env
+            training_config_dict, checkpoint_dir, log_dir, train_env
         )
 
         # Ensure GPU utilization
@@ -321,7 +336,7 @@ class TrainingPipeline:
                 },
                 training_stats={
                     "total_timesteps": training_config["total_timesteps"],
-                    "bc_model": args.bc_model,
+                    "bc_model": bc_model,
                 },
                 description=f"PPO model trained for {training_config['total_timesteps']} timesteps",
             )
@@ -342,41 +357,41 @@ class TrainingPipeline:
             eval_env.close()
 
     @staticmethod
-    def _train_full(args) -> int:
-        """Execute the complete training pipeline"""
-        # Load configuration
-        config = load_config(args.config, get_default_config("full"))
-
+    def _train_full(cfg: DictConfig) -> int:
+        """Execute the complete training pipeline with DictConfig"""
         # Generate run name if not provided
-        if args.run_name is None:
-            args.run_name = generate_run_name("full")
+        run_name = cfg.get("run_name") or generate_run_name("full")
 
         print("=" * 60)
-        print(f"UNIFIED TRAINING PIPELINE: {args.run_name}")
+        print(f"UNIFIED TRAINING PIPELINE: {run_name}")
         print("=" * 60)
 
         bc_model_path = None
 
         # Phase 1: BC Pretraining (optional)
-        if not args.skip_bc:
-            # Create a modified args object for BC training
-            bc_args = argparse.Namespace(
-                config=args.config, run_name=f"{args.run_name}_bc"
-            )
-            result = TrainingPipeline._train_bc(bc_args)
+        if not cfg.get("skip_bc", False):
+            # Create a modified config for BC training
+            bc_cfg = cfg.copy()
+            bc_cfg.run_name = f"{run_name}_bc"
+            bc_cfg.training.mode = "bc"
+
+            result = TrainingPipeline._train_bc(bc_cfg)
             if result != 0:
                 print("BC training failed or skipped")
             else:
-                bc_model_path = f"checkpoints/{args.run_name}_bc/best_bc_model.pt"
+                bc_model_path = f"checkpoints/{run_name}_bc/best_bc_model.pt"
         else:
             print("Skipping BC pretraining phase")
 
         # Phase 2: RL Training
-        # Create a modified args object for RL training
-        rl_args = argparse.Namespace(
-            config=args.config, run_name=f"{args.run_name}_rl", bc_model=bc_model_path
-        )
-        result = TrainingPipeline._train_rl(rl_args)
+        # Create a modified config for RL training
+        rl_cfg = cfg.copy()
+        rl_cfg.run_name = f"{run_name}_rl"
+        rl_cfg.training.mode = "rl"
+        if bc_model_path:
+            rl_cfg.bc_model = bc_model_path
+
+        result = TrainingPipeline._train_rl(rl_cfg)
         if result != 0:
             return result
 
@@ -385,8 +400,8 @@ class TrainingPipeline:
         print("FINAL MODEL EVALUATION")
         print("=" * 60)
 
-        rl_model_path = f"checkpoints/{args.run_name}_rl/final_rl_model"
-        TrainingPipeline._evaluate_final_model(rl_model_path, config, args.run_name)
+        rl_model_path = f"checkpoints/{run_name}_rl/final_rl_model"
+        TrainingPipeline._evaluate_final_model(rl_model_path, cfg, run_name)
 
         print("=" * 60)
         print("PIPELINE COMPLETE!")
@@ -446,7 +461,7 @@ class TrainingPipeline:
             CheckpointCallback,
             BaseCallback,
         )
-        from callbacks import SelfPlayCallback
+        from ..callbacks import SelfPlayCallback
         import torch
         import os
 
@@ -521,12 +536,14 @@ class TrainingPipeline:
         return callbacks
 
     @staticmethod
-    def _evaluate_final_model(model_path: str, config: dict, run_name: str):
-        """Evaluate the final trained model"""
-        from collect_data import evaluate_model
+    def _evaluate_final_model(model_path: str, cfg: DictConfig, run_name: str):
+        """Evaluate the final trained model with DictConfig"""
+        from ..collect_data import evaluate_model
 
-        eval_config = config["evaluation"].copy()
-        eval_config["model_config"] = config["model"]["transformer"]
+        eval_config = OmegaConf.to_container(cfg.evaluation, resolve=True)
+        eval_config["model_config"] = OmegaConf.to_container(
+            cfg.model.transformer, resolve=True
+        )
 
         stats = evaluate_model(model_path, eval_config)
 

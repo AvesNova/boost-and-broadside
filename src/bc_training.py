@@ -14,7 +14,7 @@ from tqdm import tqdm
 from typing import Any
 import matplotlib.pyplot as plt
 
-from team_transformer_model import TeamTransformerModel
+from .team_transformer_model import TeamTransformerModel
 
 
 class BCDataset(Dataset):

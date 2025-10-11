@@ -8,7 +8,7 @@ import torch
 import gymnasium as gym
 from gymnasium.utils.env_checker import check_env
 
-from constants import Actions
+from src.constants import Actions
 
 
 class TestGymAPI:
@@ -56,7 +56,7 @@ class TestGymAPI:
 
     def test_render_method(self):
         """Test render method with different modes."""
-        from env import Environment
+        from src.env import Environment
 
         # Test with no rendering
         env = Environment(render_mode=None)
@@ -122,15 +122,27 @@ class TestMultiAgentCompliance:
     def test_multi_agent_reset(self, basic_env):
         """Test that reset returns observations for all agents."""
         obs, info = basic_env.reset(game_mode="1v1")
-    
+
         # Should return dict of observations
         assert isinstance(obs, dict)
-    
+
         # Should have observation components for ships
-        expected_keys = {"ship_id", "team_id", "alive", "health", "power",
-                        "position", "velocity", "speed", "attitude", "is_shooting", "token", "tokens"}
+        expected_keys = {
+            "ship_id",
+            "team_id",
+            "alive",
+            "health",
+            "power",
+            "position",
+            "velocity",
+            "speed",
+            "attitude",
+            "is_shooting",
+            "token",
+            "tokens",
+        }
         assert set(obs.keys()) == expected_keys
-        
+
         # Each component should have data for both ships
         for key, tensor in obs.items():
             if key == "token":
@@ -153,7 +165,7 @@ class TestMultiAgentCompliance:
 
         # Environment returns empty rewards dict - wrapper handles team rewards
         assert len(rewards) == 0
-        
+
         # Observations should have tensor structure with data for all ships
         for key, tensor in obs.items():
             assert tensor.shape[0] == 2  # Data for both ships
@@ -300,7 +312,7 @@ class TestSeedingAndDeterminism:
 
     def test_deterministic_reset(self, basic_env):
         """Test that reset produces consistent initial states."""
-        # Use deterministic positioning for consistency 
+        # Use deterministic positioning for consistency
         states = []
 
         for _ in range(3):
@@ -318,7 +330,7 @@ class TestSeedingAndDeterminism:
 
     def test_deterministic_physics(self, fixed_rng):
         """Test that physics is deterministic with fixed RNG."""
-        from env import Environment
+        from src.env import Environment
 
         results = []
 

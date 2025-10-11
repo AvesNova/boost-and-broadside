@@ -6,7 +6,7 @@ import pytest
 import numpy as np
 import torch
 
-from constants import Actions
+from src.constants import Actions
 
 
 class TestCombatScenarios:

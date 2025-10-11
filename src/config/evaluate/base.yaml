@@ -1,0 +1,15 @@
+# Base configuration for evaluation commands
+# This file extends the base configuration with evaluation-specific defaults
+
+# Inherits all defaults from base.yaml
+defaults:
+  - base
+  - _self_
+
+# Evaluation-specific configuration
+evaluate:
+  mode: model
+  model_config:
+    num_episodes: 10
+    render_mode: null  # No rendering by default for evaluation
+    deterministic: true

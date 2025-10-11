@@ -1,0 +1,22 @@
+# Base configuration for collect commands
+# This file extends the base configuration with data collection-specific defaults
+
+# Inherits all defaults from base.yaml
+defaults:
+  - base
+  - _self_
+
+# Data collection-specific configuration
+collect:
+  mode: bc
+  bc_config:
+    output_dir: data/bc_pretraining
+    episodes_per_mode: 100
+    modes: ["1v1", "2v2", "3v3", "4v4"]
+    parallel_workers: 1
+  selfplay_config:
+    output_dir: data/selfplay
+    episodes_per_mode: 100
+    modes: ["1v1", "2v2", "3v3", "4v4"]
+    model_path: null
+    parallel_workers: 1

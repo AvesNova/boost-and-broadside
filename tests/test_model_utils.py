@@ -110,7 +110,7 @@ class TestModelCreation:
         # The actual implementation will fail with the test config
         pytest.skip("BC model creation requires proper transformer configuration")
 
-    @patch("transformer_policy.create_team_ppo_model")
+    @patch("src.transformer_policy.create_team_ppo_model")
     def test_create_ppo_model(self, mock_create_ppo):
         """Test creating PPO model."""
         mock_model = MagicMock()

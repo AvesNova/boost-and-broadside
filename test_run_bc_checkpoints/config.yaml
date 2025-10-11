@@ -1,0 +1,4 @@
+data_collection:
+  bc_data:
+    output_dir: test_data
+run_name: test_run

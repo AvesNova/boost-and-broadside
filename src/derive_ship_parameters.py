@@ -13,9 +13,9 @@ from typing import Any
 import math
 import os
 
-from ship import Ship, default_ship_config
-from constants import Actions
-from bullets import Bullets
+from .ship import Ship, default_ship_config
+from .constants import Actions
+from .bullets import Bullets
 
 
 def create_test_ship() -> Ship:

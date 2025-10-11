@@ -12,7 +12,7 @@ from stable_baselines3.common.distributions import BernoulliDistribution
 from stable_baselines3 import PPO
 from gymnasium import spaces
 
-from team_transformer_model import TeamTransformerModel
+from .team_transformer_model import TeamTransformerModel
 
 
 class TransformerFeaturesExtractor(BaseFeaturesExtractor):
@@ -111,7 +111,7 @@ class TransformerActorCriticPolicy(ActorCriticPolicy):
         transformer_config: dict = None,
         team_id: int = 0,
         team_assignments: dict = None,
-        **kwargs
+        **kwargs,
     ):
         self.transformer_config = transformer_config or {}
         self.team_id = team_id
@@ -128,7 +128,7 @@ class TransformerActorCriticPolicy(ActorCriticPolicy):
                 "team_id": team_id,
                 "team_assignments": team_assignments,
             },
-            **kwargs
+            **kwargs,
         )
 
     def _get_constructor_parameters(self) -> dict[str, Any]:
@@ -205,7 +205,7 @@ def create_team_ppo_model(
         env=env,
         policy_kwargs=policy_kwargs,
         verbose=1,
-        **ppo_config
+        **ppo_config,
     )
 
     return model

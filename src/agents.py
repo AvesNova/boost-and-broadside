@@ -7,7 +7,7 @@ import torch
 import numpy as np
 from copy import deepcopy
 
-from scripted_agent import ScriptedAgent
+from .scripted_agent import ScriptedAgent
 
 
 class Agent(ABC):

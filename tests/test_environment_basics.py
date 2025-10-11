@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from gymnasium import spaces
 
-from constants import Actions
+from src.constants import Actions
 
 
 class TestEnvironmentInitialization:
@@ -30,7 +30,7 @@ class TestEnvironmentInitialization:
 
     def test_invalid_timestep_ratio(self):
         """Test that non-integer timestep ratios fail."""
-        from env import Environment
+        from src.env import Environment
 
         with pytest.raises(
             AssertionError, match="agent_dt must be multiple of physics_dt"
@@ -91,14 +91,26 @@ class TestReset:
     def test_reset_returns_observations(self, basic_env):
         """Test that reset returns proper observations."""
         obs, info = basic_env.reset(game_mode="1v1")
-    
+
         assert isinstance(obs, dict)
-    
+
         # Check new observation structure with ship data as tensors
-        expected_keys = {"ship_id", "team_id", "alive", "health", "power",
-                        "position", "velocity", "speed", "attitude", "is_shooting", "token", "tokens"}
+        expected_keys = {
+            "ship_id",
+            "team_id",
+            "alive",
+            "health",
+            "power",
+            "position",
+            "velocity",
+            "speed",
+            "attitude",
+            "is_shooting",
+            "token",
+            "tokens",
+        }
         assert set(obs.keys()) == expected_keys
-        
+
         # Check tensor shapes for 2 ships
         for key in obs:
             if key in ["token", "tokens"]:
@@ -118,12 +130,24 @@ class TestObservations:
     def test_observation_structure(self, basic_env):
         """Test observation has correct structure."""
         obs, _ = basic_env.reset(game_mode="1v1")
-    
+
         # Check that all observation components are tensors with correct shapes
-        expected_keys = {"ship_id", "team_id", "alive", "health", "power",
-                        "position", "velocity", "speed", "attitude", "is_shooting", "token", "tokens"}
+        expected_keys = {
+            "ship_id",
+            "team_id",
+            "alive",
+            "health",
+            "power",
+            "position",
+            "velocity",
+            "speed",
+            "attitude",
+            "is_shooting",
+            "token",
+            "tokens",
+        }
         assert set(obs.keys()) == expected_keys
-        
+
         # Check tensor types and shapes for max_ships=2
         for key, tensor in obs.items():
             assert isinstance(tensor, torch.Tensor)
@@ -145,32 +169,32 @@ class TestObservations:
         obs, _ = basic_env.reset(game_mode="1v1")
 
         token_tensor = obs["token"]
-        
+
         # Test both ships
         for ship_idx in range(basic_env.max_ships):
             token = token_tensor[ship_idx, :]
-            
+
             # Team ID should be 0 or 1 for 1v1
             assert token[0].item() in [0, 1]
-            
+
             # Health ratio should be between 0 and 1
             assert 0 <= token[1].item() <= 1
-            
-            # Power ratio should be between 0 and 1  
+
+            # Power ratio should be between 0 and 1
             assert 0 <= token[2].item() <= 1
-            
+
             # Position should be normalized to [0, 1]
             assert 0 <= token[3].item() <= 1  # x position
             assert 0 <= token[4].item() <= 1  # y position
-            
+
             # Velocity normalized by 180.0
             assert abs(token[5].item()) < 1.0  # vx
             assert abs(token[6].item()) < 1.0  # vy
-            
+
             # Attitude is unit vector components
             attitude_mag = np.sqrt(token[7].item() ** 2 + token[8].item() ** 2)
             assert abs(attitude_mag - 1.0) < 1e-5
-            
+
             # is_shooting should be 0 or 1
             assert token[9].item() in [0, 1]
 
@@ -179,10 +203,10 @@ class TestObservations:
         obs, _ = basic_env.reset(game_mode="1v1")
 
         team_ids = obs["team_id"]
-        
+
         # In 1v1, ships should be on different teams
         assert team_ids[0, 0].item() != team_ids[1, 0].item()
-        
+
         # Teams should be 0 and 1
         team_set = {team_ids[0, 0].item(), team_ids[1, 0].item()}
         assert team_set == {0, 1}
@@ -224,12 +248,12 @@ class TestObservations:
         state = basic_env.state[-1]
 
         positions = obs["position"]
-        
+
         # Check that positions match ship states
         for ship_id, ship in state.ships.items():
             observed_position = positions[ship_id, 0]
             assert observed_position == ship.position
-            
+
         # Check that positions are complex numbers
         assert positions.dtype == torch.complex64
 
@@ -342,7 +366,7 @@ class TestActionSpaceObservationSpace:
 
         # Check new observation space structure with tokens
         assert "tokens" in obs_space.spaces
-        
+
         # Check token space shape
         tokens_space = obs_space.spaces["tokens"]
         assert isinstance(tokens_space, spaces.Box)
@@ -356,6 +380,6 @@ class TestActionSpaceObservationSpace:
 
         # Create observation dict matching gym's expected format (tokens only)
         gym_obs = {"tokens": obs["token"].numpy()}  # Convert to numpy for gym
-        
+
         # Use Gym's contains method to check
         assert obs_space.contains(gym_obs)

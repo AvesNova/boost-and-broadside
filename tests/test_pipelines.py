@@ -32,63 +32,71 @@ class TestTrainingPipeline:
         """Test executing BC training."""
         mock_train_bc.return_value = 0
 
-        args = argparse.Namespace()
-        args.train_command = "bc"
+        from omegaconf import DictConfig
 
-        result = TrainingPipeline.execute(args)
+        cfg = DictConfig({"training": {"mode": "bc"}})
+
+        result = TrainingPipeline.execute(cfg)
 
         assert result == 0
-        mock_train_bc.assert_called_once_with(args)
+        mock_train_bc.assert_called_once_with(cfg)
 
     @patch("src.pipelines.training.TrainingPipeline._train_rl")
     def test_execute_rl(self, mock_train_rl):
         """Test executing RL training."""
         mock_train_rl.return_value = 0
 
-        args = argparse.Namespace()
-        args.train_command = "rl"
+        from omegaconf import DictConfig
 
-        result = TrainingPipeline.execute(args)
+        cfg = DictConfig({"training": {"mode": "rl"}})
+
+        result = TrainingPipeline.execute(cfg)
 
         assert result == 0
-        mock_train_rl.assert_called_once_with(args)
+        mock_train_rl.assert_called_once_with(cfg)
 
     @patch("src.pipelines.training.TrainingPipeline._train_full")
     def test_execute_full(self, mock_train_full):
         """Test executing full training."""
         mock_train_full.return_value = 0
 
-        args = argparse.Namespace()
-        args.train_command = "full"
+        from omegaconf import DictConfig
 
-        result = TrainingPipeline.execute(args)
+        cfg = DictConfig({"training": {"mode": "full"}})
+
+        result = TrainingPipeline.execute(cfg)
 
         assert result == 0
-        mock_train_full.assert_called_once_with(args)
+        mock_train_full.assert_called_once_with(cfg)
 
     def test_execute_invalid_command(self):
         """Test executing invalid training command."""
-        args = argparse.Namespace()
-        args.train_command = "invalid"
+        from omegaconf import DictConfig
 
-        result = TrainingPipeline.execute(args)
+        cfg = DictConfig({"training": {"mode": "invalid"}})
+
+        result = TrainingPipeline.execute(cfg)
 
         assert result == 1
 
-    @patch("src.pipelines.training.load_config")
     @patch("src.pipelines.training.setup_logging")
     @patch("src.pipelines.training.setup_directories")
     @patch("src.pipelines.training.train_bc_model")
-    def test_train_bc(
-        self, mock_train_bc, mock_setup_dirs, mock_setup_logging, mock_load_config
-    ):
+    def test_train_bc(self, mock_train_bc, mock_setup_dirs, mock_setup_logging):
         """Test BC training implementation."""
+        from omegaconf import DictConfig
+
         # Mock dependencies
-        mock_config = {
-            "data_collection": {"bc_data": {"output_dir": "test_data"}},
-            "model": {"transformer": {"d_model": 256}, "bc": {"learning_rate": 1e-4}},
-        }
-        mock_load_config.return_value = mock_config
+        cfg = DictConfig(
+            {
+                "data_collection": {"bc_data": {"output_dir": "test_data"}},
+                "model": {
+                    "transformer": {"d_model": 256},
+                    "bc": {"learning_rate": 1e-4},
+                },
+                "run_name": "test_run",
+            }
+        )
 
         mock_setup_dirs.return_value = (MagicMock(), MagicMock())
         mock_logger = MagicMock()
@@ -104,25 +112,26 @@ class TestTrainingPipeline:
                 "src.pipelines.training.create_bc_model", return_value=mock_model
             ):
                 with patch("src.pipelines.training.save_model"):
-                    args = argparse.Namespace(config="test.yaml", run_name="test_run")
-
-                    result = TrainingPipeline._train_bc(args)
+                    result = TrainingPipeline._train_bc(cfg)
 
                     assert result == 0
 
-    @patch("src.pipelines.training.load_config")
-    def test_train_bc_no_data(self, mock_load_config):
+    def test_train_bc_no_data(self):
         """Test BC training with no data."""
-        mock_config = {"data_collection": {"bc_data": {"output_dir": "test_data"}}}
-        mock_load_config.return_value = mock_config
+        from omegaconf import DictConfig
+
+        cfg = DictConfig(
+            {
+                "data_collection": {"bc_data": {"output_dir": "test_data"}},
+                "run_name": "test_run",
+            }
+        )
 
         # Mock no data files
         with patch("src.pipelines.training.Path") as mock_path:
             mock_path.return_value.glob.return_value = []
 
-            args = argparse.Namespace(config="test.yaml", run_name="test_run")
-
-            result = TrainingPipeline._train_bc(args)
+            result = TrainingPipeline._train_bc(cfg)
 
             assert result == 1
 
@@ -147,62 +156,62 @@ class TestDataCollectionPipeline:
         """Test executing BC data collection."""
         mock_collect_bc.return_value = 0
 
-        args = argparse.Namespace()
-        args.collect_command = "bc"
+        from omegaconf import DictConfig
 
-        result = DataCollectionPipeline.execute(args)
+        cfg = DictConfig({"data_collection": {"mode": "bc"}})
+
+        result = DataCollectionPipeline.execute(cfg)
 
         assert result == 0
-        mock_collect_bc.assert_called_once_with(args)
+        mock_collect_bc.assert_called_once_with(cfg)
 
     @patch("src.pipelines.data_collection.DataCollectionPipeline._collect_selfplay")
     def test_execute_selfplay(self, mock_collect_selfplay):
         """Test executing self-play data collection."""
         mock_collect_selfplay.return_value = 0
 
-        args = argparse.Namespace()
-        args.collect_command = "selfplay"
+        from omegaconf import DictConfig
 
-        result = DataCollectionPipeline.execute(args)
+        cfg = DictConfig({"data_collection": {"mode": "selfplay"}})
+
+        result = DataCollectionPipeline.execute(cfg)
 
         assert result == 0
-        mock_collect_selfplay.assert_called_once_with(args)
+        mock_collect_selfplay.assert_called_once_with(cfg)
 
     def test_execute_invalid_command(self):
         """Test executing invalid collection command."""
-        args = argparse.Namespace()
-        args.collect_command = "invalid"
+        from omegaconf import DictConfig
 
-        result = DataCollectionPipeline.execute(args)
+        cfg = DictConfig({"data_collection": {"mode": "invalid"}})
+
+        result = DataCollectionPipeline.execute(cfg)
 
         assert result == 1
 
-    @patch("src.pipelines.data_collection.load_config")
     @patch("src.pipelines.data_collection.setup_logging")
     @patch("src.pipelines.data_collection.collect_bc_data")
-    def test_collect_bc(
-        self, mock_collect_bc_data, mock_setup_logging, mock_load_config
-    ):
+    def test_collect_bc(self, mock_collect_bc_data, mock_setup_logging):
         """Test BC data collection implementation."""
-        mock_config = {"data_collection": {"bc_data": {"output_dir": "test_data"}}}
-        mock_load_config.return_value = mock_config
+        from omegaconf import DictConfig
+
+        cfg = DictConfig({"data_collection": {"bc_data": {"output_dir": "test_data"}}})
 
         mock_logger = MagicMock()
         mock_setup_logging.return_value = mock_logger
 
-        args = argparse.Namespace(config="test.yaml", output="custom_output")
-
-        result = DataCollectionPipeline._collect_bc(args)
+        result = DataCollectionPipeline._collect_bc(cfg)
 
         assert result == 0
         mock_collect_bc_data.assert_called_once()
 
-    @patch("src.pipelines.data_collection.load_config")
     @patch("src.pipelines.data_collection.setup_logging")
-    def test_collect_bc_parallel(self, mock_setup_logging, mock_load_config):
+    def test_collect_bc_parallel(self, mock_setup_logging):
         """Test BC data collection implementation with parallel processing."""
+        from omegaconf import DictConfig
+
         # Mock configuration with parallel processing enabled
-        mock_config = {
+        config = {
             "data_collection": {
                 "bc_data": {
                     "output_dir": "test_data",
@@ -219,12 +228,9 @@ class TestDataCollectionPipeline:
                 },
             },
         }
-        mock_load_config.return_value = mock_config
 
         mock_logger = MagicMock()
         mock_setup_logging.return_value = mock_logger
-
-        args = argparse.Namespace(config="test.yaml", output="custom_output")
 
         # Mock the WorkerPool to avoid actual multiprocessing
         with patch("src.pipelines.data_collection.WorkerPool") as mock_pool_class:
@@ -249,7 +255,7 @@ class TestDataCollectionPipeline:
                     mock_path.return_value.mkdir.return_value = None
 
                     result = DataCollectionPipeline._collect_bc_parallel(
-                        mock_config, "test_run"
+                        config, "test_run"
                     )
 
                     assert result == 0
@@ -279,40 +285,37 @@ class TestPlayPipeline:
         """Test executing human play."""
         mock_run_human_play.return_value = None
 
-        args = argparse.Namespace()
-        args.play_command = "human"
-        args.config = None  # Add the missing config attribute
+        from omegaconf import DictConfig
 
-        result = PlayPipeline.execute(args)
+        cfg = DictConfig({"play": {"mode": "human", "play_command": "human"}})
+
+        result = PlayPipeline.execute(cfg)
 
         assert result == 0
         mock_run_human_play.assert_called_once()
 
     def test_execute_invalid_command(self):
         """Test executing invalid play command."""
-        args = argparse.Namespace()
-        args.play_command = "invalid"
+        from omegaconf import DictConfig
 
-        result = PlayPipeline.execute(args)
+        cfg = DictConfig({"play": {"mode": "invalid"}})
+
+        result = PlayPipeline.execute(cfg)
 
         assert result == 1
 
-    @patch("src.pipelines.data_collection.load_config")
     @patch("src.pipelines.data_collection.setup_logging")
     @patch("src.pipelines.data_collection.run_human_play")
-    def test_play_human(
-        self, mock_run_human_play, mock_setup_logging, mock_load_config
-    ):
+    def test_play_human(self, mock_run_human_play, mock_setup_logging):
         """Test human play implementation."""
-        mock_config = {"environment": {"world_size": (800, 600)}}
-        mock_load_config.return_value = mock_config
+        from omegaconf import DictConfig
+
+        cfg = DictConfig({"environment": {"world_size": (800, 600)}})
 
         mock_logger = MagicMock()
         mock_setup_logging.return_value = mock_logger
 
-        args = argparse.Namespace(config="test.yaml")
-
-        result = PlayPipeline._play_human(args)
+        result = PlayPipeline._play_human(cfg)
 
         assert result == 0
         mock_run_human_play.assert_called_once()
@@ -338,54 +341,58 @@ class TestPlaybackPipeline:
         """Test executing episode replay."""
         mock_replay_episode.return_value = 0
 
-        args = argparse.Namespace()
-        args.replay_command = "episode"
+        from omegaconf import DictConfig
 
-        result = PlaybackPipeline.execute(args)
+        cfg = DictConfig({"replay": {"mode": "episode"}})
+
+        result = PlaybackPipeline.execute(cfg)
 
         assert result == 0
-        mock_replay_episode.assert_called_once_with(args)
+        mock_replay_episode.assert_called_once_with(cfg)
 
     @patch("src.pipelines.playback.PlaybackPipeline._browse_episodes")
     def test_execute_browse(self, mock_browse_episodes):
         """Test executing episode browsing."""
         mock_browse_episodes.return_value = 0
 
-        args = argparse.Namespace()
-        args.replay_command = "browse"
+        from omegaconf import DictConfig
 
-        result = PlaybackPipeline.execute(args)
+        cfg = DictConfig({"replay": {"mode": "browse"}})
+
+        result = PlaybackPipeline.execute(cfg)
 
         assert result == 0
-        mock_browse_episodes.assert_called_once_with(args)
+        mock_browse_episodes.assert_called_once_with(cfg)
 
     def test_execute_invalid_command(self):
         """Test executing invalid replay command."""
-        args = argparse.Namespace()
-        args.replay_command = "invalid"
+        from omegaconf import DictConfig
 
-        result = PlaybackPipeline.execute(args)
+        cfg = DictConfig({"replay": {"mode": "invalid"}})
+
+        result = PlaybackPipeline.execute(cfg)
 
         assert result == 1
 
     @patch("src.pipelines.playback.validate_file_exists")
-    @patch("src.pipelines.playback.load_config")
     @patch("src.pipelines.playback.setup_logging")
     @patch("src.pipelines.playback.run_playback")
-    def test_replay_episode(
-        self, mock_run_playback, mock_setup_logging, mock_load_config, mock_validate
-    ):
+    def test_replay_episode(self, mock_run_playback, mock_setup_logging, mock_validate):
         """Test episode replay implementation."""
+        from omegaconf import DictConfig
+
         mock_validate.return_value = MagicMock()
-        mock_config = {"environment": {"world_size": (800, 600)}}
-        mock_load_config.return_value = mock_config
+        cfg = DictConfig(
+            {
+                "environment": {"world_size": (800, 600)},
+                "episode_file": "test_episode.pkl",
+            }
+        )
 
         mock_logger = MagicMock()
         mock_setup_logging.return_value = mock_logger
 
-        args = argparse.Namespace(episode_file="test_episode.pkl", config="test.yaml")
-
-        result = PlaybackPipeline._replay_episode(args)
+        result = PlaybackPipeline._replay_episode(cfg)
 
         assert result == 0
         mock_run_playback.assert_called_once()
@@ -411,34 +418,38 @@ class TestEvaluationPipeline:
         """Test executing model evaluation."""
         mock_evaluate_model.return_value = 0
 
-        args = argparse.Namespace()
-        args.evaluate_command = "model"
+        from omegaconf import DictConfig
 
-        result = EvaluationPipeline.execute(args)
+        cfg = DictConfig({"evaluate": {"mode": "model"}})
+
+        result = EvaluationPipeline.execute(cfg)
 
         assert result == 0
-        mock_evaluate_model.assert_called_once_with(args)
+        mock_evaluate_model.assert_called_once_with(cfg)
 
     def test_execute_invalid_command(self):
         """Test executing invalid evaluation command."""
-        args = argparse.Namespace()
-        args.evaluate_command = "invalid"
+        from omegaconf import DictConfig
 
-        result = EvaluationPipeline.execute(args)
+        cfg = DictConfig({"evaluate": {"mode": "invalid"}})
+
+        result = EvaluationPipeline.execute(cfg)
 
         assert result == 1
 
     @patch("src.pipelines.evaluation.validate_file_exists")
-    @patch("src.pipelines.evaluation.load_config")
     @patch("src.pipelines.evaluation.setup_logging")
     @patch("src.pipelines.evaluation.evaluate_model")
     def test_evaluate_model(
-        self, mock_evaluate_model, mock_setup_logging, mock_load_config, mock_validate
+        self, mock_evaluate_model, mock_setup_logging, mock_validate
     ):
         """Test model evaluation implementation."""
+        from omegaconf import DictConfig
+
         mock_validate.return_value = MagicMock()
-        mock_config = {"environment": {"world_size": (800, 600)}}
-        mock_load_config.return_value = mock_config
+        cfg = DictConfig(
+            {"environment": {"world_size": (800, 600)}, "model": "test_model.pt"}
+        )
 
         mock_logger = MagicMock()
         mock_setup_logging.return_value = mock_logger
@@ -446,9 +457,7 @@ class TestEvaluationPipeline:
         mock_stats = {"win_rate": 0.75, "avg_score": 10.5}
         mock_evaluate_model.return_value = mock_stats
 
-        args = argparse.Namespace(model="test_model.pt", config="test.yaml")
-
-        result = EvaluationPipeline._evaluate_model(args)
+        result = EvaluationPipeline._evaluate_model(cfg)
 
         assert result == 0
         mock_evaluate_model.assert_called_once()

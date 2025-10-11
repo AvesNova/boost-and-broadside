@@ -7,7 +7,7 @@ import torch
 from pathlib import Path
 import tempfile
 
-from collect_data import (
+from src.collect_data import (
     compute_mc_returns,
     add_mc_returns,
     save_episodes,

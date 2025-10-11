@@ -1,0 +1,14 @@
+defaults:
+  - replay/base
+
+# Episode browsing specific configuration
+replay:
+  mode: "browse"
+  
+# Command detection
+replay_command: "browse"
+  
+logging:
+  console:
+    level: "INFO"
+    progress_bars: false

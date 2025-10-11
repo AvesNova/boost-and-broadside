@@ -6,8 +6,8 @@ import pytest
 import numpy as np
 import torch
 
-from constants import Actions
-from bullets import Bullets
+from src.constants import Actions
+from src.bullets import Bullets
 
 
 class TestShooting:
