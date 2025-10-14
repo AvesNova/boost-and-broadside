@@ -39,25 +39,45 @@ class SelfPlayCallback(BaseCallback):
             # Extract the transformer model from the SB3 policy
             transformer_model = self.model.policy.get_transformer_model()
 
+            # Get the actual environment from Monitor wrapper
+            actual_env = (
+                self.env_wrapper.env
+                if hasattr(self.env_wrapper, "env")
+                else self.env_wrapper
+            )
+
             # Add to self-play memory
-            self.env_wrapper.add_model_to_memory(transformer_model)
+            if hasattr(actual_env, "add_model_to_memory"):
+                actual_env.add_model_to_memory(transformer_model)
 
-            self.last_save_step = self.num_timesteps
+                self.last_save_step = self.num_timesteps
 
-            if self.verbose >= 1:
-                print(f"Added model to self-play memory at step {self.num_timesteps}")
-                print(f"Memory size: {len(self.env_wrapper.self_play_memory)}")
-                print(f"Win rate: {self.env_wrapper.get_win_rate():.3f}")
+                if self.verbose >= 1:
+                    print(
+                        f"Added model to self-play memory at step {self.num_timesteps}"
+                    )
+                    # Access selfplay_opponent through the actual environment
+                    if hasattr(actual_env, "selfplay_opponent"):
+                        print(
+                            f"Memory size: {len(actual_env.selfplay_opponent.model_memory)}"
+                        )
+                    print(f"Win rate: {actual_env.get_win_rate():.3f}")
 
         # Log metrics
-        if hasattr(self.env_wrapper, "get_win_rate"):
-            self.logger.record("self_play/win_rate", self.env_wrapper.get_win_rate())
-            self.logger.record(
-                "self_play/memory_size", len(self.env_wrapper.self_play_memory)
-            )
-            self.logger.record(
-                "self_play/episode_count", self.env_wrapper.episode_count
-            )
+        # Get the actual environment from Monitor wrapper
+        actual_env = (
+            self.env_wrapper.env
+            if hasattr(self.env_wrapper, "env")
+            else self.env_wrapper
+        )
+        if hasattr(actual_env, "get_win_rate"):
+            self.logger.record("self_play/win_rate", actual_env.get_win_rate())
+            if hasattr(actual_env, "selfplay_opponent"):
+                self.logger.record(
+                    "self_play/memory_size",
+                    len(actual_env.selfplay_opponent.model_memory),
+                )
+            self.logger.record("self_play/episode_count", actual_env.episode_count)
 
         return True
 
@@ -89,7 +109,7 @@ class EvalAgainstScriptedCallback(BaseCallback):
 
     def _evaluate_against_scripted(self):
         """Run evaluation against scripted agents"""
-        from rl_wrapper import UnifiedRLWrapper
+        from .rl_wrapper import UnifiedRLWrapper
 
         # Create evaluation environment (vs scripted only)
         eval_env = UnifiedRLWrapper(

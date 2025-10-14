@@ -7,14 +7,4 @@ defaults:
   - _self_
 
 # Replay-specific configuration
-replay:
-  mode: episode
-  episode_config:
-    render_mode: human
-    fps: 60
-    zoom: 1.0
-    loop: false
-  browse_config:
-    render_mode: human
-    fps: 60
-    zoom: 1.0
+# Note: Replay configuration will be defined in specific replay configs

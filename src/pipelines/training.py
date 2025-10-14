@@ -79,6 +79,17 @@ class TrainingPipeline:
         """Execute the appropriate training command with DictConfig"""
         try:
             with InterruptHandler("Training interrupted by user"):
+                # Debug: Print the configuration structure
+                print("DEBUG: Configuration structure:")
+                print(OmegaConf.to_yaml(cfg))
+
+                # Handle the unusual configuration structure with empty keys
+                # The actual config is nested under the first key with empty name
+                if cfg and len(cfg) > 0:
+                    first_key = list(cfg.keys())[0]
+                    if first_key == "" and isinstance(cfg[first_key], DictConfig):
+                        cfg = cfg[first_key]
+
                 # If config is nested under 'train', extract it
                 if "train" in cfg and isinstance(cfg.train, DictConfig):
                     cfg = cfg.train
@@ -93,8 +104,10 @@ class TrainingPipeline:
                 elif "command" in cfg:
                     train_command = cfg.command
                 # Fallback to training.mode
-                elif cfg.get("training", {}).get("mode"):
-                    train_command = cfg.training.mode
+                elif OmegaConf.select(cfg, "training.mode"):
+                    train_command = OmegaConf.select(cfg, "training.mode")
+
+                print(f"DEBUG: Training command: {train_command}")
 
                 if train_command == "bc":
                     return TrainingPipeline._train_bc(cfg)
@@ -107,13 +120,22 @@ class TrainingPipeline:
                     return 1
         except Exception as e:
             print(f"Error during training: {e}")
+            import traceback
+
+            traceback.print_exc()
             return 1
 
     @staticmethod
     def _train_bc(cfg: DictConfig) -> int:
         """Execute behavior cloning training with DictConfig"""
         # Generate run name if not provided
-        run_name = cfg.get("run_name") or generate_run_name("bc")
+        # Use OmegaConf.select to safely access nested keys
+        run_name = OmegaConf.select(cfg, "run_name", default=None)
+        if run_name is None:
+            run_name = OmegaConf.select(cfg, "train.run_name", default=None)
+
+        if not run_name:
+            run_name = generate_run_name("bc")
 
         print("=" * 60)
         print("PHASE 1: BEHAVIOR CLONING PRETRAINING")
@@ -128,7 +150,14 @@ class TrainingPipeline:
         save_config_copy(OmegaConf.to_container(cfg, resolve=True), checkpoint_dir)
 
         # Check if BC data exists
-        data_dir = Path(cfg.data_collection.bc_data.output_dir)
+        # Use OmegaConf.select to safely access nested keys
+        data_collection = OmegaConf.select(cfg, "data_collection", default={})
+        bc_data = OmegaConf.select(data_collection, "bc_data", default={})
+        output_dir = OmegaConf.select(
+            bc_data, "output_dir", default="data/bc_pretraining"
+        )
+
+        data_dir = Path(output_dir)
         data_files = list(data_dir.glob("*.pkl*"))
 
         if not data_files:
@@ -139,11 +168,11 @@ class TrainingPipeline:
         print(f"Found BC training data: {len(data_files)} files")
 
         # Create BC model
-        model_config = cfg.model.transformer
+        model_config = OmegaConf.select(cfg, "model.transformer", default={})
         bc_model = create_bc_model(model_config)
 
         # Train BC model
-        bc_config = cfg.model.bc
+        bc_config = OmegaConf.select(cfg, "model.bc", default={})
         trained_model_path = train_bc_model(
             model=bc_model,
             data_files=data_files,
@@ -153,9 +182,19 @@ class TrainingPipeline:
         )
 
         # Create and save metadata
+        # Convert DictConfig to regular dict for JSON serialization
+        import omegaconf
+
+        if isinstance(model_config, omegaconf.DictConfig):
+            model_config_dict = omegaconf.OmegaConf.to_container(
+                model_config, resolve=True
+            )
+        else:
+            model_config_dict = model_config
+
         metadata = ModelMetadata(
             model_type="bc",
-            config=model_config,
+            config=model_config_dict,
             training_stats={"final_model_path": trained_model_path},
             description=f"Behavior cloning model trained with {len(data_files)} episodes",
         )
@@ -168,7 +207,13 @@ class TrainingPipeline:
     def _train_rl(cfg: DictConfig) -> int:
         """Execute reinforcement learning training with DictConfig"""
         # Generate run name if not provided
-        run_name = cfg.get("run_name") or generate_run_name("rl")
+        # Use OmegaConf.select to safely access nested keys
+        run_name = OmegaConf.select(cfg, "run_name", default=None)
+        if run_name is None:
+            run_name = OmegaConf.select(cfg, "train.run_name", default=None)
+
+        if not run_name:
+            run_name = generate_run_name("rl")
 
         print("=" * 60)
         print("PHASE 2: REINFORCEMENT LEARNING TRAINING")
@@ -360,7 +405,13 @@ class TrainingPipeline:
     def _train_full(cfg: DictConfig) -> int:
         """Execute the complete training pipeline with DictConfig"""
         # Generate run name if not provided
-        run_name = cfg.get("run_name") or generate_run_name("full")
+        # Use OmegaConf.select to safely access nested keys
+        run_name = OmegaConf.select(cfg, "run_name", default=None)
+        if run_name is None:
+            run_name = OmegaConf.select(cfg, "train.run_name", default=None)
+
+        if not run_name:
+            run_name = generate_run_name("full")
 
         print("=" * 60)
         print(f"UNIFIED TRAINING PIPELINE: {run_name}")
@@ -369,27 +420,36 @@ class TrainingPipeline:
         bc_model_path = None
 
         # Phase 1: BC Pretraining (optional)
-        if not cfg.get("skip_bc", False):
+        skip_bc = OmegaConf.select(cfg, "skip_bc", default=False)
+        if not skip_bc:
             # Create a modified config for BC training
             bc_cfg = cfg.copy()
-            bc_cfg.run_name = f"{run_name}_bc"
-            bc_cfg.training.mode = "bc"
+            # Convert to dict to avoid struct issues, then back to DictConfig
+            bc_dict = OmegaConf.to_container(bc_cfg, resolve=True)
+            bc_dict["run_name"] = f"{run_name}_bc"
+            bc_dict["training"] = {"mode": "bc"}
+            bc_cfg = OmegaConf.create(bc_dict)
 
             result = TrainingPipeline._train_bc(bc_cfg)
             if result != 0:
                 print("BC training failed or skipped")
             else:
-                bc_model_path = f"checkpoints/{run_name}_bc/best_bc_model.pt"
+                bc_model_path = (
+                    f"checkpoints/{run_name}_bc_bc_checkpoints/best_bc_model.pt"
+                )
         else:
             print("Skipping BC pretraining phase")
 
         # Phase 2: RL Training
         # Create a modified config for RL training
         rl_cfg = cfg.copy()
-        rl_cfg.run_name = f"{run_name}_rl"
-        rl_cfg.training.mode = "rl"
+        # Convert to dict to avoid struct issues, then back to DictConfig
+        rl_dict = OmegaConf.to_container(rl_cfg, resolve=True)
+        rl_dict["run_name"] = f"{run_name}_rl"
+        rl_dict["training"] = {"mode": "rl"}
         if bc_model_path:
-            rl_cfg.bc_model = bc_model_path
+            rl_dict["bc_model"] = bc_model_path
+        rl_cfg = OmegaConf.create(rl_dict)
 
         result = TrainingPipeline._train_rl(rl_cfg)
         if result != 0:

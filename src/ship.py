@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from .constants import Actions
 from .bullets import Bullets
@@ -137,6 +138,22 @@ class Ship(nn.Module):
         self.lift_coeff_table[1, 1, 1] = 0.0  # SLR
 
     def _extract_action_states(self, actions: torch.Tensor) -> ActionStates:
+        # Handle empty action tensor
+        if actions.numel() == 0:
+            return ActionStates(
+                left=0,
+                right=0,
+                forward=0,
+                backward=0,
+                sharp_turn=0,
+                shoot=0,
+            )
+
+        # Ensure actions has at least 6 elements
+        if actions.numel() < 6:
+            # Pad with zeros if needed
+            actions = F.pad(actions, (0, 6 - actions.numel()))
+
         return ActionStates(
             left=int(actions[Actions.left]),
             right=int(actions[Actions.right]),

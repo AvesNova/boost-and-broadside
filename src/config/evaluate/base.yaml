@@ -7,9 +7,4 @@ defaults:
   - _self_
 
 # Evaluation-specific configuration
-evaluate:
-  mode: model
-  model_config:
-    num_episodes: 10
-    render_mode: null  # No rendering by default for evaluation
-    deterministic: true
+# Note: Evaluation configuration is already defined in base.yaml as 'evaluation'

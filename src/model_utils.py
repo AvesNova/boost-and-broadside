@@ -243,7 +243,7 @@ def create_ppo_model(
 
 
 def create_bc_model(
-    transformer_config: Dict[str, Any], num_controlled_ships: int = 2
+    transformer_config: Dict[str, Any], num_controlled_ships: int = 4
 ) -> torch.nn.Module:
     """
     Create behavior cloning model

@@ -145,11 +145,23 @@ class UnifiedRLWrapper(gym.Env):
     ) -> dict[int, torch.Tensor]:
         """Convert flattened SB3 actions back to ship action dict"""
         actions = {}
+        # Ensure flattened_actions is not empty
+        if flattened_actions.size == 0:
+            # Return default actions (all zeros) for controlled ships
+            for ship_id in sorted(self.controlled_ships):
+                actions[ship_id] = torch.zeros(6, dtype=torch.float32)
+            return actions
+
         for i, ship_id in enumerate(sorted(self.controlled_ships)):
             start_idx = i * 6
             end_idx = start_idx + 6
-            ship_action = flattened_actions[start_idx:end_idx]
-            actions[ship_id] = torch.from_numpy(ship_action).float()
+            # Ensure we don't go out of bounds
+            if end_idx <= flattened_actions.size:
+                ship_action = flattened_actions[start_idx:end_idx]
+                actions[ship_id] = torch.from_numpy(ship_action).float()
+            else:
+                # Return default action if not enough values
+                actions[ship_id] = torch.zeros(6, dtype=torch.float32)
         return actions
 
     def reset(self, **kwargs):
@@ -331,7 +343,11 @@ def create_unified_rl_env(
 
     # Merge with user configs
     if env_config:
-        default_env_config.update(env_config)
+        # Filter out unsupported parameters
+        filtered_env_config = {
+            k: v for k, v in env_config.items() if k != "max_episode_steps"
+        }
+        default_env_config.update(filtered_env_config)
     if opponent_config:
         default_opponent_config.update(opponent_config)
     if team_assignments:

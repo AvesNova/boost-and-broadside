@@ -1,5 +1,5 @@
 defaults:
-  - base
+  - ../base
   - _self_
 
 # RL training specific configuration

@@ -1,31 +1,6 @@
 # Base configuration for train commands
-# This file extends the base configuration with training-specific defaults
+# This file should NOT be used directly - use bc.yaml, rl.yaml, or full.yaml instead
+# This file is just to establish the train/ directory structure
 
-# Inherits all defaults from base.yaml
-defaults:
-  - base
-  - _self_
-
-# Training-specific configuration
-train:
-  mode: bc
-  bc_config:
-    data_dir: data/bc_pretraining
-    batch_size: 32
-    learning_rate: 0.001
-    num_epochs: 10
-    validation_split: 0.2
-  rl_config:
-    total_timesteps: 1000000
-    learning_rate: 0.0003
-    n_steps: 2048
-    batch_size: 64
-    gamma: 0.99
-    gae_lambda: 0.95
-    clip_range: 0.2
-    ent_coef: 0.01
-    vf_coef: 0.5
-    max_grad_norm: 0.5
-  full_config:
-    skip_bc: false
-    bc_model_path: null
+# No defaults to avoid circular references
+# Each specific training config (bc, rl, full) should inherit from ../base directly

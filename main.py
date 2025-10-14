@@ -84,7 +84,10 @@ def get_command_specific_config(command_parts: list) -> str:
     config_map = {
         ("train", "bc"): "train/bc",
         ("train", "rl"): "train/rl",
-        ("train", "full"): "train/full",
+        (
+            "train",
+            "full",
+        ): "train/full_simple",  # Use the simple config to avoid recursion
         ("collect", "bc"): "collect/bc",
         ("collect", "selfplay"): "collect/selfplay",
         ("play", "human"): "play/human",
@@ -132,6 +135,11 @@ def main() -> int:
     # Initialize Hydra with the config directory
     try:
         with initialize_config_dir(config_dir=config_dir, version_base=None):
+            # Disable struct mode to allow dynamic keys
+            from hydra.core.config_store import ConfigStore
+
+            cs = ConfigStore.instance()
+            cs.store(name="base_config", node={})
             # Compose the configuration with command-specific overrides
             # Include any unknown args as Hydra overrides
             overrides = unknown_args

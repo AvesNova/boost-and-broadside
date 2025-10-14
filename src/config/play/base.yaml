@@ -7,9 +7,4 @@ defaults:
   - _self_
 
 # Play-specific configuration
-play:
-  mode: human
-  human_config:
-    render_mode: human
-    fps: 60
-    zoom: 1.0
+# Note: Play configuration will be defined in specific play configs

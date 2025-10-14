@@ -118,6 +118,11 @@ class BCDataset(Dataset):
                 action = action.numpy()
             flattened.extend(action)
 
+        # Pad to ensure consistent size (max 4 ships * 6 actions = 24)
+        max_size = 24  # 4 ships * 6 actions per ship
+        if len(flattened) < max_size:
+            flattened.extend([0.0] * (max_size - len(flattened)))
+
         return np.array(flattened, dtype=np.float32)
 
     def __len__(self) -> int:
@@ -136,7 +141,7 @@ class BCDataset(Dataset):
 class BCModel(nn.Module):
     """Behavior Cloning model with policy and value heads"""
 
-    def __init__(self, transformer_config: dict, num_controlled_ships: int = 2):
+    def __init__(self, transformer_config: dict, num_controlled_ships: int = 4):
         super().__init__()
 
         # Core transformer
@@ -217,7 +222,7 @@ class BCModel(nn.Module):
         }
 
 
-def create_bc_model(transformer_config: dict, num_controlled_ships: int = 2) -> BCModel:
+def create_bc_model(transformer_config: dict, num_controlled_ships: int = 4) -> BCModel:
     """Factory function to create BC model"""
     return BCModel(transformer_config, num_controlled_ships)
 
@@ -250,10 +255,10 @@ def train_bc_model(
     # Create data loaders
     batch_size = config.get("batch_size", 128)
     train_loader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True, num_workers=2
+        train_dataset, batch_size=batch_size, shuffle=True, num_workers=0
     )
     val_loader = DataLoader(
-        val_dataset, batch_size=batch_size, shuffle=False, num_workers=2
+        val_dataset, batch_size=batch_size, shuffle=False, num_workers=0
     )
 
     print(f"Training set: {len(train_dataset)} samples")
@@ -522,10 +527,10 @@ def resume_bc_training(
 
     batch_size = config.get("batch_size", 128)
     train_loader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True, num_workers=2
+        train_dataset, batch_size=batch_size, shuffle=True, num_workers=0
     )
     val_loader = DataLoader(
-        val_dataset, batch_size=batch_size, shuffle=False, num_workers=2
+        val_dataset, batch_size=batch_size, shuffle=False, num_workers=0
     )
 
     # Continue training
