@@ -1,6 +1,0 @@
-# Base configuration for train commands
-# This file should NOT be used directly - use bc.yaml, rl.yaml, or full.yaml instead
-# This file is just to establish the train/ directory structure
-
-# No defaults to avoid circular references
-# Each specific training config (bc, rl, full) should inherit from ../base directly
