@@ -6,3 +6,5 @@ __pycache__/
 checkpoints/
 *.zip
 data/
+outputs/
+*.egg-info/
