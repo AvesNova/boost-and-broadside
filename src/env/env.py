@@ -15,12 +15,12 @@ from .state import State
 class Environment(gym.Env):
     def __init__(
         self,
-        render_mode: str | None = None,
-        world_size: tuple[int, int] = (1200, 800),
-        memory_size: int = 2,
-        max_ships: int = 2,
-        agent_dt: float = 0.02,
-        physics_dt: float = 0.02,
+        render_mode: str,
+        world_size: tuple[int, int],
+        memory_size: int,
+        max_ships: int,
+        agent_dt: float,
+        physics_dt: float,
         rng: np.random.Generator = np.random.default_rng(),
     ):
         super().__init__()
