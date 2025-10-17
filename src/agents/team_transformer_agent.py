@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from ..env.constants import Actions
+
+from env.constants import Actions
 from .base import Agent
 
 

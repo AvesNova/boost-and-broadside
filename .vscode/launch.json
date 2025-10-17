@@ -5,10 +5,10 @@
             "name": "Play",
             "type": "debugpy",
             "request": "launch",
-            "program": "src/collect_data.py",
+            "program": "main.py",
             "console": "integratedTerminal",
             "args": [
-                "human_play"
+                "mode=play"
             ]
         },
         {

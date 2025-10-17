@@ -1,8 +1,12 @@
 from typing import Any
 import numpy as np
+import torch
 from omegaconf import DictConfig
+from wandb import agent
 
-from .env import Environment
+from agents.agents import create_agent
+
+from .env.env import Environment
 from .agent_manager import AgentManager
 from .components import ComponentFactory
 
@@ -21,11 +25,12 @@ class GameCoordinator:
         """
         self.config = config
 
-        # Initialize environment
-        self.env = Environment(dict(config.get("environment", {})))
+        self.env = Environment(**config.environment)
 
-        # Initialize agent manager
-        self.agent_manager = AgentManager(dict(config.get("agents", {})))
+        self.agents = {
+            create_agent(agent_id, **agent_config)
+            for agent_id, agent_config in config.agents.items()
+        }
 
         # Initialize components
         components_config = config.get("components", {})
@@ -57,7 +62,8 @@ class GameCoordinator:
             Initial observation
         """
         # Reset environment
-        self.current_obs = self.env.reset()
+        obs, _ = self.env.reset()
+        self.current_obs = obs
 
         # Reset agents
         self.agent_manager.reset()
@@ -100,7 +106,9 @@ class GameCoordinator:
         env_actions = self._convert_actions_to_env_format(actions_by_ship)
 
         # Step environment
-        self.current_obs, rewards, done, info = self.env.step(env_actions)
+        self.current_obs, rewards, terminated, truncated, info = self.env.step(
+            env_actions
+        )
 
         # Convert rewards to ship-based format
         rewards_by_ship = self._convert_rewards_to_ship_format(rewards)
@@ -141,9 +149,12 @@ class GameCoordinator:
             self.truncated,
         )
 
-    def run_episode(self) -> dict[str, Any]:
+    def run_episode(self, num_steps: int = 1000) -> dict[str, Any]:
         """
         Run a complete episode from start to finish
+
+        Args:
+            num_steps: Maximum number of steps to run
 
         Returns:
             Episode summary statistics
@@ -162,7 +173,7 @@ class GameCoordinator:
         }
 
         # Run episode loop
-        while not self.should_terminate:
+        while not self.should_terminate and episode_steps < num_steps:
             obs, actions, rewards, info, terminated, truncated = self.step()
             episode_steps += 1
 
@@ -179,6 +190,11 @@ class GameCoordinator:
                 episode_data["infos"].append(info)
                 if not terminated and not truncated:
                     episode_data["observations"].append(obs)
+
+            # Check if we've reached the step limit
+            if episode_steps >= num_steps:
+                self.truncated = True
+                self.should_terminate = True
 
         # Finalize episode
         episode_summary = self._finalize_episode(
@@ -215,32 +231,31 @@ class GameCoordinator:
         return episode_summaries
 
     def _convert_actions_to_env_format(
-        self, actions_by_ship: dict[int, np.ndarray]
-    ) -> np.ndarray:
+        self, actions_by_ship: dict[int, torch.Tensor]
+    ) -> dict[int, torch.Tensor]:
         """Convert ship-based actions to environment format"""
         if not actions_by_ship:
-            return np.array([])
+            return {}
 
-        # Get number of ships from environment
-        num_ships = self.env.ships.shape[0]
-        action_dim = next(iter(actions_by_ship.values())).shape[-1]
-
-        # Create action array
-        env_actions = np.zeros((num_ships, action_dim))
-
-        # Fill in actions
+        # Convert to the format expected by Environment.step()
+        env_actions = {}
         for ship_id, action in actions_by_ship.items():
-            if ship_id < num_ships:
-                env_actions[ship_id] = action.flatten()
+            env_actions[ship_id] = action
 
         return env_actions
 
-    def _convert_rewards_to_ship_format(self, rewards: np.ndarray) -> dict[int, float]:
+    def _convert_rewards_to_ship_format(self, rewards: dict) -> dict[int, float]:
         """Convert environment rewards to ship-based format"""
         rewards_by_ship: dict[int, float] = {}
 
-        for i, reward in enumerate(rewards):
-            rewards_by_ship[i] = float(reward)
+        # If rewards is already a dictionary, just convert values to float
+        if isinstance(rewards, dict):
+            for ship_id, reward in rewards.items():
+                rewards_by_ship[ship_id] = float(reward)
+        else:
+            # If it's an array, convert to dictionary
+            for i, reward in enumerate(rewards):
+                rewards_by_ship[i] = float(reward)
 
         return rewards_by_ship
 

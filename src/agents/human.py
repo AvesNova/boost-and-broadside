@@ -41,9 +41,12 @@ class HumanAgent(Agent):
         actions: dict[int, torch.Tensor] = {}
 
         # Only get actions for our controlled ship if it's alive
-        valid_ships = self.get_ship_ids_for_obs(obs_dict)
+        ship_is_alive = (
+            self.controlled_ship_id < obs_dict["ship_id"].shape[0]
+            and obs_dict["alive"][self.controlled_ship_id, 0].item() > 0
+        )
 
-        if self.controlled_ship_id in valid_ships and self.renderer:
+        if ship_is_alive and self.renderer:
             # Get human actions from renderer
             human_actions = self.renderer.get_human_actions()
 

@@ -1,14 +1,40 @@
 mode: play
 
 environment:
+  render_mode: "human"
   world_size: [1200, 800]
+  memory_size: 2
   max_ships: 8
   agent_dt: 0.04
   physics_dt: 0.02
 
-play:
-  human_player: true
-  teams: [scripted, scripted]
+agents:
+  scripted:
+    agent_type: scripted
+    agent_config:
+      human_controls_ship_0: false
+      max_shooting_range: 500.0
+      angle_threshold: 5.0
+      bullet_speed: 500.0
+      target_radius: 10.0
+      radius_multiplier: 1.5
+      world_size: [1200, 800]
+  scripted_with_human:
+    agent_type: scripted
+    agent_config:
+      human_controls_ship_0: true
+      max_shooting_range: 500.0
+      angle_threshold: 5.0
+      bullet_speed: 500.0
+      target_radius: 10.0
+      radius_multiplier: 1.5
+      world_size: [1200, 800]
+
+components:
+  renderer:
+    type: "renderer"
+    render_mode: "human"
+    target_fps: 60
 
 collect:
   teams: [scripted, scripted]

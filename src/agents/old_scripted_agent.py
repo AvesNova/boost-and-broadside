@@ -1,87 +1,12 @@
-from dataclasses import dataclass
-from typing import Any
 import torch
+import torch.nn as nn
 import numpy as np
-
-from .base import Agent
-from .human import HumanAgent
+from ..env.constants import Actions
 
 
-@dataclass
-class ScriptedAgentConfig:
-    human_controls_ship_0: bool
-    max_shooting_range: float
-    angle_threshold: float
-    bullet_speed: float
-    target_radius: float
-    radius_multiplier: float
-    world_size: list[float, float]
-
-
-class ScriptedAgent(Agent):
-    """Agent that controls n ships using scripted behavior"""
-
-    def __init__(
-        self,
-        agent_id: str,
-        team_id: int,
-        squad: list[int],
-        config: ScriptedAgentConfig,
-        rng: np.random.Generator = np.random.default_rng(),
-    ):
-        """
-        Initialize scripted agent
-
-        Args:
-            agent_id: Unique identifier for this agent
-            team_id: Which team this agent belongs to
-            squad: List of ship IDs this agent controls
-            config: Configuration for scripted behavior
-        """
-        super().__init__(agent_id, team_id, squad)
-
-        self.config = config
-
-        self.ship_controllers: dict[int, ShipController] = {}
-
-        for ship_id in squad:
-            if ship_id == 0 and self.config.human_controls_ship_0 is True:
-                self.ship_controllers[ship_id] = HumanAgent(
-                    f"{agent_id}_{ship_id}", team_id, [ship_id]
-                )
-            else:
-                self.ship_controllers[ship_id] = ShipController(
-                    f"{agent_id}_{ship_id}", team_id, [ship_id]
-                )
-
-    def get_actions(self, obs_dict: dict[str, torch.Tensor]) -> dict[int, torch.Tensor]:
-        """
-        Get actions from scripted behavior or human input
-
-        Args:
-            obs_dict: Observation dictionary from environment
-
-        Returns:
-            Dictionary mapping ship_id to action tensor
-        """
-        return {
-            self.ship_controllers[ship_id].get_actions(obs_dict)
-            for ship_id in self.squad
-        }
-
-    def get_agent_type(self) -> str:
-        """Return agent type for logging/debugging"""
-        return "scripted" if self.human_agent is None else "scripted_with_human"
-
-    def set_renderer(self, renderer: Any) -> None:
-        """Set the renderer for human agent if present"""
-        if self.human_agent:
-            self.human_agent.set_renderer(renderer)
-
-
-class ShipController(Agent):
+class ScriptedAgent(nn.Module):
     """
-    Advanced ship controller with predictive targeting and team awareness.
+    Advanced scripted agent with predictive targeting and team awareness.
 
     Features:
     - Calculates bullet travel time based on distance
@@ -89,65 +14,78 @@ class ShipController(Agent):
     - Uses predicted position for both turning and shooting
     - Only targets ships from opposing teams (no friendly fire)
     - Targets the closest enemy ship when multiple enemies are present
-    - Supports toroidal world wrapping
-    - Power-aware movement and shooting decisions
-    - Dynamic shooting angle thresholds
-    - Sharp turn capability for large angle differences
+
+    This agent works in both 1v1 and team-based scenarios (e.g., 2v2).
     """
 
     def __init__(
         self,
-        agent_id: str,
-        team_id: int,
-        squad: list[int],
-        config: ScriptedAgentConfig,
-        rng: np.random.Generator = np.random.default_rng(),
+        controlled_ship_id: int = 1,
+        max_shooting_range: float = 400.0,
+        angle_threshold: float = 6.0,
+        bullet_speed: float = 500.0,
+        target_radius: float = 10.0,
+        radius_multiplier: float = 1.5,
+        world_size: tuple[float, float] = (1200, 800),
     ):
         """
-        Initialize ship controller
+        Initialize the scripted agent.
 
         Args:
-            ship_id: ID of the ship this controller controls
-            config: Configuration for behavior
+            controlled_ship_id: Which ship this agent controls (any ship ID)
+            max_shooting_range: Maximum distance to shoot at enemies (in world units)
+            angle_threshold: Fallback angle tolerance in degrees for shooting (used at max range)
+            bullet_speed: Speed of bullets (used for travel time calculation)
+            target_radius: Collision radius of enemy ships (in world units)
+            radius_multiplier: Multiplier for angular size calculation (1.5 = shoot within 1.5 radii)
+            world_size: Size of the world (width, height)
         """
-        self.agent_id = agent_id
-        self.team_id = team_id
-        self.ship_id = squad[0]
-        self.config = config
+        super().__init__()
+        self.controlled_ship_id = controlled_ship_id
+        self.max_shooting_range = max_shooting_range
+        self.angle_threshold = np.deg2rad(angle_threshold)  # Convert to radians
+        self.bullet_speed = bullet_speed
+        self.target_radius = target_radius
+        self.radius_multiplier = radius_multiplier
+        self.world_size = world_size
 
-        self.angle_threshold = np.deg2rad(config["angle_threshold"])
+        # Register as buffer so it moves with device but isn't a parameter
+        self.register_buffer("_dummy", torch.zeros(1))
 
-    def get_actions(self, obs_dict: dict[str, torch.Tensor]) -> torch.Tensor:
+    def forward(self, observation: dict) -> torch.Tensor:
         """
-        Get actions for this ship using advanced targeting logic
+        Generate action based on observation.
 
         Args:
-            obs_dict: Observation dictionary from environment
+            observation: Dictionary containing tokens for all ships
 
         Returns:
-            Action tensor for this ship
+            action: Tensor of shape (6,) with binary actions [forward, backward, left, right, sharp_turn, shoot]
         """
-        # Get our ship's state and find closest enemy
+        # Get the raw observation data from the debug fields
+        # We'll use the non-normalized values for easier calculations
+
+        # Extract our ship's state and find closest enemy
         our_ship_data = None
         our_team_id = None
         enemy_candidates = []
 
         # Look through all ships to find ourselves and potential enemies
-        for ship_idx in range(obs_dict["ship_id"].shape[0]):
-            ship_alive = obs_dict["alive"][ship_idx, 0].item()
+        for ship_id in range(observation["ship_id"].shape[0]):
+            ship_alive = observation["alive"][ship_id, 0].item()
             if not ship_alive:
                 continue
 
-            current_ship_id = obs_dict["ship_id"][ship_idx, 0].item()
-            current_team_id = obs_dict["team_id"][ship_idx, 0].item()
+            current_ship_id = observation["ship_id"][ship_id, 0].item()
+            current_team_id = observation["team_id"][ship_id, 0].item()
 
-            if current_ship_id == self.ship_id:
+            if current_ship_id == self.controlled_ship_id:
                 our_ship_data = {
-                    "health": obs_dict["health"][ship_idx, 0].item(),
-                    "power": obs_dict["power"][ship_idx, 0].item(),
-                    "position": obs_dict["position"][ship_idx, 0],
-                    "velocity": obs_dict["velocity"][ship_idx, 0],
-                    "attitude": obs_dict["attitude"][ship_idx, 0],
+                    "health": observation["health"][ship_id, 0].item(),
+                    "power": observation["power"][ship_id, 0].item(),
+                    "position": observation["position"][ship_id, 0],
+                    "velocity": observation["velocity"][ship_id, 0],
+                    "attitude": observation["attitude"][ship_id, 0],
                 }
                 our_team_id = current_team_id
             else:
@@ -156,8 +94,8 @@ class ShipController(Agent):
                     {
                         "ship_id": current_ship_id,
                         "team_id": current_team_id,
-                        "position": obs_dict["position"][ship_idx, 0],
-                        "velocity": obs_dict["velocity"][ship_idx, 0],
+                        "position": observation["position"][ship_id, 0],
+                        "velocity": observation["velocity"][ship_id, 0],
                     }
                 )
 
@@ -166,7 +104,7 @@ class ShipController(Agent):
         if our_ship_data is not None and our_team_id is not None and enemy_candidates:
             our_pos = torch.tensor(
                 [our_ship_data["position"].real, our_ship_data["position"].imag],
-                dtype=torch.float32,
+                device=self._dummy.device,
             )
 
             closest_distance = float("inf")
@@ -177,7 +115,7 @@ class ShipController(Agent):
 
                 candidate_pos = torch.tensor(
                     [candidate["position"].real, candidate["position"].imag],
-                    dtype=torch.float32,
+                    device=self._dummy.device,
                 )
 
                 # Calculate distance with world wrapping
@@ -193,7 +131,9 @@ class ShipController(Agent):
                     }
 
         # Initialize action (all zeros)
-        action = torch.zeros(6, dtype=torch.float32)
+        action = torch.zeros(
+            len(Actions), dtype=torch.float32, device=self._dummy.device
+        )
 
         # Check if we have valid data for both our ship and an enemy
         if our_ship_data is None or enemy_ship_data is None:
@@ -202,22 +142,22 @@ class ShipController(Agent):
         # Convert complex numbers to 2D vectors for easier calculation
         self_pos = torch.tensor(
             [our_ship_data["position"].real, our_ship_data["position"].imag],
-            dtype=torch.float32,
+            device=self._dummy.device,
         )
 
         enemy_pos = torch.tensor(
             [enemy_ship_data["position"].real, enemy_ship_data["position"].imag],
-            dtype=torch.float32,
+            device=self._dummy.device,
         )
 
         enemy_velocity = torch.tensor(
             [enemy_ship_data["velocity"].real, enemy_ship_data["velocity"].imag],
-            dtype=torch.float32,
+            device=self._dummy.device,
         )
 
         self_attitude = torch.tensor(
             [our_ship_data["attitude"].real, our_ship_data["attitude"].imag],
-            dtype=torch.float32,
+            device=self._dummy.device,
         )
 
         # Calculate predicted enemy position when bullet arrives
@@ -256,14 +196,14 @@ class ShipController(Agent):
         if angle_to_target > self.angle_threshold:
             if cross_product > 0:
                 # Target is to the left (counter-clockwise), turn right to face them
-                action[3] = 1.0  # Right
+                action[Actions.right] = 1.0
             else:
                 # Target is to the right (clockwise), turn left to face them
-                action[2] = 1.0  # Left
+                action[Actions.left] = 1.0
 
             # Use sharp turn for large angle differences
             if angle_to_target > np.deg2rad(15.0):
-                action[4] = 1.0  # Sharp turn
+                action[Actions.sharp_turn] = 1.0
 
         # Calculate dynamic shooting angle threshold based on distance to target
         dynamic_shooting_threshold = self._calculate_shooting_angle_threshold(
@@ -276,25 +216,25 @@ class ShipController(Agent):
         if (
             angle_to_target <= dynamic_shooting_threshold
             and current_distance
-            <= self.config["max_shooting_range"] * np.sqrt(current_power_ratio)
+            <= self.max_shooting_range * np.sqrt(current_power_ratio)
             and our_ship_data["health"] > 0
         ):  # Only shoot if we're alive
-            action[5] = 1.0  # Shoot
+            action[Actions.shoot] = 1.0
 
         # Thrust management based on distance and power
         close_range_threshold = (
-            2.0 * self.config["target_radius"]
+            2.0 * self.target_radius
         )  # 2 radii = 20 units by default
 
         if current_distance <= close_range_threshold:
             # Close range: use reverse thrust to maintain distance, regardless of power level
-            action[1] = 1.0  # Backward
+            action[Actions.backward] = 1.0
         else:
             # Normal range: only boost (forward) if power > 90%, otherwise maintain base thrust
             if current_power_ratio > 0.9 * (
-                1.0 - current_distance / self.config["max_shooting_range"]
+                1.0 - current_distance / self.max_shooting_range
             ):
-                action[0] = 1.0  # Forward
+                action[Actions.forward] = 1.0
             # Note: When power <= 90%, we don't set forward=1, so ship uses base thrust only
 
         return action
@@ -317,7 +257,7 @@ class ShipController(Agent):
 
         # Handle wrapping for each dimension
         for i in range(2):
-            world_size = self.config["world_size"][i]
+            world_size = self.world_size[i]
 
             # If distance is more than half the world size, wrap around
             if abs(diff[i]) > world_size / 2:
@@ -353,15 +293,15 @@ class ShipController(Agent):
             return enemy_pos  # Already at same position
 
         # Calculate time for bullet to travel current distance
-        bullet_travel_time = current_distance / self.config["bullet_speed"]
+        bullet_travel_time = current_distance / self.bullet_speed
 
         # Predict where enemy will be after this time
         predicted_displacement = enemy_velocity * bullet_travel_time
         predicted_pos = enemy_pos + predicted_displacement
 
         # Apply world wrapping to predicted position
-        predicted_pos[0] = predicted_pos[0] % self.config["world_size"][0]  # Wrap x
-        predicted_pos[1] = predicted_pos[1] % self.config["world_size"][1]  # Wrap y
+        predicted_pos[0] = predicted_pos[0] % self.world_size[0]  # Wrap x
+        predicted_pos[1] = predicted_pos[1] % self.world_size[1]  # Wrap y
 
         return predicted_pos
 
@@ -383,14 +323,27 @@ class ShipController(Agent):
 
         # Calculate angular size of target (half-angle from center to edge)
         # For a circular target: half_angle = arctan(radius / distance)
-        half_angle = torch.atan(self.config["target_radius"] / distance)
+        half_angle = torch.atan(self.target_radius / distance)
 
         # Full angular threshold = radius_multiplier * 2 * half_angle
         # This gives us the angle within which we'll shoot
-        dynamic_threshold = self.config["radius_multiplier"] * 2 * half_angle
+        dynamic_threshold = self.radius_multiplier * 2 * half_angle
 
         # Clamp to reasonable bounds
         max_threshold = np.deg2rad(45.0)  # Never more than 45 degrees
         min_threshold = np.deg2rad(1.0)  # Never less than 1 degree
 
         return float(torch.clamp(dynamic_threshold, min_threshold, max_threshold))
+
+
+def create_scripted_agent(**kwargs) -> ScriptedAgent:
+    """
+    Factory function to create a scripted agent.
+
+    Args:
+        **kwargs: Arguments to pass to ScriptedAgent constructor
+
+    Returns:
+        ScriptedAgent instance
+    """
+    return ScriptedAgent(**kwargs)

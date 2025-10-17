@@ -6,8 +6,8 @@ from .team_transformer_agent import TeamTransformerAgent
 from .replay import ReplayAgent
 
 
-def get_agent(agent_name: str, agent_config: dict) -> nn.Module:
-    match agent_name:
+def create_agent(agent_type: str, agent_config: dict) -> nn.Module:
+    match agent_type:
         case "human":
             return HumanAgent(**agent_config)
         case "scripted":
@@ -17,4 +17,4 @@ def get_agent(agent_name: str, agent_config: dict) -> nn.Module:
         case "replay_agent":
             return ReplayAgent(**agent_config)
         case _:
-            raise TypeError(f"Invalid agent name: {agent_name}")
+            raise TypeError(f"Invalid agent name: {agent_type}")

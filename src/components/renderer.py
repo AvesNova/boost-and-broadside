@@ -31,7 +31,7 @@ class Renderer(Component):
                 sys.path.append(
                     os.path.join(os.path.dirname(__file__), "..", "..", "..", "src")
                 )
-                from env import Environment
+                from env.env import Environment
 
                 env_config = {
                     "world_size": coordinator.env.world_size,
@@ -39,6 +39,7 @@ class Renderer(Component):
                     "agent_dt": coordinator.env.agent_dt,
                     "physics_dt": coordinator.env.physics_dt,
                     "render_mode": "human",
+                    "memory_size": coordinator.env.memory_size,
                 }
                 coordinator.env = Environment(**env_config)
 
@@ -46,7 +47,7 @@ class Renderer(Component):
 
             # Register human agents with renderer
             for agent in coordinator.agent_manager.agents.values():
-                if agent.get_agent_type() == "human":
+                if agent.get_agent_type() in ["human", "scripted_with_human"]:
                     if hasattr(agent, "set_renderer"):
                         agent.set_renderer(self.renderer)
                     else:
@@ -61,7 +62,7 @@ class Renderer(Component):
             # Handle events and render
             if not coordinator.env.renderer.handle_events():
                 # User closed window
-                coordinator._should_terminate = True
+                coordinator.should_terminate = True
 
             coordinator.env.render(coordinator.env.state[-1])
 

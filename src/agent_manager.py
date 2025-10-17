@@ -1,7 +1,8 @@
 from typing import Any
 import numpy as np
+import torch
 
-from .agents import Agent, AgentFactory
+from .agents import Agent
 
 
 class Squad:
@@ -125,14 +126,20 @@ class AgentManager:
         agent_config = squad_config.get("agent", {})
         agent_type = agent_config.get("type", "scripted")
 
-        # Create agent
-        agent = AgentFactory.create_agent(agent_config)
-        self.agents[squad_id] = agent
-
         # Get ship configuration
         ship_ids = squad_config.get("ship_ids", [])
         if not ship_ids:
             raise ValueError(f"Squad {squad_id} has no ships configured")
+
+        # Create agent with proper parameters
+        agent = AgentFactory.create_agent_with_params(
+            agent_type=agent_type,
+            agent_id=squad_id,
+            team_id=team_id,
+            squad=ship_ids,
+            config=agent_config,
+        )
+        self.agents[squad_id] = agent
 
         # Create squad
         squad = Squad(squad_id, agent, ship_ids, team_id)
@@ -202,14 +209,14 @@ class AgentManager:
             # Get observation for this squad's ships
             squad_obs = self._extract_squad_obs(obs, active_ships)
 
-            # Get action from agent
-            action, info = squad.agent.get_action(squad_obs)
+            # Get actions from agent
+            actions = squad.agent.get_actions(squad_obs)
 
             # Store agent info
-            agent_info[squad_id] = info
+            agent_info[squad_id] = {}
 
-            # Map action back to individual ships
-            squad_actions = self._map_action_to_ships(action, active_ships)
+            # Map actions back to individual ships
+            squad_actions = self._map_actions_to_ships(actions, active_ships)
             actions_by_ship.update(squad_actions)
 
         return actions_by_ship, agent_info
@@ -230,24 +237,18 @@ class AgentManager:
 
         return squad_obs
 
-    def _map_action_to_ships(
-        self, action: np.ndarray, ship_ids: list[int]
-    ) -> dict[int, np.ndarray]:
-        """Map agent action to individual ships"""
-        ship_actions: dict[int, np.ndarray] = {}
+    def _map_actions_to_ships(
+        self, actions: dict[int, torch.Tensor], ship_ids: list[int]
+    ) -> dict[int, torch.Tensor]:
+        """Map agent actions to individual ships"""
+        ship_actions: dict[int, torch.Tensor] = {}
 
-        if action.shape[0] == len(ship_ids):
-            # One action per ship
-            for i, ship_id in enumerate(ship_ids):
-                ship_actions[ship_id] = action[i : i + 1]
-        elif action.shape[0] == 1:
-            # Single action for all ships in squad
-            for ship_id in ship_ids:
-                ship_actions[ship_id] = action
-        else:
-            raise ValueError(
-                f"Action shape {action.shape} incompatible with {len(ship_ids)} ships"
-            )
+        for ship_id in ship_ids:
+            if ship_id in actions:
+                ship_actions[ship_id] = actions[ship_id]
+            else:
+                # Default to no action if ship not in actions
+                ship_actions[ship_id] = torch.zeros(6, dtype=torch.float32)
 
         return ship_actions
 
