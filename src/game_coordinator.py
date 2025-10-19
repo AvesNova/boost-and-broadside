@@ -2,7 +2,6 @@ from typing import Any
 import numpy as np
 import torch
 from omegaconf import DictConfig
-from wandb import agent
 
 from agents.agents import create_agent
 from agents.tokenizer import observation_to_tokens
@@ -16,52 +15,78 @@ class GameCoordinator:
     Central coordinator that orchestrates the game between environment and agents
     """
 
-    def __init__(self, config: DictConfig):
+    def __init__(self, config: DictConfig, render_mode: str | None = None):
         """
         Initialize the game coordinator
 
         Args:
             config: Configuration dictionary containing all setup
+            render_mode: Override render mode (e.g., "none" for data collection)
         """
         self.config = config
 
-        self.env = Environment(**config.environment)
+        env_config = dict(config.environment)
+        if render_mode is not None:
+            env_config["render_mode"] = render_mode
+
+        self.env = Environment(**env_config)
 
         self.agents = {
             agent_name: create_agent(**agent_config)
             for agent_name, agent_config in config.agents.items()
         }
 
-        self.obs_history: list[State] = []
+        self.obs_history: list[dict] = []
 
-    def reset(self, game_mode: str):
+    def reset(self, game_mode: str) -> None:
+        """Reset environment for a new episode"""
         obs, _ = self.env.reset(game_mode=game_mode)
 
-        self.obs_history.append(obs)
+        self.obs_history = [obs]
         self.all_tokens = {
             0: observation_to_tokens(obs=obs, perspective=0),
             1: observation_to_tokens(obs=obs, perspective=1),
         }
+        self.all_actions: dict[int, list[torch.Tensor]] = {
+            ship_id: [] for ship_id in range(self.config.environment.max_ships)
+        }
+        self.all_rewards: dict[int, list[float]] = {0: [], 1: []}
 
-    def step(self):
+    def step(self) -> tuple[float, bool]:
+        """
+        Run episode until termination
+
+        Returns:
+            Tuple of (episode_sim_time, terminated)
+        """
         terminated = False
-        teams = {0: [0, 1, 2, 3], 1: [4, 5, 6, 7]}
+        obs = self.obs_history[-1]
+
+        teams = self._get_teams_from_obs(obs)
+        team_names = self.config.collect.teams
+        max_episode_length = self.config.collect.max_episode_length
+        step_count = 0
 
         while not terminated:
-            # TODO: We need to handle configurable agents
-
             team_actions = {
-                team_id: self.agents["scripted"](self.obs_history[-1], ship_ids)
+                team_id: self.agents[team_names[team_id]](
+                    self.obs_history[-1], ship_ids
+                )
                 for team_id, ship_ids in teams.items()
             }
 
-            # Flatten team actions to ship actions
             actions = {}
             for team_id, ship_ids in teams.items():
                 ship_actions = team_actions[team_id]
                 actions.update(ship_actions)
 
+            for ship_id, action in actions.items():
+                self.all_actions[ship_id].append(action)
+
             obs, rewards, terminated, _, info = self.env.step(actions=actions)
+
+            for team_id, reward in rewards.items():
+                self.all_rewards[team_id].append(reward)
 
             self.obs_history.append(obs)
             self.all_tokens[0] = torch.cat(
@@ -72,9 +97,32 @@ class GameCoordinator:
                 [self.all_tokens[1], observation_to_tokens(obs=obs, perspective=1)],
                 dim=0,
             )
-            # TODO: We need to have a data collector that can collect a lot of data that can be quickly loaded.
-            # The data loader should save the time_step, episode_id, tokens, actions and rewards
-            # All the data should be aggregated into a single tensor for all attrributes across all episodes
+
+            step_count += 1
+            if step_count >= max_episode_length:
+                terminated = True
+
+        episode_sim_time = info.get("current_time", 0.0)
+        return episode_sim_time, terminated
+
+    def _get_teams_from_obs(self, obs: dict) -> dict[int, list[int]]:
+        """
+        Extract team assignments from observation
+
+        Args:
+            obs: Observation dictionary
+
+        Returns:
+            Dictionary mapping team_id to list of ship_ids
+        """
+        teams: dict[int, list[int]] = {}
+        for ship_id in range(len(obs["ship_id"])):
+            if obs["alive"][ship_id].item():
+                team_id = obs["team_id"][ship_id].item()
+                if team_id not in teams:
+                    teams[team_id] = []
+                teams[team_id].append(ship_id)
+        return teams
 
     def close(self):
         """Clean up resources"""

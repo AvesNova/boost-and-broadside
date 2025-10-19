@@ -1,0 +1,209 @@
+"""Data collector for behavioral cloning training data"""
+
+import pickle
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import torch
+from omegaconf import DictConfig
+
+
+@dataclass
+class EpisodeData:
+    """Data for a single episode"""
+
+    tokens_team_0: torch.Tensor
+    tokens_team_1: torch.Tensor
+    actions: dict[int, list[torch.Tensor]]
+    rewards: dict[int, list[float]]
+    episode_length: int
+
+
+class DataCollector:
+    """Collects and saves episode data for behavioral cloning"""
+
+    def __init__(self, config: DictConfig, worker_id: int):
+        """
+        Initialize data collector
+
+        Args:
+            config: Configuration dictionary with collect settings
+            worker_id: Unique identifier for this worker process
+        """
+        self.config = config
+        self.worker_id = worker_id
+        self.output_dir = Path(config.collect.output_dir) / f"worker_{worker_id}"
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+
+        self.save_frequency = config.collect.save_frequency
+        self.token_dim = config.train.model.transformer.token_dim
+        self.max_ships = config.train.model.transformer.max_ships
+        self.num_actions = config.train.model.transformer.num_actions
+
+        self.episodes: list[EpisodeData] = []
+        self.total_steps = 0
+        self.total_sim_time = 0.0
+        self.episodes_collected = 0
+
+    def add_episode(
+        self,
+        tokens_team_0: torch.Tensor,
+        tokens_team_1: torch.Tensor,
+        actions: dict[int, list[torch.Tensor]],
+        rewards: dict[int, list[float]],
+        sim_time: float,
+    ) -> None:
+        """
+        Add an episode to the collection
+
+        Args:
+            tokens_team_0: Token sequence for team 0 (T, max_ships, token_dim)
+            tokens_team_1: Token sequence for team 1 (T, max_ships, token_dim)
+            actions: Dictionary mapping ship_id to list of action tensors
+            rewards: Dictionary mapping team_id to list of rewards per timestep
+            sim_time: Total simulation time for this episode
+        """
+        episode_length = tokens_team_0.shape[0]
+
+        episode = EpisodeData(
+            tokens_team_0=tokens_team_0,
+            tokens_team_1=tokens_team_1,
+            actions=actions,
+            rewards=rewards,
+            episode_length=episode_length,
+        )
+
+        self.episodes.append(episode)
+        self.total_steps += episode_length
+        self.total_sim_time += sim_time
+        self.episodes_collected += 1
+
+        if self.episodes_collected % self.save_frequency == 0:
+            self.save()
+
+    def _aggregate_episodes(self) -> dict[str, Any]:
+        """
+        Aggregate all episode data into single tensors
+
+        Returns:
+            Dictionary containing aggregated data
+        """
+        if not self.episodes:
+            return {}
+
+        num_episodes = len(self.episodes)
+
+        episode_lengths = torch.tensor(
+            [ep.episode_length for ep in self.episodes], dtype=torch.int64
+        )
+
+        total_timesteps = episode_lengths.sum().item()
+
+        tokens_team_0 = torch.zeros(
+            (total_timesteps, self.max_ships, self.token_dim), dtype=torch.float32
+        )
+        tokens_team_1 = torch.zeros(
+            (total_timesteps, self.max_ships, self.token_dim), dtype=torch.float32
+        )
+
+        actions = torch.zeros(
+            (total_timesteps, self.max_ships, self.num_actions), dtype=torch.float32
+        )
+
+        rewards_team_0 = torch.zeros((total_timesteps,), dtype=torch.float32)
+        rewards_team_1 = torch.zeros((total_timesteps,), dtype=torch.float32)
+
+        episode_ids = torch.zeros((total_timesteps,), dtype=torch.int64)
+
+        current_idx = 0
+        for episode_id, episode in enumerate(self.episodes):
+            ep_len = episode.episode_length
+            end_idx = current_idx + ep_len
+
+            tokens_team_0[current_idx:end_idx] = episode.tokens_team_0
+            tokens_team_1[current_idx:end_idx] = episode.tokens_team_1
+
+            for ship_id, ship_actions in episode.actions.items():
+                for t, action in enumerate(ship_actions):
+                    actions[current_idx + t, ship_id] = action
+
+            if 0 in episode.rewards and len(episode.rewards[0]) > 0:
+                reward_tensor_0 = torch.tensor(episode.rewards[0], dtype=torch.float32)
+                # Pad or trim rewards to match episode length
+                if len(reward_tensor_0) < ep_len:
+                    reward_tensor_0 = torch.nn.functional.pad(
+                        reward_tensor_0, (0, ep_len - len(reward_tensor_0))
+                    )
+                elif len(reward_tensor_0) > ep_len:
+                    reward_tensor_0 = reward_tensor_0[:ep_len]
+                rewards_team_0[current_idx:end_idx] = reward_tensor_0
+                
+            if 1 in episode.rewards and len(episode.rewards[1]) > 0:
+                reward_tensor_1 = torch.tensor(episode.rewards[1], dtype=torch.float32)
+                # Pad or trim rewards to match episode length
+                if len(reward_tensor_1) < ep_len:
+                    reward_tensor_1 = torch.nn.functional.pad(
+                        reward_tensor_1, (0, ep_len - len(reward_tensor_1))
+                    )
+                elif len(reward_tensor_1) > ep_len:
+                    reward_tensor_1 = reward_tensor_1[:ep_len]
+                rewards_team_1[current_idx:end_idx] = reward_tensor_1
+
+            episode_ids[current_idx:end_idx] = episode_id
+
+            current_idx = end_idx
+
+        return {
+            "tokens_team_0": tokens_team_0,
+            "tokens_team_1": tokens_team_1,
+            "actions": actions,
+            "rewards_team_0": rewards_team_0,
+            "rewards_team_1": rewards_team_1,
+            "episode_ids": episode_ids,
+            "episode_lengths": episode_lengths,
+            "metadata": {
+                "num_episodes": num_episodes,
+                "total_timesteps": total_timesteps,
+                "total_sim_time": self.total_sim_time,
+                "worker_id": self.worker_id,
+                "max_ships": self.max_ships,
+                "token_dim": self.token_dim,
+                "num_actions": self.num_actions,
+            },
+        }
+
+    def save(self) -> None:
+        """Save collected data to disk"""
+        if not self.episodes:
+            return
+
+        data = self._aggregate_episodes()
+
+        save_path = self.output_dir / f"data_checkpoint_{self.episodes_collected}.pkl"
+
+        with open(save_path, "wb") as f:
+            pickle.dump(data, f)
+
+        print(
+            f"Worker {self.worker_id}: Saved {self.episodes_collected} episodes "
+            f"({self.total_steps} steps) to {save_path}"
+        )
+
+    def finalize(self) -> None:
+        """Final save when collection is complete"""
+        if not self.episodes:
+            return
+
+        self.save()
+
+        data = self._aggregate_episodes()
+        final_path = self.output_dir / "data_final.pkl"
+
+        with open(final_path, "wb") as f:
+            pickle.dump(data, f)
+
+        print(
+            f"Worker {self.worker_id}: Finalized {self.episodes_collected} episodes "
+            f"to {final_path}"
+        )

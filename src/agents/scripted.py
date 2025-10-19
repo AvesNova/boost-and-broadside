@@ -108,6 +108,7 @@ class ShipController(nn.Module):
             ship_id: ID of the ship this controller controls
             config: Configuration for behavior
         """
+        super().__init__()
         self.max_shooting_range = max_shooting_range
         self.angle_threshold = np.deg2rad(angle_threshold)
         self.bullet_speed = bullet_speed

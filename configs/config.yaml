@@ -34,6 +34,10 @@ collect:
     "3v3": 12
     "4v4": 12
   output_dir: "data/bc_pretraining"
+  num_workers: 8
+  save_frequency: 128
+  render_mode: "none"
+  max_episode_length: 512
 
 train:
   use_bc: true
@@ -42,7 +46,7 @@ train:
   
   model:
     transformer:
-      token_dim: 10
+      token_dim: 12
       embed_dim: 64
       num_heads: 4
       num_layers: 3
