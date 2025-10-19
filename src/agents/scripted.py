@@ -41,6 +41,21 @@ class ScriptedAgent(nn.Module):
             rng=rng,
         )
 
+    def forward(
+        self, obs_dict: dict[str, torch.Tensor], ship_ids: list[int]
+    ) -> dict[int, torch.Tensor]:
+        """
+        Forward pass for the agent (required by nn.Module)
+
+        Args:
+            obs_dict: Observation dictionary from environment
+            ship_ids: List of ship IDs to control
+
+        Returns:
+            Dictionary mapping ship_id to action tensor
+        """
+        return self.get_actions(obs_dict, ship_ids)
+
     def get_actions(
         self, obs_dict: dict[str, torch.Tensor], ship_ids: list[int]
     ) -> dict[int, torch.Tensor]:
@@ -49,12 +64,14 @@ class ScriptedAgent(nn.Module):
 
         Args:
             obs_dict: Observation dictionary from environment
+            ship_ids: List of ship IDs to control
 
         Returns:
             Dictionary mapping ship_id to action tensor
         """
         return {
-            self.ship_controller.get_actions(obs_dict, ship_id) for ship_id in ship_ids
+            ship_id: self.ship_controller.get_actions(obs_dict, ship_id)
+            for ship_id in ship_ids
         }
 
 
@@ -116,21 +133,21 @@ class ShipController(nn.Module):
         enemy_candidates = []
 
         # Look through all ships to find ourselves and potential enemies
-        for ship_idx in range(obs_dict["ship_id"].shape[0]):
-            ship_alive = obs_dict["alive"][ship_idx, 0].item()
+        for ship_idx in range(len(obs_dict["ship_id"])):
+            ship_alive = obs_dict["alive"][ship_idx].item()
             if not ship_alive:
                 continue
 
-            current_ship_id = obs_dict["ship_id"][ship_idx, 0].item()
-            current_team_id = obs_dict["team_id"][ship_idx, 0].item()
+            current_ship_id = obs_dict["ship_id"][ship_idx].item()
+            current_team_id = obs_dict["team_id"][ship_idx].item()
 
             if current_ship_id == ship_id:
                 our_ship_data = {
-                    "health": obs_dict["health"][ship_idx, 0].item(),
-                    "power": obs_dict["power"][ship_idx, 0].item(),
-                    "position": obs_dict["position"][ship_idx, 0],
-                    "velocity": obs_dict["velocity"][ship_idx, 0],
-                    "attitude": obs_dict["attitude"][ship_idx, 0],
+                    "health": obs_dict["health"][ship_idx].item(),
+                    "power": obs_dict["power"][ship_idx].item(),
+                    "position": obs_dict["position"][ship_idx],
+                    "velocity": obs_dict["velocity"][ship_idx],
+                    "attitude": obs_dict["attitude"][ship_idx],
                 }
                 our_team_id = current_team_id
             else:
@@ -139,8 +156,8 @@ class ShipController(nn.Module):
                     {
                         "ship_id": current_ship_id,
                         "team_id": current_team_id,
-                        "position": obs_dict["position"][ship_idx, 0],
-                        "velocity": obs_dict["velocity"][ship_idx, 0],
+                        "position": obs_dict["position"][ship_idx],
+                        "velocity": obs_dict["velocity"][ship_idx],
                     }
                 )
 

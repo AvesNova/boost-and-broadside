@@ -451,7 +451,7 @@ class Environment(gym.Env):
         for ship_id, ship in self.state.ships.items():
             local_obs = ship.get_state()
             for key, value in local_obs.items():
-                observations[key][ship_id] = value
+                observations[key][ship_id] = torch.tensor(value)
 
         return observations
 

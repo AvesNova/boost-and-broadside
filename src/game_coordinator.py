@@ -53,11 +53,22 @@ class GameCoordinator:
         teams = {0: [0, 1, 2, 3], 1: [4, 5, 6, 7]}
 
         while not terminated:
-            actions = {
+            team_actions = {
                 team_id: self.agents["scripted"](self.obs_history[-1], ship_ids)
                 for team_id, ship_ids in teams.items()
             }
 
+            # Flatten team actions to ship actions
+            actions = {}
+            for team_id, ship_ids in teams.items():
+                ship_actions = team_actions[team_id]
+                actions.update(ship_actions)
+
             obs, rewards, terminated, _, info = self.env.step(actions=actions)
 
             self.obs_history.append(obs)
+
+    def close(self):
+        """Clean up resources"""
+        if hasattr(self.env, "close"):
+            self.env.close()
