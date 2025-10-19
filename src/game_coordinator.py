@@ -6,12 +6,9 @@ from wandb import agent
 
 from agents.agents import create_agent
 from agents.tokenizer import observation_to_tokens
-import components
-from components.base import Component
-from components.components import create_component
 from env.event import GameEvent
 from env.state import State
-from .env.env import Environment
+from env.env import Environment
 
 
 class GameCoordinator:
@@ -35,18 +32,10 @@ class GameCoordinator:
             for agent_name, agent_config in config.agents.items()
         }
 
-        self.components: dict[str, Component] = {
-            components_name: create_component(**components_config)
-            for components_name, components_config in config.components.items()
-        }
-
         self.obs_history: list[State] = []
 
     def reset(self, game_mode: str):
         obs, _ = self.env.reset(game_mode=game_mode)
-
-        for component in self.components:
-            ...
 
         self.obs_history.append(obs)
         self.all_tokens = {
@@ -59,9 +48,6 @@ class GameCoordinator:
         teams = {0: [0, 1, 2, 3], 1: [4, 5, 6, 7]}
 
         while not terminated:
-            for component in self.components:
-                ...
-            # TODO: We need to handle components
             # TODO: We need to handle configurable agents
 
             team_actions = {
