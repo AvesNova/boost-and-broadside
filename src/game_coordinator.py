@@ -7,6 +7,7 @@ from wandb import agent
 from agents.agents import create_agent
 from components.components import create_component
 from env.event import GameEvent
+from env.state import State
 from .env.env import Environment
 
 
@@ -36,15 +37,27 @@ class GameCoordinator:
             for components_name, components_config in config.components.items()
         }
 
+        self.obs_history: list[State] = []
+
     def reset(self, game_mode: str):
-        self.env.reset(game_mode=game_mode)
+        obs, _ = self.env.reset(game_mode=game_mode)
+
+        self.obs_history.append(obs)
 
     def step(self):
-        actions = {
-            ship_id: torch.zeros((self.env.max_ships,), dtype=torch.float32)
-            for ship_id in range(self.env.max_ships)
-        }
+        # actions = {
+        #     ship_id: torch.zeros((self.env.max_ships,), dtype=torch.float32)
+        #     for ship_id in range(self.env.max_ships)
+        # }
         terminated = False
+        teams = {0: [0, 1, 2, 3], 1: [4, 5, 6, 7]}
 
         while not terminated:
+            actions = {
+                team_id: self.agents["scripted"](self.obs_history[-1], ship_ids)
+                for team_id, ship_ids in teams.items()
+            }
+
             obs, rewards, terminated, _, info = self.env.step(actions=actions)
+
+            self.obs_history.append(obs)
