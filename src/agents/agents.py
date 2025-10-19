@@ -17,4 +17,4 @@ def create_agent(agent_type: str, agent_config: dict) -> nn.Module:
         case "replay_agent":
             return ReplayAgent(**agent_config)
         case _:
-            raise TypeError(f"Invalid agent name: {agent_type}")
+            raise TypeError(f"Unknown agent type: : {agent_type}")

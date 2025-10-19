@@ -268,7 +268,7 @@ class Ship(nn.Module):
         if self.health <= 0:
             self.alive = False
 
-    def get_state(self) -> dict:
+    def get_state(self) -> dict[str, int | float | complex]:
         return {
             "ship_id": self.ship_id,
             "team_id": self.team_id,
@@ -280,7 +280,7 @@ class Ship(nn.Module):
             "speed": self.speed,
             "attitude": self.attitude,
             "is_shooting": self.is_shooting,
-            "token": self.get_token(),
+            # "token": self.get_token(),
         }
 
     def get_token(self) -> torch.Tensor:

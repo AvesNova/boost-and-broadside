@@ -44,7 +44,7 @@ class Environment(gym.Env):
 
         # Initialize state
         self.current_time = 0.0
-        self.state: deque[State] = deque(maxlen=memory_size)
+        self.state: State | None = None
 
     @property
     def renderer(self):
@@ -168,31 +168,32 @@ class Environment(gym.Env):
         self, game_mode: str = "1v1", initial_obs: dict | None = None
     ) -> tuple[dict, dict]:
         self.current_time = 0.0
-        self.state.clear()
+        self.state = None
 
-        if game_mode == "1v1_old":
-            self.state.append(self.one_vs_one_reset())
-        elif game_mode == "1v1":
-            self.state.append(self.n_vs_n_reset(ships_per_team=1))
-        elif game_mode == "2v2":
-            self.state.append(self.n_vs_n_reset(ships_per_team=2))
-        elif game_mode == "3v3":
-            self.state.append(self.n_vs_n_reset(ships_per_team=3))
-        elif game_mode == "4v4":
-            self.state.append(self.n_vs_n_reset(ships_per_team=4))
-        elif game_mode == "nvn":
-            self.state.append(self.n_vs_n_reset(ships_per_team=None))
-        elif game_mode == "reset_from_observation":
-            self.state.append(self.reset_from_observation(initial_obs=initial_obs))
-        else:
-            raise ValueError(f"Unknown game mode: {game_mode}")
+        match game_mode:
+            case "1v1_old":
+                self.state = self.one_vs_one_reset()
+            case "1v1":
+                self.state = self.n_vs_n_reset(ships_per_team=1)
+            case "2v2":
+                self.state = self.n_vs_n_reset(ships_per_team=2)
+            case "3v3":
+                self.state = self.n_vs_n_reset(ships_per_team=3)
+            case "4v4":
+                self.state = self.n_vs_n_reset(ships_per_team=4)
+            case "nvn":
+                self.state = self.n_vs_n_reset(ships_per_team=None)
+            case "reset_from_observation":
+                self.state = self.reset_from_observation(initial_obs=initial_obs)
+            case _:
+                raise ValueError(f"Unknown game mode: {game_mode}")
 
         return self.get_observation(), {}
 
     def reset_from_observation(self, initial_obs: dict) -> tuple[dict, dict]:
         """Reset environment to match the state described by an observation dict"""
         self.current_time = 0.0
-        self.state.clear()
+        self.state = None
 
         ships = {}
 
@@ -242,14 +243,13 @@ class Environment(gym.Env):
 
             ships[ship_id] = ship
 
-        initial_state = State(ships=ships)
-        self.state.append(initial_state)
+        self.state = State(ships=ships)
 
         return self.get_observation(), {}
 
     def render(self, state: State) -> None:
         """Render current game state"""
-        if self.render_mode == "human" and len(self.state) > 0:
+        if self.render_mode == "human" and not self.state in None:
             self.renderer.render(state)
 
     def _wrap_ship_position(self, position: complex) -> complex:
@@ -319,11 +319,7 @@ class Environment(gym.Env):
         team_reward = 0.0
 
         # Calculate tactical rewards (damage/death) from state transitions
-        if len(self.state) >= 2:
-            previous_state = self.state[-2]
-            team_reward += self._calculate_tactical_rewards(
-                current_state, previous_state, team_id
-            )
+        # TODO
 
         # Add episode outcome rewards if the episode has ended
         if episode_ended:
@@ -331,65 +327,13 @@ class Environment(gym.Env):
 
         return team_reward
 
-    def _calculate_tactical_rewards(
-        self, current_state: State, previous_state: State, team_id: int
-    ) -> float:
-        """Calculate damage and death rewards from state transition"""
-        reward = 0.0
+    def _calculate_tactical_rewards(self, team_id: int) -> float:
+        """Calculate damage and death rewards"""
+        ...
 
-        for ship_id, current_ship in current_state.ships.items():
-            if ship_id not in previous_state.ships:
-                continue
-
-            previous_ship = previous_state.ships[ship_id]
-
-            # Death events (±0.1)
-            if previous_ship.alive and not current_ship.alive:
-                if current_ship.team_id == team_id:
-                    reward += RewardConstants.ALLY_DEATH_PENALTY  # Our ship died
-                else:
-                    reward += RewardConstants.ENEMY_DEATH_BONUS  # Enemy ship died
-
-            # Damage events (±0.001 per damage point)
-            elif previous_ship.alive and current_ship.alive:
-                damage_taken = previous_ship.health - current_ship.health
-                if damage_taken > 0:
-                    if current_ship.team_id == team_id:
-                        reward -= (
-                            RewardConstants.DAMAGE_REWARD_SCALE * damage_taken
-                        )  # Our ship took damage
-                    else:
-                        reward += (
-                            RewardConstants.DAMAGE_REWARD_SCALE * damage_taken
-                        )  # Enemy took damage
-
-        return reward
-
-    def _calculate_outcome_rewards(self, final_state: State, team_id: int) -> float:
+    def _calculate_outcome_rewards(self, team_id: int) -> float:
         """Calculate episode outcome rewards (±1.0)"""
-
-        # Count alive ships per team
-        team_ships_alive = {}
-        for ship in final_state.ships.values():
-            if ship.alive:
-                team_ships_alive[ship.team_id] = (
-                    team_ships_alive.get(ship.team_id, 0) + 1
-                )
-
-        our_ships_alive = team_ships_alive.get(team_id, 0)
-        enemy_ships_alive = sum(
-            count for tid, count in team_ships_alive.items() if tid != team_id
-        )
-
-        # Determine outcome
-        if our_ships_alive > 0 and enemy_ships_alive == 0:
-            return RewardConstants.VICTORY_REWARD  # Victory
-        elif our_ships_alive == 0 and enemy_ships_alive > 0:
-            return RewardConstants.DEFEAT_REWARD  # Defeat
-        else:
-            return (
-                RewardConstants.DRAW_REWARD
-            )  # Draw (both dead or timeout with survivors on both sides)
+        ...
 
     def _check_termination(self, state: State) -> tuple[bool, dict[int, bool]]:
         """Check if episode should terminate and which agents are done"""
@@ -411,8 +355,7 @@ class Environment(gym.Env):
                 # User closed window - could handle this gracefully
                 pass
 
-        current_state = deepcopy(self.state[-1])
-        current_state.time += self.agent_dt
+        self.state.time += self.agent_dt
 
         # Run physics substeps with rendering
         for substep in range(self.physics_substeps):
@@ -426,27 +369,20 @@ class Environment(gym.Env):
                 merged_actions = actions
 
             # Physics step
-            self._ship_actions(merged_actions, current_state)
-            self._bullet_actions(current_state.bullets)
-            self._ship_bullet_collisions(current_state.ships, current_state.bullets)
+            self._ship_actions(merged_actions, self.state)
+            self._bullet_actions(self.state.bullets)
+            self._ship_bullet_collisions(self.state.ships, self.state.bullets)
             self.current_time += self.physics_dt
 
             if self.render_mode == "human":
-                self.render(current_state)
-
-        # Save final state
-        self.state.append(current_state)
+                self.render(self.state)
 
         # Calculate termination
-        terminated, done = self._check_termination(current_state)
+        terminated, done = self._check_termination(self.state)
 
         info = {
             "current_time": self.current_time,
-            "active_bullets": current_state.bullets.num_active,
-            "ship_states": {
-                ship_id: ship.get_state()
-                for ship_id, ship in current_state.ships.items()
-            },
+            "active_bullets": self.state.bullets.num_active,
             "individual_done": done,
         }
 
@@ -469,36 +405,26 @@ class Environment(gym.Env):
         if not self.state:
             return observations
 
-        current_state = self.state[-1]
-
-        for ship_id, ship in current_state.ships.items():
+        for ship_id, ship in self.state.ships.items():
             local_obs = ship.get_state()
             for key, value in local_obs.items():
-                if key == "token":
-                    # Token is already a tensor, store directly
-                    observations[key][ship_id, :] = value
-                else:
-                    observations[key][ship_id, :] = torch.tensor(value)
-
-        # Create tokens matrix for transformer model
-        observations["tokens"] = observations["token"]
+                observations[key][ship_id] = value
 
         return observations
 
     def _get_empty_observation(self) -> dict:
         """Empty observation for reset state"""
         return {
-            "ship_id": torch.zeros((self.max_ships, 1), dtype=torch.int64),
-            "team_id": torch.zeros((self.max_ships, 1), dtype=torch.int64),
-            "alive": torch.zeros((self.max_ships, 1), dtype=torch.int64),
-            "health": torch.zeros((self.max_ships, 1), dtype=torch.int64),
-            "power": torch.zeros((self.max_ships, 1), dtype=torch.float32),
-            "position": torch.zeros((self.max_ships, 1), dtype=torch.complex64),
-            "velocity": torch.zeros((self.max_ships, 1), dtype=torch.complex64),
-            "speed": torch.zeros((self.max_ships, 1), dtype=torch.float32),
-            "attitude": torch.zeros((self.max_ships, 1), dtype=torch.complex64),
-            "is_shooting": torch.zeros((self.max_ships, 1), dtype=torch.int64),
-            "token": torch.zeros((self.max_ships, 10), dtype=torch.float32),
+            "ship_id": torch.zeros((self.max_ships), dtype=torch.int64),
+            "team_id": torch.zeros((self.max_ships), dtype=torch.int64),
+            "alive": torch.zeros((self.max_ships), dtype=torch.int64),
+            "health": torch.zeros((self.max_ships), dtype=torch.int64),
+            "power": torch.zeros((self.max_ships), dtype=torch.float32),
+            "position": torch.zeros((self.max_ships), dtype=torch.complex64),
+            "velocity": torch.zeros((self.max_ships), dtype=torch.complex64),
+            "speed": torch.zeros((self.max_ships), dtype=torch.float32),
+            "attitude": torch.zeros((self.max_ships), dtype=torch.complex64),
+            "is_shooting": torch.zeros((self.max_ships), dtype=torch.int64),
         }
 
     @property

@@ -1,9 +1,8 @@
 import torch
+import torch.nn as nn
 
-from .base import Agent
 
-
-class ReplayAgent(Agent):
+class ReplayAgent(nn.Module):
     """Agent that controls all ships from recorded episode data"""
 
     def __init__(

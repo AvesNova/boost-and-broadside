@@ -3,10 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from env.constants import Actions
-from .base import Agent
 
 
-class TeamTransformerAgent(Agent):
+class TeamTransformerAgent(nn.Module):
     """
     Transformer model that outputs actions for all ships in the environment.
     Teams/agents can then select which ships they control.

@@ -1,13 +1,12 @@
 from typing import Any
 import torch
 import torch.nn as nn
-from .base import Agent
 
 
-class HumanAgent(Agent):
+class HumanAgent(nn.Module):
     """Agent that controls exactly 1 ship via human input"""
 
-    def __init__(self, agent_id: str, team_id: int, squad: list[int]):
+    def __init__(self):
         """
         Initialize human agent
 
@@ -16,13 +15,7 @@ class HumanAgent(Agent):
             team_id: Which team this agent belongs to
             squad: List of ship IDs this agent controls (should be exactly 1)
         """
-        super().__init__(agent_id, team_id, squad)
-
-        if len(squad) != 1:
-            raise ValueError("HumanAgent must control exactly 1 ship")
-
-        self.controlled_ship_id = squad[0]
-        self.renderer = None  # Will be set by coordinator
+        super().__init__()
 
     def set_renderer(self, renderer: Any) -> None:
         """Set the renderer for getting human input"""
