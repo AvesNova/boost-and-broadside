@@ -17,17 +17,9 @@ def play(cfg: DictConfig) -> None:
 
     try:
         # Run a single episode
-        print("Running episode...")
-        summary = coordinator.run_episode(num_steps=1000)
+        coordinator.reset(game_mode="nvn")
 
-        # Print summary
-        print(f"Episode completed:")
-        print(f"  Steps: {summary['steps']}")
-        print(
-            f"  Winner: Team {summary['winner']}"
-            if summary["winner"] is not None
-            else "  Winner: Draw"
-        )
+        coordinator.step()
 
     except KeyboardInterrupt:
         print("\nGame interrupted by user")

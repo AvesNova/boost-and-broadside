@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from gymnasium import spaces
 
+from agents import team_transformer_agent
 from env.event import EventType, GameEvent
 
 from .bullets import Bullets
@@ -253,7 +254,7 @@ class Environment(gym.Env):
 
     def render(self, state: State) -> None:
         """Render current game state"""
-        if self.render_mode == "human" and not self.state in None:
+        if self.render_mode == "human" and self.state is not None:
             self.renderer.render(state)
 
     def _wrap_ship_position(self, position: complex) -> complex:
@@ -417,19 +418,22 @@ class Environment(gym.Env):
                 self.render(self.state)
 
         # Calculate termination
-        terminated, done = self._check_termination(self.state)
+        terminated = self._check_termination(self.state)
+
+        rewards = {
+            team_id: self._calculate_team_reward(team_id=team_id) for team_id in (0, 1)
+        }
 
         info = {
             "current_time": self.current_time,
             "active_bullets": self.state.bullets.num_active,
-            "individual_done": done,
         }
 
         # Add human control info if in human mode
         if self.render_mode == "human":
             info["human_controlled"] = list(self.renderer.human_ship_ids)
 
-        return self.get_observation(), {}, terminated, False, info
+        return self.get_observation(), rewards, terminated, False, info
 
     def close(self):
         """Clean up resources"""

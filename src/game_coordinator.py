@@ -6,6 +6,7 @@ from wandb import agent
 
 from agents.agents import create_agent
 from components.components import create_component
+from env.event import GameEvent
 from .env.env import Environment
 
 
@@ -35,6 +36,15 @@ class GameCoordinator:
             for components_name, components_config in config.components.items()
         }
 
-        def reset(self): ...
+    def reset(self, game_mode: str):
+        self.env.reset(game_mode=game_mode)
 
-        def step(self): ...
+    def step(self):
+        actions = {
+            ship_id: torch.zeros((self.env.max_ships,), dtype=torch.float32)
+            for ship_id in range(self.env.max_ships)
+        }
+        terminated = False
+
+        while not terminated:
+            obs, rewards, terminated, _, info = self.env.step(actions=actions)
