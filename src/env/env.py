@@ -5,6 +5,8 @@ import numpy as np
 import torch
 from gymnasium import spaces
 
+from env.event import EventType, GameEvent
+
 from .bullets import Bullets
 from .ship import Ship, default_ship_config
 from .renderer import create_renderer
@@ -45,6 +47,7 @@ class Environment(gym.Env):
         # Initialize state
         self.current_time = 0.0
         self.state: State | None = None
+        self.events: list[GameEvent] = []
 
     @property
     def renderer(self):
@@ -169,6 +172,7 @@ class Environment(gym.Env):
     ) -> tuple[dict, dict]:
         self.current_time = 0.0
         self.state = None
+        self.events = []
 
         match game_mode:
             case "1v1_old":
@@ -301,31 +305,56 @@ class Environment(gym.Env):
             )
 
             if np.any(hit_mask):
-                ship.damage_ship(np.sum(hit_mask) * ship.config.bullet_damage)
+                damage = np.sum(hit_mask) * ship.config.bullet_damage
+                ship.damage_ship(damage)
+
+                self.events.append(
+                    GameEvent(
+                        event_type=EventType.DAMAGE,
+                        team_id=ship.team_id,
+                        ship_id=ship.ship_id,
+                        amount=damage,
+                    )
+                )
+
+                if not ship.alive:
+                    self.events.append(
+                        GameEvent(
+                            event_type=EventType.DEATH,
+                            team_id=ship.team_id,
+                            ship_id=ship.ship_id,
+                            amount=1,
+                        )
+                    )
 
                 hit_indices = np.where(hit_mask)[0]
                 for idx in reversed(sorted(hit_indices)):
                     bullets.remove_bullet(idx)
 
-    def _calculate_team_reward(
-        self, current_state: State, team_id: int, episode_ended: bool = False
-    ) -> float:
-        """
-        Calculate reward for a specific team using the new reward structure:
-        - Victory/Defeat: ±1.0 (episode end only)
-        - Ship Death: ±0.1 (ally death = -0.1, enemy death = +0.1)
-        - Damage: ±0.001 per damage point (dealt = +0.001, taken = -0.001)
-        """
-        team_reward = 0.0
+    def _calculate_team_reward(self, team_id: int) -> float:
+        reward = 0
 
-        # Calculate tactical rewards (damage/death) from state transitions
-        # TODO
+        for event in self.events:
+            match event.event_type:
+                case EventType.DAMAGE:
+                    if event.team_id == team_id:
+                        reward += event.amount * RewardConstants.ALLY_DAMAGE
+                    else:
+                        reward += event.amount * RewardConstants.ENEMY_DAMAGE
+                case EventType.DEATH:
+                    if event.team_id == team_id:
+                        reward += event.amount * RewardConstants.ALLY_DEATH
+                    else:
+                        reward += event.amount * RewardConstants.ENEMY_DEATH
+                case EventType.WIN:
+                    if event.team_id == team_id:
+                        reward += RewardConstants.VICTORY
+                    else:
+                        reward += RewardConstants.DEFEAT
+                case EventType.TIE:
+                    reward += RewardConstants.DRAW
 
-        # Add episode outcome rewards if the episode has ended
-        if episode_ended:
-            team_reward += self._calculate_outcome_rewards(current_state, team_id)
-
-        return team_reward
+        return reward
 
     def _calculate_tactical_rewards(self, team_id: int) -> float:
         """Calculate damage and death rewards"""
@@ -335,19 +364,29 @@ class Environment(gym.Env):
         """Calculate episode outcome rewards (±1.0)"""
         ...
 
-    def _check_termination(self, state: State) -> tuple[bool, dict[int, bool]]:
+    def _check_termination(self, state: State) -> bool:
         """Check if episode should terminate and which agents are done"""
         alive_ships = [ship for ship in state.ships.values() if ship.alive]
         alive_teams = set(ship.team_id for ship in alive_ships)
 
-        terminated = len(alive_teams) <= 1
-        done = {ship_id: not ship.alive for ship_id, ship in state.ships.items()}
+        len_alive_teams = len(alive_teams)
 
-        return terminated, done
+        if len_alive_teams == 0:
+            self.events.append(GameEvent(event_type=EventType.TIE))
+            return True
+
+        if len_alive_teams == 1:
+            (alive_team,) = alive_teams
+            self.events.append(GameEvent(event_type=EventType.WIN, team_id=alive_team))
+            return True
+
+        return False
 
     def step(
         self, actions: dict[int, torch.Tensor]
     ) -> tuple[dict, dict[int, float], bool, bool, dict]:
+
+        self.events = []
 
         # Handle events if in human mode
         if self.render_mode == "human":

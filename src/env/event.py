@@ -6,14 +6,12 @@ class EventType(StrEnum):
     DAMAGE = auto()
     DEATH = auto()
     WIN = auto()
-    LOSS = auto()
+    TIE = auto()
 
 
 @dataclass
-class Event:
+class GameEvent:
     event_type: EventType
-    source_ship: int | None = None
-    target_ship: int | None = None
-    source_team: int | None = None
-    target_team: int | None = None
+    team_id: int | None = None
+    ship_id: int | None = None
     amount: float | None = None  # damage, healing, etc.
