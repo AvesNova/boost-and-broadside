@@ -1,6 +1,8 @@
 """Data collector for behavioral cloning training data"""
 
 import pickle
+import yaml
+from datetime import datetime
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -23,17 +25,21 @@ class EpisodeData:
 class DataCollector:
     """Collects and saves episode data for behavioral cloning"""
 
-    def __init__(self, config: DictConfig, worker_id: int):
+    def __init__(self, config: DictConfig, worker_id: int, run_timestamp: str):
         """
         Initialize data collector
 
         Args:
             config: Configuration dictionary with collect settings
             worker_id: Unique identifier for this worker process
+            run_timestamp: Timestamp string for this run
         """
         self.config = config
         self.worker_id = worker_id
-        self.output_dir = Path(config.collect.output_dir) / f"worker_{worker_id}"
+        self.run_timestamp = run_timestamp
+        
+        run_dir = Path(config.collect.output_dir) / run_timestamp
+        self.output_dir = run_dir / f"worker_{worker_id}"
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self.save_frequency = config.collect.save_frequency
@@ -84,10 +90,10 @@ class DataCollector:
 
     def _aggregate_episodes(self) -> dict[str, Any]:
         """
-        Aggregate all episode data into single tensors
+        Aggregate all episode data into single tensors organized by team
 
         Returns:
-            Dictionary containing aggregated data
+            Dictionary containing aggregated data organized by team
         """
         if not self.episodes:
             return {}
@@ -107,7 +113,10 @@ class DataCollector:
             (total_timesteps, self.max_ships, self.token_dim), dtype=torch.float32
         )
 
-        actions = torch.zeros(
+        actions_team_0 = torch.zeros(
+            (total_timesteps, self.max_ships, self.num_actions), dtype=torch.float32
+        )
+        actions_team_1 = torch.zeros(
             (total_timesteps, self.max_ships, self.num_actions), dtype=torch.float32
         )
 
@@ -126,11 +135,15 @@ class DataCollector:
 
             for ship_id, ship_actions in episode.actions.items():
                 for t, action in enumerate(ship_actions):
-                    actions[current_idx + t, ship_id] = action
+                    if ship_id < self.max_ships // 2:
+                        actions_team_0[current_idx + t, ship_id] = action
+                    else:
+                        actions_team_1[
+                            current_idx + t, ship_id - self.max_ships // 2
+                        ] = action
 
             if 0 in episode.rewards and len(episode.rewards[0]) > 0:
                 reward_tensor_0 = torch.tensor(episode.rewards[0], dtype=torch.float32)
-                # Pad or trim rewards to match episode length
                 if len(reward_tensor_0) < ep_len:
                     reward_tensor_0 = torch.nn.functional.pad(
                         reward_tensor_0, (0, ep_len - len(reward_tensor_0))
@@ -138,10 +151,9 @@ class DataCollector:
                 elif len(reward_tensor_0) > ep_len:
                     reward_tensor_0 = reward_tensor_0[:ep_len]
                 rewards_team_0[current_idx:end_idx] = reward_tensor_0
-                
+
             if 1 in episode.rewards and len(episode.rewards[1]) > 0:
                 reward_tensor_1 = torch.tensor(episode.rewards[1], dtype=torch.float32)
-                # Pad or trim rewards to match episode length
                 if len(reward_tensor_1) < ep_len:
                     reward_tensor_1 = torch.nn.functional.pad(
                         reward_tensor_1, (0, ep_len - len(reward_tensor_1))
@@ -155,11 +167,16 @@ class DataCollector:
             current_idx = end_idx
 
         return {
-            "tokens_team_0": tokens_team_0,
-            "tokens_team_1": tokens_team_1,
-            "actions": actions,
-            "rewards_team_0": rewards_team_0,
-            "rewards_team_1": rewards_team_1,
+            "team_0": {
+                "tokens": tokens_team_0,
+                "actions": actions_team_0,
+                "rewards": rewards_team_0,
+            },
+            "team_1": {
+                "tokens": tokens_team_1,
+                "actions": actions_team_1,
+                "rewards": rewards_team_1,
+            },
             "episode_ids": episode_ids,
             "episode_lengths": episode_lengths,
             "metadata": {
@@ -167,6 +184,7 @@ class DataCollector:
                 "total_timesteps": total_timesteps,
                 "total_sim_time": self.total_sim_time,
                 "worker_id": self.worker_id,
+                "run_timestamp": self.run_timestamp,
                 "max_ships": self.max_ships,
                 "token_dim": self.token_dim,
                 "num_actions": self.num_actions,

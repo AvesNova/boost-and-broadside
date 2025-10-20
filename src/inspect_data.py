@@ -30,7 +30,16 @@ def inspect_data_file(file_path: Path) -> None:
     for key, value in data.items():
         if key == "metadata":
             continue
-        if isinstance(value, torch.Tensor):
+        if isinstance(value, dict):
+            print(f"  {key}:")
+            for subkey, subvalue in value.items():
+                if isinstance(subvalue, torch.Tensor):
+                    print(
+                        f"    {subkey}: shape={subvalue.shape}, dtype={subvalue.dtype}"
+                    )
+                else:
+                    print(f"    {subkey}: type={type(subvalue)}")
+        elif isinstance(value, torch.Tensor):
             print(f"  {key}: shape={value.shape}, dtype={value.dtype}")
         else:
             print(f"  {key}: type={type(value)}")
@@ -43,12 +52,17 @@ def inspect_data_file(file_path: Path) -> None:
         print(f"  Mean: {lengths.float().mean().item():.2f}")
         print(f"  Median: {lengths.float().median().item():.0f}")
 
-    if "rewards_team_0" in data and "rewards_team_1" in data:
-        r0 = data["rewards_team_0"]
-        r1 = data["rewards_team_1"]
-        print(f"\nRewards:")
-        print(f"  Team 0 - Mean: {r0.mean().item():.4f}, Sum: {r0.sum().item():.2f}")
-        print(f"  Team 1 - Mean: {r1.mean().item():.4f}, Sum: {r1.sum().item():.2f}")
+    if "team_0" in data and "team_1" in data:
+        if "rewards" in data["team_0"] and "rewards" in data["team_1"]:
+            r0 = data["team_0"]["rewards"]
+            r1 = data["team_1"]["rewards"]
+            print(f"\nRewards:")
+            print(
+                f"  Team 0 - Mean: {r0.mean().item():.4f}, Sum: {r0.sum().item():.2f}"
+            )
+            print(
+                f"  Team 1 - Mean: {r1.mean().item():.4f}, Sum: {r1.sum().item():.2f}"
+            )
 
 
 def main() -> None:

@@ -1,7 +1,7 @@
-mode: play
+mode: collect
 
 environment:
-  render_mode: "human"
+  render_mode: "none"
   world_size: [1200, 800]
   memory_size: 2
   max_ships: 8
@@ -19,23 +19,16 @@ agents:
       radius_multiplier: 1.5
       world_size: [1200, 800]
 
-components:
-  renderer:
-    component_type: "renderer"
-    component_config:
-      render_mode: "human"
-      target_fps: 60
-
 collect:
   teams: [scripted, scripted]
   episodes_per_mode:
-    "1v1": 2048
-    "2v2": 2048
-    "3v3": 2048
-    "4v4": 2048
+    "1v1": 2
+    "2v2": 2
+    "3v3": 2
+    "4v4": 2
   output_dir: "data/bc_pretraining"
-  num_workers: 8
-  save_frequency: 128
+  num_workers: 2
+  save_frequency: 4
   render_mode: "none"
   max_episode_length: 512
 

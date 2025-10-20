@@ -1,6 +1,11 @@
 import multiprocessing as mp
+import pickle
+import yaml
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
+import torch
 from omegaconf import DictConfig, OmegaConf
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 
@@ -8,19 +13,22 @@ from src.data_collector import DataCollector
 from src.game_coordinator import GameCoordinator
 
 
-def collect_worker(worker_id: int, cfg_dict: dict[str, Any]) -> None:
+def collect_worker(
+    worker_id: int, cfg_dict: dict[str, Any], run_timestamp: str
+) -> None:
     """
     Worker function for collecting data in a separate process
 
     Args:
         worker_id: Unique identifier for this worker
         cfg_dict: Configuration dictionary (serialized)
+        run_timestamp: Timestamp string for this run
     """
     cfg = OmegaConf.create(cfg_dict)
-    
+
     print(f"Worker {worker_id}: Starting data collection...")
 
-    collector = DataCollector(cfg, worker_id=worker_id)
+    collector = DataCollector(cfg, worker_id=worker_id, run_timestamp=run_timestamp)
     coordinator = GameCoordinator(cfg, render_mode=cfg.collect.render_mode)
 
     episodes_per_mode = cfg.collect.episodes_per_mode
@@ -69,6 +77,126 @@ def collect_worker(worker_id: int, cfg_dict: dict[str, Any]) -> None:
         print(f"Worker {worker_id}: Data collection complete")
 
 
+def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> None:
+    """
+    Aggregate all worker data into a single file
+
+    Args:
+        cfg: Configuration dictionary
+        run_timestamp: Timestamp string for this run
+    """
+    run_dir = Path(cfg.collect.output_dir) / run_timestamp
+    worker_dirs = sorted(run_dir.glob("worker_*"))
+
+    if not worker_dirs:
+        print("No worker data found to aggregate")
+        return
+
+    print(f"\nAggregating data from {len(worker_dirs)} workers...")
+
+    all_team_0_tokens = []
+    all_team_0_actions = []
+    all_team_0_rewards = []
+    all_team_1_tokens = []
+    all_team_1_actions = []
+    all_team_1_rewards = []
+    all_episode_ids = []
+    all_episode_lengths = []
+
+    total_episodes = 0
+    total_timesteps = 0
+    total_sim_time = 0.0
+    worker_metadata = []
+
+    for worker_dir in worker_dirs:
+        final_data_path = worker_dir / "data_final.pkl"
+        if not final_data_path.exists():
+            print(f"Warning: {final_data_path} not found, skipping")
+            continue
+
+        with open(final_data_path, "rb") as f:
+            data = pickle.load(f)
+
+        episode_offset = total_episodes
+        adjusted_episode_ids = data["episode_ids"] + episode_offset
+
+        all_team_0_tokens.append(data["team_0"]["tokens"])
+        all_team_0_actions.append(data["team_0"]["actions"])
+        all_team_0_rewards.append(data["team_0"]["rewards"])
+        all_team_1_tokens.append(data["team_1"]["tokens"])
+        all_team_1_actions.append(data["team_1"]["actions"])
+        all_team_1_rewards.append(data["team_1"]["rewards"])
+        all_episode_ids.append(adjusted_episode_ids)
+        all_episode_lengths.append(data["episode_lengths"])
+
+        total_episodes += data["metadata"]["num_episodes"]
+        total_timesteps += data["metadata"]["total_timesteps"]
+        total_sim_time += data["metadata"]["total_sim_time"]
+        worker_metadata.append(data["metadata"])
+
+    aggregated_data = {
+        "team_0": {
+            "tokens": torch.cat(all_team_0_tokens, dim=0),
+            "actions": torch.cat(all_team_0_actions, dim=0),
+            "rewards": torch.cat(all_team_0_rewards, dim=0),
+        },
+        "team_1": {
+            "tokens": torch.cat(all_team_1_tokens, dim=0),
+            "actions": torch.cat(all_team_1_actions, dim=0),
+            "rewards": torch.cat(all_team_1_rewards, dim=0),
+        },
+        "episode_ids": torch.cat(all_episode_ids, dim=0),
+        "episode_lengths": torch.cat(all_episode_lengths, dim=0),
+        "metadata": {
+            "num_episodes": total_episodes,
+            "total_timesteps": total_timesteps,
+            "total_sim_time": total_sim_time,
+            "num_workers": len(worker_dirs),
+            "run_timestamp": run_timestamp,
+            "max_ships": worker_metadata[0]["max_ships"],
+            "token_dim": worker_metadata[0]["token_dim"],
+            "num_actions": worker_metadata[0]["num_actions"],
+            "worker_metadata": worker_metadata,
+        },
+    }
+
+    aggregated_pkl_path = run_dir / "aggregated_data.pkl"
+    with open(aggregated_pkl_path, "wb") as f:
+        pickle.dump(aggregated_data, f)
+
+    print(f"Saved aggregated data to {aggregated_pkl_path}")
+
+    metadata_yaml = {
+        "num_episodes": int(total_episodes),
+        "total_timesteps": int(total_timesteps),
+        "total_sim_time": float(total_sim_time),
+        "num_workers": len(worker_dirs),
+        "run_timestamp": run_timestamp,
+        "max_ships": int(worker_metadata[0]["max_ships"]),
+        "token_dim": int(worker_metadata[0]["token_dim"]),
+        "num_actions": int(worker_metadata[0]["num_actions"]),
+        "data_shapes": {
+            "team_0_tokens": list(aggregated_data["team_0"]["tokens"].shape),
+            "team_0_actions": list(aggregated_data["team_0"]["actions"].shape),
+            "team_0_rewards": list(aggregated_data["team_0"]["rewards"].shape),
+            "team_1_tokens": list(aggregated_data["team_1"]["tokens"].shape),
+            "team_1_actions": list(aggregated_data["team_1"]["actions"].shape),
+            "team_1_rewards": list(aggregated_data["team_1"]["rewards"].shape),
+            "episode_ids": list(aggregated_data["episode_ids"].shape),
+            "episode_lengths": list(aggregated_data["episode_lengths"].shape),
+        },
+    }
+
+    metadata_yaml_path = run_dir / "metadata.yaml"
+    with open(metadata_yaml_path, "w") as f:
+        yaml.dump(metadata_yaml, f, default_flow_style=False)
+
+    print(f"Saved metadata to {metadata_yaml_path}")
+    print(
+        f"\nAggregation complete: {total_episodes} episodes, {total_timesteps} timesteps"
+    )
+
+
 def collect(cfg: DictConfig) -> None:
     """
     Collect training data from agent gameplay using parallel workers
@@ -77,25 +205,34 @@ def collect(cfg: DictConfig) -> None:
         cfg: Configuration dictionary
     """
     num_workers = cfg.collect.num_workers
-    
+    run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
     if num_workers == 1:
-        print("Starting single-worker data collection...")
-        collect_worker(0, OmegaConf.to_container(cfg, resolve=True))
+        print(f"Starting single-worker data collection (run: {run_timestamp})...")
+        collect_worker(0, OmegaConf.to_container(cfg, resolve=True), run_timestamp)
     else:
-        print(f"Starting parallel data collection with {num_workers} workers...")
-        
+        print(
+            f"Starting parallel data collection with {num_workers} workers "
+            f"(run: {run_timestamp})..."
+        )
+
         cfg_dict = OmegaConf.to_container(cfg, resolve=True)
-        
+
         with mp.Pool(processes=num_workers) as pool:
             try:
                 pool.starmap(
                     collect_worker,
-                    [(worker_id, cfg_dict) for worker_id in range(num_workers)],
+                    [
+                        (worker_id, cfg_dict, run_timestamp)
+                        for worker_id in range(num_workers)
+                    ],
                 )
             except KeyboardInterrupt:
                 print("\nTerminating all workers...")
                 pool.terminate()
                 pool.join()
                 raise
-            
+
         print(f"\nAll {num_workers} workers completed!")
+
+    aggregate_worker_data(cfg, run_timestamp)
