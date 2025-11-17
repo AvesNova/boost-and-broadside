@@ -42,7 +42,7 @@ collect:
 train:
   use_bc: true
   use_rl: true
-  bc_data_path: ""
+  bc_data_path: "data/bc_pretraining/20251020_022704/aggregated_data.pkl"
   
   model:
     transformer:

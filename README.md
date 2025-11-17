@@ -165,3 +165,9 @@ data["metadata"]: Run info, dimensions, worker details
   - `aggregated_data.pkl`: Combined data from all workers
   - `metadata.yaml`: Run metadata and data shapes
 - `outputs/`: Hydra auto-generates timestamped output directories
+
+
+### Next Steps
+
+Implement the BC training
+Implement the RL training
