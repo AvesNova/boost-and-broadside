@@ -13,7 +13,7 @@ from src.agents.team_transformer_agent import TeamTransformerModel
 from src.train.data_loader import load_bc_data, create_bc_data_loader
 
 
-def train(cfg: DictConfig) -> None:
+def train_bc(cfg: DictConfig) -> Path | None:
     """
     Main training function for behavioral cloning.
 
@@ -69,7 +69,7 @@ def train(cfg: DictConfig) -> None:
 
     # Setup logging and output directory
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_dir = Path("models") / f"run_{timestamp}"
+    run_dir = Path("models/bc") / f"run_{timestamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
     
     print(f"Output directory: {run_dir}")
@@ -259,3 +259,130 @@ def train(cfg: DictConfig) -> None:
     writer.close()
 
     print("BC training completed!")
+    return run_dir / "final_bc_model.pth"
+
+
+def train_rl(cfg: DictConfig, pretrained_model_path: Path | None = None) -> None:
+    """
+    RL training using Stable Baselines3 PPO.
+    
+    Args:
+        cfg: Configuration dictionary
+        pretrained_model_path: Path to pretrained BC model weights (optional)
+    """
+    from stable_baselines3 import PPO
+    from stable_baselines3.common.callbacks import CheckpointCallback
+    from env.sb3_wrapper import SB3Wrapper
+    from agents.sb3_adapter import TeamTransformerSB3Policy
+    from env.env import Environment
+
+    print("\nStarting RL training...")
+    
+    rl_config = cfg.train.rl
+    
+    # Create environment
+    # We need to instantiate the base Environment first
+    env_config = dict(cfg.environment)
+    env_config["render_mode"] = "none" # Force no rendering for training
+    
+    base_env = Environment(**env_config)
+    env = SB3Wrapper(base_env, cfg)
+    
+    # Setup model config for policy
+    model_config = OmegaConf.to_container(cfg.train.model.transformer, resolve=True)
+    
+    # Initialize PPO
+    # We use our custom policy
+    policy_kwargs = {
+        "model_config": model_config,
+    }
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = Path("models/rl") / f"run_{timestamp}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    print(f"RL Output directory: {run_dir}")
+    
+    model = PPO(
+        TeamTransformerSB3Policy,
+        env,
+        learning_rate=rl_config.learning_rate,
+        n_steps=rl_config.n_steps,
+        batch_size=rl_config.batch_size,
+        n_epochs=rl_config.n_epochs,
+        gamma=rl_config.gamma,
+        gae_lambda=rl_config.gae_lambda,
+        clip_range=rl_config.clip_range,
+        ent_coef=rl_config.ent_coef,
+        vf_coef=rl_config.vf_coef,
+        max_grad_norm=rl_config.max_grad_norm,
+        policy_kwargs=policy_kwargs,
+        tensorboard_log=str(run_dir),
+        verbose=1,
+        device="cuda" if torch.cuda.is_available() else "cpu"
+    )
+    
+    # Load pretrained weights if available
+    if pretrained_model_path and pretrained_model_path.exists():
+        print(f"Loading pretrained BC weights from {pretrained_model_path}")
+        try:
+            state_dict = torch.load(pretrained_model_path, map_location=model.device)
+            model.policy.transformer_model.load_state_dict(state_dict)
+            print("Successfully loaded pretrained weights")
+        except Exception as e:
+            print(f"Failed to load pretrained weights: {e}")
+            
+    # Callbacks
+    checkpoint_callback = CheckpointCallback(
+        save_freq=rl_config.n_steps,
+        save_path=str(run_dir / "checkpoints"),
+        name_prefix="rl_model"
+    )
+    
+    # Train
+    total_timesteps = rl_config.get("total_timesteps", 1000000)
+    print(f"Training for {total_timesteps} timesteps...")
+    
+    try:
+        model.learn(
+            total_timesteps=total_timesteps,
+            callback=checkpoint_callback,
+            progress_bar=True
+        )
+    except KeyboardInterrupt:
+        print("Training interrupted by user")
+    finally:
+        # Save final model
+        final_path = run_dir / "final_rl_model.zip"
+        model.save(final_path)
+        print(f"Saved final RL model to {final_path}")
+        
+        # Also save the inner transformer state dict for compatibility with our agents
+        torch.save(
+            model.policy.transformer_model.state_dict(),
+            run_dir / "final_rl_transformer.pth"
+        )
+        print(f"Saved transformer weights to {run_dir / 'final_rl_transformer.pth'}")
+        
+        env.close()
+
+
+def train(cfg: DictConfig) -> None:
+    """
+    Main training function.
+    """
+    bc_model_path = None
+    
+    # BC Training
+    if cfg.train.use_bc:
+        bc_model_path = train_bc(cfg)
+        
+    # RL Training
+    if cfg.train.use_rl:
+        # Use BC model if available, otherwise check config for specific path
+        if bc_model_path is None and cfg.train.bc_data_path:
+             # This logic is a bit flawed, bc_data_path is for data.
+             # We might want a config for pretrained model path if skipping BC.
+             # For now, we just pass bc_model_path.
+             pass
+             
+        train_rl(cfg, pretrained_model_path=bc_model_path)

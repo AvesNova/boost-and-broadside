@@ -23,19 +23,34 @@ def create_agent(agent_type: str, agent_config: dict) -> nn.Module:
             return DummyAgent(**agent_config)
         case "random":
             return RandomAgent(**agent_config)
-        case "most_recent":
-            model_path = find_most_recent_model()
+        case "most_recent_bc":
+            model_path = find_most_recent_model("bc")
             if not model_path:
-                print("Warning: No model found for 'most_recent' agent. Using random initialization.")
+                print("Warning: No BC model found for 'most_recent_bc' agent. Using random initialization.")
             
-            # Copy config to avoid mutating original
             config = agent_config.copy()
             config["model_path"] = model_path
             return TeamTransformerAgent(**config)
-        case "best":
-            model_path = find_best_model()
+        case "most_recent_rl":
+            model_path = find_most_recent_model("rl")
             if not model_path:
-                print("Warning: No model found for 'best' agent. Using random initialization.")
+                print("Warning: No RL model found for 'most_recent_rl' agent. Using random initialization.")
+            
+            config = agent_config.copy()
+            config["model_path"] = model_path
+            return TeamTransformerAgent(**config)
+        case "best_bc":
+            model_path = find_best_model("bc")
+            if not model_path:
+                print("Warning: No BC model found for 'best_bc' agent. Using random initialization.")
+            
+            config = agent_config.copy()
+            config["model_path"] = model_path
+            return TeamTransformerAgent(**config)
+        case "best_rl":
+            model_path = find_best_model("rl")
+            if not model_path:
+                print("Warning: No RL model found for 'best_rl' agent. Using random initialization.")
             
             config = agent_config.copy()
             config["model_path"] = model_path
