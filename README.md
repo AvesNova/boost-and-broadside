@@ -33,8 +33,11 @@ uv run main.py mode=train
 # Run all tests
 uv run pytest
 
-# Run tests in a specific directory
-uv run pytest tests/
+# Run component tests
+uv run pytest tests/components/
+
+# Run pipeline tests
+uv run pytest tests/pipelines/
 
 # Run with verbose output
 uv run pytest -v
