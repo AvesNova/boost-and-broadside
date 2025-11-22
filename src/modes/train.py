@@ -4,8 +4,10 @@ import torch.nn as nn
 import torch.optim as optim
 from pathlib import Path
 from typing import Dict, Any
-from omegaconf import DictConfig
+from datetime import datetime
+from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
 
 from src.agents.team_transformer_agent import TeamTransformerModel
 from src.train.data_loader import load_bc_data, create_bc_data_loader
@@ -65,6 +67,20 @@ def train(cfg: DictConfig) -> None:
     policy_criterion = nn.CrossEntropyLoss()
     value_criterion = nn.MSELoss()
 
+    # Setup logging and output directory
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = Path("models") / f"run_{timestamp}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    
+    print(f"Output directory: {run_dir}")
+    
+    # TensorBoard writer
+    writer = SummaryWriter(log_dir=str(run_dir))
+    
+    csv_path = run_dir / "training_log.csv"
+    with open(csv_path, "w") as f:
+        f.write("epoch,train_loss,train_policy_loss,train_value_loss,train_acc,val_loss,val_acc\n")
+
     # Training loop
     epochs = bc_config.epochs
     best_val_loss = float("inf")
@@ -109,18 +125,7 @@ def train(cfg: DictConfig) -> None:
 
             # Compute losses
             p_loss = policy_criterion(action_logits_flat, action_targets_flat)
-            v_loss = value_criterion(values, returns) # Broadcasting returns to match values shape if needed? No, returns is (batch, max_ships) actually?
-            # Wait, returns from data_loader is (batch, max_ships) because it matches rewards shape.
-            # Let's check data_loader.py again. 
-            # rewards is (T*max_ships) flattened? No.
-            # In data_loader: rewards = torch.cat([team_0["rewards"], ...])
-            # team_0["rewards"] is (T,). Wait.
-            # Let's check README.md: data["team_0"]["rewards"] is Reward sequences (T,).
-            # But tokens is (T, max_ships, token_dim).
-            # So rewards is per timestep, shared by all ships?
-            # If so, returns is (T,).
-            # But values is (batch, 1) -> (batch,).
-            # So shapes match.
+            v_loss = value_criterion(values, returns)
             
             loss = (bc_config.policy_weight * p_loss) + (bc_config.value_weight * v_loss)
 
@@ -196,6 +201,8 @@ def train(cfg: DictConfig) -> None:
 
         # Calculate epoch statistics
         avg_train_loss = train_loss / len(train_loader)
+        avg_train_policy_loss = train_policy_loss / len(train_loader)
+        avg_train_value_loss = train_value_loss / len(train_loader)
         avg_val_loss = val_loss / len(val_loader)
         train_accuracy = 100.0 * train_correct / train_total
         val_accuracy = 100.0 * val_correct / val_total
@@ -204,20 +211,51 @@ def train(cfg: DictConfig) -> None:
         print(f"  Train Loss: {avg_train_loss:.4f}, Train Acc: {train_accuracy:.2f}%")
         print(f"  Val Loss: {avg_val_loss:.4f}, Val Acc: {val_accuracy:.2f}%")
 
+        # Log to CSV
+        with open(csv_path, "a") as f:
+            f.write(f"{epoch+1},{avg_train_loss:.6f},{avg_train_policy_loss:.6f},{avg_train_value_loss:.6f},{train_accuracy:.2f},{avg_val_loss:.6f},{val_accuracy:.2f}\n")
+
+        # Log to TensorBoard
+        writer.add_scalar("Loss/train", avg_train_loss, epoch)
+        writer.add_scalar("Loss/train_policy", avg_train_policy_loss, epoch)
+        writer.add_scalar("Loss/train_value", avg_train_value_loss, epoch)
+        writer.add_scalar("Accuracy/train", train_accuracy, epoch)
+        writer.add_scalar("Loss/val", avg_val_loss, epoch)
+        writer.add_scalar("Accuracy/val", val_accuracy, epoch)
+
         # Early stopping check
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             patience_counter = 0
 
             # Save best model
-            model_path = Path("models")
-            model_path.mkdir(exist_ok=True)
-            torch.save(model.state_dict(), model_path / "best_bc_model.pth")
+            torch.save(model.state_dict(), run_dir / "best_bc_model.pth")
             print("  Saved best model")
         else:
             patience_counter += 1
             if patience_counter >= bc_config.early_stopping_patience:
                 print(f"Early stopping triggered after {epoch+1} epochs")
                 break
+
+    # Save final model
+    torch.save(model.state_dict(), run_dir / "final_bc_model.pth")
+    
+    # Save metadata
+    metadata_path = run_dir / "model_metadata.yaml"
+    metadata = {
+        "config": OmegaConf.to_container(cfg, resolve=True),
+        "final_metrics": {
+            "train_loss": avg_train_loss,
+            "val_loss": avg_val_loss,
+            "train_accuracy": train_accuracy,
+            "val_accuracy": val_accuracy,
+            "epochs_trained": epoch + 1
+        }
+    }
+    
+    OmegaConf.save(OmegaConf.create(metadata), metadata_path)
+    
+    # Close writer
+    writer.close()
 
     print("BC training completed!")

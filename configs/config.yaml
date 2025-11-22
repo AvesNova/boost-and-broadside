@@ -57,7 +57,7 @@ train:
 
   bc:
     learning_rate: 0.001
-    batch_size: 128
+    batch_size: 16384
     epochs: 50
     validation_split: 0.2
     early_stopping_patience: 10
@@ -67,7 +67,7 @@ train:
   rl:
     learning_rate: 0.0003
     n_steps: 4096
-    batch_size: 128
+    batch_size: 16384
     n_epochs: 10
     gamma: 0.99
     gae_lambda: 0.95
