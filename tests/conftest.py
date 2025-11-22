@@ -62,7 +62,7 @@ def default_config():
             "batch_size": 32,
             "model": {
                 "transformer": {
-                    "token_dim": 10,
+                    "token_dim": 12,
                     "max_ships": 4,
                     "num_actions": 6,
                     "embed_dim": 16,

@@ -16,7 +16,7 @@ def test_train_pipeline(default_config, tmp_path):
         "batch_size": 2,
         "learning_rate": 1e-4,
         "epochs": 1,
-        "validation_split": 0.0, # No validation for simple test
+        "validation_split": 0.2, # Need non-zero split to avoid ZeroDivisionError
         "policy_weight": 1.0,
         "value_weight": 0.5,
         "early_stopping_patience": 10,
@@ -25,7 +25,7 @@ def test_train_pipeline(default_config, tmp_path):
     # Add Model config
     cfg.train.model = OmegaConf.create({
         "transformer": {
-            "token_dim": 10,
+            "token_dim": 12,
             "embed_dim": 16,
             "num_heads": 2,
             "num_layers": 1,
@@ -52,12 +52,12 @@ def test_train_pipeline(default_config, tmp_path):
     
     data = {
         "team_0": {
-            "tokens": torch.randn(10, 4, 10), # T, N, D
+            "tokens": torch.randn(10, 4, 12), # T, N, D
             "actions": torch.randint(0, 2, (10, 4, 6)), # T, N, A
             "rewards": torch.zeros(10),
         },
         "team_1": {
-            "tokens": torch.randn(10, 4, 10),
+            "tokens": torch.randn(10, 4, 12),
             "actions": torch.randint(0, 2, (10, 4, 6)),
             "rewards": torch.zeros(10),
         },
@@ -69,7 +69,9 @@ def test_train_pipeline(default_config, tmp_path):
     # Save dummy data
     data_dir = tmp_path / "data" / "bc_pretraining" / "dummy_run"
     data_dir.mkdir(parents=True)
-    torch.save(data, data_dir / "aggregated_data.pkl")
+    import pickle
+    with open(data_dir / "aggregated_data.pkl", "wb") as f:
+        pickle.dump(data, f)
     
     # Point config to this data
     # Assuming the train script finds the latest run or we can specify it

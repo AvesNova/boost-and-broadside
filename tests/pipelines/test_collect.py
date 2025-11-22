@@ -12,6 +12,9 @@ def test_collect_pipeline(default_config, tmp_path):
     cfg.collect.num_workers = 1
     cfg.collect.max_episode_length = 10  # Short episode
     
+    print(f"DEBUG: Env world_size: {cfg.environment.world_size}")
+    print(f"DEBUG: Agent world_size: {cfg.agents.team1.agent_config.world_size}")
+    
     # Use tmp_path for output
     # The collect_data function likely uses hydra's output directory or a configured path
     # We might need to patch the output directory or check where it writes

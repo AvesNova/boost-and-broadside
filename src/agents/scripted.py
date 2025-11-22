@@ -19,6 +19,7 @@ class ScriptedAgent(nn.Module):
         radius_multiplier: float,
         world_size: list[float, float],
         rng: np.random.Generator = np.random.default_rng(),
+        **kwargs,
     ):
         """
         Initialize scripted agent

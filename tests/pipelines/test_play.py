@@ -5,10 +5,21 @@ def test_play_pipeline(default_config):
     """Test the play pipeline in headless mode."""
     # Update config for testing
     cfg = default_config.copy()
+import pytest
+from src.modes.play import play
+
+def test_play_pipeline(default_config):
+    """Test the play pipeline in headless mode."""
+    # Update config for testing
+    cfg = default_config.copy()
     cfg.mode = "play"
     cfg.environment.render_mode = "none" # Headless
     cfg.human_player = False # Disable human player for automation
     cfg.collect.max_episode_length = 10 # Short episode
+    
+    # Ensure play mode uses the agents defined in conftest
+    cfg.team1 = "team1"
+    cfg.team2 = "team2"
     
     # We need to make sure play() respects these configs
     # play.py uses GameCoordinator which takes render_mode override
