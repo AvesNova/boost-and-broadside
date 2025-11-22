@@ -38,8 +38,12 @@ def load_bc_data(data_path: str = None) -> dict:
 
 
 def create_bc_data_loader(
-    data: dict, batch_size: int, gamma: float = 0.99
-) -> DataLoader:
+    data: dict,
+    batch_size: int,
+    gamma: float = 0.99,
+    validation_split: float = 0.2,
+    num_workers: int = 4,
+) -> tuple[DataLoader, DataLoader]:
     # Since play is symmetric, we can combine both teams' data for training
     team_0 = data["team_0"]
     team_1 = data["team_1"]
@@ -54,15 +58,31 @@ def create_bc_data_loader(
 
     dataset = TensorDataset(tokens, actions, returns)
 
-    data_loader = DataLoader(
-        dataset,
+    # Split into train and validation
+    total_size = len(dataset)
+    val_size = int(total_size * validation_split)
+    train_size = total_size - val_size
+    train_dataset, val_dataset = torch.utils.data.random_split(
+        dataset, [train_size, val_size]
+    )
+
+    train_loader = DataLoader(
+        train_dataset,
         batch_size=batch_size,
         shuffle=True,
-        num_workers=4,
+        num_workers=num_workers,
         pin_memory=True,
     )
 
-    return data_loader
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=True,
+    )
+
+    return train_loader, val_loader
 
 
 def compute_discounted_returns(all_rewards, all_episode_lengths, gamma=0.99):

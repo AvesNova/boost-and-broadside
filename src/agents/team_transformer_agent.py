@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from env.constants import Actions
 
 
-class TeamTransformerAgent(nn.Module):
+class TeamTransformerModel(nn.Module):
     """
     Transformer model that outputs actions for all ships in the environment.
     Teams/agents can then select which ships they control.
@@ -19,9 +19,6 @@ class TeamTransformerAgent(nn.Module):
 
     def __init__(
         self,
-        agent_id: str,
-        team_id: int,
-        squad: list[int],
         token_dim: int = 10,  # Ship token dimension from get_token()
         embed_dim: int = 64,  # Transformer embedding dimension
         num_heads: int = 4,  # Number of attention heads
@@ -30,7 +27,7 @@ class TeamTransformerAgent(nn.Module):
         dropout: float = 0.1,  # Dropout rate
         use_layer_norm: bool = True,  # Whether to use layer normalization
     ):
-        super().__init__(agent_id, team_id, squad)
+        super().__init__()
 
         self.token_dim = token_dim
         self.embed_dim = embed_dim
@@ -69,6 +66,14 @@ class TeamTransformerAgent(nn.Module):
             nn.Linear(embed_dim // 2, self.num_actions),
         )
 
+        # Value head: embed_dim -> 1
+        self.value_head = nn.Sequential(
+            nn.Linear(embed_dim, embed_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(embed_dim // 2, 1),
+        )
+
         # Initialize weights
         self._init_weights()
 
@@ -92,6 +97,7 @@ class TeamTransformerAgent(nn.Module):
         Returns:
             Dict containing:
                 - 'action_logits': (batch, max_ships, num_actions) - logits for each ship
+                - 'value': (batch, 1) - value estimate for the state
                 - 'ship_embeddings': (batch, max_ships, embed_dim) - final embeddings
                 - 'attention_weights': Optional attention weights for analysis
         """
@@ -119,11 +125,90 @@ class TeamTransformerAgent(nn.Module):
         # Generate action logits for each ship
         action_logits = self.action_head(transformed)  # (batch, max_ships, num_actions)
 
+        # Generate value estimate
+        # Pool embeddings: mean over ships (handling mask if present)
+        if attention_mask is not None:
+            # mask is True for inactive, so invert for active
+            active_mask = (~attention_mask).float().unsqueeze(-1)  # (batch, max_ships, 1)
+            sum_embeddings = (transformed * active_mask).sum(dim=1)
+            count = active_mask.sum(dim=1).clamp(min=1e-9)
+            pooled_embeddings = sum_embeddings / count
+        else:
+            pooled_embeddings = transformed.mean(dim=1)
+
+        value = self.value_head(pooled_embeddings)  # (batch, 1)
+
         return {
             "action_logits": action_logits,
+            "value": value,
             "ship_embeddings": transformed,
             "tokens": tokens,  # Pass through for convenience
         }
+
+
+class TeamTransformerAgent:
+    """
+    Agent wrapper for TeamTransformerModel.
+    """
+
+    def __init__(
+        self,
+        agent_id: str,
+        team_id: int,
+        squad: list[int],
+        token_dim: int = 10,
+        embed_dim: int = 64,
+        num_heads: int = 4,
+        num_layers: int = 3,
+        max_ships: int = 8,
+        dropout: float = 0.1,
+        use_layer_norm: bool = True,
+    ):
+        self.agent_id = agent_id
+        self.team_id = team_id
+        self.squad = squad
+
+        self.model = TeamTransformerModel(
+            token_dim=token_dim,
+            embed_dim=embed_dim,
+            num_heads=num_heads,
+            num_layers=num_layers,
+            max_ships=max_ships,
+            dropout=dropout,
+            use_layer_norm=use_layer_norm,
+        )
+
+    def __call__(self, observation: dict, ship_ids: list[int]) -> dict[int, torch.Tensor]:
+        """
+        Get actions for the specified ships.
+
+        Args:
+            observation: Observation dictionary
+            ship_ids: List of ship IDs to get actions for
+
+        Returns:
+            Dict mapping ship_id -> action tensor
+        """
+        # Prepare input
+        # Add batch dimension if needed
+        if "tokens" in observation:
+            tokens = observation["tokens"]
+            if len(tokens.shape) == 2:
+                tokens = tokens.unsqueeze(0)
+                observation["tokens"] = tokens
+
+        # Get actions from model
+        output = self.get_actions(observation, deterministic=True)
+        all_actions = output["actions"]  # (batch, max_ships, num_actions)
+
+        # Extract actions for my ships
+        team_actions = {}
+        for ship_id in ship_ids:
+            if ship_id < all_actions.shape[1]:
+                # Remove batch dim
+                team_actions[ship_id] = all_actions[0, ship_id]
+
+        return team_actions
 
     def get_actions(
         self,
@@ -134,21 +219,9 @@ class TeamTransformerAgent(nn.Module):
     ) -> dict:
         """
         Get actions for all ships with optional temperature scaling.
-
-        Args:
-            observation: Observation dict
-            ship_mask: Mask for inactive ships
-            temperature: Temperature for softmax (higher = more random)
-            deterministic: If True, use argmax instead of sampling
-
-        Returns:
-            Dict containing:
-                - 'actions': (batch, max_ships, num_actions) - binary action vectors
-                - 'action_probs': (batch, max_ships, num_actions) - action probabilities
-                - 'action_logits': (batch, max_ships, num_actions) - raw logits
         """
         with torch.no_grad():
-            output = self.forward(observation, ship_mask)
+            output = self.model(observation, ship_mask)
             action_logits = output["action_logits"]
 
             # Apply temperature scaling
