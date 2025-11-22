@@ -11,6 +11,13 @@ Boost and Broadside is a reinforcement learning project for training AI agents t
 # Play mode (human playable with rendering)
 uv run main.py mode=play
 
+# Play mode options:
+# Disable human player (watch only)
+uv run main.py mode=play human_player=false
+
+# Select agents (options: scripted, dummy, random, most_recent, best)
+uv run main.py mode=play team1=random team2=best
+
 # Collect training data from scripted agents (single worker)
 uv run main.py mode=collect
 

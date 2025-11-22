@@ -1,4 +1,7 @@
 mode: play
+team1: scripted
+team2: scripted
+human_player: true
 
 environment:
   render_mode: "human"

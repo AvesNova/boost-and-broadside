@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from env.constants import Actions
+from .tokenizer import observation_to_tokens
 
 
 class TeamTransformerModel(nn.Module):
@@ -163,6 +164,7 @@ class TeamTransformerAgent:
         max_ships: int = 8,
         dropout: float = 0.1,
         use_layer_norm: bool = True,
+        model_path: str | None = None,
     ):
         self.agent_id = agent_id
         self.team_id = team_id
@@ -177,6 +179,20 @@ class TeamTransformerAgent:
             dropout=dropout,
             use_layer_norm=use_layer_norm,
         )
+
+        if model_path:
+            self.load_model(model_path)
+
+    def load_model(self, path: str):
+        """Load model weights from file"""
+        try:
+            state_dict = torch.load(path, map_location="cpu")
+            self.model.load_state_dict(state_dict)
+            self.model.eval()
+            print(f"Loaded model from {path}")
+        except Exception as e:
+            print(f"Failed to load model from {path}: {e}")
+
 
     def __call__(self, observation: dict, ship_ids: list[int]) -> dict[int, torch.Tensor]:
         """
@@ -196,6 +212,13 @@ class TeamTransformerAgent:
             if len(tokens.shape) == 2:
                 tokens = tokens.unsqueeze(0)
                 observation["tokens"] = tokens
+        else:
+            # Generate tokens from raw observation
+            tokens = observation_to_tokens(observation, self.team_id)
+            # Create a copy of observation to avoid side effects if possible, 
+            # but for efficiency we might just pass a new dict
+            observation = observation.copy()
+            observation["tokens"] = tokens
 
         # Get actions from model
         output = self.get_actions(observation, deterministic=True)
