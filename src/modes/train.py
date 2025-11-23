@@ -8,6 +8,9 @@ from datetime import datetime
 from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
+from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
+import gymnasium as gym
 
 from src.agents.team_transformer_agent import TeamTransformerModel
 from src.train.data_loader import load_bc_data, create_bc_data_loader
@@ -262,6 +265,20 @@ def train_bc(cfg: DictConfig) -> Path | None:
     return run_dir / "final_bc_model.pth"
 
 
+def create_sb3_env(cfg: DictConfig) -> gym.Env:
+    """
+    Helper function to create the SB3 environment.
+    """
+    from env.sb3_wrapper import SB3Wrapper
+    from env.env import Environment
+    
+    env_config = dict(cfg.environment)
+    env_config["render_mode"] = "none" # Force no rendering for training
+    
+    base_env = Environment(**env_config)
+    return SB3Wrapper(base_env, cfg)
+
+
 def train_rl(cfg: DictConfig, pretrained_model_path: Path | None = None) -> None:
     """
     RL training using Stable Baselines3 PPO.
@@ -281,12 +298,15 @@ def train_rl(cfg: DictConfig, pretrained_model_path: Path | None = None) -> None
     rl_config = cfg.train.rl
     
     # Create environment
-    # We need to instantiate the base Environment first
-    env_config = dict(cfg.environment)
-    env_config["render_mode"] = "none" # Force no rendering for training
+    n_envs = rl_config.get("n_envs", 1)
+    print(f"Creating {n_envs} parallel environments...")
     
-    base_env = Environment(**env_config)
-    env = SB3Wrapper(base_env, cfg)
+    env = make_vec_env(
+        create_sb3_env,
+        n_envs=n_envs,
+        env_kwargs={"cfg": cfg},
+        vec_env_cls=SubprocVecEnv if n_envs > 1 else DummyVecEnv,
+    )
     
     # Setup model config for policy
     model_config = OmegaConf.to_container(cfg.train.model.transformer, resolve=True)

@@ -26,6 +26,9 @@ uv run main.py mode=collect collect.num_workers=4
 
 # Train RL models
 uv run main.py mode=train
+
+# Train with multiple parallel environments
+uv run main.py mode=train train.rl.n_envs=8
 ```
 
 ### Testing
