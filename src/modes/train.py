@@ -14,6 +14,7 @@ import gymnasium as gym
 
 from src.agents.team_transformer_agent import TeamTransformerModel
 from src.train.data_loader import load_bc_data, create_bc_data_loader
+from src.modes.collect import collect
 
 
 def train_bc(cfg: DictConfig) -> Path | None:
@@ -26,9 +27,9 @@ def train_bc(cfg: DictConfig) -> Path | None:
     print("Starting BC training...")
 
     # Check if BC training is enabled
-    if not cfg.train.use_bc:
-        print("BC training is disabled in config")
-        return
+    # if not cfg.train.use_bc:
+    #     print("BC training is disabled in config")
+    #     return
 
     # Get BC configuration
     # Get BC configuration
@@ -390,19 +391,65 @@ def train(cfg: DictConfig) -> None:
     """
     Main training function.
     """
+    
+    # Pipeline flags
+    run_collect = cfg.train.get("run_collect", False)
+    run_bc = cfg.train.get("run_bc", False)
+    run_rl = cfg.train.get("run_rl", False)
+    
+    # Legacy support: if no pipeline flags are set, use use_bc/use_rl
+    if not (run_collect or run_bc or run_rl):
+        run_bc = cfg.train.use_bc
+        run_rl = cfg.train.use_rl
+    
+    bc_data_path = cfg.train.bc_data_path
     bc_model_path = None
     
-    # BC Training
-    if cfg.train.use_bc:
+    # 1. Data Collection
+    if run_collect:
+        print("\n=== Starting Pipeline Step 1: Data Collection ===")
+        collected_data_path = collect(cfg)
+        if collected_data_path:
+            bc_data_path = str(collected_data_path)
+            # Update config for subsequent steps
+            cfg.train.bc_data_path = bc_data_path
+            print(f"Pipeline: Using newly collected data at {bc_data_path}")
+        else:
+            print("Pipeline: Data collection failed or returned no path.")
+            
+    # 2. BC Training
+    if run_bc:
+        print("\n=== Starting Pipeline Step 2: BC Training ===")
+        # Ensure we have data
+        if not bc_data_path:
+            print("Pipeline Error: No BC data path specified or collected.")
+            return
+            
         bc_model_path = train_bc(cfg)
+        if bc_model_path:
+            print(f"Pipeline: BC training finished. Model saved at {bc_model_path}")
+        else:
+            print("Pipeline: BC training failed or disabled.")
+            
+    # 3. RL Training
+    if run_rl:
+        print("\n=== Starting Pipeline Step 3: RL Training ===")
         
-    # RL Training
-    if cfg.train.use_rl:
-        # Use BC model if available, otherwise check config for specific path
-        if bc_model_path is None and cfg.train.bc_data_path:
-             # This logic is a bit flawed, bc_data_path is for data.
-             # We might want a config for pretrained model path if skipping BC.
-             # For now, we just pass bc_model_path.
-             pass
-             
-        train_rl(cfg, pretrained_model_path=bc_model_path)
+        # Determine pretrained model path
+        pretrained_path = None
+        
+        # Priority 1: Model from immediate BC step
+        if bc_model_path:
+            pretrained_path = bc_model_path
+            print(f"Pipeline: Using BC model from current run: {pretrained_path}")
+            
+        # Priority 2: Configured pretrained path
+        elif cfg.train.rl.get("pretrained_model_path"):
+            pretrained_path = Path(cfg.train.rl.pretrained_model_path)
+            print(f"Pipeline: Using configured pretrained model: {pretrained_path}")
+            
+        # Priority 3: Legacy fallback (if bc_model_path was passed blindly before)
+        # In the new logic, we handled bc_model_path above.
+        
+        train_rl(cfg, pretrained_model_path=pretrained_path)
+

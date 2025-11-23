@@ -77,7 +77,7 @@ def collect_worker(
         print(f"Worker {worker_id}: Data collection complete")
 
 
-def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> None:
+def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
     """
     Aggregate all worker data into a single file
 
@@ -195,9 +195,10 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> None:
     print(
         f"\nAggregation complete: {total_episodes} episodes, {total_timesteps} timesteps"
     )
+    return aggregated_pkl_path
 
 
-def collect(cfg: DictConfig) -> None:
+def collect(cfg: DictConfig) -> Path | None:
     """
     Collect training data from agent gameplay using parallel workers
 
@@ -235,4 +236,4 @@ def collect(cfg: DictConfig) -> None:
 
         print(f"\nAll {num_workers} workers completed!")
 
-    aggregate_worker_data(cfg, run_timestamp)
+    return aggregate_worker_data(cfg, run_timestamp)

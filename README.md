@@ -180,7 +180,21 @@ data["metadata"]: Run info, dimensions, worker details
 - `outputs/`: Hydra auto-generates timestamped output directories
 
 
-### Next Steps
+### Unified Training Pipeline
 
-Implement the BC training
-Implement the RL training
+Run the full pipeline (Collect -> BC -> RL) in a single command:
+```powershell
+uv run main.py mode=train train.run_collect=true train.run_bc=true train.run_rl=true
+```
+
+You can also run partial pipelines:
+```powershell
+# BC -> RL (skip collection, use existing data)
+uv run main.py mode=train train.run_bc=true train.run_rl=true train.bc_data_path="path/to/data.pkl"
+
+# RL only (load pretrained BC model)
+uv run main.py mode=train train.run_rl=true train.rl.pretrained_model_path="path/to/model.pth"
+
+# RL from scratch (no pretraining)
+uv run main.py mode=train train.run_rl=true
+```

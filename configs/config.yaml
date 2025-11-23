@@ -43,8 +43,13 @@ collect:
   max_episode_length: 512
 
 train:
+  run_collect: false
+  run_bc: false
+  run_rl: false
+  
   use_bc: true
   use_rl: true
+  
   bc_data_path: "data/bc_pretraining/20251020_022704/aggregated_data.pkl"
   
   model:
@@ -68,6 +73,7 @@ train:
     value_weight: 0.5
 
   rl:
+    pretrained_model_path: null
     n_envs: 8
     total_timesteps: 1000000
     learning_rate: 0.0003

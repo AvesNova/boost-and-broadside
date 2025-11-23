@@ -18,8 +18,8 @@ def test_play_pipeline(default_config):
     cfg.collect.max_episode_length = 10 # Short episode
     
     # Ensure play mode uses the agents defined in conftest
-    cfg.team1 = "team1"
-    cfg.team2 = "team2"
+    cfg.team1 = "scripted"
+    cfg.team2 = "scripted"
     
     # We need to make sure play() respects these configs
     # play.py uses GameCoordinator which takes render_mode override

@@ -10,6 +10,7 @@ def test_train_pipeline(default_config, tmp_path):
     cfg = default_config.copy()
     cfg.mode = "train"
     cfg.train.use_bc = True
+    cfg.train.use_rl = False # Disable RL for this test
     
     # Add BC config
     cfg.train.bc = OmegaConf.create({

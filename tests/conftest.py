@@ -25,19 +25,10 @@ def default_config():
             "physics_dt": 0.02,
             "render_mode": "none",
         },
+        "team1": "scripted",
+        "team2": "scripted",
         "agents": {
-            "team1": {
-                "agent_type": "scripted",
-                "agent_config": {
-                    "max_shooting_range": 500.0,
-                    "angle_threshold": 5.0,
-                    "bullet_speed": 500.0,
-                    "target_radius": 10.0,
-                    "radius_multiplier": 1.5,
-                    "world_size": [1000, 1000],
-                }
-            },
-            "team2": {
+            "scripted": {
                 "agent_type": "scripted",
                 "agent_config": {
                     "max_shooting_range": 500.0,
@@ -50,7 +41,7 @@ def default_config():
             },
         },
         "collect": {
-            "teams": ["team1", "team2"],
+            "teams": ["scripted", "scripted"],
             "max_episode_length": 100,
             "num_workers": 1,
             "episodes_per_mode": {"1v1": 1},
@@ -59,6 +50,12 @@ def default_config():
             "save_frequency": 10,
         },
         "train": {
+            "run_collect": False,
+            "run_bc": False,
+            "run_rl": False,
+            "use_bc": True,
+            "use_rl": True,
+            "bc_data_path": "data/bc_pretraining/aggregated_data.pkl",
             "batch_size": 32,
             "model": {
                 "transformer": {
@@ -71,6 +68,30 @@ def default_config():
                     "dropout": 0.0,
                     "use_layer_norm": True,
                 }
+            },
+            "bc": {
+                "learning_rate": 0.001,
+                "batch_size": 32,
+                "epochs": 1,
+                "validation_split": 0.2,
+                "early_stopping_patience": 10,
+                "policy_weight": 1.0,
+                "value_weight": 0.5,
+            },
+            "rl": {
+                "pretrained_model_path": None,
+                "n_envs": 1,
+                "total_timesteps": 1000,
+                "learning_rate": 0.0003,
+                "n_steps": 128,
+                "batch_size": 32,
+                "n_epochs": 3,
+                "gamma": 0.99,
+                "gae_lambda": 0.95,
+                "clip_range": 0.2,
+                "ent_coef": 0.01,
+                "vf_coef": 0.5,
+                "max_grad_norm": 0.5,
             }
         }
     })
