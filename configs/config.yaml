@@ -44,8 +44,8 @@ collect:
 
 train:
   run_collect: false
-  run_bc: false
-  run_rl: false
+  run_bc: true
+  run_rl: true
   
   use_bc: true
   use_rl: true
@@ -55,9 +55,9 @@ train:
   model:
     transformer:
       token_dim: 12
-      embed_dim: 64
+      embed_dim: 128
       num_heads: 4
-      num_layers: 3
+      num_layers: 8
       max_ships: 8
       num_actions: 6
       dropout: 0.1
@@ -65,7 +65,7 @@ train:
 
   bc:
     learning_rate: 0.001
-    batch_size: 16384
+    batch_size: 8192
     epochs: 50
     validation_split: 0.2
     early_stopping_patience: 10

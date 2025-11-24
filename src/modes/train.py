@@ -77,6 +77,9 @@ def train_bc(cfg: DictConfig) -> Path | None:
     run_dir.mkdir(parents=True, exist_ok=True)
     
     print(f"Output directory: {run_dir}")
+
+    # Save config immediately
+    OmegaConf.save(cfg, run_dir / "config.yaml")
     
     # TensorBoard writer
     writer = SummaryWriter(log_dir=str(run_dir))
@@ -322,6 +325,9 @@ def train_rl(cfg: DictConfig, pretrained_model_path: Path | None = None) -> None
     run_dir = Path("models/rl") / f"run_{timestamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
     print(f"RL Output directory: {run_dir}")
+
+    # Save config immediately
+    OmegaConf.save(cfg, run_dir / "config.yaml")
     
     model = PPO(
         TeamTransformerSB3Policy,

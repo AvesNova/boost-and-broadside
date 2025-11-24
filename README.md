@@ -15,8 +15,8 @@ uv run main.py mode=play
 # Disable human player (watch only)
 uv run main.py mode=play human_player=false
 
-# Select agents (options: scripted, dummy, random, most_recent, best)
-uv run main.py mode=play team1=random team2=best
+# Select agents (options: scripted, dummy, random, most_recent_bc, most_recent_rl, best_bc, best_rl)
+uv run main.py mode=play team1=most_recent_bc team2=scripted
 
 # Collect training data from scripted agents (single worker)
 uv run main.py mode=collect
@@ -185,6 +185,13 @@ data["metadata"]: Run info, dimensions, worker details
 Run the full pipeline (Collect -> BC -> RL) in a single command:
 ```powershell
 uv run main.py mode=train train.run_collect=true train.run_bc=true train.run_rl=true
+```
+
+### Parallel RL Training
+You can speed up RL training by running multiple environments in parallel. This is controlled by `train.rl.n_envs`.
+```powershell
+# Run with 8 parallel environments
+uv run main.py mode=train train.run_rl=true train.rl.n_envs=8
 ```
 
 You can also run partial pipelines:

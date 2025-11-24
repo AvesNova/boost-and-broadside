@@ -26,17 +26,16 @@ def play(cfg: DictConfig) -> None:
 
     # Helper to create agent config
     def get_agent_config(agent_type):
-        # Default config for agents that need it
+        # Use current global config as default
+        transformer_config = OmegaConf.to_container(cfg.train.model.transformer, resolve=True)
+        if "num_actions" in transformer_config:
+            del transformer_config["num_actions"]
+        
         base_config = {
             "agent_id": "player",
             "team_id": 0,
             "squad": [],
-            # Transformer defaults
-            "token_dim": 12,
-            "embed_dim": 64,
-            "num_heads": 4,
-            "num_layers": 3,
-            "max_ships": 8,
+            **transformer_config
         }
         return {"agent_type": agent_type, "agent_config": base_config}
 
