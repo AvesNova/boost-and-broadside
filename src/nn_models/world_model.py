@@ -22,40 +22,54 @@ class SpatialSelfAttention(nn.Module):
         self.embed_dim = config.embed_dim
         self.dropout = config.dropout
 
-    def forward(self, x, past_kv=None, use_cache=False):
-        # x: (B, T, N, E)
-        B, T, N, C = x.size()
+    def forward(self, input_tensor, past_kv=None, use_cache=False):
+        # input_tensor: (batch_size, time_steps, num_ships, embed_dim)
+        batch_size, time_steps, num_ships, embed_dim = input_tensor.size()
 
-        # Merge B and T for spatial attention
-        x_flat = x.view(B * T, N, C)  # (Batch, SeqLen, Emb) where Batch=B*T, SeqLen=N
+        # Merge batch_size and time_steps for spatial attention
+        input_flat = input_tensor.view(
+            batch_size * time_steps, num_ships, embed_dim
+        )  # (Batch, SeqLen, Emb) where Batch=batch_size*time_steps, SeqLen=num_ships
 
-        q, k, v = self.c_attn(x_flat).split(self.embed_dim, dim=2)
+        query, key, value = self.c_attn(input_flat).split(self.embed_dim, dim=2)
 
-        # (Batch, N, n_heads, head_dim) -> (Batch, n_heads, N, head_dim)
-        k = k.view(B * T, N, self.n_heads, C // self.n_heads).transpose(1, 2)
-        q = q.view(B * T, N, self.n_heads, C // self.n_heads).transpose(1, 2)
-        v = v.view(B * T, N, self.n_heads, C // self.n_heads).transpose(1, 2)
+        # (Batch, num_ships, n_heads, head_dim) -> (Batch, n_heads, num_ships, head_dim)
+        key = key.view(
+            batch_size * time_steps, num_ships, self.n_heads, embed_dim // self.n_heads
+        ).transpose(1, 2)
+        query = query.view(
+            batch_size * time_steps, num_ships, self.n_heads, embed_dim // self.n_heads
+        ).transpose(1, 2)
+        value = value.view(
+            batch_size * time_steps, num_ships, self.n_heads, embed_dim // self.n_heads
+        ).transpose(1, 2)
 
         # Spatial attention is not causal and doesn't use past_kv (usually)
         # Because we attend to all ships at the SAME timestep.
         # So past_kv is ignored here.
 
-        y = F.scaled_dot_product_attention(
-            q,
-            k,
-            v,
+        attention_output = F.scaled_dot_product_attention(
+            query,
+            key,
+            value,
             attn_mask=None,
             dropout_p=self.dropout if self.training else 0,
             is_causal=False,
         )
 
-        y = y.transpose(1, 2).contiguous().view(B * T, N, C)
-        y = self.resid_dropout(self.c_proj(y))
+        attention_output = (
+            attention_output.transpose(1, 2)
+            .contiguous()
+            .view(batch_size * time_steps, num_ships, embed_dim)
+        )
+        attention_output = self.resid_dropout(self.c_proj(attention_output))
 
-        # Reshape back to (B, T, N, E)
-        y = y.view(B, T, N, C)
+        # Reshape back to (batch_size, time_steps, num_ships, embed_dim)
+        attention_output = attention_output.view(
+            batch_size, time_steps, num_ships, embed_dim
+        )
 
-        return y, None  # No KV cache for spatial attention
+        return attention_output, None  # No KV cache for spatial attention
 
 
 class TemporalSelfAttention(nn.Module):
@@ -76,49 +90,67 @@ class TemporalSelfAttention(nn.Module):
         self.embed_dim = config.embed_dim
         self.dropout = config.dropout
 
-    def forward(self, x, past_kv=None, use_cache=False):
-        # x: (B, T, N, E)
-        B, T, N, C = x.size()
+    def forward(self, input_tensor, past_kv=None, use_cache=False):
+        # input_tensor: (batch_size, time_steps, num_ships, embed_dim)
+        batch_size, time_steps, num_ships, embed_dim = input_tensor.size()
 
-        # Merge B and N for temporal attention
-        # We want to preserve time T as the sequence dimension
-        x_flat = x.transpose(1, 2).contiguous().view(B * N, T, C)  # (B*N, T, E)
+        # Merge batch_size and num_ships for temporal attention
+        # We want to preserve time_steps as the sequence dimension
+        input_flat = (
+            input_tensor.transpose(1, 2)
+            .contiguous()
+            .view(batch_size * num_ships, time_steps, embed_dim)
+        )  # (batch_size*num_ships, time_steps, embed_dim)
 
-        q, k, v = self.c_attn(x_flat).split(self.embed_dim, dim=2)
+        query, key, value = self.c_attn(input_flat).split(self.embed_dim, dim=2)
 
-        # (Batch, T, n_heads, head_dim) -> (Batch, n_heads, T, head_dim)
-        k = k.view(B * N, T, self.n_heads, C // self.n_heads).transpose(1, 2)
-        q = q.view(B * N, T, self.n_heads, C // self.n_heads).transpose(1, 2)
-        v = v.view(B * N, T, self.n_heads, C // self.n_heads).transpose(1, 2)
+        # (Batch, time_steps, n_heads, head_dim) -> (Batch, n_heads, time_steps, head_dim)
+        key = key.view(
+            batch_size * num_ships, time_steps, self.n_heads, embed_dim // self.n_heads
+        ).transpose(1, 2)
+        query = query.view(
+            batch_size * num_ships, time_steps, self.n_heads, embed_dim // self.n_heads
+        ).transpose(1, 2)
+        value = value.view(
+            batch_size * num_ships, time_steps, self.n_heads, embed_dim // self.n_heads
+        ).transpose(1, 2)
 
         if past_kv is not None:
-            past_k, past_v = past_kv
-            k = torch.cat((past_k, k), dim=-2)
-            v = torch.cat((past_v, v), dim=-2)
+            past_key, past_value = past_kv
+            key = torch.cat((past_key, key), dim=-2)
+            value = torch.cat((past_value, value), dim=-2)
 
         if use_cache:
-            current_kv = (k, v)
+            current_kv = (key, value)
         else:
             current_kv = None
 
         # Causal attention
-        y = F.scaled_dot_product_attention(
-            q,
-            k,
-            v,
+        attention_output = F.scaled_dot_product_attention(
+            query,
+            key,
+            value,
             attn_mask=None,
             dropout_p=self.dropout if self.training else 0,
             is_causal=True if past_kv is None else False,
         )
 
-        y = y.transpose(1, 2).contiguous().view(B * N, T, C)
-        y = self.resid_dropout(self.c_proj(y))
+        attention_output = (
+            attention_output.transpose(1, 2)
+            .contiguous()
+            .view(batch_size * num_ships, time_steps, embed_dim)
+        )
+        attention_output = self.resid_dropout(self.c_proj(attention_output))
 
-        # Reshape back to (B, T, N, E)
-        # (B*N, T, E) -> (B, N, T, E) -> (B, T, N, E)
-        y = y.view(B, N, T, C).transpose(1, 2).contiguous()
+        # Reshape back to (batch_size, time_steps, num_ships, embed_dim)
+        # (batch_size*num_ships, time_steps, embed_dim) -> (batch_size, num_ships, time_steps, embed_dim) -> (batch_size, time_steps, num_ships, embed_dim)
+        attention_output = (
+            attention_output.view(batch_size, num_ships, time_steps, embed_dim)
+            .transpose(1, 2)
+            .contiguous()
+        )
 
-        return y, current_kv
+        return attention_output, current_kv
 
 
 class MLP(nn.Module):
@@ -129,12 +161,12 @@ class MLP(nn.Module):
         self.c_proj = nn.Linear(4 * config.embed_dim, config.embed_dim)
         self.dropout = nn.Dropout(config.dropout)
 
-    def forward(self, x):
-        x = self.c_fc(x)
-        x = self.gelu(x)
-        x = self.c_proj(x)
-        x = self.dropout(x)
-        return x
+    def forward(self, input_tensor):
+        hidden = self.c_fc(input_tensor)
+        hidden = self.gelu(hidden)
+        hidden = self.c_proj(hidden)
+        hidden = self.dropout(hidden)
+        return hidden
 
 
 class Block(nn.Module):
@@ -152,11 +184,13 @@ class Block(nn.Module):
         self.ln_2 = nn.LayerNorm(config.embed_dim)
         self.mlp = MLP(config)
 
-    def forward(self, x, past_kv=None, use_cache=False):
-        attn_out, current_kv = self.attn(self.ln_1(x), past_kv, use_cache)
-        x = x + attn_out
-        x = x + self.mlp(self.ln_2(x))
-        return x, current_kv
+    def forward(self, input_tensor, past_kv=None, use_cache=False):
+        attention_output, current_kv = self.attn(
+            self.ln_1(input_tensor), past_kv, use_cache
+        )
+        residual = input_tensor + attention_output
+        output = residual + self.mlp(self.ln_2(residual))
+        return output, current_kv
 
 
 class WorldModelConfig:
@@ -226,40 +260,42 @@ class WorldModel(nn.Module):
         """
         # Ensure 4D input
         if states.ndim == 3:
-            # (B, SeqLen, F) -> Assume flattened T*N
+            # (batch_size, seq_len, features) -> Assume flattened time_steps*num_ships
             # We need to unflatten.
-            B, SeqLen, F = states.shape
-            N = self.config.max_ships
-            if SeqLen % N != 0:
+            batch_size, seq_len, features = states.shape
+            num_ships = self.config.max_ships
+            if seq_len % num_ships != 0:
                 raise ValueError(
-                    f"Sequence length {SeqLen} not divisible by max_ships {N}"
+                    f"Sequence length {seq_len} not divisible by max_ships {num_ships}"
                 )
-            T = SeqLen // N
-            states = states.view(B, T, N, F)
-            actions = actions.view(B, T, N, actions.shape[-1])
+            time_steps = seq_len // num_ships
+            states = states.view(batch_size, time_steps, num_ships, features)
+            actions = actions.view(batch_size, time_steps, num_ships, actions.shape[-1])
 
-        B, T, N, _ = states.shape
+        batch_size, time_steps, num_ships, _ = states.shape
         device = states.device
 
         # 1. Construct Tokens
-        x = self.input_proj(torch.cat([states, actions], dim=-1))  # (B, T, N, E)
+        embeddings = self.input_proj(
+            torch.cat([states, actions], dim=-1)
+        )  # (batch_size, time_steps, num_ships, embed_dim)
 
         # Add structural embeddings
         # We need to broadcast ship_embed and time_embed
-        # ship_embed: (N, E) -> (1, 1, N, E)
-        # time_embed: (T, E) -> (1, T, 1, E)
+        # ship_embed: (num_ships, embed_dim) -> (1, 1, num_ships, embed_dim)
+        # time_embed: (time_steps, embed_dim) -> (1, time_steps, 1, embed_dim)
 
-        # If we are generating step-by-step, T might be small, but time_ids should be correct.
+        # If we are generating step-by-step, time_steps might be small, but time_ids should be correct.
         # But here forward assumes we start from 0 or we need to handle offsets.
-        # For training, we assume full sequence 0..T-1.
+        # For training, we assume full sequence 0..time_steps-1.
         # For generation, we usually pass one step but we need the time index.
         # The current signature doesn't accept time_offset.
         # We'll assume for now forward is used for training (full seq) or we handle it via past_kv logic?
-        # Actually, if past_kv is present, we are appending.
+        # Actually, if past_key_values is present, we are appending.
         # But we need to know the current time index.
-        # Let's assume standard forward is 0..T.
+        # Let's assume standard forward is 0..time_steps.
 
-        # If using cache, we assume we are at step T_past.
+        # If using cache, we assume we are at step time_steps_past.
         time_offset = 0
         if past_key_values is not None:
             # We need to infer time_offset.
@@ -267,58 +303,63 @@ class WorldModel(nn.Module):
             # Find the first temporal block's KV cache to get length.
             for i, block in enumerate(self.blocks):
                 if block.attn_type == "temporal" and past_key_values[i] is not None:
-                    time_offset = past_key_values[i][0].shape[2]  # (B*N, H, T_past, D)
+                    time_offset = past_key_values[i][0].shape[
+                        2
+                    ]  # (batch_size*num_ships, n_heads, time_steps_past, head_dim)
                     break
 
-        ship_ids = torch.arange(N, device=device).view(1, 1, N)
-        time_ids = torch.arange(time_offset, time_offset + T, device=device).view(
-            1, T, 1
-        )
+        ship_ids = torch.arange(num_ships, device=device).view(1, 1, num_ships)
+        time_ids = torch.arange(
+            time_offset, time_offset + time_steps, device=device
+        ).view(1, time_steps, 1)
 
-        x = x + self.ship_embed[ship_ids] + self.time_embed[time_ids]
+        embeddings = embeddings + self.ship_embed[ship_ids] + self.time_embed[time_ids]
 
         # 2. Masking & Denoising (Training only)
         mask = None
         if mask_ratio > 0 and past_key_values is None:
-            # Create mask over (B, T, N)
-            mask = torch.rand(B, T, N, device=device) < mask_ratio
+            # Create mask over (batch_size, time_steps, num_ships)
+            mask = (
+                torch.rand(batch_size, time_steps, num_ships, device=device)
+                < mask_ratio
+            )
 
             # Denoise
             if noise_scale > 0:
                 # Noise on embeddings before adding positional? Or after?
                 # Original code: noise on content_embed, then add pos.
                 # Let's re-calculate content_embed for noise purpose if needed,
-                # or just add noise to x (which includes pos now).
+                # or just add noise to embeddings (which includes pos now).
                 # Original: content_embed[~mask] += noise
-                # Here x includes pos.
+                # Here embeddings includes pos.
                 # Let's generate noise on the projected input
                 content_input = self.input_proj(torch.cat([states, actions], dim=-1))
-                tau = torch.rand(B, 1, 1, 1, device=device).pow(2)
+                tau = torch.rand(batch_size, 1, 1, 1, device=device).pow(2)
                 noise_std = (1 - tau).sqrt() * noise_scale
                 noise = torch.randn_like(content_input) * noise_std
 
-                # We need to apply noise to the unmasked parts of x
-                # But x already has pos embeddings.
-                # x = content + pos.
-                # We want x' = (content + noise) + pos = x + noise.
-                x[~mask] = x[~mask] + noise[~mask]
+                # We need to apply noise to the unmasked parts of embeddings
+                # But embeddings already has pos embeddings.
+                # embeddings = content + pos.
+                # We want embeddings' = (content + noise) + pos = embeddings + noise.
+                embeddings[~mask] = embeddings[~mask] + noise[~mask]
 
             # Apply mask token
-            x[mask] = self.mask_token
+            embeddings[mask] = self.mask_token
 
         # 3. Transformer Pass
         current_key_values = []
         for i, block in enumerate(self.blocks):
             past_kv = past_key_values[i] if past_key_values is not None else None
-            x, kv = block(x, past_kv=past_kv, use_cache=use_cache)
+            embeddings, kv = block(embeddings, past_kv=past_kv, use_cache=use_cache)
             if use_cache:
                 current_key_values.append(kv)
 
-        x = self.ln_f(x)
+        embeddings = self.ln_f(embeddings)
 
         # 4. Predictions
-        pred_states = self.state_head(x)
-        pred_actions = self.action_head(x)
+        pred_states = self.state_head(embeddings)
+        pred_actions = self.action_head(embeddings)
 
         return pred_states, pred_actions, mask, current_key_values
 
@@ -328,13 +369,13 @@ class WorldModel(nn.Module):
 
         if states.ndim == 3:
             # Unflatten if needed, but usually passed same as forward input
-            B, SeqLen, F = states.shape
-            N = self.config.max_ships
-            T = SeqLen // N
-            states = states.view(B, T, N, F)
-            actions = actions.view(B, T, N, actions.shape[-1])
+            batch_size, seq_len, features = states.shape
+            num_ships = self.config.max_ships
+            time_steps = seq_len // num_ships
+            states = states.view(batch_size, time_steps, num_ships, features)
+            actions = actions.view(batch_size, time_steps, num_ships, actions.shape[-1])
             if mask is not None:
-                mask = mask.view(B, T, N)
+                mask = mask.view(batch_size, time_steps, num_ships)
 
         recon_loss = 0
         if mask is not None and mask.any():
@@ -362,28 +403,32 @@ class WorldModel(nn.Module):
             steps: number of timesteps to generate
             n_ships: number of ships
         """
-        B = initial_state.shape[0]
+        batch_size = initial_state.shape[0]
         device = initial_state.device
 
-        # Ensure inputs are (B, N, F)
+        # Ensure inputs are (batch_size, num_ships, features)
         if initial_state.ndim == 2:
             initial_state = initial_state.unsqueeze(1).repeat(
                 1, n_ships, 1
-            )  # (B, N, F)
+            )  # (batch_size, num_ships, features)
         if initial_action.ndim == 2:
             initial_action = initial_action.unsqueeze(1).repeat(
                 1, n_ships, 1
-            )  # (B, N, A)
+            )  # (batch_size, num_ships, action_dim)
 
         # Current input for step t=0
-        current_state = initial_state.unsqueeze(1)  # (B, 1, N, F)
-        current_action = initial_action.unsqueeze(1)  # (B, 1, N, A)
+        current_state = initial_state.unsqueeze(
+            1
+        )  # (batch_size, 1, num_ships, features)
+        current_action = initial_action.unsqueeze(
+            1
+        )  # (batch_size, 1, num_ships, action_dim)
 
         past_key_values = None
         all_states = []
         all_actions = []
 
-        for t in range(steps):
+        for timestep in range(steps):
             # Forward pass for current step
             pred_states, pred_actions, _, current_key_values = self.forward(
                 current_state,
@@ -396,7 +441,7 @@ class WorldModel(nn.Module):
             past_key_values = current_key_values
 
             # Predictions are for the NEXT step
-            # pred_states: (B, 1, N, F)
+            # pred_states: (batch_size, 1, num_ships, features)
             next_state = pred_states
             next_action_logits = pred_actions
 
@@ -412,7 +457,11 @@ class WorldModel(nn.Module):
             current_action = next_action
 
         # Concatenate
-        gen_states = torch.cat(all_states, dim=1)  # (B, T, N, F)
-        gen_actions = torch.cat(all_actions, dim=1)  # (B, T, N, A)
+        gen_states = torch.cat(
+            all_states, dim=1
+        )  # (batch_size, time_steps, num_ships, features)
+        gen_actions = torch.cat(
+            all_actions, dim=1
+        )  # (batch_size, time_steps, num_ships, action_dim)
 
         return gen_states, gen_actions
