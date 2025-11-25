@@ -1,13 +1,3 @@
-# Boost and Broadside
-
-## Project Overview
-
-Boost and Broadside is a reinforcement learning project for training AI agents to play a multi-ship combat game. The project uses PyTorch, Stable-Baselines3, and Hydra for configuration management.
-
-## Development Commands
-
-### Running the Application
-```powershell
 # Play mode (human playable with rendering)
 uv run main.py mode=play
 

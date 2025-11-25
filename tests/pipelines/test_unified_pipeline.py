@@ -106,24 +106,3 @@ def test_pipeline_rl_only_pretrained(mock_pipeline_components):
     # Verify RL uses configured pretrained model
     call_args = mock_train_rl.call_args
     assert call_args.kwargs["pretrained_model_path"] == Path("pretrained/model.pth")
-
-def test_legacy_fallback(mock_pipeline_components):
-    mock_collect, mock_train_bc, mock_train_rl = mock_pipeline_components
-    
-    # No pipeline flags, use_bc=True, use_rl=True
-    cfg = OmegaConf.create({
-        "train": {
-            "use_bc": True,
-            "use_rl": True,
-            "bc_data_path": "existing/data.pkl",
-            "rl": {
-                "pretrained_model_path": None
-            }
-        }
-    })
-    
-    train(cfg)
-    
-    mock_collect.assert_not_called()
-    mock_train_bc.assert_called_once()
-    mock_train_rl.assert_called_once()

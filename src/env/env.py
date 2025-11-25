@@ -16,6 +16,13 @@ from .state import State
 
 
 class Environment(gym.Env):
+    """
+    Gymnasium-compatible environment for the space battle game.
+    
+    This class manages the game state, physics updates, and rendering.
+    It supports multiple game modes (1v1, NvN, etc.) and handles
+    the interaction between agents and the physics engine.
+    """
     def __init__(
         self,
         render_mode: str,
@@ -26,6 +33,18 @@ class Environment(gym.Env):
         physics_dt: float,
         rng: np.random.Generator = np.random.default_rng(),
     ):
+        """
+        Initialize the environment.
+
+        Args:
+            render_mode: "human" for visualization, "none" for headless.
+            world_size: (width, height) of the game world.
+            memory_size: Size of the replay buffer (if applicable).
+            max_ships: Maximum number of ships allowed in the game.
+            agent_dt: Time step for agent decisions (seconds).
+            physics_dt: Time step for physics updates (seconds).
+            rng: Random number generator.
+        """
         super().__init__()
 
         self.render_mode = render_mode
@@ -70,6 +89,7 @@ class Environment(gym.Env):
             self.renderer.remove_human_player(ship_id)
 
     def one_vs_one_reset(self) -> State:
+        """Reset to a standard 1v1 configuration."""
         ship_0 = Ship(
             ship_id=0,
             team_id=0,
@@ -96,7 +116,8 @@ class Environment(gym.Env):
         return State(ships=ships)
 
     @staticmethod
-    def fractal_ship_positions(level):
+    def fractal_ship_positions(level: int) -> np.ndarray:
+        """Generate fractal positions for ship squads."""
         # Base shape (a1) as complex numbers
         base = np.array([0j, 1 - 1j, -1 - 1j, -2 - 2j], dtype=np.complex128)
         if level == 0:
@@ -116,7 +137,8 @@ class Environment(gym.Env):
         return result
 
     @staticmethod
-    def get_ship_positions(n):
+    def get_ship_positions(n: int) -> np.ndarray:
+        """Get n positions from the fractal sequence."""
         if n <= 1:
             return np.array([0j], dtype=np.complex128)
         # find minimal level with enough points
@@ -125,6 +147,7 @@ class Environment(gym.Env):
         return seq[:n]
 
     def create_squad(self, team_id: int, n_ships: int, ship_id_offset: int) -> dict:
+        """Create a squad of ships with fractal positioning."""
         origin = self.rng.uniform(0, self.world_size[0]) + 1j * self.rng.uniform(
             0, self.world_size[1]
         )
@@ -156,6 +179,7 @@ class Environment(gym.Env):
         return ships
 
     def n_vs_n_reset(self, ships_per_team: int | None) -> State:
+        """Reset to an NvN configuration."""
         if ships_per_team is None:
             ships_per_team = self.rng.integers(
                 1, int(self.max_ships / 2), endpoint=True
@@ -171,6 +195,16 @@ class Environment(gym.Env):
     def reset(
         self, game_mode: str = "1v1", initial_obs: dict | None = None
     ) -> tuple[dict, dict]:
+        """
+        Reset the environment.
+
+        Args:
+            game_mode: The game mode to initialize.
+            initial_obs: Optional observation dict to restore state from.
+
+        Returns:
+            Tuple of (observation, info).
+        """
         self.current_time = 0.0
         self.state = None
         self.events = []
@@ -189,13 +223,15 @@ class Environment(gym.Env):
             case "nvn":
                 self.state = self.n_vs_n_reset(ships_per_team=None)
             case "reset_from_observation":
+                if initial_obs is None:
+                    raise ValueError("initial_obs must be provided for reset_from_observation")
                 self.state = self.reset_from_observation(initial_obs=initial_obs)
             case _:
                 raise ValueError(f"Unknown game mode: {game_mode}")
 
         return self.get_observation(), {}
 
-    def reset_from_observation(self, initial_obs: dict) -> tuple[dict, dict]:
+    def reset_from_observation(self, initial_obs: dict) -> State:
         """Reset environment to match the state described by an observation dict"""
         self.current_time = 0.0
         self.state = None
@@ -248,9 +284,7 @@ class Environment(gym.Env):
 
             ships[ship_id] = ship
 
-        self.state = State(ships=ships)
-
-        return self.get_observation(), {}
+        return State(ships=ships)
 
     def render(self, state: State) -> None:
         """Render current game state"""
@@ -356,14 +390,6 @@ class Environment(gym.Env):
                     reward += RewardConstants.DRAW
 
         return reward
-
-    def _calculate_tactical_rewards(self, team_id: int) -> float:
-        """Calculate damage and death rewards"""
-        ...
-
-    def _calculate_outcome_rewards(self, team_id: int) -> float:
-        """Calculate episode outcome rewards (±1.0)"""
-        ...
 
     def _check_termination(self, state: State) -> bool:
         """Check if episode should terminate and which agents are done"""

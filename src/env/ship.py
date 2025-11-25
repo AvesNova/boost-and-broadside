@@ -4,14 +4,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from env.event import GameEvent, EventType
-
-from .constants import Actions
-from .bullets import Bullets
+from src.env.event import GameEvent, EventType
+from src.env.constants import Actions
+from src.env.bullets import Bullets
 
 
 @dataclass
 class ShipConfig:
+    """Configuration parameters for ship physics and capabilities."""
     # Physical Parameters
     collision_radius: float = 10.0
     max_health: float = 100.0
@@ -48,6 +48,7 @@ default_ship_config = ShipConfig()
 
 @dataclass
 class ActionStates:
+    """Parsed action states from the action vector."""
     forward: int
     backward: int
     left: int
@@ -57,6 +58,13 @@ class ActionStates:
 
 
 class Ship(nn.Module):
+    """
+    Represents a single ship in the environment.
+    
+    Handles physics, movement, shooting, and state management for a ship.
+    Inherits from nn.Module to be compatible with PyTorch-based logic if needed,
+    though primarily acts as a physics entity.
+    """
     def __init__(
         self,
         ship_id: int,
@@ -66,9 +74,23 @@ class Ship(nn.Module):
         initial_y: float,
         initial_vx: float,
         initial_vy: float,
-        world_size: tuple[float, float] = (-1, -1),
+        world_size: tuple[float, float] = (-1.0, -1.0),
         rng: np.random.Generator = np.random.default_rng(),
     ):
+        """
+        Initialize the ship.
+
+        Args:
+            ship_id: Unique identifier for the ship.
+            team_id: Team identifier (0 or 1).
+            ship_config: Configuration object for ship parameters.
+            initial_x: Initial X position.
+            initial_y: Initial Y position.
+            initial_vx: Initial X velocity.
+            initial_vy: Initial Y velocity.
+            world_size: Dimensions of the game world (width, height).
+            rng: Random number generator.
+        """
         super().__init__()
         self.ship_id = ship_id
         self.team_id = team_id
@@ -95,6 +117,7 @@ class Ship(nn.Module):
         self._build_lookup_tables(ship_config)
 
     def _build_lookup_tables(self, ship_config: ShipConfig) -> None:
+        """Pre-compute lookup tables for physics calculations to avoid conditionals."""
         # Indexed by [left, right, sharp] -> turn offset
         self.turn_offset_table = np.zeros((2, 2, 2), dtype=np.float32)
 
@@ -140,6 +163,7 @@ class Ship(nn.Module):
         self.lift_coeff_table[1, 1, 1] = 0.0  # SLR
 
     def _extract_action_states(self, actions: torch.Tensor) -> ActionStates:
+        """Convert raw action tensor to ActionStates dataclass."""
         # Handle empty action tensor
         if actions.numel() == 0:
             return ActionStates(
@@ -166,11 +190,13 @@ class Ship(nn.Module):
         )
 
     def _update_power(self, actions: ActionStates, delta_t: float) -> None:
+        """Update ship power based on thrust actions."""
         energy_cost = self.energy_cost_table[actions.forward, actions.backward]
         self.power += energy_cost * delta_t
         self.power = max(0.0, min(self.power, self.config.max_power))
 
     def _update_attitude(self, actions: ActionStates) -> None:
+        """Update ship attitude (orientation) based on turn actions."""
         if not (actions.left and actions.right):
             self.turn_offset = self.turn_offset_table[
                 actions.left, actions.right, actions.sharp_turn
@@ -178,6 +204,7 @@ class Ship(nn.Module):
         self.attitude = self.velocity / self.speed * np.exp(1j * self.turn_offset)
 
     def _calculate_forces(self, actions: ActionStates) -> complex:
+        """Calculate total force acting on the ship."""
         if self.power > 0:
             thrust = self.thrust_table[actions.forward, actions.backward]
             thrust_force = thrust * self.attitude
@@ -198,6 +225,7 @@ class Ship(nn.Module):
         return total_force
 
     def _update_kinematics(self, actions: ActionStates, delta_t: float) -> None:
+        """Update position and velocity based on forces."""
         total_force = self._calculate_forces(actions)
         acceleration = total_force  # Assuming mass = 1
 
@@ -211,6 +239,7 @@ class Ship(nn.Module):
     def _shoot_bullet(
         self, actions: ActionStates, bullets: Bullets, current_time: float
     ) -> None:
+        """Handle shooting logic."""
         if (
             actions.shoot
             and current_time - self.last_fired_time >= self.config.firing_cooldown
@@ -252,6 +281,15 @@ class Ship(nn.Module):
         current_time: float,
         delta_t: float,
     ) -> None:
+        """
+        Advance the ship's state by one time step.
+
+        Args:
+            action_vector: Tensor containing actions.
+            bullets: Bullet manager instance.
+            current_time: Current simulation time.
+            delta_t: Time step duration.
+        """
         if self.health <= 0:
             self.alive = False
         if not self.alive:
@@ -266,11 +304,13 @@ class Ship(nn.Module):
         self._update_power(actions, delta_t)
 
     def damage_ship(self, damage: float) -> None:
+        """Apply damage to the ship."""
         self.health -= damage
         if self.health <= 0:
             self.alive = False
 
     def get_state(self) -> dict[str, int | float | complex]:
+        """Get the current state of the ship as a dictionary."""
         return {
             "ship_id": self.ship_id,
             "team_id": self.team_id,
@@ -282,10 +322,15 @@ class Ship(nn.Module):
             "speed": self.speed,
             "attitude": self.attitude,
             "is_shooting": self.is_shooting,
-            # "token": self.get_token(),
         }
 
     def get_token(self) -> torch.Tensor:
+        """
+        Generate a token representation of the ship's state.
+        
+        Returns:
+            Tensor of shape (10,) containing normalized state features.
+        """
         return torch.tensor(
             [
                 self.team_id,
@@ -304,4 +349,5 @@ class Ship(nn.Module):
 
     @property
     def max_bullets(self) -> int:
+        """Calculate maximum possible active bullets based on lifetime and cooldown."""
         return int(np.ceil(self.config.bullet_lifetime / self.config.firing_cooldown))
