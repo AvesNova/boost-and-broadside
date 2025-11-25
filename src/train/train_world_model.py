@@ -6,7 +6,7 @@ from pathlib import Path
 import logging
 from tqdm import tqdm
 
-from src.models.world_model import WorldModel
+from src.nn_models.world_model import WorldModel
 from src.train.data_loader import load_bc_data, create_world_model_data_loader
 
 log = logging.getLogger(__name__)
