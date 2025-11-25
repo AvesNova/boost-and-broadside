@@ -1,9 +1,36 @@
-from numpy import dtype
+"""
+Observation tokenization for neural network input.
+
+Converts raw game observations into normalized token representations suitable for
+transformer-based agents.
+"""
 import torch
 
 
-def observation_to_tokens(obs: dict, perspective: int) -> torch.Tensor:
-    # Normalized positions
+def observation_to_tokens(obs: dict[str, torch.Tensor], perspective: int) -> torch.Tensor:
+    """
+    Convert observation dictionary to token representation.
+
+    Transforms raw game state into a normalized feature vector suitable for
+    neural network processing. Uses sin/cos encoding for positional features
+    to handle toroidal world wrapping.
+
+    Args:
+        obs: Observation dictionary containing ship states.
+        perspective: Team ID from whose perspective to encode (0 or 1).
+
+    Returns:
+        Token tensor of shape (1, num_ships, token_dim) where token_dim=12.
+        Features include:
+        - Team indicator (binary)
+        - Health (normalized)
+        - Power (normalized)
+        - Position (sin/cos encoded x and y)
+        - Velocity (normalized x and y components)
+        - Attitude (x and y components)
+        - Shooting state (binary)
+    """
+    # Normalized positions (hardcoded world size: 1200x800)
     x_norm = obs["position"].real / 1200
     y_norm = obs["position"].imag / 800
 
@@ -17,7 +44,6 @@ def observation_to_tokens(obs: dict, perspective: int) -> torch.Tensor:
     return torch.stack(
         [
             torch.eq(obs["team_id"], perspective),
-            # obs["ship_id"].float() / 8,
             obs["health"].float() / 100,
             obs["power"].float() / 100,
             x_sin,

@@ -1,4 +1,9 @@
-from enum import IntEnum, StrEnum, auto
+"""
+Constants and enumerations for the game environment.
+
+Defines action indices and reward calculation constants.
+"""
+from enum import IntEnum, auto
 
 
 class Actions(IntEnum):
@@ -13,7 +18,7 @@ class Actions(IntEnum):
 
 
 class RewardConstants:
-    """Constants for reward calculation"""
+    """Constants for reward calculation."""
 
     VICTORY = 1.0
     DEFEAT = -1.0

@@ -1,8 +1,5 @@
-"""Data collector for behavioral cloning training data"""
-
+"""Data collector for behavioral cloning training data."""
 import pickle
-import yaml
-from datetime import datetime
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any

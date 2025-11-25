@@ -1,13 +1,32 @@
+"""
+Game state representation.
+
+Defines the State class which encapsulates the current state of all ships and bullets.
+"""
 import numpy as np
 
-from .bullets import Bullets
-from .ship import Ship
+from src.env.bullets import Bullets
+from src.env.ship import Ship
 
 
 class State:
-    """Represents a state of the game state at a specific time"""
+    """
+    Represents the complete game state at a specific time.
+
+    Attributes:
+        ships: Dictionary mapping ship_id to Ship instances.
+        time: Current simulation time.
+        bullets: Bullet manager for all active projectiles.
+    """
 
     def __init__(self, ships: dict[int, Ship], time: float = 0.0) -> None:
+        """
+        Initialize game state.
+
+        Args:
+            ships: Dictionary of ships in the game.
+            time: Initial simulation time.
+        """
         self.ships = ships
         self.time = time
 
