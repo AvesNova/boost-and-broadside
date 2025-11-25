@@ -1,48 +1,67 @@
+"""
+Replay agent for playing back recorded episodes.
+
+Allows replaying previously recorded game episodes by feeding stored actions
+back into the environment.
+"""
+from typing import Any
 import torch
 import torch.nn as nn
 
 
 class ReplayAgent(nn.Module):
-    """Agent that controls all ships from recorded episode data"""
+    """
+    Agent that replays actions from recorded episode data.
+
+    This agent plays back pre-recorded actions, useful for debugging,
+    visualization, or analysis of past games.
+    """
 
     def __init__(
         self,
         agent_id: str,
         team_id: int,
         squad: list[int],
-        replay_data: dict | None = None,
+        replay_data: dict[str, Any] | None = None,
+        **kwargs: Any,
     ):
         """
-        Initialize replay agent
+        Initialize replay agent.
 
         Args:
-            agent_id: Unique identifier for this agent
-            team_id: Which team this agent belongs to (not used for replay)
-            squad: List of ship IDs this agent controls (should be all ships)
-            replay_data: Dictionary containing recorded episode data
+            agent_id: Unique identifier for this agent.
+            team_id: Which team this agent belongs to (not used for replay).
+            squad: List of ship IDs this agent controls.
+            replay_data: Dictionary containing recorded episode data.
+            **kwargs: Ignored additional arguments.
         """
-        super().__init__(agent_id, team_id, squad)
+        super().__init__()
+        self.agent_id = agent_id
+        self.team_id = team_id
+        self.squad = squad
 
         self.replay_data = replay_data
         self.current_step = 0
-        self.episode_actions = None
+        self.episode_actions: list[dict[int, torch.Tensor]] = []
         self.episode_length = 0
 
         # Load actions from replay data
         if replay_data and "actions" in replay_data:
             self._load_actions()
 
-    def _load_actions(self):
-        """Load actions from replay data"""
-        # Replay data structure:
-        # {
-        #     "actions": {
-        #         "team_id": [step_0_actions, step_1_actions, ...],
-        #         ...
-        #     },
-        #     "episode_length": N
-        # }
+    def _load_actions(self) -> None:
+        """
+        Load actions from replay data.
 
+        Replay data structure:
+        {
+            "actions": {
+                "team_id": [step_0_actions, step_1_actions, ...],
+                ...
+            },
+            "episode_length": N
+        }
+        """
         # Combine all team actions into a single sequence
         self.episode_actions = []
 
@@ -66,15 +85,18 @@ class ReplayAgent(nn.Module):
 
         self.episode_length = len(self.episode_actions)
 
-    def get_actions(self, obs_dict: dict[str, torch.Tensor]) -> dict[int, torch.Tensor]:
+    def forward(
+        self, obs_dict: dict[str, torch.Tensor], ship_ids: list[int]
+    ) -> dict[int, torch.Tensor]:
         """
-        Get actions from recorded episode data
+        Forward pass for the agent.
 
         Args:
-            obs_dict: Observation dictionary from environment
+            obs_dict: Observation dictionary from environment.
+            ship_ids: List of ship IDs to control.
 
         Returns:
-            Dictionary mapping ship_id to action tensor
+            Dictionary mapping ship_id to action tensor.
         """
         actions: dict[int, torch.Tensor] = {}
 
@@ -83,7 +105,7 @@ class ReplayAgent(nn.Module):
 
             # Convert actions to tensors and filter for our squad
             for ship_id, action in step_actions.items():
-                if ship_id in self.squad:
+                if ship_id in ship_ids:
                     if isinstance(action, torch.Tensor):
                         actions[ship_id] = action
                     else:
@@ -91,7 +113,7 @@ class ReplayAgent(nn.Module):
                         actions[ship_id] = torch.tensor(action, dtype=torch.float32)
         else:
             # No more recorded actions, return zero actions
-            for ship_id in self.squad:
+            for ship_id in ship_ids:
                 actions[ship_id] = torch.zeros(6, dtype=torch.float32)
 
         # Increment step for next call
@@ -99,24 +121,30 @@ class ReplayAgent(nn.Module):
 
         return actions
 
-    def get_agent_type(self) -> str:
-        """Return agent type for logging/debugging"""
-        return "replay"
-
     def reset(self) -> None:
-        """Reset agent state for new episode"""
+        """Reset agent state for new episode."""
         self.current_step = 0
 
     def is_finished(self) -> bool:
-        """Check if replay has finished"""
+        """Check if replay has finished."""
         return self.current_step >= self.episode_length
 
     def get_progress(self) -> tuple[int, int]:
-        """Get current progress through replay"""
+        """
+        Get current progress through replay.
+
+        Returns:
+            Tuple of (current_step, total_steps).
+        """
         return (self.current_step, self.episode_length)
 
-    def set_replay_data(self, replay_data: dict) -> None:
-        """Set new replay data"""
+    def set_replay_data(self, replay_data: dict[str, Any]) -> None:
+        """
+        Set new replay data.
+
+        Args:
+            replay_data: New replay data dictionary.
+        """
         self.replay_data = replay_data
         self.current_step = 0
         self._load_actions()

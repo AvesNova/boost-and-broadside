@@ -1,10 +1,3 @@
-"""Utility to inspect collected training data"""
-
-import pickle
-from pathlib import Path
-
-import torch
-
 
 def inspect_data_file(file_path: Path) -> None:
     """

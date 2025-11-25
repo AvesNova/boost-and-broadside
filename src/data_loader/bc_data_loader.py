@@ -1,8 +1,15 @@
+"""
+Behavioral Cloning data loader.
+
+Handles loading, preprocessing, and splitting of BC training data from
+collected episodes.
+"""
 import pickle
 from pathlib import Path
-from torch.utils.data import DataLoader, TensorDataset, random_split
+from typing import Any
+
 import torch
-from typing import Tuple, Dict, Any
+from torch.utils.data import DataLoader, TensorDataset, random_split
 from omegaconf import DictConfig
 
 
@@ -33,7 +40,7 @@ class BCDataLoader:
         # Get data info
         self.data_info = self._get_data_info()
 
-    def _load_data(self) -> Dict[str, Any]:
+    def _load_data(self) -> dict[str, Any]:
         """
         Load BC training data from the specified path.
 
@@ -62,7 +69,7 @@ class BCDataLoader:
 
         return data
 
-    def _process_data(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def _process_data(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Process the loaded data into tensors suitable for training.
 
@@ -144,7 +151,7 @@ class BCDataLoader:
 
         return returns
 
-    def _get_data_info(self) -> Dict[str, Any]:
+    def _get_data_info(self) -> dict[str, Any]:
         """
         Get information about the loaded data.
 
@@ -165,7 +172,7 @@ class BCDataLoader:
 
     def get_dataloaders(
         self, batch_size: int, num_workers: int = 4
-    ) -> Tuple[DataLoader, DataLoader]:
+    ) -> tuple[DataLoader, DataLoader]:
         """
         Create train and validation data loaders.
 
@@ -203,7 +210,7 @@ class BCDataLoader:
 
         return train_loader, val_loader
 
-    def get_data_info(self) -> Dict[str, Any]:
+    def get_data_info(self) -> dict[str, Any]:
         """
         Get information about the loaded data.
 

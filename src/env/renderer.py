@@ -1,17 +1,30 @@
+"""
+Pygame-based rendering for the ship combat environment.
+
+Handles visualization of ships, bullets, and UI elements, as well as
+human player input via keyboard controls.
+"""
 import numpy as np
 import torch
 import pygame
 
-from .constants import Actions
-from .ship import Ship
-from .bullets import Bullets
-from .state import State
+from src.env.constants import Actions
+from src.env.ship import Ship
+from src.env.bullets import Bullets
+from src.env.state import State
 
 
 class GameRenderer:
-    """Handles pygame rendering and human input for the environment"""
+    """Handles pygame rendering and human input for the environment."""
 
     def __init__(self, world_size: tuple[int, int], target_fps: int = 60):
+        """
+        Initialize the game renderer.
+
+        Args:
+            world_size: Width and height of the game world in pixels.
+            target_fps: Target frames per second for rendering.
+        """
         self.world_size = world_size
         self.target_fps = target_fps
 
@@ -26,7 +39,7 @@ class GameRenderer:
         self.human_actions: dict[int, torch.Tensor] = {}
 
     def initialize(self) -> None:
-        """Initialize pygame components"""
+        """Initialize pygame components."""
         if self.initialized:
             return
 
@@ -47,17 +60,32 @@ class GameRenderer:
             ) from e
 
     def add_human_player(self, ship_id: int) -> None:
-        """Register a ship to be controlled by human input"""
+        """
+        Register a ship to be controlled by human input.
+
+        Args:
+            ship_id: ID of the ship to control.
+        """
         self.human_ship_ids.add(ship_id)
         self.human_actions[ship_id] = torch.zeros(len(Actions))
 
     def remove_human_player(self, ship_id: int) -> None:
-        """Remove human control from a ship"""
+        """
+        Remove human control from a ship.
+
+        Args:
+            ship_id: ID of the ship to remove control from.
+        """
         self.human_ship_ids.discard(ship_id)
         self.human_actions.pop(ship_id, None)
 
     def handle_events(self) -> bool:
-        """Handle pygame events and return whether to continue running"""
+        """
+        Handle pygame events.
+
+        Returns:
+            True if the game should continue running, False if quit was requested.
+        """
         if not self.initialized:
             self.initialize()
 
@@ -67,7 +95,7 @@ class GameRenderer:
         return True
 
     def update_human_actions(self) -> None:
-        """Update human actions based on current keyboard state"""
+        """Update human actions based on current keyboard state."""
         if not self.human_ship_ids:
             return
 
@@ -112,11 +140,21 @@ class GameRenderer:
             self.human_actions[ship_id] = action
 
     def get_human_actions(self) -> dict[int, torch.Tensor]:
-        """Get current human actions for all human-controlled ships"""
+        """
+        Get current human actions for all human-controlled ships.
+
+        Returns:
+            Dictionary mapping ship_id to action tensor.
+        """
         return self.human_actions.copy()
 
     def _render_ship(self, ship: Ship) -> None:
-        """Render a single ship"""
+        """
+        Render a single ship.
+
+        Args:
+            ship: Ship instance to render.
+        """
         if not ship.alive:
             return
 
@@ -167,7 +205,12 @@ class GameRenderer:
         )
 
     def _render_bullets(self, bullets: Bullets) -> None:
-        """Render all active bullets"""
+        """
+        Render all active bullets.
+
+        Args:
+            bullets: Bullets instance containing active projectiles.
+        """
         if bullets.num_active == 0:
             return
 
@@ -176,7 +219,6 @@ class GameRenderer:
             ship_id = bullets.ship_id[i]
 
             # Bullet color matches ship team
-            # Get team from ship_id (assuming ship_id == team_id for simplicity)
             if ship_id == 0:
                 color = (100, 150, 255)  # Light blue
             else:
@@ -185,7 +227,12 @@ class GameRenderer:
             pygame.draw.circle(self.screen, color, (int(x), int(y)), 2)
 
     def _render_ui(self, state: State) -> None:
-        """Render UI information"""
+        """
+        Render UI information.
+
+        Args:
+            state: Current game state.
+        """
         y_offset = 10
 
         for ship_id, ship in state.ships.items():
@@ -211,7 +258,12 @@ class GameRenderer:
             y_offset += 70
 
     def render(self, state: State) -> None:
-        """Render the current game state"""
+        """
+        Render the current game state.
+
+        Args:
+            state: Current game state to render.
+        """
         if not self.initialized:
             self.initialize()
 
@@ -230,7 +282,7 @@ class GameRenderer:
         self.clock.tick(self.target_fps)
 
     def close(self) -> None:
-        """Clean up pygame resources"""
+        """Clean up pygame resources."""
         if self.initialized:
             pygame.quit()
             self.initialized = False
@@ -242,4 +294,14 @@ class GameRenderer:
 def create_renderer(
     world_size: tuple[int, int], target_fps: int = 60
 ) -> GameRenderer | None:
+    """
+    Create a game renderer instance.
+
+    Args:
+        world_size: Width and height of the game world in pixels.
+        target_fps: Target frames per second for rendering.
+
+    Returns:
+        GameRenderer instance.
+    """
     return GameRenderer(world_size, target_fps)
