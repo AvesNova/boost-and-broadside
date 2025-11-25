@@ -5,13 +5,13 @@
 | `src/__init__.py` | Pending | |
 | `src/agents/__init__.py` | Pending | |
 | `src/agents/agents.py` | Done | Reduced duplication |
-| `src/agents/dummy.py` | Pending | |
-| `src/agents/human.py` | Pending | |
-| `src/agents/old_scripted_agent.py` | Pending | |
-| `src/agents/random_agent.py` | Pending | |
+| `src/agents/dummy.py` | Done | Refactored |
+| `src/agents/human.py` | Done | Refactored to passive agent |
+| `src/agents/old_scripted_agent.py` | Deleted | Obsolete |
+| `src/agents/random_agent.py` | Done | Refactored |
 | `src/agents/replay.py` | Pending | |
 | `src/agents/sb3_adapter.py` | Pending | |
-| `src/agents/scripted.py` | Pending | |
+| `src/agents/scripted.py` | Done | Refactored |
 | `src/agents/team_transformer_agent.py` | Pending | |
 | `src/agents/tokenizer.py` | Pending | |
 | `src/data/bc_data_loader.py` | Pending | |
@@ -29,8 +29,8 @@
 | `src/game_coordinator.py` | Done | Docstrings and helper method added |
 | `src/inspect_data.py` | Pending | |
 | `src/modes/__init__.py` | Pending | |
-| `src/modes/collect.py` | Pending | |
-| `src/modes/play.py` | Pending | |
+| `src/modes/collect.py` | Done | Refactored |
+| `src/modes/play.py` | Done | Refactored |
 | `src/modes/train.py` | Done | Split into `bc_trainer` and `rl_trainer` |
 | `src/nn_models/world_model.py` | Pending | |
 | `src/train/data_loader.py` | Pending | |

@@ -17,12 +17,16 @@ def collect_worker(
     worker_id: int, cfg_dict: dict[str, Any], run_timestamp: str
 ) -> None:
     """
-    Worker function for collecting data in a separate process
+    Worker function for collecting data in a separate process.
+
+    This function initializes a DataCollector and GameCoordinator, runs the
+    specified number of episodes for each game mode, and saves the collected
+    data to disk.
 
     Args:
-        worker_id: Unique identifier for this worker
-        cfg_dict: Configuration dictionary (serialized)
-        run_timestamp: Timestamp string for this run
+        worker_id: Unique identifier for this worker (0 to num_workers-1).
+        cfg_dict: Configuration dictionary (serialized for multiprocessing).
+        run_timestamp: Timestamp string for this run, used for directory naming.
     """
     cfg = OmegaConf.create(cfg_dict)
 
@@ -79,18 +83,24 @@ def collect_worker(
 
 def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
     """
-    Aggregate all worker data into a single file
+    Aggregate data from all workers into a single dataset file.
+
+    Reads the individual data files produced by each worker, concatenates
+    the tensors, and saves a unified `aggregated_data.pkl` and `metadata.yaml`.
 
     Args:
-        cfg: Configuration dictionary
-        run_timestamp: Timestamp string for this run
+        cfg: Configuration dictionary.
+        run_timestamp: Timestamp string for this run.
+
+    Returns:
+        Path to the aggregated data file, or None if no data was found.
     """
     run_dir = Path(cfg.collect.output_dir) / run_timestamp
     worker_dirs = sorted(run_dir.glob("worker_*"))
 
     if not worker_dirs:
         print("No worker data found to aggregate")
-        return
+        return None
 
     print(f"\nAggregating data from {len(worker_dirs)} workers...")
 
@@ -119,7 +129,7 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
 
         episode_offset = total_episodes
         adjusted_episode_ids = data["episode_ids"] + episode_offset
-
+        
         all_team_0_tokens.append(data["team_0"]["tokens"])
         all_team_0_actions.append(data["team_0"]["actions"])
         all_team_0_rewards.append(data["team_0"]["rewards"])
@@ -133,6 +143,10 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
         total_timesteps += data["metadata"]["total_timesteps"]
         total_sim_time += data["metadata"]["total_sim_time"]
         worker_metadata.append(data["metadata"])
+
+    if total_episodes == 0:
+        print("No episodes found in worker data.")
+        return None
 
     aggregated_data = {
         "team_0": {
@@ -200,10 +214,16 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
 
 def collect(cfg: DictConfig) -> Path | None:
     """
-    Collect training data from agent gameplay using parallel workers
+    Execute the data collection pipeline.
+
+    Orchestrates the data collection process by spawning worker processes
+    and then aggregating the results.
 
     Args:
-        cfg: Configuration dictionary
+        cfg: Configuration dictionary.
+
+    Returns:
+        Path to the final aggregated data file, or None if failed.
     """
     num_workers = cfg.collect.num_workers
     run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

@@ -4,11 +4,14 @@ import torch
 import numpy as np
 import torch.nn as nn
 
-from .human import HumanAgent
-
 
 class ScriptedAgent(nn.Module):
-    """Agent that controls n ships using scripted behavior"""
+    """
+    Agent that controls n ships using scripted behavior.
+    
+    This agent delegates control of each ship to a ShipController, which
+    implements the actual behavioral logic (targeting, movement, shooting).
+    """
 
     def __init__(
         self,
@@ -17,18 +20,22 @@ class ScriptedAgent(nn.Module):
         bullet_speed: float,
         target_radius: float,
         radius_multiplier: float,
-        world_size: list[float, float],
+        world_size: tuple[float, float],
         rng: np.random.Generator = np.random.default_rng(),
-        **kwargs,
+        **kwargs: Any,
     ):
         """
-        Initialize scripted agent
+        Initialize the scripted agent.
 
         Args:
-            agent_id: Unique identifier for this agent
-            team_id: Which team this agent belongs to
-            squad: List of ship IDs this agent controls
-            config: Configuration for scripted behavior
+            max_shooting_range: Maximum range to engage targets.
+            angle_threshold: Base angle threshold for shooting (degrees).
+            bullet_speed: Speed of bullets.
+            target_radius: Assumed radius of target ships.
+            radius_multiplier: Multiplier for dynamic shooting threshold.
+            world_size: Dimensions of the world (width, height).
+            rng: Random number generator.
+            **kwargs: Ignored additional arguments.
         """
         super().__init__()
 
@@ -46,14 +53,14 @@ class ScriptedAgent(nn.Module):
         self, obs_dict: dict[str, torch.Tensor], ship_ids: list[int]
     ) -> dict[int, torch.Tensor]:
         """
-        Forward pass for the agent (required by nn.Module)
+        Forward pass for the agent.
 
         Args:
-            obs_dict: Observation dictionary from environment
-            ship_ids: List of ship IDs to control
+            obs_dict: Observation dictionary from environment.
+            ship_ids: List of ship IDs to control.
 
         Returns:
-            Dictionary mapping ship_id to action tensor
+            Dictionary mapping ship_id to action tensor.
         """
         return self.get_actions(obs_dict, ship_ids)
 
@@ -61,14 +68,14 @@ class ScriptedAgent(nn.Module):
         self, obs_dict: dict[str, torch.Tensor], ship_ids: list[int]
     ) -> dict[int, torch.Tensor]:
         """
-        Get actions from scripted behavior or human input
+        Get actions for all controlled ships.
 
         Args:
-            obs_dict: Observation dictionary from environment
-            ship_ids: List of ship IDs to control
+            obs_dict: Observation dictionary from environment.
+            ship_ids: List of ship IDs to control.
 
         Returns:
-            Dictionary mapping ship_id to action tensor
+            Dictionary mapping ship_id to action tensor.
         """
         return {
             ship_id: self.ship_controller.get_actions(obs_dict, ship_id)
@@ -81,15 +88,15 @@ class ShipController(nn.Module):
     Advanced ship controller with predictive targeting and team awareness.
 
     Features:
-    - Calculates bullet travel time based on distance
-    - Predicts enemy position when bullet arrives
-    - Uses predicted position for both turning and shooting
-    - Only targets ships from opposing teams (no friendly fire)
-    - Targets the closest enemy ship when multiple enemies are present
-    - Supports toroidal world wrapping
-    - Power-aware movement and shooting decisions
-    - Dynamic shooting angle thresholds
-    - Sharp turn capability for large angle differences
+    - Calculates bullet travel time based on distance.
+    - Predicts enemy position when bullet arrives.
+    - Uses predicted position for both turning and shooting.
+    - Only targets ships from opposing teams (no friendly fire).
+    - Targets the closest enemy ship when multiple enemies are present.
+    - Supports toroidal world wrapping.
+    - Power-aware movement and shooting decisions.
+    - Dynamic shooting angle thresholds.
+    - Sharp turn capability for large angle differences.
     """
 
     def __init__(
@@ -99,15 +106,20 @@ class ShipController(nn.Module):
         bullet_speed: float,
         target_radius: float,
         radius_multiplier: float,
-        world_size: list[float, float],
+        world_size: tuple[float, float],
         rng: np.random.Generator = np.random.default_rng(),
     ):
         """
-        Initialize ship controller
+        Initialize ship controller.
 
         Args:
-            ship_id: ID of the ship this controller controls
-            config: Configuration for behavior
+            max_shooting_range: Maximum range to engage targets.
+            angle_threshold: Base angle threshold for shooting (degrees).
+            bullet_speed: Speed of bullets.
+            target_radius: Assumed radius of target ships.
+            radius_multiplier: Multiplier for dynamic shooting threshold.
+            world_size: Dimensions of the world (width, height).
+            rng: Random number generator.
         """
         super().__init__()
         self.max_shooting_range = max_shooting_range
@@ -121,13 +133,14 @@ class ShipController(nn.Module):
         self, obs_dict: dict[str, torch.Tensor], ship_id: int
     ) -> torch.Tensor:
         """
-        Get actions for this ship using advanced targeting logic
+        Get actions for a specific ship using advanced targeting logic.
 
         Args:
-            obs_dict: Observation dictionary from environment
+            obs_dict: Observation dictionary from environment.
+            ship_id: ID of the ship to control.
 
         Returns:
-            Action tensor for this ship
+            Action tensor for the ship.
         """
         # Get our ship's state and find closest enemy
         our_ship_data = None
@@ -308,11 +321,11 @@ class ShipController(nn.Module):
         Calculate the shortest vector from pos1 to pos2 in a toroidal world.
 
         Args:
-            pos1: Position 1 [x, y]
-            pos2: Position 2 [x, y]
+            pos1: Position 1 [x, y].
+            pos2: Position 2 [x, y].
 
         Returns:
-            Vector from pos1 to pos2 considering wrapping
+            Vector from pos1 to pos2 considering wrapping.
         """
         # Calculate direct difference
         diff = pos2 - pos1
@@ -340,12 +353,12 @@ class ShipController(nn.Module):
         Calculate where the enemy will be when a bullet fired now reaches them.
 
         Args:
-            self_pos: Our current position [x, y]
-            enemy_pos: Enemy's current position [x, y]
-            enemy_velocity: Enemy's velocity [vx, vy] (already in world units)
+            self_pos: Our current position [x, y].
+            enemy_pos: Enemy's current position [x, y].
+            enemy_velocity: Enemy's velocity [vx, vy] (already in world units).
 
         Returns:
-            Predicted enemy position [x, y] accounting for toroidal wrapping
+            Predicted enemy position [x, y] accounting for toroidal wrapping.
         """
         # Calculate current distance to enemy (accounting for wrapping)
         to_enemy = self._calculate_wrapped_vector(self_pos, enemy_pos)
@@ -375,10 +388,10 @@ class ShipController(nn.Module):
         angular_size = 2 * arctan(radius / distance)
 
         Args:
-            distance: Distance to target
+            distance: Distance to target.
 
         Returns:
-            Angle threshold in radians
+            Angle threshold in radians.
         """
         if distance < 1e-6:
             return self.angle_threshold  # Fallback for very close targets

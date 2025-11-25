@@ -4,63 +4,38 @@ import torch.nn as nn
 
 
 class HumanAgent(nn.Module):
-    """Agent that controls exactly 1 ship via human input"""
+    """
+    Agent that represents a human player.
 
-    def __init__(self):
+    In the current architecture, human input is handled directly by the
+    GameCoordinator/Environment via the Renderer. This agent serves as a
+    placeholder that returns no-op actions, which are then overridden
+    by the actual human input in the game loop.
+    """
+
+    def __init__(self, **kwargs: Any):
         """
-        Initialize human agent
+        Initialize human agent.
 
         Args:
-            agent_id: Unique identifier for this agent
-            team_id: Which team this agent belongs to
-            squad: List of ship IDs this agent controls (should be exactly 1)
+            **kwargs: Ignored configuration arguments.
         """
         super().__init__()
 
-    def set_renderer(self, renderer: Any) -> None:
-        """Set the renderer for getting human input"""
-        self.renderer = renderer
-
-    def get_actions(self, obs_dict: dict[str, torch.Tensor]) -> dict[int, torch.Tensor]:
+    def forward(
+        self, obs_dict: dict[str, torch.Tensor], ship_ids: list[int]
+    ) -> dict[int, torch.Tensor]:
         """
-        Get actions from human input
+        Forward pass for the agent.
+
+        Returns no-op actions (all zeros) for the controlled ships.
+        The actual human control is applied in the GameCoordinator loop.
 
         Args:
-            obs_dict: Observation dictionary from environment
+            obs_dict: Observation dictionary from environment.
+            ship_ids: List of ship IDs to control.
 
         Returns:
-            Dictionary mapping ship_id to action tensor
+            Dictionary mapping ship_id to action tensor (all zeros).
         """
-        actions: dict[int, torch.Tensor] = {}
-
-        # Only get actions for our controlled ship if it's alive
-        ship_is_alive = (
-            self.controlled_ship_id < obs_dict["ship_id"].shape[0]
-            and obs_dict["alive"][self.controlled_ship_id, 0].item() > 0
-        )
-
-        if ship_is_alive and self.renderer:
-            # Get human actions from renderer
-            human_actions = self.renderer.get_human_actions()
-
-            if self.controlled_ship_id in human_actions:
-                actions[self.controlled_ship_id] = human_actions[
-                    self.controlled_ship_id
-                ]
-            else:
-                # Default to no action if no input available
-                actions[self.controlled_ship_id] = torch.zeros(6, dtype=torch.float32)
-        else:
-            # Ship is dead or no renderer available
-            actions[self.controlled_ship_id] = torch.zeros(6, dtype=torch.float32)
-
-        return actions
-
-    def get_agent_type(self) -> str:
-        """Return agent type for logging/debugging"""
-        return "human"
-
-    def reset(self) -> None:
-        """Reset agent state for new episode"""
-        # Human agent doesn't need to reset any state
-        pass
+        return {ship_id: torch.zeros(6, dtype=torch.float32) for ship_id in ship_ids}
