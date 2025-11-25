@@ -89,12 +89,16 @@ train:
 
 world_model:
   embed_dim: 128
-  n_layers: 4
+  n_layers: 8
   n_heads: 4
-  context_len: 64
+  context_len: 96
   n_ships: 8
-  mask_ratio: 0.75
+  mask_ratio: 0.15
   noise_scale: 0.1
   learning_rate: 0.0003
-  batch_size: 128
+  batch_size: 96
   epochs: 100
+  use_alternating_lengths: true
+  short_batch_len: 32
+  long_batch_len: 96
+  long_batch_ratio: 0.2

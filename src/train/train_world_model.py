@@ -33,8 +33,14 @@ def train_world_model(cfg: DictConfig):
         batch_size=cfg.world_model.batch_size,
         context_len=cfg.world_model.context_len,
         validation_split=0.2, # Could be in config
-        num_workers=0
+        num_workers=0,
+        use_alternating_lengths=cfg.world_model.use_alternating_lengths,
+        short_batch_len=cfg.world_model.short_batch_len,
+        long_batch_len=cfg.world_model.long_batch_len,
+        long_batch_ratio=cfg.world_model.long_batch_ratio,
     )
+
+
     
     # Initialize Model
     # Get dimensions from data

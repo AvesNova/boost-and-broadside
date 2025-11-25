@@ -174,13 +174,167 @@ class SequenceDataset(Dataset):
         return seq_tokens, seq_actions
 
 
+class AlternatingBatchLengthDataset(Dataset):
+    """
+    Dataset that supports both short and long batch lengths.
+    Each sample randomly chooses between short_batch_len and long_batch_len.
+    
+    This enables true per-iteration alternation as described in the paper:
+    "alternate training on many short batches and occasional long batches"
+    
+    Key concept: batch_len >= context_len prevents overfitting to start-of-sequence tokens.
+    """
+    def __init__(
+        self, 
+        tokens, 
+        actions, 
+        episode_lengths, 
+        context_len: int = 96,
+        short_batch_len: int = 32,
+        long_batch_len: int = 128,
+        long_batch_ratio: float = 0.2,
+    ):
+        """
+        Args:
+            tokens: (TotalTimesteps, N, F) tensor
+            actions: (TotalTimesteps, N, A) tensor
+            episode_lengths: (NumEpisodes,) tensor
+            context_len: Model's context length (window size)
+            short_batch_len: Length of short batches (should be >= context_len)
+            long_batch_len: Length of long batches (should be >= context_len)
+            long_batch_ratio: Probability of using long batch length per sample
+        """
+        self.tokens = tokens
+        self.actions = actions
+        self.context_len = context_len
+        self.short_batch_len = short_batch_len
+        self.long_batch_len = long_batch_len
+        self.long_batch_ratio = long_batch_ratio
+        
+        # Build indices for both short and long batch lengths
+        # We'll create indices for the maximum batch length (long)
+        # and truncate at runtime if we choose short
+        self.episodes = []
+        current_idx = 0
+        for length in episode_lengths:
+            l = length.item()
+            # We need at least long_batch_len timesteps to support both lengths
+            if l >= long_batch_len:
+                # Can sample multiple windows from this episode
+                for start in range(l - long_batch_len + 1):
+                    self.episodes.append((current_idx, start, l))
+            current_idx += l
+            
+    def __len__(self):
+        return len(self.episodes)
+    
+    def __getitem__(self, idx):
+        base_idx, start_offset, episode_length = self.episodes[idx]
+        
+        # Randomly choose batch length for THIS sample
+        if torch.rand(1).item() < self.long_batch_ratio:
+            batch_len = self.long_batch_len
+        else:
+            batch_len = self.short_batch_len
+        
+        # Ensure we don't exceed episode boundaries
+        # start_offset was calculated for long_batch_len, so we might need to adjust
+        max_start_for_batch_len = episode_length - batch_len
+        actual_start_offset = min(start_offset, max_start_for_batch_len)
+        
+        # Get a batch of batch_len timesteps
+        abs_start = base_idx + actual_start_offset
+        abs_end = abs_start + batch_len
+        
+        batch_tokens = self.tokens[abs_start:abs_end]
+        
+        # Actions: [start-1 : start + batch_len - 1]
+        if actual_start_offset == 0:
+            # First action is 0
+            if batch_len > 1:
+                data_actions = self.actions[abs_start : abs_end - 1]
+                zeros = torch.zeros(1, *data_actions.shape[1:], dtype=data_actions.dtype)
+                batch_actions = torch.cat([zeros, data_actions], dim=0)
+            else:
+                batch_actions = torch.zeros(1, *self.actions.shape[1:], dtype=self.actions.dtype)
+        else:
+            slice_start = abs_start - 1
+            slice_end = abs_end - 1
+            batch_actions = self.actions[slice_start : slice_end]
+        
+        return batch_tokens, batch_actions
+
+
+def collate_variable_length_batches(batch):
+    """
+    Custom collate function for batches with variable lengths.
+    Pads all samples to the maximum length in the batch.
+    
+    Args:
+        batch: List of (tokens, actions) tuples with potentially different lengths
+        
+    Returns:
+        Tuple of (padded_tokens, padded_actions) tensors
+    """
+    # Find max length in this batch
+    max_len = max(tokens.shape[0] for tokens, _ in batch)
+    
+    # Get shapes from first sample
+    first_tokens, first_actions = batch[0]
+    token_shape = first_tokens.shape[1:]  # (N, F)
+    action_shape = first_actions.shape[1:]  # (N, A)
+    
+    # Pad all samples to max_len
+    padded_tokens_list = []
+    padded_actions_list = []
+    
+    for tokens, actions in batch:
+        current_len = tokens.shape[0]
+        if current_len < max_len:
+            # Pad
+            pad_len = max_len - current_len
+            token_pad = torch.zeros(pad_len, *token_shape, dtype=tokens.dtype)
+            action_pad = torch.zeros(pad_len, *action_shape, dtype=actions.dtype)
+            tokens = torch.cat([tokens, token_pad], dim=0)
+            actions = torch.cat([actions, action_pad], dim=0)
+        
+        padded_tokens_list.append(tokens)
+        padded_actions_list.append(actions)
+    
+    # Stack into batches
+    batched_tokens = torch.stack(padded_tokens_list, dim=0)
+    batched_actions = torch.stack(padded_actions_list, dim=0)
+    
+    return batched_tokens, batched_actions
+
+
+
+
 def create_world_model_data_loader(
     data: dict,
     batch_size: int,
-    context_len: int = 128,
+    context_len: int = 96,
     validation_split: float = 0.2,
     num_workers: int = 4,
+    use_alternating_lengths: bool = True,
+    short_batch_len: int = 32,
+    long_batch_len: int = 128,
+    long_batch_ratio: float = 0.2,
 ) -> tuple[DataLoader, DataLoader]:
+    """
+    Create data loaders for world model training.
+    
+    Args:
+        data: Dictionary containing team tokens, actions, and episode lengths
+        batch_size: Batch size for training
+        context_len: Model's context length (window size)
+        validation_split: Fraction of data to use for validation
+        num_workers: Number of worker processes for data loading
+        use_alternating_lengths: If True, use AlternatingBatchLengthDataset
+        short_batch_len: Number of timesteps in short batches (should be >= context_len)
+        long_batch_len: Number of timesteps in long batches (should be >= context_len)
+        long_batch_ratio: Probability of using long batch length per sample
+    """
     # Combine teams
     team_0 = data["team_0"]
     team_1 = data["team_1"]
@@ -191,62 +345,25 @@ def create_world_model_data_loader(
     # Episode lengths need to be duplicated for both teams
     episode_lengths = torch.cat([data["episode_lengths"], data["episode_lengths"]], dim=0)
     
-    # Flatten episodes to (TotalTimesteps, N, F)
-    # Assuming tokens is (N_ep, T, N, F) or list of (T, N, F)
-    # If it's a tensor (N_ep, T, N, F), we can just view(-1, N, F) BUT we need to respect valid lengths!
-    # We have episode_lengths.
-    
-    # Actually, `load_bc_data` returns tokens as a list of tensors or a padded tensor?
-    # In `collect.py`: `aggregated_data["team_0"]["tokens"] = torch.cat(all_team_0_tokens, dim=0)`
-    # `all_team_0_tokens` is a list of (T, N, F) tensors from each episode?
-    # No, `collector.add_episode` adds a single episode.
-    # `worker_data` has `tokens` for all episodes concatenated?
-    # In `collect_worker`: `collector.add_episode` appends to list.
-    # In `finalize`: `self.data["team_0"]["tokens"] = torch.stack(self.team_0_tokens)`? No.
-    # Let's check `DataCollector`.
-    
-    # If `tokens` is a padded tensor (N_ep, MaxT, N, F), we need to mask out padding.
-    # But `SequenceDataset` logic `current_idx += l` assumes packed data without padding.
-    
-    # Let's assume we need to flatten based on lengths.
-    valid_tokens = []
-    valid_actions = []
-    
-    # We need to iterate and slice based on lengths
-    # But `tokens` might be (N_ep * MaxT, ...) if flattened with padding?
-    # Or (Sum(Lengths), ...) if packed?
-    
-    # In `collect.py`: `torch.cat(all_team_0_tokens, dim=0)`.
-    # If `all_team_0_tokens` is list of (T_ep, N, F), then result is (Sum(T_ep), N, F).
-    # This is ALREADY packed!
-    
-    # So `tokens` is (TotalTimesteps, N, F).
-    # Then `SequenceDataset` should work.
-    
-    # Wait, `episode_lengths` is used to skip boundaries.
-    # If `tokens` is (TotalTimesteps, N, F), then `dataset[idx]` returns `(ContextLen, N, F)`.
-    # DataLoader batches to `(B, ContextLen, N, F)`.
-    # WorldModel receives `(B, T, N, F)`.
-    # `ndim=4`.
-    # So why did it go to `else` block?
-    
-    # Maybe `tokens` has `ndim=3`? (TotalTimesteps, N, F). Yes.
-    # `dataset[idx]` -> `(ContextLen, N, F)`.
-    # `DataLoader` -> `(B, ContextLen, N, F)`.
-    # `states` in `forward` -> `(B, ContextLen, N, F)`.
-    # `ndim=4`.
-    
-    # Is it possible `N` dimension is missing?
-    # If `N=1`, maybe squeezed?
-    # Or `tokens` is `(TotalTimesteps, F)`?
-    # `collect.py`: `tokens` is `(T, N, F)`.
-    
-    # Let's add debug print to `create_world_model_data_loader` to see shape of `tokens`.
-    
     print(f"DEBUG: tokens shape before dataset: {tokens.shape}")
     print(f"DEBUG: actions shape before dataset: {actions.shape}")
     
-    dataset = SequenceDataset(tokens, actions, episode_lengths, context_len=context_len)
+    # Choose dataset type
+    if use_alternating_lengths:
+        print(f"Using alternating batch lengths: short={short_batch_len}, long={long_batch_len}, ratio={long_batch_ratio}")
+        dataset = AlternatingBatchLengthDataset(
+            tokens, 
+            actions, 
+            episode_lengths, 
+            context_len=context_len,
+            short_batch_len=short_batch_len,
+            long_batch_len=long_batch_len,
+            long_batch_ratio=long_batch_ratio,
+        )
+        collate_fn = collate_variable_length_batches
+    else:
+        dataset = SequenceDataset(tokens, actions, episode_lengths, context_len=context_len)
+        collate_fn = None  # Use default collate
 
     # Split into train and validation
     total_size = len(dataset)
@@ -262,6 +379,7 @@ def create_world_model_data_loader(
         shuffle=True,
         num_workers=num_workers,
         pin_memory=True,
+        collate_fn=collate_fn,
     )
 
     val_loader = DataLoader(
@@ -270,6 +388,7 @@ def create_world_model_data_loader(
         shuffle=False,
         num_workers=num_workers,
         pin_memory=True,
+        collate_fn=collate_fn,
     )
 
     return train_loader, val_loader

@@ -208,16 +208,61 @@ uv run main.py mode=train train.run_rl=true
 
 ### World Model
 
-The World Model is a transformer-based model that learns the dynamics of the environment (multi-ship physics and interactions) in a causal, autoregressive manner.
+The World Model is a transformer-based model that learns multi-ship dynamics using 2-D factorized attention, MAE-style masking, and flow-matching denoising.
+
+**Architecture Overview**:
+- **Token Structure**: Each token = `[ship_state, previous_action]` concatenated (state: 12 dims, action: 6 dims)
+- **Embedding Structure**: `final_embed = content_projection + ship_id_embedding + time_embedding`
+- **Attention Pattern**: Alternating spatial and temporal blocks in 3:1 ratio (S-S-S-T-S-S-S-T...)
+- **Batch Length Alternation**: Alternates between short (32) and long (128) batch lengths per iteration
+
+**Token & Embedding Details**:
+1. **Content Projection**: Raw token (state + action) projected to embed_dim (128)
+2. **Ship ID Embedding**: Learned embedding for each ship (0-7), preserves ship identity
+3. **Time Embedding**: Learned positional embedding for each timestep (0-63)
+4. **Critical Order**: Noise/masking applied to content BEFORE adding ship_id and time embeddings
+
+**Masking (MAE-style)**:
+- Randomly masks 15% of tokens during training
+- Masked tokens: content replaced with learned `mask_token`, but ship_id and time embeddings preserved
+- Masked tokens NEVER receive noise
+- Teaches occlusion reasoning and missing-data handling
+
+**Denoising (Flow-Matching)**:
+- Applies Gaussian noise to UNMASKED tokens only
+- Noise scale: `σ = sqrt(1 - τ²) * 0.1` where τ ~ U(0,1)²
+- Noise added to content BEFORE structural embeddings
+- Stabilizes long rollouts and reduces error compounding
+
+**2-D Factorized Attention**:
+- **Spatial Blocks**: Ships attend to each other at the SAME timestep (no temporal mixing)
+  - Reshape: `(B, T, N, E)` → `(B*T, N, E)`
+  - No KV caching (attention is per-timestep)
+- **Temporal Blocks**: Each ship attends only to its OWN past (causal, no ship mixing)
+  - Reshape: `(B, T, N, E)` → `(B*N, T, E)`
+  - Always causal (even with KV cache)
+  - KV cache concatenates along time dimension only
+- **Pattern**: 3 spatial blocks, then 1 temporal block, repeated (8 layers total)
 
 **Training**:
 ```powershell
 # Train the World Model
-uv run main.py mode=train_wm world_model.epochs=10
+uv run main.py mode=train_wm train.bc_data_path=data/bc_pretraining/debug/aggregated_data.pkl
+
+# With custom parameters
+uv run main.py mode=train_wm world_model.epochs=10 world_model.mask_ratio=0.15
 ```
+
+**Configuration** (`world_model` in `config.yaml`):
+- `embed_dim`: 128 - Transformer embedding dimension
+- `n_layers`: 8 - Total transformer blocks (6 spatial, 2 temporal)
+5. ✅ KV cache only for temporal blocks (not spatial)
+6. ✅ Temporal attention never mixes ships
+7. ✅ Spatial attention never mixes timesteps
 
 **Evaluation**:
 ```powershell
 # Evaluate the World Model (generate rollouts)
 uv run main.py mode=eval_wm
 ```
+

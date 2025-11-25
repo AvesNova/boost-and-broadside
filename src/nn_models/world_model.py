@@ -125,14 +125,16 @@ class TemporalSelfAttention(nn.Module):
         else:
             current_kv = None
 
-        # Causal attention
+        # CRITICAL: Temporal attention must ALWAYS be causal
+        # Even with KV cache, new tokens can only attend to themselves and past
+        # We use is_causal=True which creates a causal mask for the query length
         attention_output = F.scaled_dot_product_attention(
             query,
             key,
             value,
             attn_mask=None,
             dropout_p=self.dropout if self.training else 0,
-            is_causal=True if past_kv is None else False,
+            is_causal=True,  # Always causal for temporal attention
         )
 
         attention_output = (
@@ -254,9 +256,23 @@ class WorldModel(nn.Module):
         use_cache: bool = False,
     ):
         """
+        Forward pass with correct masking and denoising.
+        
+        Token structure: Each token = [ship_state, previous_action] concatenated
+        Embedding structure: final_embed = content + ship_id + time
+        
+        Critical: 
+        - Noise is applied to content BEFORE adding structural embeddings
+        - Masking replaces content only, preserving ship_id and time
+        - Masked tokens NEVER receive noise
+        
         Args:
-            states: (B, T, N, F)
-            actions: (B, T, N, A)
+            states: (B, T, N, F) - ship states
+            actions: (B, T, N, A) - previous actions
+            mask_ratio: Fraction of tokens to mask (MAE-style)
+            noise_scale: Scale of Gaussian noise for denoising
+            past_key_values: KV cache for autoregressive generation
+            use_cache: Whether to return KV cache
         """
         # Ensure 4D input
         if states.ndim == 3:
@@ -275,47 +291,13 @@ class WorldModel(nn.Module):
         batch_size, time_steps, num_ships, _ = states.shape
         device = states.device
 
-        # 1. Construct Tokens
-        embeddings = self.input_proj(
+        # 1. Project content (state + action concatenated)
+        content_embed = self.input_proj(
             torch.cat([states, actions], dim=-1)
         )  # (batch_size, time_steps, num_ships, embed_dim)
 
-        # Add structural embeddings
-        # We need to broadcast ship_embed and time_embed
-        # ship_embed: (num_ships, embed_dim) -> (1, 1, num_ships, embed_dim)
-        # time_embed: (time_steps, embed_dim) -> (1, time_steps, 1, embed_dim)
-
-        # If we are generating step-by-step, time_steps might be small, but time_ids should be correct.
-        # But here forward assumes we start from 0 or we need to handle offsets.
-        # For training, we assume full sequence 0..time_steps-1.
-        # For generation, we usually pass one step but we need the time index.
-        # The current signature doesn't accept time_offset.
-        # We'll assume for now forward is used for training (full seq) or we handle it via past_kv logic?
-        # Actually, if past_key_values is present, we are appending.
-        # But we need to know the current time index.
-        # Let's assume standard forward is 0..time_steps.
-
-        # If using cache, we assume we are at step time_steps_past.
-        time_offset = 0
-        if past_key_values is not None:
-            # We need to infer time_offset.
-            # Temporal blocks have KV cache.
-            # Find the first temporal block's KV cache to get length.
-            for i, block in enumerate(self.blocks):
-                if block.attn_type == "temporal" and past_key_values[i] is not None:
-                    time_offset = past_key_values[i][0].shape[
-                        2
-                    ]  # (batch_size*num_ships, n_heads, time_steps_past, head_dim)
-                    break
-
-        ship_ids = torch.arange(num_ships, device=device).view(1, 1, num_ships)
-        time_ids = torch.arange(
-            time_offset, time_offset + time_steps, device=device
-        ).view(1, time_steps, 1)
-
-        embeddings = embeddings + self.ship_embed[ship_ids] + self.time_embed[time_ids]
-
         # 2. Masking & Denoising (Training only)
+        # CRITICAL: Apply noise and masking to content BEFORE adding structural embeddings
         mask = None
         if mask_ratio > 0 and past_key_values is None:
             # Create mask over (batch_size, time_steps, num_ships)
@@ -324,30 +306,52 @@ class WorldModel(nn.Module):
                 < mask_ratio
             )
 
-            # Denoise
+            # Apply noise to UNMASKED tokens only, BEFORE adding positional embeddings
             if noise_scale > 0:
-                # Noise on embeddings before adding positional? Or after?
-                # Original code: noise on content_embed, then add pos.
-                # Let's re-calculate content_embed for noise purpose if needed,
-                # or just add noise to embeddings (which includes pos now).
-                # Original: content_embed[~mask] += noise
-                # Here embeddings includes pos.
-                # Let's generate noise on the projected input
-                content_input = self.input_proj(torch.cat([states, actions], dim=-1))
+                # Flow-matching noise with τ ∈ [0, 1] sampled per batch
                 tau = torch.rand(batch_size, 1, 1, 1, device=device).pow(2)
                 noise_std = (1 - tau).sqrt() * noise_scale
-                noise = torch.randn_like(content_input) * noise_std
+                noise = torch.randn_like(content_embed) * noise_std
+                
+                # Apply noise only to unmasked tokens
+                content_embed = torch.where(
+                    mask.unsqueeze(-1), 
+                    content_embed,  # Keep masked tokens unchanged (will be replaced below)
+                    content_embed + noise  # Add noise to unmasked tokens
+                )
 
-                # We need to apply noise to the unmasked parts of embeddings
-                # But embeddings already has pos embeddings.
-                # embeddings = content + pos.
-                # We want embeddings' = (content + noise) + pos = embeddings + noise.
-                embeddings[~mask] = embeddings[~mask] + noise[~mask]
+            # Replace masked token content with learned mask_token
+            # CRITICAL: This only replaces content, structural embeddings added later
+            content_embed = torch.where(
+                mask.unsqueeze(-1),
+                self.mask_token.view(1, 1, 1, -1).expand_as(content_embed),
+                content_embed
+            )
 
-            # Apply mask token
-            embeddings[mask] = self.mask_token
+        # 3. Add structural embeddings (ALWAYS, for ALL tokens including masked)
+        # This is done AFTER masking and denoising to preserve structural information
+        
+        # Compute time offset for KV cache
+        time_offset = 0
+        if past_key_values is not None:
+            # Find the first temporal block's KV cache to get length
+            for i, block in enumerate(self.blocks):
+                if block.attn_type == "temporal" and past_key_values[i] is not None:
+                    time_offset = past_key_values[i][0].shape[
+                        2
+                    ]  # (batch_size*num_ships, n_heads, time_steps_past, head_dim)
+                    break
 
-        # 3. Transformer Pass
+        # Broadcast ship and time embeddings
+        ship_ids = torch.arange(num_ships, device=device).view(1, 1, num_ships)
+        time_ids = torch.arange(
+            time_offset, time_offset + time_steps, device=device
+        ).view(1, time_steps, 1)
+
+        # Final embedding = content + ship_id + time
+        embeddings = content_embed + self.ship_embed[ship_ids] + self.time_embed[time_ids]
+
+        # 4. Transformer Pass
         current_key_values = []
         for i, block in enumerate(self.blocks):
             past_kv = past_key_values[i] if past_key_values is not None else None
@@ -357,7 +361,7 @@ class WorldModel(nn.Module):
 
         embeddings = self.ln_f(embeddings)
 
-        # 4. Predictions
+        # 5. Predictions
         pred_states = self.state_head(embeddings)
         pred_actions = self.action_head(embeddings)
 
