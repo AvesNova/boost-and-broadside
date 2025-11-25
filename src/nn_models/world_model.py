@@ -1,7 +1,15 @@
+"""
+World model architecture for multi-ship dynamics prediction.
+
+Implements a transformer-based world model with factorized spatial-temporal
+attention, masked reconstruction, and denoising objectives for learning
+multi-agent dynamics.
+"""
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import math
 
 
 class SpatialSelfAttention(nn.Module):

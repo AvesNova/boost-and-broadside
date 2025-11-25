@@ -1,9 +1,15 @@
+"""
+Team transformer agent for multi-ship control.
+
+Implements a transformer-based model that outputs actions for all ships,
+with team-based filtering for multi-agent scenarios.
+"""
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from env.constants import Actions
-from .tokenizer import observation_to_tokens
+from src.env.constants import Actions
+from src.agents.tokenizer import observation_to_tokens
 
 
 class TeamTransformerModel(nn.Module):
