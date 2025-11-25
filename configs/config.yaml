@@ -86,3 +86,15 @@ train:
     ent_coef: 0.01
     vf_coef: 0.5
     max_grad_norm: 0.5
+
+world_model:
+  embed_dim: 128
+  n_layers: 4
+  n_heads: 4
+  context_len: 128
+  n_ships: 8
+  mask_ratio: 0.75
+  noise_scale: 0.1
+  learning_rate: 0.0003
+  batch_size: 64
+  epochs: 100

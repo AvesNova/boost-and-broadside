@@ -205,3 +205,19 @@ uv run main.py mode=train train.run_rl=true train.rl.pretrained_model_path="path
 # RL from scratch (no pretraining)
 uv run main.py mode=train train.run_rl=true
 ```
+
+### World Model
+
+The World Model is a transformer-based model that learns the dynamics of the environment (multi-ship physics and interactions) in a causal, autoregressive manner.
+
+**Training**:
+```powershell
+# Train the World Model
+uv run main.py mode=train_wm world_model.epochs=10
+```
+
+**Evaluation**:
+```powershell
+# Evaluate the World Model (generate rollouts)
+uv run main.py mode=eval_wm
+```
