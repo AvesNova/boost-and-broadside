@@ -99,6 +99,11 @@ def calculate_velocity(distance: float, time: float) -> float:
 ### 6.4. Classes vs. Functions
 *   **Use Classes** when you need to maintain state or bundle data with behavior.
 *   **Use Functions** for pure logic, transformations, or simple scripts.
+*   **Module Organization**: Prefer focused modules with clear boundaries.
+    *   Large, complex classes should generally live in their own file (e.g., `WorldModel` in `world_model.py`).
+    *   Related classes may be grouped in a single file when they form a cohesive unit (e.g., exception hierarchies, protocol + implementation, small related variants).
+    *   Helper classes (dataclasses, configs, small utilities) can live alongside their primary class.
+    *   *Guideline*: If a file grows beyond **300-400 lines** or contains unrelated classes, consider splitting it.
 *   **Inheritance**: Prefer **composition over inheritance**.
     *   Inherit from `nn.Module` for PyTorch models.
     *   Avoid deep inheritance chains (A -> B -> C -> D).
@@ -106,6 +111,12 @@ def calculate_velocity(distance: float, time: float) -> float:
 ### 6.5. Entry Point
 *   The only valid entry point is `uv run main.py`.
 *   All other scripts in `src/` should be modules, not executable scripts (unless they are specific utility scripts in `tools/`).
+
+### 6.6. Backward Compatibility
+*   **No Backward Compatibility**: We do not maintain support for deprecated APIs, old patterns, or legacy code.
+*   **Remove, Don't Deprecate**: When refactoring, delete old code entirely rather than marking it as deprecated.
+    *   *Rationale*: Deprecated code clutters the codebase, creates maintenance burden, and encourages continued use of outdated patterns.
+*   **Breaking Changes**: Breaking changes are acceptable and preferred if they improve code quality, readability, or maintainability.
 
 ## 7. Comments
 *   **Inline Comments**: Use them to explain **why**, not **what**.
