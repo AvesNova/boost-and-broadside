@@ -13,7 +13,7 @@ import torch.optim as optim
 from omegaconf import DictConfig
 from tqdm import tqdm
 
-from src.nn_models.world_model import WorldModel
+from src.agents.world_model import WorldModel
 from src.train.data_loader import load_bc_data, create_world_model_data_loader
 
 log = logging.getLogger(__name__)
