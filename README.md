@@ -14,6 +14,12 @@ uv run main.py mode=collect
 # Collect with multiple parallel workers (set in config)
 uv run main.py mode=collect collect.num_workers=4
 
+# Train world model
+uv run main.py mode=train_wm
+
+# Train world model with smaller dataset for debugging
+uv run main.py mode=train_wm train.bc_data_path=data/bc_pretraining/debug/aggregated_data.pkl world_model.epochs=1
+
 # Train RL models
 uv run main.py mode=train
 
@@ -202,19 +208,19 @@ The World Model is a transformer-based model that learns multi-ship dynamics usi
 
 **Architecture Overview**:
 - **Token Structure**: Each token = `[ship_state, previous_action]` concatenated (state: 12 dims, action: 6 dims)
-- **Embedding Structure**: `final_embed = content_projection + ship_id_embedding + time_embedding`
+- **Embedding Structure**: `final_embed = content_projection + ship_id_embedding` (RoPE applied in temporal attention)
 - **Attention Pattern**: Alternating spatial and temporal blocks in 3:1 ratio (S-S-S-T-S-S-S-T...)
-- **Batch Length Alternation**: Alternates between short (32) and long (128) batch lengths per iteration
+- **Batch Length Alternation**: Alternates between short (32) and long (96) batch lengths per iteration
 
 **Token & Embedding Details**:
 1. **Content Projection**: Raw token (state + action) projected to embed_dim (128)
 2. **Ship ID Embedding**: Learned embedding for each ship (0-7), preserves ship identity
-3. **Time Embedding**: Learned positional embedding for each timestep (0-63)
-4. **Critical Order**: Noise/masking applied to content BEFORE adding ship_id and time embeddings
+3. **RoPE (Rotary Position Embedding)**: Applied to Q/K in temporal attention for position encoding
+4. **Critical Order**: Noise/masking applied to content BEFORE adding ship_id embeddings
 
 **Masking (MAE-style)**:
 - Randomly masks 15% of tokens during training
-- Masked tokens: content replaced with learned `mask_token`, but ship_id and time embeddings preserved
+- Masked tokens: content replaced with learned `mask_token`, but ship_id embeddings preserved
 - Masked tokens NEVER receive noise
 - Teaches occlusion reasoning and missing-data handling
 
@@ -231,6 +237,7 @@ The World Model is a transformer-based model that learns multi-ship dynamics usi
 - **Temporal Blocks**: Each ship attends only to its OWN past (causal, no ship mixing)
   - Reshape: `(B, T, N, E)` → `(B*N, T, E)`
   - Always causal (even with KV cache)
+  - RoPE applied to Q/K for position-aware attention
   - KV cache concatenates along time dimension only
 - **Pattern**: 3 spatial blocks, then 1 temporal block, repeated (8 layers total)
 

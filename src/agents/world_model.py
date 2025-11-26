@@ -11,6 +11,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from src.agents.rope import RotaryPositionEmbedding
+
 
 class SpatialSelfAttention(nn.Module):
     """
@@ -97,6 +99,14 @@ class TemporalSelfAttention(nn.Module):
         self.n_heads = config.n_heads
         self.embed_dim = config.embed_dim
         self.dropout = config.dropout
+        
+        # RoPE for temporal position encoding
+        head_dim = config.embed_dim // config.n_heads
+        self.rope = RotaryPositionEmbedding(
+            dim=head_dim,
+            max_seq_len=config.max_context_len,
+            base=getattr(config, 'rope_base', 10000.0)
+        )
 
     def forward(self, input_tensor, past_kv=None, use_cache=False):
         # input_tensor: (batch_size, time_steps, num_ships, embed_dim)
@@ -122,6 +132,42 @@ class TemporalSelfAttention(nn.Module):
         value = value.view(
             batch_size * num_ships, time_steps, self.n_heads, embed_dim // self.n_heads
         ).transpose(1, 2)
+        
+        # Apply RoPE to query and key
+        # Compute position offset from past_kv cache
+        time_offset = 0
+        if past_kv is not None:
+            past_key, past_value = past_kv
+            time_offset = past_key.shape[2]  # (batch*num_ships, n_heads, past_time, head_dim)
+        
+        # Position IDs for current timesteps
+        position_ids = torch.arange(
+            time_offset, time_offset + time_steps, device=query.device
+        )
+        
+        # Apply RoPE per head
+        # query/key shape: (batch*num_ships, n_heads, time_steps, head_dim)
+        # RoPE expects: (batch, seq_len, dim)
+        # Reshape to (batch*num_ships*n_heads, time_steps, head_dim)
+        batch_heads = batch_size * num_ships * self.n_heads
+        head_dim = embed_dim // self.n_heads
+        
+        query_rope = query.permute(0, 2, 1, 3).contiguous().view(
+            batch_heads, time_steps, head_dim
+        )
+        key_rope = key.permute(0, 2, 1, 3).contiguous().view(
+            batch_heads, time_steps, head_dim
+        )
+        
+        query_rope, key_rope = self.rope(query_rope, key_rope, position_ids)
+        
+        # Reshape back to (batch*num_ships, n_heads, time_steps, head_dim)
+        query = query_rope.view(
+            batch_size * num_ships, time_steps, self.n_heads, head_dim
+        ).permute(0, 2, 1, 3)
+        key = key_rope.view(
+            batch_size * num_ships, time_steps, self.n_heads, head_dim
+        ).permute(0, 2, 1, 3)
 
         if past_kv is not None:
             past_key, past_value = past_kv
@@ -236,7 +282,6 @@ class WorldModel(nn.Module):
         # Embeddings
         self.input_proj = nn.Linear(state_dim + action_dim, embed_dim)
         self.ship_embed = nn.Parameter(torch.randn(max_ships, embed_dim))
-        self.time_embed = nn.Parameter(torch.randn(max_context_len, embed_dim))
         self.mask_token = nn.Parameter(torch.randn(embed_dim))
 
         # Transformer Backbone
@@ -336,28 +381,14 @@ class WorldModel(nn.Module):
                 content_embed
             )
 
-        # 3. Add structural embeddings (ALWAYS, for ALL tokens including masked)
+        # 3. Add structural embeddings (ship_id only, RoPE handles temporal position)
         # This is done AFTER masking and denoising to preserve structural information
         
-        # Compute time offset for KV cache
-        time_offset = 0
-        if past_key_values is not None:
-            # Find the first temporal block's KV cache to get length
-            for i, block in enumerate(self.blocks):
-                if block.attn_type == "temporal" and past_key_values[i] is not None:
-                    time_offset = past_key_values[i][0].shape[
-                        2
-                    ]  # (batch_size*num_ships, n_heads, time_steps_past, head_dim)
-                    break
-
-        # Broadcast ship and time embeddings
+        # Broadcast ship embeddings
         ship_ids = torch.arange(num_ships, device=device).view(1, 1, num_ships)
-        time_ids = torch.arange(
-            time_offset, time_offset + time_steps, device=device
-        ).view(1, time_steps, 1)
 
-        # Final embedding = content + ship_id + time
-        embeddings = content_embed + self.ship_embed[ship_ids] + self.time_embed[time_ids]
+        # Final embedding = content + ship_id (RoPE applied in temporal attention)
+        embeddings = content_embed + self.ship_embed[ship_ids]
 
         # 4. Transformer Pass
         current_key_values = []

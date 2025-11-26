@@ -102,3 +102,5 @@ world_model:
   short_batch_len: 32
   long_batch_len: 96
   long_batch_ratio: 0.2
+  rope_base: 10000.0
+  rope_max_seq_len: 256
