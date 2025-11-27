@@ -305,6 +305,7 @@ class WorldModel(nn.Module):
         actions: torch.Tensor,
         mask_ratio: float = 0.0,
         noise_scale: float = 0.0,
+        mask: torch.Tensor | None = None,
         past_key_values=None,
         use_cache: bool = False,
     ):
@@ -324,6 +325,7 @@ class WorldModel(nn.Module):
             actions: (B, T, N, A) - previous actions
             mask_ratio: Fraction of tokens to mask (MAE-style)
             noise_scale: Scale of Gaussian noise for denoising
+            mask: Optional boolean mask (True = masked). If provided, overrides mask_ratio.
             past_key_values: KV cache for autoregressive generation
             use_cache: Whether to return KV cache
         """
@@ -351,14 +353,17 @@ class WorldModel(nn.Module):
 
         # 2. Masking & Denoising (Training only)
         # CRITICAL: Apply noise and masking to content BEFORE adding structural embeddings
-        mask = None
-        if mask_ratio > 0 and past_key_values is None:
-            # Create mask over (batch_size, time_steps, num_ships)
-            mask = (
-                torch.rand(batch_size, time_steps, num_ships, device=device)
-                < mask_ratio
-            )
-
+        
+        # Determine mask
+        if mask is None:
+            if mask_ratio > 0 and past_key_values is None:
+                # Create mask over (batch_size, time_steps, num_ships)
+                mask = (
+                    torch.rand(batch_size, time_steps, num_ships, device=device)
+                    < mask_ratio
+                )
+        
+        if mask is not None:
             # Apply noise to UNMASKED tokens only, BEFORE adding positional embeddings
             if noise_scale > 0:
                 # Flow-matching noise with τ ∈ [0, 1] sampled per batch
@@ -422,13 +427,17 @@ class WorldModel(nn.Module):
 
         recon_loss = 0
         if mask is not None and mask.any():
-            recon_loss = F.mse_loss(pred_states[mask], states[mask])
-            recon_loss += F.mse_loss(pred_actions[mask], actions[mask])
+            # State loss: MSE
+            recon_loss += F.mse_loss(pred_states[mask], states[mask])
+            # Action loss: BCEWithLogits (actions are binary multi-label)
+            recon_loss += F.binary_cross_entropy_with_logits(pred_actions[mask], actions[mask])
 
         denoise_loss = 0
         if mask is not None and (~mask).any():
-            denoise_loss = F.mse_loss(pred_states[~mask], states[~mask])
-            denoise_loss += F.mse_loss(pred_actions[~mask], actions[~mask])
+            # State loss: MSE
+            denoise_loss += F.mse_loss(pred_states[~mask], states[~mask])
+            # Action loss: BCEWithLogits
+            denoise_loss += F.binary_cross_entropy_with_logits(pred_actions[~mask], actions[~mask])
 
         return recon_loss, denoise_loss
 
@@ -436,15 +445,12 @@ class WorldModel(nn.Module):
     def generate(self, initial_state, initial_action, steps: int, n_ships: int):
         """
         Autoregressive generation.
+        
         Args:
-            initial_state: (B, F) - state of first ship at t=0?
-                           No, usually initial_state is (B, N, F) for all ships at t=0?
-                           Or just (B, F) if we only have 1 ship?
-                           The original code had `initial_state.view(B, 1, 1, -1)`.
-                           Let's assume initial_state is (B, N, F) or (B, F) broadcasted.
-            initial_action: (B, N, A)
-            steps: number of timesteps to generate
-            n_ships: number of ships
+            initial_state: (B, N, F) - Initial state of all ships.
+            initial_action: (B, N, A) - Initial action of all ships.
+            steps: Number of timesteps to generate.
+            n_ships: Number of ships.
         """
         batch_size = initial_state.shape[0]
         device = initial_state.device

@@ -19,6 +19,61 @@ from src.train.data_loader import load_bc_data, create_world_model_data_loader
 log = logging.getLogger(__name__)
 
 
+def create_mixed_mask(
+    batch_size: int,
+    time_steps: int,
+    num_ships: int,
+    device: torch.device,
+    mask_ratio: float = 0.15,
+) -> torch.Tensor:
+    """
+    Create a mask using a mix of strategies:
+    1. Random Token Masking (MAE-style)
+    2. Block Masking (Random spans of 1-8 steps)
+    3. Next-Step Masking (Masking the last token)
+
+    Args:
+        batch_size: Batch size
+        time_steps: Number of time steps
+        num_ships: Number of ships
+        device: Device to create mask on
+        mask_ratio: Base ratio for random masking
+
+    Returns:
+        Boolean mask tensor (B, T, N) where True = masked
+    """
+    # 1. Random Token Masking
+    mask = torch.rand(batch_size, time_steps, num_ships, device=device) < mask_ratio
+
+    # 2. Block Masking
+    # For each ship in each batch, mask a random block
+    # We'll do this for a subset of ships/batches to not over-mask
+    # Let's say we apply block masking to 20% of sequences
+    num_blocks = int(batch_size * num_ships * 0.2)
+    if num_blocks > 0:
+        # Randomly select batch and ship indices
+        b_indices = torch.randint(0, batch_size, (num_blocks,), device=device)
+        n_indices = torch.randint(0, num_ships, (num_blocks,), device=device)
+        
+        # Random block lengths (1-8)
+        block_lens = torch.randint(1, 9, (num_blocks,), device=device)
+        
+        # Random start positions (ensure fit)
+        start_pos = (torch.rand(num_blocks, device=device) * (time_steps - block_lens)).long()
+        
+        for i in range(num_blocks):
+            b, n, l, s = b_indices[i], n_indices[i], block_lens[i], start_pos[i]
+            mask[b, s : s + l, n] = True
+
+    # 3. Next-Step Masking
+    # Always mask the last timestep for all ships to learn forward prediction
+    # This is critical for the agent's primary use case
+    mask[:, -1, :] = True
+
+    return mask
+
+
+
 def train_world_model(cfg: DictConfig) -> None:
     """
     Train the world model.
@@ -39,8 +94,8 @@ def train_world_model(cfg: DictConfig) -> None:
         data_path = get_latest_data_path()
 
     log.info(f"Loading data from {data_path}")
-    print(f"Loading data from {data_path}")
-    print(f"Absolute path: {Path(data_path).resolve()}")
+    log.info(f"Loading data from {data_path}")
+    log.info(f"Absolute path: {Path(data_path).resolve()}")
     data = load_bc_data(data_path)
 
     train_loader, val_loader = create_world_model_data_loader(
@@ -93,11 +148,21 @@ def train_world_model(cfg: DictConfig) -> None:
 
             optimizer.zero_grad()
 
+            # Create mixed mask
+            mask = create_mixed_mask(
+                states.shape[0],  # batch_size
+                states.shape[1],  # time_steps
+                states.shape[2],  # num_ships
+                device,
+                mask_ratio=cfg.world_model.mask_ratio,
+            )
+
             pred_states, pred_actions, mask, _ = model(
                 states,
                 actions,
-                mask_ratio=cfg.world_model.mask_ratio,
+                mask_ratio=0.0,  # We provide explicit mask
                 noise_scale=cfg.world_model.noise_scale,
+                mask=mask,
             )
 
             recon_loss, denoise_loss = model.get_loss(
@@ -139,11 +204,21 @@ def train_world_model(cfg: DictConfig) -> None:
                 states = states.to(device)
                 actions = actions.to(device)
 
+                # Create validation mask (same strategy)
+                mask = create_mixed_mask(
+                    states.shape[0],
+                    states.shape[1],
+                    states.shape[2],
+                    device,
+                    mask_ratio=cfg.world_model.mask_ratio,
+                )
+
                 pred_states, pred_actions, mask, _ = model(
                     states,
                     actions,
-                    mask_ratio=cfg.world_model.mask_ratio,
+                    mask_ratio=0.0,
                     noise_scale=0.0,  # No noise for validation
+                    mask=mask,
                 )
 
                 recon_loss, denoise_loss = model.get_loss(

@@ -1,14 +1,18 @@
 import torch.nn as nn
 from pathlib import Path
+import logging
 from omegaconf import OmegaConf
 
 from .human import HumanAgent
 from .scripted import ScriptedAgent
 from .team_transformer_agent import TeamTransformerAgent
+from .world_model_agent import WorldModelAgent
 from .replay import ReplayAgent
 from .dummy import DummyAgent
 from .random_agent import RandomAgent
 from src.utils.model_finder import find_most_recent_model, find_best_model
+
+log = logging.getLogger(__name__)
 
 
 def _load_agent_config_from_model(agent_config: dict, model_type: str, selection_criteria: str) -> dict:
@@ -31,7 +35,7 @@ def _load_agent_config_from_model(agent_config: dict, model_type: str, selection
         raise ValueError(f"Unknown selection criteria: {selection_criteria}")
 
     if not model_path:
-        print(f"Warning: No {model_type.upper()} model found for '{selection_criteria}_{model_type}' agent. Using random initialization.")
+        log.warning(f"No {model_type.upper()} model found for '{selection_criteria}_{model_type}' agent. Using random initialization.")
         return agent_config
 
     # Try to load config from run directory
@@ -40,7 +44,7 @@ def _load_agent_config_from_model(agent_config: dict, model_type: str, selection
     
     final_config = agent_config.copy()
     if config_path.exists():
-        print(f"Loading agent config from {config_path}")
+        log.info(f"Loading agent config from {config_path}")
         saved_cfg = OmegaConf.load(config_path)
         # Extract transformer config
         transformer_cfg = OmegaConf.to_container(saved_cfg.train.model.transformer, resolve=True)
@@ -49,7 +53,7 @@ def _load_agent_config_from_model(agent_config: dict, model_type: str, selection
             del transformer_cfg["num_actions"]
         final_config.update(transformer_cfg)
     else:
-        print(f"Warning: No config.yaml found in {run_dir}. Using current defaults.")
+        log.warning(f"No config.yaml found in {run_dir}. Using current defaults.")
     
     final_config["model_path"] = model_path
     return final_config
@@ -98,6 +102,13 @@ def create_agent(agent_type: str, agent_config: dict) -> nn.Module:
         case "best_rl":
             cfg = _load_agent_config_from_model(agent_config, "rl", "best")
             return TeamTransformerAgent(**cfg)
+
+        case "world_model":
+            # If model_path is not provided, we could try to find the most recent one.
+            # For now, we rely on the config or default to random initialization.
+            if "model_path" not in agent_config:
+                pass
+            return WorldModelAgent(**agent_config)
 
         case _:
             raise TypeError(f"Unknown agent type: {agent_type}")
