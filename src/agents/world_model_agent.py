@@ -168,9 +168,12 @@ class WorldModelAgent:
         # 4. Extract prediction for the masked step (last step)
         next_action_logits = pred_actions_logits[:, -1, :, :]  # (1, N, A)
 
-        # 5. Select action (Deterministic thresholding)
+        # 5. Sample actions from predicted probabilities
         next_action_probs = torch.sigmoid(next_action_logits)
-        next_action = (next_action_probs > 0.5).float()
+        
+        # Sample from Bernoulli distribution instead of thresholding
+        # This allows actions even when probabilities are low
+        next_action = torch.bernoulli(next_action_probs)
 
         # 6. Update history
         # Store (current_token, last_action) which represents step t

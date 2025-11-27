@@ -285,9 +285,9 @@ class WorldModel(nn.Module):
         self.mask_token = nn.Parameter(torch.randn(embed_dim))
 
         # Transformer Backbone
-        # Schedule: Spatial, Spatial, Spatial, Temporal, Repeat
+        # Schedule: Temporal, Spatial, Spatial, Spatial, Repeat
         self.blocks = nn.ModuleList()
-        pattern = ["spatial", "spatial", "spatial", "temporal"]
+        pattern = ["temporal", "spatial", "spatial", "spatial"]
 
         for i in range(n_layers):
             attn_type = pattern[i % len(pattern)]

@@ -213,7 +213,7 @@ The World Model is a transformer-based model that learns multi-ship dynamics usi
 **Architecture Overview**:
 - **Token Structure**: Each token = `[ship_state, previous_action]` concatenated (state: 12 dims, action: 6 dims)
 - **Embedding Structure**: `final_embed = content_projection + ship_id_embedding` (RoPE applied in temporal attention)
-- **Attention Pattern**: Alternating spatial and temporal blocks in 3:1 ratio (S-S-S-T-S-S-S-T...)
+- **Attention Pattern**: Alternating temporal and spatial blocks in 1:3 ratio (T-S-S-S-T-S-S-S...)
 - **Mixed Batch Training**: Dual-pool strategy with short (32 tokens) and long (128 tokens) sequences
 
 **Token & Embedding Details**:
@@ -243,7 +243,7 @@ The World Model is a transformer-based model that learns multi-ship dynamics usi
   - Always causal (even with KV cache)
   - RoPE applied to Q/K for position-aware attention
   - KV cache concatenates along time dimension only
-- **Pattern**: 3 spatial blocks, then 1 temporal block, repeated (8 layers total)
+- **Pattern**: 1 temporal block, then 3 spatial blocks, repeated (8 layers total)
 
 **Mixed Batch Training**:
 - **Dual-Pool Strategy**: Episodes randomly assigned to short/long pools each epoch
