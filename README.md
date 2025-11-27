@@ -210,7 +210,7 @@ The World Model is a transformer-based model that learns multi-ship dynamics usi
 - **Token Structure**: Each token = `[ship_state, previous_action]` concatenated (state: 12 dims, action: 6 dims)
 - **Embedding Structure**: `final_embed = content_projection + ship_id_embedding` (RoPE applied in temporal attention)
 - **Attention Pattern**: Alternating spatial and temporal blocks in 3:1 ratio (S-S-S-T-S-S-S-T...)
-- **Batch Length Alternation**: Alternates between short (32) and long (96) batch lengths per iteration
+- **Mixed Batch Training**: Dual-pool strategy with short (32 tokens) and long (128 tokens) sequences
 
 **Token & Embedding Details**:
 1. **Content Projection**: Raw token (state + action) projected to embed_dim (128)
@@ -241,6 +241,21 @@ The World Model is a transformer-based model that learns multi-ship dynamics usi
   - KV cache concatenates along time dimension only
 - **Pattern**: 3 spatial blocks, then 1 temporal block, repeated (8 layers total)
 
+**Mixed Batch Training**:
+- **Dual-Pool Strategy**: Episodes randomly assigned to short/long pools each epoch
+- **Short Sequences** (32 tokens):
+  - All episodes eligible
+  - Shorter episodes padded, loss masked for padding
+  - Higher batch size (e.g., 256) for efficiency
+- **Long Sequences** (128 tokens):
+  - Only episodes ≥ 128 steps eligible
+  - First 32 tokens = warm-up (KV cache priming, no loss)
+  - Tokens 32-128 = training window (96 tokens with loss)
+  - Lower batch size (e.g., 64) due to memory
+- **Batch Ratio**: Configurable (default 4:1 short:long)
+- **Pool Ratio**: Automatically calculated as `batch_ratio * (long_len / short_len)`
+  - Example: 4 * (128 / 32) = 16:1 episode ratio in pools
+
 **Training**:
 ```powershell
 # Train the World Model
@@ -248,14 +263,30 @@ uv run main.py mode=train_wm train.bc_data_path=data/bc_pretraining/debug/aggreg
 
 # With custom parameters
 uv run main.py mode=train_wm world_model.epochs=10 world_model.mask_ratio=0.15
+
+# Integrated pipeline
+uv run main.py mode=train train.run_world_model=true
 ```
 
 **Configuration** (`world_model` in `config.yaml`):
 - `embed_dim`: 128 - Transformer embedding dimension
 - `n_layers`: 8 - Total transformer blocks (6 spatial, 2 temporal)
+- `short_batch_size`: 256 - Batch size for short sequences
+- `long_batch_size`: 64 - Batch size for long sequences
+- `short_batch_len`: 32 - Length of short sequences
+- `long_batch_len`: 128 - Length of long sequences (32 warmup + 96 training)
+- `batch_ratio`: 4 - Ratio of short to long batches (4:1)
+- `mask_ratio`: 0.15 - Fraction of tokens to mask
+- `noise_scale`: 0.1 - Scale for denoising noise
+
+**Key Design Principles**:
+1. ✅ Noise and masking applied to content projection only
+2. ✅ Ship ID embeddings never masked or noised
+3. ✅ Spatial attention never mixes timesteps
+4. ✅ Temporal attention never mixes ships
 5. ✅ KV cache only for temporal blocks (not spatial)
-6. ✅ Temporal attention never mixes ships
-7. ✅ Spatial attention never mixes timesteps
+6. ✅ Warm-up tokens excluded from loss via loss_mask
+7. ✅ Padding tokens excluded from loss via loss_mask
 
 **Evaluation**:
 ```powershell
