@@ -174,166 +174,152 @@ class SequenceDataset(Dataset):
         return seq_tokens, seq_actions
 
 
-class AlternatingBatchLengthDataset(Dataset):
+class ShortSequenceDataset(Dataset):
     """
-    Dataset that supports both short and long batch lengths.
-    Each sample randomly chooses between short_batch_len and long_batch_len.
-    
-    This enables true per-iteration alternation as described in the paper:
-    "alternate training on many short batches and occasional long batches"
-    
-    Key concept: batch_len >= context_len prevents overfitting to start-of-sequence tokens.
+    Dataset for short sequences (e.g., 32 tokens).
+    Handles padding for episodes shorter than the sequence length.
     """
-    def __init__(
-        self, 
-        tokens, 
-        actions, 
-        episode_lengths, 
-        context_len: int = 96,
-        short_batch_len: int = 32,
-        long_batch_len: int = 128,
-        long_batch_ratio: float = 0.2,
-    ):
-        """
-        Args:
-            tokens: (TotalTimesteps, N, F) tensor
-            actions: (TotalTimesteps, N, A) tensor
-            episode_lengths: (NumEpisodes,) tensor
-            context_len: Model's context length (window size)
-            short_batch_len: Length of short batches (should be >= context_len)
-            long_batch_len: Length of long batches (should be >= context_len)
-            long_batch_ratio: Probability of using long batch length per sample
-        """
+    def __init__(self, tokens, actions, episode_lengths, seq_len: int = 32):
         self.tokens = tokens
         self.actions = actions
-        self.context_len = context_len
-        self.short_batch_len = short_batch_len
-        self.long_batch_len = long_batch_len
-        self.long_batch_ratio = long_batch_ratio
+        self.episode_lengths = episode_lengths
+        self.seq_len = seq_len
         
-        # Build indices for both short and long batch lengths
-        # We'll create indices for the maximum batch length (long)
-        # and truncate at runtime if we choose short
-        self.episodes = []
+        # Create indices for all episodes
+        # We can sample from any episode
+        self.episode_indices = []
         current_idx = 0
-        for length in episode_lengths:
+        for i, length in enumerate(episode_lengths):
             l = length.item()
-            # We need at least long_batch_len timesteps to support both lengths
-            if l >= long_batch_len:
-                # Can sample multiple windows from this episode
-                for start in range(l - long_batch_len + 1):
-                    self.episodes.append((current_idx, start, l))
+            self.episode_indices.append((current_idx, l))
             current_idx += l
             
     def __len__(self):
-        return len(self.episodes)
+        return len(self.episode_indices)
     
     def __getitem__(self, idx):
-        base_idx, start_offset, episode_length = self.episodes[idx]
+        base_idx, length = self.episode_indices[idx]
         
-        # Randomly choose batch length for THIS sample
-        if torch.rand(1).item() < self.long_batch_ratio:
-            batch_len = self.long_batch_len
+        # Determine start position
+        if length <= self.seq_len:
+            start = 0
+            actual_len = length
         else:
-            batch_len = self.short_batch_len
+            # Random start
+            start = torch.randint(0, length - self.seq_len + 1, (1,)).item()
+            actual_len = self.seq_len
+            
+        # Get tokens and actions
+        abs_start = base_idx + start
+        abs_end = abs_start + actual_len
         
-        # Ensure we don't exceed episode boundaries
-        # start_offset was calculated for long_batch_len, so we might need to adjust
-        max_start_for_batch_len = episode_length - batch_len
-        actual_start_offset = min(start_offset, max_start_for_batch_len)
+        seq_tokens = self.tokens[abs_start:abs_end]
         
-        # Get a batch of batch_len timesteps
-        abs_start = base_idx + actual_start_offset
-        abs_end = abs_start + batch_len
+        # Actions need to be shifted? 
+        # In the previous code, actions were handled carefully.
+        # Let's stick to the convention: input actions are previous actions.
+        # If start=0, first action is 0.
         
-        batch_tokens = self.tokens[abs_start:abs_end]
-        
-        # Actions: [start-1 : start + batch_len - 1]
-        if actual_start_offset == 0:
-            # First action is 0
-            if batch_len > 1:
+        if start == 0:
+            if actual_len > 1:
                 data_actions = self.actions[abs_start : abs_end - 1]
                 zeros = torch.zeros(1, *data_actions.shape[1:], dtype=data_actions.dtype)
-                batch_actions = torch.cat([zeros, data_actions], dim=0)
+                seq_actions = torch.cat([zeros, data_actions], dim=0)
             else:
-                batch_actions = torch.zeros(1, *self.actions.shape[1:], dtype=self.actions.dtype)
+                seq_actions = torch.zeros(1, *self.actions.shape[1:], dtype=self.actions.dtype)
         else:
-            slice_start = abs_start - 1
-            slice_end = abs_end - 1
-            batch_actions = self.actions[slice_start : slice_end]
-        
-        return batch_tokens, batch_actions
+            seq_actions = self.actions[abs_start - 1 : abs_end - 1]
+            
+        # Pad if necessary
+        if actual_len < self.seq_len:
+            pad_len = self.seq_len - actual_len
+            
+            # Pad tokens
+            token_pad = torch.zeros(pad_len, *seq_tokens.shape[1:], dtype=seq_tokens.dtype)
+            seq_tokens = torch.cat([seq_tokens, token_pad], dim=0)
+            
+            # Pad actions
+            action_pad = torch.zeros(pad_len, *seq_actions.shape[1:], dtype=seq_actions.dtype)
+            seq_actions = torch.cat([seq_actions, action_pad], dim=0)
+            
+            # Create loss mask
+            # Valid tokens are 1, padded are 0
+            loss_mask = torch.ones(self.seq_len, dtype=torch.bool)
+            loss_mask[actual_len:] = False
+        else:
+            loss_mask = torch.ones(self.seq_len, dtype=torch.bool)
+            
+        return seq_tokens, seq_actions, loss_mask
 
 
-def collate_variable_length_batches(batch):
+class LongSequenceDataset(Dataset):
     """
-    Custom collate function for batches with variable lengths.
-    Pads all samples to the maximum length in the batch.
-    
-    Args:
-        batch: List of (tokens, actions) tuples with potentially different lengths
-        
-    Returns:
-        Tuple of (padded_tokens, padded_actions) tensors
+    Dataset for long sequences (e.g., 128 tokens).
+    Includes warm-up period where loss is not computed.
+    Only includes episodes long enough for the sequence.
     """
-    # Find max length in this batch
-    max_len = max(tokens.shape[0] for tokens, _ in batch)
-    
-    # Get shapes from first sample
-    first_tokens, first_actions = batch[0]
-    token_shape = first_tokens.shape[1:]  # (N, F)
-    action_shape = first_actions.shape[1:]  # (N, A)
-    
-    # Pad all samples to max_len
-    padded_tokens_list = []
-    padded_actions_list = []
-    
-    for tokens, actions in batch:
-        current_len = tokens.shape[0]
-        if current_len < max_len:
-            # Pad
-            pad_len = max_len - current_len
-            token_pad = torch.zeros(pad_len, *token_shape, dtype=tokens.dtype)
-            action_pad = torch.zeros(pad_len, *action_shape, dtype=actions.dtype)
-            tokens = torch.cat([tokens, token_pad], dim=0)
-            actions = torch.cat([actions, action_pad], dim=0)
+    def __init__(self, tokens, actions, episode_lengths, seq_len: int = 128, warmup_len: int = 32):
+        self.tokens = tokens
+        self.actions = actions
+        self.seq_len = seq_len
+        self.warmup_len = warmup_len
         
-        padded_tokens_list.append(tokens)
-        padded_actions_list.append(actions)
+        # Filter episodes that are long enough
+        self.indices = []
+        current_idx = 0
+        for length in episode_lengths:
+            l = length.item()
+            if l >= seq_len:
+                # We can sample from this episode
+                # Store (base_idx, length)
+                self.indices.append((current_idx, l))
+            current_idx += l
+            
+    def __len__(self):
+        return len(self.indices)
     
-    # Stack into batches
-    batched_tokens = torch.stack(padded_tokens_list, dim=0)
-    batched_actions = torch.stack(padded_actions_list, dim=0)
-    
-    return batched_tokens, batched_actions
+    def __getitem__(self, idx):
+        base_idx, length = self.indices[idx]
+        
+        # Random start position
+        # We need seq_len tokens
+        max_start = length - self.seq_len
+        start = torch.randint(0, max_start + 1, (1,)).item()
+        
+        abs_start = base_idx + start
+        abs_end = abs_start + self.seq_len
+        
+        seq_tokens = self.tokens[abs_start:abs_end]
+        
+        # Actions
+        if start == 0:
+            data_actions = self.actions[abs_start : abs_end - 1]
+            zeros = torch.zeros(1, *data_actions.shape[1:], dtype=data_actions.dtype)
+            seq_actions = torch.cat([zeros, data_actions], dim=0)
+        else:
+            seq_actions = self.actions[abs_start - 1 : abs_end - 1]
+            
+        # Loss mask
+        # First warmup_len tokens are 0 (ignore), rest are 1 (compute loss)
+        loss_mask = torch.ones(self.seq_len, dtype=torch.bool)
+        loss_mask[:self.warmup_len] = False
+        
+        return seq_tokens, seq_actions, loss_mask
 
 
-
-
-def create_world_model_data_loader(
+def create_dual_pool_data_loaders(
     data: dict,
-    batch_size: int,
-    context_len: int = 96,
-    validation_split: float = 0.2,
-    num_workers: int = 4,
-    use_alternating_lengths: bool = True,
+    short_batch_size: int,
+    long_batch_size: int,
     short_batch_len: int = 32,
     long_batch_len: int = 128,
-    long_batch_ratio: float = 0.2,
-) -> tuple[DataLoader, DataLoader]:
+    batch_ratio: int = 4,
+    validation_split: float = 0.2,
+    num_workers: int = 0,
+) -> tuple[DataLoader, DataLoader, DataLoader, DataLoader]:
     """
-    Create data loaders for world model training.
-    
-    Args:
-        data: Dictionary containing team tokens, actions, and episode lengths
-        batch_size: Batch size for training
-        context_len: Model's context length (window size)
-        validation_split: Fraction of data to use for validation
-        num_workers: Number of worker processes for data loading
-        use_alternating_lengths: If True, use AlternatingBatchLengthDataset
-        short_batch_len: Number of timesteps in short batches (should be >= context_len)
-        long_batch_len: Number of timesteps in long batches (should be >= context_len)
-        long_batch_ratio: Probability of using long batch length per sample
+    Create data loaders for dual-pool training strategy.
+    Returns (train_short_loader, train_long_loader, val_short_loader, val_long_loader).
     """
     # Combine teams
     team_0 = data["team_0"]
@@ -341,114 +327,114 @@ def create_world_model_data_loader(
 
     tokens = torch.cat([team_0["tokens"], team_1["tokens"]], dim=0)
     actions = torch.cat([team_0["actions"], team_1["actions"]], dim=0)
-    
-    # Episode lengths need to be duplicated for both teams
     episode_lengths = torch.cat([data["episode_lengths"], data["episode_lengths"]], dim=0)
     
-    print(f"DEBUG: tokens shape before dataset: {tokens.shape}")
-    print(f"DEBUG: actions shape before dataset: {actions.shape}")
+    # Calculate pool split ratio
+    # ratio = batch_ratio * (long_batch_len / short_batch_len)
+    # This is the ratio of short episodes to long episodes
+    pool_ratio = batch_ratio * (long_batch_len / short_batch_len)
     
-    # Choose dataset type
-    if use_alternating_lengths:
-        print(f"Using alternating batch lengths: short={short_batch_len}, long={long_batch_len}, ratio={long_batch_ratio}")
-        dataset = AlternatingBatchLengthDataset(
-            tokens, 
-            actions, 
-            episode_lengths, 
-            context_len=context_len,
-            short_batch_len=short_batch_len,
-            long_batch_len=long_batch_len,
-            long_batch_ratio=long_batch_ratio,
-        )
-        collate_fn = collate_variable_length_batches
-    else:
-        dataset = SequenceDataset(tokens, actions, episode_lengths, context_len=context_len)
-        collate_fn = None  # Use default collate
+    # Identify eligible episodes for long pool (>= long_batch_len)
+    long_eligible_indices = (episode_lengths >= long_batch_len).nonzero().squeeze()
+    short_only_indices = (episode_lengths < long_batch_len).nonzero().squeeze()
+    
+    if long_eligible_indices.ndim == 0:
+        long_eligible_indices = long_eligible_indices.unsqueeze(0)
+    if short_only_indices.ndim == 0:
+        short_only_indices = short_only_indices.unsqueeze(0)
+        
+    num_long_eligible = len(long_eligible_indices)
+    
+    # We want N_short / N_long ≈ pool_ratio
+    # N_long = Total / (pool_ratio + 1)
+    # But we are constrained by num_long_eligible
+    
+    target_long_count = int(len(episode_lengths) / (pool_ratio + 1))
+    actual_long_count = min(target_long_count, num_long_eligible)
+    
+    # Randomly select episodes for long pool
+    perm = torch.randperm(num_long_eligible)
+    selected_long_indices = long_eligible_indices[perm[:actual_long_count]]
+    remaining_long_indices = long_eligible_indices[perm[actual_long_count:]]
+    
+    # Short pool gets everything else
+    short_pool_indices = torch.cat([short_only_indices, remaining_long_indices])
+    
+    # Create datasets
+    # We need to reconstruct tokens/actions/lengths for each pool
+    # This is expensive to do by copying, so we'll pass the full tensors 
+    # and a list of allowed episode indices?
+    # Actually, the Dataset classes take full tensors and iterate over episode_lengths.
+    # We can just pass the subset of episode_lengths and corresponding tokens/actions?
+    # No, tokens are flattened. We need to slice them.
+    
+    # Helper to extract subset
+    def extract_subset(indices):
+        subset_lengths = episode_lengths[indices]
+        
+        # We need to find the start/end in the flattened tensors for each episode
+        # This requires a cumulative sum of lengths
+        cum_lengths = torch.cumsum(torch.cat([torch.tensor([0]), episode_lengths]), dim=0)
+        
+        subset_tokens_list = []
+        subset_actions_list = []
+        
+        for idx in indices:
+            start = cum_lengths[idx].item()
+            end = cum_lengths[idx+1].item()
+            subset_tokens_list.append(tokens[start:end])
+            subset_actions_list.append(actions[start:end])
+            
+        subset_tokens = torch.cat(subset_tokens_list, dim=0)
+        subset_actions = torch.cat(subset_actions_list, dim=0)
+        
+        return subset_tokens, subset_actions, subset_lengths
 
-    # Split into train and validation
-    total_size = len(dataset)
-    val_size = int(total_size * validation_split)
-    train_size = total_size - val_size
-    train_dataset, val_dataset = torch.utils.data.random_split(
-        dataset, [train_size, val_size]
+    # Extract pools
+    long_tokens, long_actions, long_lengths = extract_subset(selected_long_indices)
+    short_tokens, short_actions, short_lengths = extract_subset(short_pool_indices)
+    
+    # Create Datasets
+    long_dataset = LongSequenceDataset(
+        long_tokens, long_actions, long_lengths, 
+        seq_len=long_batch_len, warmup_len=long_batch_len - 96 # Assuming 96 context
     )
-
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=num_workers,
-        pin_memory=True,
-        collate_fn=collate_fn,
+    short_dataset = ShortSequenceDataset(
+        short_tokens, short_actions, short_lengths, 
+        seq_len=short_batch_len
     )
-
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        pin_memory=True,
-        collate_fn=collate_fn,
-    )
-
-    return train_loader, val_loader
-
-
-def compute_discounted_returns(all_rewards, all_episode_lengths, gamma=0.99):
-    """Vectorized version - faster but uses more memory."""
-    device = all_rewards.device
-    max_len = all_episode_lengths.max().item()
-    num_episodes = all_episode_lengths.shape[0]
-
-    # Create padded episode tensor
-    episodes = torch.zeros(num_episodes, max_len, device=device)
-
-    # Fill in episodes
-    start_idx = 0
-    for i, length in enumerate(all_episode_lengths):
-        ep_len = length.item()
-        episodes[i, :ep_len] = all_rewards[start_idx : start_idx + ep_len]
-        start_idx += ep_len
-
-    # Create discount matrix: [1, gamma, gamma^2, ..., gamma^(max_len-1)]
-    discounts = gamma ** torch.arange(max_len, device=device)
-
-    # Compute returns using convolution-like operation
-    returns_padded = torch.zeros_like(episodes)
-    for i in range(max_len):
-        # For position i, sum rewards[i:] * discounts[:len-i]
-        remaining = max_len - i
-        returns_padded[:, i] = (episodes[:, i:] * discounts[:remaining]).sum(dim=1)
-
-    # Flatten back to original shape
-    returns = torch.zeros_like(all_rewards)
-    start_idx = 0
-    for i, length in enumerate(all_episode_lengths):
-        ep_len = length.item()
-        returns[start_idx : start_idx + ep_len] = returns_padded[i, :ep_len]
-        start_idx += ep_len
-
-    return returns
-
-
-def get_latest_data_path() -> str:
-    """
-    Get the path to the latest aggregated data file.
-
-    Returns:
-        Path string to the latest aggregated_data.pkl file
-    """
-    base_path = Path("data/bc_pretraining")
-
-    # Find the latest folder
-    latest_folder = max(
-        (d for d in base_path.iterdir() if d.is_dir()), key=lambda d: d.name
-    )
-
-    file_path = latest_folder / "aggregated_data.pkl"
-    return str(file_path)
+    
+    # Split into train/val
+    def split_dataset(dataset, val_split):
+        total = len(dataset)
+        val_size = int(total * val_split)
+        train_size = total - val_size
+        return torch.utils.data.random_split(dataset, [train_size, val_size])
+        
+    train_long, val_long = split_dataset(long_dataset, validation_split)
+    train_short, val_short = split_dataset(short_dataset, validation_split)
+    
+    # Create Loaders
+    train_long_loader = DataLoader(train_long, batch_size=long_batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
+    val_long_loader = DataLoader(val_long, batch_size=long_batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+    
+    train_short_loader = DataLoader(train_short, batch_size=short_batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
+    val_short_loader = DataLoader(val_short, batch_size=short_batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+    
+    return train_short_loader, train_long_loader, val_short_loader, val_long_loader
 
 
 if __name__ == "__main__":
     data = load_bc_data()
-    data_loader = create_bc_data_loader(data, batch_size=512)
+    # Test dual pool creation
+    ts, tl, vs, vl = create_dual_pool_data_loaders(
+        data, 
+        short_batch_size=128, 
+        long_batch_size=32,
+        short_batch_len=32,
+        long_batch_len=128,
+        batch_ratio=4
+    )
+    print(f"Short Train Batches: {len(ts)}")
+    print(f"Long Train Batches: {len(tl)}")
+

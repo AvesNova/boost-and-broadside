@@ -39,12 +39,10 @@
             "name": "Train",
             "type": "debugpy",
             "request": "launch",
-            "program": "src/unified_train.py",
+            "program": "main.py",
             "console": "integratedTerminal",
             "args": [
-                "full",
-                "--config",
-                "src/unified_training.yaml"
+                "mode=train"
             ]
         },
         {

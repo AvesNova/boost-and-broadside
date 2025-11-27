@@ -58,7 +58,8 @@ class RotaryPositionEmbedding(nn.Module):
             seq_len: Sequence length to precompute.
         """
         # positions shape: (seq_len,)
-        positions = torch.arange(seq_len, dtype=self.inv_freq.dtype)
+        # Ensure positions is on the same device as inv_freq
+        positions = torch.arange(seq_len, dtype=self.inv_freq.dtype, device=self.inv_freq.device)
         
         # freqs shape: (seq_len, dim // 2)
         freqs = torch.outer(positions, self.inv_freq)

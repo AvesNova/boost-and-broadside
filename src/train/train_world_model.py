@@ -14,7 +14,7 @@ from omegaconf import DictConfig
 from tqdm import tqdm
 
 from src.agents.world_model import WorldModel
-from src.train.data_loader import load_bc_data, create_world_model_data_loader
+from src.train.data_loader import load_bc_data, create_dual_pool_data_loaders
 
 log = logging.getLogger(__name__)
 
@@ -94,25 +94,20 @@ def train_world_model(cfg: DictConfig) -> None:
         data_path = get_latest_data_path()
 
     log.info(f"Loading data from {data_path}")
-    log.info(f"Loading data from {data_path}")
-    log.info(f"Absolute path: {Path(data_path).resolve()}")
     data = load_bc_data(data_path)
-
-    train_loader, val_loader = create_world_model_data_loader(
-        data,
-        batch_size=cfg.world_model.batch_size,
-        context_len=cfg.world_model.context_len,
-        validation_split=0.2,
-        num_workers=0,
-        use_alternating_lengths=cfg.world_model.use_alternating_lengths,
-        short_batch_len=cfg.world_model.short_batch_len,
-        long_batch_len=cfg.world_model.long_batch_len,
-        long_batch_ratio=cfg.world_model.long_batch_ratio,
-    )
 
     # Initialize Model
     # Get dimensions from data
-    sample_tokens, sample_actions = next(iter(train_loader))
+    # We need to peek at data to get dimensions.
+    # Let's just use hardcoded dimensions or get them from config/data structure.
+    # The data loader creation is now inside the loop.
+    # But we need dimensions to init model.
+    
+    # Peek at one sample
+    team_0 = data["team_0"]
+    sample_tokens = team_0["tokens"][0]
+    sample_actions = team_0["actions"][0]
+    
     state_dim = sample_tokens.shape[-1]
     action_dim = sample_actions.shape[-1]
 
@@ -130,103 +125,179 @@ def train_world_model(cfg: DictConfig) -> None:
 
     # Training Loop
     epochs = cfg.world_model.epochs
+    batch_ratio = cfg.world_model.batch_ratio
 
     for epoch in range(epochs):
+        # Re-create data loaders each epoch to randomize pools
+        train_short_loader, train_long_loader, val_short_loader, val_long_loader = create_dual_pool_data_loaders(
+            data,
+            short_batch_size=cfg.world_model.short_batch_size,
+            long_batch_size=cfg.world_model.long_batch_size,
+            short_batch_len=cfg.world_model.short_batch_len,
+            long_batch_len=cfg.world_model.long_batch_len,
+            batch_ratio=cfg.world_model.batch_ratio,
+            validation_split=0.2,
+            num_workers=0,
+        )
+        
         model.train()
         total_loss = 0
         total_recon_loss = 0
         total_denoise_loss = 0
-
-        pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}")
-        for states, actions in pbar:
-            states = states.to(device)
-            actions = actions.to(device)
-
-            if epoch == 0 and total_loss == 0:
-                log.info(f"States shape: {states.shape}")
-                log.info(f"Actions shape: {actions.shape}")
-
+        
+        # Create iterators
+        short_iter = iter(train_short_loader)
+        long_iter = iter(train_long_loader)
+        
+        # Determine number of steps
+        # We run until one of the loaders is exhausted?
+        # Or we determine steps based on the ratio.
+        # Let's run until short loader is exhausted, as it's the dominant one.
+        num_short_batches = len(train_short_loader)
+        num_long_batches = len(train_long_loader)
+        
+        # We want to run roughly num_short_batches.
+        # But we need to respect the ratio.
+        # Steps = num_short_batches
+        
+        pbar = tqdm(range(num_short_batches), desc=f"Epoch {epoch+1}/{epochs}")
+        
+        short_exhausted = False
+        long_exhausted = False
+        
+        steps = 0
+        
+        while not short_exhausted:
+            # 1. Run batch_ratio short batches
+            for _ in range(batch_ratio):
+                try:
+                    states, actions, loss_mask = next(short_iter)
+                except StopIteration:
+                    short_exhausted = True
+                    break
+                
+                states, actions, loss_mask = states.to(device), actions.to(device), loss_mask.to(device)
+                
+                optimizer.zero_grad()
+                
+                # Create mask (random masking for short sequences)
+                mask = create_mixed_mask(
+                    states.shape[0], states.shape[1], states.shape[2], device,
+                    mask_ratio=cfg.world_model.mask_ratio
+                )
+                
+                pred_states, pred_actions, mask, _ = model(
+                    states, actions, mask_ratio=0.0, noise_scale=cfg.world_model.noise_scale, mask=mask
+                )
+                
+                recon_loss, denoise_loss = model.get_loss(
+                    states, actions, pred_states, pred_actions, mask, loss_mask=loss_mask
+                )
+                
+                loss = recon_loss + denoise_loss
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                optimizer.step()
+                
+                total_loss += loss.item()
+                total_recon_loss += recon_loss.item()
+                total_denoise_loss += denoise_loss.item()
+                steps += 1
+                pbar.update(1)
+                
+            if short_exhausted:
+                break
+                
+            # 2. Run 1 long batch
+            try:
+                states, actions, loss_mask = next(long_iter)
+            except StopIteration:
+                # If long loader exhausted, restart it?
+                # Or just stop?
+                # Ideally they are balanced by the pool creation logic.
+                # But due to rounding, they might not be perfectly aligned.
+                # Let's restart long iterator if needed, or just skip if empty.
+                # If we restart, we might overfit to long samples?
+                # Given the pool logic, they should be roughly proportional.
+                # Let's just skip if empty.
+                long_exhausted = True
+                # If long is exhausted but short is not, we continue with short only?
+                # Or we break?
+                # Let's break to keep the ratio roughly correct.
+                break
+            
+            states, actions, loss_mask = states.to(device), actions.to(device), loss_mask.to(device)
+            
             optimizer.zero_grad()
-
-            # Create mixed mask
+            
+            # Create mask (random masking for long sequences too?)
+            # Yes, we still want to learn reconstruction/denoising on long sequences.
             mask = create_mixed_mask(
-                states.shape[0],  # batch_size
-                states.shape[1],  # time_steps
-                states.shape[2],  # num_ships
-                device,
-                mask_ratio=cfg.world_model.mask_ratio,
+                states.shape[0], states.shape[1], states.shape[2], device,
+                mask_ratio=cfg.world_model.mask_ratio
             )
-
+            
             pred_states, pred_actions, mask, _ = model(
-                states,
-                actions,
-                mask_ratio=0.0,  # We provide explicit mask
-                noise_scale=cfg.world_model.noise_scale,
-                mask=mask,
+                states, actions, mask_ratio=0.0, noise_scale=cfg.world_model.noise_scale, mask=mask
             )
-
+            
             recon_loss, denoise_loss = model.get_loss(
-                states, actions, pred_states, pred_actions, mask
+                states, actions, pred_states, pred_actions, mask, loss_mask=loss_mask
             )
-
+            
             loss = recon_loss + denoise_loss
             loss.backward()
-
-            # Clip gradients
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-
             optimizer.step()
-
+            
+            # We don't update pbar for long batch to keep it consistent with short batches count?
+            # Or we should?
+            # Let's just log it.
+            
             total_loss += loss.item()
             total_recon_loss += recon_loss.item()
             total_denoise_loss += denoise_loss.item()
+            
+            pbar.set_postfix({
+                "loss": total_loss / (steps + 1),
+                "recon": total_recon_loss / (steps + 1),
+                "denoise": total_denoise_loss / (steps + 1)
+            })
 
-            pbar.set_postfix(
-                {
-                    "loss": loss.item(),
-                    "recon": recon_loss.item(),
-                    "denoise": denoise_loss.item(),
-                }
-            )
-
-        avg_loss = total_loss / len(train_loader)
+        avg_loss = total_loss / (steps + 1)
         log.info(
             f"Epoch {epoch+1}: Train Loss={avg_loss:.4f} "
-            f"(Recon={total_recon_loss/len(train_loader):.4f}, "
-            f"Denoise={total_denoise_loss/len(train_loader):.4f})"
+            f"(Recon={total_recon_loss/(steps+1):.4f}, "
+            f"Denoise={total_denoise_loss/(steps+1):.4f})"
         )
 
         # Validation
         model.eval()
         val_loss = 0
-        with torch.no_grad():
-            for states, actions in val_loader:
-                states = states.to(device)
-                actions = actions.to(device)
+        val_steps = 0
+        
+        # Validate on both short and long
+        for loader in [val_short_loader, val_long_loader]:
+            with torch.no_grad():
+                for states, actions, loss_mask in loader:
+                    states, actions, loss_mask = states.to(device), actions.to(device), loss_mask.to(device)
 
-                # Create validation mask (same strategy)
-                mask = create_mixed_mask(
-                    states.shape[0],
-                    states.shape[1],
-                    states.shape[2],
-                    device,
-                    mask_ratio=cfg.world_model.mask_ratio,
-                )
+                    mask = create_mixed_mask(
+                        states.shape[0], states.shape[1], states.shape[2], device,
+                        mask_ratio=cfg.world_model.mask_ratio
+                    )
 
-                pred_states, pred_actions, mask, _ = model(
-                    states,
-                    actions,
-                    mask_ratio=0.0,
-                    noise_scale=0.0,  # No noise for validation
-                    mask=mask,
-                )
+                    pred_states, pred_actions, mask, _ = model(
+                        states, actions, mask_ratio=0.0, noise_scale=0.0, mask=mask
+                    )
 
-                recon_loss, denoise_loss = model.get_loss(
-                    states, actions, pred_states, pred_actions, mask
-                )
-                val_loss += (recon_loss + denoise_loss).item()
+                    recon_loss, denoise_loss = model.get_loss(
+                        states, actions, pred_states, pred_actions, mask, loss_mask=loss_mask
+                    )
+                    val_loss += (recon_loss + denoise_loss).item()
+                    val_steps += 1
 
-        avg_val_loss = val_loss / len(val_loader)
+        avg_val_loss = val_loss / val_steps if val_steps > 0 else 0
         log.info(f"Epoch {epoch+1}: Val Loss={avg_val_loss:.4f}")
 
         # Save checkpoint

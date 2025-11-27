@@ -411,9 +411,10 @@ class WorldModel(nn.Module):
 
         return pred_states, pred_actions, mask, current_key_values
 
-    def get_loss(self, states, actions, pred_states, pred_actions, mask):
+    def get_loss(self, states, actions, pred_states, pred_actions, mask, loss_mask=None):
         # states: (B, T, N, F)
-        # mask: (B, T, N)
+        # mask: (B, T, N) - True = masked (reconstruction target), False = visible (denoising target)
+        # loss_mask: (B, T, N) - True = compute loss, False = ignore (warm-up/padding)
 
         if states.ndim == 3:
             # Unflatten if needed, but usually passed same as forward input
@@ -424,20 +425,37 @@ class WorldModel(nn.Module):
             actions = actions.view(batch_size, time_steps, num_ships, actions.shape[-1])
             if mask is not None:
                 mask = mask.view(batch_size, time_steps, num_ships)
+            if loss_mask is not None:
+                loss_mask = loss_mask.view(batch_size, time_steps, num_ships)
 
-        recon_loss = 0
-        if mask is not None and mask.any():
-            # State loss: MSE
-            recon_loss += F.mse_loss(pred_states[mask], states[mask])
-            # Action loss: BCEWithLogits (actions are binary multi-label)
-            recon_loss += F.binary_cross_entropy_with_logits(pred_actions[mask], actions[mask])
+        # If no loss_mask provided, compute loss for all tokens
+        if loss_mask is None:
+            loss_mask = torch.ones_like(mask, dtype=torch.bool)
+        elif loss_mask.ndim == 2:
+            # (B, T) -> (B, T, N)
+            loss_mask = loss_mask.unsqueeze(-1).expand_as(mask)
 
-        denoise_loss = 0
-        if mask is not None and (~mask).any():
+        recon_loss = torch.tensor(0.0, device=states.device)
+        denoise_loss = torch.tensor(0.0, device=states.device)
+
+        # Reconstruction Loss (for masked tokens)
+        # We only compute loss where mask=True AND loss_mask=True
+        recon_target_mask = mask & loss_mask
+        
+        if recon_target_mask.any():
             # State loss: MSE
-            denoise_loss += F.mse_loss(pred_states[~mask], states[~mask])
+            recon_loss += F.mse_loss(pred_states[recon_target_mask], states[recon_target_mask])
             # Action loss: BCEWithLogits
-            denoise_loss += F.binary_cross_entropy_with_logits(pred_actions[~mask], actions[~mask])
+            recon_loss += F.binary_cross_entropy_with_logits(pred_actions[recon_target_mask], actions[recon_target_mask])
+
+        # Denoising Loss (for unmasked tokens)
+        # We only compute loss where mask=False AND loss_mask=True
+        denoise_target_mask = (~mask) & loss_mask
+        if denoise_target_mask.any():
+            # State loss: MSE
+            denoise_loss += F.mse_loss(pred_states[denoise_target_mask], states[denoise_target_mask])
+            # Action loss: BCEWithLogits
+            denoise_loss += F.binary_cross_entropy_with_logits(pred_actions[denoise_target_mask], actions[denoise_target_mask])
 
         return recon_loss, denoise_loss
 

@@ -13,7 +13,7 @@ from omegaconf import DictConfig
 import matplotlib.pyplot as plt
 
 from src.agents.world_model import WorldModel
-from src.train.data_loader import load_bc_data, create_world_model_data_loader
+from src.train.data_loader import load_bc_data, create_dual_pool_data_loaders
 
 log = logging.getLogger(__name__)
 
@@ -41,16 +41,20 @@ def eval_world_model(cfg: DictConfig) -> None:
     data = load_bc_data(data_path)
 
     # Create loader to get dimensions and sample
-    _, val_loader = create_world_model_data_loader(
+    # We use the long validation loader for evaluation
+    _, _, _, val_loader = create_dual_pool_data_loaders(
         data,
-        batch_size=1,  # Batch size 1 for evaluation
-        context_len=cfg.world_model.context_len,
+        short_batch_size=cfg.world_model.short_batch_size,
+        long_batch_size=1,  # Batch size 1 for evaluation
+        short_batch_len=cfg.world_model.short_batch_len,
+        long_batch_len=cfg.world_model.long_batch_len,
+        batch_ratio=cfg.world_model.batch_ratio,
         validation_split=0.2,
         num_workers=0,
     )
 
     # Get a sample
-    sample_states, sample_actions = next(iter(val_loader))
+    sample_states, sample_actions, _ = next(iter(val_loader))
     state_dim = sample_states.shape[-1]
     action_dim = sample_actions.shape[-1]
 

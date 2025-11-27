@@ -59,6 +59,12 @@ def train(cfg: DictConfig) -> None:
         else:
             print("Pipeline: BC training failed or disabled.")
             
+    # 2.5. World Model Training
+    if cfg.train.get("run_world_model", False):
+        print("\n=== Starting Pipeline Step 2.5: World Model Training ===")
+        from src.train.train_world_model import train_world_model
+        train_world_model(cfg)
+            
     # 3. RL Training
     if run_rl:
         print("\n=== Starting Pipeline Step 3: RL Training ===")
