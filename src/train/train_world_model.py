@@ -7,10 +7,12 @@ using masked reconstruction and denoising objectives.
 import logging
 from pathlib import Path
 
+from datetime import datetime
 import hydra
 import torch
 import torch.optim as optim
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
+from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 from src.agents.world_model import WorldModel
@@ -123,9 +125,27 @@ def train_world_model(cfg: DictConfig) -> None:
 
     optimizer = optim.AdamW(model.parameters(), lr=cfg.world_model.learning_rate)
 
+    # Setup logging and output directory
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = Path("models/world_model") / f"run_{timestamp}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    
+    log.info(f"Output directory: {run_dir}")
+
+    # Save config immediately
+    OmegaConf.save(cfg, run_dir / "config.yaml")
+    
+    # TensorBoard writer
+    writer = SummaryWriter(log_dir=str(run_dir))
+    
+    csv_path = run_dir / "training_log.csv"
+    with open(csv_path, "w") as f:
+        f.write("epoch,train_loss,train_recon_loss,train_denoise_loss,val_loss\n")
+
     # Training Loop
     epochs = cfg.world_model.epochs
     batch_ratio = cfg.world_model.batch_ratio
+    best_val_loss = float("inf")
 
     for epoch in range(epochs):
         # Re-create data loaders each epoch to randomize pools
@@ -154,11 +174,6 @@ def train_world_model(cfg: DictConfig) -> None:
         # Or we determine steps based on the ratio.
         # Let's run until short loader is exhausted, as it's the dominant one.
         num_short_batches = len(train_short_loader)
-        num_long_batches = len(train_long_loader)
-        
-        # We want to run roughly num_short_batches.
-        # But we need to respect the ratio.
-        # Steps = num_short_batches
         
         pbar = tqdm(range(num_short_batches), desc=f"Epoch {epoch+1}/{epochs}")
         
@@ -212,26 +227,15 @@ def train_world_model(cfg: DictConfig) -> None:
             try:
                 states, actions, loss_mask = next(long_iter)
             except StopIteration:
-                # If long loader exhausted, restart it?
-                # Or just stop?
-                # Ideally they are balanced by the pool creation logic.
-                # But due to rounding, they might not be perfectly aligned.
-                # Let's restart long iterator if needed, or just skip if empty.
-                # If we restart, we might overfit to long samples?
-                # Given the pool logic, they should be roughly proportional.
-                # Let's just skip if empty.
+                # If long loader exhausted, just skip
                 long_exhausted = True
-                # If long is exhausted but short is not, we continue with short only?
-                # Or we break?
-                # Let's break to keep the ratio roughly correct.
                 break
             
             states, actions, loss_mask = states.to(device), actions.to(device), loss_mask.to(device)
             
             optimizer.zero_grad()
             
-            # Create mask (random masking for long sequences too?)
-            # Yes, we still want to learn reconstruction/denoising on long sequences.
+            # Create mask (random masking for long sequences too)
             mask = create_mixed_mask(
                 states.shape[0], states.shape[1], states.shape[2], device,
                 mask_ratio=cfg.world_model.mask_ratio
@@ -250,25 +254,28 @@ def train_world_model(cfg: DictConfig) -> None:
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
             
-            # We don't update pbar for long batch to keep it consistent with short batches count?
-            # Or we should?
-            # Let's just log it.
-            
             total_loss += loss.item()
             total_recon_loss += recon_loss.item()
             total_denoise_loss += denoise_loss.item()
+            # Note: We don't increment steps here to keep pbar consistent with short batches, 
+            # but we do include the loss in the total. 
+            # Actually, let's increment steps to keep the average correct.
+            steps += 1
             
             pbar.set_postfix({
-                "loss": total_loss / (steps + 1),
-                "recon": total_recon_loss / (steps + 1),
-                "denoise": total_denoise_loss / (steps + 1)
+                "loss": total_loss / steps,
+                "recon": total_recon_loss / steps,
+                "denoise": total_denoise_loss / steps
             })
 
-        avg_loss = total_loss / (steps + 1)
+        avg_loss = total_loss / steps if steps > 0 else 0
+        avg_recon_loss = total_recon_loss / steps if steps > 0 else 0
+        avg_denoise_loss = total_denoise_loss / steps if steps > 0 else 0
+        
         log.info(
             f"Epoch {epoch+1}: Train Loss={avg_loss:.4f} "
-            f"(Recon={total_recon_loss/(steps+1):.4f}, "
-            f"Denoise={total_denoise_loss/(steps+1):.4f})"
+            f"(Recon={avg_recon_loss:.4f}, "
+            f"Denoise={avg_denoise_loss:.4f})"
         )
 
         # Validation
@@ -300,11 +307,45 @@ def train_world_model(cfg: DictConfig) -> None:
         avg_val_loss = val_loss / val_steps if val_steps > 0 else 0
         log.info(f"Epoch {epoch+1}: Val Loss={avg_val_loss:.4f}")
 
-        # Save checkpoint
-        if (epoch + 1) % 10 == 0:
-            save_path = Path(f"models/world_model_epoch_{epoch+1}.pt")
-            save_path.parent.mkdir(parents=True, exist_ok=True)
-            torch.save(model.state_dict(), save_path)
-            log.info(f"Saved model to {save_path}")
+        # Log to CSV
+        with open(csv_path, "a") as f:
+            f.write(f"{epoch+1},{avg_loss:.6f},{avg_recon_loss:.6f},{avg_denoise_loss:.6f},{avg_val_loss:.6f}\n")
 
-    log.info("Training complete.")
+        # Log to TensorBoard
+        writer.add_scalar("Loss/train", avg_loss, epoch)
+        writer.add_scalar("Loss/train_recon", avg_recon_loss, epoch)
+        writer.add_scalar("Loss/train_denoise", avg_denoise_loss, epoch)
+        writer.add_scalar("Loss/val", avg_val_loss, epoch)
+
+        # Save best model
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            torch.save(model.state_dict(), run_dir / "best_world_model.pth")
+            log.info(f"Saved best model with val loss {best_val_loss:.4f}")
+
+        # Save checkpoint every 10 epochs
+        if (epoch + 1) % 10 == 0:
+            save_path = run_dir / f"world_model_epoch_{epoch+1}.pt"
+            torch.save(model.state_dict(), save_path)
+            log.info(f"Saved checkpoint to {save_path}")
+
+    # Save final model
+    torch.save(model.state_dict(), run_dir / "final_world_model.pth")
+    
+    # Save metadata
+    metadata_path = run_dir / "model_metadata.yaml"
+    metadata = {
+        "config": OmegaConf.to_container(cfg, resolve=True),
+        "final_metrics": {
+            "train_loss": avg_loss,
+            "val_loss": avg_val_loss,
+            "epochs_trained": epoch + 1
+        }
+    }
+    
+    OmegaConf.save(OmegaConf.create(metadata), metadata_path)
+    
+    # Close writer
+    writer.close()
+
+    log.info("World Model training complete.")

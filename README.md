@@ -5,7 +5,7 @@ uv run main.py mode=play
 # Disable human player (watch only)
 uv run main.py mode=play human_player=false
 
-# Select agents (options: scripted, dummy, random, most_recent_bc, most_recent_rl, best_bc, best_rl)
+# Select agents (options: scripted, dummy, random, most_recent_bc, most_recent_rl, best_bc, best_rl, most_recent_world_model, best_world_model)
 uv run main.py mode=play team1=most_recent_bc team2=scripted
 
 # Collect training data from scripted agents (single worker)
@@ -173,6 +173,10 @@ data["metadata"]: Run info, dimensions, worker details
   - `worker_N/`: Individual worker data and checkpoints
   - `aggregated_data.pkl`: Combined data from all workers
   - `metadata.yaml`: Run metadata and data shapes
+- `models/`: Trained models
+  - `bc/`: BC training runs
+  - `rl/`: RL training runs
+  - `world_model/`: World Model training runs
 - `outputs/`: Hydra auto-generates timestamped output directories
 
 

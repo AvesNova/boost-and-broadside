@@ -11,7 +11,7 @@ from typing import Literal
 MODELS_DIR = Path("models")
 
 
-def find_most_recent_model(model_type: Literal["bc", "rl"]) -> str | None:
+def find_most_recent_model(model_type: Literal["bc", "rl", "world_model"]) -> str | None:
     """
     Find the most recent model file in the models/{model_type} directory.
 
@@ -39,6 +39,8 @@ def find_most_recent_model(model_type: Literal["bc", "rl"]) -> str | None:
         # Check for best model first
         if model_type == "bc":
             model_path = run_dir / "best_bc_model.pth"
+        elif model_type == "world_model":
+            model_path = run_dir / "best_world_model.pth"
         else:
             # RL saves final_rl_transformer.pth for the agent
             model_path = run_dir / "final_rl_transformer.pth"
@@ -46,16 +48,19 @@ def find_most_recent_model(model_type: Literal["bc", "rl"]) -> str | None:
         if model_path.exists():
             return str(model_path.absolute())
 
-        # Fallback to final model if best not found (for BC)
+        # Fallback to final model if best not found
         if model_type == "bc":
             model_path = run_dir / "final_bc_model.pth"
-            if model_path.exists():
-                return str(model_path.absolute())
+        elif model_type == "world_model":
+            model_path = run_dir / "final_world_model.pth"
+        
+        if model_type in ["bc", "world_model"] and model_path.exists():
+            return str(model_path.absolute())
 
     return None
 
 
-def find_best_model(model_type: Literal["bc", "rl"]) -> str | None:
+def find_best_model(model_type: Literal["bc", "rl", "world_model"]) -> str | None:
     """
     Find the best model based on validation loss from training logs.
 
@@ -105,16 +110,21 @@ def find_best_model(model_type: Literal["bc", "rl"]) -> str | None:
 
                 if min_run_loss < best_val_loss:
                     # Check if model file exists
-                    model_path = run_dir / "best_bc_model.pth"
-                    if model_path.exists():
-                        best_val_loss = min_run_loss
-                        best_model_path = str(model_path.absolute())
+                    if model_type == "bc":
+                        best_path = run_dir / "best_bc_model.pth"
+                        final_path = run_dir / "final_bc_model.pth"
+                    elif model_type == "world_model":
+                        best_path = run_dir / "best_world_model.pth"
+                        final_path = run_dir / "final_world_model.pth"
                     else:
-                        # Try final model
-                        model_path = run_dir / "final_bc_model.pth"
-                        if model_path.exists():
-                            best_val_loss = min_run_loss
-                            best_model_path = str(model_path.absolute())
+                        continue
+
+                    if best_path.exists():
+                        best_val_loss = min_run_loss
+                        best_model_path = str(best_path.absolute())
+                    elif final_path.exists():
+                        best_val_loss = min_run_loss
+                        best_model_path = str(final_path.absolute())
 
         except Exception:
             continue

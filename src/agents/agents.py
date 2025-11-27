@@ -46,12 +46,21 @@ def _load_agent_config_from_model(agent_config: dict, model_type: str, selection
     if config_path.exists():
         log.info(f"Loading agent config from {config_path}")
         saved_cfg = OmegaConf.load(config_path)
-        # Extract transformer config
-        transformer_cfg = OmegaConf.to_container(saved_cfg.train.model.transformer, resolve=True)
-        # Remove keys that are not arguments to TeamTransformerAgent
-        if "num_actions" in transformer_cfg:
-            del transformer_cfg["num_actions"]
-        final_config.update(transformer_cfg)
+        if model_type == "world_model":
+            # Extract world model config
+            wm_cfg = OmegaConf.to_container(saved_cfg.world_model, resolve=True)
+            # Map keys to WorldModelAgent args
+            if "n_ships" in wm_cfg:
+                wm_cfg["max_ships"] = wm_cfg.pop("n_ships")
+            
+            final_config.update(wm_cfg)
+        else:
+            # Extract transformer config for BC/RL
+            transformer_cfg = OmegaConf.to_container(saved_cfg.train.model.transformer, resolve=True)
+            # Remove keys that are not arguments to TeamTransformerAgent
+            if "num_actions" in transformer_cfg:
+                del transformer_cfg["num_actions"]
+            final_config.update(transformer_cfg)
     else:
         log.warning(f"No config.yaml found in {run_dir}. Using current defaults.")
     
@@ -102,6 +111,14 @@ def create_agent(agent_type: str, agent_config: dict) -> nn.Module:
         case "best_rl":
             cfg = _load_agent_config_from_model(agent_config, "rl", "best")
             return TeamTransformerAgent(**cfg)
+
+        case "most_recent_world_model":
+            cfg = _load_agent_config_from_model(agent_config, "world_model", "most_recent")
+            return WorldModelAgent(**cfg)
+
+        case "best_world_model":
+            cfg = _load_agent_config_from_model(agent_config, "world_model", "best")
+            return WorldModelAgent(**cfg)
 
         case "world_model":
             # If model_path is not provided, we could try to find the most recent one.

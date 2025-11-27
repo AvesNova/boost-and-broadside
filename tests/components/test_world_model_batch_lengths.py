@@ -2,9 +2,9 @@
 import pytest
 import torch
 from src.train.data_loader import (
-    AlternatingBatchLengthDataset,
-    collate_variable_length_batches,
-    create_world_model_data_loader,
+    ShortSequenceDataset,
+    LongSequenceDataset,
+    create_dual_pool_data_loaders,
 )
 
 
@@ -34,8 +34,8 @@ def create_dummy_data(num_episodes=10, episode_len=200, num_ships=8, token_dim=1
     return data
 
 
-class TestAlternatingBatchLengthDataset:
-    """Tests for AlternatingBatchLengthDataset."""
+class TestShortSequenceDataset:
+    """Tests for ShortSequenceDataset."""
     
     def test_dataset_creation(self):
         """Test that dataset can be created."""
@@ -44,184 +44,111 @@ class TestAlternatingBatchLengthDataset:
         actions = data["team_0"]["actions"]
         episode_lengths = data["episode_lengths"]
         
-        dataset = AlternatingBatchLengthDataset(
+        dataset = ShortSequenceDataset(
             tokens,
             actions,
             episode_lengths,
-            context_len=96,
-            short_batch_len=32,
-            long_batch_len=128,
-            long_batch_ratio=0.2,
+            seq_len=32
         )
         
         assert len(dataset) > 0
     
-    def test_short_batch_length(self):
-        """Test that short batch lengths work correctly."""
+    def test_batch_structure(self):
+        """Test that batches have correct structure and padding."""
+        data = create_dummy_data(num_episodes=1, episode_len=20) # Shorter than seq_len
+        tokens = data["team_0"]["tokens"]
+        actions = data["team_0"]["actions"]
+        episode_lengths = data["episode_lengths"]
+        
+        dataset = ShortSequenceDataset(
+            tokens,
+            actions,
+            episode_lengths,
+            seq_len=32
+        )
+        
+        batch_tokens, batch_actions, loss_mask = dataset[0]
+        
+        assert batch_tokens.shape[0] == 32
+        assert batch_actions.shape[0] == 32
+        assert loss_mask.shape[0] == 32
+        
+        # Check padding (last 12 should be padded)
+        assert not loss_mask[20:].any()
+        assert loss_mask[:20].all()
+
+
+class TestLongSequenceDataset:
+    """Tests for LongSequenceDataset."""
+    
+    def test_dataset_creation(self):
+        """Test that dataset can be created."""
         data = create_dummy_data()
         tokens = data["team_0"]["tokens"]
         actions = data["team_0"]["actions"]
         episode_lengths = data["episode_lengths"]
         
-        # Force short batches by setting long_batch_ratio=0
-        dataset = AlternatingBatchLengthDataset(
+        dataset = LongSequenceDataset(
             tokens,
             actions,
             episode_lengths,
-            context_len=96,
-            short_batch_len=32,
-            long_batch_len=128,
-            long_batch_ratio=0.0,  # Always short
+            seq_len=128,
+            warmup_len=32
         )
         
-        # Sample multiple times to verify length
-        for _ in range(10):
-            batch_tokens, batch_actions = dataset[0]
-            assert batch_tokens.shape[0] == 32, f"Expected 32 timesteps, got {batch_tokens.shape[0]}"
-            assert batch_actions.shape[0] == 32
+        assert len(dataset) > 0
     
-    def test_long_batch_length(self):
-        """Test that long batch lengths work correctly."""
-        data = create_dummy_data()
+    def test_batch_structure(self):
+        """Test that batches have correct structure and warmup masking."""
+        data = create_dummy_data(num_episodes=1, episode_len=200)
         tokens = data["team_0"]["tokens"]
         actions = data["team_0"]["actions"]
         episode_lengths = data["episode_lengths"]
         
-        # Force long batches by setting long_batch_ratio=1
-        dataset = AlternatingBatchLengthDataset(
+        dataset = LongSequenceDataset(
             tokens,
             actions,
             episode_lengths,
-            context_len=96,
-            short_batch_len=32,
-            long_batch_len=128,
-            long_batch_ratio=1.0,  # Always long
+            seq_len=128,
+            warmup_len=32
         )
         
-        # Sample multiple times to verify length
-        for _ in range(10):
-            batch_tokens, batch_actions = dataset[0]
-            assert batch_tokens.shape[0] == 128, f"Expected 128 timesteps, got {batch_tokens.shape[0]}"
-            assert batch_actions.shape[0] == 128
-    
-    def test_alternating_lengths(self):
-        """Test that both short and long lengths appear when alternating."""
-        data = create_dummy_data()
-        tokens = data["team_0"]["tokens"]
-        actions = data["team_0"]["actions"]
-        episode_lengths = data["episode_lengths"]
+        batch_tokens, batch_actions, loss_mask = dataset[0]
         
-        dataset = AlternatingBatchLengthDataset(
-            tokens,
-            actions,
-            episode_lengths,
-            context_len=96,
-            short_batch_len=32,
-            long_batch_len=128,
-            long_batch_ratio=0.5,  # 50/50 mix
-        )
+        assert batch_tokens.shape[0] == 128
+        assert batch_actions.shape[0] == 128
+        assert loss_mask.shape[0] == 128
         
-        # Sample many times and check we get both lengths
-        lengths = []
-        for _ in range(100):
-            batch_tokens, _ = dataset[0]
-            lengths.append(batch_tokens.shape[0])
-        
-        assert 32 in lengths, "Short batch length (32) never appeared"
-        assert 128 in lengths, "Long batch length (128) never appeared"
+        # Check warmup masking
+        assert not loss_mask[:32].any()
+        assert loss_mask[32:].all()
 
 
-class TestCollateFunction:
-    """Tests for collate_variable_length_batches."""
+class TestDualPoolDataLoaders:
+    """Integration tests for dual pool data loaders."""
     
-    def test_collate_same_length(self):
-        """Test collating batches with same length."""
-        batch = [
-            (torch.randn(32, 8, 12), torch.randn(32, 8, 6)),
-            (torch.randn(32, 8, 12), torch.randn(32, 8, 6)),
-            (torch.randn(32, 8, 12), torch.randn(32, 8, 6)),
-        ]
+    def test_loader_creation(self):
+        """Test that loaders are created correctly."""
+        data = create_dummy_data(num_episodes=20, episode_len=200)
         
-        tokens, actions = collate_variable_length_batches(batch)
-        
-        assert tokens.shape == (3, 32, 8, 12)
-        assert actions.shape == (3, 32, 8, 6)
-    
-    def test_collate_different_lengths(self):
-        """Test collating batches with different lengths."""
-        batch = [
-            (torch.randn(32, 8, 12), torch.randn(32, 8, 6)),
-            (torch.randn(128, 8, 12), torch.randn(128, 8, 6)),
-            (torch.randn(64, 8, 12), torch.randn(64, 8, 6)),
-        ]
-        
-        tokens, actions = collate_variable_length_batches(batch)
-        
-        # Should pad to max length (128)
-        assert tokens.shape == (3, 128, 8, 12)
-        assert actions.shape == (3, 128, 8, 6)
-        
-        # Check padding is zeros
-        assert torch.all(tokens[0, 32:] == 0)  # First sample padded from 32 to 128
-        assert torch.all(tokens[2, 64:] == 0)  # Third sample padded from 64 to 128
-
-
-class TestDataLoader:
-    """Integration tests for data loader with alternating batch lengths."""
-    
-    def test_dataloader_with_alternating_lengths(self):
-        """Test that dataloader works with alternating batch lengths."""
-        data = create_dummy_data()
-        
-        train_loader, val_loader = create_world_model_data_loader(
+        ts, tl, vs, vl = create_dual_pool_data_loaders(
             data,
-            batch_size=4,
-            context_len=96,
+            short_batch_size=4,
+            long_batch_size=2,
+            short_batch_len=32,
+            long_batch_len=128,
+            batch_ratio=4,
             validation_split=0.2,
-            num_workers=0,  # Use 0 for testing
-            use_alternating_lengths=True,
-            short_batch_len=32,
-            long_batch_len=128,
-            long_batch_ratio=0.5,
+            num_workers=0
         )
         
-        # Get a few batches
-        for i, (tokens, actions) in enumerate(train_loader):
-            if i >= 5:  # Just test first 5 batches
-                break
-            
-            # Check shapes
-            assert tokens.ndim == 4  # (B, T, N, F)
-            assert actions.ndim == 4  # (B, T, N, A)
-            assert tokens.shape[0] <= 4  # Batch size
-            assert tokens.shape[2] == 8  # Num ships
-            assert tokens.shape[3] == 12  # Token dim
-            assert actions.shape[3] == 6  # Action dim
-            
-            # Length should be either 32 or 128 (or padded to match within batch)
-            assert tokens.shape[1] in [32, 128], f"Unexpected length: {tokens.shape[1]}"
-    
-    def test_both_lengths_appear_in_training(self):
-        """Test that both short and long batches appear during training."""
-        data = create_dummy_data(num_episodes=50)  # More episodes for better sampling
+        assert len(ts) > 0
+        assert len(tl) > 0
         
-        train_loader, _ = create_world_model_data_loader(
-            data,
-            batch_size=4,
-            context_len=96,
-            validation_split=0.1,
-            num_workers=0,
-            use_alternating_lengths=True,
-            short_batch_len=32,
-            long_batch_len=128,
-            long_batch_ratio=0.3,
-        )
+        # Verify batch shapes
+        s_tokens, s_actions, s_mask = next(iter(ts))
+        assert s_tokens.shape == (4, 32, 8, 12)
         
-        # Collect batch lengths
-        batch_lengths = []
-        for tokens, _ in train_loader:
-            batch_lengths.append(tokens.shape[1])
-        
-        # Both lengths should appear
-        assert 32 in batch_lengths, "Short batches (32) never appeared in training"
-        assert 128 in batch_lengths, "Long batches (128) never appeared in training"
+        l_tokens, l_actions, l_mask = next(iter(tl))
+        assert l_tokens.shape == (2, 128, 8, 12)
+
