@@ -7,7 +7,7 @@ import torch.nn as nn
 class ScriptedAgent(nn.Module):
     """
     Agent that controls n ships using scripted behavior.
-    
+
     This agent delegates control of each ship to a ShipController, which
     implements the actual behavioral logic (targeting, movement, shooting).
     """
@@ -300,13 +300,17 @@ class ShipController(nn.Module):
             2.0 * self.target_radius
         )  # 2 radii = 20 units by default
 
+        current_speed = torch.linalg.norm(our_ship_data["velocity"]).item()
+
         if current_distance <= close_range_threshold:
             # Close range: use reverse thrust to maintain distance, regardless of power level
             action[1] = 1.0  # Backward
         else:
             # Normal range: only boost (forward) if power > 90%, otherwise maintain base thrust
-            if current_power_ratio > 0.9 * (
-                1.0 - current_distance / self.max_shooting_range
+            if (
+                current_power_ratio
+                > 0.9 * (1.0 - current_distance / self.max_shooting_range)
+                or current_speed < 30
             ):
                 action[0] = 1.0  # Forward
             # Note: When power <= 90%, we don't set forward=1, so ship uses base thrust only

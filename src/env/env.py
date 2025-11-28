@@ -15,11 +15,12 @@ from .state import State
 class Environment(gym.Env):
     """
     Gymnasium-compatible environment for the space battle game.
-    
+
     This class manages the game state, physics updates, and rendering.
     It supports multiple game modes (1v1, NvN, etc.) and handles
     the interaction between agents and the physics engine.
     """
+
     def __init__(
         self,
         render_mode: str,
@@ -28,6 +29,8 @@ class Environment(gym.Env):
         max_ships: int,
         agent_dt: float,
         physics_dt: float,
+        random_positioning: bool,
+        random_speed: bool,
         rng: np.random.Generator = np.random.default_rng(),
     ):
         """
@@ -40,6 +43,8 @@ class Environment(gym.Env):
             max_ships: Maximum number of ships allowed in the game.
             agent_dt: Time step for agent decisions (seconds).
             physics_dt: Time step for physics updates (seconds).
+            random_positioning: Whether to use completely random positioning instead of fractal.
+            random_speed: Whether to use random speeds (0-180) instead of fixed speed (100).
             rng: Random number generator.
         """
         super().__init__()
@@ -51,6 +56,8 @@ class Environment(gym.Env):
         self.agent_dt = agent_dt
         self.physics_dt = physics_dt
         self.target_fps = 1 / physics_dt
+        self.random_positioning = random_positioning
+        self.random_speed = random_speed
         self.rng = rng
 
         assert (
@@ -143,54 +150,109 @@ class Environment(gym.Env):
         seq = Environment.fractal_ship_positions(level)
         return seq[:n]
 
-    def create_squad(self, team_id: int, n_ships: int, ship_id_offset: int) -> dict:
-        """Create a squad of ships with fractal positioning."""
-        origin = self.rng.uniform(0, self.world_size[0]) + 1j * self.rng.uniform(
-            0, self.world_size[1]
-        )
-        attitude = np.exp(1j * self.rng.uniform(0, 2 * np.pi))
-        velocity = attitude * 100.0
-
-        offsets = (
-            self.get_ship_positions(n_ships)
-            * attitude
-            * default_ship_config.collision_radius
-            * 4
-        )
-
-        positions = offsets + origin
-
+    def create_squad(
+        self,
+        team_id: int,
+        n_ships: int,
+        ship_id_offset: int,
+        random_positioning: bool = False,
+        random_speed: bool = False,
+    ) -> dict:
+        """Create a squad of ships with either fractal or random positioning."""
         ships = {}
-        for i, position in enumerate(positions):
-            ships[i + ship_id_offset] = Ship(
-                ship_id=i + ship_id_offset,
-                team_id=team_id,
-                ship_config=default_ship_config,
-                initial_x=position.real,
-                initial_y=position.imag,
-                initial_vx=velocity.real,
-                initial_vy=velocity.imag,
-                world_size=self.world_size,
+
+        if random_positioning:
+            # Generate completely random positions for each ship
+            for i in range(n_ships):
+                # Random position anywhere in the world
+                position = self.rng.uniform(
+                    0, self.world_size[0]
+                ) + 1j * self.rng.uniform(0, self.world_size[1])
+
+                # Random attitude (direction)
+                attitude = np.exp(1j * self.rng.uniform(0, 2 * np.pi))
+
+                # Random speed between 0 and 180 if requested, otherwise fixed at 100
+                speed = self.rng.uniform(0, 180) if random_speed else 100.0
+                velocity = attitude * speed
+
+                ships[i + ship_id_offset] = Ship(
+                    ship_id=i + ship_id_offset,
+                    team_id=team_id,
+                    ship_config=default_ship_config,
+                    initial_x=position.real,
+                    initial_y=position.imag,
+                    initial_vx=velocity.real,
+                    initial_vy=velocity.imag,
+                    world_size=self.world_size,
+                )
+        else:
+            # Original fractal positioning
+            origin = self.rng.uniform(0, self.world_size[0]) + 1j * self.rng.uniform(
+                0, self.world_size[1]
             )
+            attitude = np.exp(1j * self.rng.uniform(0, 2 * np.pi))
+
+            # Random speed between 0 and 180 if requested, otherwise fixed at 100
+            speed = self.rng.uniform(0, 180) if random_speed else 100.0
+            velocity = attitude * speed
+
+            offsets = (
+                self.get_ship_positions(n_ships)
+                * attitude
+                * default_ship_config.collision_radius
+                * 4
+            )
+
+            positions = offsets + origin
+
+            for i, position in enumerate(positions):
+                ships[i + ship_id_offset] = Ship(
+                    ship_id=i + ship_id_offset,
+                    team_id=team_id,
+                    ship_config=default_ship_config,
+                    initial_x=position.real,
+                    initial_y=position.imag,
+                    initial_vx=velocity.real,
+                    initial_vy=velocity.imag,
+                    world_size=self.world_size,
+                )
 
         return ships
 
-    def n_vs_n_reset(self, ships_per_team: int | None) -> State:
+    def n_vs_n_reset(
+        self,
+        ships_per_team: int | None,
+        random_positioning: bool = False,
+        random_speed: bool = False,
+    ) -> State:
         """Reset to an NvN configuration."""
         if ships_per_team is None:
             ships_per_team = self.rng.integers(
                 1, int(self.max_ships / 2), endpoint=True
             )
 
-        team_0 = self.create_squad(team_id=0, n_ships=ships_per_team, ship_id_offset=0)
+        team_0 = self.create_squad(
+            team_id=0,
+            n_ships=ships_per_team,
+            ship_id_offset=0,
+            random_positioning=random_positioning,
+            random_speed=random_speed,
+        )
         team_1 = self.create_squad(
-            team_id=1, n_ships=ships_per_team, ship_id_offset=ships_per_team
+            team_id=1,
+            n_ships=ships_per_team,
+            ship_id_offset=ships_per_team,
+            random_positioning=random_positioning,
+            random_speed=random_speed,
         )
         ships = team_0 | team_1
         return State(ships=ships)
 
     def reset(
-        self, game_mode: str = "1v1", initial_obs: dict | None = None
+        self,
+        game_mode: str = "1v1",
+        initial_obs: dict | None = None,
     ) -> tuple[dict, dict]:
         """
         Reset the environment.
@@ -210,18 +272,40 @@ class Environment(gym.Env):
             case "1v1_old":
                 self.state = self.one_vs_one_reset()
             case "1v1":
-                self.state = self.n_vs_n_reset(ships_per_team=1)
+                self.state = self.n_vs_n_reset(
+                    ships_per_team=1,
+                    random_positioning=self.random_positioning,
+                    random_speed=self.random_speed,
+                )
             case "2v2":
-                self.state = self.n_vs_n_reset(ships_per_team=2)
+                self.state = self.n_vs_n_reset(
+                    ships_per_team=2,
+                    random_positioning=self.random_positioning,
+                    random_speed=self.random_speed,
+                )
             case "3v3":
-                self.state = self.n_vs_n_reset(ships_per_team=3)
+                self.state = self.n_vs_n_reset(
+                    ships_per_team=3,
+                    random_positioning=self.random_positioning,
+                    random_speed=self.random_speed,
+                )
             case "4v4":
-                self.state = self.n_vs_n_reset(ships_per_team=4)
+                self.state = self.n_vs_n_reset(
+                    ships_per_team=4,
+                    random_positioning=self.random_positioning,
+                    random_speed=self.random_speed,
+                )
             case "nvn":
-                self.state = self.n_vs_n_reset(ships_per_team=None)
+                self.state = self.n_vs_n_reset(
+                    ships_per_team=None,
+                    random_positioning=self.random_positioning,
+                    random_speed=self.random_speed,
+                )
             case "reset_from_observation":
                 if initial_obs is None:
-                    raise ValueError("initial_obs must be provided for reset_from_observation")
+                    raise ValueError(
+                        "initial_obs must be provided for reset_from_observation"
+                    )
                 self.state = self.reset_from_observation(initial_obs=initial_obs)
             case _:
                 raise ValueError(f"Unknown game mode: {game_mode}")

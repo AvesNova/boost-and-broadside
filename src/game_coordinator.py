@@ -9,7 +9,7 @@ from src.env.env import Environment
 class GameCoordinator:
     """
     Central coordinator that orchestrates the game between environment and agents.
-    
+
     This class manages the game loop, agent interactions, and data collection
     for a single episode. It handles the mapping between team-based agents
     and individual ships.
@@ -33,8 +33,8 @@ class GameCoordinator:
 
         self.agents = {
             agent_name: create_agent(
-                agent_type=agent_config.agent_type, 
-                agent_config=agent_config.agent_config
+                agent_type=agent_config.agent_type,
+                agent_config=agent_config.agent_config,
             )
             for agent_name, agent_config in config.agents.items()
         }
@@ -48,7 +48,7 @@ class GameCoordinator:
     def reset(self, game_mode: str) -> None:
         """
         Reset environment for a new episode.
-        
+
         Args:
             game_mode: The game mode to initialize (e.g., "1v1", "nvn").
         """
@@ -81,7 +81,7 @@ class GameCoordinator:
         while not terminated:
             # 1. Determine which ships belong to which team
             teams = self._get_teams_from_obs(obs)
-            
+
             # 2. Get actions from agents for their respective teams
             team_actions = {
                 team_id: self.agents[team_names[team_id]](
