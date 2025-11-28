@@ -129,7 +129,7 @@ class TestDualPoolDataLoaders:
     
     def test_loader_creation(self):
         """Test that loaders are created correctly."""
-        data = create_dummy_data(num_episodes=20, episode_len=200)
+        data = create_dummy_data(num_episodes=40, episode_len=200)
         
         ts, tl, vs, vl = create_dual_pool_data_loaders(
             data,
