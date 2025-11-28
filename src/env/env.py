@@ -1,11 +1,8 @@
-from collections import deque
-from copy import deepcopy
 import gymnasium as gym
 import numpy as np
 import torch
 from gymnasium import spaces
 
-from agents import team_transformer_agent
 from env.event import EventType, GameEvent
 
 from .bullets import Bullets

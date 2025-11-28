@@ -5,12 +5,9 @@ Loads a trained world model and evaluates its ability to generate
 realistic rollouts from initial conditions.
 """
 import logging
-from pathlib import Path
 
 import torch
-import hydra
 from omegaconf import DictConfig
-import matplotlib.pyplot as plt
 
 from src.agents.world_model import WorldModel
 from src.train.data_loader import load_bc_data, create_dual_pool_data_loaders

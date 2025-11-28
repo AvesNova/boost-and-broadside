@@ -1,5 +1,4 @@
 """Tests for world model batch length alternation."""
-import pytest
 import torch
 from src.train.data_loader import (
     ShortSequenceDataset,

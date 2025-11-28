@@ -1,7 +1,4 @@
-import pytest
 import os
-import shutil
-from omegaconf import OmegaConf
 from src.modes.collect import collect
 
 def test_collect_pipeline(default_config, tmp_path):

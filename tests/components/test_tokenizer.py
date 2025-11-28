@@ -1,6 +1,4 @@
-import pytest
 import torch
-import numpy as np
 from src.agents.tokenizer import observation_to_tokens
 
 def test_tokenizer_shape(dummy_state, default_config):

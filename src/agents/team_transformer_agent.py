@@ -6,7 +6,6 @@ with team-based filtering for multi-agent scenarios.
 """
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from src.env.constants import Actions
 from src.agents.tokenizer import observation_to_tokens

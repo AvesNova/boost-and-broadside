@@ -8,7 +8,6 @@ from typing import Any
 
 import gymnasium as gym
 import torch
-import torch.nn as nn
 from stable_baselines3.common.policies import ActorCriticPolicy
 from stable_baselines3.common.distributions import (
     Distribution,

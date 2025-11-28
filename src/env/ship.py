@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from src.env.event import GameEvent, EventType
 from src.env.constants import Actions
 from src.env.bullets import Bullets
 

@@ -1,12 +1,8 @@
-from typing import Any
-import numpy as np
 import torch
 from omegaconf import DictConfig
 
 from src.agents.agents import create_agent
 from src.agents.tokenizer import observation_to_tokens
-from src.env.event import GameEvent
-from src.env.state import State
 from src.env.env import Environment
 
 

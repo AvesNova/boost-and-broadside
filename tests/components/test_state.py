@@ -1,6 +1,4 @@
-import pytest
 from src.env.state import State
-from src.env.ship import Ship
 
 def test_state_initialization(dummy_ship):
     """Test that state initializes correctly."""

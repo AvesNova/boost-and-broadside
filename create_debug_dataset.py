@@ -1,6 +1,5 @@
 import pickle
 from pathlib import Path
-import torch
 from src.train.data_loader import load_bc_data
 
 def create_debug_dataset():

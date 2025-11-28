@@ -1,3 +1,7 @@
+import pickle
+from pathlib import Path
+import torch
+
 
 def inspect_data_file(file_path: Path) -> None:
     """
@@ -39,7 +43,7 @@ def inspect_data_file(file_path: Path) -> None:
 
     if "episode_lengths" in data:
         lengths = data["episode_lengths"]
-        print(f"\nEpisode lengths:")
+        print("\nEpisode lengths:")
         print(f"  Min: {lengths.min().item()}")
         print(f"  Max: {lengths.max().item()}")
         print(f"  Mean: {lengths.float().mean().item():.2f}")
@@ -49,7 +53,7 @@ def inspect_data_file(file_path: Path) -> None:
         if "rewards" in data["team_0"] and "rewards" in data["team_1"]:
             r0 = data["team_0"]["rewards"]
             r1 = data["team_1"]["rewards"]
-            print(f"\nRewards:")
+            print("\nRewards:")
             print(
                 f"  Team 0 - Mean: {r0.mean().item():.4f}, Sum: {r0.sum().item():.2f}"
             )

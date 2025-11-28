@@ -5,7 +5,6 @@ Implements a transformer-based world model with factorized spatial-temporal
 attention, masked reconstruction, and denoising objectives for learning
 multi-agent dynamics.
 """
-import math
 
 import torch
 import torch.nn as nn
@@ -99,13 +98,13 @@ class TemporalSelfAttention(nn.Module):
         self.n_heads = config.n_heads
         self.embed_dim = config.embed_dim
         self.dropout = config.dropout
-        
+
         # RoPE for temporal position encoding
         head_dim = config.embed_dim // config.n_heads
         self.rope = RotaryPositionEmbedding(
             dim=head_dim,
             max_seq_len=config.max_context_len,
-            base=getattr(config, 'rope_base', 10000.0)
+            base=getattr(config, "rope_base", 10000.0),
         )
 
     def forward(self, input_tensor, past_kv=None, use_cache=False):
@@ -132,35 +131,39 @@ class TemporalSelfAttention(nn.Module):
         value = value.view(
             batch_size * num_ships, time_steps, self.n_heads, embed_dim // self.n_heads
         ).transpose(1, 2)
-        
+
         # Apply RoPE to query and key
         # Compute position offset from past_kv cache
         time_offset = 0
         if past_kv is not None:
             past_key, past_value = past_kv
-            time_offset = past_key.shape[2]  # (batch*num_ships, n_heads, past_time, head_dim)
-        
+            time_offset = past_key.shape[
+                2
+            ]  # (batch*num_ships, n_heads, past_time, head_dim)
+
         # Position IDs for current timesteps
         position_ids = torch.arange(
             time_offset, time_offset + time_steps, device=query.device
         )
-        
+
         # Apply RoPE per head
         # query/key shape: (batch*num_ships, n_heads, time_steps, head_dim)
         # RoPE expects: (batch, seq_len, dim)
         # Reshape to (batch*num_ships*n_heads, time_steps, head_dim)
         batch_heads = batch_size * num_ships * self.n_heads
         head_dim = embed_dim // self.n_heads
-        
-        query_rope = query.permute(0, 2, 1, 3).contiguous().view(
-            batch_heads, time_steps, head_dim
+
+        query_rope = (
+            query.permute(0, 2, 1, 3)
+            .contiguous()
+            .view(batch_heads, time_steps, head_dim)
         )
-        key_rope = key.permute(0, 2, 1, 3).contiguous().view(
-            batch_heads, time_steps, head_dim
+        key_rope = (
+            key.permute(0, 2, 1, 3).contiguous().view(batch_heads, time_steps, head_dim)
         )
-        
+
         query_rope, key_rope = self.rope(query_rope, key_rope, position_ids)
-        
+
         # Reshape back to (batch*num_ships, n_heads, time_steps, head_dim)
         query = query_rope.view(
             batch_size * num_ships, time_steps, self.n_heads, head_dim
@@ -311,15 +314,15 @@ class WorldModel(nn.Module):
     ):
         """
         Forward pass with correct masking and denoising.
-        
+
         Token structure: Each token = [ship_state, previous_action] concatenated
         Embedding structure: final_embed = content + ship_id + time
-        
-        Critical: 
+
+        Critical:
         - Noise is applied to content BEFORE adding structural embeddings
         - Masking replaces content only, preserving ship_id and time
         - Masked tokens NEVER receive noise
-        
+
         Args:
             states: (B, T, N, F) - ship states
             actions: (B, T, N, A) - previous actions
@@ -353,7 +356,7 @@ class WorldModel(nn.Module):
 
         # 2. Masking & Denoising (Training only)
         # CRITICAL: Apply noise and masking to content BEFORE adding structural embeddings
-        
+
         # Determine mask
         if mask is None:
             if mask_ratio > 0 and past_key_values is None:
@@ -362,7 +365,7 @@ class WorldModel(nn.Module):
                     torch.rand(batch_size, time_steps, num_ships, device=device)
                     < mask_ratio
                 )
-        
+
         if mask is not None:
             # Apply noise to UNMASKED tokens only, BEFORE adding positional embeddings
             if noise_scale > 0:
@@ -370,12 +373,12 @@ class WorldModel(nn.Module):
                 tau = torch.rand(batch_size, 1, 1, 1, device=device).pow(2)
                 noise_std = (1 - tau).sqrt() * noise_scale
                 noise = torch.randn_like(content_embed) * noise_std
-                
+
                 # Apply noise only to unmasked tokens
                 content_embed = torch.where(
-                    mask.unsqueeze(-1), 
+                    mask.unsqueeze(-1),
                     content_embed,  # Keep masked tokens unchanged (will be replaced below)
-                    content_embed + noise  # Add noise to unmasked tokens
+                    content_embed + noise,  # Add noise to unmasked tokens
                 )
 
             # Replace masked token content with learned mask_token
@@ -383,12 +386,12 @@ class WorldModel(nn.Module):
             content_embed = torch.where(
                 mask.unsqueeze(-1),
                 self.mask_token.view(1, 1, 1, -1).expand_as(content_embed),
-                content_embed
+                content_embed,
             )
 
         # 3. Add structural embeddings (ship_id only, RoPE handles temporal position)
         # This is done AFTER masking and denoising to preserve structural information
-        
+
         # Broadcast ship embeddings
         ship_ids = torch.arange(num_ships, device=device).view(1, 1, num_ships)
 
@@ -411,7 +414,9 @@ class WorldModel(nn.Module):
 
         return pred_states, pred_actions, mask, current_key_values
 
-    def get_loss(self, states, actions, pred_states, pred_actions, mask, loss_mask=None):
+    def get_loss(
+        self, states, actions, pred_states, pred_actions, mask, loss_mask=None
+    ):
         # states: (B, T, N, F)
         # mask: (B, T, N) - True = masked (reconstruction target), False = visible (denoising target)
         # loss_mask: (B, T, N) - True = compute loss, False = ignore (warm-up/padding)
@@ -441,21 +446,29 @@ class WorldModel(nn.Module):
         # Reconstruction Loss (for masked tokens)
         # We only compute loss where mask=True AND loss_mask=True
         recon_target_mask = mask & loss_mask
-        
+
         if recon_target_mask.any():
             # State loss: MSE
-            recon_loss += F.mse_loss(pred_states[recon_target_mask], states[recon_target_mask])
+            recon_loss += F.mse_loss(
+                pred_states[recon_target_mask], states[recon_target_mask]
+            )
             # Action loss: BCEWithLogits
-            recon_loss += F.binary_cross_entropy_with_logits(pred_actions[recon_target_mask], actions[recon_target_mask])
+            recon_loss += F.binary_cross_entropy_with_logits(
+                pred_actions[recon_target_mask], actions[recon_target_mask]
+            )
 
         # Denoising Loss (for unmasked tokens)
         # We only compute loss where mask=False AND loss_mask=True
         denoise_target_mask = (~mask) & loss_mask
         if denoise_target_mask.any():
             # State loss: MSE
-            denoise_loss += F.mse_loss(pred_states[denoise_target_mask], states[denoise_target_mask])
+            denoise_loss += F.mse_loss(
+                pred_states[denoise_target_mask], states[denoise_target_mask]
+            )
             # Action loss: BCEWithLogits
-            denoise_loss += F.binary_cross_entropy_with_logits(pred_actions[denoise_target_mask], actions[denoise_target_mask])
+            denoise_loss += F.binary_cross_entropy_with_logits(
+                pred_actions[denoise_target_mask], actions[denoise_target_mask]
+            )
 
         return recon_loss, denoise_loss
 
@@ -463,16 +476,13 @@ class WorldModel(nn.Module):
     def generate(self, initial_state, initial_action, steps: int, n_ships: int):
         """
         Autoregressive generation.
-        
+
         Args:
             initial_state: (B, N, F) - Initial state of all ships.
             initial_action: (B, N, A) - Initial action of all ships.
             steps: Number of timesteps to generate.
             n_ships: Number of ships.
         """
-        batch_size = initial_state.shape[0]
-        device = initial_state.device
-
         # Ensure inputs are (batch_size, num_ships, features)
         if initial_state.ndim == 2:
             initial_state = initial_state.unsqueeze(1).repeat(

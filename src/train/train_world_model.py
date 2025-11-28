@@ -4,11 +4,11 @@ World model training script.
 Trains a transformer-based world model to predict future states and actions
 using masked reconstruction and denoising objectives.
 """
+
 import logging
 from pathlib import Path
 
 from datetime import datetime
-import hydra
 import torch
 import torch.optim as optim
 from omegaconf import DictConfig, OmegaConf
@@ -56,16 +56,18 @@ def create_mixed_mask(
         # Randomly select batch and ship indices
         b_indices = torch.randint(0, batch_size, (num_blocks,), device=device)
         n_indices = torch.randint(0, num_ships, (num_blocks,), device=device)
-        
+
         # Random block lengths (1-8)
         block_lens = torch.randint(1, 9, (num_blocks,), device=device)
-        
+
         # Random start positions (ensure fit)
-        start_pos = (torch.rand(num_blocks, device=device) * (time_steps - block_lens)).long()
-        
+        start_pos = (
+            torch.rand(num_blocks, device=device) * (time_steps - block_lens)
+        ).long()
+
         for i in range(num_blocks):
-            b, n, l, s = b_indices[i], n_indices[i], block_lens[i], start_pos[i]
-            mask[b, s : s + l, n] = True
+            b, n, block_len, s = b_indices[i], n_indices[i], block_lens[i], start_pos[i]
+            mask[b, s : s + block_len, n] = True
 
     # 3. Next-Step Masking
     # Always mask the last timestep for all ships to learn forward prediction
@@ -73,7 +75,6 @@ def create_mixed_mask(
     mask[:, -1, :] = True
 
     return mask
-
 
 
 def train_world_model(cfg: DictConfig) -> None:
@@ -104,12 +105,12 @@ def train_world_model(cfg: DictConfig) -> None:
     # Let's just use hardcoded dimensions or get them from config/data structure.
     # The data loader creation is now inside the loop.
     # But we need dimensions to init model.
-    
+
     # Peek at one sample
     team_0 = data["team_0"]
     sample_tokens = team_0["tokens"][0]
     sample_actions = team_0["actions"][0]
-    
+
     state_dim = sample_tokens.shape[-1]
     action_dim = sample_actions.shape[-1]
 
@@ -129,15 +130,15 @@ def train_world_model(cfg: DictConfig) -> None:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir = Path("models/world_model") / f"run_{timestamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
-    
+
     log.info(f"Output directory: {run_dir}")
 
     # Save config immediately
     OmegaConf.save(cfg, run_dir / "config.yaml")
-    
+
     # TensorBoard writer
     writer = SummaryWriter(log_dir=str(run_dir))
-    
+
     csv_path = run_dir / "training_log.csv"
     with open(csv_path, "w") as f:
         f.write("epoch,train_loss,train_recon_loss,train_denoise_loss,val_loss\n")
@@ -149,39 +150,40 @@ def train_world_model(cfg: DictConfig) -> None:
 
     for epoch in range(epochs):
         # Re-create data loaders each epoch to randomize pools
-        train_short_loader, train_long_loader, val_short_loader, val_long_loader = create_dual_pool_data_loaders(
-            data,
-            short_batch_size=cfg.world_model.short_batch_size,
-            long_batch_size=cfg.world_model.long_batch_size,
-            short_batch_len=cfg.world_model.short_batch_len,
-            long_batch_len=cfg.world_model.long_batch_len,
-            batch_ratio=cfg.world_model.batch_ratio,
-            validation_split=0.2,
-            num_workers=0,
+        train_short_loader, train_long_loader, val_short_loader, val_long_loader = (
+            create_dual_pool_data_loaders(
+                data,
+                short_batch_size=cfg.world_model.short_batch_size,
+                long_batch_size=cfg.world_model.long_batch_size,
+                short_batch_len=cfg.world_model.short_batch_len,
+                long_batch_len=cfg.world_model.long_batch_len,
+                batch_ratio=cfg.world_model.batch_ratio,
+                validation_split=0.2,
+                num_workers=0,
+            )
         )
-        
+
         model.train()
         total_loss = 0
         total_recon_loss = 0
         total_denoise_loss = 0
-        
+
         # Create iterators
         short_iter = iter(train_short_loader)
         long_iter = iter(train_long_loader)
-        
+
         # Determine number of steps
         # We run until one of the loaders is exhausted?
         # Or we determine steps based on the ratio.
         # Let's run until short loader is exhausted, as it's the dominant one.
         num_short_batches = len(train_short_loader)
-        
+
         pbar = tqdm(range(num_short_batches), desc=f"Epoch {epoch+1}/{epochs}")
-        
+
         short_exhausted = False
-        long_exhausted = False
-        
+
         steps = 0
-        
+
         while not short_exhausted:
             # 1. Run batch_ratio short batches
             for _ in range(batch_ratio):
@@ -190,88 +192,116 @@ def train_world_model(cfg: DictConfig) -> None:
                 except StopIteration:
                     short_exhausted = True
                     break
-                
-                states, actions, loss_mask = states.to(device), actions.to(device), loss_mask.to(device)
-                
+
+                states, actions, loss_mask = (
+                    states.to(device),
+                    actions.to(device),
+                    loss_mask.to(device),
+                )
+
                 optimizer.zero_grad()
-                
+
                 # Create mask (random masking for short sequences)
                 mask = create_mixed_mask(
-                    states.shape[0], states.shape[1], states.shape[2], device,
-                    mask_ratio=cfg.world_model.mask_ratio
+                    states.shape[0],
+                    states.shape[1],
+                    states.shape[2],
+                    device,
+                    mask_ratio=cfg.world_model.mask_ratio,
                 )
-                
+
                 pred_states, pred_actions, mask, _ = model(
-                    states, actions, mask_ratio=0.0, noise_scale=cfg.world_model.noise_scale, mask=mask
+                    states,
+                    actions,
+                    mask_ratio=0.0,
+                    noise_scale=cfg.world_model.noise_scale,
+                    mask=mask,
                 )
-                
+
                 recon_loss, denoise_loss = model.get_loss(
-                    states, actions, pred_states, pred_actions, mask, loss_mask=loss_mask
+                    states,
+                    actions,
+                    pred_states,
+                    pred_actions,
+                    mask,
+                    loss_mask=loss_mask,
                 )
-                
+
                 loss = recon_loss + denoise_loss
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
-                
+
                 total_loss += loss.item()
                 total_recon_loss += recon_loss.item()
                 total_denoise_loss += denoise_loss.item()
                 steps += 1
                 pbar.update(1)
-                
+
             if short_exhausted:
                 break
-                
+
             # 2. Run 1 long batch
             try:
                 states, actions, loss_mask = next(long_iter)
             except StopIteration:
                 # If long loader exhausted, just skip
-                long_exhausted = True
                 break
-            
-            states, actions, loss_mask = states.to(device), actions.to(device), loss_mask.to(device)
-            
+
+            states, actions, loss_mask = (
+                states.to(device),
+                actions.to(device),
+                loss_mask.to(device),
+            )
+
             optimizer.zero_grad()
-            
+
             # Create mask (random masking for long sequences too)
             mask = create_mixed_mask(
-                states.shape[0], states.shape[1], states.shape[2], device,
-                mask_ratio=cfg.world_model.mask_ratio
+                states.shape[0],
+                states.shape[1],
+                states.shape[2],
+                device,
+                mask_ratio=cfg.world_model.mask_ratio,
             )
-            
+
             pred_states, pred_actions, mask, _ = model(
-                states, actions, mask_ratio=0.0, noise_scale=cfg.world_model.noise_scale, mask=mask
+                states,
+                actions,
+                mask_ratio=0.0,
+                noise_scale=cfg.world_model.noise_scale,
+                mask=mask,
             )
-            
+
             recon_loss, denoise_loss = model.get_loss(
                 states, actions, pred_states, pred_actions, mask, loss_mask=loss_mask
             )
-            
+
             loss = recon_loss + denoise_loss
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
-            
+
             total_loss += loss.item()
             total_recon_loss += recon_loss.item()
             total_denoise_loss += denoise_loss.item()
-            # Note: We don't increment steps here to keep pbar consistent with short batches, 
-            # but we do include the loss in the total. 
+            # Note: We don't increment steps here to keep pbar consistent with short batches,
+            # but we do include the loss in the total.
             # Actually, let's increment steps to keep the average correct.
             steps += 1
-            
-            pbar.set_postfix({
-                "loss": total_loss / steps,
-                "recon": total_recon_loss / steps,
-                "denoise": total_denoise_loss / steps
-            })
+
+            pbar.set_postfix(
+                {
+                    "loss": total_loss / steps,
+                    "recon": total_recon_loss / steps,
+                    "denoise": total_denoise_loss / steps,
+                }
+            )
 
         avg_loss = total_loss / steps if steps > 0 else 0
         avg_recon_loss = total_recon_loss / steps if steps > 0 else 0
         avg_denoise_loss = total_denoise_loss / steps if steps > 0 else 0
-        
+
         log.info(
             f"Epoch {epoch+1}: Train Loss={avg_loss:.4f} "
             f"(Recon={avg_recon_loss:.4f}, "
@@ -282,16 +312,23 @@ def train_world_model(cfg: DictConfig) -> None:
         model.eval()
         val_loss = 0
         val_steps = 0
-        
+
         # Validate on both short and long
         for loader in [val_short_loader, val_long_loader]:
             with torch.no_grad():
                 for states, actions, loss_mask in loader:
-                    states, actions, loss_mask = states.to(device), actions.to(device), loss_mask.to(device)
+                    states, actions, loss_mask = (
+                        states.to(device),
+                        actions.to(device),
+                        loss_mask.to(device),
+                    )
 
                     mask = create_mixed_mask(
-                        states.shape[0], states.shape[1], states.shape[2], device,
-                        mask_ratio=cfg.world_model.mask_ratio
+                        states.shape[0],
+                        states.shape[1],
+                        states.shape[2],
+                        device,
+                        mask_ratio=cfg.world_model.mask_ratio,
                     )
 
                     pred_states, pred_actions, mask, _ = model(
@@ -299,7 +336,12 @@ def train_world_model(cfg: DictConfig) -> None:
                     )
 
                     recon_loss, denoise_loss = model.get_loss(
-                        states, actions, pred_states, pred_actions, mask, loss_mask=loss_mask
+                        states,
+                        actions,
+                        pred_states,
+                        pred_actions,
+                        mask,
+                        loss_mask=loss_mask,
                     )
                     val_loss += (recon_loss + denoise_loss).item()
                     val_steps += 1
@@ -309,7 +351,9 @@ def train_world_model(cfg: DictConfig) -> None:
 
         # Log to CSV
         with open(csv_path, "a") as f:
-            f.write(f"{epoch+1},{avg_loss:.6f},{avg_recon_loss:.6f},{avg_denoise_loss:.6f},{avg_val_loss:.6f}\n")
+            f.write(
+                f"{epoch+1},{avg_loss:.6f},{avg_recon_loss:.6f},{avg_denoise_loss:.6f},{avg_val_loss:.6f}\n"
+            )
 
         # Log to TensorBoard
         writer.add_scalar("Loss/train", avg_loss, epoch)
@@ -331,7 +375,7 @@ def train_world_model(cfg: DictConfig) -> None:
 
     # Save final model
     torch.save(model.state_dict(), run_dir / "final_world_model.pth")
-    
+
     # Save metadata
     metadata_path = run_dir / "model_metadata.yaml"
     metadata = {
@@ -339,12 +383,12 @@ def train_world_model(cfg: DictConfig) -> None:
         "final_metrics": {
             "train_loss": avg_loss,
             "val_loss": avg_val_loss,
-            "epochs_trained": epoch + 1
-        }
+            "epochs_trained": epoch + 1,
+        },
     }
-    
+
     OmegaConf.save(OmegaConf.create(metadata), metadata_path)
-    
+
     # Close writer
     writer.close()
 
