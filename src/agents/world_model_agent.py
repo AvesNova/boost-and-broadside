@@ -4,12 +4,13 @@ World Model Agent for gameplay.
 Wraps the WorldModel to act as an agent in the environment.
 Maintains a history of observations and uses the model to predict the next action.
 """
+
 import logging
 import torch
 from collections import deque
 
-from src.agents.world_model import WorldModel
-from src.agents.tokenizer import observation_to_tokens
+from agents.world_model import WorldModel
+from agents.tokenizer import observation_to_tokens
 
 log = logging.getLogger(__name__)
 
@@ -84,7 +85,9 @@ class WorldModelAgent:
         if model_path:
             self.load_model(model_path)
         else:
-            log.warning("WorldModelAgent initialized with random weights (no model_path provided)")
+            log.warning(
+                "WorldModelAgent initialized with random weights (no model_path provided)"
+            )
 
         self.model.eval()
 
@@ -114,9 +117,13 @@ class WorldModelAgent:
     def reset(self) -> None:
         """Reset agent state (history)."""
         self.history.clear()
-        self.last_action = torch.zeros(1, self.max_ships, self.action_dim, device=self.device)
+        self.last_action = torch.zeros(
+            1, self.max_ships, self.action_dim, device=self.device
+        )
 
-    def __call__(self, observation: dict, ship_ids: list[int]) -> dict[int, torch.Tensor]:
+    def __call__(
+        self, observation: dict, ship_ids: list[int]
+    ) -> dict[int, torch.Tensor]:
         """
         Get actions for the specified ships.
 
@@ -133,7 +140,7 @@ class WorldModelAgent:
         # 2. Prepare input sequence
         # Construct sequence: [past_tokens, current_token, mask_token]
         # Construct actions: [past_actions, last_action, mask_action]
-        
+
         hist_tokens = [t for t, a in self.history]
         hist_actions = [a for t, a in self.history]
 
@@ -148,21 +155,25 @@ class WorldModelAgent:
         input_actions_list.append(mask_action)
 
         # Stack into tensors
-        input_tokens = torch.cat(input_tokens_list, dim=0).unsqueeze(0)  # (1, Seq, N, F)
-        input_actions = torch.cat(input_actions_list, dim=0).unsqueeze(0)  # (1, Seq, N, A)
+        input_tokens = torch.cat(input_tokens_list, dim=0).unsqueeze(
+            0
+        )  # (1, Seq, N, F)
+        input_actions = torch.cat(input_actions_list, dim=0).unsqueeze(
+            0
+        )  # (1, Seq, N, A)
 
         seq_len = input_tokens.shape[1]
 
         # Create mask: Mask ONLY the last token (t+1)
-        mask = torch.zeros(1, seq_len, self.max_ships, dtype=torch.bool, device=self.device)
+        mask = torch.zeros(
+            1, seq_len, self.max_ships, dtype=torch.bool, device=self.device
+        )
         mask[:, -1, :] = True
 
         # 3. Forward pass
         with torch.no_grad():
             _, pred_actions_logits, _, _ = self.model(
-                input_tokens,
-                input_actions,
-                mask=mask
+                input_tokens, input_actions, mask=mask
             )
 
         # 4. Extract prediction for the masked step (last step)
@@ -170,7 +181,7 @@ class WorldModelAgent:
 
         # 5. Sample actions from predicted probabilities
         next_action_probs = torch.sigmoid(next_action_logits)
-        
+
         # Sample from Bernoulli distribution instead of thresholding
         # This allows actions even when probabilities are low
         next_action = torch.bernoulli(next_action_probs)

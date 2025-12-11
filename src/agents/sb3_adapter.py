@@ -4,6 +4,7 @@ Stable Baselines3 adapter for TeamTransformerModel.
 Provides a custom SB3 policy that wraps the TeamTransformerModel for use
 with Stable Baselines3 RL algorithms.
 """
+
 from typing import Any
 
 import gymnasium as gym
@@ -15,7 +16,7 @@ from stable_baselines3.common.distributions import (
 )
 from stable_baselines3.common.type_aliases import Schedule
 
-from src.agents.team_transformer_agent import TeamTransformerModel
+from agents.team_transformer_agent import TeamTransformerModel
 
 
 class TeamTransformerSB3Policy(ActorCriticPolicy):
@@ -86,7 +87,9 @@ class TeamTransformerSB3Policy(ActorCriticPolicy):
         self.action_dist = make_proba_distribution(action_space)
 
     def _predict(
-        self, observation: torch.Tensor | dict[str, torch.Tensor], deterministic: bool = False
+        self,
+        observation: torch.Tensor | dict[str, torch.Tensor],
+        deterministic: bool = False,
     ) -> torch.Tensor:
         """
         Get the action according to the policy for a given observation.

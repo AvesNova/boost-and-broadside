@@ -1,14 +1,15 @@
 """
 Main entry point for the Boost and Broadside application.
 """
+
 import hydra
 from omegaconf import DictConfig
 
-from src.modes.collect import collect
-from src.modes.play import play
-from src.modes.train import train
-from src.train.train_world_model import train_world_model
-from src.eval.eval_world_model import eval_world_model
+from modes.collect import collect
+from modes.play import play
+from modes.train import train
+from train.train_world_model import train_world_model
+from eval.eval_world_model import eval_world_model
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")

@@ -3,10 +3,11 @@ Game state representation.
 
 Defines the State class which encapsulates the current state of all ships and bullets.
 """
+
 import numpy as np
 
-from src.env.bullets import Bullets
-from src.env.ship import Ship
+from env.bullets import Bullets
+from env.ship import Ship
 
 
 class State:

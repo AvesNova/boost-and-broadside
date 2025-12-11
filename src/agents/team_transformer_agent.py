@@ -4,11 +4,12 @@ Team transformer agent for multi-ship control.
 Implements a transformer-based model that outputs actions for all ships,
 with team-based filtering for multi-agent scenarios.
 """
+
 import torch
 import torch.nn as nn
 
-from src.env.constants import Actions
-from src.agents.tokenizer import observation_to_tokens
+from env.constants import Actions
+from agents.tokenizer import observation_to_tokens
 
 
 class TeamTransformerModel(nn.Module):
@@ -135,7 +136,9 @@ class TeamTransformerModel(nn.Module):
         # Pool embeddings: mean over ships (handling mask if present)
         if attention_mask is not None:
             # mask is True for inactive, so invert for active
-            active_mask = (~attention_mask).float().unsqueeze(-1)  # (batch, max_ships, 1)
+            active_mask = (
+                (~attention_mask).float().unsqueeze(-1)
+            )  # (batch, max_ships, 1)
             sum_embeddings = (transformed * active_mask).sum(dim=1)
             count = active_mask.sum(dim=1).clamp(min=1e-9)
             pooled_embeddings = sum_embeddings / count
@@ -198,8 +201,9 @@ class TeamTransformerAgent:
         except Exception as e:
             print(f"Failed to load model from {path}: {e}")
 
-
-    def __call__(self, observation: dict, ship_ids: list[int]) -> dict[int, torch.Tensor]:
+    def __call__(
+        self, observation: dict, ship_ids: list[int]
+    ) -> dict[int, torch.Tensor]:
         """
         Get actions for the specified ships.
 
@@ -220,7 +224,7 @@ class TeamTransformerAgent:
         else:
             # Generate tokens from raw observation
             tokens = observation_to_tokens(observation, self.team_id)
-            # Create a copy of observation to avoid side effects if possible, 
+            # Create a copy of observation to avoid side effects if possible,
             # but for efficiency we might just pass a new dict
             observation = observation.copy()
             observation["tokens"] = tokens

@@ -3,8 +3,8 @@ import sys
 
 import pytest
 from omegaconf import OmegaConf
-from src.env.ship import Ship, default_ship_config
-from src.env.state import State
+from env.ship import Ship, default_ship_config
+from env.state import State
 
 # Ensure project root is in sys.path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))

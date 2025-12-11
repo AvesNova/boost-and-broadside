@@ -9,8 +9,8 @@ import torch
 from omegaconf import DictConfig, OmegaConf
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 
-from src.data_collector import DataCollector
-from src.game_coordinator import GameCoordinator
+from data_collector import DataCollector
+from game_coordinator import GameCoordinator
 
 
 def collect_worker(
@@ -129,7 +129,7 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
 
         episode_offset = total_episodes
         adjusted_episode_ids = data["episode_ids"] + episode_offset
-        
+
         all_team_0_tokens.append(data["team_0"]["tokens"])
         all_team_0_actions.append(data["team_0"]["actions"])
         all_team_0_rewards.append(data["team_0"]["rewards"])

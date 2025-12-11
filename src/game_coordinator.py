@@ -1,9 +1,9 @@
 import torch
 from omegaconf import DictConfig
 
-from src.agents.agents import create_agent
-from src.agents.tokenizer import observation_to_tokens
-from src.env.env import Environment
+from agents.agents import create_agent
+from agents.tokenizer import observation_to_tokens
+from env.env import Environment
 
 
 class GameCoordinator:

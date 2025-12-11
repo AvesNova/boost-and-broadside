@@ -7,8 +7,8 @@ from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 
-from src.agents.team_transformer_agent import TeamTransformerModel
-from src.train.data_loader import load_bc_data, create_bc_data_loader
+from agents.team_transformer_agent import TeamTransformerModel
+from train.data_loader import load_bc_data, create_bc_data_loader
 
 
 def train_bc(cfg: DictConfig) -> Path | None:
@@ -26,7 +26,7 @@ def train_bc(cfg: DictConfig) -> Path | None:
     # Get BC configuration - Fail fast if missing
     bc_config = cfg.train.bc
     model_config = cfg.train.model.transformer
-    
+
     # Access required params to ensure they exist
     _ = bc_config.batch_size
     _ = bc_config.validation_split
@@ -39,13 +39,13 @@ def train_bc(cfg: DictConfig) -> Path | None:
     # Load data
     print(f"Loading data from: {cfg.train.bc_data_path}")
     data = load_bc_data(cfg.train.bc_data_path)
-    
+
     # Create data loaders
     train_loader, val_loader = create_bc_data_loader(
-        data, 
+        data,
         batch_size=bc_config.batch_size,
         gamma=cfg.train.rl.gamma,
-        validation_split=bc_config.validation_split
+        validation_split=bc_config.validation_split,
     )
 
     # Create model
@@ -75,18 +75,20 @@ def train_bc(cfg: DictConfig) -> Path | None:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir = Path("models/bc") / f"run_{timestamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
-    
+
     print(f"Output directory: {run_dir}")
 
     # Save config immediately
     OmegaConf.save(cfg, run_dir / "config.yaml")
-    
+
     # TensorBoard writer
     writer = SummaryWriter(log_dir=str(run_dir))
-    
+
     csv_path = run_dir / "training_log.csv"
     with open(csv_path, "w") as f:
-        f.write("epoch,train_loss,train_policy_loss,train_value_loss,train_acc,val_loss,val_acc\n")
+        f.write(
+            "epoch,train_loss,train_policy_loss,train_value_loss,train_acc,val_loss,val_acc\n"
+        )
 
     # Training loop
     epochs = bc_config.epochs
@@ -116,7 +118,7 @@ def train_bc(cfg: DictConfig) -> Path | None:
 
             # Forward pass
             optimizer.zero_grad()
-            
+
             # Create observation dict
             observation = {"tokens": tokens}
 
@@ -133,8 +135,10 @@ def train_bc(cfg: DictConfig) -> Path | None:
             # Compute losses
             p_loss = policy_criterion(action_logits_flat, action_targets_flat)
             v_loss = value_criterion(values, returns)
-            
-            loss = (bc_config.policy_weight * p_loss) + (bc_config.value_weight * v_loss)
+
+            loss = (bc_config.policy_weight * p_loss) + (
+                bc_config.value_weight * v_loss
+            )
 
             # Backward pass
             loss.backward()
@@ -144,7 +148,7 @@ def train_bc(cfg: DictConfig) -> Path | None:
             train_loss += loss.item()
             train_policy_loss += p_loss.item()
             train_value_loss += v_loss.item()
-            
+
             _, predicted = torch.max(action_logits_flat.data, 1)
             train_total += action_targets_flat.size(0)
             train_correct += (predicted == action_targets_flat).sum().item()
@@ -190,7 +194,9 @@ def train_bc(cfg: DictConfig) -> Path | None:
                 # Compute loss
                 p_loss = policy_criterion(action_logits_flat, action_targets_flat)
                 v_loss = value_criterion(values, returns)
-                loss = (bc_config.policy_weight * p_loss) + (bc_config.value_weight * v_loss)
+                loss = (bc_config.policy_weight * p_loss) + (
+                    bc_config.value_weight * v_loss
+                )
 
                 # Update statistics
                 val_loss += loss.item()
@@ -220,7 +226,9 @@ def train_bc(cfg: DictConfig) -> Path | None:
 
         # Log to CSV
         with open(csv_path, "a") as f:
-            f.write(f"{epoch+1},{avg_train_loss:.6f},{avg_train_policy_loss:.6f},{avg_train_value_loss:.6f},{train_accuracy:.2f},{avg_val_loss:.6f},{val_accuracy:.2f}\n")
+            f.write(
+                f"{epoch+1},{avg_train_loss:.6f},{avg_train_policy_loss:.6f},{avg_train_value_loss:.6f},{train_accuracy:.2f},{avg_val_loss:.6f},{val_accuracy:.2f}\n"
+            )
 
         # Log to TensorBoard
         writer.add_scalar("Loss/train", avg_train_loss, epoch)
@@ -246,7 +254,7 @@ def train_bc(cfg: DictConfig) -> Path | None:
 
     # Save final model
     torch.save(model.state_dict(), run_dir / "final_bc_model.pth")
-    
+
     # Save metadata
     metadata_path = run_dir / "model_metadata.yaml"
     metadata = {
@@ -256,12 +264,12 @@ def train_bc(cfg: DictConfig) -> Path | None:
             "val_loss": avg_val_loss,
             "train_accuracy": train_accuracy,
             "val_accuracy": val_accuracy,
-            "epochs_trained": epoch + 1
-        }
+            "epochs_trained": epoch + 1,
+        },
     }
-    
+
     OmegaConf.save(OmegaConf.create(metadata), metadata_path)
-    
+
     # Close writer
     writer.close()
 

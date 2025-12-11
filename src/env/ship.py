@@ -4,13 +4,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from src.env.constants import Actions
-from src.env.bullets import Bullets
+from env.constants import Actions
+from env.bullets import Bullets
 
 
 @dataclass
 class ShipConfig:
     """Configuration parameters for ship physics and capabilities."""
+
     # Physical Parameters
     collision_radius: float = 10.0
     max_health: float = 100.0
@@ -48,6 +49,7 @@ default_ship_config = ShipConfig()
 @dataclass
 class ActionStates:
     """Parsed action states from the action vector."""
+
     forward: int
     backward: int
     left: int
@@ -59,11 +61,12 @@ class ActionStates:
 class Ship(nn.Module):
     """
     Represents a single ship in the environment.
-    
+
     Handles physics, movement, shooting, and state management for a ship.
     Inherits from nn.Module to be compatible with PyTorch-based logic if needed,
     though primarily acts as a physics entity.
     """
+
     def __init__(
         self,
         ship_id: int,
@@ -326,7 +329,7 @@ class Ship(nn.Module):
     def get_token(self) -> torch.Tensor:
         """
         Generate a token representation of the ship's state.
-        
+
         Returns:
             Tensor of shape (10,) containing normalized state features.
         """

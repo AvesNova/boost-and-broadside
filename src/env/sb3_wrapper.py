@@ -4,6 +4,7 @@ Stable Baselines3 wrapper for the Environment.
 Adapts the multi-agent Environment to a single-agent interface compatible
 with Stable Baselines3, handling the opponent agent internally.
 """
+
 from typing import Any
 
 import gymnasium as gym
@@ -12,10 +13,10 @@ import torch
 from gymnasium import spaces
 from omegaconf import DictConfig
 
-from src.agents.agents import create_agent
-from src.agents.tokenizer import observation_to_tokens
-from src.env.env import Environment
-from src.env.constants import Actions
+from agents.agents import create_agent
+from agents.tokenizer import observation_to_tokens
+from env.env import Environment
+from env.constants import Actions
 
 
 class SB3Wrapper(gym.Wrapper):

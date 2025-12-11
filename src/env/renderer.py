@@ -4,14 +4,15 @@ Pygame-based rendering for the ship combat environment.
 Handles visualization of ships, bullets, and UI elements, as well as
 human player input via keyboard controls.
 """
+
 import numpy as np
 import torch
 import pygame
 
-from src.env.constants import Actions
-from src.env.ship import Ship
-from src.env.bullets import Bullets
-from src.env.state import State
+from env.constants import Actions
+from env.ship import Ship
+from env.bullets import Bullets
+from env.state import State
 
 
 class GameRenderer:

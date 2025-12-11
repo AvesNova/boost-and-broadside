@@ -2,7 +2,7 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from src.env.constants import Actions
+from env.constants import Actions
 
 
 class RandomAgent(nn.Module):
@@ -10,9 +10,7 @@ class RandomAgent(nn.Module):
     Agent that performs random actions.
     """
 
-    def __init__(
-        self, agent_id: str, team_id: int, squad: list[int], **kwargs: Any
-    ):
+    def __init__(self, agent_id: str, team_id: int, squad: list[int], **kwargs: Any):
         """
         Initialize random agent.
 

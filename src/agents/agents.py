@@ -10,12 +10,14 @@ from .world_model_agent import WorldModelAgent
 from .replay import ReplayAgent
 from .dummy import DummyAgent
 from .random_agent import RandomAgent
-from src.utils.model_finder import find_most_recent_model, find_best_model
+from utils.model_finder import find_most_recent_model, find_best_model
 
 log = logging.getLogger(__name__)
 
 
-def _load_agent_config_from_model(agent_config: dict, model_type: str, selection_criteria: str) -> dict:
+def _load_agent_config_from_model(
+    agent_config: dict, model_type: str, selection_criteria: str
+) -> dict:
     """
     Helper to load configuration from a saved model.
 
@@ -35,13 +37,15 @@ def _load_agent_config_from_model(agent_config: dict, model_type: str, selection
         raise ValueError(f"Unknown selection criteria: {selection_criteria}")
 
     if not model_path:
-        log.warning(f"No {model_type.upper()} model found for '{selection_criteria}_{model_type}' agent. Using random initialization.")
+        log.warning(
+            f"No {model_type.upper()} model found for '{selection_criteria}_{model_type}' agent. Using random initialization."
+        )
         return agent_config
 
     # Try to load config from run directory
     run_dir = Path(model_path).parent
     config_path = run_dir / "config.yaml"
-    
+
     final_config = agent_config.copy()
     if config_path.exists():
         log.info(f"Loading agent config from {config_path}")
@@ -52,18 +56,20 @@ def _load_agent_config_from_model(agent_config: dict, model_type: str, selection
             # Map keys to WorldModelAgent args
             if "n_ships" in wm_cfg:
                 wm_cfg["max_ships"] = wm_cfg.pop("n_ships")
-            
+
             final_config.update(wm_cfg)
         else:
             # Extract transformer config for BC/RL
-            transformer_cfg = OmegaConf.to_container(saved_cfg.train.model.transformer, resolve=True)
+            transformer_cfg = OmegaConf.to_container(
+                saved_cfg.train.model.transformer, resolve=True
+            )
             # Remove keys that are not arguments to TeamTransformerAgent
             if "num_actions" in transformer_cfg:
                 del transformer_cfg["num_actions"]
             final_config.update(transformer_cfg)
     else:
         log.warning(f"No config.yaml found in {run_dir}. Using current defaults.")
-    
+
     final_config["model_path"] = model_path
     return final_config
 
@@ -95,7 +101,7 @@ def create_agent(agent_type: str, agent_config: dict) -> nn.Module:
             return DummyAgent(**agent_config)
         case "random":
             return RandomAgent(**agent_config)
-        
+
         case "most_recent_bc":
             cfg = _load_agent_config_from_model(agent_config, "bc", "most_recent")
             return TeamTransformerAgent(**cfg)
@@ -113,7 +119,9 @@ def create_agent(agent_type: str, agent_config: dict) -> nn.Module:
             return TeamTransformerAgent(**cfg)
 
         case "most_recent_world_model":
-            cfg = _load_agent_config_from_model(agent_config, "world_model", "most_recent")
+            cfg = _load_agent_config_from_model(
+                agent_config, "world_model", "most_recent"
+            )
             return WorldModelAgent(**cfg)
 
         case "best_world_model":

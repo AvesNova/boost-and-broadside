@@ -15,8 +15,8 @@ from omegaconf import DictConfig, OmegaConf
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-from src.agents.world_model import WorldModel
-from src.train.data_loader import load_bc_data, create_dual_pool_data_loaders
+from agents.world_model import WorldModel
+from train.data_loader import load_bc_data, create_dual_pool_data_loaders
 
 log = logging.getLogger(__name__)
 
@@ -92,7 +92,7 @@ def train_world_model(cfg: DictConfig) -> None:
     # Load Data
     data_path = cfg.train.bc_data_path
     if data_path is None:
-        from src.train.data_loader import get_latest_data_path
+        from train.data_loader import get_latest_data_path
 
         data_path = get_latest_data_path()
 

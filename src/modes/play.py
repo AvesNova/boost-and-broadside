@@ -1,6 +1,6 @@
 from omegaconf import DictConfig, OmegaConf
 
-from src.game_coordinator import GameCoordinator
+from game_coordinator import GameCoordinator
 
 
 def play(cfg: DictConfig) -> None:
@@ -41,12 +41,12 @@ def play(cfg: DictConfig) -> None:
         )
         if isinstance(transformer_config, dict) and "num_actions" in transformer_config:
             del transformer_config["num_actions"]
-        
+
         base_config = {
             "agent_id": "player",
             "team_id": 0,
             "squad": [],
-            **transformer_config  # type: ignore
+            **transformer_config,  # type: ignore
         }
         return {"agent_type": agent_type, "agent_config": base_config}
 

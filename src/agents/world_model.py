@@ -10,7 +10,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from src.agents.rope import RotaryPositionEmbedding
+from agents.rope import RotaryPositionEmbedding
 
 
 class SpatialSelfAttention(nn.Module):

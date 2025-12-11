@@ -1,6 +1,6 @@
 import pytest
 
-from src.modes.play import play
+from modes.play import play
 
 
 def test_play_pipeline(default_config):
