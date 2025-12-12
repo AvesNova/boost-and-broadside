@@ -16,7 +16,7 @@ from omegaconf import DictConfig
 from agents.agents import create_agent
 from agents.tokenizer import observation_to_tokens
 from env.env import Environment
-from env.constants import Actions
+from env.constants import HumanActions
 
 
 class SB3Wrapper(gym.Wrapper):
@@ -40,7 +40,7 @@ class SB3Wrapper(gym.Wrapper):
         super().__init__(env)
         self.config = config
         self.max_ships = env.max_ships
-        self.num_actions = len(Actions)
+        self.num_actions = len(HumanActions)
 
         # Define Action Space: MultiBinary for all potential ships
         # Shape: (max_ships * num_actions,)

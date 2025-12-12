@@ -8,7 +8,7 @@ with team-based filtering for multi-agent scenarios.
 import torch
 import torch.nn as nn
 
-from env.constants import Actions
+from env.constants import HumanActions
 from agents.tokenizer import observation_to_tokens
 
 
@@ -39,7 +39,7 @@ class TeamTransformerModel(nn.Module):
         self.token_dim = token_dim
         self.embed_dim = embed_dim
         self.max_ships = max_ships
-        self.num_actions = len(Actions)
+        self.num_actions = len(HumanActions)
 
         # Input projection: token_dim -> embed_dim
         self.token_projection = nn.Linear(token_dim, embed_dim)

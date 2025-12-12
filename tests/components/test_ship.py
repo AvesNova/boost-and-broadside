@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from env.constants import Actions
+from env.constants import HumanActions
 
 
 def test_ship_initialization(dummy_ship):
@@ -19,7 +19,7 @@ def test_ship_physics_update(dummy_ship):
     dt = 0.1
 
     # No action, just coasting
-    action = torch.zeros(len(Actions))
+    action = torch.zeros(len(HumanActions))
     dummy_ship.forward(action, None, 0.0, dt)
 
     # Position should change based on velocity
@@ -33,8 +33,8 @@ def test_ship_thrust(dummy_ship):
     dt = 0.1
 
     # Apply forward thrust
-    action = torch.zeros(len(Actions))
-    action[Actions.forward] = 1.0
+    action = torch.zeros(len(HumanActions))
+    action[HumanActions.forward] = 1.0
 
     dummy_ship.forward(action, None, 0.0, dt)
 
@@ -49,8 +49,8 @@ def test_ship_turn(dummy_ship):
     dt = 0.1
 
     # Apply left turn
-    action = torch.zeros(len(Actions))
-    action[Actions.left] = 1.0
+    action = torch.zeros(len(HumanActions))
+    action[HumanActions.left] = 1.0
 
     dummy_ship.forward(action, None, 0.0, dt)
 
@@ -64,14 +64,14 @@ def test_ship_energy_consumption(dummy_ship):
     dt = 0.1
 
     # Apply shooting action (usually high cost)
-    action = torch.zeros(len(Actions))
-    action[Actions.shoot] = 1.0
+    action = torch.zeros(len(HumanActions))
+    action[HumanActions.shoot] = 1.0
 
     # We need to mock bullets or pass None if handled gracefully
     # The ship.forward method expects bullets for shooting
     # Let's just test thrust for now if shooting is complex to mock here
-    action = torch.zeros(len(Actions))
-    action[Actions.forward] = 1.0
+    action = torch.zeros(len(HumanActions))
+    action[HumanActions.forward] = 1.0
 
     dummy_ship.forward(action, None, 0.0, dt)
 

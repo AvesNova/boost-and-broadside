@@ -14,7 +14,7 @@ import math
 import os
 
 from .ship import Ship, default_ship_config
-from .constants import Actions
+from .constants import HumanActions
 from .bullets import Bullets
 
 
@@ -43,8 +43,8 @@ def measure_max_speed() -> float:
     max_speed = 0.0
 
     # Create action with max forward boost
-    action = torch.zeros(len(Actions))
-    action[Actions.forward] = 1.0
+    action = torch.zeros(len(HumanActions))
+    action[HumanActions.forward] = 1.0
 
     # Run until energy is depleted or speed stops increasing
     steps = 0
@@ -81,7 +81,7 @@ def measure_equilibrium_speed() -> float:
     dt = 0.02
 
     # No thrust action
-    action = torch.zeros(len(Actions))
+    action = torch.zeros(len(HumanActions))
 
     # Run until speed stabilizes
     steps = 0
@@ -127,12 +127,12 @@ def measure_turn_characteristics(sharp_turn: bool = False) -> dict[str, float]:
     dt = 0.02
 
     # Set up turn action
-    action = torch.zeros(len(Actions))
+    action = torch.zeros(len(HumanActions))
     if sharp_turn:
-        action[Actions.sharp_turn] = 1.0
-        action[Actions.right] = 1.0
+        action[HumanActions.sharp_turn] = 1.0
+        action[HumanActions.right] = 1.0
     else:
-        action[Actions.right] = 1.0
+        action[HumanActions.right] = 1.0
 
     # Phase 1: Let speed stabilize during turn
     steps = 0

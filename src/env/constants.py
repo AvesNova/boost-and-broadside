@@ -3,10 +3,13 @@ Constants and enumerations for the game environment.
 
 Defines action indices and reward calculation constants.
 """
+
 from enum import IntEnum, auto
 
+from matplotlib.pyplot import cla
 
-class Actions(IntEnum):
+
+class HumanActions(IntEnum):
     """Action indices for ship control."""
 
     forward = 0
@@ -15,6 +18,25 @@ class Actions(IntEnum):
     right = auto()
     sharp_turn = auto()
     shoot = auto()
+
+
+class PowerActions(IntEnum):
+    COAST = 0
+    BOOST = auto()
+    BRAKE = auto()
+
+
+class TurnActions(IntEnum):
+    GO_STRAIGHT = 0
+    TURN_LEFT = 1
+    TURN_RIGHT = 2
+    SHARP_LEFT = 3
+    SHARP_RIGHT = 4
+
+
+class ShootActions(IntEnum):
+    NO_SHOOT = 0
+    SHOOT = 1
 
 
 class RewardConstants:

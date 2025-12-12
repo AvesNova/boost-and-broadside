@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from env.constants import Actions
+from env.constants import HumanActions
 from env.bullets import Bullets
 
 
@@ -183,12 +183,12 @@ class Ship(nn.Module):
             actions = F.pad(actions, (0, 6 - actions.numel()))
 
         return ActionStates(
-            left=int(actions[Actions.left]),
-            right=int(actions[Actions.right]),
-            forward=int(actions[Actions.forward]),
-            backward=int(actions[Actions.backward]),
-            sharp_turn=int(actions[Actions.sharp_turn]),
-            shoot=int(actions[Actions.shoot]),
+            left=int(actions[HumanActions.left]),
+            right=int(actions[HumanActions.right]),
+            forward=int(actions[HumanActions.forward]),
+            backward=int(actions[HumanActions.backward]),
+            sharp_turn=int(actions[HumanActions.sharp_turn]),
+            shoot=int(actions[HumanActions.shoot]),
         )
 
     def _update_power(self, actions: ActionStates, delta_t: float) -> None:

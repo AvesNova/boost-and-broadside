@@ -9,7 +9,7 @@ import numpy as np
 import torch
 import pygame
 
-from env.constants import Actions
+from env.constants import HumanActions
 from env.ship import Ship
 from env.bullets import Bullets
 from env.state import State
@@ -68,7 +68,7 @@ class GameRenderer:
             ship_id: ID of the ship to control.
         """
         self.human_ship_ids.add(ship_id)
-        self.human_actions[ship_id] = torch.zeros(len(Actions))
+        self.human_actions[ship_id] = torch.zeros(len(HumanActions))
 
     def remove_human_player(self, ship_id: int) -> None:
         """
@@ -106,37 +106,37 @@ class GameRenderer:
         keys = pygame.key.get_pressed()
 
         for ship_id in self.human_ship_ids:
-            action = torch.zeros(len(Actions))
+            action = torch.zeros(len(HumanActions))
 
             # Ship 0 controls (Arrow keys or WASD)
             if ship_id == 0:
                 if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-                    action[Actions.left] = 1
+                    action[HumanActions.left] = 1
                 if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-                    action[Actions.right] = 1
+                    action[HumanActions.right] = 1
                 if keys[pygame.K_UP] or keys[pygame.K_w]:
-                    action[Actions.forward] = 1
+                    action[HumanActions.forward] = 1
                 if keys[pygame.K_DOWN] or keys[pygame.K_s]:
-                    action[Actions.backward] = 1
+                    action[HumanActions.backward] = 1
                 if keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]:
-                    action[Actions.sharp_turn] = 1
+                    action[HumanActions.sharp_turn] = 1
                 if keys[pygame.K_SPACE]:
-                    action[Actions.shoot] = 1
+                    action[HumanActions.shoot] = 1
 
             # Ship 1 controls (IJKL cluster)
             elif ship_id == 1:
                 if keys[pygame.K_j]:
-                    action[Actions.left] = 1
+                    action[HumanActions.left] = 1
                 if keys[pygame.K_l]:
-                    action[Actions.right] = 1
+                    action[HumanActions.right] = 1
                 if keys[pygame.K_i]:
-                    action[Actions.forward] = 1
+                    action[HumanActions.forward] = 1
                 if keys[pygame.K_k]:
-                    action[Actions.backward] = 1
+                    action[HumanActions.backward] = 1
                 if keys[pygame.K_u]:
-                    action[Actions.sharp_turn] = 1
+                    action[HumanActions.sharp_turn] = 1
                 if keys[pygame.K_o]:
-                    action[Actions.shoot] = 1
+                    action[HumanActions.shoot] = 1
 
             self.human_actions[ship_id] = action
 
