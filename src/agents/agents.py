@@ -5,6 +5,7 @@ from omegaconf import OmegaConf
 
 from .human import HumanAgent
 from .scripted import ScriptedAgent
+from .scripted_v2 import ScriptedAgentV2
 from .team_transformer_agent import TeamTransformerAgent
 from .world_model_agent import WorldModelAgent
 from .replay import ReplayAgent
@@ -93,6 +94,8 @@ def create_agent(agent_type: str, agent_config: dict) -> nn.Module:
             return HumanAgent(**agent_config)
         case "scripted":
             return ScriptedAgent(**agent_config)
+        case "scripted_v2":
+            return ScriptedAgentV2(**agent_config)
         case "team_transformer_agent":
             return TeamTransformerAgent(**agent_config)
         case "replay_agent":
