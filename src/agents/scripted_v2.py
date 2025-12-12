@@ -136,7 +136,7 @@ class ShipController(nn.Module):
     ) -> None:
         super().__init__()
         self.rng = rng
-        self.parameters = ShipParameters()
+        self.ship_params = ShipParameters()
 
     def get_actions(
         self,
@@ -150,16 +150,16 @@ class ShipController(nn.Module):
     def choose_target(self, blackboard: Blackboard, ship_id: int) -> int:
         ship_to_enemy_scores = torch.where(
             blackboard.enemies[ship_id],
-            self.parameters.offensive_distance_weight * blackboard.distance[ship_id]
-            + self.parameters.offensive_angle_weight
+            self.ship_params.offensive_distance_weight * blackboard.distance[ship_id]
+            + self.ship_params.offensive_angle_weight
             * torch.abs(blackboard.angle_from_nose[ship_id]),
             torch.inf,
         )
 
         enemy_to_ship_scores = torch.where(
             blackboard.enemies[:, ship_id],
-            self.parameters.defensive_distance_weight * blackboard.distance[:, ship_id]
-            + self.parameters.defensive_angle_weight
+            self.ship_params.defensive_distance_weight * blackboard.distance[:, ship_id]
+            + self.ship_params.defensive_angle_weight
             * torch.abs(blackboard.angle_from_nose[:, ship_id]),
             torch.inf,
         )
