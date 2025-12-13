@@ -1,12 +1,33 @@
+from contextlib import closing
 from dataclasses import dataclass
 from turtle import distance
-from typing import Any
+from typing import Any, NamedTuple
 import torch
 import numpy as np
 import torch.nn as nn
 
 from env import ship
 from env.constants import PowerActions, TurnActions, ShootActions
+
+
+class ShipAction(NamedTuple):
+    power: int
+    turn: int
+    shoot: int
+
+
+@dataclass
+class Engagement:
+    distance: float
+    closing_speed: float
+
+    our_speed: float
+    our_angle_from_nose: float
+    our_power: float
+
+    enemy_speed: float
+    enemy_angle_from_nose: float
+    enemy_power: float
 
 
 @dataclass
@@ -33,29 +54,34 @@ class ShipsState:
     is_shooting: torch.Tensor  # shape: [num_ships], dtype: torch.int64
 
     def __post_init__(self):
-        # Remove dead ships
-        alive_mask = self.alive.bool()
-        for field in self.__dataclass_fields__:
-            setattr(self, field, getattr(self, field)[alive_mask])
+        mask = self.alive.bool()
+        for key, value in self.__dict__.items():
+            if isinstance(value, torch.Tensor):
+                self.__dict__[key] = value[mask]
 
 
 @dataclass
 class ShipParameters:
+    # target selection weights
     offensive_distance_weight: float = 1.0
     offensive_angle_weight: float = 500.0
     defensive_distance_weight: float = 1.0
     defensive_angle_weight: float = 500.0
 
+    # general engagement parameters
     max_engage_distance: float = 300.0
     dead_zone_fraction: float = 0.1
     min_power_for_boost: float = 10.0
 
+    # speed targets
     disengage_speed: float = 120.0
     head_on_speed: float = 120.0
+    one_circle_speed: float = 50.0
+    two_circle_speed: float = 100.0
+
+    # distance targets
     offensive_distance: float = 50.0
     defensive_distance: float = 50.0
-    two_circle_speed: float = 100.0
-    one_circle_speed: float = 50.0
 
 
 class ScriptedAgentV2(nn.Module):
@@ -100,15 +126,19 @@ class ScriptedAgentV2(nn.Module):
 
     def calculate_blackboard(self, ships: ShipsState) -> Blackboard:
         relative_position = self.get_relative_position(ships.position)
+
         distance = torch.abs(relative_position)
+
         relative_lead_position = self.get_lead_position(
             relative_position, distance, ships
         )
+
         direction = relative_lead_position / (distance + 1e-8)
-        angle_from_nose = torch.angle(
-            direction * torch.conj(torch.exp(-1j * ships.velocity[:, None]))
-        )
+
+        angle_from_nose = self.get_angle_from_nose(relative_lead_position, ships)
+
         enemies = ships.team_id[:, None] != ships.team_id[None, :]
+
         return Blackboard(
             relative_position=relative_position,
             relative_lead_position=relative_lead_position,
@@ -119,32 +149,17 @@ class ScriptedAgentV2(nn.Module):
         )
 
     def get_relative_position(self, position: torch.Tensor) -> torch.Tensor:
-        """
+        """s
         Compute relative positions between all pairs of ships on a 2D toroidal world.
         """
-        # Convert complex64 positions into real (x, y) coordinates
-        position = torch.view_as_real(position)  # [num_ships, 2]
+        dx = position[None, :].real - position[:, None].real
+        dy = position[None, :].imag - position[:, None].imag
 
-        world_width, world_height = self.world_size
-        world_dimensions = torch.tensor(
-            [world_width, world_height],
-            dtype=position.dtype,
-            device=position.device,
-        )
+        width, height = self.world_size
+        dx = (dx + width / 2) % width - width / 2
+        dy = (dy + height / 2) % height - height / 2
 
-        delta = position[None, :, :] - position[:, None, :]  # [num_ships, num_ships, 2]
-
-        # Wrap using centered modulo to place deltas into:
-        #   [-world_width/2, +world_width/2)
-        #   [-world_height/2, +world_height/2)
-        delta = (delta + world_dimensions / 2) % world_dimensions - world_dimensions / 2
-
-        # Convert back to complex
-        relative_position = torch.view_as_complex(
-            delta.contiguous()
-        )  # [num_ships, num_ships]
-
-        return relative_position
+        return dx + 1j * dy
 
     def get_lead_position(
         self,
@@ -157,6 +172,15 @@ class ScriptedAgentV2(nn.Module):
         time_to_target = distance / bullet_speed
         lead_position = relative_position + ships.velocity * time_to_target
         return lead_position
+
+    def get_angle_from_nose(
+        self,
+        relative_position: torch.Tensor,
+        ships: ShipsState,
+    ) -> torch.Tensor:
+        velocity_dir = ships.velocity / (ships.speed + 1e-8)
+        angle_from_nose = torch.angle(relative_position * velocity_dir.conj())
+        return angle_from_nose
 
 
 class ShipController(nn.Module):
@@ -176,182 +200,159 @@ class ShipController(nn.Module):
         team_ids: list[int],
     ) -> torch.Tensor:
         target_id = self.choose_target(blackboard, ship_id)
-
-    def get_manuever_actions(
-        self,
-        ships: ShipsState,
-        blackboard: Blackboard,
-        ship_id: int,
-        target_id: int,
-    ) -> dict[str, torch.Tensor]:
+        engagement = Engagement(
+            distance=blackboard.distance[ship_id, target_id].item(),
+            closing_speed=torch.norm(
+                ships.velocity[ship_id] - ships.velocity[target_id]
+            ).item(),
+            our_speed=ships.speed[ship_id].item(),
+            our_angle_from_nose=blackboard.angle_from_nose[ship_id, target_id].item(),
+            our_power=ships.power[ship_id].item(),
+            enemy_speed=ships.speed[target_id].item(),
+            enemy_angle_from_nose=blackboard.angle_from_nose[target_id, ship_id].item(),
+            enemy_power=ships.power[target_id].item(),
+        )
         if (
             blackboard.distance[ship_id, target_id]
             > self.ship_params.max_engage_distance
         ):
-            return self.disengaged_action(ships, blackboard, ship_id, target_id)
+            return self.disengaged_action(engagement)
 
         ship_can_shoot = abs(
             blackboard.angle_from_nose[ship_id, target_id]
         ) < torch.deg2rad(15.0)
+
         enemy_can_shoot = abs(
             blackboard.angle_from_nose[target_id, ship_id]
         ) < torch.deg2rad(15.0)
 
         if ship_can_shoot and enemy_can_shoot:
-            return self.head_on_action(ships, blackboard, ship_id, target_id)
+            return self.head_on_action(engagement)
 
         if enemy_can_shoot:
-            return self.defensive_action(ships, blackboard, ship_id, target_id)
+            return self.defensive_action(engagement)
 
         if ship_can_shoot:
-            return self.offensive_action(ships, blackboard, ship_id, target_id)
+            return self.offensive_action(engagement)
 
         if torch.sign(blackboard.angle_from_nose[ship_id, target_id]) == torch.sign(
             blackboard.angle_from_nose[target_id, ship_id]
         ):
-            return self.two_circle_action(ships, blackboard, ship_id, target_id)
+            return self.two_circle_action(engagement)
 
-        return self.one_circle_action(ships, blackboard, ship_id, target_id)
+        return self.one_circle_action(engagement)
 
-    def choose_target(self, blackboard: Blackboard, ship_id: int) -> int:
-        ship_to_enemy_scores = torch.where(
-            blackboard.enemies[ship_id],
-            self.ship_params.offensive_distance_weight * blackboard.distance[ship_id]
-            + self.ship_params.offensive_angle_weight
-            * torch.abs(blackboard.angle_from_nose[ship_id]),
-            torch.inf,
+    def choose_target(self, blackboard: Blackboard, ship_id: int):
+
+        distance = blackboard.distance
+        angle = torch.abs(blackboard.angle_from_nose)
+        enemy = blackboard.enemies
+
+        attack = (
+            self.ship_params.offensive_distance_weight * distance
+            + self.ship_params.offensive_angle_weight * angle
         )
 
-        enemy_to_ship_scores = torch.where(
-            blackboard.enemies[:, ship_id],
-            self.ship_params.defensive_distance_weight * blackboard.distance[:, ship_id]
-            + self.ship_params.defensive_angle_weight
-            * torch.abs(blackboard.angle_from_nose[:, ship_id]),
-            torch.inf,
+        deffense = (
+            self.ship_params.defensive_distance_weight * distance
+            + self.ship_params.defensive_angle_weight * angle
         )
 
-        combined_scores = torch.min(ship_to_enemy_scores, enemy_to_ship_scores)
+        combined = torch.where(enemy, torch.min(attack, deffense), torch.inf)
+        return torch.argmin(combined[ship_id]).item()
 
-        return torch.argmin(combined_scores).item()
-
-    def disengaged_action(
+    def get_boost_action(
         self,
-        ships: ShipsState,
-        blackboard: Blackboard,
-        ship_id: int,
-        target_id: int,
-    ) -> torch.Tensor:
-        power = ships.power[ship_id]
-        speed = ships.speed[ship_id]
-
-        # Boost logic
-        if speed > self.ship_params.disengage_speed * (
-            1 - self.ship_params.dead_zone_fraction
-        ):
-            boost_action = PowerActions.BRAKE
-        elif (
-            speed
-            < self.ship_params.disengage_speed
-            * (1 + self.ship_params.dead_zone_fraction)
-            and power >= self.ship_params.min_power_for_boost
-        ):
-            boost_action = PowerActions.BOOST
+        engagement: Engagement,
+        target_speed: float | None,
+        target_distance: float | None,
+    ) -> int:
+        if target_speed is not None:
+            variable = engagement.our_speed
+        if target_distance is not None:
+            variable = engagement.distance
         else:
-            boost_action = PowerActions.COAST
+            raise ValueError("Either target_speed or target_distance must be provided")
 
-        # Turn logic
-        if blackboard.angle_from_nose[ship_id, target_id] > torch.deg2rad(5.0 / 2):
-            turn_action = TurnActions.TURN_RIGHT
-        elif blackboard.angle_from_nose[ship_id, target_id] < torch.deg2rad(-5.0 / 2):
-            turn_action = TurnActions.TURN_LEFT
+        if variable > target_speed * (1 + self.ship_params.dead_zone_fraction):
+            return PowerActions.BRAKE
+
+        if (
+            variable < target_speed * (1 - self.ship_params.dead_zone_fraction)
+            and engagement.our_power >= self.ship_params.min_power_for_boost
+        ):
+            return PowerActions.BOOST
+
+        return PowerActions.COAST
+
+    def get_turn_action(
+        self,
+        engagement: Engagement,
+        normal_turn_threshold: float,  # in radians
+        sharp_turn_threshold: float,  # in radians
+    ) -> int:
+
+        if engagement.our_angle_from_nose > sharp_turn_threshold:
+            return TurnActions.SHARP_RIGHT
+        elif engagement.our_angle_from_nose > normal_turn_threshold:
+            return TurnActions.TURN_RIGHT
+        elif engagement.our_angle_from_nose < -sharp_turn_threshold:
+            return TurnActions.SHARP_LEFT
+        elif engagement.our_angle_from_nose < -normal_turn_threshold:
+            return TurnActions.TURN_LEFT
         else:
-            turn_action = TurnActions.GO_STRAIGHT
+            return TurnActions.GO_STRAIGHT
+
+    def get_shoot_action(self, engagement: Engagement) -> int:
+        if (
+            abs(engagement.our_angle_from_nose) < torch.deg2rad(15.0)
+            and engagement.distance < self.ship_params.max_engage_distance
+        ):
+            return ShootActions.SHOOT
+        else:
+            return ShootActions.NO_SHOOT
+
+    def disengaged_action(self, engagement: Engagement) -> torch.Tensor:
+        boost_action = self.get_boost_action(
+            engagement, target_speed=self.ship_params.disengage_speed
+        )
+
+        turn_action = self.get_turn_action(
+            engagement,
+            normal_turn_threshold=torch.deg2rad(5.0 / 2),
+            sharp_turn_threshold=torch.inf,
+        )
 
         # Shoot logic
-        shoot_action = ShootActions.NO_SHOOT
+        shoot_action = self.get_shoot_action(engagement)
 
         return torch.tensor(
             [boost_action, turn_action, shoot_action], dtype=torch.int64
         )
 
-    def head_on_action(
-        self,
-        ships: ShipsState,
-        blackboard: Blackboard,
-        ship_id: int,
-        target_id: int,
-    ) -> torch.Tensor:
-        power = ships.power[ship_id]
-        speed = ships.speed[ship_id]
+    def head_on_action(self, engagement: Engagement) -> torch.Tensor:
+        boost_action = self.get_boost_action(
+            engagement, target_speed=self.ship_params.head_on_speed
+        )
 
-        # Boost logic
-        if speed > self.ship_params.head_on_speed * (
-            1 - self.ship_params.dead_zone_fraction
-        ):
-            boost_action = PowerActions.BRAKE
-        elif (
-            speed
-            < self.ship_params.head_on_speed * (1 + self.ship_params.dead_zone_fraction)
-            and power >= self.ship_params.min_power_for_boost
-        ):
-            boost_action = PowerActions.BOOST
-        else:
-            boost_action = PowerActions.COAST
+        turn_action = self.get_turn_action(
+            engagement,
+            normal_turn_threshold=torch.deg2rad(5.0 / 2),
+            sharp_turn_threshold=torch.deg2rad((5.0 + 15.0) / 2),
+        )
 
-        # Turn logic
-        if blackboard.angle_from_nose[ship_id, target_id] > torch.deg2rad(
-            (5.0 + 15.0) / 2
-        ):
-            turn_action = TurnActions.SHARP_RIGHT
-        elif blackboard.angle_from_nose[ship_id, target_id] > torch.deg2rad(5.0 / 2):
-            turn_action = TurnActions.TURN_RIGHT
-        elif blackboard.angle_from_nose[ship_id, target_id] < torch.deg2rad(
-            -(5.0 + 15.0) / 2
-        ):
-            turn_action = TurnActions.SHARP_LEFT
-        elif blackboard.angle_from_nose[ship_id, target_id] < torch.deg2rad(-5.0 / 2):
-            turn_action = TurnActions.TURN_LEFT
-        else:
-            turn_action = TurnActions.GO_STRAIGHT
-
-        # Shoot logic
-        # TODO: check if there are any allies in the line of fire
-        # TODO: check if enough power to shoot
-        shoot_action = ShootActions.SHOOT
+        shoot_action = self.get_shoot_action(engagement)
 
         return torch.tensor(
             [boost_action, turn_action, shoot_action], dtype=torch.int64
         )
 
-    def defensive_action(
-        self,
-        ships: ShipsState,
-        blackboard: Blackboard,
-        ship_id: int,
-        target_id: int,
-    ) -> torch.Tensor:
-        power = ships.power[ship_id]
-        speed = ships.speed[ship_id]
-        closing_speed = torch.norm(ships.velocity[ship_id] - ships.velocity[target_id])
-        distance = blackboard.distance[ship_id, target_id]
+    def defensive_action(self, engagement: Engagement) -> torch.Tensor:
+        boost_action = self.get_boost_action(
+            engagement, target_distance=self.ship_params.defensive_distance
+        )
 
-        # Boost logic
-        if distance < self.ship_params.offensive_distance * (
-            1 - self.ship_params.dead_zone_fraction
-        ):
-            boost_action = PowerActions.BRAKE
-        elif (
-            distance
-            > self.ship_params.offensive_distance
-            * (1 + self.ship_params.dead_zone_fraction)
-            and power >= self.ship_params.min_power_for_boost
-        ):
-            boost_action = PowerActions.BOOST
-        else:
-            boost_action = PowerActions.COAST
-
-        # Turn logic
-        if blackboard.angle_from_nose[ship_id, target_id] > 0:
+        if engagement.our_angle_from_nose > 0:
             if distance < self.ship_params.defensive_distance:
                 turn_action = TurnActions.SHARP_RIGHT
             else:
@@ -362,136 +363,58 @@ class ShipController(nn.Module):
             else:
                 turn_action = TurnActions.TURN_LEFT
 
-        # Shoot logic
-        shoot_action = ShootActions.NO_SHOOT
+        shoot_action = self.get_shoot_action(engagement)
 
         return torch.tensor(
             [boost_action, turn_action, shoot_action], dtype=torch.int64
         )
 
-    def offensive_action(
-        self,
-        ships: ShipsState,
-        blackboard: Blackboard,
-        ship_id: int,
-        target_id: int,
-    ) -> torch.Tensor:
-        power = ships.power[ship_id]
-        speed = ships.speed[ship_id]
-        closing_speed = torch.norm(ships.velocity[ship_id] - ships.velocity[target_id])
-        distance = blackboard.distance[ship_id, target_id]
+    def offensive_action(self, engagement: Engagement) -> torch.Tensor:
+        boost_action = self.get_boost_action(
+            engagement, target_distance=self.ship_params.offensive_distance
+        )
 
-        # Boost logic
-        if distance < self.ship_params.offensive_distance * (
-            1 - self.ship_params.dead_zone_fraction
-        ):
-            boost_action = PowerActions.BRAKE
-        elif (
-            distance
-            > self.ship_params.offensive_distance
-            * (1 + self.ship_params.dead_zone_fraction)
-            and power >= self.ship_params.min_power_for_boost
-        ):
-            boost_action = PowerActions.BOOST
-        else:
-            boost_action = PowerActions.COAST
+        turn_action = self.get_turn_action(
+            engagement,
+            normal_turn_threshold=torch.deg2rad(5.0 / 2),
+            sharp_turn_threshold=torch.deg2rad((5.0 + 15.0) / 2),
+        )
 
-        # Turn logic
-        if blackboard.angle_from_nose[ship_id, target_id] > torch.deg2rad(
-            (5.0 + 15.0) / 2
-        ):
-            turn_action = TurnActions.SHARP_RIGHT
-        elif blackboard.angle_from_nose[ship_id, target_id] > torch.deg2rad(5.0 / 2):
-            turn_action = TurnActions.TURN_RIGHT
-        elif blackboard.angle_from_nose[ship_id, target_id] < torch.deg2rad(
-            -(5.0 + 15.0) / 2
-        ):
-            turn_action = TurnActions.SHARP_LEFT
-        elif blackboard.angle_from_nose[ship_id, target_id] < torch.deg2rad(-5.0 / 2):
-            turn_action = TurnActions.TURN_LEFT
-        else:
-            turn_action = TurnActions.GO_STRAIGHT
-
-        # Shoot logic
-        # TODO: check if there are any allies in the line of fire
-        # TODO: check if enough power to shoot
-        shoot_action = ShootActions.SHOOT
+        shoot_action = self.get_shoot_action(engagement)
 
         return torch.tensor(
             [boost_action, turn_action, shoot_action], dtype=torch.int64
         )
 
-    def two_circle_action(
-        self,
-        ships: ShipsState,
-        blackboard: Blackboard,
-        ship_id: int,
-        target_id: int,
-    ) -> torch.Tensor:
-        power = ships.power[ship_id]
-        speed = ships.speed[ship_id]
+    def two_circle_action(self, engagement: Engagement) -> torch.Tensor:
+        boost_action = self.get_boost_action(
+            engagement, target_speed=self.ship_params.two_circle_speed
+        )
 
-        # Boost logic
-        if speed > self.ship_params.two_circle_speed * (
-            1 - self.ship_params.dead_zone_fraction
-        ):
-            boost_action = PowerActions.BRAKE
-        elif (
-            speed
-            < self.ship_params.two_circle_speed
-            * (1 + self.ship_params.dead_zone_fraction)
-            and power >= self.ship_params.min_power_for_boost
-        ):
-            boost_action = PowerActions.BOOST
-        else:
-            boost_action = PowerActions.COAST
+        turn_action = self.get_turn_action(
+            engagement,
+            normal_turn_threshold=0.0,
+            sharp_turn_threshold=torch.inf,
+        )
 
-        # Turn logic
-        if blackboard.angle_from_nose[ship_id, target_id] > 0:
-            turn_action = TurnActions.TURN_RIGHT
-        else:
-            turn_action = TurnActions.TURN_LEFT
-
-        # Shoot logic
-        shoot_action = ShootActions.NO_SHOOT
+        shoot_action = self.get_shoot_action(engagement)
 
         return torch.tensor(
             [boost_action, turn_action, shoot_action], dtype=torch.int64
         )
 
-    def one_circle_action(
-        self,
-        ships: ShipsState,
-        blackboard: Blackboard,
-        ship_id: int,
-        target_id: int,
-    ) -> torch.Tensor:
-        power = ships.power[ship_id]
-        speed = ships.speed[ship_id]
+    def one_circle_action(self, engagement: Engagement) -> torch.Tensor:
+        boost_action = self.get_boost_action(
+            engagement, target_speed=self.ship_params.one_circle_speed
+        )
 
-        # Boost logic
-        if speed > self.ship_params.two_circle_speed * (
-            1 - self.ship_params.dead_zone_fraction
-        ):
-            boost_action = PowerActions.BRAKE
-        elif (
-            speed
-            < self.ship_params.two_circle_speed
-            * (1 + self.ship_params.dead_zone_fraction)
-            and power >= self.ship_params.min_power_for_boost
-        ):
-            boost_action = PowerActions.BOOST
-        else:
-            boost_action = PowerActions.COAST
+        turn_action = self.get_turn_action(
+            engagement,
+            normal_turn_threshold=torch.inf,
+            sharp_turn_threshold=0.0,
+        )
 
-        # Turn logic
-        if blackboard.angle_from_nose[ship_id, target_id] > 0:
-            turn_action = TurnActions.SHARP_RIGHT
-        else:
-            turn_action = TurnActions.SHARP_LEFT
-
-        # Shoot logic
-        shoot_action = ShootActions.NO_SHOOT
+        shoot_action = self.get_shoot_action(engagement)
 
         return torch.tensor(
             [boost_action, turn_action, shoot_action], dtype=torch.int64
