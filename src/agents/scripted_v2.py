@@ -116,7 +116,7 @@ class ScriptedAgentV2(nn.Module):
 
     def get_actions(
         self, obs_dict: dict[str, torch.Tensor], ship_ids: list[int]
-    ) -> dict[int, ShipAction]:
+    ) -> dict[int, torch.Tensor]:
         ships = ShipsState(**obs_dict)
         blackboard = self.calculate_blackboard(ships)
         actions = {
@@ -128,7 +128,38 @@ class ScriptedAgentV2(nn.Module):
             )
             for ship_id in ship_ids
         }
+
         # convert from v2 actions (categorical) to v1 actions (binary)
+        # [forward, backward, left, right, sharp_turn, shoot]
+        binary_actions = {}
+        for ship_id, action in actions.items():
+            act_tensor = torch.zeros(6, dtype=torch.float32)
+
+            # Power
+            if action.boost_action == PowerActions.BOOST:
+                act_tensor[0] = 1.0  # Forward
+            elif action.boost_action == PowerActions.BRAKE:
+                act_tensor[1] = 1.0  # Backward
+
+            # Turn
+            if action.turn_action == TurnActions.TURN_LEFT:
+                act_tensor[2] = 1.0  # Left
+            elif action.turn_action == TurnActions.TURN_RIGHT:
+                act_tensor[3] = 1.0  # Right
+            elif action.turn_action == TurnActions.SHARP_LEFT:
+                act_tensor[2] = 1.0  # Left
+                act_tensor[4] = 1.0  # Sharp
+            elif action.turn_action == TurnActions.SHARP_RIGHT:
+                act_tensor[3] = 1.0  # Right
+                act_tensor[4] = 1.0  # Sharp
+
+            # Shoot
+            if action.shoot_action == ShootActions.SHOOT:
+                act_tensor[5] = 1.0  # Shoot
+
+            binary_actions[ship_id] = act_tensor
+
+        return binary_actions
 
     def calculate_blackboard(self, ships: ShipsState) -> Blackboard:
         relative_position = self.get_relative_position(ships.position)
@@ -206,7 +237,7 @@ class ShipController(nn.Module):
         blackboard: Blackboard,
         ship_id: int,
         team_ids: list[int],
-    ) -> torch.Tensor:
+    ) -> ShipAction:
         target_id = self.choose_target(blackboard, ship_id)
         engagement = Engagement(
             distance=blackboard.distance[ship_id, target_id],
@@ -367,7 +398,7 @@ class ShipController(nn.Module):
             shoot_action=shoot_action,
         )
 
-    def head_on_action(self, engagement: Engagement) -> torch.Tensor:
+    def head_on_action(self, engagement: Engagement) -> ShipAction:
         boost_action = self.get_boost_action(
             engagement, target_speed=self.ship_params.head_on_speed
         )
