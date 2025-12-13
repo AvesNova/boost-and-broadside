@@ -149,7 +149,7 @@ class ScriptedAgentV2(nn.Module):
         )
 
     def get_relative_position(self, position: torch.Tensor) -> torch.Tensor:
-        """s
+        """
         Compute relative positions between all pairs of ships on a 2D toroidal world.
         """
         dx = position[None, :].real - position[:, None].real
@@ -264,21 +264,26 @@ class ShipController(nn.Module):
     def get_boost_action(
         self,
         engagement: Engagement,
-        target_speed: float | None,
-        target_distance: float | None,
+        *,
+        target_speed: float | None = None,
+        target_distance: float | None = None,
     ) -> int:
-        if target_speed is not None:
-            variable = engagement.our_speed
-        if target_distance is not None:
-            variable = engagement.distance
-        else:
-            raise ValueError("Either target_speed or target_distance must be provided")
 
-        if variable > target_speed * (1 + self.ship_params.dead_zone_fraction):
+        if (target_speed is None) == (target_distance is None):
+            raise ValueError("Provide exactly one of target_speed or target_distance")
+
+        if target_speed is not None:
+            value = engagement.our_speed
+            target = target_speed
+        else:
+            value = engagement.distance
+            target = target_distance
+
+        if value > target * (1 + self.ship_params.dead_zone_fraction):
             return PowerActions.BRAKE
 
         if (
-            variable < target_speed * (1 - self.ship_params.dead_zone_fraction)
+            value < target * (1 - self.ship_params.dead_zone_fraction)
             and engagement.our_power >= self.ship_params.min_power_for_boost
         ):
             return PowerActions.BOOST
@@ -305,14 +310,14 @@ class ShipController(nn.Module):
 
     def get_shoot_action(self, engagement: Engagement) -> int:
         if (
-            abs(engagement.our_angle_from_nose) < torch.deg2rad(15.0)
+            abs(engagement.our_angle_from_nose) < float(torch.deg2rad(15.0))
             and engagement.distance < self.ship_params.max_engage_distance
         ):
             return ShootActions.SHOOT
         else:
             return ShootActions.NO_SHOOT
 
-    def disengaged_action(self, engagement: Engagement) -> torch.Tensor:
+    def disengaged_action(self, engagement: Engagement) -> ShipAction:
         boost_action = self.get_boost_action(
             engagement, target_speed=self.ship_params.disengage_speed
         )
@@ -326,8 +331,10 @@ class ShipController(nn.Module):
         # Shoot logic
         shoot_action = self.get_shoot_action(engagement)
 
-        return torch.tensor(
-            [boost_action, turn_action, shoot_action], dtype=torch.int64
+        return ShipAction(
+            boost_action=boost_action,
+            turn_action=turn_action,
+            shoot_action=shoot_action,
         )
 
     def head_on_action(self, engagement: Engagement) -> torch.Tensor:
@@ -343,33 +350,37 @@ class ShipController(nn.Module):
 
         shoot_action = self.get_shoot_action(engagement)
 
-        return torch.tensor(
-            [boost_action, turn_action, shoot_action], dtype=torch.int64
+        return ShipAction(
+            boost_action=boost_action,
+            turn_action=turn_action,
+            shoot_action=shoot_action,
         )
 
-    def defensive_action(self, engagement: Engagement) -> torch.Tensor:
+    def defensive_action(self, engagement: Engagement) -> ShipAction:
         boost_action = self.get_boost_action(
             engagement, target_distance=self.ship_params.defensive_distance
         )
 
         if engagement.our_angle_from_nose > 0:
-            if distance < self.ship_params.defensive_distance:
+            if engagement.distance < self.ship_params.defensive_distance:
                 turn_action = TurnActions.SHARP_RIGHT
             else:
                 turn_action = TurnActions.TURN_RIGHT
         else:
-            if distance < self.ship_params.defensive_distance:
+            if engagement.distance < self.ship_params.defensive_distance:
                 turn_action = TurnActions.SHARP_LEFT
             else:
                 turn_action = TurnActions.TURN_LEFT
 
         shoot_action = self.get_shoot_action(engagement)
 
-        return torch.tensor(
-            [boost_action, turn_action, shoot_action], dtype=torch.int64
+        return ShipAction(
+            boost_action=boost_action,
+            turn_action=turn_action,
+            shoot_action=shoot_action,
         )
 
-    def offensive_action(self, engagement: Engagement) -> torch.Tensor:
+    def offensive_action(self, engagement: Engagement) -> ShipAction:
         boost_action = self.get_boost_action(
             engagement, target_distance=self.ship_params.offensive_distance
         )
@@ -382,11 +393,13 @@ class ShipController(nn.Module):
 
         shoot_action = self.get_shoot_action(engagement)
 
-        return torch.tensor(
-            [boost_action, turn_action, shoot_action], dtype=torch.int64
+        return ShipAction(
+            boost_action=boost_action,
+            turn_action=turn_action,
+            shoot_action=shoot_action,
         )
 
-    def two_circle_action(self, engagement: Engagement) -> torch.Tensor:
+    def two_circle_action(self, engagement: Engagement) -> ShipAction:
         boost_action = self.get_boost_action(
             engagement, target_speed=self.ship_params.two_circle_speed
         )
@@ -399,11 +412,13 @@ class ShipController(nn.Module):
 
         shoot_action = self.get_shoot_action(engagement)
 
-        return torch.tensor(
-            [boost_action, turn_action, shoot_action], dtype=torch.int64
+        return ShipAction(
+            boost_action=boost_action,
+            turn_action=turn_action,
+            shoot_action=shoot_action,
         )
 
-    def one_circle_action(self, engagement: Engagement) -> torch.Tensor:
+    def one_circle_action(self, engagement: Engagement) -> ShipAction:
         boost_action = self.get_boost_action(
             engagement, target_speed=self.ship_params.one_circle_speed
         )
@@ -416,6 +431,8 @@ class ShipController(nn.Module):
 
         shoot_action = self.get_shoot_action(engagement)
 
-        return torch.tensor(
-            [boost_action, turn_action, shoot_action], dtype=torch.int64
+        return ShipAction(
+            boost_action=boost_action,
+            turn_action=turn_action,
+            shoot_action=shoot_action,
         )
