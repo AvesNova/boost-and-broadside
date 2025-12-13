@@ -36,6 +36,7 @@ class Blackboard:
     direction: torch.Tensor  # 2D complex
     angle_from_nose: torch.Tensor  # 2D float
     enemies: torch.Tensor  # 2D bool
+    both_alive: torch.Tensor  # 2D bool
 
 
 @dataclass
@@ -83,6 +84,11 @@ class ShipParameters:
     offensive_distance: float = 50.0
     defensive_distance: float = 50.0
 
+    # turning thresholds
+    shoot_angle: float = np.deg2rad(15.0)
+    normal_turn_angle: float = np.deg2rad(2.5)
+    sharp_turn_angle: float = np.deg2rad(10.0)
+
 
 class ScriptedAgentV2(nn.Module):
     """
@@ -110,7 +116,7 @@ class ScriptedAgentV2(nn.Module):
 
     def get_actions(
         self, obs_dict: dict[str, torch.Tensor], ship_ids: list[int]
-    ) -> dict[int, torch.Tensor]:
+    ) -> dict[int, ShipAction]:
         ships = ShipsState(**obs_dict)
         blackboard = self.calculate_blackboard(ships)
         actions = {
@@ -122,7 +128,7 @@ class ScriptedAgentV2(nn.Module):
             )
             for ship_id in ship_ids
         }
-        return actions
+        # convert from v2 actions (categorical) to v1 actions (binary)
 
     def calculate_blackboard(self, ships: ShipsState) -> Blackboard:
         relative_position = self.get_relative_position(ships.position)
@@ -138,6 +144,7 @@ class ScriptedAgentV2(nn.Module):
         angle_from_nose = self.get_angle_from_nose(relative_lead_position, ships)
 
         enemies = ships.team_id[:, None] != ships.team_id[None, :]
+        both_alive = (ships.alive[:, None] & ships.alive[None, :]).bool()
 
         return Blackboard(
             relative_position=relative_position,
@@ -146,6 +153,7 @@ class ScriptedAgentV2(nn.Module):
             direction=direction,
             angle_from_nose=angle_from_nose,
             enemies=enemies,
+            both_alive=both_alive,
         )
 
     def get_relative_position(self, position: torch.Tensor) -> torch.Tensor:
@@ -216,13 +224,15 @@ class ShipController(nn.Module):
         ):
             return self.disengaged_action(engagement)
 
-        ship_can_shoot = abs(
-            blackboard.angle_from_nose[ship_id, target_id]
-        ) < torch.deg2rad(15.0)
+        ship_can_shoot = (
+            abs(blackboard.angle_from_nose[ship_id, target_id])
+            < self.ship_params.shoot_angle
+        )
 
-        enemy_can_shoot = abs(
-            blackboard.angle_from_nose[target_id, ship_id]
-        ) < torch.deg2rad(15.0)
+        enemy_can_shoot = (
+            abs(blackboard.angle_from_nose[target_id, ship_id])
+            < self.ship_params.shoot_angle
+        )
 
         if ship_can_shoot and enemy_can_shoot:
             return self.head_on_action(engagement)
@@ -258,19 +268,23 @@ class ShipController(nn.Module):
         distance = blackboard.distance
         angle = torch.abs(blackboard.angle_from_nose)
         enemy = blackboard.enemies
+        both_alive = blackboard.both_alive
 
-        attack = (
+        attack = torch.where(
+            (enemy & both_alive)[ship_id, :],
             self.ship_params.offensive_distance_weight * distance[ship_id, :]
-            + self.ship_params.offensive_angle_weight * angle
+            + self.ship_params.offensive_angle_weight * angle[ship_id, :],
+            torch.inf,
         )
 
-        deffense = (
+        deffense = torch.where(
+            (enemy & both_alive)[:, ship_id],
             self.ship_params.defensive_distance_weight * distance[:, ship_id]
-            + self.ship_params.defensive_angle_weight * angle
+            + self.ship_params.defensive_angle_weight * angle[:, ship_id],
+            torch.inf,
         )
 
-        combined = torch.where(enemy, torch.min(attack, deffense), torch.inf)
-        return torch.argmin(combined[ship_id])
+        return torch.argmin(torch.min(attack, deffense))
 
     def get_boost_action(
         self,
@@ -326,7 +340,7 @@ class ShipController(nn.Module):
 
     def get_shoot_action(self, engagement: Engagement) -> int:
         if (
-            abs(engagement.our_angle_from_nose) < float(torch.deg2rad(15.0))
+            abs(engagement.our_angle_from_nose) < self.ship_params.shoot_angle
             and engagement.distance < self.ship_params.max_engage_distance
         ):
             return ShootActions.SHOOT
@@ -341,7 +355,7 @@ class ShipController(nn.Module):
         turn_action = self.get_turn_action(
             engagement,
             allow_normal=True,
-            normal_turn_threshold=torch.deg2rad(5.0 / 2),
+            normal_turn_threshold=self.ship_params.normal_turn_angle,
         )
 
         # Shoot logic
@@ -362,8 +376,8 @@ class ShipController(nn.Module):
             engagement,
             allow_normal=True,
             allow_sharp=True,
-            normal_turn_threshold=torch.deg2rad(5.0 / 2),
-            sharp_turn_threshold=torch.deg2rad((5.0 + 15.0) / 2),
+            normal_turn_threshold=self.ship_params.normal_turn_angle,
+            sharp_turn_threshold=self.ship_params.sharp_turn_angle,
         )
 
         shoot_action = self.get_shoot_action(engagement)
@@ -407,8 +421,8 @@ class ShipController(nn.Module):
             engagement,
             allow_normal=True,
             allow_sharp=True,
-            normal_turn_threshold=torch.deg2rad(5.0 / 2),
-            sharp_turn_threshold=torch.deg2rad((5.0 + 15.0) / 2),
+            normal_turn_threshold=self.ship_params.normal_turn_angle,
+            sharp_turn_threshold=self.ship_params.sharp_turn_angle,
         )
 
         shoot_action = self.get_shoot_action(engagement)
