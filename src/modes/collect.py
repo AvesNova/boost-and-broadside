@@ -119,30 +119,36 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
     worker_metadata = []
 
     for worker_dir in worker_dirs:
-        final_data_path = worker_dir / "data_final.pkl"
-        if not final_data_path.exists():
-            print(f"Warning: {final_data_path} not found, skipping")
+        # Find all checkpoint files
+        checkpoint_files = sorted(
+            worker_dir.glob("data_checkpoint_*.pkl"),
+            key=lambda p: int(p.stem.split("_")[-1])
+        )
+
+        if not checkpoint_files:
+            print(f"Warning: No data checkpoints found in {worker_dir}, skipping")
             continue
 
-        with open(final_data_path, "rb") as f:
-            data = pickle.load(f)
+        for checkpoint_path in checkpoint_files:
+            with open(checkpoint_path, "rb") as f:
+                data = pickle.load(f)
 
-        episode_offset = total_episodes
-        adjusted_episode_ids = data["episode_ids"] + episode_offset
+            episode_offset = total_episodes
+            adjusted_episode_ids = data["episode_ids"] + episode_offset
 
-        all_team_0_tokens.append(data["team_0"]["tokens"])
-        all_team_0_actions.append(data["team_0"]["actions"])
-        all_team_0_rewards.append(data["team_0"]["rewards"])
-        all_team_1_tokens.append(data["team_1"]["tokens"])
-        all_team_1_actions.append(data["team_1"]["actions"])
-        all_team_1_rewards.append(data["team_1"]["rewards"])
-        all_episode_ids.append(adjusted_episode_ids)
-        all_episode_lengths.append(data["episode_lengths"])
+            all_team_0_tokens.append(data["team_0"]["tokens"])
+            all_team_0_actions.append(data["team_0"]["actions"])
+            all_team_0_rewards.append(data["team_0"]["rewards"])
+            all_team_1_tokens.append(data["team_1"]["tokens"])
+            all_team_1_actions.append(data["team_1"]["actions"])
+            all_team_1_rewards.append(data["team_1"]["rewards"])
+            all_episode_ids.append(adjusted_episode_ids)
+            all_episode_lengths.append(data["episode_lengths"])
 
-        total_episodes += data["metadata"]["num_episodes"]
-        total_timesteps += data["metadata"]["total_timesteps"]
-        total_sim_time += data["metadata"]["total_sim_time"]
-        worker_metadata.append(data["metadata"])
+            total_episodes += data["metadata"]["num_episodes"]
+            total_timesteps += data["metadata"]["total_timesteps"]
+            total_sim_time += data["metadata"]["total_sim_time"]
+            worker_metadata.append(data["metadata"])
 
     if total_episodes == 0:
         print("No episodes found in worker data.")

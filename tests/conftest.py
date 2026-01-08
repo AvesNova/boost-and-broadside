@@ -25,6 +25,8 @@ def default_config():
                 "agent_dt": 0.04,
                 "physics_dt": 0.02,
                 "render_mode": "none",
+                "random_positioning": False,
+                "random_speed": False,
             },
             "team1": "scripted",
             "team2": "scripted",

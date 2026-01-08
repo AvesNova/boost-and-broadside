@@ -17,6 +17,7 @@ class EpisodeData:
     actions: dict[int, list[torch.Tensor]]
     rewards: dict[int, list[float]]
     episode_length: int
+    sim_time: float
 
 
 class DataCollector:
@@ -75,6 +76,7 @@ class DataCollector:
             actions=actions,
             rewards=rewards,
             episode_length=episode_length,
+            sim_time=sim_time,
         )
 
         self.episodes.append(episode)
@@ -82,7 +84,7 @@ class DataCollector:
         self.total_sim_time += sim_time
         self.episodes_collected += 1
 
-        if self.episodes_collected % self.save_frequency == 0:
+        if len(self.episodes) >= self.save_frequency:
             self.save()
 
     def _aggregate_episodes(self) -> dict[str, Any]:
@@ -102,6 +104,9 @@ class DataCollector:
         )
 
         total_timesteps = episode_lengths.sum().item()
+        
+        # Calculate simulation time only for the current batch of episodes
+        batch_sim_time = sum(ep.sim_time for ep in self.episodes)
 
         tokens_team_0 = torch.zeros(
             (total_timesteps, self.max_ships, self.token_dim), dtype=torch.float32
@@ -179,7 +184,7 @@ class DataCollector:
             "metadata": {
                 "num_episodes": num_episodes,
                 "total_timesteps": total_timesteps,
-                "total_sim_time": self.total_sim_time,
+                "total_sim_time": batch_sim_time,
                 "worker_id": self.worker_id,
                 "run_timestamp": self.run_timestamp,
                 "max_ships": self.max_ships,
@@ -189,7 +194,7 @@ class DataCollector:
         }
 
     def save(self) -> None:
-        """Save collected data to disk"""
+        """Save collected data to disk and clear memory"""
         if not self.episodes:
             return
 
@@ -200,25 +205,16 @@ class DataCollector:
         with open(save_path, "wb") as f:
             pickle.dump(data, f)
 
+        # Clear episodes to free memory
+        num_saved = len(self.episodes)
+        self.episodes = [] 
+
         print(
-            f"Worker {self.worker_id}: Saved {self.episodes_collected} episodes "
-            f"({self.total_steps} steps) to {save_path}"
+            f"Worker {self.worker_id}: Saved {num_saved} episodes "
+            f"to {save_path}"
         )
 
     def finalize(self) -> None:
         """Final save when collection is complete"""
-        if not self.episodes:
-            return
-
-        self.save()
-
-        data = self._aggregate_episodes()
-        final_path = self.output_dir / "data_final.pkl"
-
-        with open(final_path, "wb") as f:
-            pickle.dump(data, f)
-
-        print(
-            f"Worker {self.worker_id}: Finalized {self.episodes_collected} episodes "
-            f"to {final_path}"
-        )
+        if self.episodes:
+            self.save()

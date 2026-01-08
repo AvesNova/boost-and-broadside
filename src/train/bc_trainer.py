@@ -239,18 +239,18 @@ def train_bc(cfg: DictConfig) -> Path | None:
         writer.add_scalar("Accuracy/val", val_accuracy, epoch)
 
         # Early stopping check
-        if avg_val_loss < best_val_loss:
-            best_val_loss = avg_val_loss
-            patience_counter = 0
+        # if avg_val_loss < best_val_loss:
+        #     best_val_loss = avg_val_loss
+        #     patience_counter = 0
 
-            # Save best model
-            torch.save(model.state_dict(), run_dir / "best_bc_model.pth")
-            print("  Saved best model")
-        else:
-            patience_counter += 1
-            if patience_counter >= bc_config.early_stopping_patience:
-                print(f"Early stopping triggered after {epoch+1} epochs")
-                break
+        #     # Save best model
+        #     torch.save(model.state_dict(), run_dir / "best_bc_model.pth")
+        #     print("  Saved best model")
+        # else:
+        #     patience_counter += 1
+        #     if patience_counter >= bc_config.early_stopping_patience:
+        #         print(f"Early stopping triggered after {epoch+1} epochs")
+        #         break
 
     # Save final model
     torch.save(model.state_dict(), run_dir / "final_bc_model.pth")

@@ -43,8 +43,13 @@ def test_collect_pipeline(default_config, tmp_path):
         assert os.path.exists(worker_dir)
 
         # Check for data file
-        data_file = os.path.join(worker_dir, "data_final.pkl")
+        # The aggregation step creates 'aggregated_data.pkl' in the run directory
+        data_file = os.path.join(run_dir, "aggregated_data.pkl")
         assert os.path.exists(data_file)
+        
+        # Also check for at least one checkpoint in worker dir
+        checkpoints = [f for f in os.listdir(worker_dir) if f.startswith("data_checkpoint_")]
+        assert len(checkpoints) > 0
 
     finally:
         os.chdir(original_cwd)

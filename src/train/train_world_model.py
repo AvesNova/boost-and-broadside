@@ -91,10 +91,6 @@ def train_world_model(cfg: DictConfig) -> None:
 
     # Load Data
     data_path = cfg.train.bc_data_path
-    if data_path is None:
-        from train.data_loader import get_latest_data_path
-
-        data_path = get_latest_data_path()
 
     log.info(f"Loading data from {data_path}")
     data = load_bc_data(data_path)

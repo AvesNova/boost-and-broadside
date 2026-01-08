@@ -1,7 +1,7 @@
 mode: play
 team1: scripted
 team2: scripted
-human_player: true
+human_player: false
 
 environment:
   render_mode: "human"
@@ -34,18 +34,18 @@ components:
 collect:
   teams: [scripted, scripted]
   episodes_per_mode:
-    "1v1": 0
-    "2v2": 0
-    "3v3": 0
-    "4v4": 2048
+    "1v1": 16384
+    "2v2": 16384
+    "3v3": 16384
+    "4v4": 16384
   output_dir: "data/bc_pretraining"
-  num_workers: 8
-  save_frequency: 128
+  num_workers: 12
+  save_frequency: 512
   render_mode: "none"
   max_episode_length: 512
 
 train:
-  run_collect: false
+  run_collect: true
   run_bc: false
   run_world_model: true
   run_rl: false
@@ -53,7 +53,8 @@ train:
   use_bc: false
   use_rl: false
   
-  bc_data_path: "data/bc_pretraining/20251127_153140/aggregated_data.pkl"
+  # bc_data_path: "data/bc_pretraining/20251127_153140/aggregated_data.pkl"
+  bc_data_path: data/bc_pretraining/20260107_011518/aggregated_data.pkl
   
   model:
     transformer:
@@ -99,7 +100,7 @@ world_model:
   mask_ratio: 0.15
   noise_scale: 0.1
   learning_rate: 0.0003
-  epochs: 100
+  epochs: 10000
   
   # Mixed Batch Training
   short_batch_size: 256
