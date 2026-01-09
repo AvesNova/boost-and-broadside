@@ -1,4 +1,5 @@
 """Data collector for behavioral cloning training data."""
+
 import pickle
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,7 +36,7 @@ class DataCollector:
         self.config = config
         self.worker_id = worker_id
         self.run_timestamp = run_timestamp
-        
+
         run_dir = Path(config.collect.output_dir) / run_timestamp
         self.output_dir = run_dir / f"worker_{worker_id}"
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -104,7 +105,7 @@ class DataCollector:
         )
 
         total_timesteps = episode_lengths.sum().item()
-        
+
         # Calculate simulation time only for the current batch of episodes
         batch_sim_time = sum(ep.sim_time for ep in self.episodes)
 
@@ -207,12 +208,9 @@ class DataCollector:
 
         # Clear episodes to free memory
         num_saved = len(self.episodes)
-        self.episodes = [] 
+        self.episodes = []
 
-        print(
-            f"Worker {self.worker_id}: Saved {num_saved} episodes "
-            f"to {save_path}"
-        )
+        print(f"Worker {self.worker_id}: Saved {num_saved} episodes " f"to {save_path}")
 
     def finalize(self) -> None:
         """Final save when collection is complete"""

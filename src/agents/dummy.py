@@ -3,8 +3,6 @@ import torch
 import torch.nn as nn
 
 
-
-
 class DummyAgent(nn.Module):
     """
     Agent that performs no actions (all zeros).

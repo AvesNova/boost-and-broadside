@@ -4,6 +4,7 @@ Utility functions for finding trained models in the models directory.
 Provides functions to locate the most recent or best-performing models
 for BC and RL training.
 """
+
 import csv
 from pathlib import Path
 from typing import Literal
@@ -11,7 +12,9 @@ from typing import Literal
 MODELS_DIR = Path("models")
 
 
-def find_most_recent_model(model_type: Literal["bc", "rl", "world_model"]) -> str | None:
+def find_most_recent_model(
+    model_type: Literal["bc", "rl", "world_model"],
+) -> str | None:
     """
     Find the most recent model file in the models/{model_type} directory.
 
@@ -53,7 +56,7 @@ def find_most_recent_model(model_type: Literal["bc", "rl", "world_model"]) -> st
             model_path = run_dir / "final_bc_model.pth"
         elif model_type == "world_model":
             model_path = run_dir / "final_world_model.pth"
-        
+
         if model_type in ["bc", "world_model"] and model_path.exists():
             return str(model_path.absolute())
 

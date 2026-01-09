@@ -4,10 +4,13 @@ Observation tokenization for neural network input.
 Converts raw game observations into normalized token representations suitable for
 transformer-based agents.
 """
+
 import torch
 
 
-def observation_to_tokens(obs: dict[str, torch.Tensor], perspective: int) -> torch.Tensor:
+def observation_to_tokens(
+    obs: dict[str, torch.Tensor], perspective: int
+) -> torch.Tensor:
     """
     Convert observation dictionary to token representation.
 

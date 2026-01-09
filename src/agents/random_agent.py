@@ -3,8 +3,6 @@ import torch
 import torch.nn as nn
 
 
-
-
 class RandomAgent(nn.Module):
     """
     Agent that performs random actions.

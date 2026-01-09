@@ -83,13 +83,9 @@ class TestLongView:
 
         dataset = UnifiedEpisodeDataset(tokens, actions, episode_lengths)
         # Only use episodes longer than seq_len
-        valid_indices = [
-            i for i, l in enumerate(episode_lengths) if l >= 128
-        ]
-        
-        view = LongView(
-            dataset, valid_indices, seq_len=128, warmup_len=32
-        )
+        valid_indices = [i for i, l in enumerate(episode_lengths) if l >= 128]
+
+        view = LongView(dataset, valid_indices, seq_len=128, warmup_len=32)
 
         assert len(view) > 0
 

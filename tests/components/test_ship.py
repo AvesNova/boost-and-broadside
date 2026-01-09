@@ -42,7 +42,7 @@ def test_ship_movement_no_action():
 def test_ship_movement_forward():
     ship = create_test_ship()
     action = torch.zeros(3)
-    action[0] = float(PowerActions.BOOST) # Forward/Boost
+    action[0] = float(PowerActions.BOOST)  # Forward/Boost
     action[1] = float(TurnActions.GO_STRAIGHT)
     action[2] = float(ShootActions.NO_SHOOT)
 
@@ -58,10 +58,10 @@ def test_ship_movement_forward():
 
 def test_ship_turn_left():
     ship = create_test_ship()
-    # Give it some velocity so turning does something to position if tracked, 
+    # Give it some velocity so turning does something to position if tracked,
     # but mainly checking attitude update
     ship.velocity = 100 + 0j
-    
+
     action = torch.zeros(3)
     action[0] = float(PowerActions.COAST)
     action[1] = float(TurnActions.TURN_LEFT)
@@ -93,7 +93,7 @@ def test_ship_shoot():
 def test_ship_cooldown():
     ship = create_test_ship()
     action = torch.zeros(3)
-    action[0] = float(PowerActions.BOOST) # Forward
+    action[0] = float(PowerActions.BOOST)  # Forward
     action[1] = float(TurnActions.GO_STRAIGHT)
     action[2] = float(ShootActions.SHOOT)
 

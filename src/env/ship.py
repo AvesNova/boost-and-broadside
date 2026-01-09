@@ -117,19 +117,25 @@ class Ship(nn.Module):
 
     def _build_lookup_tables(self, ship_config: ShipConfig) -> None:
         """Pre-compute lookup tables for physics calculations to avoid conditionals."""
-        
-        # Power Actions: COAST (0), BOOST (1), REVERSE (2)
-        self.thrust_table = np.array([
-            ship_config.base_thrust,      # COAST
-            ship_config.boost_thrust,     # BOOST
-            ship_config.reverse_thrust,   # REVERSE
-        ], dtype=np.float32)
 
-        self.energy_cost_table = np.array([
-            ship_config.base_power_gain,     # COAST
-            ship_config.boost_power_gain,    # BOOST
-            ship_config.reverse_power_gain,  # REVERSE
-        ], dtype=np.float32)
+        # Power Actions: COAST (0), BOOST (1), REVERSE (2)
+        self.thrust_table = np.array(
+            [
+                ship_config.base_thrust,  # COAST
+                ship_config.boost_thrust,  # BOOST
+                ship_config.reverse_thrust,  # REVERSE
+            ],
+            dtype=np.float32,
+        )
+
+        self.energy_cost_table = np.array(
+            [
+                ship_config.base_power_gain,  # COAST
+                ship_config.boost_power_gain,  # BOOST
+                ship_config.reverse_power_gain,  # REVERSE
+            ],
+            dtype=np.float32,
+        )
 
         # Turn Actions:
         # GO_STRAIGHT (0)
@@ -150,40 +156,58 @@ class Ship(nn.Module):
         # Drag Coefficients
         self.drag_coeff_table = np.zeros(7, dtype=np.float32)
         self.drag_coeff_table[TurnActions.GO_STRAIGHT] = ship_config.no_turn_drag_coeff
-        self.drag_coeff_table[TurnActions.TURN_LEFT] = ship_config.normal_turn_drag_coeff
-        self.drag_coeff_table[TurnActions.TURN_RIGHT] = ship_config.normal_turn_drag_coeff
-        self.drag_coeff_table[TurnActions.SHARP_LEFT] = ship_config.sharp_turn_drag_coeff
-        self.drag_coeff_table[TurnActions.SHARP_RIGHT] = ship_config.sharp_turn_drag_coeff
-        # From previous System logic: AIR_BRAKE = Left+Right -> normal drag
-        self.drag_coeff_table[TurnActions.AIR_BRAKE] = ship_config.normal_turn_drag_coeff
-        # SHARP_AIR_BRAKE = Sharp+Left+Right -> sharp drag
-        self.drag_coeff_table[TurnActions.SHARP_AIR_BRAKE] = ship_config.sharp_turn_drag_coeff
+        self.drag_coeff_table[TurnActions.TURN_LEFT] = (
+            ship_config.normal_turn_drag_coeff
+        )
+        self.drag_coeff_table[TurnActions.TURN_RIGHT] = (
+            ship_config.normal_turn_drag_coeff
+        )
+        self.drag_coeff_table[TurnActions.SHARP_LEFT] = (
+            ship_config.sharp_turn_drag_coeff
+        )
+        self.drag_coeff_table[TurnActions.SHARP_RIGHT] = (
+            ship_config.sharp_turn_drag_coeff
+        )
+        self.drag_coeff_table[TurnActions.AIR_BRAKE] = (
+            ship_config.normal_turn_drag_coeff
+        )
+        self.drag_coeff_table[TurnActions.SHARP_AIR_BRAKE] = (
+            ship_config.sharp_turn_drag_coeff
+        )
 
         # Lift Coefficients
         self.lift_coeff_table = np.zeros(7, dtype=np.float32)
         self.lift_coeff_table[TurnActions.GO_STRAIGHT] = 0.0
-        self.lift_coeff_table[TurnActions.TURN_LEFT] = -ship_config.normal_turn_lift_coeff
-        self.lift_coeff_table[TurnActions.TURN_RIGHT] = ship_config.normal_turn_lift_coeff
-        self.lift_coeff_table[TurnActions.SHARP_LEFT] = -ship_config.sharp_turn_lift_coeff
-        self.lift_coeff_table[TurnActions.SHARP_RIGHT] = ship_config.sharp_turn_lift_coeff
+        self.lift_coeff_table[TurnActions.TURN_LEFT] = (
+            -ship_config.normal_turn_lift_coeff
+        )
+        self.lift_coeff_table[TurnActions.TURN_RIGHT] = (
+            ship_config.normal_turn_lift_coeff
+        )
+        self.lift_coeff_table[TurnActions.SHARP_LEFT] = (
+            -ship_config.sharp_turn_lift_coeff
+        )
+        self.lift_coeff_table[TurnActions.SHARP_RIGHT] = (
+            ship_config.sharp_turn_lift_coeff
+        )
         self.lift_coeff_table[TurnActions.AIR_BRAKE] = 0.0
         self.lift_coeff_table[TurnActions.SHARP_AIR_BRAKE] = 0.0
 
     def _extract_action_states(self, actions: torch.Tensor) -> ActionStates:
         """
         Convert raw action tensor to ActionStates dataclass.
-        
+
         Args:
             actions: Tensor of shape (3,) containing indices for [Power, Turn, Shoot].
         """
         # Handle empty or invalid action tensor
         if actions.numel() != 3:
-             # Fallback to default/noop
-             return ActionStates(
-                 power=PowerActions.COAST,
-                 turn=TurnActions.GO_STRAIGHT,
-                 shoot=ShootActions.NO_SHOOT
-             )
+            # Fallback to default/noop
+            return ActionStates(
+                power=PowerActions.COAST,
+                turn=TurnActions.GO_STRAIGHT,
+                shoot=ShootActions.NO_SHOOT,
+            )
 
         return ActionStates(
             power=int(actions[0]),

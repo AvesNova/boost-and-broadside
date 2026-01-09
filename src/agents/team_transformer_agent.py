@@ -285,7 +285,7 @@ class TeamTransformerAgent:
             # For consistency, we might also want to return probs/logits but they are split now.
             # Returning original logits is fine.
             # Probs is tricky - returning dict of probs? or just ignore.
-            
+
             return {
                 "actions": actions,
                 "action_logits": action_logits,

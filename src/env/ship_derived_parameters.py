@@ -47,7 +47,7 @@ def measure_max_speed() -> float:
     action = torch.zeros(3, dtype=torch.float32)
     action[0] = float(PowerActions.BOOST)
     action[1] = float(TurnActions.GO_STRAIGHT)
-    action[2] = 0.0 # No Shoot
+    action[2] = 0.0  # No Shoot
 
     # Run until energy is depleted or speed stops increasing
     steps = 0
@@ -134,10 +134,12 @@ def measure_turn_characteristics(sharp_turn: bool = False) -> dict[str, float]:
 
     # Set up turn action
     action = torch.zeros(3, dtype=torch.float32)
-    action[0] = float(PowerActions.COAST) # Maintain some speed? Or boost? Original code didn't specify boost, so COAST.
-    # Actually original code for 'sharp_turn' was sharp_turn=1, right=1. 
+    action[0] = float(
+        PowerActions.COAST
+    )  # Maintain some speed? Or boost? Original code didn't specify boost, so COAST.
+    # Actually original code for 'sharp_turn' was sharp_turn=1, right=1.
     # For normal turn it was right=1.
-    
+
     if sharp_turn:
         # Sharp turn + Right (or Left)
         action[1] = float(TurnActions.SHARP_RIGHT)

@@ -248,7 +248,7 @@ class GameRenderer:
             x, y = bullets.x[i], bullets.y[i]
             ship_id = bullets.ship_id[i]
 
-        # Bullet color matches ship team
+            # Bullet color matches ship team
             if ship_id == 0:
                 color = (100, 150, 255)  # Light blue
             else:

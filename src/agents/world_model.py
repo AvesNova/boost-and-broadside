@@ -448,16 +448,16 @@ class WorldModel(nn.Module):
         def compute_action_loss(preds, targets):
             # preds: (K, 12)
             # targets: (K, 12) (one-hot)
-            
+
             # Split heads
             pred_power = preds[:, 0:3]
             pred_turn = preds[:, 3:10]
             pred_shoot = preds[:, 10:12]
-            
+
             target_power = targets[:, 0:3].argmax(dim=-1)
             target_turn = targets[:, 3:10].argmax(dim=-1)
             target_shoot = targets[:, 10:12].argmax(dim=-1)
-            
+
             loss = F.cross_entropy(pred_power, target_power)
             loss += F.cross_entropy(pred_turn, target_turn)
             loss += F.cross_entropy(pred_shoot, target_shoot)
@@ -536,26 +536,26 @@ class WorldModel(nn.Module):
 
             # Predictions are for the NEXT step
             next_state = pred_states
-            next_action_logits = pred_actions # (B, 1, N, 12)
+            next_action_logits = pred_actions  # (B, 1, N, 12)
 
             # Sample action (categorical)
             # Deterministic argmax for generation/viz usually best, or temperature sampling
             # Using argmax for stability in this context
-            
+
             # Split logits
             power_logits = next_action_logits[..., 0:3]
             turn_logits = next_action_logits[..., 3:10]
             shoot_logits = next_action_logits[..., 10:12]
-            
+
             power_idx = power_logits.argmax(dim=-1)
             turn_idx = turn_logits.argmax(dim=-1)
             shoot_idx = shoot_logits.argmax(dim=-1)
-            
+
             # Convert back to one-hot (B, 1, N, 12)
             power_oh = F.one_hot(power_idx, num_classes=3)
             turn_oh = F.one_hot(turn_idx, num_classes=7)
             shoot_oh = F.one_hot(shoot_idx, num_classes=2)
-            
+
             next_action = torch.cat([power_oh, turn_oh, shoot_oh], dim=-1).float()
 
             all_states.append(next_state)

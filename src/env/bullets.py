@@ -4,7 +4,7 @@ import numpy as np
 class Bullets:
     """
     Manages a pool of bullets using pre-allocated numpy arrays for performance.
-    
+
     This class handles the lifecycle of bullets, including creation, movement,
     and removal. It uses a swap-and-pop strategy to keep active bullets
     contiguous in memory, avoiding expensive array resizing.
@@ -80,7 +80,7 @@ class Bullets:
     def _swap_bullets(self, i: int, j: int) -> None:
         """
         Swap two bullets in all internal arrays.
-        
+
         Args:
             i: Index of the first bullet.
             j: Index of the second bullet.

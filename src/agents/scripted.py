@@ -270,7 +270,7 @@ class ShipController(nn.Module):
         if angle_to_target > self.angle_threshold:
             # Need to turn
             is_sharp = angle_to_target > np.deg2rad(15.0)
-            
+
             if cross_product > 0:
                 # Original: action[3] = 1.0 (Right)
                 # Map to TurnActions.TURN_RIGHT (2) or SHARP_RIGHT (4)
@@ -280,7 +280,7 @@ class ShipController(nn.Module):
                 # Map to TurnActions.TURN_LEFT (1) or SHARP_LEFT (3)
                 action[1] = 3.0 if is_sharp else 1.0
         else:
-            action[1] = 0.0 # GO_STRAIGHT
+            action[1] = 0.0  # GO_STRAIGHT
 
         # Calculate dynamic shooting angle threshold based on distance to target
         dynamic_shooting_threshold = self._calculate_shooting_angle_threshold(

@@ -122,7 +122,7 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
         # Find all checkpoint files
         checkpoint_files = sorted(
             worker_dir.glob("data_checkpoint_*.pkl"),
-            key=lambda p: int(p.stem.split("_")[-1])
+            key=lambda p: int(p.stem.split("_")[-1]),
         )
 
         if not checkpoint_files:

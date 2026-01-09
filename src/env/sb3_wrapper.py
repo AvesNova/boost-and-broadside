@@ -18,7 +18,6 @@ from agents.tokenizer import observation_to_tokens
 from env.env import Environment
 
 
-
 class SB3Wrapper(gym.Wrapper):
     """
     Gymnasium wrapper to adapt the Environment for Stable Baselines3.

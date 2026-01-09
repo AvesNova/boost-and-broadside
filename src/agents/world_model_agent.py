@@ -17,6 +17,7 @@ log = logging.getLogger(__name__)
 
 import torch.nn.functional as F
 
+
 class WorldModelAgent:
     """
     Agent that uses the World Model to predict actions.
@@ -216,12 +217,12 @@ class WorldModelAgent:
                         shoot_idx[0, ship_id].item(),
                     ],
                     dtype=torch.float32,
-                    device=self.device
+                    device=self.device,
                 )
                 team_actions[ship_id] = action_indices
 
         return team_actions
-    
+
     def get_agent_type(self) -> str:
         """Return agent type identifier."""
         return "world_model"
