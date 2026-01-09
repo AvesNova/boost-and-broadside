@@ -2,7 +2,7 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from env.constants import HumanActions
+
 
 
 class DummyAgent(nn.Module):
@@ -24,7 +24,7 @@ class DummyAgent(nn.Module):
         self.agent_id = agent_id
         self.team_id = team_id
         self.squad = squad
-        self.num_actions = len(HumanActions)
+        self.num_actions = 12
 
     def forward(
         self, observation: dict[str, Any], ship_ids: list[int]
@@ -41,5 +41,5 @@ class DummyAgent(nn.Module):
         """
         actions = {}
         for ship_id in ship_ids:
-            actions[ship_id] = torch.zeros(self.num_actions, dtype=torch.float32)
+            actions[ship_id] = torch.zeros(3, dtype=torch.float32)
         return actions

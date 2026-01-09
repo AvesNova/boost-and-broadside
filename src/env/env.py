@@ -8,7 +8,7 @@ from env.event import EventType, GameEvent
 from .bullets import Bullets
 from .ship import Ship, default_ship_config
 from .renderer import create_renderer
-from .constants import HumanActions, RewardConstants
+from .constants import RewardConstants
 from .state import State
 
 
@@ -580,8 +580,8 @@ class Environment(gym.Env):
     @property
     def action_space(self) -> spaces.Space:
         """Define the action space for each ship"""
-        # Multi-discrete for binary actions: [forward, backward, left, right, sharp_turn, shoot]
-        return spaces.MultiBinary(len(HumanActions))
+        # Multi-discrete for categorical actions: [Power(3), Turn(7), Shoot(2)]
+        return spaces.MultiDiscrete([3, 7, 2])
 
     @property
     def observation_space(self) -> spaces.Space:

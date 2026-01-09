@@ -14,7 +14,7 @@ import math
 import os
 
 from .ship import Ship, default_ship_config
-from .constants import HumanActions
+from .constants import PowerActions, TurnActions
 from .bullets import Bullets
 
 
@@ -43,8 +43,11 @@ def measure_max_speed() -> float:
     max_speed = 0.0
 
     # Create action with max forward boost
-    action = torch.zeros(len(HumanActions))
-    action[HumanActions.forward] = 1.0
+    # [Power, Turn, Shoot]
+    action = torch.zeros(3, dtype=torch.float32)
+    action[0] = float(PowerActions.BOOST)
+    action[1] = float(TurnActions.GO_STRAIGHT)
+    action[2] = 0.0 # No Shoot
 
     # Run until energy is depleted or speed stops increasing
     steps = 0
@@ -80,8 +83,11 @@ def measure_equilibrium_speed() -> float:
     ship = create_test_ship()
     dt = 0.02
 
-    # No thrust action
-    action = torch.zeros(len(HumanActions))
+    # No thrust action (COAST)
+    action = torch.zeros(3, dtype=torch.float32)
+    action[0] = float(PowerActions.COAST)
+    action[1] = float(TurnActions.GO_STRAIGHT)
+    # Shoot is 0 (NO_SHOOT)
 
     # Run until speed stabilizes
     steps = 0
@@ -127,12 +133,17 @@ def measure_turn_characteristics(sharp_turn: bool = False) -> dict[str, float]:
     dt = 0.02
 
     # Set up turn action
-    action = torch.zeros(len(HumanActions))
+    action = torch.zeros(3, dtype=torch.float32)
+    action[0] = float(PowerActions.COAST) # Maintain some speed? Or boost? Original code didn't specify boost, so COAST.
+    # Actually original code for 'sharp_turn' was sharp_turn=1, right=1. 
+    # For normal turn it was right=1.
+    
     if sharp_turn:
-        action[HumanActions.sharp_turn] = 1.0
-        action[HumanActions.right] = 1.0
+        # Sharp turn + Right (or Left)
+        action[1] = float(TurnActions.SHARP_RIGHT)
     else:
-        action[HumanActions.right] = 1.0
+        # Normal turn Right
+        action[1] = float(TurnActions.TURN_RIGHT)
 
     # Phase 1: Let speed stabilize during turn
     steps = 0

@@ -206,8 +206,9 @@ class ShipController(nn.Module):
                         "velocity": candidate["velocity"],
                     }
 
-        # Initialize action (all zeros)
-        action = torch.zeros(6, dtype=torch.float32)
+        # Initialize action (Power, Turn, Shoot)
+        # Power: COAST(0), Turn: GO_STRAIGHT(0), Shoot: NO_SHOOT(0)
+        action = torch.zeros(3, dtype=torch.float32)
 
         # Check if we have valid data for both our ship and an enemy
         if our_ship_data is None or enemy_ship_data is None:
@@ -259,25 +260,27 @@ class ShipController(nn.Module):
         angle_to_target = torch.acos(torch.clamp(cos_angle, -1.0, 1.0))
 
         # Determine turn direction using cross product (2D cross product gives scalar)
-        # If cross product is positive, target is to the left; if negative, to the right
+        # If cross product is positive, target is to the left (in some coord systems)
         cross_product = (
             self_attitude[0] * to_target_normalized[1]
             - self_attitude[1] * to_target_normalized[0]
         )
 
         # Decide on turning action (aim at predicted position)
-        # Use small fixed threshold to prevent jitter
         if angle_to_target > self.angle_threshold:
+            # Need to turn
+            is_sharp = angle_to_target > np.deg2rad(15.0)
+            
             if cross_product > 0:
-                # Target is to the left (counter-clockwise), turn right to face them
-                action[3] = 1.0  # Right
+                # Original: action[3] = 1.0 (Right)
+                # Map to TurnActions.TURN_RIGHT (2) or SHARP_RIGHT (4)
+                action[1] = 4.0 if is_sharp else 2.0
             else:
-                # Target is to the right (clockwise), turn left to face them
-                action[2] = 1.0  # Left
-
-            # Use sharp turn for large angle differences
-            if angle_to_target > np.deg2rad(15.0):
-                action[4] = 1.0  # Sharp turn
+                # Original: action[2] = 1.0 (Left)
+                # Map to TurnActions.TURN_LEFT (1) or SHARP_LEFT (3)
+                action[1] = 3.0 if is_sharp else 1.0
+        else:
+            action[1] = 0.0 # GO_STRAIGHT
 
         # Calculate dynamic shooting angle threshold based on distance to target
         dynamic_shooting_threshold = self._calculate_shooting_angle_threshold(
@@ -293,7 +296,7 @@ class ShipController(nn.Module):
             <= self.max_shooting_range * np.sqrt(current_power_ratio)
             and our_ship_data["health"] > 0
         ):  # Only shoot if we're alive
-            action[5] = 1.0  # Shoot
+            action[2] = 1.0  # ShootActions.SHOOT
 
         # Thrust management based on distance and power
         close_range_threshold = (
@@ -303,17 +306,21 @@ class ShipController(nn.Module):
         current_speed = torch.linalg.norm(our_ship_data["velocity"]).item()
 
         if current_distance <= close_range_threshold:
-            # Close range: use reverse thrust to maintain distance, regardless of power level
-            action[1] = 1.0  # Backward
+            # Close range: use reverse thrust
+            # Original: action[1] = 1.0 -> PowerActions.REVERSE (2)
+            action[0] = 2.0
         else:
-            # Normal range: only boost (forward) if power > 90%, otherwise maintain base thrust
+            # Normal range: boost if power > 90%
             if (
                 current_power_ratio
                 > 0.9 * (1.0 - current_distance / self.max_shooting_range)
                 or current_speed < 30
             ):
-                action[0] = 1.0  # Forward
-            # Note: When power <= 90%, we don't set forward=1, so ship uses base thrust only
+                # Original: action[0] = 1.0 -> PowerActions.BOOST (1)
+                action[0] = 1.0
+            else:
+                # COAST
+                action[0] = 0.0
 
         return action
 

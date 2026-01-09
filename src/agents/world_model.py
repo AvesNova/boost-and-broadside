@@ -418,6 +418,7 @@ class WorldModel(nn.Module):
         self, states, actions, pred_states, pred_actions, mask, loss_mask=None
     ):
         # states: (B, T, N, F)
+        # actions: (B, T, N, 12) - One-hot encoded actions
         # mask: (B, T, N) - True = masked (reconstruction target), False = visible (denoising target)
         # loss_mask: (B, T, N) - True = compute loss, False = ignore (warm-up/padding)
 
@@ -443,30 +444,46 @@ class WorldModel(nn.Module):
         recon_loss = torch.tensor(0.0, device=states.device)
         denoise_loss = torch.tensor(0.0, device=states.device)
 
-        # Reconstruction Loss (for masked tokens)
-        # We only compute loss where mask=True AND loss_mask=True
-        recon_target_mask = mask & loss_mask
+        # Helper to compute categorical action loss
+        def compute_action_loss(preds, targets):
+            # preds: (K, 12)
+            # targets: (K, 12) (one-hot)
+            
+            # Split heads
+            pred_power = preds[:, 0:3]
+            pred_turn = preds[:, 3:10]
+            pred_shoot = preds[:, 10:12]
+            
+            target_power = targets[:, 0:3].argmax(dim=-1)
+            target_turn = targets[:, 3:10].argmax(dim=-1)
+            target_shoot = targets[:, 10:12].argmax(dim=-1)
+            
+            loss = F.cross_entropy(pred_power, target_power)
+            loss += F.cross_entropy(pred_turn, target_turn)
+            loss += F.cross_entropy(pred_shoot, target_shoot)
+            return loss
 
+        # Reconstruction Loss (for masked tokens)
+        recon_target_mask = mask & loss_mask
         if recon_target_mask.any():
             # State loss: MSE
             recon_loss += F.mse_loss(
                 pred_states[recon_target_mask], states[recon_target_mask]
             )
-            # Action loss: BCEWithLogits
-            recon_loss += F.binary_cross_entropy_with_logits(
+            # Action loss: Categorical
+            recon_loss += compute_action_loss(
                 pred_actions[recon_target_mask], actions[recon_target_mask]
             )
 
         # Denoising Loss (for unmasked tokens)
-        # We only compute loss where mask=False AND loss_mask=True
         denoise_target_mask = (~mask) & loss_mask
         if denoise_target_mask.any():
             # State loss: MSE
             denoise_loss += F.mse_loss(
                 pred_states[denoise_target_mask], states[denoise_target_mask]
             )
-            # Action loss: BCEWithLogits
-            denoise_loss += F.binary_cross_entropy_with_logits(
+            # Action loss: Categorical
+            denoise_loss += compute_action_loss(
                 pred_actions[denoise_target_mask], actions[denoise_target_mask]
             )
 
@@ -479,7 +496,7 @@ class WorldModel(nn.Module):
 
         Args:
             initial_state: (B, N, F) - Initial state of all ships.
-            initial_action: (B, N, A) - Initial action of all ships.
+            initial_action: (B, N, A) - Initial action (one-hot) of all ships.
             steps: Number of timesteps to generate.
             n_ships: Number of ships.
         """
@@ -518,13 +535,28 @@ class WorldModel(nn.Module):
             past_key_values = current_key_values
 
             # Predictions are for the NEXT step
-            # pred_states: (batch_size, 1, num_ships, features)
             next_state = pred_states
-            next_action_logits = pred_actions
+            next_action_logits = pred_actions # (B, 1, N, 12)
 
-            # Sample action (deterministic for now)
-            next_action_probs = torch.sigmoid(next_action_logits)
-            next_action = (next_action_probs > 0.5).float()
+            # Sample action (categorical)
+            # Deterministic argmax for generation/viz usually best, or temperature sampling
+            # Using argmax for stability in this context
+            
+            # Split logits
+            power_logits = next_action_logits[..., 0:3]
+            turn_logits = next_action_logits[..., 3:10]
+            shoot_logits = next_action_logits[..., 10:12]
+            
+            power_idx = power_logits.argmax(dim=-1)
+            turn_idx = turn_logits.argmax(dim=-1)
+            shoot_idx = shoot_logits.argmax(dim=-1)
+            
+            # Convert back to one-hot (B, 1, N, 12)
+            power_oh = F.one_hot(power_idx, num_classes=3)
+            turn_oh = F.one_hot(turn_idx, num_classes=7)
+            shoot_oh = F.one_hot(shoot_idx, num_classes=2)
+            
+            next_action = torch.cat([power_oh, turn_oh, shoot_oh], dim=-1).float()
 
             all_states.append(next_state)
             all_actions.append(next_action)

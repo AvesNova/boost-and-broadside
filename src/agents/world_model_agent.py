@@ -15,6 +15,8 @@ from agents.tokenizer import observation_to_tokens
 log = logging.getLogger(__name__)
 
 
+import torch.nn.functional as F
+
 class WorldModelAgent:
     """
     Agent that uses the World Model to predict actions.
@@ -35,7 +37,7 @@ class WorldModelAgent:
         context_len: int = 128,
         device: str = "cpu",
         state_dim: int = 12,
-        action_dim: int = 6,
+        action_dim: int = 12,
         embed_dim: int = 128,
         n_layers: int = 4,
         n_heads: int = 4,
@@ -54,7 +56,7 @@ class WorldModelAgent:
             context_len: Maximum context length for the model.
             device: Device to run the model on ("cpu" or "cuda").
             state_dim: Dimension of state tokens.
-            action_dim: Dimension of action tokens.
+            action_dim: Dimension of action tokens (12 total for categorical).
             embed_dim: Transformer embedding dimension.
             n_layers: Number of transformer layers.
             n_heads: Number of attention heads.
@@ -93,11 +95,11 @@ class WorldModelAgent:
 
         # History buffer: list of (token, action) tuples
         # token: (1, num_ships, state_dim)
-        # action: (1, num_ships, action_dim)
-        # We store context_len - 1 items because we append the current step + mask during inference
+        # action: (1, num_ships, action_dim) - ONE HOT
         self.history = deque(maxlen=context_len - 1)
 
         # Track previous action to feed into the model (Action t-1)
+        # Stored as One-Hot for model input
         self.last_action = torch.zeros(1, max_ships, action_dim, device=self.device)
 
     def load_model(self, path: str) -> None:
@@ -132,7 +134,7 @@ class WorldModelAgent:
             ship_ids: List of ship IDs to get actions for.
 
         Returns:
-            Dict mapping ship_id -> action tensor.
+            Dict mapping ship_id -> action tensor (categorical indices).
         """
         # 1. Tokenize observation -> (1, num_ships, state_dim)
         current_token = observation_to_tokens(observation, self.team_id).to(self.device)
@@ -177,29 +179,49 @@ class WorldModelAgent:
             )
 
         # 4. Extract prediction for the masked step (last step)
-        next_action_logits = pred_actions_logits[:, -1, :, :]  # (1, N, A)
+        next_action_logits = pred_actions_logits[:, -1, :, :]  # (1, N, 12)
 
-        # 5. Sample actions from predicted probabilities
-        next_action_probs = torch.sigmoid(next_action_logits)
+        # 5. Extract actions
+        # Split heads
+        power_logits = next_action_logits[..., 0:3]
+        turn_logits = next_action_logits[..., 3:10]
+        shoot_logits = next_action_logits[..., 10:12]
 
-        # Sample from Bernoulli distribution instead of thresholding
-        # This allows actions even when probabilities are low
-        next_action = torch.bernoulli(next_action_probs)
+        # Argmax selection
+        power_idx = power_logits.argmax(dim=-1)
+        turn_idx = turn_logits.argmax(dim=-1)
+        shoot_idx = shoot_logits.argmax(dim=-1)
+
+        # Convert to one-hot for history
+        power_oh = F.one_hot(power_idx, num_classes=3)
+        turn_oh = F.one_hot(turn_idx, num_classes=7)
+        shoot_oh = F.one_hot(shoot_idx, num_classes=2)
+        next_action_oh = torch.cat([power_oh, turn_oh, shoot_oh], dim=-1).float()
 
         # 6. Update history
         # Store (current_token, last_action) which represents step t
         self.history.append((current_token, self.last_action))
         # Update last_action to the action we just decided (Action t)
-        self.last_action = next_action
+        self.last_action = next_action_oh
 
-        # 7. Return actions for my ships
+        # 7. Return categorical indices for my ships
         team_actions = {}
         for ship_id in ship_ids:
             if ship_id < self.max_ships:
-                team_actions[ship_id] = next_action[0, ship_id]
+                # Construct (3,) tensor of indices
+                action_indices = torch.tensor(
+                    [
+                        power_idx[0, ship_id].item(),
+                        turn_idx[0, ship_id].item(),
+                        shoot_idx[0, ship_id].item(),
+                    ],
+                    dtype=torch.float32,
+                    device=self.device
+                )
+                team_actions[ship_id] = action_indices
 
         return team_actions
-
+    
     def get_agent_type(self) -> str:
         """Return agent type identifier."""
         return "world_model"

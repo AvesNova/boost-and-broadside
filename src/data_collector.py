@@ -43,7 +43,7 @@ class DataCollector:
         self.save_frequency = config.collect.save_frequency
         self.token_dim = config.train.model.transformer.token_dim
         self.max_ships = config.train.model.transformer.max_ships
-        self.num_actions = config.train.model.transformer.num_actions
+        self.num_actions = 3
 
         self.episodes: list[EpisodeData] = []
         self.total_steps = 0

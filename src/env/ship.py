@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from env.constants import HumanActions
+from env.constants import PowerActions, TurnActions, ShootActions
 from env.bullets import Bullets
 
 
@@ -50,11 +50,8 @@ default_ship_config = ShipConfig()
 class ActionStates:
     """Parsed action states from the action vector."""
 
-    forward: int
-    backward: int
-    left: int
-    right: int
-    sharp_turn: int
+    power: int
+    turn: int
     shoot: int
 
 
@@ -120,106 +117,103 @@ class Ship(nn.Module):
 
     def _build_lookup_tables(self, ship_config: ShipConfig) -> None:
         """Pre-compute lookup tables for physics calculations to avoid conditionals."""
-        # Indexed by [left, right, sharp] -> turn offset
-        self.turn_offset_table = np.zeros((2, 2, 2), dtype=np.float32)
+        
+        # Power Actions: COAST (0), BOOST (1), REVERSE (2)
+        self.thrust_table = np.array([
+            ship_config.base_thrust,      # COAST
+            ship_config.boost_thrust,     # BOOST
+            ship_config.reverse_thrust,   # REVERSE
+        ], dtype=np.float32)
 
-        self.turn_offset_table[0, 0, 0] = 0  # None
-        self.turn_offset_table[0, 1, 0] = ship_config.normal_turn_angle  # R
-        self.turn_offset_table[1, 0, 0] = -ship_config.normal_turn_angle  # L
-        self.turn_offset_table[1, 1, 0] = 0  # LR
-        self.turn_offset_table[0, 0, 1] = 0  # S
-        self.turn_offset_table[0, 1, 1] = ship_config.sharp_turn_angle  # SR
-        self.turn_offset_table[1, 0, 1] = -ship_config.sharp_turn_angle  # SL
-        self.turn_offset_table[1, 1, 1] = 0  # SLR
+        self.energy_cost_table = np.array([
+            ship_config.base_power_gain,     # COAST
+            ship_config.boost_power_gain,    # BOOST
+            ship_config.reverse_power_gain,  # REVERSE
+        ], dtype=np.float32)
 
-        # Indexed by [forward, backward] -> thrust
-        self.thrust_table = np.zeros((2, 2), dtype=np.float32)
-        self.thrust_table[0, 0] = ship_config.base_thrust  # Neither
-        self.thrust_table[1, 0] = ship_config.boost_thrust  # Forward only
-        self.thrust_table[0, 1] = ship_config.reverse_thrust  # Backward only
-        self.thrust_table[1, 1] = ship_config.base_thrust  # Both -> cancel out to base
+        # Turn Actions:
+        # GO_STRAIGHT (0)
+        # TURN_LEFT (1), TURN_RIGHT (2)
+        # SHARP_LEFT (3), SHARP_RIGHT (4)
+        # AIR_BRAKE (5), SHARP_AIR_BRAKE (6)
 
-        # Indexed by [forward, backward] -> energy cost
-        self.energy_cost_table = np.zeros((2, 2), dtype=np.float32)
-        self.energy_cost_table[0, 0] = ship_config.base_power_gain  # Neither
-        self.energy_cost_table[1, 0] = ship_config.boost_power_gain  # Forward only
-        self.energy_cost_table[0, 1] = ship_config.reverse_power_gain  # Backward only
-        self.energy_cost_table[1, 1] = ship_config.base_power_gain  # Both -> base
+        # Turn Offsets
+        self.turn_offset_table = np.zeros(7, dtype=np.float32)
+        self.turn_offset_table[TurnActions.GO_STRAIGHT] = 0.0
+        self.turn_offset_table[TurnActions.TURN_LEFT] = -ship_config.normal_turn_angle
+        self.turn_offset_table[TurnActions.TURN_RIGHT] = ship_config.normal_turn_angle
+        self.turn_offset_table[TurnActions.SHARP_LEFT] = -ship_config.sharp_turn_angle
+        self.turn_offset_table[TurnActions.SHARP_RIGHT] = ship_config.sharp_turn_angle
+        self.turn_offset_table[TurnActions.AIR_BRAKE] = 0.0
+        self.turn_offset_table[TurnActions.SHARP_AIR_BRAKE] = 0.0
 
-        # Indexed by [turning, sharp] -> drag coefficient
-        self.drag_coeff_table = np.zeros((2, 2), dtype=np.float32)
-        self.drag_coeff_table[0, 0] = ship_config.no_turn_drag_coeff  # No turn
-        self.drag_coeff_table[0, 1] = ship_config.no_turn_drag_coeff  # No turn
-        self.drag_coeff_table[1, 0] = ship_config.normal_turn_drag_coeff  # Normal turn
-        self.drag_coeff_table[1, 1] = ship_config.sharp_turn_drag_coeff  # Sharp turn
+        # Drag Coefficients
+        self.drag_coeff_table = np.zeros(7, dtype=np.float32)
+        self.drag_coeff_table[TurnActions.GO_STRAIGHT] = ship_config.no_turn_drag_coeff
+        self.drag_coeff_table[TurnActions.TURN_LEFT] = ship_config.normal_turn_drag_coeff
+        self.drag_coeff_table[TurnActions.TURN_RIGHT] = ship_config.normal_turn_drag_coeff
+        self.drag_coeff_table[TurnActions.SHARP_LEFT] = ship_config.sharp_turn_drag_coeff
+        self.drag_coeff_table[TurnActions.SHARP_RIGHT] = ship_config.sharp_turn_drag_coeff
+        # From previous System logic: AIR_BRAKE = Left+Right -> normal drag
+        self.drag_coeff_table[TurnActions.AIR_BRAKE] = ship_config.normal_turn_drag_coeff
+        # SHARP_AIR_BRAKE = Sharp+Left+Right -> sharp drag
+        self.drag_coeff_table[TurnActions.SHARP_AIR_BRAKE] = ship_config.sharp_turn_drag_coeff
 
-        # Indexed by [left, right, sharp] -> lift coefficient
-        self.lift_coeff_table = np.zeros((2, 2, 2), dtype=np.float32)
-        self.lift_coeff_table[0, 0, 0] = 0.0  # None
-        self.lift_coeff_table[0, 0, 1] = 0.0  # S
-        self.lift_coeff_table[0, 1, 0] = self.config.normal_turn_lift_coeff  # R
-        self.lift_coeff_table[0, 1, 1] = self.config.sharp_turn_lift_coeff  # SR
-        self.lift_coeff_table[1, 0, 0] = -self.config.normal_turn_lift_coeff  # L
-        self.lift_coeff_table[1, 0, 1] = -self.config.sharp_turn_lift_coeff  # SL
-        self.lift_coeff_table[1, 1, 0] = 0.0  # LR
-        self.lift_coeff_table[1, 1, 1] = 0.0  # SLR
+        # Lift Coefficients
+        self.lift_coeff_table = np.zeros(7, dtype=np.float32)
+        self.lift_coeff_table[TurnActions.GO_STRAIGHT] = 0.0
+        self.lift_coeff_table[TurnActions.TURN_LEFT] = -ship_config.normal_turn_lift_coeff
+        self.lift_coeff_table[TurnActions.TURN_RIGHT] = ship_config.normal_turn_lift_coeff
+        self.lift_coeff_table[TurnActions.SHARP_LEFT] = -ship_config.sharp_turn_lift_coeff
+        self.lift_coeff_table[TurnActions.SHARP_RIGHT] = ship_config.sharp_turn_lift_coeff
+        self.lift_coeff_table[TurnActions.AIR_BRAKE] = 0.0
+        self.lift_coeff_table[TurnActions.SHARP_AIR_BRAKE] = 0.0
 
     def _extract_action_states(self, actions: torch.Tensor) -> ActionStates:
-        """Convert raw action tensor to ActionStates dataclass."""
-        # Handle empty action tensor
-        if actions.numel() == 0:
-            return ActionStates(
-                left=0,
-                right=0,
-                forward=0,
-                backward=0,
-                sharp_turn=0,
-                shoot=0,
-            )
-
-        # Ensure actions has at least 6 elements
-        if actions.numel() < 6:
-            # Pad with zeros if needed
-            actions = F.pad(actions, (0, 6 - actions.numel()))
+        """
+        Convert raw action tensor to ActionStates dataclass.
+        
+        Args:
+            actions: Tensor of shape (3,) containing indices for [Power, Turn, Shoot].
+        """
+        # Handle empty or invalid action tensor
+        if actions.numel() != 3:
+             # Fallback to default/noop
+             return ActionStates(
+                 power=PowerActions.COAST,
+                 turn=TurnActions.GO_STRAIGHT,
+                 shoot=ShootActions.NO_SHOOT
+             )
 
         return ActionStates(
-            left=int(actions[HumanActions.left]),
-            right=int(actions[HumanActions.right]),
-            forward=int(actions[HumanActions.forward]),
-            backward=int(actions[HumanActions.backward]),
-            sharp_turn=int(actions[HumanActions.sharp_turn]),
-            shoot=int(actions[HumanActions.shoot]),
+            power=int(actions[0]),
+            turn=int(actions[1]),
+            shoot=int(actions[2]),
         )
 
     def _update_power(self, actions: ActionStates, delta_t: float) -> None:
         """Update ship power based on thrust actions."""
-        energy_cost = self.energy_cost_table[actions.forward, actions.backward]
+        energy_cost = self.energy_cost_table[actions.power]
         self.power += energy_cost * delta_t
         self.power = max(0.0, min(self.power, self.config.max_power))
 
     def _update_attitude(self, actions: ActionStates) -> None:
         """Update ship attitude (orientation) based on turn actions."""
-        if not (actions.left and actions.right):
-            self.turn_offset = self.turn_offset_table[
-                actions.left, actions.right, actions.sharp_turn
-            ]
+        self.turn_offset = self.turn_offset_table[actions.turn]
         self.attitude = self.velocity / self.speed * np.exp(1j * self.turn_offset)
 
     def _calculate_forces(self, actions: ActionStates) -> complex:
         """Calculate total force acting on the ship."""
         if self.power > 0:
-            thrust = self.thrust_table[actions.forward, actions.backward]
+            thrust = self.thrust_table[actions.power]
             thrust_force = thrust * self.attitude
         else:
             thrust_force = 0 + 0j
 
-        turning = int(actions.left or actions.right)
-        drag_coeff = self.drag_coeff_table[turning, actions.sharp_turn]
+        drag_coeff = self.drag_coeff_table[actions.turn]
         drag_force = -drag_coeff * self.speed * self.velocity
 
-        lift_coeff = self.lift_coeff_table[
-            actions.left, actions.right, actions.sharp_turn
-        ]
+        lift_coeff = self.lift_coeff_table[actions.turn]
         lift_vector = self.velocity * 1j  # 90 degrees counter-clockwise
         lift_force = lift_coeff * self.speed * lift_vector
 
@@ -243,7 +237,7 @@ class Ship(nn.Module):
     ) -> None:
         """Handle shooting logic."""
         if (
-            actions.shoot
+            actions.shoot == ShootActions.SHOOT
             and current_time - self.last_fired_time >= self.config.firing_cooldown
             and self.power >= self.config.bullet_energy_cost
         ):
@@ -287,7 +281,7 @@ class Ship(nn.Module):
         Advance the ship's state by one time step.
 
         Args:
-            action_vector: Tensor containing actions.
+            action_vector: Tensor containing actions of shape (3,).
             bullets: Bullet manager instance.
             current_time: Current simulation time.
             delta_t: Time step duration.

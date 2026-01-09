@@ -9,21 +9,10 @@ from enum import IntEnum, auto
 from matplotlib.pyplot import cla
 
 
-class HumanActions(IntEnum):
-    """Action indices for ship control."""
-
-    forward = 0
-    backward = auto()
-    left = auto()
-    right = auto()
-    sharp_turn = auto()
-    shoot = auto()
-
-
 class PowerActions(IntEnum):
     COAST = 0
-    BOOST = auto()
-    BRAKE = auto()
+    BOOST = 1
+    REVERSE = 2
 
 
 class TurnActions(IntEnum):
@@ -32,6 +21,8 @@ class TurnActions(IntEnum):
     TURN_RIGHT = 2
     SHARP_LEFT = 3
     SHARP_RIGHT = 4
+    AIR_BRAKE = 5
+    SHARP_AIR_BRAKE = 6
 
 
 class ShootActions(IntEnum):

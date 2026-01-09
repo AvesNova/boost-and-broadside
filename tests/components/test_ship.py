@@ -1,81 +1,106 @@
 import torch
 import numpy as np
-from env.constants import HumanActions
+from env.ship import Ship, default_ship_config
+from env.constants import PowerActions, TurnActions, ShootActions
+from env.bullets import Bullets
 
 
-def test_ship_initialization(dummy_ship):
-    """Test that the ship initializes with correct values."""
-    assert dummy_ship.ship_id == 0
-    assert dummy_ship.team_id == 0
-    assert dummy_ship.position == 100.0 + 100.0j
-    assert dummy_ship.velocity == 10.0 + 0j
-    assert dummy_ship.alive is True
-    assert dummy_ship.health == dummy_ship.config.max_health
+def create_test_ship() -> Ship:
+    return Ship(
+        ship_id=0,
+        team_id=0,
+        ship_config=default_ship_config,
+        initial_x=0.0,
+        initial_y=0.0,
+        initial_vx=10.0,
+        initial_vy=0.0,
+        world_size=(1000, 1000),
+    )
 
 
-def test_ship_physics_update(dummy_ship):
-    """Test basic physics update."""
-    initial_pos = dummy_ship.position
-    dt = 0.1
-
-    # No action, just coasting
-    action = torch.zeros(len(HumanActions))
-    dummy_ship.forward(action, None, 0.0, dt)
-
-    # Position should change based on velocity
-    expected_pos = initial_pos + dummy_ship.velocity * dt
-    assert np.isclose(dummy_ship.position, expected_pos)
+def test_ship_id_initialization():
+    ship = create_test_ship()
+    assert ship.ship_id == 0
+    assert ship.team_id == 0
+    assert ship.alive
 
 
-def test_ship_thrust(dummy_ship):
-    """Test that thrust changes velocity."""
-    initial_vel = dummy_ship.velocity
-    dt = 0.1
+def test_ship_movement_no_action():
+    ship = create_test_ship()
+    # [Power, Turn, Shoot]
+    action = torch.zeros(3)
+    # Default is COAST, GO_STRAIGHT, NO_SHOOT (all 0)
 
-    # Apply forward thrust
-    action = torch.zeros(len(HumanActions))
-    action[HumanActions.forward] = 1.0
+    bullets = Bullets(max_bullets=100)
+    ship.forward(action, bullets, 0.0, 1.0)
 
-    dummy_ship.forward(action, None, 0.0, dt)
-
-    # Velocity should increase in the direction of attitude (default 1+0j)
-    # Note: Drag will also apply, so we just check if it increased
-    assert abs(dummy_ship.velocity) > abs(initial_vel)
+    # Ship has initial velocity of 10.0, so it should move
+    assert ship.position.real > 0
+    assert ship.position.imag == 0
 
 
-def test_ship_turn(dummy_ship):
-    """Test that turning changes attitude."""
-    initial_attitude = dummy_ship.attitude
-    dt = 0.1
+def test_ship_movement_forward():
+    ship = create_test_ship()
+    action = torch.zeros(3)
+    action[0] = float(PowerActions.BOOST) # Forward/Boost
+    action[1] = float(TurnActions.GO_STRAIGHT)
+    action[2] = float(ShootActions.NO_SHOOT)
 
-    # Apply left turn
-    action = torch.zeros(len(HumanActions))
-    action[HumanActions.left] = 1.0
+    bullets = Bullets(max_bullets=100)
+    ship.forward(action, bullets, 0.0, 1.0)
 
-    dummy_ship.forward(action, None, 0.0, dt)
+    # Should have moved in positive x direction (default heading is 1+0j)
+    assert ship.position.real > 0
+    assert ship.position.imag == 0
+    # Should accelerate (boost)
+    assert ship.velocity.real > 10.0
 
-    # Attitude should rotate
-    assert dummy_ship.attitude != initial_attitude
+
+def test_ship_turn_left():
+    ship = create_test_ship()
+    # Give it some velocity so turning does something to position if tracked, 
+    # but mainly checking attitude update
+    ship.velocity = 100 + 0j
+    
+    action = torch.zeros(3)
+    action[0] = float(PowerActions.COAST)
+    action[1] = float(TurnActions.TURN_LEFT)
+    action[2] = float(ShootActions.NO_SHOOT)
+
+    bullets = Bullets(max_bullets=100)
+    ship.forward(action, bullets, 0.0, 1.0)
+
+    # Implementation defines TURN_LEFT as negative angle offset
+    # Initial attitude 1+0j (0 rad). New attitude should have negative angle.
+    # sin(-theta) is negative.
+    assert ship.attitude.imag < 0
 
 
-def test_ship_energy_consumption(dummy_ship):
-    """Test that actions consume energy."""
-    initial_power = dummy_ship.power
-    dt = 0.1
+def test_ship_shoot():
+    ship = create_test_ship()
+    action = torch.zeros(3)
+    action[0] = float(PowerActions.COAST)
+    action[1] = float(TurnActions.GO_STRAIGHT)
+    action[2] = float(ShootActions.SHOOT)
 
-    # Apply shooting action (usually high cost)
-    action = torch.zeros(len(HumanActions))
-    action[HumanActions.shoot] = 1.0
+    bullets = Bullets(max_bullets=100)
+    initial_bullets = bullets.num_active
+    ship.forward(action, bullets, 0.0, 1.0)
 
-    # We need to mock bullets or pass None if handled gracefully
-    # The ship.forward method expects bullets for shooting
-    # Let's just test thrust for now if shooting is complex to mock here
-    action = torch.zeros(len(HumanActions))
-    action[HumanActions.forward] = 1.0
+    assert bullets.num_active == initial_bullets + 1
 
-    dummy_ship.forward(action, None, 0.0, dt)
 
-    # Power should decrease (assuming thrust cost > regen)
-    # If regen is high, this might fail, but usually thrust costs energy
-    # Let's check if it's different at least
-    assert dummy_ship.power != initial_power
+def test_ship_cooldown():
+    ship = create_test_ship()
+    action = torch.zeros(3)
+    action[0] = float(PowerActions.BOOST) # Forward
+    action[1] = float(TurnActions.GO_STRAIGHT)
+    action[2] = float(ShootActions.SHOOT)
+
+    bullets = Bullets(max_bullets=100)
+    ship.forward(action, bullets, 0.0, 1.0)
+    assert bullets.num_active == 1
+
+    # Should not fire again immediately
+    ship.forward(action, bullets, 0.0, 1.0)
+    assert bullets.num_active == 1

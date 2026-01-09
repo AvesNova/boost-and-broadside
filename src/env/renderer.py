@@ -9,7 +9,7 @@ import numpy as np
 import torch
 import pygame
 
-from env.constants import HumanActions
+from env.constants import PowerActions, TurnActions, ShootActions
 from env.ship import Ship
 from env.bullets import Bullets
 from env.state import State
@@ -68,7 +68,8 @@ class GameRenderer:
             ship_id: ID of the ship to control.
         """
         self.human_ship_ids.add(ship_id)
-        self.human_actions[ship_id] = torch.zeros(len(HumanActions))
+        # Initialize with 3 indices: Power, Turn, Shoot
+        self.human_actions[ship_id] = torch.zeros(3, dtype=torch.int)
 
     def remove_human_player(self, ship_id: int) -> None:
         """
@@ -106,39 +107,67 @@ class GameRenderer:
         keys = pygame.key.get_pressed()
 
         for ship_id in self.human_ship_ids:
-            action = torch.zeros(len(HumanActions))
+            # Action vector: [Power, Turn, Shoot]
+            power_idx = PowerActions.COAST
+            turn_idx = TurnActions.GO_STRAIGHT
+            shoot_idx = ShootActions.NO_SHOOT
 
-            # Ship 0 controls (Arrow keys or WASD)
+            # Key mappings
             if ship_id == 0:
-                if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-                    action[HumanActions.left] = 1
-                if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-                    action[HumanActions.right] = 1
-                if keys[pygame.K_UP] or keys[pygame.K_w]:
-                    action[HumanActions.forward] = 1
-                if keys[pygame.K_DOWN] or keys[pygame.K_s]:
-                    action[HumanActions.backward] = 1
-                if keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]:
-                    action[HumanActions.sharp_turn] = 1
-                if keys[pygame.K_SPACE]:
-                    action[HumanActions.shoot] = 1
-
-            # Ship 1 controls (IJKL cluster)
+                k_up = keys[pygame.K_UP] or keys[pygame.K_w]
+                k_down = keys[pygame.K_DOWN] or keys[pygame.K_s]
+                k_left = keys[pygame.K_LEFT] or keys[pygame.K_a]
+                k_right = keys[pygame.K_RIGHT] or keys[pygame.K_d]
+                k_shift = keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]
+                k_shoot = keys[pygame.K_SPACE]
             elif ship_id == 1:
-                if keys[pygame.K_j]:
-                    action[HumanActions.left] = 1
-                if keys[pygame.K_l]:
-                    action[HumanActions.right] = 1
-                if keys[pygame.K_i]:
-                    action[HumanActions.forward] = 1
-                if keys[pygame.K_k]:
-                    action[HumanActions.backward] = 1
-                if keys[pygame.K_u]:
-                    action[HumanActions.sharp_turn] = 1
-                if keys[pygame.K_o]:
-                    action[HumanActions.shoot] = 1
+                k_up = keys[pygame.K_i]
+                k_down = keys[pygame.K_k]
+                k_left = keys[pygame.K_j]
+                k_right = keys[pygame.K_l]
+                k_shift = keys[pygame.K_u]  # Using 'u' as shift equivalent for P2
+                k_shoot = keys[pygame.K_o]
+            else:
+                continue
 
-            self.human_actions[ship_id] = action
+            # Power Logic
+            if k_up and k_down:
+                power_idx = PowerActions.COAST
+            elif k_up:
+                power_idx = PowerActions.BOOST
+            elif k_down:
+                power_idx = PowerActions.REVERSE
+            else:
+                power_idx = PowerActions.COAST
+
+            # Turn Logic
+            if k_left and k_right:
+                if k_shift:
+                    turn_idx = TurnActions.SHARP_AIR_BRAKE
+                else:
+                    turn_idx = TurnActions.AIR_BRAKE
+            elif k_left:
+                if k_shift:
+                    turn_idx = TurnActions.SHARP_LEFT
+                else:
+                    turn_idx = TurnActions.TURN_LEFT
+            elif k_right:
+                if k_shift:
+                    turn_idx = TurnActions.SHARP_RIGHT
+                else:
+                    turn_idx = TurnActions.TURN_RIGHT
+            else:
+                turn_idx = TurnActions.GO_STRAIGHT
+
+            # Shoot Logic
+            if k_shoot:
+                shoot_idx = ShootActions.SHOOT
+            else:
+                shoot_idx = ShootActions.NO_SHOOT
+
+            self.human_actions[ship_id] = torch.tensor(
+                [power_idx, turn_idx, shoot_idx], dtype=torch.float32
+            )
 
     def get_human_actions(self) -> dict[int, torch.Tensor]:
         """
@@ -219,7 +248,7 @@ class GameRenderer:
             x, y = bullets.x[i], bullets.y[i]
             ship_id = bullets.ship_id[i]
 
-            # Bullet color matches ship team
+        # Bullet color matches ship team
             if ship_id == 0:
                 color = (100, 150, 255)  # Light blue
             else:

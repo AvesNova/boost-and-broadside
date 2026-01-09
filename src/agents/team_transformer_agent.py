@@ -8,7 +8,7 @@ with team-based filtering for multi-agent scenarios.
 import torch
 import torch.nn as nn
 
-from env.constants import HumanActions
+import torch.nn.functional as F
 from agents.tokenizer import observation_to_tokens
 
 
@@ -39,7 +39,7 @@ class TeamTransformerModel(nn.Module):
         self.token_dim = token_dim
         self.embed_dim = embed_dim
         self.max_ships = max_ships
-        self.num_actions = len(HumanActions)
+        self.num_actions = 12
 
         # Input projection: token_dim -> embed_dim
         self.token_projection = nn.Linear(token_dim, embed_dim)
@@ -259,19 +259,35 @@ class TeamTransformerAgent:
             # Apply temperature scaling
             scaled_logits = action_logits / temperature
 
-            # Convert to probabilities
-            action_probs = torch.sigmoid(scaled_logits)
+            # Split logits
+            power_logits = scaled_logits[..., 0:3]
+            turn_logits = scaled_logits[..., 3:10]
+            shoot_logits = scaled_logits[..., 10:12]
 
             if deterministic:
-                # Use thresholding for deterministic actions
-                actions = (action_probs > 0.5).float()
+                # Argmax
+                power_idx = power_logits.argmax(dim=-1)
+                turn_idx = turn_logits.argmax(dim=-1)
+                shoot_idx = shoot_logits.argmax(dim=-1)
             else:
-                # Sample from Bernoulli distribution
-                actions = torch.bernoulli(action_probs)
+                # Sample from Categorical
+                power_dist = torch.distributions.Categorical(logits=power_logits)
+                turn_dist = torch.distributions.Categorical(logits=turn_logits)
+                shoot_dist = torch.distributions.Categorical(logits=shoot_logits)
 
+                power_idx = power_dist.sample()
+                turn_idx = turn_dist.sample()
+                shoot_idx = shoot_dist.sample()
+
+            # Stack indices to get (batch, max_ships, 3)
+            actions = torch.stack([power_idx, turn_idx, shoot_idx], dim=-1).float()
+
+            # For consistency, we might also want to return probs/logits but they are split now.
+            # Returning original logits is fine.
+            # Probs is tricky - returning dict of probs? or just ignore.
+            
             return {
                 "actions": actions,
-                "action_probs": action_probs,
                 "action_logits": action_logits,
                 "ship_embeddings": output["ship_embeddings"],
             }

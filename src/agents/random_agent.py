@@ -2,7 +2,7 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from env.constants import HumanActions
+
 
 
 class RandomAgent(nn.Module):
@@ -24,7 +24,7 @@ class RandomAgent(nn.Module):
         self.agent_id = agent_id
         self.team_id = team_id
         self.squad = squad
-        self.num_actions = len(HumanActions)
+        self.num_actions = 12
 
     def forward(
         self, observation: dict[str, Any], ship_ids: list[int]
@@ -43,8 +43,10 @@ class RandomAgent(nn.Module):
         for ship_id in ship_ids:
             # Generate random binary actions
             # Using 0.5 probability for each action
-            random_actions = torch.randint(
-                0, 2, (self.num_actions,), dtype=torch.float32
-            )
-            actions[ship_id] = random_actions
+            # Generate random categorical actions
+            # Power: 0-2, Turn: 0-6, Shoot: 0-1
+            power = torch.randint(0, 3, (1,))
+            turn = torch.randint(0, 7, (1,))
+            shoot = torch.randint(0, 2, (1,))
+            actions[ship_id] = torch.cat([power, turn, shoot]).float()
         return actions

@@ -38,4 +38,4 @@ class HumanAgent(nn.Module):
         Returns:
             Dictionary mapping ship_id to action tensor (all zeros).
         """
-        return {ship_id: torch.zeros(6, dtype=torch.float32) for ship_id in ship_ids}
+        return {ship_id: torch.zeros(3, dtype=torch.float32) for ship_id in ship_ids}
