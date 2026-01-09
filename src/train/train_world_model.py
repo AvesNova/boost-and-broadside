@@ -16,7 +16,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 from agents.world_model import WorldModel
-from train.data_loader import load_bc_data, create_dual_pool_data_loaders
+from train.data_loader import load_bc_data, create_unified_data_loaders
 
 log = logging.getLogger(__name__)
 
@@ -147,7 +147,7 @@ def train_world_model(cfg: DictConfig) -> None:
     for epoch in range(epochs):
         # Re-create data loaders each epoch to randomize pools
         train_short_loader, train_long_loader, val_short_loader, val_long_loader = (
-            create_dual_pool_data_loaders(
+            create_unified_data_loaders(
                 data,
                 short_batch_size=cfg.world_model.short_batch_size,
                 long_batch_size=cfg.world_model.long_batch_size,

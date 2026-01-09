@@ -11,7 +11,7 @@ import torch
 from omegaconf import DictConfig
 
 from agents.world_model import WorldModel
-from train.data_loader import load_bc_data, create_dual_pool_data_loaders
+from train.data_loader import load_bc_data, create_unified_data_loaders
 
 log = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ def eval_world_model(cfg: DictConfig) -> None:
 
     # Create loader to get dimensions and sample
     # We use the long validation loader for evaluation
-    _, _, _, val_loader = create_dual_pool_data_loaders(
+    _, _, _, val_loader = create_unified_data_loaders(
         data,
         short_batch_size=cfg.world_model.short_batch_size,
         long_batch_size=1,  # Batch size 1 for evaluation

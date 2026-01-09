@@ -172,8 +172,8 @@ class Environment(gym.Env):
                 # Random attitude (direction)
                 attitude = np.exp(1j * self.rng.uniform(0, 2 * np.pi))
 
-                # Random speed between 0 and 180 if requested, otherwise fixed at 100
-                speed = self.rng.uniform(0, 180) if random_speed else 100.0
+                # Random speed between 0.1 and 180 if requested, otherwise fixed at 100
+                speed = self.rng.uniform(0.1, 180) if random_speed else 100.0
                 velocity = attitude * speed
 
                 ships[i + ship_id_offset] = Ship(
