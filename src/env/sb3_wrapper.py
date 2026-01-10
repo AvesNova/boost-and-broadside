@@ -39,11 +39,11 @@ class SB3Wrapper(gym.Wrapper):
         super().__init__(env)
         self.config = config
         self.max_ships = env.max_ships
-        self.num_actions = len(HumanActions)
+        self.num_actions = 3
 
-        # Define Action Space: MultiBinary for all potential ships
-        # Shape: (max_ships * num_actions,)
-        self.action_space = spaces.MultiBinary(self.max_ships * self.num_actions)
+        # Define Action Space: MultiDiscrete for all potential ships
+        # Shape: (max_ships * 3,) where each triplet is [Power(3), Turn(7), Shoot(2)]
+        self.action_space = spaces.MultiDiscrete([3, 7, 2] * self.max_ships)
 
         # Define Observation Space
         self.token_dim = config.train.model.transformer.token_dim
