@@ -311,6 +311,7 @@ class WorldModel(nn.Module):
         mask: torch.Tensor | None = None,
         past_key_values=None,
         use_cache: bool = False,
+        return_embeddings: bool = False,
     ):
         """
         Forward pass with correct masking and denoising.
@@ -331,6 +332,7 @@ class WorldModel(nn.Module):
             mask: Optional boolean mask (True = masked). If provided, overrides mask_ratio.
             past_key_values: KV cache for autoregressive generation
             use_cache: Whether to return KV cache
+            return_embeddings: Whether to return the final embeddings (before heads).
         """
         # Ensure 4D input
         if states.ndim == 3:
@@ -411,6 +413,9 @@ class WorldModel(nn.Module):
         # 5. Predictions
         pred_states = self.state_head(embeddings)
         pred_actions = self.action_head(embeddings)
+
+        if return_embeddings:
+            return pred_states, pred_actions, mask, current_key_values, embeddings
 
         return pred_states, pred_actions, mask, current_key_values
 

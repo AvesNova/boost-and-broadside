@@ -204,6 +204,13 @@ uv run main.py mode=train train.run_rl=true train.rl.pretrained_model_path="path
 
 # RL from scratch (no pretraining)
 uv run main.py mode=train train.run_rl=true
+
+# RL with World Model Policy (Advanced)
+# Trains the World Model as the policy backbone with Auxiliary Loss (reconstruction + denoising)
+uv run main.py mode=train train.run_rl=true train.rl.policy_type=world_model train.rl.aux_loss_coef=1.0
+
+# Freezing World Model Backbone (Pretrained)
+uv run main.py mode=train train.run_rl=true train.rl.policy_type=world_model train.rl.freeze_world_model=true
 ```
 
 ### World Model

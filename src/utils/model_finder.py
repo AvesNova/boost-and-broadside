@@ -45,10 +45,18 @@ def find_most_recent_model(
         elif model_type == "world_model":
             model_path = run_dir / "best_world_model.pth"
         else:
-            # RL saves final_rl_transformer.pth for the agent
-            model_path = run_dir / "final_rl_transformer.pth"
+            # RL: Check for final zip, then transformer pth, then WorldModel pth
+            paths_to_check = [
+                run_dir / "final_rl_model.zip",
+                run_dir / "final_rl_transformer.pth",
+                run_dir / "final_world_model.pth",
+            ]
+            for p in paths_to_check:
+                if p.exists():
+                    return str(p.absolute())
+            model_path = None # Logic continues below
 
-        if model_path.exists():
+        if model_path and model_path.exists():
             return str(model_path.absolute())
 
         # Fallback to final model if best not found
@@ -57,8 +65,28 @@ def find_most_recent_model(
         elif model_type == "world_model":
             model_path = run_dir / "final_world_model.pth"
 
-        if model_type in ["bc", "world_model"] and model_path.exists():
+        if model_type in ["bc", "world_model"] and model_path and model_path.exists():
             return str(model_path.absolute())
+        
+        # RL Fallback: Check checkpoints directory
+        if model_type == "rl":
+            ckpt_dir = run_dir / "checkpoints"
+            if ckpt_dir.exists():
+                # Find latest zip
+                zips = list(ckpt_dir.glob("*.zip"))
+                if zips:
+                    # Sort by modification time or name (steps)
+                    # Name format: rl_model_STEP_steps.zip. Extract STEP.
+                    def get_step(p):
+                        try:
+                            return int(p.stem.split("_")[2])
+                        except:
+                            return 0
+                    
+                    latest_zip = max(zips, key=get_step)
+                    return str(latest_zip.absolute())
+
+    return None
 
     return None
 

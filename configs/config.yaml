@@ -54,7 +54,7 @@ train:
   use_rl: false
   
   # bc_data_path: "data/bc_pretraining/20251127_153140/aggregated_data.pkl"
-  bc_data_path: data/bc_pretraining/20260109_003440/aggregated_data.pkl
+  bc_data_path: data\bc_pretraining\20260110_162559\aggregated_data.pkl
   
   model:
     transformer:
@@ -77,6 +77,10 @@ train:
     value_weight: 0.5
 
   rl:
+    policy_type: "transformer" # or "world_model"
+    context_len: 32 # FrameStack k (for world_model)
+    aux_loss_coef: 1.0 # Weight for WM aux loss
+    freeze_world_model: false # Whether to freeze WM weights
     pretrained_model_path: null
     n_envs: 8
     total_timesteps: 1000000

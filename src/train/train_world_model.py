@@ -10,6 +10,7 @@ from pathlib import Path
 
 from datetime import datetime
 import torch
+import torch.nn.functional as F
 import torch.optim as optim
 from omegaconf import DictConfig, OmegaConf
 from torch.utils.tensorboard import SummaryWriter
@@ -77,6 +78,27 @@ def create_mixed_mask(
     return mask
 
 
+def to_one_hot(actions: torch.Tensor) -> torch.Tensor:
+    """
+    Convert discrete action indices to concatenated one-hot vectors.
+
+    Args:
+        actions: (..., 3) tensor of action indices [power, turn, shoot]
+
+    Returns:
+        (..., 12) tensor of one-hot actions
+    """
+    power = actions[..., 0].long()
+    turn = actions[..., 1].long()
+    shoot = actions[..., 2].long()
+
+    power_oh = F.one_hot(power, num_classes=3)
+    turn_oh = F.one_hot(turn, num_classes=7)
+    shoot_oh = F.one_hot(shoot, num_classes=2)
+
+    return torch.cat([power_oh, turn_oh, shoot_oh], dim=-1).float()
+
+
 def train_world_model(cfg: DictConfig) -> None:
     """
     Train the world model.
@@ -105,10 +127,11 @@ def train_world_model(cfg: DictConfig) -> None:
     # Peek at one sample
     team_0 = data["team_0"]
     sample_tokens = team_0["tokens"][0]
-    sample_actions = team_0["actions"][0]
+    # sample_actions = team_0["actions"][0] 
 
     state_dim = sample_tokens.shape[-1]
-    action_dim = sample_actions.shape[-1]
+    # Fixed action dim for one-hot encoded actions (3 + 7 + 2)
+    action_dim = 12 
 
     model = WorldModel(
         state_dim=state_dim,
@@ -188,12 +211,14 @@ def train_world_model(cfg: DictConfig) -> None:
                 except StopIteration:
                     short_exhausted = True
                     break
-
-                states, actions, loss_mask = (
-                    states.to(device),
-                    actions.to(device),
-                    loss_mask.to(device),
-                )
+                
+                # Convert actions to one-hot BEFORE moving to device 
+                # (or after, but to_one_hot handles tensor)
+                states = states.to(device)
+                loss_mask = loss_mask.to(device)
+                
+                # Convert discrete actions to one-hot
+                actions = to_one_hot(actions).to(device)
 
                 optimizer.zero_grad()
 
@@ -243,12 +268,12 @@ def train_world_model(cfg: DictConfig) -> None:
             except StopIteration:
                 # If long loader exhausted, just skip
                 break
-
-            states, actions, loss_mask = (
-                states.to(device),
-                actions.to(device),
-                loss_mask.to(device),
-            )
+            
+            states = states.to(device)
+            loss_mask = loss_mask.to(device)
+            
+            # Convert discrete actions to one-hot
+            actions = to_one_hot(actions).to(device)
 
             optimizer.zero_grad()
 
@@ -313,11 +338,11 @@ def train_world_model(cfg: DictConfig) -> None:
         for loader in [val_short_loader, val_long_loader]:
             with torch.no_grad():
                 for states, actions, loss_mask in loader:
-                    states, actions, loss_mask = (
-                        states.to(device),
-                        actions.to(device),
-                        loss_mask.to(device),
-                    )
+                    states = states.to(device)
+                    loss_mask = loss_mask.to(device)
+                    
+                    # Convert discrete actions to one-hot
+                    actions = to_one_hot(actions).to(device)
 
                     mask = create_mixed_mask(
                         states.shape[0],
