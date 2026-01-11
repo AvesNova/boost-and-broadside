@@ -75,6 +75,8 @@ class Ship(nn.Module):
         initial_vy: float,
         world_size: tuple[float, float] = (-1.0, -1.0),
         rng: np.random.Generator = np.random.default_rng(),
+        initial_health: float | None = None,
+        initial_power: float | None = None,
     ):
         """
         Initialize the ship.
@@ -89,6 +91,8 @@ class Ship(nn.Module):
             initial_vy: Initial Y velocity.
             world_size: Dimensions of the game world (width, height).
             rng: Random number generator.
+            initial_health: Optional initial health (defaults to max).
+            initial_power: Optional initial power (defaults to max).
         """
         super().__init__()
         self.ship_id = ship_id
@@ -99,8 +103,8 @@ class Ship(nn.Module):
         self.collision_radius_squared = ship_config.collision_radius**2
 
         self.alive = True
-        self.health = ship_config.max_health
-        self.power = ship_config.max_power
+        self.health = initial_health if initial_health is not None else ship_config.max_health
+        self.power = initial_power if initial_power is not None else ship_config.max_power
         self.turn_offset = 0.0
         self.last_fired_time = (
             -ship_config.firing_cooldown

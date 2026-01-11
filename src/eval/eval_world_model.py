@@ -52,11 +52,25 @@ def eval_world_model(cfg: DictConfig) -> None:
     )
 
     # Get a sample
-    sample_states, sample_actions, _ = next(iter(val_loader))
+    sample_states, sample_actions, _, _, _ = next(iter(val_loader))
     state_dim = sample_states.shape[-1]
-    action_dim = sample_actions.shape[-1]
+    # action_dim = sample_actions.shape[-1] # This is 3, but we use 12 for one-hot
+    # We will hardcode action_dim to 12 as per model requirement
 
     # 2. Load Model
+    from utils.model_finder import find_most_recent_model
+    from eval.metrics import compute_dreaming_error
+    
+    model_path = find_most_recent_model("world_model")
+    if model_path is None:
+        log.error("No world model found!")
+        return
+        
+    log.info(f"Loading model from {model_path}")
+    
+    # Force action_dim to 12 (3+7+2 one-hot)
+    action_dim = 12
+    
     model = WorldModel(
         state_dim=state_dim,
         action_dim=action_dim,
@@ -67,50 +81,26 @@ def eval_world_model(cfg: DictConfig) -> None:
         max_context_len=cfg.world_model.context_len,
     ).to(device)
 
-    # Load weights
-    # Assuming we have a saved model. If not, we use random weights for testing logic.
-    # model_path = "models/world_model_epoch_10.pt"
-    # if Path(model_path).exists():
-    #     model.load_state_dict(torch.load(model_path))
-    #     log.info(f"Loaded model from {model_path}")
-    # else:
-    #     log.warning("No model found, using random weights.")
-
+    model.load_state_dict(torch.load(model_path))
     model.eval()
 
-    # 3. Generate Rollout
-    # Take first state/action from sample
-    initial_state = sample_states[:, 0, 0, :].to(
-        device
-    )  # (B, F) - First ship, first timestep
-    initial_action = sample_actions[:, 0, 0, :].to(device)  # (B, A)
-
-    log.info("Generating rollout...")
-    steps = 20
-    n_ships = cfg.world_model.n_ships
-
-    with torch.no_grad():
-        gen_states, gen_actions = model.generate(
-            initial_state, initial_action, steps=steps, n_ships=n_ships
-        )
-
-    log.info(f"Generated states shape: {gen_states.shape}")
-    log.info(f"Generated actions shape: {gen_actions.shape}")
-
-    # 4. Compare with Ground Truth (if available in sample)
-    # Sample is (B, ContextLen, N, F)
-    # We generated 'steps' tokens.
-    # Note: 'generate' produces s1_t0, s2_t0... s0_t1...
-    # We need to reshape to compare.
-
-    # Reshape generated to (B, Steps, N, F) if possible
-    # But 'generate' returns flat list of tokens?
-    # No, it returns (B, TotalSteps, F).
-    # TotalSteps = steps * n_ships (approx)
-
-    # Let's inspect the output structure in 'generate'
-    log.info("Evaluation complete. The model successfully generated a rollout.")
-    log.info(f"  - Initial State: {initial_state.shape}")
-    log.info(f"  - Generated {steps} steps for {n_ships} ships.")
-    log.info(f"  - Output Shape: {gen_states.shape}")
-    log.info("To visualize, we would plot these trajectories against ground truth.")
+    # 3. Evaluation Loop
+    log.info("Starting evaluation...")
+    
+    # Compute Rollout MSE
+    mse = compute_dreaming_error(
+        model, 
+        val_loader, 
+        device, 
+        max_steps=cfg.world_model.short_batch_len,
+        num_batches=10
+    )
+    
+    log.info(f"Evaluation Result - Average Rollout MSE: {mse:.6f}")
+    
+    # Create simple CSV with single value
+    csv_path = "eval_rollout_metrics.csv"
+    with open(csv_path, "w") as f:
+        f.write("metric,value\n")
+        f.write(f"avg_rollout_mse,{mse:.6f}\n")
+    log.info(f"Saved metric to {csv_path}")

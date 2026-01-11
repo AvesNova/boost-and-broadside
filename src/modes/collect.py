@@ -59,6 +59,7 @@ def collect_worker(
                         tokens_team_0=coordinator.all_tokens[0],
                         tokens_team_1=coordinator.all_tokens[1],
                         actions=coordinator.all_actions,
+                        action_masks=coordinator.all_action_masks,
                         rewards=coordinator.all_rewards,
                         sim_time=episode_sim_time,
                     )
@@ -106,9 +107,11 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
 
     all_team_0_tokens = []
     all_team_0_actions = []
+    all_team_0_action_masks = []
     all_team_0_rewards = []
     all_team_1_tokens = []
     all_team_1_actions = []
+    all_team_1_action_masks = []
     all_team_1_rewards = []
     all_episode_ids = []
     all_episode_lengths = []
@@ -139,9 +142,17 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
             all_team_0_tokens.append(data["team_0"]["tokens"])
             all_team_0_actions.append(data["team_0"]["actions"])
             all_team_0_rewards.append(data["team_0"]["rewards"])
+            
+            # Check for action_masks (backwards compatibility or new data)
+            if "action_masks" in data["team_0"]:
+                 all_team_0_action_masks.append(data["team_0"]["action_masks"])
+            
             all_team_1_tokens.append(data["team_1"]["tokens"])
             all_team_1_actions.append(data["team_1"]["actions"])
             all_team_1_rewards.append(data["team_1"]["rewards"])
+            
+            if "action_masks" in data["team_1"]:
+                 all_team_1_action_masks.append(data["team_1"]["action_masks"])
             all_episode_ids.append(adjusted_episode_ids)
             all_episode_lengths.append(data["episode_lengths"])
 
@@ -158,11 +169,13 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
         "team_0": {
             "tokens": torch.cat(all_team_0_tokens, dim=0),
             "actions": torch.cat(all_team_0_actions, dim=0),
+            "action_masks": torch.cat(all_team_0_action_masks, dim=0) if all_team_0_action_masks else None,
             "rewards": torch.cat(all_team_0_rewards, dim=0),
         },
         "team_1": {
             "tokens": torch.cat(all_team_1_tokens, dim=0),
             "actions": torch.cat(all_team_1_actions, dim=0),
+            "action_masks": torch.cat(all_team_1_action_masks, dim=0) if all_team_1_action_masks else None,
             "rewards": torch.cat(all_team_1_rewards, dim=0),
         },
         "episode_ids": torch.cat(all_episode_ids, dim=0),

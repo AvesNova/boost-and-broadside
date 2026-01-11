@@ -31,6 +31,7 @@ class Environment(gym.Env):
         physics_dt: float,
         random_positioning: bool,
         random_speed: bool,
+        random_initialization: bool = False,
         rng: np.random.Generator = np.random.default_rng(),
     ):
         """
@@ -45,6 +46,7 @@ class Environment(gym.Env):
             physics_dt: Time step for physics updates (seconds).
             random_positioning: Whether to use completely random positioning instead of fractal.
             random_speed: Whether to use random speeds (0-180) instead of fixed speed (100).
+            random_initialization: Whether to randomize health (10-100%) and power (0-100%).
             rng: Random number generator.
         """
         super().__init__()
@@ -58,6 +60,7 @@ class Environment(gym.Env):
         self.target_fps = 1 / physics_dt
         self.random_positioning = random_positioning
         self.random_speed = random_speed
+        self.random_initialization = random_initialization
         self.rng = rng
 
         assert (
@@ -157,24 +160,54 @@ class Environment(gym.Env):
         ship_id_offset: int,
         random_positioning: bool = False,
         random_speed: bool = False,
+        random_initialization: bool = False,
     ) -> dict:
         """Create a squad of ships with either fractal or random positioning."""
         ships = {}
 
+        for i in range(n_ships):
+            # Calculate health and power
+            initial_health = None
+            initial_power = None
+
+            if random_initialization:
+                # Health: 10% to 100%
+                initial_health = self.rng.uniform(0.1, 1.0) * default_ship_config.max_health
+                # Power: 0% to 100%
+                initial_power = self.rng.uniform(0.0, 1.0) * default_ship_config.max_power
+            
+            # ... Positioning logic ...
+            pass # We'll replace the loop body below with distinct blocks to avoid repeating logic 
+
+        # Let's rewrite the method body cleanly
+        
+        # Helper to get position/velocity
+        def get_pos_vel(idx, n, rand_pos, rand_spd):
+             if rand_pos:
+                pos = self.rng.uniform(0, self.world_size[0]) + 1j * self.rng.uniform(0, self.world_size[1])
+                att = np.exp(1j * self.rng.uniform(0, 2 * np.pi))
+                speed = self.rng.uniform(0.1, 180) if rand_spd else 100.0
+                vel = att * speed
+                return pos, vel
+             else:
+                # Fractal logic requires computing all positions first...
+                # So we can't easily helper-ize per ship without recomputing
+                return None, None
+
         if random_positioning:
-            # Generate completely random positions for each ship
             for i in range(n_ships):
-                # Random position anywhere in the world
                 position = self.rng.uniform(
                     0, self.world_size[0]
                 ) + 1j * self.rng.uniform(0, self.world_size[1])
-
-                # Random attitude (direction)
                 attitude = np.exp(1j * self.rng.uniform(0, 2 * np.pi))
-
-                # Random speed between 0.1 and 180 if requested, otherwise fixed at 100
                 speed = self.rng.uniform(0.1, 180) if random_speed else 100.0
                 velocity = attitude * speed
+
+                initial_health = None
+                initial_power = None
+                if random_initialization:
+                    initial_health = self.rng.uniform(0.1, 1.0) * default_ship_config.max_health
+                    initial_power = self.rng.uniform(0.0, 1.0) * default_ship_config.max_power
 
                 ships[i + ship_id_offset] = Ship(
                     ship_id=i + ship_id_offset,
@@ -185,6 +218,8 @@ class Environment(gym.Env):
                     initial_vx=velocity.real,
                     initial_vy=velocity.imag,
                     world_size=self.world_size,
+                    initial_health=initial_health,
+                    initial_power=initial_power,
                 )
         else:
             # Original fractal positioning
@@ -192,8 +227,6 @@ class Environment(gym.Env):
                 0, self.world_size[1]
             )
             attitude = np.exp(1j * self.rng.uniform(0, 2 * np.pi))
-
-            # Random speed between 0 and 180 if requested, otherwise fixed at 100
             speed = self.rng.uniform(0, 180) if random_speed else 100.0
             velocity = attitude * speed
 
@@ -207,6 +240,12 @@ class Environment(gym.Env):
             positions = offsets + origin
 
             for i, position in enumerate(positions):
+                initial_health = None
+                initial_power = None
+                if random_initialization:
+                    initial_health = self.rng.uniform(0.1, 1.0) * default_ship_config.max_health
+                    initial_power = self.rng.uniform(0.0, 1.0) * default_ship_config.max_power
+
                 ships[i + ship_id_offset] = Ship(
                     ship_id=i + ship_id_offset,
                     team_id=team_id,
@@ -216,6 +255,8 @@ class Environment(gym.Env):
                     initial_vx=velocity.real,
                     initial_vy=velocity.imag,
                     world_size=self.world_size,
+                    initial_health=initial_health,
+                    initial_power=initial_power,
                 )
 
         return ships
@@ -225,6 +266,7 @@ class Environment(gym.Env):
         ships_per_team: int | None,
         random_positioning: bool = False,
         random_speed: bool = False,
+        random_initialization: bool = False,
     ) -> State:
         """Reset to an NvN configuration."""
         if ships_per_team is None:
@@ -238,6 +280,7 @@ class Environment(gym.Env):
             ship_id_offset=0,
             random_positioning=random_positioning,
             random_speed=random_speed,
+            random_initialization=random_initialization,
         )
         team_1 = self.create_squad(
             team_id=1,
@@ -245,6 +288,7 @@ class Environment(gym.Env):
             ship_id_offset=ships_per_team,
             random_positioning=random_positioning,
             random_speed=random_speed,
+            random_initialization=random_initialization,
         )
         ships = team_0 | team_1
         return State(ships=ships)
@@ -276,30 +320,35 @@ class Environment(gym.Env):
                     ships_per_team=1,
                     random_positioning=self.random_positioning,
                     random_speed=self.random_speed,
+                    random_initialization=self.random_initialization,
                 )
             case "2v2":
                 self.state = self.n_vs_n_reset(
                     ships_per_team=2,
                     random_positioning=self.random_positioning,
                     random_speed=self.random_speed,
+                    random_initialization=self.random_initialization,
                 )
             case "3v3":
                 self.state = self.n_vs_n_reset(
                     ships_per_team=3,
                     random_positioning=self.random_positioning,
                     random_speed=self.random_speed,
+                    random_initialization=self.random_initialization,
                 )
             case "4v4":
                 self.state = self.n_vs_n_reset(
                     ships_per_team=4,
                     random_positioning=self.random_positioning,
                     random_speed=self.random_speed,
+                    random_initialization=self.random_initialization,
                 )
             case "nvn":
                 self.state = self.n_vs_n_reset(
                     ships_per_team=None,
                     random_positioning=self.random_positioning,
                     random_speed=self.random_speed,
+                    random_initialization=self.random_initialization,
                 )
             case "reset_from_observation":
                 if initial_obs is None:

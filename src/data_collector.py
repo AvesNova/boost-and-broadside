@@ -16,6 +16,7 @@ class EpisodeData:
     tokens_team_0: torch.Tensor
     tokens_team_1: torch.Tensor
     actions: dict[int, list[torch.Tensor]]
+    action_masks: dict[int, list[float]]
     rewards: dict[int, list[float]]
     episode_length: int
     sim_time: float
@@ -56,6 +57,7 @@ class DataCollector:
         tokens_team_0: torch.Tensor,
         tokens_team_1: torch.Tensor,
         actions: dict[int, list[torch.Tensor]],
+        action_masks: dict[int, list[float]],
         rewards: dict[int, list[float]],
         sim_time: float,
     ) -> None:
@@ -75,6 +77,7 @@ class DataCollector:
             tokens_team_0=tokens_team_0,
             tokens_team_1=tokens_team_1,
             actions=actions,
+            action_masks=action_masks,
             rewards=rewards,
             episode_length=episode_length,
             sim_time=sim_time,
@@ -123,6 +126,13 @@ class DataCollector:
             (total_timesteps, self.max_ships, self.num_actions), dtype=torch.float32
         )
 
+        actions_mask_team_0 = torch.zeros(
+            (total_timesteps, self.max_ships), dtype=torch.float32
+        )
+        actions_mask_team_1 = torch.zeros(
+            (total_timesteps, self.max_ships), dtype=torch.float32
+        )
+
         rewards_team_0 = torch.zeros((total_timesteps,), dtype=torch.float32)
         rewards_team_1 = torch.zeros((total_timesteps,), dtype=torch.float32)
 
@@ -144,6 +154,16 @@ class DataCollector:
                         actions_team_1[
                             current_idx + t, ship_id - self.max_ships // 2
                         ] = action
+
+            for ship_id, ship_masks in episode.action_masks.items():
+                for t, mask in enumerate(ship_masks):
+                    if ship_id < self.max_ships // 2:
+                        actions_mask_team_0[current_idx + t, ship_id] = mask
+                    else:
+                        actions_mask_team_1[
+                            current_idx + t, ship_id - self.max_ships // 2
+                        ] = mask
+
 
             if 0 in episode.rewards and len(episode.rewards[0]) > 0:
                 reward_tensor_0 = torch.tensor(episode.rewards[0], dtype=torch.float32)
@@ -173,11 +193,13 @@ class DataCollector:
             "team_0": {
                 "tokens": tokens_team_0,
                 "actions": actions_team_0,
+                "action_masks": actions_mask_team_0,
                 "rewards": rewards_team_0,
             },
             "team_1": {
                 "tokens": tokens_team_1,
                 "actions": actions_team_1,
+                "action_masks": actions_mask_team_1,
                 "rewards": rewards_team_1,
             },
             "episode_ids": episode_ids,

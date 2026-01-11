@@ -301,6 +301,7 @@ class WorldModel(nn.Module):
         # Heads
         self.state_head = nn.Linear(embed_dim, state_dim)
         self.action_head = nn.Linear(embed_dim, action_dim)
+        self.value_head = nn.Linear(embed_dim, 1)
 
     def forward(
         self,
@@ -413,17 +414,29 @@ class WorldModel(nn.Module):
         # 5. Predictions
         pred_states = self.state_head(embeddings)
         pred_actions = self.action_head(embeddings)
+        pred_value = self.value_head(embeddings).squeeze(-1)  # (B, T, N)
 
         if return_embeddings:
-            return pred_states, pred_actions, mask, current_key_values, embeddings
+            return pred_states, pred_actions, pred_value, mask, current_key_values, embeddings
 
-        return pred_states, pred_actions, mask, current_key_values
+        return pred_states, pred_actions, pred_value, mask, current_key_values
 
     def get_loss(
-        self, states, actions, pred_states, pred_actions, mask, loss_mask=None
+        self,
+        states,
+        actions,
+        returns,
+        pred_states,
+        pred_actions,
+        pred_value,
+        mask,
+        loss_mask=None,
+        action_masks=None,
     ):
         # states: (B, T, N, F)
         # actions: (B, T, N, 12) - One-hot encoded actions
+        # actions: (B, T, N, 3) - Integer indices for (power, turn, shoot)
+        # returns: (B, T, N) - Discounted returns (value targets)
         # mask: (B, T, N) - True = masked (reconstruction target), False = visible (denoising target)
         # loss_mask: (B, T, N) - True = compute loss, False = ignore (warm-up/padding)
 
@@ -434,10 +447,19 @@ class WorldModel(nn.Module):
             time_steps = seq_len // num_ships
             states = states.view(batch_size, time_steps, num_ships, features)
             actions = actions.view(batch_size, time_steps, num_ships, actions.shape[-1])
+            returns = returns.view(batch_size, time_steps, num_ships)
             if mask is not None:
                 mask = mask.view(batch_size, time_steps, num_ships)
             if loss_mask is not None:
                 loss_mask = loss_mask.view(batch_size, time_steps, num_ships)
+            if action_masks is not None:
+                action_masks = action_masks.view(batch_size, time_steps, num_ships)
+
+
+        # Ensure returns match (B, T, N)
+        if returns.ndim == 2:
+            # (B, T) -> (B, T, N)
+            returns = returns.unsqueeze(-1).expand(states.shape[0], states.shape[1], states.shape[2])
 
         # If no loss_mask provided, compute loss for all tokens
         if loss_mask is None:
@@ -446,27 +468,37 @@ class WorldModel(nn.Module):
             # (B, T) -> (B, T, N)
             loss_mask = loss_mask.unsqueeze(-1).expand_as(mask)
 
+        # Value Loss (always computed on all valid tokens)
+        value_loss = F.mse_loss(pred_value[loss_mask], returns[loss_mask])
+
         recon_loss = torch.tensor(0.0, device=states.device)
         denoise_loss = torch.tensor(0.0, device=states.device)
 
         # Helper to compute categorical action loss
-        def compute_action_loss(preds, targets):
-            # preds: (K, 12)
-            # targets: (K, 12) (one-hot)
+        def compute_action_loss(preds, targets, mask=None):
+            # preds: (M, 12), targets: (M, 3) - targets are integer indices
+            # Split targets
+            power_target = targets[..., 0].long()
+            turn_target = targets[..., 1].long()
+            shoot_target = targets[..., 2].long()
 
-            # Split heads
-            pred_power = preds[:, 0:3]
-            pred_turn = preds[:, 3:10]
-            pred_shoot = preds[:, 10:12]
+            # Split preds
+            power_preds = preds[..., 0:3]
+            turn_preds = preds[..., 3:10]
+            shoot_preds = preds[..., 10:12]
 
-            target_power = targets[:, 0:3].argmax(dim=-1)
-            target_turn = targets[:, 3:10].argmax(dim=-1)
-            target_shoot = targets[:, 10:12].argmax(dim=-1)
-
-            loss = F.cross_entropy(pred_power, target_power)
-            loss += F.cross_entropy(pred_turn, target_turn)
-            loss += F.cross_entropy(pred_shoot, target_shoot)
-            return loss
+            # Compute CE loss
+            loss_power = F.cross_entropy(power_preds, power_target, reduction="none")
+            loss_turn = F.cross_entropy(turn_preds, turn_target, reduction="none")
+            loss_shoot = F.cross_entropy(shoot_preds, shoot_target, reduction="none")
+            
+            total_loss = loss_power + loss_turn + loss_shoot
+            
+            if mask is not None:
+                total_loss = total_loss * mask
+                return total_loss.sum() / (mask.sum() + 1e-6)
+            else:
+                return total_loss.mean()
 
         # Reconstruction Loss (for masked tokens)
         recon_target_mask = mask & loss_mask
@@ -475,9 +507,21 @@ class WorldModel(nn.Module):
             recon_loss += F.mse_loss(
                 pred_states[recon_target_mask], states[recon_target_mask]
             )
-            # Action loss: Categorical
+            
+            # Action Loss needs combined mask if action_masks provided
+            curr_action_mask = None
+            if action_masks is not None:
+                # Align action_masks with (B, T, N) if needed
+                if action_masks.ndim == 2:
+                     action_masks = action_masks.unsqueeze(-1).expand_as(mask) # Not likely given dataset, but for safety
+                
+                # Extract masks for relevant tokens
+                curr_action_mask = action_masks[recon_target_mask]
+            
             recon_loss += compute_action_loss(
-                pred_actions[recon_target_mask], actions[recon_target_mask]
+                pred_actions[recon_target_mask], 
+                actions[recon_target_mask],
+                mask=curr_action_mask
             )
 
         # Denoising Loss (for unmasked tokens)
@@ -487,12 +531,18 @@ class WorldModel(nn.Module):
             denoise_loss += F.mse_loss(
                 pred_states[denoise_target_mask], states[denoise_target_mask]
             )
-            # Action loss: Categorical
+            
+            curr_action_mask = None
+            if action_masks is not None:
+                 curr_action_mask = action_masks[denoise_target_mask]
+
             denoise_loss += compute_action_loss(
-                pred_actions[denoise_target_mask], actions[denoise_target_mask]
+                pred_actions[denoise_target_mask], 
+                actions[denoise_target_mask],
+                mask=curr_action_mask
             )
 
-        return recon_loss, denoise_loss
+        return recon_loss, denoise_loss, value_loss
 
     @torch.no_grad()
     def generate(self, initial_state, initial_action, steps: int, n_ships: int):
@@ -529,7 +579,8 @@ class WorldModel(nn.Module):
 
         for timestep in range(steps):
             # Forward pass for current step
-            pred_states, pred_actions, _, current_key_values = self.forward(
+            # Returns: pred_states, pred_actions, pred_value, mask, current_key_values
+            pred_states, pred_actions, _, _, current_key_values = self.forward(
                 current_state,
                 current_action,
                 past_key_values=past_key_values,

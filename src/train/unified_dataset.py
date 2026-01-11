@@ -16,28 +16,34 @@ class UnifiedEpisodeDataset:
         self,
         tokens: torch.Tensor,
         actions: torch.Tensor,
+        returns: torch.Tensor,
         episode_lengths: torch.Tensor,
+        action_masks: torch.Tensor,
     ):
         """
         Args:
             tokens: (TotalTimesteps, N, F)
             actions: (TotalTimesteps, N, A)
+            returns: (TotalTimesteps,) - Discounted returns
             episode_lengths: (NumEpisodes,)
+            action_masks: (TotalTimesteps, N) - 1.0 if expert, 0.0 if random
         """
         self.tokens = tokens
         self.actions = actions
+        self.returns = returns
         self.episode_lengths = episode_lengths
+        self.action_masks = action_masks
 
         # Precompute start indices for O(1) access
         self.episode_starts = torch.zeros_like(episode_lengths)
         self.episode_starts[1:] = torch.cumsum(episode_lengths[:-1], dim=0)
 
-    def get_episode(self, episode_idx: int) -> tuple[torch.Tensor, torch.Tensor]:
-        """Returns full (tokens, actions) for a given episode index."""
+    def get_episode(self, episode_idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Returns full (tokens, actions, returns) for a given episode index."""
         start = self.episode_starts[episode_idx].item()
         length = self.episode_lengths[episode_idx].item()
         end = start + length
-        return self.tokens[start:end], self.actions[start:end]
+        return self.tokens[start:end], self.actions[start:end], self.returns[start:end]
 
     def get_length(self, episode_idx: int) -> int:
         return self.episode_lengths[episode_idx].item()
@@ -83,7 +89,27 @@ class BaseView(Dataset):
             return torch.cat([zeros, data_actions], dim=0)
         else:
             # Previous action exists
+            # Previous action exists
             return self.dataset.actions[abs_start - 1 : abs_end - 1]
+
+    def _get_shifted_masks_from_full(
+        self, abs_start: int, abs_end: int, start_offset: int
+    ) -> torch.Tensor:
+        """Helper to extract shifted action masks from the main dataset tensor."""
+        if start_offset == 0:
+            # First action is 0 (expert/dummy), then masks[0...T-1]
+            data_masks = self.dataset.action_masks[abs_start : abs_end - 1]
+            # Prepend 1.0 (Expert) for the zero-action at t=0
+            ones = torch.ones(
+                1,
+                *data_masks.shape[1:],
+                dtype=data_masks.dtype,
+                device=data_masks.device,
+            )
+            return torch.cat([ones, data_masks], dim=0)
+        else:
+            # Previous action exists
+            return self.dataset.action_masks[abs_start - 1 : abs_end - 1]
 
 
 class ShortView(BaseView):
@@ -92,7 +118,7 @@ class ShortView(BaseView):
     ):
         super().__init__(dataset, indices, seq_len)
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         episode_idx = self.indices[idx]
         length = self.dataset.get_length(episode_idx)
         base_idx = self.dataset.episode_starts[episode_idx].item()
@@ -112,6 +138,10 @@ class ShortView(BaseView):
         seq_actions = self._get_shifted_actions_from_full(
             abs_start, abs_end, start_offset
         )
+        seq_masks = self._get_shifted_masks_from_full(
+            abs_start, abs_end, start_offset
+        )
+        seq_returns = self.dataset.returns[abs_start:abs_end]
 
         # Padding
         if actual_len < self.seq_len:
@@ -134,6 +164,24 @@ class ShortView(BaseView):
             )
             seq_actions = torch.cat([seq_actions, action_pad], dim=0)
 
+            # Pad masks with 1.0 (loss_mask handles valid steps, but explicit 1.0 is safe)
+            # Actually doesn't matter since loss_mask will be 0.
+            mask_pad = torch.ones(
+                pad_len,
+                *seq_masks.shape[1:],
+                dtype=seq_masks.dtype,
+                device=seq_masks.device,
+            )
+            seq_masks = torch.cat([seq_masks, mask_pad], dim=0)
+
+            return_pad = torch.zeros(
+                pad_len,
+                *seq_returns.shape[1:],
+                dtype=seq_returns.dtype,
+                device=seq_returns.device,
+            )
+            seq_returns = torch.cat([seq_returns, return_pad], dim=0)
+
             loss_mask = torch.ones(
                 self.seq_len, dtype=torch.bool, device=seq_tokens.device
             )
@@ -143,7 +191,7 @@ class ShortView(BaseView):
                 self.seq_len, dtype=torch.bool, device=seq_tokens.device
             )
 
-        return seq_tokens, seq_actions, loss_mask
+        return seq_tokens, seq_actions, seq_returns, loss_mask, seq_masks
 
 
 class LongView(BaseView):
@@ -160,7 +208,7 @@ class LongView(BaseView):
         # Verify indices are valid for this seq_len (sanity check)
         # In production, we assume caller filtered correctly.
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         episode_idx = self.indices[idx]
         length = self.dataset.get_length(episode_idx)
         base_idx = self.dataset.episode_starts[episode_idx].item()
@@ -179,8 +227,12 @@ class LongView(BaseView):
         seq_actions = self._get_shifted_actions_from_full(
             abs_start, abs_end, start_offset
         )
+        seq_masks = self._get_shifted_masks_from_full(
+            abs_start, abs_end, start_offset
+        )
+        seq_returns = self.dataset.returns[abs_start:abs_end]
 
         loss_mask = torch.ones(self.seq_len, dtype=torch.bool, device=seq_tokens.device)
         loss_mask[: self.warmup_len] = False
 
-        return seq_tokens, seq_actions, loss_mask
+        return seq_tokens, seq_actions, seq_returns, loss_mask, seq_masks

@@ -12,6 +12,7 @@ environment:
   physics_dt: 0.02
   random_positioning: true
   random_speed: true
+  random_initialization: true
 
 agents:
   scripted:
@@ -43,6 +44,7 @@ collect:
   save_frequency: 256
   render_mode: "none"
   max_episode_length: 512
+  random_action_prob: 0.05
 
 train:
   run_collect: true

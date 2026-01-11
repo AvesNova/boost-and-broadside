@@ -4,6 +4,23 @@ from torch.utils.data import DataLoader, TensorDataset, Dataset
 import torch
 
 
+def get_latest_data_path() -> str:
+    """Find the latest aggregated data file."""
+    base_path = Path("data/bc_pretraining")
+    
+    # Find the latest folder that has aggregated_data.pkl
+    latest_folder = None
+    for d in sorted(base_path.iterdir(), key=lambda d: d.name, reverse=True):
+        if d.is_dir() and (d / "aggregated_data.pkl").exists():
+            latest_folder = d
+            break
+
+    if latest_folder is None:
+        raise FileNotFoundError("No folder with aggregated_data.pkl found")
+
+    return str(latest_folder / "aggregated_data.pkl")
+
+
 def load_bc_data(data_path: str = None) -> dict:
     """
     Load BC training data from the latest aggregated data file.
@@ -15,19 +32,7 @@ def load_bc_data(data_path: str = None) -> dict:
         Dictionary containing the loaded BC data
     """
     if data_path is None:
-        base_path = Path("data/bc_pretraining")
-
-        # Find the latest folder that has aggregated_data.pkl
-        latest_folder = None
-        for d in sorted(base_path.iterdir(), key=lambda d: d.name, reverse=True):
-            if d.is_dir() and (d / "aggregated_data.pkl").exists():
-                latest_folder = d
-                break
-
-        if latest_folder is None:
-            raise FileNotFoundError("No folder with aggregated_data.pkl found")
-
-        file_path = latest_folder / "aggregated_data.pkl"
+        file_path = Path(get_latest_data_path())
     else:
         file_path = Path(data_path)
 
@@ -180,10 +185,22 @@ def create_unified_data_loaders(
     team_0 = data["team_0"]
     tokens = team_0["tokens"]
     actions = team_0["actions"]
+    rewards = team_0["rewards"]
     episode_lengths = data["episode_lengths"]
 
+    # Compute returns
+    returns = _compute_discounted_returns(rewards, episode_lengths)
+
+    # Load action masks or default to ones
+    action_masks = team_0.get("action_masks", None)
+    if action_masks is None:
+        # Default to ones (TotalTimesteps, MaxShips)
+        action_masks = torch.ones(actions.shape[0], actions.shape[1], dtype=torch.float32)
+
     # Initialize Unified Dataset (One copy of tensors)
-    unified_dataset = UnifiedEpisodeDataset(tokens, actions, episode_lengths)
+    unified_dataset = UnifiedEpisodeDataset(
+        tokens, actions, returns, episode_lengths, action_masks
+    )
 
     # Create Indices
     num_episodes = len(episode_lengths)

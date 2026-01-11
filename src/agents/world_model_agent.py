@@ -42,10 +42,11 @@ class WorldModelAgent:
         embed_dim: int = 128,
         n_layers: int = 4,
         n_heads: int = 4,
-        max_ships: int = 8,
-        dropout: float = 0.1,
-        **kwargs,
-    ):
+            max_ships: int = 8,
+            dropout: float = 0.1,
+            model: WorldModel | None = None,
+            **kwargs,
+        ):
         """
         Initialize the WorldModelAgent.
 
@@ -63,6 +64,7 @@ class WorldModelAgent:
             n_heads: Number of attention heads.
             max_ships: Maximum number of ships in the environment.
             dropout: Dropout rate.
+            model: Optional pre-loaded WorldModel instance.
             **kwargs: Additional configuration parameters (ignored).
         """
         self.agent_id = agent_id
@@ -74,23 +76,28 @@ class WorldModelAgent:
         self.action_dim = action_dim
 
         # Initialize model
-        self.model = WorldModel(
-            state_dim=state_dim,
-            action_dim=action_dim,
-            embed_dim=embed_dim,
-            n_layers=n_layers,
-            n_heads=n_heads,
-            max_ships=max_ships,
-            max_context_len=context_len,
-            dropout=dropout,
-        ).to(self.device)
-
-        if model_path:
-            self.load_model(model_path)
+        if model is not None:
+             self.model = model
+             # Ensure model is on correct device
+             self.model.to(self.device)
         else:
-            log.warning(
-                "WorldModelAgent initialized with random weights (no model_path provided)"
-            )
+            self.model = WorldModel(
+                state_dim=state_dim,
+                action_dim=action_dim,
+                embed_dim=embed_dim,
+                n_layers=n_layers,
+                n_heads=n_heads,
+                max_ships=max_ships,
+                max_context_len=context_len,
+                dropout=dropout,
+            ).to(self.device)
+
+            if model_path:
+                self.load_model(model_path)
+            else:
+                log.warning(
+                    "WorldModelAgent initialized with random weights (no model_path provided)"
+                )
 
         self.model.eval()
 
@@ -175,7 +182,7 @@ class WorldModelAgent:
 
         # 3. Forward pass
         with torch.no_grad():
-            _, pred_actions_logits, _, _ = self.model(
+            _, pred_actions_logits, _, _, _ = self.model(
                 input_tokens, input_actions, mask=mask
             )
 

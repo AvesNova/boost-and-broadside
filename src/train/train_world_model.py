@@ -18,6 +18,8 @@ from tqdm import tqdm
 
 from agents.world_model import WorldModel
 from train.data_loader import load_bc_data, create_unified_data_loaders
+from utils.tensor_utils import to_one_hot
+from eval.metrics import compute_dreaming_error, compute_controlling_error
 
 log = logging.getLogger(__name__)
 
@@ -160,7 +162,7 @@ def train_world_model(cfg: DictConfig) -> None:
 
     csv_path = run_dir / "training_log.csv"
     with open(csv_path, "w") as f:
-        f.write("epoch,train_loss,train_recon_loss,train_denoise_loss,val_loss\n")
+        f.write("epoch,train_loss,train_recon_loss,train_denoise_loss,train_value_loss,val_loss\n")
 
     # Training Loop
     epochs = cfg.world_model.epochs
@@ -186,6 +188,7 @@ def train_world_model(cfg: DictConfig) -> None:
         total_loss = 0
         total_recon_loss = 0
         total_denoise_loss = 0
+        total_value_loss = 0
 
         # Create iterators
         short_iter = iter(train_short_loader)
@@ -207,7 +210,7 @@ def train_world_model(cfg: DictConfig) -> None:
             # 1. Run batch_ratio short batches
             for _ in range(batch_ratio):
                 try:
-                    states, actions, loss_mask = next(short_iter)
+                    states, actions, returns, loss_mask, action_masks = next(short_iter)
                 except StopIteration:
                     short_exhausted = True
                     break
@@ -216,9 +219,12 @@ def train_world_model(cfg: DictConfig) -> None:
                 # (or after, but to_one_hot handles tensor)
                 states = states.to(device)
                 loss_mask = loss_mask.to(device)
+                returns = returns.to(device)
+                action_masks = action_masks.to(device)
+                actions = actions.to(device) # Raw indices
                 
-                # Convert discrete actions to one-hot
-                actions = to_one_hot(actions).to(device)
+                # Convert discrete actions to one-hot for INPUT
+                actions_oh = to_one_hot(actions)
 
                 optimizer.zero_grad()
 
@@ -231,24 +237,27 @@ def train_world_model(cfg: DictConfig) -> None:
                     mask_ratio=cfg.world_model.mask_ratio,
                 )
 
-                pred_states, pred_actions, mask, _ = model(
+                pred_states, pred_actions, pred_value, mask, _ = model(
                     states,
-                    actions,
+                    actions_oh,
                     mask_ratio=0.0,
                     noise_scale=cfg.world_model.noise_scale,
                     mask=mask,
                 )
 
-                recon_loss, denoise_loss = model.get_loss(
+                recon_loss, denoise_loss, value_loss = model.get_loss(
                     states,
                     actions,
+                    returns,
                     pred_states,
                     pred_actions,
+                    pred_value,
                     mask,
                     loss_mask=loss_mask,
+                    action_masks=action_masks,
                 )
 
-                loss = recon_loss + denoise_loss
+                loss = recon_loss + denoise_loss + value_loss
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
@@ -256,6 +265,7 @@ def train_world_model(cfg: DictConfig) -> None:
                 total_loss += loss.item()
                 total_recon_loss += recon_loss.item()
                 total_denoise_loss += denoise_loss.item()
+                total_value_loss += value_loss.item()
                 steps += 1
                 pbar.update(1)
 
@@ -264,16 +274,19 @@ def train_world_model(cfg: DictConfig) -> None:
 
             # 2. Run 1 long batch
             try:
-                states, actions, loss_mask = next(long_iter)
+                states, actions, returns, loss_mask, action_masks = next(long_iter)
             except StopIteration:
                 # If long loader exhausted, just skip
                 break
             
             states = states.to(device)
             loss_mask = loss_mask.to(device)
+            returns = returns.to(device)
+            action_masks = action_masks.to(device)
+            actions = actions.to(device) # Raw indices
             
-            # Convert discrete actions to one-hot
-            actions = to_one_hot(actions).to(device)
+            # Convert discrete actions to one-hot for INPUT
+            actions_oh = to_one_hot(actions)
 
             optimizer.zero_grad()
 
@@ -286,19 +299,19 @@ def train_world_model(cfg: DictConfig) -> None:
                 mask_ratio=cfg.world_model.mask_ratio,
             )
 
-            pred_states, pred_actions, mask, _ = model(
+            pred_states, pred_actions, pred_value, mask, _ = model(
                 states,
-                actions,
+                actions_oh,
                 mask_ratio=0.0,
                 noise_scale=cfg.world_model.noise_scale,
                 mask=mask,
             )
 
-            recon_loss, denoise_loss = model.get_loss(
-                states, actions, pred_states, pred_actions, mask, loss_mask=loss_mask
+            recon_loss, denoise_loss, value_loss = model.get_loss(
+                states, actions, returns, pred_states, pred_actions, pred_value, mask, loss_mask=loss_mask, action_masks=action_masks
             )
 
-            loss = recon_loss + denoise_loss
+            loss = recon_loss + denoise_loss + value_loss
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
@@ -306,6 +319,7 @@ def train_world_model(cfg: DictConfig) -> None:
             total_loss += loss.item()
             total_recon_loss += recon_loss.item()
             total_denoise_loss += denoise_loss.item()
+            total_value_loss += value_loss.item()
             # Note: We don't increment steps here to keep pbar consistent with short batches,
             # but we do include the loss in the total.
             # Actually, let's increment steps to keep the average correct.
@@ -316,17 +330,20 @@ def train_world_model(cfg: DictConfig) -> None:
                     "loss": total_loss / steps,
                     "recon": total_recon_loss / steps,
                     "denoise": total_denoise_loss / steps,
+                    "value": total_value_loss / steps,
                 }
             )
 
         avg_loss = total_loss / steps if steps > 0 else 0
         avg_recon_loss = total_recon_loss / steps if steps > 0 else 0
         avg_denoise_loss = total_denoise_loss / steps if steps > 0 else 0
+        avg_value_loss = total_value_loss / steps if steps > 0 else 0
 
         log.info(
             f"Epoch {epoch+1}: Train Loss={avg_loss:.4f} "
             f"(Recon={avg_recon_loss:.4f}, "
-            f"Denoise={avg_denoise_loss:.4f})"
+            f"Denoise={avg_denoise_loss:.4f}, "
+            f"Value={avg_value_loss:.4f})"
         )
 
         # Validation
@@ -337,34 +354,42 @@ def train_world_model(cfg: DictConfig) -> None:
         # Validate on both short and long
         for loader in [val_short_loader, val_long_loader]:
             with torch.no_grad():
-                for states, actions, loss_mask in loader:
+                for states, actions, returns, loss_mask, action_masks in loader:
                     states = states.to(device)
+                    actions = actions.to(device) # Raw indices (B, T, N, 3)
+                    returns = returns.to(device)
                     loss_mask = loss_mask.to(device)
-                    
-                    # Convert discrete actions to one-hot
-                    actions = to_one_hot(actions).to(device)
+                    action_masks = action_masks.to(device)
+
+                    # Convert discrete actions to one-hot for Model Input
+                    actions_oh = to_one_hot(actions)
 
                     mask = create_mixed_mask(
-                        states.shape[0],
-                        states.shape[1],
-                        states.shape[2],
-                        device,
+                        batch_size=states.shape[0],
+                        time_steps=states.shape[1],
+                        num_ships=states.shape[2],
+                        device=device,
                         mask_ratio=cfg.world_model.mask_ratio,
                     )
 
-                    pred_states, pred_actions, mask, _ = model(
-                        states, actions, mask_ratio=0.0, noise_scale=0.0, mask=mask
+                    pred_states, pred_actions, pred_value, _, _ = model(
+                        states, actions_oh, mask=mask
                     )
 
-                    recon_loss, denoise_loss = model.get_loss(
+                    # Compute loss
+                    # Pass RAW actions to get_loss as targets
+                    recon_loss, denoise_loss, value_loss = model.get_loss(
                         states,
                         actions,
+                        returns,
                         pred_states,
                         pred_actions,
+                        pred_value,
                         mask,
                         loss_mask=loss_mask,
+                        action_masks=action_masks,
                     )
-                    val_loss += (recon_loss + denoise_loss).item()
+                    val_loss += (recon_loss + denoise_loss + value_loss).item()
                     val_steps += 1
 
         avg_val_loss = val_loss / val_steps if val_steps > 0 else 0
@@ -373,14 +398,46 @@ def train_world_model(cfg: DictConfig) -> None:
         # Log to CSV
         with open(csv_path, "a") as f:
             f.write(
-                f"{epoch+1},{avg_loss:.6f},{avg_recon_loss:.6f},{avg_denoise_loss:.6f},{avg_val_loss:.6f}\n"
+                f"{epoch+1},{avg_loss:.6f},{avg_recon_loss:.6f},{avg_denoise_loss:.6f},{avg_value_loss:.6f},{avg_val_loss:.6f}\n"
             )
 
         # Log to TensorBoard
         writer.add_scalar("Loss/train", avg_loss, epoch)
         writer.add_scalar("Loss/train_recon", avg_recon_loss, epoch)
         writer.add_scalar("Loss/train_denoise", avg_denoise_loss, epoch)
+        writer.add_scalar("Loss/train_value", avg_value_loss, epoch)
         writer.add_scalar("Loss/val", avg_val_loss, epoch)
+        
+        # --- Comput and Log Rollout Metrics ---
+        # Get env config from cfg
+        env_config = OmegaConf.to_container(cfg.environment, resolve=True)
+        # Ensure render_mode is none for headless eval
+        env_config["render_mode"] = "none"
+        
+        # 1. Dreaming (Open Loop Rollout)
+        # Use validation long loader for rollout evaluation
+        dream_mse = compute_dreaming_error(
+            model, 
+            val_long_loader, 
+            device, 
+            max_steps=20, # cfg.world_model.short_batch_len or similar
+            num_batches=4 # Keep it fast
+        )
+        writer.add_scalar("Rollout/dreaming_mse", dream_mse, epoch)
+        
+        # 2. Controlling (Closed Loop Live Env)
+        control_mse, control_reward = compute_controlling_error(
+            model, 
+            env_config, 
+            device,
+            max_episode_length=200,
+            num_episodes=1
+        )
+        writer.add_scalar("Rollout/controlling_mse", control_mse, epoch)
+        writer.add_scalar("Rollout/controlling_reward", control_reward, epoch)
+        
+        log.info(f"Epoch {epoch+1}: DreamMSE={dream_mse:.4f}, ControlMSE={control_mse:.4f}, ControlRew={control_reward:.2f}")
+        # --------------------------------------
 
         # Save best model
         if avg_val_loss < best_val_loss:
