@@ -12,6 +12,7 @@ from omegaconf import DictConfig
 
 from agents.world_model import WorldModel
 from train.data_loader import load_bc_data, create_unified_data_loaders
+from omegaconf import OmegaConf
 
 log = logging.getLogger(__name__)
 
@@ -59,7 +60,8 @@ def eval_world_model(cfg: DictConfig) -> None:
 
     # 2. Load Model
     from utils.model_finder import find_most_recent_model
-    from eval.metrics import compute_dreaming_error
+    from utils.model_finder import find_most_recent_model
+    from eval.rollout_metrics import compute_rollout_metrics
     
     model_path = find_most_recent_model("world_model")
     if model_path is None:
@@ -87,20 +89,28 @@ def eval_world_model(cfg: DictConfig) -> None:
     # 3. Evaluation Loop
     log.info("Starting evaluation...")
     
+    # Get env config
+    env_config = OmegaConf.to_container(cfg.environment, resolve=True)
+    env_config["render_mode"] = "none"
+    
     # Compute Rollout MSE
-    mse = compute_dreaming_error(
+    metrics = compute_rollout_metrics(
         model, 
-        val_loader, 
+        env_config, 
         device, 
-        max_steps=cfg.world_model.short_batch_len,
-        num_batches=10
+        num_scenarios=4, # Configurable?
+        max_steps=128
     )
     
-    log.info(f"Evaluation Result - Average Rollout MSE: {mse:.6f}")
+    mse_sim = metrics["mse_sim"]
+    mse_dream = metrics["mse_dream"]
+    
+    log.info(f"Evaluation Result - Average Rollout MSE: Sim={mse_sim:.6f}, Dream={mse_dream:.6f}")
     
     # Create simple CSV with single value
     csv_path = "eval_rollout_metrics.csv"
     with open(csv_path, "w") as f:
         f.write("metric,value\n")
-        f.write(f"avg_rollout_mse,{mse:.6f}\n")
+        f.write(f"rollout_mse_sim,{mse_sim:.6f}\n")
+        f.write(f"rollout_mse_dream,{mse_dream:.6f}\n")
     log.info(f"Saved metric to {csv_path}")

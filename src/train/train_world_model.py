@@ -20,6 +20,7 @@ from agents.world_model import WorldModel
 from train.data_loader import load_bc_data, create_unified_data_loaders
 from utils.tensor_utils import to_one_hot
 from eval.metrics import compute_dreaming_error, compute_controlling_error
+from eval.rollout_metrics import compute_rollout_metrics
 
 log = logging.getLogger(__name__)
 
@@ -162,7 +163,7 @@ def train_world_model(cfg: DictConfig) -> None:
 
     csv_path = run_dir / "training_log.csv"
     with open(csv_path, "w") as f:
-        f.write("epoch,train_loss,train_recon_loss,train_denoise_loss,train_value_loss,val_loss\n")
+        f.write("epoch,train_loss,train_recon_loss,train_denoise_loss,train_value_loss,val_loss,rollout_mse_sim,rollout_mse_dream\n")
 
     # Training Loop
     epochs = cfg.world_model.epochs
@@ -398,8 +399,12 @@ def train_world_model(cfg: DictConfig) -> None:
         # Log to CSV
         with open(csv_path, "a") as f:
             f.write(
-                f"{epoch+1},{avg_loss:.6f},{avg_recon_loss:.6f},{avg_denoise_loss:.6f},{avg_value_loss:.6f},{avg_val_loss:.6f}\n"
+                f"{epoch+1},{avg_loss:.6f},{avg_recon_loss:.6f},{avg_denoise_loss:.6f},{avg_value_loss:.6f},{avg_val_loss:.6f},"
             )
+            # Will append metrics after computing them
+            # Wait, avoiding partial file write issues. Let's compute then write.
+            # But the existing code writes here.
+            # I will modify this block to write AFTER metrics computation.
 
         # Log to TensorBoard
         writer.add_scalar("Loss/train", avg_loss, epoch)
@@ -408,35 +413,63 @@ def train_world_model(cfg: DictConfig) -> None:
         writer.add_scalar("Loss/train_value", avg_value_loss, epoch)
         writer.add_scalar("Loss/val", avg_val_loss, epoch)
         
-        # --- Comput and Log Rollout Metrics ---
+        # --- Compute and Log Rollout Metrics ---
         # Get env config from cfg
         env_config = OmegaConf.to_container(cfg.environment, resolve=True)
         # Ensure render_mode is none for headless eval
         env_config["render_mode"] = "none"
         
-        # 1. Dreaming (Open Loop Rollout)
-        # Use validation long loader for rollout evaluation
-        dream_mse = compute_dreaming_error(
-            model, 
-            val_long_loader, 
-            device, 
-            max_steps=20, # cfg.world_model.short_batch_len or similar
-            num_batches=4 # Keep it fast
-        )
-        writer.add_scalar("Rollout/dreaming_mse", dream_mse, epoch)
-        
-        # 2. Controlling (Closed Loop Live Env)
-        control_mse, control_reward = compute_controlling_error(
-            model, 
-            env_config, 
+        # New Metrics
+        rollout_metrics = compute_rollout_metrics(
+            model,
+            env_config,
             device,
-            max_episode_length=200,
-            num_episodes=1
+            num_scenarios=4, # Keep it small for speed during training
+            max_steps=128,
+            step_intervals=[1, 2, 4, 8, 16, 32, 64, 128]
         )
-        writer.add_scalar("Rollout/controlling_mse", control_mse, epoch)
-        writer.add_scalar("Rollout/controlling_reward", control_reward, epoch)
         
-        log.info(f"Epoch {epoch+1}: DreamMSE={dream_mse:.4f}, ControlMSE={control_mse:.4f}, ControlRew={control_reward:.2f}")
+        mse_sim = rollout_metrics["mse_sim"]
+        mse_dream = rollout_metrics["mse_dream"]
+        
+        # Log to TensorBoard
+        writer.add_scalar("Rollout/mse_sim", mse_sim, epoch)
+        writer.add_scalar("Rollout/mse_dream", mse_dream, epoch)
+        
+        for step, mse in rollout_metrics["step_mse_sim"].items():
+            writer.add_scalar(f"Rollout_Sim_Step/step_{step}", mse, epoch)
+            
+        for step, mse in rollout_metrics["step_mse_dream"].items():
+            writer.add_scalar(f"Rollout_Dream_Step/step_{step}", mse, epoch)
+            
+        log.info(f"Epoch {epoch+1}: Rollout MSE Sim={mse_sim:.4f}, Dream={mse_dream:.4f}")
+        
+        # Finish CSV Log
+        with open(csv_path, "a") as f:
+            # We already wrote the first part?
+            # Wait, I removed the newline in the previous edit.
+            # So I can just append.
+            f.write(f"{mse_sim:.6f},{mse_dream:.6f}\n")
+            
+        # Log Detailed Metrics to separate CSV
+        detailed_csv_path = run_dir / "eval_rollout_metrics.csv"
+        # If first epoch, write header
+        if epoch == 0:
+            with open(detailed_csv_path, "w") as f:
+                # Wide format: epoch,step_0,step_1,... 
+                # Note: full_mse arrays are 0-indexed (step 1 is index 0).
+                # User asked for "epoch|step_1|step_2..."
+                # Let's create header
+                steps_header = ",".join([f"step_{i+1}" for i in range(len(rollout_metrics["full_mse_sim"]))])
+                f.write(f"epoch,type,{steps_header}\n")
+                
+        with open(detailed_csv_path, "a") as f:
+            # Sim Row
+            sim_vals = ",".join([f"{v:.6f}" for v in rollout_metrics["full_mse_sim"]])
+            f.write(f"{epoch+1},sim,{sim_vals}\n")
+            # Dream Row
+            dream_vals = ",".join([f"{v:.6f}" for v in rollout_metrics["full_mse_dream"]])
+            f.write(f"{epoch+1},dream,{dream_vals}\n")
         # --------------------------------------
 
         # Save best model

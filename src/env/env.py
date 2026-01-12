@@ -295,6 +295,7 @@ class Environment(gym.Env):
 
     def reset(
         self,
+        seed: int | None = None,
         game_mode: str = "1v1",
         initial_obs: dict | None = None,
     ) -> tuple[dict, dict]:
@@ -302,12 +303,16 @@ class Environment(gym.Env):
         Reset the environment.
 
         Args:
+            seed: Random seed for reproducibility.
             game_mode: The game mode to initialize.
             initial_obs: Optional observation dict to restore state from.
 
         Returns:
             Tuple of (observation, info).
         """
+        if seed is not None:
+            self.rng = np.random.default_rng(seed)
+
         self.current_time = 0.0
         self.state = None
         self.events = []

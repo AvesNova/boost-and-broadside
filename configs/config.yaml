@@ -56,7 +56,7 @@ train:
   use_rl: false
   
   # bc_data_path: "data/bc_pretraining/20251127_153140/aggregated_data.pkl"
-  bc_data_path: data\bc_pretraining\20260110_162559\aggregated_data.pkl
+  bc_data_path: data\bc_pretraining\20260112_102804\aggregated_data.pkl
   
   model:
     transformer:
