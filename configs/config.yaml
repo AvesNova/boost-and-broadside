@@ -109,8 +109,8 @@ world_model:
   epochs: 100000
   
   # Mixed Batch Training
-  short_batch_size: 256
-  long_batch_size: 64
+  short_batch_size: 172
+  long_batch_size: 48
   short_batch_len: 32
   long_batch_len: 128
   batch_ratio: 4

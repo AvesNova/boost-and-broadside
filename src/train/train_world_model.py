@@ -25,60 +25,7 @@ from eval.rollout_metrics import compute_rollout_metrics
 log = logging.getLogger(__name__)
 
 
-def create_mixed_mask(
-    batch_size: int,
-    time_steps: int,
-    num_ships: int,
-    device: torch.device,
-    mask_ratio: float = 0.15,
-) -> torch.Tensor:
-    """
-    Create a mask using a mix of strategies:
-    1. Random Token Masking (MAE-style)
-    2. Block Masking (Random spans of 1-8 steps)
-    3. Next-Step Masking (Masking the last token)
 
-    Args:
-        batch_size: Batch size
-        time_steps: Number of time steps
-        num_ships: Number of ships
-        device: Device to create mask on
-        mask_ratio: Base ratio for random masking
-
-    Returns:
-        Boolean mask tensor (B, T, N) where True = masked
-    """
-    # 1. Random Token Masking
-    mask = torch.rand(batch_size, time_steps, num_ships, device=device) < mask_ratio
-
-    # 2. Block Masking
-    # For each ship in each batch, mask a random block
-    # We'll do this for a subset of ships/batches to not over-mask
-    # Let's say we apply block masking to 20% of sequences
-    num_blocks = int(batch_size * num_ships * 0.2)
-    if num_blocks > 0:
-        # Randomly select batch and ship indices
-        b_indices = torch.randint(0, batch_size, (num_blocks,), device=device)
-        n_indices = torch.randint(0, num_ships, (num_blocks,), device=device)
-
-        # Random block lengths (1-8)
-        block_lens = torch.randint(1, 9, (num_blocks,), device=device)
-
-        # Random start positions (ensure fit)
-        start_pos = (
-            torch.rand(num_blocks, device=device) * (time_steps - block_lens)
-        ).long()
-
-        for i in range(num_blocks):
-            b, n, block_len, s = b_indices[i], n_indices[i], block_lens[i], start_pos[i]
-            mask[b, s : s + block_len, n] = True
-
-    # 3. Next-Step Masking
-    # Always mask the last timestep for all ships to learn forward prediction
-    # This is critical for the agent's primary use case
-    mask[:, -1, :] = True
-
-    return mask
 
 
 def to_one_hot(actions: torch.Tensor) -> torch.Tensor:
@@ -163,7 +110,7 @@ def train_world_model(cfg: DictConfig) -> None:
 
     csv_path = run_dir / "training_log.csv"
     with open(csv_path, "w") as f:
-        f.write("epoch,train_loss,train_recon_loss,train_denoise_loss,train_value_loss,val_loss,rollout_mse_sim,rollout_mse_dream\n")
+        f.write("epoch,train_loss,train_state_loss,train_action_loss,train_value_loss,val_loss,rollout_mse_sim,rollout_mse_dream\n")
 
     # Training Loop
     epochs = cfg.world_model.epochs
@@ -187,8 +134,8 @@ def train_world_model(cfg: DictConfig) -> None:
 
         model.train()
         total_loss = 0
-        total_recon_loss = 0
-        total_denoise_loss = 0
+        total_state_loss = 0
+        total_action_loss = 0
         total_value_loss = 0
 
         # Create iterators
@@ -216,56 +163,77 @@ def train_world_model(cfg: DictConfig) -> None:
                     short_exhausted = True
                     break
                 
-                # Convert actions to one-hot BEFORE moving to device 
-                # (or after, but to_one_hot handles tensor)
                 states = states.to(device)
-                loss_mask = loss_mask.to(device)
+                actions = actions.to(device)
                 returns = returns.to(device)
-                action_masks = action_masks.to(device)
-                actions = actions.to(device) # Raw indices
+                loss_mask = loss_mask.to(device)
+                if action_masks is not None:
+                    action_masks = action_masks.to(device)
                 
-                # Convert discrete actions to one-hot for INPUT
-                actions_oh = to_one_hot(actions)
+                # Prepare Inputs and Targets for AR Prediction
+                # Input at t: Token_t = [State_t, Action_{t-1}]
+                # Target at t: Token_{t+1} = [State_{t+1}, Action_t] + Value_{t+1}
+                #
+                # Data Layout:
+                # states: [S_0, S_1, ..., S_{T-1}]
+                # actions: [A_0, A_1, ..., A_{T-1}]
+                # returns: [V_0, V_1, ..., V_{T-1}]
+                
+                # Shift actions to get previous actions (Input component)
+                # Action_{-1} is assumed 0 (padding)
+                batch_size, time_steps, num_ships = states.shape[:3]
+                
+                prev_actions = torch.zeros_like(actions)
+                prev_actions[:, 1:] = actions[:, :-1]
+                prev_actions[:, 0] = 0 # First step previous action is 0
+                
+                # Slice indices
+                # Input: Tokens 0..T-2
+                input_states = states[:, :-1]
+                input_prev_actions = prev_actions[:, :-1]
+                
+                # Target: Tokens 1..T-1
+                target_states = states[:, 1:]
+                target_actions = actions[:, :-1] # This IS Action_t for the input step t
+                target_returns = returns[:, 1:] # Value of State_{t+1}
+                
+                # Adjust masks
+                # Short batches: loss_mask handles padding. Just slice it.
+                loss_mask_slice = loss_mask[:, 1:] # Valid if target is valid
+                action_masks_slice = action_masks[:, 1:] if action_masks is not None else None
+
+                # Convert inputs to One-Hot
+                input_actions_oh = to_one_hot(input_prev_actions)
 
                 optimizer.zero_grad()
 
-                # Create mask (random masking for short sequences)
-                mask = create_mixed_mask(
-                    states.shape[0],
-                    states.shape[1],
-                    states.shape[2],
-                    device,
-                    mask_ratio=cfg.world_model.mask_ratio,
-                )
-
-                pred_states, pred_actions, pred_value, mask, _ = model(
-                    states,
-                    actions_oh,
+                pred_states, pred_actions, pred_value, _, _ = model(
+                    input_states,
+                    input_actions_oh,
                     mask_ratio=0.0,
-                    noise_scale=cfg.world_model.noise_scale,
-                    mask=mask,
+                    noise_scale=0.0,
+                    mask=None,
                 )
 
-                recon_loss, denoise_loss, value_loss = model.get_loss(
-                    states,
-                    actions,
-                    returns,
-                    pred_states,
-                    pred_actions,
-                    pred_value,
-                    mask,
-                    loss_mask=loss_mask,
-                    action_masks=action_masks,
+                state_loss, action_loss, value_loss = model.get_loss(
+                    pred_states=pred_states,
+                    pred_actions=pred_actions,
+                    pred_value=pred_value,
+                    target_states=target_states,
+                    target_actions=target_actions,
+                    target_returns=target_returns,
+                    loss_mask=loss_mask_slice,
+                    action_masks=action_masks_slice,
                 )
 
-                loss = recon_loss + denoise_loss + value_loss
+                loss = state_loss + action_loss + value_loss
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
 
                 total_loss += loss.item()
-                total_recon_loss += recon_loss.item()
-                total_denoise_loss += denoise_loss.item()
+                total_state_loss += state_loss.item()
+                total_action_loss += action_loss.item()
                 total_value_loss += value_loss.item()
                 steps += 1
                 pbar.update(1)
@@ -285,65 +253,91 @@ def train_world_model(cfg: DictConfig) -> None:
             returns = returns.to(device)
             action_masks = action_masks.to(device)
             actions = actions.to(device) # Raw indices
+
+            # Shift Logic (Same as above)
+            prev_actions = torch.zeros_like(actions)
+            prev_actions[:, 1:] = actions[:, :-1]
+            prev_actions[:, 0] = 0
             
-            # Convert discrete actions to one-hot for INPUT
-            actions_oh = to_one_hot(actions)
+            input_states = states[:, :-1]
+            input_prev_actions = prev_actions[:, :-1]
+            
+            target_states = states[:, 1:]
+            target_actions = actions[:, :-1]
+            target_returns = returns[:, 1:]
+            
+            # Loss Mask Modification for Long Batches
+            # Context window: 32 steps. We want to predict FROM step 32 onwards.
+            # Input index 31 -> Target index 32.
+            # So valid targets start from index 31 (which corresponds to target T=32)
+            # Actually user said "split training into ... length 32 and long batches of length 128 with context window 96"
+            # It seems user implied first 32 is context.
+            # loss_mask for long batch has all 1s (usually).
+            # We want to ZERO out the first 32 steps of the LOSS computation.
+            # loss_mask_slice currently corresponds to Targets 1..127.
+            # We want to mask out Targets 1..31. Keep 32..127.
+            # So indices 0..30 of the slice should be False.
+            
+            loss_mask_slice = loss_mask[:, 1:]
+            # Only apply context masking if sequence is long enough
+            if loss_mask_slice.shape[1] > 32:
+                 loss_mask_slice[:, :32] = False
+            
+            action_masks_slice = action_masks[:, 1:] if action_masks is not None else None
+
+            input_actions_oh = to_one_hot(input_prev_actions)
 
             optimizer.zero_grad()
 
-            # Create mask (random masking for long sequences too)
-            mask = create_mixed_mask(
-                states.shape[0],
-                states.shape[1],
-                states.shape[2],
-                device,
-                mask_ratio=cfg.world_model.mask_ratio,
-            )
-
-            pred_states, pred_actions, pred_value, mask, _ = model(
-                states,
-                actions_oh,
+            pred_states, pred_actions, pred_value, _, _ = model(
+                input_states,
+                input_actions_oh,
                 mask_ratio=0.0,
-                noise_scale=cfg.world_model.noise_scale,
-                mask=mask,
+                noise_scale=0.0,
+                mask=None,
             )
 
-            recon_loss, denoise_loss, value_loss = model.get_loss(
-                states, actions, returns, pred_states, pred_actions, pred_value, mask, loss_mask=loss_mask, action_masks=action_masks
+            state_loss, action_loss, value_loss = model.get_loss(
+                pred_states=pred_states,
+                pred_actions=pred_actions,
+                pred_value=pred_value,
+                target_states=target_states,
+                target_actions=target_actions,
+                target_returns=target_returns,
+                loss_mask=loss_mask_slice,
+                action_masks=action_masks_slice,
             )
 
-            loss = recon_loss + denoise_loss + value_loss
+            loss = state_loss + action_loss + value_loss
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
 
             total_loss += loss.item()
-            total_recon_loss += recon_loss.item()
-            total_denoise_loss += denoise_loss.item()
+            total_state_loss += state_loss.item()
+            total_action_loss += action_loss.item()
             total_value_loss += value_loss.item()
-            # Note: We don't increment steps here to keep pbar consistent with short batches,
-            # but we do include the loss in the total.
-            # Actually, let's increment steps to keep the average correct.
+            
             steps += 1
 
             pbar.set_postfix(
                 {
                     "loss": total_loss / steps,
-                    "recon": total_recon_loss / steps,
-                    "denoise": total_denoise_loss / steps,
+                    "state": total_state_loss / steps,
+                    "action": total_action_loss / steps,
                     "value": total_value_loss / steps,
                 }
             )
 
         avg_loss = total_loss / steps if steps > 0 else 0
-        avg_recon_loss = total_recon_loss / steps if steps > 0 else 0
-        avg_denoise_loss = total_denoise_loss / steps if steps > 0 else 0
+        avg_state_loss = total_state_loss / steps if steps > 0 else 0
+        avg_action_loss = total_action_loss / steps if steps > 0 else 0
         avg_value_loss = total_value_loss / steps if steps > 0 else 0
 
         log.info(
             f"Epoch {epoch+1}: Train Loss={avg_loss:.4f} "
-            f"(Recon={avg_recon_loss:.4f}, "
-            f"Denoise={avg_denoise_loss:.4f}, "
+            f"(State={avg_state_loss:.4f}, "
+            f"Action={avg_action_loss:.4f}, "
             f"Value={avg_value_loss:.4f})"
         )
 
@@ -362,35 +356,38 @@ def train_world_model(cfg: DictConfig) -> None:
                     loss_mask = loss_mask.to(device)
                     action_masks = action_masks.to(device)
 
-                    # Convert discrete actions to one-hot for Model Input
-                    actions_oh = to_one_hot(actions)
+                    # Prepare inputs/targets for validation (Same shift logic)
+                    prev_actions = torch.zeros_like(actions)
+                    prev_actions[:, 1:] = actions[:, :-1]
+                    prev_actions[:, 0] = 0
 
-                    mask = create_mixed_mask(
-                        batch_size=states.shape[0],
-                        time_steps=states.shape[1],
-                        num_ships=states.shape[2],
-                        device=device,
-                        mask_ratio=cfg.world_model.mask_ratio,
-                    )
+                    input_states = states[:, :-1]
+                    input_prev_actions = prev_actions[:, :-1]
+
+                    target_states = states[:, 1:]
+                    target_actions = actions[:, :-1]
+                    target_returns = returns[:, 1:]
+
+                    loss_mask_slice = loss_mask[:, 1:]
+                    action_masks_slice = action_masks[:, 1:] if action_masks is not None else None
+
+                    input_actions_oh = to_one_hot(input_prev_actions)
 
                     pred_states, pred_actions, pred_value, _, _ = model(
-                        states, actions_oh, mask=mask
+                        input_states, input_actions_oh, mask_ratio=0.0
                     )
 
-                    # Compute loss
-                    # Pass RAW actions to get_loss as targets
-                    recon_loss, denoise_loss, value_loss = model.get_loss(
-                        states,
-                        actions,
-                        returns,
-                        pred_states,
-                        pred_actions,
-                        pred_value,
-                        mask,
-                        loss_mask=loss_mask,
-                        action_masks=action_masks,
+                    state_loss, action_loss, value_loss = model.get_loss(
+                        pred_states=pred_states,
+                        pred_actions=pred_actions,
+                        pred_value=pred_value,
+                        target_states=target_states,
+                        target_actions=target_actions,
+                        target_returns=target_returns,
+                        loss_mask=loss_mask_slice,
+                        action_masks=action_masks_slice,
                     )
-                    val_loss += (recon_loss + denoise_loss + value_loss).item()
+                    val_loss += (state_loss + action_loss + value_loss).item()
                     val_steps += 1
 
         avg_val_loss = val_loss / val_steps if val_steps > 0 else 0
@@ -399,7 +396,7 @@ def train_world_model(cfg: DictConfig) -> None:
         # Log to CSV
         with open(csv_path, "a") as f:
             f.write(
-                f"{epoch+1},{avg_loss:.6f},{avg_recon_loss:.6f},{avg_denoise_loss:.6f},{avg_value_loss:.6f},{avg_val_loss:.6f},"
+                f"{epoch+1},{avg_loss:.6f},{avg_state_loss:.6f},{avg_action_loss:.6f},{avg_value_loss:.6f},{avg_val_loss:.6f},"
             )
             # Will append metrics after computing them
             # Wait, avoiding partial file write issues. Let's compute then write.
@@ -408,8 +405,8 @@ def train_world_model(cfg: DictConfig) -> None:
 
         # Log to TensorBoard
         writer.add_scalar("Loss/train", avg_loss, epoch)
-        writer.add_scalar("Loss/train_recon", avg_recon_loss, epoch)
-        writer.add_scalar("Loss/train_denoise", avg_denoise_loss, epoch)
+        writer.add_scalar("Loss/train_state", avg_state_loss, epoch)
+        writer.add_scalar("Loss/train_action", avg_action_loss, epoch)
         writer.add_scalar("Loss/train_value", avg_value_loss, epoch)
         writer.add_scalar("Loss/val", avg_val_loss, epoch)
         

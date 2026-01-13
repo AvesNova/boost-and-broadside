@@ -44,7 +44,13 @@ class TestShortView:
         actions = data["team_0"]["actions"]
         episode_lengths = data["episode_lengths"]
 
-        dataset = UnifiedEpisodeDataset(tokens, actions, episode_lengths)
+        dataset = UnifiedEpisodeDataset(
+            tokens,
+            actions,
+            returns=torch.zeros(len(tokens)),
+            episode_lengths=episode_lengths,
+            action_masks=torch.ones(len(tokens), 8),  # 8 ships
+        )
         view = ShortView(dataset, list(range(len(episode_lengths))), seq_len=32)
 
         assert len(view) > 0
@@ -56,10 +62,16 @@ class TestShortView:
         actions = data["team_0"]["actions"]
         episode_lengths = data["episode_lengths"]
 
-        dataset = UnifiedEpisodeDataset(tokens, actions, episode_lengths)
+        dataset = UnifiedEpisodeDataset(
+            tokens,
+            actions,
+            returns=torch.zeros(len(tokens)),
+            episode_lengths=episode_lengths,
+            action_masks=torch.ones(len(tokens), 8),
+        )
         view = ShortView(dataset, list(range(len(episode_lengths))), seq_len=32)
 
-        batch_tokens, batch_actions, loss_mask = view[0]
+        batch_tokens, batch_actions, batch_returns, loss_mask, batch_masks = view[0]
 
         assert batch_tokens.shape[0] == 32
         assert batch_actions.shape[0] == 32
@@ -81,7 +93,13 @@ class TestLongView:
         actions = data["team_0"]["actions"]
         episode_lengths = data["episode_lengths"]
 
-        dataset = UnifiedEpisodeDataset(tokens, actions, episode_lengths)
+        dataset = UnifiedEpisodeDataset(
+            tokens,
+            actions,
+            returns=torch.zeros(len(tokens)),
+            episode_lengths=episode_lengths,
+            action_masks=torch.ones(len(tokens), 8),
+        )
         # Only use episodes longer than seq_len
         valid_indices = [i for i, l in enumerate(episode_lengths) if l >= 128]
 
@@ -96,12 +114,18 @@ class TestLongView:
         actions = data["team_0"]["actions"]
         episode_lengths = data["episode_lengths"]
 
-        dataset = UnifiedEpisodeDataset(tokens, actions, episode_lengths)
+        dataset = UnifiedEpisodeDataset(
+            tokens,
+            actions,
+            returns=torch.zeros(len(tokens)),
+            episode_lengths=episode_lengths,
+            action_masks=torch.ones(len(tokens), 8),
+        )
         view = LongView(
             dataset, list(range(len(episode_lengths))), seq_len=128, warmup_len=32
         )
 
-        batch_tokens, batch_actions, loss_mask = view[0]
+        batch_tokens, batch_actions, batch_returns, loss_mask, batch_masks = view[0]
 
         assert batch_tokens.shape[0] == 128
         assert batch_actions.shape[0] == 128
@@ -134,8 +158,8 @@ class TestUnifiedDataLoaders:
         assert len(tl) > 0
 
         # Verify batch shapes
-        s_tokens, s_actions, s_mask = next(iter(ts))
+        s_tokens, s_actions, s_returns, s_mask, s_action_masks = next(iter(ts))
         assert s_tokens.shape == (4, 32, 8, 12)
 
-        l_tokens, l_actions, l_mask = next(iter(tl))
+        l_tokens, l_actions, l_returns, l_mask, l_action_masks = next(iter(tl))
         assert l_tokens.shape == (2, 128, 8, 12)

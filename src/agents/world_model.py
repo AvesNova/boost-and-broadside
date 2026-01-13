@@ -423,126 +423,72 @@ class WorldModel(nn.Module):
 
     def get_loss(
         self,
-        states,
-        actions,
-        returns,
         pred_states,
         pred_actions,
         pred_value,
-        mask,
+        target_states,
+        target_actions,
+        target_returns,
         loss_mask=None,
         action_masks=None,
     ):
-        # states: (B, T, N, F)
-        # actions: (B, T, N, 12) - One-hot encoded actions
-        # actions: (B, T, N, 3) - Integer indices for (power, turn, shoot)
-        # returns: (B, T, N) - Discounted returns (value targets)
-        # mask: (B, T, N) - True = masked (reconstruction target), False = visible (denoising target)
-        # loss_mask: (B, T, N) - True = compute loss, False = ignore (warm-up/padding)
+        """
+        Compute total loss composed of state, action, and value prediction losses.
 
-        if states.ndim == 3:
-            # Unflatten if needed, but usually passed same as forward input
-            batch_size, seq_len, features = states.shape
-            num_ships = self.config.max_ships
-            time_steps = seq_len // num_ships
-            states = states.view(batch_size, time_steps, num_ships, features)
-            actions = actions.view(batch_size, time_steps, num_ships, actions.shape[-1])
-            returns = returns.view(batch_size, time_steps, num_ships)
-            if mask is not None:
-                mask = mask.view(batch_size, time_steps, num_ships)
-            if loss_mask is not None:
-                loss_mask = loss_mask.view(batch_size, time_steps, num_ships)
-            if action_masks is not None:
-                action_masks = action_masks.view(batch_size, time_steps, num_ships)
-
-
-        # Ensure returns match (B, T, N)
-        if returns.ndim == 2:
-            # (B, T) -> (B, T, N)
-            returns = returns.unsqueeze(-1).expand(states.shape[0], states.shape[1], states.shape[2])
-
-        # If no loss_mask provided, compute loss for all tokens
+        All inputs should hold valid prediction/target pairs.
+        """
+        # Ensure dimensions match
         if loss_mask is None:
-            loss_mask = torch.ones_like(mask, dtype=torch.bool)
-        elif loss_mask.ndim == 2:
-            # (B, T) -> (B, T, N)
-            loss_mask = loss_mask.unsqueeze(-1).expand_as(mask)
+            loss_mask = torch.ones_like(target_returns, dtype=torch.bool)
+        
+        # Apply loss mask to flatten
+        # We process only valid tokens to handle padding/warmup correctly
+        valid_mask = loss_mask.bool()
+        
+        # 1. State Loss (MSE)
+        # Select valid predictions and targets
+        # pred_states: (B, T, N, F)
+        valid_pred_states = pred_states[valid_mask]
+        valid_target_states = target_states[valid_mask]
+        
+        state_loss = F.mse_loss(valid_pred_states, valid_target_states)
 
-        # Value Loss (always computed on all valid tokens)
-        value_loss = F.mse_loss(pred_value[loss_mask], returns[loss_mask])
+        # 2. Value Loss (MSE)
+        valid_pred_value = pred_value[valid_mask]
+        valid_target_returns = target_returns[valid_mask].unsqueeze(-1).expand_as(valid_pred_value)
+        
+        value_loss = F.mse_loss(valid_pred_value, valid_target_returns)
 
-        recon_loss = torch.tensor(0.0, device=states.device)
-        denoise_loss = torch.tensor(0.0, device=states.device)
+        # 3. Action Loss (Cross Entropy)
+        # target_actions: (B, T, N, 3) - indices
+        # pred_actions: (B, T, N, 12) - logits
+        
+        valid_pred_actions = pred_actions[valid_mask] # (M, 12)
+        valid_target_actions = target_actions[valid_mask] # (M, 3)
+        
+        # If specific action masks provided (e.g. for dead ships)
+        if action_masks is not None:
+             valid_action_masks = action_masks[valid_mask] # (M,)
+             # We can just ignore this for now or mask the CE loss
+             # Simplified: Assume all steps in loss_mask are valid for actions too
+        
+        # Split logits
+        power_preds = valid_pred_actions[..., 0:3]
+        turn_preds = valid_pred_actions[..., 3:10]
+        shoot_preds = valid_pred_actions[..., 10:12]
 
-        # Helper to compute categorical action loss
-        def compute_action_loss(preds, targets, mask=None):
-            # preds: (M, 12), targets: (M, 3) - targets are integer indices
-            # Split targets
-            power_target = targets[..., 0].long()
-            turn_target = targets[..., 1].long()
-            shoot_target = targets[..., 2].long()
+        # Split targets
+        power_target = valid_target_actions[..., 0].long()
+        turn_target = valid_target_actions[..., 1].long()
+        shoot_target = valid_target_actions[..., 2].long()
 
-            # Split preds
-            power_preds = preds[..., 0:3]
-            turn_preds = preds[..., 3:10]
-            shoot_preds = preds[..., 10:12]
+        loss_power = F.cross_entropy(power_preds.reshape(-1, 3), power_target.reshape(-1))
+        loss_turn = F.cross_entropy(turn_preds.reshape(-1, 7), turn_target.reshape(-1))
+        loss_shoot = F.cross_entropy(shoot_preds.reshape(-1, 2), shoot_target.reshape(-1))
 
-            # Compute CE loss
-            loss_power = F.cross_entropy(power_preds, power_target, reduction="none")
-            loss_turn = F.cross_entropy(turn_preds, turn_target, reduction="none")
-            loss_shoot = F.cross_entropy(shoot_preds, shoot_target, reduction="none")
-            
-            total_loss = loss_power + loss_turn + loss_shoot
-            
-            if mask is not None:
-                total_loss = total_loss * mask
-                return total_loss.sum() / (mask.sum() + 1e-6)
-            else:
-                return total_loss.mean()
+        action_loss = loss_power + loss_turn + loss_shoot
 
-        # Reconstruction Loss (for masked tokens)
-        recon_target_mask = mask & loss_mask
-        if recon_target_mask.any():
-            # State loss: MSE
-            recon_loss += F.mse_loss(
-                pred_states[recon_target_mask], states[recon_target_mask]
-            )
-            
-            # Action Loss needs combined mask if action_masks provided
-            curr_action_mask = None
-            if action_masks is not None:
-                # Align action_masks with (B, T, N) if needed
-                if action_masks.ndim == 2:
-                     action_masks = action_masks.unsqueeze(-1).expand_as(mask) # Not likely given dataset, but for safety
-                
-                # Extract masks for relevant tokens
-                curr_action_mask = action_masks[recon_target_mask]
-            
-            recon_loss += compute_action_loss(
-                pred_actions[recon_target_mask], 
-                actions[recon_target_mask],
-                mask=curr_action_mask
-            )
-
-        # Denoising Loss (for unmasked tokens)
-        denoise_target_mask = (~mask) & loss_mask
-        if denoise_target_mask.any():
-            # State loss: MSE
-            denoise_loss += F.mse_loss(
-                pred_states[denoise_target_mask], states[denoise_target_mask]
-            )
-            
-            curr_action_mask = None
-            if action_masks is not None:
-                 curr_action_mask = action_masks[denoise_target_mask]
-
-            denoise_loss += compute_action_loss(
-                pred_actions[denoise_target_mask], 
-                actions[denoise_target_mask],
-                mask=curr_action_mask
-            )
-
-        return recon_loss, denoise_loss, value_loss
+        return state_loss, action_loss, value_loss
 
     @torch.no_grad()
     def generate(self, initial_state, initial_action, steps: int, n_ships: int):

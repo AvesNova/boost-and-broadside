@@ -109,10 +109,12 @@ class RotaryPositionEmbedding(nn.Module):
         """
         # Get sequence length
         seq_len = q.shape[1]
+        max_pos = position_ids.max().item()
 
         # Extend cache if needed
-        if seq_len > self.cos_cached.shape[0]:
-            self._precompute_freqs(seq_len)
+        required_len = max(seq_len, max_pos + 1)
+        if required_len > self.cos_cached.shape[0]:
+            self._precompute_freqs(required_len)
 
         # Handle position_ids shape
         if position_ids.ndim == 1:

@@ -18,7 +18,7 @@ from stable_baselines3.common.distributions import (
 from stable_baselines3.common.type_aliases import Schedule
 
 from agents.world_model import WorldModel
-from train.train_world_model import create_mixed_mask
+
 
 
 class WorldModelSB3Policy(ActorCriticPolicy):
@@ -220,7 +220,7 @@ class WorldModelSB3Policy(ActorCriticPolicy):
         # OR better, since I am in "Execution" I can Modify WorldModel.py in next step.
         
         # For now, let's pretend `world_model` returns `embeddings` as a 5th return value.
-        pred_states, pred_action_logits, _, _, embeddings = self.world_model(states, actions, return_embeddings=True)
+        pred_states, pred_action_logits, _, _, _, embeddings = self.world_model(states, actions, return_embeddings=True)
          
         # Use embeddings from last timestep for Value estimation
         # embeddings: (B, T, N, E)
@@ -255,7 +255,7 @@ class WorldModelSB3Policy(ActorCriticPolicy):
         states, prev_actions = self._get_obs_actions(obs)
         
         # Run model
-        pred_states, pred_action_logits, _, _, embeddings = self.world_model(states, prev_actions, return_embeddings=True)
+        pred_states, pred_action_logits, _, _, _, embeddings = self.world_model(states, prev_actions, return_embeddings=True)
         
         # Value
         last_embed = embeddings[:, -1, :, :]
@@ -286,7 +286,7 @@ class WorldModelSB3Policy(ActorCriticPolicy):
 
     def predict_values(self, obs: torch.Tensor) -> torch.Tensor:
         states, prev_actions = self._get_obs_actions(obs)
-        _, _, _, _, embeddings = self.world_model(states, prev_actions, return_embeddings=True)
+        _, _, _, _, _, embeddings = self.world_model(states, prev_actions, return_embeddings=True)
         
         last_embed = embeddings[:, -1, :, :]
         global_embed = last_embed.mean(dim=1)
@@ -295,37 +295,61 @@ class WorldModelSB3Policy(ActorCriticPolicy):
 
     def get_dynamics_loss(self, obs: torch.Tensor) -> torch.Tensor:
         """
-        Compute the auxiliary dynamics loss (Reconstruction + Denoising).
+        Compute the auxiliary dynamics loss (Next Step Prediction).
         """
         states, actions = self._get_obs_actions(obs)
-        device = states.device
         
-        # Create Mask (Mixed Strategy)
-        mask = create_mixed_mask(
-            states.shape[0], # B
-            states.shape[1], # T
-            states.shape[2], # N
-            device,
-            mask_ratio=self.aux_loss_config.get("mask_ratio", 0.15)
+        # Prepare Inputs and Targets for AR Prediction
+        # Input at t: Token_t = [State_t, Action_{t-1}]
+        # Target at t: Token_{t+1} = [State_{t+1}, Action_t]
+        
+        # Shift actions to get previous actions (Input component)
+        prev_actions = torch.zeros_like(actions)
+        prev_actions[:, 1:] = actions[:, :-1]
+        prev_actions[:, 0] = 0 # First step previous action is 0
+        
+        # Slice indices
+        # Input: Tokens 0..T-2
+        input_states = states[:, :-1]
+        input_prev_actions = prev_actions[:, :-1]
+        
+        # Target: Tokens 1..T-1
+        target_states = states[:, 1:]
+        target_actions = actions[:, :-1] # This IS Action_t for the input step t
+        # For value target, we don't have explicit returns here unless provided.
+        # So we skip value loss in auxiliary dynamics loss (it's handled by PPO value loss).
+        
+        # Convert inputs to One-Hot if not already?
+        # WorldModel expects one-hot actions if action_dim matches.
+        # Actually WorldModel forward expects ONE-HOT actions.
+        # SB3Wrapper usually provides integer actions if from action_space?
+        # But _get_obs_actions returns whatever is in obs.
+        # Assuming obs contains integer actions, we need to one-hot them.
+        
+        from utils.tensor_utils import to_one_hot # Import locally to avoid circular dep if needed
+        input_actions_oh = to_one_hot(input_prev_actions)
+        
+        # Run Forward
+        pred_states, pred_actions, pred_value, _, _ = self.world_model(
+            input_states,
+            input_actions_oh,
+            mask_ratio=0.0,
+            noise_scale=0.0,
+            mask=None
         )
         
-        # Run Forward with masking/noise
-        pred_states, pred_actions, mask, _ = self.world_model(
-            states,
-            actions,
-            mask_ratio=0.0, # We provide explicit mask
-            noise_scale=self.aux_loss_config.get("noise_scale", 0.1),
-            mask=mask
-        )
+        # Create dummy returns for API compatibility (we don't use value loss here)
+        # Shape should be (B, T) to support broadcasting in get_loss
+        target_returns = torch.zeros(pred_value.shape[:2], device=pred_value.device)
         
         # Compute Loss
-        recon_loss, denoise_loss = self.world_model.get_loss(
-            states,
-            actions,
-            pred_states,
-            pred_actions,
-            mask
-            # loss_mask is assumed all ones (we care about all timesteps in current chunk)
+        state_loss, action_loss, _ = self.world_model.get_loss(
+            pred_states=pred_states,
+            pred_actions=pred_actions,
+            pred_value=pred_value,
+            target_states=target_states,
+            target_actions=target_actions,
+            target_returns=target_returns, # Dummy
         )
         
-        return recon_loss + denoise_loss
+        return state_loss + action_loss
