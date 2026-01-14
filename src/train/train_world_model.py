@@ -205,6 +205,12 @@ def train_world_model(cfg: DictConfig) -> None:
                 # Convert inputs to One-Hot
                 input_actions_oh = to_one_hot(input_prev_actions)
 
+                # Input Noise Injection
+                if cfg.world_model.input_noise_ratio > 0:
+                     noise_mask = (torch.rand(input_states.shape[:3], device=device) < cfg.world_model.input_noise_ratio)
+                     noise = torch.randn_like(input_states) * cfg.world_model.input_noise_scale
+                     input_states = torch.where(noise_mask.unsqueeze(-1), input_states + noise, input_states)
+
                 optimizer.zero_grad()
 
                 pred_states, pred_actions, pred_value, _, _ = model(
@@ -286,6 +292,12 @@ def train_world_model(cfg: DictConfig) -> None:
             action_masks_slice = action_masks[:, 1:] if action_masks is not None else None
 
             input_actions_oh = to_one_hot(input_prev_actions)
+
+            # Input Noise Injection
+            if cfg.world_model.input_noise_ratio > 0:
+                    noise_mask = (torch.rand(input_states.shape[:3], device=device) < cfg.world_model.input_noise_ratio)
+                    noise = torch.randn_like(input_states) * cfg.world_model.input_noise_scale
+                    input_states = torch.where(noise_mask.unsqueeze(-1), input_states + noise, input_states)
 
             optimizer.zero_grad()
 
