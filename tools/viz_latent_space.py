@@ -305,7 +305,7 @@ def plot_continuous(projections, values, title, filename, is_enemy=None):
     plt.savefig(filename, dpi=200)
     plt.close()
 
-def plot_and_save(projections, actions, values, ship_ids, timesteps, alive_status, method_name, save_dir, model_name):
+def plot_and_save(projections, actions, values, ship_ids, timesteps, alive_status, method_name, save_dir, model_name, suffix=""):
     # Action indices
     # actions column 0 is power
     # actions column 1 is turn
@@ -334,13 +334,15 @@ def plot_and_save(projections, actions, values, ship_ids, timesteps, alive_statu
     # Alive Map
     alive_map = {0: "Dead", 1: "Alive"}
     
+    title_suffix = f" ({suffix.replace('_', ' ').strip()})" if suffix else ""
+
     # 1. Power Actions
     plot_with_legend(
         projections, 
         power_actions, 
         power_map, 
-        f"{model_name} - {method_name} - Power Actions", 
-        save_dir / f"{method_name}_power.png",
+        f"{model_name} - {method_name} - Power Actions{title_suffix}", 
+        save_dir / f"{method_name}_power{suffix}.png",
         is_enemy=team_ids
     )
 
@@ -349,8 +351,8 @@ def plot_and_save(projections, actions, values, ship_ids, timesteps, alive_statu
         projections, 
         turn_actions, 
         turn_map, 
-        f"{model_name} - {method_name} - Turn Actions", 
-        save_dir / f"{method_name}_turn.png",
+        f"{model_name} - {method_name} - Turn Actions{title_suffix}", 
+        save_dir / f"{method_name}_turn{suffix}.png",
         is_enemy=team_ids
     )
     
@@ -359,8 +361,8 @@ def plot_and_save(projections, actions, values, ship_ids, timesteps, alive_statu
         projections, 
         shoot_actions, 
         shoot_map, 
-        f"{model_name} - {method_name} - Shoot Actions", 
-        save_dir / f"{method_name}_shoot.png",
+        f"{model_name} - {method_name} - Shoot Actions{title_suffix}", 
+        save_dir / f"{method_name}_shoot{suffix}.png",
         is_enemy=team_ids
     )
     
@@ -368,8 +370,8 @@ def plot_and_save(projections, actions, values, ship_ids, timesteps, alive_statu
     plot_continuous(
         projections, 
         values, 
-        f"{model_name} - {method_name} - Value", 
-        save_dir / f"{method_name}_value.png",
+        f"{model_name} - {method_name} - Value{title_suffix}", 
+        save_dir / f"{method_name}_value{suffix}.png",
         is_enemy=team_ids
     )
     
@@ -378,8 +380,8 @@ def plot_and_save(projections, actions, values, ship_ids, timesteps, alive_statu
         projections,
         ship_ids,
         ship_map,
-        f"{model_name} - {method_name} - Ship ID",
-        save_dir / f"{method_name}_ship.png",
+        f"{model_name} - {method_name} - Ship ID{title_suffix}",
+        save_dir / f"{method_name}_ship{suffix}.png",
         is_enemy=team_ids
     )
     
@@ -388,8 +390,8 @@ def plot_and_save(projections, actions, values, ship_ids, timesteps, alive_statu
         projections,
         team_ids,
         team_map,
-        f"{model_name} - {method_name} - Team ID",
-        save_dir / f"{method_name}_team.png",
+        f"{model_name} - {method_name} - Team ID{title_suffix}",
+        save_dir / f"{method_name}_team{suffix}.png",
         is_enemy=team_ids
     )
     
@@ -397,8 +399,8 @@ def plot_and_save(projections, actions, values, ship_ids, timesteps, alive_statu
     plot_continuous(
         projections,
         timesteps,
-        f"{model_name} - {method_name} - Timestep",
-        save_dir / f"{method_name}_timestep.png",
+        f"{model_name} - {method_name} - Timestep{title_suffix}",
+        save_dir / f"{method_name}_timestep{suffix}.png",
         is_enemy=team_ids
     )
     
@@ -407,12 +409,12 @@ def plot_and_save(projections, actions, values, ship_ids, timesteps, alive_statu
         projections,
         alive_status,
         alive_map,
-        f"{model_name} - {method_name} - Alive Status",
-        save_dir / f"{method_name}_alive.png",
+        f"{model_name} - {method_name} - Alive Status{title_suffix}",
+        save_dir / f"{method_name}_alive{suffix}.png",
         is_enemy=team_ids
     )
 
-def generate_report(model_name, run_dir, config, output_dir):
+def generate_report(model_name, run_dir, config, output_dir, passes):
     report_path = output_dir / "report.md"
     
     # Metadata
@@ -430,26 +432,30 @@ def generate_report(model_name, run_dir, config, output_dir):
         f.write(f"- **Heads:** {wm_config.get('n_heads', 'N/A')}\n")
         f.write(f"- **Context Len:** {wm_config.get('context_len', 'N/A')}\n\n")
         
-        f.write("## Visualizations\n")
-        f.write("### PCA Projections\n")
-        f.write(f"![PCA Power](PCA_power.png)\n")
-        f.write(f"![PCA Turn](PCA_turn.png)\n")
-        f.write(f"![PCA Shoot](PCA_shoot.png)\n")
-        f.write(f"![PCA Value](PCA_value.png)\n")
-        f.write(f"![PCA Ship ID](PCA_ship.png)\n")
-        f.write(f"![PCA Team ID](PCA_team.png)\n")
-        f.write(f"![PCA Timestep](PCA_timestep.png)\n")
-        f.write(f"![PCA Alive](PCA_alive.png)\n\n")
-        
-        f.write("### PaCMAP Projections\n")
-        f.write(f"![PaCMAP Power](PaCMAP_power.png)\n")
-        f.write(f"![PaCMAP Turn](PaCMAP_turn.png)\n")
-        f.write(f"![PaCMAP Shoot](PaCMAP_shoot.png)\n")
-        f.write(f"![PaCMAP Value](PaCMAP_value.png)\n")
-        f.write(f"![PaCMAP Ship ID](PaCMAP_ship.png)\n")
-        f.write(f"![PaCMAP Team ID](PaCMAP_team.png)\n")
-        f.write(f"![PaCMAP Timestep](PaCMAP_timestep.png)\n")
-        f.write(f"![PaCMAP Alive](PaCMAP_alive.png)\n")
+        for p in passes:
+            suffix = p["suffix"]
+            name = p["name"]
+            f.write(f"## Visualizations ({name})\n")
+            
+            f.write("### PCA Projections\n")
+            f.write(f"![PCA Power](PCA_power{suffix}.png)\n")
+            f.write(f"![PCA Turn](PCA_turn{suffix}.png)\n")
+            f.write(f"![PCA Shoot](PCA_shoot{suffix}.png)\n")
+            f.write(f"![PCA Value](PCA_value{suffix}.png)\n")
+            f.write(f"![PCA Ship ID](PCA_ship{suffix}.png)\n")
+            f.write(f"![PCA Team ID](PCA_team{suffix}.png)\n")
+            f.write(f"![PCA Timestep](PCA_timestep{suffix}.png)\n")
+            f.write(f"![PCA Alive](PCA_alive{suffix}.png)\n\n")
+            
+            f.write("### PaCMAP Projections\n")
+            f.write(f"![PaCMAP Power](PaCMAP_power{suffix}.png)\n")
+            f.write(f"![PaCMAP Turn](PaCMAP_turn{suffix}.png)\n")
+            f.write(f"![PaCMAP Shoot](PaCMAP_shoot{suffix}.png)\n")
+            f.write(f"![PaCMAP Value](PaCMAP_value{suffix}.png)\n")
+            f.write(f"![PaCMAP Ship ID](PaCMAP_ship{suffix}.png)\n")
+            f.write(f"![PaCMAP Team ID](PaCMAP_team{suffix}.png)\n")
+            f.write(f"![PaCMAP Timestep](PaCMAP_timestep{suffix}.png)\n")
+            f.write(f"![PaCMAP Alive](PaCMAP_alive{suffix}.png)\n\n")
     
     print(f"Report generated at: {report_path}")
 
@@ -528,37 +534,69 @@ def main():
                 seq_len=96 # As requested
             )
             
-            # Subsample for plotting if too large (> 10k points)
-            if len(embeddings) > 10000:
-                indices = np.random.choice(len(embeddings), 10000, replace=False)
-                embeddings = embeddings[indices]
-                actions = actions[indices]
-                values = values[indices]
-                ship_ids = ship_ids[indices]
-                timesteps = timesteps[indices]
-                alive_status = alive_status[indices]
-            
-            print(f"Projecting {len(embeddings)} points...")
-            
+            # Store raw data for multiple passes
+            raw_data = {
+                "embeddings": embeddings,
+                "actions": actions,
+                "values": values,
+                "ship_ids": ship_ids,
+                "timesteps": timesteps,
+                "alive_status": alive_status
+            }
+
+            passes = [
+                {"name": "All Data", "suffix": "", "mask": np.ones(len(embeddings), dtype=bool)},
+                {"name": "Alive Only", "suffix": "_alive", "mask": raw_data["alive_status"] == 1}
+            ]
+
             model_out_dir = output_dir / model_name
             model_out_dir.mkdir(parents=True, exist_ok=True)
-            
-            # PCA
-            print("Running PCA...")
-            pca = PCA(n_components=2)
-            pca_proj = pca.fit_transform(embeddings)
-            plot_and_save(pca_proj, actions, values, ship_ids, timesteps, alive_status, "PCA", model_out_dir, model_name)
-            
-            # PaCMAP
-            print("Running PaCMAP...")
-            # Use PCA initialization for PaCMAP for stability/speed if high dim? 
-            # Or just run directly. PaCMAP is fast.
-            embedding_learner = pacmap.PaCMAP(n_components=2, n_neighbors=None, MN_ratio=0.5, FP_ratio=2.0)
-            pacmap_proj = embedding_learner.fit_transform(embeddings, init="pca")
-            plot_and_save(pacmap_proj, actions, values, ship_ids, timesteps, alive_status, "PaCMAP", model_out_dir, model_name)
+
+            for p in passes:
+                print(f"\nRunning pass: {p['name']}")
+                mask = p["mask"]
+                suffix = p["suffix"]
+
+                if np.sum(mask) == 0:
+                    print(f"Skipping {p['name']} due to empty mask.")
+                    continue
+                
+                # Filter
+                curr_emb = raw_data["embeddings"][mask]
+                curr_act = raw_data["actions"][mask]
+                curr_val = raw_data["values"][mask]
+                curr_sid = raw_data["ship_ids"][mask]
+                curr_time = raw_data["timesteps"][mask]
+                curr_alive = raw_data["alive_status"][mask]
+
+                # Subsample for plotting if too large (> 10k points)
+                if len(curr_emb) > 10000:
+                    indices = np.random.choice(len(curr_emb), 10000, replace=False)
+                    curr_emb = curr_emb[indices]
+                    curr_act = curr_act[indices]
+                    curr_val = curr_val[indices]
+                    curr_sid = curr_sid[indices]
+                    curr_time = curr_time[indices]
+                    curr_alive = curr_alive[indices]
+                
+                print(f"Projecting {len(curr_emb)} points...")
+                
+                # PCA
+                print("Running PCA...")
+                pca = PCA(n_components=2)
+                pca_proj = pca.fit_transform(curr_emb)
+                plot_and_save(pca_proj, curr_act, curr_val, curr_sid, curr_time, curr_alive, "PCA", model_out_dir, model_name, suffix=suffix)
+                
+                # PaCMAP
+                print("Running PaCMAP...")
+                # Use PCA initialization for PaCMAP for stability/speed if high dim? 
+                # Or just run directly. PaCMAP is fast.
+                embedding_learner = pacmap.PaCMAP(n_components=2, n_neighbors=None, MN_ratio=0.5, FP_ratio=2.0)
+                pacmap_proj = embedding_learner.fit_transform(curr_emb, init="pca")
+                plot_and_save(pacmap_proj, curr_act, curr_val, curr_sid, curr_time, curr_alive, "PaCMAP", model_out_dir, model_name, suffix=suffix)
             
             # Generate Report
-            generate_report(model_name, run_dir, config, model_out_dir)
+            generate_report(model_name, run_dir, config, model_out_dir, passes)
             
             print(f"Done processing {model_name}")
             
