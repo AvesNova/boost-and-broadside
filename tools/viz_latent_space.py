@@ -78,10 +78,14 @@ def extract_embeddings(model, data, device, max_batches=10, seq_len=96):
     team_0 = data["team_0"]
     all_tokens = team_0["tokens"]
     all_actions = team_0["actions"]
+    # Action masks are not reliable for enemy alive status
+    # all_masks = team_0.get("action_masks", torch.ones(all_actions.shape[0], all_actions.shape[1]))
     episode_lengths = data["episode_lengths"]
     
     count = 0
     start_idx = 0
+    
+    alive_list = []
     
     for i, length in enumerate(episode_lengths):
         length = length.item()
@@ -139,6 +143,12 @@ def extract_embeddings(model, data, device, max_batches=10, seq_len=96):
             target_actions = all_actions[start_idx : start_idx + seq_len].unsqueeze(0).to(device)
             actions_list.append(target_actions.reshape(-1, 3).cpu().numpy())
             
+            # Get alive status from health (feature index 1)
+            # tokens is (1, T, N, F)
+            health = tokens[0, :, :, 1]
+            is_alive = (health > 0).float()
+            alive_list.append(is_alive.reshape(-1).cpu().numpy())
+            
             # Flatten predicted value: (B, T, N) -> (B*T*N)
             values_list.append(pred_val.reshape(-1).cpu().numpy())
             
@@ -156,10 +166,11 @@ def extract_embeddings(model, data, device, max_batches=10, seq_len=96):
         np.concatenate(actions_list, axis=0),
         np.concatenate(values_list, axis=0),
         np.concatenate(ship_ids_list, axis=0),
-        np.concatenate(timesteps_list, axis=0)
+        np.concatenate(timesteps_list, axis=0),
+        np.concatenate(alive_list, axis=0)
     )
 
-def plot_with_legend(projections, labels, label_map, title, filename):
+def plot_with_legend(projections, labels, label_map, title, filename, is_enemy=None):
     plt.figure(figsize=(10, 8))
     
     # Get unique labels
@@ -180,36 +191,121 @@ def plot_with_legend(projections, labels, label_map, title, filename):
          
     for i, label_val in enumerate(unique_labels):
         mask = labels == label_val
-        label_name = label_map.get(int(label_val), str(int(label_val)))
-        plt.scatter(
-            projections[mask, 0], 
-            projections[mask, 1], 
-            c=[colors[i]], 
-            s=12, # Larger for better visibility
-            alpha=0.7,
-            label=label_name,
-            edgecolors='none' # Cleaner visuals
-        )
+        # Handle float keys in label_map if coming from model outputs
+        key = int(label_val)
+        label_name = label_map.get(key, str(key))
+        
+        # Plot parts based on enemy status if available
+        if is_enemy is not None:
+            # Allies (dots)
+            ally_mask = mask & (is_enemy == 0)
+            if np.any(ally_mask):
+                plt.scatter(
+                    projections[ally_mask, 0], 
+                    projections[ally_mask, 1], 
+                    c=[colors[i]], 
+                    s=12, 
+                    alpha=0.7,
+                    label=label_name if i == 0 or label_name not in plt.gca().get_legend_handles_labels()[1] else None,
+                    marker='o',
+                    edgecolors='none'
+                )
+            
+            # Enemies (crosses)
+            enemy_mask = mask & (is_enemy == 1)
+            if np.any(enemy_mask):
+                # Only add label if ally didnt modify it, or handle legend carefully?
+                # Actually, standard legend usually just tracks colors. 
+                # Splitting markers might confuse legend unless we add separate legend entries for "Enemy/Ally".
+                # For now, we just want the visualization to reflect it. Legend usually tracks Color=Class.
+                # We will reuse the label but avoid duplicates.
+                
+                # Check if label already added by ally
+                has_label = label_name in plt.gca().get_legend_handles_labels()[1]
+                
+                plt.scatter(
+                    projections[enemy_mask, 0], 
+                    projections[enemy_mask, 1], 
+                    c=[colors[i]], 
+                    s=20, # Slightly larger for cross visibility
+                    alpha=0.7,
+                    label=label_name if not has_label else None,
+                    marker='+',
+                    linewidths=1.0 
+                )
+        else:
+            plt.scatter(
+                projections[mask, 0], 
+                projections[mask, 1], 
+                c=[colors[i]], 
+                s=12, 
+                alpha=0.7,
+                label=label_name,
+                edgecolors='none'
+            )
         
     # Improve legend position and style
-    plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0., frameon=False)
+    # Deduplicate legend just in case
+    handles, labels_leg = plt.gca().get_legend_handles_labels()
+    by_label = dict(zip(labels_leg, handles))
+    plt.legend(by_label.values(), by_label.keys(), bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0., frameon=False)
+    
     plt.title(title, fontsize=14)
     plt.tight_layout()
     plt.savefig(filename, dpi=200) # Higher DPI
     plt.close()
 
-def plot_continuous(projections, values, title, filename):
+def plot_continuous(projections, values, title, filename, is_enemy=None):
     plt.figure(figsize=(10, 8))
-    # Use 'turbo' or 'plasma' for better perceptual uniformity and vibrancy
-    scatter = plt.scatter(projections[:, 0], projections[:, 1], c=values, cmap='turbo', s=2, alpha=0.6)
-    cbar = plt.colorbar(scatter, label="Value")
+    
+    # Determine value range for consistent colormap
+    vmin, vmax = np.min(values), np.max(values)
+    
+    if is_enemy is not None:
+        # Allies
+        mask_ally = (is_enemy == 0)
+        if np.any(mask_ally):
+            plt.scatter(
+                projections[mask_ally, 0], 
+                projections[mask_ally, 1], 
+                c=values[mask_ally], 
+                cmap='turbo', 
+                s=2, 
+                alpha=0.6,
+                vmin=vmin, vmax=vmax,
+                marker='o'
+            )
+        
+        # Enemies
+        mask_enemy = (is_enemy == 1)
+        if np.any(mask_enemy):
+            plt.scatter(
+                projections[mask_enemy, 0], 
+                projections[mask_enemy, 1], 
+                c=values[mask_enemy], 
+                cmap='turbo', 
+                s=10, # Larger for crosses
+                alpha=0.7, # Slightly more opaque
+                vmin=vmin, vmax=vmax,
+                marker='+',
+                linewidths=0.5
+            )
+            
+        # Add a dummy mappable for colorbar since we might have split scatter plots
+        sm = plt.cm.ScalarMappable(cmap='turbo', norm=plt.Normalize(vmin=vmin, vmax=vmax))
+        sm.set_array([])
+        cbar = plt.colorbar(sm, label="Value", ax=plt.gca())
+    else:
+        scatter = plt.scatter(projections[:, 0], projections[:, 1], c=values, cmap='turbo', s=2, alpha=0.6)
+        cbar = plt.colorbar(scatter, label="Value")
+        
     cbar.solids.set_alpha(1) # Ensure colorbar is opaque
     plt.title(title, fontsize=14)
     plt.tight_layout()
     plt.savefig(filename, dpi=200)
     plt.close()
 
-def plot_and_save(projections, actions, values, ship_ids, timesteps, method_name, save_dir, model_name):
+def plot_and_save(projections, actions, values, ship_ids, timesteps, alive_status, method_name, save_dir, model_name):
     # Action indices
     # actions column 0 is power
     # actions column 1 is turn
@@ -235,13 +331,17 @@ def plot_and_save(projections, actions, values, ship_ids, timesteps, method_name
     team_ids = (ship_ids >= half_point).astype(int)
     team_map = {0: "Ally (Team 0)", 1: "Enemy (Team 1)"}
     
+    # Alive Map
+    alive_map = {0: "Dead", 1: "Alive"}
+    
     # 1. Power Actions
     plot_with_legend(
         projections, 
         power_actions, 
         power_map, 
         f"{model_name} - {method_name} - Power Actions", 
-        save_dir / f"{method_name}_power.png"
+        save_dir / f"{method_name}_power.png",
+        is_enemy=team_ids
     )
 
     # 2. Turn Actions
@@ -250,7 +350,8 @@ def plot_and_save(projections, actions, values, ship_ids, timesteps, method_name
         turn_actions, 
         turn_map, 
         f"{model_name} - {method_name} - Turn Actions", 
-        save_dir / f"{method_name}_turn.png"
+        save_dir / f"{method_name}_turn.png",
+        is_enemy=team_ids
     )
     
     # 3. Shoot Actions
@@ -259,7 +360,8 @@ def plot_and_save(projections, actions, values, ship_ids, timesteps, method_name
         shoot_actions, 
         shoot_map, 
         f"{model_name} - {method_name} - Shoot Actions", 
-        save_dir / f"{method_name}_shoot.png"
+        save_dir / f"{method_name}_shoot.png",
+        is_enemy=team_ids
     )
     
     # 4. Values
@@ -267,7 +369,8 @@ def plot_and_save(projections, actions, values, ship_ids, timesteps, method_name
         projections, 
         values, 
         f"{model_name} - {method_name} - Value", 
-        save_dir / f"{method_name}_value.png"
+        save_dir / f"{method_name}_value.png",
+        is_enemy=team_ids
     )
     
     # 5. Ship IDs
@@ -276,7 +379,8 @@ def plot_and_save(projections, actions, values, ship_ids, timesteps, method_name
         ship_ids,
         ship_map,
         f"{model_name} - {method_name} - Ship ID",
-        save_dir / f"{method_name}_ship.png"
+        save_dir / f"{method_name}_ship.png",
+        is_enemy=team_ids
     )
     
     # 6. Team IDs
@@ -285,7 +389,8 @@ def plot_and_save(projections, actions, values, ship_ids, timesteps, method_name
         team_ids,
         team_map,
         f"{model_name} - {method_name} - Team ID",
-        save_dir / f"{method_name}_team.png"
+        save_dir / f"{method_name}_team.png",
+        is_enemy=team_ids
     )
     
     # 7. Timesteps
@@ -293,7 +398,18 @@ def plot_and_save(projections, actions, values, ship_ids, timesteps, method_name
         projections,
         timesteps,
         f"{model_name} - {method_name} - Timestep",
-        save_dir / f"{method_name}_timestep.png"
+        save_dir / f"{method_name}_timestep.png",
+        is_enemy=team_ids
+    )
+    
+    # 8. Alive Status
+    plot_with_legend(
+        projections,
+        alive_status,
+        alive_map,
+        f"{model_name} - {method_name} - Alive Status",
+        save_dir / f"{method_name}_alive.png",
+        is_enemy=team_ids
     )
 
 def generate_report(model_name, run_dir, config, output_dir):
@@ -322,7 +438,8 @@ def generate_report(model_name, run_dir, config, output_dir):
         f.write(f"![PCA Value](PCA_value.png)\n")
         f.write(f"![PCA Ship ID](PCA_ship.png)\n")
         f.write(f"![PCA Team ID](PCA_team.png)\n")
-        f.write(f"![PCA Timestep](PCA_timestep.png)\n\n")
+        f.write(f"![PCA Timestep](PCA_timestep.png)\n")
+        f.write(f"![PCA Alive](PCA_alive.png)\n\n")
         
         f.write("### PaCMAP Projections\n")
         f.write(f"![PaCMAP Power](PaCMAP_power.png)\n")
@@ -332,12 +449,13 @@ def generate_report(model_name, run_dir, config, output_dir):
         f.write(f"![PaCMAP Ship ID](PaCMAP_ship.png)\n")
         f.write(f"![PaCMAP Team ID](PaCMAP_team.png)\n")
         f.write(f"![PaCMAP Timestep](PaCMAP_timestep.png)\n")
+        f.write(f"![PaCMAP Alive](PaCMAP_alive.png)\n")
     
     print(f"Report generated at: {report_path}")
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--models_dir", type=str, default="models/interesting")
+    parser.add_argument("--models_dir", type=str, default="models/world_model")
     parser.add_argument("--output_dir", type=str, default="outputs/latent_viz")
     parser.add_argument("--max_batches", type=int, default=256)
     parser.add_argument("--test-run", action="store_true", help="Run quick test on single model")
@@ -356,8 +474,8 @@ def main():
     run_dirs = [d for d in base_dir.iterdir() if d.is_dir() and (d / "config.yaml").exists()]
     
     if args.latest and run_dirs:
-        # Sort by name (timestamp) and take the last one
-        run_dirs.sort(key=lambda d: d.name)
+        # Sort by modification time to get the truly latest run
+        run_dirs.sort(key=lambda d: d.stat().st_mtime)
         run_dirs = [run_dirs[-1]]
         print(f"Selected most recent run: {run_dirs[0].name}")
 
@@ -402,7 +520,7 @@ def main():
             
             # Extract embeddings with manual sequential slicing
             # Use max_batches as number of episodes to process
-            embeddings, actions, values, ship_ids, timesteps = extract_embeddings(
+            embeddings, actions, values, ship_ids, timesteps, alive_status = extract_embeddings(
                 model, 
                 data, 
                 device, 
@@ -418,6 +536,7 @@ def main():
                 values = values[indices]
                 ship_ids = ship_ids[indices]
                 timesteps = timesteps[indices]
+                alive_status = alive_status[indices]
             
             print(f"Projecting {len(embeddings)} points...")
             
@@ -428,7 +547,7 @@ def main():
             print("Running PCA...")
             pca = PCA(n_components=2)
             pca_proj = pca.fit_transform(embeddings)
-            plot_and_save(pca_proj, actions, values, ship_ids, timesteps, "PCA", model_out_dir, model_name)
+            plot_and_save(pca_proj, actions, values, ship_ids, timesteps, alive_status, "PCA", model_out_dir, model_name)
             
             # PaCMAP
             print("Running PaCMAP...")
@@ -436,7 +555,7 @@ def main():
             # Or just run directly. PaCMAP is fast.
             embedding_learner = pacmap.PaCMAP(n_components=2, n_neighbors=None, MN_ratio=0.5, FP_ratio=2.0)
             pacmap_proj = embedding_learner.fit_transform(embeddings, init="pca")
-            plot_and_save(pacmap_proj, actions, values, ship_ids, timesteps, "PaCMAP", model_out_dir, model_name)
+            plot_and_save(pacmap_proj, actions, values, ship_ids, timesteps, alive_status, "PaCMAP", model_out_dir, model_name)
             
             # Generate Report
             generate_report(model_name, run_dir, config, model_out_dir)

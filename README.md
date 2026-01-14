@@ -83,6 +83,9 @@ uv run python tools/inspect_data.py data/bc_pretraining/latest/aggregated_data.p
 
 # Verify data loading logic
 uv run python tools/verify_data_loading.py
+
+# Generates 2D projections (PCA, PaCMAP) of world model embeddings
+uv run python tools/viz_latent_space.py --latest
 ```
 
 ## ⚙️ Configuration
