@@ -96,6 +96,19 @@ def compute_rollout_metrics(
         
         # --- 1. Expert Trajectory ---
         obs, _ = env.reset(seed=scenario_seed, game_mode="1v1")
+        
+        # Get active ship IDs from env state
+        all_ships = env.state.ships
+        team_0_ships = [s.ship_id for s in all_ships.values() if s.team_id == 0]
+        team_1_ships = [s.ship_id for s in all_ships.values() if s.team_id == 1]
+        
+        if not team_0_ships or not team_1_ships:
+             log.warning("Skipping scenario with missing teams.")
+             continue
+             
+        agent_id = team_0_ships[0]
+        opponent_id = team_1_ships[0]
+
         expert_tokens = []
         
         # We record State at t=1..max_steps (Result of actions)
@@ -103,9 +116,10 @@ def compute_rollout_metrics(
         
         curr_obs = obs
         for t in range(max_steps):
-            actions = expert(curr_obs, ship_ids=[0])
+            actions = expert(curr_obs, ship_ids=[agent_id])
             full_actions = actions.copy()
-            full_actions[1] = torch.tensor([0.0, 0.0, 0.0])
+            # No-op for opponent
+            full_actions[opponent_id] = torch.tensor([0.0, 0.0, 0.0])
             
             next_obs, _, _, _, _ = env.step(full_actions)
             
@@ -118,6 +132,9 @@ def compute_rollout_metrics(
         
         # --- 2. Agent Closed Loop (Sim) ---
         env.reset(seed=scenario_seed, game_mode="1v1")
+        
+        # Update WorldModelAgent squad
+        wm_agent.squad = [agent_id]
         wm_agent.reset()
         
         curr_obs, _ = env.reset(seed=scenario_seed, game_mode="1v1") 
@@ -125,9 +142,9 @@ def compute_rollout_metrics(
         sim_sq_errs = []
         
         for t in range(max_steps):
-            actions = wm_agent(curr_obs, ship_ids=[0])
+            actions = wm_agent(curr_obs, ship_ids=[agent_id])
             full_actions = actions.copy()
-            full_actions[1] = torch.tensor([0.0, 0.0, 0.0])
+            full_actions[opponent_id] = torch.tensor([0.0, 0.0, 0.0])
             
             next_obs, _, _, _, _ = env.step(full_actions)
             

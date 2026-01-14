@@ -75,3 +75,84 @@ def test_environment_default_initialization():
         ship = env.state.ships[i]
         assert ship.health == default_ship_config.max_health
         assert ship.power == default_ship_config.max_power
+
+def test_ship_id_randomization():
+    """Test that ship IDs are randomized within team bounds."""
+    env = Environment(
+        render_mode="none",
+        world_size=(1000, 1000),
+        memory_size=0,
+        max_ships=8,
+        agent_dt=0.1,
+        physics_dt=0.01,
+        random_positioning=True,
+        random_speed=True
+    )
+    
+    # Test 1v1 Randomization
+    ids_seen_team_0 = set()
+    ids_seen_team_1 = set()
+    
+    for _ in range(10):
+        _ = env.reset(game_mode="1v1")
+        ships = env.state.ships
+        
+        # Should have 2 ships
+        assert len(ships) == 2
+        
+        # Sort IDs
+        ids = sorted(list(ships.keys()))
+        
+        # Check Team assignment
+        # Team 0 should be in [0, 3], Team 1 in [4, 7] (for max_ships=8)
+        ship_0 = ships[ids[0]]
+        ship_1 = ships[ids[1]]
+        
+        # It's not guaranteed ids[0] is team 0 if ids are e.g. 5 and 6 (both team 1? No 1v1 means 1 per team)
+        # 1v1 reset ensures 1 ship per team.
+        # Find team 0 ship
+        team_0_ships = [s for s in ships.values() if s.team_id == 0]
+        team_1_ships = [s for s in ships.values() if s.team_id == 1]
+        
+        assert len(team_0_ships) == 1
+        assert len(team_1_ships) == 1
+        
+        id_0 = team_0_ships[0].ship_id
+        id_1 = team_1_ships[0].ship_id
+        
+        assert 0 <= id_0 <= 3
+        assert 4 <= id_1 <= 7
+        
+        ids_seen_team_0.add(id_0)
+        ids_seen_team_1.add(id_1)
+        
+    # Verify we saw some variation (probability of same ID 10 times is tiny)
+    assert len(ids_seen_team_0) > 1, f"Team 0 IDs not randomized: {ids_seen_team_0}"
+    assert len(ids_seen_team_1) > 1, f"Team 1 IDs not randomized: {ids_seen_team_1}"
+
+    # Test 2v2 Randomization
+    previous_ids = None
+    variation_count = 0
+    
+    for _ in range(5):
+        state = env.n_vs_n_reset(ships_per_team=2)
+        current_ids = sorted(list(state.ships.keys()))
+        
+        if previous_ids is not None and current_ids != previous_ids:
+            variation_count += 1
+            
+        previous_ids = current_ids
+        
+        # Check bounds
+        team_0_ids = [s.ship_id for s in state.ships.values() if s.team_id == 0]
+        team_1_ids = [s.ship_id for s in state.ships.values() if s.team_id == 1]
+        
+        assert len(team_0_ids) == 2
+        assert len(team_1_ids) == 2
+        
+        for mid in team_0_ids:
+            assert 0 <= mid <= 3
+        for mid in team_1_ids:
+            assert 4 <= mid <= 7
+            
+    assert variation_count > 0, "2v2 Ship IDs did not vary across resets"

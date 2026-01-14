@@ -97,8 +97,15 @@ class Environment(gym.Env):
 
     def one_vs_one_reset(self) -> State:
         """Reset to a standard 1v1 configuration."""
+        mid = self.max_ships // 2
+        pool_0 = np.arange(0, mid)
+        pool_1 = np.arange(mid, self.max_ships)
+        
+        id_0 = int(self.rng.choice(pool_0))
+        id_1 = int(self.rng.choice(pool_1))
+
         ship_0 = Ship(
-            ship_id=0,
+            ship_id=id_0,
             team_id=0,
             ship_config=default_ship_config,
             initial_x=0.25 * self.world_size[0],
@@ -109,7 +116,7 @@ class Environment(gym.Env):
         )
 
         ship_1 = Ship(
-            ship_id=1,
+            ship_id=id_1,
             team_id=1,
             ship_config=default_ship_config,
             initial_x=0.75 * self.world_size[0],
@@ -119,7 +126,7 @@ class Environment(gym.Env):
             world_size=self.world_size,
         )
 
-        ships = {0: ship_0, 1: ship_1}
+        ships = {id_0: ship_0, id_1: ship_1}
         return State(ships=ships)
 
     @staticmethod
@@ -157,7 +164,7 @@ class Environment(gym.Env):
         self,
         team_id: int,
         n_ships: int,
-        ship_id_offset: int,
+        ship_ids: list[int],
         random_positioning: bool = False,
         random_speed: bool = False,
         random_initialization: bool = False,
@@ -165,37 +172,8 @@ class Environment(gym.Env):
         """Create a squad of ships with either fractal or random positioning."""
         ships = {}
 
-        for i in range(n_ships):
-            # Calculate health and power
-            initial_health = None
-            initial_power = None
-
-            if random_initialization:
-                # Health: 10% to 100%
-                initial_health = self.rng.uniform(0.1, 1.0) * default_ship_config.max_health
-                # Power: 0% to 100%
-                initial_power = self.rng.uniform(0.0, 1.0) * default_ship_config.max_power
-            
-            # ... Positioning logic ...
-            pass # We'll replace the loop body below with distinct blocks to avoid repeating logic 
-
-        # Let's rewrite the method body cleanly
-        
-        # Helper to get position/velocity
-        def get_pos_vel(idx, n, rand_pos, rand_spd):
-             if rand_pos:
-                pos = self.rng.uniform(0, self.world_size[0]) + 1j * self.rng.uniform(0, self.world_size[1])
-                att = np.exp(1j * self.rng.uniform(0, 2 * np.pi))
-                speed = self.rng.uniform(0.1, 180) if rand_spd else 100.0
-                vel = att * speed
-                return pos, vel
-             else:
-                # Fractal logic requires computing all positions first...
-                # So we can't easily helper-ize per ship without recomputing
-                return None, None
-
         if random_positioning:
-            for i in range(n_ships):
+            for i, ship_id in enumerate(ship_ids):
                 position = self.rng.uniform(
                     0, self.world_size[0]
                 ) + 1j * self.rng.uniform(0, self.world_size[1])
@@ -209,8 +187,8 @@ class Environment(gym.Env):
                     initial_health = self.rng.uniform(0.1, 1.0) * default_ship_config.max_health
                     initial_power = self.rng.uniform(0.0, 1.0) * default_ship_config.max_power
 
-                ships[i + ship_id_offset] = Ship(
-                    ship_id=i + ship_id_offset,
+                ships[ship_id] = Ship(
+                    ship_id=ship_id,
                     team_id=team_id,
                     ship_config=default_ship_config,
                     initial_x=position.real,
@@ -240,14 +218,15 @@ class Environment(gym.Env):
             positions = offsets + origin
 
             for i, position in enumerate(positions):
+                ship_id = ship_ids[i]
                 initial_health = None
                 initial_power = None
                 if random_initialization:
                     initial_health = self.rng.uniform(0.1, 1.0) * default_ship_config.max_health
                     initial_power = self.rng.uniform(0.0, 1.0) * default_ship_config.max_power
 
-                ships[i + ship_id_offset] = Ship(
-                    ship_id=i + ship_id_offset,
+                ships[ship_id] = Ship(
+                    ship_id=ship_id,
                     team_id=team_id,
                     ship_config=default_ship_config,
                     initial_x=position.real,
@@ -269,15 +248,28 @@ class Environment(gym.Env):
         random_initialization: bool = False,
     ) -> State:
         """Reset to an NvN configuration."""
+        mid = self.max_ships // 2
+        
         if ships_per_team is None:
             ships_per_team = self.rng.integers(
-                1, int(self.max_ships / 2), endpoint=True
+                1, mid, endpoint=True
             )
+
+        # Generate random unique ship IDs for each team
+        pool_0 = np.arange(0, mid)
+        pool_1 = np.arange(mid, self.max_ships)
+        
+        # Ensure we have enough IDs
+        if ships_per_team > mid:
+             raise ValueError(f"ships_per_team ({ships_per_team}) cannot exceed half max_ships ({mid})")
+
+        ids_0 = self.rng.choice(pool_0, size=ships_per_team, replace=False).tolist()
+        ids_1 = self.rng.choice(pool_1, size=ships_per_team, replace=False).tolist()
 
         team_0 = self.create_squad(
             team_id=0,
             n_ships=ships_per_team,
-            ship_id_offset=0,
+            ship_ids=ids_0,
             random_positioning=random_positioning,
             random_speed=random_speed,
             random_initialization=random_initialization,
@@ -285,7 +277,7 @@ class Environment(gym.Env):
         team_1 = self.create_squad(
             team_id=1,
             n_ships=ships_per_team,
-            ship_id_offset=ships_per_team,
+            ship_ids=ids_1,
             random_positioning=random_positioning,
             random_speed=random_speed,
             random_initialization=random_initialization,
