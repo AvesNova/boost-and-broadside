@@ -216,8 +216,8 @@ def train_world_model(cfg: DictConfig) -> None:
                 pred_states, pred_actions, pred_value, _, _ = model(
                     input_states,
                     input_actions_oh,
-                    mask_ratio=0.0,
-                    noise_scale=0.0,
+                    mask_ratio=cfg.world_model.mask_ratio,
+                    noise_scale=cfg.world_model.noise_scale,
                     mask=None,
                 )
 
@@ -304,8 +304,8 @@ def train_world_model(cfg: DictConfig) -> None:
             pred_states, pred_actions, pred_value, _, _ = model(
                 input_states,
                 input_actions_oh,
-                mask_ratio=0.0,
-                noise_scale=0.0,
+                mask_ratio=cfg.world_model.mask_ratio,
+                noise_scale=cfg.world_model.noise_scale,
                 mask=None,
             )
 

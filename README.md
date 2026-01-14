@@ -21,6 +21,8 @@ Run the game in play mode to watch agents compete or play yourself.
 # Watch a match (BC Agent vs Scripted Agent)
 uv run main.py mode=play team1=most_recent_bc team2=scripted
 
+uv run main.py mode=play team1=most_recent_world_model team2=most_recent_world_model
+
 # Play as a human (Use Arrow Keys + Space to shoot)
 uv run main.py mode=play human_player=true
 ```

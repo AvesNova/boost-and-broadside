@@ -368,6 +368,8 @@ class WorldModel(nn.Module):
                     torch.rand(batch_size, time_steps, num_ships, device=device)
                     < mask_ratio
                 )
+                # Enforce first token is never masked (crucial for AR start)
+                mask[:, 0, :] = False
 
         if mask is not None:
             # Apply noise to UNMASKED tokens only, BEFORE adding positional embeddings
