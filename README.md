@@ -73,6 +73,15 @@ Evaluate model performance.
 uv run main.py mode=eval_wm
 ```
 
+### 4. Combined Pipelines
+
+Run multiple steps in a single command.
+
+```powershell
+# Collect data then train World Model
+uv run main.py mode=train train.run_collect=true train.run_world_model=true
+```
+
 ## 🔧 Tools & Debugging
 
 We provide tools in the `tools/` directory to help with development.
