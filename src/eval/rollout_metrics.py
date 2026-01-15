@@ -42,6 +42,12 @@ def compute_rollout_metrics(
             - "step_mse_dream": {step: mse}
             - "full_mse_sim": (steps,) array of average MSE per step
             - "full_mse_dream": (steps,) array of average MSE per step
+            - "error_sim_power": Average Power action error (Sim)
+            - "error_sim_turn": Average Turn action error (Sim)
+            - "error_sim_shoot": Average Shoot action error (Sim)
+            - "error_dream_power": Average Power action error (Dream)
+            - "error_dream_turn": Average Turn action error (Dream)
+            - "error_dream_shoot": Average Shoot action error (Dream)
     """
     
     if step_intervals is None:
@@ -53,7 +59,14 @@ def compute_rollout_metrics(
     # Initialize accumulators for average MSE per step
     accum_sq_err_sim = torch.zeros(max_steps, device=device)
     accum_sq_err_dream = torch.zeros(max_steps, device=device)
+    
+    # Accumulators for Action Errors (Scalar sum over all steps/scenarios)
+    # We will average by total_steps_count at the end
+    total_error_sim = {"power": 0.0, "turn": 0.0, "shoot": 0.0}
+    total_error_dream = {"power": 0.0, "turn": 0.0, "shoot": 0.0}
+    
     counts = torch.zeros(max_steps, device=device)
+    total_steps_count = 0 
     
     # Prepare Env
     eval_env_config = env_config.copy()
@@ -110,6 +123,8 @@ def compute_rollout_metrics(
         opponent_id = team_1_ships[0]
 
         expert_tokens = []
+        expert_actions_list = [] # Store expert actions (indices) for comparison
+
         
         # We record State at t=1..max_steps (Result of actions)
         # Assuming initial state error is 0 (same seed)
@@ -126,9 +141,15 @@ def compute_rollout_metrics(
             next_token = observation_to_tokens(next_obs, perspective=0).to(device)
             expert_tokens.append(next_token)
             
+            # Store Expert Action for this step (t)
+            # actions[agent_id] is (3,) tensor of floats (indices)
+            expert_actions_list.append(actions[agent_id].to(device))
+            
             curr_obs = next_obs
             
         expert_tensor = torch.stack(expert_tokens) # (Steps, 1, N, F)
+        expert_actions_tensor = torch.stack(expert_actions_list) # (Steps, 3)
+
         
         # --- 2. Agent Closed Loop (Sim) ---
         env.reset(seed=scenario_seed, game_mode="1v1")
@@ -153,6 +174,16 @@ def compute_rollout_metrics(
             sq_err = (next_token - expert_tensor[t]).pow(2).mean()
             sim_sq_errs.append(sq_err)
             
+            # --- Action Error (Sim) ---
+            # actions[agent_id] is what the Agent chose at this step
+            sim_action = actions[agent_id].to(device)    # (3,)
+            exp_action = expert_actions_tensor[t]        # (3,)
+            
+            # Compare indices (Power=0, Turn=1, Shoot=2)
+            total_error_sim["power"] += (sim_action[0] != exp_action[0]).float().item()
+            total_error_sim["turn"] += (sim_action[1] != exp_action[1]).float().item()
+            total_error_sim["shoot"] += (sim_action[2] != exp_action[2]).float().item()
+            
             curr_obs = next_obs
             
         for t, err in enumerate(sim_sq_errs):
@@ -165,14 +196,35 @@ def compute_rollout_metrics(
         initial_action = torch.zeros(1, wm_agent.max_ships, 12, device=device)
         
         with torch.no_grad():
-             dream_states, _ = model.generate(
+             dream_states, gen_actions = model.generate(
                 initial_token, 
                 initial_action, 
                 steps=max_steps, 
                 n_ships=wm_agent.max_ships
             )
-        # dream_states: (1, Steps, N, F) -> permute to (Steps, 1, N, F)
-        # model.generate returns state at t+1, t+2... matching our expert log loop.
+            # dream_states: (1, Steps, N, F)
+            # gen_actions: (1, Steps, N, 12) - One Hot
+        
+        # --- Action Error (Dream) ---
+        # 1. Convert One-Hot to Indices for our agent (Index 0)
+        # gen_actions shape: (1, Steps, N, 12)
+        dream_actions_oh = gen_actions[0, :, 0, :] # (Steps, 12) for agent ship 0
+        
+        # Split and Argmax
+        p_idx = dream_actions_oh[:, 0:3].argmax(dim=-1)
+        t_idx = dream_actions_oh[:, 3:10].argmax(dim=-1)
+        s_idx = dream_actions_oh[:, 10:12].argmax(dim=-1)
+        
+        # Compare with Expert (Steps, 3)
+        # Expert col 0=Power, 1=Turn, 2=Shoot
+        err_p = (p_idx != expert_actions_tensor[:, 0]).float().sum().item()
+        err_t = (t_idx != expert_actions_tensor[:, 1]).float().sum().item()
+        err_s = (s_idx != expert_actions_tensor[:, 2]).float().sum().item()
+        
+        total_error_dream["power"] += err_p
+        total_error_dream["turn"] += err_t
+        total_error_dream["shoot"] += err_s
+
         dream_states = dream_states.permute(1, 0, 2, 3)
         
         sq_errs_dream = (dream_states - expert_tensor).pow(2)
@@ -180,6 +232,7 @@ def compute_rollout_metrics(
         
         accum_sq_err_dream += step_sq_errs_dream
         counts += 1.0
+        total_steps_count += max_steps
         
     env.close()
     
@@ -204,5 +257,13 @@ def compute_rollout_metrics(
         "step_mse_sim": step_mse_sim,
         "step_mse_dream": step_mse_dream,
         "full_mse_sim": avg_full_mse_sim.cpu().numpy(),
-        "full_mse_dream": avg_full_mse_dream.cpu().numpy()
+        "full_mse_sim": avg_full_mse_sim.cpu().numpy(),
+        "full_mse_dream": avg_full_mse_dream.cpu().numpy(),
+        # Action Errors
+        "error_sim_power": total_error_sim["power"] / total_steps_count if total_steps_count > 0 else 0.0,
+        "error_sim_turn": total_error_sim["turn"] / total_steps_count if total_steps_count > 0 else 0.0,
+        "error_sim_shoot": total_error_sim["shoot"] / total_steps_count if total_steps_count > 0 else 0.0,
+        "error_dream_power": total_error_dream["power"] / total_steps_count if total_steps_count > 0 else 0.0,
+        "error_dream_turn": total_error_dream["turn"] / total_steps_count if total_steps_count > 0 else 0.0,
+        "error_dream_shoot": total_error_dream["shoot"] / total_steps_count if total_steps_count > 0 else 0.0,
     }

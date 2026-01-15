@@ -118,3 +118,11 @@ world_model:
   
   rope_base: 10000.0
   rope_max_seq_len: 256
+
+  # Closed Loop Rollout (Scheduled Sampling)
+  rollout:
+    enabled: true
+    start_epoch: 5
+    max_len_start: 1
+    max_len_end: 8
+    ramp_epochs: 50

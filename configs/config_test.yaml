@@ -95,3 +95,11 @@ world_model:
   
   rope_base: 10000.0
   rope_max_seq_len: 256
+
+  rollout:
+    enabled: false
+    start_epoch: 50
+    ramp_epochs: 100
+    max_len_start: 10
+    max_len_end: 128
+

@@ -12,6 +12,8 @@ from datetime import datetime
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
+import random
+import math
 from omegaconf import DictConfig, OmegaConf
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
@@ -23,6 +25,93 @@ from eval.metrics import compute_dreaming_error, compute_controlling_error
 from eval.rollout_metrics import compute_rollout_metrics
 
 log = logging.getLogger(__name__)
+
+
+def get_rollout_length(epoch: int, cfg: DictConfig) -> int:
+    """
+    Determine rollout length for the current epoch based on schedule.
+    """
+    config = cfg.world_model.rollout
+    if not config.enabled or epoch < config.start_epoch:
+        return 0
+    
+    # Calculate progress in ramp (0.0 to 1.0)
+    ramp_progress = (epoch - config.start_epoch) / max(1, config.ramp_epochs)
+    ramp_progress = min(1.0, max(0.0, ramp_progress))
+    
+    # Linear interpolation of max length
+    current_max = config.max_len_start + (config.max_len_end - config.max_len_start) * ramp_progress
+    current_max = int(current_max)
+    
+    if current_max < 1:
+        return 0
+        
+    # Sample from uniform distribution [1, current_max]
+    return random.randint(1, current_max)
+
+
+def perform_rollout(model, input_states, input_actions_oh, rollout_len):
+    """
+    Perform closed-loop rollout on the batch.
+    Modifies input_states and input_actions_oh in-place.
+    """
+    batch_size, time_steps, num_ships, _ = input_states.shape
+    min_context = 4
+    
+    if rollout_len <= 0 or time_steps <= min_context + rollout_len + 1:
+        return
+
+    # Pick a random start time
+    start_t = random.randint(min_context, time_steps - rollout_len - 1)
+    
+    with torch.no_grad():
+        # 1. Pre-fill context
+        ctx_states = input_states[:, :start_t]
+        ctx_actions = input_actions_oh[:, :start_t]
+        
+        # Initial forward to get KV cache
+        _, _, _, _, kv_cache = model(
+            ctx_states, ctx_actions, use_cache=True, return_embeddings=False
+        )
+        
+        # 2. Generation Loop
+        curr_state = input_states[:, start_t : start_t + 1]
+        curr_action_oh = input_actions_oh[:, start_t : start_t + 1]
+        
+        for i in range(rollout_len):
+            # Forward single step
+            pred_s, pred_a_logits, _, _, kv_cache = model(
+                curr_state, 
+                curr_action_oh, 
+                past_key_values=kv_cache, 
+                use_cache=True
+            )
+            
+            # Determine Next Inputs (detached)
+            next_state = pred_s.detach() # (B, 1, N, F)
+            
+            # Argmax for discrete actions
+            p_idx = pred_a_logits[..., 0:3].argmax(dim=-1)
+            t_idx = pred_a_logits[..., 3:10].argmax(dim=-1)
+            s_idx = pred_a_logits[..., 10:12].argmax(dim=-1)
+            
+            idx_to_update = start_t + i + 1
+            if idx_to_update < time_steps:
+                input_states[:, idx_to_update] = next_state.squeeze(1)
+                
+                # Construct next action OH
+                next_action_oh = torch.cat([
+                    F.one_hot(p_idx, 3),
+                    F.one_hot(t_idx, 7),
+                    F.one_hot(s_idx, 2)
+                ], dim=-1).float()
+                
+                input_actions_oh[:, idx_to_update] = next_action_oh.squeeze(1)
+                
+                # Update current for next iter
+                curr_state = next_state
+                curr_action_oh = next_action_oh
+
 
 
 
@@ -137,6 +226,10 @@ def train_world_model(cfg: DictConfig) -> None:
         total_state_loss = 0
         total_action_loss = 0
         total_value_loss = 0
+        total_error_power = 0
+        total_error_turn = 0
+        total_error_shoot = 0
+
 
         # Create iterators
         short_iter = iter(train_short_loader)
@@ -205,6 +298,111 @@ def train_world_model(cfg: DictConfig) -> None:
                 # Convert inputs to One-Hot
                 input_actions_oh = to_one_hot(input_prev_actions)
 
+                # --- Closed Loop Rollout Injection ---
+                rollout_len = get_rollout_length(epoch, cfg)
+                perform_rollout(model, input_states, input_actions_oh, rollout_len)
+
+                # --- Closed Loop Rollout Injection ---
+                rollout_len = get_rollout_length(epoch, cfg)
+                # Need sufficient remaining steps: start_t + rollout_len < time_steps - 1
+                # context_len requirement: The model needs some context? Ideally yes.
+                # Let's say we need at least 4 steps of context.
+                min_context = 4
+                
+                if rollout_len > 0 and time_steps > min_context + rollout_len + 1:
+                    # Pick a random start time
+                    # Valid range: [min_context, time_steps - 1 - rollout_len]
+                    # We inject prediction AT t -> overwrites inputs for t+1
+                    # So if start_t = 4, we use 0..4 as context, predict 5 (index 4).
+                    # Overwrite state[5], action[4].
+                    
+                    start_t = random.randint(min_context, time_steps - rollout_len - 1)
+                    
+                    # We need to perform generation. To do this efficiently, we use the model's
+                    # KV cache support. We can use the 'input_states' and 'input_actions_oh'
+                    # which are already on device.
+                    
+                    with torch.no_grad():
+                        # 1. Pre-fill context
+                        # Context: 0 ... start_t (inclusive of start_t? No, up to start_t-1 inputs)
+                        # Input at start_t predicts start_t+1.
+                        # So we run up to start_t (exclusive) to get KV for step start_t.
+                        
+                        # Indices `0` to `start_t-1`
+                        ctx_states = input_states[:, :start_t]
+                        ctx_actions = input_actions_oh[:, :start_t]
+                        
+                        # Initial forward to get KV cache
+                        _, _, _, _, kv_cache = model(
+                            ctx_states, ctx_actions, use_cache=True, return_embeddings=False
+                        )
+                        
+                        # 2. Generation Loop
+                        # We want to overwrite inputs from start_t+1 to start_t+rollout_len
+                        # Step i=0: Input is index `start_t`. Predicts `start_t+1`.
+                        # Step i=1: Input is index `start_t+1` (which was just predicted). Predicts `start_t+2`.
+                        
+                        curr_state = input_states[:, start_t : start_t + 1]
+                        curr_action_oh = input_actions_oh[:, start_t : start_t + 1]
+                        
+                        for i in range(rollout_len):
+                            # Forward single step
+                            pred_s, pred_a_logits, _, _, kv_cache = model(
+                                curr_state, 
+                                curr_action_oh, 
+                                past_key_values=kv_cache, 
+                                use_cache=True
+                            )
+                            
+                            # Determine Next Inputs (detached)
+                            next_state = pred_s.detach() # (B, 1, N, F)
+                            
+                            # Sample Action (Argmax for stability as requested/implied or Sampling?)
+                            # Usually rollout uses same sampling as inference.
+                            # We'll use Argmax for now as it's more stable for training.
+                            # Logits: (B, 1, N, 12)
+                            p_log = pred_a_logits[..., 0:3]
+                            t_log = pred_a_logits[..., 3:10]
+                            s_log = pred_a_logits[..., 10:12]
+                            
+                            p_idx = p_log.argmax(dim=-1)
+                            t_idx = t_log.argmax(dim=-1)
+                            s_idx = s_log.argmax(dim=-1)
+                            
+                            # Update the TENSORS used for the main training pass.
+                            # Target is: state[start_t + i + 1], action[start_t + i]
+                            # Wait. Action at `start_t + i` IS the input to `start_t + i + 1`.
+                            # So we update:
+                            # input_states at `start_t + i + 1` (Next state input)
+                            # input_actions_oh at `start_t + i + 1` (Next action input)
+                            #
+                            # Also need to update the 'target' arrays if we want to calculate 
+                            # loss against the DREAMED trajectory (self-consistency) 
+                            # OR do we keep targets as Ground Truth?
+                            #
+                            # "feed the ouput of the network as the input instead of the ground truth"
+                            # Usually this implies we still check loss against Ground Truth, 
+                            # but the *input* was generated. 
+                            # If the model drifts, it gets penalized by the GT loss.
+                            # So we ONLY update `input_states` and `input_actions_oh`.
+                            
+                            idx_to_update = start_t + i + 1
+                            if idx_to_update < input_states.shape[1]:
+                                input_states[:, idx_to_update] = next_state.squeeze(1)
+                                
+                                # Construct next action OH
+                                next_action_oh = torch.cat([
+                                    F.one_hot(p_idx, 3),
+                                    F.one_hot(t_idx, 7),
+                                    F.one_hot(s_idx, 2)
+                                ], dim=-1).float()
+                                
+                                input_actions_oh[:, idx_to_update] = next_action_oh.squeeze(1)
+                                
+                                # Update current for next iter
+                                curr_state = next_state
+                                curr_action_oh = next_action_oh
+                
                 # Input Noise Injection
                 if cfg.world_model.input_noise_ratio > 0:
                      noise_mask = (torch.rand(input_states.shape[:3], device=device) < cfg.world_model.input_noise_ratio)
@@ -241,6 +439,37 @@ def train_world_model(cfg: DictConfig) -> None:
                 total_state_loss += state_loss.item()
                 total_action_loss += action_loss.item()
                 total_value_loss += value_loss.item()
+                
+                # --- Compute Action Error Rates ---
+                with torch.no_grad():
+                    # valid_mask logic duplicated from get_loss
+                    valid_mask = loss_mask_slice.bool()
+                    
+                    # Select valid steps first: (B, T, N, ...) -> (M, N, ...)
+                    valid_pred = pred_actions[valid_mask]
+                    valid_target = target_actions[valid_mask]
+                    
+                    # Split Logits (M, N, C) -> (M*N, C)
+                    p_logits = valid_pred[..., 0:3].reshape(-1, 3)
+                    t_logits = valid_pred[..., 3:10].reshape(-1, 7)
+                    s_logits = valid_pred[..., 10:12].reshape(-1, 2)
+                    
+                    # Split Targets (M, N, 3) -> (M*N)
+                    p_target = valid_target[..., 0].long().reshape(-1)
+                    t_target = valid_target[..., 1].long().reshape(-1)
+                    s_target = valid_target[..., 2].long().reshape(-1)
+                    
+                    # Compute Errors
+                    err_p = (p_logits.argmax(dim=-1) != p_target).float().mean().item()
+                    err_t = (t_logits.argmax(dim=-1) != t_target).float().mean().item()
+                    err_s = (s_logits.argmax(dim=-1) != s_target).float().mean().item()
+
+                    
+                    total_error_power += err_p
+                    total_error_turn += err_t
+                    total_error_shoot += err_s
+
+
                 steps += 1
                 pbar.update(1)
 
@@ -292,6 +521,10 @@ def train_world_model(cfg: DictConfig) -> None:
             action_masks_slice = action_masks[:, 1:] if action_masks is not None else None
 
             input_actions_oh = to_one_hot(input_prev_actions)
+
+            # --- Closed Loop Rollout Injection ---
+            rollout_len = get_rollout_length(epoch, cfg)
+            perform_rollout(model, input_states, input_actions_oh, rollout_len)
 
             # Input Noise Injection
             if cfg.world_model.input_noise_ratio > 0:
@@ -345,6 +578,10 @@ def train_world_model(cfg: DictConfig) -> None:
         avg_state_loss = total_state_loss / steps if steps > 0 else 0
         avg_action_loss = total_action_loss / steps if steps > 0 else 0
         avg_value_loss = total_value_loss / steps if steps > 0 else 0
+        avg_err_p = total_error_power / steps if steps > 0 else 0
+        avg_err_t = total_error_turn / steps if steps > 0 else 0
+        avg_err_s = total_error_shoot / steps if steps > 0 else 0
+
 
         log.info(
             f"Epoch {epoch+1}: Train Loss={avg_loss:.4f} "
@@ -357,6 +594,10 @@ def train_world_model(cfg: DictConfig) -> None:
         model.eval()
         val_loss = 0
         val_steps = 0
+        val_error_p = 0
+        val_error_t = 0
+        val_error_s = 0
+
 
         # Validate on both short and long
         for loader in [val_short_loader, val_long_loader]:
@@ -401,8 +642,36 @@ def train_world_model(cfg: DictConfig) -> None:
                     )
                     val_loss += (state_loss + action_loss + value_loss).item()
                     val_steps += 1
+                    
+                    # Compute Val Errors
+                    # valid_mask logic duplicated from get_loss
+                    valid_mask = loss_mask_slice.bool()
+                    
+                    # Select valid steps first: (B, T, N, ...) -> (M, N, ...)
+                    valid_pred = pred_actions[valid_mask]
+                    valid_target = target_actions[valid_mask]
+                    
+                    # Split Logits (M, N, C) -> (M*N, C)
+                    p_logits = valid_pred[..., 0:3].reshape(-1, 3)
+                    t_logits = valid_pred[..., 3:10].reshape(-1, 7)
+                    s_logits = valid_pred[..., 10:12].reshape(-1, 2)
+                    
+                    # Split Targets (M, N, 3) -> (M*N)
+                    p_target = valid_target[..., 0].long().reshape(-1)
+                    t_target = valid_target[..., 1].long().reshape(-1)
+                    s_target = valid_target[..., 2].long().reshape(-1)
+                    
+                    val_error_p += (p_logits.argmax(dim=-1) != p_target).float().mean().item()
+                    val_error_t += (t_logits.argmax(dim=-1) != t_target).float().mean().item()
+                    val_error_s += (s_logits.argmax(dim=-1) != s_target).float().mean().item()
+
+
 
         avg_val_loss = val_loss / val_steps if val_steps > 0 else 0
+        avg_val_err_p = val_error_p / val_steps if val_steps > 0 else 0
+        avg_val_err_t = val_error_t / val_steps if val_steps > 0 else 0
+        avg_val_err_s = val_error_s / val_steps if val_steps > 0 else 0
+
         log.info(f"Epoch {epoch+1}: Val Loss={avg_val_loss:.4f}")
 
         # Log to CSV
@@ -421,6 +690,16 @@ def train_world_model(cfg: DictConfig) -> None:
         writer.add_scalar("Loss/train_action", avg_action_loss, epoch)
         writer.add_scalar("Loss/train_value", avg_value_loss, epoch)
         writer.add_scalar("Loss/val", avg_val_loss, epoch)
+        
+        # Log Action Errors (Train/Val)
+        writer.add_scalar("Error/train_power", avg_err_p, epoch)
+        writer.add_scalar("Error/train_turn", avg_err_t, epoch)
+        writer.add_scalar("Error/train_shoot", avg_err_s, epoch)
+        
+        writer.add_scalar("Error/val_power", avg_val_err_p, epoch)
+        writer.add_scalar("Error/val_turn", avg_val_err_t, epoch)
+        writer.add_scalar("Error/val_shoot", avg_val_err_s, epoch)
+
         
         # --- Compute and Log Rollout Metrics ---
         # Get env config from cfg
@@ -452,6 +731,16 @@ def train_world_model(cfg: DictConfig) -> None:
             writer.add_scalar(f"Rollout_Dream_Step/step_{step}", mse, epoch)
             
         log.info(f"Epoch {epoch+1}: Rollout MSE Sim={mse_sim:.4f}, Dream={mse_dream:.4f}")
+        
+        # Log Rollout Action Errors
+        writer.add_scalar("Rollout_Error/sim_power", rollout_metrics["error_sim_power"], epoch)
+        writer.add_scalar("Rollout_Error/sim_turn", rollout_metrics["error_sim_turn"], epoch)
+        writer.add_scalar("Rollout_Error/sim_shoot", rollout_metrics["error_sim_shoot"], epoch)
+        
+        writer.add_scalar("Rollout_Error/dream_power", rollout_metrics["error_dream_power"], epoch)
+        writer.add_scalar("Rollout_Error/dream_turn", rollout_metrics["error_dream_turn"], epoch)
+        writer.add_scalar("Rollout_Error/dream_shoot", rollout_metrics["error_dream_shoot"], epoch)
+
         
         # Finish CSV Log
         with open(csv_path, "a") as f:

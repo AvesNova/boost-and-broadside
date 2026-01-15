@@ -305,7 +305,7 @@ def plot_continuous(projections, values, title, filename, is_enemy=None):
     plt.savefig(filename, dpi=200)
     plt.close()
 
-def plot_and_save(projections, actions, values, ship_ids, timesteps, alive_status, method_name, save_dir, model_name, suffix=""):
+def plot_and_save(projections, actions, values, ship_ids, team_ids, timesteps, alive_status, method_name, save_dir, model_name, suffix=""):
     # Action indices
     # actions column 0 is power
     # actions column 1 is turn
@@ -324,11 +324,8 @@ def plot_and_save(projections, actions, values, ship_ids, timesteps, alive_statu
     unique_ships = np.unique(ship_ids)
     ship_map = {int(s): f"Ship {int(s)}" for s in unique_ships}
     
-    # Assume 4v4 split: 0-3 Ally, 4-7 Enemy
-    # Or generically first half vs second half
-    max_ship_id = int(np.max(ship_ids))
-    half_point = (max_ship_id + 1) // 2
-    team_ids = (ship_ids >= half_point).astype(int)
+    # Team Map
+    team_map = {0: "Ally (Team 0)", 1: "Enemy (Team 1)"}
     team_map = {0: "Ally (Team 0)", 1: "Enemy (Team 1)"}
     
     # Alive Map
@@ -463,7 +460,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--models_dir", type=str, default="models/world_model")
     parser.add_argument("--output_dir", type=str, default="outputs/latent_viz")
-    parser.add_argument("--max_batches", type=int, default=256)
+    parser.add_argument("--max_batches", type=int, default=512)
     parser.add_argument("--test-run", action="store_true", help="Run quick test on single model")
     parser.add_argument("--latest", action="store_true", help="Process only the most recent model")
     parser.add_argument("--data_path", type=str, default=None, help="Path to specific data file")
@@ -535,18 +532,26 @@ def main():
             )
             
             # Store raw data for multiple passes
+            # Determine team IDs based on global ship IDs to avoid issues when filtering
+            max_ship_id = int(np.max(ship_ids))
+            half_point = (max_ship_id + 1) // 2
+            team_ids = (ship_ids >= half_point).astype(int)
+
             raw_data = {
                 "embeddings": embeddings,
                 "actions": actions,
                 "values": values,
                 "ship_ids": ship_ids,
+                "team_ids": team_ids,
                 "timesteps": timesteps,
                 "alive_status": alive_status
             }
 
             passes = [
-                {"name": "All Data", "suffix": "", "mask": np.ones(len(embeddings), dtype=bool)},
-                {"name": "Alive Only", "suffix": "_alive", "mask": raw_data["alive_status"] == 1}
+                {"name": "All Data", "suffix": "", "sample_limit": 10000, "mask": np.ones(len(embeddings), dtype=bool)},
+                {"name": "Alive Only", "suffix": "_alive", "sample_limit": 10000, "mask": raw_data["alive_status"] == 1},
+                {"name": "Ally Alive", "suffix": "_ally_alive", "sample_limit": 10000, "mask": (raw_data["alive_status"] == 1) & (raw_data["team_ids"] == 0)},
+                {"name": "Enemy Alive", "suffix": "_enemy_alive", "sample_limit": 10000, "mask": (raw_data["alive_status"] == 1) & (raw_data["team_ids"] == 1)}
             ]
 
             model_out_dir = output_dir / model_name
@@ -566,16 +571,19 @@ def main():
                 curr_act = raw_data["actions"][mask]
                 curr_val = raw_data["values"][mask]
                 curr_sid = raw_data["ship_ids"][mask]
+                curr_tid = raw_data["team_ids"][mask]
                 curr_time = raw_data["timesteps"][mask]
                 curr_alive = raw_data["alive_status"][mask]
 
-                # Subsample for plotting if too large (> 10k points)
-                if len(curr_emb) > 10000:
-                    indices = np.random.choice(len(curr_emb), 10000, replace=False)
+                # Subsample for plotting if too large
+                sample_limit = p.get("sample_limit", 10000)
+                if len(curr_emb) > sample_limit:
+                    indices = np.random.choice(len(curr_emb), sample_limit, replace=False)
                     curr_emb = curr_emb[indices]
                     curr_act = curr_act[indices]
                     curr_val = curr_val[indices]
                     curr_sid = curr_sid[indices]
+                    curr_tid = curr_tid[indices]
                     curr_time = curr_time[indices]
                     curr_alive = curr_alive[indices]
                 
@@ -585,7 +593,7 @@ def main():
                 print("Running PCA...")
                 pca = PCA(n_components=2)
                 pca_proj = pca.fit_transform(curr_emb)
-                plot_and_save(pca_proj, curr_act, curr_val, curr_sid, curr_time, curr_alive, "PCA", model_out_dir, model_name, suffix=suffix)
+                plot_and_save(pca_proj, curr_act, curr_val, curr_sid, curr_tid, curr_time, curr_alive, "PCA", model_out_dir, model_name, suffix=suffix)
                 
                 # PaCMAP
                 print("Running PaCMAP...")
@@ -593,7 +601,7 @@ def main():
                 # Or just run directly. PaCMAP is fast.
                 embedding_learner = pacmap.PaCMAP(n_components=2, n_neighbors=None, MN_ratio=0.5, FP_ratio=2.0)
                 pacmap_proj = embedding_learner.fit_transform(curr_emb, init="pca")
-                plot_and_save(pacmap_proj, curr_act, curr_val, curr_sid, curr_time, curr_alive, "PaCMAP", model_out_dir, model_name, suffix=suffix)
+                plot_and_save(pacmap_proj, curr_act, curr_val, curr_sid, curr_tid, curr_time, curr_alive, "PaCMAP", model_out_dir, model_name, suffix=suffix)
             
             # Generate Report
             generate_report(model_name, run_dir, config, model_out_dir, passes)
