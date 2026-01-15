@@ -10,7 +10,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from agents.rope import RotaryPositionEmbedding
+from agents.rope import RotaryPositionEmbedding, Continuous2DRotaryEmbedding
 
 
 class SpatialSelfAttention(nn.Module):
@@ -31,7 +31,17 @@ class SpatialSelfAttention(nn.Module):
         self.embed_dim = config.embed_dim
         self.dropout = config.dropout
 
-    def forward(self, input_tensor, past_kv=None, use_cache=False):
+        # 2D RoPE for spatial attention
+        self.rope = Continuous2DRotaryEmbedding(
+            dim=config.embed_dim // config.n_heads,
+            base=getattr(config, "rope_base", 10000.0),
+        )
+
+        # Spatial attention is not causal and doesn't use past_kv (usually)
+        # Because we attend to all ships at the SAME timestep.
+        # So past_kv is ignored here.
+
+    def forward(self, input_tensor, past_kv=None, use_cache=False, coords=None):
         # input_tensor: (batch_size, time_steps, num_ships, embed_dim)
         batch_size, time_steps, num_ships, embed_dim = input_tensor.size()
 
@@ -53,9 +63,24 @@ class SpatialSelfAttention(nn.Module):
             batch_size * time_steps, num_ships, self.n_heads, embed_dim // self.n_heads
         ).transpose(1, 2)
 
-        # Spatial attention is not causal and doesn't use past_kv (usually)
-        # Because we attend to all ships at the SAME timestep.
-        # So past_kv is ignored here.
+        # Apply 2D RoPE if coordinates are provided
+        if coords is not None:
+            # coords: (batch_size, time_steps, num_ships, 2)
+            # Flatten to match input_flat: (batch_size * time_steps, num_ships, 2)
+            coords_flat = coords.reshape(batch_size * time_steps, num_ships, 2)
+            
+            # query/key: (Batch, n_heads, num_ships, head_dim)
+            # RoPE expects: (Batch, num_ships, n_heads, head_dim) (channel last for head)
+            # But my RoPE implementation expects (Batch, N, Heads, Dim)
+            
+            query = query.transpose(1, 2) # (Batch, N, Heads, Dim)
+            key = key.transpose(1, 2)     # (Batch, N, Heads, Dim)
+            
+            query, key = self.rope(query, key, coords_flat)
+            
+            # Transpose back to (Batch, Heads, N, Dim) for attention
+            query = query.transpose(1, 2)
+            key = key.transpose(1, 2)
 
         attention_output = F.scaled_dot_product_attention(
             query,
@@ -243,10 +268,16 @@ class Block(nn.Module):
         self.ln_2 = nn.LayerNorm(config.embed_dim)
         self.mlp = MLP(config)
 
-    def forward(self, input_tensor, past_kv=None, use_cache=False):
-        attention_output, current_kv = self.attn(
-            self.ln_1(input_tensor), past_kv, use_cache
-        )
+    def forward(self, input_tensor, past_kv=None, use_cache=False, coords=None):
+        if self.attn_type == "spatial":
+            attention_output, current_kv = self.attn(
+                self.ln_1(input_tensor), past_kv, use_cache, coords=coords
+            )
+        else:
+            attention_output, current_kv = self.attn(
+                self.ln_1(input_tensor), past_kv, use_cache
+            )
+            
         residual = input_tensor + attention_output
         output = residual + self.mlp(self.ln_2(residual))
         return output, current_kv
@@ -404,10 +435,15 @@ class WorldModel(nn.Module):
         embeddings = content_embed + self.ship_embed[ship_ids]
 
         # 4. Transformer Pass
+        
+        # Extract coordinates for Spatial Attention
+        # indices 3 and 4 are normalized position x, y
+        coords = states[..., 3:5] # (batch_size, time_steps, num_ships, 2)
+        
         current_key_values = []
         for i, block in enumerate(self.blocks):
             past_kv = past_key_values[i] if past_key_values is not None else None
-            embeddings, kv = block(embeddings, past_kv=past_kv, use_cache=use_cache)
+            embeddings, kv = block(embeddings, past_kv=past_kv, use_cache=use_cache, coords=coords)
             if use_cache:
                 current_key_values.append(kv)
 
