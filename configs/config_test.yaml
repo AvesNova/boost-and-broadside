@@ -26,17 +26,22 @@ collect:
   teams: [scripted, scripted]
   episodes_per_mode:
     "1v1": 4
-    "2v2": 0
-    "3v3": 0
-    "4v4": 0
+    "2v2": 4
+    "3v3": 4
+    "4v4": 4
   output_dir: "data/test_data"
-  num_workers: 1
-  save_frequency: 4
+  num_workers: 2
+  save_frequency: 2
   render_mode: "none"
   max_episode_length: 512
   random_action_prob: 0.05
 
 train:
+  run_collect: false
+  run_bc: false
+  run_world_model: false
+  run_rl: false
+
   use_bc: true
   use_rl: true
   bc_data_path: "data/test_data/20260114_102934/aggregated_data.pkl"
@@ -84,7 +89,7 @@ world_model:
   input_noise_ratio: 0.1
   input_noise_scale: 0.1
   learning_rate: 0.001
-  epochs: 1
+  epochs: 3
   
   # Mixed Batch Training
   short_batch_size: 16
@@ -97,9 +102,9 @@ world_model:
   rope_max_seq_len: 256
 
   rollout:
-    enabled: false
-    start_epoch: 50
-    ramp_epochs: 100
-    max_len_start: 10
-    max_len_end: 128
+    enabled: true
+    start_epoch: 1
+    max_len_start: 1
+    max_len_end: 2
+    ramp_epochs: 2
 

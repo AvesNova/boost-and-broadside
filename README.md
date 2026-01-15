@@ -50,6 +50,9 @@ uv run main.py mode=collect
 
 # Collect with multiple workers (faster)
 uv run main.py mode=collect collect.num_workers=4
+
+# Collect with custom config
+uv run main.py mode=collect --config-name config_test
 ```
 
 ### 2. Training
@@ -80,6 +83,9 @@ Run multiple steps in a single command.
 ```powershell
 # Collect data then train World Model
 uv run main.py mode=train train.run_collect=true train.run_world_model=true
+
+# Quick test run
+uv run main.py mode=train train.run_collect=true train.run_world_model=true --config-name config_test
 ```
 
 ## 🔧 Tools & Debugging

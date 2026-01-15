@@ -82,20 +82,63 @@ def collect_worker(
         print(f"Worker {worker_id}: Data collection complete")
 
 
+def _compute_discounted_returns(
+    rewards: torch.Tensor, episode_lengths: torch.Tensor, gamma: float = 0.99
+) -> torch.Tensor:
+    """
+    Compute discounted returns (on-the-fly during aggregation).
+    """
+    device = rewards.device
+    max_len = episode_lengths.max().item()
+    num_episodes = episode_lengths.shape[0]
+
+    # Create padded episode tensor
+    episodes = torch.zeros(num_episodes, max_len, device=device)
+
+    # Fill in episodes
+    start_idx = 0
+    for i, length in enumerate(episode_lengths):
+        ep_len = length.item()
+        episodes[i, :ep_len] = rewards[start_idx : start_idx + ep_len]
+        start_idx += ep_len
+
+    # Create discount matrix: [1, gamma, gamma^2, ..., gamma^(max_len-1)]
+    discounts = gamma ** torch.arange(max_len, device=device)
+
+    # Compute returns using convolution-like operation
+    returns_padded = torch.zeros_like(episodes)
+    for i in range(max_len):
+        # For position i, sum rewards[i:] * discounts[:len-i]
+        remaining = max_len - i
+        returns_padded[:, i] = (episodes[:, i:] * discounts[:remaining]).sum(dim=1)
+
+    # Flatten back to original shape
+    returns = torch.zeros_like(rewards)
+    start_idx = 0
+    for i, length in enumerate(episode_lengths):
+        ep_len = length.item()
+        returns[start_idx : start_idx + ep_len] = returns_padded[i, :ep_len]
+        start_idx += ep_len
+
+    return returns
+
+
 def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
     """
-    Aggregate data from all workers into a single dataset file.
+    Aggregate data from all workers into a single HDF5 dataset file.
 
-    Reads the individual data files produced by each worker, concatenates
-    the tensors, and saves a unified `aggregated_data.pkl` and `metadata.yaml`.
+    Reads the individual pickle files produced by each worker, aggregates them
+    into a single HDF5 file, precomputes returns, and cleans up the pickles.
 
     Args:
         cfg: Configuration dictionary.
         run_timestamp: Timestamp string for this run.
 
     Returns:
-        Path to the aggregated data file, or None if no data was found.
+        Path to the aggregated HDF5 file, or None if no data was found.
     """
+    import h5py
+
     run_dir = Path(cfg.collect.output_dir) / run_timestamp
     worker_dirs = sorted(run_dir.glob("worker_*"))
 
@@ -103,132 +146,125 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
         print("No worker data found to aggregate")
         return None
 
-    print(f"\nAggregating data from {len(worker_dirs)} workers...")
+    print(f"\nAggregating data from {len(worker_dirs)} workers into HDF5...")
 
-    all_team_0_tokens = []
-    all_team_0_actions = []
-    all_team_0_action_masks = []
-    all_team_0_rewards = []
-    all_team_1_tokens = []
-    all_team_1_actions = []
-    all_team_1_action_masks = []
-    all_team_1_rewards = []
-    all_episode_ids = []
-    all_episode_lengths = []
+    aggregated_h5_path = run_dir / "aggregated_data.h5"
 
     total_episodes = 0
     total_timesteps = 0
     total_sim_time = 0.0
-    worker_metadata = []
+    worker_metadata_list = []
 
-    for worker_dir in worker_dirs:
-        # Find all checkpoint files
-        checkpoint_files = sorted(
-            worker_dir.glob("data_checkpoint_*.pkl"),
-            key=lambda p: int(p.stem.split("_")[-1]),
-        )
+    # Initialize HDF5 file
+    with h5py.File(aggregated_h5_path, "w") as f:
+        # Datasets will be created on first write
+        dsets = {}
 
-        if not checkpoint_files:
-            print(f"Warning: No data checkpoints found in {worker_dir}, skipping")
-            continue
+        for worker_dir in worker_dirs:
+            # Find all checkpoint files
+            checkpoint_files = sorted(
+                worker_dir.glob("data_checkpoint_*.pkl"),
+                key=lambda p: int(p.stem.split("_")[-1]),
+            )
 
-        for checkpoint_path in checkpoint_files:
-            with open(checkpoint_path, "rb") as f:
-                data = pickle.load(f)
+            if not checkpoint_files:
+                print(f"Warning: No data checkpoints found in {worker_dir}, skipping")
+                continue
 
-            episode_offset = total_episodes
-            adjusted_episode_ids = data["episode_ids"] + episode_offset
+            for checkpoint_path in checkpoint_files:
+                with open(checkpoint_path, "rb") as pf:
+                    data = pickle.load(pf)
 
-            all_team_0_tokens.append(data["team_0"]["tokens"])
-            all_team_0_actions.append(data["team_0"]["actions"])
-            all_team_0_rewards.append(data["team_0"]["rewards"])
-            
-            # Check for action_masks (backwards compatibility or new data)
-            if "action_masks" in data["team_0"]:
-                 all_team_0_action_masks.append(data["team_0"]["action_masks"])
-            
-            all_team_1_tokens.append(data["team_1"]["tokens"])
-            all_team_1_actions.append(data["team_1"]["actions"])
-            all_team_1_rewards.append(data["team_1"]["rewards"])
-            
-            if "action_masks" in data["team_1"]:
-                 all_team_1_action_masks.append(data["team_1"]["action_masks"])
-            all_episode_ids.append(adjusted_episode_ids)
-            all_episode_lengths.append(data["episode_lengths"])
+                # Extract Team 0 data ONLY
+                team_0 = data["team_0"]
+                tokens = team_0["tokens"]
+                actions = team_0["actions"]
+                rewards = team_0["rewards"]
+                action_masks = team_0.get("action_masks")
+                
+                # Check for action_masks backward compat
+                if action_masks is None:
+                    # Create default ones if missing
+                    action_masks = torch.ones(actions.shape[0], actions.shape[1], dtype=torch.float32)
 
-            total_episodes += data["metadata"]["num_episodes"]
-            total_timesteps += data["metadata"]["total_timesteps"]
-            total_sim_time += data["metadata"]["total_sim_time"]
-            worker_metadata.append(data["metadata"])
+                episode_lengths = data["episode_lengths"]
+                episode_ids = data["episode_ids"] + total_episodes # Adjust IDs
 
-    if total_episodes == 0:
-        print("No episodes found in worker data.")
-        return None
+                # Compute Returns immediately
+                gamma = cfg.train.rl.gamma if "rl" in cfg.train else 0.99
+                returns = _compute_discounted_returns(rewards, episode_lengths, gamma=gamma)
 
-    aggregated_data = {
-        "team_0": {
-            "tokens": torch.cat(all_team_0_tokens, dim=0),
-            "actions": torch.cat(all_team_0_actions, dim=0),
-            "action_masks": torch.cat(all_team_0_action_masks, dim=0) if all_team_0_action_masks else None,
-            "rewards": torch.cat(all_team_0_rewards, dim=0),
-        },
-        "team_1": {
-            "tokens": torch.cat(all_team_1_tokens, dim=0),
-            "actions": torch.cat(all_team_1_actions, dim=0),
-            "action_masks": torch.cat(all_team_1_action_masks, dim=0) if all_team_1_action_masks else None,
-            "rewards": torch.cat(all_team_1_rewards, dim=0),
-        },
-        "episode_ids": torch.cat(all_episode_ids, dim=0),
-        "episode_lengths": torch.cat(all_episode_lengths, dim=0),
-        "metadata": {
-            "num_episodes": total_episodes,
-            "total_timesteps": total_timesteps,
-            "total_sim_time": total_sim_time,
-            "num_workers": len(worker_dirs),
-            "run_timestamp": run_timestamp,
-            "max_ships": worker_metadata[0]["max_ships"],
-            "token_dim": worker_metadata[0]["token_dim"],
-            "num_actions": worker_metadata[0]["num_actions"],
-            "worker_metadata": worker_metadata,
-        },
-    }
+                # Prepare batch dict
+                batch_data = {
+                    "tokens": tokens,
+                    "actions": actions,
+                    "action_masks": action_masks,
+                    "rewards": rewards,
+                    "returns": returns,
+                    "episode_ids": episode_ids,
+                    "episode_lengths": episode_lengths, # 1D array
+                }
 
-    aggregated_pkl_path = run_dir / "aggregated_data.pkl"
-    with open(aggregated_pkl_path, "wb") as f:
-        pickle.dump(aggregated_data, f)
+                # Write to HDF5
+                for key, tensor in batch_data.items():
+                    np_data = tensor.numpy() if isinstance(tensor, torch.Tensor) else tensor
+                    
+                    if key not in dsets:
+                        # Create dataset with maxshape for resizing
+                        shape = list(np_data.shape)
+                        maxshape = list(np_data.shape)
+                        maxshape[0] = None # Allow first dim refactor
+                        
+                        dsets[key] = f.create_dataset(
+                            key, 
+                            data=np_data, 
+                            maxshape=tuple(maxshape),
+                            chunks=True # Enable chunking for resize
+                        )
+                    else:
+                        # Resize and append
+                        dset = dsets[key]
+                        old_len = dset.shape[0]
+                        new_len = old_len + np_data.shape[0]
+                        
+                        dset.resize(new_len, axis=0)
+                        dset[old_len:] = np_data
 
-    print(f"Saved aggregated data to {aggregated_pkl_path}")
+                # Update stats
+                total_episodes += data["metadata"]["num_episodes"]
+                total_timesteps += data["metadata"]["total_timesteps"]
+                total_sim_time += data["metadata"]["total_sim_time"]
+                worker_metadata_list.append(data["metadata"])
+                
+                # Cleanup Pickle
+                try:
+                    checkpoint_path.unlink()
+                except OSError as e:
+                    print(f"Warning: Failed to delete {checkpoint_path}: {e}")
 
-    metadata_yaml = {
-        "num_episodes": int(total_episodes),
-        "total_timesteps": int(total_timesteps),
-        "total_sim_time": float(total_sim_time),
-        "num_workers": len(worker_dirs),
-        "run_timestamp": run_timestamp,
-        "max_ships": int(worker_metadata[0]["max_ships"]),
-        "token_dim": int(worker_metadata[0]["token_dim"]),
-        "num_actions": int(worker_metadata[0]["num_actions"]),
-        "data_shapes": {
-            "team_0_tokens": list(aggregated_data["team_0"]["tokens"].shape),
-            "team_0_actions": list(aggregated_data["team_0"]["actions"].shape),
-            "team_0_rewards": list(aggregated_data["team_0"]["rewards"].shape),
-            "team_1_tokens": list(aggregated_data["team_1"]["tokens"].shape),
-            "team_1_actions": list(aggregated_data["team_1"]["actions"].shape),
-            "team_1_rewards": list(aggregated_data["team_1"]["rewards"].shape),
-            "episode_ids": list(aggregated_data["episode_ids"].shape),
-            "episode_lengths": list(aggregated_data["episode_lengths"].shape),
-        },
-    }
+        if total_episodes == 0:
+            print("No episodes found in worker data.")
+            return None
+        
+        # Save Metadata as Attributes
+        f.attrs["num_episodes"] = total_episodes
+        f.attrs["total_timesteps"] = total_timesteps
+        f.attrs["total_sim_time"] = total_sim_time
+        f.attrs["run_timestamp"] = run_timestamp
+        f.attrs["num_workers"] = len(worker_dirs)
+        
+        # Save constant config from first worker
+        if worker_metadata_list:
+            first_meta = worker_metadata_list[0]
+            f.attrs["max_ships"] = first_meta["max_ships"]
+            f.attrs["token_dim"] = first_meta["token_dim"]
+            f.attrs["num_actions"] = first_meta["num_actions"]
 
-    metadata_yaml_path = run_dir / "metadata.yaml"
-    with open(metadata_yaml_path, "w") as f:
-        yaml.dump(metadata_yaml, f, default_flow_style=False)
-
-    print(f"Saved metadata to {metadata_yaml_path}")
-    print(
-        f"\nAggregation complete: {total_episodes} episodes, {total_timesteps} timesteps"
-    )
-    return aggregated_pkl_path
+    print(f"Saved aggregated data to {aggregated_h5_path}")
+    print(f"Aggregation complete: {total_episodes} episodes, {total_timesteps} timesteps")
+    print("Cleanup complete: All worker pickle files deleted.")
+    
+    return aggregated_h5_path
 
 
 def collect(cfg: DictConfig) -> Path | None:

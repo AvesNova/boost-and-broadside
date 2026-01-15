@@ -154,21 +154,18 @@ def train_world_model(cfg: DictConfig) -> None:
     data_path = cfg.train.bc_data_path
 
     log.info(f"Loading data from {data_path}")
-    data = load_bc_data(data_path)
+    data_path = load_bc_data(data_path)
 
     # Initialize Model
     # Get dimensions from data
-    # We need to peek at data to get dimensions.
-    # Let's just use hardcoded dimensions or get them from config/data structure.
-    # The data loader creation is now inside the loop.
-    # But we need dimensions to init model.
-
-    # Peek at one sample
-    team_0 = data["team_0"]
-    sample_tokens = team_0["tokens"][0]
-    # sample_actions = team_0["actions"][0] 
-
-    state_dim = sample_tokens.shape[-1]
+    import h5py
+    with h5py.File(data_path, "r") as f:
+        # Use attributes if available (from aggregation) or check shape
+        if "token_dim" in f.attrs:
+             state_dim = int(f.attrs["token_dim"])
+        else:
+             state_dim = f["tokens"].shape[-1]
+    
     # Fixed action dim for one-hot encoded actions (3 + 7 + 2)
     action_dim = 12 
 
@@ -210,7 +207,7 @@ def train_world_model(cfg: DictConfig) -> None:
         # Re-create data loaders each epoch to randomize pools
         train_short_loader, train_long_loader, val_short_loader, val_long_loader = (
             create_unified_data_loaders(
-                data,
+                data_path,
                 short_batch_size=cfg.world_model.short_batch_size,
                 long_batch_size=cfg.world_model.long_batch_size,
                 short_batch_len=cfg.world_model.short_batch_len,

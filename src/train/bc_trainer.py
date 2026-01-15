@@ -107,11 +107,11 @@ def train_bc(cfg: DictConfig) -> Path | None:
         train_total = 0
 
         train_pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs} [Train]")
-        for batch_idx, (tokens, actions, returns) in enumerate(train_pbar):
+        for batch_idx, (tokens, actions, returns, _, _) in enumerate(train_pbar):
             # Move data to device
-            tokens = tokens.to(device)  # (batch, max_ships, token_dim)
-            actions = actions.to(device)  # (batch, max_ships, num_actions)
-            returns = returns.to(device)  # (batch,)
+            tokens = tokens.to(device).squeeze(1)  # (batch, max_ships, token_dim)
+            actions = actions.to(device).squeeze(1)  # (batch, max_ships, num_actions)
+            returns = returns.to(device).squeeze(1)  # (batch,)
 
             # Get action targets (one-hot to class indices)
             action_targets = torch.argmax(actions, dim=-1)  # (batch, max_ships)
@@ -171,11 +171,11 @@ def train_bc(cfg: DictConfig) -> Path | None:
 
         with torch.no_grad():
             val_pbar = tqdm(val_loader, desc=f"Epoch {epoch+1}/{epochs} [Val]")
-            for batch_idx, (tokens, actions, returns) in enumerate(val_pbar):
+            for batch_idx, (tokens, actions, returns, _, _) in enumerate(val_pbar):
                 # Move data to device
-                tokens = tokens.to(device)
-                actions = actions.to(device)
-                returns = returns.to(device)
+                tokens = tokens.to(device).squeeze(1)
+                actions = actions.to(device).squeeze(1)
+                returns = returns.to(device).squeeze(1)
 
                 # Get action targets
                 action_targets = torch.argmax(actions, dim=-1)
