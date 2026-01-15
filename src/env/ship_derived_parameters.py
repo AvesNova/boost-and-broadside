@@ -24,8 +24,8 @@ def create_test_ship() -> Ship:
         ship_id=0,
         team_id=0,
         ship_config=default_ship_config,
-        initial_x=600.0,  # Center of default 1200x800 world
-        initial_y=400.0,
+        initial_x=512.0,  # Center of default 1024x1024 world
+        initial_y=512.0,
         initial_vx=100.0,  # Start with some forward velocity
         initial_vy=0.0,
     )
@@ -262,15 +262,18 @@ def derive_ship_parameters() -> dict[str, Any]:
         },
         "measurement_info": {
             "timestep": 0.02,
-            "world_bounds": [1200.0, 800.0],
+            "world_bounds": [1024.0, 1024.0],
             "test_starting_velocity": 100.0,
             "description": "Ship parameters derived by running physics simulations",
         },
     }
 
     # Save to YAML file in the project
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    output_file = os.path.join(project_root, "src/derived_ship_parameters.yaml")
+    # __file__ is src/env/ship_derived_parameters.py
+    # dirname -> src/env
+    # dirname -> src
+    src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    output_file = os.path.join(src_dir, "derived_ship_parameters.yaml")
 
     with open(output_file, "w") as f:
         yaml.dump(results, f, default_flow_style=False, sort_keys=False, indent=2)

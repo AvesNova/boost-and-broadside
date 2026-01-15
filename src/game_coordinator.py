@@ -31,13 +31,21 @@ class GameCoordinator:
 
         self.env = Environment(**env_config)
 
-        self.agents = {
-            agent_name: create_agent(
-                agent_type=agent_config.agent_type,
-                agent_config=agent_config.agent_config,
-            )
-            for agent_name, agent_config in config.agents.items()
-        }
+        self.agents = {}
+        for agent_name, agent_config_node in config.agents.items():
+             # Convert config node to dict to allow modification
+             agent_cfg_dict = dict(agent_config_node.agent_config)
+
+             # Inject world_size if not present
+             if "world_size" not in agent_cfg_dict:
+                 # OmegaConf list to tuple for compatibility
+                 agent_cfg_dict["world_size"] = tuple(self.config.environment.world_size)
+             
+             # Create agent
+             self.agents[agent_name] = create_agent(
+                 agent_type=agent_config_node.agent_type,
+                 agent_config=agent_cfg_dict,
+             )
 
         self.obs_history: list[dict] = []
         # Initialize other attributes to satisfy type checkers
@@ -57,8 +65,8 @@ class GameCoordinator:
 
         self.obs_history = [obs]
         self.all_tokens = {
-            0: observation_to_tokens(obs=obs, perspective=0),
-            1: observation_to_tokens(obs=obs, perspective=1),
+            0: observation_to_tokens(obs=obs, perspective=0, world_size=tuple(self.config.environment.world_size)),
+            1: observation_to_tokens(obs=obs, perspective=1, world_size=tuple(self.config.environment.world_size)),
         }
         self.all_actions = {
             ship_id: [] for ship_id in range(self.config.environment.max_ships)
@@ -151,11 +159,11 @@ class GameCoordinator:
     def _update_tokens(self, obs: dict) -> None:
         """Helper to update token history."""
         self.all_tokens[0] = torch.cat(
-            [self.all_tokens[0], observation_to_tokens(obs=obs, perspective=0)],
+            [self.all_tokens[0], observation_to_tokens(obs=obs, perspective=0, world_size=tuple(self.config.environment.world_size))],
             dim=0,
         )
         self.all_tokens[1] = torch.cat(
-            [self.all_tokens[1], observation_to_tokens(obs=obs, perspective=1)],
+            [self.all_tokens[1], observation_to_tokens(obs=obs, perspective=1, world_size=tuple(self.config.environment.world_size))],
             dim=0,
         )
 

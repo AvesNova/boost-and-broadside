@@ -44,6 +44,7 @@ class WorldModelAgent:
         n_heads: int = 4,
             max_ships: int = 8,
             dropout: float = 0.1,
+            world_size: tuple[float, float] = (1024.0, 1024.0),
             model: WorldModel | None = None,
             **kwargs,
         ):
@@ -74,6 +75,7 @@ class WorldModelAgent:
         self.context_len = context_len
         self.max_ships = max_ships
         self.action_dim = action_dim
+        self.world_size = world_size
 
         # Initialize model
         if model is not None:
@@ -145,7 +147,7 @@ class WorldModelAgent:
             Dict mapping ship_id -> action tensor (categorical indices).
         """
         # 1. Tokenize observation -> (1, num_ships, state_dim)
-        current_token = observation_to_tokens(observation, self.team_id).to(self.device)
+        current_token = observation_to_tokens(observation, self.team_id, self.world_size).to(self.device)
 
         # 2. Prepare input sequence
         # Construct sequence: [past_tokens, current_token, mask_token]

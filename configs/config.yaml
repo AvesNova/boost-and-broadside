@@ -5,7 +5,7 @@ human_player: false
 
 environment:
   render_mode: "human"
-  world_size: [1200, 800]
+  world_size: [1024, 1024]
   memory_size: 2
   max_ships: 8
   agent_dt: 0.04
@@ -23,7 +23,7 @@ agents:
       bullet_speed: 500.0
       target_radius: 10.0
       radius_multiplier: 1.5
-      world_size: [1200, 800]
+      world_size: [1024, 1024]
 
 components:
   renderer:

@@ -94,6 +94,7 @@ def compute_rollout_metrics(
         model=model,
         device=str(device),
         max_ships=eval_env_config.get("max_ships", 8),
+        world_size=eval_env_config.get("world_size", (1024.0, 1024.0)),
         action_dim=12,
         state_dim=10,
         embed_dim=model.config.embed_dim,
@@ -138,7 +139,7 @@ def compute_rollout_metrics(
             
             next_obs, _, _, _, _ = env.step(full_actions)
             
-            next_token = observation_to_tokens(next_obs, perspective=0).to(device)
+            next_token = observation_to_tokens(next_obs, perspective=0, world_size=eval_env_config["world_size"]).to(device)
             expert_tokens.append(next_token)
             
             # Store Expert Action for this step (t)
@@ -169,7 +170,7 @@ def compute_rollout_metrics(
             
             next_obs, _, _, _, _ = env.step(full_actions)
             
-            next_token = observation_to_tokens(next_obs, perspective=0).to(device)
+            next_token = observation_to_tokens(next_obs, perspective=0, world_size=eval_env_config["world_size"]).to(device)
             
             sq_err = (next_token - expert_tensor[t]).pow(2).mean()
             sim_sq_errs.append(sq_err)
@@ -191,7 +192,7 @@ def compute_rollout_metrics(
         
         # --- 3. Agent Open Loop (Dream) ---
         obs, _ = env.reset(seed=scenario_seed, game_mode="1v1") 
-        initial_token = observation_to_tokens(obs, perspective=0).to(device) # (1, N, F)
+        initial_token = observation_to_tokens(obs, perspective=0, world_size=eval_env_config["world_size"]).to(device) # (1, N, F)
         
         initial_action = torch.zeros(1, wm_agent.max_ships, 12, device=device)
         

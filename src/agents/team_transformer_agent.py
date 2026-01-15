@@ -172,11 +172,13 @@ class TeamTransformerAgent:
         max_ships: int = 8,
         dropout: float = 0.1,
         use_layer_norm: bool = True,
+        world_size: tuple[float, float] = (1024.0, 1024.0),
         model_path: str | None = None,
     ):
         self.agent_id = agent_id
         self.team_id = team_id
         self.squad = squad
+        self.world_size = world_size
 
         self.model = TeamTransformerModel(
             token_dim=token_dim,
@@ -223,7 +225,7 @@ class TeamTransformerAgent:
                 observation["tokens"] = tokens
         else:
             # Generate tokens from raw observation
-            tokens = observation_to_tokens(observation, self.team_id)
+            tokens = observation_to_tokens(observation, self.team_id, self.world_size)
             # Create a copy of observation to avoid side effects if possible,
             # but for efficiency we might just pass a new dict
             observation = observation.copy()

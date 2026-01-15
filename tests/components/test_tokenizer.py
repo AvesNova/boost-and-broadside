@@ -19,7 +19,7 @@ def test_tokenizer_shape(dummy_state, default_config):
         "is_shooting": torch.tensor([0]),
     }
 
-    tokens = observation_to_tokens(obs, perspective=0)
+    tokens = observation_to_tokens(obs, perspective=0, world_size=(1024.0, 1024.0))
 
     # Expected shape: (num_ships, token_dim)
     # Token dim is 12 based on play.py (though README says 10, let's check implementation or output)
@@ -45,11 +45,11 @@ def test_tokenizer_perspective(dummy_state):
     }
 
     # If we view from team 0 (same team), it should be standard
-    tokens_0 = observation_to_tokens(obs, perspective=0)
+    tokens_0 = observation_to_tokens(obs, perspective=0, world_size=(1024.0, 1024.0))
 
     # If we view from team 1 (enemy team), it might be different if there's team-relative encoding
     # The current tokenizer implementation details are not fully visible, but we can check if it runs
-    tokens_1 = observation_to_tokens(obs, perspective=1)
+    tokens_1 = observation_to_tokens(obs, perspective=1, world_size=(1024.0, 1024.0))
 
     assert tokens_0 is not None
     assert tokens_1 is not None

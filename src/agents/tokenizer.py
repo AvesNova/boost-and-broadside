@@ -9,7 +9,7 @@ import torch
 
 
 def observation_to_tokens(
-    obs: dict[str, torch.Tensor], perspective: int
+    obs: dict[str, torch.Tensor], perspective: int, world_size: tuple[float, float]
 ) -> torch.Tensor:
     """
     Convert observation dictionary to token representation.
@@ -21,6 +21,7 @@ def observation_to_tokens(
     Args:
         obs: Observation dictionary containing ship states.
         perspective: Team ID from whose perspective to encode (0 or 1).
+        world_size: Dimensions of the world (width, height) for normalization.
 
     Returns:
         Token tensor of shape (1, num_ships, token_dim) where token_dim=12.
@@ -33,9 +34,9 @@ def observation_to_tokens(
         - Attitude (x and y components)
         - Shooting state (binary)
     """
-    # Normalized positions (hardcoded world size: 1200x800)
-    x_norm = obs["position"].real / 1200
-    y_norm = obs["position"].imag / 800
+    # Normalized positions
+    x_norm = obs["position"].real / world_size[0]
+    y_norm = obs["position"].imag / world_size[1]
 
     # Wrap-around encoding using sin/cos
     x_sin = torch.sin(2 * torch.pi * x_norm)

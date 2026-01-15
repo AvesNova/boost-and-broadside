@@ -90,7 +90,7 @@ class SB3Wrapper(gym.Wrapper):
         obs, info = self.env.reset(game_mode=game_mode)
 
         # Convert observation to tokens for Team 0
-        tokens = observation_to_tokens(obs, perspective=0)  # (1, max_ships, token_dim)
+        tokens = observation_to_tokens(obs, perspective=0, world_size=self.env.world_size)  # (1, max_ships, token_dim)
 
         # Remove batch dim for SB3
         tokens = tokens.squeeze(0).numpy()
@@ -148,7 +148,7 @@ class SB3Wrapper(gym.Wrapper):
         reward = rewards.get(0, 0.0)
 
         # Convert next observation to tokens
-        tokens = observation_to_tokens(next_obs, perspective=0)
+        tokens = observation_to_tokens(next_obs, perspective=0, world_size=self.env.world_size)
         tokens = tokens.squeeze(0).numpy()
 
         return {"tokens": tokens}, reward, terminated, truncated, info

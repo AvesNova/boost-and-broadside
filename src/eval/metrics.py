@@ -104,6 +104,7 @@ def compute_controlling_error(model, env_config, device, max_episode_length=200,
         model=model,
         device=str(device),
         max_ships=env_config.get("max_ships", 8),
+        world_size=env_config.get("world_size", (1024.0, 1024.0)),
         action_dim=12, # Hardcoded for now
         state_dim=10, # Hardcoded
         embed_dim=model.config.embed_dim, # Match model
@@ -142,7 +143,7 @@ def compute_controlling_error(model, env_config, device, max_episode_length=200,
             
             # Prepare inputs from agent history + current observation
             # Get current token
-            current_token = observation_to_tokens(obs, 0).to(device) # (1, N, F)
+            current_token = observation_to_tokens(obs, 0, world_size=env_config["world_size"]).to(device) # (1, N, F)
             
             # Reconstruct history input
             hist_tokens = [t for t, a in agent.history]
@@ -189,7 +190,7 @@ def compute_controlling_error(model, env_config, device, max_episode_length=200,
             
             # Calculate control error: MSE between predicted_next_state and ACTUAL next state token
             # We need to tokenize next_obs
-            next_token = observation_to_tokens(next_obs, 0).to(device)
+            next_token = observation_to_tokens(next_obs, 0, world_size=env_config["world_size"]).to(device)
             
             mse = (predicted_next_state - next_token).pow(2).mean()
             total_mse += mse.item()

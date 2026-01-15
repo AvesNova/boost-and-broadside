@@ -26,18 +26,18 @@ def test_environment_seed_synchronization():
     
     # Run 1
     obs1, info1 = env.reset(seed=seed, game_mode="1v1")
-    state1_tokens = observation_to_tokens(obs1, perspective=0)
+    state1_tokens = observation_to_tokens(obs1, perspective=0, world_size=tuple(config["world_size"]))
     
     # Run 2
     obs2, info2 = env.reset(seed=seed, game_mode="1v1")
-    state2_tokens = observation_to_tokens(obs2, perspective=0)
+    state2_tokens = observation_to_tokens(obs2, perspective=0, world_size=tuple(config["world_size"]))
     
     # Check strict equality of tokens
     assert torch.allclose(state1_tokens, state2_tokens), "Initial tokens differ despite same seed!"
     
     # Verify different seed key produces different result (sanity check)
     obs3, info3 = env.reset(seed=seed + 1, game_mode="1v1")
-    state3_tokens = observation_to_tokens(obs3, perspective=0)
+    state3_tokens = observation_to_tokens(obs3, perspective=0, world_size=tuple(config["world_size"]))
     
     # It is statistically incredibly unlikely to be identical
     if torch.allclose(state1_tokens, state3_tokens):
@@ -74,7 +74,7 @@ def test_environment_trajectory_synchronization():
     env.reset(seed=seed, game_mode="1v1")
     obs2_next, _, _, _, _ = env.step(actions)
     
-    token1 = observation_to_tokens(obs1_next, perspective=0)
-    token2 = observation_to_tokens(obs2_next, perspective=0)
+    token1 = observation_to_tokens(obs1_next, perspective=0, world_size=tuple(config["world_size"]))
+    token2 = observation_to_tokens(obs2_next, perspective=0, world_size=tuple(config["world_size"]))
     
     assert torch.allclose(token1, token2), "Trajectories diverged despite same seed and actions!"

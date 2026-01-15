@@ -100,7 +100,7 @@ class ScriptedAgentV2(nn.Module):
 
     def __init__(
         self,
-        world_size: tuple[float, float] = (1200.0, 800.0),
+        world_size: tuple[float, float] = (1024.0, 1024.0),
         rng: np.random.Generator = np.random.default_rng(),
         **kwargs: Any,
     ):
