@@ -2,7 +2,7 @@
 
 A high-performance codebase for **Boost and Broadside**, a compiled competitive multi-agent environment where teams of ships compete in 2D dogfights.
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Installation
 
@@ -27,7 +27,7 @@ uv run main.py mode=play team1=most_recent_world_model team2=most_recent_world_m
 uv run main.py mode=play human_player=true
 ```
 
-## 📂 Project Structure
+## Project Structure
 
 - **`src/`**: Source code for the environment, agents, and training logic.
     - **`agents/`**: Agent implementations (Scripted, Transformer, World Model).
@@ -38,7 +38,36 @@ uv run main.py mode=play human_player=true
 - **`configs/`**: Hydra configuration files.
 - **`tests/`**: Unit and integration tests.
 
-## 🛠️ Workflows
+## Data Structure
+
+The collected training data is stored in **HDF5** format (`aggregated_data.h5`) for efficiency and scalability.
+
+### Datasets (Root Group)
+
+All datasets are aligned along the first dimension (Total Timesteps), except for `episode_lengths`.
+
+| Dataset Name | Shape | Description |
+| :--- | :--- | :--- |
+| **`tokens`** | `(N, MaxShips, TokenDim)` | The observation tokens for all ships. |
+| **`actions`** | `(N, MaxShips, NumActions)` | The actions taken by each ship. |
+| **`action_masks`** | `(N, MaxShips, NumActions)` | Boolean mask indicating valid actions. |
+| **`rewards`** | `(N,)` | The reward received at each timestep. |
+| **`returns`** | `(N,)` | Precomputed discounted returns (GAE/Reward-to-go). |
+| **`episode_ids`** | `(N,)` | ID of the episode each timestep belongs to. |
+| **`episode_lengths`** | `(NumEpisodes,)` | Length of each episode in the dataset. |
+
+### Metadata (Attributes)
+
+Global metadata is stored as HDF5 attributes on the root group:
+
+- `num_episodes`: Total number of episodes.
+- `total_timesteps`: Total number of timesteps.
+- `total_sim_time`: Total simulation time in seconds.
+- `max_ships`: Maximum number of ships per team.
+- `token_dim`: Dimension of each token.
+- `num_actions`: Number of possible actions.
+
+## Workflows
 
 ### 1. Data Collection
 
@@ -88,13 +117,13 @@ uv run main.py mode=train train.run_collect=true train.run_world_model=true
 uv run main.py mode=train train.run_collect=true train.run_world_model=true --config-name config_test
 ```
 
-## 🔧 Tools & Debugging
+## Tools & Debugging
 
 We provide tools in the `tools/` directory to help with development.
 
 ```powershell
 # Inspect collected data files
-uv run python tools/inspect_data.py data/bc_pretraining/latest/aggregated_data.pkl
+uv run python tools/inspect_data.py data/bc_pretraining/latest/aggregated_data.h5
 
 # Verify data loading logic
 uv run python tools/verify_data_loading.py
@@ -103,7 +132,7 @@ uv run python tools/verify_data_loading.py
 uv run python tools/viz_latent_space.py --latest
 ```
 
-## ⚙️ Configuration
+## Configuration
 
 The project uses [Hydra](https://hydra.cc/) for configuration. Key config files are in `configs/`. Do not modify source code for parameters; use command line overrides or edit `configs/config.yaml`.
 
@@ -112,7 +141,7 @@ The project uses [Hydra](https://hydra.cc/) for configuration. Key config files 
 - `max_ships`: `environment.max_ships=16`
 - `render`: `collect.render_mode='human'`
 
-## 📝 Development
+## Development
 
 - **Style Guide**: Please refer to [STYLE_GUIDE.md](STYLE_GUIDE.md) for coding standards.
 - **Tests**: Run `uv run pytest --color=no -rf --tb=line` to ensure everything is working.
