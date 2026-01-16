@@ -33,19 +33,19 @@ class GameCoordinator:
 
         self.agents = {}
         for agent_name, agent_config_node in config.agents.items():
-             # Convert config node to dict to allow modification
-             agent_cfg_dict = dict(agent_config_node.agent_config)
+            # Convert config node to dict to allow modification
+            agent_cfg_dict = dict(agent_config_node.agent_config)
 
-             # Inject world_size if not present
-             if "world_size" not in agent_cfg_dict:
-                 # OmegaConf list to tuple for compatibility
-                 agent_cfg_dict["world_size"] = tuple(self.config.environment.world_size)
-             
-             # Create agent
-             self.agents[agent_name] = create_agent(
-                 agent_type=agent_config_node.agent_type,
-                 agent_config=agent_cfg_dict,
-             )
+            # Inject world_size if not present
+            if "world_size" not in agent_cfg_dict:
+                # OmegaConf list to tuple for compatibility
+                agent_cfg_dict["world_size"] = tuple(self.config.environment.world_size)
+
+            # Create agent
+            self.agents[agent_name] = create_agent(
+                agent_type=agent_config_node.agent_type,
+                agent_config=agent_cfg_dict,
+            )
 
         self.obs_history: list[dict] = []
         # Initialize other attributes to satisfy type checkers
@@ -54,14 +54,16 @@ class GameCoordinator:
         self.all_action_masks: dict[int, list[float]] = {}
         self.all_rewards: dict[int, list[float]] = {}
 
-    def reset(self, game_mode: str, team_skills: dict[int, float] | None = None) -> None:
+    def reset(
+        self, game_mode: str, team_skills: dict[int, float] | None = None
+    ) -> None:
         """
         Reset environment for a new episode.
 
         Args:
             game_mode: The game mode to initialize (e.g., "1v1", "nvn").
             team_skills: Dictionary mapping team_id to skill level (0.0 to 1.0).
-                         1.0 = Expert, 0.0 = Random. dict[int, float]. 
+                         1.0 = Expert, 0.0 = Random. dict[int, float].
                          If None, defaults to 1.0 (Expert).
         """
         obs, _ = self.env.reset(game_mode=game_mode)
@@ -70,8 +72,16 @@ class GameCoordinator:
 
         self.obs_history = [obs]
         self.all_tokens = {
-            0: observation_to_tokens(obs=obs, perspective=0, world_size=tuple(self.config.environment.world_size)),
-            1: observation_to_tokens(obs=obs, perspective=1, world_size=tuple(self.config.environment.world_size)),
+            0: observation_to_tokens(
+                obs=obs,
+                perspective=0,
+                world_size=tuple(self.config.environment.world_size),
+            ),
+            1: observation_to_tokens(
+                obs=obs,
+                perspective=1,
+                world_size=tuple(self.config.environment.world_size),
+            ),
         }
         self.all_actions = {
             ship_id: [] for ship_id in range(self.config.environment.max_ships)
@@ -98,11 +108,12 @@ class GameCoordinator:
         # Initialize RNG if not present (could be moved to init)
         if not hasattr(self, "_rng"):
             import numpy as np
+
             self._rng = np.random.default_rng()
-        
+
         # Use team skills to determine random action probability
         # Skill X means we take expert actions X% of the time, random actions (1-X)% of the time
-        
+
         while not terminated:
             # 1. Determine which ships belong to which team
             teams = self._get_teams_from_obs(obs)
@@ -118,17 +129,17 @@ class GameCoordinator:
 
             # 3. Flatten actions into a single dictionary and apply randomization
             actions = {}
-            action_masks = {} # 1.0 for expert, 0.0 for random
-            
+            action_masks = {}  # 1.0 for expert, 0.0 for random
+
             for team_id, ship_ids in teams.items():
                 ship_actions = team_actions[team_id]
                 skill_level = self.team_skills.get(team_id, 1.0)
                 random_prob = 1.0 - skill_level
-                
+
                 for ship_id in ship_ids:
                     action = ship_actions[ship_id]
                     mask = 1.0
-                    
+
                     if self._rng.random() < random_prob:
                         # Generate random action
                         # Power: 0-2, Turn: 0-6, Shoot: 0-1
@@ -136,9 +147,11 @@ class GameCoordinator:
                         rand_power = float(self._rng.integers(0, 3))
                         rand_turn = float(self._rng.integers(0, 7))
                         rand_shoot = float(self._rng.integers(0, 2))
-                        action = torch.tensor([rand_power, rand_turn, rand_shoot], dtype=torch.float32)
+                        action = torch.tensor(
+                            [rand_power, rand_turn, rand_shoot], dtype=torch.float32
+                        )
                         mask = 0.0
-                    
+
                     actions[ship_id] = action
                     action_masks[ship_id] = mask
 
@@ -167,11 +180,25 @@ class GameCoordinator:
     def _update_tokens(self, obs: dict) -> None:
         """Helper to update token history."""
         self.all_tokens[0] = torch.cat(
-            [self.all_tokens[0], observation_to_tokens(obs=obs, perspective=0, world_size=tuple(self.config.environment.world_size))],
+            [
+                self.all_tokens[0],
+                observation_to_tokens(
+                    obs=obs,
+                    perspective=0,
+                    world_size=tuple(self.config.environment.world_size),
+                ),
+            ],
             dim=0,
         )
         self.all_tokens[1] = torch.cat(
-            [self.all_tokens[1], observation_to_tokens(obs=obs, perspective=1, world_size=tuple(self.config.environment.world_size))],
+            [
+                self.all_tokens[1],
+                observation_to_tokens(
+                    obs=obs,
+                    perspective=1,
+                    world_size=tuple(self.config.environment.world_size),
+                ),
+            ],
             dim=0,
         )
 

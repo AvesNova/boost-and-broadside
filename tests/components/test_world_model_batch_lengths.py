@@ -1,15 +1,14 @@
 """Tests for world model batch length alternation."""
 
 import torch
-import pytest
 import h5py
-import numpy as np
-from pathlib import Path
 from train.unified_dataset import UnifiedEpisodeDataset, ShortView, LongView
 from train.data_loader import create_unified_data_loaders
 
 
-def save_dummy_data_to_h5(path, num_episodes=10, episode_len=200, num_ships=8, token_dim=12, action_dim=6):
+def save_dummy_data_to_h5(
+    path, num_episodes=10, episode_len=200, num_ships=8, token_dim=12, action_dim=6
+):
     """Create dummy data and save to HDF5."""
     total_timesteps = num_episodes * episode_len
 
@@ -18,7 +17,7 @@ def save_dummy_data_to_h5(path, num_episodes=10, episode_len=200, num_ships=8, t
     episode_lengths = torch.tensor([episode_len] * num_episodes, dtype=torch.int64)
     returns = torch.zeros(total_timesteps)
     action_masks = torch.ones(total_timesteps, num_ships)
-    
+
     # New fields
     agent_skills = torch.rand(total_timesteps)
     team_ids = torch.randint(0, 2, (total_timesteps,))
@@ -56,7 +55,9 @@ class TestShortView:
         dataset = UnifiedEpisodeDataset(str(h5_path))
         view = ShortView(dataset, list(range(len(episode_lengths))), seq_len=32)
 
-        batch_tokens, batch_actions, batch_returns, loss_mask, batch_masks, _, _ = view[0]
+        batch_tokens, batch_actions, batch_returns, loss_mask, batch_masks, _, _ = view[
+            0
+        ]
 
         assert batch_tokens.shape[0] == 32
         assert batch_actions.shape[0] == 32
@@ -87,14 +88,18 @@ class TestLongView:
     def test_batch_structure(self, tmp_path):
         """Test that batches have correct structure and warmup masking."""
         h5_path = tmp_path / "test_data.h5"
-        episode_lengths = save_dummy_data_to_h5(h5_path, num_episodes=1, episode_len=200)
+        episode_lengths = save_dummy_data_to_h5(
+            h5_path, num_episodes=1, episode_len=200
+        )
 
         dataset = UnifiedEpisodeDataset(str(h5_path))
         view = LongView(
             dataset, list(range(len(episode_lengths))), seq_len=128, warmup_len=32
         )
 
-        batch_tokens, batch_actions, batch_returns, loss_mask, batch_masks, _, _ = view[0]
+        batch_tokens, batch_actions, batch_returns, loss_mask, batch_masks, _, _ = view[
+            0
+        ]
 
         assert batch_tokens.shape[0] == 128
         assert batch_actions.shape[0] == 128
@@ -133,4 +138,3 @@ class TestUnifiedDataLoaders:
 
         l_tokens, l_actions, l_returns, l_mask, l_action_masks, _, _ = next(iter(tl))
         assert l_tokens.shape == (2, 128, 8, 12)
-

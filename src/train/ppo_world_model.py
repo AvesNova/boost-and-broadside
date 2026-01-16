@@ -5,15 +5,14 @@ Inherits from Stable Baselines3 PPO to inject Auxiliary Loss (Dynamics Predictio
 into the optimization loop.
 """
 
-from typing import Any, ClassVar, Optional, TypeVar, Union
+from typing import Union
 
 import numpy as np
 import torch as th
 from gymnasium import spaces
 from stable_baselines3 import PPO
-from stable_baselines3.common.buffers import RolloutBuffer
 from stable_baselines3.common.policies import ActorCriticPolicy
-from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
+from stable_baselines3.common.type_aliases import GymEnv
 from stable_baselines3.common.utils import explained_variance
 from torch.nn import functional as F
 
@@ -116,9 +115,7 @@ class WorldModelPPO(PPO):
                 # --- AUXILIARY LOSS ---
                 # Calculate dynamics prediction loss
                 if hasattr(self.policy, "get_dynamics_loss"):
-                    aux_loss = self.policy.get_dynamics_loss(
-                        rollout_data.observations
-                    )
+                    aux_loss = self.policy.get_dynamics_loss(rollout_data.observations)
                     aux_losses.append(aux_loss.item())
                 else:
                     aux_loss = th.tensor(0.0).to(self.device)
@@ -137,7 +134,9 @@ class WorldModelPPO(PPO):
                 # and Schulman blog: http://joschu.net/blog/kl-approx.html
                 with th.no_grad():
                     log_ratio = log_prob - rollout_data.old_log_prob
-                    approx_kl_div = th.mean((th.exp(log_ratio) - 1) - log_ratio).cpu().numpy()
+                    approx_kl_div = (
+                        th.mean((th.exp(log_ratio) - 1) - log_ratio).cpu().numpy()
+                    )
                     approx_kl_divs.append(approx_kl_div)
 
                 if self.target_kl is not None and approx_kl_div > 1.5 * self.target_kl:
@@ -173,10 +172,10 @@ class WorldModelPPO(PPO):
         self.logger.record("train/clip_fraction", np.mean(clip_fractions))
         self.logger.record("train/loss", loss.item())
         self.logger.record("train/explained_variance", explained_var)
-        
+
         if aux_losses:
-             self.logger.record("train/aux_loss", np.mean(aux_losses))
-             
+            self.logger.record("train/aux_loss", np.mean(aux_losses))
+
         if hasattr(self.policy, "log_std"):
             self.logger.record("train/std", th.exp(self.policy.log_std).mean().item())
 

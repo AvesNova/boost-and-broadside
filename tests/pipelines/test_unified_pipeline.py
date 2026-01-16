@@ -12,7 +12,6 @@ def mock_pipeline_components():
         patch("modes.train.train_bc") as mock_train_bc,
         patch("modes.train.train_rl") as mock_train_rl,
     ):
-
         # Setup default returns
         mock_collect.return_value = Path("mock/data/path.pkl")
         mock_train_bc.return_value = Path("mock/model/path.pth")

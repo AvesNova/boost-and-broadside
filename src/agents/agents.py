@@ -52,12 +52,12 @@ def _load_agent_config_from_model(
     if config_path.exists():
         log.info(f"Loading agent config from {config_path}")
         saved_cfg = OmegaConf.load(config_path)
-        
+
         # Determine if it's a World Model RL run
         policy_type = "transformer"
         if model_type == "rl" and "rl" in saved_cfg.train:
-             policy_type = saved_cfg.train.rl.get("policy_type", "transformer")
-        
+            policy_type = saved_cfg.train.rl.get("policy_type", "transformer")
+
         if model_type == "world_model" or policy_type == "world_model":
             # Extract world model config
             wm_cfg = OmegaConf.to_container(saved_cfg.world_model, resolve=True)
@@ -159,12 +159,12 @@ def _create_rl_agent(agent_config: dict) -> nn.Module:
     # Check policy type
     policy_type = agent_config.get("policy_type", "transformer")
     model_path = agent_config.get("model_path")
-    
+
     if policy_type == "world_model":
         agent = WorldModelAgent(**agent_config)
     else:
         agent = TeamTransformerAgent(**agent_config)
-        
+
     if model_path:
         # Check if it's a zip (SB3 checkpoint)
         if str(model_path).endswith(".zip"):
@@ -172,7 +172,7 @@ def _create_rl_agent(agent_config: dict) -> nn.Module:
         else:
             # Assume .pth
             agent.load_model(model_path)
-            
+
     return agent
 
 
@@ -182,15 +182,18 @@ def _load_from_sb3_zip(agent: nn.Module, path: str, policy_type: str):
     """
     import zipfile
     import io
-    
+
     try:
         with zipfile.ZipFile(path, "r") as archive:
             # SB3 saves model parameters in "policy.pth"
             with archive.open("policy.pth") as f:
                 content = f.read()
-                
-            state_dict = torch.load(io.BytesIO(content), map_location=agent.device if hasattr(agent, "device") else "cpu")
-            
+
+            state_dict = torch.load(
+                io.BytesIO(content),
+                map_location=agent.device if hasattr(agent, "device") else "cpu",
+            )
+
             if policy_type == "world_model":
                 # WorldModelSB3Policy has structure:
                 # world_model.*
@@ -200,14 +203,16 @@ def _load_from_sb3_zip(agent: nn.Module, path: str, policy_type: str):
                 prefix = "world_model."
                 for k, v in state_dict.items():
                     if k.startswith(prefix):
-                        wm_state_dict[k[len(prefix):]] = v
-                
+                        wm_state_dict[k[len(prefix) :]] = v
+
                 # Load into WorldModelAgent's internal model
                 if hasattr(agent, "model"):
                     agent.model.load_state_dict(wm_state_dict, strict=False)
                     log.info(f"Loaded WorldModel weights from SB3 checkpoint: {path}")
                 else:
-                    log.error("Agent does not have 'model' attribute to load WorldModel weights.")
+                    log.error(
+                        "Agent does not have 'model' attribute to load WorldModel weights."
+                    )
 
             else:
                 # TeamTransformerSB3Policy structure:
@@ -218,12 +223,11 @@ def _load_from_sb3_zip(agent: nn.Module, path: str, policy_type: str):
                 prefix = "transformer_model."
                 for k, v in state_dict.items():
                     if k.startswith(prefix):
-                        tf_state_dict[k[len(prefix):]] = v
-                
+                        tf_state_dict[k[len(prefix) :]] = v
+
                 if hasattr(agent, "model"):
                     agent.model.load_state_dict(tf_state_dict, strict=False)
                     log.info(f"Loaded Transformer weights from SB3 checkpoint: {path}")
-                    
+
     except Exception as e:
         log.error(f"Failed to load form SB3 zip {path}: {e}")
-

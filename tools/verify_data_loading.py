@@ -23,14 +23,14 @@ def verify():
     print("Creating unified data loaders...")
     # Adjust parameters as needed for the debug dataset size
     ts_loader, tl_loader, vs_loader, vl_loader = create_unified_data_loaders(
-        data, 
-        short_batch_size=32, 
-        long_batch_size=16, # reduced for debug
+        data,
+        short_batch_size=32,
+        long_batch_size=16,  # reduced for debug
         short_batch_len=32,
         long_batch_len=128,
         batch_ratio=4,
-        validation_split=0.2, 
-        num_workers=0
+        validation_split=0.2,
+        num_workers=0,
     )
 
     print("Data loaders created.")
@@ -41,7 +41,9 @@ def verify():
 
     print("Iterating train short loader...")
     for i, (tokens, actions, returns, loss_mask, action_masks) in enumerate(ts_loader):
-        print(f"Batch {i}: tokens={tokens.shape}, actions={actions.shape}, returns={returns.shape}")
+        print(
+            f"Batch {i}: tokens={tokens.shape}, actions={actions.shape}, returns={returns.shape}"
+        )
         if i >= 2:
             break
 

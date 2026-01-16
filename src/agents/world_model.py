@@ -68,16 +68,16 @@ class SpatialSelfAttention(nn.Module):
             # coords: (batch_size, time_steps, num_ships, 2)
             # Flatten to match input_flat: (batch_size * time_steps, num_ships, 2)
             coords_flat = coords.reshape(batch_size * time_steps, num_ships, 2)
-            
+
             # query/key: (Batch, n_heads, num_ships, head_dim)
             # RoPE expects: (Batch, num_ships, n_heads, head_dim) (channel last for head)
             # But my RoPE implementation expects (Batch, N, Heads, Dim)
-            
-            query = query.transpose(1, 2) # (Batch, N, Heads, Dim)
-            key = key.transpose(1, 2)     # (Batch, N, Heads, Dim)
-            
+
+            query = query.transpose(1, 2)  # (Batch, N, Heads, Dim)
+            key = key.transpose(1, 2)  # (Batch, N, Heads, Dim)
+
             query, key = self.rope(query, key, coords_flat)
-            
+
             # Transpose back to (Batch, Heads, N, Dim) for attention
             query = query.transpose(1, 2)
             key = key.transpose(1, 2)
@@ -277,7 +277,7 @@ class Block(nn.Module):
             attention_output, current_kv = self.attn(
                 self.ln_1(input_tensor), past_kv, use_cache
             )
-            
+
         residual = input_tensor + attention_output
         output = residual + self.mlp(self.ln_2(residual))
         return output, current_kv
@@ -435,15 +435,17 @@ class WorldModel(nn.Module):
         embeddings = content_embed + self.ship_embed[ship_ids]
 
         # 4. Transformer Pass
-        
+
         # Extract coordinates for Spatial Attention
         # indices 3 and 4 are normalized position x, y
-        coords = states[..., 3:5] # (batch_size, time_steps, num_ships, 2)
-        
+        coords = states[..., 3:5]  # (batch_size, time_steps, num_ships, 2)
+
         current_key_values = []
         for i, block in enumerate(self.blocks):
             past_kv = past_key_values[i] if past_key_values is not None else None
-            embeddings, kv = block(embeddings, past_kv=past_kv, use_cache=use_cache, coords=coords)
+            embeddings, kv = block(
+                embeddings, past_kv=past_kv, use_cache=use_cache, coords=coords
+            )
             if use_cache:
                 current_key_values.append(kv)
 
@@ -455,7 +457,14 @@ class WorldModel(nn.Module):
         pred_value = self.value_head(embeddings).squeeze(-1)  # (B, T, N)
 
         if return_embeddings:
-            return pred_states, pred_actions, pred_value, mask, current_key_values, embeddings
+            return (
+                pred_states,
+                pred_actions,
+                pred_value,
+                mask,
+                current_key_values,
+                embeddings,
+            )
 
         return pred_states, pred_actions, pred_value, mask, current_key_values
 
@@ -478,38 +487,40 @@ class WorldModel(nn.Module):
         # Ensure dimensions match
         if loss_mask is None:
             loss_mask = torch.ones_like(target_returns, dtype=torch.bool)
-        
+
         # Apply loss mask to flatten
         # We process only valid tokens to handle padding/warmup correctly
         valid_mask = loss_mask.bool()
-        
+
         # 1. State Loss (MSE)
         # Select valid predictions and targets
         # pred_states: (B, T, N, F)
         valid_pred_states = pred_states[valid_mask]
         valid_target_states = target_states[valid_mask]
-        
+
         state_loss = F.mse_loss(valid_pred_states, valid_target_states)
 
         # 2. Value Loss (MSE)
         valid_pred_value = pred_value[valid_mask]
-        valid_target_returns = target_returns[valid_mask].unsqueeze(-1).expand_as(valid_pred_value)
-        
+        valid_target_returns = (
+            target_returns[valid_mask].unsqueeze(-1).expand_as(valid_pred_value)
+        )
+
         value_loss = F.mse_loss(valid_pred_value, valid_target_returns)
 
         # 3. Action Loss (Cross Entropy)
         # target_actions: (B, T, N, 3) - indices
         # pred_actions: (B, T, N, 12) - logits
-        
-        valid_pred_actions = pred_actions[valid_mask] # (M, 12)
-        valid_target_actions = target_actions[valid_mask] # (M, 3)
-        
+
+        valid_pred_actions = pred_actions[valid_mask]  # (M, 12)
+        valid_target_actions = target_actions[valid_mask]  # (M, 3)
+
         # If specific action masks provided (e.g. for dead ships)
         if action_masks is not None:
-             valid_action_masks = action_masks[valid_mask] # (M,)
-             # We can just ignore this for now or mask the CE loss
-             # Simplified: Assume all steps in loss_mask are valid for actions too
-        
+            valid_action_masks = action_masks[valid_mask]  # (M,)
+            # We can just ignore this for now or mask the CE loss
+            # Simplified: Assume all steps in loss_mask are valid for actions too
+
         # Split logits
         power_preds = valid_pred_actions[..., 0:3]
         turn_preds = valid_pred_actions[..., 3:10]
@@ -520,9 +531,13 @@ class WorldModel(nn.Module):
         turn_target = valid_target_actions[..., 1].long()
         shoot_target = valid_target_actions[..., 2].long()
 
-        loss_power = F.cross_entropy(power_preds.reshape(-1, 3), power_target.reshape(-1))
+        loss_power = F.cross_entropy(
+            power_preds.reshape(-1, 3), power_target.reshape(-1)
+        )
         loss_turn = F.cross_entropy(turn_preds.reshape(-1, 7), turn_target.reshape(-1))
-        loss_shoot = F.cross_entropy(shoot_preds.reshape(-1, 2), shoot_target.reshape(-1))
+        loss_shoot = F.cross_entropy(
+            shoot_preds.reshape(-1, 2), shoot_target.reshape(-1)
+        )
 
         action_loss = loss_power + loss_turn + loss_shoot
 

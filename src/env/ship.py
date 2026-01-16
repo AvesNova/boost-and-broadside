@@ -2,7 +2,6 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from env.constants import PowerActions, TurnActions, ShootActions
 from env.bullets import Bullets
@@ -103,8 +102,12 @@ class Ship(nn.Module):
         self.collision_radius_squared = ship_config.collision_radius**2
 
         self.alive = True
-        self.health = initial_health if initial_health is not None else ship_config.max_health
-        self.power = initial_power if initial_power is not None else ship_config.max_power
+        self.health = (
+            initial_health if initial_health is not None else ship_config.max_health
+        )
+        self.power = (
+            initial_power if initial_power is not None else ship_config.max_power
+        )
         self.turn_offset = 0.0
         self.last_fired_time = (
             -ship_config.firing_cooldown
@@ -182,15 +185,15 @@ class Ship(nn.Module):
         # Lift Coefficients
         self.lift_coeff_table = np.zeros(7, dtype=np.float32)
         self.lift_coeff_table[TurnActions.GO_STRAIGHT] = 0.0
-        self.lift_coeff_table[TurnActions.TURN_LEFT] = (
-            -ship_config.normal_turn_lift_coeff
-        )
+        self.lift_coeff_table[
+            TurnActions.TURN_LEFT
+        ] = -ship_config.normal_turn_lift_coeff
         self.lift_coeff_table[TurnActions.TURN_RIGHT] = (
             ship_config.normal_turn_lift_coeff
         )
-        self.lift_coeff_table[TurnActions.SHARP_LEFT] = (
-            -ship_config.sharp_turn_lift_coeff
-        )
+        self.lift_coeff_table[
+            TurnActions.SHARP_LEFT
+        ] = -ship_config.sharp_turn_lift_coeff
         self.lift_coeff_table[TurnActions.SHARP_RIGHT] = (
             ship_config.sharp_turn_lift_coeff
         )

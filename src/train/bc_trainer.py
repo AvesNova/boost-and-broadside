@@ -106,7 +106,7 @@ def train_bc(cfg: DictConfig) -> Path | None:
         train_correct = 0
         train_total = 0
 
-        train_pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs} [Train]")
+        train_pbar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{epochs} [Train]")
         for batch_idx, (tokens, actions, returns, _, _) in enumerate(train_pbar):
             # Move data to device
             tokens = tokens.to(device).squeeze(1)  # (batch, max_ships, token_dim)
@@ -156,10 +156,10 @@ def train_bc(cfg: DictConfig) -> Path | None:
             # Update progress bar
             train_pbar.set_postfix(
                 {
-                    "Loss": f"{train_loss/(batch_idx+1):.4f}",
-                    "PLoss": f"{train_policy_loss/(batch_idx+1):.4f}",
-                    "VLoss": f"{train_value_loss/(batch_idx+1):.4f}",
-                    "Acc": f"{100.*train_correct/train_total:.2f}%",
+                    "Loss": f"{train_loss / (batch_idx + 1):.4f}",
+                    "PLoss": f"{train_policy_loss / (batch_idx + 1):.4f}",
+                    "VLoss": f"{train_value_loss / (batch_idx + 1):.4f}",
+                    "Acc": f"{100.0 * train_correct / train_total:.2f}%",
                 }
             )
 
@@ -170,7 +170,7 @@ def train_bc(cfg: DictConfig) -> Path | None:
         val_total = 0
 
         with torch.no_grad():
-            val_pbar = tqdm(val_loader, desc=f"Epoch {epoch+1}/{epochs} [Val]")
+            val_pbar = tqdm(val_loader, desc=f"Epoch {epoch + 1}/{epochs} [Val]")
             for batch_idx, (tokens, actions, returns, _, _) in enumerate(val_pbar):
                 # Move data to device
                 tokens = tokens.to(device).squeeze(1)
@@ -207,8 +207,8 @@ def train_bc(cfg: DictConfig) -> Path | None:
                 # Update progress bar
                 val_pbar.set_postfix(
                     {
-                        "Loss": f"{val_loss/(batch_idx+1):.4f}",
-                        "Acc": f"{100.*val_correct/val_total:.2f}%",
+                        "Loss": f"{val_loss / (batch_idx + 1):.4f}",
+                        "Acc": f"{100.0 * val_correct / val_total:.2f}%",
                     }
                 )
 
@@ -220,14 +220,14 @@ def train_bc(cfg: DictConfig) -> Path | None:
         train_accuracy = 100.0 * train_correct / train_total
         val_accuracy = 100.0 * val_correct / val_total
 
-        print(f"Epoch {epoch+1}/{epochs}:")
+        print(f"Epoch {epoch + 1}/{epochs}:")
         print(f"  Train Loss: {avg_train_loss:.4f}, Train Acc: {train_accuracy:.2f}%")
         print(f"  Val Loss: {avg_val_loss:.4f}, Val Acc: {val_accuracy:.2f}%")
 
         # Log to CSV
         with open(csv_path, "a") as f:
             f.write(
-                f"{epoch+1},{avg_train_loss:.6f},{avg_train_policy_loss:.6f},{avg_train_value_loss:.6f},{train_accuracy:.2f},{avg_val_loss:.6f},{val_accuracy:.2f}\n"
+                f"{epoch + 1},{avg_train_loss:.6f},{avg_train_policy_loss:.6f},{avg_train_value_loss:.6f},{train_accuracy:.2f},{avg_val_loss:.6f},{val_accuracy:.2f}\n"
             )
 
         # Log to TensorBoard

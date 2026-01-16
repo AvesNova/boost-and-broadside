@@ -156,7 +156,7 @@ class Continuous2DRotaryEmbedding(nn.Module):
         super().__init__()
         self.dim = dim
         self.base = base
-        
+
         # Calculate frequencies for half the dimension (since we process X and Y separately)
         # We need dim/2 frequencies because we split dim into X-half and Y-half.
         # Each half needs (dim/4) frequencies for pairs.
@@ -184,12 +184,12 @@ class Continuous2DRotaryEmbedding(nn.Module):
             Rotated q and k
         """
         half_dim = q.shape[-1]
-        
+
         # Slicing inv_freq: We need (Half_Dim // 2) frequencies.
         # Our buffer inv_freq has (Dim // 2) frequencies.
         # Half_Dim is usually Dim // 2.
         # So we need (Dim // 4) frequencies.
-        inv_freq = self.inv_freq[:half_dim // 2]  # (Half_Dim // 2)
+        inv_freq = self.inv_freq[: half_dim // 2]  # (Half_Dim // 2)
 
         # Outer product: (Batch * N) x (Half_Dim // 2)
         flat_pos = pos.reshape(-1)
@@ -202,7 +202,7 @@ class Continuous2DRotaryEmbedding(nn.Module):
         # Create cos/sin and repeat for pairs -> (Batch, N, 1, Half_Dim)
         _cos = freqs.cos()
         _sin = freqs.sin()
-        cos = torch.cat([_cos, _cos], dim=-1) 
+        cos = torch.cat([_cos, _cos], dim=-1)
         sin = torch.cat([_sin, _sin], dim=-1)
 
         # Apply rotation (broadcast over heads)

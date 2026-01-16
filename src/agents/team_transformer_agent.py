@@ -8,7 +8,6 @@ with team-based filtering for multi-agent scenarios.
 import torch
 import torch.nn as nn
 
-import torch.nn.functional as F
 from agents.tokenizer import observation_to_tokens
 
 

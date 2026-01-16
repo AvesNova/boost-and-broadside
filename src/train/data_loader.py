@@ -4,10 +4,11 @@ import torch
 
 from train.unified_dataset import UnifiedEpisodeDataset, ShortView, LongView
 
+
 def get_latest_data_path() -> str:
     """Find the latest aggregated HDF5 data file."""
     base_path = Path("data/bc_pretraining")
-    
+
     # Find the latest folder that has aggregated_data.h5
     latest_folder = None
     for d in sorted(base_path.iterdir(), key=lambda d: d.name, reverse=True):
@@ -24,10 +25,10 @@ def get_latest_data_path() -> str:
 def load_bc_data(data_path: str = None) -> str:
     """
     Resolve the path to the BC data.
-    
+
     Args:
         data_path: Optional path. If None, uses latest.
-        
+
     Returns:
         Path string to the HDF5 file.
     """
@@ -42,7 +43,7 @@ def create_unified_data_loaders(
     long_batch_size: int,
     short_batch_len: int = 32,
     long_batch_len: int = 128,
-    batch_ratio: int = 4, # Unused effectively, controlled by caller
+    batch_ratio: int = 4,  # Unused effectively, controlled by caller
     validation_split: float = 0.2,
     num_workers: int = 0,
 ) -> tuple[DataLoader, DataLoader, DataLoader, DataLoader]:
@@ -94,8 +95,8 @@ def create_unified_data_loaders(
     kwargs = {
         "num_workers": num_workers,
         "pin_memory": True,
-        "persistent_workers": (num_workers > 0), 
-        "prefetch_factor": 2 if num_workers > 0 else None
+        "persistent_workers": (num_workers > 0),
+        "prefetch_factor": 2 if num_workers > 0 else None,
     }
 
     train_short_loader = DataLoader(
@@ -118,7 +119,7 @@ def create_unified_data_loaders(
 def create_bc_data_loader(
     data_path: str,
     batch_size: int,
-    gamma: float = 0.99, # Deprecated/Unused, returns are precomputed
+    gamma: float = 0.99,  # Deprecated/Unused, returns are precomputed
     validation_split: float = 0.2,
     num_workers: int = 4,
 ) -> tuple[DataLoader, DataLoader]:
@@ -127,32 +128,28 @@ def create_bc_data_loader(
     """
     # Use ShortView with seq_len=1 to simulate timestep sampling
     # It samples random timesteps from random episodes.
-    
+
     unified_dataset = UnifiedEpisodeDataset(data_path)
     episode_lengths = unified_dataset.episode_lengths
     num_episodes = len(episode_lengths)
-    
+
     all_indices = torch.randperm(num_episodes).tolist()
     val_size = int(num_episodes * validation_split)
     train_size = num_episodes - val_size
     train_indices = all_indices[:train_size]
     val_indices = all_indices[train_size:]
-    
+
     train_view = ShortView(unified_dataset, train_indices, seq_len=1)
     val_view = ShortView(unified_dataset, val_indices, seq_len=1)
-    
+
     kwargs = {
         "num_workers": num_workers,
         "pin_memory": True,
         "persistent_workers": (num_workers > 0),
-        "prefetch_factor": 2 if num_workers > 0 else None
+        "prefetch_factor": 2 if num_workers > 0 else None,
     }
-    
-    train_loader = DataLoader(
-        train_view, batch_size=batch_size, shuffle=True, **kwargs
-    )
-    val_loader = DataLoader(
-        val_view, batch_size=batch_size, shuffle=False, **kwargs
-    )
-    
+
+    train_loader = DataLoader(train_view, batch_size=batch_size, shuffle=True, **kwargs)
+    val_loader = DataLoader(val_view, batch_size=batch_size, shuffle=False, **kwargs)
+
     return train_loader, val_loader

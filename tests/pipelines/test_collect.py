@@ -9,7 +9,7 @@ def test_collect_pipeline(default_config, tmp_path):
     cfg.mode = "collect"
     cfg.collect.num_workers = 1
     cfg.collect.max_episode_length = 10  # Short episode
-    
+
     # New required keys
     cfg.collect.total_episodes = 2
     cfg.collect.type_ratios = {"type1": 1.0, "type2": 0.0, "type3": 0.0, "type4": 0.0}
@@ -52,8 +52,6 @@ def test_collect_pipeline(default_config, tmp_path):
         # The aggregation step creates 'aggregated_data.h5' in the run directory
         data_file = os.path.join(run_dir, "aggregated_data.h5")
         assert os.path.exists(data_file)
-
-
 
     finally:
         os.chdir(original_cwd)

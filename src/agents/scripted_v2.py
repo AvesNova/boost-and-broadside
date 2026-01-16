@@ -4,7 +4,6 @@ import torch
 import numpy as np
 import torch.nn as nn
 
-from env import ship
 from env.constants import PowerActions, TurnActions, ShootActions
 
 
@@ -295,7 +294,6 @@ class ShipController(nn.Module):
         return closing_speed
 
     def choose_target(self, blackboard: Blackboard, ship_id: int):
-
         distance = blackboard.distance
         angle = torch.abs(blackboard.angle_from_nose)
         enemy = blackboard.enemies
@@ -324,7 +322,6 @@ class ShipController(nn.Module):
         target_speed: float | None = None,
         target_distance: float | None = None,
     ) -> int:
-
         if (target_speed is None) == (target_distance is None):
             raise ValueError("Provide exactly one of target_speed or target_distance")
 

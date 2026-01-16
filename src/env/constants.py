@@ -4,9 +4,7 @@ Constants and enumerations for the game environment.
 Defines action indices and reward calculation constants.
 """
 
-from enum import IntEnum, auto
-
-from matplotlib.pyplot import cla
+from enum import IntEnum
 
 
 class PowerActions(IntEnum):

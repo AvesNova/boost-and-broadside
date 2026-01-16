@@ -2,7 +2,6 @@ import torch
 from torch.utils.data import Dataset
 import logging
 import h5py
-import numpy as np
 
 log = logging.getLogger(__name__)
 
@@ -70,11 +69,9 @@ class BaseView(Dataset):
             # First action is 0, then actions[0...T-1]
             # Slicing end-1 from HDF5
             data_actions = self.dataset.get_slice("actions", abs_start, abs_end - 1)
-            
+
             # Create zeros with same shape (except dim 0 is 1)
-            zeros = torch.zeros(
-                1, *data_actions.shape[1:], dtype=data_actions.dtype
-            )
+            zeros = torch.zeros(1, *data_actions.shape[1:], dtype=data_actions.dtype)
             return torch.cat([zeros, data_actions], dim=0)
         else:
             # Previous action exists
@@ -87,11 +84,9 @@ class BaseView(Dataset):
         if start_offset == 0:
             # First action is 0 (expert/dummy), then masks[0...T-1]
             data_masks = self.dataset.get_slice("action_masks", abs_start, abs_end - 1)
-            
+
             # Prepend 1.0 (Expert) for the zero-action at t=0
-            ones = torch.ones(
-                1, *data_masks.shape[1:], dtype=data_masks.dtype
-            )
+            ones = torch.ones(1, *data_masks.shape[1:], dtype=data_masks.dtype)
             return torch.cat([ones, data_masks], dim=0)
         else:
             # Previous action exists
@@ -104,7 +99,9 @@ class ShortView(BaseView):
     ):
         super().__init__(dataset, indices, seq_len)
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def __getitem__(
+        self, idx: int
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         episode_idx = self.indices[idx]
         length = self.dataset.get_length(episode_idx)
         base_idx = self.dataset.episode_starts[episode_idx].item()
@@ -125,12 +122,10 @@ class ShortView(BaseView):
         seq_actions = self._get_shifted_actions_from_full(
             abs_start, abs_end, start_offset
         )
-        seq_masks = self._get_shifted_masks_from_full(
-            abs_start, abs_end, start_offset
-        )
+        seq_masks = self._get_shifted_masks_from_full(abs_start, abs_end, start_offset)
         seq_returns = self.dataset.get_slice("returns", abs_start, abs_end)
         seq_returns = self.dataset.get_slice("returns", abs_start, abs_end)
-        
+
         if self.dataset.has_dataset("agent_skills"):
             seq_skills = self.dataset.get_slice("agent_skills", abs_start, abs_end)
         else:
@@ -157,9 +152,7 @@ class ShortView(BaseView):
             seq_actions = torch.cat([seq_actions, action_pad], dim=0)
 
             # Pad masks
-            mask_pad = torch.ones(
-                pad_len, *seq_masks.shape[1:], dtype=seq_masks.dtype
-            )
+            mask_pad = torch.ones(pad_len, *seq_masks.shape[1:], dtype=seq_masks.dtype)
             seq_masks = torch.cat([seq_masks, mask_pad], dim=0)
 
             return_pad = torch.zeros(
@@ -186,7 +179,15 @@ class ShortView(BaseView):
         else:
             loss_mask = torch.ones(self.seq_len, dtype=torch.bool)
 
-        return seq_tokens, seq_actions, seq_returns, loss_mask, seq_masks, seq_skills, seq_team_ids
+        return (
+            seq_tokens,
+            seq_actions,
+            seq_returns,
+            loss_mask,
+            seq_masks,
+            seq_skills,
+            seq_team_ids,
+        )
 
 
 class LongView(BaseView):
@@ -200,7 +201,9 @@ class LongView(BaseView):
         super().__init__(dataset, indices, seq_len)
         self.warmup_len = warmup_len
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def __getitem__(
+        self, idx: int
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         episode_idx = self.indices[idx]
         length = self.dataset.get_length(episode_idx)
         base_idx = self.dataset.episode_starts[episode_idx].item()
@@ -218,12 +221,10 @@ class LongView(BaseView):
         seq_actions = self._get_shifted_actions_from_full(
             abs_start, abs_end, start_offset
         )
-        seq_masks = self._get_shifted_masks_from_full(
-            abs_start, abs_end, start_offset
-        )
+        seq_masks = self._get_shifted_masks_from_full(abs_start, abs_end, start_offset)
         seq_returns = self.dataset.get_slice("returns", abs_start, abs_end)
         seq_returns = self.dataset.get_slice("returns", abs_start, abs_end)
-        
+
         if self.dataset.has_dataset("agent_skills"):
             seq_skills = self.dataset.get_slice("agent_skills", abs_start, abs_end)
         else:
@@ -237,4 +238,12 @@ class LongView(BaseView):
         loss_mask = torch.ones(self.seq_len, dtype=torch.bool)
         loss_mask[: self.warmup_len] = False
 
-        return seq_tokens, seq_actions, seq_returns, loss_mask, seq_masks, seq_skills, seq_team_ids
+        return (
+            seq_tokens,
+            seq_actions,
+            seq_returns,
+            loss_mask,
+            seq_masks,
+            seq_skills,
+            seq_team_ids,
+        )

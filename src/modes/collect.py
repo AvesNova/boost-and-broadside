@@ -1,6 +1,5 @@
 import multiprocessing as mp
 import pickle
-import yaml
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -38,68 +37,70 @@ def collect_worker(
     # Calculate episodes distribution
     total_episodes_target = cfg.collect.total_episodes
     num_workers = cfg.collect.num_workers
-    
+
     # Base episodes per worker (floor division)
     episodes_per_worker = total_episodes_target // num_workers
-    
+
     # Distribute remainder
     if worker_id < (total_episodes_target % num_workers):
         episodes_per_worker += 1
-        
+
     print(f"Worker {worker_id}: Target episodes = {episodes_per_worker}")
 
     # Parse Ratios
     type_ratios = cfg.collect.type_ratios
     ship_count_ratios = cfg.collect.ship_count_ratios
-    
+
     # Calculate episode counts for this worker's share
-    tasks = [] # List of (game_mode, scenario_type, team_skills, team_ids)
-    
+    tasks = []  # List of (game_mode, scenario_type, team_skills, team_ids)
+
     import numpy as np
-    rng = np.random.default_rng(worker_id) # Seeding with worker_id
+
+    rng = np.random.default_rng(worker_id)  # Seeding with worker_id
 
     # Generate task list based on ratios
     # We process ratios to exact counts
-    
+
     # First, split by ship counts
     ship_counts_map = {}
     remaining_eps = episodes_per_worker
-    
+
     ship_keys = list(ship_count_ratios.keys())
     ship_probs = np.array([ship_count_ratios[k] for k in ship_keys])
-    ship_probs /= ship_probs.sum() # Normalize
-    
+    ship_probs /= ship_probs.sum()  # Normalize
+
     # Deterministic assignment would be better but probabilistic is fine for large N
     # Let's iterate and accumulate
-    
+
     assigned_total = 0
     for i, (k, p) in enumerate(zip(ship_keys, ship_probs)):
         if i == len(ship_keys) - 1:
-            count = remaining_eps # Assign remainder
+            count = remaining_eps  # Assign remainder
         else:
             count = int(episodes_per_worker * p)
             remaining_eps -= count
         ship_counts_map[k] = count
         assigned_total += count
-        
+
     # Now for each ship count, split by type
     type_keys = list(type_ratios.keys())
     type_probs = np.array([type_ratios[k] for k in type_keys])
     type_probs /= type_probs.sum()
 
     for mode, count in ship_counts_map.items():
-        if count == 0: continue
-        
+        if count == 0:
+            continue
+
         rem_mode_eps = count
         for i, (t_key, t_prob) in enumerate(zip(type_keys, type_probs)):
-                if i == len(type_keys) - 1:
-                    t_count = rem_mode_eps
-                else:
-                    t_count = int(count * t_prob)
-                    rem_mode_eps -= t_count
-                
-                for _ in range(t_count):
-                    tasks.append((mode, t_key))
+            if i == len(type_keys) - 1:
+                t_count = rem_mode_eps
+            else:
+                t_count = int(count * t_prob)
+                rem_mode_eps -= t_count
+
+            for _ in range(t_count):
+                tasks.append((mode, t_key))
 
     # Shuffle tasks to avoid blocks of same type
     rng.shuffle(tasks)
@@ -115,15 +116,15 @@ def collect_worker(
                 f"[cyan]Worker {worker_id}: Collecting episodes...",
                 total=len(tasks),
             )
-            
+
             for mode, scenario_type in tasks:
                 # Skill Sampling Logic
                 X = float(rng.uniform(0.0, 1.0))
-                
+
                 # Default skills
                 skill_0 = 1.0
                 skill_1 = 1.0
-                
+
                 # Logic from user request
                 # Type 1: E(1.0) vs E(1.0)
                 # Type 2: E(1.0) vs E(X)
@@ -131,7 +132,7 @@ def collect_worker(
                 # Type 4: E(X) vs E(X')
                 X2 = float(rng.uniform(0.0, 1.0))
 
-                team_ids_map = {0: 0, 1: 1} # Default
+                team_ids_map = {0: 0, 1: 1}  # Default
 
                 if scenario_type == "type1":
                     skill_0 = 1.0
@@ -147,7 +148,7 @@ def collect_worker(
                     skill_1 = X2
 
                 team_skills = {0: skill_0, 1: skill_1}
-                
+
                 coordinator.reset(game_mode=mode, team_skills=team_skills)
                 episode_sim_time, terminated = coordinator.step()
 
@@ -159,12 +160,10 @@ def collect_worker(
                     rewards=coordinator.all_rewards,
                     sim_time=episode_sim_time,
                     agent_skills=team_skills,
-                    team_ids=team_ids_map
+                    team_ids=team_ids_map,
                 )
 
                 progress.update(task, advance=1)
-
-
 
     except KeyboardInterrupt:
         print(f"\nWorker {worker_id}: Data collection interrupted by user")
@@ -277,11 +276,16 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
                 t0_rewards = team_0["rewards"]
                 # Handle missing keys for backward compatibility
                 t0_masks = team_0.get("action_masks")
-                if t0_masks is None: t0_masks = torch.ones(t0_actions.shape[0], t0_actions.shape[1], dtype=torch.float32)
+                if t0_masks is None:
+                    t0_masks = torch.ones(
+                        t0_actions.shape[0], t0_actions.shape[1], dtype=torch.float32
+                    )
                 t0_skills = team_0.get("agent_skills")
-                if t0_skills is None: t0_skills = torch.ones(t0_actions.shape[0], dtype=torch.float32)
+                if t0_skills is None:
+                    t0_skills = torch.ones(t0_actions.shape[0], dtype=torch.float32)
                 t0_ids = team_0.get("team_ids")
-                if t0_ids is None: t0_ids = torch.zeros(t0_actions.shape[0], dtype=torch.int64)
+                if t0_ids is None:
+                    t0_ids = torch.zeros(t0_actions.shape[0], dtype=torch.int64)
 
                 # Extract Team 1 data
                 team_1 = data["team_1"]
@@ -289,48 +293,59 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
                 t1_actions = team_1["actions"]
                 t1_rewards = team_1["rewards"]
                 t1_masks = team_1.get("action_masks")
-                if t1_masks is None: t1_masks = torch.ones(t1_actions.shape[0], t1_actions.shape[1], dtype=torch.float32)
+                if t1_masks is None:
+                    t1_masks = torch.ones(
+                        t1_actions.shape[0], t1_actions.shape[1], dtype=torch.float32
+                    )
                 t1_skills = team_1.get("agent_skills")
-                if t1_skills is None: t1_skills = torch.ones(t1_actions.shape[0], dtype=torch.float32)
+                if t1_skills is None:
+                    t1_skills = torch.ones(t1_actions.shape[0], dtype=torch.float32)
                 t1_ids = team_1.get("team_ids")
-                if t1_ids is None: t1_ids = torch.ones(t1_actions.shape[0], dtype=torch.int64)
+                if t1_ids is None:
+                    t1_ids = torch.ones(t1_actions.shape[0], dtype=torch.int64)
 
                 episode_lengths = data["episode_lengths"]
-                # Episode IDs need to be handled carefully. 
+                # Episode IDs need to be handled carefully.
                 # If we stack them, they should probably share the same episode ID if they are from the same simulation?
                 # The current logic assumes 1 row per timestep.
                 # If we simply concat, we have 2x the timesteps.
                 # We can reuse the episode IDs for grouping later.
-                
+
                 episode_ids = data["episode_ids"] + total_episodes
 
                 # Compute Returns for both
                 gamma = cfg.train.rl.gamma if "rl" in cfg.train else 0.99
-                t0_returns = _compute_discounted_returns(t0_rewards, episode_lengths, gamma=gamma)
-                t1_returns = _compute_discounted_returns(t1_rewards, episode_lengths, gamma=gamma)
+                t0_returns = _compute_discounted_returns(
+                    t0_rewards, episode_lengths, gamma=gamma
+                )
+                t1_returns = _compute_discounted_returns(
+                    t1_rewards, episode_lengths, gamma=gamma
+                )
 
                 # Concatenate Data
-                
-                # Note: This simply appends Team 1 after Team 0. 
+
+                # Note: This simply appends Team 1 after Team 0.
                 # This breaks time-contingency if we assume the file is sorted by time across the whole batch?
                 # Not necessarily, usually we just shuffle anyway.
                 # But for RNNs, we need contiguous episodes.
-                # Since we have full episodes in Team 0 and full episodes in Team 1, 
+                # Since we have full episodes in Team 0 and full episodes in Team 1,
                 # concatenating them block-wise is fine.
-                
+
                 tokens = torch.cat([t0_tokens, t1_tokens], dim=0)
                 actions = torch.cat([t0_actions, t1_actions], dim=0)
                 action_masks = torch.cat([t0_masks, t1_masks], dim=0)
                 rewards = torch.cat([t0_rewards, t1_rewards], dim=0)
                 returns = torch.cat([t0_returns, t1_returns], dim=0)
-                
+
                 # Duplicate episode IDs and lengths for the second batch?
                 # Yes, they correspond to the same episodes.
                 batch_episode_ids = torch.cat([episode_ids, episode_ids], dim=0)
-                
+
                 # Episode lengths is (NumEpisodes,), not (NumTimesteps,).
                 # We need to double this list because we effectively have 2x the "agent-episodes".
-                batch_episode_lengths = torch.cat([episode_lengths, episode_lengths], dim=0)
+                batch_episode_lengths = torch.cat(
+                    [episode_lengths, episode_lengths], dim=0
+                )
 
                 agent_skills = torch.cat([t0_skills, t1_skills], dim=0)
                 team_ids_tensor = torch.cat([t0_ids, t1_ids], dim=0)
@@ -348,29 +363,30 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
                     "team_ids": team_ids_tensor,
                 }
 
-
                 # Write to HDF5
                 for key, tensor in batch_data.items():
-                    np_data = tensor.numpy() if isinstance(tensor, torch.Tensor) else tensor
-                    
+                    np_data = (
+                        tensor.numpy() if isinstance(tensor, torch.Tensor) else tensor
+                    )
+
                     if key not in dsets:
                         # Create dataset with maxshape for resizing
                         shape = list(np_data.shape)
                         maxshape = list(np_data.shape)
-                        maxshape[0] = None # Allow first dim refactor
-                        
+                        maxshape[0] = None  # Allow first dim refactor
+
                         dsets[key] = f.create_dataset(
-                            key, 
-                            data=np_data, 
+                            key,
+                            data=np_data,
                             maxshape=tuple(maxshape),
-                            chunks=True # Enable chunking for resize
+                            chunks=True,  # Enable chunking for resize
                         )
                     else:
                         # Resize and append
                         dset = dsets[key]
                         old_len = dset.shape[0]
                         new_len = old_len + np_data.shape[0]
-                        
+
                         dset.resize(new_len, axis=0)
                         dset[old_len:] = np_data
 
@@ -378,11 +394,11 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
                 # Start index doesn't change, we just append.
                 # But we need to account for the fact we added 2x episodes effectively?
                 # The "num_episodes" metadata tracks distinct game episodes.
-                total_episodes += data["metadata"]["num_episodes"] 
-                total_timesteps += (data["metadata"]["total_timesteps"] * 2) # Both teams
+                total_episodes += data["metadata"]["num_episodes"]
+                total_timesteps += data["metadata"]["total_timesteps"] * 2  # Both teams
                 total_sim_time += data["metadata"]["total_sim_time"]
                 worker_metadata_list.append(data["metadata"])
-                
+
                 # Cleanup Pickle
                 try:
                     checkpoint_path.unlink()
@@ -392,14 +408,14 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
         if total_episodes == 0:
             print("No episodes found in worker data.")
             return None
-        
+
         # Save Metadata as Attributes
         f.attrs["num_episodes"] = total_episodes
         f.attrs["total_timesteps"] = total_timesteps
         f.attrs["total_sim_time"] = total_sim_time
         f.attrs["run_timestamp"] = run_timestamp
         f.attrs["num_workers"] = len(worker_dirs)
-        
+
         # Save constant config from first worker
         if worker_metadata_list:
             first_meta = worker_metadata_list[0]
@@ -408,9 +424,11 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
             f.attrs["num_actions"] = first_meta["num_actions"]
 
     print(f"Saved aggregated data to {aggregated_h5_path}")
-    print(f"Aggregation complete: {total_episodes} episodes, {total_timesteps} timesteps")
+    print(
+        f"Aggregation complete: {total_episodes} episodes, {total_timesteps} timesteps"
+    )
     print("Cleanup complete: All worker pickle files deleted.")
-    
+
     return aggregated_h5_path
 
 

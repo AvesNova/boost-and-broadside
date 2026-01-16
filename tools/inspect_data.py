@@ -14,9 +14,9 @@ def inspect_data_file(file_path: Path) -> None:
     Args:
         file_path: Path to the pickle file
     """
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"Inspecting: {file_path}")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     with open(file_path, "rb") as f:
         data = pickle.load(f)

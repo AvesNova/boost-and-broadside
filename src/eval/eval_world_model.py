@@ -60,19 +60,18 @@ def eval_world_model(cfg: DictConfig) -> None:
 
     # 2. Load Model
     from utils.model_finder import find_most_recent_model
-    from utils.model_finder import find_most_recent_model
     from eval.rollout_metrics import compute_rollout_metrics
-    
+
     model_path = find_most_recent_model("world_model")
     if model_path is None:
         log.error("No world model found!")
         return
-        
+
     log.info(f"Loading model from {model_path}")
-    
+
     # Force action_dim to 12 (3+7+2 one-hot)
     action_dim = 12
-    
+
     model = WorldModel(
         state_dim=state_dim,
         action_dim=action_dim,
@@ -88,25 +87,27 @@ def eval_world_model(cfg: DictConfig) -> None:
 
     # 3. Evaluation Loop
     log.info("Starting evaluation...")
-    
+
     # Get env config
     env_config = OmegaConf.to_container(cfg.environment, resolve=True)
     env_config["render_mode"] = "none"
-    
+
     # Compute Rollout MSE
     metrics = compute_rollout_metrics(
-        model, 
-        env_config, 
-        device, 
-        num_scenarios=4, # Configurable?
-        max_steps=128
+        model,
+        env_config,
+        device,
+        num_scenarios=4,  # Configurable?
+        max_steps=128,
     )
-    
+
     mse_sim = metrics["mse_sim"]
     mse_dream = metrics["mse_dream"]
-    
-    log.info(f"Evaluation Result - Average Rollout MSE: Sim={mse_sim:.6f}, Dream={mse_dream:.6f}")
-    
+
+    log.info(
+        f"Evaluation Result - Average Rollout MSE: Sim={mse_sim:.6f}, Dream={mse_dream:.6f}"
+    )
+
     # Create simple CSV with single value
     csv_path = "eval_rollout_metrics.csv"
     with open(csv_path, "w") as f:

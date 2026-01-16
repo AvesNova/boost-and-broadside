@@ -145,7 +145,7 @@ class DataCollector:
         episode_ids = torch.zeros((total_timesteps,), dtype=torch.int64)
 
         episode_ids = torch.zeros((total_timesteps,), dtype=torch.int64)
-        
+
         # New fields
         agent_skills_team_0 = torch.zeros((total_timesteps,), dtype=torch.float32)
         agent_skills_team_1 = torch.zeros((total_timesteps,), dtype=torch.float32)
@@ -178,7 +178,6 @@ class DataCollector:
                             current_idx + t, ship_id - self.max_ships // 2
                         ] = mask
 
-
             if 0 in episode.rewards and len(episode.rewards[0]) > 0:
                 reward_tensor_0 = torch.tensor(episode.rewards[0], dtype=torch.float32)
                 if len(reward_tensor_0) < ep_len:
@@ -205,7 +204,7 @@ class DataCollector:
             # Team 0
             agent_skills_team_0[current_idx:end_idx] = episode.agent_skills.get(0, 1.0)
             team_ids_team_0[current_idx:end_idx] = episode.team_ids.get(0, 0)
-            
+
             # Team 1
             agent_skills_team_1[current_idx:end_idx] = episode.agent_skills.get(1, 1.0)
             team_ids_team_1[current_idx:end_idx] = episode.team_ids.get(1, 1)
@@ -259,7 +258,7 @@ class DataCollector:
         num_saved = len(self.episodes)
         self.episodes = []
 
-        print(f"Worker {self.worker_id}: Saved {num_saved} episodes " f"to {save_path}")
+        print(f"Worker {self.worker_id}: Saved {num_saved} episodes to {save_path}")
 
     def finalize(self) -> None:
         """Final save when collection is complete"""

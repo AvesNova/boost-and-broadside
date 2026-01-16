@@ -54,7 +54,7 @@ def find_most_recent_model(
             for p in paths_to_check:
                 if p.exists():
                     return str(p.absolute())
-            model_path = None # Logic continues below
+            model_path = None  # Logic continues below
 
         if model_path and model_path.exists():
             return str(model_path.absolute())
@@ -67,7 +67,7 @@ def find_most_recent_model(
 
         if model_type in ["bc", "world_model"] and model_path and model_path.exists():
             return str(model_path.absolute())
-        
+
         # RL Fallback: Check checkpoints directory
         if model_type == "rl":
             ckpt_dir = run_dir / "checkpoints"
@@ -82,7 +82,7 @@ def find_most_recent_model(
                             return int(p.stem.split("_")[2])
                         except:
                             return 0
-                    
+
                     latest_zip = max(zips, key=get_step)
                     return str(latest_zip.absolute())
 

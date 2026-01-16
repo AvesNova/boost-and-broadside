@@ -1,5 +1,4 @@
 import torch
-import numpy as np
 from env.ship import Ship, default_ship_config
 from env.constants import PowerActions, TurnActions, ShootActions
 from env.bullets import Bullets

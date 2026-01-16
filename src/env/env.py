@@ -63,9 +63,9 @@ class Environment(gym.Env):
         self.random_initialization = random_initialization
         self.rng = rng
 
-        assert (
-            agent_dt / physics_dt
-        ) % 1 == 0, "agent_dt must be multiple of physics_dt"
+        assert (agent_dt / physics_dt) % 1 == 0, (
+            "agent_dt must be multiple of physics_dt"
+        )
         self.physics_substeps = int(agent_dt / physics_dt)
 
         # Lazy-loaded renderer
@@ -100,7 +100,7 @@ class Environment(gym.Env):
         mid = self.max_ships // 2
         pool_0 = np.arange(0, mid)
         pool_1 = np.arange(mid, self.max_ships)
-        
+
         id_0 = int(self.rng.choice(pool_0))
         id_1 = int(self.rng.choice(pool_1))
 
@@ -184,8 +184,12 @@ class Environment(gym.Env):
                 initial_health = None
                 initial_power = None
                 if random_initialization:
-                    initial_health = self.rng.uniform(0.1, 1.0) * default_ship_config.max_health
-                    initial_power = self.rng.uniform(0.0, 1.0) * default_ship_config.max_power
+                    initial_health = (
+                        self.rng.uniform(0.1, 1.0) * default_ship_config.max_health
+                    )
+                    initial_power = (
+                        self.rng.uniform(0.0, 1.0) * default_ship_config.max_power
+                    )
 
                 ships[ship_id] = Ship(
                     ship_id=ship_id,
@@ -222,8 +226,12 @@ class Environment(gym.Env):
                 initial_health = None
                 initial_power = None
                 if random_initialization:
-                    initial_health = self.rng.uniform(0.1, 1.0) * default_ship_config.max_health
-                    initial_power = self.rng.uniform(0.0, 1.0) * default_ship_config.max_power
+                    initial_health = (
+                        self.rng.uniform(0.1, 1.0) * default_ship_config.max_health
+                    )
+                    initial_power = (
+                        self.rng.uniform(0.0, 1.0) * default_ship_config.max_power
+                    )
 
                 ships[ship_id] = Ship(
                     ship_id=ship_id,
@@ -249,19 +257,19 @@ class Environment(gym.Env):
     ) -> State:
         """Reset to an NvN configuration."""
         mid = self.max_ships // 2
-        
+
         if ships_per_team is None:
-            ships_per_team = self.rng.integers(
-                1, mid, endpoint=True
-            )
+            ships_per_team = self.rng.integers(1, mid, endpoint=True)
 
         # Generate random unique ship IDs for each team
         pool_0 = np.arange(0, mid)
         pool_1 = np.arange(mid, self.max_ships)
-        
+
         # Ensure we have enough IDs
         if ships_per_team > mid:
-             raise ValueError(f"ships_per_team ({ships_per_team}) cannot exceed half max_ships ({mid})")
+            raise ValueError(
+                f"ships_per_team ({ships_per_team}) cannot exceed half max_ships ({mid})"
+            )
 
         ids_0 = self.rng.choice(pool_0, size=ships_per_team, replace=False).tolist()
         ids_1 = self.rng.choice(pool_1, size=ships_per_team, replace=False).tolist()
@@ -539,7 +547,6 @@ class Environment(gym.Env):
     def step(
         self, actions: dict[int, torch.Tensor]
     ) -> tuple[dict, dict[int, float], bool, bool, dict]:
-
         self.events = []
 
         # Handle events if in human mode
