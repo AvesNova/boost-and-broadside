@@ -54,14 +54,19 @@ class GameCoordinator:
         self.all_action_masks: dict[int, list[float]] = {}
         self.all_rewards: dict[int, list[float]] = {}
 
-    def reset(self, game_mode: str) -> None:
+    def reset(self, game_mode: str, team_skills: dict[int, float] | None = None) -> None:
         """
         Reset environment for a new episode.
 
         Args:
             game_mode: The game mode to initialize (e.g., "1v1", "nvn").
+            team_skills: Dictionary mapping team_id to skill level (0.0 to 1.0).
+                         1.0 = Expert, 0.0 = Random. dict[int, float]. 
+                         If None, defaults to 1.0 (Expert).
         """
         obs, _ = self.env.reset(game_mode=game_mode)
+
+        self.team_skills = team_skills if team_skills is not None else {0: 1.0, 1: 1.0}
 
         self.obs_history = [obs]
         self.all_tokens = {
@@ -95,8 +100,9 @@ class GameCoordinator:
             import numpy as np
             self._rng = np.random.default_rng()
         
-        random_prob = self.config.collect.get("random_action_prob", 0.0)
-
+        # Use team skills to determine random action probability
+        # Skill X means we take expert actions X% of the time, random actions (1-X)% of the time
+        
         while not terminated:
             # 1. Determine which ships belong to which team
             teams = self._get_teams_from_obs(obs)
@@ -116,6 +122,8 @@ class GameCoordinator:
             
             for team_id, ship_ids in teams.items():
                 ship_actions = team_actions[team_id]
+                skill_level = self.team_skills.get(team_id, 1.0)
+                random_prob = 1.0 - skill_level
                 
                 for ship_id in ship_ids:
                     action = ship_actions[ship_id]

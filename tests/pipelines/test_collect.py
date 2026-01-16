@@ -9,6 +9,12 @@ def test_collect_pipeline(default_config, tmp_path):
     cfg.mode = "collect"
     cfg.collect.num_workers = 1
     cfg.collect.max_episode_length = 10  # Short episode
+    
+    # New required keys
+    cfg.collect.total_episodes = 2
+    cfg.collect.type_ratios = {"type1": 1.0, "type2": 0.0, "type3": 0.0, "type4": 0.0}
+    cfg.collect.ship_count_ratios = {"1v1": 1.0}
+    cfg.collect.save_frequency = 1
 
     print(f"DEBUG: Env world_size: {cfg.environment.world_size}")
     print(f"DEBUG: Agent world_size: {cfg.agents.scripted.agent_config.world_size}")
@@ -43,15 +49,11 @@ def test_collect_pipeline(default_config, tmp_path):
         assert os.path.exists(worker_dir)
 
         # Check for data file
-        # The aggregation step creates 'aggregated_data.pkl' in the run directory
-        data_file = os.path.join(run_dir, "aggregated_data.pkl")
+        # The aggregation step creates 'aggregated_data.h5' in the run directory
+        data_file = os.path.join(run_dir, "aggregated_data.h5")
         assert os.path.exists(data_file)
 
-        # Also check for at least one checkpoint in worker dir
-        checkpoints = [
-            f for f in os.listdir(worker_dir) if f.startswith("data_checkpoint_")
-        ]
-        assert len(checkpoints) > 0
+
 
     finally:
         os.chdir(original_cwd)

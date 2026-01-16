@@ -24,11 +24,18 @@ agents:
 
 collect:
   teams: [scripted, scripted]
-  episodes_per_mode:
-    "1v1": 4
-    "2v2": 4
-    "3v3": 4
-    "4v4": 4
+  total_episodes: 32
+  type_ratios:
+    type1: 0.25
+    type2: 0.25
+    type3: 0.25
+    type4: 0.25
+  ship_count_ratios:
+    "1v1": 0.25
+    "2v2": 0.25
+    "3v3": 0.25
+    "4v4": 0.25
+
   output_dir: "data/test_data"
   num_workers: 2
   save_frequency: 2
@@ -44,7 +51,7 @@ train:
 
   use_bc: true
   use_rl: true
-  bc_data_path: "data/test_data/20260114_102934/aggregated_data.pkl"
+  bc_data_path: "data/test_data/20260116_201616/aggregated_data.h5"
   
   model:
     transformer:

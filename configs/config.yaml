@@ -34,11 +34,17 @@ components:
 
 collect:
   teams: [scripted, scripted]
-  episodes_per_mode:
-    "1v1": 2048
-    "2v2": 2048
-    "3v3": 2048
-    "4v4": 2048
+  total_episodes: 10000
+  type_ratios:
+    type1: 0.25
+    type2: 0.25
+    type3: 0.25
+    type4: 0.25
+  ship_count_ratios:
+    "1v1": 0.25
+    "2v2": 0.25
+    "3v3": 0.25
+    "4v4": 0.25
   output_dir: "data/bc_pretraining"
   num_workers: 12
   save_frequency: 256

@@ -22,10 +22,14 @@ class UnifiedEpisodeDataset:
         # We need episode_lengths to build indices
         with h5py.File(h5_path, "r") as f:
             self.episode_lengths = torch.from_numpy(f["episode_lengths"][:])
+            self.available_keys = set(f.keys())
 
         # Precompute start indices for O(1) access
         self.episode_starts = torch.zeros_like(self.episode_lengths)
         self.episode_starts[1:] = torch.cumsum(self.episode_lengths[:-1], dim=0)
+
+    def has_dataset(self, name: str) -> bool:
+        return name in self.available_keys
 
     @property
     def h5_file(self):
@@ -125,6 +129,17 @@ class ShortView(BaseView):
             abs_start, abs_end, start_offset
         )
         seq_returns = self.dataset.get_slice("returns", abs_start, abs_end)
+        seq_returns = self.dataset.get_slice("returns", abs_start, abs_end)
+        
+        if self.dataset.has_dataset("agent_skills"):
+            seq_skills = self.dataset.get_slice("agent_skills", abs_start, abs_end)
+        else:
+            seq_skills = torch.ones(actual_len, dtype=torch.float32)
+
+        if self.dataset.has_dataset("team_ids"):
+            seq_team_ids = self.dataset.get_slice("team_ids", abs_start, abs_end)
+        else:
+            seq_team_ids = torch.zeros(actual_len, dtype=torch.int64)
 
         # Padding
         if actual_len < self.seq_len:
@@ -152,12 +167,26 @@ class ShortView(BaseView):
             )
             seq_returns = torch.cat([seq_returns, return_pad], dim=0)
 
+            # Pad skills (pad with 1.0 - expert)
+            skill_pad = torch.ones(
+                pad_len, *seq_skills.shape[1:], dtype=seq_skills.dtype
+            )
+            seq_skills = torch.cat([seq_skills, skill_pad], dim=0)
+
+            # Pad team_ids (pad with 0 - arbitrary)
+            # Or use last team_id? Team ID shouldn't change within episode.
+            # But here we are padding past end of episode.
+            tid_pad = torch.zeros(
+                pad_len, *seq_team_ids.shape[1:], dtype=seq_team_ids.dtype
+            )
+            seq_team_ids = torch.cat([seq_team_ids, tid_pad], dim=0)
+
             loss_mask = torch.ones(self.seq_len, dtype=torch.bool)
             loss_mask[actual_len:] = False
         else:
             loss_mask = torch.ones(self.seq_len, dtype=torch.bool)
 
-        return seq_tokens, seq_actions, seq_returns, loss_mask, seq_masks
+        return seq_tokens, seq_actions, seq_returns, loss_mask, seq_masks, seq_skills, seq_team_ids
 
 
 class LongView(BaseView):
@@ -193,8 +222,19 @@ class LongView(BaseView):
             abs_start, abs_end, start_offset
         )
         seq_returns = self.dataset.get_slice("returns", abs_start, abs_end)
+        seq_returns = self.dataset.get_slice("returns", abs_start, abs_end)
+        
+        if self.dataset.has_dataset("agent_skills"):
+            seq_skills = self.dataset.get_slice("agent_skills", abs_start, abs_end)
+        else:
+            seq_skills = torch.ones(self.seq_len, dtype=torch.float32)
+
+        if self.dataset.has_dataset("team_ids"):
+            seq_team_ids = self.dataset.get_slice("team_ids", abs_start, abs_end)
+        else:
+            seq_team_ids = torch.zeros(self.seq_len, dtype=torch.int64)
 
         loss_mask = torch.ones(self.seq_len, dtype=torch.bool)
         loss_mask[: self.warmup_len] = False
 
-        return seq_tokens, seq_actions, seq_returns, loss_mask, seq_masks
+        return seq_tokens, seq_actions, seq_returns, loss_mask, seq_masks, seq_skills, seq_team_ids

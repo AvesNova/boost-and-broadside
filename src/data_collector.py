@@ -20,6 +20,8 @@ class EpisodeData:
     rewards: dict[int, list[float]]
     episode_length: int
     sim_time: float
+    agent_skills: dict[int, float]
+    team_ids: dict[int, int]
 
 
 class DataCollector:
@@ -60,6 +62,8 @@ class DataCollector:
         action_masks: dict[int, list[float]],
         rewards: dict[int, list[float]],
         sim_time: float,
+        agent_skills: dict[int, float],
+        team_ids: dict[int, int],
     ) -> None:
         """
         Add an episode to the collection
@@ -81,6 +85,8 @@ class DataCollector:
             rewards=rewards,
             episode_length=episode_length,
             sim_time=sim_time,
+            agent_skills=agent_skills,
+            team_ids=team_ids,
         )
 
         self.episodes.append(episode)
@@ -138,6 +144,14 @@ class DataCollector:
 
         episode_ids = torch.zeros((total_timesteps,), dtype=torch.int64)
 
+        episode_ids = torch.zeros((total_timesteps,), dtype=torch.int64)
+        
+        # New fields
+        agent_skills_team_0 = torch.zeros((total_timesteps,), dtype=torch.float32)
+        agent_skills_team_1 = torch.zeros((total_timesteps,), dtype=torch.float32)
+        team_ids_team_0 = torch.zeros((total_timesteps,), dtype=torch.int64)
+        team_ids_team_1 = torch.zeros((total_timesteps,), dtype=torch.int64)
+
         current_idx = 0
         for episode_id, episode in enumerate(self.episodes):
             ep_len = episode.episode_length
@@ -187,6 +201,15 @@ class DataCollector:
 
             episode_ids[current_idx:end_idx] = episode_id
 
+            # Fill skill and team ID
+            # Team 0
+            agent_skills_team_0[current_idx:end_idx] = episode.agent_skills.get(0, 1.0)
+            team_ids_team_0[current_idx:end_idx] = episode.team_ids.get(0, 0)
+            
+            # Team 1
+            agent_skills_team_1[current_idx:end_idx] = episode.agent_skills.get(1, 1.0)
+            team_ids_team_1[current_idx:end_idx] = episode.team_ids.get(1, 1)
+
             current_idx = end_idx
 
         return {
@@ -195,12 +218,16 @@ class DataCollector:
                 "actions": actions_team_0,
                 "action_masks": actions_mask_team_0,
                 "rewards": rewards_team_0,
+                "agent_skills": agent_skills_team_0,
+                "team_ids": team_ids_team_0,
             },
             "team_1": {
                 "tokens": tokens_team_1,
                 "actions": actions_team_1,
                 "action_masks": actions_mask_team_1,
                 "rewards": rewards_team_1,
+                "agent_skills": agent_skills_team_1,
+                "team_ids": team_ids_team_1,
             },
             "episode_ids": episode_ids,
             "episode_lengths": episode_lengths,

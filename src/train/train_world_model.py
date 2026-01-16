@@ -248,7 +248,7 @@ def train_world_model(cfg: DictConfig) -> None:
             # 1. Run batch_ratio short batches
             for _ in range(batch_ratio):
                 try:
-                    states, actions, returns, loss_mask, action_masks = next(short_iter)
+                    states, actions, returns, loss_mask, action_masks, agent_skills, team_ids = next(short_iter)
                 except StopIteration:
                     short_exhausted = True
                     break
@@ -475,7 +475,7 @@ def train_world_model(cfg: DictConfig) -> None:
 
             # 2. Run 1 long batch
             try:
-                states, actions, returns, loss_mask, action_masks = next(long_iter)
+                states, actions, returns, loss_mask, action_masks, agent_skills, team_ids = next(long_iter)
             except StopIteration:
                 # If long loader exhausted, just skip
                 break
@@ -599,7 +599,7 @@ def train_world_model(cfg: DictConfig) -> None:
         # Validate on both short and long
         for loader in [val_short_loader, val_long_loader]:
             with torch.no_grad():
-                for states, actions, returns, loss_mask, action_masks in loader:
+                for states, actions, returns, loss_mask, action_masks, agent_skills, team_ids in loader:
                     states = states.to(device)
                     actions = actions.to(device) # Raw indices (B, T, N, 3)
                     returns = returns.to(device)
