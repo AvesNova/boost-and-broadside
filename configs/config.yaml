@@ -34,7 +34,7 @@ components:
 
 collect:
   teams: [scripted, scripted]
-  total_episodes: 10000
+  total_episodes: 100000
   type_ratios:
     type1: 0.25
     type2: 0.25
@@ -61,7 +61,7 @@ train:
   use_bc: false
   use_rl: false
   
-  bc_data_path: data\bc_pretraining\20260114_141251\aggregated_data.pkl
+  bc_data_path: data\bc_pretraining\20260117_160241\aggregated_data.h5
   
   model:
     transformer:
@@ -104,14 +104,14 @@ train:
 
 world_model:
   embed_dim: 128
-  n_layers: 8
+  n_layers: 4
   n_heads: 4
   context_len: 96
   n_ships: 8
-  mask_ratio: 0.15
+  mask_ratio: 0.0
   noise_scale: 0.1
-  input_noise_ratio: 0.1
-  input_noise_scale: 0.1
+  input_noise_ratio: 1.0
+  input_noise_scale: 0.01
   learning_rate: 0.0003
   epochs: 100000
   
