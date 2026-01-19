@@ -206,9 +206,10 @@ def train_world_model(cfg: DictConfig) -> None:
     sched_cfg = cfg.world_model.get("scheduler", None)
     scheduler = None
     if sched_cfg and "range_test" in sched_cfg.type:
+        range_cfg = sched_cfg.range_test
         # Estimate total steps if not provided
-        if sched_cfg.num_steps:
-             total_steps = sched_cfg.num_steps
+        if range_cfg.get("steps"):
+             total_steps = range_cfg.steps
         else:
              # Estimate based on short loader length and ratio
              # Total steps ~= num_short_batches / P(short)
@@ -218,21 +219,21 @@ def train_world_model(cfg: DictConfig) -> None:
              prob_short = ratio / (ratio + 1)
              total_steps = int(short_batches / prob_short)
         
-        log.info(f"Initializing Exponential Range Test Scheduler: {sched_cfg.start_lr} -> {sched_cfg.end_lr} over {total_steps} steps")
+        log.info(f"Initializing Exponential Range Test Scheduler: {range_cfg.start_lr} -> {range_cfg.end_lr} over {total_steps} steps")
 
         # Use LambdaLR for Exponential Scaling
         # Formula: LR = start_lr * (end_lr / start_lr) ^ (step / total_steps)
         
         for param_group in optimizer.param_groups:
-            param_group['lr'] = sched_cfg.start_lr
+            param_group['lr'] = range_cfg.start_lr
             
         # Precompute ratio
         # Avoid division by zero if start_lr is 0 (unlikely but safe to check)
-        if sched_cfg.start_lr == 0:
+        if range_cfg.start_lr == 0:
              raise ValueError("Start LR cannot be 0 for exponential range test.")
              
         # gamma is the total multiplier to reach end_lr
-        total_multiplier = sched_cfg.end_lr / sched_cfg.start_lr
+        total_multiplier = range_cfg.end_lr / range_cfg.start_lr
         
         def lr_lambda(step):
             # Clip step to total_steps
@@ -243,6 +244,28 @@ def train_world_model(cfg: DictConfig) -> None:
             
         scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
     
+    elif sched_cfg and sched_cfg.type == "warmup_constant":
+        warmup_cfg = sched_cfg.warmup
+        log.info(f"Initializing Warmup Constant Scheduler: {warmup_cfg.start_lr} -> {cfg.world_model.learning_rate} over {warmup_cfg.steps} steps")
+        
+        # Target LR is the main learning rate from config
+        target_lr = cfg.world_model.learning_rate
+        start_lr = warmup_cfg.start_lr
+        warmup_steps = warmup_cfg.steps
+        
+        def lr_lambda(step):
+            if step < warmup_steps:
+                # Linear warmup
+                return (start_lr + (target_lr - start_lr) * (step / warmup_steps)) / target_lr
+            return 1.0 # Constant after warmup (relative to base LR)
+            
+        # Note: LambdaLR multiplies the initial LR passed to optimizer.
+        # If optimizer.lr is target_lr, then we need lambda to return fraction.
+        # But we set param_group['lr'] to target_lr by default in optimizer init.
+        # So lambda should return factor = desired_lr / base_lr
+        
+        scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
+
     elif sched_cfg and sched_cfg.type == "constant":
         scheduler = None # default
         
@@ -314,8 +337,8 @@ def train_world_model(cfg: DictConfig) -> None:
         num_short_batches = len(train_short_loader)
         
         # Adjust pbar total for range test
-        if sched_cfg and "range_test" in sched_cfg.type and sched_cfg.num_steps:
-             pbar_total = sched_cfg.num_steps
+        if sched_cfg and "range_test" in sched_cfg.type and sched_cfg.range_test.steps:
+             pbar_total = sched_cfg.range_test.steps
         else:
              pbar_total = num_short_batches
              
@@ -329,7 +352,7 @@ def train_world_model(cfg: DictConfig) -> None:
         sobol_engine = torch.quasirandom.SobolEngine(dimension=1, scramble=True)
         
         steps_in_epoch = 0
-        global_step_start = epoch * (total_steps if sched_cfg and "range_test" in sched_cfg.type and sched_cfg.num_steps else len(train_short_loader)) # Approx
+        global_step_start = epoch * (total_steps if sched_cfg and "range_test" in sched_cfg.type and sched_cfg.range_test.steps else len(train_short_loader)) # Approx
         
         # We track global steps for logging
         # If range test, we use 'steps' accumulator across epochs (if multiple)
@@ -452,18 +475,19 @@ def train_world_model(cfg: DictConfig) -> None:
 
             # Check for range test limit
             if sched_cfg and "range_test" in sched_cfg.type:
-                if sched_cfg.num_steps and steps_in_epoch >= sched_cfg.num_steps:
-                    log.info(f"Reached max steps for Range Test ({sched_cfg.num_steps}). Stopping.")
+                range_limit = sched_cfg.range_test.steps
+                if range_limit and steps_in_epoch >= range_limit:
+                    log.info(f"Reached max steps for Range Test ({range_limit}). Stopping.")
                     return # Exit training completely
             
             
             if is_short:
                 # Normal mode: only update pbar on short batches (since total is num_short)
-                if not (sched_cfg and "range_test" in sched_cfg.type and sched_cfg.num_steps):
+                if not (sched_cfg and "range_test" in sched_cfg.type and sched_cfg.range_test.steps):
                     pbar.update(1)
             
             # Range test mode: update on every step
-            if sched_cfg and "range_test" in sched_cfg.type and sched_cfg.num_steps:
+            if sched_cfg and "range_test" in sched_cfg.type and sched_cfg.range_test.steps:
                 pbar.update(1)
 
             steps_in_epoch += 1
@@ -474,6 +498,12 @@ def train_world_model(cfg: DictConfig) -> None:
                     "action": total_action_loss.item() / steps_in_epoch
                 })
 
+        avg_loss = total_loss.item() / steps_in_epoch if steps_in_epoch > 0 else 0
+        avg_state_loss = total_state_loss.item() / steps_in_epoch if steps_in_epoch > 0 else 0
+        avg_action_loss = total_action_loss.item() / steps_in_epoch if steps_in_epoch > 0 else 0
+        
+        avg_err_p = total_error_power.item() / steps_in_epoch if steps_in_epoch > 0 else 0
+        avg_err_t = total_error_turn.item() / steps_in_epoch if steps_in_epoch > 0 else 0
         avg_err_s = total_error_shoot.item() / steps_in_epoch if steps_in_epoch > 0 else 0
         
         current_lr = optimizer.param_groups[0]['lr']

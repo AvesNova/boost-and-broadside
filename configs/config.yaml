@@ -116,11 +116,16 @@ world_model:
   epochs: 100000
 
   scheduler:
-    type: "constant" # Options: "constant", "linear_range_test", "exponential_range_test"
-    start_lr: 1e-7
-    end_lr: 1e-1
-    num_steps: 834 # Fixed steps for range test
-    end_lr: 1e-0 # Increase to ensure divergence
+    type: "warmup_constant" # Options: "constant", "warmup_constant", "linear_range_test", "exponential_range_test"
+    
+    warmup:
+      steps: 834
+      start_lr: 1e-7
+      
+    range_test:
+      steps: 834
+      start_lr: 1e-7
+      end_lr: 1.0
   
   # Mixed Batch Training
   short_batch_size: 192

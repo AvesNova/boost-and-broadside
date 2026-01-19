@@ -163,6 +163,14 @@ Use this workflow to find the optimal learning rate.
     uv run python tools/analyze_lr_test.py --latest --max_lr 5e-4
     ```
 
+3. **Turn It Off**:
+    The range test is only active when `world_model.scheduler.type` is set to `linear_range_test` or `exponential_range_test`.
+    To return to normal training, simply omit the override (defaults to `warmup_constant`).
+    ```powershell
+    # Normal training (defaults to warmup_constant)
+    uv run main.py mode=train_wm
+    ```
+
 We provide tools in the `tools/` directory to help with development.
 
 ```powershell
