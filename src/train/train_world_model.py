@@ -258,131 +258,47 @@ def train_world_model(cfg: DictConfig) -> None:
 
         num_short_batches = len(train_short_loader)
         pbar = tqdm(range(num_short_batches), desc=f"Epoch {epoch + 1}/{epochs}")
-        short_exhausted = False
+        # Calculate probability of short batch based on ratio
+        # ratio 4 means 4:1 -> 4/5 = 0.8
+        short_prob = batch_ratio / (batch_ratio + 1)
+        
+        # Initialize Sobol Engine for quasi-random sampling
+        # Dimension 1, Scramble=True for better uniformity
+        sobol_engine = torch.quasirandom.SobolEngine(dimension=1, scramble=True)
+        
         steps = 0
+        while True:
+            # Draw sample from Sobol sequence
+            # draw() returns (1, 1) tensor, get item
+            sample = sobol_engine.draw(1).item()
+            
+            is_short = sample < short_prob
+            
+            # Select iterator and batch type
+            if is_short:
+                iterator = short_iter
+                loader_name = "short"
+            else:
+                iterator = long_iter
+                loader_name = "long"
 
-        while not short_exhausted:
-            # 1. Run batch_ratio short batches
-            for _ in range(batch_ratio):
-                try:
-                    (
-                        states,
-                        actions,
-                        returns,
-                        loss_mask,
-                        action_masks,
-                        agent_skills,
-                        team_ids,
-                    ) = next(short_iter)
-                except StopIteration:
-                    short_exhausted = True
-                    break
-
-                states = states.to(device)
-                actions = actions.to(device) # Raw indices
-                loss_mask = loss_mask.to(device)
-                team_ids = team_ids.to(device)
-
-                # Input: [S_0..S_{T-2}], [A_0..A_{T-2}] (Shifted actions)
-                # Note: Actions from loader are [A_0..A_{T-1}]
-                # We need Input Action at t to be Action_{t-1}.
-                # So Input Action 0 is 0.
-                
-                input_states = states[:, :-1]
-                input_actions = actions[:, :-1]
-                
-                num_ships = states.shape[2]
-                
-                # Fix Team IDs
-                if team_ids.ndim == 2 and team_ids.shape[1] != num_ships:
-                     # Reconstruct standard (0,0,0,0, 1,1,1,1)
-                     tid = torch.zeros((states.shape[0], num_ships), device=device, dtype=torch.long)
-                     half = num_ships // 2
-                     tid[:, half:] = 1
-                     input_team_ids = tid
-                elif team_ids.ndim == 3:
-                     # (B, T, N) -> Slice time AND ships
-                     input_team_ids = team_ids[:, :-1, :num_ships]
-                else:
-                     input_team_ids = team_ids
-
-                target_states = states[:, 1:]
-                target_actions = actions[:, :-1]
-                
-                loss_mask_slice = loss_mask[:, 1:]
-
-                # Rollout Injection
-                rollout_len = get_rollout_length(epoch, cfg)
-                perform_rollout(model, input_states, input_actions, input_team_ids, rollout_len)
-
-                # Train Step (AMP)
-                optimizer.zero_grad()
-
-                with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
-                    pred_states, pred_actions, _ = model(
-                        input_states,
-                        input_actions,
-                        input_team_ids,
-                        noise_scale=cfg.world_model.noise_scale
-                    )
-
-                    loss, state_loss, action_loss = model.get_loss(
-                        pred_states=pred_states,
-                        pred_actions=pred_actions,
-                        target_states=target_states,
-                        target_actions=target_actions,
-                        loss_mask=loss_mask_slice
-                    )
-
-                # Scaled Backward
-                scaler.scale(loss).backward()
-                
-                scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                
-                scaler.step(optimizer)
-                scaler.update()
-
-                # Accumulate as tensor (No .item())
-                total_loss += loss.detach()
-                total_state_loss += state_loss.detach()
-                total_action_loss += action_loss.detach()
-                
-                with torch.no_grad():
-                    valid_mask = loss_mask_slice.bool()
-                    valid_pred = pred_actions[valid_mask]
-                    valid_target = target_actions[valid_mask]
-                    
-                    p_logits = valid_pred[..., 0:3].reshape(-1, 3)
-                    t_logits = valid_pred[..., 3:10].reshape(-1, 7)
-                    s_logits = valid_pred[..., 10:12].reshape(-1, 2)
-                    
-                    p_target = valid_target[..., 0].long().reshape(-1)
-                    t_target = valid_target[..., 1].long().reshape(-1)
-                    s_target = valid_target[..., 2].long().reshape(-1)
-                    
-                    if p_target.numel() > 0:
-                        total_error_power += (p_logits.argmax(-1) != p_target).float().mean()
-                        total_error_turn += (t_logits.argmax(-1) != t_target).float().mean()
-                        total_error_shoot += (s_logits.argmax(-1) != s_target).float().mean()
-
-                steps += 1
-                
-                # Update pbar every step for smooth it/s, but don't unnecessary sync metrics
-                pbar.update(1)
-
-            if short_exhausted:
-                break
-
-            # 2. Run 1 long batch
             try:
-                (states, actions, returns, loss_mask, action_masks, agent_skills, team_ids) = next(long_iter)
+                batch_data = next(iterator)
             except StopIteration:
+                # If short iterator is exhausted, we definitely stop (as per original logic).
+                # If long iterator is exhausted, we also stop to keep aligned?
+                # Original logic: "while not short_exhausted" and "except StopIteration: break" for long.
+                # So any exhaustion ends the epoch.
+                # check if we should try the other one? 
+                # For safety and preventing infinite loops or imbalance, we break on any exhaustion 
+                # effectively defining the epoch length by the limiting factor.
                 break
+
+            (states, actions, returns, loss_mask, action_masks, agent_skills, team_ids) = batch_data
 
             states = states.to(device)
-            loss_mask = loss_mask.to(device)
             actions = actions.to(device)
+            loss_mask = loss_mask.to(device)
             team_ids = team_ids.to(device)
 
             input_states = states[:, :-1]
@@ -398,17 +314,22 @@ def train_world_model(cfg: DictConfig) -> None:
                     tid[:, half:] = 1
                     input_team_ids = tid
             elif team_ids.ndim == 3:
-                     # (B, T, N) -> Slice time AND ships
-                     input_team_ids = team_ids[:, :-1, :num_ships]
+                        # (B, T, N) -> Slice time AND ships
+                        input_team_ids = team_ids[:, :-1, :num_ships]
             else:
-                     input_team_ids = team_ids
+                        input_team_ids = team_ids
 
             target_states = states[:, 1:]
             target_actions = actions[:, :-1]
 
             loss_mask_slice = loss_mask[:, 1:]
-            if loss_mask_slice.shape[1] > 32:
-                loss_mask_slice[:, :32] = False
+            
+            # For long batches, we might mask early tokens (warmup)
+            # Original code ONLY did this for long batches (which was the second block)
+            # We need to replicate that logic.
+            if not is_short:
+                if loss_mask_slice.shape[1] > 32:
+                    loss_mask_slice[:, :32] = False
             
             # Rollout
             rollout_len = get_rollout_length(epoch, cfg)
@@ -442,6 +363,36 @@ def train_world_model(cfg: DictConfig) -> None:
             total_state_loss += state_loss.detach()
             total_action_loss += action_loss.detach()
             
+            
+            if is_short:
+                # We only count short batches towards the 'steps' if we want to match pbar?
+                # Actually pbar was over num_short_batches.
+                # Let's just update pbar for every STEP, but maybe adjust total?
+                # The pbar total is num_short_batches. 
+                # Since we mix now, the total loop might be larger (approx num_short * (1 + 1/ratio)).
+                # Use pbar.update(1) regardless.
+                pbar.update(1)
+
+            # Update metrics (same moved from inside loop)
+            with torch.no_grad():
+                valid_mask = loss_mask_slice.bool()
+                if valid_mask.any():
+                    valid_pred = pred_actions[valid_mask]
+                    valid_target = target_actions[valid_mask]
+                    
+                    p_logits = valid_pred[..., 0:3].reshape(-1, 3)
+                    t_logits = valid_pred[..., 3:10].reshape(-1, 7)
+                    s_logits = valid_pred[..., 10:12].reshape(-1, 2)
+                    
+                    p_target = valid_target[..., 0].long().reshape(-1)
+                    t_target = valid_target[..., 1].long().reshape(-1)
+                    s_target = valid_target[..., 2].long().reshape(-1)
+                    
+                    if p_target.numel() > 0:
+                        total_error_power += (p_logits.argmax(-1) != p_target).float().mean()
+                        total_error_turn += (t_logits.argmax(-1) != t_target).float().mean()
+                        total_error_shoot += (s_logits.argmax(-1) != s_target).float().mean()
+
             steps += 1
             if steps % 50 == 0:
                 pbar.set_postfix({
