@@ -22,6 +22,7 @@ from tqdm import tqdm
 
 from agents.interleaved_world_model import InterleavedWorldModel
 from train.data_loader import load_bc_data, create_unified_data_loaders
+from train.swa import SWAModule
 
 
 
@@ -201,6 +202,9 @@ def train_world_model(cfg: DictConfig) -> None:
 
     # 4. Initialize GradScaler for AMP
     scaler = torch.amp.GradScaler('cuda')
+
+    # 5. Initialize SWA (Shadow Model on CPU)
+    swa_model = SWAModule(model)
 
     # 5. Initialize Scheduler
     sched_cfg = cfg.world_model.get("scheduler", None)
@@ -617,7 +621,12 @@ def train_world_model(cfg: DictConfig) -> None:
             torch.save(model.state_dict(), save_path)
             log.info(f"Saved checkpoint to {save_path}")
 
+        # SWA Update (Start at end of Epoch 2, i.e., index 1)
+        if epoch >= 1:
+             swa_model.update_parameters(model)
+
     torch.save(model.state_dict(), run_dir / "final_world_model.pth")
+    torch.save(swa_model.state_dict(), run_dir / "final_world_model_swa.pth")
     # Save metadata
     metadata_path = run_dir / "model_metadata.yaml"
     metadata = {
