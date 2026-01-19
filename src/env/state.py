@@ -31,5 +31,5 @@ class State:
         self.ships = ships
         self.time = time
 
-        max_bullets = np.sum(ship.max_bullets for ship in ships.values())
+        max_bullets = sum(ship.max_bullets for ship in ships.values())
         self.bullets = Bullets(max_bullets=max_bullets)

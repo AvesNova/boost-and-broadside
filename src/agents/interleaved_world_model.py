@@ -31,6 +31,56 @@ class DyadicFourierFeatureExtractor(nn.Module):
         feats = feats.view(*x.shape[:-1], -1)
         return self.projection(feats)
 
+class GatedSwiGLU(nn.Module):
+    """
+    Gated Linear Unit with Swish activation (SwiGLU).
+    Maps input -> Hidden (2x) -> Output.
+    """
+    def __init__(self, in_features, hidden_features, out_features, dropout=0.0):
+        super().__init__()
+        self.w_gate = nn.Linear(in_features, hidden_features)
+        self.w_val = nn.Linear(in_features, hidden_features)
+        self.w_out = nn.Linear(hidden_features, out_features)
+        self.dropout = nn.Dropout(dropout)
+        self.act = nn.SiLU()
+
+    def forward(self, x):
+        gate = self.act(self.w_gate(x))
+        val = self.w_val(x)
+        out = self.w_out(gate * val)
+        return self.dropout(out)
+
+class GatedStateEncoder(nn.Module):
+    """
+    Encodes continuous state vector with Fourier features and Gated SwiGLU.
+    Structure: Input -> Fourier(128) -> SwiGLU(256) -> + Residual -> LN -> Out
+    """
+    def __init__(self, input_dim: int, embed_dim: int = 128, num_freqs: int = 4, dropout: float = 0.1):
+        super().__init__()
+        self.fourier = DyadicFourierFeatureExtractor(input_dim, embed_dim, num_freqs=num_freqs)
+        
+        # SwiGLU: Map 128 -> 256 (internal) -> 128
+        # "Map the 128-dim Fourier features to 256-dim using two parallel linear layers"
+        # So hidden_features=256
+        self.swiglu = GatedSwiGLU(
+            in_features=embed_dim, 
+            hidden_features=256, 
+            out_features=embed_dim,
+            dropout=dropout
+        )
+        
+        self.norm = nn.LayerNorm(embed_dim)
+
+    def forward(self, x):
+        # x: (..., input_dim)
+        fourier_feats = self.fourier(x)
+        
+        # SwiGLU + Residual
+        out = self.swiglu(fourier_feats)
+        out = out + fourier_feats
+        
+        return self.norm(out)
+
 class TemporalSelfAttention(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -287,17 +337,13 @@ class InterleavedWorldModel(nn.Module):
         self.num_continuous = state_dim - self.num_binary
         
         # State Encoders
-        self.fourier = DyadicFourierFeatureExtractor(self.num_continuous, embed_dim)
-        self.bin_emb_list = nn.ModuleList([nn.Embedding(2, embed_dim) for _ in range(self.num_binary)])
-        
-        self.state_ffn = nn.Sequential(
-            nn.Linear(embed_dim, embed_dim),
-            nn.LayerNorm(embed_dim),
-            nn.GELU(),
-            nn.Linear(embed_dim, embed_dim),
-            nn.LayerNorm(embed_dim),
-            nn.Dropout(dropout)
+        self.state_encoder = GatedStateEncoder(
+            input_dim=self.num_continuous,
+            embed_dim=embed_dim,
+            dropout=dropout
         )
+        
+        self.bin_emb_list = nn.ModuleList([nn.Embedding(2, embed_dim) for _ in range(self.num_binary)])
         
         # Action Encoders
         self.emb_power = nn.Embedding(3, embed_dim)
@@ -370,14 +416,14 @@ class InterleavedWorldModel(nn.Module):
              continuous = states[..., :self.num_continuous]
              binary = states[..., self.num_continuous:]
 
-        cont_emb = self.fourier(continuous)
+        cont_emb = self.state_encoder(continuous)
         
         binary_long = binary.long().clamp(0, 1)
         bin_emb = torch.zeros_like(cont_emb)
         for i in range(self.num_binary):
             bin_emb = bin_emb + self.bin_emb_list[i](binary_long[..., i])
             
-        state_tokens = self.state_ffn(cont_emb + bin_emb)
+        state_tokens = cont_emb + bin_emb
         
         # 2. Action Encoding
         p_emb = self.emb_power(actions[..., 0].long())

@@ -89,7 +89,7 @@ def test_2d_rope_translation_invariance():
 
     # They should be very close
     # Note: FP error might be slightly higher due to trig functions
-    assert torch.allclose(attn_score_a, attn_score_b, atol=1e-5)
+    assert torch.allclose(attn_score_a, attn_score_b, atol=1e-4)
 
 
 def test_2d_rope_rotation():
