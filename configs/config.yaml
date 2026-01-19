@@ -124,6 +124,9 @@ world_model:
   
   rope_base: 10000.0
   rope_max_seq_len: 256
+  
+  num_workers: 4
+  prefetch_factor: 2
 
   # Closed Loop Rollout (Scheduled Sampling)
   rollout:

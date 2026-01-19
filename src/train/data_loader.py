@@ -46,6 +46,7 @@ def create_unified_data_loaders(
     batch_ratio: int = 4,  # Unused effectively, controlled by caller
     validation_split: float = 0.2,
     num_workers: int = 0,
+    prefetch_factor: int = 2,
 ) -> tuple[DataLoader, DataLoader, DataLoader, DataLoader]:
     """
     Create data loaders for unified pool mixed batch training using HDF5.
@@ -96,7 +97,7 @@ def create_unified_data_loaders(
         "num_workers": num_workers,
         "pin_memory": True,
         "persistent_workers": (num_workers > 0),
-        "prefetch_factor": 2 if num_workers > 0 else None,
+        "prefetch_factor": prefetch_factor if num_workers > 0 else None,
     }
 
     train_short_loader = DataLoader(

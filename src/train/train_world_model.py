@@ -209,20 +209,24 @@ def train_world_model(cfg: DictConfig) -> None:
     batch_ratio = cfg.world_model.batch_ratio
     best_val_loss = float("inf")
 
-    for epoch in range(epochs):
-        # Re-create data loaders each epoch to randomize pools
-        train_short_loader, train_long_loader, val_short_loader, val_long_loader = (
-            create_unified_data_loaders(
-                data_path,
-                short_batch_size=cfg.world_model.short_batch_size,
-                long_batch_size=cfg.world_model.long_batch_size,
-                short_batch_len=cfg.world_model.short_batch_len,
-                long_batch_len=cfg.world_model.long_batch_len,
-                batch_ratio=cfg.world_model.batch_ratio,
-                validation_split=0.2,
-                num_workers=0,
-            )
+    # Create Data Loaders (Once, to persist workers and simple train/val split)
+    train_short_loader, train_long_loader, val_short_loader, val_long_loader = (
+        create_unified_data_loaders(
+            data_path,
+            short_batch_size=cfg.world_model.short_batch_size,
+            long_batch_size=cfg.world_model.long_batch_size,
+            short_batch_len=cfg.world_model.short_batch_len,
+            long_batch_len=cfg.world_model.long_batch_len,
+            batch_ratio=cfg.world_model.batch_ratio,
+            validation_split=0.2,
+            num_workers=cfg.world_model.get("num_workers", 4),
+            prefetch_factor=cfg.world_model.get("prefetch_factor", 2),
         )
+    )
+
+    for epoch in range(epochs):
+        # Re-create data loaders each epoch to randomize pools -> MOVED OUTSIDE
+
 
         model.train()
         total_loss = 0
