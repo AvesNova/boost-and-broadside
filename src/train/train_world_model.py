@@ -150,6 +150,93 @@ def perform_rollout(model, input_states, input_actions, team_ids, rollout_len):
 
 
 
+def validate_model(model, loaders, device, amp=True):
+    """
+    Run validation loop and return metrics.
+    """
+    model.eval()
+    val_loss = torch.tensor(0.0, device=device)
+    val_steps = 0
+    val_error_p = torch.tensor(0.0, device=device)
+    val_error_t = torch.tensor(0.0, device=device)
+    val_error_s = torch.tensor(0.0, device=device)
+
+    # loaders is a list of data loaders
+    for loader in loaders:
+        with torch.no_grad():
+            for states, actions, returns, loss_mask, _, _, team_ids in loader:
+                states = states.to(device)
+                actions = actions.to(device)
+                loss_mask = loss_mask.to(device)
+                team_ids = team_ids.to(device)
+
+                input_states = states[:, :-1]
+                input_actions = actions[:, :-1]
+                
+                num_ships = states.shape[2]
+                
+                # Fix Team IDs (Validation)
+                if team_ids.ndim == 2 and team_ids.shape[1] != num_ships:
+                     tid = torch.zeros((states.shape[0], num_ships), device=device, dtype=torch.long)
+                     half = num_ships // 2
+                     tid[:, half:] = 1
+                     input_team_ids = tid
+                elif team_ids.ndim == 3:
+                     input_team_ids = team_ids[:, :-1, :num_ships]
+                else:
+                     input_team_ids = team_ids
+
+                target_states = states[:, 1:]
+                target_actions = actions[:, :-1]
+                
+                loss_mask_slice = loss_mask[:, 1:]
+
+                with torch.amp.autocast(device_type='cuda', dtype=torch.float16, enabled=amp):
+                    pred_states, pred_actions, _ = model(
+                        input_states, input_actions, input_team_ids, noise_scale=0.0
+                    )
+
+                    loss, state_loss, action_loss = model.get_loss(
+                        pred_states=pred_states,
+                        pred_actions=pred_actions,
+                        target_states=target_states,
+                        target_actions=target_actions,
+                        loss_mask=loss_mask_slice
+                    )
+                
+                val_loss += loss
+                val_steps += 1
+                
+                valid_mask = loss_mask_slice.bool()
+                valid_pred = pred_actions[valid_mask]
+                valid_target = target_actions[valid_mask]
+                
+                p_logits = valid_pred[..., 0:3].reshape(-1, 3)
+                t_logits = valid_pred[..., 3:10].reshape(-1, 7)
+                s_logits = valid_pred[..., 10:12].reshape(-1, 2)
+                
+                p_target = valid_target[..., 0].long().reshape(-1)
+                t_target = valid_target[..., 1].long().reshape(-1)
+                s_target = valid_target[..., 2].long().reshape(-1)
+                
+                if p_target.numel() > 0:
+                    val_error_p += (p_logits.argmax(-1) != p_target).float().mean()
+                    val_error_t += (t_logits.argmax(-1) != t_target).float().mean()
+                    val_error_s += (s_logits.argmax(-1) != s_target).float().mean()
+
+    avg_val_loss = val_loss.item() / val_steps if val_steps > 0 else 0.0
+    avg_val_err_p = val_error_p.item() / val_steps if val_steps > 0 else 0.0
+    avg_val_err_t = val_error_t.item() / val_steps if val_steps > 0 else 0.0
+    avg_val_err_s = val_error_s.item() / val_steps if val_steps > 0 else 0.0
+
+    return {
+        "val_loss": avg_val_loss,
+        "error_p": avg_val_err_p,
+        "error_t": avg_val_err_t,
+        "error_s": avg_val_err_s
+    }
+
+
 def train_world_model(cfg: DictConfig) -> None:
     """
     Train the world model.
@@ -284,7 +371,7 @@ def train_world_model(cfg: DictConfig) -> None:
     
     step_log_path = run_dir / "training_step_log.csv"
     with open(step_log_path, "w") as f:
-        f.write("global_step,epoch,learning_rate,loss,state_loss,action_loss\n")
+        f.write("global_step,epoch,learning_rate,loss,state_loss,action_loss,val_loss,val_loss_swa\n")
 
 
     log.info(f"Output directory: {run_dir}")
@@ -298,13 +385,14 @@ def train_world_model(cfg: DictConfig) -> None:
     csv_path = run_dir / "training_log.csv"
     with open(csv_path, "w") as f:
         f.write(
-            "epoch,learning_rate,train_loss,train_state_loss,train_action_loss,val_loss\n"
+            "epoch,learning_rate,train_loss,train_state_loss,train_action_loss,val_loss,val_loss_swa\n"
         )
 
     # Training Loop
     epochs = cfg.world_model.epochs
     batch_ratio = cfg.world_model.batch_ratio
     best_val_loss = float("inf")
+    best_val_loss_swa = float("inf")
 
     # Create Data Loaders (Once, to persist workers and simple train/val split)
     train_short_loader, train_long_loader, val_short_loader, val_long_loader = (
@@ -475,7 +563,7 @@ def train_world_model(cfg: DictConfig) -> None:
             if steps_in_epoch % log_freq == 0:
                 with open(step_log_path, "a") as f:
                      # For range test, we only care about the sequence
-                     f.write(f"{steps_in_epoch},{epoch+1},{current_lr:.8f},{loss.item():.6f},{state_loss.item():.6f},{action_loss.item():.6f}\n")
+                     f.write(f"{steps_in_epoch},{epoch+1},{current_lr:.8f},{loss.item():.6f},{state_loss.item():.6f},{action_loss.item():.6f},,\n")
 
             # Check for range test limit
             if sched_cfg and "range_test" in sched_cfg.type:
@@ -513,88 +601,35 @@ def train_world_model(cfg: DictConfig) -> None:
         current_lr = optimizer.param_groups[0]['lr']
         log.info(f"Epoch {epoch + 1}: LR={current_lr:.2e} Train Loss={avg_loss:.4f} (State={avg_state_loss:.4f}, Action={avg_action_loss:.4f})")
 
-        # Validation
-        model.eval()
-        val_loss = torch.tensor(0.0, device=device)
-        val_steps = 0
-        val_error_p = torch.tensor(0.0, device=device)
-        val_error_t = torch.tensor(0.0, device=device)
-        val_error_s = torch.tensor(0.0, device=device)
-
-        for loader in [val_short_loader, val_long_loader]:
-            with torch.no_grad():
-                for states, actions, returns, loss_mask, _, _, team_ids in loader:
-                    states = states.to(device)
-                    actions = actions.to(device)
-                    loss_mask = loss_mask.to(device)
-                    team_ids = team_ids.to(device)
-
-                    input_states = states[:, :-1]
-                    input_actions = actions[:, :-1]
-                    
-                    num_ships = states.shape[2]
-                    
-                    # Fix Team IDs (Validation)
-                    if team_ids.ndim == 2 and team_ids.shape[1] != num_ships:
-                         tid = torch.zeros((states.shape[0], num_ships), device=device, dtype=torch.long)
-                         half = num_ships // 2
-                         tid[:, half:] = 1
-                         input_team_ids = tid
-                    elif team_ids.ndim == 3:
-                         input_team_ids = team_ids[:, :-1, :num_ships]
-                    else:
-                         input_team_ids = team_ids
-
-                    target_states = states[:, 1:]
-                    target_actions = actions[:, :-1]
-                    
-                    loss_mask_slice = loss_mask[:, 1:]
-
-                    with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
-                        pred_states, pred_actions, _ = model(
-                            input_states, input_actions, input_team_ids, noise_scale=0.0
-                        )
-
-                        loss, state_loss, action_loss = model.get_loss(
-                            pred_states=pred_states,
-                            pred_actions=pred_actions,
-                            target_states=target_states,
-                            target_actions=target_actions,
-                            loss_mask=loss_mask_slice
-                        )
-                    
-                    val_loss += loss
-                    val_steps += 1
-                    
-                    valid_mask = loss_mask_slice.bool()
-                    valid_pred = pred_actions[valid_mask]
-                    valid_target = target_actions[valid_mask]
-                    
-                    p_logits = valid_pred[..., 0:3].reshape(-1, 3)
-                    t_logits = valid_pred[..., 3:10].reshape(-1, 7)
-                    s_logits = valid_pred[..., 10:12].reshape(-1, 2)
-                    
-                    p_target = valid_target[..., 0].long().reshape(-1)
-                    t_target = valid_target[..., 1].long().reshape(-1)
-                    s_target = valid_target[..., 2].long().reshape(-1)
-                    
-                    if p_target.numel() > 0:
-                        val_error_p += (p_logits.argmax(-1) != p_target).float().mean()
-                        val_error_t += (t_logits.argmax(-1) != t_target).float().mean()
-                        val_error_s += (s_logits.argmax(-1) != s_target).float().mean()
-
-        avg_val_loss = val_loss.item() / val_steps if val_steps > 0 else 0
-        avg_val_err_p = val_error_p.item() / val_steps if val_steps > 0 else 0
-        avg_val_err_t = val_error_t.item() / val_steps if val_steps > 0 else 0
-        avg_val_err_s = val_error_s.item() / val_steps if val_steps > 0 else 0
-
+        # Validation (Live Model)
+        val_metrics = validate_model(model, [val_short_loader, val_long_loader], device)
+        avg_val_loss = val_metrics["val_loss"]
+        
         log.info(f"Epoch {epoch + 1}: Val Loss={avg_val_loss:.4f}")
+
+        # SWA Evaluation
+        avg_val_loss_swa = None
+        if epoch >= 1:
+             # Move SWA model to GPU
+             swa_model.averaged_model.to(device)
+             val_metrics_swa = validate_model(swa_model.averaged_model, [val_short_loader, val_long_loader], device)
+             swa_model.averaged_model.to('cpu') # Move back to CPU
+             
+             avg_val_loss_swa = val_metrics_swa["val_loss"]
+             log.info(f"Epoch {epoch + 1}: SWA Val Loss={avg_val_loss_swa:.4f}")
+             
+             # Log SWA metrics
+             writer.add_scalar("Loss/val_swa", avg_val_loss_swa, epoch)
+             writer.add_scalar("Error/val_swa_power", val_metrics_swa["error_p"], epoch)
+             writer.add_scalar("Error/val_swa_turn", val_metrics_swa["error_t"], epoch)
+             writer.add_scalar("Error/val_swa_shoot", val_metrics_swa["error_s"], epoch)
 
         # Log to CSV
         current_lr = optimizer.param_groups[0]['lr']
         with open(csv_path, "a") as f:
+            swa_loss_str = f"{avg_val_loss_swa:.6f}" if avg_val_loss_swa is not None else ""
             f.write(
-                f"{epoch + 1},{current_lr:.8f},{avg_loss:.6f},{avg_state_loss:.6f},{avg_action_loss:.6f},{avg_val_loss:.6f}\n"
+                f"{epoch + 1},{current_lr:.8f},{avg_loss:.6f},{avg_state_loss:.6f},{avg_action_loss:.6f},{avg_val_loss:.6f},{swa_loss_str}\n"
             )
 
         # Log to TensorBoard
@@ -606,27 +641,49 @@ def train_world_model(cfg: DictConfig) -> None:
         writer.add_scalar("Error/train_power", avg_err_p, epoch)
         writer.add_scalar("Error/train_turn", avg_err_t, epoch)
         writer.add_scalar("Error/train_shoot", avg_err_s, epoch)
-        writer.add_scalar("Error/val_power", avg_val_err_p, epoch)
-        writer.add_scalar("Error/val_turn", avg_val_err_t, epoch)
-        writer.add_scalar("Error/val_shoot", avg_val_err_s, epoch)
+        writer.add_scalar("Error/val_power", val_metrics["error_p"], epoch)
+        writer.add_scalar("Error/val_turn", val_metrics["error_t"], epoch)
+        writer.add_scalar("Error/val_shoot", val_metrics["error_s"], epoch)
 
-        # Save Best Model
+        # Save Best Models
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             torch.save(model.state_dict(), run_dir / "best_world_model.pth")
-            log.info(f"Saved best model with val loss {best_val_loss:.4f}")
+            log.info(f"Saved best live model with val loss {best_val_loss:.4f}")
+
+        if avg_val_loss_swa is not None and avg_val_loss_swa < best_val_loss_swa:
+            best_val_loss_swa = avg_val_loss_swa
+            torch.save(swa_model.averaged_model.state_dict(), run_dir / "best_world_model_swa.pth")
+            log.info(f"Saved best SWA model with val loss {best_val_loss_swa:.4f}")
 
         if (epoch + 1) % 10 == 0:
+            checkpoint = {
+                "epoch": epoch + 1,
+                "model_state_dict": model.state_dict(),
+                "swa_model_state_dict": swa_model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "scheduler_state_dict": scheduler.state_dict() if scheduler else None,
+                "scaler_state_dict": scaler.state_dict(),
+                "config": OmegaConf.to_container(cfg, resolve=True)
+            }
             save_path = run_dir / f"world_model_epoch_{epoch + 1}.pt"
-            torch.save(model.state_dict(), save_path)
-            log.info(f"Saved checkpoint to {save_path}")
+            torch.save(checkpoint, save_path)
+            log.info(f"Saved full checkpoint to {save_path}")
 
         # SWA Update (Start at end of Epoch 2, i.e., index 1)
         if epoch >= 1:
              swa_model.update_parameters(model)
 
-    torch.save(model.state_dict(), run_dir / "final_world_model.pth")
-    torch.save(swa_model.state_dict(), run_dir / "final_world_model_swa.pth")
+    # Save Final Checkpoints
+    final_checkpoint = {
+        "epoch": epochs,
+        "model_state_dict": model.state_dict(),
+        "swa_model_state_dict": swa_model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "scaler_state_dict": scaler.state_dict(),
+        "config": OmegaConf.to_container(cfg, resolve=True)
+    }
+    torch.save(final_checkpoint, run_dir / "final_world_model.pt")
     # Save metadata
     metadata_path = run_dir / "model_metadata.yaml"
     metadata = {

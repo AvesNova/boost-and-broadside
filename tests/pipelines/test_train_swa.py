@@ -94,8 +94,12 @@ def test_train_swa_pipeline(default_config, tmp_path):
         assert len(run_dirs) > 0, "No run directory found"
         last_run_dir = run_dirs[-1]
         
-        assert (last_run_dir / "final_world_model.pth").exists()
-        assert (last_run_dir / "final_world_model_swa.pth").exists(), "SWA model not saved!"
+        assert (last_run_dir / "final_world_model.pt").exists()
+        
+        # Load and verify keys
+        ckpt = torch.load(last_run_dir / "final_world_model.pt")
+        assert "model_state_dict" in ckpt
+        assert "swa_model_state_dict" in ckpt, "SWA model state dict missing from checkpoint!"
         
     except Exception as e:
         import traceback
