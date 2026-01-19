@@ -38,6 +38,34 @@ uv run main.py mode=play human_player=true
 - **`configs/`**: Hydra configuration files.
 - **`tests/`**: Unit and integration tests.
 
+## World Model Architecture
+
+The core of the system is an **Interleaved World Model** that predicts the future state of the game.
+
+### Sequence Structure
+The model processes an interleaved sequence of **State ($S$)** and **Action ($A$)** blocks. Each block contains $N$ tokens, where $N$ is the number of ships (default 8).
+
+$$ S_0 \xrightarrow{\text{predict}} A_0 \xrightarrow{\text{predict}} S_1 \xrightarrow{\text{predict}} A_1 \dots $$
+
+- **State Tokens ($S_t$)**: Continuous vector encodings of ship states (position, velocity, health).
+- **Action Tokens ($A_t$)**: Embeddings of discrete actions (Power, Turn, Shoot).
+
+### Factorized Attention
+To handle the multi-agent temporal structure efficiently, we use a factorized attention mechanism with alternating layers:
+
+1.  **Temporal Attention**: Each ship attends only to its own history.
+    - Causal masking ensures no peeking into the future.
+    - Uses **Rotary Position Embeddings (RoPE)** for relative time awareness.
+2.  **Spatial Attention**: Ships attend to each other within a local temporal window.
+    - **Window**: Each token attends to all tokens in its **Current Block** and the **Previous Block**.
+        - $A_t$ attends to $\{S_t, A_t\}$
+        - $S_t$ attends to $\{A_{t-1}, S_t\}$
+    - This allows interactions (like shooting) to propagate correctly while maintaining causality.
+
+### Training Objectives
+- **Action Prediction ($S_t \to A_t$)**: Cross-entropy loss on discrete action indices.
+- **State Prediction ($A_t \to S_{t+1}$)**: MSE loss on next-state reconstruction.
+
 ## Data Structure
 
 The collected training data is stored in **HDF5** format (`aggregated_data.h5`) for efficiency and scalability.

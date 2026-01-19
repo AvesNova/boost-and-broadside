@@ -268,12 +268,8 @@ def train_world_model(cfg: DictConfig) -> None:
                 # We need Input Action at t to be Action_{t-1}.
                 # So Input Action 0 is 0.
                 
-                prev_actions = torch.zeros_like(actions)
-                prev_actions[:, 1:] = actions[:, :-1]
-                prev_actions[:, 0] = 0
-
                 input_states = states[:, :-1]
-                input_actions = prev_actions[:, :-1]
+                input_actions = actions[:, :-1]
                 
                 num_ships = states.shape[2]
                 
@@ -360,12 +356,8 @@ def train_world_model(cfg: DictConfig) -> None:
             actions = actions.to(device)
             team_ids = team_ids.to(device)
 
-            prev_actions = torch.zeros_like(actions)
-            prev_actions[:, 1:] = actions[:, :-1]
-            prev_actions[:, 0] = 0
-
             input_states = states[:, :-1]
-            input_actions = prev_actions[:, :-1]
+            input_actions = actions[:, :-1]
             
             num_ships = states.shape[2]
             
@@ -450,12 +442,8 @@ def train_world_model(cfg: DictConfig) -> None:
                     loss_mask = loss_mask.to(device)
                     team_ids = team_ids.to(device)
 
-                    prev_actions = torch.zeros_like(actions)
-                    prev_actions[:, 1:] = actions[:, :-1]
-                    prev_actions[:, 0] = 0
-
                     input_states = states[:, :-1]
-                    input_actions = prev_actions[:, :-1]
+                    input_actions = actions[:, :-1]
                     
                     num_ships = states.shape[2]
                     
