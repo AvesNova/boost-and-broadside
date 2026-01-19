@@ -346,9 +346,18 @@ class InterleavedWorldModel(nn.Module):
         self.bin_emb_list = nn.ModuleList([nn.Embedding(2, embed_dim) for _ in range(self.num_binary)])
         
         # Action Encoders
-        self.emb_power = nn.Embedding(3, embed_dim)
-        self.emb_turn = nn.Embedding(7, embed_dim)
-        self.emb_shoot = nn.Embedding(2, embed_dim)
+        # Action Encoders
+        # Total concatenated width: 48 + 48 + 32 = 128
+        self.emb_power = nn.Embedding(3, 48)
+        self.emb_turn = nn.Embedding(7, 48)
+        self.emb_shoot = nn.Embedding(2, 32)
+        
+        # Projection Layer: Concatenated (128) -> Embed Dim (128)
+        # Allows learning nonlinear interactions between control inputs (e.g. "Full Power + Hard Turn")
+        self.action_proj = nn.Sequential(
+            nn.Linear(128, embed_dim),
+            nn.SiLU()
+        )
         
         # Positional/Type
         # Temporal RoPE is inside TemporalSelfAttention
@@ -426,10 +435,15 @@ class InterleavedWorldModel(nn.Module):
         state_tokens = cont_emb + bin_emb
         
         # 2. Action Encoding
-        p_emb = self.emb_power(actions[..., 0].long())
-        t_emb = self.emb_turn(actions[..., 1].long())
-        s_emb = self.emb_shoot(actions[..., 2].long())
-        action_tokens = p_emb + t_emb + s_emb 
+        p_emb = self.emb_power(actions[..., 0].long()) # (..., 48)
+        t_emb = self.emb_turn(actions[..., 1].long())  # (..., 48)
+        s_emb = self.emb_shoot(actions[..., 2].long()) # (..., 32)
+        
+        # Concatenate: (..., 48+48+32=128)
+        action_concat = torch.cat([p_emb, t_emb, s_emb], dim=-1)
+        
+        # Project: (..., 128) -> (..., embed_dim)
+        action_tokens = self.action_proj(action_concat) 
         
         # 3. Add Embeddings
         ship_ids = torch.arange(N, device=device).view(1, 1, N).expand(B, T, N)
