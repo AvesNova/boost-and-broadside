@@ -12,7 +12,9 @@ from datetime import datetime
 import os
 import torch
 import torch.nn.functional as F
+import torch.nn.functional as F
 import torch.optim as optim
+import torch.optim.lr_scheduler as lr_scheduler
 import random
 from omegaconf import DictConfig, OmegaConf
 from torch.utils.tensorboard import SummaryWriter
@@ -200,10 +202,63 @@ def train_world_model(cfg: DictConfig) -> None:
     # 4. Initialize GradScaler for AMP
     scaler = torch.amp.GradScaler('cuda')
 
+    # 5. Initialize Scheduler
+    sched_cfg = cfg.world_model.get("scheduler", None)
+    scheduler = None
+    if sched_cfg and "range_test" in sched_cfg.type:
+        # Estimate total steps if not provided
+        if sched_cfg.num_steps:
+             total_steps = sched_cfg.num_steps
+        else:
+             # Estimate based on short loader length and ratio
+             # Total steps ~= num_short_batches / P(short)
+             # P(short) = ratio / (ratio + 1)
+             short_batches = len(train_short_loader)
+             ratio = cfg.world_model.batch_ratio
+             prob_short = ratio / (ratio + 1)
+             total_steps = int(short_batches / prob_short)
+        
+        log.info(f"Initializing Exponential Range Test Scheduler: {sched_cfg.start_lr} -> {sched_cfg.end_lr} over {total_steps} steps")
+
+        # Use LambdaLR for Exponential Scaling
+        # Formula: LR = start_lr * (end_lr / start_lr) ^ (step / total_steps)
+        
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = sched_cfg.start_lr
+            
+        # Precompute ratio
+        # Avoid division by zero if start_lr is 0 (unlikely but safe to check)
+        if sched_cfg.start_lr == 0:
+             raise ValueError("Start LR cannot be 0 for exponential range test.")
+             
+        # gamma is the total multiplier to reach end_lr
+        total_multiplier = sched_cfg.end_lr / sched_cfg.start_lr
+        
+        def lr_lambda(step):
+            # Clip step to total_steps
+            s = min(step, total_steps)
+            # fraction of progress
+            progress = s / total_steps
+            return total_multiplier ** progress
+            
+        scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
+    
+    elif sched_cfg and sched_cfg.type == "constant":
+        scheduler = None # default
+        
+    
+
+
+
     # Setup logging and output directory
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir = Path("models/world_model") / f"run_{timestamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
+    
+    step_log_path = run_dir / "training_step_log.csv"
+    with open(step_log_path, "w") as f:
+        f.write("global_step,epoch,learning_rate,loss,state_loss,action_loss\n")
+
 
     log.info(f"Output directory: {run_dir}")
 
@@ -216,7 +271,7 @@ def train_world_model(cfg: DictConfig) -> None:
     csv_path = run_dir / "training_log.csv"
     with open(csv_path, "w") as f:
         f.write(
-            "epoch,train_loss,train_state_loss,train_action_loss,val_loss\n"
+            "epoch,learning_rate,train_loss,train_state_loss,train_action_loss,val_loss\n"
         )
 
     # Training Loop
@@ -257,7 +312,14 @@ def train_world_model(cfg: DictConfig) -> None:
         long_iter = iter(train_long_loader)
 
         num_short_batches = len(train_short_loader)
-        pbar = tqdm(range(num_short_batches), desc=f"Epoch {epoch + 1}/{epochs}")
+        
+        # Adjust pbar total for range test
+        if sched_cfg and "range_test" in sched_cfg.type and sched_cfg.num_steps:
+             pbar_total = sched_cfg.num_steps
+        else:
+             pbar_total = num_short_batches
+             
+        pbar = tqdm(range(pbar_total), desc=f"Epoch {epoch + 1}/{epochs}")
         # Calculate probability of short batch based on ratio
         # ratio 4 means 4:1 -> 4/5 = 0.8
         short_prob = batch_ratio / (batch_ratio + 1)
@@ -266,7 +328,12 @@ def train_world_model(cfg: DictConfig) -> None:
         # Dimension 1, Scramble=True for better uniformity
         sobol_engine = torch.quasirandom.SobolEngine(dimension=1, scramble=True)
         
-        steps = 0
+        steps_in_epoch = 0
+        global_step_start = epoch * (total_steps if sched_cfg and "range_test" in sched_cfg.type and sched_cfg.num_steps else len(train_short_loader)) # Approx
+        
+        # We track global steps for logging
+        # If range test, we use 'steps' accumulator across epochs (if multiple)
+        # But range test is usually 1 epoch.
         while True:
             # Draw sample from Sobol sequence
             # draw() returns (1, 1) tensor, get item
@@ -358,57 +425,59 @@ def train_world_model(cfg: DictConfig) -> None:
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             scaler.step(optimizer)
             scaler.update()
-            
+
+            if scheduler is not None:
+                scheduler.step()
+
             total_loss += loss.detach()
             total_state_loss += state_loss.detach()
             total_action_loss += action_loss.detach()
+
+            # Global Step Logging
+            current_lr = optimizer.param_groups[0]['lr']
+            
+            # Log every step for range test, or every 10 for normal
+            log_freq = 1 if (sched_cfg and "range_test" in sched_cfg.type) else 10
+            
+            # We need a persistent global step counter. 
+            # Ideally passed in or static. For now, let's use steps_in_epoch + accumulated?
+            # Actually, `scheduler.last_epoch` tracks steps for LambdaLR if stepped every batch.
+            # Or just use a simple counter.
+            
+            # Let's write to CSV
+            if steps_in_epoch % log_freq == 0:
+                with open(step_log_path, "a") as f:
+                     # For range test, we only care about the sequence
+                     f.write(f"{steps_in_epoch},{epoch+1},{current_lr:.8f},{loss.item():.6f},{state_loss.item():.6f},{action_loss.item():.6f}\n")
+
+            # Check for range test limit
+            if sched_cfg and "range_test" in sched_cfg.type:
+                if sched_cfg.num_steps and steps_in_epoch >= sched_cfg.num_steps:
+                    log.info(f"Reached max steps for Range Test ({sched_cfg.num_steps}). Stopping.")
+                    return # Exit training completely
             
             
             if is_short:
-                # We only count short batches towards the 'steps' if we want to match pbar?
-                # Actually pbar was over num_short_batches.
-                # Let's just update pbar for every STEP, but maybe adjust total?
-                # The pbar total is num_short_batches. 
-                # Since we mix now, the total loop might be larger (approx num_short * (1 + 1/ratio)).
-                # Use pbar.update(1) regardless.
+                # Normal mode: only update pbar on short batches (since total is num_short)
+                if not (sched_cfg and "range_test" in sched_cfg.type and sched_cfg.num_steps):
+                    pbar.update(1)
+            
+            # Range test mode: update on every step
+            if sched_cfg and "range_test" in sched_cfg.type and sched_cfg.num_steps:
                 pbar.update(1)
 
-            # Update metrics (same moved from inside loop)
-            with torch.no_grad():
-                valid_mask = loss_mask_slice.bool()
-                if valid_mask.any():
-                    valid_pred = pred_actions[valid_mask]
-                    valid_target = target_actions[valid_mask]
-                    
-                    p_logits = valid_pred[..., 0:3].reshape(-1, 3)
-                    t_logits = valid_pred[..., 3:10].reshape(-1, 7)
-                    s_logits = valid_pred[..., 10:12].reshape(-1, 2)
-                    
-                    p_target = valid_target[..., 0].long().reshape(-1)
-                    t_target = valid_target[..., 1].long().reshape(-1)
-                    s_target = valid_target[..., 2].long().reshape(-1)
-                    
-                    if p_target.numel() > 0:
-                        total_error_power += (p_logits.argmax(-1) != p_target).float().mean()
-                        total_error_turn += (t_logits.argmax(-1) != t_target).float().mean()
-                        total_error_shoot += (s_logits.argmax(-1) != s_target).float().mean()
-
-            steps += 1
-            if steps % 50 == 0:
+            steps_in_epoch += 1
+            if steps_in_epoch % 50 == 0:
                 pbar.set_postfix({
-                    "loss": total_loss.item() / steps,
-                    "state": total_state_loss.item() / steps,
-                    "action": total_action_loss.item() / steps
+                    "loss": total_loss.item() / steps_in_epoch,
+                    "state": total_state_loss.item() / steps_in_epoch,
+                    "action": total_action_loss.item() / steps_in_epoch
                 })
 
-        avg_loss = total_loss.item() / steps if steps > 0 else 0
-        avg_state_loss = total_state_loss.item() / steps if steps > 0 else 0
-        avg_action_loss = total_action_loss.item() / steps if steps > 0 else 0
-        avg_err_p = total_error_power.item() / steps if steps > 0 else 0
-        avg_err_t = total_error_turn.item() / steps if steps > 0 else 0
-        avg_err_s = total_error_shoot.item() / steps if steps > 0 else 0
-
-        log.info(f"Epoch {epoch + 1}: Train Loss={avg_loss:.4f} (State={avg_state_loss:.4f}, Action={avg_action_loss:.4f})")
+        avg_err_s = total_error_shoot.item() / steps_in_epoch if steps_in_epoch > 0 else 0
+        
+        current_lr = optimizer.param_groups[0]['lr']
+        log.info(f"Epoch {epoch + 1}: LR={current_lr:.2e} Train Loss={avg_loss:.4f} (State={avg_state_loss:.4f}, Action={avg_action_loss:.4f})")
 
         # Validation
         model.eval()
@@ -488,12 +557,14 @@ def train_world_model(cfg: DictConfig) -> None:
         log.info(f"Epoch {epoch + 1}: Val Loss={avg_val_loss:.4f}")
 
         # Log to CSV
+        current_lr = optimizer.param_groups[0]['lr']
         with open(csv_path, "a") as f:
             f.write(
-                f"{epoch + 1},{avg_loss:.6f},{avg_state_loss:.6f},{avg_action_loss:.6f},{avg_val_loss:.6f}\n"
+                f"{epoch + 1},{current_lr:.8f},{avg_loss:.6f},{avg_state_loss:.6f},{avg_action_loss:.6f},{avg_val_loss:.6f}\n"
             )
 
         # Log to TensorBoard
+        writer.add_scalar("Train/LearningRate", current_lr, epoch)
         writer.add_scalar("Loss/train", avg_loss, epoch)
         writer.add_scalar("Loss/train_state", avg_state_loss, epoch)
         writer.add_scalar("Loss/train_action", avg_action_loss, epoch)

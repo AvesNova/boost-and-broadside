@@ -147,6 +147,22 @@ uv run main.py mode=train train.run_collect=true train.run_world_model=true --co
 
 ## Tools & Debugging
 
+### Learning Rate Range Test
+
+Use this workflow to find the optimal learning rate.
+
+1. **Run the Range Test**:
+    ```powershell
+    # Run training for 1 epoch with exponential LR scheduling
+    uv run main.py mode=train_wm world_model.scheduler.type=exponential_range_test world_model.epochs=1
+    ```
+
+2. **Analyze Results**:
+    ```powershell
+    # Find steepest descent point (limit max_lr to avoid instability)
+    uv run python tools/analyze_lr_test.py --latest --max_lr 5e-4
+    ```
+
 We provide tools in the `tools/` directory to help with development.
 
 ```powershell
