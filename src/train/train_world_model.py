@@ -9,6 +9,7 @@ import logging
 from pathlib import Path
 
 from datetime import datetime
+import os
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
@@ -152,6 +153,10 @@ def train_world_model(cfg: DictConfig) -> None:
     """
     log.info("Starting World Model training...")
 
+    # 1. Enable TF32 globally
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     log.info(f"Using device: {device}")
 
@@ -180,10 +185,20 @@ def train_world_model(cfg: DictConfig) -> None:
         n_heads=cfg.world_model.n_heads,
         max_ships=cfg.world_model.n_ships,
         max_context_len=cfg.world_model.context_len,
-        dropout=0.1,
     ).to(device)
 
-    optimizer = optim.AdamW(model.parameters(), lr=cfg.world_model.learning_rate)
+    # 2. Compile model
+    if os.name != 'nt':
+        log.info("Compiling model...")
+        model = torch.compile(model)
+    else:
+        log.info("Skipping torch.compile on Windows (Triton usually missing)")
+
+    # 3. Fused AdamW
+    optimizer = optim.AdamW(model.parameters(), lr=cfg.world_model.learning_rate, fused=True)
+
+    # 4. Initialize GradScaler for AMP
+    scaler = torch.amp.GradScaler('cuda')
 
     # Setup logging and output directory
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -229,12 +244,13 @@ def train_world_model(cfg: DictConfig) -> None:
 
 
         model.train()
-        total_loss = 0
-        total_state_loss = 0
-        total_action_loss = 0
-        total_error_power = 0
-        total_error_turn = 0
-        total_error_shoot = 0
+        # 5. Initialize metrics as Tensors on GPU to avoid sync
+        total_loss = torch.tensor(0.0, device=device)
+        total_state_loss = torch.tensor(0.0, device=device)
+        total_action_loss = torch.tensor(0.0, device=device)
+        total_error_power = torch.tensor(0.0, device=device)
+        total_error_turn = torch.tensor(0.0, device=device)
+        total_error_shoot = torch.tensor(0.0, device=device)
 
         # Create iterators
         short_iter = iter(train_short_loader)
@@ -299,31 +315,38 @@ def train_world_model(cfg: DictConfig) -> None:
                 rollout_len = get_rollout_length(epoch, cfg)
                 perform_rollout(model, input_states, input_actions, input_team_ids, rollout_len)
 
-                # Train Step
+                # Train Step (AMP)
                 optimizer.zero_grad()
 
-                pred_states, pred_actions, _ = model(
-                    input_states,
-                    input_actions,
-                    input_team_ids,
-                    noise_scale=cfg.world_model.noise_scale
-                )
+                with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
+                    pred_states, pred_actions, _ = model(
+                        input_states,
+                        input_actions,
+                        input_team_ids,
+                        noise_scale=cfg.world_model.noise_scale
+                    )
 
-                loss, state_loss, action_loss = model.get_loss(
-                    pred_states=pred_states,
-                    pred_actions=pred_actions,
-                    target_states=target_states,
-                    target_actions=target_actions,
-                    loss_mask=loss_mask_slice
-                )
+                    loss, state_loss, action_loss = model.get_loss(
+                        pred_states=pred_states,
+                        pred_actions=pred_actions,
+                        target_states=target_states,
+                        target_actions=target_actions,
+                        loss_mask=loss_mask_slice
+                    )
 
-                loss.backward()
+                # Scaled Backward
+                scaler.scale(loss).backward()
+                
+                scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                optimizer.step()
+                
+                scaler.step(optimizer)
+                scaler.update()
 
-                total_loss += loss.item()
-                total_state_loss += state_loss.item()
-                total_action_loss += action_loss.item()
+                # Accumulate as tensor (No .item())
+                total_loss += loss.detach()
+                total_state_loss += state_loss.detach()
+                total_action_loss += action_loss.detach()
                 
                 with torch.no_grad():
                     valid_mask = loss_mask_slice.bool()
@@ -339,11 +362,13 @@ def train_world_model(cfg: DictConfig) -> None:
                     s_target = valid_target[..., 2].long().reshape(-1)
                     
                     if p_target.numel() > 0:
-                        total_error_power += (p_logits.argmax(-1) != p_target).float().mean().item()
-                        total_error_turn += (t_logits.argmax(-1) != t_target).float().mean().item()
-                        total_error_shoot += (s_logits.argmax(-1) != s_target).float().mean().item()
+                        total_error_power += (p_logits.argmax(-1) != p_target).float().mean()
+                        total_error_turn += (t_logits.argmax(-1) != t_target).float().mean()
+                        total_error_shoot += (s_logits.argmax(-1) != s_target).float().mean()
 
                 steps += 1
+                
+                # Update pbar every step for smooth it/s, but don't unnecessary sync metrics
                 pbar.update(1)
 
             if short_exhausted:
@@ -391,52 +416,56 @@ def train_world_model(cfg: DictConfig) -> None:
 
             optimizer.zero_grad()
             
-            pred_states, pred_actions, _ = model(
-                input_states,
-                input_actions,
-                input_team_ids,
-                noise_scale=cfg.world_model.noise_scale
-            )
+            with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
+                pred_states, pred_actions, _ = model(
+                    input_states,
+                    input_actions,
+                    input_team_ids,
+                    noise_scale=cfg.world_model.noise_scale
+                )
+                
+                loss, state_loss, action_loss = model.get_loss(
+                    pred_states=pred_states,
+                    pred_actions=pred_actions,
+                    target_states=target_states,
+                    target_actions=target_actions,
+                    loss_mask=loss_mask_slice
+                )
             
-            loss, state_loss, action_loss = model.get_loss(
-                pred_states=pred_states,
-                pred_actions=pred_actions,
-                target_states=target_states,
-                target_actions=target_actions,
-                loss_mask=loss_mask_slice
-            )
-            
-            loss.backward()
+            scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            optimizer.step()
+            scaler.step(optimizer)
+            scaler.update()
             
-            total_loss += loss.item()
-            total_state_loss += state_loss.item()
-            total_action_loss += action_loss.item()
+            total_loss += loss.detach()
+            total_state_loss += state_loss.detach()
+            total_action_loss += action_loss.detach()
             
             steps += 1
-            pbar.set_postfix({
-                "loss": total_loss / steps,
-                "state": total_state_loss / steps,
-                "action": total_action_loss / steps
-            })
+            if steps % 50 == 0:
+                pbar.set_postfix({
+                    "loss": total_loss.item() / steps,
+                    "state": total_state_loss.item() / steps,
+                    "action": total_action_loss.item() / steps
+                })
 
-        avg_loss = total_loss / steps if steps > 0 else 0
-        avg_state_loss = total_state_loss / steps if steps > 0 else 0
-        avg_action_loss = total_action_loss / steps if steps > 0 else 0
-        avg_err_p = total_error_power / steps if steps > 0 else 0
-        avg_err_t = total_error_turn / steps if steps > 0 else 0
-        avg_err_s = total_error_shoot / steps if steps > 0 else 0
+        avg_loss = total_loss.item() / steps if steps > 0 else 0
+        avg_state_loss = total_state_loss.item() / steps if steps > 0 else 0
+        avg_action_loss = total_action_loss.item() / steps if steps > 0 else 0
+        avg_err_p = total_error_power.item() / steps if steps > 0 else 0
+        avg_err_t = total_error_turn.item() / steps if steps > 0 else 0
+        avg_err_s = total_error_shoot.item() / steps if steps > 0 else 0
 
         log.info(f"Epoch {epoch + 1}: Train Loss={avg_loss:.4f} (State={avg_state_loss:.4f}, Action={avg_action_loss:.4f})")
 
         # Validation
         model.eval()
-        val_loss = 0
+        val_loss = torch.tensor(0.0, device=device)
         val_steps = 0
-        val_error_p = 0
-        val_error_t = 0
-        val_error_s = 0
+        val_error_p = torch.tensor(0.0, device=device)
+        val_error_t = torch.tensor(0.0, device=device)
+        val_error_s = torch.tensor(0.0, device=device)
 
         for loader in [val_short_loader, val_long_loader]:
             with torch.no_grad():
@@ -467,19 +496,20 @@ def train_world_model(cfg: DictConfig) -> None:
                     
                     loss_mask_slice = loss_mask[:, 1:]
 
-                    pred_states, pred_actions, _ = model(
-                        input_states, input_actions, input_team_ids, noise_scale=0.0
-                    )
+                    with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
+                        pred_states, pred_actions, _ = model(
+                            input_states, input_actions, input_team_ids, noise_scale=0.0
+                        )
 
-                    loss, state_loss, action_loss = model.get_loss(
-                        pred_states=pred_states,
-                        pred_actions=pred_actions,
-                        target_states=target_states,
-                        target_actions=target_actions,
-                        loss_mask=loss_mask_slice
-                    )
+                        loss, state_loss, action_loss = model.get_loss(
+                            pred_states=pred_states,
+                            pred_actions=pred_actions,
+                            target_states=target_states,
+                            target_actions=target_actions,
+                            loss_mask=loss_mask_slice
+                        )
                     
-                    val_loss += loss.item()
+                    val_loss += loss
                     val_steps += 1
                     
                     valid_mask = loss_mask_slice.bool()
@@ -495,14 +525,14 @@ def train_world_model(cfg: DictConfig) -> None:
                     s_target = valid_target[..., 2].long().reshape(-1)
                     
                     if p_target.numel() > 0:
-                        val_error_p += (p_logits.argmax(-1) != p_target).float().mean().item()
-                        val_error_t += (t_logits.argmax(-1) != t_target).float().mean().item()
-                        val_error_s += (s_logits.argmax(-1) != s_target).float().mean().item()
+                        val_error_p += (p_logits.argmax(-1) != p_target).float().mean()
+                        val_error_t += (t_logits.argmax(-1) != t_target).float().mean()
+                        val_error_s += (s_logits.argmax(-1) != s_target).float().mean()
 
-        avg_val_loss = val_loss / val_steps if val_steps > 0 else 0
-        avg_val_err_p = val_error_p / val_steps if val_steps > 0 else 0
-        avg_val_err_t = val_error_t / val_steps if val_steps > 0 else 0
-        avg_val_err_s = val_error_s / val_steps if val_steps > 0 else 0
+        avg_val_loss = val_loss.item() / val_steps if val_steps > 0 else 0
+        avg_val_err_p = val_error_p.item() / val_steps if val_steps > 0 else 0
+        avg_val_err_t = val_error_t.item() / val_steps if val_steps > 0 else 0
+        avg_val_err_s = val_error_s.item() / val_steps if val_steps > 0 else 0
 
         log.info(f"Epoch {epoch + 1}: Val Loss={avg_val_loss:.4f}")
 
