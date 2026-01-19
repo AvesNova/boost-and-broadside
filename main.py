@@ -2,6 +2,11 @@
 Main entry point for the Boost and Broadside application.
 """
 
+import warnings
+
+# Suppress pkg_resources deprecation warning from pygame
+warnings.filterwarnings("ignore", message="pkg_resources is deprecated as an API")
+
 import hydra
 from omegaconf import DictConfig
 
