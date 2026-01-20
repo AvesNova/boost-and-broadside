@@ -150,7 +150,7 @@ def perform_rollout(model, input_states, input_actions, team_ids, rollout_len):
 
 
 
-def validate_model(model, loaders, device, amp=True):
+def validate_model(model, loaders, device, amp=True, lambda_state=1.0, lambda_action=0.01):
     """
     Run validation loop and return metrics.
     """
@@ -201,7 +201,9 @@ def validate_model(model, loaders, device, amp=True):
                         pred_actions=pred_actions,
                         target_states=target_states,
                         target_actions=target_actions,
-                        loss_mask=loss_mask_slice
+                        loss_mask=loss_mask_slice,
+                        lambda_state=lambda_state,
+                        lambda_action=lambda_action
                     )
                 
                 val_loss += loss
@@ -532,7 +534,9 @@ def train_world_model(cfg: DictConfig) -> None:
                     pred_actions=pred_actions,
                     target_states=target_states,
                     target_actions=target_actions,
-                    loss_mask=loss_mask_slice
+                    loss_mask=loss_mask_slice,
+                    lambda_state=cfg.world_model.get("lambda_state", 1.0),
+                    lambda_action=cfg.world_model.get("lambda_action", 0.01)
                 )
             
             scaler.scale(loss).backward()
@@ -602,17 +606,33 @@ def train_world_model(cfg: DictConfig) -> None:
         log.info(f"Epoch {epoch + 1}: LR={current_lr:.2e} Train Loss={avg_loss:.4f} (State={avg_state_loss:.4f}, Action={avg_action_loss:.4f})")
 
         # Validation (Live Model)
-        val_metrics = validate_model(model, [val_short_loader, val_long_loader], device)
+        val_metrics = validate_model(
+            model, 
+            [val_short_loader, val_long_loader], 
+            device,
+            lambda_state=cfg.world_model.get("lambda_state", 1.0),
+            lambda_action=cfg.world_model.get("lambda_action", 0.01)
+        )
         avg_val_loss = val_metrics["val_loss"]
         
         log.info(f"Epoch {epoch + 1}: Val Loss={avg_val_loss:.4f}")
 
+        # SWA Update
+        if epoch >= cfg.world_model.get("swa_start_epoch", 2):
+             swa_model.update_parameters(model)
+
         # SWA Evaluation
         avg_val_loss_swa = None
-        if epoch >= 1:
+        if epoch >= cfg.world_model.get("swa_start_epoch", 2):
              # Move SWA model to GPU
              swa_model.averaged_model.to(device)
-             val_metrics_swa = validate_model(swa_model.averaged_model, [val_short_loader, val_long_loader], device)
+             val_metrics_swa = validate_model(
+                 swa_model.averaged_model, 
+                 [val_short_loader, val_long_loader], 
+                 device,
+                 lambda_state=cfg.world_model.get("lambda_state", 1.0),
+                 lambda_action=cfg.world_model.get("lambda_action", 0.01)
+             )
              swa_model.averaged_model.to('cpu') # Move back to CPU
              
              avg_val_loss_swa = val_metrics_swa["val_loss"]
@@ -669,10 +689,6 @@ def train_world_model(cfg: DictConfig) -> None:
             save_path = run_dir / f"world_model_epoch_{epoch + 1}.pt"
             torch.save(checkpoint, save_path)
             log.info(f"Saved full checkpoint to {save_path}")
-
-        # SWA Update (Start at end of Epoch 2, i.e., index 1)
-        if epoch >= 1:
-             swa_model.update_parameters(model)
 
     # Save Final Checkpoints
     final_checkpoint = {

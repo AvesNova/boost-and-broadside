@@ -519,7 +519,7 @@ class InterleavedWorldModel(nn.Module):
         target_actions,
         loss_mask, 
         lambda_state=1.0,
-        lambda_action=0.1
+        lambda_action=0.01
     ):
         """
         pred_states: (B, T, N, D)

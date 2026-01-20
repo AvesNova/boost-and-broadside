@@ -109,11 +109,13 @@ world_model:
   context_len: 96
   n_ships: 8
   mask_ratio: 0.0
-  noise_scale: 0.1
+  noise_scale: 0.01
   input_noise_ratio: 1.0
   input_noise_scale: 0.01
-  learning_rate: 3.2e-5
+  learning_rate: 2.4e-5
   epochs: 100000
+  lambda_state: 1.0
+  lambda_action: 0.05
 
   scheduler:
     type: "warmup_constant" # Options: "constant", "warmup_constant", "linear_range_test", "exponential_range_test"
@@ -139,10 +141,11 @@ world_model:
   
   num_workers: 4
   prefetch_factor: 2
+  swa_start_epoch: 2
 
   # Closed Loop Rollout (Scheduled Sampling)
   rollout:
-    enabled: true
+    enabled: false
     start_epoch: 32
     max_len_start: 1
     max_len_end: 8
