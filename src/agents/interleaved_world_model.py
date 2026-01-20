@@ -464,64 +464,79 @@ class InterleavedWorldModel(nn.Module):
         
         # 6. Relational Bias Computation
         # -------------------------------
-        # Physical States: (B, T, N, D_state)
-        # Sequence: S0, A0, S1, A1 ...
-        # Indices in L: 0, 1, 2, 3 ...
-        # S_t (Even): Pos from S_t
-        # A_t (Odd): Pos from S_t
+        # Structural Deduplication Strategy:
+        # Instead of computing features for all 2*T tokens (S0, A0, S1, A1...) linearly,
+        # we recognize that S_t and A_t share the same physical state (from S_t).
+        # We compute two fundamental matrices per timestep T:
+        # 1. bias_self: Rel(S_t, S_t)
+        # 2. bias_prev: Rel(S_t, S_{t-1})
+        #
+        # Then we assemble the full sequence:
+        # S_t (Index 2t):   Window [Prev, Curr] -> [S_{t-1}, S_t] -> [bias_prev, bias_self]
+        # A_t (Index 2t+1): Window [Prev, Curr] -> [S_t, S_t]     -> [bias_self, bias_self]
         
-        # Unpack physical pos/vel/att from states
-        # States: (B, T, N, D)
-        # We need to interleave them to match sequence L
-        # repeat_interleave(2, dim=1) -> (B, L, N, D)
-        phys_seq = states.repeat_interleave(2, dim=1)
+        # 1. Prepare Physical States (B, T, N, D)
+        curr_phys = states
         
+        # Prev Physical States (Shifted right, padded with zeros)
+        zeros_phys = torch.zeros_like(curr_phys[:, :1])
+        prev_phys = torch.cat([zeros_phys, curr_phys[:, :-1]], dim=1)
+        
+        # 2. Compute Biases (Vectorized over T)
+        # Input to extractor: (B*T, N, D)
+        # We verify if we are in generation mode (past_kv present)
         if past_key_values is not None and len(past_key_values) > 0:
-             # Generation Mode: 
-             # We are generating step L=1 (e.g. S_next or A_curr)
-             # But our logic for generating 'bias' expects full sequence batching for 'past_kv' handling?
-             # Wait, Spatial Attention only looks at previous 1 step.
-             # Phys Seq for current step: (B, 1, N, D)
+             # GENERATION MODE (Simplified fallback for now)
+             # Logic is tricky because 'states' input might be just length 1.
+             # Fallback to the naive approach for generation safety or handle explicitly.
+             # For now, let's use the explicit robust logic:
+             phys_seq = states.repeat_interleave(2, dim=1)
+             q_phys = phys_seq
+             zeros_gen = torch.zeros_like(q_phys[:, :1])
+             prev_gen = torch.cat([zeros_gen, q_phys[:, :-1]], dim=1)
              
-             # Need 'prev_phys' for the Key window.
-             # If we have cache, we need access to the physical state of the previous step.
-             # We assume caller provides 'states' that includes history?
-             # NO, 'states' arg in forward usually matches 'x' length roughly, likely 1 in generation.
-             # If generation, states is (B, 1, N, D)? Or (B, 0, N, D) if predicting first token?
-             # If generating A0 from S0: states has S0. output L=1 (A0).
-             # If generating S1 from S0, A0: states has S0? 
-             # The model signature: forward(states, ...)
-             # Usually 'states' contains the available ground truth.
+             # If we have history, we might need actual previous state from history?
+             # Since this is "Spatial" attention, the window is always [Prev, Curr].
+             # If L=1 (generating A_t), Prev is S_t.
+             # If L=1 (generating S_{t+1}), Prev is A_t (which has pos S_t).
+             # So actually, for generation step, reusing the naive flattening is safer 
+             # and performance matters less (batch size small).
              
-             # Simplified for now: assume states matches 'tokens' length structure.
-             pass
-
-        # For batch training (L > 1)
-        # Query Physical: phys_seq[:, 0:L]
-        q_phys = phys_seq
-        
-        # Key Physical: Concat([Previous, Current])
-        # Shift right 1 to get previous
-        # Pad with first state or zeros? 
-        # Zeros is safer for feature extractor (features will be garbage but bias learned to ignore)
-        zeros_phys = torch.zeros_like(q_phys[:, :1])
-        prev_phys = torch.cat([zeros_phys, q_phys[:, :-1]], dim=1)
-        
-        # Flatten L into Batch for extractor
-        # q_input: (B*L, N, D)
-        q_phys_flat = q_phys.view(B*L, N, -1)
-        
-        # k_input: (B*L, 2N, D) -> Concat(prev, curr) at dim 1 (ships)
-        # We want [Prev Ships, Curr Ships]
-        # prev_phys is (B, L, N, D)
-        # Concatenate along N dimension?
-        # SpatialSelfAttention concatenates K as: cat([k_prev, k], dim=2) -> 2N
-        # So we must match that order.
-        
-        k_phys_flat = torch.cat([prev_phys, q_phys], dim=2).view(B*L, 2*N, -1)
-        
-        # Compute Bias: (B*L, Heads, N, 2N)
-        rel_bias_flat = self.relational_extractor(q_phys_flat, k_phys_flat)
+             q_flat_gen = q_phys.view(B*L, N, -1)
+             k_flat_gen = torch.cat([prev_gen, q_phys], dim=2).view(B*L, 2*N, -1)
+             rel_bias_flat = self.relational_extractor(q_flat_gen, k_flat_gen)
+             
+        else:
+            # TRAINING MODE (Full Sequence Optimization)
+            
+            # Reshape for Extractor (B*T, N, D)
+            curr_flat = curr_phys.reshape(B*T, N, -1)
+            prev_flat = prev_phys.reshape(B*T, N, -1)
+            
+            # Compute Matrices
+            # bias_self: (B*T, H, N, N)
+            bias_self = self.relational_extractor(curr_flat, curr_flat)
+            
+            # bias_prev: (B*T, H, N, N)
+            bias_prev = self.relational_extractor(curr_flat, prev_flat)
+            
+            # Unflatten back to (B, T, H, N, N)
+            bias_self = bias_self.view(B, T, self.config.n_heads, N, N)
+            bias_prev = bias_prev.view(B, T, self.config.n_heads, N, N)
+            
+            # 3. Assembly
+            # S_t Rows: Cat(bias_prev, bias_self) -> (B, T, H, N, 2N)
+            row_s = torch.cat([bias_prev, bias_self], dim=-1)
+            
+            # A_t Rows: Cat(bias_self, bias_self) -> (B, T, H, N, 2N)
+            row_a = torch.cat([bias_self, bias_self], dim=-1)
+            
+            # Interleave Rows: Stack (B, T, 2, ...) -> Flatten T*2
+            # Stack dim 2
+            combined_bias = torch.stack([row_s, row_a], dim=2) # (B, T, 2, H, N, 2N)
+            
+            # Flatten to (B*L, H, N, 2N) where L = 2*T
+            rel_bias_flat = combined_bias.view(B * L, self.config.n_heads, N, 2 * N)
         
         # 7. Transformer
         x = tokens
