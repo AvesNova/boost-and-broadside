@@ -4,51 +4,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from agents.rope import RotaryPositionEmbedding
+from agents.relational_features import RelationalFeatureExtractor
+from agents.layers import DyadicFourierFeatureExtractor, GatedSwiGLU
 
-class DyadicFourierFeatureExtractor(nn.Module):
-    """
-    Maps continuous inputs to higher dimensional space using Dyadic Fourier Features.
-    Features: [sin(2^k * pi * x), cos(2^k * pi * x)] for k in frequencies.
-    """
-    def __init__(self, input_dim: int, embed_dim: int, num_freqs: int = 4):
-        super().__init__()
-        self.input_dim = input_dim
-        self.num_freqs = num_freqs
-        self.out_dim = input_dim * num_freqs * 2
-        
-        # Project to embed_dim (to input into FFN correctly)
-        self.projection = nn.Linear(self.out_dim, embed_dim)
-        
-        # Frequencies: 2^k * PI.
-        self.register_buffer("freqs", 2.0 ** torch.arange(num_freqs))
 
-    def forward(self, x):
-        # x: (..., input_dim)
-        scaled = x.unsqueeze(-1) * self.freqs * torch.pi
-        sin_feat = torch.sin(scaled)
-        cos_feat = torch.cos(scaled)
-        feats = torch.stack([sin_feat, cos_feat], dim=-1)
-        feats = feats.view(*x.shape[:-1], -1)
-        return self.projection(feats)
-
-class GatedSwiGLU(nn.Module):
-    """
-    Gated Linear Unit with Swish activation (SwiGLU).
-    Maps input -> Hidden (2x) -> Output.
-    """
-    def __init__(self, in_features, hidden_features, out_features, dropout=0.0):
-        super().__init__()
-        self.w_gate = nn.Linear(in_features, hidden_features)
-        self.w_val = nn.Linear(in_features, hidden_features)
-        self.w_out = nn.Linear(hidden_features, out_features)
-        self.dropout = nn.Dropout(dropout)
-        self.act = nn.SiLU()
-
-    def forward(self, x):
-        gate = self.act(self.w_gate(x))
-        val = self.w_val(x)
-        out = self.w_out(gate * val)
-        return self.dropout(out)
 
 class GatedStateEncoder(nn.Module):
     """
@@ -188,7 +147,7 @@ class SpatialSelfAttention(nn.Module):
         self.attn_dropout = nn.Dropout(config.dropout)
         self.resid_dropout = nn.Dropout(config.dropout)
 
-    def forward(self, x, past_kv=None, use_cache=False):
+    def forward(self, x, past_kv=None, use_cache=False, relational_bias=None):
         # x: (B, L, N, E)
         # Goal: Each timestep L attends to itself (N) and previous timestep (N window).
         # Sequence L is S0, A0, S1, A1...
@@ -265,8 +224,26 @@ class SpatialSelfAttention(nn.Module):
         v_flat = v_window.permute(0, 1, 3, 2, 4).reshape(B*L, self.n_heads, 2*N, self.head_dim)
         
         # Attention - NON CAUSAL (because we manually windowed)
+        # Attention - NON CAUSAL (because we manually windowed)
+        # y = SDPA(q, k, v)
+        # q: (batch, heads, N, D)
+        # k: (batch, heads, 2N, D)
+        # bias: (batch, heads, N, 2N)
+        
+        if relational_bias is not None:
+             # relational_bias is (B*L, Heads, N, 2N)
+             # SDPA supports attn_mask.
+             # but strictly speaking SDPA with mask is usually boolean or additive float.
+             # To apply additive bias, we might need to manually do attention if SDPA doesn't support 'bias' directly (it supports mask).
+             # PyTorch 2.0 SDPA: attn_mask can be a float mask (added to scores).
+             pass
+             
+        # Manual Attention for Bias (if bias present) or rely on SDPA support
+        # SDPA docs: "If attn_mask is a Tensor, it must be ... or a float tensor of shape compatible with (batch, heads, target_seq, source_seq) ... added to the attention scores"
+        
         y = F.scaled_dot_product_attention(
             q_flat, k_flat, v_flat,
+            attn_mask=relational_bias,
             dropout_p=self.attn_dropout.p if self.training else 0.0
         )
         
@@ -294,12 +271,12 @@ class Block(nn.Module):
             nn.Dropout(config.dropout)
         )
 
-    def forward(self, x, position_ids=None, past_kv=None, use_cache=False):
+    def forward(self, x, position_ids=None, past_kv=None, use_cache=False, relational_bias=None):
         # Determine KV for this block type
         if self.attn_type == "temporal":
              attn_out, current_kv = self.attn(self.ln_1(x), position_ids, past_kv, use_cache)
         else:
-             attn_out, current_kv = self.attn(self.ln_1(x), past_kv, use_cache)
+             attn_out, current_kv = self.attn(self.ln_1(x), past_kv, use_cache, relational_bias=relational_bias)
              
         x = x + attn_out
         x = x + self.mlp(self.ln_2(x))
@@ -340,6 +317,13 @@ class InterleavedWorldModel(nn.Module):
         self.state_encoder = GatedStateEncoder(
             input_dim=self.num_continuous,
             embed_dim=embed_dim,
+            dropout=dropout
+        )
+        
+        # Relational Bias Extractor
+        self.relational_extractor = RelationalFeatureExtractor(
+            embed_dim=embed_dim,
+            num_heads=n_heads,
             dropout=dropout
         )
         
@@ -478,13 +462,74 @@ class InterleavedWorldModel(nn.Module):
         
         position_ids = torch.arange(past_len, past_len + L, device=device).unsqueeze(0).expand(B, L)
         
+        # 6. Relational Bias Computation
+        # -------------------------------
+        # Physical States: (B, T, N, D_state)
+        # Sequence: S0, A0, S1, A1 ...
+        # Indices in L: 0, 1, 2, 3 ...
+        # S_t (Even): Pos from S_t
+        # A_t (Odd): Pos from S_t
+        
+        # Unpack physical pos/vel/att from states
+        # States: (B, T, N, D)
+        # We need to interleave them to match sequence L
+        # repeat_interleave(2, dim=1) -> (B, L, N, D)
+        phys_seq = states.repeat_interleave(2, dim=1)
+        
+        if past_key_values is not None and len(past_key_values) > 0:
+             # Generation Mode: 
+             # We are generating step L=1 (e.g. S_next or A_curr)
+             # But our logic for generating 'bias' expects full sequence batching for 'past_kv' handling?
+             # Wait, Spatial Attention only looks at previous 1 step.
+             # Phys Seq for current step: (B, 1, N, D)
+             
+             # Need 'prev_phys' for the Key window.
+             # If we have cache, we need access to the physical state of the previous step.
+             # We assume caller provides 'states' that includes history?
+             # NO, 'states' arg in forward usually matches 'x' length roughly, likely 1 in generation.
+             # If generation, states is (B, 1, N, D)? Or (B, 0, N, D) if predicting first token?
+             # If generating A0 from S0: states has S0. output L=1 (A0).
+             # If generating S1 from S0, A0: states has S0? 
+             # The model signature: forward(states, ...)
+             # Usually 'states' contains the available ground truth.
+             
+             # Simplified for now: assume states matches 'tokens' length structure.
+             pass
+
+        # For batch training (L > 1)
+        # Query Physical: phys_seq[:, 0:L]
+        q_phys = phys_seq
+        
+        # Key Physical: Concat([Previous, Current])
+        # Shift right 1 to get previous
+        # Pad with first state or zeros? 
+        # Zeros is safer for feature extractor (features will be garbage but bias learned to ignore)
+        zeros_phys = torch.zeros_like(q_phys[:, :1])
+        prev_phys = torch.cat([zeros_phys, q_phys[:, :-1]], dim=1)
+        
+        # Flatten L into Batch for extractor
+        # q_input: (B*L, N, D)
+        q_phys_flat = q_phys.view(B*L, N, -1)
+        
+        # k_input: (B*L, 2N, D) -> Concat(prev, curr) at dim 1 (ships)
+        # We want [Prev Ships, Curr Ships]
+        # prev_phys is (B, L, N, D)
+        # Concatenate along N dimension?
+        # SpatialSelfAttention concatenates K as: cat([k_prev, k], dim=2) -> 2N
+        # So we must match that order.
+        
+        k_phys_flat = torch.cat([prev_phys, q_phys], dim=2).view(B*L, 2*N, -1)
+        
+        # Compute Bias: (B*L, Heads, N, 2N)
+        rel_bias_flat = self.relational_extractor(q_phys_flat, k_phys_flat)
+        
         # 7. Transformer
         x = tokens
         current_key_values = []
         
         for i, block in enumerate(self.blocks):
             pk = past_key_values[i] if past_key_values is not None else None
-            x, kv = block(x, position_ids=position_ids, past_kv=pk, use_cache=use_cache)
+            x, kv = block(x, position_ids=position_ids, past_kv=pk, use_cache=use_cache, relational_bias=rel_bias_flat)
             if use_cache:
                 current_key_values.append(kv)
                 
