@@ -429,6 +429,8 @@ def train_world_model(cfg: DictConfig) -> None:
         )
     )
 
+    global_step = 0
+
     for epoch in range(epochs):
         # Re-create data loaders each epoch to randomize pools -> MOVED OUTSIDE
 
@@ -464,7 +466,6 @@ def train_world_model(cfg: DictConfig) -> None:
         sobol_engine = torch.quasirandom.SobolEngine(dimension=1, scramble=True)
         
         steps_in_epoch = 0
-        global_step_start = epoch * (total_steps if sched_cfg and "range_test" in sched_cfg.type and sched_cfg.range_test.steps else len(train_short_loader)) # Approx
         
         # We track global steps for logging
         # If range test, we use 'steps' accumulator across epochs (if multiple)
@@ -580,7 +581,8 @@ def train_world_model(cfg: DictConfig) -> None:
             current_lr = optimizer.param_groups[0]['lr']
             
             # Use a persistent global step
-            current_step = global_step_start + steps_in_epoch
+            global_step += 1
+            current_step = global_step
             
             # Buffer Metrics (Detach to avoid memory leak)
             if cfg.wandb.enabled:
@@ -739,6 +741,23 @@ def train_world_model(cfg: DictConfig) -> None:
         writer.add_scalar("Error/val_turn", val_metrics["error_t"], epoch)
         writer.add_scalar("Error/val_shoot", val_metrics["error_s"], epoch)
 
+        # Log validation metrics to WandB
+        if wb_cfg and wb_cfg.get("enabled", False):
+            val_log = {
+                "val_loss": avg_val_loss,
+                "val_error_p": val_metrics["error_p"],
+                "val_error_t": val_metrics["error_t"],
+                "val_error_s": val_metrics["error_s"],
+                "epoch": epoch + 1
+            }
+            if avg_val_loss_swa is not None:
+                val_log["val_loss_swa"] = avg_val_loss_swa
+                val_log["val_error_p_swa"] = val_metrics_swa["error_p"]
+                val_log["val_error_t_swa"] = val_metrics_swa["error_t"]
+                val_log["val_error_s_swa"] = val_metrics_swa["error_s"]
+            
+            wandb.log(val_log, step=global_step)
+
         # Save Best Models
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
@@ -753,6 +772,7 @@ def train_world_model(cfg: DictConfig) -> None:
         if (epoch + 1) % 10 == 0:
             checkpoint = {
                 "epoch": epoch + 1,
+                "global_step": global_step,
                 "model_state_dict": model.state_dict(),
                 "swa_model_state_dict": swa_model.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
