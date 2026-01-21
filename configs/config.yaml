@@ -3,6 +3,15 @@ team1: scripted
 team2: scripted
 human_player: false
 
+wandb:
+  enabled: true
+  project: "boost-and-broadside"
+  entity: null
+  name: null
+  group: null
+  mode: "online"
+  log_frequency: 50
+
 environment:
   render_mode: "human"
   world_size: [1024, 1024]

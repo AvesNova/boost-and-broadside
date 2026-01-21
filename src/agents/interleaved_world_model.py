@@ -596,6 +596,23 @@ class InterleavedWorldModel(nn.Module):
         
         action_loss = loss_p + loss_t + loss_s
         
+        # Metrics: Entropy & Confidence
+        with torch.no_grad():
+            # Power
+            p_probs = F.softmax(p_logits, dim=-1)
+            entropy_p = -torch.sum(p_probs * torch.log(p_probs + 1e-8), dim=-1).mean()
+            prob_p = p_probs.gather(1, p_target.unsqueeze(1)).mean()
+
+            # Turn
+            t_probs = F.softmax(t_logits, dim=-1)
+            entropy_t = -torch.sum(t_probs * torch.log(t_probs + 1e-8), dim=-1).mean()
+            prob_t = t_probs.gather(1, t_target.unsqueeze(1)).mean()
+
+            # Shoot
+            s_probs = F.softmax(s_logits, dim=-1)
+            entropy_s = -torch.sum(s_probs * torch.log(s_probs + 1e-8), dim=-1).mean()
+            prob_s = s_probs.gather(1, s_target.unsqueeze(1)).mean()
+
         valid_pred_state = pred_states[valid_mask]
         valid_target_state = target_states[valid_mask]
         
@@ -603,7 +620,16 @@ class InterleavedWorldModel(nn.Module):
         
         total_loss = lambda_state * state_loss + lambda_action * action_loss
         
-        return total_loss, state_loss, action_loss
+        metrics = {
+             "entropy_p": entropy_p,
+             "entropy_t": entropy_t,
+             "entropy_s": entropy_s,
+             "prob_p": prob_p,
+             "prob_t": prob_t,
+             "prob_s": prob_s
+        }
+        
+        return total_loss, state_loss, action_loss, metrics
 
     @torch.no_grad()
     def generate(

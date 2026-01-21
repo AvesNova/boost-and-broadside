@@ -23,6 +23,7 @@ from tqdm import tqdm
 from agents.interleaved_world_model import InterleavedWorldModel
 from train.data_loader import load_bc_data, create_unified_data_loaders
 from train.swa import SWAModule
+import wandb
 
 
 
@@ -196,7 +197,7 @@ def validate_model(model, loaders, device, amp=True, lambda_state=1.0, lambda_ac
                         input_states, input_actions, input_team_ids, noise_scale=0.0
                     )
 
-                    loss, state_loss, action_loss = model.get_loss(
+                    loss, state_loss, action_loss, _ = model.get_loss(
                         pred_states=pred_states,
                         pred_actions=pred_actions,
                         target_states=target_states,
@@ -390,6 +391,23 @@ def train_world_model(cfg: DictConfig) -> None:
             "epoch,learning_rate,train_loss,train_state_loss,train_action_loss,val_loss,val_loss_swa\n"
         )
 
+    # Initialize W&B
+    wb_cfg = cfg.get("wandb", None)
+    if wb_cfg and wb_cfg.get("enabled", False):
+        wandb.init(
+            project=wb_cfg.project,
+            entity=wb_cfg.entity,
+            name=wb_cfg.get("name") or str(run_dir.name),
+            group=wb_cfg.get("group"),
+            mode=wb_cfg.get("mode", "online"),
+            config=OmegaConf.to_container(cfg, resolve=True),
+            resume=False
+        )
+    
+    # Logging Buffer
+    log_buffer = []
+    log_freq = wb_cfg.get("log_frequency", 50) if wb_cfg else 50
+
     # Training Loop
     epochs = cfg.world_model.epochs
     batch_ratio = cfg.world_model.batch_ratio
@@ -529,7 +547,8 @@ def train_world_model(cfg: DictConfig) -> None:
                     noise_scale=cfg.world_model.noise_scale
                 )
                 
-                loss, state_loss, action_loss = model.get_loss(
+                
+                loss, state_loss, action_loss, metrics = model.get_loss(
                     pred_states=pred_states,
                     pred_actions=pred_actions,
                     target_states=target_states,
@@ -538,10 +557,15 @@ def train_world_model(cfg: DictConfig) -> None:
                     lambda_state=cfg.world_model.get("lambda_state", 1.0),
                     lambda_action=cfg.world_model.get("lambda_action", 0.01)
                 )
-            
+
+                # Capture Metrics (if returned)
+                # Note: get_loss now returns 4 values, so we unpack directly above or handle tuple
+                # The updated get_loss returns (total, state, action, metrics_dict)
+                # But let's be safe if it falls back for some reason (though we edited it)
+
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            total_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             scaler.step(optimizer)
             scaler.update()
 
@@ -555,8 +579,58 @@ def train_world_model(cfg: DictConfig) -> None:
             # Global Step Logging
             current_lr = optimizer.param_groups[0]['lr']
             
+            # Use a persistent global step
+            current_step = global_step_start + steps_in_epoch
+            
+            # Buffer Metrics (Detach to avoid memory leak)
+            if cfg.wandb.enabled:
+                step_metrics = {
+                    "step": current_step,
+                    "epoch": epoch + 1,
+                    "lr": current_lr,
+                    "loss": loss.detach(),
+                    "state_loss": state_loss.detach(),
+                    "action_loss": action_loss.detach(),
+                    "grad_norm": total_norm.detach() if isinstance(total_norm, torch.Tensor) else torch.tensor(total_norm, device=device),
+                }
+                
+                # Add extra metrics
+                for k, v in metrics.items():
+                    if isinstance(v, torch.Tensor):
+                        step_metrics[k] = v.detach()
+                    else:
+                        step_metrics[k] = torch.tensor(v, device=device)
+                
+                log_buffer.append(step_metrics)
+                
+                # Flush Buffer
+                if len(log_buffer) >= log_freq:
+                    # Move to CPU in one go
+                    # We can't stack dicts directly, so stack values per key
+                    packed = {}
+                    keys = log_buffer[0].keys()
+                    for k in keys:
+                        # Stack tensors
+                        try:
+                            # Check if all are tensors
+                             tensors = [x[k] for x in log_buffer]
+                             packed[k] = torch.stack(tensors).cpu().tolist()
+                        except:
+                             # Fallback for non-tensors
+                             packed[k] = [x[k] for x in log_buffer]
+                    
+                    # Log to WandB
+                    for i in range(len(packed["step"])):
+                        log_item = {k: packed[k][i] for k in packed}
+                        # We must log sequentially with step
+                        step_val = int(log_item.pop("step"))
+                        wandb.log(log_item, step=step_val)
+                    
+                    log_buffer = []
+
+
             # Log every step for range test, or every 10 for normal
-            log_freq = 1 if (sched_cfg and "range_test" in sched_cfg.type) else 10
+            log_freq_csv = 1 if (sched_cfg and "range_test" in sched_cfg.type) else 10
             
             # We need a persistent global step counter. 
             # Ideally passed in or static. For now, let's use steps_in_epoch + accumulated?

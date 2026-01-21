@@ -1,5 +1,11 @@
 mode: collect
 
+wandb:
+  enabled: false
+  project: "boost-and-broadside-test"
+  mode: "offline"
+  log_frequency: 10
+
 environment:
   render_mode: "none"
   world_size: [1200, 800]

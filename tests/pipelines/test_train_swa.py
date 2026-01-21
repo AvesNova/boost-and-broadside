@@ -45,6 +45,13 @@ def test_train_swa_pipeline(default_config, tmp_path):
             "warmup": {"steps": 1, "start_lr": 0.0}
         }
     })
+    
+    cfg.wandb = OmegaConf.create({
+        "enabled": False,
+        "project": "test",
+        "mode": "offline",
+        "log_frequency": 1
+    })
 
     # Create Dummy HDF5 Data
     data_dir = tmp_path / "data" / "bc_pretraining" / "dummy_run"

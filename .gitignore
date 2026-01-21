@@ -10,3 +10,4 @@ outputs/
 *.egg-info/
 models/
 .agent/
+wandb/
