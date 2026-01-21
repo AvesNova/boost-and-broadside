@@ -121,8 +121,8 @@ world_model:
   noise_scale: 0.01
   input_noise_ratio: 1.0
   input_noise_scale: 0.01
-  learning_rate: 2.4e-5
-  epochs: 100000
+  learning_rate: 2.05e-4
+  epochs: 200
   lambda_state: 1.0
   lambda_action: 0.05
 
@@ -130,7 +130,7 @@ world_model:
     type: "warmup_constant" # Options: "constant", "warmup_constant", "linear_range_test", "exponential_range_test"
     
     warmup:
-      steps: 167 # Scaled by acc_steps (834/5)
+      steps: 500
       start_lr: 1e-7
       
     range_test:
