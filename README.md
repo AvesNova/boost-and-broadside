@@ -184,6 +184,25 @@ uv run python tools/verify_data_loading.py
 uv run python tools/viz_latent_space.py --latest
 ```
 
+## Logging & Metrics
+
+The training script logs various metrics to help diagnose model performance.
+
+### Training Metrics (Micro-steps)
+- **`loss`**: Total combined loss (State + Action).
+- **`state_loss`**: MSE loss for state reconstruction ($S_{t+1}$).
+- **`action_loss`**: Cross-entropy loss for action prediction ($A_t$).
+- **`error_power/turn/shoot`**: Classification error rate for each action component on the training batch.
+
+### Validation Metrics (Per Epoch)
+- **`val_loss`**: Total loss on the validation set (Teacher Forcing).
+- **`val_error_power/turn/shoot`**: Classification error rate on validation set.
+- **`val_rollout_mse_state`**: **Autoregressive** MSE. We run a 50-step closed-loop simulation (feeding model predictions back in) and compare the trajectory to the ground truth. This detects drift that standard teacher-forcing validation misses.
+- **`val_rollout_mse_step`**: (Heatmap) The rollout error broken down by step (0-50). Visualized in WandB as an Epoch vs Step heatmap to show stability over time.
+- **`norm_latent`**: L2 norm of the latent embeddings. useful for detecting collapse or explosion.
+- **`prob_*`**: Average predicted probability (confidence) of the ground truth action. Higher is better.
+- **`entropy_*`**: Entropy of the action distributions. Higher entropy means the model is less confident (closer to random).
+
 ## Configuration
 
 The project uses [Hydra](https://hydra.cc/) for configuration. Key config files are in `configs/`. Do not modify source code for parameters; use command line overrides or edit `configs/config.yaml`.

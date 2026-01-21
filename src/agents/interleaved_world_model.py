@@ -567,6 +567,7 @@ class InterleavedWorldModel(nn.Module):
         target_states,
         target_actions,
         loss_mask, 
+        latents=None,
         lambda_state=1.0,
         lambda_action=0.01
     ):
@@ -576,6 +577,7 @@ class InterleavedWorldModel(nn.Module):
         target_states: (B, T, N, D)
         target_actions: (B, T, N, 3)
         loss_mask: (B, T)
+        latents: (B, 2T, N, E) - Optional
         """
         valid_mask = loss_mask.bool() 
         
@@ -613,6 +615,17 @@ class InterleavedWorldModel(nn.Module):
             entropy_s = -torch.sum(s_probs * torch.log(s_probs + 1e-8), dim=-1).mean()
             prob_s = s_probs.gather(1, s_target.unsqueeze(1)).mean()
 
+            # Latent Norms
+            norm_latent = torch.tensor(0.0, device=pred_states.device)
+            if latents is not None:
+                norm_latent = latents.norm(dim=-1).mean()
+
+            # Classification Errors (Hard)
+            # Compare argmax logits to target
+            error_p = (p_logits.argmax(dim=-1) != p_target).float().mean()
+            error_t = (t_logits.argmax(dim=-1) != t_target).float().mean()
+            error_s = (s_logits.argmax(dim=-1) != s_target).float().mean()
+
         valid_pred_state = pred_states[valid_mask]
         valid_target_state = target_states[valid_mask]
         
@@ -621,12 +634,16 @@ class InterleavedWorldModel(nn.Module):
         total_loss = lambda_state * state_loss + lambda_action * action_loss
         
         metrics = {
-             "entropy_p": entropy_p,
-             "entropy_t": entropy_t,
-             "entropy_s": entropy_s,
-             "prob_p": prob_p,
-             "prob_t": prob_t,
-             "prob_s": prob_s
+             "entropy_power": entropy_p,
+             "entropy_turn": entropy_t,
+             "entropy_shoot": entropy_s,
+             "prob_power": prob_p,
+             "prob_turn": prob_t,
+             "prob_shoot": prob_s,
+             "error_power": error_p,
+             "error_turn": error_t,
+             "error_shoot": error_s,
+             "norm_latent": norm_latent,
         }
         
         return total_loss, state_loss, action_loss, metrics
@@ -639,6 +656,7 @@ class InterleavedWorldModel(nn.Module):
         steps: int,
         n_ships: int,
         temperature: float = 1.0,
+        team_ids: torch.Tensor = None
     ):
         """
         Autoregressive generation of state and action trajectories.
@@ -650,6 +668,7 @@ class InterleavedWorldModel(nn.Module):
                             But signature matches old world model.
             steps: Number of steps to generate.
             n_ships: Number of ships (unused if inferred from state).
+            team_ids: (1, N) Optional team IDs.
 
         Returns:
             dream_states: (1, Steps, N, D)
@@ -667,7 +686,8 @@ class InterleavedWorldModel(nn.Module):
         all_actions = []
         
         # Team IDs: Default to 0 if not provided
-        team_ids = torch.zeros((B, N), dtype=torch.long, device=device)
+        if team_ids is None:
+            team_ids = torch.zeros((B, N), dtype=torch.long, device=device)
 
         for _ in range(steps):
             # 1. Predict Action A_t from S_t

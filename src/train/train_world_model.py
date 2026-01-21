@@ -151,6 +151,93 @@ def perform_rollout(model, input_states, input_actions, team_ids, rollout_len):
 
 
 
+
+def validate_autoregressive(model, loader, device, steps=50):
+    """
+    Run a short autoregressive rollout on one batch from the loader.
+    """
+    model.eval()
+    try:
+        # Get one batch
+        batch = next(iter(loader))
+    except StopIteration:
+        return {}
+
+    (states, actions, returns, loss_mask, action_masks, agent_skills, team_ids) = batch
+    
+    # Take first B samples. Actually just use the whole batch.
+    states = states.to(device)
+    actions = actions.to(device)
+    team_ids = team_ids.to(device)
+
+    # We need at least steps+1 length
+    if states.shape[1] < steps + 1:
+        return {} # Too short
+
+    initial_state = states[:, 0] # S0
+    initial_action = actions[:, 0] # A0 (dummy for API)
+    
+    # Fix Team IDs
+    num_ships = states.shape[2]
+    if team_ids.ndim == 2 and team_ids.shape[1] != num_ships:
+            # Reconstruct standard
+            tid = torch.zeros((states.shape[0], num_ships), device=device, dtype=torch.long)
+            half = num_ships // 2
+            tid[:, half:] = 1
+            input_team_ids = tid
+    elif team_ids.ndim == 3:
+            # (B, T, N) -> Slice time AND ships. Use 0th step.
+            input_team_ids = team_ids[:, 0, :num_ships]
+    else:
+            input_team_ids = team_ids
+    
+    # Generate
+    dream_states, dream_actions = model.generate(
+        initial_state=initial_state,
+        initial_action=initial_action, # Dummy
+        steps=steps,
+        n_ships=num_ships,
+        team_ids=input_team_ids
+    )
+    
+    target_states = states[:, 1:1+steps]
+    # target_actions: In data, actions[t] is action taken at S[t].
+    # Model predicts A[t] from S[t].
+    # So dream_actions[0] corresponds to A[0].
+    target_actions = actions[:, 0:steps]
+    
+    # MSE State
+    # (B, Steps, N, D)
+    mse_state = F.mse_loss(dream_states, target_states)
+    
+    # Per-step MSE (average over Batch, Ships, Dim)
+    # Result: (Steps,)
+    mse_state_per_step = (dream_states - target_states).pow(2).mean(dim=[0, 2, 3])
+    
+    # Action Accuracy (Hard match of indices)
+    # dream_actions is one-hot (float). target_actions is discrete indices (B, T, N, 3).
+    # Convert dream to indices
+    dream_p = dream_actions[..., 0:3].argmax(-1)
+    dream_t = dream_actions[..., 3:10].argmax(-1)
+    dream_s = dream_actions[..., 10:12].argmax(-1)
+    
+    target_p = target_actions[..., 0].long()
+    target_t = target_actions[..., 1].long()
+    target_s = target_actions[..., 2].long()
+    
+    acc_p = (dream_p == target_p).float().mean()
+    acc_t = (dream_t == target_t).float().mean()
+    acc_s = (dream_s == target_s).float().mean()
+    
+    return {
+        "val_rollout_mse_state": mse_state.item(),
+        "val_rollout_mse_step": mse_state_per_step.tolist(), # List of floats
+        "val_rollout_acc_power": acc_p.item(),
+        "val_rollout_acc_turn": acc_t.item(),
+        "val_rollout_acc_shoot": acc_s.item()
+    }
+
+
 def validate_model(model, loaders, device, amp=True, lambda_state=1.0, lambda_action=0.01):
     """
     Run validation loop and return metrics.
@@ -234,9 +321,9 @@ def validate_model(model, loaders, device, amp=True, lambda_state=1.0, lambda_ac
 
     return {
         "val_loss": avg_val_loss,
-        "error_p": avg_val_err_p,
-        "error_t": avg_val_err_t,
-        "error_s": avg_val_err_s
+        "error_power": avg_val_err_p,
+        "error_turn": avg_val_err_t,
+        "error_shoot": avg_val_err_s
     }
 
 
@@ -432,6 +519,9 @@ def train_world_model(cfg: DictConfig) -> None:
     )
 
     global_step = 0
+    
+    # History for Heatmap [Epochs, Steps]
+    rollout_error_history = []
 
     for epoch in range(epochs):
         # Re-create data loaders each epoch to randomize pools -> MOVED OUTSIDE
@@ -445,6 +535,9 @@ def train_world_model(cfg: DictConfig) -> None:
         total_error_power = torch.tensor(0.0, device=device)
         total_error_turn = torch.tensor(0.0, device=device)
         total_error_shoot = torch.tensor(0.0, device=device)
+        total_prob_power = torch.tensor(0.0, device=device)
+        total_prob_turn = torch.tensor(0.0, device=device)
+        total_prob_shoot = torch.tensor(0.0, device=device)
 
         # Create iterators
         short_iter = iter(train_short_loader)
@@ -494,9 +587,13 @@ def train_world_model(cfg: DictConfig) -> None:
         acc_loss = 0.0
         acc_state_loss = 0.0
         acc_action_loss = 0.0
-        acc_error_p = 0.0
-        acc_error_t = 0.0
-        acc_error_s = 0.0
+        acc_error_power = 0.0
+        acc_error_turn = 0.0
+        acc_error_shoot = 0.0
+        acc_prob_power = 0.0
+        acc_prob_turn = 0.0
+        acc_prob_shoot = 0.0
+        acc_norm_latent = 0.0
         
         # We track global steps for logging
         # Log every step for range test, or every 10 for normal
@@ -570,11 +667,13 @@ def train_world_model(cfg: DictConfig) -> None:
             # Accumulate Gradient
             
             with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
-                pred_states, pred_actions, _ = model(
+                # Request embeddings for norm calculation
+                pred_states, pred_actions, _, latents = model(
                     input_states,
                     input_actions,
                     input_team_ids,
-                    noise_scale=cfg.world_model.noise_scale
+                    noise_scale=cfg.world_model.noise_scale,
+                    return_embeddings=True
                 )
                 
                 loss, state_loss, action_loss, metrics = model.get_loss(
@@ -583,6 +682,7 @@ def train_world_model(cfg: DictConfig) -> None:
                     target_states=target_states,
                     target_actions=target_actions,
                     loss_mask=loss_mask_slice,
+                    latents=latents,
                     lambda_state=cfg.world_model.get("lambda_state", 1.0),
                     lambda_action=cfg.world_model.get("lambda_action", 0.01)
                 )
@@ -612,9 +712,13 @@ def train_world_model(cfg: DictConfig) -> None:
             # Accumulate errors (averaged later)
             # Metrics are usually mean over batch. We want mean over macro-batch.
             # So sum them up, then divide by accumulation_steps
-            if "error_p" in metrics: acc_error_p += metrics["error_p"]
-            if "error_t" in metrics: acc_error_t += metrics["error_t"]
-            if "error_s" in metrics: acc_error_s += metrics["error_s"]
+            if "error_power" in metrics: acc_error_power += metrics["error_power"]
+            if "error_turn" in metrics: acc_error_turn += metrics["error_turn"]
+            if "error_shoot" in metrics: acc_error_shoot += metrics["error_shoot"]
+            if "prob_power" in metrics: acc_prob_power += metrics["prob_power"]
+            if "prob_turn" in metrics: acc_prob_turn += metrics["prob_turn"]
+            if "prob_shoot" in metrics: acc_prob_shoot += metrics["prob_shoot"]
+            if "norm_latent" in metrics: acc_norm_latent += metrics["norm_latent"]
 
             # Update Step
             if micro_step % accumulation_steps == 0:
@@ -636,9 +740,13 @@ def train_world_model(cfg: DictConfig) -> None:
                 step_avg_loss = acc_loss / accumulation_steps
                 step_avg_state = acc_state_loss / accumulation_steps
                 step_avg_action = acc_action_loss / accumulation_steps
-                step_avg_p = acc_error_p / accumulation_steps
-                step_avg_t = acc_error_t / accumulation_steps
-                step_avg_s = acc_error_s / accumulation_steps
+                step_avg_power = acc_error_power / accumulation_steps
+                step_avg_turn = acc_error_turn / accumulation_steps
+                step_avg_shoot = acc_error_shoot / accumulation_steps
+                step_avg_prob_power = acc_prob_power / accumulation_steps
+                step_avg_prob_turn = acc_prob_turn / accumulation_steps
+                step_avg_prob_shoot = acc_prob_shoot / accumulation_steps
+                step_avg_norm_latent = acc_norm_latent / accumulation_steps
 
                 # Buffer Metrics (Detach to avoid memory leak)
                 if cfg.wandb.enabled:
@@ -649,6 +757,13 @@ def train_world_model(cfg: DictConfig) -> None:
                         "loss": step_avg_loss.detach() if isinstance(step_avg_loss, torch.Tensor) else step_avg_loss,
                         "state_loss": step_avg_state.detach() if isinstance(step_avg_state, torch.Tensor) else step_avg_state,
                         "action_loss": step_avg_action.detach() if isinstance(step_avg_action, torch.Tensor) else step_avg_action,
+                        "error_power": step_avg_power,
+                        "error_turn": step_avg_turn,
+                        "error_shoot": step_avg_shoot,
+                        "prob_power": step_avg_prob_power,
+                        "prob_turn": step_avg_prob_turn,
+                        "prob_shoot": step_avg_prob_shoot,
+                        "norm_latent": step_avg_norm_latent,
                         "grad_norm": total_norm.detach() if isinstance(total_norm, torch.Tensor) else torch.tensor(total_norm, device=device),
                     }
                     
@@ -685,9 +800,13 @@ def train_world_model(cfg: DictConfig) -> None:
                 acc_loss = 0.0
                 acc_state_loss = 0.0
                 acc_action_loss = 0.0
-                acc_error_p = 0.0
-                acc_error_t = 0.0
-                acc_error_s = 0.0
+                acc_error_power = 0.0
+                acc_error_turn = 0.0
+                acc_error_shoot = 0.0
+                acc_prob_power = 0.0
+                acc_prob_turn = 0.0
+                acc_prob_shoot = 0.0
+                acc_norm_latent = 0.0
 
             else:
                 # Calculate norm just for logging purposes if needed, but usually expensive
@@ -721,13 +840,18 @@ def train_world_model(cfg: DictConfig) -> None:
                     "action": (total_action_loss.item() / steps_in_epoch) if steps_in_epoch > 0 else 0
                 })
 
+
         avg_loss = total_loss.item() / steps_in_epoch if steps_in_epoch > 0 else 0
         avg_state_loss = total_state_loss.item() / steps_in_epoch if steps_in_epoch > 0 else 0
         avg_action_loss = total_action_loss.item() / steps_in_epoch if steps_in_epoch > 0 else 0
         
-        avg_err_p = total_error_power.item() / steps_in_epoch if steps_in_epoch > 0 else 0
-        avg_err_t = total_error_turn.item() / steps_in_epoch if steps_in_epoch > 0 else 0
-        avg_err_s = total_error_shoot.item() / steps_in_epoch if steps_in_epoch > 0 else 0
+        avg_err_power = total_error_power.item() / steps_in_epoch if steps_in_epoch > 0 else 0
+        avg_err_turn = total_error_turn.item() / steps_in_epoch if steps_in_epoch > 0 else 0
+        avg_err_shoot = total_error_shoot.item() / steps_in_epoch if steps_in_epoch > 0 else 0
+
+        avg_prob_power = total_prob_power.item() / steps_in_epoch if steps_in_epoch > 0 else 0
+        avg_prob_turn = total_prob_turn.item() / steps_in_epoch if steps_in_epoch > 0 else 0
+        avg_prob_shoot = total_prob_shoot.item() / steps_in_epoch if steps_in_epoch > 0 else 0
         
         current_lr = optimizer.param_groups[0]['lr']
         log.info(f"Epoch {epoch + 1}: LR={current_lr:.2e} Train Loss={avg_loss:.4f} (State={avg_state_loss:.4f}, Action={avg_action_loss:.4f})")
@@ -742,7 +866,12 @@ def train_world_model(cfg: DictConfig) -> None:
         )
         avg_val_loss = val_metrics["val_loss"]
         
-        log.info(f"Epoch {epoch + 1}: Val Loss={avg_val_loss:.4f}")
+        # Autoregressive Validation (One Batch)
+        # Use short loader for speed, or long for difficulty. Let's use long if available.
+        # But we want to ensure we don't crash if long loader is empty? It shouldn't be.
+        ar_metrics = validate_autoregressive(model, val_long_loader, device, steps=50)
+        
+        log.info(f"Epoch {epoch + 1}: Val Loss={avg_val_loss:.4f} AR MSE={ar_metrics.get('val_rollout_mse_state', -1):.4f}")
 
         # SWA Update
         if epoch >= cfg.world_model.get("swa_start_epoch", 2):
@@ -767,9 +896,9 @@ def train_world_model(cfg: DictConfig) -> None:
              
              # Log SWA metrics
              writer.add_scalar("Loss/val_swa", avg_val_loss_swa, epoch)
-             writer.add_scalar("Error/val_swa_power", val_metrics_swa["error_p"], epoch)
-             writer.add_scalar("Error/val_swa_turn", val_metrics_swa["error_t"], epoch)
-             writer.add_scalar("Error/val_swa_shoot", val_metrics_swa["error_s"], epoch)
+             writer.add_scalar("Error/val_swa_power", val_metrics_swa["error_power"], epoch)
+             writer.add_scalar("Error/val_swa_turn", val_metrics_swa["error_turn"], epoch)
+             writer.add_scalar("Error/val_swa_shoot", val_metrics_swa["error_shoot"], epoch)
 
         # Log to CSV
         current_lr = optimizer.param_groups[0]['lr']
@@ -785,22 +914,64 @@ def train_world_model(cfg: DictConfig) -> None:
         writer.add_scalar("Loss/train_state", avg_state_loss, epoch)
         writer.add_scalar("Loss/train_action", avg_action_loss, epoch)
         writer.add_scalar("Loss/val", avg_val_loss, epoch)
-        writer.add_scalar("Error/train_power", avg_err_p, epoch)
-        writer.add_scalar("Error/train_turn", avg_err_t, epoch)
-        writer.add_scalar("Error/train_shoot", avg_err_s, epoch)
-        writer.add_scalar("Error/val_power", val_metrics["error_p"], epoch)
-        writer.add_scalar("Error/val_turn", val_metrics["error_t"], epoch)
-        writer.add_scalar("Error/val_shoot", val_metrics["error_s"], epoch)
+        writer.add_scalar("Error/train_power", avg_err_power, epoch)
+        writer.add_scalar("Error/train_turn", avg_err_turn, epoch)
+        writer.add_scalar("Error/train_shoot", avg_err_shoot, epoch)
+        writer.add_scalar("Prob/train_power", avg_prob_power, epoch)
+        writer.add_scalar("Prob/train_turn", avg_prob_turn, epoch)
+        writer.add_scalar("Prob/train_shoot", avg_prob_shoot, epoch)
+        writer.add_scalar("Error/val_power", val_metrics["error_power"], epoch)
+        writer.add_scalar("Error/val_turn", val_metrics["error_turn"], epoch)
+        writer.add_scalar("Error/val_shoot", val_metrics["error_shoot"], epoch)
+        writer.add_scalar("Prob/val_power", val_metrics.get("prob_power", 0), epoch)
+        writer.add_scalar("Prob/val_turn", val_metrics.get("prob_turn", 0), epoch)
+        writer.add_scalar("Prob/val_shoot", val_metrics.get("prob_shoot", 0), epoch)
+        
+        # Log AR metrics to TensorBoard
+        for k, v in ar_metrics.items():
+            if isinstance(v, (int, float, torch.Tensor, np.number)):
+                writer.add_scalar(f"Val_AR/{k}", v, epoch)
 
         # Log validation metrics to WandB
         if wb_cfg and wb_cfg.get("enabled", False):
             val_log = {
                 "val_loss": avg_val_loss,
-                "val_error_p": val_metrics["error_p"],
-                "val_error_t": val_metrics["error_t"],
-                "val_error_s": val_metrics["error_s"],
+                "val_error_power": val_metrics["error_power"],
+                "val_error_turn": val_metrics["error_turn"],
+                "val_error_shoot": val_metrics["error_shoot"],
+                "val_prob_power": val_metrics.get("prob_power", 0),
+                "val_prob_turn": val_metrics.get("prob_turn", 0),
+                "val_prob_shoot": val_metrics.get("prob_shoot", 0),
                 "epoch": epoch + 1
             }
+            
+            # Merge AR metrics
+            if ar_metrics:
+                val_log.update(ar_metrics)
+                
+                # Heatmap Logging
+                if "val_rollout_mse_step" in ar_metrics:
+                    step_errors = ar_metrics["val_rollout_mse_step"]
+                    rollout_error_history.append(step_errors)
+                    
+                    # Create heatmap if we have history
+                    if len(rollout_error_history) > 0:
+                        # X-axis: Steps (0..N)
+                        x_labels = [f"Step {i}" for i in range(len(step_errors))]
+                        # Y-axis: Epochs (1..Current)
+                        y_labels = [f"Epoch {i+1}" for i in range(len(rollout_error_history))]
+                        
+                        val_log["val/rollout_heatmap"] = wandb.plots.HeatMap(
+                            x_labels, 
+                            y_labels, 
+                            rollout_error_history,
+                            show_text=False
+                        )
+
+            wandb.log(val_log, step=global_step) # WandB logs with global step
+            # Note: We used to log wandb in the loop buffer for steps.
+            # This is validation log (once per epoch).
+
             if avg_val_loss_swa is not None:
                 val_log["val_loss_swa"] = avg_val_loss_swa
                 val_log["val_error_p_swa"] = val_metrics_swa["error_p"]
