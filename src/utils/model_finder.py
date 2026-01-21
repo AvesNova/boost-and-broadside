@@ -63,7 +63,12 @@ def find_most_recent_model(
         if model_type == "bc":
             model_path = run_dir / "final_bc_model.pth"
         elif model_type == "world_model":
-            model_path = run_dir / "final_world_model.pth"
+            # Check for .pt (InterleavedWorldModel checkpoint) first
+            pt_path = run_dir / "final_world_model.pt"
+            if pt_path.exists():
+                model_path = pt_path
+            else:
+                model_path = run_dir / "final_world_model.pth"
 
         if model_type in ["bc", "world_model"] and model_path and model_path.exists():
             return str(model_path.absolute())
@@ -145,8 +150,14 @@ def find_best_model(model_type: Literal["bc", "rl", "world_model"]) -> str | Non
                         best_path = run_dir / "best_bc_model.pth"
                         final_path = run_dir / "final_bc_model.pth"
                     elif model_type == "world_model":
-                        best_path = run_dir / "best_world_model.pth"
-                        final_path = run_dir / "final_world_model.pth"
+                        # Check for .pt (Interleaved) or .pth (Legacy)
+                        best_path = run_dir / "best_world_model.pt"
+                        if not best_path.exists():
+                             best_path = run_dir / "best_world_model.pth"
+                             
+                        final_path = run_dir / "final_world_model.pt"
+                        if not final_path.exists():
+                             final_path = run_dir / "final_world_model.pth"
                     else:
                         continue
 

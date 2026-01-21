@@ -1,7 +1,7 @@
 import numpy as np
 from omegaconf import OmegaConf
 
-from agents.world_model import WorldModel
+from agents.interleaved_world_model import InterleavedWorldModel
 from eval.rollout_metrics import compute_rollout_metrics
 
 
@@ -24,7 +24,7 @@ def test_compute_rollout_metrics_randomized_env():
         "memory_size": 2,
     }
 
-    # 2. Initialize a small dummy WorldModel
+    # 2. Initialize a small dummy InterleavedWorldModel
     # We don't care about performance, just that it runs
     model_config = OmegaConf.create(
         {
@@ -38,9 +38,8 @@ def test_compute_rollout_metrics_randomized_env():
     )
 
     # Mock config on the model instance as accessing model.config is common
-    model = WorldModel(
+    model = InterleavedWorldModel(
         state_dim=12,  # derived from tokenizer (12 features)
-        action_dim=12,
         embed_dim=model_config.embed_dim,
         n_layers=model_config.n_layers,
         n_heads=model_config.n_heads,

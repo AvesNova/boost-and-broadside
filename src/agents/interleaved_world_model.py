@@ -176,36 +176,25 @@ class SpatialSelfAttention(nn.Module):
             current_kv = None
             
         # Get Previous Step K, V
-        # Get Previous Step K, V
-        if past_kv is not None:
-             # Generation Mode: L=1, past_kv holds ALL past steps (B, 1, N, H, D) ??? 
-             # NO. In standard cache, K is cat'd along time.
-             # So pk shape is (B, L_past, N, H, D).
-             # We want the LAST step of the past.
-             
-             pk, pv = past_kv
-             
-             # Slice the last step from past
-             # pk: (B, L_past, N, H, D)
-             if pk.shape[1] > 0:
-                 k_prev = pk[:, -1:] # (B, 1, N, H, D)
-                 v_prev = pv[:, -1:] # (B, 1, N, H, D)
-             else:
-                 # No history? Should not happen if L=1 generation starts after t=0?
-                 # If t=0 generation (cold start), past_kv might be empty or None.
-                 # But if None, we fall to 'else' block which creates zeros.
-                 # If past_kv is not None but empty??
-                 k_prev = torch.zeros_like(k)
-                 v_prev = torch.zeros_like(v)
-                 
+        if past_kv is not None and past_kv[0].shape[1] > 0:
+              pk, pv = past_kv
+              # pk: (B, L_past, N, H, D)
+              # Take last step from past
+              last_k = pk[:, -1:] # (B, 1, N, H, D)
+              last_v = pv[:, -1:]
         else:
-             # Training Mode: Shift current K, V sequences
-             # Pad with zeros at start
-             # k: (B, L, N, H, D)
-             zeros_k = torch.zeros_like(k[:, :1])
-             zeros_v = torch.zeros_like(v[:, :1])
-             k_prev = torch.cat([zeros_k, k[:, :-1]], dim=1)
-             v_prev = torch.cat([zeros_v, v[:, :-1]], dim=1)
+              # No history, use zeros
+              last_k = torch.zeros_like(k[:, :1])
+              last_v = torch.zeros_like(v[:, :1])
+              
+        # Construct Previous Window inputs
+        # k_prev[i] should be the token *before* k[i].
+        # For i=0, it is last_k.
+        # For i>0, it is k[i-1].
+        
+        # Shift current k right by 1, and prepend last_k
+        k_prev = torch.cat([last_k, k[:, :-1]], dim=1) # (B, L, N, H, D)
+        v_prev = torch.cat([last_v, v[:, :-1]], dim=1)
         
         # Concatenate on N dimension: (B, L, 2N, H, D)
         # Use simple concat. Current N followed by Prev N? Or Prev then Current?
@@ -616,3 +605,108 @@ class InterleavedWorldModel(nn.Module):
         
         return total_loss, state_loss, action_loss
 
+    @torch.no_grad()
+    def generate(
+        self,
+        initial_state: torch.Tensor,
+        initial_action: torch.Tensor,
+        steps: int,
+        n_ships: int,
+        temperature: float = 1.0,
+    ):
+        """
+        Autoregressive generation of state and action trajectories.
+
+        Args:
+            initial_state: (1, N, D)
+            initial_action: (1, N, 12) - Typically ignored/dummy as we predict A_0 from S_0?
+                            Actually S_0 -> A_0. So we don't need initial_action input really.
+                            But signature matches old world model.
+            steps: Number of steps to generate.
+            n_ships: Number of ships (unused if inferred from state).
+
+        Returns:
+            dream_states: (1, Steps, N, D)
+            gen_actions: (1, Steps, N, 12) - One Hot
+        """
+        B, N, D = initial_state.shape
+        device = initial_state.device
+        
+        curr_state = initial_state.unsqueeze(1) # (B, 1, N, D)
+        
+        # Cache
+        past_key_values = None
+        
+        all_states = []
+        all_actions = []
+        
+        # Team IDs: Default to 0 if not provided
+        team_ids = torch.zeros((B, N), dtype=torch.long, device=device)
+
+        for _ in range(steps):
+            # 1. Predict Action A_t from S_t
+            # We pass dummy action. use_cache=False to peek.
+            dummy_action_idx = torch.zeros((B, 1, N, 3), device=device)
+            
+            # Note: We must pass past_key_values but NOT update them yet
+            # However, forward() with use_cache=False returns current_kv=None
+            # It does NOT return the *input* past_key_values.
+            # So we pass 'past_key_values' in.
+            
+            _, pred_actions_logits, _ = self.forward(
+                states=curr_state,
+                actions=dummy_action_idx,
+                team_ids=team_ids,
+                past_key_values=past_key_values,
+                use_cache=False 
+            )
+            
+            # Extract logits for the single step
+            # pred_actions_logits: (B, 1, N, 12)
+            logits = pred_actions_logits[:, -1, :, :] # (B, N, 12)
+            
+            # Greedy decoding
+            p_idx = logits[..., 0:3].argmax(dim=-1)
+            t_idx = logits[..., 3:10].argmax(dim=-1)
+            s_idx = logits[..., 10:12].argmax(dim=-1)
+            
+            # Indices for Next Pass Input
+            # (B, 1, N, 3)
+            action_indices = torch.stack([p_idx, t_idx, s_idx], dim=-1).unsqueeze(1).float()
+            
+            # One Hot for Output
+            p_oh = F.one_hot(p_idx, num_classes=3)
+            t_oh = F.one_hot(t_idx, num_classes=7)
+            s_oh = F.one_hot(s_idx, num_classes=2)
+            action_oh = torch.cat([p_oh, t_oh, s_oh], dim=-1).unsqueeze(1) # (B, 1, N, 12)
+            
+            # 2. Predict State S_{t+1} from (S_t, A_t)
+            # This time use_cache=True to advance
+            pred_s, _, new_kv = self.forward(
+                 states=curr_state,
+                 actions=action_indices,
+                 team_ids=team_ids,
+                 past_key_values=past_key_values,
+                 use_cache=True
+            )
+            
+            # Values
+            past_key_values = new_kv
+            next_state = pred_s[:, -1:, :, :] # (B, 1, N, D)
+            
+            # Record
+            # We record S_{t+1} or S_t?
+            # rollout_metrics expects states at 1..steps
+            # "dream_states: (1, Steps, N, F)"
+            # Usually we return the *next* states predicted.
+            
+            all_states.append(next_state)
+            all_actions.append(action_oh)
+            
+            curr_state = next_state
+            
+        # Concat
+        dream_states = torch.cat(all_states, dim=1)
+        gen_actions = torch.cat(all_actions, dim=1).float()
+        
+        return dream_states, gen_actions
