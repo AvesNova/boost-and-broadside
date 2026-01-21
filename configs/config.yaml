@@ -130,11 +130,11 @@ world_model:
     type: "warmup_constant" # Options: "constant", "warmup_constant", "linear_range_test", "exponential_range_test"
     
     warmup:
-      steps: 834
+      steps: 167 # Scaled by acc_steps (834/5)
       start_lr: 1e-7
       
     range_test:
-      steps: 834
+      steps: 167 # Scaled by acc_steps (834/5)
       start_lr: 1e-7
       end_lr: 1.0
   
@@ -144,6 +144,8 @@ world_model:
   short_batch_len: 32
   long_batch_len: 128
   batch_ratio: 4
+  gradient_accumulation_steps: 5
+  use_sobol: false
   
   rope_base: 10000.0
   rope_max_seq_len: 256

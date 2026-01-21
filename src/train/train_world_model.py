@@ -302,6 +302,7 @@ def train_world_model(cfg: DictConfig) -> None:
     if sched_cfg and "range_test" in sched_cfg.type:
         range_cfg = sched_cfg.range_test
         # Estimate total steps if not provided
+        acc_steps = cfg.world_model.get("gradient_accumulation_steps", 1)
         if range_cfg.get("steps"):
              total_steps = range_cfg.steps
         else:
@@ -311,9 +312,10 @@ def train_world_model(cfg: DictConfig) -> None:
              short_batches = len(train_short_loader)
              ratio = cfg.world_model.batch_ratio
              prob_short = ratio / (ratio + 1)
-             total_steps = int(short_batches / prob_short)
+             # Adjust for gradient accumulation
+             total_steps = int(short_batches / prob_short / acc_steps)
         
-        log.info(f"Initializing Exponential Range Test Scheduler: {range_cfg.start_lr} -> {range_cfg.end_lr} over {total_steps} steps")
+        log.info(f"Initializing Exponential Range Test Scheduler: {range_cfg.start_lr} -> {range_cfg.end_lr} over {total_steps} steps (Accumulation={acc_steps})")
 
         # Use LambdaLR for Exponential Scaling
         # Formula: LR = start_lr * (end_lr / start_lr) ^ (step / total_steps)
@@ -451,31 +453,58 @@ def train_world_model(cfg: DictConfig) -> None:
         num_short_batches = len(train_short_loader)
         
         # Adjust pbar total for range test
+        acc_steps = cfg.world_model.get("gradient_accumulation_steps", 1)
         if sched_cfg and "range_test" in sched_cfg.type and sched_cfg.range_test.steps:
-             pbar_total = sched_cfg.range_test.steps
+             pbar_total = sched_cfg.range_test.steps * acc_steps
         else:
-             pbar_total = num_short_batches
+             # Estimate total micro-batches based on short loader
+             # We consume 1 long for every 'batch_ratio' short
+             pbar_total = int(num_short_batches * (1 + 1/batch_ratio))
              
         pbar = tqdm(range(pbar_total), desc=f"Epoch {epoch + 1}/{epochs}")
         # Calculate probability of short batch based on ratio
         # ratio 4 means 4:1 -> 4/5 = 0.8
         short_prob = batch_ratio / (batch_ratio + 1)
         
-        # Initialize Sobol Engine for quasi-random sampling
-        # Dimension 1, Scramble=True for better uniformity
-        sobol_engine = torch.quasirandom.SobolEngine(dimension=1, scramble=True)
+        # Batch Pattern and Accumulation
+        accumulation_steps = acc_steps
+        use_sobol = cfg.world_model.get("use_sobol", False)
+        
+        # Generator for batch type
+        def get_batch_pattern():
+            if use_sobol:
+                log.info(f"Using Sobol Sampling (Ratio {batch_ratio})")
+                sobol_engine = torch.quasirandom.SobolEngine(dimension=1, scramble=True)
+                while True:
+                    yield sobol_engine.draw(1).item() < short_prob
+            else:
+                log.info(f"Using Fixed Pattern: 4 Short, 1 Long")
+                while True:
+                    # 4 Short, 1 Long pattern
+                    for _ in range(4): yield True
+                    yield False
+        
+        batch_pattern = get_batch_pattern()
         
         steps_in_epoch = 0
+        micro_step = 0
+        optimizer.zero_grad()
+        
+        # Accumulators for update step
+        acc_loss = 0.0
+        acc_state_loss = 0.0
+        acc_action_loss = 0.0
+        acc_error_p = 0.0
+        acc_error_t = 0.0
+        acc_error_s = 0.0
         
         # We track global steps for logging
-        # If range test, we use 'steps' accumulator across epochs (if multiple)
-        # But range test is usually 1 epoch.
+        # Log every step for range test, or every 10 for normal
+        log_freq_csv = 1 if (sched_cfg and "range_test" in sched_cfg.type) else 10
+        
         while True:
-            # Draw sample from Sobol sequence
-            # draw() returns (1, 1) tensor, get item
-            sample = sobol_engine.draw(1).item()
-            
-            is_short = sample < short_prob
+            # Get batch type
+            is_short = next(batch_pattern)
             
             # Select iterator and batch type
             if is_short:
@@ -538,7 +567,7 @@ def train_world_model(cfg: DictConfig) -> None:
             rollout_len = get_rollout_length(epoch, cfg)
             perform_rollout(model, input_states, input_actions, input_team_ids, rollout_len)
 
-            optimizer.zero_grad()
+            # Accumulate Gradient
             
             with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
                 pred_states, pred_actions, _ = model(
@@ -547,7 +576,6 @@ def train_world_model(cfg: DictConfig) -> None:
                     input_team_ids,
                     noise_scale=cfg.world_model.noise_scale
                 )
-                
                 
                 loss, state_loss, action_loss, metrics = model.get_loss(
                     pred_states=pred_states,
@@ -559,96 +587,118 @@ def train_world_model(cfg: DictConfig) -> None:
                     lambda_action=cfg.world_model.get("lambda_action", 0.01)
                 )
 
-                # Capture Metrics (if returned)
-                # Note: get_loss now returns 4 values, so we unpack directly above or handle tuple
-                # The updated get_loss returns (total, state, action, metrics_dict)
-                # But let's be safe if it falls back for some reason (though we edited it)
-
+            # Normalize loss for accumulation
+            loss = loss / accumulation_steps
+            
             scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
-            total_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            scaler.step(optimizer)
-            scaler.update()
-
-            if scheduler is not None:
-                scheduler.step()
-
-            total_loss += loss.detach()
-            total_state_loss += state_loss.detach()
-            total_action_loss += action_loss.detach()
-
-            # Global Step Logging
-            current_lr = optimizer.param_groups[0]['lr']
             
-            # Use a persistent global step
-            global_step += 1
-            current_step = global_step
+            micro_step += 1
             
-            # Buffer Metrics (Detach to avoid memory leak)
-            if cfg.wandb.enabled:
-                step_metrics = {
-                    "step": current_step,
-                    "epoch": epoch + 1,
-                    "lr": current_lr,
-                    "loss": loss.detach(),
-                    "state_loss": state_loss.detach(),
-                    "action_loss": action_loss.detach(),
-                    "grad_norm": total_norm.detach() if isinstance(total_norm, torch.Tensor) else torch.tensor(total_norm, device=device),
-                }
+            # Restore loss scale for logging and accumulate for step
+            loss_val = loss.detach() * accumulation_steps
+            state_loss_val = state_loss.detach()
+            action_loss_val = action_loss.detach()
+            
+            # Epoch accumulators
+            total_loss += loss_val
+            total_state_loss += state_loss_val
+            total_action_loss += action_loss_val
+            
+            # Step accumulators (aggregated over micro-batches)
+            acc_loss += loss_val
+            acc_state_loss += state_loss_val
+            acc_action_loss += action_loss_val
+            
+            # Accumulate errors (averaged later)
+            # Metrics are usually mean over batch. We want mean over macro-batch.
+            # So sum them up, then divide by accumulation_steps
+            if "error_p" in metrics: acc_error_p += metrics["error_p"]
+            if "error_t" in metrics: acc_error_t += metrics["error_t"]
+            if "error_s" in metrics: acc_error_s += metrics["error_s"]
+
+            # Update Step
+            if micro_step % accumulation_steps == 0:
+                scaler.unscale_(optimizer)
+                total_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                scaler.step(optimizer)
+                scaler.update()
+                optimizer.zero_grad()
+
+                if scheduler is not None:
+                    scheduler.step()
                 
-                # Add extra metrics
-                for k, v in metrics.items():
-                    if isinstance(v, torch.Tensor):
-                        step_metrics[k] = v.detach()
-                    else:
-                        step_metrics[k] = torch.tensor(v, device=device)
-                
-                log_buffer.append(step_metrics)
-                
-                # Flush Buffer
-                if len(log_buffer) >= log_freq:
-                    # Move to CPU in one go
-                    # We can't stack dicts directly, so stack values per key
-                    packed = {}
-                    keys = log_buffer[0].keys()
-                    for k in keys:
-                        # Stack tensors
-                        try:
-                            # Check if all are tensors
-                             tensors = [x[k] for x in log_buffer]
-                             packed[k] = torch.stack(tensors).cpu().tolist()
-                        except:
-                             # Fallback for non-tensors
-                             packed[k] = [x[k] for x in log_buffer]
+                # Increment Global Step only on update
+                global_step += 1
+                current_step = global_step
+                current_lr = optimizer.param_groups[0]['lr']
+
+                # Average metrics over accumulation steps
+                step_avg_loss = acc_loss / accumulation_steps
+                step_avg_state = acc_state_loss / accumulation_steps
+                step_avg_action = acc_action_loss / accumulation_steps
+                step_avg_p = acc_error_p / accumulation_steps
+                step_avg_t = acc_error_t / accumulation_steps
+                step_avg_s = acc_error_s / accumulation_steps
+
+                # Buffer Metrics (Detach to avoid memory leak)
+                if cfg.wandb.enabled:
+                    step_metrics = {
+                        "step": current_step,
+                        "epoch": epoch + 1,
+                        "lr": current_lr,
+                        "loss": step_avg_loss.detach() if isinstance(step_avg_loss, torch.Tensor) else step_avg_loss,
+                        "state_loss": step_avg_state.detach() if isinstance(step_avg_state, torch.Tensor) else step_avg_state,
+                        "action_loss": step_avg_action.detach() if isinstance(step_avg_action, torch.Tensor) else step_avg_action,
+                        "grad_norm": total_norm.detach() if isinstance(total_norm, torch.Tensor) else torch.tensor(total_norm, device=device),
+                    }
                     
-                    # Log to WandB
-                    for i in range(len(packed["step"])):
-                        log_item = {k: packed[k][i] for k in packed}
-                        # We must log sequentially with step
-                        step_val = int(log_item.pop("step"))
-                        wandb.log(log_item, step=step_val)
+                    log_buffer.append(step_metrics)
                     
-                    log_buffer = []
+                    # Flush Buffer
+                    if len(log_buffer) >= log_freq:
+                        # Move to CPU in one go
+                        packed = {}
+                        keys = log_buffer[0].keys()
+                        for k in keys:
+                            try:
+                                 tensors = [x[k] for x in log_buffer]
+                                 packed[k] = torch.stack(tensors).cpu().tolist()
+                            except:
+                                 packed[k] = [x[k] for x in log_buffer]
+                        
+                        for i in range(len(packed["step"])):
+                            log_item = {k: packed[k][i] for k in packed}
+                            step_val = int(log_item.pop("step"))
+                            wandb.log(log_item, step=step_val)
+                        
+                        log_buffer = []
 
+                # Log to CSV (less frequent)
+                if current_step % log_freq_csv == 0:
+                    with open(step_log_path, "a") as f:
+                        loss_float = step_avg_loss.item() if isinstance(step_avg_loss, torch.Tensor) else step_avg_loss
+                        state_float = step_avg_state.item() if isinstance(step_avg_state, torch.Tensor) else step_avg_state
+                        action_float = step_avg_action.item() if isinstance(step_avg_action, torch.Tensor) else step_avg_action
+                        f.write(f"{current_step},{epoch+1},{current_lr:.8f},{loss_float:.6f},{state_float:.6f},{action_float:.6f},,\n")
 
-            # Log every step for range test, or every 10 for normal
-            log_freq_csv = 1 if (sched_cfg and "range_test" in sched_cfg.type) else 10
+                # Reset accumulators
+                acc_loss = 0.0
+                acc_state_loss = 0.0
+                acc_action_loss = 0.0
+                acc_error_p = 0.0
+                acc_error_t = 0.0
+                acc_error_s = 0.0
+
+            else:
+                # Calculate norm just for logging purposes if needed, but usually expensive
+                # We'll skip norm logging on non-update steps or use previous
+                total_norm = 0.0
             
-            # We need a persistent global step counter. 
-            # Ideally passed in or static. For now, let's use steps_in_epoch + accumulated?
-            # Actually, `scheduler.last_epoch` tracks steps for LambdaLR if stepped every batch.
-            # Or just use a simple counter.
-            
-            # Let's write to CSV
-            if steps_in_epoch % log_freq == 0:
-                with open(step_log_path, "a") as f:
-                     # For range test, we only care about the sequence
-                     f.write(f"{steps_in_epoch},{epoch+1},{current_lr:.8f},{loss.item():.6f},{state_loss.item():.6f},{action_loss.item():.6f},,\n")
 
-            # Check for range test limit
+            # Check for range test limit (check global_step updates)
             if sched_cfg and "range_test" in sched_cfg.type:
                 range_limit = sched_cfg.range_test.steps
-                if range_limit and steps_in_epoch >= range_limit:
+                if range_limit and global_step >= range_limit:
                     log.info(f"Reached max steps for Range Test ({range_limit}). Stopping.")
                     return # Exit training completely
             
@@ -658,16 +708,17 @@ def train_world_model(cfg: DictConfig) -> None:
                 if not (sched_cfg and "range_test" in sched_cfg.type and sched_cfg.range_test.steps):
                     pbar.update(1)
             
-            # Range test mode: update on every step
+            
+            # Range test mode: update on every step (micro-step logic)
             if sched_cfg and "range_test" in sched_cfg.type and sched_cfg.range_test.steps:
                 pbar.update(1)
 
             steps_in_epoch += 1
-            if steps_in_epoch % 50 == 0:
+            if steps_in_epoch % (50 * accumulation_steps) == 0:
                 pbar.set_postfix({
                     "loss": total_loss.item() / steps_in_epoch,
-                    "state": total_state_loss.item() / steps_in_epoch,
-                    "action": total_action_loss.item() / steps_in_epoch
+                    "state": (total_state_loss.item() / steps_in_epoch) if steps_in_epoch > 0 else 0,
+                    "action": (total_action_loss.item() / steps_in_epoch) if steps_in_epoch > 0 else 0
                 })
 
         avg_loss = total_loss.item() / steps_in_epoch if steps_in_epoch > 0 else 0

@@ -42,10 +42,22 @@ def analyze_lr_test(csv_path, args=None):
     
     # 1. Smooth the loss
     # Adjust window size based on data length
-    window_size = min(len(losses) // 10, 101)
+    # Adjust window size based on data length
+    # Need at least polyorder + 2 (usually 5)
+    min_window = 7
+    window_size = max(min_window, min(len(losses) // 10, 101))
+    
+    if window_size > len(losses):
+        window_size = len(losses) // 2 * 2 + 1
+        
     if window_size % 2 == 0: window_size += 1
     
-    smoothed_losses = smooth_data(losses, window_length=window_size)
+    # If data is too small for default polyorder (3), adjust polyorder
+    polyorder = 3
+    if window_size <= polyorder:
+         polyorder = max(1, window_size - 1)
+    
+    smoothed_losses = smooth_data(losses, window_length=window_size, polyorder=polyorder)
 
     # 2. Compute gradients
     # We want d(Loss) / d(log(LR))
