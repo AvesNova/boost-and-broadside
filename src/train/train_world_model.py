@@ -24,6 +24,7 @@ import numpy as np
 from agents.interleaved_world_model import InterleavedWorldModel
 from train.data_loader import load_bc_data, create_unified_data_loaders
 from train.swa import SWAModule
+from env.constants import PowerActions, TurnActions, ShootActions
 import wandb
 
 
@@ -250,6 +251,14 @@ def validate_model(model, loaders, device, amp=True, lambda_state=1.0, lambda_ac
     val_error_t = torch.tensor(0.0, device=device)
     val_error_s = torch.tensor(0.0, device=device)
 
+    # Collections for Confusion Matrix
+    all_preds_p = []
+    all_targets_p = []
+    all_preds_t = []
+    all_targets_t = []
+    all_preds_s = []
+    all_targets_s = []
+
     # loaders is a list of data loaders
     for loader in loaders:
         with torch.no_grad():
@@ -315,6 +324,14 @@ def validate_model(model, loaders, device, amp=True, lambda_state=1.0, lambda_ac
                     val_error_t += (t_logits.argmax(-1) != t_target).float().mean()
                     val_error_s += (s_logits.argmax(-1) != s_target).float().mean()
 
+                    # Collect for Confusion Matrix
+                    all_preds_p.append(p_logits.argmax(-1).cpu().numpy())
+                    all_targets_p.append(p_target.cpu().numpy())
+                    all_preds_t.append(t_logits.argmax(-1).cpu().numpy())
+                    all_targets_t.append(t_target.cpu().numpy())
+                    all_preds_s.append(s_logits.argmax(-1).cpu().numpy())
+                    all_targets_s.append(s_target.cpu().numpy())
+
     avg_val_loss = val_loss.item() / val_steps if val_steps > 0 else 0.0
     avg_val_err_p = val_error_p.item() / val_steps if val_steps > 0 else 0.0
     avg_val_err_t = val_error_t.item() / val_steps if val_steps > 0 else 0.0
@@ -324,7 +341,13 @@ def validate_model(model, loaders, device, amp=True, lambda_state=1.0, lambda_ac
         "val_loss": avg_val_loss,
         "error_power": avg_val_err_p,
         "error_turn": avg_val_err_t,
-        "error_shoot": avg_val_err_s
+        "error_shoot": avg_val_err_s,
+        "preds_p": np.concatenate(all_preds_p) if all_preds_p else np.array([]),
+        "targets_p": np.concatenate(all_targets_p) if all_targets_p else np.array([]),
+        "preds_t": np.concatenate(all_preds_t) if all_preds_t else np.array([]),
+        "targets_t": np.concatenate(all_targets_t) if all_targets_t else np.array([]),
+        "preds_s": np.concatenate(all_preds_s) if all_preds_s else np.array([]),
+        "targets_s": np.concatenate(all_targets_s) if all_targets_s else np.array([])
     }
 
 
@@ -977,6 +1000,43 @@ def train_world_model(cfg: DictConfig) -> None:
                 "val_prob_shoot": val_metrics.get("prob_shoot", 0),
                 "epoch": epoch + 1
             }
+
+            # Confusion Matrices
+            # Power
+            if len(val_metrics.get("preds_p", [])) > 0:
+                 try:
+                     val_log["conf_mat_power"] = wandb.plot.confusion_matrix(
+                        probs=None,
+                        y_true=val_metrics["targets_p"],
+                        preds=val_metrics["preds_p"],
+                        class_names=[x.name for x in PowerActions]
+                     )
+                 except Exception as e:
+                     log.warning(f"Failed to plot power conf matrix: {e}")
+
+            # Turn
+            if len(val_metrics.get("preds_t", [])) > 0:
+                 try:
+                     val_log["conf_mat_turn"] = wandb.plot.confusion_matrix(
+                        probs=None,
+                        y_true=val_metrics["targets_t"],
+                        preds=val_metrics["preds_t"],
+                        class_names=[x.name for x in TurnActions]
+                     )
+                 except Exception as e:
+                     log.warning(f"Failed to plot turn conf matrix: {e}")
+
+            # Shoot
+            if len(val_metrics.get("preds_s", [])) > 0:
+                 try:
+                     val_log["conf_mat_shoot"] = wandb.plot.confusion_matrix(
+                        probs=None,
+                        y_true=val_metrics["targets_s"],
+                        preds=val_metrics["preds_s"],
+                        class_names=[x.name for x in ShootActions]
+                     )
+                 except Exception as e:
+                     log.warning(f"Failed to plot shoot conf matrix: {e}")
             
             # Merge AR metrics
             if ar_metrics:
