@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 log = logging.getLogger(__name__)
 
-def calculate_action_stats(data_path: str, batch_size: int = 10000, max_weight: float = 100.0, epsilon: float = 1e-6) -> dict[str, torch.Tensor]:
+def calculate_action_stats(data_path: str, batch_size: int = 10000, max_weight: float = 10.0, epsilon: float = 1e-6) -> dict[str, torch.Tensor]:
     """
     Calculate or retrieve class weights for action heads from HDF5 metadata.
     
@@ -23,9 +23,9 @@ def calculate_action_stats(data_path: str, batch_size: int = 10000, max_weight: 
     with h5py.File(data_path, "r+") as f:
         # ... (Loading logic remains same) ...
         # 1. Check if metadata exists
-        if "action_weights" in f.attrs:
+        if "action_weights_sqrt" in f.attrs:
             log.info("Loading pre-computed action weights from metadata.")
-            weights_json = f.attrs["action_weights"]
+            weights_json = f.attrs["action_weights_sqrt"]
             weights_dict = json.loads(weights_json)
             
             w_p = torch.tensor(weights_dict["power"])
@@ -47,7 +47,8 @@ def calculate_action_stats(data_path: str, batch_size: int = 10000, max_weight: 
             n_classes = len(counts)
             if total == 0: return np.ones(n_classes)
             # Add epsilon to counts (Laplace-like smoothing if >= 1, or stability if small)
-            weights = total / (n_classes * (counts + epsilon))
+            # Use sqrt for less extreme weighting
+            weights = np.sqrt(total / (n_classes * (counts + epsilon)))
             return weights
         log.info("Calculating action statistics (this measures full dataset)...")
         
@@ -125,7 +126,8 @@ def calculate_action_stats(data_path: str, batch_size: int = 10000, max_weight: 
             total = counts.sum()
             n_classes = len(counts)
             if total == 0: return np.ones(n_classes)
-            weights = total / (n_classes * (counts + 1e-6))
+            # Use sqrt for less extreme weighting
+            weights = np.sqrt(total / (n_classes * (counts + 1e-6)))
             return weights
             
         w_p = get_weights(counts_p)
@@ -140,7 +142,7 @@ def calculate_action_stats(data_path: str, batch_size: int = 10000, max_weight: 
         }
         
         log.info(f"Saving weights to metadata: {weights_dict}")
-        f.attrs["action_weights"] = json.dumps(weights_dict)
+        f.attrs["action_weights_sqrt"] = json.dumps(weights_dict)
         
         # Return CLAMPED weights
         return {

@@ -57,9 +57,17 @@ def test_calculate_action_stats(mock_h5_file):
     
     # Validate Logic: Less frequent class should have higher weight
     # Power 2 has 1 sample, Power 0 has 100 samples.
-    # Weight ~ 1/Count
+    # Old Weight ~ 1/Count. New Weight ~ 1/sqrt(Count).
+    # w[2] should be > w[0]. 
     assert w_p[2] > w_p[0]
     
-    # Check caching
+    # Check specific sqrt relationship roughly
+    # Count 1 vs Count 100 -> Weight ratio should be approx sqrt(100)/sqrt(1) = 10
+    # Allow some margin for epsilon and n_classes scaling
+    ratio = w_p[2] / w_p[0]
+    # 100 / 1 in counts -> sqrt(100)/sqrt(1) = 10 in weights
+    assert torch.abs(ratio - 10.0) < 1.0
+    
+    # Check caching key
     with h5py.File(mock_h5_file, "r") as f:
-        assert "action_weights" in f.attrs
+        assert "action_weights_sqrt" in f.attrs
