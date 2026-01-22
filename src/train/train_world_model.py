@@ -19,6 +19,7 @@ import random
 from omegaconf import DictConfig, OmegaConf
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
+import numpy as np
 
 from agents.interleaved_world_model import InterleavedWorldModel
 from train.data_loader import load_bc_data, create_unified_data_loaders
@@ -552,7 +553,8 @@ def train_world_model(cfg: DictConfig) -> None:
         else:
              # Estimate total micro-batches based on short loader
              # We consume 1 long for every 'batch_ratio' short
-             pbar_total = int(num_short_batches * (1 + 1/batch_ratio))
+             total_micro = int(num_short_batches * (1 + 1/batch_ratio))
+             pbar_total = total_micro // acc_steps
              
         pbar = tqdm(range(pbar_total), desc=f"Epoch {epoch + 1}/{epochs}")
         # Calculate probability of short batch based on ratio
@@ -731,6 +733,10 @@ def train_world_model(cfg: DictConfig) -> None:
                 if scheduler is not None:
                     scheduler.step()
                 
+                # Update pbar on optimizer step (Full Batch)
+                if not (sched_cfg and "range_test" in sched_cfg.type):
+                    pbar.update(1)
+                
                 # Increment Global Step only on update
                 global_step += 1
                 current_step = global_step
@@ -822,12 +828,6 @@ def train_world_model(cfg: DictConfig) -> None:
                     return # Exit training completely
             
             
-            if is_short:
-                # Normal mode: only update pbar on short batches (since total is num_short)
-                if not (sched_cfg and "range_test" in sched_cfg.type and sched_cfg.range_test.steps):
-                    pbar.update(1)
-            
-            
             # Range test mode: update on every step (micro-step logic)
             if sched_cfg and "range_test" in sched_cfg.type and sched_cfg.range_test.steps:
                 pbar.update(1)
@@ -848,6 +848,27 @@ def train_world_model(cfg: DictConfig) -> None:
         avg_err_power = total_error_power.item() / steps_in_epoch if steps_in_epoch > 0 else 0
         avg_err_turn = total_error_turn.item() / steps_in_epoch if steps_in_epoch > 0 else 0
         avg_err_shoot = total_error_shoot.item() / steps_in_epoch if steps_in_epoch > 0 else 0
+
+        # FLUSH LOG BUFFER to avoid out-of-order logging with validation
+        if len(log_buffer) > 0:
+            if cfg.wandb.enabled: 
+                 # Flush Buffer
+                 packed = {}
+                 keys = log_buffer[0].keys()
+                 for k in keys:
+                     try:
+                          tensors = [x[k] for x in log_buffer]
+                          packed[k] = torch.stack(tensors).cpu().tolist()
+                     except:
+                          packed[k] = [x[k] for x in log_buffer]
+                 
+                 for i in range(len(packed["step"])):
+                     log_item = {k: packed[k][i] for k in packed}
+                     step_val = int(log_item.pop("step"))
+                     str_log_item = {k: v for k, v in log_item.items()} # Copy?
+                     wandb.log(str_log_item, step=step_val)
+            
+            log_buffer = []
 
         avg_prob_power = total_prob_power.item() / steps_in_epoch if steps_in_epoch > 0 else 0
         avg_prob_turn = total_prob_turn.item() / steps_in_epoch if steps_in_epoch > 0 else 0
@@ -874,12 +895,24 @@ def train_world_model(cfg: DictConfig) -> None:
         log.info(f"Epoch {epoch + 1}: Val Loss={avg_val_loss:.4f} AR MSE={ar_metrics.get('val_rollout_mse_state', -1):.4f}")
 
         # SWA Update
-        if epoch >= cfg.world_model.get("swa_start_epoch", 2):
+        # Start SWA after warmup period check
+        # We need to access warmup steps.
+        swa_start_condition = False
+        if sched_cfg and sched_cfg.type == "warmup_constant":
+             warmup_steps = sched_cfg.warmup.steps
+             if global_step > warmup_steps:
+                 swa_start_condition = True
+        else:
+             # Fallback to epoch-based if no warmup defined
+             if epoch >= cfg.world_model.get("swa_start_epoch", 2):
+                 swa_start_condition = True
+
+        if swa_start_condition:
              swa_model.update_parameters(model)
 
         # SWA Evaluation
         avg_val_loss_swa = None
-        if epoch >= cfg.world_model.get("swa_start_epoch", 2):
+        if swa_start_condition:
              # Move SWA model to GPU
              swa_model.averaged_model.to(device)
              val_metrics_swa = validate_model(
@@ -948,25 +981,6 @@ def train_world_model(cfg: DictConfig) -> None:
             # Merge AR metrics
             if ar_metrics:
                 val_log.update(ar_metrics)
-                
-                # Heatmap Logging
-                if "val_rollout_mse_step" in ar_metrics:
-                    step_errors = ar_metrics["val_rollout_mse_step"]
-                    rollout_error_history.append(step_errors)
-                    
-                    # Create heatmap if we have history
-                    if len(rollout_error_history) > 0:
-                        # X-axis: Steps (0..N)
-                        x_labels = [f"Step {i}" for i in range(len(step_errors))]
-                        # Y-axis: Epochs (1..Current)
-                        y_labels = [f"Epoch {i+1}" for i in range(len(rollout_error_history))]
-                        
-                        val_log["val/rollout_heatmap"] = wandb.plots.HeatMap(
-                            x_labels, 
-                            y_labels, 
-                            rollout_error_history,
-                            show_text=False
-                        )
 
             wandb.log(val_log, step=global_step) # WandB logs with global step
             # Note: We used to log wandb in the loop buffer for steps.
@@ -974,9 +988,9 @@ def train_world_model(cfg: DictConfig) -> None:
 
             if avg_val_loss_swa is not None:
                 val_log["val_loss_swa"] = avg_val_loss_swa
-                val_log["val_error_p_swa"] = val_metrics_swa["error_p"]
-                val_log["val_error_t_swa"] = val_metrics_swa["error_t"]
-                val_log["val_error_s_swa"] = val_metrics_swa["error_s"]
+                val_log["val_error_p_swa"] = val_metrics_swa["error_power"]
+                val_log["val_error_t_swa"] = val_metrics_swa["error_turn"]
+                val_log["val_error_s_swa"] = val_metrics_swa["error_shoot"]
             
             wandb.log(val_log, step=global_step)
 

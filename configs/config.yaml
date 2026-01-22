@@ -121,7 +121,7 @@ world_model:
   noise_scale: 0.01
   input_noise_ratio: 1.0
   input_noise_scale: 0.01
-  learning_rate: 2.05e-4
+  learning_rate: 1.26e-4
   epochs: 200
   lambda_state: 1.0
   lambda_action: 0.05
@@ -139,8 +139,8 @@ world_model:
       end_lr: 1.0
   
   # Mixed Batch Training
-  short_batch_size: 192
-  long_batch_size: 48
+  short_batch_size: 128
+  long_batch_size: 32
   short_batch_len: 32
   long_batch_len: 128
   batch_ratio: 4
