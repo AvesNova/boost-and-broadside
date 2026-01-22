@@ -49,14 +49,15 @@ class RelationalFeatureExtractor(nn.Module):
             nn.Linear(hidden_dim, num_heads) 
         )
         
-    def forward(self, fundamental_features: torch.Tensor) -> torch.Tensor:
+    def compute_features(self, fundamental_features: torch.Tensor) -> torch.Tensor:
         """
+        Compute the 12D feature vector from the 4D fundamental features.
+        
         Args:
-            fundamental_features: (..., 4) [rx, ry, rvx, rvy]
+            fundamental_features: (..., 4) [rx, ry, rvx, rvy] in local frame.
             
         Returns:
-            bias: (..., num_heads, N, N) -> Actually just (..., num_heads) mapped to input shape
-            If input is (B, N, N, 4), output is (B, N, N, Heads) -> Permute to (B, Heads, N, N)
+            features: (..., 12) Full feature vector.
         """
         # Unpack
         # (..., 4)
@@ -100,16 +101,38 @@ class RelationalFeatureExtractor(nn.Module):
             ttca, dot_vp           # 2 Interaction
         ], dim=-1)
         
-        # MLP
+        return features
+
+    def project_features(self, features: torch.Tensor) -> torch.Tensor:
+        """
+        Project 12D features to attention bias.
+        
+        Args:
+            features: (..., 12)
+            
+        Returns:
+            bias: (..., Heads)
+        """
         bias = self.mlp(features) # (..., Heads)
         
         # Determine permute dims based on input rank
-        # If input (B, N, N, 4) -> Output (B, N, N, H) -> (B, H, N, N)
-        # If input (B*T, N, N, 4) -> Output (B*T, N, N, H) -> (B*T, H, N, N)
+        # If input (B, N, N, 12) -> bias (B, N, N, H) -> Output (B, H, N, N)
+        # If input (B*T, N, N, 12) -> bias (B*T, N, N, H) -> Output (B*T, H, N, N)
         
         if bias.ndim == 4:
             bias = bias.permute(0, 3, 1, 2)
         elif bias.ndim == 5: # (B, T, N, N, H)
-             bias = bias.permute(0, 4, 1, 2, 3) # Unlikely
+             bias = bias.permute(0, 4, 1, 2, 3) 
              
         return bias
+
+    def forward(self, fundamental_features: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            fundamental_features: (..., 4) [rx, ry, rvx, rvy]
+            
+        Returns:
+            bias: (..., Heads, N, N)
+        """
+        features = self.compute_features(fundamental_features)
+        return self.project_features(features)

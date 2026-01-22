@@ -125,6 +125,7 @@ world_model:
   epochs: 200
   lambda_state: 1.0
   lambda_action: 0.05
+  lambda_relational: 0.1
 
   scheduler:
     type: "warmup_constant" # Options: "constant", "warmup_constant", "linear_range_test", "exponential_range_test"

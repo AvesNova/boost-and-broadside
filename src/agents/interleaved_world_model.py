@@ -304,6 +304,15 @@ class InterleavedWorldModel(nn.Module):
             dropout=dropout
         )
         
+        # Relational Prediction Head (12D target)
+        # Input: Pair of embeddings (2 * embed_dim)
+        # Output: 12 (features)
+        self.relational_head = nn.Sequential(
+            nn.Linear(2 * embed_dim, embed_dim),
+            nn.GELU(),
+            nn.Linear(embed_dim, 12)
+        )
+        
         self.bin_emb_list = nn.ModuleList([nn.Embedding(2, embed_dim) for _ in range(self.num_binary)])
         
         # Action Encoders
@@ -431,7 +440,10 @@ class InterleavedWorldModel(nn.Module):
             # Here we approximate bias_prev using current relative features.
             # bias_self = bias_prev = features
             
-            bias_self = self.relational_extractor(feats_flat) # (B*T, H, N, N)
+            # Compute 12D features
+            features_12d = self.relational_extractor.compute_features(feats_flat) # (B*T, N, N, 12)
+            
+            bias_self = self.relational_extractor.project_features(features_12d) # (B*T, H, N, N)
             
             # Use same bias for 'prev' (S_t -> S_{t-1})
             # This ignores relative velocity changes? 
@@ -453,16 +465,6 @@ class InterleavedWorldModel(nn.Module):
         
         elif past_key_values is None and not use_cache:
             # Training mode but NO features passed?
-            # Fallback to computing from states (legacy support or if features missing)
-            # (B*T, N, D)
-            curr_phys = states
-            zeros_phys = torch.zeros_like(curr_phys[:, :1])
-            prev_phys = torch.cat([zeros_phys, curr_phys[:, :-1]], dim=1)
-            
-            # This path requires RelationalFeatureExtractor to support handling 'states' again?
-            # No, RelationalFeatureExtractor will be updated to expect FEATURES (4 dims).
-            # So we cannot fallback easily without computing features here on the fly.
-            # If features are missing, we pass None and have no bias.
             pass
 
         # 7. Transformer
@@ -486,10 +488,42 @@ class InterleavedWorldModel(nn.Module):
         a_out = x_reshaped[:, :, 1, :, :]
         pred_states = self.state_head(a_out)
         
+        # Predict Relational Features (S_{t+1} relations) from A_t (Action tokens)
+        # a_out corresponds to Action tokens which predict next state.
+        pred_relational = self.predict_relational(a_out, B, T, N)
+        
         if return_embeddings:
-             return pred_states, pred_actions, current_key_values, x
+             if features_12d is not None and len(features_12d.shape) == 4 and features_12d.shape[0] == B * T:
+                 features_12d = features_12d.view(B, T, N, N, 12)
+                 
+             return pred_states, pred_actions, current_key_values, x, features_12d, pred_relational
              
         return pred_states, pred_actions, current_key_values
+
+    def predict_relational(self, embeddings: torch.Tensor, B: int, T: int, N: int):
+        """
+        Predict relational features for next state from current embeddings.
+        Args:
+            embeddings: (..., N, E) corresponding to valid predictive tokens (Action Tokens)
+                        Action tokens at t predict State at t+1.
+            B, T, N: Dimensions to reshape for pairing.
+        Returns:
+            pred_rel: (B, T, N, N, 12)
+        """
+        # Embeddings Input: x_reshaped[:, :, 1] which is Action Tokens -> State_{t+1}
+        # Shape: (B, T, N, E)
+        
+        # We need pairs (N, N)
+        # For each ship i, and ship j, we concatenate emb_i, emb_j.
+        # (B, T, N, 1, E) expand (B, T, N, N, E)
+        # (B, T, 1, N, E) expand (B, T, N, N, E)
+        
+        src = embeddings.unsqueeze(3).expand(-1, -1, -1, N, -1)
+        tgt = embeddings.unsqueeze(2).expand(-1, -1, N, -1, -1)
+        
+        pairs = torch.cat([src, tgt], dim=-1) # (B, T, N, N, 2E)
+        
+        return self.relational_head(pairs)
 
     def get_loss(
         self,
@@ -499,8 +533,11 @@ class InterleavedWorldModel(nn.Module):
         target_actions,
         loss_mask, 
         latents=None,
+        target_features_12d=None,
+        pred_relational=None,
         lambda_state=1.0,
-        lambda_action=0.01
+        lambda_action=0.01,
+        lambda_relational=0.1
     ):
         """
         pred_states: (B, T, N, D)
@@ -509,6 +546,8 @@ class InterleavedWorldModel(nn.Module):
         target_actions: (B, T, N, 3)
         loss_mask: (B, T)
         latents: (B, 2T, N, E) - Optional
+        target_features_12d: (B, T, N, N, 12) - Ground truth (from compute_features)
+        pred_relational: (B, T, N, N, 12) - Predicted
         """
         valid_mask = loss_mask.bool() 
         
@@ -562,7 +601,27 @@ class InterleavedWorldModel(nn.Module):
         
         state_loss = F.mse_loss(valid_pred_state, valid_target_state)
         
-        total_loss = lambda_state * state_loss + lambda_action * action_loss
+        # Relational Loss
+        relational_loss = torch.tensor(0.0, device=pred_states.device)
+        if target_features_12d is not None and pred_relational is not None:
+             # Mask: (B, T) -> (B, T, N, N)
+             # Expand mask to ships and pairs
+             B, T, N = pred_states.shape[:3]
+             # (B, T, 1, 1)
+             rel_mask = loss_mask.view(B, T, 1, 1).expand(B, T, N, N).bool()
+             
+             # Also mask diagonal (i == j)
+             eye_mask = ~torch.eye(N, device=pred_states.device).bool().view(1, 1, N, N).expand(B, T, N, N)
+             
+             final_mask = rel_mask & eye_mask
+             
+             valid_pred_rel = pred_relational[final_mask]
+             valid_target_rel = target_features_12d[final_mask]
+             
+             if valid_target_rel.numel() > 0:
+                 relational_loss = F.mse_loss(valid_pred_rel, valid_target_rel)
+        
+        total_loss = lambda_state * state_loss + lambda_action * action_loss + lambda_relational * relational_loss
         
         metrics = {
              "entropy_power": entropy_p,
@@ -577,7 +636,7 @@ class InterleavedWorldModel(nn.Module):
              "norm_latent": norm_latent,
         }
         
-        return total_loss, state_loss, action_loss, metrics
+        return total_loss, state_loss, action_loss, relational_loss, metrics
 
     @torch.no_grad()
     def generate(

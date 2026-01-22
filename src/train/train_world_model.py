@@ -265,7 +265,7 @@ def validate_autoregressive(model, loader, device, steps=50):
     }
 
 
-def validate_model(model, loaders, device, amp=True, lambda_state=1.0, lambda_action=0.01):
+def validate_model(model, loaders, device, amp=True, lambda_state=1.0, lambda_action=0.01, lambda_relational=0.1):
     """
     Run validation loop and return metrics.
     """
@@ -335,22 +335,26 @@ def validate_model(model, loaders, device, amp=True, lambda_state=1.0, lambda_ac
                 loss_mask_slice = loss_mask[:, 1:]
 
                 with torch.amp.autocast(device_type='cuda', dtype=torch.float16, enabled=amp):
-                    pred_states, pred_actions, _ = model(
+                    pred_states, pred_actions, _, _, features_12d, pred_relational = model(
                         input_states, 
                         input_actions_slice, 
                         input_team_ids, 
                         relational_features=rel_features_slice,
-                        noise_scale=0.0
+                        noise_scale=0.0,
+                        return_embeddings=True
                     )
 
-                    loss, state_loss, action_loss, _ = model.get_loss(
+                    loss, state_loss, action_loss, relational_loss, _ = model.get_loss(
                         pred_states=pred_states,
                         pred_actions=pred_actions,
                         target_states=target_states_slice,
                         target_actions=target_actions_slice,
                         loss_mask=loss_mask_slice,
+                        target_features_12d=features_12d, # Need to pass this too!
+                        pred_relational=pred_relational,
                         lambda_state=lambda_state,
-                        lambda_action=lambda_action
+                        lambda_action=lambda_action,
+                        lambda_relational=lambda_relational
                     )
                 
                 val_loss += loss
@@ -536,7 +540,7 @@ def train_world_model(cfg: DictConfig) -> None:
     
     step_log_path = run_dir / "training_step_log.csv"
     with open(step_log_path, "w") as f:
-        f.write("global_step,epoch,learning_rate,loss,state_loss,action_loss,val_loss,val_loss_swa\n")
+        f.write("global_step,epoch,learning_rate,loss,state_loss,action_loss,relational_loss,val_loss,val_loss_swa\n")
 
 
     log.info(f"Output directory: {run_dir}")
@@ -550,7 +554,7 @@ def train_world_model(cfg: DictConfig) -> None:
     csv_path = run_dir / "training_log.csv"
     with open(csv_path, "w") as f:
         f.write(
-            "epoch,learning_rate,train_loss,train_state_loss,train_action_loss,val_loss,val_loss_swa\n"
+            "epoch,learning_rate,train_loss,train_state_loss,train_action_loss,train_relational_loss,val_loss,val_loss_swa\n"
         )
 
     # Initialize W&B
@@ -605,6 +609,7 @@ def train_world_model(cfg: DictConfig) -> None:
         total_loss = torch.tensor(0.0, device=device)
         total_state_loss = torch.tensor(0.0, device=device)
         total_action_loss = torch.tensor(0.0, device=device)
+        total_relational_loss = torch.tensor(0.0, device=device)
         total_error_power = torch.tensor(0.0, device=device)
         total_error_turn = torch.tensor(0.0, device=device)
         total_error_shoot = torch.tensor(0.0, device=device)
@@ -661,6 +666,7 @@ def train_world_model(cfg: DictConfig) -> None:
         acc_loss = 0.0
         acc_state_loss = 0.0
         acc_action_loss = 0.0
+        acc_relational_loss = 0.0
         acc_error_power = 0.0
         acc_error_turn = 0.0
         acc_error_shoot = 0.0
@@ -755,7 +761,7 @@ def train_world_model(cfg: DictConfig) -> None:
             
             with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
                 # Request embeddings for norm calculation
-                pred_states, pred_actions, _, latents = model(
+                pred_states, pred_actions, _, latents, features_12d, pred_relational = model(
                     input_states,
                     input_actions_slice,
                     input_team_ids,
@@ -764,15 +770,18 @@ def train_world_model(cfg: DictConfig) -> None:
                     return_embeddings=True
                 )
                 
-                loss, state_loss, action_loss, metrics = model.get_loss(
+                loss, state_loss, action_loss, relational_loss, metrics = model.get_loss(
                     pred_states=pred_states,
                     pred_actions=pred_actions,
                     target_states=target_states_slice,
                     target_actions=target_actions_slice,
                     loss_mask=loss_mask_slice,
                     latents=latents,
+                    target_features_12d=features_12d,
+                    pred_relational=pred_relational,
                     lambda_state=cfg.world_model.get("lambda_state", 1.0),
-                    lambda_action=cfg.world_model.get("lambda_action", 0.01)
+                    lambda_action=cfg.world_model.get("lambda_action", 0.01),
+                    lambda_relational=cfg.world_model.get("lambda_relational", 0.1)
                 )
 
             # Normalize loss for accumulation
@@ -786,16 +795,19 @@ def train_world_model(cfg: DictConfig) -> None:
             loss_val = loss.detach() * accumulation_steps
             state_loss_val = state_loss.detach()
             action_loss_val = action_loss.detach()
+            relational_loss_val = relational_loss.detach()
             
             # Epoch accumulators
             total_loss += loss_val
             total_state_loss += state_loss_val
             total_action_loss += action_loss_val
+            total_relational_loss += relational_loss_val
             
             # Step accumulators (aggregated over micro-batches)
             acc_loss += loss_val
             acc_state_loss += state_loss_val
             acc_action_loss += action_loss_val
+            acc_relational_loss += relational_loss_val
             
             # Accumulate errors (averaged later)
             # Metrics are usually mean over batch. We want mean over macro-batch.
@@ -832,6 +844,7 @@ def train_world_model(cfg: DictConfig) -> None:
                 step_avg_loss = acc_loss / accumulation_steps
                 step_avg_state = acc_state_loss / accumulation_steps
                 step_avg_action = acc_action_loss / accumulation_steps
+                step_avg_relational = acc_relational_loss / accumulation_steps
                 step_avg_power = acc_error_power / accumulation_steps
                 step_avg_turn = acc_error_turn / accumulation_steps
                 step_avg_shoot = acc_error_shoot / accumulation_steps
@@ -849,6 +862,7 @@ def train_world_model(cfg: DictConfig) -> None:
                         "loss": step_avg_loss.detach() if isinstance(step_avg_loss, torch.Tensor) else step_avg_loss,
                         "state_loss": step_avg_state.detach() if isinstance(step_avg_state, torch.Tensor) else step_avg_state,
                         "action_loss": step_avg_action.detach() if isinstance(step_avg_action, torch.Tensor) else step_avg_action,
+                        "relational_loss": step_avg_relational.detach() if isinstance(step_avg_relational, torch.Tensor) else step_avg_relational,
                         "error_power": step_avg_power,
                         "error_turn": step_avg_turn,
                         "error_shoot": step_avg_shoot,
@@ -886,12 +900,14 @@ def train_world_model(cfg: DictConfig) -> None:
                         loss_float = step_avg_loss.item() if isinstance(step_avg_loss, torch.Tensor) else step_avg_loss
                         state_float = step_avg_state.item() if isinstance(step_avg_state, torch.Tensor) else step_avg_state
                         action_float = step_avg_action.item() if isinstance(step_avg_action, torch.Tensor) else step_avg_action
-                        f.write(f"{current_step},{epoch+1},{current_lr:.8f},{loss_float:.6f},{state_float:.6f},{action_float:.6f},,\n")
+                        relational_float = step_avg_relational.item() if isinstance(step_avg_relational, torch.Tensor) else step_avg_relational
+                        f.write(f"{current_step},{epoch+1},{current_lr:.8f},{loss_float:.6f},{state_float:.6f},{action_float:.6f},{relational_float:.6f},,\n")
 
                 # Reset accumulators
                 acc_loss = 0.0
                 acc_state_loss = 0.0
                 acc_action_loss = 0.0
+                acc_relational_loss = 0.0
                 acc_error_power = 0.0
                 acc_error_turn = 0.0
                 acc_error_shoot = 0.0
@@ -923,13 +939,15 @@ def train_world_model(cfg: DictConfig) -> None:
                 pbar.set_postfix({
                     "loss": total_loss.item() / steps_in_epoch,
                     "state": (total_state_loss.item() / steps_in_epoch) if steps_in_epoch > 0 else 0,
-                    "action": (total_action_loss.item() / steps_in_epoch) if steps_in_epoch > 0 else 0
+                    "action": (total_action_loss.item() / steps_in_epoch) if steps_in_epoch > 0 else 0,
+                    "rel": (total_relational_loss.item() / steps_in_epoch) if steps_in_epoch > 0 else 0
                 })
 
 
         avg_loss = total_loss.item() / steps_in_epoch if steps_in_epoch > 0 else 0
         avg_state_loss = total_state_loss.item() / steps_in_epoch if steps_in_epoch > 0 else 0
         avg_action_loss = total_action_loss.item() / steps_in_epoch if steps_in_epoch > 0 else 0
+        avg_relational_loss = total_relational_loss.item() / steps_in_epoch if steps_in_epoch > 0 else 0
         
         avg_err_power = total_error_power.item() / steps_in_epoch if steps_in_epoch > 0 else 0
         avg_err_turn = total_error_turn.item() / steps_in_epoch if steps_in_epoch > 0 else 0
@@ -961,7 +979,7 @@ def train_world_model(cfg: DictConfig) -> None:
         avg_prob_shoot = total_prob_shoot.item() / steps_in_epoch if steps_in_epoch > 0 else 0
         
         current_lr = optimizer.param_groups[0]['lr']
-        log.info(f"Epoch {epoch + 1}: LR={current_lr:.2e} Train Loss={avg_loss:.4f} (State={avg_state_loss:.4f}, Action={avg_action_loss:.4f})")
+        log.info(f"Epoch {epoch + 1}: LR={current_lr:.2e} Train Loss={avg_loss:.4f} (State={avg_state_loss:.4f}, Action={avg_action_loss:.4f}, Rel={avg_relational_loss:.4f})")
 
         # Validation (Live Model)
         val_metrics = validate_model(
@@ -969,7 +987,8 @@ def train_world_model(cfg: DictConfig) -> None:
             [val_short_loader, val_long_loader], 
             device,
             lambda_state=cfg.world_model.get("lambda_state", 1.0),
-            lambda_action=cfg.world_model.get("lambda_action", 0.01)
+            lambda_action=cfg.world_model.get("lambda_action", 0.01),
+            lambda_relational=cfg.world_model.get("lambda_relational", 0.1)
         )
         avg_val_loss = val_metrics["val_loss"]
         
@@ -1006,7 +1025,8 @@ def train_world_model(cfg: DictConfig) -> None:
                  [val_short_loader, val_long_loader], 
                  device,
                  lambda_state=cfg.world_model.get("lambda_state", 1.0),
-                 lambda_action=cfg.world_model.get("lambda_action", 0.01)
+                 lambda_action=cfg.world_model.get("lambda_action", 0.01),
+                 lambda_relational=cfg.world_model.get("lambda_relational", 0.1)
              )
              swa_model.averaged_model.to('cpu') # Move back to CPU
              
@@ -1024,7 +1044,7 @@ def train_world_model(cfg: DictConfig) -> None:
         with open(csv_path, "a") as f:
             swa_loss_str = f"{avg_val_loss_swa:.6f}" if avg_val_loss_swa is not None else ""
             f.write(
-                f"{epoch + 1},{current_lr:.8f},{avg_loss:.6f},{avg_state_loss:.6f},{avg_action_loss:.6f},{avg_val_loss:.6f},{swa_loss_str}\n"
+                f"{epoch + 1},{current_lr:.8f},{avg_loss:.6f},{avg_state_loss:.6f},{avg_action_loss:.6f},{avg_relational_loss:.6f},{avg_val_loss:.6f},{swa_loss_str}\n"
             )
 
         # Log to TensorBoard
@@ -1032,6 +1052,7 @@ def train_world_model(cfg: DictConfig) -> None:
         writer.add_scalar("Loss/train", avg_loss, epoch)
         writer.add_scalar("Loss/train_state", avg_state_loss, epoch)
         writer.add_scalar("Loss/train_action", avg_action_loss, epoch)
+        writer.add_scalar("Loss/train_relational", avg_relational_loss, epoch)
         writer.add_scalar("Loss/val", avg_val_loss, epoch)
         writer.add_scalar("Error/train_power", avg_err_power, epoch)
         writer.add_scalar("Error/train_turn", avg_err_turn, epoch)
