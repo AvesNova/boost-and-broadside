@@ -287,6 +287,7 @@ class InterleavedWorldModel(nn.Module):
         max_ships: int = 8,
         max_context_len: int = 128,
         dropout: float = 0.1,
+        action_weights: dict = None,
     ):
         super().__init__()
         self.config = InterleavedWorldModelConfig(
@@ -298,6 +299,11 @@ class InterleavedWorldModel(nn.Module):
             max_context_len=max_context_len,
             dropout=dropout
         )
+        
+        # Action Weights (Buffers)
+        self.register_buffer("weight_power", torch.ones(3))
+        self.register_buffer("weight_turn", torch.ones(7))
+        self.register_buffer("weight_shoot", torch.ones(2))
         
         self.num_binary = 4
         self.num_continuous = state_dim - self.num_binary
@@ -356,6 +362,11 @@ class InterleavedWorldModel(nn.Module):
         # Heads
         self.action_head = nn.Linear(embed_dim, 3 + 7 + 2)
         self.state_head = nn.Linear(embed_dim, state_dim)
+        
+        if action_weights:
+            if "power" in action_weights: self.weight_power.copy_(action_weights["power"])
+            if "turn" in action_weights: self.weight_turn.copy_(action_weights["turn"])
+            if "shoot" in action_weights: self.weight_shoot.copy_(action_weights["shoot"])
         
         self.apply(self._init_weights)
 
@@ -592,9 +603,9 @@ class InterleavedWorldModel(nn.Module):
         t_target = valid_target_act[..., 1].long().reshape(-1)
         s_target = valid_target_act[..., 2].long().reshape(-1)
         
-        loss_p = F.cross_entropy(p_logits, p_target)
-        loss_t = F.cross_entropy(t_logits, t_target)
-        loss_s = F.cross_entropy(s_logits, s_target)
+        loss_p = F.cross_entropy(p_logits, p_target, weight=self.weight_power)
+        loss_t = F.cross_entropy(t_logits, t_target, weight=self.weight_turn)
+        loss_s = F.cross_entropy(s_logits, s_target, weight=self.weight_shoot)
         
         action_loss = loss_p + loss_t + loss_s
         

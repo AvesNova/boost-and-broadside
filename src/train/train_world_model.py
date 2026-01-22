@@ -25,6 +25,7 @@ from agents.interleaved_world_model import InterleavedWorldModel
 from train.data_loader import load_bc_data, create_unified_data_loaders
 from train.swa import SWAModule
 from env.constants import PowerActions, TurnActions, ShootActions
+from utils.dataset_stats import calculate_action_stats
 import wandb
 
 
@@ -380,6 +381,9 @@ def train_world_model(cfg: DictConfig) -> None:
             state_dim = int(f.attrs["token_dim"])
         else:
             state_dim = f["tokens"].shape[-1]
+            
+    # Calculate Action Weights
+    action_weights = calculate_action_stats(data_path)
 
     # Fixed action dim for one-hot encoded actions (3 + 7 + 2) is 12, but input is 3 discrete
     model = InterleavedWorldModel(
@@ -389,6 +393,7 @@ def train_world_model(cfg: DictConfig) -> None:
         n_heads=cfg.world_model.n_heads,
         max_ships=cfg.world_model.n_ships,
         max_context_len=cfg.world_model.context_len,
+        action_weights=action_weights
     ).to(device)
 
     # 2. Compile model
