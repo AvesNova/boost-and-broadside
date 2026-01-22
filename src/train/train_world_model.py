@@ -20,6 +20,7 @@ from omegaconf import DictConfig, OmegaConf
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import numpy as np
+import math
 
 from agents.interleaved_world_model import InterleavedWorldModel
 from train.data_loader import load_bc_data, create_unified_data_loaders
@@ -239,6 +240,55 @@ def validate_autoregressive(model, loader, device, steps=50):
         "val_rollout_acc_turn": acc_t.item(),
         "val_rollout_acc_shoot": acc_s.item()
     }
+
+
+def create_normalized_conf_mat(targets: np.ndarray, preds: np.ndarray, class_names: list):
+    """
+    Creates a custom WandB confusion matrix chart where rows are normalized to sum to 1 (probabilities/ratios).
+    """
+    n_classes = len(class_names)
+    
+    # Compute confusion matrix manually to avoid sklearn dependency if not needed,
+    # but since we have it, we can use it, or just do it manually for speed/simplicity on small matrix.
+    # Manual:
+    conf_mat = np.zeros((n_classes, n_classes))
+    # Filter valid
+    valid_mask = (targets >= 0) & (targets < n_classes) & (preds >= 0) & (preds < n_classes)
+    t_valid = targets[valid_mask]
+    p_valid = preds[valid_mask]
+    
+    # Fast histogram 2d
+    # ravel indices
+    indices = t_valid * n_classes + p_valid
+    counts = np.bincount(indices, minlength=n_classes*n_classes).reshape(n_classes, n_classes)
+    
+    # Normalize row-wise
+    row_sums = counts.sum(axis=1, keepdims=True)
+    # Avoid division by zero
+    row_sums[row_sums == 0] = 1.0
+    norm_conf_mat = counts / row_sums
+    
+    # Create Data for WandB
+    # Format: [Actual, Predicted, nPredictions]
+    data = []
+    for i in range(n_classes):
+        for j in range(n_classes):
+            # nPredictions is the key expected by standard presets, but we put the ratio here.
+            # We round to 4 decimal places for cleanliness
+            data.append([class_names[i], class_names[j], math.floor(norm_conf_mat[i, j] * 10000) / 10000])
+            
+    table = wandb.Table(columns=["Actual", "Predicted", "nPredictions"], data=data)
+    
+    # Map fields
+    fields = {"Actual": "Actual", "Predicted": "Predicted", "nPredictions": "nPredictions"}
+    
+    # Use the standard confusion matrix preset
+    return wandb.plot_table(
+        "wandb/confusion_matrix/v1",
+        table,
+        fields,
+        {"title": f"Normalized Confusion Matrix"}
+    )
 
 
 def validate_model(model, loaders, device, amp=True, lambda_state=1.0, lambda_action=0.01):
@@ -1010,11 +1060,10 @@ def train_world_model(cfg: DictConfig) -> None:
             # Power
             if len(val_metrics.get("preds_p", [])) > 0:
                  try:
-                     val_log["conf_mat_power"] = wandb.plot.confusion_matrix(
-                        probs=None,
-                        y_true=val_metrics["targets_p"],
-                        preds=val_metrics["preds_p"],
-                        class_names=[x.name for x in PowerActions]
+                     val_log["conf_mat_power"] = create_normalized_conf_mat(
+                         targets=val_metrics["targets_p"],
+                         preds=val_metrics["preds_p"],
+                         class_names=[x.name for x in PowerActions]
                      )
                  except Exception as e:
                      log.warning(f"Failed to plot power conf matrix: {e}")
@@ -1022,11 +1071,10 @@ def train_world_model(cfg: DictConfig) -> None:
             # Turn
             if len(val_metrics.get("preds_t", [])) > 0:
                  try:
-                     val_log["conf_mat_turn"] = wandb.plot.confusion_matrix(
-                        probs=None,
-                        y_true=val_metrics["targets_t"],
-                        preds=val_metrics["preds_t"],
-                        class_names=[x.name for x in TurnActions]
+                     val_log["conf_mat_turn"] = create_normalized_conf_mat(
+                         targets=val_metrics["targets_t"],
+                         preds=val_metrics["preds_t"],
+                         class_names=[x.name for x in TurnActions]
                      )
                  except Exception as e:
                      log.warning(f"Failed to plot turn conf matrix: {e}")
@@ -1034,11 +1082,10 @@ def train_world_model(cfg: DictConfig) -> None:
             # Shoot
             if len(val_metrics.get("preds_s", [])) > 0:
                  try:
-                     val_log["conf_mat_shoot"] = wandb.plot.confusion_matrix(
-                        probs=None,
-                        y_true=val_metrics["targets_s"],
-                        preds=val_metrics["preds_s"],
-                        class_names=[x.name for x in ShootActions]
+                     val_log["conf_mat_shoot"] = create_normalized_conf_mat(
+                         targets=val_metrics["targets_s"],
+                         preds=val_metrics["preds_s"],
+                         class_names=[x.name for x in ShootActions]
                      )
                  except Exception as e:
                      log.warning(f"Failed to plot shoot conf matrix: {e}")
