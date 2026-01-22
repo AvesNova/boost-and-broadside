@@ -24,7 +24,7 @@ class TestRLWorldModel:
                     "random_positioning": True,
                     "random_speed": True,
                 },
-                "train": {"model": {"transformer": {"token_dim": 12}}},
+                "train": {"model": {"transformer": {"token_dim": 15}}},
                 "team2": "scripted",
                 "agents": {
                     "scripted": {
@@ -40,7 +40,7 @@ class TestRLWorldModel:
                     }
                 },
                 "world_model": {
-                    "state_dim": 12,
+                    "state_dim": 15,
                     "action_dim": 12,
                     "embed_dim": 64,  # Small for test
                     "n_layers": 2,

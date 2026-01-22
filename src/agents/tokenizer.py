@@ -24,15 +24,17 @@ def observation_to_tokens(
         world_size: Dimensions of the world (width, height) for normalization.
 
     Returns:
-        Token tensor of shape (1, num_ships, token_dim) where token_dim=12.
+        Token tensor of shape (1, num_ships, token_dim) where token_dim=15.
         Features include:
-        - Team indicator (binary)
-        - Health (normalized)
-        - Power (normalized)
-        - Position (sin/cos encoded x and y)
-        - Velocity (normalized x and y components)
-        - Attitude (x and y components)
-        - Shooting state (binary)
+        - Team indicator (binary)                                   [0]
+        - Health (normalized)                                       [1]
+        - Power (normalized)                                        [2]
+        - Position (sin/cos encoded x and y)                        [3, 4, 5, 6]
+        - Velocity (normalized x and y components)                  [7, 8]
+        - Attitude (x and y components)                             [9, 10]
+        - Shooting state (binary)                                   [11]
+        - Acceleration (normalized x and y components)              [12, 13]
+        - Angular Velocity (normalized)                             [14]
     """
     # Normalized positions
     x_norm = obs["position"].real / world_size[0]
@@ -59,6 +61,9 @@ def observation_to_tokens(
             obs["attitude"].real,
             obs["attitude"].imag,
             obs["is_shooting"].float(),
+            obs["acceleration"].real / 150.0, # Approximate max accel
+            obs["acceleration"].imag / 150.0,
+            obs["angular_velocity"] / 360.0,  # Approximate max ang vel
         ],
         dim=1,
     ).unsqueeze(0)

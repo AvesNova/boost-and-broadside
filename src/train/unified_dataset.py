@@ -64,7 +64,10 @@ class BaseView(Dataset):
     def _get_shifted_actions_from_full(
         self, abs_start: int, abs_end: int, start_offset: int
     ) -> torch.Tensor:
-        """Helper to extract shifted actions from the main dataset."""
+        """
+        Helper to extract input actions (SHIFTED right).
+        Input at time t is Action_{t-1}.
+        """
         if start_offset == 0:
             # First action is 0, then actions[0...T-1]
             # Slicing end-1 from HDF5
@@ -76,6 +79,17 @@ class BaseView(Dataset):
         else:
             # Previous action exists
             return self.dataset.get_slice("actions", abs_start - 1, abs_end - 1)
+            
+    def _get_target_actions(self, abs_start: int, abs_end: int) -> torch.Tensor:
+        """
+        Helper to extract target actions (Current timestep).
+        Target at time t is ExpertAction_{t}.
+        """
+        if self.dataset.has_dataset("expert_actions"):
+            return self.dataset.get_slice("expert_actions", abs_start, abs_end)
+        else:
+            # Fallback to standard actions if expert actions not available
+            return self.dataset.get_slice("actions", abs_start, abs_end)
 
     def _get_shifted_masks_from_full(
         self, abs_start: int, abs_end: int, start_offset: int
@@ -119,12 +133,27 @@ class ShortView(BaseView):
 
         # Slice using helper
         seq_tokens = self.dataset.get_slice("tokens", abs_start, abs_end)
-        seq_actions = self._get_shifted_actions_from_full(
+        seq_input_actions = self._get_shifted_actions_from_full(
             abs_start, abs_end, start_offset
         )
+        seq_target_actions = self._get_target_actions(abs_start, abs_end)
+        
+        # Convert to long if they are uint8 (byte)
+        if seq_input_actions.dtype == torch.uint8:
+            seq_input_actions = seq_input_actions.to(torch.int64)
+        if seq_target_actions.dtype == torch.uint8:
+            seq_target_actions = seq_target_actions.to(torch.int64)
+        
         seq_masks = self._get_shifted_masks_from_full(abs_start, abs_end, start_offset)
         seq_returns = self.dataset.get_slice("returns", abs_start, abs_end)
-        seq_returns = self.dataset.get_slice("returns", abs_start, abs_end)
+        
+        # Optional Features
+        if self.dataset.has_dataset("relational_features"):
+            seq_rel_features = self.dataset.get_slice("relational_features", abs_start, abs_end)
+        else:
+            # Fallback shape: (T, N, N, 4)
+            nb_ships = seq_tokens.shape[1]
+            seq_rel_features = torch.zeros((actual_len, nb_ships, nb_ships, 4), dtype=torch.float32)
 
         if self.dataset.has_dataset("agent_skills"):
             seq_skills = self.dataset.get_slice("agent_skills", abs_start, abs_end)
@@ -147,9 +176,14 @@ class ShortView(BaseView):
             seq_tokens = torch.cat([seq_tokens, token_pad], dim=0)
 
             action_pad = torch.zeros(
-                pad_len, *seq_actions.shape[1:], dtype=seq_actions.dtype
+                pad_len, *seq_input_actions.shape[1:], dtype=seq_input_actions.dtype
             )
-            seq_actions = torch.cat([seq_actions, action_pad], dim=0)
+            seq_input_actions = torch.cat([seq_input_actions, action_pad], dim=0)
+            
+            target_action_pad = torch.zeros(
+                pad_len, *seq_target_actions.shape[1:], dtype=seq_target_actions.dtype
+            )
+            seq_target_actions = torch.cat([seq_target_actions, target_action_pad], dim=0)
 
             # Pad masks
             mask_pad = torch.ones(pad_len, *seq_masks.shape[1:], dtype=seq_masks.dtype)
@@ -159,6 +193,12 @@ class ShortView(BaseView):
                 pad_len, *seq_returns.shape[1:], dtype=seq_returns.dtype
             )
             seq_returns = torch.cat([seq_returns, return_pad], dim=0)
+            
+            # Pad rel features
+            rel_feat_pad = torch.zeros(
+                pad_len, *seq_rel_features.shape[1:], dtype=seq_rel_features.dtype
+            )
+            seq_rel_features = torch.cat([seq_rel_features, rel_feat_pad], dim=0)
 
             # Pad skills (pad with 1.0 - expert)
             skill_pad = torch.ones(
@@ -166,9 +206,7 @@ class ShortView(BaseView):
             )
             seq_skills = torch.cat([seq_skills, skill_pad], dim=0)
 
-            # Pad team_ids (pad with 0 - arbitrary)
-            # Or use last team_id? Team ID shouldn't change within episode.
-            # But here we are padding past end of episode.
+            # Pad team_ids
             tid_pad = torch.zeros(
                 pad_len, *seq_team_ids.shape[1:], dtype=seq_team_ids.dtype
             )
@@ -181,12 +219,14 @@ class ShortView(BaseView):
 
         return (
             seq_tokens,
-            seq_actions,
+            seq_input_actions,
+            seq_target_actions, # NEW
             seq_returns,
             loss_mask,
             seq_masks,
             seq_skills,
             seq_team_ids,
+            seq_rel_features, # NEW
         )
 
 
@@ -218,12 +258,26 @@ class LongView(BaseView):
         abs_end = abs_start + self.seq_len
 
         seq_tokens = self.dataset.get_slice("tokens", abs_start, abs_end)
-        seq_actions = self._get_shifted_actions_from_full(
+        seq_input_actions = self._get_shifted_actions_from_full(
             abs_start, abs_end, start_offset
         )
+        seq_target_actions = self._get_target_actions(abs_start, abs_end)
+        
+        # Convert to long
+        if seq_input_actions.dtype == torch.uint8:
+            seq_input_actions = seq_input_actions.to(torch.int64)
+        if seq_target_actions.dtype == torch.uint8:
+            seq_target_actions = seq_target_actions.to(torch.int64)
+
         seq_masks = self._get_shifted_masks_from_full(abs_start, abs_end, start_offset)
         seq_returns = self.dataset.get_slice("returns", abs_start, abs_end)
-        seq_returns = self.dataset.get_slice("returns", abs_start, abs_end)
+        
+        if self.dataset.has_dataset("relational_features"):
+            seq_rel_features = self.dataset.get_slice("relational_features", abs_start, abs_end)
+        else:
+             # Fallback shape: (T, N, N, 4)
+            nb_ships = seq_tokens.shape[1]
+            seq_rel_features = torch.zeros((self.seq_len, nb_ships, nb_ships, 4), dtype=torch.float32)
 
         if self.dataset.has_dataset("agent_skills"):
             seq_skills = self.dataset.get_slice("agent_skills", abs_start, abs_end)
@@ -240,10 +294,12 @@ class LongView(BaseView):
 
         return (
             seq_tokens,
-            seq_actions,
+            seq_input_actions,
+            seq_target_actions, # NEW
             seq_returns,
             loss_mask,
             seq_masks,
             seq_skills,
             seq_team_ids,
+            seq_rel_features, # NEW
         )

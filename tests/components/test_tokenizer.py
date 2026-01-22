@@ -16,6 +16,8 @@ def test_tokenizer_shape(dummy_state, default_config):
         "velocity": torch.tensor([10.0 + 0j]),
         "speed": torch.tensor([10.0]),
         "attitude": torch.tensor([1.0 + 0j]),
+        "acceleration": torch.tensor([0.0 + 0j]),
+        "angular_velocity": torch.tensor([0.0]),
         "is_shooting": torch.tensor([0]),
     }
 
@@ -41,6 +43,8 @@ def test_tokenizer_perspective(dummy_state):
         "velocity": torch.tensor([10.0 + 0j]),
         "speed": torch.tensor([10.0]),
         "attitude": torch.tensor([1.0 + 0j]),
+        "acceleration": torch.tensor([0.0 + 0j]),
+        "angular_velocity": torch.tensor([0.0]),
         "is_shooting": torch.tensor([0]),
     }
 

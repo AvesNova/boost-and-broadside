@@ -1,9 +1,31 @@
 import torch
 from omegaconf import DictConfig
+from dataclasses import dataclass
+import numpy as np
 
 from agents.agents import create_agent
 from agents.tokenizer import observation_to_tokens
 from env.env import Environment
+
+
+@dataclass
+class StickyActionState:
+    """Tracks the state of sticky actions for a single ship."""
+    
+    # Current active action for each head
+    power: int = 0
+    turn: int = 0
+    shoot: int = 0
+    
+    # Remaining steps for the current sticky choice
+    power_steps: int = 0
+    turn_steps: int = 0
+    shoot_steps: int = 0
+    
+    # Whether the current period is "expert" (True) or "random" (False)
+    power_expert: bool = True
+    turn_expert: bool = True
+    shoot_expert: bool = True
 
 
 class GameCoordinator:
@@ -51,8 +73,13 @@ class GameCoordinator:
         # Initialize other attributes to satisfy type checkers
         self.all_tokens: dict[int, torch.Tensor] = {}
         self.all_actions: dict[int, list[torch.Tensor]] = {}
+        self.all_expert_actions: dict[int, list[torch.Tensor]] = {} # New: Save expert actions
         self.all_action_masks: dict[int, list[float]] = {}
         self.all_rewards: dict[int, list[float]] = {}
+        
+        # Sticky Action States
+        self.sticky_states: dict[int, StickyActionState] = {}
+        self._rng = np.random.default_rng()
 
     def reset(
         self, game_mode: str, team_skills: dict[int, float] | None = None
@@ -86,10 +113,92 @@ class GameCoordinator:
         self.all_actions = {
             ship_id: [] for ship_id in range(self.config.environment.max_ships)
         }
+        self.all_expert_actions = {
+            ship_id: [] for ship_id in range(self.config.environment.max_ships)
+        }
         self.all_action_masks = {
             ship_id: [] for ship_id in range(self.config.environment.max_ships)
         }
         self.all_rewards = {0: [], 1: []}
+        
+        # Reset sticky states
+        self.sticky_states = {
+            ship_id: StickyActionState() 
+            for ship_id in range(self.config.environment.max_ships)
+        }
+
+    def _sample_sticky_duration(self) -> int:
+        """
+        Sample a duration for a sticky action from a Beta distribution.
+        Target mean is 16 steps.
+        Beta(2, 6) * 64 roughly gives a nice distribution with mean ~16.
+        """
+        # Beta(alpha=2, beta=6) has mean 0.25.
+        # 0.25 * 64 = 16.
+        val = self._rng.beta(2, 6)
+        steps = int(val * 64)
+        return max(1, steps)
+
+    def _update_sticky_state(
+        self, state: StickyActionState, expert_action: torch.Tensor, skill_level: float
+    ) -> torch.Tensor:
+        """
+        Update sticky state and determine the action to take.
+        
+        Args:
+            state: StickyActionState for the ship.
+            expert_action: (3,) tensor [Power, Turn, Shoot] from expert.
+            skill_level: Probability of choosing 'Expert' profile.
+            
+        Returns:
+            Taken action as (3,) tensor.
+        """
+        # Expert action values
+        exp_p = int(expert_action[0].item())
+        exp_t = int(expert_action[1].item())
+        exp_s = int(expert_action[2].item())
+        
+        # --- POWER ---
+        if state.power_steps <= 0:
+            # Resample profile
+            state.power_steps = self._sample_sticky_duration()
+            if self._rng.random() < skill_level:
+                state.power_expert = True
+            else:
+                state.power_expert = False
+                # Sample random action to stick to
+                state.power = self._rng.integers(0, 3) # 0, 1, 2
+        
+        state.power_steps -= 1
+        
+        # Determine output
+        final_p = exp_p if state.power_expert else state.power
+        
+        # --- TURN ---
+        if state.turn_steps <= 0:
+            state.turn_steps = self._sample_sticky_duration()
+            if self._rng.random() < skill_level:
+                state.turn_expert = True
+            else:
+                state.turn_expert = False
+                state.turn = self._rng.integers(0, 7)
+                
+        state.turn_steps -= 1
+        final_t = exp_t if state.turn_expert else state.turn
+        
+        # --- SHOOT ---
+        if state.shoot_steps <= 0:
+            state.shoot_steps = self._sample_sticky_duration()
+            if self._rng.random() < skill_level:
+                state.shoot_expert = True
+            else:
+                state.shoot_expert = False
+                state.shoot = self._rng.integers(0, 2)
+                
+        state.shoot_steps -= 1
+        final_s = exp_s if state.shoot_expert else state.shoot
+        
+        return torch.tensor([final_p, final_t, final_s], dtype=torch.uint8)
 
     def step(self) -> tuple[float, bool]:
         """
@@ -105,21 +214,12 @@ class GameCoordinator:
         max_episode_length = self.config.collect.max_episode_length
         step_count = 0
 
-        # Initialize RNG if not present (could be moved to init)
-        if not hasattr(self, "_rng"):
-            import numpy as np
-
-            self._rng = np.random.default_rng()
-
-        # Use team skills to determine random action probability
-        # Skill X means we take expert actions X% of the time, random actions (1-X)% of the time
-
         while not terminated:
             # 1. Determine which ships belong to which team
             teams = self._get_teams_from_obs(obs)
 
             # 2. Get actions from agents for their respective teams
-            # We fetch all actions first, then override with random ones
+            # Expert actions
             team_actions = {
                 team_id: self.agents[team_names[team_id]](
                     self.obs_history[-1], ship_ids
@@ -127,37 +227,37 @@ class GameCoordinator:
                 for team_id, ship_ids in teams.items()
             }
 
-            # 3. Flatten actions into a single dictionary and apply randomization
+            # 3. Apply Sticky/Random Logic
             actions = {}
-            action_masks = {}  # 1.0 for expert, 0.0 for random
+            expert_actions_dict = {}
+            action_masks = {}
 
             for team_id, ship_ids in teams.items():
-                ship_actions = team_actions[team_id]
+                ship_actions_expert = team_actions[team_id]
                 skill_level = self.team_skills.get(team_id, 1.0)
-                random_prob = 1.0 - skill_level
-
+                
                 for ship_id in ship_ids:
-                    action = ship_actions[ship_id]
-                    mask = 1.0
-
-                    if self._rng.random() < random_prob:
-                        # Generate random action
-                        # Power: 0-2, Turn: 0-6, Shoot: 0-1
-                        # Action tensor shape (3,) floats
-                        rand_power = float(self._rng.integers(0, 3))
-                        rand_turn = float(self._rng.integers(0, 7))
-                        rand_shoot = float(self._rng.integers(0, 2))
-                        action = torch.tensor(
-                            [rand_power, rand_turn, rand_shoot], dtype=torch.float32
-                        )
-                        mask = 0.0
-
-                    actions[ship_id] = action
-                    action_masks[ship_id] = mask
+                    expert_tensor = ship_actions_expert[ship_id]
+                    expert_actions_dict[ship_id] = expert_tensor.to(dtype=torch.uint8)
+                    
+                    # Update Sticky State
+                    sticky_state = self.sticky_states[ship_id]
+                    taken_tensor = self._update_sticky_state(
+                        sticky_state, expert_tensor, skill_level
+                    )
+                    
+                    actions[ship_id] = taken_tensor
+                    
+                    # Mask isn't really used same way anymore, but we can track expert usage ratio?
+                    # Let's just store 1.0 if Fully Expert this step?
+                    # Or maybe just average of the 3 heads.
+                    is_expert = float(sticky_state.power_expert and sticky_state.turn_expert and sticky_state.shoot_expert)
+                    action_masks[ship_id] = is_expert
 
             # 4. Record actions and masks for history
             for ship_id, action in actions.items():
                 self.all_actions[ship_id].append(action)
+                self.all_expert_actions[ship_id].append(expert_actions_dict[ship_id])
                 self.all_action_masks[ship_id].append(action_masks[ship_id])
 
             # 5. Step the environment

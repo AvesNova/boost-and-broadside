@@ -625,8 +625,10 @@ class Environment(gym.Env):
             "power": torch.zeros((self.max_ships), dtype=torch.float32),
             "position": torch.zeros((self.max_ships), dtype=torch.complex64),
             "velocity": torch.zeros((self.max_ships), dtype=torch.complex64),
+            "acceleration": torch.zeros((self.max_ships), dtype=torch.complex64),
             "speed": torch.zeros((self.max_ships), dtype=torch.float32),
             "attitude": torch.zeros((self.max_ships), dtype=torch.complex64),
+            "angular_velocity": torch.zeros((self.max_ships), dtype=torch.float32),
             "is_shooting": torch.zeros((self.max_ships), dtype=torch.int64),
         }
 
@@ -644,7 +646,7 @@ class Environment(gym.Env):
                 "tokens": spaces.Box(
                     low=-np.inf,
                     high=np.inf,
-                    shape=(self.max_ships, 10),
+                    shape=(self.max_ships, 15),
                     dtype=np.float32,
                 )
             }

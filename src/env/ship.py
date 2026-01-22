@@ -109,6 +109,9 @@ class Ship(nn.Module):
             initial_power if initial_power is not None else ship_config.max_power
         )
         self.turn_offset = 0.0
+        self.acceleration = 0.0 + 0j
+        self.angular_velocity = 0.0
+
         self.last_fired_time = (
             -ship_config.firing_cooldown
         )  # Allow immediate first shot
@@ -228,9 +231,13 @@ class Ship(nn.Module):
         self.power += energy_cost * delta_t
         self.power = max(0.0, min(self.power, self.config.max_power))
 
-    def _update_attitude(self, actions: ActionStates) -> None:
-        """Update ship attitude (orientation) based on turn actions."""
+    def _update_attitude(self, actions: ActionStates, delta_t: float) -> None:
+        """
+        Update ship attitude (orientation) based on turn actions.
+        Also updates angular velocity.
+        """
         self.turn_offset = self.turn_offset_table[actions.turn]
+        self.angular_velocity = self.turn_offset / delta_t
         self.attitude = self.velocity / self.speed * np.exp(1j * self.turn_offset)
 
     def _calculate_forces(self, actions: ActionStates) -> complex:
@@ -254,9 +261,9 @@ class Ship(nn.Module):
     def _update_kinematics(self, actions: ActionStates, delta_t: float) -> None:
         """Update position and velocity based on forces."""
         total_force = self._calculate_forces(actions)
-        acceleration = total_force  # Assuming mass = 1
+        self.acceleration = total_force  # Assuming mass = 1
 
-        self.velocity += acceleration * delta_t
+        self.velocity += self.acceleration * delta_t
         self.position += self.velocity * delta_t
         self.speed = abs(self.velocity)
         if self.speed < 1e-6:
@@ -325,9 +332,27 @@ class Ship(nn.Module):
         actions = self._extract_action_states(action_vector)
 
         self._shoot_bullet(actions, bullets, current_time)
-        self._update_attitude(actions)
+        self._update_attitude(actions, delta_t)
         self._update_kinematics(actions, delta_t)
-        self._update_attitude(actions)
+        # Note: _update_attitude is called only once now, BEFORE kinematics
+        # In original code it was called TWICE (before and after kinematics).
+        # We need to maintain that behavior?
+        # Original:
+        # self._update_attitude(actions)
+        # self._update_kinematics(actions, delta_t)
+        # self._update_attitude(actions)
+        #
+        # Why twice? Maybe because kinematics updates velocity, and attitude depends on velocity?
+        # Yes, line 121: self.attitude = self.velocity / self.speed
+        # And line 234: self.attitude = self.velocity / self.speed * np.exp(...)
+        # So after velocity change, attitude direction might strictly change to align with new velocity if we want "velocity aligned frame".
+        # Let's restore the second call but without modifying angular velocity?
+        # Actually angular velocity is an instantaneous property of the turn maneuver.
+        # So I will calculate it in the first call (maneuver determination).
+        self._update_attitude(actions, delta_t) # Start of step maneuver (sets attitude for forces)
+        self._update_kinematics(actions, delta_t) # Updates velocity/pos
+        self._update_attitude(actions, delta_t) # Re-align attitude to new velocity
+
         self._update_power(actions, delta_t)
 
     def damage_ship(self, damage: float) -> None:
@@ -346,6 +371,7 @@ class Ship(nn.Module):
             "power": self.power,
             "position": self.position,
             "velocity": self.velocity,
+            "acceleration": self.acceleration,
             "speed": self.speed,
             "attitude": self.attitude,
             "is_shooting": self.is_shooting,
@@ -356,8 +382,11 @@ class Ship(nn.Module):
         Generate a token representation of the ship's state.
 
         Returns:
-            Tensor of shape (10,) containing normalized state features.
+            Tensor of shape (13,) containing normalized state features.
+            (team_id, health, power, pos_x, pos_y, vel_x, vel_y, acc_x, acc_y, ang_vel, att_x, att_y, shoot)
         """
+        # Linear Accel Norm: ~80.0 is max boost.
+        # Angular Vel Norm: ~0.26 rad/step (15 deg).
         return torch.tensor(
             [
                 self.team_id,
@@ -367,6 +396,9 @@ class Ship(nn.Module):
                 self.position.imag / self.window_size[1],
                 self.velocity.real / 180.0,
                 self.velocity.imag / 180.0,
+                self.acceleration.real / 100.0,
+                self.acceleration.imag / 100.0,
+                self.angular_velocity / 0.3, # Approx normalization
                 self.attitude.real,
                 self.attitude.imag,
                 self.is_shooting,

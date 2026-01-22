@@ -213,22 +213,10 @@ class SpatialSelfAttention(nn.Module):
         v_flat = v_window.permute(0, 1, 3, 2, 4).reshape(B*L, self.n_heads, 2*N, self.head_dim)
         
         # Attention - NON CAUSAL (because we manually windowed)
-        # Attention - NON CAUSAL (because we manually windowed)
         # y = SDPA(q, k, v)
         # q: (batch, heads, N, D)
         # k: (batch, heads, 2N, D)
         # bias: (batch, heads, N, 2N)
-        
-        if relational_bias is not None:
-             # relational_bias is (B*L, Heads, N, 2N)
-             # SDPA supports attn_mask.
-             # but strictly speaking SDPA with mask is usually boolean or additive float.
-             # To apply additive bias, we might need to manually do attention if SDPA doesn't support 'bias' directly (it supports mask).
-             # PyTorch 2.0 SDPA: attn_mask can be a float mask (added to scores).
-             pass
-             
-        # Manual Attention for Bias (if bias present) or rely on SDPA support
-        # SDPA docs: "If attn_mask is a Tensor, it must be ... or a float tensor of shape compatible with (batch, heads, target_seq, source_seq) ... added to the attention scores"
         
         y = F.scaled_dot_product_attention(
             q_flat, k_flat, v_flat,
@@ -319,23 +307,17 @@ class InterleavedWorldModel(nn.Module):
         self.bin_emb_list = nn.ModuleList([nn.Embedding(2, embed_dim) for _ in range(self.num_binary)])
         
         # Action Encoders
-        # Action Encoders
-        # Total concatenated width: 48 + 48 + 32 = 128
         self.emb_power = nn.Embedding(3, 48)
         self.emb_turn = nn.Embedding(7, 48)
         self.emb_shoot = nn.Embedding(2, 32)
         
         # Projection Layer: Concatenated (128) -> Embed Dim (128)
-        # Allows learning nonlinear interactions between control inputs (e.g. "Full Power + Hard Turn")
         self.action_proj = nn.Sequential(
             nn.Linear(128, embed_dim),
             nn.SiLU()
         )
         
         # Positional/Type
-        # Temporal RoPE is inside TemporalSelfAttention
-        
-        # Spatial ID Embedding
         self.ship_embed = nn.Embedding(max_ships, embed_dim)
         self.team_embed = nn.Embedding(2, embed_dim)
         self.type_embed = nn.Embedding(2, embed_dim)
@@ -343,11 +325,6 @@ class InterleavedWorldModel(nn.Module):
         # Transformer Blocks (Alternating T -> S)
         self.blocks = nn.ModuleList()
         for i in range(n_layers):
-            # We want alternating. If n_layers = 6, does that mean 6 T and 6 S? Or 3 T and 3 S?
-            # Standard convention: n_layers is total blocks.
-            # Layer 0: Temporal
-            # Layer 1: Spatial
-            # ...
             block_type = "temporal" if i % 2 == 0 else "spatial"
             self.blocks.append(Block(self.config, attn_type=block_type))
 
@@ -379,11 +356,13 @@ class InterleavedWorldModel(nn.Module):
         past_key_values=None,
         use_cache: bool = False,
         return_embeddings: bool = False,
+        relational_features: torch.Tensor = None
     ):
         """
         states: (B, T, N, D)
         actions: (B, T, N, 3)
         team_ids: (B, N) or (B, T, N)
+        relational_features: (B, T, N, N, 4) - Precomputed features
         """
         B, T, N, D = states.shape
         device = states.device
@@ -412,10 +391,7 @@ class InterleavedWorldModel(nn.Module):
         t_emb = self.emb_turn(actions[..., 1].long())  # (..., 48)
         s_emb = self.emb_shoot(actions[..., 2].long()) # (..., 32)
         
-        # Concatenate: (..., 48+48+32=128)
         action_concat = torch.cat([p_emb, t_emb, s_emb], dim=-1)
-        
-        # Project: (..., 128) -> (..., embed_dim)
         action_tokens = self.action_proj(action_concat) 
         
         # 3. Add Embeddings
@@ -430,22 +406,13 @@ class InterleavedWorldModel(nn.Module):
         action_tokens = action_tokens + ship_emb + team_emb + self.type_embed(torch.tensor(1, device=device))
         
         # 4. Interleave & Flatten
-        # Stack dim 2 -> (B, T, 2, N, E)
         combined = torch.stack([state_tokens, action_tokens], dim=2)
         L = T * 2
-        # Flatten Time: (B, L, N, E)
         tokens = combined.view(B, L, N, self.config.embed_dim)
         
-        # 5. Position IDs (for Temporal RoPE)
-        # We process (S0, A0), (S1, A1)...
-        # Indices should be 0, 1, 2, 3...
-        # If passed cache, we need offset.
+        # 5. Position IDs
         past_len = 0
-        # Check cache structure: list of tuples. First layer (Tempo) cache.
-        # Temp cache shape is (B*N, H, L, D).
         if past_key_values is not None:
-             # Look at first temporal layer cache to get length
-             # First layer is index 0
              if len(past_key_values) > 0 and past_key_values[0] is not None:
                  past_len = past_key_values[0][0].shape[2] 
         
@@ -453,80 +420,51 @@ class InterleavedWorldModel(nn.Module):
         
         # 6. Relational Bias Computation
         # -------------------------------
-        # Structural Deduplication Strategy:
-        # Instead of computing features for all 2*T tokens (S0, A0, S1, A1...) linearly,
-        # we recognize that S_t and A_t share the same physical state (from S_t).
-        # We compute two fundamental matrices per timestep T:
-        # 1. bias_self: Rel(S_t, S_t)
-        # 2. bias_prev: Rel(S_t, S_{t-1})
-        #
-        # Then we assemble the full sequence:
-        # S_t (Index 2t):   Window [Prev, Curr] -> [S_{t-1}, S_t] -> [bias_prev, bias_self]
-        # A_t (Index 2t+1): Window [Prev, Curr] -> [S_t, S_t]     -> [bias_self, bias_self]
+        rel_bias_flat = None
         
-        # 1. Prepare Physical States (B, T, N, D)
-        curr_phys = states
-        
-        # Prev Physical States (Shifted right, padded with zeros)
-        zeros_phys = torch.zeros_like(curr_phys[:, :1])
-        prev_phys = torch.cat([zeros_phys, curr_phys[:, :-1]], dim=1)
-        
-        # 2. Compute Biases (Vectorized over T)
-        # Input to extractor: (B*T, N, D)
-        # We verify if we are in generation mode (past_kv present)
-        if past_key_values is not None and len(past_key_values) > 0:
-             # GENERATION MODE (Simplified fallback for now)
-             # Logic is tricky because 'states' input might be just length 1.
-             # Fallback to the naive approach for generation safety or handle explicitly.
-             # For now, let's use the explicit robust logic:
-             phys_seq = states.repeat_interleave(2, dim=1)
-             q_phys = phys_seq
-             zeros_gen = torch.zeros_like(q_phys[:, :1])
-             prev_gen = torch.cat([zeros_gen, q_phys[:, :-1]], dim=1)
-             
-             # If we have history, we might need actual previous state from history?
-             # Since this is "Spatial" attention, the window is always [Prev, Curr].
-             # If L=1 (generating A_t), Prev is S_t.
-             # If L=1 (generating S_{t+1}), Prev is A_t (which has pos S_t).
-             # So actually, for generation step, reusing the naive flattening is safer 
-             # and performance matters less (batch size small).
-             
-             q_flat_gen = q_phys.view(B*L, N, -1)
-             k_flat_gen = torch.cat([prev_gen, q_phys], dim=2).view(B*L, 2*N, -1)
-             rel_bias_flat = self.relational_extractor(q_flat_gen, k_flat_gen)
-             
-        else:
-            # TRAINING MODE (Full Sequence Optimization)
+        if relational_features is not None:
+            # (B, T, N, N, 4)
+            # Flatten to (B*T, N, N, 4)
+            feats_flat = relational_features.reshape(B * T, N, N, 4)
             
-            # Reshape for Extractor (B*T, N, D)
-            curr_flat = curr_phys.reshape(B*T, N, -1)
-            prev_flat = prev_phys.reshape(B*T, N, -1)
+            # The previous logic had bias_self and bias_prev.
+            # Here we approximate bias_prev using current relative features.
+            # bias_self = bias_prev = features
             
-            # Compute Matrices
-            # bias_self: (B*T, H, N, N)
-            bias_self = self.relational_extractor(curr_flat, curr_flat)
+            bias_self = self.relational_extractor(feats_flat) # (B*T, H, N, N)
             
-            # bias_prev: (B*T, H, N, N)
-            bias_prev = self.relational_extractor(curr_flat, prev_flat)
+            # Use same bias for 'prev' (S_t -> S_{t-1})
+            # This ignores relative velocity changes? 
+            # If feats has RelVel, then S_t -> S_{t-1} should logically use -RelVel?
+            # Or just assume frames are close enough.
+            # Given we only precompute for current frame, we use it for both.
+            bias_prev = bias_self
             
             # Unflatten back to (B, T, H, N, N)
             bias_self = bias_self.view(B, T, self.config.n_heads, N, N)
             bias_prev = bias_prev.view(B, T, self.config.n_heads, N, N)
             
-            # 3. Assembly
-            # S_t Rows: Cat(bias_prev, bias_self) -> (B, T, H, N, 2N)
+            # Assembly
             row_s = torch.cat([bias_prev, bias_self], dim=-1)
-            
-            # A_t Rows: Cat(bias_self, bias_self) -> (B, T, H, N, 2N)
             row_a = torch.cat([bias_self, bias_self], dim=-1)
             
-            # Interleave Rows: Stack (B, T, 2, ...) -> Flatten T*2
-            # Stack dim 2
             combined_bias = torch.stack([row_s, row_a], dim=2) # (B, T, 2, H, N, 2N)
-            
-            # Flatten to (B*L, H, N, 2N) where L = 2*T
             rel_bias_flat = combined_bias.view(B * L, self.config.n_heads, N, 2 * N)
         
+        elif past_key_values is None and not use_cache:
+            # Training mode but NO features passed?
+            # Fallback to computing from states (legacy support or if features missing)
+            # (B*T, N, D)
+            curr_phys = states
+            zeros_phys = torch.zeros_like(curr_phys[:, :1])
+            prev_phys = torch.cat([zeros_phys, curr_phys[:, :-1]], dim=1)
+            
+            # This path requires RelationalFeatureExtractor to support handling 'states' again?
+            # No, RelationalFeatureExtractor will be updated to expect FEATURES (4 dims).
+            # So we cannot fallback easily without computing features here on the fly.
+            # If features are missing, we pass None and have no bias.
+            pass
+
         # 7. Transformer
         x = tokens
         current_key_values = []
@@ -540,18 +478,11 @@ class InterleavedWorldModel(nn.Module):
         x = self.ln_f(x)
         
         # 8. Heads
-        # x is (B, L, N, E)
-        # S tokens at 0, 2, 4 -> Predict Actions
-        # A tokens at 1, 3, 5 -> Predict States
-        
-        # Reshape back to (B, T, 2, N, E)
         x_reshaped = x.view(B, T, 2, N, self.config.embed_dim)
         
-        # S tokens (index 0) -> Action Head (Predict A_t)
         s_out = x_reshaped[:, :, 0, :, :] 
         pred_actions = self.action_head(s_out)
         
-        # A tokens (index 1) -> State Head (Predict S_{t+1})
         a_out = x_reshaped[:, :, 1, :, :]
         pred_states = self.state_head(a_out)
         
@@ -694,11 +625,6 @@ class InterleavedWorldModel(nn.Module):
             # We pass dummy action. use_cache=False to peek.
             dummy_action_idx = torch.zeros((B, 1, N, 3), device=device)
             
-            # Note: We must pass past_key_values but NOT update them yet
-            # However, forward() with use_cache=False returns current_kv=None
-            # It does NOT return the *input* past_key_values.
-            # So we pass 'past_key_values' in.
-            
             _, pred_actions_logits, _ = self.forward(
                 states=curr_state,
                 actions=dummy_action_idx,
@@ -708,7 +634,6 @@ class InterleavedWorldModel(nn.Module):
             )
             
             # Extract logits for the single step
-            # pred_actions_logits: (B, 1, N, 12)
             logits = pred_actions_logits[:, -1, :, :] # (B, N, 12)
             
             # Greedy decoding
@@ -717,7 +642,6 @@ class InterleavedWorldModel(nn.Module):
             s_idx = logits[..., 10:12].argmax(dim=-1)
             
             # Indices for Next Pass Input
-            # (B, 1, N, 3)
             action_indices = torch.stack([p_idx, t_idx, s_idx], dim=-1).unsqueeze(1).float()
             
             # One Hot for Output
@@ -736,15 +660,8 @@ class InterleavedWorldModel(nn.Module):
                  use_cache=True
             )
             
-            # Values
             past_key_values = new_kv
             next_state = pred_s[:, -1:, :, :] # (B, 1, N, D)
-            
-            # Record
-            # We record S_{t+1} or S_t?
-            # rollout_metrics expects states at 1..steps
-            # "dream_states: (1, Steps, N, F)"
-            # Usually we return the *next* states predicted.
             
             all_states.append(next_state)
             all_actions.append(action_oh)

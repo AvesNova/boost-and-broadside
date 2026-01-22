@@ -74,7 +74,7 @@ train:
   
   model:
     transformer:
-      token_dim: 12
+      token_dim: 15
       embed_dim: 128
       num_heads: 4
       num_layers: 8

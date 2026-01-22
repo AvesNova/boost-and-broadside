@@ -16,12 +16,13 @@ class EpisodeData:
     tokens_team_0: torch.Tensor
     tokens_team_1: torch.Tensor
     actions: dict[int, list[torch.Tensor]]
-    action_masks: dict[int, list[float]]
-    rewards: dict[int, list[float]]
-    episode_length: int
-    sim_time: float
-    agent_skills: dict[int, float]
-    team_ids: dict[int, int]
+    expert_actions: dict[int, list[torch.Tensor]] = None # New field
+    action_masks: dict[int, list[float]] = None
+    rewards: dict[int, list[float]] = None
+    episode_length: int = 0
+    sim_time: float = 0.0
+    agent_skills: dict[int, float] = None
+    team_ids: dict[int, int] = None
 
 
 class DataCollector:
@@ -64,6 +65,7 @@ class DataCollector:
         sim_time: float,
         agent_skills: dict[int, float],
         team_ids: dict[int, int],
+        expert_actions: dict[int, list[torch.Tensor]] = None,
     ) -> None:
         """
         Add an episode to the collection
@@ -81,6 +83,7 @@ class DataCollector:
             tokens_team_0=tokens_team_0,
             tokens_team_1=tokens_team_1,
             actions=actions,
+            expert_actions=expert_actions, 
             action_masks=action_masks,
             rewards=rewards,
             episode_length=episode_length,
@@ -125,11 +128,20 @@ class DataCollector:
             (total_timesteps, self.max_ships, self.token_dim), dtype=torch.float32
         )
 
+        # Actions are now uint8
         actions_team_0 = torch.zeros(
-            (total_timesteps, self.max_ships, self.num_actions), dtype=torch.float32
+            (total_timesteps, self.max_ships, self.num_actions), dtype=torch.uint8
         )
         actions_team_1 = torch.zeros(
-            (total_timesteps, self.max_ships, self.num_actions), dtype=torch.float32
+            (total_timesteps, self.max_ships, self.num_actions), dtype=torch.uint8
+        )
+        
+        # Expert Actions
+        expert_actions_team_0 = torch.zeros(
+            (total_timesteps, self.max_ships, self.num_actions), dtype=torch.uint8
+        )
+        expert_actions_team_1 = torch.zeros(
+            (total_timesteps, self.max_ships, self.num_actions), dtype=torch.uint8
         )
 
         actions_mask_team_0 = torch.zeros(
@@ -141,8 +153,6 @@ class DataCollector:
 
         rewards_team_0 = torch.zeros((total_timesteps,), dtype=torch.float32)
         rewards_team_1 = torch.zeros((total_timesteps,), dtype=torch.float32)
-
-        episode_ids = torch.zeros((total_timesteps,), dtype=torch.int64)
 
         episode_ids = torch.zeros((total_timesteps,), dtype=torch.int64)
 
@@ -160,14 +170,29 @@ class DataCollector:
             tokens_team_0[current_idx:end_idx] = episode.tokens_team_0
             tokens_team_1[current_idx:end_idx] = episode.tokens_team_1
 
+            # Actions
             for ship_id, ship_actions in episode.actions.items():
                 for t, action in enumerate(ship_actions):
+                    # Action is likely float tensor from coordination, cast to uint8
+                    action_u8 = action.to(dtype=torch.uint8)
                     if ship_id < self.max_ships // 2:
-                        actions_team_0[current_idx + t, ship_id] = action
+                        actions_team_0[current_idx + t, ship_id] = action_u8
                     else:
                         actions_team_1[
                             current_idx + t, ship_id - self.max_ships // 2
-                        ] = action
+                        ] = action_u8
+                        
+            # Expert Actions
+            if episode.expert_actions:
+                for ship_id, ship_actions in episode.expert_actions.items():
+                    for t, action in enumerate(ship_actions):
+                        action_u8 = action.to(dtype=torch.uint8)
+                        if ship_id < self.max_ships // 2:
+                            expert_actions_team_0[current_idx + t, ship_id] = action_u8
+                        else:
+                            expert_actions_team_1[
+                                current_idx + t, ship_id - self.max_ships // 2
+                            ] = action_u8
 
             for ship_id, ship_masks in episode.action_masks.items():
                 for t, mask in enumerate(ship_masks):
@@ -215,6 +240,7 @@ class DataCollector:
             "team_0": {
                 "tokens": tokens_team_0,
                 "actions": actions_team_0,
+                "expert_actions": expert_actions_team_0, # New
                 "action_masks": actions_mask_team_0,
                 "rewards": rewards_team_0,
                 "agent_skills": agent_skills_team_0,
@@ -223,6 +249,7 @@ class DataCollector:
             "team_1": {
                 "tokens": tokens_team_1,
                 "actions": actions_team_1,
+                "expert_actions": expert_actions_team_1, # New
                 "action_masks": actions_mask_team_1,
                 "rewards": rewards_team_1,
                 "agent_skills": agent_skills_team_1,

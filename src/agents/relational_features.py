@@ -9,16 +9,19 @@ class RelationalFeatureExtractor(nn.Module):
     """
     Computes pairwise relational features between ships and projects them to an attention bias.
     
-    Simplified: Raw features only, lightweight MLP.
+    Modified to accept precomputed fundamental relative features (4D) in local frame.
     
-    Raw Features (12 dims):
-    - Distance (2): Dist, InvDist
-    - Angle (2): ATA, Aspect
-    - Delta (4): dx, dy, dvx, dvy
-    - Intercept (2): TTCA, FlightTime
-    - Team (2): SameTeam, DeltaSpeed
+    Input Features (4 dims):
+    - rel_pos_x, rel_pos_y (Local Frame)
+    - rel_vel_x, rel_vel_y (Local Frame)
     
-    Pipeline: Raw(12) -> MLP(64) -> Bias(Heads)
+    Derived Features (computed on the fly):
+    - Distance, Inverse Distance
+    - Closing Speed (Dot product)
+    - Relative Speed
+    - Direction Sine/Cosine
+    
+    Pipeline: Raw(4) -> Derived(N) -> MLP(64) -> Bias(Heads)
     """
     def __init__(self, embed_dim: int, num_heads: int, dropout: float = 0.0):
         super().__init__()
@@ -26,88 +29,87 @@ class RelationalFeatureExtractor(nn.Module):
         self.num_heads = num_heads
         
         # Hyperparameters
-        raw_dim = 12
+        # We input 4 raw + derived.
+        # Derived: 
+        # 1. Dist
+        # 2. InvDist
+        # 3. RelSpeed
+        # 4. ClosingSpeed (Dot/Dist)
+        # 5. ATA (Angle to Agent) -> Since in local frame, this is just atan2(pos). We use cos/sin of it -> Normalized Pos (2)
+        # Total: 4 (raw) + 1 + 1 + 1 + 1 = 8 dims.
+        # Let's use 12 to be safe/rich (add squares, log dist, etc)
+        
+        input_dim = 12 
         hidden_dim = 64
         
         # Lightweight MLP
         self.mlp = nn.Sequential(
-            nn.Linear(raw_dim, hidden_dim),
+            nn.Linear(input_dim, hidden_dim),
             nn.SiLU(),
             nn.Linear(hidden_dim, num_heads) 
         )
         
-    def forward(self, query_states: torch.Tensor, key_states: torch.Tensor) -> torch.Tensor:
+    def forward(self, fundamental_features: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            query_states: (B, N_q, D_state)
-            key_states: (B, N_k, D_state)
+            fundamental_features: (..., 4) [rx, ry, rvx, rvy]
             
         Returns:
-            bias: (B, num_heads, N_q, N_k)
+            bias: (..., num_heads, N, N) -> Actually just (..., num_heads) mapped to input shape
+            If input is (B, N, N, 4), output is (B, N, N, Heads) -> Permute to (B, Heads, N, N)
         """
-        B, Nq, D = query_states.shape
-        _, Nk, _ = key_states.shape
+        # Unpack
+        # (..., 4)
+        rx = fundamental_features[..., 0]
+        ry = fundamental_features[..., 1]
+        rvx = fundamental_features[..., 2]
+        rvy = fundamental_features[..., 3]
         
-        # Expand for pairwise broadcast: (B, Nq, Nk, D)
-        q = query_states.unsqueeze(2).expand(B, Nq, Nk, D)
-        k = key_states.unsqueeze(1).expand(B, Nq, Nk, D)
-        
-        # Unpack indices (Team=0, Pos=3-5, Vel=5-7, Att=7-9)
-        q_team = q[..., 0]
-        k_team = k[..., 0]
-        
-        q_pos = q[..., 3:5]
-        k_pos = k[..., 3:5]
-        
-        q_vel = q[..., 5:7]
-        k_vel = k[..., 5:7]
-        
-        q_att = q[..., 7:9]
-        k_att_vec = k[..., 7:9]
-        
-        # --- Raw Feature Computation ---
-        
-        # 1. Delta
-        delta_pos = k_pos - q_pos
-        delta_vel = k_vel - q_vel
-        
-        # 2. Distance
-        dist_sq = delta_pos.pow(2).sum(dim=-1, keepdim=True)
+        # 1. Distance & Direction
+        # Add epsilon to gradients
+        dist_sq = rx*rx + ry*ry
         dist = torch.sqrt(dist_sq + 1e-6)
         inv_dist = 1.0 / (dist + 0.1)
         
-        # 3. Angle
-        bearing = delta_pos / (dist + 1e-6)
-        ata = (bearing * q_att).sum(dim=-1, keepdim=True)
-        aspect = (bearing * k_att_vec).sum(dim=-1, keepdim=True)
+        # Normalized Direction (Cos/Sin of ATA)
+        dir_x = rx / (dist + 1e-6)
+        dir_y = ry / (dist + 1e-6)
         
-        # 4. Intercept
-        dot_dp_dv = (delta_pos * delta_vel).sum(dim=-1, keepdim=True)
-        speed_sq = delta_vel.pow(2).sum(dim=-1, keepdim=True)
-        ttca = -dot_dp_dv / (speed_sq + 1e-6)
-        ttca = torch.tanh(torch.relu(ttca))
-        flight_time = dist # Normalized distance proxy
+        # 2. Velocity Info
+        speed_sq = rvx*rvx + rvy*rvy
+        rel_speed = torch.sqrt(speed_sq + 1e-6)
         
-        # 5. Team / Speed
-        same_team = (q_team == k_team).float().unsqueeze(-1)
-        q_speed = q_vel.norm(dim=-1, keepdim=True)
-        k_speed = k_vel.norm(dim=-1, keepdim=True)
-        delta_speed = k_speed - q_speed
+        # 3. Interaction
+        # Closing Speed: Proj of RelVel onto RelPos
+        # V . P / |P|
+        dot_vp = rvx*rx + rvy*ry
+        closing_speed = dot_vp / (dist + 1e-6)
         
-        # Concatenate All Raw Features
-        raw_features = torch.cat([
-            dist, inv_dist,
-            ata, aspect,
-            delta_pos, delta_vel,
-            ttca, flight_time,
-            same_team, delta_speed
+        # Time to Closest Approach (TTCA) proxy
+        # - dot / speed_sq
+        ttca = -dot_vp / (speed_sq + 1e-6)
+        ttca = torch.tanh(ttca) # Bound it
+        
+        # 4. Construct Feature Vector
+        # We include raw values and derived ones
+        features = torch.stack([
+            rx, ry, rvx, rvy,      # 4 Raw
+            dist, inv_dist,        # 2 Dist
+            rel_speed, closing_speed, # 2 Speed
+            dir_x, dir_y,          # 2 Direction
+            ttca, dot_vp           # 2 Interaction
         ], dim=-1)
         
-        # Linear Projection
-        bias = self.mlp(raw_features) # (..., Heads)
+        # MLP
+        bias = self.mlp(features) # (..., Heads)
         
-        # Permute to (B, Heads, Nq, Nk)
-        bias = bias.permute(0, 3, 1, 2)
+        # Determine permute dims based on input rank
+        # If input (B, N, N, 4) -> Output (B, N, N, H) -> (B, H, N, N)
+        # If input (B*T, N, N, 4) -> Output (B*T, N, N, H) -> (B*T, H, N, N)
         
+        if bias.ndim == 4:
+            bias = bias.permute(0, 3, 1, 2)
+        elif bias.ndim == 5: # (B, T, N, N, H)
+             bias = bias.permute(0, 4, 1, 2, 3) # Unlikely
+             
         return bias
-

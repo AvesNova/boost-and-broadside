@@ -11,7 +11,7 @@ from agents.interleaved_world_model import InterleavedWorldModel
 # Mock config
 MOCK_CONFIG = {
     "world_model": {
-        "state_dim": 12,
+        "state_dim": 15,
         "embed_dim": 32,
         "n_layers": 2,
         "n_heads": 2,
@@ -32,7 +32,7 @@ def test_load_full_checkpoint(mock_checkpoint_dir):
     
     # Create a dummy model and save it as a full checkpoint
     model = InterleavedWorldModel(
-        state_dim=12, embed_dim=32, n_layers=2, n_heads=2, max_ships=4
+        state_dim=15, embed_dim=32, n_layers=2, n_heads=2, max_ships=4
     )
     checkpoint = {
         "model_state_dict": model.state_dict(),
@@ -49,7 +49,7 @@ def test_load_full_checkpoint(mock_checkpoint_dir):
         team_id=0,
         squad=[0, 1],
         model_path=str(ckpt_path),
-        state_dim=12,
+        state_dim=15,
         embed_dim=32,
         n_layers=2,
         n_heads=2,
@@ -75,7 +75,7 @@ def test_load_state_dict(mock_checkpoint_dir):
     
     # Create a dummy model and save it as raw state dict
     model = InterleavedWorldModel(
-        state_dim=12, embed_dim=32, n_layers=2, n_heads=2, max_ships=4
+        state_dim=15, embed_dim=32, n_layers=2, n_heads=2, max_ships=4
     )
     
     ckpt_path = mock_checkpoint_dir / "best_world_model.pth"
@@ -87,7 +87,7 @@ def test_load_state_dict(mock_checkpoint_dir):
         team_id=0,
         squad=[0, 1],
         model_path=str(ckpt_path),
-        state_dim=12,
+        state_dim=15,
         embed_dim=32,
         n_layers=2,
         n_heads=2,
@@ -107,7 +107,7 @@ def test_agent_forward_pass():
         agent_id="test_agent",
         team_id=0,
         squad=[0, 1],
-        state_dim=12,
+        state_dim=15,
         embed_dim=32,
         n_layers=2,
         n_heads=2,
@@ -127,6 +127,8 @@ def test_agent_forward_pass():
         "power": torch.ones(num_ships) * 50.0,
         "team_id": torch.zeros(num_ships, dtype=torch.long),
         "is_shooting": torch.zeros(num_ships, dtype=torch.bool),
+        "acceleration": torch.zeros(num_ships, dtype=torch.complex64),
+        "angular_velocity": torch.zeros(num_ships, dtype=torch.float32),
     }
     
     # Set different values

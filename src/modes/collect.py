@@ -156,6 +156,7 @@ def collect_worker(
                     tokens_team_0=coordinator.all_tokens[0],
                     tokens_team_1=coordinator.all_tokens[1],
                     actions=coordinator.all_actions,
+                    expert_actions=coordinator.all_expert_actions,
                     action_masks=coordinator.all_action_masks,
                     rewards=coordinator.all_rewards,
                     sim_time=episode_sim_time,
@@ -216,6 +217,83 @@ def _compute_discounted_returns(
 
     return returns
 
+def _compute_pairwise_features(
+    tokens: torch.Tensor, world_size: tuple[float, float]
+) -> torch.Tensor:
+    """
+    Precompute fundamental pairwise features (deltas) in local frame.
+    
+    Args:
+        tokens: (T, N, D) tensor of ship state tokens.
+        world_size: (W, H) tuple.
+        
+    Returns:
+        (T, N, N, 4) tensor containin [rel_pos_x, rel_pos_y, rel_vel_x, rel_vel_y]
+        in the observing ship's local reference frame.
+    """
+    T, N, D = tokens.shape
+    
+    # Extract states
+    pos_x = tokens[..., 3] * world_size[0]
+    pos_y = tokens[..., 4] * world_size[1]
+    vel_x = tokens[..., 5] * 180.0
+    vel_y = tokens[..., 6] * 180.0
+    # Attitude (orientation)
+    att_x = tokens[..., 10]
+    att_y = tokens[..., 11]
+    
+    # --- 1. Compute Deltas (Broadcasted) ---
+    # Shape: (T, N, N)
+    dx = pos_x.unsqueeze(2) - pos_x.unsqueeze(1) # Target - Self
+    dy = pos_y.unsqueeze(2) - pos_y.unsqueeze(1)
+    
+    dvx = vel_x.unsqueeze(2) - vel_x.unsqueeze(1)
+    dvy = vel_y.unsqueeze(2) - vel_y.unsqueeze(1)
+    
+    # --- 2. Handle World Wrapping ---
+    # Wrap dx, dy to min dist on torus
+    dx = dx - torch.round(dx / world_size[0]) * world_size[0]
+    dy = dy - torch.round(dy / world_size[1]) * world_size[1]
+    
+    # --- 3. Rotate to Local Frame ---
+    # We need to rotate the delta vectors by the conjugate of the observing ship's attitude.
+    # If Attitude = (Ax, Ay), then Conjugate = (Ax, -Ay).
+    # Rotate (dx, dy) by (Ax, -Ay):
+    # NewX = dx * Ax - dy * (-Ay) = dx*Ax + dy*Ay
+    # NewY = dx * (-Ay) + dy * Ax = -dx*Ay + dy*Ax
+    
+    # Self Attitude: (T, N, 1) to broadcast over Target dim
+    self_ax = att_x.unsqueeze(2)
+    self_ay = att_y.unsqueeze(2)
+    
+    local_dx = dx * self_ax + dy * self_ay
+    local_dy = -dx * self_ay + dy * self_ax
+    
+    local_dvx = dvx * self_ax + dvy * self_ay
+    local_dvy = -dvx * self_ay + dvy * self_ax
+    
+    # Stack features
+    # Shape: (T, N, N, 4)
+    features = torch.stack([local_dx, local_dy, local_dvx, local_dvy], dim=-1)
+    
+    # Normalize? 
+    # Positions are roughly [-W/2, W/2]. Velocity is [-180, 180].
+    # Model usually expects inputs roughly unit scale.
+    # Let's normalize by World Size for Pos, and 180 for Vel?
+    # Or just store raw physical units and let LayerNorm/InputProj handle it?
+    # Given we are precomputing "fundamental" features, raw seems safer for "Dataset".
+    # BUT, to save space/precision, maybe normalized is better?
+    # User said "fundamental delta values".
+    # Existing token logic normalizes.
+    # Let's normalize to be consistent with token scale.
+    
+    features[..., 0] /= world_size[0]
+    features[..., 1] /= world_size[1]
+    features[..., 2] /= 180.0
+    features[..., 3] /= 180.0
+    
+    return features
+
 
 def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
     """
@@ -248,6 +326,8 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
     total_timesteps = 0
     total_sim_time = 0.0
     worker_metadata_list = []
+    
+    world_size = tuple(cfg.environment.world_size)
 
     # Initialize HDF5 file
     with h5py.File(aggregated_h5_path, "w") as f:
@@ -274,6 +354,11 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
                 t0_tokens = team_0["tokens"]
                 t0_actions = team_0["actions"]
                 t0_rewards = team_0["rewards"]
+                t0_expert_actions = team_0.get("expert_actions")
+                if t0_expert_actions is None:
+                     # Fallback if not present (shouldn't happen with new code, but safe)
+                     t0_expert_actions = t0_actions.clone()
+                
                 # Handle missing keys for backward compatibility
                 t0_masks = team_0.get("action_masks")
                 if t0_masks is None:
@@ -292,6 +377,10 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
                 t1_tokens = team_1["tokens"]
                 t1_actions = team_1["actions"]
                 t1_rewards = team_1["rewards"]
+                t1_expert_actions = team_1.get("expert_actions")
+                if t1_expert_actions is None:
+                     t1_expert_actions = t1_actions.clone()
+
                 t1_masks = team_1.get("action_masks")
                 if t1_masks is None:
                     t1_masks = torch.ones(
@@ -305,12 +394,6 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
                     t1_ids = torch.ones(t1_actions.shape[0], dtype=torch.int64)
 
                 episode_lengths = data["episode_lengths"]
-                # Episode IDs need to be handled carefully.
-                # If we stack them, they should probably share the same episode ID if they are from the same simulation?
-                # The current logic assumes 1 row per timestep.
-                # If we simply concat, we have 2x the timesteps.
-                # We can reuse the episode IDs for grouping later.
-
                 episode_ids = data["episode_ids"] + total_episodes
 
                 # Compute Returns for both
@@ -321,28 +404,23 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
                 t1_returns = _compute_discounted_returns(
                     t1_rewards, episode_lengths, gamma=gamma
                 )
+                
+                # Precompute Relational Features
+                t0_rel_features = _compute_pairwise_features(t0_tokens, world_size)
+                t1_rel_features = _compute_pairwise_features(t1_tokens, world_size)
 
                 # Concatenate Data
-
-                # Note: This simply appends Team 1 after Team 0.
-                # This breaks time-contingency if we assume the file is sorted by time across the whole batch?
-                # Not necessarily, usually we just shuffle anyway.
-                # But for RNNs, we need contiguous episodes.
-                # Since we have full episodes in Team 0 and full episodes in Team 1,
-                # concatenating them block-wise is fine.
-
                 tokens = torch.cat([t0_tokens, t1_tokens], dim=0)
                 actions = torch.cat([t0_actions, t1_actions], dim=0)
+                expert_actions = torch.cat([t0_expert_actions, t1_expert_actions], dim=0)
+                
                 action_masks = torch.cat([t0_masks, t1_masks], dim=0)
                 rewards = torch.cat([t0_rewards, t1_rewards], dim=0)
                 returns = torch.cat([t0_returns, t1_returns], dim=0)
+                rel_features = torch.cat([t0_rel_features, t1_rel_features], dim=0)
 
-                # Duplicate episode IDs and lengths for the second batch?
-                # Yes, they correspond to the same episodes.
+                # Duplicate episode IDs for the second batch
                 batch_episode_ids = torch.cat([episode_ids, episode_ids], dim=0)
-
-                # Episode lengths is (NumEpisodes,), not (NumTimesteps,).
-                # We need to double this list because we effectively have 2x the "agent-episodes".
                 batch_episode_lengths = torch.cat(
                     [episode_lengths, episode_lengths], dim=0
                 )
@@ -354,9 +432,11 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
                 batch_data = {
                     "tokens": tokens,
                     "actions": actions,
+                    "expert_actions": expert_actions,
                     "action_masks": action_masks,
                     "rewards": rewards,
                     "returns": returns,
+                    "relational_features": rel_features,
                     "episode_ids": batch_episode_ids,
                     "episode_lengths": batch_episode_lengths,
                     "agent_skills": agent_skills,
@@ -391,9 +471,6 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
                         dset[old_len:] = np_data
 
                 # Update stats
-                # Start index doesn't change, we just append.
-                # But we need to account for the fact we added 2x episodes effectively?
-                # The "num_episodes" metadata tracks distinct game episodes.
                 total_episodes += data["metadata"]["num_episodes"]
                 total_timesteps += data["metadata"]["total_timesteps"] * 2  # Both teams
                 total_sim_time += data["metadata"]["total_sim_time"]

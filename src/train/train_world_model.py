@@ -165,19 +165,31 @@ def validate_autoregressive(model, loader, device, steps=50):
     except StopIteration:
         return {}
 
-    (states, actions, returns, loss_mask, action_masks, agent_skills, team_ids) = batch
+    (
+        states,
+        input_actions,
+        target_actions,
+        returns,
+        loss_mask,
+        action_masks,
+        agent_skills,
+        team_ids,
+        rel_features
+    ) = batch
     
     # Take first B samples. Actually just use the whole batch.
     states = states.to(device)
-    actions = actions.to(device)
+    input_actions = input_actions.to(device)
+    target_actions = target_actions.to(device)
     team_ids = team_ids.to(device)
+    rel_features = rel_features.to(device)
 
     # We need at least steps+1 length
     if states.shape[1] < steps + 1:
         return {} # Too short
 
     initial_state = states[:, 0] # S0
-    initial_action = actions[:, 0] # A0 (dummy for API)
+    initial_action = input_actions[:, 0] # A_prev (dummy)
     
     # Fix Team IDs
     num_ships = states.shape[2]
@@ -192,6 +204,19 @@ def validate_autoregressive(model, loader, device, steps=50):
             input_team_ids = team_ids[:, 0, :num_ships]
     else:
             input_team_ids = team_ids
+            
+    # Relational Features for rollout?
+    # The model expects (B, T, N, N, 4) if passed.
+    # We can pass the full sequence? Or does generate handle it?
+    # Model.generate usually autoregressively predicts states.
+    # If relational features are derived from State, we need to compute them on the fly during generation!
+    # The precomputed ones are only for Training/Validation using ground truth states.
+    # If we are dreaming states, we must compute features from dreamt states.
+    # So we should NOT pass precomputed features to generate() unless generate() knows how to slice them (which it shouldn't if we want true rollout).
+    # Does InterleavedWorldModel.generate support computing relational features?
+    # We will need to ensure it does. For now, we assume it will handle it if we don't pass them, 
+    # OR we pass them if we are doing teacher forcing (which we are not here).
+    # So: Don't pass rel_features to generate.
     
     # Generate
     dream_states, dream_actions = model.generate(
@@ -202,19 +227,19 @@ def validate_autoregressive(model, loader, device, steps=50):
         team_ids=input_team_ids
     )
     
-    target_states = states[:, 1:1+steps]
+    target_states_slice = states[:, 1:1+steps]
     # target_actions: In data, actions[t] is action taken at S[t].
     # Model predicts A[t] from S[t].
     # So dream_actions[0] corresponds to A[0].
-    target_actions = actions[:, 0:steps]
+    target_actions_slice = target_actions[:, 0:steps]
     
     # MSE State
     # (B, Steps, N, D)
-    mse_state = F.mse_loss(dream_states, target_states)
+    mse_state = F.mse_loss(dream_states, target_states_slice)
     
     # Per-step MSE (average over Batch, Ships, Dim)
     # Result: (Steps,)
-    mse_state_per_step = (dream_states - target_states).pow(2).mean(dim=[0, 2, 3])
+    mse_state_per_step = (dream_states - target_states_slice).pow(2).mean(dim=[0, 2, 3])
     
     # Action Accuracy (Hard match of indices)
     # dream_actions is one-hot (float). target_actions is discrete indices (B, T, N, 3).
@@ -223,9 +248,9 @@ def validate_autoregressive(model, loader, device, steps=50):
     dream_t = dream_actions[..., 3:10].argmax(-1)
     dream_s = dream_actions[..., 10:12].argmax(-1)
     
-    target_p = target_actions[..., 0].long()
-    target_t = target_actions[..., 1].long()
-    target_s = target_actions[..., 2].long()
+    target_p = target_actions_slice[..., 0].long()
+    target_t = target_actions_slice[..., 1].long()
+    target_s = target_actions_slice[..., 2].long()
     
     acc_p = (dream_p == target_p).float().mean()
     acc_t = (dream_t == target_t).float().mean()
@@ -262,14 +287,34 @@ def validate_model(model, loaders, device, amp=True, lambda_state=1.0, lambda_ac
     # loaders is a list of data loaders
     for loader in loaders:
         with torch.no_grad():
-            for states, actions, returns, loss_mask, _, _, team_ids in loader:
+            for batch in loader:
+                (
+                    states,
+                    input_actions,
+                    target_actions,
+                    returns,
+                    loss_mask,
+                    action_masks,
+                    agent_skills,
+                    team_ids,
+                    rel_features
+                ) = batch
+                
                 states = states.to(device)
-                actions = actions.to(device)
+                input_actions = input_actions.to(device) # Shifted
+                target_actions = target_actions.to(device) # Current
                 loss_mask = loss_mask.to(device)
                 team_ids = team_ids.to(device)
+                rel_features = rel_features.to(device)
 
                 input_states = states[:, :-1]
-                input_actions = actions[:, :-1]
+                input_actions_slice = input_actions[:, :-1]
+                
+                # Relational features: Precomputed are (B, T, N, N, 4)
+                # Input for step t is features at step t (current state relations).
+                # Note: tokens[t] -> input_states[t].
+                # rel_features[t] corresponds to tokens[t]? Yes.
+                rel_features_slice = rel_features[:, :-1]
                 
                 num_ships = states.shape[2]
                 
@@ -284,21 +329,25 @@ def validate_model(model, loaders, device, amp=True, lambda_state=1.0, lambda_ac
                 else:
                      input_team_ids = team_ids
 
-                target_states = states[:, 1:]
-                target_actions = actions[:, :-1]
+                target_states_slice = states[:, 1:]
+                target_actions_slice = target_actions[:, :-1]
                 
                 loss_mask_slice = loss_mask[:, 1:]
 
                 with torch.amp.autocast(device_type='cuda', dtype=torch.float16, enabled=amp):
                     pred_states, pred_actions, _ = model(
-                        input_states, input_actions, input_team_ids, noise_scale=0.0
+                        input_states, 
+                        input_actions_slice, 
+                        input_team_ids, 
+                        relational_features=rel_features_slice,
+                        noise_scale=0.0
                     )
 
                     loss, state_loss, action_loss, _ = model.get_loss(
                         pred_states=pred_states,
                         pred_actions=pred_actions,
-                        target_states=target_states,
-                        target_actions=target_actions,
+                        target_states=target_states_slice,
+                        target_actions=target_actions_slice,
                         loss_mask=loss_mask_slice,
                         lambda_state=lambda_state,
                         lambda_action=lambda_action
@@ -309,7 +358,7 @@ def validate_model(model, loaders, device, amp=True, lambda_state=1.0, lambda_ac
                 
                 valid_mask = loss_mask_slice.bool()
                 valid_pred = pred_actions[valid_mask]
-                valid_target = target_actions[valid_mask]
+                valid_target = target_actions_slice[valid_mask]
                 
                 p_logits = valid_pred[..., 0:3].reshape(-1, 3)
                 t_logits = valid_pred[..., 3:10].reshape(-1, 7)
@@ -596,7 +645,7 @@ def train_world_model(cfg: DictConfig) -> None:
                 while True:
                     yield sobol_engine.draw(1).item() < short_prob
             else:
-                log.info(f"Using Fixed Pattern: 4 Short, 1 Long")
+                log.info(f"Using Fixed Pattern: {batch_ratio} Short, 1 Long")  
                 while True:
                     # 4 Short, 1 Long pattern
                     for _ in range(4): yield True
@@ -648,15 +697,28 @@ def train_world_model(cfg: DictConfig) -> None:
                 # effectively defining the epoch length by the limiting factor.
                 break
 
-            (states, actions, returns, loss_mask, action_masks, agent_skills, team_ids) = batch_data
+            (
+                states,
+                input_actions,
+                target_actions,
+                returns,
+                loss_mask,
+                action_masks,
+                agent_skills,
+                team_ids,
+                rel_features
+            ) = batch_data
 
             states = states.to(device)
-            actions = actions.to(device)
+            input_actions = input_actions.to(device)
+            target_actions = target_actions.to(device)
             loss_mask = loss_mask.to(device)
             team_ids = team_ids.to(device)
+            rel_features = rel_features.to(device)
 
             input_states = states[:, :-1]
-            input_actions = actions[:, :-1]
+            input_actions_slice = input_actions[:, :-1]
+            rel_features_slice = rel_features[:, :-1]
             
             num_ships = states.shape[2]
             
@@ -673,8 +735,8 @@ def train_world_model(cfg: DictConfig) -> None:
             else:
                         input_team_ids = team_ids
 
-            target_states = states[:, 1:]
-            target_actions = actions[:, :-1]
+            target_states_slice = states[:, 1:]
+            target_actions_slice = target_actions[:, :-1]
 
             loss_mask_slice = loss_mask[:, 1:]
             
@@ -687,7 +749,7 @@ def train_world_model(cfg: DictConfig) -> None:
             
             # Rollout
             rollout_len = get_rollout_length(epoch, cfg)
-            perform_rollout(model, input_states, input_actions, input_team_ids, rollout_len)
+            perform_rollout(model, input_states, input_actions_slice, input_team_ids, rollout_len)
 
             # Accumulate Gradient
             
@@ -695,8 +757,9 @@ def train_world_model(cfg: DictConfig) -> None:
                 # Request embeddings for norm calculation
                 pred_states, pred_actions, _, latents = model(
                     input_states,
-                    input_actions,
+                    input_actions_slice,
                     input_team_ids,
+                    relational_features=rel_features_slice,
                     noise_scale=cfg.world_model.noise_scale,
                     return_embeddings=True
                 )
@@ -704,8 +767,8 @@ def train_world_model(cfg: DictConfig) -> None:
                 loss, state_loss, action_loss, metrics = model.get_loss(
                     pred_states=pred_states,
                     pred_actions=pred_actions,
-                    target_states=target_states,
-                    target_actions=target_actions,
+                    target_states=target_states_slice,
+                    target_actions=target_actions_slice,
                     loss_mask=loss_mask_slice,
                     latents=latents,
                     lambda_state=cfg.world_model.get("lambda_state", 1.0),

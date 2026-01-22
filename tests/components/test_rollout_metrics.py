@@ -39,7 +39,7 @@ def test_compute_rollout_metrics_randomized_env():
 
     # Mock config on the model instance as accessing model.config is common
     model = InterleavedWorldModel(
-        state_dim=12,  # derived from tokenizer (12 features)
+        state_dim=15,  # derived from tokenizer (15 features)
         embed_dim=model_config.embed_dim,
         n_layers=model_config.n_layers,
         n_heads=model_config.n_heads,
