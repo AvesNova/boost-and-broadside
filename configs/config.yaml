@@ -12,6 +12,14 @@ wandb:
   mode: "online"
   log_frequency: 50
 
+profiler:
+  enabled: false
+  wait: 5
+  warmup: 2
+  active: 3
+  repeat: 1
+  schedule_type: "skip_first"
+
 environment:
   render_mode: "human"
   world_size: [1024, 1024]

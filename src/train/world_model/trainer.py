@@ -42,6 +42,26 @@ class Trainer:
         sched_cfg = self.cfg.world_model.get("scheduler", None)
         is_range_test = sched_cfg and "range_test" in sched_cfg.type
 
+        # Profiler Setup
+        prof_cfg = self.cfg.get("profiler", OmegaConf.create({"enabled": False}))
+        profiler = None
+        if prof_cfg.enabled:
+            log.info("Profiler ENABLED")
+            schedule = torch.profiler.schedule(
+                wait=prof_cfg.wait,
+                warmup=prof_cfg.warmup,
+                active=prof_cfg.active,
+                repeat=prof_cfg.repeat
+            )
+            profiler = torch.profiler.profile(
+                schedule=schedule,
+                on_trace_ready=torch.profiler.tensorboard_trace_handler(str(self.run_dir / "profiler")),
+                record_shapes=True,
+                profile_memory=True,
+                with_stack=True
+            )
+            profiler.start()
+
         for epoch in range(self.epochs):
             self.model.train()
             
@@ -111,9 +131,14 @@ class Trainer:
                     # Update Progress Bar (Range Test)
                     if is_range_test: pbar.update(1)
 
+                # Profiler Step
+                if profiler:
+                    profiler.step()
+
                 # Check Range Test Limit
                 if is_range_test and self.global_step >= sched_cfg.range_test.steps:
                      log.info("Range test complete.")
+                     if profiler: profiler.stop()
                      return
 
                 steps_in_epoch += 1
@@ -134,6 +159,9 @@ class Trainer:
             
             # Checkpointing
             self._save_checkpoint(epoch)
+
+        if profiler:
+            profiler.stop()
 
     def _train_step(self, batch_data, is_short, epoch):
         """Performs forward pass, calculates loss, and scales gradients."""
