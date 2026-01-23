@@ -54,9 +54,12 @@ class TemporalSelfAttention(nn.Module):
         self.resid_dropout = nn.Dropout(config.dropout)
         
         # RoPE for Temporal Sequence
+        # RoPE for Temporal Sequence
+        # Use a large fixed cache size (4096) to avoid dynamic resizing graph breaks
+        # This covers sequences up to 2048 timesteps, which is sufficient.
         self.rope = RotaryPositionEmbedding(
             dim=self.head_dim,
-            max_seq_len=config.max_context_len * 2 # 2 tokens per timestep
+            max_seq_len=4096 
         )
 
     def forward(self, x, position_ids, past_kv=None, use_cache=False):

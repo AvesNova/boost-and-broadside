@@ -13,7 +13,7 @@ wandb:
   log_frequency: 50
 
 profiler:
-  enabled: false
+  enabled: true
   wait: 5
   warmup: 2
   active: 3
@@ -78,7 +78,7 @@ train:
   use_bc: false
   use_rl: false
   
-  bc_data_path: data\bc_pretraining\20260122_225814\aggregated_data_lean.h5
+  bc_data_path: data/lean_data.h5
   
   model:
     transformer:
