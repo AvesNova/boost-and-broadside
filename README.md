@@ -42,6 +42,8 @@ uv run main.py mode=play human_player=true
 
 The core of the system is an **Interleaved World Model** that predicts the future state of the game.
 
+For a detailed breakdown of the model and training pipeline, see [docs/world_model_architecture.md](docs/world_model_architecture.md).
+
 ### Sequence Structure
 The model processes an interleaved sequence of **State ($S$)** and **Action ($A$)** blocks. Each block contains $N$ tokens, where $N$ is the number of ships (default 8).
 
