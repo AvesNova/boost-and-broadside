@@ -379,7 +379,7 @@ def plot_and_save(
     unique_ships = np.unique(ship_ids)
     ship_map = {int(s): f"Ship {int(s)}" for s in unique_ships}
 
-    team_map = {0: "Ally (Team 0)", 1: "Enemy (Team 1)"}
+    team_map = {int(t): f"Team {int(t)}" for t in np.unique(team_ids)}
     alive_map = {0: "Dead", 1: "Alive"}
 
     title_suffix = f" ({suffix.replace('_', ' ').strip()})" if suffix else ""

@@ -50,6 +50,9 @@ class GameCoordinator:
         env_config = dict(config.environment)
         if render_mode is not None:
             env_config["render_mode"] = render_mode
+        
+        # Inject number of teams from collect config
+        env_config["num_teams"] = len(config.collect.teams)
 
         self.env = Environment(**env_config)
 
@@ -95,20 +98,22 @@ class GameCoordinator:
         """
         obs, _ = self.env.reset(game_mode=game_mode)
 
-        self.team_skills = team_skills if team_skills is not None else {0: 1.0, 1: 1.0}
+        num_teams = len(self.config.collect.teams)
+        if team_skills is None:
+            self.team_skills = {i: 1.0 for i in range(num_teams)}
+        else:
+            self.team_skills = team_skills
 
         self.obs_history = [obs]
+        # Initialize token history for each team
+        # num_teams already defined above
         self.all_tokens = {
-            0: observation_to_tokens(
+            team_id: observation_to_tokens(
                 obs=obs,
-                perspective=0,
+                perspective=team_id,
                 world_size=tuple(self.config.environment.world_size),
-            ),
-            1: observation_to_tokens(
-                obs=obs,
-                perspective=1,
-                world_size=tuple(self.config.environment.world_size),
-            ),
+            )
+            for team_id in range(num_teams)
         }
         self.all_actions = {
             ship_id: [] for ship_id in range(self.config.environment.max_ships)
@@ -119,7 +124,7 @@ class GameCoordinator:
         self.all_action_masks = {
             ship_id: [] for ship_id in range(self.config.environment.max_ships)
         }
-        self.all_rewards = {0: [], 1: []}
+        self.all_rewards = {team_id: [] for team_id in range(num_teams)}
         
         # Reset sticky states
         self.sticky_states = {
@@ -279,28 +284,19 @@ class GameCoordinator:
 
     def _update_tokens(self, obs: dict) -> None:
         """Helper to update token history."""
-        self.all_tokens[0] = torch.cat(
-            [
-                self.all_tokens[0],
-                observation_to_tokens(
-                    obs=obs,
-                    perspective=0,
-                    world_size=tuple(self.config.environment.world_size),
-                ),
-            ],
-            dim=0,
-        )
-        self.all_tokens[1] = torch.cat(
-            [
-                self.all_tokens[1],
-                observation_to_tokens(
-                    obs=obs,
-                    perspective=1,
-                    world_size=tuple(self.config.environment.world_size),
-                ),
-            ],
-            dim=0,
-        )
+        # Update tokens for all tracked teams
+        for team_id in self.all_tokens.keys():
+            self.all_tokens[team_id] = torch.cat(
+                [
+                    self.all_tokens[team_id],
+                    observation_to_tokens(
+                        obs=obs,
+                        perspective=team_id,
+                        world_size=tuple(self.config.environment.world_size),
+                    ),
+                ],
+                dim=0,
+            )
 
     def _get_teams_from_obs(self, obs: dict) -> dict[int, list[int]]:
         """

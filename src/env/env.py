@@ -32,6 +32,7 @@ class Environment(gym.Env):
         random_positioning: bool,
         random_speed: bool,
         random_initialization: bool = False,
+        num_teams: int = 2,
         rng: np.random.Generator = np.random.default_rng(),
     ):
         """
@@ -61,6 +62,7 @@ class Environment(gym.Env):
         self.random_positioning = random_positioning
         self.random_speed = random_speed
         self.random_initialization = random_initialization
+        self.num_teams = num_teams
         self.rng = rng
 
         assert (agent_dt / physics_dt) % 1 == 0, (
@@ -256,41 +258,32 @@ class Environment(gym.Env):
         random_initialization: bool = False,
     ) -> State:
         """Reset to an NvN configuration."""
-        mid = self.max_ships // 2
+        mid = self.max_ships // self.num_teams
 
         if ships_per_team is None:
             ships_per_team = self.rng.integers(1, mid, endpoint=True)
 
-        # Generate random unique ship IDs for each team
-        pool_0 = np.arange(0, mid)
-        pool_1 = np.arange(mid, self.max_ships)
-
         # Ensure we have enough IDs
         if ships_per_team > mid:
             raise ValueError(
-                f"ships_per_team ({ships_per_team}) cannot exceed half max_ships ({mid})"
+                f"ships_per_team ({ships_per_team}) cannot exceed partition size ({mid}) for {self.num_teams} teams"
             )
 
-        ids_0 = self.rng.choice(pool_0, size=ships_per_team, replace=False).tolist()
-        ids_1 = self.rng.choice(pool_1, size=ships_per_team, replace=False).tolist()
+        ships = {}
+        for team_id in range(self.num_teams):
+            pool = np.arange(team_id * mid, (team_id + 1) * mid)
+            ids = self.rng.choice(pool, size=ships_per_team, replace=False).tolist()
+            
+            squad = self.create_squad(
+                team_id=team_id,
+                n_ships=ships_per_team,
+                ship_ids=ids,
+                random_positioning=random_positioning,
+                random_speed=random_speed,
+                random_initialization=random_initialization,
+            )
+            ships.update(squad)
 
-        team_0 = self.create_squad(
-            team_id=0,
-            n_ships=ships_per_team,
-            ship_ids=ids_0,
-            random_positioning=random_positioning,
-            random_speed=random_speed,
-            random_initialization=random_initialization,
-        )
-        team_1 = self.create_squad(
-            team_id=1,
-            n_ships=ships_per_team,
-            ship_ids=ids_1,
-            random_positioning=random_positioning,
-            random_speed=random_speed,
-            random_initialization=random_initialization,
-        )
-        ships = team_0 | team_1
         return State(ships=ships)
 
     def reset(
@@ -581,7 +574,8 @@ class Environment(gym.Env):
         terminated = self._check_termination(self.state)
 
         rewards = {
-            team_id: self._calculate_team_reward(team_id=team_id) for team_id in (0, 1)
+            team_id: self._calculate_team_reward(team_id=team_id)
+            for team_id in range(self.num_teams)
         }
 
         info = {

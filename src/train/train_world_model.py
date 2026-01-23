@@ -723,8 +723,8 @@ def train_world_model(cfg: DictConfig) -> None:
             team_ids = team_ids.to(device)
             rel_features = rel_features.to(device)
 
-            input_states = states[:, :-1]
-            input_actions_slice = input_actions[:, :-1]
+            input_states = states[:, :-1].clone()
+            input_actions_slice = input_actions[:, :-1].clone()
             rel_features_slice = rel_features[:, :-1]
             
             num_ships = states.shape[2]
