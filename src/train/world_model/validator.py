@@ -42,10 +42,20 @@ class Validator:
         lambda_action = self.cfg.world_model.get("lambda_action", 0.01)
         lambda_relational = self.cfg.world_model.get("lambda_relational", 0.1)
 
+        # Validation Limit
+        val_cfg = self.cfg.world_model.get("validation", None)
+        max_batches = val_cfg.max_batches if val_cfg else 100
+        
+        total_batches_processed = 0
+
         # loaders is a list of data loaders
         for loader in loaders:
             with torch.no_grad():
                 for batch in loader:
+                    if total_batches_processed >= max_batches:
+                        break
+                    total_batches_processed += 1
+                    
                     (
                         states,
                         input_actions,

@@ -132,6 +132,23 @@ class MetricLogger:
                 wandb_log["conf_mat_turn"] = epoch_metrics["conf_mat_turn"]
             if "conf_mat_shoot" in epoch_metrics:
                 wandb_log["conf_mat_shoot"] = epoch_metrics["conf_mat_shoot"]
+            
+            # Helper for line plots / heatmaps
+            for k, v in epoch_metrics.items():
+                if isinstance(v, (list, np.ndarray)) and "conf_mat" not in k:
+                    # Log as a custom chart or line series
+                    # For rollout MSE step, we want a Line Plot: Step (x) vs MSE (y)
+                    # Or a Heatmap if we want to see it evolve over epochs (WandB Heatmap is usually x, y, color)
+                    # Simple Line plot is better for a single epoch. 
+                    # But to track over time, we might just want to dump the array and let user viz it.
+                    # Or: Log a bar chart?
+                    # Let's log a Line Series for this step.
+                    try:
+                        data = [[x, y] for x, y in enumerate(v)]
+                        table = wandb.Table(data=data, columns=["step", "mse"])
+                        wandb_log[k] = wandb.plot.line(table, "step", "mse", title=k)
+                    except:
+                        pass
                 
             wandb.log(wandb_log, step=epoch_metrics.get("global_step", epoch * 100)) # Fallback step if missing
 

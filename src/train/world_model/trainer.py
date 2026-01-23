@@ -330,10 +330,21 @@ class Trainer:
 
     def _validate_epoch(self, epoch, val_loaders, ar_loader):
         val_metrics = self.validator.validate_validation_set(val_loaders)
-        ar_metrics = self.validator.validate_autoregressive(ar_loader)
+        
+        # Heavy Eval Frequency
+        val_cfg = self.cfg.world_model.get("validation", None)
+        heavy_freq = val_cfg.heavy_eval_freq if val_cfg else 5
+        is_heavy_eval = (epoch + 1) % heavy_freq == 0
+
+        ar_metrics = {}
+        if is_heavy_eval:
+             ar_metrics = self.validator.validate_autoregressive(ar_loader)
         
         avg_val_loss = val_metrics["val_loss"]
-        log.info(f"Epoch {epoch + 1}: Val Loss={avg_val_loss:.4f} AR MSE={ar_metrics.get('val_rollout_mse_state', -1):.4f}")
+        log_msg = f"Epoch {epoch + 1}: Val Loss={avg_val_loss:.4f}"
+        if is_heavy_eval:
+             log_msg += f" AR MSE={ar_metrics.get('val_rollout_mse_state', -1):.4f}"
+        log.info(log_msg)
         
         # Merge metrics for logging
         log_metrics = {
@@ -348,38 +359,39 @@ class Trainer:
             "global_step": self.global_step
         }
         
-        # Add Confusion Matrices to log
-        if len(val_metrics.get("preds_p", [])) > 0:
-             try:
-                 log_metrics["conf_mat_power"] = wandb.plot.confusion_matrix(
-                    probs=None,
-                    y_true=val_metrics["targets_p"],
-                    preds=val_metrics["preds_p"],
-                    class_names=[x.name for x in PowerActions]
-                 )
-             except Exception: pass
-        if len(val_metrics.get("preds_t", [])) > 0:
-             try:
-                 log_metrics["conf_mat_turn"] = wandb.plot.confusion_matrix(
-                    probs=None,
-                    y_true=val_metrics["targets_t"],
-                    preds=val_metrics["preds_t"],
-                    class_names=[x.name for x in TurnActions]
-                 )
-             except Exception: pass
-        if len(val_metrics.get("preds_s", [])) > 0:
-             try:
-                 log_metrics["conf_mat_shoot"] = wandb.plot.confusion_matrix(
-                    probs=None,
-                    y_true=val_metrics["targets_s"],
-                    preds=val_metrics["preds_s"],
-                    class_names=[x.name for x in ShootActions]
-                 )
-             except Exception: pass
-             
-        # Add AR metrics
-        for k, v in ar_metrics.items():
-            if isinstance(v, (int, float, np.number)):
+        # Add Confusion Matrices to log (Only on heavy eval)
+        if is_heavy_eval:
+            if len(val_metrics.get("preds_p", [])) > 0:
+                 try:
+                     log_metrics["conf_mat_power"] = wandb.plot.confusion_matrix(
+                        probs=None,
+                        y_true=val_metrics["targets_p"],
+                        preds=val_metrics["preds_p"],
+                        class_names=[x.name for x in PowerActions]
+                     )
+                 except Exception: pass
+            if len(val_metrics.get("preds_t", [])) > 0:
+                 try:
+                     log_metrics["conf_mat_turn"] = wandb.plot.confusion_matrix(
+                        probs=None,
+                        y_true=val_metrics["targets_t"],
+                        preds=val_metrics["preds_t"],
+                        class_names=[x.name for x in TurnActions]
+                     )
+                 except Exception: pass
+            if len(val_metrics.get("preds_s", [])) > 0:
+                 try:
+                     log_metrics["conf_mat_shoot"] = wandb.plot.confusion_matrix(
+                        probs=None,
+                        y_true=val_metrics["targets_s"],
+                        preds=val_metrics["preds_s"],
+                        class_names=[x.name for x in ShootActions]
+                     )
+                 except Exception: pass
+                 
+            # Add AR metrics
+            for k, v in ar_metrics.items():
+                # Allow lists for heatmap logging
                 log_metrics[f"Val_AR/{k}"] = v
 
         self.logger.log_epoch(log_metrics, epoch)
@@ -406,6 +418,8 @@ class Trainer:
              
              # Evaluate
              self.swa_model.averaged_model.to(self.device)
+             
+             # SWA validation always uses default settings (respecting max_batches)
              val_metrics_swa = self.validator.validate_validation_set(val_loaders, swa_model=self.swa_model.averaged_model)
              self.swa_model.averaged_model.to('cpu')
              

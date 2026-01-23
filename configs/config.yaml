@@ -70,7 +70,7 @@ train:
   use_bc: false
   use_rl: false
   
-  bc_data_path: data\bc_pretraining\20260117_160241\aggregated_data.h5
+  bc_data_path: data\bc_pretraining\20260122_225814\aggregated_data.h5
   
   model:
     transformer:
