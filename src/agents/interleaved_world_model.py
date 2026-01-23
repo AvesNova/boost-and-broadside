@@ -259,6 +259,48 @@ class Block(nn.Module):
         x = x + self.mlp(self.ln_2(x))
         return x, current_kv
 
+class BilinearRelationalHead(nn.Module):
+    """
+    Memory-efficient Bilinear Head for predicting pairwise relational features.
+    Avoids constructing the massive (B, T, N, N, 2E) tensor.
+    
+    Predicts 12 features using low-rank factorization:
+    Rel_k(i, j) = (U_k(e_i))^T (V_k(e_j))
+    """
+    def __init__(self, embed_dim: int, num_features: int = 12, rank: int = 32):
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.num_features = num_features
+        self.rank = rank
+        
+        # Projections to rank-space
+        self.proj_u = nn.Linear(embed_dim, num_features * rank)
+        self.proj_v = nn.Linear(embed_dim, num_features * rank)
+        
+    def forward(self, embeddings: torch.Tensor):
+        # embeddings: (B, T, N, E)
+        B, T, N, E = embeddings.shape
+        
+        # Project to (B, T, N, 12, R)
+        u = self.proj_u(embeddings).view(B, T, N, self.num_features, self.rank)
+        v = self.proj_v(embeddings).view(B, T, N, self.num_features, self.rank)
+        
+        # Flatten for batch matmul
+        # (B*T, 12, N, R)
+        u_flat = u.permute(0, 1, 3, 2, 4).reshape(B * T, self.num_features, N, self.rank)
+        v_flat = v.permute(0, 1, 3, 2, 4).reshape(B * T, self.num_features, N, self.rank)
+        
+        # Compute scores via dot product
+        # (B*T, 12, N, R) @ (B*T, 12, R, N) -> (B*T, 12, N, N)
+        scores = torch.matmul(u_flat, v_flat.transpose(-1, -2))
+        
+        # Reshape to (B, T, N, N, 12)
+        # Scores is (B*T, 12, N, N) -> permute to (B*T, N, N, 12) -> view
+        scores = scores.permute(0, 2, 3, 1).view(B, T, N, N, self.num_features)
+        
+        return scores
+
+
 class InterleavedWorldModelConfig:
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
@@ -305,12 +347,11 @@ class InterleavedWorldModel(nn.Module):
         )
         
         # Relational Prediction Head (12D target)
-        # Input: Pair of embeddings (2 * embed_dim)
-        # Output: 12 (features)
-        self.relational_head = nn.Sequential(
-            nn.Linear(2 * embed_dim, embed_dim),
-            nn.GELU(),
-            nn.Linear(embed_dim, 12)
+        # Replaced naive MLP with BilinearHead to save memory/compute
+        self.relational_head = BilinearRelationalHead(
+            embed_dim=embed_dim,
+            num_features=12,
+            rank=32 # Sufficient rank for geometric features
         )
         
         self.bin_emb_list = nn.ModuleList([nn.Embedding(2, embed_dim) for _ in range(self.num_binary)])
@@ -506,24 +547,13 @@ class InterleavedWorldModel(nn.Module):
         Args:
             embeddings: (..., N, E) corresponding to valid predictive tokens (Action Tokens)
                         Action tokens at t predict State at t+1.
-            B, T, N: Dimensions to reshape for pairing.
+            B, T, N: Dimensions (used for verification or legacy signature).
         Returns:
             pred_rel: (B, T, N, N, 12)
         """
-        # Embeddings Input: x_reshaped[:, :, 1] which is Action Tokens -> State_{t+1}
-        # Shape: (B, T, N, E)
-        
-        # We need pairs (N, N)
-        # For each ship i, and ship j, we concatenate emb_i, emb_j.
-        # (B, T, N, 1, E) expand (B, T, N, N, E)
-        # (B, T, 1, N, E) expand (B, T, N, N, E)
-        
-        src = embeddings.unsqueeze(3).expand(-1, -1, -1, N, -1)
-        tgt = embeddings.unsqueeze(2).expand(-1, -1, N, -1, -1)
-        
-        pairs = torch.cat([src, tgt], dim=-1) # (B, T, N, N, 2E)
-        
-        return self.relational_head(pairs)
+        # Embeddings Input: (B, T, N, E)
+        # Using Bilinear Head to avoid O(N^2) memory explosion
+        return self.relational_head(embeddings)
 
     def get_loss(
         self,

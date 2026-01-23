@@ -1,4 +1,5 @@
 import logging
+import time
 import torch
 import torch.nn as nn
 from tqdm import tqdm
@@ -80,6 +81,7 @@ class Trainer:
             micro_step = 0
             steps_in_epoch = 0
             self.optimizer.zero_grad()
+            self.t_last_macro = time.time()
             
             while True:
                 # 1. Get Batch
@@ -92,7 +94,9 @@ class Trainer:
                     break
                 
                 # 2. Process Batch
+                t0 = time.time()
                 step_metrics = self._train_step(batch_data, is_short, epoch)
+                step_metrics["time"] = time.time() - t0
                 
                 # 3. Accumulate
                 self._update_accumulators(accumulators, step_metrics)
@@ -220,6 +224,7 @@ class Trainer:
            "total_relational_loss": torch.tensor(0.0, device=self.device),
            # Scalars/Values for step/epoch logging
            "acc_loss": 0.0, "acc_state": 0.0, "acc_action": 0.0, "acc_rel": 0.0,
+           "acc_time": 0.0,
            "acc_errors": {} 
         }
         return acc
@@ -236,6 +241,7 @@ class Trainer:
         acc["acc_state"] += metrics["state_loss"]
         acc["acc_action"] += metrics["action_loss"]
         acc["acc_rel"] += metrics["relational_loss"]
+        acc["acc_time"] += metrics["time"]
         
         m = metrics["metrics"]
         for k, v in m.items():
@@ -247,6 +253,7 @@ class Trainer:
         acc["acc_state"] = 0.0
         acc["acc_action"] = 0.0
         acc["acc_rel"] = 0.0
+        acc["acc_time"] = 0.0
         acc["acc_errors"] = {}
 
     def _optimize_step(self, acc, pbar, is_range_test, epoch):
@@ -274,8 +281,15 @@ class Trainer:
             "state_loss": acc["acc_state"] / self.acc_steps,
             "action_loss": acc["acc_action"] / self.acc_steps,
             "relational_loss": acc["acc_rel"] / self.acc_steps,
+            "relational_loss": acc["acc_rel"] / self.acc_steps,
+            "time/micro_batch": acc["acc_time"] / self.acc_steps, # Avg pure compute time per micro step
+            "time/macro_batch": time.time() - self.t_last_macro,  # Wall time for full update (incl data load)
             "grad_norm": total_norm.item()
         }
+        
+        # Reset macro timer
+        self.t_last_macro = time.time()
+
         for k, v in acc["acc_errors"].items():
              metrics[k] = v / self.acc_steps
              
