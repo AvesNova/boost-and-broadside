@@ -29,6 +29,7 @@ def create_model(cfg: DictConfig, data_path: str, device: torch.device) -> Inter
         n_heads=cfg.world_model.n_heads,
         max_ships=cfg.world_model.n_ships,
         max_context_len=cfg.world_model.context_len,
+        use_relational_head=cfg.world_model.get("use_relational_head", True),
     ).to(device)
     
     # Compile
@@ -98,4 +99,5 @@ def get_data_loaders(cfg: DictConfig, data_path: str):
         validation_split=0.2,
         num_workers=cfg.world_model.get("num_workers", 4),
         prefetch_factor=cfg.world_model.get("prefetch_factor", 2),
+        world_size=tuple(cfg.environment.world_size),
     )

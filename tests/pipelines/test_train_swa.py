@@ -63,7 +63,7 @@ def test_train_swa_pipeline(default_config, tmp_path):
     # Create valid dummy data
     N = 200 # increased to 200
     MaxShips = 4
-    TokenDim = 10 # Simple dim
+    TokenDim = 15 # Simple dim
     NumActions = 3 # Not used directly in shape but for actions
     
     with h5py.File(data_path, "w") as f:

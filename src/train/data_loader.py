@@ -47,12 +47,13 @@ def create_unified_data_loaders(
     validation_split: float = 0.2,
     num_workers: int = 0,
     prefetch_factor: int = 2,
+    world_size: tuple[float, float] = (1024.0, 1024.0),
 ) -> tuple[DataLoader, DataLoader, DataLoader, DataLoader]:
     """
     Create data loaders for unified pool mixed batch training using HDF5.
     """
     # Initialize Dataset (Lightweight, just loads lengths)
-    unified_dataset = UnifiedEpisodeDataset(data_path)
+    unified_dataset = UnifiedEpisodeDataset(data_path, world_size=world_size)
     episode_lengths = unified_dataset.episode_lengths
     num_episodes = len(episode_lengths)
 
@@ -130,7 +131,7 @@ def create_bc_data_loader(
     # Use ShortView with seq_len=1 to simulate timestep sampling
     # It samples random timesteps from random episodes.
 
-    unified_dataset = UnifiedEpisodeDataset(data_path)
+    unified_dataset = UnifiedEpisodeDataset(data_path, world_size=(1024.0, 1024.0))
     episode_lengths = unified_dataset.episode_lengths
     num_episodes = len(episode_lengths)
 

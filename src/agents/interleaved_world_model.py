@@ -317,8 +317,10 @@ class InterleavedWorldModel(nn.Module):
         max_ships: int = 8,
         max_context_len: int = 128,
         dropout: float = 0.1,
+        use_relational_head: bool = True,
     ):
         super().__init__()
+        self.use_relational_head = use_relational_head
         self.config = InterleavedWorldModelConfig(
             state_dim=state_dim,
             embed_dim=embed_dim,
@@ -348,11 +350,14 @@ class InterleavedWorldModel(nn.Module):
         
         # Relational Prediction Head (12D target)
         # Replaced naive MLP with BilinearHead to save memory/compute
-        self.relational_head = BilinearRelationalHead(
-            embed_dim=embed_dim,
-            num_features=12,
-            rank=32 # Sufficient rank for geometric features
-        )
+        if self.use_relational_head:
+            self.relational_head = BilinearRelationalHead(
+                embed_dim=embed_dim,
+                num_features=12,
+                rank=32 # Sufficient rank for geometric features
+            )
+        else:
+            self.relational_head = None
         
         self.bin_emb_list = nn.ModuleList([nn.Embedding(2, embed_dim) for _ in range(self.num_binary)])
         
@@ -531,7 +536,9 @@ class InterleavedWorldModel(nn.Module):
         
         # Predict Relational Features (S_{t+1} relations) from A_t (Action tokens)
         # a_out corresponds to Action tokens which predict next state.
-        pred_relational = self.predict_relational(a_out, B, T, N)
+        pred_relational = None
+        if self.use_relational_head:
+            pred_relational = self.predict_relational(a_out, B, T, N)
         
         if return_embeddings:
              if features_12d is not None and len(features_12d.shape) == 4 and features_12d.shape[0] == B * T:

@@ -70,7 +70,7 @@ train:
   use_bc: false
   use_rl: false
   
-  bc_data_path: data\bc_pretraining\20260122_225814\aggregated_data.h5
+  bc_data_path: data\bc_pretraining\20260122_225814\aggregated_data_lean.h5
   
   model:
     transformer:
@@ -112,6 +112,7 @@ train:
     max_grad_norm: 0.5
 
 world_model:
+  use_relational_head: true
   embed_dim: 128
   n_layers: 6
   n_heads: 4

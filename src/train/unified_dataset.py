@@ -1,7 +1,9 @@
 import torch
 from torch.utils.data import Dataset
 import logging
+import logging
 import h5py
+from env.features import compute_pairwise_features
 
 log = logging.getLogger(__name__)
 
@@ -13,8 +15,9 @@ class UnifiedEpisodeDataset:
     Views (ShortView, LongView) will reference this dataset.
     """
 
-    def __init__(self, h5_path: str):
+    def __init__(self, h5_path: str, world_size: tuple[float, float] = (1024.0, 1024.0)):
         self.h5_path = h5_path
+        self.world_size = world_size
         self._h5_file = None
 
         # Load metadata immediately (lightweight)
@@ -151,9 +154,9 @@ class ShortView(BaseView):
         if self.dataset.has_dataset("relational_features"):
             seq_rel_features = self.dataset.get_slice("relational_features", abs_start, abs_end)
         else:
-            # Fallback shape: (T, N, N, 4)
-            nb_ships = seq_tokens.shape[1]
-            seq_rel_features = torch.zeros((actual_len, nb_ships, nb_ships, 4), dtype=torch.float32)
+            # Compute on-the-fly
+            # seq_tokens: (T, N, D)
+            seq_rel_features = compute_pairwise_features(seq_tokens, self.dataset.world_size)
 
         if self.dataset.has_dataset("agent_skills"):
             seq_skills = self.dataset.get_slice("agent_skills", abs_start, abs_end)
@@ -275,9 +278,8 @@ class LongView(BaseView):
         if self.dataset.has_dataset("relational_features"):
             seq_rel_features = self.dataset.get_slice("relational_features", abs_start, abs_end)
         else:
-             # Fallback shape: (T, N, N, 4)
-            nb_ships = seq_tokens.shape[1]
-            seq_rel_features = torch.zeros((self.seq_len, nb_ships, nb_ships, 4), dtype=torch.float32)
+            # Compute on-the-fly
+            seq_rel_features = compute_pairwise_features(seq_tokens, self.dataset.world_size)
 
         if self.dataset.has_dataset("agent_skills"):
             seq_skills = self.dataset.get_slice("agent_skills", abs_start, abs_end)

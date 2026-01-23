@@ -217,82 +217,6 @@ def _compute_discounted_returns(
 
     return returns
 
-def _compute_pairwise_features(
-    tokens: torch.Tensor, world_size: tuple[float, float]
-) -> torch.Tensor:
-    """
-    Precompute fundamental pairwise features (deltas) in local frame.
-    
-    Args:
-        tokens: (T, N, D) tensor of ship state tokens.
-        world_size: (W, H) tuple.
-        
-    Returns:
-        (T, N, N, 4) tensor containin [rel_pos_x, rel_pos_y, rel_vel_x, rel_vel_y]
-        in the observing ship's local reference frame.
-    """
-    T, N, D = tokens.shape
-    
-    # Extract states
-    pos_x = tokens[..., 3] * world_size[0]
-    pos_y = tokens[..., 4] * world_size[1]
-    vel_x = tokens[..., 5] * 180.0
-    vel_y = tokens[..., 6] * 180.0
-    # Attitude (orientation)
-    att_x = tokens[..., 10]
-    att_y = tokens[..., 11]
-    
-    # --- 1. Compute Deltas (Broadcasted) ---
-    # Shape: (T, N, N)
-    dx = pos_x.unsqueeze(2) - pos_x.unsqueeze(1) # Target - Self
-    dy = pos_y.unsqueeze(2) - pos_y.unsqueeze(1)
-    
-    dvx = vel_x.unsqueeze(2) - vel_x.unsqueeze(1)
-    dvy = vel_y.unsqueeze(2) - vel_y.unsqueeze(1)
-    
-    # --- 2. Handle World Wrapping ---
-    # Wrap dx, dy to min dist on torus
-    dx = dx - torch.round(dx / world_size[0]) * world_size[0]
-    dy = dy - torch.round(dy / world_size[1]) * world_size[1]
-    
-    # --- 3. Rotate to Local Frame ---
-    # We need to rotate the delta vectors by the conjugate of the observing ship's attitude.
-    # If Attitude = (Ax, Ay), then Conjugate = (Ax, -Ay).
-    # Rotate (dx, dy) by (Ax, -Ay):
-    # NewX = dx * Ax - dy * (-Ay) = dx*Ax + dy*Ay
-    # NewY = dx * (-Ay) + dy * Ax = -dx*Ay + dy*Ax
-    
-    # Self Attitude: (T, N, 1) to broadcast over Target dim
-    self_ax = att_x.unsqueeze(2)
-    self_ay = att_y.unsqueeze(2)
-    
-    local_dx = dx * self_ax + dy * self_ay
-    local_dy = -dx * self_ay + dy * self_ax
-    
-    local_dvx = dvx * self_ax + dvy * self_ay
-    local_dvy = -dvx * self_ay + dvy * self_ax
-    
-    # Stack features
-    # Shape: (T, N, N, 4)
-    features = torch.stack([local_dx, local_dy, local_dvx, local_dvy], dim=-1)
-    
-    # Normalize? 
-    # Positions are roughly [-W/2, W/2]. Velocity is [-180, 180].
-    # Model usually expects inputs roughly unit scale.
-    # Let's normalize by World Size for Pos, and 180 for Vel?
-    # Or just store raw physical units and let LayerNorm/InputProj handle it?
-    # Given we are precomputing "fundamental" features, raw seems safer for "Dataset".
-    # BUT, to save space/precision, maybe normalized is better?
-    # User said "fundamental delta values".
-    # Existing token logic normalizes.
-    # Let's normalize to be consistent with token scale.
-    
-    features[..., 0] /= world_size[0]
-    features[..., 1] /= world_size[1]
-    features[..., 2] /= 180.0
-    features[..., 3] /= 180.0
-    
-    return features
 
 
 def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
@@ -405,9 +329,6 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
                     t1_rewards, episode_lengths, gamma=gamma
                 )
                 
-                # Precompute Relational Features
-                t0_rel_features = _compute_pairwise_features(t0_tokens, world_size)
-                t1_rel_features = _compute_pairwise_features(t1_tokens, world_size)
 
                 # Concatenate Data
                 tokens = torch.cat([t0_tokens, t1_tokens], dim=0)
@@ -417,7 +338,6 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
                 action_masks = torch.cat([t0_masks, t1_masks], dim=0)
                 rewards = torch.cat([t0_rewards, t1_rewards], dim=0)
                 returns = torch.cat([t0_returns, t1_returns], dim=0)
-                rel_features = torch.cat([t0_rel_features, t1_rel_features], dim=0)
 
                 # Duplicate episode IDs for the second batch
                 batch_episode_ids = torch.cat([episode_ids, episode_ids], dim=0)
@@ -436,12 +356,12 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
                     "action_masks": action_masks,
                     "rewards": rewards,
                     "returns": returns,
-                    "relational_features": rel_features,
                     "episode_ids": batch_episode_ids,
                     "episode_lengths": batch_episode_lengths,
                     "agent_skills": agent_skills,
                     "team_ids": team_ids_tensor,
                 }
+                
 
                 # Write to HDF5
                 for key, tensor in batch_data.items():
@@ -499,6 +419,9 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
             f.attrs["max_ships"] = first_meta["max_ships"]
             f.attrs["token_dim"] = first_meta["token_dim"]
             f.attrs["num_actions"] = first_meta["num_actions"]
+            # Save world size if available, else optional
+            if "world_size" in cfg.environment:
+                f.attrs["world_size"] = tuple(cfg.environment.world_size)
 
     print(f"Saved aggregated data to {aggregated_h5_path}")
     print(
