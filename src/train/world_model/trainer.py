@@ -11,9 +11,9 @@ import numpy as np
 from env.constants import PowerActions, TurnActions, ShootActions
 from env.features import compute_pairwise_features
 from train.swa import SWAModule
-from train.swa import SWAModule
 from train.world_model.rollout import perform_rollout, get_rollout_length
 from train.world_model.setup import get_data_loaders
+from utils.dataset_stats import calculate_action_counts, compute_class_weights, apply_turn_exceptions, normalize_weights
 
 log = logging.getLogger(__name__)
 
@@ -47,6 +47,25 @@ class Trainer:
         
         self.current_min_skill = self.curr_cfg.get("min_skill_start", 0.0) if self.curr_cfg.get("enabled", False) else 0.0
         self.last_reloaded_skill = self.current_min_skill
+        
+        # Initialize Class Weights
+        log.info("Calculating class weights for loss scaling...")
+        counts = calculate_action_counts(data_path)
+        
+        # Calculate weights 
+        # (Assuming cap=10.0 as default, could be config but hardcoded for now or read from loss_cfg)
+        self.w_power = compute_class_weights(counts["power"]).to(device)
+        self.w_power = normalize_weights(self.w_power, counts["power"])
+        
+        self.w_turn = apply_turn_exceptions(compute_class_weights(counts["turn"])).to(device)
+        self.w_turn = normalize_weights(self.w_turn, counts["turn"])
+        
+        self.w_shoot = compute_class_weights(counts["shoot"]).to(device)
+        self.w_shoot = normalize_weights(self.w_shoot, counts["shoot"])
+        
+        log.info(f"Class Weights - Power: {self.w_power}")
+        log.info(f"Class Weights - Turn:  {self.w_turn}")
+        log.info(f"Class Weights - Shoot: {self.w_shoot}")
 
     def _get_current_params(self, step):
         """Calculate current values for scheduled parameters."""
@@ -306,7 +325,10 @@ class Trainer:
                 lambda_shoot=self.cfg.world_model.get("lambda_shoot", 0.05),
                 lambda_relational=self.cfg.world_model.get("lambda_relational", 0.1),
                 lambda_entropy=params["lambda_entropy"],
-                focal_gamma=params["focal_gamma"]
+                focal_gamma=params["focal_gamma"],
+                class_weights_power=self.w_power,
+                class_weights_turn=self.w_turn,
+                class_weights_shoot=self.w_shoot
              )
 
         # Backward

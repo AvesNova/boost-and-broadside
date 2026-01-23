@@ -68,7 +68,12 @@ def mock_components(tmp_path):
 
 def test_heavy_eval_freq(mock_components):
     """Test that heavy eval only runs on specific epochs."""
-    with patch("torch.save"):
+    with patch("torch.save"), \
+         patch("train.world_model.trainer.calculate_action_counts", return_value={"power": np.ones(3), "turn": np.ones(7), "shoot": np.ones(2)}), \
+         patch("train.world_model.trainer.compute_class_weights", return_value=torch.ones(3)), \
+         patch("train.world_model.trainer.apply_turn_exceptions", side_effect=lambda x: x), \
+         patch("train.world_model.trainer.normalize_weights", side_effect=lambda w, c: w):
+        
         trainer = Trainer(**mock_components, data_path="dummy_path")
         
         # Disable SWA for this test to focus on _validate_epoch logic inside train loop

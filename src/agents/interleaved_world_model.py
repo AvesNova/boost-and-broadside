@@ -581,7 +581,10 @@ class InterleavedWorldModel(nn.Module):
         lambda_shoot=0.05,
         lambda_relational=0.1,
         lambda_entropy=0.0,
-        focal_gamma=0.0
+        focal_gamma=0.0,
+        class_weights_power=None,
+        class_weights_turn=None,
+        class_weights_shoot=None
     ):
         """
         pred_states: (B, T, N, D)
@@ -614,9 +617,9 @@ class InterleavedWorldModel(nn.Module):
         t_target = target_actions[..., 1].long().reshape(-1)
         s_target = target_actions[..., 2].long().reshape(-1)
         
-        def compute_classification_loss(logits, target, gamma):
+        def compute_classification_loss(logits, target, gamma, weight=None):
             # Base CE Loss
-            ce_loss = F.cross_entropy(logits, target, reduction='none')
+            ce_loss = F.cross_entropy(logits, target, weight=weight, reduction='none')
             
             if gamma > 0.0:
                  # Focal Loss: (1 - pt)^gamma * CE
@@ -629,9 +632,9 @@ class InterleavedWorldModel(nn.Module):
             else:
                  return ce_loss
 
-        loss_p_raw = compute_classification_loss(p_logits, p_target, focal_gamma)
-        loss_t_raw = compute_classification_loss(t_logits, t_target, focal_gamma)
-        loss_s_raw = compute_classification_loss(s_logits, s_target, focal_gamma)
+        loss_p_raw = compute_classification_loss(p_logits, p_target, focal_gamma, weight=class_weights_power)
+        loss_t_raw = compute_classification_loss(t_logits, t_target, focal_gamma, weight=class_weights_turn)
+        loss_s_raw = compute_classification_loss(s_logits, s_target, focal_gamma, weight=class_weights_shoot)
         
         # Masked Mean
         loss_p = (loss_p_raw * mask_flat).sum() / denominator
