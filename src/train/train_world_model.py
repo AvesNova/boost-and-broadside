@@ -87,7 +87,8 @@ def train_world_model(cfg: DictConfig) -> None:
         validator=validator,
         cfg=cfg,
         device=device,
-        run_dir=run_dir
+        run_dir=run_dir,
+        data_path=data_path # Pass resolved path for re-loading
     )
     
     # 6. Run

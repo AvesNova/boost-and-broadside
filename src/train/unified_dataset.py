@@ -43,6 +43,22 @@ class UnifiedEpisodeDataset:
     def get_length(self, episode_idx: int) -> int:
         return self.episode_lengths[episode_idx].item()
 
+    def get_episode_mean_skill(self, episode_idx: int) -> float:
+        """
+        Get the mean skill of agents in this episode.
+        Returns 0.0 if agent_skills is not present.
+        """
+        if "agent_skills" not in self.available_keys:
+            return 1.0 # Default to high skill (include everything if no skills found)
+            
+        start = self.episode_starts[episode_idx].item()
+        # Just sample the first timestep's skill to be fast
+        # Assuming skill is constant per episode or close enough
+        # Shape: (MaxShips,) or (N, MaxShips)
+        # We read just 1 timestep
+        skills = self.h5_file["agent_skills"][start:start+1] 
+        return float(skills.mean())
+
     def get_slice(self, dataset_name: str, start: int, end: int) -> torch.Tensor:
         """Helper to slice from HDF5 and convert to Tensor."""
         data = self.h5_file[dataset_name][start:end]

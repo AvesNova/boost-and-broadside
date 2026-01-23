@@ -48,6 +48,7 @@ def create_unified_data_loaders(
     num_workers: int = 0,
     prefetch_factor: int = 2,
     world_size: tuple[float, float] = (1024.0, 1024.0),
+    min_skill: float = 0.0,
 ) -> tuple[DataLoader, DataLoader, DataLoader, DataLoader]:
     """
     Create data loaders for unified pool mixed batch training using HDF5.
@@ -59,6 +60,19 @@ def create_unified_data_loaders(
 
     # Create Indices
     all_indices = torch.randperm(num_episodes).tolist()
+
+    # Filter by Skill (Curriculum)
+    if min_skill > 0.0:
+        filtered_indices = []
+        for idx in all_indices:
+             skill = unified_dataset.get_episode_mean_skill(idx)
+             if skill >= min_skill:
+                 filtered_indices.append(idx)
+        
+        all_indices = filtered_indices
+        # If we filtered everything, warn and fallback (or crash if desired)
+        if len(all_indices) == 0:
+            raise ValueError(f"No episodes found with skill >= {min_skill}")
 
     # Split Indices for Train/Val
     val_size = int(num_episodes * validation_split)

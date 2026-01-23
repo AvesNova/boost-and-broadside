@@ -69,7 +69,7 @@ def mock_components(tmp_path):
 def test_heavy_eval_freq(mock_components):
     """Test that heavy eval only runs on specific epochs."""
     with patch("torch.save"):
-        trainer = Trainer(**mock_components)
+        trainer = Trainer(**mock_components, data_path="dummy_path")
         
         # Disable SWA for this test to focus on _validate_epoch logic inside train loop
         # But effectively we just call _validate_epoch directly

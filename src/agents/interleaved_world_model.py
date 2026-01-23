@@ -576,8 +576,12 @@ class InterleavedWorldModel(nn.Module):
         target_features_12d=None,
         pred_relational=None,
         lambda_state=1.0,
-        lambda_action=0.01,
-        lambda_relational=0.1
+        lambda_power=0.05,
+        lambda_turn=0.05,
+        lambda_shoot=0.05,
+        lambda_relational=0.1,
+        lambda_entropy=0.0,
+        focal_gamma=0.0
     ):
         """
         pred_states: (B, T, N, D)
@@ -610,17 +614,32 @@ class InterleavedWorldModel(nn.Module):
         t_target = target_actions[..., 1].long().reshape(-1)
         s_target = target_actions[..., 2].long().reshape(-1)
         
-        # Reduction='none' to keep per-element loss
-        loss_p_raw = F.cross_entropy(p_logits, p_target, reduction='none')
-        loss_t_raw = F.cross_entropy(t_logits, t_target, reduction='none')
-        loss_s_raw = F.cross_entropy(s_logits, s_target, reduction='none')
+        def compute_classification_loss(logits, target, gamma):
+            # Base CE Loss
+            ce_loss = F.cross_entropy(logits, target, reduction='none')
+            
+            if gamma > 0.0:
+                 # Focal Loss: (1 - pt)^gamma * CE
+                 log_probs = F.log_softmax(logits, dim=-1)
+                 log_pt = log_probs.gather(1, target.unsqueeze(1)).squeeze(1)
+                 pt = torch.exp(log_pt)
+                 focal_weight = (1 - pt) ** gamma
+                 loss = focal_weight * ce_loss
+                 return loss
+            else:
+                 return ce_loss
+
+        loss_p_raw = compute_classification_loss(p_logits, p_target, focal_gamma)
+        loss_t_raw = compute_classification_loss(t_logits, t_target, focal_gamma)
+        loss_s_raw = compute_classification_loss(s_logits, s_target, focal_gamma)
         
         # Masked Mean
         loss_p = (loss_p_raw * mask_flat).sum() / denominator
         loss_t = (loss_t_raw * mask_flat).sum() / denominator
         loss_s = (loss_s_raw * mask_flat).sum() / denominator
         
-        action_loss = loss_p + loss_t + loss_s
+        # Weighted Action Loss
+        action_loss = (lambda_power * loss_p) + (lambda_turn * loss_t) + (lambda_shoot * loss_s)
         
         # ----------------------------------------------------------------------
         # Metrics
@@ -685,7 +704,29 @@ class InterleavedWorldModel(nn.Module):
              loss_rel_raw = F.mse_loss(pred_rel_flat, target_rel_flat, reduction='none').mean(dim=-1)
              relational_loss = (loss_rel_raw * final_mask_flat).sum() / rel_denom
         
-        total_loss = lambda_state * state_loss + lambda_action * action_loss + lambda_relational * relational_loss
+        total_loss = lambda_state * state_loss + action_loss + lambda_relational * relational_loss
+        
+        # Entropy Regularization (Maximize Entropy -> Minimize -Entropy)
+        if lambda_entropy > 0.0:
+            # We already compute mean entropy below for metrics, but we need it here for gradients
+            # Recompute essentially or reuse logic
+             p_probs = F.softmax(p_logits, dim=-1)
+             t_probs = F.softmax(t_logits, dim=-1)
+             s_probs = F.softmax(s_logits, dim=-1)
+             
+             # H = -sum(p log p)
+             ent_p = -torch.sum(p_probs * torch.log(p_probs + 1e-8), dim=-1)
+             ent_t = -torch.sum(t_probs * torch.log(t_probs + 1e-8), dim=-1)
+             ent_s = -torch.sum(s_probs * torch.log(s_probs + 1e-8), dim=-1)
+             
+             avg_ent_p = (ent_p * mask_flat).sum() / denominator
+             avg_ent_t = (ent_t * mask_flat).sum() / denominator
+             avg_ent_s = (ent_s * mask_flat).sum() / denominator
+             
+             avg_total_entropy = avg_ent_p + avg_ent_t + avg_ent_s
+             
+             # We want to MAXIMIZE entropy, so we MINIMIZE negative entropy
+             total_loss = total_loss - (lambda_entropy * avg_total_entropy)
         
         metrics = {
              "entropy_power": entropy_p,

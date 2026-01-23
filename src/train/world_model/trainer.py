@@ -11,12 +11,14 @@ import numpy as np
 from env.constants import PowerActions, TurnActions, ShootActions
 from env.features import compute_pairwise_features
 from train.swa import SWAModule
+from train.swa import SWAModule
 from train.world_model.rollout import perform_rollout, get_rollout_length
+from train.world_model.setup import get_data_loaders
 
 log = logging.getLogger(__name__)
 
 class Trainer:
-    def __init__(self, model, optimizer, scheduler, scaler, swa_model, logger, validator, cfg: DictConfig, device, run_dir):
+    def __init__(self, model, optimizer, scheduler, scaler, swa_model, logger, validator, cfg: DictConfig, device, run_dir, data_path: str):
         self.model = model
         self.optimizer = optimizer
         self.scheduler = scheduler
@@ -36,6 +38,61 @@ class Trainer:
         self.global_step = 0
         self.best_val_loss = float("inf")
         self.best_val_loss_swa = float("inf")
+        self.data_path = data_path
+        
+        # Curriculum State
+        self.curr_cfg = cfg.world_model.get("curriculum", {})
+        self.entropy_cfg = cfg.world_model.get("entropy", {})
+        self.loss_cfg = cfg.world_model.get("loss", {})
+        
+        self.current_min_skill = self.curr_cfg.get("min_skill_start", 0.0) if self.curr_cfg.get("enabled", False) else 0.0
+        self.last_reloaded_skill = self.current_min_skill
+
+    def _get_current_params(self, step):
+        """Calculate current values for scheduled parameters."""
+        # Entropy: Decay from start to end
+        ent_start = self.entropy_cfg.get("lambda_start", 0.0)
+        ent_end = self.entropy_cfg.get("lambda_end", 0.0)
+        ent_decay = self.entropy_cfg.get("decay_steps", 1000)
+        
+        if step < ent_decay:
+            alpha = step / ent_decay
+            curr_entropy = ent_start + (ent_end - ent_start) * alpha
+        else:
+            curr_entropy = ent_end
+            
+        # Focal Gamma: Increase from start to end (or decay, depends on config)
+        foc_start = self.loss_cfg.get("gamma_start", 0.0)
+        foc_end = self.loss_cfg.get("gamma_end", 0.0)
+        foc_decay = self.loss_cfg.get("decay_steps", 1000)
+        
+        if self.loss_cfg.get("use_focal_loss", False):
+            if step < foc_decay:
+                alpha = step / foc_decay
+                curr_gamma = foc_start + (foc_end - foc_start) * alpha
+            else:
+                curr_gamma = foc_end
+        else:
+            curr_gamma = 0.0
+            
+        # Curriculum Skill: Decay from start (1.0) to end (0.0) typically
+        curr_skill = 0.0
+        if self.curr_cfg.get("enabled", False):
+            skill_start = self.curr_cfg.get("min_skill_start", 0.9)
+            skill_end = self.curr_cfg.get("min_skill_end", 0.0)
+            skill_decay = self.curr_cfg.get("decay_steps", 1000)
+            
+            if step < skill_decay:
+                alpha = step / skill_decay
+                curr_skill = skill_start + (skill_end - skill_start) * alpha
+            else:
+                curr_skill = skill_end
+        
+        return {
+            "lambda_entropy": curr_entropy,
+            "focal_gamma": curr_gamma,
+            "min_skill": curr_skill
+        }
 
     def train(self, train_short_loader, train_long_loader, val_short_loader, val_long_loader):
         """Main training loop."""
@@ -64,6 +121,18 @@ class Trainer:
             profiler.start()
 
         for epoch in range(self.epochs):
+            # Check Curriculum Update
+            current_params = self._get_current_params(self.global_step)
+            tgt_skill = current_params["min_skill"]
+            
+            # Reload if skill threshold changed significantly (e.g., > 0.05)
+            if abs(tgt_skill - self.last_reloaded_skill) > 0.05:
+                log.info(f"Curriculum Update: Min Skill {self.last_reloaded_skill:.2f} -> {tgt_skill:.2f}. Reloading Data...")
+                train_short_loader, train_long_loader, _, _ = get_data_loaders(self.cfg, self.data_path, min_skill=tgt_skill)
+                # Note: We don't reload validation loaders to keep validation consistent (or should we?)
+                # Usually validation set should remain static (all data) to be comparable.
+                self.last_reloaded_skill = tgt_skill
+                
             self.model.train()
             
             # Setup Iterators & Progress Bar
@@ -116,7 +185,9 @@ class Trainer:
                 
                 # 2. Process Batch
                 t0 = time.time()
-                step_metrics = self._train_step(batch_data, is_short, epoch)
+                # Update params for this step (micro-step level updates for smooth schedules)
+                step_params = self._get_current_params(self.global_step)
+                step_metrics = self._train_step(batch_data, is_short, epoch, step_params)
                 step_metrics["time"] = time.time() - t0
                 
                 # 3. Accumulate
@@ -164,7 +235,7 @@ class Trainer:
         if profiler:
             profiler.stop()
 
-    def _train_step(self, batch_data, is_short, epoch):
+    def _train_step(self, batch_data, is_short, epoch, params):
         """Performs forward pass, calculates loss, and scales gradients."""
         (
             states, input_actions, target_actions, _,
@@ -230,8 +301,12 @@ class Trainer:
                 target_features_12d=features_12d,
                 pred_relational=pred_relational,
                 lambda_state=self.cfg.world_model.get("lambda_state", 1.0),
-                lambda_action=self.cfg.world_model.get("lambda_action", 0.01),
-                lambda_relational=self.cfg.world_model.get("lambda_relational", 0.1)
+                lambda_power=self.cfg.world_model.get("lambda_power", 0.05),
+                lambda_turn=self.cfg.world_model.get("lambda_turn", 0.05),
+                lambda_shoot=self.cfg.world_model.get("lambda_shoot", 0.05),
+                lambda_relational=self.cfg.world_model.get("lambda_relational", 0.1),
+                lambda_entropy=params["lambda_entropy"],
+                focal_gamma=params["focal_gamma"]
              )
 
         # Backward
@@ -314,6 +389,9 @@ class Trainer:
             "action_loss": acc["acc_action"] / self.acc_steps,
             "relational_loss": acc["acc_rel"] / self.acc_steps,
             "relational_loss": acc["acc_rel"] / self.acc_steps,
+            "param/entropy_lambda": self._get_current_params(self.global_step)["lambda_entropy"],
+            "param/focal_gamma": self._get_current_params(self.global_step)["focal_gamma"],
+            "param/min_skill": self._get_current_params(self.global_step)["min_skill"],
             "time/micro_batch": acc["acc_time"] / self.acc_steps, # Avg pure compute time per micro step
             "time/macro_batch": time.time() - self.t_last_macro,  # Wall time for full update (incl data load)
             "grad_norm": total_norm.detach()

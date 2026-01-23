@@ -130,21 +130,42 @@ world_model:
   noise_scale: 0.01
   input_noise_ratio: 1.0
   input_noise_scale: 0.01
-  learning_rate: 1.26e-4
+  learning_rate: 1.1e-5
   epochs: 200
   lambda_state: 1.0
-  lambda_action: 0.05
+  # Split Action Lambdas
+  lambda_power: 0.05
+  lambda_turn: 0.05
+  lambda_shoot: 0.05
+  lambda_action: 0.05 # Deprecated, kept for compat if needed but preferred split
   lambda_relational: 0.1
+
+  curriculum:
+    enabled: false
+    min_skill_start: 0.9 # Start with only expert data
+    min_skill_end: 0.0   # End with all data
+    decay_steps: 1000    # Steps to reach min_skill_end (or use fraction of total steps)
+
+  entropy:
+    lambda_start: 0.1
+    lambda_end: 0.01
+    decay_steps: 2000
+
+  loss:
+    use_focal_loss: true
+    gamma_start: 0.0
+    gamma_end: 2.0
+    decay_steps: 4000
 
   scheduler:
     type: "warmup_constant" # Options: "constant", "warmup_constant", "linear_range_test", "exponential_range_test"
     
     warmup:
-      steps: 500
+      steps: 1000
       start_lr: 1e-7
       
     range_test:
-      steps: 167 # Scaled by acc_steps (834/5)
+      steps: 1000
       start_lr: 1e-7
       end_lr: 1.0
   

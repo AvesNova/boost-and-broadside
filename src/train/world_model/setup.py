@@ -87,7 +87,7 @@ def create_scheduler(optimizer: optim.Optimizer, cfg: DictConfig, total_steps: i
 
     return None
 
-def get_data_loaders(cfg: DictConfig, data_path: str):
+def get_data_loaders(cfg: DictConfig, data_path: str, min_skill: float = 0.0):
     """Create unified data loaders."""
     return create_unified_data_loaders(
         data_path,
@@ -100,4 +100,5 @@ def get_data_loaders(cfg: DictConfig, data_path: str):
         num_workers=cfg.world_model.get("num_workers", 4),
         prefetch_factor=cfg.world_model.get("prefetch_factor", 2),
         world_size=tuple(cfg.environment.world_size),
+        min_skill=min_skill
     )

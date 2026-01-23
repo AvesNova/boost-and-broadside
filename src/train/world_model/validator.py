@@ -40,8 +40,18 @@ class Validator:
 
         # Load weights
         lambda_state = self.cfg.world_model.get("lambda_state", 1.0)
-        lambda_action = self.cfg.world_model.get("lambda_action", 0.01)
+        lambda_power = self.cfg.world_model.get("lambda_power", 0.05)
+        lambda_turn = self.cfg.world_model.get("lambda_turn", 0.05)
+        lambda_shoot = self.cfg.world_model.get("lambda_shoot", 0.05)
         lambda_relational = self.cfg.world_model.get("lambda_relational", 0.1)
+        # Use simple defaults for validation
+        lambda_entropy = 0.0
+        focal_gamma = 0.0
+        if self.cfg.world_model.get("loss", {}).get("use_focal_loss", False):
+             # Maybe use endpoint gamma? Or just 0? Trainer uses scheduled.
+             # Let's use 0 for fair raw comparison or endpoint?
+             # Endpoint is probably fairer model evaluation of "final" performance
+             focal_gamma = self.cfg.world_model.get("loss", {}).get("gamma_end", 0.0)
 
         # Validation Limit
         val_cfg = self.cfg.world_model.get("validation", None)
@@ -118,8 +128,12 @@ class Validator:
                             target_features_12d=features_12d, 
                             pred_relational=pred_relational,
                             lambda_state=lambda_state,
-                            lambda_action=lambda_action,
-                            lambda_relational=lambda_relational
+                            lambda_power=lambda_power,
+                            lambda_turn=lambda_turn,
+                            lambda_shoot=lambda_shoot,
+                            lambda_relational=lambda_relational,
+                            lambda_entropy=lambda_entropy,
+                            focal_gamma=focal_gamma
                         )
                     
                     val_loss += loss
