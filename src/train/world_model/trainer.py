@@ -9,6 +9,7 @@ import wandb
 import numpy as np
 
 from env.constants import PowerActions, TurnActions, ShootActions
+from env.features import compute_pairwise_features
 from train.swa import SWAModule
 from train.world_model.rollout import perform_rollout, get_rollout_length
 
@@ -167,15 +168,18 @@ class Trainer:
         """Performs forward pass, calculates loss, and scales gradients."""
         (
             states, input_actions, target_actions, _,
-            loss_mask, _, _, team_ids, rel_features
+            loss_mask, _, _, team_ids
         ) = batch_data
 
-        states = states.to(self.device)
-        input_actions = input_actions.to(self.device)
-        target_actions = target_actions.to(self.device)
-        loss_mask = loss_mask.to(self.device)
-        team_ids = team_ids.to(self.device)
-        rel_features = rel_features.to(self.device)
+        states = states.to(self.device, non_blocking=True)
+        input_actions = input_actions.to(self.device, non_blocking=True)
+        target_actions = target_actions.to(self.device, non_blocking=True)
+        loss_mask = loss_mask.to(self.device, non_blocking=True)
+        team_ids = team_ids.to(self.device, non_blocking=True)
+        
+        # Compute Relational Features on GPU
+        # Shape: (B, T, N, D) or (T, N, D) depending on batch
+        rel_features = compute_pairwise_features(states, self.cfg.environment.world_size)
 
         input_states = states[:, :-1].clone()
         input_actions_slice = input_actions[:, :-1].clone()
@@ -312,7 +316,7 @@ class Trainer:
             "relational_loss": acc["acc_rel"] / self.acc_steps,
             "time/micro_batch": acc["acc_time"] / self.acc_steps, # Avg pure compute time per micro step
             "time/macro_batch": time.time() - self.t_last_macro,  # Wall time for full update (incl data load)
-            "grad_norm": total_norm.item()
+            "grad_norm": total_norm.detach()
         }
         
         # Reset macro timer
@@ -322,11 +326,7 @@ class Trainer:
              metrics[k] = v / self.acc_steps
              
         self.logger.log_step(metrics, self.global_step)
-        
-        # CSV Log (Less frequent)
-        log_freq_csv = 1 if is_range_test else 10
-        if self.global_step % log_freq_csv == 0:
-            self.logger.log_to_csv_step(metrics)
+
 
     def _log_epoch_summary(self, acc, steps, epoch):
         if steps == 0: return

@@ -3,7 +3,7 @@ from torch.utils.data import Dataset
 import logging
 import logging
 import h5py
-from env.features import compute_pairwise_features
+
 
 log = logging.getLogger(__name__)
 
@@ -151,12 +151,7 @@ class ShortView(BaseView):
         seq_returns = self.dataset.get_slice("returns", abs_start, abs_end)
         
         # Optional Features
-        if self.dataset.has_dataset("relational_features"):
-            seq_rel_features = self.dataset.get_slice("relational_features", abs_start, abs_end)
-        else:
-            # Compute on-the-fly
-            # seq_tokens: (T, N, D)
-            seq_rel_features = compute_pairwise_features(seq_tokens, self.dataset.world_size)
+
 
         if self.dataset.has_dataset("agent_skills"):
             seq_skills = self.dataset.get_slice("agent_skills", abs_start, abs_end)
@@ -198,10 +193,7 @@ class ShortView(BaseView):
             seq_returns = torch.cat([seq_returns, return_pad], dim=0)
             
             # Pad rel features
-            rel_feat_pad = torch.zeros(
-                pad_len, *seq_rel_features.shape[1:], dtype=seq_rel_features.dtype
-            )
-            seq_rel_features = torch.cat([seq_rel_features, rel_feat_pad], dim=0)
+
 
             # Pad skills (pad with 1.0 - expert)
             skill_pad = torch.ones(
@@ -229,7 +221,6 @@ class ShortView(BaseView):
             seq_masks,
             seq_skills,
             seq_team_ids,
-            seq_rel_features, # NEW
         )
 
 
@@ -275,11 +266,7 @@ class LongView(BaseView):
         seq_masks = self._get_shifted_masks_from_full(abs_start, abs_end, start_offset)
         seq_returns = self.dataset.get_slice("returns", abs_start, abs_end)
         
-        if self.dataset.has_dataset("relational_features"):
-            seq_rel_features = self.dataset.get_slice("relational_features", abs_start, abs_end)
-        else:
-            # Compute on-the-fly
-            seq_rel_features = compute_pairwise_features(seq_tokens, self.dataset.world_size)
+
 
         if self.dataset.has_dataset("agent_skills"):
             seq_skills = self.dataset.get_slice("agent_skills", abs_start, abs_end)
@@ -303,5 +290,4 @@ class LongView(BaseView):
             seq_masks,
             seq_skills,
             seq_team_ids,
-            seq_rel_features, # NEW
         )

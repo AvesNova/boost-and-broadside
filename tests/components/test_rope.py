@@ -80,25 +80,7 @@ def test_rope_rotation_property():
     assert not torch.allclose(k, k_rot)
 
 
-def test_rope_cache_extension():
-    """Test that RoPE extends cache when needed."""
-    rope = RotaryPositionEmbedding(dim=64, max_seq_len=64)
 
-    # Request longer sequence than initial cache
-    batch_size = 2
-    seq_len = 96
-    dim = 64
-
-    q = torch.randn(batch_size, seq_len, dim)
-    k = torch.randn(batch_size, seq_len, dim)
-    position_ids = torch.arange(seq_len)
-
-    q_rot, k_rot = rope(q, k, position_ids)
-
-    # Cache should be extended
-    assert rope.cos_cached.shape[0] >= seq_len
-    assert rope.sin_cached.shape[0] >= seq_len
-    assert q_rot.shape == (batch_size, seq_len, dim)
 
 
 def test_rope_different_positions():

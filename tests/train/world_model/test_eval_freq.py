@@ -46,7 +46,11 @@ def mock_components(tmp_path):
             "enabled": True,
             "project": "test_project",
             "entity": "test_entity",
+            "entity": "test_entity",
             "group": "test_group"
+        },
+        "environment": {
+            "world_size": [1000.0, 1000.0]
         }
     })
     
@@ -128,8 +132,7 @@ def test_max_batches_limit(mock_components):
                     None,
                     torch.ones(1, 10, 2), # Loss Mask
                     None, None,
-                    torch.zeros(1, 10, 2), # Team IDs
-                    torch.zeros(1, 10, 2, 2, 12) # Rel
+                    torch.zeros(1, 10, 2) # Team IDs
                 )
     
     loader = MockLoader()

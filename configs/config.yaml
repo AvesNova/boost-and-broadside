@@ -14,9 +14,9 @@ wandb:
 
 profiler:
   enabled: true
-  wait: 5
-  warmup: 2
-  active: 3
+  wait: 32
+  warmup: 4
+  active: 5
   repeat: 1
   schedule_type: "skip_first"
 
@@ -160,8 +160,8 @@ world_model:
   rope_base: 10000.0
   rope_max_seq_len: 256
   
-  num_workers: 4
-  prefetch_factor: 2
+  num_workers: 8
+  prefetch_factor: 4
   swa_start_epoch: 2
 
   # Closed Loop Rollout (Scheduled Sampling)

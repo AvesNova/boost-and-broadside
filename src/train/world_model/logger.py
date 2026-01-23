@@ -71,21 +71,26 @@ class MetricLogger:
             # Ensure native types
             wandb.log(log_item, step=step_val)
         
+        # CSV Logging (Bulk)
+        with open(self.step_log_path, "a") as f:
+            for i in range(len(packed["step"])):
+                row_metrics = {k: packed[k][i] for k in packed}
+                # "global_step,epoch,learning_rate,loss,state_loss,action_loss,relational_loss,val_loss,val_loss_swa"
+                step = row_metrics.get("step", 0)
+                epoch = row_metrics.get("epoch", 0)
+                lr = row_metrics.get("lr", 0)
+                loss = row_metrics.get("loss", 0)
+                state = row_metrics.get("state_loss", 0)
+                action = row_metrics.get("action_loss", 0)
+                rel = row_metrics.get("relational_loss", 0)
+                
+                f.write(f"{step},{epoch},{lr:.8f},{loss:.6f},{state:.6f},{action:.6f},{rel:.6f},,\n")
+
         self.log_buffer = []
 
     def log_to_csv_step(self, metrics: dict):
-        """Log specific step metrics to CSV."""
-        with open(self.step_log_path, "a") as f:
-            loss = metrics.get('loss', 0)
-            state = metrics.get('state_loss', 0)
-            action = metrics.get('action_loss', 0)
-            rel = metrics.get('relational_loss', 0)
-            
-            # Helper to extract float
-            def to_float(x):
-                return x.item() if isinstance(x, torch.Tensor) else float(x)
-
-            f.write(f"{metrics['step']},{metrics['epoch']},{metrics['lr']:.8f},{to_float(loss):.6f},{to_float(state):.6f},{to_float(action):.6f},{to_float(rel):.6f},,\n")
+        """Deprecated: CSV logging is now handled in flush_buffer."""
+        pass
 
     def log_epoch(self, epoch_metrics: dict, epoch: int):
         """Log epoch summary metrics."""

@@ -5,6 +5,7 @@ import logging
 from omegaconf import DictConfig
 
 from env.constants import PowerActions, TurnActions, ShootActions
+from env.features import compute_pairwise_features
 
 log = logging.getLogger(__name__)
 
@@ -64,8 +65,7 @@ class Validator:
                         loss_mask,
                         action_masks,
                         agent_skills,
-                        team_ids,
-                        rel_features
+                        team_ids
                     ) = batch
                     
                     states = states.to(self.device)
@@ -73,7 +73,9 @@ class Validator:
                     target_actions = target_actions.to(self.device) # Current
                     loss_mask = loss_mask.to(self.device)
                     team_ids = team_ids.to(self.device)
-                    rel_features = rel_features.to(self.device)
+                    
+                    # Compute Relational Features
+                    rel_features = compute_pairwise_features(states, self.cfg.environment.world_size)
 
                     input_states = states[:, :-1]
                     input_actions_slice = input_actions[:, :-1]
@@ -185,8 +187,7 @@ class Validator:
             loss_mask,
             action_masks,
             agent_skills,
-            team_ids,
-            rel_features
+            team_ids
         ) = batch
         
         # Take first B samples. Actually just use the whole batch.

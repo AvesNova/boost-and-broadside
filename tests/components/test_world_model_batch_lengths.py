@@ -55,7 +55,7 @@ class TestShortView:
         dataset = UnifiedEpisodeDataset(str(h5_path))
         view = ShortView(dataset, list(range(len(episode_lengths))), seq_len=32)
 
-        batch_tokens, batch_input_actions, batch_target_actions, batch_returns, loss_mask, batch_masks, _, _, _ = view[
+        batch_tokens, batch_input_actions, batch_target_actions, batch_returns, loss_mask, batch_masks, _, _ = view[
             0
         ]
 
@@ -97,7 +97,7 @@ class TestLongView:
             dataset, list(range(len(episode_lengths))), seq_len=128, warmup_len=32
         )
 
-        batch_tokens, batch_input_actions, batch_target_actions, batch_returns, loss_mask, batch_masks, _, _, _ = view[
+        batch_tokens, batch_input_actions, batch_target_actions, batch_returns, loss_mask, batch_masks, _, _ = view[
             0
         ]
 
@@ -133,8 +133,8 @@ class TestUnifiedDataLoaders:
         assert len(tl) > 0
 
         # Verify batch shapes
-        s_tokens, s_input_actions, s_target_actions, s_returns, s_mask, s_action_masks, _, _, _ = next(iter(ts))
+        s_tokens, s_input_actions, s_target_actions, s_returns, s_mask, s_action_masks, _, _ = next(iter(ts))
         assert s_tokens.shape == (4, 32, 8, 12)
 
-        l_tokens, l_input_actions, l_target_actions, l_returns, l_mask, l_action_masks, _, _, _ = next(iter(tl))
+        l_tokens, l_input_actions, l_target_actions, l_returns, l_mask, l_action_masks, _, _ = next(iter(tl))
         assert l_tokens.shape == (2, 128, 8, 12)
