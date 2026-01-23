@@ -13,7 +13,7 @@ wandb:
   log_frequency: 50
 
 profiler:
-  enabled: true
+  enabled: false
   wait: 32
   warmup: 4
   active: 5

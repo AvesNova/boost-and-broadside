@@ -460,8 +460,8 @@ class InterleavedWorldModel(nn.Module):
             team_ids = team_ids.unsqueeze(1).expand(-1, T, -1)
         team_emb = self.team_embed(team_ids.long()) 
         
-        state_tokens = state_tokens + ship_emb + team_emb + self.type_embed(torch.tensor(0, device=device))
-        action_tokens = action_tokens + ship_emb + team_emb + self.type_embed(torch.tensor(1, device=device))
+        state_tokens = state_tokens + ship_emb + team_emb + self.type_embed(torch.zeros((), dtype=torch.long, device=device))
+        action_tokens = action_tokens + ship_emb + team_emb + self.type_embed(torch.ones((), dtype=torch.long, device=device))
         
         # 4. Interleave & Flatten
         combined = torch.stack([state_tokens, action_tokens], dim=2)
@@ -646,7 +646,7 @@ class InterleavedWorldModel(nn.Module):
             prob_s = masked_mean(s_probs.gather(1, s_target.unsqueeze(1)).squeeze(1), mask_flat, denominator)
 
             # Latent Norms (Unmasked as per original behavior)
-            norm_latent = torch.tensor(0.0, device=device)
+            norm_latent = torch.zeros((), device=device)
             if latents is not None:
                 norm_latent = latents.norm(dim=-1).mean()
 
@@ -667,7 +667,7 @@ class InterleavedWorldModel(nn.Module):
         # ----------------------------------------------------------------------
         # Relational Loss
         # ----------------------------------------------------------------------
-        relational_loss = torch.tensor(0.0, device=device)
+        relational_loss = torch.zeros((), device=device)
         if target_features_12d is not None and pred_relational is not None:
              # Mask: (B, T) -> (B, T, N, N)
              rel_mask = loss_mask.view(B, T, 1, 1).expand(B, T, N, N)
