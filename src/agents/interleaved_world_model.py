@@ -589,77 +589,101 @@ class InterleavedWorldModel(nn.Module):
         target_features_12d: (B, T, N, N, 12) - Ground truth (from compute_features)
         pred_relational: (B, T, N, N, 12) - Predicted
         """
-        valid_mask = loss_mask.bool() 
+        device = pred_states.device
+        B, T, N, D = pred_states.shape
         
-        valid_pred_act = pred_actions[valid_mask] 
-        valid_target_act = target_actions[valid_mask] 
+        # Flatten Mask
+        # loss_mask: (B, T) -> (B, T, N). Flatten -> (B*T*N)
+        mask_flat = loss_mask.view(B, T, 1).expand(B, T, N).reshape(-1).float()
+        valid_count = mask_flat.sum()
+        denominator = valid_count + 1e-6
         
-        p_logits = valid_pred_act[..., 0:3].reshape(-1, 3)
-        t_logits = valid_pred_act[..., 3:10].reshape(-1, 7)
-        s_logits = valid_pred_act[..., 10:12].reshape(-1, 2)
+        # ----------------------------------------------------------------------
+        # Action Loss
+        # ----------------------------------------------------------------------
+        # Flatten: (B, T, N, X) -> (B*T*N, X)
+        p_logits = pred_actions[..., 0:3].reshape(-1, 3)
+        t_logits = pred_actions[..., 3:10].reshape(-1, 7)
+        s_logits = pred_actions[..., 10:12].reshape(-1, 2)
         
-        p_target = valid_target_act[..., 0].long().reshape(-1)
-        t_target = valid_target_act[..., 1].long().reshape(-1)
-        s_target = valid_target_act[..., 2].long().reshape(-1)
+        p_target = target_actions[..., 0].long().reshape(-1)
+        t_target = target_actions[..., 1].long().reshape(-1)
+        s_target = target_actions[..., 2].long().reshape(-1)
         
-        loss_p = F.cross_entropy(p_logits, p_target)
-        loss_t = F.cross_entropy(t_logits, t_target)
-        loss_s = F.cross_entropy(s_logits, s_target)
+        # Reduction='none' to keep per-element loss
+        loss_p_raw = F.cross_entropy(p_logits, p_target, reduction='none')
+        loss_t_raw = F.cross_entropy(t_logits, t_target, reduction='none')
+        loss_s_raw = F.cross_entropy(s_logits, s_target, reduction='none')
+        
+        # Masked Mean
+        loss_p = (loss_p_raw * mask_flat).sum() / denominator
+        loss_t = (loss_t_raw * mask_flat).sum() / denominator
+        loss_s = (loss_s_raw * mask_flat).sum() / denominator
         
         action_loss = loss_p + loss_t + loss_s
         
-        # Metrics: Entropy & Confidence
+        # ----------------------------------------------------------------------
+        # Metrics
+        # ----------------------------------------------------------------------
         with torch.no_grad():
+            # Helper for masked mean metric
+            def masked_mean(val, mask, denom):
+                return (val * mask).sum() / denom
+
             # Power
             p_probs = F.softmax(p_logits, dim=-1)
-            entropy_p = -torch.sum(p_probs * torch.log(p_probs + 1e-8), dim=-1).mean()
-            prob_p = p_probs.gather(1, p_target.unsqueeze(1)).mean()
+            entropy_p = masked_mean(-torch.sum(p_probs * torch.log(p_probs + 1e-8), dim=-1), mask_flat, denominator)
+            prob_p = masked_mean(p_probs.gather(1, p_target.unsqueeze(1)).squeeze(1), mask_flat, denominator)
 
             # Turn
             t_probs = F.softmax(t_logits, dim=-1)
-            entropy_t = -torch.sum(t_probs * torch.log(t_probs + 1e-8), dim=-1).mean()
-            prob_t = t_probs.gather(1, t_target.unsqueeze(1)).mean()
+            entropy_t = masked_mean(-torch.sum(t_probs * torch.log(t_probs + 1e-8), dim=-1), mask_flat, denominator)
+            prob_t = masked_mean(t_probs.gather(1, t_target.unsqueeze(1)).squeeze(1), mask_flat, denominator)
 
             # Shoot
             s_probs = F.softmax(s_logits, dim=-1)
-            entropy_s = -torch.sum(s_probs * torch.log(s_probs + 1e-8), dim=-1).mean()
-            prob_s = s_probs.gather(1, s_target.unsqueeze(1)).mean()
+            entropy_s = masked_mean(-torch.sum(s_probs * torch.log(s_probs + 1e-8), dim=-1), mask_flat, denominator)
+            prob_s = masked_mean(s_probs.gather(1, s_target.unsqueeze(1)).squeeze(1), mask_flat, denominator)
 
-            # Latent Norms
-            norm_latent = torch.tensor(0.0, device=pred_states.device)
+            # Latent Norms (Unmasked as per original behavior)
+            norm_latent = torch.tensor(0.0, device=device)
             if latents is not None:
                 norm_latent = latents.norm(dim=-1).mean()
 
             # Classification Errors (Hard)
-            # Compare argmax logits to target
-            error_p = (p_logits.argmax(dim=-1) != p_target).float().mean()
-            error_t = (t_logits.argmax(dim=-1) != t_target).float().mean()
-            error_s = (s_logits.argmax(dim=-1) != s_target).float().mean()
+            error_p = masked_mean((p_logits.argmax(dim=-1) != p_target).float(), mask_flat, denominator)
+            error_t = masked_mean((t_logits.argmax(dim=-1) != t_target).float(), mask_flat, denominator)
+            error_s = masked_mean((s_logits.argmax(dim=-1) != s_target).float(), mask_flat, denominator)
 
-        valid_pred_state = pred_states[valid_mask]
-        valid_target_state = target_states[valid_mask]
+        # ----------------------------------------------------------------------
+        # State Loss
+        # ----------------------------------------------------------------------
+        pred_states_flat = pred_states.reshape(-1, D)
+        target_states_flat = target_states.reshape(-1, D)
         
-        state_loss = F.mse_loss(valid_pred_state, valid_target_state)
+        loss_state_raw = F.mse_loss(pred_states_flat, target_states_flat, reduction='none').mean(dim=-1) # (B*T*N)
+        state_loss = (loss_state_raw * mask_flat).sum() / denominator
         
+        # ----------------------------------------------------------------------
         # Relational Loss
-        relational_loss = torch.tensor(0.0, device=pred_states.device)
+        # ----------------------------------------------------------------------
+        relational_loss = torch.tensor(0.0, device=device)
         if target_features_12d is not None and pred_relational is not None:
              # Mask: (B, T) -> (B, T, N, N)
-             # Expand mask to ships and pairs
-             B, T, N = pred_states.shape[:3]
-             # (B, T, 1, 1)
-             rel_mask = loss_mask.view(B, T, 1, 1).expand(B, T, N, N).bool()
+             rel_mask = loss_mask.view(B, T, 1, 1).expand(B, T, N, N)
+             eye_mask = ~torch.eye(N, device=device).bool().view(1, 1, N, N).expand(B, T, N, N)
              
-             # Also mask diagonal (i == j)
-             eye_mask = ~torch.eye(N, device=pred_states.device).bool().view(1, 1, N, N).expand(B, T, N, N)
+             final_mask = rel_mask.bool() & eye_mask
+             final_mask_flat = final_mask.reshape(-1).float()
              
-             final_mask = rel_mask & eye_mask
+             rel_denom = final_mask_flat.sum() + 1e-6
              
-             valid_pred_rel = pred_relational[final_mask]
-             valid_target_rel = target_features_12d[final_mask]
+             pred_rel_flat = pred_relational.reshape(-1, 12)
+             target_rel_flat = target_features_12d.reshape(-1, 12)
              
-             if valid_target_rel.numel() > 0:
-                 relational_loss = F.mse_loss(valid_pred_rel, valid_target_rel)
+             # MSE reduction='none' -> (B*T*N*N, 12) -> mean -> (B*T*N*N)
+             loss_rel_raw = F.mse_loss(pred_rel_flat, target_rel_flat, reduction='none').mean(dim=-1)
+             relational_loss = (loss_rel_raw * final_mask_flat).sum() / rel_denom
         
         total_loss = lambda_state * state_loss + lambda_action * action_loss + lambda_relational * relational_loss
         
