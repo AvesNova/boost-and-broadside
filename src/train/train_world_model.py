@@ -12,7 +12,6 @@ from datetime import datetime
 import os
 import torch
 import torch.nn.functional as F
-import torch.nn.functional as F
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 import random
@@ -455,7 +454,9 @@ def train_world_model(cfg: DictConfig) -> None:
     optimizer = optim.AdamW(model.parameters(), lr=cfg.world_model.learning_rate, fused=True)
 
     # 4. Initialize GradScaler for AMP
-    scaler = torch.amp.GradScaler('cuda')
+    # Only enable if requested AND device is cuda (GradScaler is mostly for fp16 on cuda)
+    use_amp = cfg.train.get("amp", False) and device.type == 'cuda'
+    scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
 
     # 5. Initialize SWA (Shadow Model on CPU)
     swa_model = SWAModule(model)
@@ -759,7 +760,13 @@ def train_world_model(cfg: DictConfig) -> None:
 
             # Accumulate Gradient
             
-            with torch.amp.autocast(device_type='cuda', dtype=torch.float16):
+            # Use device.type for autocast (cpu or cuda)
+            # functionality depends on use_amp for 'cuda' (fp16) or potentially 'cpu' (bf16)
+            # For now, we only enable if use_amp is True (which we gated on cuda above).
+            # If we wanted CPU AMP (bf16), we'd need different logic. 
+            # Sticking to simple fix: respect cfg.train.amp.
+            
+            with torch.amp.autocast(device_type=device.type, dtype=torch.float16, enabled=use_amp):
                 # Request embeddings for norm calculation
                 pred_states, pred_actions, _, latents, features_12d, pred_relational = model(
                     input_states,

@@ -8,14 +8,23 @@ from sklearn.decomposition import PCA
 import pacmap
 import yaml
 import argparse
+import h5py
 
 # Add src to sys.path
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 
-from agents.world_model import WorldModel
+from agents.interleaved_world_model import InterleavedWorldModel
 from train.data_loader import load_bc_data
 from utils.tensor_utils import to_one_hot
-from env.constants import PowerActions, TurnActions, ShootActions
+from core.constants import (
+    PowerActions, 
+    TurnActions, 
+    ShootActions,
+    MAX_SHIPS,
+    STATE_DIM,
+    ACTION_DIM,
+    TOTAL_ACTION_LOGITS
+)
 
 
 def load_config(run_dir: Path):
@@ -34,15 +43,17 @@ def load_config(run_dir: Path):
 def load_model(run_dir: Path, config: dict, device: str = "cpu"):
     wm_config = config.get("world_model", {})
 
-    # Extract model params
-    # Note: Using default args from WorldModel __init__ if not in config
-    model = WorldModel(
-        state_dim=12,  # hardcoded based on known state dim
-        action_dim=12,  # hardcoded based on known action dim (3+7+2)
+    state_dim = wm_config.get("token_dim", STATE_DIM)
+    
+    # Model uses flattened action dim for HEADS (3+7+2=12), but INPUT is discrete (3)
+    # The InterleavedWorldModel handles embedding internally.
+    
+    model = InterleavedWorldModel(
+        state_dim=state_dim,
         embed_dim=wm_config.get("embed_dim", 128),
         n_layers=wm_config.get("n_layers", 4),
         n_heads=wm_config.get("n_heads", 4),
-        max_ships=wm_config.get("n_ships", 8),
+        max_ships=wm_config.get("n_ships", MAX_SHIPS),
         max_context_len=wm_config.get("context_len", 128),
         dropout=0.0,  # No dropout for inference
     )
@@ -67,112 +78,135 @@ def load_model(run_dir: Path, config: dict, device: str = "cpu"):
     return model
 
 
-def extract_embeddings(model, data, device, max_batches=10, seq_len=96):
+def extract_embeddings(model, h5_path, device, max_batches=10, seq_len=96):
     embeddings_list = []
     actions_list = []
     values_list = []
     ship_ids_list = []
+    team_ids_list = []  # Added
     timesteps_list = []
-
-    print(f"Extracting embeddings using {device}...")
-
-    # Process sequential episodes
-    team_0 = data["team_0"]
-    all_tokens = team_0["tokens"]
-    all_actions = team_0["actions"]
-    # Action masks are not reliable for enemy alive status
-    # all_masks = team_0.get("action_masks", torch.ones(all_actions.shape[0], all_actions.shape[1]))
-    episode_lengths = data["episode_lengths"]
-
-    count = 0
-    start_idx = 0
-
     alive_list = []
 
-    for i, length in enumerate(episode_lengths):
-        length = length.item()
-        end_idx = start_idx + length
+    print(f"Extracting embeddings using {device} from {h5_path}...")
 
-        # Only process if long enough for sequence
-        if length >= seq_len:
-            # Slice first seq_len steps (Teacher Forcing window)
-            # tokens: [start_idx, start_idx + seq_len]
-            tokens = all_tokens[start_idx : start_idx + seq_len]
+    with h5py.File(h5_path, "r") as f:
+        episode_lengths = f["episode_lengths"][:]
+        all_tokens = f["tokens"]
+        all_actions = f["actions"]
+        
+        has_team_ids = "team_ids" in f
+        all_team_ids = f["team_ids"] if has_team_ids else None
+        
+        count = 0
+        
+        # Pre-calculate starts
+        ep_starts = np.zeros_like(episode_lengths)
+        ep_starts[1:] = np.cumsum(episode_lengths[:-1])
 
-            # actions: shift right.
-            # First action input is 0.
-            # Then actions from start_idx to start_idx + seq_len - 1
-            raw_actions = all_actions[start_idx : start_idx + seq_len - 1]
-            zeros = torch.zeros(
-                1,
-                *raw_actions.shape[1:],
-                dtype=raw_actions.dtype,
-                device=raw_actions.device,
-            )
-            p_actions = torch.cat([zeros, raw_actions], dim=0)  # (T, N, 3)
+        for i, length in enumerate(episode_lengths):
+            start_idx = int(ep_starts[i])
+            # end_idx = start_idx + length # Unused
 
-            # Batch dim add
-            tokens = tokens.unsqueeze(0).to(device)  # (1, T, N, F)
-            p_actions = p_actions.unsqueeze(0).to(device)  # (1, T, N, 3)
+            # Only process if long enough for sequence
+            if length >= seq_len:
+                # Slice first seq_len steps
+                tokens_np = all_tokens[start_idx : start_idx + seq_len]
+                
+                # actions: shift right.
+                raw_actions_np = all_actions[start_idx : start_idx + seq_len - 1]
+                
+                # Zeros for first step
+                zeros = np.zeros((1, *raw_actions_np.shape[1:]), dtype=raw_actions_np.dtype)
+                p_actions_np = np.concatenate([zeros, raw_actions_np], axis=0) # (T, N, 3)
 
-            # To One Hot
-            input_actions_oh = to_one_hot(p_actions)  # (1, T, N, 12)
+                # Team IDs
+                num_ships = tokens_np.shape[1]
+                if has_team_ids:
+                    team_ids_np = all_team_ids[start_idx : start_idx + seq_len]
+                else:
+                    # Default: first half 0, second half 1
+                    tid_frame = np.zeros((num_ships,), dtype=np.int64)
+                    tid_frame[num_ships//2:] = 1
+                    team_ids_np = np.tile(tid_frame, (seq_len, 1)) # (T, N)
 
-            with torch.no_grad():
-                _, pred_actions, pred_val, _, _, embeddings = model(
-                    tokens, input_actions_oh, return_embeddings=True
-                )
+                # Convert to Tensor
+                tokens = torch.from_numpy(tokens_np).unsqueeze(0).to(device) # (1, T, N, D)
+                p_actions = torch.from_numpy(p_actions_np).unsqueeze(0).to(device) # (1, T, N, 3)
+                input_team_ids = torch.from_numpy(team_ids_np).unsqueeze(0).to(device) # (1, T, N)
 
-            # Flatten: (B, T, N, E) -> (B*T*N, E)
-            B, T, N, E = embeddings.shape
+                # Cast actions to long
+                if p_actions.dtype != torch.long:
+                    p_actions = p_actions.long()
+                    
+                # Ensure tokens are float
+                if tokens.dtype != torch.float32:
+                    tokens = tokens.float()
+                    
+                # Ensure inputs are contiguous if possible, usually fine
 
-            embeddings_list.append(embeddings.reshape(-1, E).cpu().numpy())
+                with torch.no_grad():
+                    # model forward returns: pred_states, pred_actions, pred_val (if exists), latents, 12d, pred_rel
+                    outputs = model(
+                        tokens, 
+                        p_actions, 
+                        input_team_ids, 
+                        return_embeddings=True
+                    )
+                    # output indices: 
+                    # 0: pred_states
+                    # 1: pred_actions
+                    # 2: _ (return_embeddings=True usually returns tuple of 6?)
+                    # In InterleavedWorldModel forward:
+                    # return pred_states, pred_actions, None, latents, features_12d, pred_relational
+                    # So index 3 is latents.
+                    embeddings = outputs[3]
+                    
+                    # Assume no value head
+                    pred_val = torch.zeros(tokens.shape[0], tokens.shape[1], tokens.shape[2], device=device)
 
-            # Create ship IDs matching the flatten order
-            # (B, T, N) where each entry is 0..N-1
-            ship_ids = torch.arange(N, device=device).view(1, 1, N).expand(B, T, N)
-            ship_ids_list.append(ship_ids.reshape(-1).cpu().numpy())
+                # Flatten: (B, T, N, E) -> (B*T*N, E)
+                B_dim, T_dim, N_dim, E_dim = embeddings.shape
 
-            # Create Timesteps matching flattne order
-            # (B, T, N) where each entry is 0..T-1
-            timesteps = torch.arange(T, device=device).view(1, T, 1).expand(B, T, N)
-            timesteps_list.append(timesteps.reshape(-1).cpu().numpy())
+                embeddings_list.append(embeddings.reshape(-1, E_dim).cpu().numpy())
 
-            # Get target actions for coloring
-            # We want the actions that occur at this step (or intended action).
-            # The input was p_actions (previous).
-            # The target for classification is usually the *next* action, or the action taken at this state.
-            # In BC, given State_t, Action_{t-1}, we predict Action_t.
-            # The coloring should likely be Action_t (the ground truth action at this step).
-            # which is all_actions[start_idx : start_idx + seq_len]
-            target_actions = (
-                all_actions[start_idx : start_idx + seq_len].unsqueeze(0).to(device)
-            )
-            actions_list.append(target_actions.reshape(-1, 3).cpu().numpy())
+                # Create ship IDs matching the flatten order
+                ship_ids = torch.arange(N_dim, device=device).view(1, 1, N_dim).expand(B_dim, T_dim, N_dim)
+                ship_ids_list.append(ship_ids.reshape(-1).cpu().numpy())
 
-            # Get alive status from health (feature index 1)
-            # tokens is (1, T, N, F)
-            health = tokens[0, :, :, 1]
-            is_alive = (health > 0).float()
-            alive_list.append(is_alive.reshape(-1).cpu().numpy())
+                # Create Team IDs (Flattened)
+                # Team IDs input was (1, T, N)
+                team_ids_list.append(input_team_ids.reshape(-1).cpu().numpy())
 
-            # Flatten predicted value: (B, T, N) -> (B*T*N)
-            values_list.append(pred_val.reshape(-1).cpu().numpy())
+                # Create Timesteps matching flatten order
+                timesteps = torch.arange(T_dim, device=device).view(1, T_dim, 1).expand(B_dim, T_dim, N_dim)
+                timesteps_list.append(timesteps.reshape(-1).cpu().numpy())
 
-            count += 1
-            if count >= max_batches:
-                break
+                # Get target actions for coloring (actions at T)
+                # all_actions[start_idx : start_idx + seq_len]
+                target_actions_np = all_actions[start_idx : start_idx + seq_len]
+                actions_list.append(target_actions_np.reshape(-1, 3))
 
-        # Move to next episode
-        start_idx = end_idx
+                # Get alive status from health (index 1)
+                # tokens_np is (T, N, D)
+                health = tokens_np[..., 1]
+                is_alive = (health > 0).astype(np.float32)
+                alive_list.append(is_alive.reshape(-1))
 
-    print(f"Processed {count} episodes.")
+                # Value
+                values_list.append(pred_val.reshape(-1).cpu().numpy())
+
+                count += 1
+                if count >= max_batches:
+                    break
+
+        print(f"Processed {count} episodes.")
 
     return (
         np.concatenate(embeddings_list, axis=0),
         np.concatenate(actions_list, axis=0),
         np.concatenate(values_list, axis=0),
         np.concatenate(ship_ids_list, axis=0),
+        np.concatenate(team_ids_list, axis=0), # Added
         np.concatenate(timesteps_list, axis=0),
         np.concatenate(alive_list, axis=0),
     )
@@ -199,7 +233,6 @@ def plot_with_legend(projections, labels, label_map, title, filename, is_enemy=N
 
     for i, label_val in enumerate(unique_labels):
         mask = labels == label_val
-        # Handle float keys in label_map if coming from model outputs
         key = int(label_val)
         label_name = label_map.get(key, str(key))
 
@@ -225,20 +258,12 @@ def plot_with_legend(projections, labels, label_map, title, filename, is_enemy=N
             # Enemies (crosses)
             enemy_mask = mask & (is_enemy == 1)
             if np.any(enemy_mask):
-                # Only add label if ally didnt modify it, or handle legend carefully?
-                # Actually, standard legend usually just tracks colors.
-                # Splitting markers might confuse legend unless we add separate legend entries for "Enemy/Ally".
-                # For now, we just want the visualization to reflect it. Legend usually tracks Color=Class.
-                # We will reuse the label but avoid duplicates.
-
-                # Check if label already added by ally
                 has_label = label_name in plt.gca().get_legend_handles_labels()[1]
-
                 plt.scatter(
                     projections[enemy_mask, 0],
                     projections[enemy_mask, 1],
                     c=[colors[i]],
-                    s=20,  # Slightly larger for cross visibility
+                    s=20, 
                     alpha=0.7,
                     label=label_name if not has_label else None,
                     marker="+",
@@ -255,8 +280,6 @@ def plot_with_legend(projections, labels, label_map, title, filename, is_enemy=N
                 edgecolors="none",
             )
 
-    # Improve legend position and style
-    # Deduplicate legend just in case
     handles, labels_leg = plt.gca().get_legend_handles_labels()
     by_label = dict(zip(labels_leg, handles))
     plt.legend(
@@ -270,14 +293,13 @@ def plot_with_legend(projections, labels, label_map, title, filename, is_enemy=N
 
     plt.title(title, fontsize=14)
     plt.tight_layout()
-    plt.savefig(filename, dpi=200)  # Higher DPI
+    plt.savefig(filename, dpi=200)
     plt.close()
 
 
 def plot_continuous(projections, values, title, filename, is_enemy=None):
     plt.figure(figsize=(10, 8))
 
-    # Determine value range for consistent colormap
     vmin, vmax = np.min(values), np.max(values)
 
     if is_enemy is not None:
@@ -304,15 +326,14 @@ def plot_continuous(projections, values, title, filename, is_enemy=None):
                 projections[mask_enemy, 1],
                 c=values[mask_enemy],
                 cmap="turbo",
-                s=10,  # Larger for crosses
-                alpha=0.7,  # Slightly more opaque
+                s=10, 
+                alpha=0.7, 
                 vmin=vmin,
                 vmax=vmax,
                 marker="+",
                 linewidths=0.5,
             )
 
-        # Add a dummy mappable for colorbar since we might have split scatter plots
         sm = plt.cm.ScalarMappable(
             cmap="turbo", norm=plt.Normalize(vmin=vmin, vmax=vmax)
         )
@@ -324,7 +345,7 @@ def plot_continuous(projections, values, title, filename, is_enemy=None):
         )
         cbar = plt.colorbar(scatter, label="Value")
 
-    cbar.solids.set_alpha(1)  # Ensure colorbar is opaque
+    cbar.solids.set_alpha(1)
     plt.title(title, fontsize=14)
     plt.tight_layout()
     plt.savefig(filename, dpi=200)
@@ -344,11 +365,7 @@ def plot_and_save(
     model_name,
     suffix="",
 ):
-    # Action indices
-    # actions column 0 is power
-    # actions column 1 is turn
-    # actions column 2 is shoot
-
+    # Action indices: (Power, Turn, Shoot)
     power_actions = actions[:, 0]
     turn_actions = actions[:, 1]
     shoot_actions = actions[:, 2]
@@ -362,11 +379,7 @@ def plot_and_save(
     unique_ships = np.unique(ship_ids)
     ship_map = {int(s): f"Ship {int(s)}" for s in unique_ships}
 
-    # Team Map
     team_map = {0: "Ally (Team 0)", 1: "Enemy (Team 1)"}
-    team_map = {0: "Ally (Team 0)", 1: "Enemy (Team 1)"}
-
-    # Alive Map
     alive_map = {0: "Dead", 1: "Alive"}
 
     title_suffix = f" ({suffix.replace('_', ' ').strip()})" if suffix else ""
@@ -401,7 +414,7 @@ def plot_and_save(
         is_enemy=team_ids,
     )
 
-    # 4. Values
+    # 4. Values (Might be 0 if model doesn't output it)
     plot_continuous(
         projections,
         values,
@@ -452,8 +465,6 @@ def plot_and_save(
 
 def generate_report(model_name, run_dir, config, output_dir, passes):
     report_path = output_dir / "report.md"
-
-    # Metadata
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     wm_config = config.get("world_model", {})
 
@@ -478,21 +489,21 @@ def generate_report(model_name, run_dir, config, output_dir, passes):
             f.write(f"![PCA Turn](PCA_turn{suffix}.png)\n")
             f.write(f"![PCA Shoot](PCA_shoot{suffix}.png)\n")
             f.write(f"![PCA Value](PCA_value{suffix}.png)\n")
-            f.write(f"![PCA Ship ID](PCA_ship{suffix}.png)\n")
-            f.write(f"![PCA Team ID](PCA_team{suffix}.png)\n")
+            f.write(f"![PCA Ship](PCA_ship{suffix}.png)\n")
+            f.write(f"![PCA Team](PCA_team{suffix}.png)\n")
             f.write(f"![PCA Timestep](PCA_timestep{suffix}.png)\n")
             f.write(f"![PCA Alive](PCA_alive{suffix}.png)\n\n")
-
+            
             f.write("### PaCMAP Projections\n")
             f.write(f"![PaCMAP Power](PaCMAP_power{suffix}.png)\n")
             f.write(f"![PaCMAP Turn](PaCMAP_turn{suffix}.png)\n")
             f.write(f"![PaCMAP Shoot](PaCMAP_shoot{suffix}.png)\n")
             f.write(f"![PaCMAP Value](PaCMAP_value{suffix}.png)\n")
-            f.write(f"![PaCMAP Ship ID](PaCMAP_ship{suffix}.png)\n")
-            f.write(f"![PaCMAP Team ID](PaCMAP_team{suffix}.png)\n")
+            f.write(f"![PaCMAP Ship](PaCMAP_ship{suffix}.png)\n")
+            f.write(f"![PaCMAP Team](PaCMAP_team{suffix}.png)\n")
             f.write(f"![PaCMAP Timestep](PaCMAP_timestep{suffix}.png)\n")
             f.write(f"![PaCMAP Alive](PaCMAP_alive{suffix}.png)\n\n")
-
+            
     print(f"Report generated at: {report_path}")
 
 
@@ -500,7 +511,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--models_dir", type=str, default="models/world_model")
     parser.add_argument("--output_dir", type=str, default="outputs/latent_viz")
-    parser.add_argument("--max_batches", type=int, default=512)
+    parser.add_argument("--max_batches", type=int, default=100) # Reduced default
     parser.add_argument(
         "--test-run", action="store_true", help="Run quick test on single model"
     )
@@ -508,7 +519,7 @@ def main():
         "--latest", action="store_true", help="Process only the most recent model"
     )
     parser.add_argument(
-        "--data_path", type=str, default=None, help="Path to specific data file"
+        "--data_path", type=str, default=None, help="Path to specific HDF5 data file"
     )
     args = parser.parse_args()
 
@@ -525,7 +536,6 @@ def main():
     ]
 
     if args.latest and run_dirs:
-        # Sort by modification time to get the truly latest run
         run_dirs.sort(key=lambda d: d.stat().st_mtime)
         run_dirs = [run_dirs[-1]]
         print(f"Selected most recent run: {run_dirs[0].name}")
@@ -544,48 +554,28 @@ def main():
         try:
             config = load_config(run_dir)
 
-            # Load data specific to this model
-            data_path = config.get("train", {}).get("bc_data_path", None)
-            if data_path:
-                # Check if path relative to config or project root. Assuming project root.
-                pass
-            else:
-                # Use latest if not found, but we should probably just use latest anyway if not testing reproduction
-                pass
-
-            # For simplicity and robustness, lets just load the global latest data
-            # or the one specified in args if user wants consistency.
-            # But adhering to config is better.
-
             if args.data_path:
-                data_to_load = args.data_path
-            elif data_path:
-                data_to_load = data_path.replace("\\", "/")  # fix windows
+                data_path = args.data_path
             else:
-                data_to_load = None  # Load latest
+                data_path = load_bc_data() # Gets latest by default
 
-            print(f"Loading data from: {data_to_load if data_to_load else 'LATEST'}")
-            data = load_bc_data(data_to_load)
+            print(f"Loading data from: {data_path}")
+            # Validating data path exists
+            if not Path(data_path).exists():
+                print(f"Data path {data_path} does not exist. Skipping.")
+                continue
 
             model = load_model(run_dir, config, device)
 
-            # Extract embeddings with manual sequential slicing
-            # Use max_batches as number of episodes to process
-            embeddings, actions, values, ship_ids, timesteps, alive_status = (
+            embeddings, actions, values, ship_ids, team_ids, timesteps, alive_status = (
                 extract_embeddings(
                     model,
-                    data,
+                    data_path,
                     device,
                     max_batches=args.max_batches,
-                    seq_len=96,  # As requested
+                    seq_len=config.get("world_model", {}).get("context_len", 96),
                 )
             )
-
-            # Store raw data for multiple passes
-            # Determine team IDs based on global ship IDs to avoid issues when filtering
-            max_ship_id = int(np.max(ship_ids))
-            half_point = (max_ship_id + 1) // 2
-            team_ids = (ship_ids >= half_point).astype(int)
 
             raw_data = {
                 "embeddings": embeddings,
@@ -683,25 +673,26 @@ def main():
 
                 # PaCMAP
                 print("Running PaCMAP...")
-                # Use PCA initialization for PaCMAP for stability/speed if high dim?
-                # Or just run directly. PaCMAP is fast.
-                embedding_learner = pacmap.PaCMAP(
-                    n_components=2, n_neighbors=None, MN_ratio=0.5, FP_ratio=2.0
-                )
-                pacmap_proj = embedding_learner.fit_transform(curr_emb, init="pca")
-                plot_and_save(
-                    pacmap_proj,
-                    curr_act,
-                    curr_val,
-                    curr_sid,
-                    curr_tid,
-                    curr_time,
-                    curr_alive,
-                    "PaCMAP",
-                    model_out_dir,
-                    model_name,
-                    suffix=suffix,
-                )
+                try:
+                    embedding_learner = pacmap.PaCMAP(
+                        n_components=2, n_neighbors=None, MN_ratio=0.5, FP_ratio=2.0
+                    )
+                    pacmap_proj = embedding_learner.fit_transform(curr_emb, init="pca")
+                    plot_and_save(
+                        pacmap_proj,
+                        curr_act,
+                        curr_val,
+                        curr_sid,
+                        curr_tid,
+                        curr_time,
+                        curr_alive,
+                        "PaCMAP",
+                        model_out_dir,
+                        model_name,
+                        suffix=suffix,
+                    )
+                except Exception as e:
+                    print(f"PaCMAP failed: {e}. Skipping.")
 
             # Generate Report
             generate_report(model_name, run_dir, config, model_out_dir, passes)
@@ -711,9 +702,7 @@ def main():
         except Exception as e:
             print(f"Error processing {model_name}: {e}")
             import traceback
-
             traceback.print_exc()
-
 
 if __name__ == "__main__":
     main()

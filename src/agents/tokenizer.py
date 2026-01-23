@@ -7,6 +7,14 @@ transformer-based agents.
 
 import torch
 
+from core.constants import (
+    NORM_VELOCITY,
+    NORM_ACCELERATION,
+    NORM_ANGULAR_VELOCITY,
+    NORM_HEALTH,
+    NORM_POWER,
+)
+
 
 def observation_to_tokens(
     obs: dict[str, torch.Tensor], perspective: int, world_size: tuple[float, float]
@@ -50,20 +58,20 @@ def observation_to_tokens(
     return torch.stack(
         [
             torch.eq(obs["team_id"], perspective),
-            obs["health"].float() / 100,
-            obs["power"].float() / 100,
+            obs["health"].float() / NORM_HEALTH,
+            obs["power"].float() / NORM_POWER,
             x_sin,
             x_cos,
             y_sin,
             y_cos,
-            obs["velocity"].real / 180.0,
-            obs["velocity"].imag / 180.0,
+            obs["velocity"].real / NORM_VELOCITY,
+            obs["velocity"].imag / NORM_VELOCITY,
             obs["attitude"].real,
             obs["attitude"].imag,
             obs["is_shooting"].float(),
-            obs["acceleration"].real / 150.0, # Approximate max accel
-            obs["acceleration"].imag / 150.0,
-            obs["angular_velocity"] / 360.0,  # Approximate max ang vel
+            obs["acceleration"].real / NORM_ACCELERATION, # Approximate max accel
+            obs["acceleration"].imag / NORM_ACCELERATION,
+            obs["angular_velocity"] / NORM_ANGULAR_VELOCITY,  # Approximate max ang vel
         ],
         dim=1,
     ).unsqueeze(0)

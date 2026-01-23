@@ -5,6 +5,8 @@ import pytest
 from omegaconf import OmegaConf
 from env.ship import Ship, default_ship_config
 from env.state import State
+import numpy as np
+import h5py
 
 # Ensure project root is in sys.path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -120,3 +122,56 @@ def dummy_ship():
 def dummy_state(dummy_ship):
     """Return a dummy state with one ship."""
     return State(ships={0: dummy_ship})
+
+
+@pytest.fixture
+def synthetic_h5_data(tmp_path):
+    """Create a synthetic HDF5 dataset for testing."""
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    file_path = data_dir / "aggregated_data.h5"
+
+    num_episodes = 5
+    episode_len = 200
+    total_timesteps = num_episodes * episode_len
+    # Assuming defaults from audit: max_ships=4, token_dim=15, num_actions=4 (simplified)
+    # Actually checking default_config fixture: token_dim=15, max_ships=4.
+    max_ships = 4
+    token_dim = 15
+    num_actions = 3 # 3 discrete action components (Power, Turn, Shoot)
+
+    with h5py.File(file_path, "w") as f:
+        # Attributes
+        f.attrs["num_episodes"] = num_episodes
+        f.attrs["total_timesteps"] = total_timesteps
+        f.attrs["total_sim_time"] = 100.0
+        f.attrs["max_ships"] = max_ships
+        f.attrs["token_dim"] = token_dim
+        f.attrs["num_actions"] = num_actions
+
+        # Datasets
+        # tokens: (N, MaxShips, TokenDim)
+        f.create_dataset("tokens", data=np.random.randn(total_timesteps, max_ships, token_dim).astype(np.float32))
+        
+        # actions: (N, MaxShips, NumActions) - discrete indices
+        # Generate integers 0..1 (Safe for all: Power=3, Turn=7, Shoot=2)
+        f.create_dataset("actions", data=np.random.randint(0, 2, (total_timesteps, max_ships, num_actions)).astype(np.int64))
+
+        # action_masks: (N, MaxShips, NumActions) - boolean
+        f.create_dataset("action_masks", data=np.ones((total_timesteps, max_ships, num_actions), dtype=bool))
+
+
+        # rewards: (N,)
+        f.create_dataset("rewards", data=np.random.randn(total_timesteps).astype(np.float32))
+
+        # returns: (N,)
+        f.create_dataset("returns", data=np.random.randn(total_timesteps).astype(np.float32))
+
+        # episode_ids: (N,)
+        ids = np.repeat(np.arange(num_episodes), episode_len)
+        f.create_dataset("episode_ids", data=ids.astype(np.int64))
+        
+        # episode_lengths: (NumEpisodes,)
+        f.create_dataset("episode_lengths", data=np.full((num_episodes,), episode_len, dtype=np.int64))
+
+    return str(file_path)
