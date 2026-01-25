@@ -52,17 +52,23 @@ class Trainer:
         log.info("Calculating class weights for loss scaling...")
         counts = calculate_action_counts(data_path)
         
+        # Get weight config
+        w_cap = self.loss_cfg.get("weighted_loss_cap", 10.0)
+        w_pwr = self.loss_cfg.get("weighted_loss_power", 0.5)
+        
         # Calculate weights 
-        # (Assuming cap=10.0 as default, could be config but hardcoded for now or read from loss_cfg)
-        self.w_power = compute_class_weights(counts["power"]).to(device)
+        self.w_power = compute_class_weights(counts["power"], cap=w_cap, power=w_pwr).to(device)
         self.w_power = normalize_weights(self.w_power, counts["power"])
         
-        self.w_turn = apply_turn_exceptions(compute_class_weights(counts["turn"])).to(device)
+        self.w_turn = apply_turn_exceptions(compute_class_weights(counts["turn"], cap=w_cap, power=w_pwr)).to(device)
         self.w_turn = normalize_weights(self.w_turn, counts["turn"])
         
-        self.w_shoot = compute_class_weights(counts["shoot"]).to(device)
+        self.w_shoot = compute_class_weights(counts["shoot"], cap=w_cap, power=w_pwr).to(device)
         self.w_shoot = normalize_weights(self.w_shoot, counts["shoot"])
         
+        log.info(f"Action Counts - Power: {counts['power']}")
+        log.info(f"Action Counts - Turn:  {counts['turn']}")
+        log.info(f"Action Counts - Shoot: {counts['shoot']}")
         log.info(f"Class Weights - Power: {self.w_power}")
         log.info(f"Class Weights - Turn:  {self.w_turn}")
         log.info(f"Class Weights - Shoot: {self.w_shoot}")

@@ -130,7 +130,7 @@ world_model:
   noise_scale: 0.01
   input_noise_ratio: 1.0
   input_noise_scale: 0.01
-  learning_rate: 1.1e-5
+  learning_rate: 1.0e-5
   epochs: 1000
   lambda_state: 1.0
   # Split Action Lambdas
@@ -147,21 +147,23 @@ world_model:
     decay_steps: 1000    # Steps to reach min_skill_end (or use fraction of total steps)
 
   entropy:
-    lambda_start: 0.1
-    lambda_end: 0.005
+    lambda_start: 0.00
+    lambda_end: 0.00
     decay_steps: 10000
 
   loss:
     use_focal_loss: true
     gamma_start: 0.0
-    gamma_end: 2.0
-    decay_steps: 10000
+    gamma_end: 0.0
+    decay_steps: 30000
+    weighted_loss_power: 1.0
+    weighted_loss_cap: 1000.0
 
   scheduler:
     type: "warmup_constant" # Options: "constant", "warmup_constant", "linear_range_test", "exponential_range_test"
     
     warmup:
-      steps: 2500
+      steps: 5000
       start_lr: 1e-7
       
     range_test:

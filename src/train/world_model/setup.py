@@ -33,11 +33,16 @@ def create_model(cfg: DictConfig, data_path: str, device: torch.device) -> Inter
     ).to(device)
     
     # Compile
-    if os.name != 'nt':
+    # Compile
+    import platform
+    is_wsl = 'wsl' in platform.release().lower() or 'microsoft' in platform.release().lower()
+    
+    if os.name != 'nt' and not is_wsl:
         log.info("Compiling model...")
         model = torch.compile(model)
     else:
-        log.info("Skipping torch.compile on Windows")
+        reason = "Windows" if os.name == 'nt' else "WSL"
+        log.info(f"Skipping torch.compile on {reason}")
         
     return model
 

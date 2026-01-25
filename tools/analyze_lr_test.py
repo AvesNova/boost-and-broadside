@@ -113,7 +113,7 @@ def analyze_lr_test(csv_path, args=None):
     plt.title('Learning Rate Range Test')
     plt.legend()
     plt.grid(True, which="both", ls="-", alpha=0.2)
-    plt.ylim(top=4.0, bottom=-1.0)
+    plt.ylim(top=5.0, bottom=0.0)
     
     output_path = Path(csv_path).parent / 'lr_range_test.png'
     plt.savefig(output_path)

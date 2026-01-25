@@ -43,6 +43,16 @@ def train_world_model(cfg: DictConfig) -> None:
     log.info(f"Output directory: {run_dir}")
     OmegaConf.save(cfg, run_dir / "config.yaml")
 
+    # Setup File Logging
+    log_file = run_dir / "train.log"
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setFormatter(logging.Formatter("[%(asctime)s][%(name)s][%(levelname)s] - %(message)s"))
+    root_logger = logging.getLogger()
+    root_logger.addHandler(file_handler)
+    root_logger.setLevel(logging.INFO) # Ensure info is captured
+    
+    log.info(f"Logging to {log_file}")
+
     # 3. Load Data
     data_path = load_bc_data(cfg.train.bc_data_path)
     

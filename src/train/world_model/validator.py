@@ -16,7 +16,7 @@ class Validator:
         self.cfg = cfg
         self.amp = cfg.train.get("amp", False) and device.type == 'cuda'
 
-    def validate_validation_set(self, loaders, swa_model=None):
+    def validate_validation_set(self, loaders, swa_model=None, max_batches=None):
         """
         Run validation loop and return metrics.
         If swa_model is provided, uses it instead of self.model.
@@ -54,8 +54,9 @@ class Validator:
              focal_gamma = self.cfg.world_model.get("loss", {}).get("gamma_end", 0.0)
 
         # Validation Limit
-        val_cfg = self.cfg.world_model.get("validation", None)
-        max_batches = val_cfg.max_batches if val_cfg else 100
+        if max_batches is None:
+            val_cfg = self.cfg.world_model.get("validation", None)
+            max_batches = val_cfg.max_batches if val_cfg else 100
         
         total_batches_processed = 0
 
