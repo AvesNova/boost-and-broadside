@@ -58,10 +58,9 @@ To handle the multi-agent temporal structure efficiently, we use a factorized at
 1.  **Temporal Attention**: Each ship attends only to its own history.
     - Causal masking ensures no peeking into the future.
     - Uses **Rotary Position Embeddings (RoPE)** for relative time awareness.
-2.  **Spatial Attention**: Ships attend to each other within a local temporal window.
-    - **Window**: Each token attends to all tokens in its **Current Block** and the **Previous Block**.
-        - $A_t$ attends to $\{S_t, A_t\}$
-        - $S_t$ attends to $\{A_{t-1}, S_t\}$
+2.  **Spatial Attention**: Ships attend to each other *only within the current block*.
+    - **Scope**: Each token attends to all tokens in its **Current Step** ($t$).
+    - This captures instantaneous multi-agent interactions without temporal bleed-over in the spatial layer.
     - This allows interactions (like shooting) to propagate correctly while maintaining causality.
 
 ### Training Objectives

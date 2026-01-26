@@ -55,11 +55,19 @@ class TemporalSelfAttention(nn.Module):
         
         # RoPE for Temporal Sequence
         # RoPE for Temporal Sequence
-        # Use a large fixed cache size (4096) to avoid dynamic resizing graph breaks
-        # This covers sequences up to 2048 timesteps, which is sufficient.
+        # Use a large fixed cache size based on config to avoid dynamic resizing graph breaks
+        # We round up to next power of 2 for efficiency.
+        # Note: max_context_len is in STEPS (pairs of S,A). So sequence length is 2x.
+        target_len = config.max_context_len * 2
+        
+        if target_len > 0:
+            rope_len = 1 << (target_len - 1).bit_length()
+        else:
+            rope_len = 4096 # Fallback
+            
         self.rope = RotaryPositionEmbedding(
             dim=self.head_dim,
-            max_seq_len=4096 
+            max_seq_len=rope_len 
         )
 
     def forward(self, x, position_ids, past_kv=None, use_cache=False):
@@ -152,11 +160,10 @@ class SpatialSelfAttention(nn.Module):
 
     def forward(self, x, past_kv=None, use_cache=False, relational_bias=None):
         # x: (B, L, N, E)
-        # Goal: Each timestep L attends to itself (N) and previous timestep (N window).
+        # Goal: Each timestep L attends to itself (N).
         # Sequence L is S0, A0, S1, A1...
-        # S0 attends to S0 (N) and nothing else (pad).
-        # A0 attends to A0 (N) and S0 (N).
-        # S1 attends to S1 (N) and A0 (N).
+        # S0 attends to S0 (N).
+        # A0 attends to A0 (N).
         
         B, L, N, E = x.shape
         
@@ -169,57 +176,24 @@ class SpatialSelfAttention(nn.Module):
         k = k.view(B, L, N, self.n_heads, self.head_dim)
         v = v.view(B, L, N, self.n_heads, self.head_dim)
 
-        # Prepare Windowed Keys/Values
-        # If we have cache (Generation L=1) output k,v of Previous step
+        # No temporal windowing anymore. Just spatial attention.
         
         if use_cache:
-            # Save CURRENT step's k, v for next step
+            # Save CURRENT step's k, v for next step (even though we don't use it for spatial attention anymore)
+            # We keep return signature consistent.
             current_kv = (k, v)
         else:
             current_kv = None
             
-        # Get Previous Step K, V
-        if past_kv is not None and past_kv[0].shape[1] > 0:
-              pk, pv = past_kv
-              # pk: (B, L_past, N, H, D)
-              # Take last step from past
-              last_k = pk[:, -1:] # (B, 1, N, H, D)
-              last_v = pv[:, -1:]
-        else:
-              # No history, use zeros
-              last_k = torch.zeros_like(k[:, :1])
-              last_v = torch.zeros_like(v[:, :1])
-              
-        # Construct Previous Window inputs
-        # k_prev[i] should be the token *before* k[i].
-        # For i=0, it is last_k.
-        # For i>0, it is k[i-1].
-        
-        # Shift current k right by 1, and prepend last_k
-        k_prev = torch.cat([last_k, k[:, :-1]], dim=1) # (B, L, N, H, D)
-        v_prev = torch.cat([last_v, v[:, :-1]], dim=1)
-        
-        # Concatenate on N dimension: (B, L, 2N, H, D)
-        # Use simple concat. Current N followed by Prev N? Or Prev then Current?
-        # Let's do Prev then Current for logical time ordering, though non-causal attention doesn't care.
-        # But we must ensure proper shapes.
-        
-        k_window = torch.cat([k_prev, k], dim=2)
-        v_window = torch.cat([v_prev, v], dim=2)
-        
         # Flatten for Attention
         # (B, L, N, H, D) -> (B*L, H, N, D)
         q_flat = q.permute(0, 1, 3, 2, 4).reshape(B*L, self.n_heads, N, self.head_dim)
+        k_flat = k.permute(0, 1, 3, 2, 4).reshape(B*L, self.n_heads, N, self.head_dim)
+        v_flat = v.permute(0, 1, 3, 2, 4).reshape(B*L, self.n_heads, N, self.head_dim)
         
-        # (B, L, 2N, H, D) -> (B*L, H, 2N, D)
-        k_flat = k_window.permute(0, 1, 3, 2, 4).reshape(B*L, self.n_heads, 2*N, self.head_dim)
-        v_flat = v_window.permute(0, 1, 3, 2, 4).reshape(B*L, self.n_heads, 2*N, self.head_dim)
-        
-        # Attention - NON CAUSAL (because we manually windowed)
+        # Attention - NON CAUSAL
         # y = SDPA(q, k, v)
-        # q: (batch, heads, N, D)
-        # k: (batch, heads, 2N, D)
-        # bias: (batch, heads, N, 2N)
+        # q, k, v: (batch, heads, N, D)
         
         y = F.scaled_dot_product_attention(
             q_flat, k_flat, v_flat,
@@ -494,23 +468,26 @@ class InterleavedWorldModel(nn.Module):
             
             bias_self = self.relational_extractor.project_features(features_12d) # (B*T, H, N, N)
             
-            # Use same bias for 'prev' (S_t -> S_{t-1})
-            # This ignores relative velocity changes? 
-            # If feats has RelVel, then S_t -> S_{t-1} should logically use -RelVel?
-            # Or just assume frames are close enough.
-            # Given we only precompute for current frame, we use it for both.
-            bias_prev = bias_self
+            # Simplified: No longer attending to previous step window.
+            # Only attending to current N set.
             
             # Unflatten back to (B, T, H, N, N)
             bias_self = bias_self.view(B, T, self.config.n_heads, N, N)
-            bias_prev = bias_prev.view(B, T, self.config.n_heads, N, N)
             
             # Assembly
-            row_s = torch.cat([bias_prev, bias_self], dim=-1)
-            row_a = torch.cat([bias_self, bias_self], dim=-1)
+            # For State tokens: Attend to S_t (self). Bias is computed from S_t relative features.
+            # For Action tokens: Attend to A_t (self). Bias is computed from A_t relative features? 
+            # Actually relative features are computed from State always (physics).
+            # But the 'relational_features' passed in are usually precomputed from States.
+            # So Action tokens attending to each other using State distances is... approximation but standard here.
             
-            combined_bias = torch.stack([row_s, row_a], dim=2) # (B, T, 2, H, N, 2N)
-            rel_bias_flat = combined_bias.view(B * L, self.config.n_heads, N, 2 * N)
+            # We just need one bias matrix (N, N) per timestep.
+            # BUT we have interleaved tokens. (B, L, ...) where L=2T.
+            # relational_features is (B, T, ...).
+            # We naturally replicate the bias for S and A steps.
+            
+            combined_bias = torch.stack([bias_self, bias_self], dim=2) # (B, T, 2, H, N, N)
+            rel_bias_flat = combined_bias.view(B * L, self.config.n_heads, N, N)
         
         elif past_key_values is None and not use_cache:
             # Training mode but NO features passed?

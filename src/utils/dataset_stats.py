@@ -79,24 +79,25 @@ def calculate_action_counts(data_path: str) -> dict[str, np.ndarray]:
 def compute_class_weights(counts: np.ndarray, cap: float = 10.0, power: float = 0.5) -> torch.Tensor:
     """
     Compute weights: w = min(cap, (1 / freq)^power)
-    freq = (count + 1) / (total + num_classes) [Laplace smoothing]
+    freq = count / total
     """
     total = counts.sum()
     num_classes = len(counts)
     if total == 0:
         return torch.ones(num_classes)
         
-    # Standard frequency with Laplace smoothing to handle zero counts
-    freq = (counts + 1.0) / (total + num_classes)
+    # Standard frequency
+    freq = counts.astype(np.float32) / total
     
     # Use torch for calculation
     x = torch.tensor(freq, dtype=torch.float32)
     
     # Compute inverse frequency raised to the power (usually 0.5 for sqrt)
-    # w = (1/x)^power = x^(-power)
+    # Handle zero frequency by adding small eps before power or clipping after
+    # x^(-power) will be inf where x is 0
     weights = torch.pow(x, -power)
     
-    # Clip to maximum weight to avoid instability
+    # Clip to maximum weight (this also handles the inf from 1/0)
     clipped = torch.clamp(weights, max=cap)
     
     return clipped

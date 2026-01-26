@@ -23,11 +23,19 @@ dependencies = [
     "scipy>=1.16.3",
     "stable-baselines3>=2.7.0",
     "tensorboard>=2.20.0",
-    "torch>=2.8.0",
+    "torch>=2.10.0",
     "tqdm>=4.67.1",
     "wandb>=0.22.2",
     "weave>=0.52.25",
 ]
+
+[[tool.uv.index]]
+name = "pytorch-cuda"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cuda" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
