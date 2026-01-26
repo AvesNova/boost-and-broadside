@@ -53,8 +53,15 @@ class GameCoordinator:
         
         # Inject number of teams from collect config
         env_config["num_teams"] = len(config.collect.teams)
-
-        self.env = Environment(**env_config)
+        
+        backend = getattr(config.environment, "backend", "cpu")
+        
+        if backend == "gpu":
+             from src.env2.coordinator_wrapper import TensorEnvWrapper
+             print("Initializing TensorEnv (GPU Backend)...")
+             self.env = TensorEnvWrapper(**env_config)
+        else:
+             self.env = Environment(**env_config)
 
         self.agents = {}
         for agent_name, agent_config_node in config.agents.items():

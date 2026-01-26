@@ -30,6 +30,7 @@ environment:
   random_positioning: true
   random_speed: true
   random_initialization: true
+  backend: "cpu"
 
 agents:
   scripted:
