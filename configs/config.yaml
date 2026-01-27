@@ -69,6 +69,12 @@ collect:
   render_mode: "none"
   max_episode_length: 512
   random_action_prob: 0.05
+  
+  massive:
+    num_envs: 1024
+    steps: 1000
+    batch_size: 1024
+    buffer_steps: 100
 
 train:
   run_collect: true

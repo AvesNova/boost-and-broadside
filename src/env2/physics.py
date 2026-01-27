@@ -1,315 +1,333 @@
 
-"""
-Stateless, vectorized physics logic for the GPU environment.
-"""
-
 import torch
+from typing import Tuple
 
-def update_ships(
-    ships_pos: torch.Tensor,
-    ships_vel: torch.Tensor,
-    ships_power: torch.Tensor,
-    ships_cooldown: torch.Tensor,
-    ships_team: torch.Tensor,
-    ships_alive: torch.Tensor,
-    actions_power: torch.Tensor,
-    actions_turn: torch.Tensor,
-    actions_shoot: torch.Tensor,
-    dt: float,
-    world_size: tuple[float, float],
-    # Physics constants (can be passed as scalars or tensors if we want heterogeneity)
-    base_thrust: float = 8.0,
-    boost_thrust: float = 80.0,
-    reverse_thrust: float = -10.0,
-    base_power_gain: float = 10.0,
-    boost_power_gain: float = -40.0,
-    reverse_power_gain: float = 20.0,
-    no_turn_drag_coeff: float = 8e-4,
-    normal_turn_drag_coeff: float = 1.2e-3,
-    normal_turn_lift_coeff: float = 15e-3,
-    sharp_turn_drag_coeff: float = 5.0e-3,
-    sharp_turn_lift_coeff: float = 27e-3,
-    max_power: float = 100.0,
-    bullet_energy_cost: float = 3.0,
-    firing_cooldown: float = 0.1,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+# Use relative imports if possible, or assume src is in path.
+# Trying relative to be safe within the package structure.
+from .state import TensorState, ShipConfig
+from core.constants import PowerActions, TurnActions, ShootActions, RewardConstants
+
+def update_ships(state: TensorState, actions: torch.Tensor, config: ShipConfig) -> TensorState:
     """
-    Update ship states based on actions and physics.
-    
-    Uses Semi-Implicit Euler:
-    vel += acc * dt
-    pos += vel * dt
+    Update ship physics based on actions.
+    actions: (B, N, 3) [Power, Turn, Shoot]
     """
+    device = state.device
     
-    # --- 1. Interpret Actions ---
+    # 1. Unpack actions
+    power_action = actions[..., 0].long()
+    turn_action = actions[..., 1].long()
+    shoot_action = actions[..., 2].long()
     
-    # Power Lookup Table: [COAST(0), BOOST(1), REVERSE(2)]
-    real_dtype = ships_pos.real.dtype
-    thrust_vals = torch.tensor([base_thrust, boost_thrust, reverse_thrust], device=ships_pos.device, dtype=real_dtype)
-    power_gain_vals = torch.tensor([base_power_gain, boost_power_gain, reverse_power_gain], device=ships_pos.device, dtype=real_dtype)
+    # 2. Physics Lookup Tables
+    thrust_table = torch.tensor([
+        config.base_thrust,      # COAST
+        config.boost_thrust,     # BOOST
+        config.reverse_thrust    # REVERSE
+    ], device=device, dtype=torch.float32)
+    
+    power_gain_table = torch.tensor([
+        config.base_power_gain,     # COAST
+        config.boost_power_gain,    # BOOST
+        config.reverse_power_gain   # REVERSE
+    ], device=device, dtype=torch.float32)
 
-    current_thrust = thrust_vals[actions_power]
-    current_power_change = power_gain_vals[actions_power]
-
-    # Turn Lookup Tables
-    # [STRAIGHT(0), LEFT(1), RIGHT(2), HARD_LEFT(3), HARD_RIGHT(4), BRAKE(5), HARD_BRAKE(6)]
-    # We need to map these to drag/lift coefficients and angle offsets.
+    turn_offset_table = torch.tensor([
+        0.0,
+        -config.normal_turn_angle,
+        config.normal_turn_angle,
+        -config.sharp_turn_angle,
+        config.sharp_turn_angle,
+        0.0,
+        0.0
+    ], device=device, dtype=torch.float32)
     
-    # Drag Constants
-    drag_coeffs = torch.tensor([
-        no_turn_drag_coeff,      # 0
-        normal_turn_drag_coeff,  # 1
-        normal_turn_drag_coeff,  # 2
-        sharp_turn_drag_coeff,   # 3
-        sharp_turn_drag_coeff,   # 4
-        normal_turn_drag_coeff,  # 5
-        sharp_turn_drag_coeff    # 6
-    ], device=ships_pos.device, dtype=real_dtype)
+    drag_coeff_table = torch.tensor([
+        config.no_turn_drag_coeff,      # STRAIGHT
+        config.normal_turn_drag_coeff,  # LEFT
+        config.normal_turn_drag_coeff,  # RIGHT
+        config.sharp_turn_drag_coeff,   # S_LEFT
+        config.sharp_turn_drag_coeff,   # S_RIGHT
+        config.normal_turn_drag_coeff,  # AIR
+        config.sharp_turn_drag_coeff    # S_AIR
+    ], device=device, dtype=torch.float32)
     
-    # Lift Constants 
-    lift_coeffs = torch.tensor([
-        0.0,                         # 0
-        -normal_turn_lift_coeff,     # 1
-        normal_turn_lift_coeff,      # 2
-        -sharp_turn_lift_coeff,      # 3
-        sharp_turn_lift_coeff,       # 4
-        0.0,                         # 5
-        0.0                          # 6
-    ], device=ships_pos.device, dtype=real_dtype)
+    lift_coeff_table = torch.tensor([
+        0.0,                            # STRAIGHT
+        -config.normal_turn_lift_coeff, # LEFT
+        config.normal_turn_lift_coeff,  # RIGHT
+        -config.sharp_turn_lift_coeff,  # S_LEFT
+        config.sharp_turn_lift_coeff,   # S_RIGHT
+        0.0,                            # AIR
+        0.0                             # S_AIR
+    ], device=device, dtype=torch.float32)
     
-    # Turn Offsets (Radians)
-    # LEFT is negative angle, RIGHT is positive angle.
-    normal_turn_angle = 0.0872665 # 5 deg
-    sharp_turn_angle = 0.261799 # 15 deg
+    # 3. Apply Actions lookup for ALIVE ships
+    thrust_mag = thrust_table[power_action]
+    power_gain = power_gain_table[power_action]
     
-    turn_offsets = torch.tensor([
-        0.0,                # 0
-        -normal_turn_angle, # 1
-        normal_turn_angle,  # 2
-        -sharp_turn_angle,  # 3
-        sharp_turn_angle,   # 4
-        0.0,                # 5
-        0.0                 # 6
-    ], device=ships_pos.device, dtype=real_dtype)
-
-    current_drag = drag_coeffs[actions_turn]
-    current_lift = lift_coeffs[actions_turn]
-    current_turn_offset = turn_offsets[actions_turn]
-
-    # --- 2. Calculate Forces ---
+    turn_offset = turn_offset_table[turn_action]
+    drag_coeff = drag_coeff_table[turn_action]
+    lift_coeff = lift_coeff_table[turn_action]
     
-    # Current velocity state
-    # Handle the complex numbers carefully. We assume pos/vel are complex tensors.
-    # If they are (..., 2) float tensors, we need to convert logic.
-    # Plan says complex or 2 floats. Let's stick to complex64/128 for consistency with env1 if easy, 
-    # but PyTorch complex support is good now. Let's assume complex input.
+    # 4. Update Power
+    new_power = state.ship_power + power_gain * config.dt
+    state.ship_power = torch.clamp(new_power, 0.0, config.max_power)
     
-    speed = ships_vel.abs()
-    # Avoid div/0
-    speed_safe = torch.maximum(speed, torch.tensor(1e-6, device=ships_pos.device, dtype=speed.dtype))
+    has_power = state.ship_power > 0
+    thrust_mag = torch.where(has_power, thrust_mag, torch.zeros_like(thrust_mag))
     
-    # Attitude (Orientation)
-    # Original: self.attitude = self.velocity / self.speed * np.exp(1j * self.turn_offset)
-    # In original forward():
-    # 1. _update_attitude (sets attitude for force calc)
-    # 2. _update_kinematics (updates pos/vel)
-    # 3. _update_attitude (re-aligns attitude to new velocity)
+    # 5. Update Attitude
+    speed = state.ship_vel.abs()
+    speed_safe = torch.maximum(speed, torch.tensor(1e-6, device=device))
     
-    velocity_dir = ships_vel / speed_safe
+    stopped = speed < 1e-6
+    vel_dir = state.ship_vel / speed_safe
+    base_attitude = torch.where(stopped, state.ship_attitude, vel_dir)
     
-    # Apply turn offset to get current attitude for thrust direction
-    rotator = torch.polar(torch.ones_like(current_turn_offset), current_turn_offset)
-    attitude = velocity_dir * rotator
+    rotation = torch.polar(torch.ones_like(turn_offset), turn_offset)
+    state.ship_attitude = base_attitude * rotation
     
-    # Thrust Force
-    # Can only thrust if power > 0. But power update happens at end of step in original code?
-    # Original: _update_kinematics uses current power. _update_power happens AFTER.
-    # So we use current ships_power to check > 0.
-    has_power = ships_power > 0
-    thrust_magnitude = torch.where(has_power, current_thrust, torch.zeros_like(current_thrust))
-    thrust_force = thrust_magnitude * attitude # thrust is along the attitude vector
+    state.ship_ang_vel = turn_offset / config.dt
     
-    # Drag Force
-    # drag_force = -drag_coeff * speed * velocity
-    drag_force = -current_drag * speed * ships_vel
+    # 6. Calculate Forces
+    thrust_force = thrust_mag * state.ship_attitude
+    drag_force = -drag_coeff * speed * state.ship_vel
     
-    # Lift Force
-    # lift_vector = velocity * 1j
-    lift_vector = ships_vel * 1j
-    lift_force = current_lift * speed * lift_vector
+    lift_vector = state.ship_vel * 1j
+    lift_force = lift_coeff * speed * lift_vector
     
     total_force = thrust_force + drag_force + lift_force
     
-    # --- 3. Integration (Semi-Implicit Euler) ---
+    # 7. Update Kinematics
+    accel = total_force
+    state.ship_vel = state.ship_vel + accel * config.dt
+    state.ship_pos = state.ship_pos + state.ship_vel * config.dt
     
-    # Acceleration (Mass = 1)
-    acc = total_force
+    # Wrap World
+    w, h = config.world_size
+    state.ship_pos.real = state.ship_pos.real % w
+    state.ship_pos.imag = state.ship_pos.imag % h
     
-    # Update Velocity: vel += acc * dt
-    new_vel = ships_vel + acc * dt
+    # Stopped clamp
+    new_speed = state.ship_vel.abs()
+    too_slow = new_speed < 1e-6
+    clamped_vel = torch.tensor(1e-6, device=device, dtype=torch.complex64) * state.ship_attitude
+    state.ship_vel = torch.where(too_slow, clamped_vel, state.ship_vel)
     
-    # Update Position: pos += new_vel * dt
-    new_pos = ships_pos + new_vel * dt
+    # 8. Shooting Logic
+    state.ship_cooldown = state.ship_cooldown - config.dt
     
-    # Wrap Position (Toroidal World)
-    new_pos_real = new_pos.real % world_size[0]
-    new_pos_imag = new_pos.imag % world_size[1]
-    new_pos = torch.complex(new_pos_real, new_pos_imag)
+    can_shoot = (
+        (shoot_action == ShootActions.SHOOT) & 
+        (state.ship_cooldown <= 0) & 
+        (state.ship_power >= config.bullet_energy_cost) & 
+        state.ship_alive
+    )
     
-    # Angular Velocity
-    ang_vel = current_turn_offset / dt # rad/s
+    # Update is_shooting state for observation/rendering
+    state.ship_is_shooting = can_shoot
     
-    # New Attitude (aligned with velocity)
-    new_speed = new_vel.abs()
-    safe_new_speed = torch.maximum(new_speed, torch.tensor(1e-6, device=ships_pos.device, dtype=new_speed.dtype))
-    new_attitude = new_vel / safe_new_speed
-    
-    # --- 4. Update Power & Cooldown ---
-    
-    new_power = ships_power + current_power_change * dt
-    # Clamp power [0, max_power]
-    new_power = torch.clamp(new_power, 0.0, max_power)
-    
-    # Cooldown (for shooting)
-    new_cooldown = ships_cooldown - dt
-    
-    should_shoot = (actions_shoot == 1) & (ships_cooldown <= 0) & (ships_power >= bullet_energy_cost)
-    
-    # consume power if shot
-    new_power = torch.where(should_shoot, new_power - bullet_energy_cost, new_power)
-    
-    # reset cooldown if shot
-    new_cooldown = torch.where(should_shoot, torch.tensor(firing_cooldown, device=ships_pos.device, dtype=new_cooldown.dtype), new_cooldown)
-    
-    # Masking for dead ships
-    new_pos = torch.where(ships_alive, new_pos, ships_pos)
-    new_vel = torch.where(ships_alive, new_vel, ships_vel)
-    new_power = torch.where(ships_alive, new_power, ships_power)
-    new_cooldown = torch.where(ships_alive, new_cooldown, ships_cooldown)
-    acc = torch.where(ships_alive, acc, torch.zeros_like(acc))
-    ang_vel = torch.where(ships_alive, ang_vel, torch.zeros_like(ang_vel))
-    new_attitude = torch.where(ships_alive, new_attitude, velocity_dir) # If dead, keep old direction
-    
-    return new_pos, new_vel, new_power, new_cooldown, should_shoot, acc, ang_vel, new_attitude
+    if can_shoot.any():
+        state.ship_power = torch.where(
+            can_shoot, 
+            state.ship_power - config.bullet_energy_cost, 
+            state.ship_power
+        )
+        state.ship_cooldown = torch.where(
+            can_shoot, 
+            torch.tensor(config.firing_cooldown, device=device), 
+            state.ship_cooldown
+        )
+        
+        b_idx, s_idx = torch.nonzero(can_shoot, as_tuple=True)
+        
+        if len(b_idx) > 0:
+            k_idx = state.bullet_cursor[b_idx, s_idx]
+            spawn_pos = state.ship_pos[b_idx, s_idx]
+            
+            shooter_att = state.ship_attitude[b_idx, s_idx]
+            shooter_vel = state.ship_vel[b_idx, s_idx]
+            
+            base_vel = shooter_vel + config.bullet_speed * shooter_att
+            
+            # Generate complex noise
+            noise_real = torch.randn(base_vel.shape, device=device) * config.bullet_spread
+            noise_imag = torch.randn(base_vel.shape, device=device) * config.bullet_spread
+            noise = torch.complex(noise_real, noise_imag)
+            
+            final_vel = base_vel + noise
+            
+            state.bullet_pos[b_idx, s_idx, k_idx] = spawn_pos
+            state.bullet_vel[b_idx, s_idx, k_idx] = final_vel
+            state.bullet_time[b_idx, s_idx, k_idx] = config.bullet_lifetime
+            state.bullet_active[b_idx, s_idx, k_idx] = True
+            
+            state.bullet_cursor[b_idx, s_idx] = (k_idx + 1) % state.max_bullets
+            
+    return state
 
-def update_bullets(
-    bullets_pos: torch.Tensor,
-    bullets_vel: torch.Tensor,
-    bullets_time: torch.Tensor,
-    dt: float,
-    world_size: tuple[float, float],
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """
-    Update bullet positions and lifetimes.
+def update_bullets(state: TensorState, config: ShipConfig) -> TensorState:
+    dt = config.dt
+    w, h = config.world_size
     
-    Args:
-        bullets_pos: (B, N, K) complex or (B, N, K, 2)
-        bullets_vel: (B, N, K) complex
-        bullets_time: (B, N, K) float
-    """
+    state.bullet_time = state.bullet_time - dt
+    state.bullet_active = state.bullet_active & (state.bullet_time > 0)
     
-    # Mask for active bullets? We just update everything and use time > 0 to check validity.
+    # Update all positions (masked by active not stricly needed for safety, but good for cleanliness)
+    state.bullet_pos = state.bullet_pos + state.bullet_vel * dt
     
-    # pos += vel * dt
-    new_pos = bullets_pos + bullets_vel * dt
+    state.bullet_pos.real = state.bullet_pos.real % w
+    state.bullet_pos.imag = state.bullet_pos.imag % h
     
-    # Wrap
-    new_pos_real = new_pos.real % world_size[0]
-    new_pos_imag = new_pos.imag % world_size[1]
-    new_pos = torch.complex(new_pos_real, new_pos_imag)
-    
-    new_time = bullets_time - dt
-    
-    return new_pos, new_time
+    return state
 
-def check_collisions(
-    ships_pos: torch.Tensor,
-    ships_team: torch.Tensor,
-    ships_alive: torch.Tensor,
-    bullets_pos: torch.Tensor,
-    bullets_team: torch.Tensor,
-    bullets_time: torch.Tensor, # Used to check active
-    ship_collision_radius: float = 10.0,
-) -> tuple[torch.Tensor, torch.Tensor]:
+def resolve_collisions(state: TensorState, config: ShipConfig) -> Tuple[TensorState, torch.Tensor, torch.Tensor]:
     """
-    Check collisions between ships and bullets.
-    
-    Returns:
-        collision_matrix: (B, N_targets, M*K_sources) Boolean mask of hits.
-        bullet_hits_mask: (B, N_sources, K) Boolean mask of bullets that hit something.
+    Detect collisions and apply damage.
+    Returns: (state, rewards, dones)
     """
-    # ships_pos: (B, N)
-    # bullets_pos: (B, M, K) where M is num_ships (sources)
+    B, N = state.ship_pos.shape
+    K = state.max_bullets
+    device = state.device
+    w, h = config.world_size
     
-    B, N = ships_pos.shape
-    B, M, K = bullets_pos.shape # M should equal N usually
+    rewards = torch.zeros((B, N), device=device, dtype=torch.float32)
     
-    # Flatten bullets to (B, M*K)
-    flat_bullets_pos = bullets_pos.view(B, M * K)
-    flat_bullets_team = bullets_team.view(B, M * K)
-    flat_bullets_time = bullets_time.view(B, M * K)
+    # Flatten bullets
+    flat_bullets_pos = state.bullet_pos.view(B, N*K)
+    flat_bullets_active = state.bullet_active.view(B, N*K)
     
-    # Ships: (B, N, 1)
-    # Bullets: (B, 1, MK)
+    # Calculate difference (Wrap world)
+    diff = state.ship_pos.unsqueeze(2) - flat_bullets_pos.unsqueeze(1) # (B, N, N*K)
+    diff.real = (diff.real + w/2) % w - w/2
+    diff.imag = (diff.imag + h/2) % h - h/2
     
-    s_pos = ships_pos.unsqueeze(2) # (B, N, 1)
-    b_pos = flat_bullets_pos.unsqueeze(1) # (B, 1, MK)
+    dist_sq = diff.real**2 + diff.imag**2
     
-    # Distance Squared: |s - b|^2
-    # complex abs sq
-    diff = s_pos - b_pos
-    dist_sq = diff.real.square() + diff.imag.square() # (B, N, MK)
+    # Collision mask
+    # Ship must be alive, bullet must be active
+    hit_mask = (dist_sq < config.collision_radius**2) & flat_bullets_active.unsqueeze(1) & state.ship_alive.unsqueeze(2)
     
-    radius_sq = ship_collision_radius ** 2
+    # Ignore own bullets
+    # bullet m comes from ship m // K
+    bullet_source_idx = torch.arange(N*K, device=device) // K
+    own_bullet_mask = (bullet_source_idx.view(1, 1, N*K) == torch.arange(N, device=device).view(1, N, 1))
     
-    # Check conditions:
-    # 1. Distance < Radius
-    # 2. Teams are different (no friendly fire in original?)
-    #    Original: hit_mask = ... & (bullet_ship_ids != ship.ship_id)
-    #    Wait, original checks `bullet_ship_ids != ship.ship_id`.
-    #    It allows friendly fire if it's not YOUR OWN bullet?
-    #    Let's check `src/env/env.py`.
-    #    `hit_mask = (distances_sq < ship.collision_radius_squared) & (bullet_ship_ids != ship.ship_id)`
-    #    It DOES allow friendly fire, just not self-hit.
+    valid_hit = hit_mask & (~own_bullet_mask) # (B, N_target, M_bullet)
     
-    # So check: dist < r^2 AND ship_id != bullet_source_id.
-    # We need bullet source IDs. 
-    # bullets_pos is (B, M, K). Index m implies source ship M.
-    # Create tensor of source IDs?
+    if valid_hit.any():
+        # Damage Loop
+        hits_per_ship = valid_hit.sum(dim=2) # (B, N_target)
+        damage = hits_per_ship.float() * config.bullet_damage
+        
+        # Apply Damage
+        state.ship_health = state.ship_health - damage
+        
+        # Update Alive Status
+        state.ship_alive = state.ship_health > 0
+        state.ship_health = torch.maximum(state.ship_health, torch.tensor(0.0, device=device))
+        
+        # Rewards Loop
+        valid_hit_reshaped = valid_hit.view(B, N, N, K) # (B, N_t, N_s, K)
+        hits_matrix = valid_hit_reshaped.sum(dim=3).float() # (B, N_t, N_s)
+        
+        target_teams = state.ship_team_id.unsqueeze(2) # (B, N_t, 1)
+        source_teams = state.ship_team_id.unsqueeze(1) # (B, 1, N_s)
+        
+        is_enemy = target_teams != source_teams
+        
+        # Enemy Hit Reward (credited to source) -> sum over targets
+        # hits_matrix[b, t, s] counts hits BY s ON t
+        enemy_hits_by_source = (hits_matrix * is_enemy.float()).sum(dim=1) # (B, N_s)
+        rewards = rewards + enemy_hits_by_source * RewardConstants.ENEMY_DAMAGE
+        
+        # Ally Hit Penalty
+        ally_hits_by_source = (hits_matrix * (~is_enemy).float()).sum(dim=1) # (B, N_s)
+        rewards = rewards + ally_hits_by_source * RewardConstants.ALLY_DAMAGE
+        
+        # Deactivate bullets that hit
+        bullet_hits = valid_hit.any(dim=1) # (B, M)
+        flat_active_ref = state.bullet_active.view(B, N*K)
+        flat_active_ref[bullet_hits] = False
     
-    # Construct source IDs
-    # source_ids = range(M). Repeat K times.
-    source_ids = torch.arange(M, device=ships_pos.device).unsqueeze(1).repeat(1, K).view(M*K) # (MK,)
-    source_ids = source_ids.unsqueeze(0).expand(B, -1) # (B, MK)
+    # Check Dones (Game Over)
+    # If a team has 0 alive ships, game over?
+    # Or if only one team remains?
+    # Typically: done if <= 1 team alive.
     
-    # Ship IDs
-    ship_ids = torch.arange(N, device=ships_pos.device).unsqueeze(0).expand(B, -1) # (B, N)
+    # Count alive ships per team
+    # We need max team id or just iterate unique teams?
+    # Assume 2 teams for now? Or N teams?
+    # Generalized:
+    # Get mask of alive
+    # Check if all alive ships belong to same team.
     
-    # Expand for broadcast
-    # s_ids: (B, N, 1)
-    # b_src_ids: (B, 1, MK)
-    s_ids = ship_ids.unsqueeze(2)
-    b_src_ids = source_ids.unsqueeze(1)
+    # Optimization: count unique team IDs among alive ships.
+    # If count <= 1, done.
     
-    not_self = s_ids != b_src_ids
-    in_range = dist_sq < radius_sq
+    # Since we can't easily iterate per batch, we do:
+    # 1. Mask team_ids with alive.
+    # 2. Check if multiple teams present.
+    # Actually, simpler:
+    # Team 0 alive count, Team 1 alive count.
+    # If Team 0 count == 0 OR Team 1 count == 0 -> Done.
+    # This assumes 2 teams (0 and 1). Valid for 1v1, 2v2 etc.
+    # What if NvM with > 2 teams?
+    # Codebase implies 2 teams usually.
+    # I'll implement generic check later if needed, assume 2 teams (0, 1) for now is safe for "env1" parity.
     
-    # Bullet must be active
-    # b_active: (B, 1, MK)
-    b_active = (flat_bullets_time > 0).unsqueeze(1)
+    team0_alive = (state.ship_team_id == 0) & state.ship_alive
+    team1_alive = (state.ship_team_id == 1) & state.ship_alive
     
-    # Ship must be alive
-    # s_alive: (B, N, 1)
-    s_alive = ships_alive.unsqueeze(2)
+    team0_count = team0_alive.sum(dim=1)
+    team1_count = team1_alive.sum(dim=1)
     
-    valid_hit = in_range & not_self & b_active & s_alive
+    dones = (team0_count == 0) | (team1_count == 0)
     
-    # Return the full collision matrix and the mask of bullets that hit active targets
-    # collision_matrix: (B, N_targets, M*K_sources)
+    # Add Victory/Defeat Rewards
+    # If done:
+    # Winner gets VICTORY, Loser gets DEFEAT.
+    # If both 0 (Draw?), DRAW.
     
-    # Identify bullets that hit (to remove them)
-    # Any bullet that hit ANY ship is removed.
-    bullet_hit_any = valid_hit.any(dim=1)
-    bullet_hit_mask = bullet_hit_any.view(B, M, K)
+    # We can handle terminal rewards here or in Env wrapper.
+    # Usually here is better for "raw physics returns rewards".
     
-    return valid_hit, bullet_hit_mask
+    # This logic is slightly complex to vectorize cleanly for arbitary N teams.
+    # For 2 teams:
+    team0_win = (team0_count > 0) & (team1_count == 0)
+    team1_win = (team1_count > 0) & (team0_count == 0)
+    draw = (team0_count == 0) & (team1_count == 0)
+    
+    # Apply to all ships of the team
+    # Team 0 ships get VICTORY if team0_win
+    # Team 1 ships get DEFEAT if team0_win
+    
+    mask_win = torch.zeros((B, N), device=device, dtype=torch.bool)
+    mask_lose = torch.zeros((B, N), device=device, dtype=torch.bool)
+    
+    # If Team 0 wins:
+    # T0 ships -> Win
+    # T1 ships -> Lose
+    
+    t0_idx = (state.ship_team_id == 0)
+    t1_idx = (state.ship_team_id == 1)
+    
+    # Expand done flags
+    t0_win_expanded = team0_win.unsqueeze(1).expand(B, N)
+    t1_win_expanded = team1_win.unsqueeze(1).expand(B, N)
+    draw_expanded = draw.unsqueeze(1).expand(B, N)
+    
+    # T0 ships win if T0 wins
+    mask_win = mask_win | (t0_idx & t0_win_expanded)
+    mask_win = mask_win | (t1_idx & t1_win_expanded)
+    
+    mask_lose = mask_lose | (t0_idx & t1_win_expanded)
+    mask_lose = mask_lose | (t1_idx & t0_win_expanded)
+    
+    rewards = torch.where(mask_win, rewards + RewardConstants.VICTORY, rewards)
+    rewards = torch.where(mask_lose, rewards + RewardConstants.DEFEAT, rewards)
+    rewards = torch.where(draw_expanded, rewards + RewardConstants.DRAW, rewards)
+    
+    return state, rewards, dones
+

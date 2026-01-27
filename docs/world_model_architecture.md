@@ -54,7 +54,6 @@
  *   **Mechanism**: Non-causal spatial attention over the $N$ ships. 
      *   $S_t$ attends only to $S_t$ of all ships.
      *   $A_t$ attends only to $A_t$ of all ships.
-     *   $A_t$ attends only to $A_t$ of all ships.
  *   **Relational Bias**: A computed bias is added to the attention scores to inject spatial awareness explicitly.
      $$ \text{Attn}(Q, K) = \text{softmax}\left(\frac{QK^T}{\sqrt{d}} + \text{Bias}_{\text{rel}}(i, j)\right) $$
      *   Bias is derived from pairwise features (distance, relative velocity, heading difference) via a projected 12D feature vector.
