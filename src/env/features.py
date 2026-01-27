@@ -17,11 +17,11 @@ def compute_pairwise_features(
     # ... dimensions handling ...
     # Support both (T, N, D) and (B, T, N, D)
     
-    # Extract states
-    pos_x = tokens[..., 3] * world_size[0]
-    pos_y = tokens[..., 4] * world_size[1]
-    vel_x = tokens[..., 5] * 180.0
-    vel_y = tokens[..., 6] * 180.0
+    # Extract states (Expect Raw Inputs)
+    pos_x = tokens[..., 3]
+    pos_y = tokens[..., 4]
+    vel_x = tokens[..., 5]
+    vel_y = tokens[..., 6]
     # Attitude (orientation)
     att_x = tokens[..., 10]
     att_y = tokens[..., 11]

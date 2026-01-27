@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from agents.rope import RotaryPositionEmbedding
 from agents.relational_features import RelationalFeatureExtractor
 from agents.layers import DyadicFourierFeatureExtractor, GatedSwiGLU
+from agents.normalizer import InputNormalizer
 
 
 
@@ -311,6 +312,9 @@ class InterleavedWorldModel(nn.Module):
         self.num_binary = 4
         self.num_continuous = state_dim - self.num_binary
         
+        # Input Normalizer (Saved with model)
+        self.normalizer = InputNormalizer()
+        
         # State Encoders
         self.state_encoder = GatedStateEncoder(
             input_dim=self.num_continuous,
@@ -399,7 +403,10 @@ class InterleavedWorldModel(nn.Module):
         B, T, N, D = states.shape
         device = states.device
         
-        # 1. State Encoding
+        # 1. Normalize Inputs (Raw Physics -> Network Range)
+        states = self.normalizer.normalize_tokens(states)
+        
+        # 2. State Encoding
         if self.training and noise_scale > 0:
              continuous = states[..., :self.num_continuous]
              binary = states[..., self.num_continuous:]
@@ -575,6 +582,9 @@ class InterleavedWorldModel(nn.Module):
         """
         device = pred_states.device
         B, T, N, D = pred_states.shape
+        
+        # Normalize Targets (Raw Physics -> Network Range)
+        target_states = self.normalizer.normalize_tokens(target_states)
         
         # Flatten Mask
         # loss_mask: (B, T) -> (B, T, N). Flatten -> (B*T*N)
@@ -803,6 +813,9 @@ class InterleavedWorldModel(nn.Module):
                  past_key_values=past_key_values,
                  use_cache=True
             )
+            
+            # Output is Normalized. Input expects Raw.
+            pred_s = self.normalizer.denormalize_tokens(pred_s)
             
             past_key_values = new_kv
             next_state = pred_s[:, -1:, :, :] # (B, 1, N, D)

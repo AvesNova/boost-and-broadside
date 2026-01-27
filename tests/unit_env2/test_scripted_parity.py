@@ -40,6 +40,7 @@ class TestScriptedParity:
             ship_cooldown=torch.zeros((B, N), dtype=torch.float32, device=device),
             ship_team_id=ship_team_id,
             ship_alive=torch.ones((B, N), dtype=torch.bool, device=device),
+            ship_is_shooting=torch.zeros((B, N), dtype=torch.bool, device=device),
             
             bullet_pos=torch.zeros((B, N, 5), dtype=torch.complex64, device=device),
             bullet_vel=torch.zeros((B, N, 5), dtype=torch.complex64, device=device),

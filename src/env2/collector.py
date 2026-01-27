@@ -23,20 +23,18 @@ def compile_tokens(
     device = position.device
     tokens = torch.zeros((B, N, 15), dtype=torch.float32, device=device)
     
-    w, h = 1024.0, 1024.0
-    
     # 0: Team
     tokens[..., 0] = team_id.float()
     # 1: Health
-    tokens[..., 1] = health / 100.0
+    tokens[..., 1] = health
     # 2: Power
-    tokens[..., 2] = power / 100.0
-    # 3,4: Pos
-    tokens[..., 3] = position.real / w
-    tokens[..., 4] = position.imag / h
-    # 5,6: Vel (Norm 180)
-    tokens[..., 5] = velocity.real / 180.0
-    tokens[..., 6] = velocity.imag / 180.0
+    tokens[..., 2] = power
+    # 3,4: Pos (Raw)
+    tokens[..., 3] = position.real
+    tokens[..., 4] = position.imag
+    # 5,6: Vel (Raw)
+    tokens[..., 5] = velocity.real
+    tokens[..., 6] = velocity.imag
     # 7,8: Acc (Unused/Zero)
     
     # 9: Ang Vel

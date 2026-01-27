@@ -19,7 +19,8 @@
 
  #### State Encoding ($S_t$)
  *   **Input**: Continuous vector of size `state_dim` (default 15).
-     *   Includes: Position (sin/cos), Velocity, Attitude, Health, Power, etc.
+     *   Includes: Position (Raw), Velocity (Raw), Attitude, Health, Power, etc.
+     *   **Normalization**: Inputs are **Raw Physical Values** (meters, m/s). An internal `InputNormalizer` scales them to network range (approx 0-1) before encoding.
  *   **Architecture**:
      1.  **Fourier Features**: Maps input low-dim coords to high-freq features (`DyadicFourierFeatureExtractor`). This helps learn high-frequency functions (sharp boundaries).
      2.  **Gated SwiGLU**: A GLU variant with Swish activation, mapping `embed_dim` $\to$ `2 * embed_dim` $\to$ `embed_dim`.

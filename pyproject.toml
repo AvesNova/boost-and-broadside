@@ -17,6 +17,7 @@ dependencies = [
     "pacmap>=0.8.0",
     "pygame>=2.6.1",
     "pytest>=8.4.2",
+    "pytest-tap>=3.5",
     "rich>=14.2.0",
     "ruff>=0.14.6",
     "scikit-learn>=1.8.0",
@@ -46,4 +47,5 @@ where = ["src"]
 [dependency-groups]
 dev = [
     "pytest-xdist>=3.8.0",
+    "pytest-tap>=3.4",
 ]

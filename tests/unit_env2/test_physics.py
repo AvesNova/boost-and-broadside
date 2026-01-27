@@ -1,5 +1,6 @@
 
 import pytest
+import sys
 import torch
 import numpy as np
 from env2.state import TensorState, ShipConfig
@@ -28,6 +29,7 @@ class TestPhysics:
             ship_cooldown=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=device),
             ship_team_id=torch.zeros((num_envs, max_ships), dtype=torch.int32, device=device),
             ship_alive=torch.ones((num_envs, max_ships), dtype=torch.bool, device=device),
+            ship_is_shooting=torch.zeros((num_envs, max_ships), dtype=torch.bool, device=device),
             
             bullet_pos=torch.zeros((num_envs, max_ships, max_bullets), dtype=torch.complex64, device=device),
             bullet_vel=torch.zeros((num_envs, max_ships, max_bullets), dtype=torch.complex64, device=device),
@@ -145,6 +147,7 @@ class TestPhysics:
             ship_cooldown=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=device),
             ship_team_id=torch.zeros((num_envs, max_ships), dtype=torch.int32, device=device),
             ship_alive=torch.ones((num_envs, max_ships), dtype=torch.bool, device=device),
+            ship_is_shooting=torch.zeros((num_envs, max_ships), dtype=torch.bool, device=device),
             
             bullet_pos=torch.zeros((num_envs, max_ships, max_bullets), dtype=torch.complex64, device=device),
             bullet_vel=torch.zeros((num_envs, max_ships, max_bullets), dtype=torch.complex64, device=device),

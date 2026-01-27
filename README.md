@@ -2,6 +2,10 @@
 
 A high-performance codebase for **Boost and Broadside**, a compiled competitive multi-agent environment where teams of ships compete in 2D dogfights.
 
+Now featuring a **GPU-Accelerated Environment (`env2`)** capable of simulating thousands of games in parallel for massive data collection.
+
+**Game Details**: See [docs/game_design.md](docs/game_design.md) for rules, physics, and action space.
+
 ## Quick Start
 
 ### Installation
@@ -106,11 +110,9 @@ Generate training data using scripted agents.
 # Collect data (single worker)
 uv run main.py mode=collect
 
-# Collect with multiple workers (faster)
-uv run main.py mode=collect collect.num_workers=4
-
-# Collect with custom config
-uv run main.py mode=collect --config-name config_test
+# Massive GPU Data Collection (Recommended for pretraining)
+# Generates HDF5 data using the vectorized environment
+uv run python src/env2/collect_massive.py --num_envs 1024 --total_steps 100000 --output_dir data/collection_v1
 ```
 
 ### 2. Training
@@ -219,6 +221,9 @@ The project uses [Hydra](https://hydra.cc/) for configuration. Key config files 
 - **Tests**: Run `uv run pytest --color=no -rf --tb=line` to ensure everything is working.
 
 ```powershell
+# Run GPU Environment Tests (TAP format)
+uv run pytest --tap tests/unit_env2
+
 # Run all tests
 uv run pytest --color=no -rf --tb=line
 

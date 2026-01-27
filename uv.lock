@@ -100,6 +100,7 @@ dependencies = [
     { name = "pacmap" },
     { name = "pygame" },
     { name = "pytest" },
+    { name = "pytest-tap" },
     { name = "rich" },
     { name = "ruff" },
     { name = "scikit-learn" },
@@ -114,6 +115,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "pytest-tap" },
     { name = "pytest-xdist" },
 ]
 
@@ -127,6 +129,7 @@ requires-dist = [
     { name = "pacmap", specifier = ">=0.8.0" },
     { name = "pygame", specifier = ">=2.6.1" },
     { name = "pytest", specifier = ">=8.4.2" },
+    { name = "pytest-tap", specifier = ">=3.5" },
     { name = "rich", specifier = ">=14.2.0" },
     { name = "ruff", specifier = ">=0.14.6" },
     { name = "scikit-learn", specifier = ">=1.8.0" },
@@ -140,7 +143,10 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest-xdist", specifier = ">=3.8.0" }]
+dev = [
+    { name = "pytest-tap", specifier = ">=3.4" },
+    { name = "pytest-xdist", specifier = ">=3.8.0" },
+]
 
 [[package]]
 name = "certifi"
@@ -1847,6 +1853,19 @@ wheels = [
 ]
 
 [[package]]
+name = "pytest-tap"
+version = "3.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pytest" },
+    { name = "tap-py" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7c/85/7c9004fc12ab0ac4ab4fd133f711b5278a24d0a6a5c02e746e6a712b0f64/pytest_tap-3.5.tar.gz", hash = "sha256:11b3b475b919e9d5c0e995b441fab0b92c57a46cec818132b71264fdfbd56a32", size = 7870, upload-time = "2025-01-30T05:01:49.922Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d7/e6/1cc18228e46996b57a10350c0aad0fa5ce2de2ba8810f80d3a786764d832/pytest_tap-3.5-py3-none-any.whl", hash = "sha256:bce47102465db4fa09c0948bbf8867543143a9b9d16af77a2efbaffb4ec1072a", size = 6543, upload-time = "2025-01-30T05:01:48.187Z" },
+]
+
+[[package]]
 name = "pytest-xdist"
 version = "3.8.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2237,6 +2256,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/83/d3/803453b36afefb7c2bb238361cd4ae6125a569b4db67cd9e79846ba2d68c/sympy-1.14.0.tar.gz", hash = "sha256:d3d3fe8df1e5a0b42f0e7bdf50541697dbe7d23746e894990c030e2b05e72517", size = 7793921, upload-time = "2025-04-27T18:05:01.611Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a2/09/77d55d46fd61b4a135c444fc97158ef34a095e5681d0a6c10b75bf356191/sympy-1.14.0-py3-none-any.whl", hash = "sha256:e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5", size = 6299353, upload-time = "2025-04-27T18:04:59.103Z" },
+]
+
+[[package]]
+name = "tap-py"
+version = "3.2.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/37/d0/28b0c6c7fe464f70664f123e9f64f36acaf92767af98c1a82df6e2b49f41/tap_py-3.2.1.tar.gz", hash = "sha256:d03c9e6af0a56fad994f1c69f14041e676811d73eeeef20bf4077c43d621d608", size = 125390, upload-time = "2025-01-26T18:35:07.88Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6c/9e/6445a273190f69ae06989e1675f081206dd6b20dff19e570304b94e8350a/tap_py-3.2.1-py3-none-any.whl", hash = "sha256:ae2a8a7999529ec568d03462e75968289cee5927dfd52fcc3a6381c8892d10ef", size = 19264, upload-time = "2025-01-26T18:35:04.759Z" },
 ]
 
 [[package]]
