@@ -218,15 +218,12 @@ The project uses [Hydra](https://hydra.cc/) for configuration. Key config files 
 ## Development
 
 - **Style Guide**: Please refer to [STYLE_GUIDE.md](STYLE_GUIDE.md) for coding standards.
-- **Tests**: Run `uv run pytest --color=no -rf --tb=line` to ensure everything is working.
+- **Tests**: Run `uv run pytest --tap` to ensure everything is working.
 
 ```powershell
-# Run GPU Environment Tests (TAP format)
-uv run pytest --tap tests/unit_env2
-
 # Run all tests
-uv run pytest --color=no -rf --tb=line
+uv run pytest --tap
 
 # Run specific test file
-uv run pytest tests/components/test_ship.py --color=no -rf --tb=line
+uv run pytest tests/components/test_ship.py --tap
 ```

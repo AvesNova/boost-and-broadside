@@ -59,9 +59,9 @@ Agents control ships using a discrete action space with three independent compon
 ### 1. Power (3 actions)
 | Index | Name | Description |
 | :--- | :--- | :--- |
-| 0 | **COAST** | Maintain movement, regenerate power. |
+| 0 | **COAST** | Maintain movement, slowly regenerate power. |
 | 1 | **BOOST** | High acceleration, consumes power. |
-| 2 | **REVERSE** | Decelerate. |
+| 2 | **REVERSE** | Decelerate, regenerates power. |
 
 ### 2. Turn (7 actions)
 | Index | Name | Description |
