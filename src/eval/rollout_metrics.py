@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import logging
-from env.env import Environment
+from env2.coordinator_wrapper import TensorEnvWrapper
 from agents.world_model_agent import WorldModelAgent
 from agents.scripted import ScriptedAgent
 from agents.tokenizer import observation_to_tokens
@@ -69,7 +69,7 @@ def compute_rollout_metrics(
     if "memory_size" not in eval_env_config:
         eval_env_config["memory_size"] = 2
 
-    env = Environment(**eval_env_config)
+    env = TensorEnvWrapper(**eval_env_config)
 
     # Prepare Agents
     expert_config = {

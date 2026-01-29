@@ -8,8 +8,8 @@ from pathlib import Path
 import wandb
 import numpy as np
 
-from env.constants import PowerActions, TurnActions, ShootActions
-from env.features import compute_pairwise_features
+from core.constants import PowerActions, TurnActions, ShootActions
+from core.features import compute_pairwise_features
 from train.swa import SWAModule
 from train.world_model.rollout import perform_rollout, get_rollout_length
 from train.world_model.setup import get_data_loaders

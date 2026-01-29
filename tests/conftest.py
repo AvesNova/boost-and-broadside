@@ -3,8 +3,6 @@ import sys
 
 import pytest
 from omegaconf import OmegaConf
-from env.ship import Ship, default_ship_config
-from env.state import State
 import numpy as np
 import h5py
 
@@ -103,25 +101,8 @@ def default_config():
     )
 
 
-@pytest.fixture
-def dummy_ship():
-    """Return a dummy ship instance."""
-    return Ship(
-        ship_id=0,
-        team_id=0,
-        ship_config=default_ship_config,
-        initial_x=100.0,
-        initial_y=100.0,
-        initial_vx=10.0,
-        initial_vy=0.0,
-        world_size=(1000, 1000),
-    )
+# Legacy fixtures removed
 
-
-@pytest.fixture
-def dummy_state(dummy_ship):
-    """Return a dummy state with one ship."""
-    return State(ships={0: dummy_ship})
 
 
 @pytest.fixture

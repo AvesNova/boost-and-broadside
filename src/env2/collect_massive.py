@@ -8,7 +8,7 @@ from tqdm import tqdm
 from typing import Any
 
 from env2.env import TensorEnv
-from env2.state import ShipConfig
+from core.config import ShipConfig
 from env2.agents.scripted import VectorScriptedAgent
 from env2.collector import AsyncCollector
 

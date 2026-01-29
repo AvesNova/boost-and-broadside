@@ -8,10 +8,10 @@ import numpy as np
 sys.path.append(os.getcwd())
 
 from src.env2.env import TensorEnv
-from src.env2.state import ShipConfig
-from src.env2.adapter import tensor_state_to_cpu_state
-from env.renderer import GameRenderer
-from env.constants import TurnActions, PowerActions, ShootActions
+from core.config import ShipConfig
+from src.env2.adapter import tensor_state_to_render_state
+from src.env2.renderer import GameRenderer
+from core.constants import TurnActions, PowerActions, ShootActions
 
 def play():
     """Run a single game with visualization and human control using TensorEnv."""
@@ -36,8 +36,8 @@ def play():
     env.reset(options={"team_sizes": (1, 1)})
     
     # 2. Setup Renderer
-    renderer = GameRenderer(world_size=(1500, 1500), target_fps=60)
-    renderer.initialize()
+    renderer = GameRenderer(config, target_fps=60)
+    # renderer.initialize() # Not needed for new logic unless added method
     
     # Add human player (Ship 0) - Controlling Team 0
     renderer.add_human_player(ship_id=0) 
@@ -76,8 +76,8 @@ def play():
         obs, rewards, done, _, _ = env.step(actions)
         
         # 4. Render
-        cpu_state = tensor_state_to_cpu_state(env.state, batch_idx=0)
-        renderer.render(cpu_state)
+        render_state = tensor_state_to_render_state(env.state, config, batch_idx=0)
+        renderer.render(render_state)
         
         # Check Done
         if done[0]:

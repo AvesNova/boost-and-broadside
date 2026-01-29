@@ -1,6 +1,6 @@
 import logging
 import torch
-from env.env import Environment
+from env2.coordinator_wrapper import TensorEnvWrapper
 from agents.world_model_agent import WorldModelAgent
 from agents.tokenizer import observation_to_tokens
 from utils.tensor_utils import to_one_hot
@@ -121,7 +121,7 @@ def compute_controlling_error(
     eval_env_config = env_config.copy()
     eval_env_config["render_mode"] = "none"
 
-    env = Environment(**eval_env_config)
+    env = TensorEnvWrapper(**eval_env_config)
 
     for _ in range(num_episodes):
         obs, _ = env.reset(game_mode="1v1")  # 1v1 single ship per team

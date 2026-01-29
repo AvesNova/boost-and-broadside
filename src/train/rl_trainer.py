@@ -9,8 +9,8 @@ from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
 
 from agents.sb3_adapter import TeamTransformerSB3Policy
-from env.sb3_wrapper import SB3Wrapper
-from env.env import Environment
+from env2.sb3_wrapper import SB3Wrapper
+from env2.coordinator_wrapper import TensorEnvWrapper
 
 
 def create_sb3_env(cfg: DictConfig) -> gym.Env:
@@ -26,7 +26,7 @@ def create_sb3_env(cfg: DictConfig) -> gym.Env:
     env_config = dict(cfg.environment)
     env_config["render_mode"] = "none"  # Force no rendering for training
 
-    base_env = Environment(**env_config)
+    base_env = TensorEnvWrapper(**env_config)
     return SB3Wrapper(base_env, cfg)
 
 

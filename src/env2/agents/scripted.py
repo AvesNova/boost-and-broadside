@@ -1,7 +1,8 @@
 
 import torch
 import numpy as np
-from env2.state import TensorState, ShipConfig
+from env2.state import TensorState
+from core.config import ShipConfig
 from core.constants import PowerActions, TurnActions, ShootActions
 
 class VectorScriptedAgent:

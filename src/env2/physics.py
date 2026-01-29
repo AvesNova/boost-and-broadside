@@ -2,7 +2,8 @@
 import torch
 from typing import Tuple
 
-from .state import TensorState, ShipConfig
+from .state import TensorState
+from core.config import ShipConfig
 from core.constants import PowerActions, TurnActions, ShootActions, RewardConstants
 
 

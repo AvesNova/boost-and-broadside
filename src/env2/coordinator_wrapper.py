@@ -2,16 +2,18 @@
 import torch
 import numpy as np
 from src.env2.env import TensorEnv
-from src.env2.adapter import tensor_state_to_cpu_state
-from env.renderer import create_renderer
-from env.constants import RewardConstants
-from env.ship import default_ship_config
+from src.env2.env import TensorEnv
+from src.env2.adapter import tensor_state_to_render_state
+from src.env2.renderer import GameRenderer
+from core.constants import RewardConstants
+from core.config import ShipConfig
 
 class TensorEnvWrapper:
     """
     Wraps TensorEnv to provide the API expected by GameCoordinator.
     
-    Handles legacy observation format (dict of tensors) and human rendering integration.
+    Handles legacy observation format (dict of tensors) and human rendering integration
+    via the new backend-agnostic GameRenderer.
     
     Attributes:
         device: The device (cpu/cuda) execution occurs on.
@@ -40,13 +42,18 @@ class TensorEnvWrapper:
         self.physics_dt = kwargs.get("physics_dt", 0.015)
         self.num_teams = kwargs.get("num_teams", 2)
         
+        # Create Config
+        self.config = ShipConfig(
+            world_size=tuple(float(x) for x in self.world_size),
+            dt=self.physics_dt
+        )
+
         # TensorEnv supports batch_size=1 for single game play
         self.env = TensorEnv(
             num_envs=1,
+            config=self.config,
             device=self.device,
-            max_ships=self.max_ships,
-            dt=self.physics_dt,
-            world_size=tuple(float(x) for x in self.world_size)
+            max_ships=self.max_ships
         )
         
         # Rendering
@@ -58,8 +65,8 @@ class TensorEnvWrapper:
     def renderer(self):
         """Lazy-load renderer."""
         if self._renderer is None and self.render_mode == "human":
-            # Reuse create_renderer from legacy code
-            self._renderer = create_renderer(self.world_size, self.target_fps)
+            # Use backend-agnostic GameRenderer
+            self._renderer = GameRenderer(self.config, target_fps=self.target_fps)
         return self._renderer
 
     def add_human_player(self, ship_id: int) -> None:
@@ -116,8 +123,8 @@ class TensorEnvWrapper:
         
         # Check if we need to render initial frame
         if self.render_mode == "human":
-             cpu_state = tensor_state_to_cpu_state(self.env.state, 0)
-             self.renderer.render(cpu_state)
+             render_state = tensor_state_to_render_state(self.env.state, self.config, 0)
+             self.renderer.render(render_state)
              
         return self.get_observation(), {}
 
@@ -161,8 +168,8 @@ class TensorEnvWrapper:
              
         # 5. Render
         if self.render_mode == "human":
-             cpu_state = tensor_state_to_cpu_state(self.env.state, 0)
-             self.renderer.render(cpu_state)
+             render_state = tensor_state_to_render_state(self.env.state, self.config, 0)
+             self.renderer.render(render_state)
              
         # 6. Return standard tuple
         obs_dict = self.get_observation()

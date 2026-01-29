@@ -4,7 +4,7 @@ import torch
 import numpy as np
 import torch.nn as nn
 
-from env.constants import PowerActions, TurnActions, ShootActions
+from core.constants import PowerActions, TurnActions, ShootActions
 
 
 class ShipAction(NamedTuple):

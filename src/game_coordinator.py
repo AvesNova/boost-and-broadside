@@ -5,7 +5,7 @@ import numpy as np
 
 from agents.agents import create_agent
 from agents.tokenizer import observation_to_tokens
-from env.env import Environment
+from env2.coordinator_wrapper import TensorEnvWrapper
 
 
 @dataclass
@@ -54,14 +54,9 @@ class GameCoordinator:
         # Inject number of teams from collect config
         env_config["num_teams"] = len(config.collect.teams)
         
-        backend = getattr(config.environment, "backend", "cpu")
-        
-        if backend == "gpu":
-             from src.env2.coordinator_wrapper import TensorEnvWrapper
-             print("Initializing TensorEnv (GPU Backend)...")
-             self.env = TensorEnvWrapper(**env_config)
-        else:
-             self.env = Environment(**env_config)
+        # Always use TensorEnvWrapper (Env2)
+        print(f"Initializing TensorEnvWrapper (backend={env_config.get('backend', 'cpu')})...")
+        self.env = TensorEnvWrapper(**env_config)
 
         self.agents = {}
         for agent_name, agent_config_node in config.agents.items():

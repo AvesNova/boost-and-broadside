@@ -4,8 +4,8 @@ import numpy as np
 import logging
 from omegaconf import DictConfig
 
-from env.constants import PowerActions, TurnActions, ShootActions
-from env.features import compute_pairwise_features
+from core.constants import PowerActions, TurnActions, ShootActions
+from core.features import compute_pairwise_features
 
 log = logging.getLogger(__name__)
 

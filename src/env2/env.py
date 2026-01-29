@@ -4,7 +4,8 @@ import numpy as np
 from typing import Optional, Tuple, Dict, Any, List
 import gymnasium as gym
 
-from .state import TensorState, ShipConfig
+from .state import TensorState
+from core.config import ShipConfig
 from .physics import update_ships, update_bullets, resolve_collisions
 
 class TensorEnv:

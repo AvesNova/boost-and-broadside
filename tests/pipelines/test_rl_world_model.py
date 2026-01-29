@@ -3,8 +3,8 @@ from omegaconf import OmegaConf
 import torch
 import gymnasium as gym
 
-from env.env import Environment
-from env.sb3_wrapper import SB3Wrapper
+from env2.coordinator_wrapper import TensorEnvWrapper
+from env2.sb3_wrapper import SB3Wrapper
 from agents.sb3_world_model_adapter import WorldModelSB3Policy
 from train.ppo_world_model import WorldModelPPO
 
@@ -69,7 +69,7 @@ class TestRLWorldModel:
         )
 
     def test_policy_instantiation(self, config):
-        env = SB3Wrapper(Environment(**config.environment), config)
+        env = SB3Wrapper(TensorEnvWrapper(**config.environment), config)
         # Use simple FrameStackObservation
         env = gym.wrappers.FrameStackObservation(env, stack_size=config.rl.context_len)
 
@@ -103,7 +103,7 @@ class TestRLWorldModel:
         assert loss.item() >= 0
 
     def test_training_loop(self, config):
-        env = SB3Wrapper(Environment(**config.environment), config)
+        env = SB3Wrapper(TensorEnvWrapper(**config.environment), config)
         env = gym.wrappers.FrameStackObservation(env, stack_size=config.rl.context_len)
 
         model = WorldModelPPO(
