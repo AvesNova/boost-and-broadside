@@ -161,44 +161,45 @@ def _handle_shooting(state: TensorState, shoot_action: torch.Tensor, config: Shi
     )
     
     state.ship_is_shooting = can_shoot
+
+    if not can_shoot.any():
+        return state
+
+    # Deduct power and set cooldown
+    state.ship_power = torch.where(
+        can_shoot, 
+        state.ship_power - config.bullet_energy_cost, 
+        state.ship_power
+    )
+    state.ship_cooldown = torch.where(
+        can_shoot, 
+        torch.tensor(config.firing_cooldown, device=device), 
+        state.ship_cooldown
+    )
     
-    if can_shoot.any():
-        # Deduct power and set cooldown
-        state.ship_power = torch.where(
-            can_shoot, 
-            state.ship_power - config.bullet_energy_cost, 
-            state.ship_power
-        )
-        state.ship_cooldown = torch.where(
-            can_shoot, 
-            torch.tensor(config.firing_cooldown, device=device), 
-            state.ship_cooldown
-        )
-        
-        batch_indices, ship_indices = torch.nonzero(can_shoot, as_tuple=True)
-        
-        if len(batch_indices) > 0:
-            bullet_slot_indices = state.bullet_cursor[batch_indices, ship_indices]
-            spawn_pos = state.ship_pos[batch_indices, ship_indices]
-            
-            shooter_att = state.ship_attitude[batch_indices, ship_indices]
-            shooter_vel = state.ship_vel[batch_indices, ship_indices]
-            
-            base_vel = shooter_vel + config.bullet_speed * shooter_att
-            
-            # Generate complex noise
-            noise_real = torch.randn(base_vel.shape, device=device) * config.bullet_spread
-            noise_imag = torch.randn(base_vel.shape, device=device) * config.bullet_spread
-            noise = torch.complex(noise_real, noise_imag)
-            
-            final_vel = base_vel + noise
-            
-            state.bullet_pos[batch_indices, ship_indices, bullet_slot_indices] = spawn_pos
-            state.bullet_vel[batch_indices, ship_indices, bullet_slot_indices] = final_vel
-            state.bullet_time[batch_indices, ship_indices, bullet_slot_indices] = config.bullet_lifetime
-            state.bullet_active[batch_indices, ship_indices, bullet_slot_indices] = True
-            
-            state.bullet_cursor[batch_indices, ship_indices] = (bullet_slot_indices + 1) % state.max_bullets
+    batch_indices, ship_indices = torch.nonzero(can_shoot, as_tuple=True)
+    
+    bullet_slot_indices = state.bullet_cursor[batch_indices, ship_indices]
+    spawn_pos = state.ship_pos[batch_indices, ship_indices]
+    
+    shooter_att = state.ship_attitude[batch_indices, ship_indices]
+    shooter_vel = state.ship_vel[batch_indices, ship_indices]
+    
+    base_vel = shooter_vel + config.bullet_speed * shooter_att
+    
+    # Generate complex noise
+    noise_real = torch.randn(base_vel.shape, device=device) * config.bullet_spread
+    noise_imag = torch.randn(base_vel.shape, device=device) * config.bullet_spread
+    noise = torch.complex(noise_real, noise_imag)
+    
+    final_vel = base_vel + noise
+    
+    state.bullet_pos[batch_indices, ship_indices, bullet_slot_indices] = spawn_pos
+    state.bullet_vel[batch_indices, ship_indices, bullet_slot_indices] = final_vel
+    state.bullet_time[batch_indices, ship_indices, bullet_slot_indices] = config.bullet_lifetime
+    state.bullet_active[batch_indices, ship_indices, bullet_slot_indices] = True
+    
+    state.bullet_cursor[batch_indices, ship_indices] = (bullet_slot_indices + 1) % state.max_bullets
             
     return state
 
@@ -295,39 +296,41 @@ def _apply_combat_damage(state: TensorState, config: ShipConfig) -> Tuple[Tensor
     
     valid_hit = hit_mask & (~own_bullet_mask) # (B, N_target_ships, N_total_bullets)
     
-    if valid_hit.any():
-        # Count hits per ship
-        hits_per_ship = valid_hit.sum(dim=2) # (B, N_target)
-        damage = hits_per_ship.float() * config.bullet_damage
-        
-        # Apply Damage
-        state.ship_health = state.ship_health - damage
-        
-        # Update Alive Status
-        state.ship_alive = state.ship_health > 0
-        state.ship_health = torch.maximum(state.ship_health, torch.tensor(0.0, device=device))
-        
-        # Calculate Rewards based on whom hit whom
-        valid_hit_reshaped = valid_hit.view(batch_size, num_ships, num_ships, num_bullets_per_ship) # (B, N_target, N_source, K)
-        hits_matrix = valid_hit_reshaped.sum(dim=3).float() # (B, N_target, N_source) - How many times Source hit Target
-        
-        target_teams = state.ship_team_id.unsqueeze(2) # (B, N_target, 1)
-        source_teams = state.ship_team_id.unsqueeze(1) # (B, 1, N_source)
-        
-        is_enemy = target_teams != source_teams
-        
-        # Enemy Hit Reward: Credited to Source
-        enemy_hits_by_source = (hits_matrix * is_enemy.float()).sum(dim=1) # Sum over targets
-        rewards = rewards + enemy_hits_by_source * RewardConstants.ENEMY_DAMAGE
-        
-        # Ally Hit Penalty: Credited to Source
-        ally_hits_by_source = (hits_matrix * (~is_enemy).float()).sum(dim=1)
-        rewards = rewards + ally_hits_by_source * RewardConstants.ALLY_DAMAGE
-        
-        # Deactivate bullets that hit
-        bullet_hits_flat = valid_hit.any(dim=1) # (B, N_total_bullets) - True if bullet hit ANY ship
-        flat_active_ref = state.bullet_active.view(batch_size, -1)
-        flat_active_ref[bullet_hits_flat] = False
+    if not valid_hit.any():
+        return state, rewards
+
+    # Count hits per ship
+    hits_per_ship = valid_hit.sum(dim=2) # (B, N_target)
+    damage = hits_per_ship.float() * config.bullet_damage
+    
+    # Apply Damage
+    state.ship_health = state.ship_health - damage
+    
+    # Update Alive Status
+    state.ship_alive = state.ship_health > 0
+    state.ship_health = torch.maximum(state.ship_health, torch.tensor(0.0, device=device))
+    
+    # Calculate Rewards based on whom hit whom
+    valid_hit_reshaped = valid_hit.view(batch_size, num_ships, num_ships, num_bullets_per_ship) # (B, N_target, N_source, K)
+    hits_matrix = valid_hit_reshaped.sum(dim=3).float() # (B, N_target, N_source) - How many times Source hit Target
+    
+    target_teams = state.ship_team_id.unsqueeze(2) # (B, N_target, 1)
+    source_teams = state.ship_team_id.unsqueeze(1) # (B, 1, N_source)
+    
+    is_enemy = target_teams != source_teams
+    
+    # Enemy Hit Reward: Credited to Source
+    enemy_hits_by_source = (hits_matrix * is_enemy.float()).sum(dim=1) # Sum over targets
+    rewards = rewards + enemy_hits_by_source * RewardConstants.ENEMY_DAMAGE
+    
+    # Ally Hit Penalty: Credited to Source
+    ally_hits_by_source = (hits_matrix * (~is_enemy).float()).sum(dim=1)
+    rewards = rewards + ally_hits_by_source * RewardConstants.ALLY_DAMAGE
+    
+    # Deactivate bullets that hit
+    bullet_hits_flat = valid_hit.any(dim=1) # (B, N_total_bullets) - True if bullet hit ANY ship
+    flat_active_ref = state.bullet_active.view(batch_size, -1)
+    flat_active_ref[bullet_hits_flat] = False
         
     return state, rewards
 
@@ -357,32 +360,34 @@ def _check_game_over(state: TensorState, rewards: torch.Tensor) -> Tuple[torch.T
     # Game Over if either team is wiped out
     dones = (team0_count == 0) | (team1_count == 0)
     
-    if dones.any():
-        team0_win = (team0_count > 0) & (team1_count == 0)
-        team1_win = (team1_count > 0) & (team0_count == 0)
-        draw = (team0_count == 0) & (team1_count == 0)
-        
-        # Create masks for assigning rewards
-        # Team 0 Members
-        t0_mask = (state.ship_team_id == 0)
-        # Team 1 Members
-        t1_mask = (state.ship_team_id == 1)
-        
-        # Expand outcome flags to (B, N)
-        t0_win_exp = team0_win.unsqueeze(1).expand(batch_size, num_ships)
-        t1_win_exp = team1_win.unsqueeze(1).expand(batch_size, num_ships)
-        draw_exp = draw.unsqueeze(1).expand(batch_size, num_ships)
-        
-        # Determine who gets Victory vs Defeat reward
-        # Victory: (Team 0 AND Team 0 Won) OR (Team 1 AND Team 1 Won)
-        win_reward_mask = (t0_mask & t0_win_exp) | (t1_mask & t1_win_exp)
-        
-        # Defeat: (Team 0 AND Team 1 Won) OR (Team 1 AND Team 0 Won)
-        lose_reward_mask = (t0_mask & t1_win_exp) | (t1_mask & t0_win_exp)
-        
-        rewards = torch.where(win_reward_mask, rewards + RewardConstants.VICTORY, rewards)
-        rewards = torch.where(lose_reward_mask, rewards + RewardConstants.DEFEAT, rewards)
-        rewards = torch.where(draw_exp, rewards + RewardConstants.DRAW, rewards)
+    if not dones.any():
+        return rewards, dones
+
+    team0_win = (team0_count > 0) & (team1_count == 0)
+    team1_win = (team1_count > 0) & (team0_count == 0)
+    draw = (team0_count == 0) & (team1_count == 0)
+    
+    # Create masks for assigning rewards
+    # Team 0 Members
+    t0_mask = (state.ship_team_id == 0)
+    # Team 1 Members
+    t1_mask = (state.ship_team_id == 1)
+    
+    # Expand outcome flags to (B, N)
+    t0_win_exp = team0_win.unsqueeze(1).expand(batch_size, num_ships)
+    t1_win_exp = team1_win.unsqueeze(1).expand(batch_size, num_ships)
+    draw_exp = draw.unsqueeze(1).expand(batch_size, num_ships)
+    
+    # Determine who gets Victory vs Defeat reward
+    # Victory: (Team 0 AND Team 0 Won) OR (Team 1 AND Team 1 Won)
+    win_reward_mask = (t0_mask & t0_win_exp) | (t1_mask & t1_win_exp)
+    
+    # Defeat: (Team 0 AND Team 1 Won) OR (Team 1 AND Team 0 Won)
+    lose_reward_mask = (t0_mask & t1_win_exp) | (t1_mask & t0_win_exp)
+    
+    rewards = torch.where(win_reward_mask, rewards + RewardConstants.VICTORY, rewards)
+    rewards = torch.where(lose_reward_mask, rewards + RewardConstants.DEFEAT, rewards)
+    rewards = torch.where(draw_exp, rewards + RewardConstants.DRAW, rewards)
         
     return rewards, dones
 
