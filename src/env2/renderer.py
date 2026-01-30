@@ -8,12 +8,15 @@ from core.types import RenderState, RenderShip
 from core.config import ShipConfig
 
 # Constants for Rendering
-SCREEN_WIDTH = 1200
-SCREEN_HEIGHT = 800
-UI_HEIGHT = 100
+# Constants for Rendering
+NATIVE_GAME_WIDTH = 1024
+NATIVE_HEIGHT = 1024
+NATIVE_SIDEBAR_WIDTH = 250
+NATIVE_WIDTH = NATIVE_GAME_WIDTH + NATIVE_SIDEBAR_WIDTH
 BACKGROUND_COLOR = (10, 10, 20)
 GRID_COLOR = (30, 30, 50)
-TEXT_COLOR = (200, 200, 200)
+TEXT_COLOR = (255, 255, 255)
+SIDEBAR_COLOR = (20, 20, 30)
 
 TEAM_COLORS = {
     0: (50, 150, 255),   # Blue Team
@@ -40,31 +43,39 @@ class GameRenderer:
         pygame.init()
         pygame.font.init()
         
-        self.screen_width = SCREEN_WIDTH
-        self.game_height = SCREEN_HEIGHT
-        self.ui_height = UI_HEIGHT
-        self.total_height = self.game_height + self.ui_height
+        # Core Dimensions
+        self.game_width = NATIVE_GAME_WIDTH
+        self.game_height = NATIVE_HEIGHT
+        self.sidebar_width = NATIVE_SIDEBAR_WIDTH
+        self.native_width = NATIVE_WIDTH
+        self.native_height = NATIVE_HEIGHT
         
-        self.screen = pygame.display.set_mode((self.screen_width, self.total_height))
+        # Surfaces
+        # Native surface for high-res rendering
+        self.display_surface = pygame.Surface((self.native_width, self.native_height))
+        # Actual Window - Resizable, starting at a reasonable default
+        self.window_width = 1000
+        self.window_height = 800
+        self.screen = pygame.display.set_mode((self.window_width, self.window_height), pygame.RESIZABLE)
         pygame.display.set_caption("Boost and Broadside (Env2)")
         
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("monospace", 14)
         
-        # Scaling
-        self.scale_x = self.screen_width / self.world_size[0]
+        # Scaling (World -> Native Surface)
+        self.scale_x = self.game_width / self.world_size[0]
         self.scale_y = self.game_height / self.world_size[1]
         
         # Human Input
         self.human_players = set()
         self.human_actions = {} # Map ship_id -> action dict
         
-        # Precompute ship shape (triangle)
+        # Precompute ship shape (triangle) - Adjusted scale
         self.ship_shape = [
-            (15, 0),   # Nose
-            (-10, 10), # Rear Left
-            (-5, 0),   # Engine
-            (-10, -10) # Rear Right
+            (12, 0),   # Nose
+            (-8, 8),   # Rear Left
+            (-4, 0),   # Engine
+            (-8, -8)   # Rear Right
         ]
 
     def add_human_player(self, ship_id: int):
@@ -82,6 +93,12 @@ class GameRenderer:
             if event.type == pygame.QUIT:
                 self.close()
                 return
+            elif event.type == pygame.VIDEORESIZE:
+                self.window_width = event.w
+                self.window_height = event.h
+                # The screen surface is automatically resized by pygame on VIDEORESIZE? 
+                # Usually we need to call set_mode again.
+                self.screen = pygame.display.set_mode((self.window_width, self.window_height), pygame.RESIZABLE)
 
         # Keyboard Input
         keys = pygame.key.get_pressed()
@@ -133,7 +150,8 @@ class GameRenderer:
 
     def render(self, state: RenderState):
         """Render the given frame."""
-        self.screen.fill(BACKGROUND_COLOR)
+        # Draw everything to the native high-res surface
+        self.display_surface.fill(BACKGROUND_COLOR)
         
         # Draw Grid
         self._draw_grid()
@@ -148,6 +166,21 @@ class GameRenderer:
         
         # Draw UI
         self._draw_ui(state)
+        
+        # Scale and Blit to Window
+        # Calculate aspect ratio preserving scale
+        scale = min(self.window_width / self.native_width, self.window_height / self.native_height)
+        new_width = int(self.native_width * scale)
+        new_height = int(self.native_height * scale)
+        
+        scaled_surface = pygame.transform.smoothscale(self.display_surface, (new_width, new_height))
+        
+        # Center the scaled surface
+        x_pos = (self.window_width - new_width) // 2
+        y_pos = (self.window_height - new_height) // 2
+        
+        self.screen.fill((0, 0, 0)) # Fill black bars
+        self.screen.blit(scaled_surface, (x_pos, y_pos))
         
         pygame.display.flip()
         self.clock.tick(self.target_fps)
@@ -165,14 +198,14 @@ class GameRenderer:
 
     def _draw_grid(self):
         # Draw vertical lines
-        for x in range(0, int(self.world_size[0]), 100):
+        for x in range(0, int(self.world_size[0]) + 1, 100):
             sx, _ = self._world_to_screen(x, 0)
-            pygame.draw.line(self.screen, GRID_COLOR, (sx, 0), (sx, self.game_height))
+            pygame.draw.line(self.display_surface, GRID_COLOR, (sx, 0), (sx, self.game_height))
             
         # Draw horizontal lines
-        for y in range(0, int(self.world_size[1]), 100):
+        for y in range(0, int(self.world_size[1]) + 1, 100):
             _, sy = self._world_to_screen(0, y)
-            pygame.draw.line(self.screen, GRID_COLOR, (0, sy), (self.screen_width, sy))
+            pygame.draw.line(self.display_surface, GRID_COLOR, (0, sy), (self.game_width, sy))
 
     def _draw_ship(self, ship: RenderShip):
         # Position
@@ -209,18 +242,18 @@ class GameRenderer:
             ty = ry * self.scale_y + sy
             transformed_points.append((tx, ty))
             
-        pygame.draw.polygon(self.screen, color, transformed_points)
+        pygame.draw.polygon(self.display_surface, color, transformed_points)
         
         # Health Bar
-        bar_width = 40
+        bar_width = 30
         bar_height = 4
         health_pct = max(0, ship.health / ship.max_health)
         
         bar_x = sx - bar_width // 2
-        bar_y = sy - 30
+        bar_y = sy - 20
         
-        pygame.draw.rect(self.screen, HP_BAR_BG, (bar_x, bar_y, bar_width, bar_height))
-        pygame.draw.rect(self.screen, HP_BAR_COLOR, (bar_x, bar_y, int(bar_width * health_pct), bar_height))
+        pygame.draw.rect(self.display_surface, HP_BAR_BG, (bar_x, bar_y, bar_width, bar_height))
+        pygame.draw.rect(self.display_surface, HP_BAR_COLOR, (bar_x, bar_y, int(bar_width * health_pct), bar_height))
 
     def _draw_bullets(self, state: RenderState):
         if len(state.bullet_x) == 0:
@@ -238,32 +271,40 @@ class GameRenderer:
             color = TEAM_COLORS.get(team_id, (255, 255, 255))
             
             sx, sy = self._world_to_screen(x, y)
-            pygame.draw.circle(self.screen, color, (sx, sy), 3)
+            pygame.draw.circle(self.display_surface, color, (sx, sy), 2)
 
     def _draw_ui(self, state: RenderState):
-        # Draw UI background
-        ui_rect = pygame.Rect(0, self.game_height, self.screen_width, self.ui_height)
-        pygame.draw.rect(self.screen, (20, 20, 30), ui_rect)
-        pygame.draw.line(self.screen, (100, 100, 100), (0, self.game_height), (self.screen_width, self.game_height))
+        """Draw sidebar with game telemetry."""
+        # Draw Sidebar background
+        sidebar_rect = pygame.Rect(self.game_width, 0, self.sidebar_width, self.native_height)
+        pygame.draw.rect(self.display_surface, SIDEBAR_COLOR, sidebar_rect)
+        pygame.draw.line(self.display_surface, (100, 100, 100), (self.game_width, 0), (self.game_width, self.native_height))
         
         # Display Stats for Human Player (if any)
-        x_offset = 20
-        y_offset = self.game_height + 10
+        x_offset = self.game_width + 15
+        y_offset = 20
         
-        for ship_id in self.human_players:
-            if ship_id in state.ships:
-                ship = state.ships[ship_id]
-                stats = [
-                    f"P{ship_id} [Team {ship.team_id}]",
-                    f"HP: {ship.health:.0f}/{ship.max_health:.0f}",
-                    f"PWR: {ship.power:.0f}/100",
-                    f"Alive: {ship.alive}"
-                ]
+        for ship_id in sorted(state.ships.keys()):
+            ship = state.ships[ship_id]
+            is_human = ship_id in self.human_players
+            
+            color = TEXT_COLOR
+            if is_human:
+                color = (255, 255, 0)
                 
-                for line in stats:
-                    text = self.font.render(line, True, TEXT_COLOR)
-                    self.screen.blit(text, (x_offset, y_offset))
-                    y_offset += 20
-                    
-                x_offset += 200
-                y_offset = self.game_height + 10 # Reset Y for next player column
+            stats = [
+                f"S{ship_id} T{ship.team_id} {'[HUMAN]' if is_human else ''}",
+                f"HP: {ship.health:.0f}/{ship.max_health:.0f}",
+                f"PWR: {ship.power:.0f}/100",
+                f"Status: {'ALIVE' if ship.alive else 'DEAD'}"
+            ]
+            
+            for line in stats:
+                text = self.font.render(line, True, color if line == stats[0] else TEXT_COLOR)
+                self.display_surface.blit(text, (x_offset, y_offset))
+                y_offset += 16
+                
+            y_offset += 10 # Spacer between ships
+            
+            if y_offset > self.native_height - 50:
+                break # Avoid overflow
