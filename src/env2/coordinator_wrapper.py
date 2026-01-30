@@ -141,7 +141,6 @@ class TensorEnvWrapper:
         # 1. Handle Human Input
         if self.render_mode == "human":
              self.renderer.handle_events()
-             self.renderer.update_human_actions()
              human_actions = self.renderer.get_human_actions()
              # Update incoming actions with human ones
              actions.update(human_actions)
@@ -153,7 +152,14 @@ class TensorEnvWrapper:
         
         for ship_id, act in actions.items():
             if ship_id < num_ships:
-                 act = act.to(device=self.device, dtype=torch.long)
+                 # Handle both tensor and dict formats
+                 if isinstance(act, dict):
+                     # Convert dict format (from human input) to tensor
+                     act = torch.tensor([act['power'], act['turn'], act['shoot']], 
+                                       dtype=torch.long, device=self.device)
+                 else:
+                     # Already a tensor (from agents)
+                     act = act.to(device=self.device, dtype=torch.long)
                  action_tensor[0, ship_id] = act
                  
         # 3. Step TensorEnv
