@@ -5,7 +5,6 @@ import logging
 from omegaconf import DictConfig
 
 from core.constants import PowerActions, TurnActions, ShootActions
-from core.features import compute_pairwise_features
 
 log = logging.getLogger(__name__)
 
@@ -38,21 +37,6 @@ class Validator:
         all_preds_s = []
         all_targets_s = []
 
-        # Load weights
-        lambda_state = self.cfg.world_model.get("lambda_state", 1.0)
-        lambda_power = self.cfg.world_model.get("lambda_power", 0.05)
-        lambda_turn = self.cfg.world_model.get("lambda_turn", 0.05)
-        lambda_shoot = self.cfg.world_model.get("lambda_shoot", 0.05)
-        lambda_relational = self.cfg.world_model.get("lambda_relational", 0.1)
-        # Use simple defaults for validation
-        lambda_entropy = 0.0
-        focal_gamma = 0.0
-        if self.cfg.world_model.get("loss", {}).get("use_focal_loss", False):
-             # Maybe use endpoint gamma? Or just 0? Trainer uses scheduled.
-             # Let's use 0 for fair raw comparison or endpoint?
-             # Endpoint is probably fairer model evaluation of "final" performance
-             focal_gamma = self.cfg.world_model.get("loss", {}).get("gamma_end", 0.0)
-
         # Validation Limit
         if max_batches is None:
             val_cfg = self.cfg.world_model.get("validation", None)
@@ -68,102 +52,78 @@ class Validator:
                         break
                     total_batches_processed += 1
                     
-                    (
-                        states,
-                        input_actions,
-                        target_actions,
-                        returns,
-                        loss_mask,
-                        action_masks,
-                        agent_skills,
-                        team_ids
-                    ) = batch
+                    # Unpack Dict
+                    states = batch["states"].to(self.device)
+                    actions = batch["actions"].to(self.device)
+                    loss_mask = batch["loss_mask"].to(self.device)
+                    seq_idx = batch["seq_idx"].to(self.device)
                     
-                    states = states.to(self.device)
-                    input_actions = input_actions.to(self.device) # Shifted
-                    target_actions = target_actions.to(self.device) # Current
-                    loss_mask = loss_mask.to(self.device)
-                    team_ids = team_ids.to(self.device)
-                    
-                    # Compute Relational Features
-                    rel_features = compute_pairwise_features(states, self.cfg.environment.world_size)
-
+                    # Inputs/Targets
                     input_states = states[:, :-1]
-                    input_actions_slice = input_actions[:, :-1]
-                    rel_features_slice = rel_features[:, :-1]
+                    target_states = states[:, 1:]
                     
-                    num_ships = states.shape[2]
-                    
-                    # Fix Team IDs (Validation)
-                    if team_ids.ndim == 2 and team_ids.shape[1] != num_ships:
-                         tid = torch.zeros((states.shape[0], num_ships), device=self.device, dtype=torch.long)
-                         half = num_ships // 2
-                         tid[:, half:] = 1
-                         input_team_ids = tid
-                    elif team_ids.ndim == 3:
-                         input_team_ids = team_ids[:, :-1, :num_ships]
-                    else:
-                         input_team_ids = team_ids
-
-                    target_states_slice = states[:, 1:]
-                    target_actions_slice = target_actions[:, :-1]
+                    input_actions = actions[:, :-1]
+                    target_actions = actions[:, :-1]
                     
                     loss_mask_slice = loss_mask[:, 1:]
+                    
+                    pos = input_states[..., 3:5]
+                    vel = input_states[..., 5:7]
 
                     with torch.amp.autocast(device_type='cuda', dtype=torch.float16, enabled=self.amp):
-                        pred_states, pred_actions, _, _, features_12d, pred_relational = model_to_use(
-                            input_states, 
-                            input_actions_slice, 
-                            input_team_ids, 
-                            relational_features=rel_features_slice,
-                            noise_scale=0.0,
-                            return_embeddings=True
+                        pred_states, pred_actions = model_to_use(
+                            state=input_states, 
+                            prev_action=input_actions, 
+                            pos=pos,
+                            vel=vel,
+                            seq_idx=seq_idx[:, :-1]
                         )
 
-                        loss, state_loss, action_loss, relational_loss, _ = model_to_use.get_loss(
-                            pred_states=pred_states,
-                            pred_actions=pred_actions,
-                            target_states=target_states_slice,
-                            target_actions=target_actions_slice,
-                            loss_mask=loss_mask_slice,
-                            target_features_12d=features_12d, 
-                            pred_relational=pred_relational,
-                            lambda_state=lambda_state,
-                            lambda_power=lambda_power,
-                            lambda_turn=lambda_turn,
-                            lambda_shoot=lambda_shoot,
-                            lambda_relational=lambda_relational,
-                            lambda_entropy=lambda_entropy,
-                            focal_gamma=focal_gamma
+                        loss, _, _, _, _ = model_to_use.get_loss(
+                           pred_states=pred_states,
+                           pred_actions=pred_actions,
+                           target_states=target_states,
+                           target_actions=target_actions,
+                           loss_mask=loss_mask_slice,
+                           lambda_state=self.cfg.world_model.get("lambda_state", 1.0),
+                           lambda_action=1.0,
+                           lambda_relational=self.cfg.world_model.get("lambda_relational", 0.0)
                         )
                     
                     val_loss += loss
                     val_steps += 1
                     
                     valid_mask = loss_mask_slice.bool()
-                    valid_pred = pred_actions[valid_mask]
-                    valid_target = target_actions_slice[valid_mask]
-                    
-                    p_logits = valid_pred[..., 0:3].reshape(-1, 3)
-                    t_logits = valid_pred[..., 3:10].reshape(-1, 7)
-                    s_logits = valid_pred[..., 10:12].reshape(-1, 2)
-                    
-                    p_target = valid_target[..., 0].long().reshape(-1)
-                    t_target = valid_target[..., 1].long().reshape(-1)
-                    s_target = valid_target[..., 2].long().reshape(-1)
-                    
-                    if p_target.numel() > 0:
-                        val_error_p += (p_logits.argmax(-1) != p_target).float().mean()
-                        val_error_t += (t_logits.argmax(-1) != t_target).float().mean()
-                        val_error_s += (s_logits.argmax(-1) != s_target).float().mean()
+                    if valid_mask.sum() > 0:
+                        if valid_mask.ndim == 2:
+                             # Expand if mask is (B,T) and pred is (B,T,N,...)
+                             valid_mask = valid_mask.unsqueeze(-1).expand_as(pred_actions[..., 0])
+                        
+                        # Flat mask
+                        flat_mask = valid_mask.reshape(-1)
+                        valid_pred = pred_actions.reshape(-1, 12)[flat_mask]
+                        valid_target = target_actions.reshape(-1, 3)[flat_mask]
+                        
+                        p_logits = valid_pred[..., 0:3]
+                        t_logits = valid_pred[..., 3:10]
+                        s_logits = valid_pred[..., 10:12]
+                        
+                        p_target = valid_target[..., 0].long()
+                        t_target = valid_target[..., 1].long()
+                        s_target = valid_target[..., 2].long()
+                        
+                        if p_target.numel() > 0:
+                            val_error_p += (p_logits.argmax(-1) != p_target).float().mean()
+                            val_error_t += (t_logits.argmax(-1) != t_target).float().mean()
+                            val_error_s += (s_logits.argmax(-1) != s_target).float().mean()
 
-                        # Collect for Confusion Matrix
-                        all_preds_p.append(p_logits.argmax(-1).cpu().numpy())
-                        all_targets_p.append(p_target.cpu().numpy())
-                        all_preds_t.append(t_logits.argmax(-1).cpu().numpy())
-                        all_targets_t.append(t_target.cpu().numpy())
-                        all_preds_s.append(s_logits.argmax(-1).cpu().numpy())
-                        all_targets_s.append(s_target.cpu().numpy())
+                            # Collect for Confusion Matrix
+                            all_preds_p.append(p_logits.argmax(-1).cpu().numpy())
+                            all_targets_p.append(p_target.cpu().numpy())
+                            all_preds_t.append(t_logits.argmax(-1).cpu().numpy())
+                            all_targets_t.append(t_target.cpu().numpy())
+                            all_preds_s.append(s_logits.argmax(-1).cpu().numpy())
+                            all_targets_s.append(s_target.cpu().numpy())
 
         avg_val_loss = val_loss.item() / val_steps if val_steps > 0 else 0.0
         avg_val_err_p = val_error_p.item() / val_steps if val_steps > 0 else 0.0
@@ -185,97 +145,8 @@ class Validator:
 
     def validate_autoregressive(self, loader, steps=50):
         """
-        Run a short autoregressive rollout on one batch from the loader.
+        Run a short autoregressive rollout.
+        MambaBB gen not implemented yet.
         """
-        self.model.eval()
-        try:
-            # Get one batch
-            batch = next(iter(loader))
-        except StopIteration:
-            return {}
-
-        (
-            states,
-            input_actions,
-            target_actions,
-            returns,
-            loss_mask,
-            action_masks,
-            agent_skills,
-            team_ids
-        ) = batch
-        
-        # Take first B samples. Actually just use the whole batch.
-        states = states.to(self.device)
-        input_actions = input_actions.to(self.device)
-        target_actions = target_actions.to(self.device)
-        team_ids = team_ids.to(self.device)
-        # rel_features = rel_features.to(self.device) # Not used for dreaming
-
-        # We need at least steps+1 length
-        if states.shape[1] < steps + 1:
-            return {} # Too short
-
-        initial_state = states[:, 0] # S0
-        initial_action = input_actions[:, 0] # A_prev (dummy)
-        
-        # Fix Team IDs
-        num_ships = states.shape[2]
-        if team_ids.ndim == 2 and team_ids.shape[1] != num_ships:
-                # Reconstruct standard
-                tid = torch.zeros((states.shape[0], num_ships), device=self.device, dtype=torch.long)
-                half = num_ships // 2
-                tid[:, half:] = 1
-                input_team_ids = tid
-        elif team_ids.ndim == 3:
-                # (B, T, N) -> Slice time AND ships. Use 0th step.
-                input_team_ids = team_ids[:, 0, :num_ships]
-        else:
-                input_team_ids = team_ids
-                
-        
-        # Generate
-        dream_states, dream_actions = self.model.generate(
-            initial_state=initial_state,
-            initial_action=initial_action, # Dummy
-            steps=steps,
-            n_ships=num_ships,
-            team_ids=input_team_ids
-        )
-        
-        target_states_slice = states[:, 1:1+steps]
-        # target_actions: In data, actions[t] is action taken at S[t].
-        # Model predicts A[t] from S[t].
-        # So dream_actions[0] corresponds to A[0].
-        target_actions_slice = target_actions[:, 0:steps]
-        
-        # MSE State
-        # (B, Steps, N, D)
-        mse_state = F.mse_loss(dream_states, target_states_slice)
-        
-        # Per-step MSE (average over Batch, Ships, Dim)
-        # Result: (Steps,)
-        mse_state_per_step = (dream_states - target_states_slice).pow(2).mean(dim=[0, 2, 3])
-        
-        # Action Accuracy (Hard match of indices)
-        # dream_actions is one-hot (float). target_actions is discrete indices (B, T, N, 3).
-        # Convert dream to indices
-        dream_p = dream_actions[..., 0:3].argmax(-1)
-        dream_t = dream_actions[..., 3:10].argmax(-1)
-        dream_s = dream_actions[..., 10:12].argmax(-1)
-        
-        target_p = target_actions_slice[..., 0].long()
-        target_t = target_actions_slice[..., 1].long()
-        target_s = target_actions_slice[..., 2].long()
-        
-        acc_p = (dream_p == target_p).float().mean()
-        acc_t = (dream_t == target_t).float().mean()
-        acc_s = (dream_s == target_s).float().mean()
-        
-        return {
-            "val_rollout_mse_state": mse_state.item(),
-            "val_rollout_mse_step": mse_state_per_step.tolist(), # List of floats
-            "val_rollout_acc_power": acc_p.item(),
-            "val_rollout_acc_turn": acc_t.item(),
-            "val_rollout_acc_shoot": acc_s.item()
-        }
+        log.warning("Autoregressive validation not implemented for MambaBB yet.")
+        return {}

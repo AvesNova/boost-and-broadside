@@ -1,4 +1,5 @@
 import subprocess
+import os
 import sys
 from pathlib import Path
 
@@ -24,13 +25,17 @@ def test_train_pipeline_integration():
         "mode=train",
         "train.run_collect=true",
         "train.run_world_model=true",
+        "+device=cpu",
         "--config-name",
         "config_test",
     ]
 
-    # Run the command
+    # Run the command with CUDA masked
+    env = os.environ.copy()
+    env["CUDA_VISIBLE_DEVICES"] = ""
+    
     result = subprocess.run(
-        command, cwd=str(project_root), capture_output=True, text=True
+        command, cwd=str(project_root), capture_output=True, text=True, env=env
     )
 
     # If it failed, print the output to help debugging

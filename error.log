@@ -1,0 +1,31 @@
+Traceback (most recent call last):
+  File "/home/vizia/avesnova/boost-and-broadside/tests/pipelines/test_train_swa.py", line 98, in test_train_swa_pipeline
+    train(cfg)
+    ~~~~~^^^^^
+  File "/home/vizia/avesnova/boost-and-broadside/src/modes/train.py", line 67, in train
+    train_world_model(cfg)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "/home/vizia/avesnova/boost-and-broadside/src/train/train_world_model.py", line 64, in train_world_model
+    train_short, train_long, val_short, val_long = get_data_loaders(cfg, data_path)
+                                                   ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/home/vizia/avesnova/boost-and-broadside/src/train/world_model/setup.py", line 115, in get_data_loaders
+    train_loader, val_loader = create_continuous_data_loader(
+                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        data_path,
+        ^^^^^^^^^^
+    ...<5 lines>...
+        min_skill=min_skill
+        ^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/vizia/avesnova/boost-and-broadside/src/train/data_loader.py", line 215, in create_continuous_data_loader
+    train_loader = DataLoader(
+        train_view, batch_size=batch_size, shuffle=True, **kwargs
+    )
+  File "/home/vizia/avesnova/boost-and-broadside/.venv/lib/python3.13/site-packages/torch/utils/data/dataloader.py", line 394, in __init__
+    sampler = RandomSampler(dataset, generator=generator)  # type: ignore[arg-type]
+  File "/home/vizia/avesnova/boost-and-broadside/.venv/lib/python3.13/site-packages/torch/utils/data/sampler.py", line 149, in __init__
+    raise ValueError(
+        f"num_samples should be a positive integer value, but got num_samples={self.num_samples}"
+    )
+ValueError: num_samples should be a positive integer value, but got num_samples=0

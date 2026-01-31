@@ -96,6 +96,7 @@ world_model:
   n_layers: 2
   n_heads: 2
   context_len: 96
+  seq_len: 16 # Small seq len for integration tests
   n_ships: 8
   mask_ratio: 0.15
   noise_scale: 0.1

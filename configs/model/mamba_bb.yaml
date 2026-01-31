@@ -1,0 +1,42 @@
+# @package world_model
+_target_: agents.mamba_bb.MambaBB
+
+type: mamba_bb
+embed_dim: 256
+n_layers: 6
+n_heads: 4
+n_ships: 10 # Referenced in setup but seemingly unused by MambaBB directly (it handles N dynamically)
+
+# Data
+short_batch_size: 16
+seq_len: 2048 # Long context
+num_workers: 4
+prefetch_factor: 2
+
+# Training
+epochs: 50
+learning_rate: 1e-4
+batch_ratio: 1 # Ignored now
+noise_scale: 0.1
+
+# Loss Coefficients
+lambda_state: 1.0
+lambda_power: 0.1
+lambda_turn: 0.1
+lambda_shoot: 0.1
+lambda_relational: 0.1
+
+# Scheduler
+scheduler:
+  type: warmup_constant
+  warmup:
+    steps: 1000
+    start_lr: 1e-6
+
+# Validation
+validation:
+  max_batches: 50
+  heavy_eval_freq: 5
+
+loss:
+  use_focal_loss: false

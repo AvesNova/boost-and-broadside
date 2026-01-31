@@ -51,6 +51,9 @@ def test_world_model_training_pipeline(tmp_path, synthetic_h5_data):
     # Run minimal epochs
     cfg.world_model.epochs = 2
     cfg.world_model.num_workers = 0
+    cfg.world_model.curriculum = {"enabled": False} # Disable filtering
+    cfg.world_model.seq_len = 16 # Small seq len for small dataset
+    cfg.train.compile = False
     
     # 4. Run Training
     # Mock get_latest_data_path to return our synthetic file

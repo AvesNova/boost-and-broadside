@@ -130,15 +130,14 @@ def test_max_batches_limit(mock_components):
         def __iter__(self):
             while True:
                 # Return dummy batch structure (Size 9 tuple)
-                yield (
-                    torch.zeros(1, 10, 2, 16), # States
-                    torch.zeros(1, 10, 2, 3), # In Action
-                    torch.zeros(1, 10, 2, 3), # Tg Action
-                    None,
-                    torch.ones(1, 10, 2), # Loss Mask
-                    None, None,
-                    torch.zeros(1, 10, 2) # Team IDs
-                )
+                yield {
+                    "states": torch.zeros(1, 10, 2, 16),
+                    "actions": torch.zeros(1, 10, 2, 3),
+                    "target_actions": torch.zeros(1, 10, 2, 3), # Expected logic might vary
+                    "seq_idx": torch.zeros(1, 10),
+                    "loss_mask": torch.ones(1, 10, 2),
+                    "pos": None, "vel": None
+                }
     
     loader = MockLoader()
     
@@ -146,10 +145,7 @@ def test_max_batches_limit(mock_components):
     # Each batch takes some processing. We mock model return to avoid error.
     model.return_value = (
         torch.zeros(1, 9, 2, 16), # Pred States
-        torch.zeros(1, 9, 2, 12), # Pred Actions
-        None, None,
-        torch.zeros(1, 9, 2, 2, 12), # Target Feat
-        torch.zeros(1, 9, 2, 2, 12)  # Pred Rel
+        torch.zeros(1, 9, 2, 12)  # Pred Actions
     )
     model.get_loss.return_value = (torch.tensor(0.0), torch.tensor(0.0), torch.tensor(0.0), torch.tensor(0.0), {})
     

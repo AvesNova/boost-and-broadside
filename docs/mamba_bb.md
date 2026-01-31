@@ -1,5 +1,3 @@
-Here is the complete, revised specification document incorporating the **Y-Structure** (Action Injection), the **Two-Pass Information Flow**, and the **Teacher Forcing** logic.
-
 # Mamba-2D-Dogfight: Factorized World Model & Actor Specification
 
 ## 1. High-Level System Architecture

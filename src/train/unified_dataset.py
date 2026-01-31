@@ -29,6 +29,16 @@ class UnifiedEpisodeDataset:
         # Precompute start indices for O(1) access
         self.episode_starts = torch.zeros_like(self.episode_lengths)
         self.episode_starts[1:] = torch.cumsum(self.episode_lengths[:-1], dim=0)
+        
+        # Calculate total timesteps
+        if len(self.episode_lengths) > 0:
+            self.total_timesteps = self.episode_starts[-1].item() + self.episode_lengths[-1].item()
+        else:
+            self.total_timesteps = 0
+            
+    @property
+    def num_encodings(self):
+        return self.total_timesteps
 
     def has_dataset(self, name: str) -> bool:
         return name in self.available_keys
@@ -63,6 +73,33 @@ class UnifiedEpisodeDataset:
         """Helper to slice from HDF5 and convert to Tensor."""
         data = self.h5_file[dataset_name][start:end]
         return torch.from_numpy(data)
+        
+    def get_cross_episode_slice(self, dataset_name: str, global_start: int, length: int) -> torch.Tensor:
+        """
+        Slice a dataset effectively ignoring episode boundaries.
+        The HDF5 datasets (tokens, actions, etc) are already concatenated.
+        So we just read [global_start : global_start + length].
+        
+        However, the HDF5 file might be split or we conceptually think of it as episodes.
+        But physically, our h5 structure described in README matches: "All datasets are aligned along the first dimension (Total Timesteps)"
+        So simple slicing works! 
+        
+        We just need to check bounds.
+        """
+        # Bounds check
+        total_len = self.h5_file[dataset_name].shape[0]
+        if global_start + length > total_len:
+            # Wrap around or pad?
+            # For simplicity in this project (massive data), we often just clip or wrap.
+            # But "Continuous Stream" usually implies we just stop or wrap.
+            # Let's Implement WRAPPING for infinite streaming if we hit the end.
+            
+            remaining = total_len - global_start
+            part1 = self.get_slice(dataset_name, global_start, total_len)
+            part2 = self.get_slice(dataset_name, 0, length - remaining)
+            return torch.cat([part1, part2], dim=0)
+            
+        return self.get_slice(dataset_name, global_start, global_start + length)
 
     def __del__(self):
         if self._h5_file is not None:

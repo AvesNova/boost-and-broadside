@@ -4,15 +4,21 @@ import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 import h5py
 import os
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
-from agents.interleaved_world_model import InterleavedWorldModel
-from train.data_loader import load_bc_data, create_unified_data_loaders
+# New Model
+from agents.mamba_bb import MambaBB
+from train.data_loader import load_bc_data, create_continuous_data_loader
 
 log = logging.getLogger(__name__)
 
-def create_model(cfg: DictConfig, data_path: str, device: torch.device) -> InterleavedWorldModel:
-    """Initialize the Interleaved World Model."""
+class MambaConfig:
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+def create_model(cfg: DictConfig, data_path: str, device: torch.device) -> MambaBB:
+    """Initialize the MambaBB World Model."""
     # Get dimensions from data
     with h5py.File(data_path, "r") as f:
         if "token_dim" in f.attrs:
@@ -20,33 +26,36 @@ def create_model(cfg: DictConfig, data_path: str, device: torch.device) -> Inter
         else:
             state_dim = f["tokens"].shape[-1]
     
-    log.info(f"Initialized World Model with state_dim={state_dim}")
+    log.info(f"Initialized MambaBB with input_dim={state_dim}")
 
-    model = InterleavedWorldModel(
-        state_dim=state_dim,
-        embed_dim=cfg.world_model.embed_dim,
+    # Map Hydra Config to Model Config
+    model_cfg = MambaConfig(
+        input_dim=state_dim,
+        d_model=cfg.world_model.embed_dim,
         n_layers=cfg.world_model.n_layers,
         n_heads=cfg.world_model.n_heads,
-        max_ships=cfg.world_model.n_ships,
-        max_context_len=cfg.world_model.context_len,
-        use_relational_head=cfg.world_model.get("use_relational_head", True),
-    ).to(device)
+        action_dim=12, # 3+7+2
+        target_dim=state_dim, # Delta prediction
+    )
+
+    model = MambaBB(model_cfg).to(device)
     
-    # Compile
     # Compile
     import platform
     is_wsl = 'wsl' in platform.release().lower() or 'microsoft' in platform.release().lower()
     
-    if os.name != 'nt' and not is_wsl:
+    if os.name != 'nt' and not is_wsl and cfg.train.get("compile", True):
         log.info("Compiling model...")
-        model = torch.compile(model)
+        try:
+             model = torch.compile(model)
+        except Exception as e:
+             log.warning(f"Torch compile failed: {e}. Running eager.")
     else:
-        reason = "Windows" if os.name == 'nt' else "WSL"
-        log.info(f"Skipping torch.compile on {reason}")
+        log.info("Skipping torch.compile (Windows/WSL)")
         
     return model
 
-def create_optimizer(model: InterleavedWorldModel, cfg: DictConfig) -> optim.Optimizer:
+def create_optimizer(model: MambaBB, cfg: DictConfig) -> optim.Optimizer:
     """Create AdamW optimizer."""
     return optim.AdamW(model.parameters(), lr=cfg.world_model.learning_rate, fused=True)
 
@@ -93,17 +102,24 @@ def create_scheduler(optimizer: optim.Optimizer, cfg: DictConfig, total_steps: i
     return None
 
 def get_data_loaders(cfg: DictConfig, data_path: str, min_skill: float = 0.0):
-    """Create unified data loaders."""
-    return create_unified_data_loaders(
+    """Create Continuous Data Loaders."""
+    # We ignore short/long splits and return just Train/Val Continuous loaders.
+    # To match Trainer expectations (train_short, train_long, val_short, val_long),
+    # we might need to return them as duplicates or placeholders?
+    # Trainer loop: train_short_loader, train_long_loader.
+    # I'll update Trainer to just take 'train_loader'.
+    # But init signature of Trainer expects them.
+    # For now, let's return train_loader, None, val_loader, None
+    # And update Trainer to handle None.
+    
+    train_loader, val_loader = create_continuous_data_loader(
         data_path,
-        short_batch_size=cfg.world_model.short_batch_size,
-        long_batch_size=cfg.world_model.long_batch_size,
-        short_batch_len=cfg.world_model.short_batch_len,
-        long_batch_len=cfg.world_model.long_batch_len,
-        batch_ratio=cfg.world_model.batch_ratio,
+        batch_size=cfg.world_model.short_batch_size, # Use short batch size as default
+        seq_len=cfg.world_model.get("seq_len", 1024),
         validation_split=0.2,
         num_workers=cfg.world_model.get("num_workers", 4),
-        prefetch_factor=cfg.world_model.get("prefetch_factor", 2),
         world_size=tuple(cfg.environment.world_size),
         min_skill=min_skill
     )
+    
+    return train_loader, None, val_loader, None

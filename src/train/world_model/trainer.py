@@ -119,77 +119,20 @@ class Trainer:
             "min_skill": curr_skill
         }
 
-    def train(self, train_short_loader, train_long_loader, val_short_loader, val_long_loader):
+    def train(self, train_loader, train_long_loader=None, val_loader=None, val_long_loader=None):
         """Main training loop."""
+        
+        # New MambaBB Pipeline uses only train_loader and val_loader
+        # Ignore long loaders if passed as None
         
         sched_cfg = self.cfg.world_model.get("scheduler", None)
         is_range_test = sched_cfg and "range_test" in sched_cfg.type
 
-        # Profiler Setup
-        prof_cfg = self.cfg.get("profiler", OmegaConf.create({"enabled": False}))
-        profiler = None
-        if prof_cfg.enabled:
-            log.info("Profiler ENABLED")
-            schedule = torch.profiler.schedule(
-                wait=prof_cfg.wait,
-                warmup=prof_cfg.warmup,
-                active=prof_cfg.active,
-                repeat=prof_cfg.repeat
-            )
-            profiler = torch.profiler.profile(
-                schedule=schedule,
-                on_trace_ready=torch.profiler.tensorboard_trace_handler(str(self.run_dir / "profiler")),
-                record_shapes=True,
-                profile_memory=True,
-                with_stack=True
-            )
-            profiler.start()
-
         for epoch in range(self.epochs):
-            # Check Curriculum Update
-            current_params = self._get_current_params(self.global_step)
-            tgt_skill = current_params["min_skill"]
-            
-            # Reload if skill threshold changed significantly (e.g., > 0.05)
-            if abs(tgt_skill - self.last_reloaded_skill) > 0.05:
-                log.info(f"Curriculum Update: Min Skill {self.last_reloaded_skill:.2f} -> {tgt_skill:.2f}. Reloading Data...")
-                train_short_loader, train_long_loader, _, _ = get_data_loaders(self.cfg, self.data_path, min_skill=tgt_skill)
-                # Note: We don't reload validation loaders to keep validation consistent (or should we?)
-                # Usually validation set should remain static (all data) to be comparable.
-                self.last_reloaded_skill = tgt_skill
-                
             self.model.train()
             
-            # Setup Iterators & Progress Bar
-            short_iter = iter(train_short_loader)
-            long_iter = iter(train_long_loader)
-            num_short_batches = len(train_short_loader)
-
-            if is_range_test and sched_cfg.range_test.steps:
-                 pbar_total = sched_cfg.range_test.steps * self.acc_steps
-            else:
-                 total_micro = int(num_short_batches * (1 + 1/self.batch_ratio))
-                 pbar_total = total_micro // self.acc_steps
-                 
-            pbar = tqdm(range(pbar_total), desc=f"Epoch {epoch + 1}/{self.epochs}")
-            
-            # Batch Pattern
-            short_prob = self.batch_ratio / (self.batch_ratio + 1)
-            use_sobol = self.cfg.world_model.get("use_sobol", False)
-            
-            def get_batch_pattern():
-                if use_sobol:
-                    log.info(f"Using Sobol Sampling (Ratio {self.batch_ratio})")
-                    sobol_engine = torch.quasirandom.SobolEngine(dimension=1, scramble=True)
-                    while True:
-                        yield sobol_engine.draw(1).item() < short_prob
-                else:
-                    log.info(f"Using Fixed Pattern: {self.batch_ratio} Short, 1 Long")  
-                    while True:
-                        for _ in range(4): yield True
-                        yield False
-            
-            batch_pattern = get_batch_pattern()
+            # Setup Iterator
+            pbar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{self.epochs}")
             
             # Accumulators
             accumulators = self._init_accumulators()
@@ -198,21 +141,11 @@ class Trainer:
             self.optimizer.zero_grad()
             self.t_last_macro = time.time()
             
-            while True:
-                # 1. Get Batch
-                is_short = next(batch_pattern)
-                iterator = short_iter if is_short else long_iter
-                
-                try:
-                    batch_data = next(iterator)
-                except StopIteration:
-                    break
-                
+            for batch_data in pbar:
                 # 2. Process Batch
                 t0 = time.time()
-                # Update params for this step (micro-step level updates for smooth schedules)
                 step_params = self._get_current_params(self.global_step)
-                step_metrics = self._train_step(batch_data, is_short, epoch, step_params)
+                step_metrics = self._train_step(batch_data, epoch, step_params)
                 step_metrics["time"] = time.time() - t0
                 
                 # 3. Accumulate
@@ -225,17 +158,10 @@ class Trainer:
                     self._optimize_step(accumulators, pbar, is_range_test, epoch)
                     self._reset_accumulators(accumulators)
                     
-                    # Update Progress Bar (Range Test)
                     if is_range_test: pbar.update(1)
 
-                # Profiler Step
-                if profiler:
-                    profiler.step()
-
-                # Check Range Test Limit
                 if is_range_test and self.global_step >= sched_cfg.range_test.steps:
                      log.info("Range test complete.")
-                     if profiler: profiler.stop()
                      return
 
                 steps_in_epoch += 1
@@ -249,92 +175,76 @@ class Trainer:
             self._log_epoch_summary(accumulators, steps_in_epoch, epoch)
             
             # Validation
-            self._validate_epoch(epoch, [val_short_loader, val_long_loader], ar_loader=val_long_loader)
-            
-            # SWA
-            self._handle_swa(epoch, [val_short_loader, val_long_loader])
+            if val_loader:
+                self._validate_epoch(epoch, [val_loader], ar_loader=None)
             
             # Checkpointing
             self._save_checkpoint(epoch)
 
-        if profiler:
-            profiler.stop()
 
-    def _train_step(self, batch_data, is_short, epoch, params):
+    def _train_step(self, batch_data, epoch, params):
         """Performs forward pass, calculates loss, and scales gradients."""
-        (
-            states, input_actions, target_actions, _,
-            loss_mask, _, _, team_ids
-        ) = batch_data
-
-        states = states.to(self.device, non_blocking=True)
-        input_actions = input_actions.to(self.device, non_blocking=True)
-        target_actions = target_actions.to(self.device, non_blocking=True)
-        loss_mask = loss_mask.to(self.device, non_blocking=True)
-        team_ids = team_ids.to(self.device, non_blocking=True)
+        # Unpack Dict from ContinuousView
+        # Keys: states, actions, seq_idx, reset_mask, loss_mask
+        states = batch_data["states"].to(self.device, non_blocking=True)
+        actions = batch_data["actions"].to(self.device, non_blocking=True)
+        seq_idx = batch_data["seq_idx"].to(self.device, non_blocking=True)
+        loss_mask = batch_data["loss_mask"].to(self.device, non_blocking=True)
         
-        # Compute Relational Features on GPU
-        # Shape: (B, T, N, D) or (T, N, D) depending on batch
-        rel_features = compute_pairwise_features(states, self.cfg.environment.world_size)
-
-        input_states = states[:, :-1].clone()
-        input_actions_slice = input_actions[:, :-1].clone()
-        rel_features_slice = rel_features[:, :-1]
+        # Inputs: [0 : -1] -> Targets: [1 : End]
+        # State_t -> State_{t+1}
+        # Action_t (Teacher Forcing) -> Action_t (Prediction)
         
-        num_ships = states.shape[2]
+        input_states = states[:, :-1]
+        target_states = states[:, 1:]
         
-        # Team IDs
-        if team_ids.ndim == 2 and team_ids.shape[1] != num_ships:
-             tid = torch.zeros((states.shape[0], num_ships), device=self.device, dtype=torch.long)
-             tid[:, num_ships//2:] = 1
-             input_team_ids = tid
-        elif team_ids.ndim == 3:
-             input_team_ids = team_ids[:, :-1, :num_ships]
-        else:
-             input_team_ids = team_ids
-
-        target_states_slice = states[:, 1:]
-        target_actions_slice = target_actions[:, :-1]
+        # Actions:
+        # Actor: S_t -> Predicts A_t.
+        # So we predict actions[:, :-1].
+        # Target is actions[:, :-1].
+        
+        # World Model: S_t + A_t -> S_{t+1}.
+        # Input A is actions[:, :-1].
+        
+        input_actions = actions[:, :-1]
+        target_actions = actions[:, :-1]
+        
+        loss_mask_slice = loss_mask[:, 1:] # Mask corresponds to prediction valid at t+1?
+        # Actually loss_mask from view indicates if T is valid.
+        # If we predict T, we check mask[T].
+        # View returns mask aligned with inputs? 
+        # View `reset_mask` aligns with `tokens`.
+        # `loss_mask` = `~reset_mask`.
+        # If T=0 is reset, we can't predict T=0 (no history).
+        # We predict T=1 from T=0.
+        # So check mask[1:]
         loss_mask_slice = loss_mask[:, 1:]
         
-        # Masking for long batches
-        if not is_short and loss_mask_slice.shape[1] > 32:
-            loss_mask_slice[:, :32] = False
-
-        # Rollout (Side Effect on inputs)
-        rollout_len = get_rollout_length(epoch, self.cfg)
-        perform_rollout(self.model, input_states, input_actions_slice, input_team_ids, rollout_len)
+        # Pos/Vel for Relational Encoder
+        # states: (B, T, N, D). Indices 3,4=Pos, 5,6=Vel.
+        # We need Pos_t, Vel_t (from input_states)
+        pos = input_states[..., 3:5]
+        vel = input_states[..., 5:7]
 
         # Forward & Loss
         with torch.amp.autocast(device_type=self.device.type, dtype=torch.float16, enabled=self.use_amp):
-             pred_states, pred_actions, _, latents, features_12d, pred_relational = self.model(
-                input_states,
-                input_actions_slice,
-                input_team_ids,
-                relational_features=rel_features_slice,
-                noise_scale=self.cfg.world_model.noise_scale,
-                return_embeddings=True
+             pred_states, pred_actions = self.model(
+                state=input_states,
+                prev_action=input_actions,
+                pos=pos,
+                vel=vel,
+                seq_idx=seq_idx[:, :-1] # Match temporal dim
              )
              
              loss, state_loss, action_loss, relational_loss, metrics = self.model.get_loss(
                 pred_states=pred_states,
                 pred_actions=pred_actions,
-                target_states=target_states_slice,
-                target_actions=target_actions_slice,
+                target_states=target_states,
+                target_actions=target_actions,
                 loss_mask=loss_mask_slice,
-                latents=latents,
-                target_features_12d=features_12d,
-                pred_relational=pred_relational,
                 lambda_state=self.cfg.world_model.get("lambda_state", 1.0),
-                lambda_power=self.cfg.world_model.get("lambda_power", 0.05),
-                lambda_turn=self.cfg.world_model.get("lambda_turn", 0.05),
-                lambda_shoot=self.cfg.world_model.get("lambda_shoot", 0.05),
-                lambda_relational=self.cfg.world_model.get("lambda_relational", 0.1),
-                lambda_entropy=params["lambda_entropy"],
-                focal_gamma=params["focal_gamma"],
-                class_weights_power=self.w_power,
-                class_weights_turn=self.w_turn,
-                class_weights_shoot=self.w_shoot
+                lambda_action=1.0, # Weighted internally or here?
+                lambda_relational=self.cfg.world_model.get("lambda_relational", 0.0)
              )
 
         # Backward

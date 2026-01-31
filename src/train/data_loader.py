@@ -3,6 +3,7 @@ from torch.utils.data import DataLoader
 import torch
 
 from train.unified_dataset import UnifiedEpisodeDataset, ShortView, LongView
+from train.continuous_view import ContinuousView
 
 
 def get_latest_data_path() -> str:
@@ -168,4 +169,54 @@ def create_bc_data_loader(
     train_loader = DataLoader(train_view, batch_size=batch_size, shuffle=True, **kwargs)
     val_loader = DataLoader(val_view, batch_size=batch_size, shuffle=False, **kwargs)
 
+    return train_loader, val_loader
+
+
+def create_continuous_data_loader(
+    data_path: str,
+    batch_size: int,
+    seq_len: int = 1024,
+    validation_split: float = 0.2,
+    num_workers: int = 4,
+    world_size: tuple[float, float] = (1024.0, 1024.0),
+    min_skill: float = 0.0, # Ignored for now unless filter needed
+) -> tuple[DataLoader, DataLoader]:
+    """
+    Create Continuous Data Loaders for Mamba training.
+    Splits the dataset into two contiguous chunks (Train / Val).
+    Samples strided chunks from each.
+    """
+    dataset = UnifiedEpisodeDataset(data_path, world_size=world_size)
+    total_steps = dataset.total_timesteps
+    
+    # Split Point
+    val_size = int(total_steps * validation_split)
+    train_size = total_steps - val_size - seq_len # Safety margin
+    
+    # Create Strided Indices
+    # Stride = seq_len (Non-overlapping)
+    # Or Stride = seq_len // 2 (Overlapping)?
+    # Let's use Stride = seq_len / 2 for data augmentation effect
+    stride = seq_len // 2
+    
+    train_indices = list(range(0, train_size, stride))
+    val_indices = list(range(train_size, total_steps - seq_len, stride))
+    
+    train_view = ContinuousView(dataset, train_indices, seq_len=seq_len)
+    val_view = ContinuousView(dataset, val_indices, seq_len=seq_len)
+    
+    kwargs = {
+        "num_workers": num_workers,
+        "pin_memory": True,
+        "persistent_workers": (num_workers > 0),
+        "prefetch_factor": 2 if num_workers > 0 else None,
+    }
+    
+    train_loader = DataLoader(
+        train_view, batch_size=batch_size, shuffle=True, **kwargs
+    )
+    val_loader = DataLoader(
+        val_view, batch_size=batch_size, shuffle=False, **kwargs
+    )
+    
     return train_loader, val_loader

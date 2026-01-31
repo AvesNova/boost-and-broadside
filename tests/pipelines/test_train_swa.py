@@ -18,11 +18,12 @@ def test_train_swa_pipeline(default_config, tmp_path):
     
     # World Model Config
     cfg.world_model = OmegaConf.create({
-        "embed_dim": 16,
+        "embed_dim": 64,
         "n_layers": 2,
         "n_heads": 2,
         "n_ships": 4,
         "context_len": 16,
+        "seq_len": 16, # Required for setup.py
         "learning_rate": 1e-3,
         "epochs": 3, # Need at least 3 epochs to trigger SWA (0, 1, 2)
         "batch_ratio": 1,
@@ -94,6 +95,7 @@ def test_train_swa_pipeline(default_config, tmp_path):
     try:
         (tmp_path / "models" / "world_model").mkdir(parents=True, exist_ok=True)
         
+        cfg.train.compile = False # Disable compile for test
         train(cfg)
         
         # Verify SWA model is saved
