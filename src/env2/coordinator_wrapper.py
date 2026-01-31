@@ -45,7 +45,11 @@ class TensorEnvWrapper:
         # Create Config
         self.config = ShipConfig(
             world_size=tuple(float(x) for x in self.world_size),
-            dt=self.physics_dt
+            dt=self.physics_dt,
+            random_speed=kwargs.get("random_speed", False),
+            min_speed=kwargs.get("min_speed", 1.0),
+            max_speed=kwargs.get("max_speed", 180.0),
+            default_speed=kwargs.get("default_speed", 100.0)
         )
 
         # TensorEnv supports batch_size=1 for single game play

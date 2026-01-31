@@ -27,7 +27,14 @@ def run_collection(args: Any) -> None:
     output_path.mkdir(parents=True, exist_ok=True)
     
     # Configuration
-    config = ShipConfig()
+    # collect_massive config args should be added but for now we rely on defaults
+    # or we can inspect args if we add them to argparse
+    config = ShipConfig(
+        random_speed=getattr(args, "random_speed", False),
+        min_speed=getattr(args, "min_speed", 1.0),
+        max_speed=getattr(args, "max_speed", 180.0),
+        default_speed=getattr(args, "default_speed", 100.0)
+    )
     
     # Initialize Environment
     env = TensorEnv(args.num_envs, config, device=device)
@@ -114,6 +121,13 @@ def collect_massive(cfg: Any) -> None:
     args.seed = cfg.get("seed", 42)
     args.device = "cuda" if torch.cuda.is_available() else "cpu"
     
+    # Extract random speed settings from hydra config if available
+    env_cfg = cfg.get("environment", {})
+    args.random_speed = env_cfg.get("random_speed", False)
+    args.min_speed = 1.0 # Hardcoded defaults as they aren't in standard config.yaml usually
+    args.max_speed = 180.0
+    args.default_speed = 100.0
+
     run_collection(args)
 
 if __name__ == "__main__":

@@ -162,12 +162,22 @@ class TensorEnv:
         pos = torch.complex(rand_x, rand_y)
         
         self.state.ship_pos[reset_indices] = pos
-        self.state.ship_vel[reset_indices] = 0.0 + 0j
+        self.state.ship_pos[reset_indices] = pos
         
         # Random Attitude
         rand_angle = torch.rand((num_resets, self.max_ships), device=self.device) * 2 * np.pi
         att = torch.polar(torch.ones_like(rand_angle), rand_angle)
         self.state.ship_attitude[reset_indices] = att
+        
+        # Calculate Random Speed
+        if self.config.random_speed:
+            rand_speed = torch.rand((num_resets, self.max_ships), device=self.device)
+            # Scale to [min, max]
+            speed = self.config.min_speed + rand_speed * (self.config.max_speed - self.config.min_speed)
+        else:
+            speed = torch.full((num_resets, self.max_ships), self.config.default_speed, device=self.device)
+            
+        self.state.ship_vel[reset_indices] = speed * att
         
         # Reset Status
         self.state.ship_health[reset_indices] = self.config.max_health

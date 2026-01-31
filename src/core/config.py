@@ -38,6 +38,12 @@ class ShipConfig:
     max_health: float = 100.0
     max_power: float = 100.0
 
+    # Initialization
+    random_speed: bool = False
+    min_speed: float = 1.0
+    max_speed: float = 180.0
+    default_speed: float = 100.0
+
     # Thrust Dynamics
     base_thrust: float = 8.0
     boost_thrust: float = 80.0
