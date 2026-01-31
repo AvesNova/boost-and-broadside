@@ -42,34 +42,25 @@ uv run main.py mode=play human_player=true
 - **`configs/`**: Hydra configuration files.
 - **`tests/`**: Unit and integration tests.
 
-## World Model Architecture
+## World Model Architecture (MambaBB)
 
-The core of the system is an **Interleaved World Model** that predicts the future state of the game.
+The core of the system is a **Factorized World Model (MambaBB)** that separates temporal and spatial processing for efficiency and performance.
 
-For a detailed breakdown of the model and training pipeline, see [docs/world_model_architecture.md](docs/world_model_architecture.md).
+### Architecture Highlights
+- **Backbone**: `Mamba2` (State Space Model) handles temporal mixing along the time axis.
+- **Spatial Layer**: `RelationalAttention` handles mixing between ships (spatial axis) at each timestep.
+- **Physics Trunk**: A shared relational encoder computes analytic edge features (distance, closing speed, etc.) to bias the attention.
+- **Factorization**: The model alternates between Mamba (Time) and Attention (Space) blocks.
 
-### Sequence Structure
-The model processes an interleaved sequence of **State ($S$)** and **Action ($A$)** blocks. Each block contains $N$ tokens, where $N$ is the number of ships (default 8).
-
-$$ S_0 \xrightarrow{\text{predict}} A_0 \xrightarrow{\text{predict}} S_1 \xrightarrow{\text{predict}} A_1 \dots $$
-
-- **State Tokens ($S_t$)**: Continuous vector encodings of ship states (position, velocity, health).
-- **Action Tokens ($A_t$)**: Embeddings of discrete actions (Power, Turn, Shoot).
-
-### Factorized Attention
-To handle the multi-agent temporal structure efficiently, we use a factorized attention mechanism with alternating layers:
-
-1.  **Temporal Attention**: Each ship attends only to its own history.
-    - Causal masking ensures no peeking into the future.
-    - Uses **Rotary Position Embeddings (RoPE)** for relative time awareness.
-2.  **Spatial Attention**: Ships attend to each other *only within the current block*.
-    - **Scope**: Each token attends to all tokens in its **Current Step** ($t$).
-    - This captures instantaneous multi-agent interactions without temporal bleed-over in the spatial layer.
-    - This allows interactions (like shooting) to propagate correctly while maintaining causality.
+### Design Principles
+- **Continuous Stream**: Data is trained as a continuous stream of tokens with specialized `seq_idx` handling for resets, avoiding padding.
+- **Strictly Optimized**: Utilizes hardware-optimized `mamba_ssm` kernels.
+- **Causal**: Predicts the next state autoregressively.
 
 ### Training Objectives
-- **Action Prediction ($S_t \to A_t$)**: Cross-entropy loss on discrete action indices.
-- **State Prediction ($A_t \to S_{t+1}$)**: MSE loss on next-state reconstruction.
+- **Action Prediction ($S_t \to A_t$)**: Cross-entropy loss on discrete action indices (Power, Turn, Shoot).
+- **State Prediction ($S_t, A_t \to S_{t+1}$)**: MSE loss on next-state reconstruction (Residual Delta).
+
 
 ## Data Structure
 

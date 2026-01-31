@@ -26,11 +26,18 @@ class RelationalEncoder(nn.Module):
     """
     def __init__(self, config):
         super().__init__()
-        self.raw_dim = 12 # 4 raw + 8 derived (See compute_features)
+        # Features: [d_pos(2), d_vel(2), dist(1), inv(1), speed(1), close(1), dir(2), log(1)] = 11
+        # + Fourier: d_pos(2) * 8 bands * 2(sin/cos) = 32
+        # Total ~ 43 + padding -> 64?
+        # Let's use 8 bands.
+        self.num_bands = 8
+        self.raw_dim = 11 + (2 * self.num_bands * 2) # 11 + 32 = 43.
+        # Pad to 64 for nice numbers
+        self.padded_dim = 64
         
         # Trunk
         self.trunk = nn.Sequential(
-            nn.Linear(self.raw_dim, 128),
+            nn.Linear(self.padded_dim, 128),
             RMSNorm(128),
             nn.SiLU(),
             nn.Linear(128, 128)
@@ -64,35 +71,37 @@ class RelationalEncoder(nn.Module):
         dist_sq = d_pos.pow(2).sum(dim=-1, keepdim=True)
         dist = dist_sq.sqrt() + 1e-6
         
-        # Standard features: [d_pos, d_vel, dist, inv_dist, etc]
-        # Matching the 12D logic from relational_features.py roughly
-        # but inline here for clarity/independence.
-        
-        # Directions
+        # Standard features
         dir = d_pos / dist
-        
-        # Rel Speed & Closing
         rel_speed = d_vel.pow(2).sum(dim=-1, keepdim=True).sqrt()
         closing = (d_vel * d_pos).sum(dim=-1, keepdim=True) / dist
-        
-        # Concatenate
-        # [rx, ry, rvx, rvy, dist, inv_dist, speed, closing, dirx, diry, log_dist, dummy]
         inv_dist = 1.0 / (dist + 0.1)
         log_dist = torch.log(dist + 1.0)
         
-        features = torch.cat([
-            d_pos,
-            d_vel,
-            dist,
-            inv_dist,
-            rel_speed,
-            closing,
-            dir,
-            log_dist
-        ], dim=-1) # 2+2+1+1+1+1+2+1 = 11. Need 12? Add 0.
+        # Fourier Encoding of d_pos (Normalized roughly by world size/scale)
+        # Scale d_pos to [-PI, PI] range roughly for Fourier
+        # World is 1024. 
+        scale = 2 * math.pi / 1024.0
+        scaled_pos = d_pos * scale
         
-        # Pad to 12
-        features = F.pad(features, (0, 1))
+        fourier_feats = []
+        for i in range(self.num_bands):
+            freq = 2 ** i
+            fourier_feats.append(torch.sin(scaled_pos * freq))
+            fourier_feats.append(torch.cos(scaled_pos * freq))
+        fourier = torch.cat(fourier_feats, dim=-1) # (..., 32)
+        
+        # Concatenate: 2+2+1+1+1+1+2+1 = 11 Base
+        base_features = torch.cat([
+            d_pos, d_vel, dist, inv_dist, rel_speed, closing, dir, log_dist
+        ], dim=-1)
+        
+        features = torch.cat([base_features, fourier], dim=-1) # 11 + 32 = 43
+        
+        # Pad to 64
+        pad_size = self.padded_dim - features.shape[-1]
+        if pad_size > 0:
+            features = F.pad(features, (0, pad_size))
         
         return features
 
@@ -186,12 +195,28 @@ class MambaBB(nn.Module):
         
         # Actor Components
         self.actor_adapter = nn.Linear(128, d_model) # From trunk to actor bias
-        self.actor_fusion = nn.Linear(d_model * 2, d_model)
+        self.actor_fusion = nn.Sequential(
+            nn.Linear(d_model * 2, d_model),
+            RMSNorm(d_model),
+            nn.SiLU()
+        )
         self.actor_attn = RelationalAttention(d_model, config.n_heads)
-        self.actor_head = nn.Linear(d_model, config.action_dim)
+        
+        # Actor Head (Trunk + Projection)
+        self.actor_head = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            RMSNorm(d_model),
+            nn.SiLU(),
+            nn.Linear(d_model, config.action_dim)
+        )
         
         # World Head
-        self.world_head = nn.Linear(d_model, config.target_dim)
+        self.world_head = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            RMSNorm(d_model),
+            nn.SiLU(),
+            nn.Linear(d_model, config.target_dim)
+        )
         
         # Embeddings
         # Action Tensor: [Power(3), Turn(7), Shoot(2)]
@@ -200,27 +225,81 @@ class MambaBB(nn.Module):
         self.emb_shoot = nn.Embedding(2, 32)
         
         # Concat = 32+64+32 = 128
-        self.fusion = nn.Linear(d_model + 128, d_model)
+        self.fusion = nn.Sequential(
+            nn.Linear(d_model + 128, d_model),
+            RMSNorm(d_model),
+            nn.SiLU()
+        )
+        
+        # Special Embeddings
+        self.dead_embedding = nn.Parameter(torch.zeros(config.input_dim))
+        self.reset_embedding = nn.Parameter(torch.zeros(d_model))
+        
+        # Re-verify turn dim from previous file content: 
+        # "self.emb_turn = nn.Embedding(7, 64)" (Line 199 in Step 607 diff).
+        # Correctly setting it to 64.
 
-    def forward(self, state, prev_action, pos, vel, seq_idx=None):
+    def forward(self, state, prev_action, pos, vel, seq_idx=None, alive=None, reset_mask=None):
         """
-        Forward logic.
-        state: (B, T, N, D) - S_t
-        prev_action: (B, T, N, 3) - A_t (for World Model teacher forcing)
-        pos, vel: (B, T, N, 2)
+        Forward pass of the MambaBB World Model.
+
+        Args:
+            state: (B, T, N, D) Intrinsic State Tensor.
+            prev_action: (B, T, N, 3) Previous Action (Teacher Forcing).
+            pos: (B, T, N, 2) Position (Complex or R2).
+            vel: (B, T, N, 2) Velocity.
+            seq_idx: (B, T) Sequence Index for Mamba Kernel Resets (Int32).
+            alive: (B, T, N) Optional boolean mask for alive ships.
+            reset_mask: (B, T) Optional boolean mask for episode resets (True at start of new ep).
+
+        Returns:
+            pred_states: (B, T, N, D) Predicted Next State (Deltas).
+            pred_actions: (B, T, N, 12) Predicted Action Logits.
         """
-        # 1. Encoders
-        s_emb = self.state_encoder(state)
+        batch_size, seq_len, num_ships, _ = state.shape
+
+        # 1. Dead Ship Masking (state replacement)
+        if alive is None:
+             alive = state[..., 1] > 0
+             
+        dead_mask = ~alive
+        if dead_mask.any():
+            state = state.clone()
+            state[dead_mask] = self.dead_embedding.to(state.dtype)
+
+        # 2. Reset Logic (Semantic)
+        # Use provided reset_mask (from View) or fallback to inferring from seq_idx
+        if reset_mask is None and seq_idx is not None:
+             diff = torch.zeros_like(seq_idx, dtype=torch.bool)
+             diff[:, 1:] = seq_idx[:, 1:] != seq_idx[:, :-1]
+             reset_mask = diff # (B, T)
+        
+        # Expand for broadcasting (B, T, 1, 1)
+        reset_mask_bc = None
+        if reset_mask is not None:
+             if reset_mask.ndim == 2:
+                  reset_mask_bc = reset_mask.unsqueeze(-1).unsqueeze(-1)
+             else:
+                  reset_mask_bc = reset_mask
+
+        # 3. Encoders
+        # Mask Absolute Position (Indices 3,4) in State for Intrinsic Encoding
+        # Spec 2.A: "Absolute position is explicitly excluded"
+        state_no_pos = state.clone()
+        state_no_pos[..., 3:5] = 0.0
+        
+        s_emb = self.state_encoder(state_no_pos)
+        
         trunk_out, raw_geo = self.relational_encoder(pos, vel)
         
-        # Actor Pass
-        actor_bias = self.relational_encoder.adapters[0](trunk_out)
-        x_actor = s_emb 
-        x_actor = self.actor_attn(x_actor, actor_bias)
-        action_logits = self.actor_head(x_actor)
+        # Apply Reset Embedding to State Input
+        if reset_mask_bc is not None:
+             s_emb = s_emb + (reset_mask_bc * self.reset_embedding)
+
+        # --- World Model Pass (Backbone) ---
+        # Runs first to generate History for Actor
         
-        # World Model Pass
-        # Embed Action using explicit components
+        # Embed Action (Teacher Forcing)
         p = self.emb_power(prev_action[..., 0].long())
         t = self.emb_turn(prev_action[..., 1].long())
         s = self.emb_shoot(prev_action[..., 2].long())
@@ -228,50 +307,61 @@ class MambaBB(nn.Module):
         
         x_world = self.fusion(torch.cat([s_emb, a_emb], dim=-1))
         
-        # Backbone
-        B, T, N, D = x_world.shape
-        # Mamba needs flat seq
-        # (B, T, N, D) -> (B, N, T, D) -> (B*N, T, D)
-        x_mamba = x_world.permute(0, 2, 1, 3).reshape(B*N, T, D)
+        # Backbone (Time Mixing)
+        # Reshape for Mamba (B*N, T, D)
+        x_mamba = x_world.permute(0, 2, 1, 3).reshape(batch_size * num_ships, seq_len, self.config.d_model)
         
-        # Expand Seq Idx for Mamba
-        # seq_idx: (B, T). We need (B*N, T).
-        # Each ship in the batch has same timeframe/episode.
+        # Expand Seq Idx for Kernel
+        mamba_seq_idx = None
         if seq_idx is not None:
-             # seq_idx_mamba = seq_idx.repeat_interleave(N, dim=0) # (B*N, T)
-             # Wait, seq_idx is (Batch, Time).
-             # repeat_interleave(N) repeats rows. Correct.
-             pass
+             mamba_seq_idx = seq_idx.unsqueeze(1).expand(-1, num_ships, -1).reshape(batch_size * num_ships, seq_len)
 
         for i, block in enumerate(self.blocks):
             # Mamba
-            # Mamba2(x)
             normed = block['norm1'](x_mamba)
             if x_mamba.device.type == 'cpu':
-                 # Fallback for CPU testing (Mamba2 kernel requires CUDA)
                  m_out = normed
             else:
-                 m_out = block['mamba'](normed)
+                 try:
+                    m_out = block['mamba'](normed, seq_idx=mamba_seq_idx)
+                 except TypeError:
+                    m_out = block['mamba'](normed)
             x_mamba = x_mamba + m_out
             
-            # Spatial
-            # Reshape back to (B, T, N, D)
-            x_spatial = x_mamba.view(B, N, T, D).permute(0, 2, 1, 3)
-            
+            # Spatial (Attention)
+            x_spatial = x_mamba.view(batch_size, num_ships, seq_len, -1).permute(0, 2, 1, 3)
             rel_bias = self.relational_encoder.adapters[i+1](trunk_out)
-            x_spatial = x_spatial + block['attn'](block['norm2'](x_spatial), rel_bias)
+            x_spatial = x_spatial + block['attn'](block['norm2'](x_spatial), rel_bias, mask=alive)
             
-            # Prepare for next Mamba
-            x_mamba = x_spatial.permute(0, 2, 1, 3).reshape(B*N, T, D)
+            x_mamba = x_spatial.permute(0, 2, 1, 3).reshape(batch_size * num_ships, seq_len, -1)
 
-        x_final = x_mamba.view(B, N, T, D).permute(0, 2, 1, 3)
-        delta_pred = self.world_head(x_final)
+        x_final = x_mamba.view(batch_size, num_ships, seq_len, -1).permute(0, 2, 1, 3) # (B, T, N, D)
         
-        # Return Absolute prediction
-        # state is normalized? Spec says "Residuals... applied to current state".
-        # If model operates in Normalized space, Delta is normalized delta.
-        # So S_next = S + Delta.
-        state_pred = state + delta_pred
+        # World Model Predictions
+        delta_pred = self.world_head(x_final)
+        state_pred = state + delta_pred # Residual
+
+        # --- Actor Pass ---
+        # Input: State_t + History_{t-1}
+        # History_{t-1} is Backbone Output shifted by 1.
+        
+        history = torch.zeros_like(x_final)
+        history[:, 1:] = x_final[:, :-1]
+        
+        # Mask History at Resets (Prevent bleed from prev episode)
+        if reset_mask_bc is not None:
+             history = history * (~reset_mask_bc)
+             
+        # Fusion: Concat State + History -> Fusion -> Actor Flow
+        # s_emb (B,T,N,D), history (B,T,N,D) -> (B,T,N, 2D)
+        x_actor_input = torch.cat([s_emb, history], dim=-1)
+        x_actor = self.actor_fusion(x_actor_input)
+        
+        # Spatial Mixing (Before Heads)
+        actor_bias = self.relational_encoder.adapters[0](trunk_out)
+        x_actor = self.actor_attn(x_actor, actor_bias, mask=alive)
+        
+        action_logits = self.actor_head(x_actor)
         
         return state_pred, action_logits
 
@@ -279,16 +369,10 @@ class MambaBB(nn.Module):
                  lambda_state=1.0, lambda_action=1.0, lambda_relational=0.0):
         """
         Compute MambaBB Loss.
-        
-        Args:
-            pred_states: (B, T, N, D) - Predicted Deltas? Or absolute? Spec says Residuals.
-                         So pred_states IS delta.
-            target_states: (B, T, N, D) - Actual Next State.
-            loss_mask: (B, T) or (B, T, N)
+        Masks out transition frames AND dead entities.
         """
         # Loss Mask Handling
         if loss_mask.ndim == 2:
-             # (B, T) -> (B, T, N)
              loss_mask = loss_mask.unsqueeze(-1).expand_as(pred_states[..., 0])
              
         # Flatten
@@ -296,17 +380,25 @@ class MambaBB(nn.Module):
         denom = mask_flat.sum() + 1e-6
         
         # State Loss (MSE)
-        # Note: We computed state_pred = state + delta.
-        # So we compare directly to target_states.
-        s_loss = F.mse_loss(pred_states, target_states, reduction='none').mean(dim=-1)
-        s_loss = (s_loss.reshape(-1) * mask_flat).sum() / denom
+        # (B, T, N, D)
+        mse = F.mse_loss(pred_states, target_states, reduction='none')
+        
+        # Feature Masking (Spec Section 4 targets only)
+        # Exclude: Team(0), Acc(7,8), Attitude(10,11 - Integrated elsewhere)
+        D = mse.shape[-1]
+        feature_mask = torch.ones(D, device=mse.device)
+        feature_mask[0] = 0.0      # Team (Constant)
+        feature_mask[7:9] = 0.0    # Acc (Unused input)
+        feature_mask[10:12] = 0.0  # Attitude (Not a target, integrated from AngVel)
+        
+        # Apply mask
+        s_feature_loss = (mse * feature_mask).sum(dim=-1) / (feature_mask.sum() + 1e-6)
+        
+        # Apply Loss Mask (Sequence/Dead)
+        # s_loss scalar
+        s_loss = (s_feature_loss.reshape(-1) * mask_flat).sum() / denom
         
         # Action Loss (Cross Entropy)
-        # pred_actions: (B, T, N, 12) flat logits?
-        # target_actions: (B, T, N, 3)
-        
-        # Split logits
-        # [0:3] Power, [3:10] Turn, [10:12] Shoot
         l_p = pred_actions[..., 0:3]
         l_t = pred_actions[..., 3:10]
         l_s = pred_actions[..., 10:12]
@@ -319,9 +411,6 @@ class MambaBB(nn.Module):
         loss_t = F.cross_entropy(l_t.reshape(-1, 7), t_t.reshape(-1), reduction='none')
         loss_s = F.cross_entropy(l_s.reshape(-1, 2), t_s.reshape(-1), reduction='none')
         
-        # Weighted sum (lambda_action scaling applied to sum)
-        # Or individual weights as per Interleaved model logic?
-        # I'll sum them.
         a_loss_raw = (loss_p + loss_t + loss_s)
         a_loss = (a_loss_raw * mask_flat).sum() / denom
         

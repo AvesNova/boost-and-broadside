@@ -226,6 +226,9 @@ class Trainer:
         pos = input_states[..., 3:5]
         vel = input_states[..., 5:7]
 
+        # Alive Mask (Health > 0, Health is at index 1)
+        alive = input_states[..., 1] > 0
+        
         # Forward & Loss
         with torch.amp.autocast(device_type=self.device.type, dtype=torch.float16, enabled=self.use_amp):
              pred_states, pred_actions = self.model(
@@ -233,7 +236,9 @@ class Trainer:
                 prev_action=input_actions,
                 pos=pos,
                 vel=vel,
-                seq_idx=seq_idx[:, :-1] # Match temporal dim
+                seq_idx=seq_idx[:, :-1], # Match temporal dim
+                alive=alive,
+                reset_mask=batch_data["reset_mask"][:, 1:].to(self.device, non_blocking=True) if "reset_mask" in batch_data else None
              )
              
              loss, state_loss, action_loss, relational_loss, metrics = self.model.get_loss(
