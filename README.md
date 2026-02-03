@@ -74,10 +74,12 @@ All datasets are aligned along the first dimension (Total Timesteps), except for
 | :--- | :--- | :--- |
 | **`tokens`** | `(N, MaxShips, TokenDim)` | The observation tokens for all ships. |
 | **`actions`** | `(N, MaxShips, NumActions)` | The actions taken by each ship. |
+| **`expert_actions`** | `(N, MaxShips, NumActions)` | The ground-truth "optimal" actions produced by the scripted expert. |
 | **`action_masks`** | `(N, MaxShips, NumActions)` | Boolean mask indicating valid actions. |
-| **`rewards`** | `(N,)` | The reward received at each timestep. |
-| **`returns`** | `(N,)` | Precomputed discounted returns (GAE/Reward-to-go). |
+| **`rewards`** | `(N, MaxShips)` | The reward received by each ship. |
+| **`returns`** | `(N, MaxShips)` | Precomputed discounted returns (Reward-to-go). |
 | **`episode_ids`** | `(N,)` | ID of the episode each timestep belongs to. |
+| **`agent_skills`** | `(N, MaxShips)` | Skill level of the ship (0.0=Novice, 1.0=Expert). |
 | **`episode_lengths`** | `(NumEpisodes,)` | Length of each episode in the dataset. |
 
 ### Metadata (Attributes)
@@ -90,7 +92,6 @@ Global metadata is stored as HDF5 attributes on the root group:
 - `max_ships`: Maximum number of ships per team.
 - `token_dim`: Dimension of each token.
 - `num_actions`: Number of possible actions.
-
 ## Workflows
 
 ### 1. Data Collection
@@ -98,12 +99,13 @@ Global metadata is stored as HDF5 attributes on the root group:
 Generate training data using scripted agents.
 
 ```powershell
-# Collect data (single worker)
+# Collect data (CPU, single worker)
 uv run main.py mode=collect
 
 # Massive GPU Data Collection (Recommended for pretraining)
-# Generates HDF5 data using the vectorized environment
-uv run python src/env2/collect_massive.py --num_envs 1024 --total_steps 100000 --output_dir data/collection_v1
+# Generates HDF5 data using the vectorized environment.
+# Configured via collect.massive and collect sections in config.yaml.
+uv run main.py mode=collect_massive
 ```
 
 ### 2. Training

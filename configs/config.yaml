@@ -69,6 +69,10 @@ collect:
   render_mode: "none"
   max_episode_length: 512
   random_action_prob: 0.05
+  min_skill: 0.1
+  max_skill: 1.0
+  expert_ratio: 0.50 # Fraction of environments that are pure Expert vs Expert
+  random_dist: "beta"
   
   massive:
     num_envs: 1024
