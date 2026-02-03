@@ -131,11 +131,12 @@ def test_max_batches_limit(mock_components):
             while True:
                 # Return dummy batch structure (Size 9 tuple)
                 yield {
-                    "states": torch.zeros(1, 10, 2, 16),
-                    "actions": torch.zeros(1, 10, 2, 3),
-                    "target_actions": torch.zeros(1, 10, 2, 3), # Expected logic might vary
-                    "seq_idx": torch.zeros(1, 10),
-                    "loss_mask": torch.ones(1, 10, 2),
+                    "states": torch.zeros(1, 11, 2, 16),
+                    "actions": torch.zeros(1, 11, 2, 3), # +1 for target shifting (T+1)
+                    "target_actions": torch.zeros(1, 11, 2, 3), 
+                    "team_ids": torch.zeros(1, 11, 2, dtype=torch.long),
+                    "seq_idx": torch.zeros(1, 11),
+                    "loss_mask": torch.ones(1, 11, 2),
                     "pos": None, "vel": None
                 }
     
@@ -144,8 +145,8 @@ def test_max_batches_limit(mock_components):
     # Should stop after 10 batches (cfg.world_model.validation.max_batches = 10)
     # Each batch takes some processing. We mock model return to avoid error.
     model.return_value = (
-        torch.zeros(1, 9, 2, 16), # Pred States
-        torch.zeros(1, 9, 2, 12)  # Pred Actions
+        torch.zeros(1, 10, 2, 16), # Pred States
+        torch.zeros(1, 10, 2, 12)  # Pred Actions
     )
     model.get_loss.return_value = (torch.tensor(0.0), torch.tensor(0.0), torch.tensor(0.0), torch.tensor(0.0), {})
     

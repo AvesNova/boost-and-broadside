@@ -151,46 +151,80 @@ class RelationalAttention(nn.Module):
         self.dropout = nn.Dropout(0.1)
 
     def forward(self, x, bias_features, mask=None):
-        # x: (B, T, N, D)
-        # bias_features: (B, T, N, N, D) -- Projected from Adapter
+        """
+        Args:
+            x: (B, T, N, D) - Ship States
+            bias_features: (B, T, N, N, D) - Projected Geometry from Adapter
+            mask: (B, T, N) or (Batch, N) - Alive mask
+        """
         B, T, N, D = x.shape
-        
-        # We process each timestep independently for spatial mixing
-        # Flatten B,T -> Batch
         Batch = B * T
-        x_flat = x.view(Batch, N, D)
         
-        qkv = self.qkv(x_flat)
+        # Flatten time into batch
+        x_flat = x.view(Batch, N, D)
+        bias_flat = bias_features.view(Batch, N, N, D)
+        
+        # Project QKV
+        qkv = self.qkv(x_flat) # (Batch, N, 3*D)
         q, k, v = qkv.chunk(3, dim=-1)
         
-        # Reshape [Batch, N, Heads, Dim]
-        q = q.view(Batch, N, self.n_heads, self.head_dim).transpose(1, 2)
-        k = k.view(Batch, N, self.n_heads, self.head_dim).transpose(1, 2)
-        v = v.view(Batch, N, self.n_heads, self.head_dim).transpose(1, 2)
+        # Reshape to Heads: (Batch, N, H, D_head)
+        q = q.view(Batch, N, self.n_heads, self.head_dim)
+        k = k.view(Batch, N, self.n_heads, self.head_dim)
+        v = v.view(Batch, N, self.n_heads, self.head_dim)
         
-        # Bias: (B, T, N, N, D) -> (Batch, N, N, D) -> Split Heads?
+        # Reshape Bias to Heads: (Batch, N, N, H, D_head)
+        # B_ij is the edge feature from i to j
+        b_geo = bias_flat.view(Batch, N, N, self.n_heads, self.head_dim)
         
-        # bias_features is (B, T, N, N, D).
+        # --- Spec 3.D.2: Injection ---
+        # "Geometry biases the Keys" (K = K + B)
+        # We need pairwise Keys K_ij = K_j + B_ij
+        # K unsqueeze: (Batch, 1, N, H, D_head) -> Broadcaster over i
+        k_pairwise = k.unsqueeze(1) + b_geo # (Batch, N(i), N(j), H, D_head)
         
-        if not hasattr(self, 'bias_proj'):
-             self.bias_proj = nn.Linear(D, self.n_heads, bias=False).to(x.device)
-             
-        # Flatten bias_features (B, T, N, N, D) -> (Batch, N, N, D)
-        bias_flat = bias_features.view(Batch, N, N, -1)
-        b = self.bias_proj(bias_flat).permute(0, 3, 1, 2) # (Batch, H, N, N)
-        scores = torch.matmul(q, k.transpose(-2, -1)) * (self.head_dim ** -0.5) # (Batch, H, N, N)
-        scores = scores + b
+        # "Geometry biases the Values" (V = V + B)
+        # V_ij = V_j + B_ij
+        v_pairwise = v.unsqueeze(1) + b_geo # (Batch, N(i), N(j), H, D_head)
+        
+        # --- Attention Scores ---
+        # Score_ij = Q_i . K_ij^T
+        # Q unsqueeze: (Batch, N, 1, H, D_head)
+        # Einsum: b n(i) h d, b n(i) n(j) h d -> b h n(i) n(j)
+        # Or manual sum over D_head
+        
+        # Let's align dimensions for flexible matmul or einsum
+        # q: (B, N, 1, H, D)
+        # k_p: (B, N, N, H, D)
+        scores = (q.unsqueeze(2) * k_pairwise).sum(dim=-1) # (Batch, N(i), N(j), H)
+        scores = scores.permute(0, 3, 1, 2) # (Batch, H, N, N)
+        
+        scores = scores * (self.head_dim ** -0.5)
         
         # Mask
         if mask is not None:
-            # Mask is (Batch, N) or (B, T, N) -> (Batch, 1, 1, N)
-            mask_flat = mask.view(Batch, 1, 1, N)
+            # Mask is (Batch, N). We want to mask columns (j) that are dead.
+            mask_flat = mask.view(Batch, 1, 1, N) # (Batch, 1, 1, N(j))
             scores = scores.masked_fill(~mask_flat, float('-inf'))
 
-        attn = F.softmax(scores, dim=-1)
-        out = torch.matmul(attn, v) # (Batch, H, N, D_head)
+        attn = F.softmax(scores, dim=-1) # (Batch, H, N(i), N(j))
         
-        out = out.transpose(1, 2).reshape(B, T, N, D)
+        # --- Weighted Sum ---
+        # Out_i = Sum_j (Attn_ij * V_ij)
+        # Attn: (B, H, N, N)
+        # V_p: (B, N, N, H, D) -> Permute to (B, H, N, N, D) for matmul?
+        
+        # Let's use einsum for clarity
+        # b: Batch, h: Head, i: Rows, j: Cols, d: Head_Dim
+        # attn: b h i j
+        # v_p: b i j h d
+        
+        out = torch.einsum('bhij, bijhd -> bihd', attn, v_pairwise)
+        
+        # Concatenate heads
+        out = out.reshape(Batch, N, D)
+        out = out.view(B, T, N, D)
+        
         return self.proj(out)
 
 
@@ -322,7 +356,7 @@ class MambaBB(nn.Module):
         
         # Add Identity and Affiliation Embeddings (Spec 2.A.2)
         if team_ids is not None:
-             s_emb = s_emb + self.team_id_embed(team_ids.long())
+             s_emb = s_emb + self.team_id_embed(team_ids.long()).unsqueeze(-2)
              
         # Add Ship ID Embed (Identity)
         ship_ids = torch.arange(num_ships, device=state.device).view(1, 1, num_ships).expand(batch_size, seq_len, -1)

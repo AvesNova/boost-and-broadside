@@ -27,6 +27,7 @@ def test_train_swa_pipeline(default_config, tmp_path):
         "learning_rate": 1e-3,
         "epochs": 3, # Need at least 3 epochs to trigger SWA (0, 1, 2)
         "batch_ratio": 1,
+        "batch_size": 2,
         "short_batch_size": 2,
         "long_batch_size": 2,
         "short_batch_len": 8,

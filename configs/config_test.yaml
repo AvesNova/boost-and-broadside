@@ -97,20 +97,14 @@ world_model:
   n_heads: 2
   context_len: 96
   seq_len: 16 # Small seq len for integration tests
-  n_ships: 8
+  n_ships: 4
   mask_ratio: 0.15
   noise_scale: 0.1
   input_noise_ratio: 0.1
   input_noise_scale: 0.1
   learning_rate: 0.001
   epochs: 3
-  
-  # Mixed Batch Training
-  short_batch_size: 16
-  long_batch_size: 4
-  short_batch_len: 32
-  long_batch_len: 128
-  batch_ratio: 4
+  batch_size: 8
   
   rope_base: 10000.0
   rope_max_seq_len: 256

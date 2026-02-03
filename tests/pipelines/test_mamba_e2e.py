@@ -93,6 +93,7 @@ def test_mamba_training_pipeline(tmp_path, synthetic_mamba_data):
     cfg.world_model.n_layers = 2
     cfg.world_model.n_heads = 2
     cfg.world_model.short_batch_size = 2
+    cfg.world_model.batch_size = 2
     cfg.world_model.seq_len = 5
     cfg.world_model.epochs = 2
     cfg.world_model.num_workers = 0
@@ -132,6 +133,8 @@ def test_mamba_training_pipeline(tmp_path, synthetic_mamba_data):
          try:
              train_world_model(cfg)
          except Exception as e:
+             import traceback
+             traceback.print_exc()
              pytest.fail(f"Training failed with error: {e}")
          finally:
              os.chdir(orig_cwd)

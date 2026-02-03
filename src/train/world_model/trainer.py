@@ -246,7 +246,7 @@ class Trainer:
                 reset_mask=batch_data["reset_mask"][:, 1:].to(self.device, non_blocking=True) if "reset_mask" in batch_data else None
              )
              
-             loss, state_loss, action_loss, _, metrics = self.model.get_loss(
+             loss, state_loss, action_loss, relational_loss, metrics = self.model.get_loss(
                 pred_states=pred_states,
                 pred_actions=pred_actions,
                 target_states=target_states,
