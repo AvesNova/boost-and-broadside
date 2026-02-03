@@ -356,7 +356,11 @@ class MambaBB(nn.Module):
         
         # Add Identity and Affiliation Embeddings (Spec 2.A.2)
         if team_ids is not None:
-             s_emb = s_emb + self.team_id_embed(team_ids.long()).unsqueeze(-2)
+             t_emb = self.team_id_embed(team_ids.long())
+             if t_emb.ndim == 4: # (B, T, N, D)
+                  s_emb = s_emb + t_emb
+             else: # (B, T, D) -> Broadcast to N
+                  s_emb = s_emb + t_emb.unsqueeze(-2)
              
         # Add Ship ID Embed (Identity)
         ship_ids = torch.arange(num_ships, device=state.device).view(1, 1, num_ships).expand(batch_size, seq_len, -1)

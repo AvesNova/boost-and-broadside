@@ -243,7 +243,7 @@ class Trainer:
                 team_ids=team_ids[:, :-1],
                 seq_idx=seq_idx[:, :-1], # Match temporal dim
                 alive=alive,
-                reset_mask=batch_data["reset_mask"][:, 1:].to(self.device, non_blocking=True) if "reset_mask" in batch_data else None
+                reset_mask=batch_data["reset_mask"][:, :-1].to(self.device, non_blocking=True) if "reset_mask" in batch_data else None
              )
              
              loss, state_loss, action_loss, relational_loss, metrics = self.model.get_loss(
