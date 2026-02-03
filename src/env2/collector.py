@@ -162,7 +162,7 @@ class AsyncCollector:
         with h5py.File(self.data_path, "w") as h5_file:
             # Metadata
             h5_file.attrs["max_ships"] = self.max_ships
-            h5_file.attrs["token_dim"] = 15 # Kept for compatibility if we reconstruct
+            h5_file.attrs["token_dim"] = 9 # Kept for compatibility if we reconstruct
             
             h5_file.create_dataset("episode_lengths", (0,), maxshape=(None,), dtype="i8", compression="lzf")
 

@@ -347,12 +347,8 @@ class MambaBB(nn.Module):
                   reset_mask_bc = reset_mask
 
         # 3. Encoders
-        # Mask Absolute Position (Indices 3,4) in State for Intrinsic Encoding
-        # Spec 2.A: "Absolute position is explicitly excluded"
-        state_no_pos = state.clone()
-        state_no_pos[..., 3:5] = 0.0
-        
-        s_emb = self.state_encoder(state_no_pos)
+        # Position is no longer in the state tensor (removed in unified_dataset)
+        s_emb = self.state_encoder(state)
         
         # Add Identity and Affiliation Embeddings (Spec 2.A.2)
         if team_ids is not None:
@@ -469,13 +465,13 @@ class MambaBB(nn.Module):
         mse = F.mse_loss(pred_states, target_states, reduction='none')
         
         # Feature Masking (Spec Section 4 targets only)
-        # Exclude: Team(0), Acc(7,8), Attitude(10,11 - Integrated elsewhere)
+        # Exclude: Team(0), Attitude(5,6 - Integrated elsewhere)
+        # Targets: Health(1), Power(2), Vel(3,4), Shoot(7), AngVel(8)
         D = mse.shape[-1]
         feature_mask = torch.zeros(D, device=mse.device)
-        # Targets are: Pos(3,4), Vel(5,6), Health(1), Power(2), AngVel(9), Shooting(12)
-        feature_mask[1:7] = 1.0
-        feature_mask[9] = 1.0
-        feature_mask[12] = 1.0
+        feature_mask[1:5] = 1.0 # Health, Power, VelX, VelY
+        feature_mask[7] = 1.0   # Shoot
+        feature_mask[8] = 1.0   # AngVel
         
         # Apply mask
         s_feature_loss = (mse * feature_mask).sum(dim=-1) / (feature_mask.sum() + 1e-6)

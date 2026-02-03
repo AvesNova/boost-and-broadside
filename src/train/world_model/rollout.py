@@ -1,6 +1,8 @@
 import random
 import torch
 
+from core.constants import NORM_VELOCITY
+
 def get_rollout_length(epoch: int, cfg) -> int:
     """
     Determine rollout length for the current epoch based on schedule.
@@ -27,15 +29,16 @@ def get_rollout_length(epoch: int, cfg) -> int:
     return random.randint(1, current_max)
 
 
-def perform_rollout(model, input_states, input_actions, team_ids, rollout_len):
+def perform_rollout(model, input_states, input_actions, input_pos, team_ids, rollout_len):
     """
     Perform closed-loop rollout on the batch.
-    Modifies input_states and input_actions in-place.
+    Modifies input_states, input_actions, and input_pos in-place.
     
     Args:
         model: MambaBB
         input_states: (B, T, N, D)
         input_actions: (B, T, N, 3) - Discrete indices
+        input_pos: (B, T, N, 2) - Float32 Position
         team_ids: (B, T, N) 
         rollout_len: int
     """
@@ -55,6 +58,7 @@ def perform_rollout(model, input_states, input_actions, team_ids, rollout_len):
         # Current window variables
         curr_states = input_states.clone()
         curr_actions = input_actions.clone()
+        curr_pos = input_pos.clone()
         
         for i in range(rollout_len):
             t = start_t + i
@@ -64,6 +68,7 @@ def perform_rollout(model, input_states, input_actions, team_ids, rollout_len):
             
             # Slice context
             s_in = curr_states[:, ctx_start : t + 1]
+            p_in = curr_pos[:, ctx_start : t + 1]
             a_in = curr_actions[:, ctx_start : t + 1].clone() 
             # a_in at t is currently ground truth or old value. We want to predict it.
             a_in[:, -1] = 0 
@@ -74,9 +79,10 @@ def perform_rollout(model, input_states, input_actions, team_ids, rollout_len):
                 tm_in = team_ids # Assume (B, N)
                 
             # Extract features for relational encoder
-            pos = s_in[..., 3:5]
-            vel = s_in[..., 5:7]
-            att = s_in[..., 10:12]
+            # Vel(3,4), Att(5,6)
+            pos = p_in
+            vel = s_in[..., 3:5]
+            att = s_in[..., 5:7]
             alive = s_in[..., 1] > 0
                 
             pred_s, pred_a_logits = model(
@@ -125,13 +131,36 @@ def perform_rollout(model, input_states, input_actions, team_ids, rollout_len):
             
             next_state = pred_s[:, -1] # (B, N, D)
             
+            # 3. Update Position (Analytic Integration)
+            # pos_new = pos_old + vel * dt
+            # Vel is normalized in state.
+            pred_vx_norm = next_state[..., 3]
+            pred_vy_norm = next_state[..., 4]
+            vx = pred_vx_norm * NORM_VELOCITY
+            vy = pred_vy_norm * NORM_VELOCITY
+            
+            # DT = 0.04 approx (Standard Agent DT)
+            dt = 0.04 
+            
+            # Current pos at t
+            pos_t = curr_pos[:, t]
+            pos_next = pos_t + torch.stack([vx, vy], dim=-1) * dt
+            
+            # Wrap around world (0-1024)
+            pos_next = torch.remainder(pos_next, 1024.0)
+            
+            # Update curr_pos at t+1
+            if t + 1 < time_steps:
+                curr_pos[:, t + 1] = pos_next
+                input_pos[:, t + 1] = pos_next
+            
             # --- Analytic Attitude Update (Fixing "Dreaming" Mode) ---
             # Predicted attitude is garbage because we don't train it.
             # We must calculate it from Velocity + Action.
             
-            # 1. Get Predicted Velocity (Indices 5,6)
-            pred_vx = next_state[..., 5]
-            pred_vy = next_state[..., 6]
+            # 1. Get Predicted Velocity (Indices 3,4)
+            pred_vx = pred_vx_norm
+            pred_vy = pred_vy_norm
             speed = torch.sqrt(pred_vx**2 + pred_vy**2 + 1e-6).unsqueeze(-1)
             
             # Base Attitude (Direction of Motion)
@@ -167,9 +196,9 @@ def perform_rollout(model, input_states, input_actions, team_ids, rollout_len):
             new_cos = base_att_cos * cos_off - base_att_sin * sin_off
             new_sin = base_att_sin * cos_off + base_att_cos * sin_off
             
-            # 4. Overwrite in next_state (Indices 10,11)
-            next_state[..., 10] = new_cos.squeeze(-1)
-            next_state[..., 11] = new_sin.squeeze(-1)
+            # 4. Overwrite in next_state (Indices 5,6)
+            next_state[..., 5] = new_cos.squeeze(-1)
+            next_state[..., 6] = new_sin.squeeze(-1)
             
             # Update curr_states at t+1
             if t + 1 < time_steps:

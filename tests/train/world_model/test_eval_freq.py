@@ -137,7 +137,8 @@ def test_max_batches_limit(mock_components):
                     "team_ids": torch.zeros(1, 11, 2, dtype=torch.long),
                     "seq_idx": torch.zeros(1, 11),
                     "loss_mask": torch.ones(1, 11, 2),
-                    "pos": None, "vel": None
+                    "pos": torch.zeros(1, 11, 2, 2), # Dummy Pos
+                    "vel": None
                 }
     
     loader = MockLoader()

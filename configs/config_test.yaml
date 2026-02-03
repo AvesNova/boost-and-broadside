@@ -54,6 +54,7 @@ train:
   run_bc: false
   run_world_model: false
   run_rl: false
+  amp: false
 
   use_bc: true
   use_rl: true
@@ -61,7 +62,7 @@ train:
   
   model:
     transformer:
-      token_dim: 15
+      token_dim: 9
       embed_dim: 64
       num_heads: 4
       num_layers: 3

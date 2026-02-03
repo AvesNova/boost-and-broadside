@@ -68,18 +68,31 @@ class Validator:
                     
                     loss_mask_slice = loss_mask[:, 1:]
                     
-                    pos = input_states[..., 3:5]
-                    vel = input_states[..., 5:7]
-                    att = input_states[..., 10:12]
+                    # Pos comes from batch now
+                    pos = batch["pos"].to(self.device)
+                    # Input pos: 0..T-1
+                    pos_in = pos[:, :-1]
+                    
+                    # New token layout: Vel(3,4), Att(5,6)
+                    vel = input_states[..., 3:5]
+                    att = input_states[..., 5:7]
                     
                     alive = input_states[..., 1] > 0
                     target_alive = target_states[..., 1] > 0
 
-                    with torch.amp.autocast(device_type='cuda', dtype=torch.float16, enabled=self.amp):
+                    # Cast inputs if AMP is disabled (e.g. CPU training with bfloat16 data)
+                    if not self.amp and input_states.dtype == torch.bfloat16:
+                         input_states = input_states.float()
+                         target_states = target_states.float()
+                         pos_in = pos_in.float()
+                         vel = vel.float()
+                         att = att.float()
+
+                    with torch.amp.autocast(device_type='cuda', dtype=torch.bfloat16, enabled=self.amp):
                         pred_states, pred_actions = model_to_use(
                             state=input_states, 
                             prev_action=input_actions, 
-                            pos=pos,
+                            pos=pos_in,
                             vel=vel,
                             att=att,
                             team_ids=team_ids[:, :-1],

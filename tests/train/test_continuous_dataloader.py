@@ -16,17 +16,10 @@ def dummy_h5_data(tmp_path):
     """Create a dummy HDF5 file with known episode structure."""
     file_path = tmp_path / "test_data.h5"
     
-    # 2 Episodes:
-    # Ep 1: 10 steps
-    # Ep 2: 20 steps
-    # Total: 30 steps
-    
+    # 2 Episodes
     ep1_len = 10
     ep2_len = 20
-    
-    # Create granular features
-    # Health: Ep1 = NORM_HEALTH * 1.0, Ep2 = NORM_HEALTH * 2.0
-    # Other features: random/zeros
+    episode_lengths = np.array([ep1_len, ep2_len], dtype=np.int32)
     
     total_steps = 30
     num_ships = 1
@@ -36,8 +29,11 @@ def dummy_h5_data(tmp_path):
     vel = np.zeros((total_steps, num_ships, 2), dtype=np.float32)
     
     health = np.zeros((total_steps, num_ships), dtype=np.float32)
-    health[:ep1_len] = NORM_HEALTH * 1.0
-    health[ep1_len:] = NORM_HEALTH * 2.0
+    
+    current_step = 0
+    for i, ep_len in enumerate(episode_lengths):
+        health[current_step : current_step + ep_len] = NORM_HEALTH * (i + 1.0)
+        current_step += ep_len
     
     power = np.zeros((total_steps, num_ships), dtype=np.float32)
     attitude = np.zeros((total_steps, num_ships, 2), dtype=np.float32)
@@ -49,14 +45,10 @@ def dummy_h5_data(tmp_path):
     actions = np.zeros((30, 3), dtype=np.int32)
     
     # Episode IDs
-    # Ep1 -> ID=1
-    # Ep2 -> ID=2
     ep_ids = np.concatenate([
         np.full((ep1_len,), 1, dtype=np.int32),
         np.full((ep2_len,), 2, dtype=np.int32)
     ])
-    
-    episode_lengths = np.array([ep1_len, ep2_len], dtype=np.int32)
     
     with h5py.File(file_path, "w") as f:
         f.create_dataset("position", data=pos)
@@ -95,10 +87,12 @@ def test_cross_episode_slice(dummy_h5_data):
     # slice_data is (4, N, 15)
     
     # Index 1 is Health
-    assert torch.allclose(slice_data[0, 0, 1], torch.tensor(1.0))
-    assert torch.allclose(slice_data[1, 0, 1], torch.tensor(1.0))
-    assert torch.allclose(slice_data[2, 0, 1], torch.tensor(2.0))
-    assert torch.allclose(slice_data[3, 0, 1], torch.tensor(2.0))
+    # slice_data is bfloat16, cast to float for comparison
+    slice_data_f = slice_data.float()
+    assert torch.allclose(slice_data_f[0, 0, 1], torch.tensor(1.0))
+    assert torch.allclose(slice_data_f[1, 0, 1], torch.tensor(1.0))
+    assert torch.allclose(slice_data_f[2, 0, 1], torch.tensor(2.0))
+    assert torch.allclose(slice_data_f[3, 0, 1], torch.tensor(2.0))
 
 def test_continuous_view_masks(dummy_h5_data):
     dataset = UnifiedEpisodeDataset(dummy_h5_data)

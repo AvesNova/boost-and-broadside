@@ -8,7 +8,7 @@ import numpy as np
 
 from env2.collector import AsyncCollector
 from train.unified_dataset import UnifiedEpisodeDataset
-from core.constants import NORM_HEALTH
+from core.constants import NORM_HEALTH, NORM_VELOCITY
 
 @pytest.fixture
 def temp_h5_path(tmp_path):
@@ -82,8 +82,8 @@ def test_granular_storage_cycle(temp_h5_path):
     # UnifiedEpisodeDataset.get_slice("tokens", start, end)
     tokens = ds.get_slice("tokens", 0, total_steps)
     
-    assert tokens.shape == (total_steps, max_ships, 15)
-    assert tokens.dtype == torch.float32
+    assert tokens.shape == (total_steps, max_ships, 9)
+    assert tokens.dtype == torch.bfloat16
     
     # Verify content reconstruction
     # Let's check Health (Index 1)
@@ -91,28 +91,25 @@ def test_granular_storage_cycle(temp_h5_path):
     
     with h5py.File(temp_h5_path, "r") as f:
         file_health = torch.from_numpy(f["health"][:]).float()
-        token_health = tokens[..., 1]
+        token_health = tokens[..., 1].float()
         
         # f16 vs f32 tolerance
         # f16 vs f32 tolerance
         # Tokens are health / NORM_HEALTH
-        assert torch.allclose(file_health / NORM_HEALTH, token_health, atol=1e-3)
+        assert torch.allclose(file_health / NORM_HEALTH, token_health, atol=1e-2)
         
-        # Check Position (Index 3,4)
-        # Tokens 3,4 are Sin/Cos of X
-        # Tokens 5,6 are Sin/Cos of Y
-        file_pos = torch.from_numpy(f["position"][:]).float()
-        token_pos_sin_x = tokens[..., 3]
-        token_pos_cos_x = tokens[..., 4]
+        # Check Velocity (Index 3,4)
+        # New Layout: Vel is at 3,4
+        file_vel = torch.from_numpy(f["velocity"][:]).float()
+        token_vel_x = tokens[..., 3].float()
+        token_vel_y = tokens[..., 4].float()
         
-        # Default world size in UnifiedEpisodeDataset is 1024.0
-        world_size = 1024.0
+        # Verify normalization
+        expected_vel_x = file_vel[..., 0] / NORM_VELOCITY
+        expected_vel_y = file_vel[..., 1] / NORM_VELOCITY
         
-        expected_sin_x = torch.sin(2 * torch.pi * file_pos[..., 0] / world_size)
-        expected_cos_x = torch.cos(2 * torch.pi * file_pos[..., 0] / world_size)
-        
-        assert torch.allclose(expected_sin_x, token_pos_sin_x, atol=1e-3)
-        assert torch.allclose(expected_cos_x, token_pos_cos_x, atol=1e-3)
+        assert torch.allclose(expected_vel_x, token_vel_x, atol=1e-2)
+        assert torch.allclose(expected_vel_y, token_vel_y, atol=1e-2)
 
     print("Test Passed!")
 

@@ -15,7 +15,7 @@ from enum import IntEnum
 # built to support up to these limits.
 
 MAX_SHIPS = 8       # Maximum number of ships per team (for fixed-size buffers)
-STATE_DIM = 15      # Dimension of the state token (tokenizer output)
+STATE_DIM = 9       # Dimension of the state token (tokenizer output)
 ACTION_DIM = 3      # Number of discrete action components (Power, Turn, Shoot)
 
 # =============================================================================

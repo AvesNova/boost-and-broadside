@@ -104,6 +104,9 @@ class ContinuousView(Dataset):
         # Or we can compute it here.
         # Let's stick to returning raw data and a 'validity' mask.
         
+        # Fetch Position (separate from tokens now)
+        pos = self.dataset.get_cross_episode_slice("position", global_start, self.seq_len)
+
         return {
             "states": tokens,
             "actions": actions,
@@ -111,5 +114,6 @@ class ContinuousView(Dataset):
             "seq_idx": seq_idx,
             "reset_mask": reset_mask,
             "loss_mask": loss_mask,
-            "action_masks": action_masks
+            "action_masks": action_masks,
+            "pos": pos
         }

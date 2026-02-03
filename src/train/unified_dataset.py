@@ -12,6 +12,7 @@ from core.constants import (
 )
 
 
+
 log = logging.getLogger(__name__)
 
 
@@ -86,12 +87,12 @@ class UnifiedEpisodeDataset:
 
     def _assemble_tokens(self, start: int, end: int) -> torch.Tensor:
         """Assembles the monolithic token tensor from granular features."""
-        # Load components (cast to float32 immediately)
+        # Load components (cast to float32 immediately then to bf16)
         # We access h5_file directly to avoid recursion
         f = self.h5_file
         
         # Features with shapes (T, N, 2) or (T, N)
-        pos = torch.from_numpy(f["position"][start:end]).float()
+        # We DO NOT load position here anymore for tokens
         vel = torch.from_numpy(f["velocity"][start:end]).float()
         health = torch.from_numpy(f["health"][start:end]).float()
         power = torch.from_numpy(f["power"][start:end]).float()
@@ -100,10 +101,9 @@ class UnifiedEpisodeDataset:
         shoot = torch.from_numpy(f["is_shooting"][start:end]).float()
         team = torch.from_numpy(f["team_ids"][start:end]).float()
         
-        # Allocate tokens (T, N, 15)
-        # pos shape is (T, N, 2)
-        T, N, _ = pos.shape
-        tokens = torch.zeros((T, N, 15), dtype=torch.float32)
+        # Allocate tokens (T, N, 9) - bf16
+        T, N, _ = vel.shape
+        tokens = torch.zeros((T, N, 9), dtype=torch.bfloat16)
         
         # 0: Team
         tokens[..., 0] = team
@@ -112,43 +112,22 @@ class UnifiedEpisodeDataset:
         # 2: Power
         tokens[..., 2] = power / NORM_POWER
         
-        # 3-6: Position (Sin/Cos Encoding)
-        # Assuming world size from init
-        x_norm = pos[..., 0] / self.world_size[0]
-        y_norm = pos[..., 1] / self.world_size[1]
+        # 3-4: Vel
+        tokens[..., 3] = vel[..., 0] / NORM_VELOCITY
+        tokens[..., 4] = vel[..., 1] / NORM_VELOCITY
         
-        tokens[..., 3] = torch.sin(2 * torch.pi * x_norm)
-        tokens[..., 4] = torch.cos(2 * torch.pi * x_norm)
-        tokens[..., 5] = torch.sin(2 * torch.pi * y_norm)
-        tokens[..., 6] = torch.cos(2 * torch.pi * y_norm)
+        # 5, 6: Attitude
+        tokens[..., 5] = att[..., 0]
+        tokens[..., 6] = att[..., 1]
         
-        # 7-8: Vel
-        tokens[..., 7] = vel[..., 0] / NORM_VELOCITY
-        tokens[..., 8] = vel[..., 1] / NORM_VELOCITY
+        # 7: Shooting
+        tokens[..., 7] = shoot
         
-        # 9, 10: Attitude
-        tokens[..., 9] = att[..., 0]
-        tokens[..., 10] = att[..., 1]
-        
-        # 11: Shooting
-        tokens[..., 11] = shoot
-        
-        # 12-13: Acceleration (Not saved yet? Or maybe we can derive or save it?)
-        # For now, if we don't save acceleration, we can zero it or duplicate something
-        # Wait, AsyncCollector saves what?
-        # AsyncCollector saves: pos, vel, health, power, attitude, ang_vel, is_shooting.
-        # It does NOT save acceleration.
-        # But tokenizer.py uses "acceleration".
-        # If we don't have it, zero it?
-        # tokenizer approximates max accel as const? No, it reads obs["acceleration"].
-        # Physics engine computes accel.
-        # If we really need accel, we must save it. 
-        # For now, let's leave it 0.
-        
-        # 14: Ang Vel
-        tokens[..., 14] = ang / NORM_ANGULAR_VELOCITY
+        # 8: Ang Vel
+        tokens[..., 8] = ang / NORM_ANGULAR_VELOCITY
         
         return tokens
+
         
     def get_cross_episode_slice(self, dataset_name: str, global_start: int, length: int) -> torch.Tensor:
         """
@@ -269,6 +248,7 @@ class ShortView(BaseView):
 
         # Slice using helper
         seq_tokens = self.dataset.get_slice("tokens", abs_start, abs_end)
+        seq_pos = self.dataset.get_slice("position", abs_start, abs_end).float() # Explicitly float32
         seq_input_actions = self._get_shifted_actions_from_full(
             abs_start, abs_end, start_offset
         )
@@ -305,6 +285,11 @@ class ShortView(BaseView):
                 pad_len, *seq_tokens.shape[1:], dtype=seq_tokens.dtype
             )
             seq_tokens = torch.cat([seq_tokens, token_pad], dim=0)
+
+            pos_pad = torch.zeros(
+                pad_len, *seq_pos.shape[1:], dtype=seq_pos.dtype
+            )
+            seq_pos = torch.cat([seq_pos, pos_pad], dim=0)
 
             action_pad = torch.zeros(
                 pad_len, *seq_input_actions.shape[1:], dtype=seq_input_actions.dtype
@@ -354,6 +339,7 @@ class ShortView(BaseView):
             seq_masks,
             seq_skills,
             seq_team_ids,
+            seq_pos,
         )
 
 
@@ -385,6 +371,7 @@ class LongView(BaseView):
         abs_end = abs_start + self.seq_len
 
         seq_tokens = self.dataset.get_slice("tokens", abs_start, abs_end)
+        seq_pos = self.dataset.get_slice("position", abs_start, abs_end).float() # Explicitly float32
         seq_input_actions = self._get_shifted_actions_from_full(
             abs_start, abs_end, start_offset
         )
@@ -423,4 +410,5 @@ class LongView(BaseView):
             seq_masks,
             seq_skills,
             seq_team_ids,
+            seq_pos,
         )

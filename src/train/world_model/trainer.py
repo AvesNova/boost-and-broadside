@@ -222,18 +222,34 @@ class Trainer:
         # So check mask[1:]
         loss_mask_slice = loss_mask[:, 1:]
         
-        # Pos/Vel/Att for Relational Encoder
-        # states: (B, T, N, D). Indices 3,4=Pos, 5,6=Vel, 10,11=Att.
-        pos = input_states[..., 3:5]
-        vel = input_states[..., 5:7]
-        att = input_states[..., 10:12]
+        # Pos is now explicitly passed from dataset (float32)
+        pos = batch_data["pos"].to(self.device, non_blocking=True)[:, :-1]
+        
+        # Vel/Att from tokens
+        # New Layout: Team(0), Health(1), Power(2), Vel(3,4), Att(5,6), Shoot(7), AngVel(8)
+        vel = input_states[..., 3:5]
+        att = input_states[..., 5:7]
 
         # Alive Mask (Health > 0, Health is at index 1)
         alive = input_states[..., 1] > 0
         target_alive = target_states[..., 1] > 0
         
+        # Cast inputs if AMP is disabled (e.g. CPU training with bfloat16 data)
+        # Linear layers on CPU might not support bf16 inputs with f32 weights without autocast?
+        # Actually PyTorch 2.x supports it but let's be safe.
+        # DEBUG
+        # print(f"DEBUG Trainer: use_amp={self.use_amp}, input_states.dtype={input_states.dtype}")
+        
+        if not self.use_amp and input_states.dtype == torch.bfloat16:
+             print("DEBUG Trainer: Casting to float32")
+             input_states = input_states.float()
+             target_states = target_states.float()
+             pos = pos.float()
+             vel = vel.float()
+             att = att.float()
+
         # Forward & Loss
-        with torch.amp.autocast(device_type=self.device.type, dtype=torch.float16, enabled=self.use_amp):
+        with torch.amp.autocast(device_type=self.device.type, dtype=torch.bfloat16, enabled=self.use_amp):
              pred_states, pred_actions = self.model(
                 state=input_states,
                 prev_action=input_actions,
