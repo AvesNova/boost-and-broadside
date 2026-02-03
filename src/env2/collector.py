@@ -132,6 +132,13 @@ class AsyncCollector:
             
             h5_file.create_dataset("tokens", (0, self.max_ships, 15), maxshape=(None, self.max_ships, 15), dtype="f4", chunks=(chunk_size, self.max_ships, 15))
             h5_file.create_dataset("actions", (0, self.max_ships, 3), maxshape=(None, self.max_ships, 3), dtype="u1", chunks=(chunk_size, self.max_ships, 3))
+            
+            # New Datasets
+            h5_file.create_dataset("expert_actions", (0, self.max_ships, 3), maxshape=(None, self.max_ships, 3), dtype="u1", chunks=(chunk_size, self.max_ships, 3))
+            h5_file.create_dataset("episode_ids", (0,), maxshape=(None,), dtype="i8", chunks=(chunk_size,))
+            h5_file.create_dataset("agent_skills", (0,), maxshape=(None,), dtype="f4", chunks=(chunk_size,))
+            h5_file.create_dataset("team_ids", (0,), maxshape=(None,), dtype="i8", chunks=(chunk_size,))
+
             h5_file.create_dataset("rewards", (0, self.max_ships), maxshape=(None, self.max_ships), dtype="f4", chunks=(chunk_size, self.max_ships))
             h5_file.create_dataset("returns", (0, self.max_ships), maxshape=(None, self.max_ships), dtype="f4", chunks=(chunk_size, self.max_ships))
             h5_file.create_dataset("action_masks", (0, self.max_ships), maxshape=(None, self.max_ships), dtype="bool", chunks=(chunk_size, self.max_ships))
@@ -181,9 +188,15 @@ class AsyncCollector:
         # Resize Datasets
         h5_file["tokens"].resize((current_size + total_steps, self.max_ships, 15))
         h5_file["actions"].resize((current_size + total_steps, self.max_ships, 3))
+        h5_file["expert_actions"].resize((current_size + total_steps, self.max_ships, 3))
         h5_file["rewards"].resize((current_size + total_steps, self.max_ships))
         h5_file["returns"].resize((current_size + total_steps, self.max_ships))
         
+        # New 1D datasets (per timestep)
+        h5_file["episode_ids"].resize((current_size + total_steps,))
+        h5_file["agent_skills"].resize((current_size + total_steps,))
+        h5_file["team_ids"].resize((current_size + total_steps,))
+
         h5_file["episode_lengths"].resize((current_episodes + len(batch),))
         
         # Write Data
@@ -195,8 +208,25 @@ class AsyncCollector:
             
             h5_file["tokens"][write_idx : write_idx + length] = item["tokens"].numpy()
             h5_file["actions"][write_idx : write_idx + length] = item["actions"].numpy()
+            
+            # Expert Actions (Same as actions for scripted collector)
+            h5_file["expert_actions"][write_idx : write_idx + length] = item["actions"].numpy()
+
             h5_file["rewards"][write_idx : write_idx + length] = item["rewards"].numpy()
             h5_file["returns"][write_idx : write_idx + length] = item["returns"].numpy()
+            
+            # New Metadata
+            # Episode ID: Use global tracking. 
+            # Note: We need to assign a unique global ID for this episode.
+            # We can use (ep_idx) as the unique ID since ep_idx increments monotonically (0 to N) across the file.
+            global_ep_id = ep_idx 
+            
+            # Fill episode_ids array with the same ID for this episode duration
+            h5_file["episode_ids"][write_idx : write_idx + length] = global_ep_id
+            
+            # Default Skills (1.0) and Team (0)
+            h5_file["agent_skills"][write_idx : write_idx + length] = 1.0
+            h5_file["team_ids"][write_idx : write_idx + length] = 0
             
             h5_file["episode_lengths"][ep_idx] = length
             

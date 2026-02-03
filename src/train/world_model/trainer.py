@@ -31,7 +31,7 @@ class Trainer:
         self.run_dir = run_dir
         
         self.epochs = cfg.world_model.epochs
-        self.batch_ratio = cfg.world_model.batch_ratio
+
         self.acc_steps = cfg.world_model.get("gradient_accumulation_steps", 1)
         self.use_amp = cfg.train.get("amp", False) and device.type == 'cuda'
         
@@ -57,21 +57,25 @@ class Trainer:
         w_pwr = self.loss_cfg.get("weighted_loss_power", 0.5)
         
         # Calculate weights 
-        self.w_power = compute_class_weights(counts["power"], cap=w_cap, power=w_pwr).to(device)
-        self.w_power = normalize_weights(self.w_power, counts["power"])
+        # Calculate weights 
+        w_power_full = compute_class_weights(counts["power"], cap=w_cap, power=w_pwr)
+        self.w_power = w_power_full[:3].to(device)
+        self.w_power = normalize_weights(self.w_power, counts["power"][:3])
         
-        self.w_turn = apply_turn_exceptions(compute_class_weights(counts["turn"], cap=w_cap, power=w_pwr)).to(device)
-        self.w_turn = normalize_weights(self.w_turn, counts["turn"])
+        w_turn_full = apply_turn_exceptions(compute_class_weights(counts["turn"], cap=w_cap, power=w_pwr))
+        self.w_turn = w_turn_full[:7].to(device)
+        self.w_turn = normalize_weights(self.w_turn, counts["turn"][:7])
         
-        self.w_shoot = compute_class_weights(counts["shoot"], cap=w_cap, power=w_pwr).to(device)
-        self.w_shoot = normalize_weights(self.w_shoot, counts["shoot"])
+        w_shoot_full = compute_class_weights(counts["shoot"], cap=w_cap, power=w_pwr)
+        self.w_shoot = w_shoot_full[:2].to(device)
+        self.w_shoot = normalize_weights(self.w_shoot, counts["shoot"][:2])
         
-        log.info(f"Action Counts - Power: {counts['power']}")
-        log.info(f"Action Counts - Turn:  {counts['turn']}")
-        log.info(f"Action Counts - Shoot: {counts['shoot']}")
-        log.info(f"Class Weights - Power: {self.w_power}")
-        log.info(f"Class Weights - Turn:  {self.w_turn}")
-        log.info(f"Class Weights - Shoot: {self.w_shoot}")
+        log.info(f"Action Counts - Power: {counts['power'][:3]}")
+        log.info(f"Action Counts - Turn:  {counts['turn'][:7]}")
+        log.info(f"Action Counts - Shoot: {counts['shoot'][:2]}")
+        log.info(f"Class Weights - Power: {self.w_power.tolist()}")
+        log.info(f"Class Weights - Turn:  {self.w_turn.tolist()}")
+        log.info(f"Class Weights - Shoot: {self.w_shoot.tolist()}")
 
     def _get_current_params(self, step):
         """Calculate current values for scheduled parameters."""
@@ -119,11 +123,8 @@ class Trainer:
             "min_skill": curr_skill
         }
 
-    def train(self, train_loader, train_long_loader=None, val_loader=None, val_long_loader=None):
+    def train(self, train_loader, val_loader=None):
         """Main training loop."""
-        
-        # New MambaBB Pipeline uses only train_loader and val_loader
-        # Ignore long loaders if passed as None
         
         sched_cfg = self.cfg.world_model.get("scheduler", None)
         is_range_test = sched_cfg and "range_test" in sched_cfg.type
@@ -188,6 +189,7 @@ class Trainer:
         # Keys: states, actions, seq_idx, reset_mask, loss_mask
         states = batch_data["states"].to(self.device, non_blocking=True)
         actions = batch_data["actions"].to(self.device, non_blocking=True)
+        team_ids = batch_data["team_ids"].to(self.device, non_blocking=True)
         seq_idx = batch_data["seq_idx"].to(self.device, non_blocking=True)
         loss_mask = batch_data["loss_mask"].to(self.device, non_blocking=True)
         
@@ -220,14 +222,15 @@ class Trainer:
         # So check mask[1:]
         loss_mask_slice = loss_mask[:, 1:]
         
-        # Pos/Vel for Relational Encoder
-        # states: (B, T, N, D). Indices 3,4=Pos, 5,6=Vel.
-        # We need Pos_t, Vel_t (from input_states)
+        # Pos/Vel/Att for Relational Encoder
+        # states: (B, T, N, D). Indices 3,4=Pos, 5,6=Vel, 10,11=Att.
         pos = input_states[..., 3:5]
         vel = input_states[..., 5:7]
+        att = input_states[..., 10:12]
 
         # Alive Mask (Health > 0, Health is at index 1)
         alive = input_states[..., 1] > 0
+        target_alive = target_states[..., 1] > 0
         
         # Forward & Loss
         with torch.amp.autocast(device_type=self.device.type, dtype=torch.float16, enabled=self.use_amp):
@@ -236,20 +239,27 @@ class Trainer:
                 prev_action=input_actions,
                 pos=pos,
                 vel=vel,
+                att=att,
+                team_ids=team_ids[:, :-1],
                 seq_idx=seq_idx[:, :-1], # Match temporal dim
                 alive=alive,
                 reset_mask=batch_data["reset_mask"][:, 1:].to(self.device, non_blocking=True) if "reset_mask" in batch_data else None
              )
              
-             loss, state_loss, action_loss, relational_loss, metrics = self.model.get_loss(
+             loss, state_loss, action_loss, _, metrics = self.model.get_loss(
                 pred_states=pred_states,
                 pred_actions=pred_actions,
                 target_states=target_states,
                 target_actions=target_actions,
                 loss_mask=loss_mask_slice,
                 lambda_state=self.cfg.world_model.get("lambda_state", 1.0),
-                lambda_action=1.0, # Weighted internally or here?
-                lambda_relational=self.cfg.world_model.get("lambda_relational", 0.0)
+                lambda_power=self.cfg.world_model.get("lambda_power", 0.05),
+                lambda_turn=self.cfg.world_model.get("lambda_turn", 0.05),
+                lambda_shoot=self.cfg.world_model.get("lambda_shoot", 0.05),
+                weights_power=self.w_power,
+                weights_turn=self.w_turn,
+                weights_shoot=self.w_shoot,
+                target_alive=target_alive
              )
 
         # Backward

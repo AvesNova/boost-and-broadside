@@ -55,6 +55,7 @@ class Validator:
                     # Unpack Dict
                     states = batch["states"].to(self.device)
                     actions = batch["actions"].to(self.device)
+                    team_ids = batch["team_ids"].to(self.device)
                     loss_mask = batch["loss_mask"].to(self.device)
                     seq_idx = batch["seq_idx"].to(self.device)
                     
@@ -69,6 +70,10 @@ class Validator:
                     
                     pos = input_states[..., 3:5]
                     vel = input_states[..., 5:7]
+                    att = input_states[..., 10:12]
+                    
+                    alive = input_states[..., 1] > 0
+                    target_alive = target_states[..., 1] > 0
 
                     with torch.amp.autocast(device_type='cuda', dtype=torch.float16, enabled=self.amp):
                         pred_states, pred_actions = model_to_use(
@@ -76,7 +81,10 @@ class Validator:
                             prev_action=input_actions, 
                             pos=pos,
                             vel=vel,
-                            seq_idx=seq_idx[:, :-1]
+                            att=att,
+                            team_ids=team_ids[:, :-1],
+                            seq_idx=seq_idx[:, :-1],
+                            alive=alive
                         )
 
                         loss, _, _, _, _ = model_to_use.get_loss(
@@ -86,8 +94,10 @@ class Validator:
                            target_actions=target_actions,
                            loss_mask=loss_mask_slice,
                            lambda_state=self.cfg.world_model.get("lambda_state", 1.0),
-                           lambda_action=1.0,
-                           lambda_relational=self.cfg.world_model.get("lambda_relational", 0.0)
+                           lambda_power=self.cfg.world_model.get("lambda_power", 0.05),
+                           lambda_turn=self.cfg.world_model.get("lambda_turn", 0.05),
+                           lambda_shoot=self.cfg.world_model.get("lambda_shoot", 0.05),
+                           target_alive=target_alive
                         )
                     
                     val_loss += loss

@@ -85,7 +85,7 @@ train:
   use_bc: false
   use_rl: false
   
-  bc_data_path: data/lean_data.h5
+  bc_data_path: data/collection_v1/aggregated_data.h5
   
   model:
     transformer:
@@ -127,16 +127,9 @@ train:
     max_grad_norm: 0.5
 
 world_model:
-  use_relational_head: true
-  embed_dim: 128
+  embed_dim: 256
   n_layers: 6
   n_heads: 4
-  context_len: 96
-  n_ships: 8
-  mask_ratio: 0.0
-  noise_scale: 0.01
-  input_noise_ratio: 1.0
-  input_noise_scale: 0.01
   learning_rate: 1.0e-5
   epochs: 1000
   lambda_state: 1.0
@@ -144,7 +137,6 @@ world_model:
   lambda_power: 0.05
   lambda_turn: 0.05
   lambda_shoot: 0.05
-  lambda_action: 0.05 # Deprecated, kept for compat if needed but preferred split
   lambda_relational: 0.1
 
   curriculum:
@@ -167,7 +159,7 @@ world_model:
     weighted_loss_cap: 1000.0
 
   scheduler:
-    type: "warmup_constant" # Options: "constant", "warmup_constant", "linear_range_test", "exponential_range_test"
+    type: "warmup_constant"
     
     warmup:
       steps: 5000
@@ -178,19 +170,13 @@ world_model:
       start_lr: 1e-7
       end_lr: 1.0
   
-  # Mixed Batch Training
-  short_batch_size: 128
-  long_batch_size: 32
-  short_batch_len: 32
-  long_batch_len: 128
-  batch_ratio: 4
-  gradient_accumulation_steps: 5
+  # Training Parameters
+  batch_size: 16
+  seq_len: 256
+  gradient_accumulation_steps: 8
   use_sobol: false
   
-  rope_base: 10000.0
-  rope_max_seq_len: 256
-  
-  num_workers: 8
+  num_workers: 4
   prefetch_factor: 4
   swa_start_epoch: 2
 

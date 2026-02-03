@@ -114,12 +114,12 @@ def get_data_loaders(cfg: DictConfig, data_path: str, min_skill: float = 0.0):
     
     train_loader, val_loader = create_continuous_data_loader(
         data_path,
-        batch_size=cfg.world_model.short_batch_size, # Use short batch size as default
-        seq_len=cfg.world_model.get("seq_len", 1024),
+        batch_size=cfg.world_model.batch_size,
+        seq_len=cfg.world_model.get("seq_len", 96),
         validation_split=0.2,
         num_workers=cfg.world_model.get("num_workers", 4),
         world_size=tuple(cfg.environment.world_size),
         min_skill=min_skill
     )
     
-    return train_loader, None, val_loader, None
+    return train_loader, val_loader

@@ -61,15 +61,13 @@ def train_world_model(cfg: DictConfig) -> None:
     optimizer = create_optimizer(model, cfg)
     
     # Loaders
-    train_short, train_long, val_short, val_long = get_data_loaders(cfg, data_path)
+    train_loader, val_loader = get_data_loaders(cfg, data_path)
     
     # Calculate total steps for scheduler estimate
     acc_steps = cfg.world_model.get("gradient_accumulation_steps", 1)
-    short_batches = len(train_short)
-    ratio = cfg.world_model.batch_ratio
-    prob_short = ratio / (ratio + 1)
+    train_batches = len(train_loader)
     # Estimate total micro steps
-    total_est_steps = int(short_batches / prob_short / acc_steps) * cfg.world_model.epochs
+    total_est_steps = int(train_batches / acc_steps) * cfg.world_model.epochs
     
     scheduler = create_scheduler(optimizer, cfg, total_est_steps)
     
@@ -103,7 +101,7 @@ def train_world_model(cfg: DictConfig) -> None:
     
     # 6. Run
     try:
-        trainer.train(train_short, train_long, val_short, val_long)
+        trainer.train(train_loader, val_loader)
     finally:
         logger.close()
         

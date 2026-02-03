@@ -49,6 +49,11 @@ class ContinuousView(Dataset):
         actions = self.dataset.get_cross_episode_slice("actions", global_start, self.seq_len)
         episode_ids = self.dataset.get_cross_episode_slice("episode_ids", global_start, self.seq_len)
         
+        if self.dataset.has_dataset("team_ids"):
+             team_ids = self.dataset.get_cross_episode_slice("team_ids", global_start, self.seq_len)
+        else:
+             team_ids = torch.zeros(self.seq_len, dtype=torch.int64)
+
         # Masks if they exist
         if self.dataset.has_dataset("action_masks"):
              action_masks = self.dataset.get_cross_episode_slice("action_masks", global_start, self.seq_len)
@@ -102,6 +107,7 @@ class ContinuousView(Dataset):
         return {
             "states": tokens,
             "actions": actions,
+            "team_ids": team_ids,
             "seq_idx": seq_idx,
             "reset_mask": reset_mask,
             "loss_mask": loss_mask,

@@ -48,11 +48,12 @@ class RelationalEncoder(nn.Module):
             nn.Linear(128, config.d_model) for _ in range(config.n_layers + 1)
         ])
 
-    def compute_analytic_features(self, pos, vel, world_size=(1024.0, 1024.0)):
+    def compute_analytic_features(self, pos, vel, att=None, world_size=(1024.0, 1024.0)):
         """
-        Compute analytic edge features from Pos/Vel.
+        Compute analytic edge features from Pos/Vel/Attitude.
         Pos: (B, T, N, 2)
         Vel: (B, T, N, 2)
+        Att: (B, T, N, 2) [cos, sin]
         """
         # Delta Pos (Wrapped)
         d_pos = pos.unsqueeze(-2) - pos.unsqueeze(-3) # (..., N, N, 2)
@@ -77,7 +78,30 @@ class RelationalEncoder(nn.Module):
         closing = (d_vel * d_pos).sum(dim=-1, keepdim=True) / dist
         inv_dist = 1.0 / (dist + 0.1)
         log_dist = torch.log(dist + 1.0)
+        tti = dist / (closing.clamp(min=1e-3))
         
+        # Relational Geometry (ATA, AA, HCA)
+        if att is not None:
+             # att is (..., N, 2) [cos, sin]
+             att_i = att.unsqueeze(-2) # (..., N, 1, 2)
+             att_j = att.unsqueeze(-3) # (..., 1, N, 2)
+             
+             # ATA: Angle between my heading and target
+             cos_ata = (dir * att_i).sum(dim=-1, keepdim=True)
+             sin_ata = (dir[..., 0] * att_i[..., 1] - dir[..., 1] * att_i[..., 0]).unsqueeze(-1)
+             
+             # AA: Angle between target's heading and me (from target's perspective)
+             # Line of sight from target to me is -dir
+             cos_aa = (-dir * att_j).sum(dim=-1, keepdim=True)
+             sin_aa = (-dir[..., 0] * att_j[..., 1] + dir[..., 1] * att_j[..., 0]).unsqueeze(-1)
+             
+             # HCA: Angle between our headings
+             cos_hca = (att_i * att_j).sum(dim=-1, keepdim=True)
+             sin_hca = (att_i[..., 0] * att_j[..., 1] - att_i[..., 1] * att_j[..., 0]).unsqueeze(-1)
+        else:
+             # Fallback if no attitude provided (e.g. initial steps of dreaming)
+             cos_ata = sin_ata = cos_aa = sin_aa = cos_hca = sin_hca = torch.zeros_like(dist)
+
         # Fourier Encoding of d_pos (Normalized roughly by world size/scale)
         # Scale d_pos to [-PI, PI] range roughly for Fourier
         # World is 1024. 
@@ -91,12 +115,13 @@ class RelationalEncoder(nn.Module):
             fourier_feats.append(torch.cos(scaled_pos * freq))
         fourier = torch.cat(fourier_feats, dim=-1) # (..., 32)
         
-        # Concatenate: 2+2+1+1+1+1+2+1 = 11 Base
+        # Concatenate: 2(pos)+2(vel)+1(dist)+1(inv)+1(speed)+1(close)+2(dir)+1(log)+1(tti) + 6(geom) = 18 Base
         base_features = torch.cat([
-            d_pos, d_vel, dist, inv_dist, rel_speed, closing, dir, log_dist
+            d_pos, d_vel, dist, inv_dist, rel_speed, closing, dir, log_dist, tti,
+            cos_ata, sin_ata, cos_aa, sin_aa, cos_hca, sin_hca
         ], dim=-1)
         
-        features = torch.cat([base_features, fourier], dim=-1) # 11 + 32 = 43
+        features = torch.cat([base_features, fourier], dim=-1) # 18 + 32 = 50
         
         # Pad to 64
         pad_size = self.padded_dim - features.shape[-1]
@@ -105,8 +130,8 @@ class RelationalEncoder(nn.Module):
         
         return features
 
-    def forward(self, pos, vel, layer_idx=None):
-        raw = self.compute_analytic_features(pos, vel)
+    def forward(self, pos, vel, att=None, layer_idx=None):
+        raw = self.compute_analytic_features(pos, vel, att=att)
         trunk_out = self.trunk(raw)
         
         if layer_idx is not None:
@@ -235,22 +260,25 @@ class MambaBB(nn.Module):
         self.dead_embedding = nn.Parameter(torch.zeros(config.input_dim))
         self.reset_embedding = nn.Parameter(torch.zeros(d_model))
         
-        # Re-verify turn dim from previous file content: 
-        # "self.emb_turn = nn.Embedding(7, 64)" (Line 199 in Step 607 diff).
-        # Correctly setting it to 64.
+        # ID and Team Embeddings (Spec 2.A.2)
+        # 8 Ships max, 2 Teams
+        self.ship_id_embed = nn.Embedding(8, d_model)
+        self.team_id_embed = nn.Embedding(2, d_model)
 
-    def forward(self, state, prev_action, pos, vel, seq_idx=None, alive=None, reset_mask=None):
+    def forward(self, state, prev_action, pos, vel, att=None, team_ids=None, seq_idx=None, alive=None, reset_mask=None):
         """
         Forward pass of the MambaBB World Model.
 
         Args:
             state: (B, T, N, D) Intrinsic State Tensor.
             prev_action: (B, T, N, 3) Previous Action (Teacher Forcing).
-            pos: (B, T, N, 2) Position (Complex or R2).
+            pos: (B, T, N, 2) Position.
             vel: (B, T, N, 2) Velocity.
+            att: (B, T, N, 2) Optional Attitude [cos, sin].
+            team_ids: (B, T, N) Optional Team IDs (0 or 1).
             seq_idx: (B, T) Sequence Index for Mamba Kernel Resets (Int32).
             alive: (B, T, N) Optional boolean mask for alive ships.
-            reset_mask: (B, T) Optional boolean mask for episode resets (True at start of new ep).
+            reset_mask: (B, T) Optional boolean mask for episode resets.
 
         Returns:
             pred_states: (B, T, N, D) Predicted Next State (Deltas).
@@ -263,9 +291,11 @@ class MambaBB(nn.Module):
              alive = state[..., 1] > 0
              
         dead_mask = ~alive
-        if dead_mask.any():
-            state = state.clone()
-            state[dead_mask] = self.dead_embedding.to(state.dtype)
+        dead_mask = ~alive
+        # Avoid graph break from .any() and boolean indexing
+        dead_mask_bc = dead_mask.unsqueeze(-1)
+        dead_embedding_bc = self.dead_embedding.to(state.dtype).view(1, 1, 1, -1)
+        state = torch.where(dead_mask_bc, dead_embedding_bc, state)
 
         # 2. Reset Logic (Semantic)
         # Use provided reset_mask (from View) or fallback to inferring from seq_idx
@@ -290,7 +320,15 @@ class MambaBB(nn.Module):
         
         s_emb = self.state_encoder(state_no_pos)
         
-        trunk_out, raw_geo = self.relational_encoder(pos, vel)
+        # Add Identity and Affiliation Embeddings (Spec 2.A.2)
+        if team_ids is not None:
+             s_emb = s_emb + self.team_id_embed(team_ids.long())
+             
+        # Add Ship ID Embed (Identity)
+        ship_ids = torch.arange(num_ships, device=state.device).view(1, 1, num_ships).expand(batch_size, seq_len, -1)
+        s_emb = s_emb + self.ship_id_embed(ship_ids)
+
+        trunk_out, raw_geo = self.relational_encoder(pos, vel, att=att)
         
         # Apply Reset Embedding to State Input
         if reset_mask_bc is not None:
@@ -300,9 +338,9 @@ class MambaBB(nn.Module):
         # Runs first to generate History for Actor
         
         # Embed Action (Teacher Forcing)
-        p = self.emb_power(prev_action[..., 0].long())
-        t = self.emb_turn(prev_action[..., 1].long())
-        s = self.emb_shoot(prev_action[..., 2].long())
+        p = self.emb_power(prev_action[..., 0].long().clamp(0, 2))
+        t = self.emb_turn(prev_action[..., 1].long().clamp(0, 6))
+        s = self.emb_shoot(prev_action[..., 2].long().clamp(0, 1))
         a_emb = torch.cat([p, t, s], dim=-1) # (..., 128)
         
         x_world = self.fusion(torch.cat([s_emb, a_emb], dim=-1))
@@ -366,7 +404,10 @@ class MambaBB(nn.Module):
         return state_pred, action_logits
 
     def get_loss(self, pred_states, pred_actions, target_states, target_actions, loss_mask, 
-                 lambda_state=1.0, lambda_action=1.0, lambda_relational=0.0):
+                 lambda_state=1.0, 
+                 lambda_power=1.0, lambda_turn=1.0, lambda_shoot=1.0,
+                 weights_power=None, weights_turn=None, weights_shoot=None,
+                 target_alive=None):
         """
         Compute MambaBB Loss.
         Masks out transition frames AND dead entities.
@@ -374,6 +415,12 @@ class MambaBB(nn.Module):
         # Loss Mask Handling
         if loss_mask.ndim == 2:
              loss_mask = loss_mask.unsqueeze(-1).expand_as(pred_states[..., 0])
+             
+        # Dead Entity Masking (Spec 5.B)
+        if target_alive is not None:
+             # target_alive: (B, T, N)
+             if target_alive.ndim == 3:
+                  loss_mask = loss_mask & target_alive
              
         # Flatten
         mask_flat = loss_mask.reshape(-1).float()
@@ -386,10 +433,11 @@ class MambaBB(nn.Module):
         # Feature Masking (Spec Section 4 targets only)
         # Exclude: Team(0), Acc(7,8), Attitude(10,11 - Integrated elsewhere)
         D = mse.shape[-1]
-        feature_mask = torch.ones(D, device=mse.device)
-        feature_mask[0] = 0.0      # Team (Constant)
-        feature_mask[7:9] = 0.0    # Acc (Unused input)
-        feature_mask[10:12] = 0.0  # Attitude (Not a target, integrated from AngVel)
+        feature_mask = torch.zeros(D, device=mse.device)
+        # Targets are: Pos(3,4), Vel(5,6), Health(1), Power(2), AngVel(9), Shooting(12)
+        feature_mask[1:7] = 1.0
+        feature_mask[9] = 1.0
+        feature_mask[12] = 1.0
         
         # Apply mask
         s_feature_loss = (mse * feature_mask).sum(dim=-1) / (feature_mask.sum() + 1e-6)
@@ -403,23 +451,29 @@ class MambaBB(nn.Module):
         l_t = pred_actions[..., 3:10]
         l_s = pred_actions[..., 10:12]
         
-        t_p = target_actions[..., 0].long()
-        t_t = target_actions[..., 1].long()
-        t_s = target_actions[..., 2].long()
+        t_p = target_actions[..., 0].long().clamp(0, 2)
+        t_t = target_actions[..., 1].long().clamp(0, 6)
+        t_s = target_actions[..., 2].long().clamp(0, 1)
         
-        loss_p = F.cross_entropy(l_p.reshape(-1, 3), t_p.reshape(-1), reduction='none')
-        loss_t = F.cross_entropy(l_t.reshape(-1, 7), t_t.reshape(-1), reduction='none')
-        loss_s = F.cross_entropy(l_s.reshape(-1, 2), t_s.reshape(-1), reduction='none')
+        loss_p = F.cross_entropy(l_p.reshape(-1, 3), t_p.reshape(-1), weight=weights_power, reduction='none')
+        loss_t = F.cross_entropy(l_t.reshape(-1, 7), t_t.reshape(-1), weight=weights_turn, reduction='none')
+        loss_s = F.cross_entropy(l_s.reshape(-1, 2), t_s.reshape(-1), weight=weights_shoot, reduction='none')
         
-        a_loss_raw = (loss_p + loss_t + loss_s)
-        a_loss = (a_loss_raw * mask_flat).sum() / denom
+        a_loss_p = (loss_p * mask_flat).sum() / denom
+        a_loss_t = (loss_t * mask_flat).sum() / denom
+        a_loss_s = (loss_s * mask_flat).sum() / denom
         
-        total_loss = (lambda_state * s_loss) + (lambda_action * a_loss)
+        total_loss = (lambda_state * s_loss) + \
+                     (lambda_power * a_loss_p) + \
+                     (lambda_turn * a_loss_t) + \
+                     (lambda_shoot * a_loss_s)
         
         metrics = {
              "loss": total_loss.item(),
              "state_loss": s_loss.item(),
-             "action_loss": a_loss.item()
+             "action_loss_power": a_loss_p.item(),
+             "action_loss_turn": a_loss_t.item(),
+             "action_loss_shoot": a_loss_s.item()
         }
         
-        return total_loss, s_loss, a_loss, torch.tensor(0.0), metrics
+        return total_loss, s_loss, (a_loss_p + a_loss_t + a_loss_s), torch.tensor(0.0), metrics
