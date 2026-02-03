@@ -164,7 +164,7 @@ class AsyncCollector:
             h5_file.attrs["max_ships"] = self.max_ships
             h5_file.attrs["token_dim"] = 15 # Kept for compatibility if we reconstruct
             
-            h5_file.create_dataset("episode_lengths", (0,), maxshape=(None,), dtype="i8")
+            h5_file.create_dataset("episode_lengths", (0,), maxshape=(None,), dtype="i8", compression="lzf")
 
             chunk_size = 1024 * 10
             
@@ -175,6 +175,7 @@ class AsyncCollector:
                 maxshape=(None, self.max_ships, 2),
                 dtype="f4",
                 chunks=(chunk_size, self.max_ships, 2),
+                compression="lzf",
             )
             h5_file.create_dataset(
                 "velocity",
@@ -182,6 +183,7 @@ class AsyncCollector:
                 maxshape=(None, self.max_ships, 2),
                 dtype="f2", # float16
                 chunks=(chunk_size, self.max_ships, 2),
+                compression="lzf",
             )
             h5_file.create_dataset(
                 "health",
@@ -189,6 +191,7 @@ class AsyncCollector:
                 maxshape=(None, self.max_ships),
                 dtype="f2",
                 chunks=(chunk_size, self.max_ships),
+                compression="lzf",
             )
             h5_file.create_dataset(
                 "power",
@@ -196,6 +199,7 @@ class AsyncCollector:
                 maxshape=(None, self.max_ships),
                 dtype="f2",
                 chunks=(chunk_size, self.max_ships),
+                compression="lzf",
             )
             h5_file.create_dataset(
                 "attitude",
@@ -203,6 +207,7 @@ class AsyncCollector:
                 maxshape=(None, self.max_ships, 2),
                 dtype="f2",
                 chunks=(chunk_size, self.max_ships, 2),
+                compression="lzf",
             )
             h5_file.create_dataset(
                 "ang_vel",
@@ -210,6 +215,7 @@ class AsyncCollector:
                 maxshape=(None, self.max_ships),
                 dtype="f2",
                 chunks=(chunk_size, self.max_ships),
+                compression="lzf",
             )
             h5_file.create_dataset(
                 "is_shooting",
@@ -217,6 +223,7 @@ class AsyncCollector:
                 maxshape=(None, self.max_ships),
                 dtype="u1", # bool/uint8
                 chunks=(chunk_size, self.max_ships),
+                compression="lzf",
             )
             h5_file.create_dataset(
                 "team_ids",
@@ -224,6 +231,7 @@ class AsyncCollector:
                 maxshape=(None, self.max_ships),
                 dtype="u1", # int8/uint8 - 0 or 1
                 chunks=(chunk_size, self.max_ships),
+                compression="lzf",
             )
 
             # --- Standard Datasets ---
@@ -233,6 +241,7 @@ class AsyncCollector:
                 maxshape=(None, self.max_ships, 3),
                 dtype="u1",
                 chunks=(chunk_size, self.max_ships, 3),
+                compression="lzf",
             )
 
             h5_file.create_dataset(
@@ -241,14 +250,16 @@ class AsyncCollector:
                 maxshape=(None, self.max_ships, 3),
                 dtype="u1",
                 chunks=(chunk_size, self.max_ships, 3),
+                compression="lzf",
             )
-            h5_file.create_dataset("episode_ids", (0,), maxshape=(None,), dtype="i8", chunks=(chunk_size,))
+            h5_file.create_dataset("episode_ids", (0,), maxshape=(None,), dtype="i8", chunks=(chunk_size,), compression="lzf")
             h5_file.create_dataset(
                 "agent_skills",
                 (0, self.max_ships),
                 maxshape=(None, self.max_ships),
                 dtype="f4",
                 chunks=(chunk_size, self.max_ships),
+                compression="lzf",
             )
             h5_file.create_dataset(
                 "rewards",
@@ -256,6 +267,7 @@ class AsyncCollector:
                 maxshape=(None, self.max_ships),
                 dtype="f4",
                 chunks=(chunk_size, self.max_ships),
+                compression="lzf",
             )
             h5_file.create_dataset(
                 "returns",
@@ -263,6 +275,7 @@ class AsyncCollector:
                 maxshape=(None, self.max_ships),
                 dtype="f4",
                 chunks=(chunk_size, self.max_ships),
+                compression="lzf",
             )
             h5_file.create_dataset(
                 "action_masks",
@@ -270,6 +283,7 @@ class AsyncCollector:
                 maxshape=(None, self.max_ships),
                 dtype="bool",
                 chunks=(chunk_size, self.max_ships),
+                compression="lzf",
             )
 
     def _writer_loop(self):

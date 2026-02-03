@@ -391,6 +391,7 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
                             data=np_data,
                             maxshape=tuple(maxshape),
                             chunks=True,  # Enable chunking for resize
+                            compression="lzf",
                         )
                     else:
                         # Resize and append
