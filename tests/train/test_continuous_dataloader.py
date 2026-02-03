@@ -9,6 +9,7 @@ from pathlib import Path
 from train.unified_dataset import UnifiedEpisodeDataset
 from train.continuous_view import ContinuousView
 from train.data_loader import create_continuous_data_loader
+from core.constants import NORM_HEALTH, STATE_DIM
 
 @pytest.fixture
 def dummy_h5_data(tmp_path):
@@ -23,10 +24,26 @@ def dummy_h5_data(tmp_path):
     ep1_len = 10
     ep2_len = 20
     
-    # Tokens (D=16)
-    tokens_ep1 = np.ones((ep1_len, 16), dtype=np.float32) * 1.0
-    tokens_ep2 = np.ones((ep2_len, 16), dtype=np.float32) * 2.0
-    tokens = np.concatenate([tokens_ep1, tokens_ep2], axis=0) # (30, 16)
+    # Create granular features
+    # Health: Ep1 = NORM_HEALTH * 1.0, Ep2 = NORM_HEALTH * 2.0
+    # Other features: random/zeros
+    
+    total_steps = 30
+    num_ships = 1
+    
+    # Features
+    pos = np.zeros((total_steps, num_ships, 2), dtype=np.float32)
+    vel = np.zeros((total_steps, num_ships, 2), dtype=np.float32)
+    
+    health = np.zeros((total_steps, num_ships), dtype=np.float32)
+    health[:ep1_len] = NORM_HEALTH * 1.0
+    health[ep1_len:] = NORM_HEALTH * 2.0
+    
+    power = np.zeros((total_steps, num_ships), dtype=np.float32)
+    attitude = np.zeros((total_steps, num_ships, 2), dtype=np.float32)
+    ang_vel = np.zeros((total_steps, num_ships), dtype=np.float32)
+    is_shooting = np.zeros((total_steps, num_ships), dtype=np.float32)
+    team_ids = np.zeros((total_steps, num_ships), dtype=np.float32)
     
     # Actions (D=3)
     actions = np.zeros((30, 3), dtype=np.int32)
@@ -42,11 +59,19 @@ def dummy_h5_data(tmp_path):
     episode_lengths = np.array([ep1_len, ep2_len], dtype=np.int32)
     
     with h5py.File(file_path, "w") as f:
-        f.create_dataset("tokens", data=tokens)
+        f.create_dataset("position", data=pos)
+        f.create_dataset("velocity", data=vel)
+        f.create_dataset("health", data=health)
+        f.create_dataset("power", data=power)
+        f.create_dataset("attitude", data=attitude)
+        f.create_dataset("ang_vel", data=ang_vel)
+        f.create_dataset("is_shooting", data=is_shooting)
+        f.create_dataset("team_ids", data=team_ids)
+        
         f.create_dataset("actions", data=actions)
         f.create_dataset("episode_ids", data=ep_ids)
         f.create_dataset("episode_lengths", data=episode_lengths)
-        f.attrs["token_dim"] = 16
+        f.attrs["token_dim"] = STATE_DIM
         
     return str(file_path)
 
@@ -65,12 +90,15 @@ def test_cross_episode_slice(dummy_h5_data):
     # Ep1 vals = 1.0, Ep2 vals = 2.0
     slice_data = dataset.get_cross_episode_slice("tokens", 8, 4)
     
-    assert slice_data.shape == (4, 16)
-    # Check values
-    assert torch.all(slice_data[0] == 1.0)
-    assert torch.all(slice_data[1] == 1.0)
-    assert torch.all(slice_data[2] == 2.0) # Boundary crossed
-    assert torch.all(slice_data[3] == 2.0)
+    assert slice_data.shape == (4, 1, STATE_DIM)
+    # Check values (Health is at index 1)
+    # slice_data is (4, N, 15)
+    
+    # Index 1 is Health
+    assert torch.allclose(slice_data[0, 0, 1], torch.tensor(1.0))
+    assert torch.allclose(slice_data[1, 0, 1], torch.tensor(1.0))
+    assert torch.allclose(slice_data[2, 0, 1], torch.tensor(2.0))
+    assert torch.allclose(slice_data[3, 0, 1], torch.tensor(2.0))
 
 def test_continuous_view_masks(dummy_h5_data):
     dataset = UnifiedEpisodeDataset(dummy_h5_data)
@@ -88,7 +116,7 @@ def test_continuous_view_masks(dummy_h5_data):
     batch = view[0]
     
     # Check Shapes
-    assert batch["states"].shape == (10, 16)
+    assert batch["states"].shape == (10, 1, STATE_DIM)
     assert batch["seq_idx"].shape == (10,)
     assert batch["reset_mask"].shape == (10,)
     
@@ -124,4 +152,4 @@ def test_data_loader_pipeline(dummy_h5_data):
     batch = next(iter(loader))
     assert "states" in batch
     assert "reset_mask" in batch
-    assert batch["states"].shape == (2, 5, 16)
+    assert batch["states"].shape == (2, 5, 1, STATE_DIM)

@@ -5,6 +5,7 @@ import h5py
 import numpy as np
 from modes.train import train
 from omegaconf import OmegaConf
+from core.constants import NORM_HEALTH, STATE_DIM
 
 def test_train_swa_pipeline(default_config, tmp_path):
     """Test the World Model training pipeline with SWA."""
@@ -65,11 +66,19 @@ def test_train_swa_pipeline(default_config, tmp_path):
     # Create valid dummy data
     N = 200 # increased to 200
     MaxShips = 4
-    TokenDim = 15 # Simple dim
-    NumActions = 3 # Not used directly in shape but for actions
+    TokenDim = STATE_DIM # 15
+    NumActions = 3 
     
     with h5py.File(data_path, "w") as f:
-        f.create_dataset("tokens", data=np.random.randn(N, MaxShips, TokenDim).astype(np.float32))
+        # Granular features replacing tokens
+        f.create_dataset("position", data=np.random.randn(N, MaxShips, 2).astype(np.float32))
+        f.create_dataset("velocity", data=np.random.randn(N, MaxShips, 2).astype(np.float32))
+        f.create_dataset("health", data=np.random.rand(N, MaxShips).astype(np.float32) * NORM_HEALTH)
+        f.create_dataset("power", data=np.random.rand(N, MaxShips).astype(np.float32) * 100.0)
+        f.create_dataset("attitude", data=np.random.randn(N, MaxShips, 2).astype(np.float32))
+        f.create_dataset("ang_vel", data=np.random.randn(N, MaxShips).astype(np.float32))
+        f.create_dataset("is_shooting", data=np.random.randint(0, 2, (N, MaxShips)).astype(np.float32))
+        f.create_dataset("team_ids", data=np.zeros((N, MaxShips), dtype=np.float32))
         
         # Actions: Last dim is 3 (Power, Turn, Shoot)
         actions = np.zeros((N, MaxShips, 3), dtype=np.int32)

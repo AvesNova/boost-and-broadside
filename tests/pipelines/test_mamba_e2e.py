@@ -11,30 +11,50 @@ from unittest.mock import MagicMock, patch
 # Import the training function
 from src.train.train_world_model import train_world_model
 
+from core.constants import NORM_HEALTH, STATE_DIM
+
 @pytest.fixture
 def synthetic_mamba_data(tmp_path):
     """Create a synthetic HDF5 file valid for MambaBB (continuous view)."""
     h5_path = tmp_path / "mamba_data.h5"
     
     # 2 episodes, total 40 steps
-    # Token dim 16
     # Shape: (TotalSteps, N_ships, D)
     N_ships = 4
-    tokens = np.random.randn(40, N_ships, 16).astype(np.float32)
-    actions = np.random.randint(0, 2, (40, N_ships, 3)).astype(np.int32)
+    total_steps = 40
+    
+    # Granular Features
+    pos = np.random.randn(total_steps, N_ships, 2).astype(np.float32)
+    vel = np.random.randn(total_steps, N_ships, 2).astype(np.float32)
+    health = np.random.rand(total_steps, N_ships).astype(np.float32) * NORM_HEALTH
+    power = np.random.rand(total_steps, N_ships).astype(np.float32) * 100.0
+    att = np.random.randn(total_steps, N_ships, 2).astype(np.float32)
+    ang_vel = np.random.randn(total_steps, N_ships).astype(np.float32)
+    shoot = np.random.randint(0, 2, (total_steps, N_ships)).astype(np.float32)
+    team_ids = np.zeros((total_steps, N_ships), dtype=np.float32)
+    
+    actions = np.random.randint(0, 2, (total_steps, N_ships, 3)).astype(np.int32)
     
     # Ep IDs: 0-19 -> ID 0, 20-39 -> ID 1
-    episode_ids = np.zeros(40, dtype=np.int32)
+    episode_ids = np.zeros(total_steps, dtype=np.int32)
     episode_ids[20:] = 1
     
     episode_lengths = np.array([20, 20], dtype=np.int32)
     
     with h5py.File(h5_path, "w") as f:
-        f.create_dataset("tokens", data=tokens)
+        f.create_dataset("position", data=pos)
+        f.create_dataset("velocity", data=vel)
+        f.create_dataset("health", data=health)
+        f.create_dataset("power", data=power)
+        f.create_dataset("attitude", data=att)
+        f.create_dataset("ang_vel", data=ang_vel)
+        f.create_dataset("is_shooting", data=shoot)
+        f.create_dataset("team_ids", data=team_ids)
+        
         f.create_dataset("actions", data=actions)
         f.create_dataset("episode_ids", data=episode_ids)
         f.create_dataset("episode_lengths", data=episode_lengths)
-        f.attrs["token_dim"] = 16
+        f.attrs["token_dim"] = STATE_DIM # 15
         f.attrs["num_actions"] = 3
         f.attrs["max_ships"] = N_ships 
         f.attrs["total_timesteps"] = 40

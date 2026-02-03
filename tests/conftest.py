@@ -5,6 +5,7 @@ import pytest
 from omegaconf import OmegaConf
 import numpy as np
 import h5py
+from core.constants import NORM_HEALTH, STATE_DIM
 
 # Ensure project root is in sys.path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -130,9 +131,16 @@ def synthetic_h5_data(tmp_path):
         f.attrs["token_dim"] = token_dim
         f.attrs["num_actions"] = num_actions
 
-        # Datasets
-        # tokens: (N, MaxShips, TokenDim)
-        f.create_dataset("tokens", data=np.random.randn(total_timesteps, max_ships, token_dim).astype(np.float32))
+        # Granular Datasets replacing 'tokens'
+        # position: (N, MaxShips, 2)
+        f.create_dataset("position", data=np.random.randn(total_timesteps, max_ships, 2).astype(np.float32))
+        f.create_dataset("velocity", data=np.random.randn(total_timesteps, max_ships, 2).astype(np.float32))
+        f.create_dataset("health", data=np.random.rand(total_timesteps, max_ships).astype(np.float32) * NORM_HEALTH)
+        f.create_dataset("power", data=np.random.rand(total_timesteps, max_ships).astype(np.float32) * 100.0)
+        f.create_dataset("attitude", data=np.random.randn(total_timesteps, max_ships, 2).astype(np.float32))
+        f.create_dataset("ang_vel", data=np.random.randn(total_timesteps, max_ships).astype(np.float32))
+        f.create_dataset("is_shooting", data=np.random.randint(0, 2, (total_timesteps, max_ships)).astype(np.float32))
+        f.create_dataset("team_ids", data=np.zeros((total_timesteps, max_ships), dtype=np.float32))
         
         # actions: (N, MaxShips, NumActions) - discrete indices
         # Generate integers 0..1 (Safe for all: Power=3, Turn=7, Shoot=2)

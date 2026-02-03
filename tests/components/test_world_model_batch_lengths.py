@@ -1,3 +1,4 @@
+
 """Tests for world model batch length alternation."""
 
 import torch
@@ -7,12 +8,22 @@ from train.data_loader import create_unified_data_loaders
 
 
 def save_dummy_data_to_h5(
-    path, num_episodes=10, episode_len=200, num_ships=8, token_dim=12, action_dim=6
+    path, num_episodes=10, episode_len=200, num_ships=8, token_dim=15, action_dim=3
 ):
     """Create dummy data and save to HDF5."""
     total_timesteps = num_episodes * episode_len
 
-    tokens = torch.randn(total_timesteps, num_ships, token_dim)
+    # Granular features
+    # NOTE: UnifiedEpisodeDataset hardcodes assembly to 15 dims
+    pos = torch.randn(total_timesteps, num_ships, 2)
+    vel = torch.randn(total_timesteps, num_ships, 2)
+    health = torch.rand(total_timesteps, num_ships)
+    power = torch.rand(total_timesteps, num_ships)
+    attitude = torch.randn(total_timesteps, num_ships, 2)
+    ang_vel = torch.randn(total_timesteps, num_ships)
+    is_shooting = torch.randint(0, 2, (total_timesteps, num_ships)).float()
+    team_ids = torch.randint(0, 2, (total_timesteps, num_ships)).float()
+
     actions = torch.randn(total_timesteps, num_ships, action_dim)
     episode_lengths = torch.tensor([episode_len] * num_episodes, dtype=torch.int64)
     returns = torch.zeros(total_timesteps)
@@ -20,16 +31,22 @@ def save_dummy_data_to_h5(
 
     # New fields
     agent_skills = torch.rand(total_timesteps)
-    team_ids = torch.randint(0, 2, (total_timesteps,))
 
     with h5py.File(path, "w") as f:
-        f.create_dataset("tokens", data=tokens.numpy())
+        f.create_dataset("position", data=pos.numpy())
+        f.create_dataset("velocity", data=vel.numpy())
+        f.create_dataset("health", data=health.numpy())
+        f.create_dataset("power", data=power.numpy())
+        f.create_dataset("attitude", data=attitude.numpy())
+        f.create_dataset("ang_vel", data=ang_vel.numpy())
+        f.create_dataset("is_shooting", data=is_shooting.numpy())
+        f.create_dataset("team_ids", data=team_ids.numpy())
+
         f.create_dataset("actions", data=actions.numpy())
         f.create_dataset("returns", data=returns.numpy())
         f.create_dataset("action_masks", data=action_masks.numpy())
         f.create_dataset("episode_lengths", data=episode_lengths.numpy())
         f.create_dataset("agent_skills", data=agent_skills.numpy())
-        f.create_dataset("team_ids", data=team_ids.numpy())
 
     return episode_lengths
 
@@ -134,7 +151,7 @@ class TestUnifiedDataLoaders:
 
         # Verify batch shapes
         s_tokens, s_input_actions, s_target_actions, s_returns, s_mask, s_action_masks, _, _ = next(iter(ts))
-        assert s_tokens.shape == (4, 32, 8, 12)
+        assert s_tokens.shape == (4, 32, 8, 15)
 
         l_tokens, l_input_actions, l_target_actions, l_returns, l_mask, l_action_masks, _, _ = next(iter(tl))
-        assert l_tokens.shape == (2, 128, 8, 12)
+        assert l_tokens.shape == (2, 128, 8, 15)

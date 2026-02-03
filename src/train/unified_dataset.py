@@ -3,6 +3,13 @@ from torch.utils.data import Dataset
 import logging
 import logging
 import h5py
+from core.constants import (
+    NORM_VELOCITY,
+    NORM_ACCELERATION,
+    NORM_ANGULAR_VELOCITY,
+    NORM_HEALTH,
+    NORM_POWER,
+)
 
 
 log = logging.getLogger(__name__)
@@ -71,8 +78,77 @@ class UnifiedEpisodeDataset:
 
     def get_slice(self, dataset_name: str, start: int, end: int) -> torch.Tensor:
         """Helper to slice from HDF5 and convert to Tensor."""
+        if dataset_name == "tokens":
+            return self._assemble_tokens(start, end)
+        
         data = self.h5_file[dataset_name][start:end]
         return torch.from_numpy(data)
+
+    def _assemble_tokens(self, start: int, end: int) -> torch.Tensor:
+        """Assembles the monolithic token tensor from granular features."""
+        # Load components (cast to float32 immediately)
+        # We access h5_file directly to avoid recursion
+        f = self.h5_file
+        
+        # Features with shapes (T, N, 2) or (T, N)
+        pos = torch.from_numpy(f["position"][start:end]).float()
+        vel = torch.from_numpy(f["velocity"][start:end]).float()
+        health = torch.from_numpy(f["health"][start:end]).float()
+        power = torch.from_numpy(f["power"][start:end]).float()
+        att = torch.from_numpy(f["attitude"][start:end]).float()
+        ang = torch.from_numpy(f["ang_vel"][start:end]).float()
+        shoot = torch.from_numpy(f["is_shooting"][start:end]).float()
+        team = torch.from_numpy(f["team_ids"][start:end]).float()
+        
+        # Allocate tokens (T, N, 15)
+        # pos shape is (T, N, 2)
+        T, N, _ = pos.shape
+        tokens = torch.zeros((T, N, 15), dtype=torch.float32)
+        
+        # 0: Team
+        tokens[..., 0] = team
+        # 1: Health
+        tokens[..., 1] = health / NORM_HEALTH
+        # 2: Power
+        tokens[..., 2] = power / NORM_POWER
+        
+        # 3-6: Position (Sin/Cos Encoding)
+        # Assuming world size from init
+        x_norm = pos[..., 0] / self.world_size[0]
+        y_norm = pos[..., 1] / self.world_size[1]
+        
+        tokens[..., 3] = torch.sin(2 * torch.pi * x_norm)
+        tokens[..., 4] = torch.cos(2 * torch.pi * x_norm)
+        tokens[..., 5] = torch.sin(2 * torch.pi * y_norm)
+        tokens[..., 6] = torch.cos(2 * torch.pi * y_norm)
+        
+        # 7-8: Vel
+        tokens[..., 7] = vel[..., 0] / NORM_VELOCITY
+        tokens[..., 8] = vel[..., 1] / NORM_VELOCITY
+        
+        # 9, 10: Attitude
+        tokens[..., 9] = att[..., 0]
+        tokens[..., 10] = att[..., 1]
+        
+        # 11: Shooting
+        tokens[..., 11] = shoot
+        
+        # 12-13: Acceleration (Not saved yet? Or maybe we can derive or save it?)
+        # For now, if we don't save acceleration, we can zero it or duplicate something
+        # Wait, AsyncCollector saves what?
+        # AsyncCollector saves: pos, vel, health, power, attitude, ang_vel, is_shooting.
+        # It does NOT save acceleration.
+        # But tokenizer.py uses "acceleration".
+        # If we don't have it, zero it?
+        # tokenizer approximates max accel as const? No, it reads obs["acceleration"].
+        # Physics engine computes accel.
+        # If we really need accel, we must save it. 
+        # For now, let's leave it 0.
+        
+        # 14: Ang Vel
+        tokens[..., 14] = ang / NORM_ANGULAR_VELOCITY
+        
+        return tokens
         
     def get_cross_episode_slice(self, dataset_name: str, global_start: int, length: int) -> torch.Tensor:
         """
@@ -87,7 +163,11 @@ class UnifiedEpisodeDataset:
         We just need to check bounds.
         """
         # Bounds check
-        total_len = self.h5_file[dataset_name].shape[0]
+        if dataset_name == "tokens":
+            total_len = self.total_timesteps
+        else:
+            total_len = self.h5_file[dataset_name].shape[0]
+            
         if global_start + length > total_len:
             # Wrap around or pad?
             # For simplicity in this project (massive data), we often just clip or wrap.

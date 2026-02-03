@@ -152,9 +152,11 @@ def collect_worker(
                 coordinator.reset(game_mode=mode, team_skills=team_skills)
                 episode_sim_time, terminated = coordinator.step()
 
+                features = coordinator.get_features()
+
                 collector.add_episode(
-                    tokens_team_0=coordinator.all_tokens[0],
-                    tokens_team_1=coordinator.all_tokens[1],
+                    features_team_0=features,
+                    features_team_1=features,
                     actions=coordinator.all_actions,
                     expert_actions=coordinator.all_expert_actions,
                     action_masks=coordinator.all_action_masks,
@@ -275,19 +277,19 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
 
                 # Extract Team 0 data
                 team_0 = data["team_0"]
-                t0_tokens = team_0["tokens"]
+                # New granular features dict
+                t0_features = team_0["features"] # Expecting this dict from DataCollector
+                
                 t0_actions = team_0["actions"]
                 t0_rewards = team_0["rewards"]
                 t0_expert_actions = team_0.get("expert_actions")
                 if t0_expert_actions is None:
-                     # Fallback if not present (shouldn't happen with new code, but safe)
                      t0_expert_actions = t0_actions.clone()
                 
-                # Handle missing keys for backward compatibility
                 t0_masks = team_0.get("action_masks")
                 if t0_masks is None:
                     t0_masks = torch.ones(
-                        t0_actions.shape[0], t0_actions.shape[1], dtype=torch.float32
+                        t0_actions.shape[0], t0_actions.shape[1], dtype=torch.bool
                     )
                 t0_skills = team_0.get("agent_skills")
                 if t0_skills is None:
@@ -298,7 +300,8 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
 
                 # Extract Team 1 data
                 team_1 = data["team_1"]
-                t1_tokens = team_1["tokens"]
+                t1_features = team_1["features"]
+                
                 t1_actions = team_1["actions"]
                 t1_rewards = team_1["rewards"]
                 t1_expert_actions = team_1.get("expert_actions")
@@ -308,7 +311,7 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
                 t1_masks = team_1.get("action_masks")
                 if t1_masks is None:
                     t1_masks = torch.ones(
-                        t1_actions.shape[0], t1_actions.shape[1], dtype=torch.float32
+                        t1_actions.shape[0], t1_actions.shape[1], dtype=torch.bool
                     )
                 t1_skills = team_1.get("agent_skills")
                 if t1_skills is None:
@@ -331,7 +334,14 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
                 
 
                 # Concatenate Data
-                tokens = torch.cat([t0_tokens, t1_tokens], dim=0)
+                
+                # Aggregate/Concat Features Dict
+                # Keys: position, velocity, etc.
+                features = {}
+                feature_keys = t0_features.keys()
+                for k in feature_keys:
+                    features[k] = torch.cat([t0_features[k], t1_features[k]], dim=0)
+
                 actions = torch.cat([t0_actions, t1_actions], dim=0)
                 expert_actions = torch.cat([t0_expert_actions, t1_expert_actions], dim=0)
                 
@@ -349,8 +359,8 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
                 team_ids_tensor = torch.cat([t0_ids, t1_ids], dim=0)
 
                 # Prepare batch dict
-                batch_data = {
-                    "tokens": tokens,
+                batch_data = features.copy() # Add all feature tensors
+                batch_data.update({
                     "actions": actions,
                     "expert_actions": expert_actions,
                     "action_masks": action_masks,
@@ -359,8 +369,9 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
                     "episode_ids": batch_episode_ids,
                     "episode_lengths": batch_episode_lengths,
                     "agent_skills": agent_skills,
-                    "team_ids": team_ids_tensor,
-                }
+                   # "team_ids" is already in features, don't overwrite with scalar version
+                   # "team_ids": team_ids_tensor, 
+                })
                 
 
                 # Write to HDF5

@@ -104,9 +104,32 @@ class AsyncCollector:
         self.max_steps = 2000
 
         # Pinned CPU buffers for current episodes (pre-allocated)
-        self.obs_buffer = torch.zeros(
-            (num_envs, self.max_steps, max_ships, 15), dtype=torch.float32, pin_memory=True
+        # We split 'tokens' into granular features
+        self.pos_buffer = torch.zeros(
+            (num_envs, self.max_steps, max_ships, 2), dtype=torch.float32, pin_memory=True
         )
+        self.vel_buffer = torch.zeros(
+            (num_envs, self.max_steps, max_ships, 2), dtype=torch.float16, pin_memory=True
+        )
+        self.health_buffer = torch.zeros(
+            (num_envs, self.max_steps, max_ships), dtype=torch.float16, pin_memory=True
+        )
+        self.power_buffer = torch.zeros(
+            (num_envs, self.max_steps, max_ships), dtype=torch.float16, pin_memory=True
+        )
+        self.ang_vel_buffer = torch.zeros(
+            (num_envs, self.max_steps, max_ships), dtype=torch.float16, pin_memory=True
+        )
+        self.attitude_buffer = torch.zeros(
+            (num_envs, self.max_steps, max_ships, 2), dtype=torch.float16, pin_memory=True
+        )
+        self.is_shooting_buffer = torch.zeros(
+            (num_envs, self.max_steps, max_ships), dtype=torch.uint8, pin_memory=True
+        )
+        self.team_buffer = torch.zeros(
+            (num_envs, self.max_steps, max_ships), dtype=torch.uint8, pin_memory=True
+        )
+
         self.action_buffer = torch.zeros(
             (num_envs, self.max_steps, max_ships, 3), dtype=torch.uint8, pin_memory=True
         )
@@ -137,17 +160,73 @@ class AsyncCollector:
     def _init_h5(self):
         """Creates HDF5 file and initial datasets."""
         with h5py.File(self.data_path, "w") as h5_file:
+            # Metadata
+            h5_file.attrs["max_ships"] = self.max_ships
+            h5_file.attrs["token_dim"] = 15 # Kept for compatibility if we reconstruct
+            
             h5_file.create_dataset("episode_lengths", (0,), maxshape=(None,), dtype="i8")
 
             chunk_size = 1024 * 10
-
+            
+            # --- Feature Datasets ---
             h5_file.create_dataset(
-                "tokens",
-                (0, self.max_ships, 15),
-                maxshape=(None, self.max_ships, 15),
+                "position",
+                (0, self.max_ships, 2),
+                maxshape=(None, self.max_ships, 2),
                 dtype="f4",
-                chunks=(chunk_size, self.max_ships, 15),
+                chunks=(chunk_size, self.max_ships, 2),
             )
+            h5_file.create_dataset(
+                "velocity",
+                (0, self.max_ships, 2),
+                maxshape=(None, self.max_ships, 2),
+                dtype="f2", # float16
+                chunks=(chunk_size, self.max_ships, 2),
+            )
+            h5_file.create_dataset(
+                "health",
+                (0, self.max_ships),
+                maxshape=(None, self.max_ships),
+                dtype="f2",
+                chunks=(chunk_size, self.max_ships),
+            )
+            h5_file.create_dataset(
+                "power",
+                (0, self.max_ships),
+                maxshape=(None, self.max_ships),
+                dtype="f2",
+                chunks=(chunk_size, self.max_ships),
+            )
+            h5_file.create_dataset(
+                "attitude",
+                (0, self.max_ships, 2),
+                maxshape=(None, self.max_ships, 2),
+                dtype="f2",
+                chunks=(chunk_size, self.max_ships, 2),
+            )
+            h5_file.create_dataset(
+                "ang_vel",
+                (0, self.max_ships),
+                maxshape=(None, self.max_ships),
+                dtype="f2",
+                chunks=(chunk_size, self.max_ships),
+            )
+            h5_file.create_dataset(
+                "is_shooting",
+                (0, self.max_ships),
+                maxshape=(None, self.max_ships),
+                dtype="u1", # bool/uint8
+                chunks=(chunk_size, self.max_ships),
+            )
+            h5_file.create_dataset(
+                "team_ids",
+                (0, self.max_ships),
+                maxshape=(None, self.max_ships),
+                dtype="u1", # int8/uint8 - 0 or 1
+                chunks=(chunk_size, self.max_ships),
+            )
+
+            # --- Standard Datasets ---
             h5_file.create_dataset(
                 "actions",
                 (0, self.max_ships, 3),
@@ -171,14 +250,6 @@ class AsyncCollector:
                 dtype="f4",
                 chunks=(chunk_size, self.max_ships),
             )
-            h5_file.create_dataset(
-                "team_ids",
-                (0, self.max_ships),
-                maxshape=(None, self.max_ships),
-                dtype="i8",
-                chunks=(chunk_size, self.max_ships),
-            )
-
             h5_file.create_dataset(
                 "rewards",
                 (0, self.max_ships),
@@ -238,18 +309,28 @@ class AsyncCollector:
             return
 
         total_steps = sum(item["length"] for item in batch)
-        current_size = h5_file["tokens"].shape[0]
+        # Check current size of a reliable dataset
+        current_size = h5_file["actions"].shape[0]
         current_episodes = h5_file["episode_lengths"].shape[0]
 
         # Resize Datasets
-        h5_file["tokens"].resize((current_size + total_steps, self.max_ships, 15))
+        # Features
+        h5_file["position"].resize((current_size + total_steps, self.max_ships, 2))
+        h5_file["velocity"].resize((current_size + total_steps, self.max_ships, 2))
+        h5_file["health"].resize((current_size + total_steps, self.max_ships))
+        h5_file["power"].resize((current_size + total_steps, self.max_ships))
+        h5_file["attitude"].resize((current_size + total_steps, self.max_ships, 2))
+        h5_file["ang_vel"].resize((current_size + total_steps, self.max_ships))
+        h5_file["is_shooting"].resize((current_size + total_steps, self.max_ships))
+        h5_file["team_ids"].resize((current_size + total_steps, self.max_ships))
+        
+        # Standard
         h5_file["actions"].resize((current_size + total_steps, self.max_ships, 3))
         h5_file["expert_actions"].resize((current_size + total_steps, self.max_ships, 3))
         h5_file["rewards"].resize((current_size + total_steps, self.max_ships))
         h5_file["returns"].resize((current_size + total_steps, self.max_ships))
         h5_file["episode_ids"].resize((current_size + total_steps,))
         h5_file["agent_skills"].resize((current_size + total_steps, self.max_ships))
-        h5_file["team_ids"].resize((current_size + total_steps, self.max_ships))
         h5_file["action_masks"].resize((current_size + total_steps, self.max_ships))
 
         h5_file["episode_lengths"].resize((current_episodes + len(batch),))
@@ -261,7 +342,17 @@ class AsyncCollector:
         for item in batch:
             length = item["length"]
 
-            h5_file["tokens"][write_idx : write_idx + length] = item["tokens"].numpy()
+            # Features
+            h5_file["position"][write_idx : write_idx + length] = item["position"].numpy()
+            h5_file["velocity"][write_idx : write_idx + length] = item["velocity"].numpy()
+            h5_file["health"][write_idx : write_idx + length] = item["health"].numpy()
+            h5_file["power"][write_idx : write_idx + length] = item["power"].numpy()
+            h5_file["attitude"][write_idx : write_idx + length] = item["attitude"].numpy()
+            h5_file["ang_vel"][write_idx : write_idx + length] = item["ang_vel"].numpy()
+            h5_file["is_shooting"][write_idx : write_idx + length] = item["is_shooting"].numpy()
+            h5_file["team_ids"][write_idx : write_idx + length] = item["team_ids"].numpy()
+            
+            # Standard
             h5_file["actions"][write_idx : write_idx + length] = item["actions"].numpy()
 
             if "expert_actions" in item:
@@ -278,11 +369,6 @@ class AsyncCollector:
                 h5_file["agent_skills"][write_idx : write_idx + length] = item["agent_skills"].numpy()
             else:
                 h5_file["agent_skills"][write_idx : write_idx + length] = 1.0
-
-            # Team IDs extracted from first element of token
-            h5_file["team_ids"][write_idx : write_idx + length] = (
-                item["tokens"][:, :, 0].numpy().astype(np.int64)
-            )
 
             h5_file["action_masks"][write_idx : write_idx + length] = True
             h5_file["episode_lengths"][ep_idx] = length
@@ -311,10 +397,29 @@ class AsyncCollector:
             expert_actions: (Optional) Optimal actions.
             agent_skills: (Optional) Skill levels for each ship.
         """
-        tokens = self._tokenize(obs_dict)  # (Batch, NumShips, 15)
+        # Deconstruct Obs
+        pos = obs_dict["position"]
+        vel = obs_dict["velocity"]
+        health = obs_dict["health"]
+        power = obs_dict["power"]
+        att = obs_dict["attitude"]
+        ang_vel = obs_dict["ang_vel"]
+        is_shooting = obs_dict["is_shooting"]
+        team_id = obs_dict["team_id"]
 
         num_envs = self.num_envs
-        cpu_tokens = tokens.to("cpu", non_blocking=True)
+        
+        # Prepare CPU Tensors (Non-blocking)
+        # Note: We cast here for buffer compatibility
+        cpu_pos = torch.stack([pos.real, pos.imag], dim=-1).to("cpu", dtype=torch.float32, non_blocking=True)
+        cpu_vel = torch.stack([vel.real, vel.imag], dim=-1).to("cpu", dtype=torch.float16, non_blocking=True)
+        cpu_health = health.to("cpu", dtype=torch.float16, non_blocking=True)
+        cpu_power = power.to("cpu", dtype=torch.float16, non_blocking=True)
+        cpu_att = torch.stack([att.real, att.imag], dim=-1).to("cpu", dtype=torch.float16, non_blocking=True)
+        cpu_ang_vel = ang_vel.to("cpu", dtype=torch.float16, non_blocking=True)
+        cpu_shooting = is_shooting.to("cpu", dtype=torch.uint8, non_blocking=True)
+        cpu_team = team_id.to("cpu", dtype=torch.uint8, non_blocking=True)
+
         cpu_actions = actions.to("cpu", dtype=torch.uint8, non_blocking=True)
         cpu_rewards = rewards.to("cpu", non_blocking=True)
 
@@ -333,7 +438,16 @@ class AsyncCollector:
 
         # Buffer data
         write_steps = torch.clamp(steps, max=self.max_steps - 1)
-        self.obs_buffer[indices, write_steps] = cpu_tokens
+        
+        self.pos_buffer[indices, write_steps] = cpu_pos
+        self.vel_buffer[indices, write_steps] = cpu_vel
+        self.health_buffer[indices, write_steps] = cpu_health
+        self.power_buffer[indices, write_steps] = cpu_power
+        self.attitude_buffer[indices, write_steps] = cpu_att
+        self.ang_vel_buffer[indices, write_steps] = cpu_ang_vel
+        self.is_shooting_buffer[indices, write_steps] = cpu_shooting
+        self.team_buffer[indices, write_steps] = cpu_team
+
         self.action_buffer[indices, write_steps] = cpu_actions
         self.expert_action_buffer[indices, write_steps] = cpu_expert
         self.reward_buffer[indices, write_steps] = cpu_rewards
@@ -352,7 +466,14 @@ class AsyncCollector:
 
                 self.write_queue.put(
                     {
-                        "tokens": self.obs_buffer[idx, :length].clone(),
+                        "position": self.pos_buffer[idx, :length].clone(),
+                        "velocity": self.vel_buffer[idx, :length].clone(),
+                        "health": self.health_buffer[idx, :length].clone(),
+                        "power": self.power_buffer[idx, :length].clone(),
+                        "attitude": self.attitude_buffer[idx, :length].clone(),
+                        "ang_vel": self.ang_vel_buffer[idx, :length].clone(),
+                        "is_shooting": self.is_shooting_buffer[idx, :length].clone(),
+                        "team_ids": self.team_buffer[idx, :length].clone(),
                         "actions": self.action_buffer[idx, :length].clone(),
                         "expert_actions": self.expert_action_buffer[idx, :length].clone(),
                         "rewards": self.reward_buffer[idx, :length].clone(),

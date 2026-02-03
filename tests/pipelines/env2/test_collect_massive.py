@@ -1,3 +1,4 @@
+
 import pytest
 import h5py
 from pathlib import Path
@@ -30,8 +31,11 @@ def test_collect_massive_pipeline(tmp_path):
     assert h5_path.exists(), "HDF5 file was not created"
     
     with h5py.File(h5_path, "r") as f:
-        # Check Dataset existence
-        assert "tokens" in f
+        # Check Dataset existence (Granular vs Tokens)
+        assert "position" in f
+        assert "velocity" in f
+        assert "health" in f
+        assert "power" in f
         assert "actions" in f
         assert "rewards" in f
         assert "returns" in f
@@ -43,7 +47,7 @@ def test_collect_massive_pipeline(tmp_path):
         # Since we only save finished episodes, we might miss the last partial episode.
         # Expect at least coverage.
         
-        assert f["tokens"].shape[0] > 0, f"Collected too few samples: {f['tokens'].shape[0]}"
+        assert f["position"].shape[0] > 0, f"Collected too few samples: {f['position'].shape[0]}"
         assert f["actions"].shape[0] > 0, f"Collected too few actions: {f['actions'].shape[0]}"
         assert f["agent_skills"].shape[0] > 0, "No skills recorded"
 

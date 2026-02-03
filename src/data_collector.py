@@ -13,10 +13,10 @@ from omegaconf import DictConfig
 class EpisodeData:
     """Data for a single episode"""
 
-    tokens_team_0: torch.Tensor
-    tokens_team_1: torch.Tensor
+    features_team_0: dict[str, torch.Tensor]
+    features_team_1: dict[str, torch.Tensor]
     actions: dict[int, list[torch.Tensor]]
-    expert_actions: dict[int, list[torch.Tensor]] = None # New field
+    expert_actions: dict[int, list[torch.Tensor]] = None 
     action_masks: dict[int, list[float]] = None
     rewards: dict[int, list[float]] = None
     episode_length: int = 0
@@ -57,8 +57,8 @@ class DataCollector:
 
     def add_episode(
         self,
-        tokens_team_0: torch.Tensor,
-        tokens_team_1: torch.Tensor,
+        features_team_0: dict[str, torch.Tensor],
+        features_team_1: dict[str, torch.Tensor],
         actions: dict[int, list[torch.Tensor]],
         action_masks: dict[int, list[float]],
         rewards: dict[int, list[float]],
@@ -71,17 +71,22 @@ class DataCollector:
         Add an episode to the collection
 
         Args:
-            tokens_team_0: Token sequence for team 0 (T, max_ships, token_dim)
-            tokens_team_1: Token sequence for team 1 (T, max_ships, token_dim)
+            features_team_0: Dictionary of feature tensors for team 0
+            features_team_1: Dictionary of feature tensors for team 1
             actions: Dictionary mapping ship_id to list of action tensors
             rewards: Dictionary mapping team_id to list of rewards per timestep
             sim_time: Total simulation time for this episode
         """
-        episode_length = tokens_team_0.shape[0]
+        # Pick any feature to get length (e.g., position)
+        if "position" in features_team_0:
+            episode_length = features_team_0["position"].shape[0]
+        else:
+             # Fallback if empty features? Should not happen.
+            episode_length = 0
 
         episode = EpisodeData(
-            tokens_team_0=tokens_team_0,
-            tokens_team_1=tokens_team_1,
+            features_team_0=features_team_0,
+            features_team_1=features_team_1,
             actions=actions,
             expert_actions=expert_actions, 
             action_masks=action_masks,
@@ -121,12 +126,19 @@ class DataCollector:
         # Calculate simulation time only for the current batch of episodes
         batch_sim_time = sum(ep.sim_time for ep in self.episodes)
 
-        tokens_team_0 = torch.zeros(
-            (total_timesteps, self.max_ships, self.token_dim), dtype=torch.float32
-        )
-        tokens_team_1 = torch.zeros(
-            (total_timesteps, self.max_ships, self.token_dim), dtype=torch.float32
-        )
+        # Prepare aggregated feature storage
+        # We need to scan keys from first episode
+        first_ep = self.episodes[0]
+        feature_keys = list(first_ep.features_team_0.keys())
+        
+        features_team_0 = {
+            k: torch.zeros((total_timesteps, *first_ep.features_team_0[k].shape[1:]), dtype=first_ep.features_team_0[k].dtype)
+            for k in feature_keys
+        }
+        features_team_1 = {
+             k: torch.zeros((total_timesteps, *first_ep.features_team_1[k].shape[1:]), dtype=first_ep.features_team_1[k].dtype)
+            for k in feature_keys
+        }
 
         # Actions are now uint8
         actions_team_0 = torch.zeros(
@@ -167,8 +179,10 @@ class DataCollector:
             ep_len = episode.episode_length
             end_idx = current_idx + ep_len
 
-            tokens_team_0[current_idx:end_idx] = episode.tokens_team_0
-            tokens_team_1[current_idx:end_idx] = episode.tokens_team_1
+            # Aggregating features
+            for k in feature_keys:
+                features_team_0[k][current_idx:end_idx] = episode.features_team_0[k]
+                features_team_1[k][current_idx:end_idx] = episode.features_team_1[k]
 
             # Actions
             for ship_id, ship_actions in episode.actions.items():
@@ -238,7 +252,7 @@ class DataCollector:
 
         return {
             "team_0": {
-                "tokens": tokens_team_0,
+                "features": features_team_0,
                 "actions": actions_team_0,
                 "expert_actions": expert_actions_team_0, # New
                 "action_masks": actions_mask_team_0,
@@ -247,7 +261,7 @@ class DataCollector:
                 "team_ids": team_ids_team_0,
             },
             "team_1": {
-                "tokens": tokens_team_1,
+                "features": features_team_1,
                 "actions": actions_team_1,
                 "expert_actions": expert_actions_team_1, # New
                 "action_masks": actions_mask_team_1,

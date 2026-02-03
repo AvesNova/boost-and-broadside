@@ -76,7 +76,8 @@ class GameCoordinator:
 
         self.obs_history: list[dict] = []
         # Initialize other attributes to satisfy type checkers
-        self.all_tokens: dict[int, torch.Tensor] = {}
+        self.obs_history: list[dict] = []
+        # Initialize other attributes to satisfy type checkers
         self.all_actions: dict[int, list[torch.Tensor]] = {}
         self.all_expert_actions: dict[int, list[torch.Tensor]] = {} # New: Save expert actions
         self.all_action_masks: dict[int, list[float]] = {}
@@ -107,16 +108,8 @@ class GameCoordinator:
             self.team_skills = team_skills
 
         self.obs_history = [obs]
-        # Initialize token history for each team
-        # num_teams already defined above
-        self.all_tokens = {
-            team_id: observation_to_tokens(
-                obs=obs,
-                perspective=team_id,
-                world_size=tuple(self.config.environment.world_size),
-            )
-            for team_id in range(num_teams)
-        }
+        self.obs_history = [obs]
+        
         self.all_actions = {
             ship_id: [] for ship_id in range(self.config.environment.max_ships)
         }
@@ -275,7 +268,6 @@ class GameCoordinator:
                 self.all_rewards[team_id].append(reward)
 
             self.obs_history.append(obs)
-            self._update_tokens(obs)
 
             step_count += 1
             if step_count >= max_episode_length:
@@ -284,21 +276,74 @@ class GameCoordinator:
         episode_sim_time = info.get("current_time", 0.0)
         return episode_sim_time, terminated
 
-    def _update_tokens(self, obs: dict) -> None:
-        """Helper to update token history."""
-        # Update tokens for all tracked teams
-        for team_id in self.all_tokens.keys():
-            self.all_tokens[team_id] = torch.cat(
-                [
-                    self.all_tokens[team_id],
-                    observation_to_tokens(
-                        obs=obs,
-                        perspective=team_id,
-                        world_size=tuple(self.config.environment.world_size),
-                    ),
-                ],
-                dim=0,
-            )
+    def get_features(self) -> dict[str, torch.Tensor]:
+        """
+        Extract granular features from observation history.
+        Returns a dict of stacked tensors (T, N, ...).
+        """
+        # We need to stack each key from obs_history
+        # keys: position, velocity, health, power, attitude, angular_velocity (as ang_vel), is_shooting, team_id
+        
+        if not self.obs_history:
+            return {}
+            
+        # Keys mapping (obs_key -> feature_key)
+        # obs usually has: position, velocity, health, power, attitude, angular_velocity, is_shooting, team_id
+        
+        # We assume all obs have same keys and shapes
+        T = len(self.obs_history)
+        N = self.config.environment.max_ships
+        
+        # Pre-allocate or just stack list
+        # Stacking list is easier
+        
+        pos_list = []
+        vel_list = []
+        health_list = []
+        power_list = []
+        att_list = []
+        ang_list = []
+        shoot_list = []
+        tid_list = []
+        
+        for obs in self.obs_history:
+            # Position (complex) -> (x, y)
+            p = obs["position"]
+            pos_list.append(torch.stack([p.real, p.imag], dim=-1))
+            
+            # Velocity (complex) -> (vx, vy)
+            v = obs["velocity"]
+            vel_list.append(torch.stack([v.real, v.imag], dim=-1))
+            
+            # Health
+            health_list.append(obs["health"])
+            
+            # Power
+            power_list.append(obs["power"])
+            
+            # Attitude (complex) -> (ax, ay)
+            a = obs["attitude"]
+            att_list.append(torch.stack([a.real, a.imag], dim=-1))
+            
+            # Ang Vel
+            ang_list.append(obs["angular_velocity"])
+            
+            # Is Shooting
+            shoot_list.append(obs["is_shooting"].float())
+            
+            # Team ID
+            tid_list.append(obs["team_id"].long())
+            
+        return {
+            "position": torch.stack(pos_list, dim=0).float(),
+            "velocity": torch.stack(vel_list, dim=0).float(), # Keep float32 for pickle, cast later if needed? Or cast to float16 now to save pickle size? AsyncCollector used float16.
+            "health": torch.stack(health_list, dim=0).float(),
+            "power": torch.stack(power_list, dim=0).float(),
+            "attitude": torch.stack(att_list, dim=0).float(),
+            "ang_vel": torch.stack(ang_list, dim=0).float(),
+            "is_shooting": torch.stack(shoot_list, dim=0).float(),
+            "team_ids": torch.stack(tid_list, dim=0).long(),
+        }
 
     def _get_teams_from_obs(self, obs: dict) -> dict[int, list[int]]:
         """
