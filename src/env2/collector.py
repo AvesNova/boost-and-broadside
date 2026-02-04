@@ -86,6 +86,7 @@ class AsyncCollector:
         save_interval: int = 100,
         max_steps: int = 2000,
         num_workers: int = 4,
+        total_steps: Optional[int] = None,
     ):
         """Initializes the AsyncCollector.
 
@@ -97,6 +98,7 @@ class AsyncCollector:
             save_interval: Flush interval (in episodes).
             max_steps: Maximum steps per episode (corresponds to buffer_steps).
             num_workers: Number of processing worker threads.
+            total_steps: Optional total transition target for pre-allocation.
         """
         self.data_path = Path(data_path)
         self.num_envs = num_envs
@@ -130,8 +132,9 @@ class AsyncCollector:
         self.write_queue = queue.Queue()
         self.running = True
 
-        self._init_h5()
+        self._init_h5(total_steps=total_steps)
         self.total_episodes_written = 0
+        self.total_transitions_completed = 0  # Track transitions queued for writing
 
         # Background Pool for cloning and processing (returns, etc.)
         self.process_pool = ThreadPoolExecutor(max_workers=num_workers)
@@ -139,143 +142,61 @@ class AsyncCollector:
         self.writer_thread = threading.Thread(target=self._writer_loop, daemon=True)
         self.writer_thread.start()
 
-    def _init_h5(self):
-        """Creates HDF5 file and initial datasets."""
+    def _init_h5(self, total_steps: Optional[int] = None):
+        """Creates HDF5 file and initial datasets.
+
+        Args:
+            total_steps: Optional total transition target for pre-allocation.
+        """
         with h5py.File(self.data_path, "w") as h5_file:
             # Metadata
             h5_file.attrs["max_ships"] = self.max_ships
             h5_file.attrs["token_dim"] = 9  # Kept for compatibility if we reconstruct
 
+            init_size = total_steps if total_steps is not None else 0
+            ep_init_size = 0  # We don't know episode count in advance
+
             h5_file.create_dataset(
-                "episode_lengths", (0,), maxshape=(None,), dtype="i8", compression="lzf"
+                "episode_lengths", (ep_init_size,), maxshape=(None,), dtype="i8", compression="lzf"
             )
 
             chunk_size = 1024 * 10
+            
+            def create_feature_ds(name, shape_suffix, dtype, chunks_suffix):
+                return h5_file.create_dataset(
+                    name,
+                    (init_size, *shape_suffix),
+                    maxshape=(None, *shape_suffix),
+                    dtype=dtype,
+                    chunks=(chunk_size, *chunks_suffix),
+                    compression="lzf",
+                )
 
             # --- Feature Datasets ---
-            h5_file.create_dataset(
-                "position",
-                (0, self.max_ships, 2),
-                maxshape=(None, self.max_ships, 2),
-                dtype="f4",
-                chunks=(chunk_size, self.max_ships, 2),
-                compression="lzf",
-            )
-            h5_file.create_dataset(
-                "velocity",
-                (0, self.max_ships, 2),
-                maxshape=(None, self.max_ships, 2),
-                dtype="f2",  # float16
-                chunks=(chunk_size, self.max_ships, 2),
-                compression="lzf",
-            )
-            h5_file.create_dataset(
-                "health",
-                (0, self.max_ships),
-                maxshape=(None, self.max_ships),
-                dtype="f2",
-                chunks=(chunk_size, self.max_ships),
-                compression="lzf",
-            )
-            h5_file.create_dataset(
-                "power",
-                (0, self.max_ships),
-                maxshape=(None, self.max_ships),
-                dtype="f2",
-                chunks=(chunk_size, self.max_ships),
-                compression="lzf",
-            )
-            h5_file.create_dataset(
-                "attitude",
-                (0, self.max_ships, 2),
-                maxshape=(None, self.max_ships, 2),
-                dtype="f2",
-                chunks=(chunk_size, self.max_ships, 2),
-                compression="lzf",
-            )
-            h5_file.create_dataset(
-                "ang_vel",
-                (0, self.max_ships),
-                maxshape=(None, self.max_ships),
-                dtype="f2",
-                chunks=(chunk_size, self.max_ships),
-                compression="lzf",
-            )
-            h5_file.create_dataset(
-                "is_shooting",
-                (0, self.max_ships),
-                maxshape=(None, self.max_ships),
-                dtype="u1",  # bool/uint8
-                chunks=(chunk_size, self.max_ships),
-                compression="lzf",
-            )
-            h5_file.create_dataset(
-                "team_ids",
-                (0, self.max_ships),
-                maxshape=(None, self.max_ships),
-                dtype="u1",  # int8/uint8 - 0 or 1
-                chunks=(chunk_size, self.max_ships),
-                compression="lzf",
-            )
+            create_feature_ds("position", (self.max_ships, 2), "f4", (self.max_ships, 2))
+            create_feature_ds("velocity", (self.max_ships, 2), "f2", (self.max_ships, 2))
+            create_feature_ds("health", (self.max_ships,), "f2", (self.max_ships,))
+            create_feature_ds("power", (self.max_ships,), "f2", (self.max_ships,))
+            create_feature_ds("attitude", (self.max_ships, 2), "f2", (self.max_ships, 2))
+            create_feature_ds("ang_vel", (self.max_ships,), "f2", (self.max_ships,))
+            create_feature_ds("is_shooting", (self.max_ships,), "u1", (self.max_ships,))
+            create_feature_ds("team_ids", (self.max_ships,), "u1", (self.max_ships,))
 
             # --- Standard Datasets ---
-            h5_file.create_dataset(
-                "actions",
-                (0, self.max_ships, 3),
-                maxshape=(None, self.max_ships, 3),
-                dtype="u1",
-                chunks=(chunk_size, self.max_ships, 3),
-                compression="lzf",
-            )
-
-            h5_file.create_dataset(
-                "expert_actions",
-                (0, self.max_ships, 3),
-                maxshape=(None, self.max_ships, 3),
-                dtype="u1",
-                chunks=(chunk_size, self.max_ships, 3),
-                compression="lzf",
-            )
+            create_feature_ds("actions", (self.max_ships, 3), "u1", (self.max_ships, 3))
+            create_feature_ds("expert_actions", (self.max_ships, 3), "u1", (self.max_ships, 3))
             h5_file.create_dataset(
                 "episode_ids",
-                (0,),
+                (init_size,),
                 maxshape=(None,),
                 dtype="i8",
                 chunks=(chunk_size,),
                 compression="lzf",
             )
-            h5_file.create_dataset(
-                "agent_skills",
-                (0, self.max_ships),
-                maxshape=(None, self.max_ships),
-                dtype="f4",
-                chunks=(chunk_size, self.max_ships),
-                compression="lzf",
-            )
-            h5_file.create_dataset(
-                "rewards",
-                (0, self.max_ships),
-                maxshape=(None, self.max_ships),
-                dtype="f4",
-                chunks=(chunk_size, self.max_ships),
-                compression="lzf",
-            )
-            h5_file.create_dataset(
-                "returns",
-                (0, self.max_ships),
-                maxshape=(None, self.max_ships),
-                dtype="f4",
-                chunks=(chunk_size, self.max_ships),
-                compression="lzf",
-            )
-            h5_file.create_dataset(
-                "action_masks",
-                (0, self.max_ships),
-                maxshape=(None, self.max_ships),
-                dtype="bool",
-                chunks=(chunk_size, self.max_ships),
-                compression="lzf",
-            )
+            create_feature_ds("agent_skills", (self.max_ships,), "f4", (self.max_ships,))
+            create_feature_ds("rewards", (self.max_ships,), "f4", (self.max_ships,))
+            create_feature_ds("returns", (self.max_ships,), "f4", (self.max_ships,))
+            create_feature_ds("action_masks", (self.max_ships,), "bool", (self.max_ships,))
 
     def _writer_loop(self):
         """Background thread loop to write to HDF5."""
@@ -285,12 +206,18 @@ class AsyncCollector:
             with h5py.File(self.data_path, "a") as h5_file:
                 while self.running or not self.write_queue.empty():
                     try:
+                        # Pull one item to wait if empty
                         item = self.write_queue.get(timeout=0.1)
-                        batch.append(item)
+                        batch = [item]
 
-                        if len(batch) >= self.save_interval or (
-                            not self.running and len(batch) > 0
-                        ):
+                        # GREEDILY pull all available items from the queue for bulk writing
+                        while not self.write_queue.empty():
+                            try:
+                                batch.append(self.write_queue.get_nowait())
+                            except queue.Empty:
+                                break
+
+                        if batch:
                             self._flush_batch_to_handle(h5_file, batch)
                             batch = []
 
@@ -306,7 +233,7 @@ class AsyncCollector:
             print(f"Writer Thread Fatal Error: {e}")
 
     def _flush_batch_to_handle(self, h5_file: h5py.File, batch: List[Dict[str, torch.Tensor]]):
-        """Writes a batch of episodes to the HDF5 file.
+        """Writes a batch of episodes to the HDF5 file in a single bulk operation.
 
         Args:
             h5_file: Open HDF5 file handle.
@@ -315,77 +242,51 @@ class AsyncCollector:
         if not batch:
             return
 
-        total_steps = sum(item["length"] for item in batch)
+        total_new_steps = sum(item["length"] for item in batch)
         # Check current size of a reliable dataset
         current_size = h5_file["actions"].shape[0]
         current_episodes = h5_file["episode_lengths"].shape[0]
 
-        # Resize Datasets
-        # Features
-        h5_file["position"].resize((current_size + total_steps, self.max_ships, 2))
-        h5_file["velocity"].resize((current_size + total_steps, self.max_ships, 2))
-        h5_file["health"].resize((current_size + total_steps, self.max_ships))
-        h5_file["power"].resize((current_size + total_steps, self.max_ships))
-        h5_file["attitude"].resize((current_size + total_steps, self.max_ships, 2))
-        h5_file["ang_vel"].resize((current_size + total_steps, self.max_ships))
-        h5_file["is_shooting"].resize((current_size + total_steps, self.max_ships))
-        h5_file["team_ids"].resize((current_size + total_steps, self.max_ships))
-
-        # Standard
-        h5_file["actions"].resize((current_size + total_steps, self.max_ships, 3))
-        h5_file["expert_actions"].resize((current_size + total_steps, self.max_ships, 3))
-        h5_file["rewards"].resize((current_size + total_steps, self.max_ships))
-        h5_file["returns"].resize((current_size + total_steps, self.max_ships))
-        h5_file["episode_ids"].resize((current_size + total_steps,))
-        h5_file["agent_skills"].resize((current_size + total_steps, self.max_ships))
-        h5_file["action_masks"].resize((current_size + total_steps, self.max_ships))
+        # Target total size
+        target_size = current_size + total_new_steps
+        
+        # Grow if necessary (if pre-allocation was smaller or not used)
+        if h5_file["actions"].shape[0] < target_size:
+            for key in ["position", "velocity", "health", "power", "attitude", "ang_vel", 
+                        "is_shooting", "team_ids", "actions", "expert_actions", "rewards", 
+                        "returns", "episode_ids", "agent_skills", "action_masks"]:
+                h5_file[key].resize((target_size, *h5_file[key].shape[1:]))
 
         h5_file["episode_lengths"].resize((current_episodes + len(batch),))
 
-        # Write Data
-        write_idx = current_size
-        ep_idx = current_episodes
-
-        for item in batch:
-            length = item["length"]
-
-            # Features
-            h5_file["position"][write_idx : write_idx + length] = item["position"].numpy()
-            h5_file["velocity"][write_idx : write_idx + length] = item["velocity"].numpy()
-            h5_file["health"][write_idx : write_idx + length] = item["health"].numpy()
-            h5_file["power"][write_idx : write_idx + length] = item["power"].numpy()
-            h5_file["attitude"][write_idx : write_idx + length] = item["attitude"].numpy()
-            h5_file["ang_vel"][write_idx : write_idx + length] = item["ang_vel"].numpy()
-            h5_file["is_shooting"][write_idx : write_idx + length] = item["is_shooting"].numpy()
-            h5_file["team_ids"][write_idx : write_idx + length] = item["team_ids"].numpy()
-
-            # Standard
-            h5_file["actions"][write_idx : write_idx + length] = item["actions"].numpy()
-
-            if "expert_actions" in item:
-                h5_file["expert_actions"][write_idx : write_idx + length] = item[
-                    "expert_actions"
-                ].numpy()
+        # Bulk concatenate all data in the batch
+        # We process each key to form a single large numpy array for the write
+        def aggregate(key):
+            if key == "episode_ids":
+                # Special handling for episode_ids: assign sequential IDs
+                ids = []
+                for i, item in enumerate(batch):
+                    ids.append(np.full((item["length"],), current_episodes + i, dtype=np.int64))
+                return np.concatenate(ids, axis=0)
+            elif key == "action_masks":
+                return np.ones((total_new_steps, self.max_ships), dtype=bool)
+            elif key == "agent_skills":
+                return np.concatenate([item.get("agent_skills", torch.ones((item["length"], self.max_ships))) for item in batch], axis=0)
+            elif key == "expert_actions":
+                return np.concatenate([item.get("expert_actions", item["actions"]) for item in batch], axis=0)
             else:
-                h5_file["expert_actions"][write_idx : write_idx + length] = item["actions"].numpy()
+                return np.concatenate([item[key] for item in batch], axis=0)
 
-            h5_file["rewards"][write_idx : write_idx + length] = item["rewards"].numpy()
-            h5_file["returns"][write_idx : write_idx + length] = item["returns"].numpy()
+        # Write each field in one call
+        for key in ["position", "velocity", "health", "power", "attitude", "ang_vel", 
+                    "is_shooting", "team_ids", "actions", "expert_actions", "rewards", 
+                    "returns", "episode_ids", "agent_skills", "action_masks"]:
+            h5_file[key][current_size:target_size] = aggregate(key)
 
-            h5_file["episode_ids"][write_idx : write_idx + length] = ep_idx
-
-            if "agent_skills" in item:
-                h5_file["agent_skills"][write_idx : write_idx + length] = item[
-                    "agent_skills"
-                ].numpy()
-            else:
-                h5_file["agent_skills"][write_idx : write_idx + length] = 1.0
-
-            h5_file["action_masks"][write_idx : write_idx + length] = True
-            h5_file["episode_lengths"][ep_idx] = length
-
-            write_idx += length
-            ep_idx += 1
+        # Write episode lengths
+        h5_file["episode_lengths"][current_episodes : current_episodes + len(batch)] = [
+            item["length"] for item in batch
+        ]
 
         self.total_episodes_written += len(batch)
 
@@ -509,23 +410,10 @@ class AsyncCollector:
                 ),
                 "length": length,
             }
+            self.total_transitions_completed += length
             self.write_queue.put(episode)
         except Exception as e:
             print(f"Error finalizing episode from env {env_idx}: {e}")
-
-    def _tokenize(self, obs: Dict[str, torch.Tensor]) -> torch.Tensor:
-        """Assembles ship tokens."""
-        ang_vel = obs.get("ang_vel", torch.zeros_like(obs["position"].real))
-        return compile_tokens(
-            obs["position"],
-            obs["velocity"],
-            obs["team_id"],
-            obs["health"],
-            obs["power"],
-            obs["attitude"],
-            ang_vel,
-            obs["is_shooting"],
-        )
 
     def _compute_returns(self, rewards: torch.Tensor, gamma: float) -> torch.Tensor:
         """Computes returns-to-go using vectorized operations.

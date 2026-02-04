@@ -77,7 +77,7 @@ collect:
   
   massive:
     num_envs: 2048
-    steps: 16384
+    steps: 33554432
     batch_size: 2048
     buffer_steps: 512
 

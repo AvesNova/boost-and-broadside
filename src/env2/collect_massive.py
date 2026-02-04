@@ -95,6 +95,7 @@ def run_collection(args: CollectionArgs) -> None:
         device,
         max_steps=args.buffer_steps,
         num_workers=args.num_workers,
+        total_steps=args.total_steps,
     )
 
     # Collection Loop
@@ -102,8 +103,8 @@ def run_collection(args: CollectionArgs) -> None:
     start_time = time.time()
 
     try:
-        current_steps = 0
-        while current_steps < args.total_steps:
+        last_reported_steps = 0
+        while collector.total_transitions_completed < args.total_steps:
             # 1. Compute Actions
             taken_actions, expert_actions, skills = agent.get_actions(env.state)
 
@@ -111,33 +112,47 @@ def run_collection(args: CollectionArgs) -> None:
             prev_obs = obs
             obs, rewards, dones, _, _ = env.step(taken_actions)
 
-            # 3. Collect Data
+            # 3. Check for infinite loops (max steps)
+            # If an env exceeds buffer_steps, force its 'dones' to True to trigger reset/capture
+            if (collector.step_counts >= args.buffer_steps).any():
+                over_limit = (collector.step_counts >= args.buffer_steps).to(dones.device)
+                # Inject 'done' into the collector's view for these envs
+                force_dones = dones | over_limit
+                
+                # We ALSO need to reset these in the environment so they don't stay in inf loop
+                if over_limit.any():
+                    env._reset_envs(over_limit)
+                    # Update obs for reset envs
+                    obs = env._get_obs()
+            else:
+                force_dones = dones
+
+            # 4. Collect Data
             collector.step(
                 prev_obs,
                 taken_actions,
                 rewards,
-                dones,
+                force_dones,
                 expert_actions=expert_actions,
                 agent_skills=skills,
             )
 
-            current_steps += 1
-
-            if current_steps % 100 == 0:
-                progress_bar.update(100)
+            current_completed = collector.total_transitions_completed
+            if current_completed > last_reported_steps:
+                progress_bar.update(current_completed - last_reported_steps)
+                last_reported_steps = current_completed
 
     except KeyboardInterrupt:
         print("Stopping collection early...")
     finally:
         end_time = time.time()
         elapsed = end_time - start_time
-        total_transitions = current_steps * args.num_envs
-        fps = total_transitions / elapsed if elapsed > 0 else 0
-
-        print(f"Finished {current_steps} steps.")
-        print(f"Total Transitions: {total_transitions}")
+        total_transitions = collector.total_transitions_completed
+        
+        print(f"\nFinished collection.")
+        print(f"Total Completed Transitions: {total_transitions}")
         print(f"Time: {elapsed:.2f}s")
-        print(f"Throughput: {fps:.2f} transitions/sec")
+        print(f"Throughput: {total_transitions / elapsed if elapsed > 0 else 0:.2f} transitions/sec")
 
         collector.close()
         progress_bar.close()
