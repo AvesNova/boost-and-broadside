@@ -30,6 +30,8 @@ class CollectionArgs:
     max_skill: float
     expert_ratio: float
     random_dist: str
+    buffer_steps: int = 512
+    num_workers: int = 4
     random_speed: bool = False
     min_speed: float = 1.0
     max_speed: float = 180.0
@@ -81,12 +83,19 @@ def run_collection(args: CollectionArgs) -> None:
         min_skill=args.min_skill,
         max_skill=args.max_skill,
         expert_ratio=args.expert_ratio,
-        random_dist=args.random_dist, # type: ignore
+        random_dist=args.random_dist,  # type: ignore
     )
 
     # Initialize Collector
     hdf5_path = output_path / "aggregated_data.h5"
-    collector = AsyncCollector(str(hdf5_path), args.num_envs, env.max_ships, device)
+    collector = AsyncCollector(
+        str(hdf5_path),
+        args.num_envs,
+        env.max_ships,
+        device,
+        max_steps=args.buffer_steps,
+        num_workers=args.num_workers,
+    )
 
     # Collection Loop
     progress_bar = tqdm(total=args.total_steps, desc="Collecting", unit="step")
@@ -153,6 +162,8 @@ def collect_massive(cfg: Any) -> None:
         max_skill=collect_cfg.max_skill,
         expert_ratio=collect_cfg.expert_ratio,
         random_dist=collect_cfg.random_dist,
+        buffer_steps=massive_cfg.buffer_steps,
+        num_workers=collect_cfg.num_workers,
     )
 
     run_collection(args)
@@ -160,7 +171,7 @@ def collect_massive(cfg: Any) -> None:
 
 if __name__ == "__main__":
     # If called directly, we don't have Hydra cfg, but we can't easily mixed them
-    # Projects guideline: Entry point is main.py. 
+    # Projects guideline: Entry point is main.py.
     # But for backward compatibility with the user command from earlier:
     import argparse
 
@@ -174,6 +185,8 @@ if __name__ == "__main__":
     parser.add_argument("--max_skill", type=float, default=1.0)
     parser.add_argument("--expert_ratio", type=float, default=0.0)
     parser.add_argument("--random_dist", type=str, default="beta")
+    parser.add_argument("--buffer_steps", type=int, default=512)
+    parser.add_argument("--num_workers", type=int, default=4)
     pa = parser.parse_args()
 
     args = CollectionArgs(
@@ -186,5 +199,7 @@ if __name__ == "__main__":
         max_skill=pa.max_skill,
         expert_ratio=pa.expert_ratio,
         random_dist=pa.random_dist,
+        buffer_steps=pa.buffer_steps,
+        num_workers=pa.num_workers,
     )
     run_collection(args)

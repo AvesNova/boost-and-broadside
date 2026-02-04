@@ -4,8 +4,9 @@ Asynchronous data collection and storage for the vectorized environment.
 
 import queue
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import h5py
 import numpy as np
@@ -50,8 +51,6 @@ def compile_tokens(
     tokens[..., 2] = power
     # 3,4: Pos (Raw)
     tokens[..., 3] = position.real
-    # ... (Truncated logic for brevity in replace, but I must provide FULL content if requested or careful chunks)
-    # Wait, I am using replace_file_content, so I must provide the FULL replacement.
     tokens[..., 4] = position.imag
     tokens[..., 5] = velocity.real
     tokens[..., 6] = velocity.imag
@@ -66,7 +65,8 @@ def compile_tokens(
 class AsyncCollector:
     """Collects data from Vectorized Environment and writes to HDF5 asynchronously.
 
-    Buffers episodes in memory until completion, then queues for writing.
+    Buffers episodes in memory until completion, then clones and processes them
+    using a worker pool before queuing for HDF5 writing.
 
     Attributes:
         data_path: Path to the output HDF5 file.
@@ -84,6 +84,8 @@ class AsyncCollector:
         max_ships: int,
         device: torch.device,
         save_interval: int = 100,
+        max_steps: int = 2000,
+        num_workers: int = 4,
     ):
         """Initializes the AsyncCollector.
 
@@ -93,58 +95,35 @@ class AsyncCollector:
             max_ships: Maximum number of ships per environment.
             device: Torch device.
             save_interval: Flush interval (in episodes).
+            max_steps: Maximum steps per episode (corresponds to buffer_steps).
+            num_workers: Number of processing worker threads.
         """
         self.data_path = Path(data_path)
         self.num_envs = num_envs
         self.max_ships = max_ships
         self.device = device
         self.save_interval = save_interval
-
-        # Max steps per episode safety margin
-        self.max_steps = 2000
+        self.max_steps = max_steps
 
         # Pinned CPU buffers for current episodes (pre-allocated)
-        # We split 'tokens' into granular features
-        self.pos_buffer = torch.zeros(
-            (num_envs, self.max_steps, max_ships, 2), dtype=torch.float32, pin_memory=True
-        )
-        self.vel_buffer = torch.zeros(
-            (num_envs, self.max_steps, max_ships, 2), dtype=torch.float16, pin_memory=True
-        )
-        self.health_buffer = torch.zeros(
-            (num_envs, self.max_steps, max_ships), dtype=torch.float16, pin_memory=True
-        )
-        self.power_buffer = torch.zeros(
-            (num_envs, self.max_steps, max_ships), dtype=torch.float16, pin_memory=True
-        )
-        self.ang_vel_buffer = torch.zeros(
-            (num_envs, self.max_steps, max_ships), dtype=torch.float16, pin_memory=True
-        )
+        buffer_shape = (num_envs, self.max_steps, max_ships)
+        self.pos_buffer = torch.zeros((*buffer_shape, 2), dtype=torch.float32, pin_memory=True)
+        self.vel_buffer = torch.zeros((*buffer_shape, 2), dtype=torch.float16, pin_memory=True)
+        self.health_buffer = torch.zeros(buffer_shape, dtype=torch.float16, pin_memory=True)
+        self.power_buffer = torch.zeros(buffer_shape, dtype=torch.float16, pin_memory=True)
+        self.ang_vel_buffer = torch.zeros(buffer_shape, dtype=torch.float16, pin_memory=True)
         self.attitude_buffer = torch.zeros(
-            (num_envs, self.max_steps, max_ships, 2), dtype=torch.float16, pin_memory=True
+            (*buffer_shape, 2), dtype=torch.float16, pin_memory=True
         )
-        self.is_shooting_buffer = torch.zeros(
-            (num_envs, self.max_steps, max_ships), dtype=torch.uint8, pin_memory=True
-        )
-        self.team_buffer = torch.zeros(
-            (num_envs, self.max_steps, max_ships), dtype=torch.uint8, pin_memory=True
-        )
+        self.is_shooting_buffer = torch.zeros(buffer_shape, dtype=torch.uint8, pin_memory=True)
+        self.team_buffer = torch.zeros(buffer_shape, dtype=torch.uint8, pin_memory=True)
 
-        self.action_buffer = torch.zeros(
-            (num_envs, self.max_steps, max_ships, 3), dtype=torch.uint8, pin_memory=True
-        )
+        self.action_buffer = torch.zeros((*buffer_shape, 3), dtype=torch.uint8, pin_memory=True)
         self.expert_action_buffer = torch.zeros(
-            (num_envs, self.max_steps, max_ships, 3), dtype=torch.uint8, pin_memory=True
+            (*buffer_shape, 3), dtype=torch.uint8, pin_memory=True
         )
-        self.reward_buffer = torch.zeros(
-            (num_envs, self.max_steps, max_ships), dtype=torch.float32, pin_memory=True
-        )
-        self.skill_buffer = torch.zeros(
-            (num_envs, self.max_steps, max_ships), dtype=torch.float32, pin_memory=True
-        )
-        self.mask_buffer = torch.ones(
-            (num_envs, self.max_steps, max_ships), dtype=torch.bool, pin_memory=True
-        )
+        self.reward_buffer = torch.zeros(buffer_shape, dtype=torch.float32, pin_memory=True)
+        self.skill_buffer = torch.zeros(buffer_shape, dtype=torch.float32, pin_memory=True)
 
         self.step_counts = torch.zeros(num_envs, dtype=torch.long)
 
@@ -154,6 +133,9 @@ class AsyncCollector:
         self._init_h5()
         self.total_episodes_written = 0
 
+        # Background Pool for cloning and processing (returns, etc.)
+        self.process_pool = ThreadPoolExecutor(max_workers=num_workers)
+
         self.writer_thread = threading.Thread(target=self._writer_loop, daemon=True)
         self.writer_thread.start()
 
@@ -162,12 +144,14 @@ class AsyncCollector:
         with h5py.File(self.data_path, "w") as h5_file:
             # Metadata
             h5_file.attrs["max_ships"] = self.max_ships
-            h5_file.attrs["token_dim"] = 9 # Kept for compatibility if we reconstruct
-            
-            h5_file.create_dataset("episode_lengths", (0,), maxshape=(None,), dtype="i8", compression="lzf")
+            h5_file.attrs["token_dim"] = 9  # Kept for compatibility if we reconstruct
+
+            h5_file.create_dataset(
+                "episode_lengths", (0,), maxshape=(None,), dtype="i8", compression="lzf"
+            )
 
             chunk_size = 1024 * 10
-            
+
             # --- Feature Datasets ---
             h5_file.create_dataset(
                 "position",
@@ -181,7 +165,7 @@ class AsyncCollector:
                 "velocity",
                 (0, self.max_ships, 2),
                 maxshape=(None, self.max_ships, 2),
-                dtype="f2", # float16
+                dtype="f2",  # float16
                 chunks=(chunk_size, self.max_ships, 2),
                 compression="lzf",
             )
@@ -221,7 +205,7 @@ class AsyncCollector:
                 "is_shooting",
                 (0, self.max_ships),
                 maxshape=(None, self.max_ships),
-                dtype="u1", # bool/uint8
+                dtype="u1",  # bool/uint8
                 chunks=(chunk_size, self.max_ships),
                 compression="lzf",
             )
@@ -229,7 +213,7 @@ class AsyncCollector:
                 "team_ids",
                 (0, self.max_ships),
                 maxshape=(None, self.max_ships),
-                dtype="u1", # int8/uint8 - 0 or 1
+                dtype="u1",  # int8/uint8 - 0 or 1
                 chunks=(chunk_size, self.max_ships),
                 compression="lzf",
             )
@@ -252,7 +236,14 @@ class AsyncCollector:
                 chunks=(chunk_size, self.max_ships, 3),
                 compression="lzf",
             )
-            h5_file.create_dataset("episode_ids", (0,), maxshape=(None,), dtype="i8", chunks=(chunk_size,), compression="lzf")
+            h5_file.create_dataset(
+                "episode_ids",
+                (0,),
+                maxshape=(None,),
+                dtype="i8",
+                chunks=(chunk_size,),
+                compression="lzf",
+            )
             h5_file.create_dataset(
                 "agent_skills",
                 (0, self.max_ships),
@@ -297,7 +288,9 @@ class AsyncCollector:
                         item = self.write_queue.get(timeout=0.1)
                         batch.append(item)
 
-                        if len(batch) >= self.save_interval or (not self.running and len(batch) > 0):
+                        if len(batch) >= self.save_interval or (
+                            not self.running and len(batch) > 0
+                        ):
                             self._flush_batch_to_handle(h5_file, batch)
                             batch = []
 
@@ -337,7 +330,7 @@ class AsyncCollector:
         h5_file["ang_vel"].resize((current_size + total_steps, self.max_ships))
         h5_file["is_shooting"].resize((current_size + total_steps, self.max_ships))
         h5_file["team_ids"].resize((current_size + total_steps, self.max_ships))
-        
+
         # Standard
         h5_file["actions"].resize((current_size + total_steps, self.max_ships, 3))
         h5_file["expert_actions"].resize((current_size + total_steps, self.max_ships, 3))
@@ -365,12 +358,14 @@ class AsyncCollector:
             h5_file["ang_vel"][write_idx : write_idx + length] = item["ang_vel"].numpy()
             h5_file["is_shooting"][write_idx : write_idx + length] = item["is_shooting"].numpy()
             h5_file["team_ids"][write_idx : write_idx + length] = item["team_ids"].numpy()
-            
+
             # Standard
             h5_file["actions"][write_idx : write_idx + length] = item["actions"].numpy()
 
             if "expert_actions" in item:
-                h5_file["expert_actions"][write_idx : write_idx + length] = item["expert_actions"].numpy()
+                h5_file["expert_actions"][write_idx : write_idx + length] = item[
+                    "expert_actions"
+                ].numpy()
             else:
                 h5_file["expert_actions"][write_idx : write_idx + length] = item["actions"].numpy()
 
@@ -380,7 +375,9 @@ class AsyncCollector:
             h5_file["episode_ids"][write_idx : write_idx + length] = ep_idx
 
             if "agent_skills" in item:
-                h5_file["agent_skills"][write_idx : write_idx + length] = item["agent_skills"].numpy()
+                h5_file["agent_skills"][write_idx : write_idx + length] = item[
+                    "agent_skills"
+                ].numpy()
             else:
                 h5_file["agent_skills"][write_idx : write_idx + length] = 1.0
 
@@ -398,8 +395,8 @@ class AsyncCollector:
         actions: torch.Tensor,
         rewards: torch.Tensor,
         dones: torch.Tensor,
-        expert_actions: torch.Tensor | None = None,
-        agent_skills: torch.Tensor | None = None,
+        expert_actions: Optional[torch.Tensor] = None,
+        agent_skills: Optional[torch.Tensor] = None,
     ):
         """Records a single step of data from all environments.
 
@@ -422,14 +419,20 @@ class AsyncCollector:
         team_id = obs_dict["team_id"]
 
         num_envs = self.num_envs
-        
+
         # Prepare CPU Tensors (Non-blocking)
         # Note: We cast here for buffer compatibility
-        cpu_pos = torch.stack([pos.real, pos.imag], dim=-1).to("cpu", dtype=torch.float32, non_blocking=True)
-        cpu_vel = torch.stack([vel.real, vel.imag], dim=-1).to("cpu", dtype=torch.float16, non_blocking=True)
+        cpu_pos = torch.stack([pos.real, pos.imag], dim=-1).to(
+            "cpu", dtype=torch.float32, non_blocking=True
+        )
+        cpu_vel = torch.stack([vel.real, vel.imag], dim=-1).to(
+            "cpu", dtype=torch.float16, non_blocking=True
+        )
         cpu_health = health.to("cpu", dtype=torch.float16, non_blocking=True)
         cpu_power = power.to("cpu", dtype=torch.float16, non_blocking=True)
-        cpu_att = torch.stack([att.real, att.imag], dim=-1).to("cpu", dtype=torch.float16, non_blocking=True)
+        cpu_att = torch.stack([att.real, att.imag], dim=-1).to(
+            "cpu", dtype=torch.float16, non_blocking=True
+        )
         cpu_ang_vel = ang_vel.to("cpu", dtype=torch.float16, non_blocking=True)
         cpu_shooting = is_shooting.to("cpu", dtype=torch.uint8, non_blocking=True)
         cpu_team = team_id.to("cpu", dtype=torch.uint8, non_blocking=True)
@@ -452,7 +455,7 @@ class AsyncCollector:
 
         # Buffer data
         write_steps = torch.clamp(steps, max=self.max_steps - 1)
-        
+
         self.pos_buffer[indices, write_steps] = cpu_pos
         self.vel_buffer[indices, write_steps] = cpu_vel
         self.health_buffer[indices, write_steps] = cpu_health
@@ -478,27 +481,37 @@ class AsyncCollector:
                 if length > self.max_steps:
                     length = self.max_steps
 
-                self.write_queue.put(
-                    {
-                        "position": self.pos_buffer[idx, :length].clone(),
-                        "velocity": self.vel_buffer[idx, :length].clone(),
-                        "health": self.health_buffer[idx, :length].clone(),
-                        "power": self.power_buffer[idx, :length].clone(),
-                        "attitude": self.attitude_buffer[idx, :length].clone(),
-                        "ang_vel": self.ang_vel_buffer[idx, :length].clone(),
-                        "is_shooting": self.is_shooting_buffer[idx, :length].clone(),
-                        "team_ids": self.team_buffer[idx, :length].clone(),
-                        "actions": self.action_buffer[idx, :length].clone(),
-                        "expert_actions": self.expert_action_buffer[idx, :length].clone(),
-                        "rewards": self.reward_buffer[idx, :length].clone(),
-                        "agent_skills": self.skill_buffer[idx, :length].clone(),
-                        "returns": self._compute_returns(
-                            self.reward_buffer[idx, :length], gamma=0.99
-                        ),
-                        "length": length,
-                    }
-                )
+                # Offload cloning and processing to worker pool
+                self.process_pool.submit(self._finalize_episode, idx, length)
                 self.step_counts[idx] = 0
+
+    def _finalize_episode(self, env_idx: int, length: int):
+        """Processes and clones a finished episode from the buffer.
+
+        Runs in a worker thread.
+        """
+        try:
+            episode = {
+                "position": self.pos_buffer[env_idx, :length].clone(),
+                "velocity": self.vel_buffer[env_idx, :length].clone(),
+                "health": self.health_buffer[env_idx, :length].clone(),
+                "power": self.power_buffer[env_idx, :length].clone(),
+                "attitude": self.attitude_buffer[env_idx, :length].clone(),
+                "ang_vel": self.ang_vel_buffer[env_idx, :length].clone(),
+                "is_shooting": self.is_shooting_buffer[env_idx, :length].clone(),
+                "team_ids": self.team_buffer[env_idx, :length].clone(),
+                "actions": self.action_buffer[env_idx, :length].clone(),
+                "expert_actions": self.expert_action_buffer[env_idx, :length].clone(),
+                "rewards": self.reward_buffer[env_idx, :length].clone(),
+                "agent_skills": self.skill_buffer[env_idx, :length].clone(),
+                "returns": self._compute_returns(
+                    self.reward_buffer[env_idx, :length], gamma=0.99
+                ),
+                "length": length,
+            }
+            self.write_queue.put(episode)
+        except Exception as e:
+            print(f"Error finalizing episode from env {env_idx}: {e}")
 
     def _tokenize(self, obs: Dict[str, torch.Tensor]) -> torch.Tensor:
         """Assembles ship tokens."""
@@ -515,15 +528,38 @@ class AsyncCollector:
         )
 
     def _compute_returns(self, rewards: torch.Tensor, gamma: float) -> torch.Tensor:
-        """Computes returns-to-go."""
-        returns = torch.zeros_like(rewards)
-        ret = torch.zeros(rewards.shape[1], dtype=torch.float32)
-        for t in reversed(range(len(rewards))):
-            ret = rewards[t] + gamma * ret
-            returns[t] = ret
+        """Computes returns-to-go using vectorized operations.
+
+        G_t = R_t + gamma * G_{t+1}
+        """
+        # Note: input rewards is (L, N)
+        seq_len = rewards.shape[0]
+        if seq_len == 0:
+            return torch.empty_like(rewards)
+
+        # Vectorized returns computation:
+        # G_t = sum_{j=t}^{L-1} gamma^{j-t} R_j
+        # G_t = (sum_{j=t}^{L-1} gamma^j R_j) / gamma^t
+
+        device = rewards.device
+        gamma_powers = torch.pow(gamma, torch.arange(seq_len, device=device, dtype=torch.float32))
+
+        # Y_j = gamma^j * R_j
+        # Use unsqueeze to multiply across the ships dimension (dim 1)
+        weighted_rewards = rewards * gamma_powers.unsqueeze(1)
+
+        # Suffix sums of weighted_rewards
+        # torch.cumsum is prefix sum. Suffix sum = TotalSum - PrefixSum(t-1)
+        # Or more easily: flip -> cumsum -> flip
+        suffix_sums = torch.flip(torch.cumsum(torch.flip(weighted_rewards, dims=[0]), dim=0), dims=[0])
+
+        # G_t = suffix_sums / gamma^t
+        returns = suffix_sums / gamma_powers.unsqueeze(1)
+
         return returns
 
     def close(self):
         """Signals shutdown and joins writer thread."""
         self.running = False
+        self.process_pool.shutdown(wait=True)
         self.writer_thread.join()
