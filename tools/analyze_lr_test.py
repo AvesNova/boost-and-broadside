@@ -113,7 +113,15 @@ def analyze_lr_test(csv_path, args=None):
     plt.title('Learning Rate Range Test')
     plt.legend()
     plt.grid(True, which="both", ls="-", alpha=0.2)
-    plt.ylim(top=5.0, bottom=0.0)
+    
+    # Dynamic Y Limit based on max loss before cutoff (to avoid explosion obscuring the curve)
+    if args.max_lr:
+        mask = lrs <= args.max_lr
+        max_y = np.max(losses[mask]) if np.any(mask) else 5.0
+    else:
+        max_y = np.max(losses)
+        
+    plt.ylim(top=max_y * 1.1, bottom=0.0)
     
     output_path = Path(csv_path).parent / 'lr_range_test.png'
     plt.savefig(output_path)

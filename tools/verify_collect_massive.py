@@ -18,8 +18,8 @@ def test_randomization():
     pos = obs["position"]
     att = obs["attitude"]
     
-    # Check if all envs are different
-    unique_pos = torch.unique(pos)
+    # Check if all envs are different (flatten and convert complex to real/imag for unique)
+    unique_pos = torch.unique(torch.view_as_real(pos.flatten()), dim=0)
     print(f"Unique positions: {len(unique_pos)} / {num_envs * 8}")
     
     is_unique = len(unique_pos) == num_envs * 8

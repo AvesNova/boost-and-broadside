@@ -16,6 +16,13 @@ class MetricLogger:
         self.log_buffer = []
         self.log_freq = self.wb_cfg.get("log_frequency", 50) if self.wb_cfg else 50
         
+        # Force frequency 1 for Range Tests
+        sched_cfg = cfg.world_model.get("scheduler", None)
+        self.is_range_test = sched_cfg and "range_test" in getattr(sched_cfg, "type", "")
+        if self.is_range_test:
+            self.log_freq = 1
+            log.info("Range Test detected: Forcing MetricLogger frequency to 1")
+        
         # Setup output files
         self.step_log_path = run_dir / "training_step_log.csv"
         with open(self.step_log_path, "w") as f:
@@ -44,12 +51,13 @@ class MetricLogger:
 
     def log_step(self, step_metrics: dict, global_step: int):
         """Buffer and log step metrics (high frequency)."""
-        # Buffer Metrics
-        if self.wb_cfg and self.wb_cfg.get("enabled", False):
-            self.log_buffer.append(step_metrics)
-            
-            if len(self.log_buffer) >= self.log_freq:
-                self.flush_buffer()
+        # Always buffer for CSV logging
+        self.log_buffer.append(step_metrics)
+        
+        if len(self.log_buffer) >= self.log_freq:
+            self.flush_buffer()
+        
+        # WandB logging is handled inside flush_buffer
 
     def flush_buffer(self):
         """Flush buffered wandb logs."""
@@ -65,11 +73,12 @@ class MetricLogger:
             except:
                 packed[k] = [x[k] for x in self.log_buffer]
         
-        for i in range(len(packed["step"])):
-            log_item = {k: packed[k][i] for k in packed}
-            step_val = int(log_item.pop("step"))
-            # Ensure native types
-            wandb.log(log_item, step=step_val)
+        if self.wb_cfg and self.wb_cfg.get("enabled", False):
+            for i in range(len(packed["step"])):
+                log_item = {k: packed[k][i] for k in packed}
+                step_val = int(log_item.pop("step"))
+                # Ensure native types
+                wandb.log(log_item, step=step_val)
         
         # CSV Logging (Bulk)
         with open(self.step_log_path, "a") as f:
@@ -158,4 +167,5 @@ class MetricLogger:
             wandb.log(wandb_log, step=epoch_metrics.get("global_step", epoch * 100)) # Fallback step if missing
 
     def close(self):
+        self.flush_buffer()
         self.writer.close()

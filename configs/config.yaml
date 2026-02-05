@@ -137,7 +137,7 @@ world_model:
   embed_dim: 256
   n_layers: 6
   n_heads: 4
-  learning_rate: 1.0e-5
+  learning_rate: 3.5e-5
   epochs: 1000
   lambda_state: 1.0
   # Split Action Lambdas
@@ -173,12 +173,12 @@ world_model:
       start_lr: 1e-7
       
     range_test:
-      steps: 100
+      steps: 1000
       start_lr: 1e-7
       end_lr: 1.0
   
   # Training Parameters
-  batch_size: 16
+  batch_size: 24
   seq_len: 256
   gradient_accumulation_steps: 8
   use_sobol: false

@@ -133,7 +133,14 @@ class Trainer:
             self.model.train()
             
             # Setup Iterator
-            pbar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{self.epochs}")
+            if is_range_test:
+                limit = sched_cfg.range_test.steps
+                pbar = tqdm(total=limit, desc=f"LR Range Test")
+                # Use a separate iterator for the loader
+                batch_iter = iter(train_loader)
+            else:
+                pbar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{self.epochs}")
+                batch_iter = pbar
             
             # Accumulators
             accumulators = self._init_accumulators()
@@ -142,7 +149,7 @@ class Trainer:
             self.optimizer.zero_grad()
             self.t_last_macro = time.time()
             
-            for batch_data in pbar:
+            for batch_data in batch_iter:
                 # 2. Process Batch
                 t0 = time.time()
                 step_params = self._get_current_params(self.global_step)
@@ -159,11 +166,10 @@ class Trainer:
                     self._optimize_step(accumulators, pbar, is_range_test, epoch)
                     self._reset_accumulators(accumulators)
                     
-                    if is_range_test: pbar.update(1)
-
-                if is_range_test and self.global_step >= sched_cfg.range_test.steps:
-                     log.info("Range test complete.")
-                     return
+                    if is_range_test and self.global_step >= sched_cfg.range_test.steps:
+                        log.info(f"Range test complete ({self.global_step} steps).")
+                        pbar.close()
+                        return
 
                 steps_in_epoch += 1
                 if steps_in_epoch % (50 * self.acc_steps) == 0:
@@ -328,8 +334,7 @@ class Trainer:
         if self.scheduler:
             self.scheduler.step()
             
-        if not is_range_test:
-            pbar.update(1)
+        pbar.update(1)
             
         self.global_step += 1
         current_lr = self.optimizer.param_groups[0]['lr']
@@ -342,7 +347,6 @@ class Trainer:
             "loss": acc["acc_loss"] / self.acc_steps,
             "state_loss": acc["acc_state"] / self.acc_steps,
             "action_loss": acc["acc_action"] / self.acc_steps,
-            "relational_loss": acc["acc_rel"] / self.acc_steps,
             "relational_loss": acc["acc_rel"] / self.acc_steps,
             "param/entropy_lambda": self._get_current_params(self.global_step)["lambda_entropy"],
             "param/focal_gamma": self._get_current_params(self.global_step)["focal_gamma"],

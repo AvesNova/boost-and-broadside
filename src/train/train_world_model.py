@@ -65,11 +65,26 @@ def train_world_model(cfg: DictConfig) -> None:
     
     # Calculate total steps for scheduler estimate
     acc_steps = cfg.world_model.get("gradient_accumulation_steps", 1)
+    
+    # If range test, override defaults for more diagnostic resolution
+    sched_cfg = cfg.world_model.get("scheduler", None)
+    is_range_test = sched_cfg and "range_test" in getattr(sched_cfg, "type", "")
+    
+    if is_range_test:
+        log.info(f"LR Range Test: Forcing gradient_accumulation_steps=1 for higher resolution.")
+        acc_steps = 1
+        # Also update the config so the Trainer sees it
+        cfg.world_model.gradient_accumulation_steps = 1
+        
     train_batches = len(train_loader)
-    # Estimate total micro steps
     total_est_steps = int(train_batches / acc_steps) * cfg.world_model.epochs
     
-    scheduler = create_scheduler(optimizer, cfg, total_est_steps)
+    total_sched_steps = total_est_steps
+    if is_range_test:
+        total_sched_steps = min(total_est_steps, sched_cfg.range_test.steps)
+        log.info(f"LR Range Test: Scaling scheduler over {total_sched_steps} steps")
+
+    scheduler = create_scheduler(optimizer, cfg, total_sched_steps)
     
     # Amp Scaler
     use_amp = cfg.train.get("amp", False) and device.type == 'cuda'

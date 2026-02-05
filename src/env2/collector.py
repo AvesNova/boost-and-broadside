@@ -153,7 +153,9 @@ class AsyncCollector:
             h5_file.attrs["max_ships"] = self.max_ships
             h5_file.attrs["token_dim"] = 9  # Kept for compatibility if we reconstruct
 
-            init_size = total_steps if total_steps is not None else 0
+            # We always initialize with 0 size so that current_size starts at 0.
+            # HDF5 resize is efficient for growing datasets.
+            init_size = 0 
             ep_init_size = 0  # We don't know episode count in advance
 
             h5_file.create_dataset(
