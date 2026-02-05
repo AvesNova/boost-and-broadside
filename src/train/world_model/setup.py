@@ -38,6 +38,8 @@ def create_model(cfg: DictConfig, data_path: str, device: torch.device) -> Mamba
         target_dim=state_dim, # Delta prediction
     )
 
+    # Keep model in Float32 for stability (Autocast will handle mixed precision)
+    # forcing pure BFloat16 weights without careful optimizer setup causes instability/NaNs
     model = MambaBB(model_cfg).to(device)
     
     # Compile

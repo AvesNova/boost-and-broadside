@@ -57,17 +57,17 @@ class Trainer:
         w_pwr = self.loss_cfg.get("weighted_loss_power", 0.5)
         
         # Calculate weights 
-        # Calculate weights 
+        dtype = torch.bfloat16 if self.use_amp else torch.float32
         w_power_full = compute_class_weights(counts["power"], cap=w_cap, power=w_pwr)
-        self.w_power = w_power_full[:3].to(device)
+        self.w_power = w_power_full[:3].to(device, dtype=dtype)
         self.w_power = normalize_weights(self.w_power, counts["power"][:3])
         
         w_turn_full = apply_turn_exceptions(compute_class_weights(counts["turn"], cap=w_cap, power=w_pwr))
-        self.w_turn = w_turn_full[:7].to(device)
+        self.w_turn = w_turn_full[:7].to(device, dtype=dtype)
         self.w_turn = normalize_weights(self.w_turn, counts["turn"][:7])
         
         w_shoot_full = compute_class_weights(counts["shoot"], cap=w_cap, power=w_pwr)
-        self.w_shoot = w_shoot_full[:2].to(device)
+        self.w_shoot = w_shoot_full[:2].to(device, dtype=dtype)
         self.w_shoot = normalize_weights(self.w_shoot, counts["shoot"][:2])
         
         log.info(f"Action Counts - Power: {counts['power'][:3]}")
@@ -234,20 +234,6 @@ class Trainer:
         alive = input_states[..., 1] > 0
         target_alive = target_states[..., 1] > 0
         
-        # Cast inputs if AMP is disabled (e.g. CPU training with bfloat16 data)
-        # Linear layers on CPU might not support bf16 inputs with f32 weights without autocast?
-        # Actually PyTorch 2.x supports it but let's be safe.
-        # DEBUG
-        # print(f"DEBUG Trainer: use_amp={self.use_amp}, input_states.dtype={input_states.dtype}")
-        
-        if not self.use_amp and input_states.dtype == torch.bfloat16:
-             print("DEBUG Trainer: Casting to float32")
-             input_states = input_states.float()
-             target_states = target_states.float()
-             pos = pos.float()
-             vel = vel.float()
-             att = att.float()
-
         # Forward & Loss
         with torch.amp.autocast(device_type=self.device.type, dtype=torch.bfloat16, enabled=self.use_amp):
              pred_states, pred_actions = self.model(

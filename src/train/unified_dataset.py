@@ -248,7 +248,7 @@ class ShortView(BaseView):
 
         # Slice using helper
         seq_tokens = self.dataset.get_slice("tokens", abs_start, abs_end)
-        seq_pos = self.dataset.get_slice("position", abs_start, abs_end).float() # Explicitly float32
+        seq_pos = self.dataset.get_slice("position", abs_start, abs_end)
         seq_input_actions = self._get_shifted_actions_from_full(
             abs_start, abs_end, start_offset
         )
@@ -371,7 +371,7 @@ class LongView(BaseView):
         abs_end = abs_start + self.seq_len
 
         seq_tokens = self.dataset.get_slice("tokens", abs_start, abs_end)
-        seq_pos = self.dataset.get_slice("position", abs_start, abs_end).float() # Explicitly float32
+        seq_pos = self.dataset.get_slice("position", abs_start, abs_end)
         seq_input_actions = self._get_shifted_actions_from_full(
             abs_start, abs_end, start_offset
         )

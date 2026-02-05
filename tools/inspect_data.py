@@ -7,63 +7,43 @@ sys.path.append(str(Path(__file__).parent.parent / "src"))
 import torch
 
 
+import h5py
+import numpy as np
+
 def inspect_data_file(file_path: Path) -> None:
     """
-    Load and print information about a collected data file
-
-    Args:
-        file_path: Path to the pickle file
+    Load and print information about a collected data file (HDF5)
     """
     print(f"\n{'=' * 80}")
     print(f"Inspecting: {file_path}")
     print(f"{'=' * 80}\n")
 
-    with open(file_path, "rb") as f:
-        data = pickle.load(f)
+    try:
+        with h5py.File(file_path, "r") as f:
+            print("Attributes (Metadata):")
+            for key, value in f.attrs.items():
+                print(f"  {key}: {value}")
+            print("\nDatasets:")
+            
+            def print_structure(name, obj):
+                if isinstance(obj, h5py.Dataset):
+                    print(f"  {name}: shape={obj.shape}, dtype={obj.dtype}")
+                    # Sample stats if numeric
+                    if obj.shape[0] > 0 and np.issubdtype(obj.dtype, np.number):
+                        try:
+                            # Sample first chunk to be fast
+                            sample = obj[:1000]
+                            print(f"    mean={np.mean(sample):.4f}, min={np.min(sample)}, max={np.max(sample)}")
+                            if np.sum(sample) == 0 and np.max(sample) == 0 and np.min(sample) == 0:
+                                print(f"    [WARNING] First 1000 items are all zeros!")
+                        except: pass
+                elif isinstance(obj, h5py.Group):
+                    print(f"  Group: {name}")
 
-    if "metadata" in data:
-        print("Metadata:")
-        for key, value in data["metadata"].items():
-            print(f"  {key}: {value}")
-        print()
-
-    print("Data tensors:")
-    for key, value in data.items():
-        if key == "metadata":
-            continue
-        if isinstance(value, dict):
-            print(f"  {key}:")
-            for subkey, subvalue in value.items():
-                if isinstance(subvalue, torch.Tensor):
-                    print(
-                        f"    {subkey}: shape={subvalue.shape}, dtype={subvalue.dtype}"
-                    )
-                else:
-                    print(f"    {subkey}: type={type(subvalue)}")
-        elif isinstance(value, torch.Tensor):
-            print(f"  {key}: shape={value.shape}, dtype={value.dtype}")
-        else:
-            print(f"  {key}: type={type(value)}")
-
-    if "episode_lengths" in data:
-        lengths = data["episode_lengths"]
-        print("\nEpisode lengths:")
-        print(f"  Min: {lengths.min().item()}")
-        print(f"  Max: {lengths.max().item()}")
-        print(f"  Mean: {lengths.float().mean().item():.2f}")
-        print(f"  Median: {lengths.float().median().item():.0f}")
-
-    if "team_0" in data and "team_1" in data:
-        if "rewards" in data["team_0"] and "rewards" in data["team_1"]:
-            r0 = data["team_0"]["rewards"]
-            r1 = data["team_1"]["rewards"]
-            print("\nRewards:")
-            print(
-                f"  Team 0 - Mean: {r0.mean().item():.4f}, Sum: {r0.sum().item():.2f}"
-            )
-            print(
-                f"  Team 1 - Mean: {r1.mean().item():.4f}, Sum: {r1.sum().item():.2f}"
-            )
+            f.visititems(print_structure)
+            
+    except Exception as e:
+        print(f"Failed to inspect HDF5: {e}")
 
 
 def main() -> None:

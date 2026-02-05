@@ -92,7 +92,7 @@ train:
   use_bc: false
   use_rl: false
   
-  bc_data_path: data/collection_v1/aggregated_data.h5
+  bc_data_path: data/bc_pretraining/aggregated_data.h5
   
   model:
     transformer:
@@ -173,7 +173,7 @@ world_model:
       start_lr: 1e-7
       
     range_test:
-      steps: 1000
+      steps: 100
       start_lr: 1e-7
       end_lr: 1.0
   

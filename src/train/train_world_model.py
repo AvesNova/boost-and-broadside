@@ -73,7 +73,8 @@ def train_world_model(cfg: DictConfig) -> None:
     
     # Amp Scaler
     use_amp = cfg.train.get("amp", False) and device.type == 'cuda'
-    scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
+    # Disable scaler for BFloat16 as it's not needed and not implemented for BF16 in many PyTorch versions
+    scaler = torch.amp.GradScaler('cuda', enabled=False)
     
     # SWA
     swa_model = SWAModule(model)

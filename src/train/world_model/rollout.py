@@ -134,16 +134,17 @@ def perform_rollout(model, input_states, input_actions, input_pos, team_ids, rol
             # 3. Update Position (Analytic Integration)
             # pos_new = pos_old + vel * dt
             # Vel is normalized in state.
-            pred_vx_norm = next_state[..., 3]
-            pred_vy_norm = next_state[..., 4]
+            # Perform math in F32 for precision
+            pred_vx_norm = next_state[..., 3].float()
+            pred_vy_norm = next_state[..., 4].float()
             vx = pred_vx_norm * NORM_VELOCITY
             vy = pred_vy_norm * NORM_VELOCITY
             
             # DT = 0.04 approx (Standard Agent DT)
             dt = 0.04 
             
-            # Current pos at t
-            pos_t = curr_pos[:, t]
+            # Current pos at t (Maintain in F32)
+            pos_t = curr_pos[:, t].float()
             pos_next = pos_t + torch.stack([vx, vy], dim=-1) * dt
             
             # Wrap around world (0-1024)

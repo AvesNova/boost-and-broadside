@@ -17,7 +17,8 @@ class RMSNorm(nn.Module):
         self.weight = nn.Parameter(torch.ones(dim))
 
     def forward(self, x):
-        return F.rms_norm(x, (x.size(-1),), self.weight, self.eps)
+        # Cast weight to x.dtype for fused kernel support (especially in BF16)
+        return F.rms_norm(x, (x.size(-1),), self.weight.to(x.dtype), self.eps)
 
 class RelationalEncoder(nn.Module):
     """
@@ -56,6 +57,9 @@ class RelationalEncoder(nn.Module):
         Att: (B, T, N, 2) [cos, sin]
         """
         # Delta Pos (Wrapped)
+        # Maintain FP32 for position for high-precision geometry as requested.
+        pos = pos.to(torch.float32)
+        
         d_pos = pos.unsqueeze(-2) - pos.unsqueeze(-3) # (..., N, N, 2)
         
         W, H = world_size
@@ -73,12 +77,13 @@ class RelationalEncoder(nn.Module):
         dist = dist_sq.sqrt() + 1e-6
         
         # Standard features
-        dir = d_pos / dist
+        eps = 1e-6
+        dir = d_pos / (dist + eps)
         rel_speed = d_vel.pow(2).sum(dim=-1, keepdim=True).sqrt()
-        closing = (d_vel * d_pos).sum(dim=-1, keepdim=True) / dist
-        inv_dist = 1.0 / (dist + 0.1)
+        closing = (d_vel * d_pos).sum(dim=-1, keepdim=True) / (dist + eps)
+        inv_dist = 1.0 / (dist + 0.1) # 0.1 is safe enough
         log_dist = torch.log(dist + 1.0)
-        tti = dist / (closing.clamp(min=1e-3))
+        tti = dist / (closing.clamp(min=1e-3)) # Time to impact can be large, clamp denom
         
         # Relational Geometry (ATA, AA, HCA)
         if att is not None:
@@ -105,6 +110,7 @@ class RelationalEncoder(nn.Module):
         # Fourier Encoding of d_pos (Normalized roughly by world size/scale)
         # Scale d_pos to [-PI, PI] range roughly for Fourier
         # World is 1024. 
+        # Perform scale in F32
         scale = 2 * math.pi / 1024.0
         scaled_pos = d_pos * scale
         
@@ -117,17 +123,28 @@ class RelationalEncoder(nn.Module):
         
         # Concatenate: 2(pos)+2(vel)+1(dist)+1(inv)+1(speed)+1(close)+2(dir)+1(log)+1(tti) + 6(geom) = 18 Base
         base_features = torch.cat([
-            d_pos, d_vel, dist, inv_dist, rel_speed, closing, dir, log_dist, tti,
+            d_pos, d_vel, dist, inv_dist, 
+            rel_speed, closing, dir, log_dist, tti,
             cos_ata, sin_ata, cos_aa, sin_aa, cos_hca, sin_hca
         ], dim=-1)
         
-        features = torch.cat([base_features, fourier], dim=-1) # 18 + 32 = 50
+        # User Specific Request: Cast fourier expanded delta position features to BF16
+        # We also ensure the final features match the Trunk projection weight dtype (FP32 master or BF16 compute)
+        fourier = fourier.to(torch.bfloat16)
+        
+        # Final feature assembly
+        features = torch.cat([base_features.to(fourier.dtype), fourier], dim=-1) # 18 + 32 = 50
         
         # Pad to 64
         pad_size = self.padded_dim - features.shape[-1]
         if pad_size > 0:
             features = F.pad(features, (0, pad_size))
         
+        # Robust cast to ensure compatibility with Master Weights (Float) when not in Autocast
+        target_dtype = self.trunk[0].weight.dtype
+        features = features.to(target_dtype)
+        
+        # Final cast to BF16 for the trunk (or whatever the trunk uses)
         return features
 
     def forward(self, pos, vel, att=None, layer_idx=None):
@@ -203,22 +220,30 @@ class RelationalAttention(nn.Module):
         
         # Mask
         if mask is not None:
-            # Mask is (Batch, N). We want to mask columns (j) that are dead.
-            mask_flat = mask.view(Batch, 1, 1, N) # (Batch, 1, 1, N(j))
+            # mask: (Batch, N) -> We want to mask columns (j) that are dead.
+            mask_flat = mask.view(Batch, 1, 1, N) # (Batch, 1, 1, N_j)
             scores = scores.masked_fill(~mask_flat, float('-inf'))
 
-        attn = F.softmax(scores, dim=-1) # (Batch, H, N(i), N(j))
+        # Safety: Softmax([-inf, -inf]) -> NaN. This happens if ALL targets for a query are masked.
+        # We handle this by identifying such rows and ensuring they produce zero output.
+        
+        # 1. Identify rows where ALL targets are masked (max score is -inf)
+        max_scores, _ = scores.max(dim=-1, keepdim=True)
+        is_nan_row = (max_scores == float('-inf')) # (Batch, H, N_i, 1)
+
+        # 2. Compute softmax on a "safe" version where we replace -inf with 0.0 temporarily.
+        # The actual value doesn't matter because we will zero it out next.
+        scores_safe = torch.where(is_nan_row, torch.zeros_like(scores), scores)
+        attn = F.softmax(scores_safe, dim=-1) # (Batch, H, N_i, N_j)
+        
+        # 3. Strictly ZERO out weights for rows that were all-masked.
+        # This ensures the resulting attention output for those queries is exactly 0.
+        attn = attn.masked_fill(is_nan_row, 0.0)
         
         # --- Weighted Sum ---
         # Out_i = Sum_j (Attn_ij * V_ij)
-        # Attn: (B, H, N, N)
-        # V_p: (B, N, N, H, D) -> Permute to (B, H, N, N, D) for matmul?
-        
-        # Let's use einsum for clarity
-        # b: Batch, h: Head, i: Rows, j: Cols, d: Head_Dim
         # attn: b h i j
-        # v_p: b i j h d
-        
+        # v_pairwise: b i j h d
         out = torch.einsum('bhij, bijhd -> bihd', attn, v_pairwise)
         
         # Concatenate heads
@@ -325,7 +350,6 @@ class MambaBB(nn.Module):
              alive = state[..., 1] > 0
              
         dead_mask = ~alive
-        dead_mask = ~alive
         # Avoid graph break from .any() and boolean indexing
         dead_mask_bc = dead_mask.unsqueeze(-1)
         dead_embedding_bc = self.dead_embedding.to(state.dtype).view(1, 1, 1, -1)
@@ -348,6 +372,12 @@ class MambaBB(nn.Module):
 
         # 3. Encoders
         # Position is no longer in the state tensor (removed in unified_dataset)
+        # Robust Input Handling:
+        # 1. Master Weights are now strictly FP32 for stability.
+        # 2. Dataloader may provide tokens in BFloat16.
+        # 3. We must align them for Linear layers, especially on CPU or when Autocast is disabled.
+        w_dtype = self.state_encoder[0].weight.dtype
+        state = state.to(w_dtype)
         s_emb = self.state_encoder(state)
         
         # Add Identity and Affiliation Embeddings (Spec 2.A.2)
@@ -446,6 +476,10 @@ class MambaBB(nn.Module):
         Compute MambaBB Loss.
         Masks out transition frames AND dead entities.
         """
+        # Ensure targets match prediction dtypes (Master Weight Stability)
+        target_states = target_states.to(pred_states.dtype)
+        # target_actions are mostly indices (long), but ensure consistency if used in float form
+        
         # Loss Mask Handling
         if loss_mask.ndim == 2:
              loss_mask = loss_mask.unsqueeze(-1).expand_as(pred_states[..., 0])
