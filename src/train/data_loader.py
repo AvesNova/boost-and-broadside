@@ -28,7 +28,7 @@ def unified_collate_fn(batch):
     """
     Collate function for ShortView/LongView tuples.
     Tuple structure:
-    (seq_tokens, seq_input_actions, seq_target_actions, seq_returns, loss_mask, seq_masks, seq_skills, seq_team_ids, seq_pos)
+    (seq_tokens, seq_input_actions, seq_target_actions, seq_returns, seq_rewards, loss_mask, seq_masks, seq_skills, seq_team_ids, seq_pos)
     """
     # Transpose list of tuples -> tuple of lists
     transposed = list(zip(*batch))
@@ -38,11 +38,12 @@ def unified_collate_fn(batch):
         "actions": torch.stack(transposed[1]),
         "target_actions": torch.stack(transposed[2]),
         "returns": torch.stack(transposed[3]),
-        "loss_mask": torch.stack(transposed[4]),
-        "action_masks": torch.stack(transposed[5]),
-        "skills": torch.stack(transposed[6]),
-        "team_ids": torch.stack(transposed[7]),
-        "pos": torch.stack(transposed[8]),
+        "rewards": torch.stack(transposed[4]),
+        "loss_mask": torch.stack(transposed[5]),
+        "action_masks": torch.stack(transposed[6]),
+        "skills": torch.stack(transposed[7]),
+        "team_ids": torch.stack(transposed[8]),
+        "pos": torch.stack(transposed[9]),
     }
 
 def load_bc_data(data_path: str = None) -> str:

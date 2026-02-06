@@ -26,7 +26,8 @@ def save_dummy_data_to_h5(
 
     actions = torch.randn(total_timesteps, num_ships, action_dim)
     episode_lengths = torch.tensor([episode_len] * num_episodes, dtype=torch.int64)
-    returns = torch.zeros(total_timesteps)
+    returns = torch.zeros(total_timesteps, num_ships)
+    rewards = torch.randn(total_timesteps, num_ships)
     action_masks = torch.ones(total_timesteps, num_ships)
 
     # New fields
@@ -44,6 +45,7 @@ def save_dummy_data_to_h5(
 
         f.create_dataset("actions", data=actions.numpy())
         f.create_dataset("returns", data=returns.numpy())
+        f.create_dataset("rewards", data=rewards.numpy())
         f.create_dataset("action_masks", data=action_masks.numpy())
         f.create_dataset("episode_lengths", data=episode_lengths.numpy())
         f.create_dataset("agent_skills", data=agent_skills.numpy())
@@ -73,7 +75,7 @@ class TestShortView:
         dataset = UnifiedEpisodeDataset(str(h5_path))
         view = ShortView(dataset, list(range(len(episode_lengths))), seq_len=32)
 
-        batch_tokens, batch_input_actions, batch_target_actions, batch_returns, loss_mask, batch_masks, _, _, _ = view[
+        batch_tokens, batch_input_actions, batch_target_actions, batch_returns, batch_rewards, loss_mask, batch_masks, _, _, _ = view[
             0
         ]
 
@@ -115,7 +117,7 @@ class TestLongView:
             dataset, list(range(len(episode_lengths))), seq_len=128, warmup_len=32
         )
 
-        batch_tokens, batch_input_actions, batch_target_actions, batch_returns, loss_mask, batch_masks, _, _, _ = view[
+        batch_tokens, batch_input_actions, batch_target_actions, batch_returns, batch_rewards, loss_mask, batch_masks, _, _, _ = view[
             0
         ]
 

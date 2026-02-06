@@ -53,11 +53,21 @@ class Validator:
                     total_batches_processed += 1
                     
                     # Unpack Dict
+                # Unpack Dict
                     states = batch["states"].to(self.device)
                     actions = batch["actions"].to(self.device)
                     team_ids = batch["team_ids"].to(self.device)
                     loss_mask = batch["loss_mask"].to(self.device)
                     seq_idx = batch["seq_idx"].to(self.device)
+                    
+                    # New: Value and Reward Targets
+                    rewards = batch["rewards"].to(self.device)[:, :-1]
+                    if rewards.dim() == 2:
+                         rewards = rewards.unsqueeze(-1)
+
+                    returns = batch["returns"].to(self.device)[:, :-1]
+                    if returns.dim() == 2:
+                         returns = returns.unsqueeze(-1)
                     
                     # Inputs/Targets
                     input_states = states[:, :-1]
@@ -89,7 +99,7 @@ class Validator:
                          att = att.float()
 
                     with torch.amp.autocast(device_type='cuda', dtype=torch.bfloat16, enabled=self.amp):
-                        pred_states, pred_actions = model_to_use(
+                        pred_states, pred_actions, pred_values, pred_rewards = model_to_use(
                             state=input_states, 
                             prev_action=input_actions, 
                             pos=pos_in,
@@ -100,7 +110,7 @@ class Validator:
                             alive=alive
                         )
 
-                        loss, _, _, _, _ = model_to_use.get_loss(
+                        loss, _, _, _, metrics = model_to_use.get_loss(
                            pred_states=pred_states,
                            pred_actions=pred_actions,
                            target_states=target_states,
@@ -110,6 +120,12 @@ class Validator:
                            lambda_power=self.cfg.world_model.get("lambda_power", 0.05),
                            lambda_turn=self.cfg.world_model.get("lambda_turn", 0.05),
                            lambda_shoot=self.cfg.world_model.get("lambda_shoot", 0.05),
+                           pred_values=pred_values,
+                           pred_rewards=pred_rewards,
+                           target_returns=returns,
+                           target_rewards=rewards,
+                           lambda_value=self.cfg.world_model.get("lambda_value", 0.1),
+                           lambda_reward=self.cfg.world_model.get("lambda_reward", 0.1),
                            target_alive=target_alive
                         )
                     

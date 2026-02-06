@@ -199,6 +199,18 @@ class Trainer:
         seq_idx = batch_data["seq_idx"].to(self.device, non_blocking=True)
         loss_mask = batch_data["loss_mask"].to(self.device, non_blocking=True)
         
+        # New: Value and Reward Targets
+        # Target for Value(S_t) is G_t. Input is S_t (index :-1).
+        # Target for Reward(S_t, A_t) is R_t. Input is S_t.
+        # So we align with inputs.
+        rewards = batch_data["rewards"].to(self.device, non_blocking=True)[:, :-1]
+        if rewards.dim() == 2:
+             rewards = rewards.unsqueeze(-1)
+
+        returns = batch_data["returns"].to(self.device, non_blocking=True)[:, :-1]
+        if returns.dim() == 2:
+             returns = returns.unsqueeze(-1)
+        
         # Inputs: [0 : -1] -> Targets: [1 : End]
         # State_t -> State_{t+1}
         # Action_t (Teacher Forcing) -> Action_t (Prediction)
@@ -217,16 +229,7 @@ class Trainer:
         input_actions = actions[:, :-1]
         target_actions = actions[:, :-1]
         
-        loss_mask_slice = loss_mask[:, 1:] # Mask corresponds to prediction valid at t+1?
-        # Actually loss_mask from view indicates if T is valid.
-        # If we predict T, we check mask[T].
-        # View returns mask aligned with inputs? 
-        # View `reset_mask` aligns with `tokens`.
-        # `loss_mask` = `~reset_mask`.
-        # If T=0 is reset, we can't predict T=0 (no history).
-        # We predict T=1 from T=0.
-        # So check mask[1:]
-        loss_mask_slice = loss_mask[:, 1:]
+        loss_mask_slice = loss_mask[:, 1:] 
         
         # Pos is now explicitly passed from dataset (float32)
         pos = batch_data["pos"].to(self.device, non_blocking=True)[:, :-1]
@@ -242,7 +245,7 @@ class Trainer:
         
         # Forward & Loss
         with torch.amp.autocast(device_type=self.device.type, dtype=torch.bfloat16, enabled=self.use_amp):
-             pred_states, pred_actions = self.model(
+             pred_states, pred_actions, pred_values, pred_rewards = self.model(
                 state=input_states,
                 prev_action=input_actions,
                 pos=pos,
@@ -264,11 +267,18 @@ class Trainer:
                 lambda_power=self.cfg.world_model.get("lambda_power", 0.05),
                 lambda_turn=self.cfg.world_model.get("lambda_turn", 0.05),
                 lambda_shoot=self.cfg.world_model.get("lambda_shoot", 0.05),
+                pred_values=pred_values,
+                pred_rewards=pred_rewards,
+                target_returns=returns,
+                target_rewards=rewards,
+                lambda_value=self.cfg.world_model.get("lambda_value", 0.1),
+                lambda_reward=self.cfg.world_model.get("lambda_reward", 0.1),
                 weights_power=self.w_power,
                 weights_turn=self.w_turn,
                 weights_shoot=self.w_shoot,
                 target_alive=target_alive
              )
+
 
         # Backward
         step_loss = loss / self.acc_steps

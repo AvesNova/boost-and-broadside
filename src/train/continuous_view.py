@@ -106,6 +106,17 @@ class ContinuousView(Dataset):
         
         # Fetch Position (separate from tokens now)
         pos = self.dataset.get_cross_episode_slice("position", global_start, self.seq_len)
+        
+        # Rewards and Returns
+        if self.dataset.has_dataset("rewards"):
+             rewards = self.dataset.get_cross_episode_slice("rewards", global_start, self.seq_len)
+             returns = self.dataset.get_cross_episode_slice("returns", global_start, self.seq_len)
+        else:
+             # Fallback for testing/compatibility if dataset missing? 
+             # Though we expect it. MambaBB refactor requires it.
+             # We can create zeros.
+             rewards = torch.zeros((self.seq_len, tokens.shape[1]), dtype=torch.float32)
+             returns = torch.zeros((self.seq_len, tokens.shape[1]), dtype=torch.float32)
 
         return {
             "states": tokens,
@@ -115,5 +126,7 @@ class ContinuousView(Dataset):
             "reset_mask": reset_mask,
             "loss_mask": loss_mask,
             "action_masks": action_masks,
-            "pos": pos
+            "pos": pos,
+            "rewards": rewards,
+            "returns": returns
         }

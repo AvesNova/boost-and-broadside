@@ -88,8 +88,8 @@ def test_train_swa_pipeline(default_config, tmp_path):
         f.create_dataset("actions", data=actions)
         
         f.create_dataset("action_masks", data=np.ones((N, MaxShips, 12), dtype=np.bool_)) # 3+7+2=12
-        f.create_dataset("rewards", data=np.zeros((N,), dtype=np.float32))
-        f.create_dataset("returns", data=np.zeros((N,), dtype=np.float32))
+        f.create_dataset("rewards", data=np.zeros((N, MaxShips), dtype=np.float32))
+        f.create_dataset("returns", data=np.zeros((N, MaxShips), dtype=np.float32))
         
         # Episode IDs: 10 episodes of 20 steps
         ep_ids = np.repeat(np.arange(10), 20)

@@ -150,11 +150,11 @@ def synthetic_h5_data(tmp_path):
         f.create_dataset("action_masks", data=np.ones((total_timesteps, max_ships, num_actions), dtype=bool))
 
 
-        # rewards: (N,)
-        f.create_dataset("rewards", data=np.random.randn(total_timesteps).astype(np.float32))
+        # rewards: (N, MaxShips) - Granular rewards per ship
+        f.create_dataset("rewards", data=np.random.randn(total_timesteps, max_ships).astype(np.float32))
 
-        # returns: (N,)
-        f.create_dataset("returns", data=np.random.randn(total_timesteps).astype(np.float32))
+        # returns: (N, MaxShips) - Granular returns per ship
+        f.create_dataset("returns", data=np.random.randn(total_timesteps, max_ships).astype(np.float32))
 
         # episode_ids: (N,)
         ids = np.repeat(np.arange(num_episodes), episode_len)

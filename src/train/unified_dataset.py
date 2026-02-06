@@ -261,7 +261,9 @@ class ShortView(BaseView):
             seq_target_actions = seq_target_actions.to(torch.int64)
         
         seq_masks = self._get_shifted_masks_from_full(abs_start, abs_end, start_offset)
+        seq_masks = self._get_shifted_masks_from_full(abs_start, abs_end, start_offset)
         seq_returns = self.dataset.get_slice("returns", abs_start, abs_end)
+        seq_rewards = self.dataset.get_slice("rewards", abs_start, abs_end)
         
         # Optional Features
 
@@ -310,9 +312,11 @@ class ShortView(BaseView):
             )
             seq_returns = torch.cat([seq_returns, return_pad], dim=0)
             
-            # Pad rel features
-
-
+            reward_pad = torch.zeros(
+                pad_len, *seq_rewards.shape[1:], dtype=seq_rewards.dtype
+            )
+            seq_rewards = torch.cat([seq_rewards, reward_pad], dim=0)
+            
             # Pad skills (pad with 1.0 - expert)
             skill_pad = torch.ones(
                 pad_len, *seq_skills.shape[1:], dtype=seq_skills.dtype
@@ -333,8 +337,9 @@ class ShortView(BaseView):
         return (
             seq_tokens,
             seq_input_actions,
-            seq_target_actions, # NEW
+            seq_target_actions, 
             seq_returns,
+            seq_rewards,
             loss_mask,
             seq_masks,
             seq_skills,
@@ -385,6 +390,7 @@ class LongView(BaseView):
 
         seq_masks = self._get_shifted_masks_from_full(abs_start, abs_end, start_offset)
         seq_returns = self.dataset.get_slice("returns", abs_start, abs_end)
+        seq_rewards = self.dataset.get_slice("rewards", abs_start, abs_end)
         
 
 
@@ -404,11 +410,13 @@ class LongView(BaseView):
         return (
             seq_tokens,
             seq_input_actions,
-            seq_target_actions, # NEW
+            seq_target_actions,
             seq_returns,
+            seq_rewards,
             loss_mask,
             seq_masks,
             seq_skills,
             seq_team_ids,
             seq_pos,
         )
+

@@ -138,7 +138,9 @@ def test_max_batches_limit(mock_components):
                     "seq_idx": torch.zeros(1, 11),
                     "loss_mask": torch.ones(1, 11, 2),
                     "pos": torch.zeros(1, 11, 2, 2), # Dummy Pos
-                    "vel": None
+                    "vel": None,
+                    "rewards": torch.zeros(1, 11, 2),
+                    "returns": torch.zeros(1, 11, 2)
                 }
     
     loader = MockLoader()
@@ -147,7 +149,9 @@ def test_max_batches_limit(mock_components):
     # Each batch takes some processing. We mock model return to avoid error.
     model.return_value = (
         torch.zeros(1, 10, 2, 16), # Pred States
-        torch.zeros(1, 10, 2, 12)  # Pred Actions
+        torch.zeros(1, 10, 2, 12), # Pred Actions
+        torch.zeros(1, 10, 1),     # Pred Values
+        torch.zeros(1, 10, 1)      # Pred Rewards
     )
     model.get_loss.return_value = (torch.tensor(0.0), torch.tensor(0.0), torch.tensor(0.0), torch.tensor(0.0), {})
     

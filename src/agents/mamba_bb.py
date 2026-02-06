@@ -279,12 +279,14 @@ class MambaBB(nn.Module):
         
         # Actor Components
         self.actor_adapter = nn.Linear(128, d_model) # From trunk to actor bias
-        self.actor_fusion = nn.Sequential(
-            nn.Linear(d_model * 2, d_model),
-            RMSNorm(d_model),
-            nn.SiLU()
-        )
-        self.actor_attn = RelationalAttention(d_model, config.n_heads)
+        
+        # Stage 1: Spatial Self-Attention
+        self.actor_spatial_attn = RelationalAttention(d_model, config.n_heads)
+        self.actor_spatial_norm = RMSNorm(d_model)
+        
+        # Stage 2: Temporal Cross-Attention (Query=Spatial, Key=Value=History)
+        self.actor_temporal_attn = nn.MultiheadAttention(d_model, num_heads=config.n_heads, batch_first=True)
+        self.actor_temporal_norm = RMSNorm(d_model)
         
         # Actor Head (Trunk + Projection)
         self.actor_head = nn.Sequential(
@@ -293,6 +295,10 @@ class MambaBB(nn.Module):
             nn.SiLU(),
             nn.Linear(d_model, config.action_dim)
         )
+        
+        # Team Evaluator
+        from agents.components.team_evaluator import TeamEvaluator
+        self.team_evaluator = TeamEvaluator(d_model)
         
         # World Head
         self.world_head = nn.Sequential(
@@ -342,6 +348,8 @@ class MambaBB(nn.Module):
         Returns:
             pred_states: (B, T, N, D) Predicted Next State (Deltas).
             pred_actions: (B, T, N, 12) Predicted Action Logits.
+            value_pred: (B, T, 1) Value prediction.
+            reward_pred: (B, T, 1) Reward prediction.
         """
         batch_size, seq_len, num_ships, _ = state.shape
 
@@ -443,33 +451,78 @@ class MambaBB(nn.Module):
         delta_pred = self.world_head(x_final)
         state_pred = state + delta_pred # Residual
 
-        # --- Actor Pass ---
-        # Input: State_t + History_{t-1}
-        # History_{t-1} is Backbone Output shifted by 1.
+        # --- Actor Pass (Refactored: Space-Time Factorized) ---
         
+        # Prepare History (Key/Value)
+        # History_{t-1} is Backbone Output shifted by 1.
         history = torch.zeros_like(x_final)
         history[:, 1:] = x_final[:, :-1]
         
         # Mask History at Resets (Prevent bleed from prev episode)
         if reset_mask_bc is not None:
              history = history * (~reset_mask_bc)
-             
-        # Fusion: Concat State + History -> Fusion -> Actor Flow
-        # s_emb (B,T,N,D), history (B,T,N,D) -> (B,T,N, 2D)
-        x_actor_input = torch.cat([s_emb, history], dim=-1)
-        x_actor = self.actor_fusion(x_actor_input)
-        
-        # Spatial Mixing (Before Heads)
+
+        # Stage 1: Spatial Self-Attention (Query = State)
+        # Use Actor Adapter (Bias for Attention phase 1)
         actor_bias = self.relational_encoder.adapters[0](trunk_out)
-        x_actor = self.actor_attn(x_actor, actor_bias, mask=alive)
         
+        # s_emb is (B,T,N,D)
+        # Normalize first (Pre-Norm)
+        x_actor_spatial = self.actor_spatial_norm(s_emb)
+        x_actor_spatial = s_emb + self.actor_spatial_attn(x_actor_spatial, actor_bias, mask=alive)
+        
+        # Stage 2: Temporal Global Cross-Attention (Q=State, K=V=History)
+        # Flatten time into batch for attention: (B*T, N, D)
+        Batch_Time = batch_size * seq_len
+        
+        # Query: Current Spatial Snapshot
+        q_temp = self.actor_temporal_norm(x_actor_spatial).reshape(Batch_Time, num_ships, -1) # (BT, N, D)
+        
+        # Key/Value: History
+        kv_temp = history.reshape(Batch_Time, num_ships, -1) # (BT, N, D)
+        
+        # Mask: We want to mask DEAD ships in HISTORY so we don't attend to them.
+        # But wait, history is from t-1. The alive mask is at t.
+        # Generally if a ship is dead at t, it was alive or died at t-1.
+        # Using current 'alive' mask is safe (conservative) approximation, or we can just let it attend.
+        # MHA expects key_padding_mask (True=Ignore).
+        # alive: (B, T, N) -> reshape -> (BT, N)
+        key_padding_mask = None
+        if alive is not None:
+            key_padding_mask = ~alive.reshape(Batch_Time, num_ships)
+            
+        # Attention
+        x_actor_temporal, _ = self.actor_temporal_attn(q_temp, kv_temp, kv_temp, key_padding_mask=key_padding_mask)
+        
+        # Residual Connection
+        x_actor = x_actor_spatial + x_actor_temporal.reshape(batch_size, seq_len, num_ships, -1)
+        
+        # --- Heads ---
         action_logits = self.actor_head(x_actor)
         
-        return state_pred, action_logits
+        # Team Evaluator
+        # Flattens T into B internally if we pass (B, T, N, D), wait, let's check TeamEvaluator.
+        # Our TeamEvaluator expects (Batch, Ships, D). It doesn't handle Time axis implicitly.
+        # We should flatten B and T again.
+        x_eval_input = x_actor.reshape(Batch_Time, num_ships, -1)
+        
+        # Pass mask for pooling
+        eval_mask = alive.reshape(Batch_Time, num_ships) if alive is not None else None
+        
+        value_pred, reward_pred = self.team_evaluator(x_eval_input, mask=eval_mask)
+        
+        # Reshape back to (B, T, 1)
+        value_pred = value_pred.reshape(batch_size, seq_len, 1)
+        reward_pred = reward_pred.reshape(batch_size, seq_len, 1)
+
+        return state_pred, action_logits, value_pred, reward_pred
 
     def get_loss(self, pred_states, pred_actions, target_states, target_actions, loss_mask, 
                  lambda_state=1.0, 
                  lambda_power=1.0, lambda_turn=1.0, lambda_shoot=1.0,
+                 pred_values=None, pred_rewards=None, 
+                 target_returns=None, target_rewards=None,
+                 lambda_value=1.0, lambda_reward=1.0,
                  weights_power=None, weights_turn=None, weights_shoot=None,
                  target_alive=None):
         """
@@ -531,17 +584,75 @@ class MambaBB(nn.Module):
         a_loss_t = (loss_t * mask_flat).sum() / denom
         a_loss_s = (loss_s * mask_flat).sum() / denom
         
+        # Value & Reward Loss
+        v_loss = torch.tensor(0.0, device=pred_states.device)
+        r_loss = torch.tensor(0.0, device=pred_states.device)
+        
+        if pred_values is not None and target_returns is not None:
+             # (B, T, 1) vs (B, T, N) -> Wait, TeamEvaluator returns (B, T, 1)
+             # But Targets are per ship (B, T, N).
+             # The Team Evaluator predicts the value for the controlling team.
+             # Which target should we use?
+             # The prompt says: "Implement a module that aggregates ship-level data into a team-level valuation."
+             # And targets are "discounted future returns".
+             # Usually "Team Return" is the sum or mean of ship returns? Or just the return of any ship (since team reward is shared?)
+             # In this game, rewards are often individual but trained as a team.
+             # Assuming standard competitive RL, Team Reward = Sum of Ship Rewards.
+             # Let's check how `rewards` are stored. (B, T, N).
+             # If rewards are shared, they might be identical columns.
+             # If not, we should probably target the MEAN return of the team's ships (since we pool them).
+             # Or SUM?
+             # Let's use MEAN for stability.
+             
+             # target_returns: (B, T, N) -> Mean over N -> (B, T, 1)
+             # But we need to handle dead ships.
+             # We should mask out dead ships before mean.
+             
+             # Expand alive mask for returns if needed, but let's assume valid ships
+             if target_alive is not None:
+                 # Mask dead ships returns with NaN or 0 and divide by alive count
+                 # Helper:
+                 valid_ret = target_returns * target_alive # (B, T, N)
+                 valid_cnt = target_alive.sum(dim=-1, keepdim=True).clamp(min=1.0)
+                 team_ret = valid_ret.sum(dim=-1, keepdim=True) / valid_cnt
+                 
+                 valid_rew = target_rewards * target_alive
+                 team_rew = valid_rew.sum(dim=-1, keepdim=True) / valid_cnt
+             else:
+                 team_ret = target_returns.mean(dim=-1, keepdim=True)
+                 team_rew = target_rewards.mean(dim=-1, keepdim=True)
+             
+             # Loss (MSE)
+             # We also need to apply the sequence/transition mask (loss_mask).
+             # loss_mask is (B, T, N).
+             # We need a (B, T, 1) mask.
+             # If ANY ship is valid, the frame is valid? Or if ALL?
+             # Probably just use the transition mask.
+             # Let's derive (B, T, 1) mask from loss_mask
+             loss_mask_Global = loss_mask.any(dim=-1, keepdim=True).float()
+             denom_Global = loss_mask_Global.sum() + 1e-6
+             
+             l_v = F.mse_loss(pred_values, team_ret, reduction='none')
+             l_r = F.mse_loss(pred_rewards, team_rew, reduction='none')
+             
+             v_loss = (l_v * loss_mask_Global).sum() / denom_Global
+             r_loss = (l_r * loss_mask_Global).sum() / denom_Global
+
         total_loss = (lambda_state * s_loss) + \
                      (lambda_power * a_loss_p) + \
                      (lambda_turn * a_loss_t) + \
-                     (lambda_shoot * a_loss_s)
+                     (lambda_shoot * a_loss_s) + \
+                     (lambda_value * v_loss) + \
+                     (lambda_reward * r_loss)
         
         metrics = {
              "loss": total_loss.item(),
              "state_loss": s_loss.item(),
              "action_loss_power": a_loss_p.item(),
              "action_loss_turn": a_loss_t.item(),
-             "action_loss_shoot": a_loss_s.item()
+             "action_loss_shoot": a_loss_s.item(),
+             "value_loss": v_loss.item(),
+             "reward_loss": r_loss.item()
         }
         
         return total_loss, s_loss, (a_loss_p + a_loss_t + a_loss_s), torch.tensor(0.0), metrics

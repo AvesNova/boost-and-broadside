@@ -41,6 +41,10 @@ def synthetic_mamba_data(tmp_path):
     
     episode_lengths = np.array([20, 20], dtype=np.int32)
     
+    # Rewards and Returns
+    rewards = np.random.randn(total_steps, N_ships).astype(np.float32)
+    returns = np.random.randn(total_steps, N_ships).astype(np.float32)
+    
     with h5py.File(h5_path, "w") as f:
         f.create_dataset("position", data=pos)
         f.create_dataset("velocity", data=vel)
@@ -54,6 +58,10 @@ def synthetic_mamba_data(tmp_path):
         f.create_dataset("actions", data=actions)
         f.create_dataset("episode_ids", data=episode_ids)
         f.create_dataset("episode_lengths", data=episode_lengths)
+        
+        f.create_dataset("rewards", data=rewards)
+        f.create_dataset("returns", data=returns)
+        
         f.attrs["token_dim"] = STATE_DIM # 15
         f.attrs["num_actions"] = 3
         f.attrs["max_ships"] = N_ships 
