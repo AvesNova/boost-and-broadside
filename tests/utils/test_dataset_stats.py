@@ -25,11 +25,10 @@ def test_compute_class_weights_zero():
 
 def test_turn_exceptions():
     # 7 actions
-    weights = torch.ones(NUM_TURN_ACTIONS)
-    weights = apply_turn_exceptions(weights)
-    assert weights[TurnActions.AIR_BRAKE] == 1e-7
-    assert weights[TurnActions.SHARP_AIR_BRAKE] == 1e-7
-    assert weights[TurnActions.GO_STRAIGHT] == 1.0
+    # Now a pass-through since capping is handled by the global config in the trainer
+    weights = torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0, 10.0, 10.0])
+    out = apply_turn_exceptions(weights)
+    assert torch.allclose(out, weights)
 
 def test_normalize_weights():
     # Counts [100, 100], Weights [1.0, 1.0] -> Expected Sum = 0.5*1 + 0.5*1 = 1.0. Already normalized.

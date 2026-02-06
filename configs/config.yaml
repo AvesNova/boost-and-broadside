@@ -163,13 +163,13 @@ world_model:
     gamma_end: 0.0
     decay_steps: 30000
     weighted_loss_power: 1.0
-    weighted_loss_cap: 10.0
+    weighted_loss_cap: 5.0
 
   scheduler:
     type: "warmup_constant"
     
     warmup:
-      steps: 5000
+      steps: 2048
       start_lr: 1e-7
       
     range_test:

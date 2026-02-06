@@ -103,14 +103,16 @@ def compute_class_weights(counts: np.ndarray, cap: float = 10.0, power: float = 
     return clipped
 
 def apply_turn_exceptions(weights: torch.Tensor) -> torch.Tensor:
-    """Apply exceptions for AIR_BRAKE and SHARP_AIR_BRAKE."""
+    """
+    Apply exceptions for specific action weights.
+    The hardcoded suppression of air brakes has been removed.
+    These actions now follow the global 'weighted_loss_cap' from the config.
+    """
     # indices: AIR_BRAKE=5, SHARP_AIR_BRAKE=6
     if len(weights) != NUM_TURN_ACTIONS:
         log.warning(f"Turn weights length {len(weights)} != {NUM_TURN_ACTIONS}. Skipping exceptions.")
         return weights
         
-    weights[TurnActions.AIR_BRAKE] = 1e-7
-    weights[TurnActions.SHARP_AIR_BRAKE] = 1e-7
     return weights
 
 def normalize_weights(weights: torch.Tensor, counts: np.ndarray) -> torch.Tensor:
