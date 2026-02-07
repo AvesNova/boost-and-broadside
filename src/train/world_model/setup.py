@@ -36,6 +36,7 @@ def create_model(cfg: DictConfig, data_path: str, device: torch.device) -> Mamba
         n_heads=cfg.world_model.n_heads,
         action_dim=12, # 3+7+2
         target_dim=state_dim, # Delta prediction
+        loss_type=cfg.world_model.loss.get("type", "fixed")
     )
 
     # Keep model in Float32 for stability (Autocast will handle mixed precision)

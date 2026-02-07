@@ -160,6 +160,7 @@ world_model:
     decay_steps: 10000
 
   loss:
+    type: "uncertainty" # Options: "uncertainty", "fixed"
     use_focal_loss: true
     gamma_start: 0.0
     gamma_end: 0.0

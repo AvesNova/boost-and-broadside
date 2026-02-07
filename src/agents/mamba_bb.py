@@ -257,6 +257,7 @@ class MambaBB(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
+        config = self.config # Store config
         d_model = config.d_model
         
         # Components
@@ -329,6 +330,20 @@ class MambaBB(nn.Module):
         # 8 Ships max, 2 Teams
         self.ship_id_embed = nn.Embedding(8, d_model)
         self.team_id_embed = nn.Embedding(2, d_model)
+
+        # Uncertainty Weighting Parameters (Learnable Log Variance)
+        # We use log_var (s) for stability: weight = exp(-s)
+        # Components: State, Power, Turn, Shoot, Value, Reward
+        self.log_vars = None
+        if getattr(config, "loss_type", "fixed") == "uncertainty":
+             self.log_vars = nn.ParameterDict({
+                 "state": nn.Parameter(torch.tensor(0.0)),
+                 "power": nn.Parameter(torch.tensor(0.0)),
+                 "turn": nn.Parameter(torch.tensor(0.0)),
+                 "shoot": nn.Parameter(torch.tensor(0.0)),
+                 "value": nn.Parameter(torch.tensor(0.0)),
+                 "reward": nn.Parameter(torch.tensor(0.0))
+             })
 
     def forward(self, state, prev_action, pos, vel, att=None, team_ids=None, seq_idx=None, alive=None, reset_mask=None):
         """
@@ -638,12 +653,42 @@ class MambaBB(nn.Module):
              v_loss = (l_v * loss_mask_Global).sum() / denom_Global
              r_loss = (l_r * loss_mask_Global).sum() / denom_Global
 
-        total_loss = (lambda_state * s_loss) + \
-                     (lambda_power * a_loss_p) + \
-                     (lambda_turn * a_loss_t) + \
-                     (lambda_shoot * a_loss_s) + \
-                     (lambda_value * v_loss) + \
-                     (lambda_reward * r_loss)
+        # Combine Losses
+        loss_type = getattr(self.config, "loss_type", "fixed")
+        
+        if loss_type == "uncertainty" and self.log_vars is not None:
+             # Uncertainty Weighting: L = sum(0.5 * exp(-s) * L + 0.5 * s)
+             # We handle each component separately.
+             
+             def apply_uncertainty(loss, name):
+                  s = self.log_vars[name]
+                  # precision = exp(-s)
+                  # Loss = 0.5 * precision * loss + 0.5 * s
+                  return 0.5 * torch.exp(-s) * loss + 0.5 * s
+             
+             # Note: We sum the *weighted* components directly.
+             # State
+             l_state_w = apply_uncertainty(s_loss, "state")
+             
+             # Action (Split)
+             l_power_w = apply_uncertainty(a_loss_p, "power")
+             l_turn_w = apply_uncertainty(a_loss_t, "turn")
+             l_shoot_w = apply_uncertainty(a_loss_s, "shoot")
+             
+             # Value / Reward
+             l_value_w = apply_uncertainty(v_loss, "value")
+             l_reward_w = apply_uncertainty(r_loss, "reward")
+             
+             total_loss = l_state_w + l_power_w + l_turn_w + l_shoot_w + l_value_w + l_reward_w
+             
+        else:
+             # Fixed Weighting (Legacy)
+             total_loss = (lambda_state * s_loss) + \
+                          (lambda_power * a_loss_p) + \
+                          (lambda_turn * a_loss_t) + \
+                          (lambda_shoot * a_loss_s) + \
+                          (lambda_value * v_loss) + \
+                          (lambda_reward * r_loss)
         
         metrics = {
              "loss": total_loss.item(),

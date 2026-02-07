@@ -367,8 +367,20 @@ class Trainer:
             "param/min_skill": self._get_current_params(self.global_step)["min_skill"],
             "time/micro_batch": acc["acc_time"] / self.acc_steps, # Avg pure compute time per micro step
             "time/macro_batch": time.time() - self.t_last_macro,  # Wall time for full update (incl data load)
+            "time/macro_batch": time.time() - self.t_last_macro,  # Wall time for full update (incl data load)
             "grad_norm": total_norm.detach()
         }
+        
+        # Log Uncertainty Sigmas (if applicable)
+        if hasattr(self.model, "log_vars") and self.model.log_vars is not None:
+             for name, param in self.model.log_vars.items():
+                  # sigma = exp(0.5 * log_var)? No, we defined s = log(sigma^2) -> sigma = exp(0.5*s)
+                  # In our formula: 0.5 * exp(-s) * L. 
+                  # Users usually want to see the "sigma" or the "weight".
+                  # Weight = exp(-s). Sigma^2 = exp(s).
+                  # Let's log 'sigma' = exp(0.5 * s) which is the "learned standard deviation"
+                  s = param.detach().item()
+                  metrics[f"loss_sigma/{name}"] = np.exp(0.5 * s)
         
         # Reset macro timer
         self.t_last_macro = time.time()
