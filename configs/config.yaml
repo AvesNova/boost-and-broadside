@@ -145,6 +145,8 @@ world_model:
   lambda_turn: 0.05
   lambda_shoot: 0.05
   lambda_relational: 0.1
+  lambda_value: 0.5
+  lambda_reward: 10.0
 
   curriculum:
     enabled: false
@@ -173,7 +175,7 @@ world_model:
       start_lr: 1e-7
       
     range_test:
-      steps: 1000
+      steps: 125
       start_lr: 1e-7
       end_lr: 1.0
   

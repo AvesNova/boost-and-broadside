@@ -71,10 +71,7 @@ def train_world_model(cfg: DictConfig) -> None:
     is_range_test = sched_cfg and "range_test" in getattr(sched_cfg, "type", "")
     
     if is_range_test:
-        log.info(f"LR Range Test: Forcing gradient_accumulation_steps=1 for higher resolution.")
-        acc_steps = 1
-        # Also update the config so the Trainer sees it
-        cfg.world_model.gradient_accumulation_steps = 1
+        log.info(f"LR Range Test: Using configured gradient_accumulation_steps={acc_steps}")
         
     train_batches = len(train_loader)
     total_est_steps = int(train_batches / acc_steps) * cfg.world_model.epochs

@@ -300,6 +300,8 @@ class Trainer:
            "total_state_loss": torch.tensor(0.0, device=self.device),
            "total_action_loss": torch.tensor(0.0, device=self.device),
            "total_relational_loss": torch.tensor(0.0, device=self.device),
+           "total_value_loss": torch.tensor(0.0, device=self.device),
+           "total_reward_loss": torch.tensor(0.0, device=self.device),
            # Scalars/Values for step/epoch logging
            "acc_loss": 0.0, "acc_state": 0.0, "acc_action": 0.0, "acc_rel": 0.0,
            "acc_time": 0.0,
@@ -313,6 +315,8 @@ class Trainer:
         acc["total_state_loss"] += metrics["state_loss"]
         acc["total_action_loss"] += metrics["action_loss"]
         acc["total_relational_loss"] += metrics["relational_loss"]
+        acc["total_value_loss"] += metrics["metrics"].get("value_loss", 0.0)
+        acc["total_reward_loss"] += metrics["metrics"].get("reward_loss", 0.0)
         
         # Step Totals
         acc["acc_loss"] += metrics["loss"] * self.acc_steps
@@ -382,9 +386,11 @@ class Trainer:
         avg_state = acc["total_state_loss"].item() / steps
         avg_action = acc["total_action_loss"].item() / steps
         avg_rel = acc["total_relational_loss"].item() / steps
+        avg_value = acc["total_value_loss"].item() / steps
+        avg_reward = acc["total_reward_loss"].item() / steps
         
         current_lr = self.optimizer.param_groups[0]['lr']
-        log.info(f"Epoch {epoch + 1}: LR={current_lr:.2e} Train Loss={avg_loss:.4f} (State={avg_state:.4f}, Action={avg_action:.4f}, Rel={avg_rel:.4f})")
+        log.info(f"Epoch {epoch + 1}: LR={current_lr:.2e} Train Loss={avg_loss:.4f} (State={avg_state:.4f}, Action={avg_action:.4f}, Rel={avg_rel:.4f}, Val={avg_value:.4f}, Rew={avg_reward:.4f})")
         
         metrics = {
             "Train/LearningRate": current_lr,
@@ -392,6 +398,8 @@ class Trainer:
             "Loss/train_state": avg_state,
             "Loss/train_action": avg_action,
             "Loss/train_relational": avg_rel,
+            "Loss/train_value": avg_value,
+            "Loss/train_reward": avg_reward,
             "epoch": epoch + 1,
             "global_step": self.global_step
         }
@@ -434,37 +442,37 @@ class Trainer:
             "global_step": self.global_step
         }
         
-        # Add Confusion Matrices to log (Only on heavy eval)
+        # Add Confusion Matrices to log (Always)
+        if len(val_metrics.get("preds_p", [])) > 0:
+             try:
+                 log_metrics["conf_mat_power"] = wandb.plot.confusion_matrix(
+                    probs=None,
+                    y_true=val_metrics["targets_p"],
+                    preds=val_metrics["preds_p"],
+                    class_names=[x.name for x in PowerActions]
+                 )
+             except Exception: pass
+        if len(val_metrics.get("preds_t", [])) > 0:
+             try:
+                 log_metrics["conf_mat_turn"] = wandb.plot.confusion_matrix(
+                    probs=None,
+                    y_true=val_metrics["targets_t"],
+                    preds=val_metrics["preds_t"],
+                    class_names=[x.name for x in TurnActions]
+                 )
+             except Exception: pass
+        if len(val_metrics.get("preds_s", [])) > 0:
+             try:
+                 log_metrics["conf_mat_shoot"] = wandb.plot.confusion_matrix(
+                    probs=None,
+                    y_true=val_metrics["targets_s"],
+                    preds=val_metrics["preds_s"],
+                    class_names=[x.name for x in ShootActions]
+                 )
+             except Exception: pass
+             
+        # Add AR metrics
         if is_heavy_eval:
-            if len(val_metrics.get("preds_p", [])) > 0:
-                 try:
-                     log_metrics["conf_mat_power"] = wandb.plot.confusion_matrix(
-                        probs=None,
-                        y_true=val_metrics["targets_p"],
-                        preds=val_metrics["preds_p"],
-                        class_names=[x.name for x in PowerActions]
-                     )
-                 except Exception: pass
-            if len(val_metrics.get("preds_t", [])) > 0:
-                 try:
-                     log_metrics["conf_mat_turn"] = wandb.plot.confusion_matrix(
-                        probs=None,
-                        y_true=val_metrics["targets_t"],
-                        preds=val_metrics["preds_t"],
-                        class_names=[x.name for x in TurnActions]
-                     )
-                 except Exception: pass
-            if len(val_metrics.get("preds_s", [])) > 0:
-                 try:
-                     log_metrics["conf_mat_shoot"] = wandb.plot.confusion_matrix(
-                        probs=None,
-                        y_true=val_metrics["targets_s"],
-                        preds=val_metrics["preds_s"],
-                        class_names=[x.name for x in ShootActions]
-                     )
-                 except Exception: pass
-                 
-            # Add AR metrics
             for k, v in ar_metrics.items():
                 # Allow lists for heatmap logging
                 log_metrics[f"Val_AR/{k}"] = v
