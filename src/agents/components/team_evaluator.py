@@ -35,11 +35,11 @@ class TeamEvaluator(nn.Module):
             nn.Linear(d_model, 1)
         )
         
-        # Reward: (256 -> 256 -> 1)
+        # Reward: (256 -> 256 -> 3) - 3 Components
         self.reward_head = nn.Sequential(
             nn.Linear(d_model, d_model),
             nn.SiLU(),
-            nn.Linear(d_model, 1)
+            nn.Linear(d_model, 3)
         )
         
     def forward(self, x: torch.Tensor, mask: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor]:
@@ -52,7 +52,7 @@ class TeamEvaluator(nn.Module):
                   
         Returns:
             value: (Batch, 1)
-            reward: (Batch, 1)
+            reward: (Batch, 3) - 3 components of reward.
         """
         B, N, D = x.shape
         
@@ -78,7 +78,9 @@ class TeamEvaluator(nn.Module):
         # Squeeze the sequence dim (1)
         tv = team_vector.squeeze(1) # (B, D)
         
-        value = self.value_head(tv)
+        # Detach for Value Head so gradients don't flow back to backbone
+        value = self.value_head(tv.detach())
+        
         reward = self.reward_head(tv)
         
         return value, reward

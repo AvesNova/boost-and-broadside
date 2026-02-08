@@ -43,6 +43,12 @@ def test_train_swa_pipeline(default_config, tmp_path):
             "max_len_start": 1,
             "max_len_end": 1
         },
+        "loss": {
+            "type": "uncertainty",
+            "use_focal_loss": False,
+            "weighted_loss_cap": 5.0,
+            "weighted_loss_power": 0.5
+        },
         "scheduler": {
             "type": "warmup_constant",
             "warmup": {"steps": 1, "start_lr": 0.0}

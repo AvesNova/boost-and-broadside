@@ -14,7 +14,7 @@ def test_team_evaluator_shapes():
     value, reward = evaluator(x)
     
     assert value.shape == (batch_size, 1)
-    assert reward.shape == (batch_size, 1)
+    assert reward.shape == (batch_size, 3)
 
 def test_team_evaluator_masking():
     """Test that masking works (output should differ if mask changes)."""

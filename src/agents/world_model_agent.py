@@ -158,6 +158,9 @@ class WorldModelAgent:
         current_state = observation_to_tokens(
             observation, self.team_id, self.world_size
         ).to(self.device)
+        
+        if current_state.ndim == 2:
+            current_state = current_state.unsqueeze(0)
 
         # 2. Prepare inputs
         # We need to construct the full sequence of [S, A] pair from history

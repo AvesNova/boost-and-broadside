@@ -76,6 +76,9 @@ class Trainer:
         log.info(f"Class Weights - Power: {self.w_power.tolist()}")
         log.info(f"Class Weights - Turn:  {self.w_turn.tolist()}")
         log.info(f"Class Weights - Shoot: {self.w_shoot.tolist()}")
+        
+        # Log scaling effect
+        log.info(f"Action Loss Scaling: Power=1/log(3), Turn=1/log(7), Shoot=1/log(2)")
 
     def _get_current_params(self, step):
         """Calculate current values for scheduled parameters."""
@@ -276,7 +279,8 @@ class Trainer:
                 weights_power=self.w_power,
                 weights_turn=self.w_turn,
                 weights_shoot=self.w_shoot,
-                target_alive=target_alive
+                target_alive=target_alive,
+                min_sigma=self.loss_cfg.get("min_sigma", 0.1)
              )
 
 
@@ -370,17 +374,6 @@ class Trainer:
             "time/macro_batch": time.time() - self.t_last_macro,  # Wall time for full update (incl data load)
             "grad_norm": total_norm.detach()
         }
-        
-        # Log Uncertainty Sigmas (if applicable)
-        if hasattr(self.model, "log_vars") and self.model.log_vars is not None:
-             for name, param in self.model.log_vars.items():
-                  # sigma = exp(0.5 * log_var)? No, we defined s = log(sigma^2) -> sigma = exp(0.5*s)
-                  # In our formula: 0.5 * exp(-s) * L. 
-                  # Users usually want to see the "sigma" or the "weight".
-                  # Weight = exp(-s). Sigma^2 = exp(s).
-                  # Let's log 'sigma' = exp(0.5 * s) which is the "learned standard deviation"
-                  s = param.detach().item()
-                  metrics[f"loss_sigma/{name}"] = np.exp(0.5 * s)
         
         # Reset macro timer
         self.t_last_macro = time.time()

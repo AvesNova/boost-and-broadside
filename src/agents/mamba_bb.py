@@ -333,14 +333,12 @@ class MambaBB(nn.Module):
 
         # Uncertainty Weighting Parameters (Learnable Log Variance)
         # We use log_var (s) for stability: weight = exp(-s)
-        # Components: State, Power, Turn, Shoot, Value, Reward
+        # Components: State, Actions, Value, Reward
         self.log_vars = None
         if getattr(config, "loss_type", "fixed") == "uncertainty":
              self.log_vars = nn.ParameterDict({
                  "state": nn.Parameter(torch.tensor(0.0)),
-                 "power": nn.Parameter(torch.tensor(0.0)),
-                 "turn": nn.Parameter(torch.tensor(0.0)),
-                 "shoot": nn.Parameter(torch.tensor(0.0)),
+                 "actions": nn.Parameter(torch.tensor(0.0)), # Combined Action Loss
                  "value": nn.Parameter(torch.tensor(0.0)),
                  "reward": nn.Parameter(torch.tensor(0.0))
              })
@@ -524,11 +522,12 @@ class MambaBB(nn.Module):
         # Pass mask for pooling
         eval_mask = alive.reshape(Batch_Time, num_ships) if alive is not None else None
         
-        value_pred, reward_pred = self.team_evaluator(x_eval_input, mask=eval_mask)
+        value_pred, reward_components = self.team_evaluator(x_eval_input, mask=eval_mask)
         
-        # Reshape back to (B, T, 1)
+        # Reshape back to (B, T, 1) or (B, T, 3)
         value_pred = value_pred.reshape(batch_size, seq_len, 1)
-        reward_pred = reward_pred.reshape(batch_size, seq_len, 1)
+        # Sum the 3 components for total reward prediction
+        reward_pred = reward_components.sum(dim=-1, keepdim=True).reshape(batch_size, seq_len, 1)
 
         return state_pred, action_logits, value_pred, reward_pred
 
@@ -539,7 +538,8 @@ class MambaBB(nn.Module):
                  target_returns=None, target_rewards=None,
                  lambda_value=1.0, lambda_reward=1.0,
                  weights_power=None, weights_turn=None, weights_shoot=None,
-                 target_alive=None):
+                 target_alive=None,
+                 min_sigma=0.1):
         """
         Compute MambaBB Loss.
         Masks out transition frames AND dead entities.
@@ -595,9 +595,15 @@ class MambaBB(nn.Module):
         loss_t = F.cross_entropy(l_t.reshape(-1, 7), t_t.reshape(-1), weight=weights_turn, reduction='none')
         loss_s = F.cross_entropy(l_s.reshape(-1, 2), t_s.reshape(-1), weight=weights_shoot, reduction='none')
         
-        a_loss_p = (loss_p * mask_flat).sum() / denom
-        a_loss_t = (loss_t * mask_flat).sum() / denom
-        a_loss_s = (loss_s * mask_flat).sum() / denom
+        # Scale by log(num_classes)
+        # Power=3, Turn=7, Shoot=2
+        scale_p = 1.0 / math.log(3)
+        scale_t = 1.0 / math.log(7)
+        scale_s = 1.0 / math.log(2)
+        
+        a_loss_p = ((loss_p * mask_flat).sum() / denom) * scale_p
+        a_loss_t = ((loss_t * mask_flat).sum() / denom) * scale_t
+        a_loss_s = ((loss_s * mask_flat).sum() / denom) * scale_s
         
         # Value & Reward Loss
         v_loss = torch.tensor(0.0, device=pred_states.device)
@@ -660,26 +666,34 @@ class MambaBB(nn.Module):
              # Uncertainty Weighting: L = sum(0.5 * exp(-s) * L + 0.5 * s)
              # We handle each component separately.
              
+             clamped_sigmas = {}
              def apply_uncertainty(loss, name):
                   s = self.log_vars[name]
+                  # Clamping logic: sigma >= min_sigma => log(sigma^2) >= 2 * log(min_sigma)
+                  s_min = 2.0 * math.log(min_sigma)
+                  s_clamped = torch.clamp(s, min=s_min)
+                  
+                  # Store for metrics
+                  with torch.no_grad():
+                       clamped_sigmas[name] = torch.exp(0.5 * s_clamped).item()
+                  
                   # precision = exp(-s)
                   # Loss = 0.5 * precision * loss + 0.5 * s
-                  return 0.5 * torch.exp(-s) * loss + 0.5 * s
+                  return 0.5 * torch.exp(-s_clamped) * loss + 0.5 * s_clamped
              
              # Note: We sum the *weighted* components directly.
              # State
              l_state_w = apply_uncertainty(s_loss, "state")
              
-             # Action (Split)
-             l_power_w = apply_uncertainty(a_loss_p, "power")
-             l_turn_w = apply_uncertainty(a_loss_t, "turn")
-             l_shoot_w = apply_uncertainty(a_loss_s, "shoot")
+             # Action (Grouped)
+             loss_actions_total = a_loss_p + a_loss_t + a_loss_s
+             l_actions_w = apply_uncertainty(loss_actions_total, "actions")
              
              # Value / Reward
              l_value_w = apply_uncertainty(v_loss, "value")
              l_reward_w = apply_uncertainty(r_loss, "reward")
              
-             total_loss = l_state_w + l_power_w + l_turn_w + l_shoot_w + l_value_w + l_reward_w
+             total_loss = l_state_w + l_actions_w + l_value_w + l_reward_w
              
         else:
              # Fixed Weighting (Legacy)
@@ -690,14 +704,56 @@ class MambaBB(nn.Module):
                           (lambda_value * v_loss) + \
                           (lambda_reward * r_loss)
         
+        # Calculate Entropy for Action Distributions (for Logging)
+        with torch.no_grad():
+             # Softmax on logits
+             probs_p = F.softmax(l_p.reshape(-1, 3), dim=-1)
+             probs_t = F.softmax(l_t.reshape(-1, 7), dim=-1)
+             probs_s = F.softmax(l_s.reshape(-1, 2), dim=-1)
+             
+             # Ent = -sum(p * log(p))
+             # Clamp for log stability
+             eps = 1e-8
+             ent_p = -(probs_p * torch.log(probs_p + eps)).sum(dim=-1).mean()
+             ent_t = -(probs_t * torch.log(probs_t + eps)).sum(dim=-1).mean()
+             ent_s = -(probs_s * torch.log(probs_s + eps)).sum(dim=-1).mean()
+
         metrics = {
              "loss": total_loss.item(),
+             
+             # Main Losses (Weighted/Uncertainty Scaled)
+             # If using fixed weights, these are just lambda * loss
+             # If using uncertainty, these are 0.5 * exp(-s) * L + 0.5 * s
+             "loss_main/state": l_state_w.item() if loss_type == "uncertainty" else (lambda_state * s_loss).item(),
+             "loss_main/actions": l_actions_w.item() if loss_type == "uncertainty" else ((lambda_power * a_loss_p) + (lambda_turn * a_loss_t) + (lambda_shoot * a_loss_s)).item(),
+             "loss_main/value": l_value_w.item() if loss_type == "uncertainty" else (lambda_value * v_loss).item(),
+             "loss_main/reward": l_reward_w.item() if loss_type == "uncertainty" else (lambda_reward * r_loss).item(),
+             
+             # Sub Losses (Raw / Log-Scaled but unweighted)
+             "loss_sub/state_mse": s_loss.item(),
+             "loss_sub/action_power": a_loss_p.item(),
+             "loss_sub/action_turn": a_loss_t.item(),
+             "loss_sub/action_shoot": a_loss_s.item(),
+             "loss_sub/value_mse": v_loss.item(),
+             "loss_sub/reward_mse": r_loss.item(),
+             
+             # Legacy keys for backward compatibility / existing charts
              "state_loss": s_loss.item(),
              "action_loss_power": a_loss_p.item(),
              "action_loss_turn": a_loss_t.item(),
              "action_loss_shoot": a_loss_s.item(),
              "value_loss": v_loss.item(),
-             "reward_loss": r_loss.item()
+             "reward_loss": r_loss.item(),
+             
+             # Entropies
+             "entropy/power": ent_p.item(),
+             "entropy/turn": ent_t.item(),
+             "entropy/shoot": ent_s.item(),
         }
+        
+        # Add Clamped Sigmas to metrics
+        if loss_type == "uncertainty":
+             for name, sigma in clamped_sigmas.items():
+                  metrics[f"loss_sigma/{name}"] = sigma
         
         return total_loss, s_loss, (a_loss_p + a_loss_t + a_loss_s), torch.tensor(0.0), metrics

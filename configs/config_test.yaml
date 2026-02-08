@@ -117,3 +117,9 @@ world_model:
     max_len_end: 2
     ramp_epochs: 2
 
+  loss:
+    type: "uncertainty"
+    use_focal_loss: false
+    weighted_loss_cap: 5.0
+    weighted_loss_power: 0.5
+

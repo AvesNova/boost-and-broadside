@@ -12,6 +12,7 @@ from omegaconf import DictConfig
 
 from modes.collect import collect
 from modes.play import play
+from modes.dashboard import dashboard
 from env2.collect_massive import collect_massive
 from modes.train import train
 from train.train_world_model import train_world_model
@@ -23,6 +24,8 @@ def my_app(cfg: DictConfig) -> None:
     match cfg.mode:
         case "play":
             play(cfg)
+        case "dashboard":
+            dashboard(cfg)
         case "collect":
             collect(cfg)
         case "collect_massive":

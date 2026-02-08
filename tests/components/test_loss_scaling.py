@@ -28,9 +28,11 @@ def test_uncertainty_params_initialization(mamba_config):
     model = MambaBB(mamba_config)
     assert hasattr(model, "log_vars")
     assert model.log_vars is not None
-    assert len(model.log_vars) == 6
+    assert len(model.log_vars) == 4
     assert "state" in model.log_vars
-    assert "power" in model.log_vars
+    assert "actions" in model.log_vars
+    assert "value" in model.log_vars
+    assert "reward" in model.log_vars
     
     # Check they are parameters
     assert isinstance(model.log_vars["state"], nn.Parameter)
