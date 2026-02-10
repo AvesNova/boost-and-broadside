@@ -10,7 +10,12 @@ import torch
 from collections import deque
 
 # Changed import to InterleavedWorldModel
-from agents.interleaved_world_model import InterleavedWorldModel
+from agents.mamba_bb import MambaBB
+try:
+    from mamba_ssm.utils.generation import InferenceParams
+except ImportError:
+    InferenceParams = None
+
 from agents.tokenizer import observation_to_tokens
 
 log = logging.getLogger(__name__)
@@ -53,7 +58,7 @@ class WorldModelAgent:
         max_ships: int = 8,
         dropout: float = 0.1,
         world_size: tuple[float, float] = (1024.0, 1024.0),
-        model: InterleavedWorldModel | None = None,
+        model: MambaBB | None = None,
         **kwargs,
     ):
         """
@@ -82,26 +87,51 @@ class WorldModelAgent:
         # Check if kwargs has 'world_model' config dict (from hydra)
         # The calling code in agents.py flattens it, but let's be safe.
         
+
         if model is not None:
             self.model = model
             self.model.to(self.device)
         else:
-            self.model = InterleavedWorldModel(
-                state_dim=state_dim,
-                embed_dim=embed_dim,
-                n_layers=n_layers,
-                n_heads=n_heads,
-                max_ships=max_ships,
-                max_context_len=context_len,
-                dropout=dropout,
-            ).to(self.device)
+             # Try to instantiate MambaBB from config
+             try:
+                 from agents.mamba_bb import MambaConfig
+                 
+                 # Create config from kwargs
+                 # We filter kwargs to match MambaConfig fields if necessary, or just pass relevant ones.
+                 # MambaConfig typically needs: input_dim, d_model, n_layers, n_heads, action_dim, target_dim, loss_type
+                 # Some of these are in __init__ args (embed_dim -> d_model), others in kwargs.
+                 
+                 mamba_cfg_args = kwargs.copy()
+                 mamba_cfg_args['d_model'] = embed_dim
+                 mamba_cfg_args['n_layers'] = n_layers
+                 mamba_cfg_args['n_heads'] = n_heads
+                 mamba_cfg_args['input_dim'] = 9 # Correct input dim from tokenizer
+                 
+                 # Set defaults if not in kwargs
+                 if 'action_dim' not in mamba_cfg_args:
+                     mamba_cfg_args['action_dim'] = 12
+                 if 'target_dim' not in mamba_cfg_args:
+                     mamba_cfg_args['target_dim'] = 9
+                 if 'loss_type' not in mamba_cfg_args:
+                     mamba_cfg_args['loss_type'] = 'fixed'
+                 
+                 # Let's try to construct MambaConfig with whatever we have
+                 cfg = MambaConfig(**mamba_cfg_args)
+                 
+                 self.model = MambaBB(cfg).to(self.device)
+                 log.info(f"Instantiated MambaBB from config.")
+                 
+             except Exception as e:
+                 print(f"CRITICAL ERROR instantiating MambaBB: {e}") # Print to stdout to see in tool output
+                 log.error(f"Failed to instantiate MambaBB from config: {e}")
+                 raise ValueError(f"WorldModelAgent requires a 'model' instance (MambaBB) or valid config. Error: {e}")
 
-            if model_path:
-                self.load_model(model_path)
-            else:
-                log.warning(
-                    "WorldModelAgent initialized with random weights (no model_path provided)"
-                )
+        if model_path:
+            self.load_model(model_path)
+        elif model is None:
+            log.warning(
+                "WorldModelAgent initialized with random weights (no model or model_path provided)"
+            )
 
         self.model.eval()
 
@@ -113,6 +143,10 @@ class WorldModelAgent:
         # Max length: We keep enough context.
         # Interleaved model can handle long context. 
         self.history = deque(maxlen=context_len) 
+        
+        # MambaBB State
+        self.inference_params = None
+        self.actor_cache = None 
 
     def load_model(self, path: str) -> None:
         """
@@ -123,23 +157,72 @@ class WorldModelAgent:
             state_dict = torch.load(path, map_location=self.device)
             
             # unwrapping checkpoint if necessary
+            # unwrapping checkpoint if necessary
             if "model_state_dict" in state_dict:
                 log.info(f"Loading model from checkpoint dictionary: {path}")
                 state_dict = state_dict["model_state_dict"]
             else:
                 log.info(f"Loading model from raw state dict: {path}")
 
-            # Handle SWA vs regular model keys if needed (usually keys match)
-            # But sometimes SWA models might be saved differently. Assuming standard keys.
+            # Fix for compiled models (strip _orig_mod prefix)
+            new_state_dict = {}
+            for k, v in state_dict.items():
+                if k.startswith("_orig_mod."):
+                    new_state_dict[k[10:]] = v
+                else:
+                    new_state_dict[k] = v
+            state_dict = new_state_dict
+
+            # Check for input_dim mismatch
+            # state_encoder.0.weight shape is (d_model, input_dim)
+            if "state_encoder.0.weight" in state_dict:
+                ckpt_input_dim = state_dict["state_encoder.0.weight"].shape[1]
+                current_input_dim = self.model.config.input_dim
+                
+                if ckpt_input_dim != current_input_dim:
+                    log.warning(f"Checkpoint input_dim ({ckpt_input_dim}) != Current ({current_input_dim}). Re-instantiating MambaBB.")
+                    
+                    # Re-instantiate with correct input_dim
+                    # We need to access the config used to create the model
+                    new_config = self.model.config
+                    new_config.input_dim = ckpt_input_dim
+                    
+                    # Also check target_dim (world_head.3.weight is target_dim, d_model)
+                    if "world_head.3.weight" in state_dict:
+                        ckpt_target_dim = state_dict["world_head.3.weight"].shape[0]
+                        new_config.target_dim = ckpt_target_dim # Update target dim as well
+                        
+                    # Check for log_vars to set loss_type
+                    has_log_vars = any(k.startswith("log_vars.") for k in state_dict.keys())
+                    if has_log_vars:
+                         new_config.loss_type = "uncertainty"
+                         
+                    # Re-create model
+                    self.model = MambaBB(new_config).to(self.device)
             
-            self.model.load_state_dict(state_dict)
-            log.info(f"Successfully loaded InterleavedWorldModel from {path}")
+            # Load with strict=False to handle potential minor mismatches (like missing buffers), 
+            # but usually we want strict=True to catch real errors. 
+            # However, since we might have unexpected keys (like "log_vars" if we didn't set loss_type correctly above),
+            # let's try to handle it. 
+            # If we detected log_vars above and set loss_type="uncertainty", the model should have log_vars parameters now.
+            
+            missing, unexpected = self.model.load_state_dict(state_dict, strict=False)
+            
+            if missing:
+                log.warning(f"Missing keys in state_dict: {missing}")
+            if unexpected:
+                log.warning(f"Unexpected keys in state_dict: {unexpected}")
+                
+            log.info(f"Successfully loaded MambaBB from {path}")
         except Exception as e:
-            log.error(f"Failed to load InterleavedWorldModel from {path}: {e}")
+            log.error(f"Failed to load WorldModel from {path}: {e}")
+            raise e
 
     def reset(self) -> None:
         """Reset agent state (history)."""
         self.history.clear()
+        self.inference_params = None
+        self.actor_cache = None
 
     def __call__(
         self, observation: dict, ship_ids: list[int]
@@ -159,108 +242,67 @@ class WorldModelAgent:
             observation, self.team_id, self.world_size
         ).to(self.device)
 
-        # 2. Prepare inputs
-        # We need to construct the full sequence of [S, A] pair from history
-        # plus the current S.
+        # 1. Prepare Inputs
+        # Pos: (1, 1, N, 2)
+        # We need to extract raw pos from observation (which is dict of tensors)
+        # observation["position"] is complex (N,)
+        pos_c = observation["position"]
+        vel_c = observation["velocity"]
+        att_c = observation["attitude"]
         
-        hist_states = [s for s, a in self.history]
-        hist_actions = [a for s, a in self.history]
-        
-        # Current input sequence for the model
-        # States: History + Current
-        states_list = hist_states + [current_state]
-        
-        # Actions: History + Dummy for current step (to be predicted)
-        # The model needs 'actions' input aligned with states.
-        # For S_t, we provide A_{t-1} usually?
-        # WAIT. Let's look at InterleavedWorldModel forward.
-        # It takes `states` and `actions`.
-        # It computes `state_tokens` from `states`.
-        # It computes `action_tokens` from `actions`.
-        # It interleaves them: (S0, A0), (S1, A1)...
-        
-        # To predict A_t (at index 2t+1 in sequence), we generally need S_t.
-        # But the model architecture is: 
-        # S_t (Index 2t) -> Predicted A_t.
-        # A_t (Index 2t+1) -> Predicted S_{t+1}.
-        
-        # So we pass S_t. The A_t input is technically "ground truth" for training.
-        # For inference, if we want to predict A_t from S_t:
-        # We input S_t.
-        # The A_t input at that position is technically future information we don't have.
-        # However, the `InterleavedWorldModel` processes pairs.
-        # (S_t, A_t) -> flattened to Sequence of 2*T length.
-        
-        # But wait, `InterleavedWorldModel.forward` calculates embeddings for A_t using `actions` input.
-        # If we don't know A_t, we can't embed it correct?
-        # Actually, for the *prediction* of A_t, we use the embedding of S_t (and previous history).
-        # S_t is at even index. Action Head is applied to "S tokens (index 0) -> Action Head (Predict A_t)".
-        # So the embedding of A_t is NOT used to predict A_t. It is used to predict S_{t+1}.
-        
-        # Therefore, to predict A_t, we can pass a dummy A_t. Its value doesn't matter for the S_t->A_t prediction path
-        # (assuming causal masking prevents S_t from seeing A_t embedding, or A_t embedding is not added to S_t).
-        # In `InterleavedWorldModel`, S_t and A_t are stacked `torch.stack([state_tokens, action_tokens], dim=2)`.
-        # S_t uses `state_tokens`. A_t uses `action_tokens` (derived from `actions` input).
-        # The attention is Factorized.
-        # Layer 0 (Temporal): S_t attends to self history.
-        # Layer 1 (Spatial): S_t attends to {Previous Block, Current Block}.
-        # Current Block is {S_t, A_t}.
-        # Wait, if S_t attends to A_t, then we can't use dummy A_t if we want causality?
-        # The README says:
-        # "Spatial Attention... A_t attends to {S_t, A_t}. S_t attends to {A_{t-1}, S_t}."
-        # This means S_t DOES NOT attend to A_t.
-        # So providing dummy A_t is safe for predicting A_t from S_t.
-        
-        # So:
-        # 1. We construct `actions` tensor with dummy for current step.
-        dummy_action = torch.zeros(1, self.max_ships, 3, device=self.device)
-        actions_list = hist_actions + [dummy_action]
-        
-        input_states = torch.cat(states_list, dim=0).unsqueeze(0) # (1, T, N, D)
-        input_actions = torch.cat(actions_list, dim=0).unsqueeze(0) # (1, T, N, 3)
-        
-        # 3. Team IDs
-        # We need to broadcast team_id
-        # (1, N)
-        team_ids = torch.full((1, self.max_ships), self.team_id, device=self.device, dtype=torch.long)
-        
-        # 4. Forward
-        with torch.no_grad():
-            # input_states: (1, T, N, D)
-            pred_s, pred_a_logits, _ = self.model(
-                input_states,
-                input_actions,
-                team_ids,
-                noise_scale=0.0
-            )
+        # Stack to (1, 1, N, 2)
+        def complex_to_tensor(c):
+            return torch.stack([c.real, c.imag], dim=-1).float().to(self.device).view(1, 1, self.max_ships, 2)
             
-        # 5. Extract Prediction
-        # We want the LAST step (T-1) of pred_a_logits.
-        # pred_a_logits shape: (1, T, N, 12).
+        pos = complex_to_tensor(pos_c)
+        vel = complex_to_tensor(vel_c)
+        att = complex_to_tensor(att_c)
+        
+        # Prev Action
+        if len(self.history) > 0:
+            _, last_action = self.history[-1]
+            prev_action = last_action.view(1, 1, self.max_ships, 3)
+        else:
+            prev_action = torch.zeros(1, 1, self.max_ships, 3, device=self.device)
+            
+        # Inference Params
+        if self.inference_params is None and InferenceParams is not None:
+            # Initialize for max_batch_size=1, max_seqlen big enough
+            self.inference_params = InferenceParams(max_seqlen=100000, max_batch_size=1)
+            
+        with torch.no_grad():
+             # current_state is (1, N, D) -> (1, 1, N, D)
+             state_in = current_state.unsqueeze(1)
+             
+        with torch.no_grad():
+             # We assume alive=None means all alive for now, or derive from state
+             # Check mamba_bb.py forward signature
+             pred_s, pred_a_logits, _, _, new_cache = self.model(
+                state=state_in,
+                prev_action=prev_action,
+                pos=pos,
+                vel=vel,
+                att=att,
+                inference_params=self.inference_params,
+                actor_cache=self.actor_cache,
+                world_size=self.world_size
+             )
+             
+        # 3. Update Cache
+        self.actor_cache = new_cache
+        
+        # 4. Decode
         last_step_logits = pred_a_logits[:, -1, :, :] # (1, N, 12)
+        p_idx = last_step_logits[..., 0:3].argmax(dim=-1)
+        t_idx = last_step_logits[..., 3:10].argmax(dim=-1)
+        s_idx = last_step_logits[..., 10:12].argmax(dim=-1)
         
-        # Decode logits
-        p_logits = last_step_logits[..., 0:3]
-        t_logits = last_step_logits[..., 3:10]
-        s_logits = last_step_logits[..., 10:12]
-        
-        p_idx = p_logits.argmax(dim=-1)
-        t_idx = t_logits.argmax(dim=-1)
-        s_idx = s_logits.argmax(dim=-1)
-        
-        # (1, N) indices
-        
-        # 6. Update History
-        # We store the PREDICTED action (as indices) effectively making it the "action taken".
-        # In a real loop, we should probably store what we *decided* to do.
-        # Construct (1, N, 3) tensor of indices
-        # We need float for consistency with 'actions' tensor type if it expects floats?
-        # InterleavedWorldModel uses .long() on it, so float input is fine as long as values are integers.
         next_action_indices = torch.stack([p_idx, t_idx, s_idx], dim=-1).float() # (1, N, 3)
         
+        # Update History (for prev_action next step)
         self.history.append((current_state, next_action_indices))
         
-        # 7. Return Team Actions
+        # Return
         team_actions = {}
         for ship_id in ship_ids:
             if ship_id < self.max_ships:
@@ -273,7 +315,6 @@ class WorldModelAgent:
                     dtype=torch.float32,
                     device=self.device
                 )
-                
         return team_actions
 
     def get_agent_type(self) -> str:

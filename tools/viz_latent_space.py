@@ -13,9 +13,8 @@ import h5py
 # Add src to sys.path
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 
-from agents.interleaved_world_model import InterleavedWorldModel
+from agents.mamba_bb import MambaBB, MambaConfig
 from train.data_loader import load_bc_data
-from utils.tensor_utils import to_one_hot
 from core.constants import (
     PowerActions, 
     TurnActions, 
@@ -45,18 +44,18 @@ def load_model(run_dir: Path, config: dict, device: str = "cpu"):
 
     state_dim = wm_config.get("token_dim", STATE_DIM)
     
-    # Model uses flattened action dim for HEADS (3+7+2=12), but INPUT is discrete (3)
-    # The InterleavedWorldModel handles embedding internally.
-    
-    model = InterleavedWorldModel(
-        state_dim=state_dim,
-        embed_dim=wm_config.get("embed_dim", 128),
+    # Map configuration to MambaConfig
+    model_cfg = MambaConfig(
+        input_dim=state_dim,
+        d_model=wm_config.get("embed_dim", 128),
         n_layers=wm_config.get("n_layers", 4),
         n_heads=wm_config.get("n_heads", 4),
-        max_ships=wm_config.get("n_ships", MAX_SHIPS),
-        max_context_len=wm_config.get("context_len", 128),
-        dropout=0.0,  # No dropout for inference
+        action_dim=TOTAL_ACTION_LOGITS, # 3+7+2=12
+        target_dim=state_dim,
+        loss_type=wm_config.get("loss", {}).get("type", "fixed")
     )
+    
+    model = MambaBB(model_cfg)
 
     # Find checkpoint
     checkpoint_path = run_dir / "best_world_model.pth"
@@ -72,6 +71,11 @@ def load_model(run_dir: Path, config: dict, device: str = "cpu"):
 
     print(f"Loading checkpoint: {checkpoint_path}")
     state_dict = torch.load(checkpoint_path, map_location=device)
+    
+    # Handle torch.compile wrappers if present
+    if any(k.startswith("_orig_mod.") for k in state_dict.keys()):
+        state_dict = {k.replace("_orig_mod.", ""): v for k, v in state_dict.items()}
+        
     model.load_state_dict(state_dict)
     model.to(device)
     model.eval()
@@ -89,10 +93,11 @@ def extract_embeddings(model, h5_path, device, max_batches=10, seq_len=96):
 
     print(f"Extracting embeddings using {device} from {h5_path}...")
 
-    with h5py.File(h5_path, "r") as f:
+    with h5py.File(h5_path, "r", swmr=True, libver="latest") as f:
         episode_lengths = f["episode_lengths"][:]
-        all_tokens = f["tokens"]
         all_actions = f["actions"]
+        all_pos = f["position"]
+        all_vel = f["velocity"]
         
         has_team_ids = "team_ids" in f
         all_team_ids = f["team_ids"] if has_team_ids else None
@@ -103,14 +108,19 @@ def extract_embeddings(model, h5_path, device, max_batches=10, seq_len=96):
         ep_starts = np.zeros_like(episode_lengths)
         ep_starts[1:] = np.cumsum(episode_lengths[:-1])
 
+        # Resolve tokens using UnifiedDataset logic (granules)
+        from train.unified_dataset import UnifiedEpisodeDataset
+        dataset = UnifiedEpisodeDataset(h5_path)
+
         for i, length in enumerate(episode_lengths):
             start_idx = int(ep_starts[i])
-            # end_idx = start_idx + length # Unused
 
             # Only process if long enough for sequence
             if length >= seq_len:
                 # Slice first seq_len steps
-                tokens_np = all_tokens[start_idx : start_idx + seq_len]
+                tokens_np = dataset.get_slice("tokens", start_idx, start_idx + seq_len).to(torch.float32).numpy()
+                pos_np = all_pos[start_idx : start_idx + seq_len]
+                vel_np = all_vel[start_idx : start_idx + seq_len]
                 
                 # actions: shift right.
                 raw_actions_np = all_actions[start_idx : start_idx + seq_len - 1]
@@ -133,36 +143,33 @@ def extract_embeddings(model, h5_path, device, max_batches=10, seq_len=96):
                 tokens = torch.from_numpy(tokens_np).unsqueeze(0).to(device) # (1, T, N, D)
                 p_actions = torch.from_numpy(p_actions_np).unsqueeze(0).to(device) # (1, T, N, 3)
                 input_team_ids = torch.from_numpy(team_ids_np).unsqueeze(0).to(device) # (1, T, N)
+                pos = torch.from_numpy(pos_np).unsqueeze(0).to(device) # (1, T, N, 2)
+                vel = torch.from_numpy(vel_np).unsqueeze(0).to(device) # (1, T, N, 2)
 
                 # Cast actions to long
                 if p_actions.dtype != torch.long:
                     p_actions = p_actions.long()
                     
-                # Ensure tokens are float
-                if tokens.dtype != torch.float32:
-                    tokens = tokens.float()
-                    
-                # Ensure inputs are contiguous if possible, usually fine
+                # Ensure tokens are bfloat16 for MambaBB if using GPU, or float32
+                tokens = tokens.to(torch.float32)
+                pos = pos.to(torch.float32)
+                vel = vel.to(torch.float32)
 
                 with torch.no_grad():
-                    # model forward returns: pred_states, pred_actions, pred_val (if exists), latents, 12d, pred_rel
+                    # MambaBB forward returns: state_pred, action_logits, value_pred, reward_pred, x_final
                     outputs = model(
-                        tokens, 
-                        p_actions, 
-                        input_team_ids, 
-                        return_embeddings=True
+                        state=tokens, 
+                        prev_action=p_actions, 
+                        pos=pos,
+                        vel=vel,
+                        team_ids=input_team_ids
                     )
-                    # output indices: 
-                    # 0: pred_states
-                    # 1: pred_actions
-                    # 2: _ (return_embeddings=True usually returns tuple of 6?)
-                    # In InterleavedWorldModel forward:
-                    # return pred_states, pred_actions, None, latents, features_12d, pred_relational
-                    # So index 3 is latents.
-                    embeddings = outputs[3]
-                    
-                    # Assume no value head
-                    pred_val = torch.zeros(tokens.shape[0], tokens.shape[1], tokens.shape[2], device=device)
+                    # x_final is index 4
+                    embeddings = outputs[4]
+                    pred_val = outputs[2] if outputs[2] is not None else torch.zeros(tokens.shape[0], tokens.shape[1], 1, device=device)
+                    # If pred_val is (B, T, 1), we expand to (B, T, N) for flattening
+                    if pred_val.ndim == 3:
+                         pred_val = pred_val.unsqueeze(-1).expand(-1, -1, num_ships, -1)
 
                 # Flatten: (B, T, N, E) -> (B*T*N, E)
                 B_dim, T_dim, N_dim, E_dim = embeddings.shape
@@ -511,7 +518,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--models_dir", type=str, default="models/world_model")
     parser.add_argument("--output_dir", type=str, default="outputs/latent_viz")
-    parser.add_argument("--max_batches", type=int, default=100) # Reduced default
+    parser.add_argument("--max_batches", type=int, default=200) # Increased default
     parser.add_argument(
         "--test-run", action="store_true", help="Run quick test on single model"
     )

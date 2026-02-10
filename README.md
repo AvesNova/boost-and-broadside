@@ -211,12 +211,12 @@ The project uses [Hydra](https://hydra.cc/) for configuration. Key config files 
 ## Development
 
 - **Style Guide**: Please refer to [STYLE_GUIDE.md](STYLE_GUIDE.md) for coding standards.
-- **Tests**: Run `uv run pytest --tap` to ensure everything is working.
+- **Tests**: Run `uv run pytest` to ensure everything is working.
 
 ```powershell
 # Run all tests
-uv run pytest --tap
+uv run pytest
 
 # Run specific test file
-uv run pytest tests/components/test_ship.py --tap
+uv run pytest tests/components/test_ship.py
 ```

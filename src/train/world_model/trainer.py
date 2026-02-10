@@ -248,7 +248,7 @@ class Trainer:
         
         # Forward & Loss
         with torch.amp.autocast(device_type=self.device.type, dtype=torch.bfloat16, enabled=self.use_amp):
-             pred_states, pred_actions, pred_values, pred_rewards = self.model(
+             pred_states, pred_actions, pred_values, pred_rewards, _ = self.model(
                 state=input_states,
                 prev_action=input_actions,
                 pos=pos,

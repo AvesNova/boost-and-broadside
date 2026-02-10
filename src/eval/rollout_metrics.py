@@ -92,7 +92,7 @@ def compute_rollout_metrics(
         world_size=eval_env_config.get("world_size", (1024.0, 1024.0)),
         action_dim=12,
         state_dim=10,
-        embed_dim=model.config.embed_dim,
+        embed_dim=getattr(model.config, "embed_dim", getattr(model.config, "d_model", 128)),
         n_layers=model.config.n_layers,
         n_heads=model.config.n_heads,
         context_len=model.config.max_context_len,
@@ -107,9 +107,22 @@ def compute_rollout_metrics(
         obs, _ = env.reset(seed=scenario_seed, game_mode="1v1")
 
         # Get active ship IDs from env state
-        all_ships = env.state.ships
-        team_0_ships = [s.ship_id for s in all_ships.values() if s.team_id == 0]
-        team_1_ships = [s.ship_id for s in all_ships.values() if s.team_id == 1]
+        # TensorEnv approach: state is env.env.state
+        state = env.env.state
+        team_ids = state.ship_team_id[0] # (N,)
+        ship_alive = state.ship_alive[0] # (N,)
+        
+        team_0_ships = []
+        team_1_ships = []
+        
+        for i in range(env.max_ships):
+             if not ship_alive[i]:
+                  continue
+             tid = int(team_ids[i].item())
+             if tid == 0:
+                  team_0_ships.append(i)
+             elif tid == 1:
+                  team_1_ships.append(i)
 
         if not team_0_ships or not team_1_ships:
             log.warning("Skipping scenario with missing teams.")
@@ -195,10 +208,19 @@ def compute_rollout_metrics(
 
         initial_action = torch.zeros(1, wm_agent.max_ships, 12, device=device)
 
+        # Observation from TensorEnvWrapper is a dict of tensors (N,). Position is complex.
+        pos_complex = obs["position"].to(device) # (N,)
+        initial_pos = torch.view_as_real(pos_complex).unsqueeze(0) # (1, N, 2)
+        # Normalize/Scale if needed? MambaBB expects World Units (0-1024).
+        # Obs is usually normalized or raw?
+        # TensorEnvWrapper usually returns RAW (or check config).
+        # Let's check `TensorEnvWrapper`. It likely returns raw pos.
+        
         with torch.no_grad():
             dream_states, gen_actions = model.generate(
                 initial_token,
                 initial_action,
+                initial_pos=initial_pos,
                 steps=max_steps,
                 n_ships=wm_agent.max_ships,
             )
@@ -256,7 +278,6 @@ def compute_rollout_metrics(
         "mse_dream": overall_mse_dream,
         "step_mse_sim": step_mse_sim,
         "step_mse_dream": step_mse_dream,
-        "full_mse_sim": avg_full_mse_sim.cpu().numpy(),
         "full_mse_sim": avg_full_mse_sim.cpu().numpy(),
         "full_mse_dream": avg_full_mse_dream.cpu().numpy(),
         # Action Errors

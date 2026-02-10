@@ -99,7 +99,7 @@ class Validator:
                          att = att.float()
 
                     with torch.amp.autocast(device_type='cuda', dtype=torch.bfloat16, enabled=self.amp):
-                        pred_states, pred_actions, pred_values, pred_rewards = model_to_use(
+                        pred_states, pred_actions, pred_values, pred_rewards, _ = model_to_use(
                             state=input_states, 
                             prev_action=input_actions, 
                             pos=pos_in,

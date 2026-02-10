@@ -39,7 +39,9 @@ class GameRenderer:
         self.world_size = config.world_size
         
         # Initialize Pygame
-        os.environ["SDL_VIDEODRIVER"] = "dummy" if os.environ.get("HEADLESS") else ""
+        if os.environ.get("HEADLESS"):
+            os.environ["SDL_VIDEODRIVER"] = "dummy"
+        # Else: do not set it, let Pygame auto-detect (x11, wayland, cocoa, windows, etc.)
         pygame.init()
         pygame.font.init()
         
@@ -56,7 +58,19 @@ class GameRenderer:
         # Actual Window - Resizable, starting at a reasonable default
         self.window_width = 1000
         self.window_height = 800
-        self.screen = pygame.display.set_mode((self.window_width, self.window_height), pygame.RESIZABLE)
+        # Actual Window - Resizable, starting at a reasonable default
+        self.window_width = 1000
+        self.window_height = 800
+        try:
+            self.screen = pygame.display.set_mode((self.window_width, self.window_height), pygame.RESIZABLE)
+        except pygame.error as e:
+            if "windows not available" in str(e) or "video system not initialized" in str(e):
+                print("\n" + "="*80)
+                print("CRITICAL ERROR: Pygame failed to open a window (Headless environment detected).")
+                print("To fix this, append 'environment.render_mode=none' to your command.")
+                print("Example: uv run main.py ... environment.render_mode=none")
+                print("="*80 + "\n")
+            raise e
         pygame.display.set_caption("Boost and Broadside (Env2)")
         
         self.clock = pygame.time.Clock()
