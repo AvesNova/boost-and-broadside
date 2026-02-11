@@ -60,8 +60,8 @@ model:
   d_model: 64
   n_layers: 2
   n_heads: 2
-  input_dim: 9
-  target_dim: 9
+  input_dim: 5
+  target_dim: 7
   action_dim: 12
   
   learning_rate: 0.001

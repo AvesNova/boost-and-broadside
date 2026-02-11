@@ -99,30 +99,21 @@ class UnifiedEpisodeDataset:
         shoot = torch.from_numpy(f["is_shooting"][start:end]).float()
         team = torch.from_numpy(f["team_ids"][start:end]).float()
         
-        # Allocate tokens (T, N, 9) - bf16
+        # Allocate tokens (T, N, 5) - bf16
         T, N, _ = vel.shape
-        tokens = torch.zeros((T, N, 9), dtype=torch.bfloat16)
+        tokens = torch.zeros((T, N, 5), dtype=torch.bfloat16)
         
-        # 0: Team
-        tokens[..., 0] = team
-        # 1: Health
-        tokens[..., 1] = health / NORM_HEALTH
-        # 2: Power
-        tokens[..., 2] = power / NORM_POWER
+        # 0: Health
+        tokens[..., 0] = health / NORM_HEALTH
+        # 1: Power
+        tokens[..., 1] = power / NORM_POWER
         
-        # 3-4: Vel
-        tokens[..., 3] = vel[..., 0] / NORM_VELOCITY
-        tokens[..., 4] = vel[..., 1] / NORM_VELOCITY
+        # 2-3: Vel
+        tokens[..., 2] = vel[..., 0] / NORM_VELOCITY
+        tokens[..., 3] = vel[..., 1] / NORM_VELOCITY
         
-        # 5, 6: Attitude
-        tokens[..., 5] = att[..., 0]
-        tokens[..., 6] = att[..., 1]
-        
-        # 7: Shooting
-        tokens[..., 7] = shoot
-        
-        # 8: Ang Vel
-        tokens[..., 8] = ang / NORM_ANGULAR_VELOCITY
+        # 4: Ang Vel
+        tokens[..., 4] = ang / NORM_ANGULAR_VELOCITY
         
         return tokens
 

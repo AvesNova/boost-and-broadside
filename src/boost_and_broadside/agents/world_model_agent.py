@@ -108,13 +108,13 @@ class WorldModelAgent:
                  mamba_cfg_args['d_model'] = embed_dim
                  mamba_cfg_args['n_layers'] = n_layers
                  mamba_cfg_args['n_heads'] = n_heads
-                 mamba_cfg_args['input_dim'] = 9 
+                 mamba_cfg_args['input_dim'] = 5 
                  
                  # Set defaults if not in kwargs
                  if 'action_dim' not in mamba_cfg_args:
                      mamba_cfg_args['action_dim'] = 12
                  if 'target_dim' not in mamba_cfg_args:
-                     mamba_cfg_args['target_dim'] = 9
+                     mamba_cfg_args['target_dim'] = 7
                  if 'loss_type' not in mamba_cfg_args:
                      mamba_cfg_args['loss_type'] = 'fixed'
                  
@@ -251,7 +251,6 @@ class WorldModelAgent:
         # observation["position"] is complex (N,)
         pos_c = observation["position"]
         vel_c = observation["velocity"]
-        att_c = observation["attitude"]
         
         # Stack to (1, 1, N, 2)
         def complex_to_tensor(c):
@@ -259,7 +258,6 @@ class WorldModelAgent:
             
         pos = complex_to_tensor(pos_c)
         vel = complex_to_tensor(vel_c)
-        att = complex_to_tensor(att_c)
         
         # Prev Action
         if len(self.history) > 0:
@@ -285,7 +283,7 @@ class WorldModelAgent:
                 prev_action=prev_action,
                 pos=pos,
                 vel=vel,
-                att=att,
+                att=None,
                 inference_params=self.inference_params,
                 actor_cache=self.actor_cache,
                 world_size=self.world_size

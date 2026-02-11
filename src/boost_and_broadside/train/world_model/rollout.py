@@ -79,18 +79,18 @@ def perform_rollout(model, input_states, input_actions, input_pos, team_ids, rol
                 tm_in = team_ids # Assume (B, N)
                 
             # Extract features for relational encoder
-            # Vel(3,4), Att(5,6)
+            # States: [Health(0), Power(1), Vx(2), Vy(3), AngVel(4)]
+            # Target: [dx, dy, dVx, dVy, dHealth, dPower, dAngVel]
             pos = p_in
-            vel = s_in[..., 3:5]
-            att = s_in[..., 5:7]
-            alive = s_in[..., 1] > 0
+            vel = s_in[..., 2:4] # Vx, Vy
+            alive = s_in[..., 0] > 0
                 
-            pred_s, pred_a_logits = model(
+            pred_s, pred_a_logits, _, _, _ = model(
                 state=s_in, 
                 prev_action=a_in, 
                 pos=pos,
                 vel=vel,
-                att=att,
+                att=None,
                 team_ids=tm_in,
                 alive=alive
             )
@@ -119,89 +119,57 @@ def perform_rollout(model, input_states, input_actions, input_pos, team_ids, rol
             
             a_in[:, -1] = next_action
             
-            pred_s, _ = model(
+            # Phase 2: World Model Pass
+            # Predict S_{t+1} given Action_t
+            pred_s, _, _, _, _ = model(
                 state=s_in, 
                 prev_action=a_in, 
                 pos=pos,
                 vel=vel,
-                att=att,
+                att=None,
                 team_ids=tm_in,
                 alive=alive
             )
             
-            next_state = pred_s[:, -1] # (B, N, D)
+            delta_target = pred_s[:, -1] # (B, N, 7)
             
-            # 3. Update Position (Analytic Integration)
-            # pos_new = pos_old + vel * dt
-            # Vel is normalized in state.
-            # Perform math in F32 for precision
-            pred_vx_norm = next_state[..., 3].float()
-            pred_vy_norm = next_state[..., 4].float()
-            vx = pred_vx_norm * NORM_VELOCITY
-            vy = pred_vy_norm * NORM_VELOCITY
+            # 2. Update State S_{t+1}
+            # Delta Target Layout: [dx, dy, dVx, dVy, dH, dP, dAV]
+            # State Layout: [H, P, Vx, Vy, AV]
             
-            # DT = 0.04 approx (Standard Agent DT)
-            dt = 0.04 
+            curr_s = curr_states[:, t] # (B, N, 5)
+            next_state = curr_s.clone()
             
-            # Current pos at t (Maintain in F32)
+            # Update normalized components
+            next_state[..., 0] = (curr_s[..., 0] + delta_target[..., 4]).clamp(0, 1) # Health
+            next_state[..., 1] = (curr_s[..., 1] + delta_target[..., 5]).clamp(0, 1) # Power
+            next_state[..., 2] = (curr_s[..., 2] + delta_target[..., 2])             # Vx
+            next_state[..., 3] = (curr_s[..., 3] + delta_target[..., 3])             # Vy
+            next_state[..., 4] = (curr_s[..., 4] + delta_target[..., 6])             # AngVel
+            
+            # Update curr_states at t+1 if valid
+            if t + 1 < time_steps:
+                curr_states[:, t+1] = next_state
+                input_states[:, t+1] = next_state
+            
+            # 3. Update Position (Model-Predicted Deltas)
+            # Maintain in F32
             pos_t = curr_pos[:, t].float()
-            pos_next = pos_t + torch.stack([vx, vy], dim=-1) * dt
+            dx = delta_target[..., 0].float()
+            dy = delta_target[..., 1].float()
             
-            # Wrap around world (0-1024)
-            pos_next = torch.remainder(pos_next, 1024.0)
+            pos_next = pos_t + torch.stack([dx, dy], dim=-1)
+            
+            # Wrap around world (Toroidal)
+            # Use cfg if available or hardcode standard 1024
+            # For pretraining we often use 1024 or 1200x800
+            # Let's use 1024.0 as default if not passed.
+            world_size = [1024.0, 1024.0] 
+            pos_next[..., 0] = torch.remainder(pos_next[..., 0], world_size[0])
+            pos_next[..., 1] = torch.remainder(pos_next[..., 1], world_size[1])
             
             # Update curr_pos at t+1
             if t + 1 < time_steps:
                 curr_pos[:, t + 1] = pos_next
                 input_pos[:, t + 1] = pos_next
             
-            # --- Analytic Attitude Update (Fixing "Dreaming" Mode) ---
-            # Predicted attitude is garbage because we don't train it.
-            # We must calculate it from Velocity + Action.
-            
-            # 1. Get Predicted Velocity (Indices 3,4)
-            pred_vx = pred_vx_norm
-            pred_vy = pred_vy_norm
-            speed = torch.sqrt(pred_vx**2 + pred_vy**2 + 1e-6).unsqueeze(-1)
-            
-            # Base Attitude (Direction of Motion)
-            base_att_cos = pred_vx.unsqueeze(-1) / speed
-            base_att_sin = pred_vy.unsqueeze(-1) / speed
-            
-            # 2. Turn Offsets (Radians)
-            # 0:0, 1:-5, 2:+5, 3:-15, 4:+15
-            turn_idx = t_idx # (B, N) from above
-            
-            offsets = torch.zeros_like(base_att_cos)
-            
-            # Hardcoded standard config angles (deg2rad)
-            deg5 = 0.0872665
-            deg15 = 0.261799
-            
-            # 1: Left (-5)
-            offsets[turn_idx == 1] = -deg5
-            # 2: Right (+5)
-            offsets[turn_idx == 2] = deg5
-            # 3: Sharp Left (-15)
-            offsets[turn_idx == 3] = -deg15
-            # 4: Sharp Right (+15)
-            offsets[turn_idx == 4] = deg15
-            
-            # 3. Rotate
-            # cos(a+b) = cos(a)cos(b) - sin(a)sin(b)
-            # sin(a+b) = sin(a)cos(b) + cos(a)sin(b)
-            
-            cos_off = torch.cos(offsets)
-            sin_off = torch.sin(offsets)
-            
-            new_cos = base_att_cos * cos_off - base_att_sin * sin_off
-            new_sin = base_att_sin * cos_off + base_att_cos * sin_off
-            
-            # 4. Overwrite in next_state (Indices 5,6)
-            next_state[..., 5] = new_cos.squeeze(-1)
-            next_state[..., 6] = new_sin.squeeze(-1)
-            
-            # Update curr_states at t+1
-            if t + 1 < time_steps:
-                curr_states[:, t + 1] = next_state
-                input_states[:, t + 1] = next_state # Update external tensor

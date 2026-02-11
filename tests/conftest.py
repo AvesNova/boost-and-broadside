@@ -119,7 +119,7 @@ def synthetic_h5_data(tmp_path):
     # Assuming defaults from audit: max_ships=4, token_dim=15, num_actions=4 (simplified)
     # Actually checking default_config fixture: token_dim=15, max_ships=4.
     max_ships = 4
-    token_dim = 9
+    token_dim = 5
     num_actions = 3 # 3 discrete action components (Power, Turn, Shoot)
 
     with h5py.File(file_path, "w") as f:

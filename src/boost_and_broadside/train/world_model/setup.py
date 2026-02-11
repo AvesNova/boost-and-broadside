@@ -23,25 +23,15 @@ def create_model(cfg: DictConfig, data_path: str, device: torch.device):
     import hydra
     import h5py
     
-    # Get dimensions from data
+    # Dims are now typically defined in YAML or constants
+    # We only log what was found in HDF5 for debugging
     with h5py.File(data_path, "r") as f:
-        if "token_dim" in f.attrs:
-            state_dim = int(f.attrs["token_dim"])
-        else:
-            state_dim = f["tokens"].shape[-1]
+        attr_dim = int(f.attrs.get("token_dim", -1))
+        log.info(f"HDF5 'token_dim' attribute: {attr_dim}")
     
-    log.info(f"Initialized Model with input_dim={state_dim}")
-
-    # Inject dynamic dims into config if they are placeholders
-    # Hydra instantiation will use cfg.model
-    # We might need to override input_dim/target_dim if they are not set correctly in yaml
-    # But usually yaml has defaults.
-    
-    # Force input_dim match data
-    if "input_dim" in cfg.model:
-        cfg.model.input_dim = state_dim
-    if "target_dim" in cfg.model:
-        cfg.model.target_dim = state_dim
+    # We trust the config values which should be aligned with the current code
+    # (STATE_DIM=5, TARGET_DIM=7)
+    log.info(f"Instantiating model with input_dim={cfg.model.get('input_dim')} and target_dim={cfg.model.get('target_dim')}")
 
     # Instantiate via Hydra
     log.info(f"Instantiating model target: {cfg.model._target_}")

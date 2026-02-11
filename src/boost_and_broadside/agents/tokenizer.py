@@ -31,27 +31,20 @@ def observation_to_tokens(
         world_size: Dimensions of the world (width, height) for normalization.
 
     Returns:
-        Token tensor of shape (1, num_ships, token_dim) where token_dim=9.
+        Token tensor of shape (1, num_ships, 5).
         Features include:
-        - Team indicator (binary)                                   [0]
-        - Health (normalized)                                       [1]
-        - Power (normalized)                                        [2]
-        - Velocity (normalized x and y components)                  [3, 4]
-        - Attitude (x and y components)                             [5, 6]
-        - Shooting state (binary)                                   [7]
-        - Angular Velocity (normalized)                             [8]
+        - Health (normalized)                                       [0]
+        - Power (normalized)                                        [1]
+        - Velocity (normalized x and y components)                  [2, 3]
+        - Angular Velocity (normalized)                             [4]
     """
     # Stack features
     return torch.stack(
         [
-            torch.eq(obs["team_id"], perspective),
             obs["health"].float() / NORM_HEALTH,
             obs["power"].float() / NORM_POWER,
             obs["velocity"].real / NORM_VELOCITY,
             obs["velocity"].imag / NORM_VELOCITY,
-            obs["attitude"].real,
-            obs["attitude"].imag,
-            obs["is_shooting"].float(),
             obs["angular_velocity"] / NORM_ANGULAR_VELOCITY,
         ],
         dim=1,

@@ -218,15 +218,7 @@ class Trainer:
         # Action_t (Teacher Forcing) -> Action_t (Prediction)
         
         input_states = states[:, :-1]
-        target_states = states[:, 1:]
-        
-        # Actions:
-        # Actor: S_t -> Predicts A_t.
-        # So we predict actions[:, :-1].
-        # Target is actions[:, :-1].
-        
-        # World Model: S_t + A_t -> S_{t+1}.
-        # Input A is actions[:, :-1].
+        next_states = states[:, 1:]
         
         input_actions = actions[:, :-1]
         target_actions = actions[:, :-1]
@@ -236,14 +228,36 @@ class Trainer:
         # Pos is now explicitly passed from dataset (float32)
         pos = batch_data["pos"].to(self.device, non_blocking=True)[:, :-1]
         
-        # Vel/Att from tokens
-        # New Layout: Team(0), Health(1), Power(2), Vel(3,4), Att(5,6), Shoot(7), AngVel(8)
-        vel = input_states[..., 3:5]
-        att = input_states[..., 5:7]
-
-        # Alive Mask (Health > 0, Health is at index 1)
-        alive = input_states[..., 1] > 0
-        target_alive = target_states[..., 1] > 0
+        # Position Data for Deltas
+        pos_all = batch_data["pos"].to(self.device, non_blocking=True)
+        pos_curr = pos_all[:, :-1]
+        pos_next = pos_all[:, 1:]
+        
+        # Toroidal Delta Pos
+        d_pos = pos_next - pos_curr
+        W, H = self.cfg.environment.world_size
+        d_pos[..., 0] = d_pos[..., 0] - torch.round(d_pos[..., 0] / W) * W
+        d_pos[..., 1] = d_pos[..., 1] - torch.round(d_pos[..., 1] / H) * H
+        
+        # State Deltas (Next - Current)
+        # States: [Health(0), Power(1), Vx(2), Vy(3), AngVel(4)]
+        d_state = next_states - input_states
+        
+        # Construct 7D Target: [dx, dy, dVx, dVy, dHealth, dPower, dAngVel]
+        target_states = torch.cat([
+            d_pos,               # dx, dy
+            d_state[..., 2:4],   # dVx, dVy
+            d_state[..., 0:1],   # dHealth
+            d_state[..., 1:2],   # dPower
+            d_state[..., 4:5]    # dAngVel
+        ], dim=-1)
+        
+        # Velocity for Relational Trunk (Current Vx, Vy)
+        vel = input_states[..., 2:4]
+        
+        # Alive Mask
+        alive = input_states[..., 0] > 0
+        target_alive = next_states[..., 0] > 0
         
         # Forward & Loss
         # Forward & Loss
@@ -254,9 +268,9 @@ class Trainer:
              model_out = self.model(
                 state=input_states,
                 prev_action=input_actions,
-                pos=pos,
+                pos=pos_curr,
                 vel=vel,
-                att=att,
+                att=None,
                 team_ids=team_ids[:, :-1],
                 seq_idx=seq_idx[:, :-1], # Match temporal dim
                 alive=alive,

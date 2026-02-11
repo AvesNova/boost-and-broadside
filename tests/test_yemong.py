@@ -11,8 +11,8 @@ def test_scaffold_instantiation(scaffold_class):
         "d_model": 128,
         "n_layers": 2,
         "n_heads": 4,
-        "input_dim": 9,
-        "target_dim": 9,
+        "input_dim": 5,
+        "target_dim": 7,
         "action_dim": 12,
         "loss_type": "fixed",
         "spatial_layer": {
@@ -30,19 +30,20 @@ def test_yemong_full_forward_and_loss():
         "d_model": d_model,
         "n_layers": 2,
         "n_heads": 4,
-        "input_dim": 9,
-        "target_dim": 9,
+        "input_dim": 5,
+        "target_dim": 7,
         "action_dim": 12,
         "loss_type": "fixed"
     })
     model = YemongFull(config)
     
     B, T, N = 2, 4, 3
-    state = torch.randn(B, T, N, 9)
+    state = torch.randn(B, T, N, 5) * 0.1
+    state[..., 0] = 1.0 # Health > 0
     prev_action = torch.zeros(B, T, N, 12)
-    pos = torch.randn(B, T, N, 2)
-    vel = torch.randn(B, T, N, 2)
-    att = torch.randn(B, T, N, 2)
+    pos = torch.randn(B, T, N, 2) * 0.1
+    vel = torch.randn(B, T, N, 2) * 0.1
+    att = torch.randn(B, T, N, 2) * 0.1
     team_ids = torch.randint(0, 2, (B, N))
     seq_idx = torch.zeros(B, T, dtype=torch.long)
     
@@ -57,13 +58,18 @@ def test_yemong_full_forward_and_loss():
         seq_idx=seq_idx
     )
     
-    assert state_pred.shape == (B, T, N, 9)
+    # Debug NaNs
+    if torch.isnan(state_pred).any(): print("DEBUG: state_pred has NaNs")
+    if torch.isnan(action_logits).any(): print("DEBUG: action_logits has NaNs")
+    if torch.isnan(value_pred).any(): print("DEBUG: value_pred has NaNs")
+    
+    assert state_pred.shape == (B, T, N, 7)
     assert action_logits.shape == (B, T, N, 12)
     assert value_pred.shape == (B, T, 1)
     assert reward_pred.shape == (B, T, 1)
     
     # Loss
-    target_states = torch.randn(B, T, N, 9)
+    target_states = torch.randn(B, T, N, 7) # Ground truth 7D deltas
     target_actions = torch.randint(0, 2, (B, T, N, 3))
     loss_mask = torch.ones(B, T, N)
     
@@ -85,13 +91,13 @@ def test_yemong_spatial_forward_and_loss():
         "d_model": 128,
         "n_layers": 2,
         "n_heads": 4,
-        "input_dim": 9,
+        "input_dim": 5,
         "action_dim": 12
     })
     model = YemongSpatial(config)
     
     B, T, N = 2, 4, 3
-    state = torch.randn(B, T, N, 9)
+    state = torch.randn(B, T, N, 5)
     pos = torch.randn(B, T, N, 2)
     vel = torch.randn(B, T, N, 2)
     att = torch.randn(B, T, N, 2)
@@ -124,13 +130,13 @@ def test_yemong_temporal_forward_and_loss():
     config = OmegaConf.create({
         "d_model": 128,
         "n_layers": 2,
-        "input_dim": 9,
-        "target_dim": 9
+        "input_dim": 5,
+        "target_dim": 7
     })
     model = YemongTemporal(config)
     
     B, T, N = 2, 4, 3
-    state = torch.randn(B, T, N, 9)
+    state = torch.randn(B, T, N, 5)
     prev_action = torch.zeros(B, T, N, 12)
     
     # Forward
@@ -140,10 +146,10 @@ def test_yemong_temporal_forward_and_loss():
     )
     
     # Temporal flattens internally if state is 4D
-    assert state_pred.shape == (B*N, T, 9)
+    assert state_pred.shape == (B*N, T, 7)
     
     # Loss
-    target_states = torch.randn(B, T, N, 9)
+    target_states = torch.randn(B, T, N, 7)
     loss_mask = torch.ones(B, T, N)
     
     loss, s_loss, _, _, metrics = model.get_loss(

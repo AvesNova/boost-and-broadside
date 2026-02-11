@@ -102,7 +102,7 @@ class YemongFull(BaseScaffold):
         d_model = self.config.d_model
 
         # Dead Masking
-        if alive is None: alive = state[..., 1] > 0
+        if alive is None: alive = state[..., 0] > 0
         state = torch.where(alive.unsqueeze(-1), state.to(self.special_params['dead'].dtype), self.special_params['dead'].view(1, 1, 1, -1))
 
         # Reset Logic
@@ -146,8 +146,7 @@ class YemongFull(BaseScaffold):
             x_mamba = x_spatial.permute(0, 2, 1, 3).reshape(batch_size * num_ships, seq_len, -1)
 
         x_final = x_mamba.view(batch_size, num_ships, seq_len, -1).permute(0, 2, 1, 3)
-        delta_pred = self.world_head(x_final)
-        state_pred = state + delta_pred
+        state_pred = self.world_head(x_final if 'x_final' in locals() else x)
 
         # Actor
         if actor_cache is not None: history = actor_cache
@@ -188,13 +187,7 @@ class YemongFull(BaseScaffold):
         denom = mask_flat.sum() + 1e-6
         mse = F.mse_loss(pred_states, target_states, reduction='none')
         
-        D = mse.shape[-1]
-        feature_mask = torch.zeros(D, device=mse.device)
-        feature_mask[1:5] = 1.0 
-        feature_mask[7] = 1.0   
-        feature_mask[8] = 1.0   
-        
-        s_loss = ((mse * feature_mask).sum(dim=-1) / (feature_mask.sum() + 1e-6)).reshape(-1).mul(mask_flat).sum() / denom
+        s_loss = mse.mean(dim=-1).reshape(-1).mul(mask_flat).sum() / denom
         
         l_p, l_t, l_s = pred_actions[..., 0:3], pred_actions[..., 3:10], pred_actions[..., 10:12]
         t_p, t_t, t_s = target_actions[..., 0].long().clamp(0, 2), target_actions[..., 1].long().clamp(0, 6), target_actions[..., 2].long().clamp(0, 1)
@@ -287,7 +280,7 @@ class YemongSpatial(BaseScaffold):
             if team_ids is not None: team_ids = team_ids.unsqueeze(1)
             if alive is not None: alive = alive.unsqueeze(1)
 
-        if alive is None: alive = state[..., 1] > 0
+        if alive is None: alive = state[..., 0] > 0
         state = torch.where(alive.unsqueeze(-1), state.to(self.special_params['dead'].dtype), self.special_params['dead'].view(1, 1, 1, -1))
 
         s_emb = self.state_encoder(state)
@@ -385,8 +378,7 @@ class YemongTemporal(BaseScaffold):
             normed = block['norm'](x)
             x = x + block['mamba'](normed, seq_idx=seq_idx, inference_params=inference_params)
             
-        delta_pred = self.world_head(x)
-        state_pred = state + delta_pred
+        state_pred = self.world_head(x)
         
         # Reshape back if needed, but for loss we can keep flattened usually
         if 'num_ships' in kwargs: 
@@ -407,18 +399,10 @@ class YemongTemporal(BaseScaffold):
         denom = mask_flat.sum() + 1e-6
         mse = F.mse_loss(pred_states, target_states, reduction='none')
         
-        D = mse.shape[-1]
-        feature_mask = torch.zeros(D, device=mse.device)
-        feature_mask[1:5] = 1.0
-        feature_mask[7] = 1.0
-        feature_mask[8] = 1.0
-        
-        s_loss = ((mse * feature_mask).sum(dim=-1) / (feature_mask.sum() + 1e-6)).reshape(-1).mul(mask_flat).sum() / denom
+        s_loss = mse.mean(dim=-1).reshape(-1).mul(mask_flat).sum() / denom
         
         total_loss = lambda_state * s_loss
         
         metrics = {"loss": total_loss.item(), "loss_sub/state_mse": s_loss.item()}
         return total_loss, s_loss, torch.tensor(0.0), torch.tensor(0.0), metrics
 
-# Import for backward compatibility if needed, or alias
-from boost_and_broadside.models.components.layers.attention import RelationalAttention
