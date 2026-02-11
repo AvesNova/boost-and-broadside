@@ -65,8 +65,8 @@ def create_model(cfg: DictConfig, data_path: str, device: torch.device):
 
 def create_optimizer(model: torch.nn.Module, cfg: DictConfig) -> optim.Optimizer:
     """Create AdamW optimizer."""
-    # LR should probably be in cfg.model or cfg.train. Prefer cfg.model for now as it was in cfg.world_model
-    lr = cfg.model.get("learning_rate", 1e-4) 
+    # Check cfg.train first, then cfg.model, then default
+    lr = cfg.train.get("learning_rate", cfg.model.get("learning_rate", 1e-4))
     return optim.AdamW(model.parameters(), lr=lr, fused=True)
 
 def create_scheduler(optimizer: optim.Optimizer, cfg: DictConfig, total_steps: int) -> lr_scheduler.LRScheduler | None:
@@ -96,7 +96,7 @@ def create_scheduler(optimizer: optim.Optimizer, cfg: DictConfig, total_steps: i
     
     elif sched_cfg.type == "warmup_constant":
         warmup_cfg = sched_cfg.warmup
-        lr = cfg.model.get("learning_rate", 1e-4)
+        lr = cfg.train.get("learning_rate", cfg.model.get("learning_rate", 1e-4))
         log.info(f"Initializing Warmup Constant Scheduler: {warmup_cfg.start_lr} -> {lr} over {warmup_cfg.steps} steps")
         
         target_lr = lr

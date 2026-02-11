@@ -3,9 +3,16 @@ _target_: boost_and_broadside.models.yemong.scaffolds.YemongFull
 d_model: 256
 n_layers: 6
 n_heads: 4
-input_dim: 14       # Adjust based on Tokenizer/Dataset
-target_dim: 14      # Same as input usually
+input_dim: 9       # Adjust based on Tokenizer/Dataset
+target_dim: 9      # Same as input usually
 action_dim: 12      # 3 Power + 7 Turn + 2 Shoot
+learning_rate: 1e-4
+
+scheduler:
+  type: "warmup_constant"
+  warmup:
+    steps: 1000
+    start_lr: 1e-7
 
 loss_type: "uncertainty"
 
@@ -16,8 +23,6 @@ spatial_layer:
 
 # Training params moved here for context, but usually in 'train'
 lambda_state: 1.0
-lambda_power: 0.05
-lambda_turn: 0.05
-lambda_shoot: 0.05
+lambda_actions: 0.15
 lambda_value: 0.5
 lambda_reward: 10.0

@@ -51,70 +51,35 @@ collect:
 
 train:
   run_collect: false
-  run_bc: false
   run_world_model: false
-  run_rl: false
   amp: false
-
-  use_bc: true
-  use_rl: true
   bc_data_path: "data/test_data/aggregated_data.h5"
-  
-  model:
-    transformer:
-      token_dim: 9
-      embed_dim: 64
-      num_heads: 4
-      num_layers: 3
-      max_ships: 8
-      num_actions: 6
-      dropout: 0.1
-      use_layer_norm: true
-
-  bc:
-    learning_rate: 0.001
-    batch_size: 128
-    epochs: 50
-    validation_split: 0.2
-    early_stopping_patience: 10
-    policy_weight: 1.0
-    value_weight: 0.5
-
-  rl:
-    learning_rate: 0.0003
-    n_steps: 4096
-    batch_size: 128
-    n_epochs: 10
-    gamma: 0.99
-    gae_lambda: 0.95
-    clip_range: 0.2
-    ent_coef: 0.01
-    vf_coef: 0.5
-    max_grad_norm: 0.5
 
 model:
   _target_: boost_and_broadside.models.yemong.scaffolds.YemongFull
   d_model: 64
   n_layers: 2
   n_heads: 2
-  context_len: 96
-  seq_len: 16 # Small seq len for integration tests
-  n_ships: 4
-  input_dim: 9 # Matches synthetic data in most tests, but setup.py overrides this
+  input_dim: 9
   target_dim: 9
   action_dim: 12
-  loss_type: "uncertainty"
   
-  rope_base: 10000.0
-  rope_max_seq_len: 256
-
-  mask_ratio: 0.15
-  noise_scale: 0.1
-  input_noise_ratio: 0.1
-  input_noise_scale: 0.1
   learning_rate: 0.001
   epochs: 3
   batch_size: 8
+  
+  scheduler:
+    type: "warmup_constant"
+    warmup:
+      steps: 10
+      start_lr: 1e-6
+
+  loss_type: "uncertainty"
+  
+  lambda_state: 1.0
+  lambda_actions: 1.0
+  lambda_value: 0.5
+  lambda_reward: 1.0
 
   rollout:
     enabled: true
@@ -124,8 +89,6 @@ model:
     ramp_epochs: 2
 
   loss:
-    type: "uncertainty"
     use_focal_loss: false
     weighted_loss_cap: 5.0
     weighted_loss_power: 0.5
-

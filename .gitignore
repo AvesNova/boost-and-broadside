@@ -8,7 +8,7 @@ checkpoints/
 data/
 outputs/
 *.egg-info/
-models/
+/models/
 .agent/
 wandb/
 .venv/

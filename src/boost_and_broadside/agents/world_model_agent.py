@@ -108,7 +108,7 @@ class WorldModelAgent:
                  mamba_cfg_args['d_model'] = embed_dim
                  mamba_cfg_args['n_layers'] = n_layers
                  mamba_cfg_args['n_heads'] = n_heads
-                 mamba_cfg_args['input_dim'] = 9 # Correct input dim from tokenizer
+                 mamba_cfg_args['input_dim'] = 9 
                  
                  # Set defaults if not in kwargs
                  if 'action_dim' not in mamba_cfg_args:

@@ -52,7 +52,7 @@ def _load_agent_config_from_model(
         saved_cfg = OmegaConf.load(config_path)
 
         # Extract world model config
-        wm_cfg = OmegaConf.to_container(saved_cfg.world_model, resolve=True)
+        wm_cfg = OmegaConf.to_container(saved_cfg.model, resolve=True)
         # Map keys to WorldModelAgent args
         if "n_ships" in wm_cfg:
             wm_cfg["max_ships"] = wm_cfg.pop("n_ships")

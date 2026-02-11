@@ -87,43 +87,19 @@ collect:
 
 train:
   run_collect: true
-  run_bc: false
   run_world_model: true
-  run_rl: false
   
   amp: true 
   compile: true
   
-  use_bc: false
-  use_rl: false
-  
   bc_data_path: data/bc_pretraining/aggregated_data.h5
   
-  # Training Hyperparameters (Global / Pretrain)
+  # Default Training Hyperparameters (can be overridden by model config)
   epochs: 1000
   batch_size: 24
   num_workers: 4
   learning_rate: 3.5e-5
   gradient_accumulation_steps: 8
-  
-  rl:
-    policy_type: "world_model"
-    context_len: 32 
-    aux_loss_coef: 1.0 
-    freeze_world_model: false 
-    pretrained_model_path: null
-    n_envs: 8
-    total_timesteps: 1000000
-    learning_rate: 0.0003
-    n_steps: 4096
-    batch_size: 64
-    n_epochs: 10
-    gamma: 0.99
-    gae_lambda: 0.95
-    clip_range: 0.2
-    ent_coef: 0.01
-    vf_coef: 0.5
-    max_grad_norm: 0.5
 
 # Model specific overrides come from defaults list 'model' group.
 # See configs/model/*.yaml

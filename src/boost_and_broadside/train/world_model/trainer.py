@@ -279,9 +279,7 @@ class Trainer:
                 # Note: Scaffolds might look up config internally too, but we pass overrides from cfg.train/model here if needed
                 # For now we pass what we have, ignoring what's unused by specific scaffold
                 lambda_state=self.cfg.model.get("lambda_state", 1.0),
-                lambda_power=self.cfg.model.get("lambda_power", 0.05),
-                lambda_turn=self.cfg.model.get("lambda_turn", 0.05),
-                lambda_shoot=self.cfg.model.get("lambda_shoot", 0.05),
+                lambda_actions=self.cfg.model.get("lambda_actions", 0.15),
                 pred_values=pred_values,
                 pred_rewards=pred_rewards,
                 target_returns=returns,
