@@ -26,5 +26,5 @@ def train(cfg: DictConfig) -> None:
     # 2. World Model Training
     if cfg.train.get("run_world_model", True):
         print("\n=== Starting Pipeline Step 2: World Model Training ===")
-        from boost_and_broadside.train.train_world_model import train_world_model
+        from boost_and_broadside.train.pretrain import pretrain as train_world_model
         train_world_model(cfg)

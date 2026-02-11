@@ -7,7 +7,7 @@ def get_rollout_length(epoch: int, cfg) -> int:
     """
     Determine rollout length for the current epoch based on schedule.
     """
-    config = cfg.world_model.rollout
+    config = cfg.model.rollout
     if not config.enabled or epoch < config.start_epoch:
         return 0
 

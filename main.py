@@ -14,7 +14,7 @@ from boost_and_broadside.modes.collect import collect
 from boost_and_broadside.modes.play import play
 from boost_and_broadside.env2.collect_massive import collect_massive
 from boost_and_broadside.modes.train import train
-from boost_and_broadside.train.train_world_model import train_world_model
+from boost_and_broadside.train.pretrain import pretrain
 from boost_and_broadside.eval.eval_world_model import eval_world_model
 
 
@@ -29,13 +29,13 @@ def my_app(cfg: DictConfig) -> None:
             collect_massive(cfg)
         case "train":
             train(cfg)
-        case "train_wm":
-            train_world_model(cfg)
+        case "pretrain":
+            pretrain(cfg)
         case "eval_wm":
             eval_world_model(cfg)
         case _:
             raise TypeError(
-                f"Mode should be one of [play, collect, train, train_wm, eval_wm]. You used: {cfg.mode}"
+                f"Mode should be one of [play, collect, train, pretrain, eval_wm]. You used: {cfg.mode}"
             )
 
 

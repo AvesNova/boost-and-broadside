@@ -4,7 +4,7 @@ from omegaconf import OmegaConf
 from unittest.mock import patch
 
 # Import the training function
-from boost_and_broadside.train.train_world_model import train_world_model
+from boost_and_broadside.train.pretrain import pretrain
 
 def test_world_model_training_pipeline(tmp_path, synthetic_h5_data):
     """Test the World Model training pipeline using config_test.yaml."""
@@ -35,7 +35,10 @@ def test_world_model_training_pipeline(tmp_path, synthetic_h5_data):
     
     # 3. Scheduler & Optimization Config
     # Create scheduler config if missing (config_test might be minimal)
-    cfg.world_model.scheduler = OmegaConf.create({
+    if "model" not in cfg:
+         cfg.model = OmegaConf.create({"_target_": "boost_and_broadside.models.yemong.scaffolds.YemongFull", "d_model": 64, "n_layers": 2, "n_heads": 2, "input_dim": 14, "target_dim": 14, "action_dim": 12}) # Minimal mock
+
+    cfg.model.scheduler = OmegaConf.create({
         "type": "warmup_constant",
         "warmup": {
             "steps": 2,
@@ -44,13 +47,13 @@ def test_world_model_training_pipeline(tmp_path, synthetic_h5_data):
     })
     
     # Force minimal accum steps so we update frequently
-    cfg.world_model.gradient_accumulation_steps = 1
+    cfg.train.gradient_accumulation_steps = 1
     
     # Run minimal epochs
-    cfg.world_model.epochs = 2
-    cfg.world_model.num_workers = 0
-    cfg.world_model.curriculum = {"enabled": False} # Disable filtering
-    cfg.world_model.seq_len = 16 # Small seq len for small dataset
+    cfg.train.epochs = 2
+    cfg.train.num_workers = 0
+    cfg.model.curriculum = {"enabled": False} # Disable filtering
+    cfg.model.seq_len = 16 # Small seq len for small dataset
     cfg.train.compile = False
     
     # 4. Run Training
@@ -64,7 +67,7 @@ def test_world_model_training_pipeline(tmp_path, synthetic_h5_data):
         orig_cwd = os.getcwd()
         os.chdir(tmp_path)
         try:
-            train_world_model(cfg)
+            pretrain(cfg)
         finally:
             os.chdir(orig_cwd)
             

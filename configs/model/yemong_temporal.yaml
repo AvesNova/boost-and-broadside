@@ -1,0 +1,8 @@
+_target_: boost_and_broadside.models.yemong.scaffolds.YemongTemporal
+
+d_model: 256
+n_layers: 6
+input_dim: 14
+target_dim: 14
+
+lambda_state: 1.0

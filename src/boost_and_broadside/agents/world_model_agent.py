@@ -10,7 +10,7 @@ import torch
 from collections import deque
 
 # Changed import to InterleavedWorldModel
-from boost_and_broadside.agents.mamba_bb import MambaBB
+# from boost_and_broadside.agents.mamba_bb import MambaBB # Removed
 try:
     from mamba_ssm.utils.generation import InferenceParams
 except ImportError:
@@ -57,7 +57,7 @@ class WorldModelAgent:
         max_ships: int = 8,
         dropout: float = 0.1,
         world_size: tuple[float, float] = (1024.0, 1024.0),
-        model: MambaBB | None = None,
+        model: torch.nn.Module | None = None,
         **kwargs,
     ):
         """
@@ -90,10 +90,14 @@ class WorldModelAgent:
         if model is not None:
             self.model = model
             self.model.to(self.device)
+        if model is not None:
+            self.model = model
+            self.model.to(self.device)
         else:
-             # Try to instantiate MambaBB from config
+             # Try to instantiate YemongFull from config
              try:
-                 from boost_and_broadside.agents.mamba_bb import MambaConfig
+                 from boost_and_broadside.models.yemong.scaffolds import YemongFull
+                 from omegaconf import OmegaConf
                  
                  # Create config from kwargs
                  # We filter kwargs to match MambaConfig fields if necessary, or just pass relevant ones.
@@ -114,16 +118,16 @@ class WorldModelAgent:
                  if 'loss_type' not in mamba_cfg_args:
                      mamba_cfg_args['loss_type'] = 'fixed'
                  
-                 # Let's try to construct MambaConfig with whatever we have
-                 cfg = MambaConfig(**mamba_cfg_args)
+                 # Construct OmegaConf
+                 cfg = OmegaConf.create(mamba_cfg_args)
                  
-                 self.model = MambaBB(cfg).to(self.device)
-                 log.info("Instantiated MambaBB from config.")
+                 self.model = YemongFull(cfg).to(self.device)
+                 log.info("Instantiated YemongFull from config.")
                  
              except Exception as e:
-                 print(f"CRITICAL ERROR instantiating MambaBB: {e}") # Print to stdout to see in tool output
-                 log.error(f"Failed to instantiate MambaBB from config: {e}")
-                 raise ValueError(f"WorldModelAgent requires a 'model' instance (MambaBB) or valid config. Error: {e}")
+                 print(f"CRITICAL ERROR instantiating WorldModel: {e}") # Print to stdout to see in tool output
+                 log.error(f"Failed to instantiate WorldModel from config: {e}")
+                 raise ValueError(f"WorldModelAgent requires a 'model' instance or valid config. Error: {e}")
 
         if model_path:
             self.load_model(model_path)
@@ -197,7 +201,7 @@ class WorldModelAgent:
                          new_config.loss_type = "uncertainty"
                          
                     # Re-create model
-                    self.model = MambaBB(new_config).to(self.device)
+                    self.model = YemongFull(new_config).to(self.device)
             
             # Load with strict=False to handle potential minor mismatches (like missing buffers), 
             # but usually we want strict=True to catch real errors. 

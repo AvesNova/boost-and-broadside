@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from boost_and_broadside.agents.mamba_bb import RMSNorm
+from boost_and_broadside.models.components.layers.utils import RMSNorm
 
 class TeamEvaluator(nn.Module):
     """

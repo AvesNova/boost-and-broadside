@@ -7,12 +7,10 @@ realistic rollouts from initial conditions.
 
 import logging
 
-import torch
-from omegaconf import DictConfig
-
-from boost_and_broadside.agents.mamba_bb import MambaBB, MambaConfig
-from boost_and_broadside.train.data_loader import load_bc_data, create_unified_data_loaders
-from omegaconf import OmegaConf
+import hydra
+from omegaconf import DictConfig, OmegaConf
+# from boost_and_broadside.agents.mamba_bb import MambaBB, MambaConfig # DELETED
+from boost_and_broadside.train.data_loader import create_continuous_data_loader # Use new loader if needed, or keep for now
 
 log = logging.getLogger(__name__)
 
@@ -33,27 +31,23 @@ def eval_world_model(cfg: DictConfig) -> None:
     data_path = cfg.train.bc_data_path
     if data_path is None:
         from boost_and_broadside.train.data_loader import get_latest_data_path
-
         data_path = get_latest_data_path()
 
     log.info(f"Loading data from {data_path}")
-    data = load_bc_data(data_path)
-
-    # Create loader to get dimensions and sample
-    # We use the long validation loader for evaluation
-    _, _, _, val_loader = create_unified_data_loaders(
-        data,
-        short_batch_size=cfg.world_model.short_batch_size,
-        long_batch_size=1,  # Batch size 1 for evaluation
-        short_batch_len=cfg.world_model.short_batch_len,
-        long_batch_len=cfg.world_model.long_batch_len,
-        batch_ratio=cfg.world_model.batch_ratio,
+    
+    from boost_and_broadside.train.data_loader import create_continuous_data_loader
+    _, val_loader = create_continuous_data_loader(
+        data_path,
+        batch_size=1,
+        seq_len=cfg.model.get("seq_len", 96),
         validation_split=0.2,
         num_workers=0,
+        world_size=tuple(cfg.environment.world_size)
     )
 
     # Get a sample
-    sample_states, sample_actions, _, _, _ = next(iter(val_loader))
+    batch = next(iter(val_loader))
+    sample_states = batch["states"]
     state_dim = sample_states.shape[-1]
     # action_dim = sample_actions.shape[-1] # This is 3, but we use 12 for one-hot
     # We will hardcode action_dim to 12 as per model requirement
@@ -61,6 +55,7 @@ def eval_world_model(cfg: DictConfig) -> None:
     # 2. Load Model
     from boost_and_broadside.utils.model_finder import find_most_recent_model
     from boost_and_broadside.eval.rollout_metrics import compute_rollout_metrics
+    from boost_and_broadside.train.world_model.setup import create_model
 
     model_path = find_most_recent_model("world_model")
     if model_path is None:
@@ -69,21 +64,20 @@ def eval_world_model(cfg: DictConfig) -> None:
 
     log.info(f"Loading model from {model_path}")
 
-    # Create MambaConfig from hydra config
-    mamba_cfg = MambaConfig(
-        input_dim=state_dim,
-        target_dim=state_dim, # Delta prediction
-        action_dim=action_dim,
-        d_model=cfg.world_model.embed_dim,
-        n_layers=cfg.world_model.n_layers,
-        n_heads=cfg.world_model.n_heads,
-        n_ships=cfg.world_model.n_ships,
-        context_len=cfg.world_model.context_len,
-    )
-
-    model = MambaBB(mamba_cfg).to(device)
-
-    model.load_state_dict(torch.load(model_path))
+    # Use the setup helper instead of manual instantiation
+    model = create_model(cfg, data_path, device)
+    
+    # Load state dict
+    try:
+        model.load_state_dict(torch.load(model_path, map_location=device))
+    except Exception as e:
+        log.warning(f"Direct load failed: {e}. Trying via 'model_state_dict' key.")
+        checkpoint = torch.load(model_path, map_location=device)
+        if "model_state_dict" in checkpoint:
+             model.load_state_dict(checkpoint["model_state_dict"])
+        else:
+             raise e
+             
     model.eval()
 
     # 3. Evaluation Loop

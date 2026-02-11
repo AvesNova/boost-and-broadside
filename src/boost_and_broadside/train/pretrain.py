@@ -24,11 +24,11 @@ from boost_and_broadside.train.world_model.trainer import Trainer
 
 log = logging.getLogger(__name__)
 
-def train_world_model(cfg: DictConfig) -> None:
+def pretrain(cfg: DictConfig) -> None:
     """
-    Train the world model.
+    Train the Yemong world model (Pretraining).
     """
-    log.info("Starting World Model training... (Refactored Pipeline)")
+    log.info("Starting Yemong Pretraining...")
 
     # 1. Enable TF32 globally
     torch.backends.cuda.matmul.allow_tf32 = True
@@ -64,17 +64,19 @@ def train_world_model(cfg: DictConfig) -> None:
     train_loader, val_loader = get_data_loaders(cfg, data_path)
     
     # Calculate total steps for scheduler estimate
-    acc_steps = cfg.world_model.get("gradient_accumulation_steps", 1)
+    acc_steps = cfg.train.get("gradient_accumulation_steps", 1)
     
     # If range test, override defaults for more diagnostic resolution
-    sched_cfg = cfg.world_model.get("scheduler", None)
+    sched_cfg = cfg.model.get("scheduler", None)
     is_range_test = sched_cfg and "range_test" in getattr(sched_cfg, "type", "")
     
     if is_range_test:
         log.info(f"LR Range Test: Using configured gradient_accumulation_steps={acc_steps}")
         
     train_batches = len(train_loader)
-    total_est_steps = int(train_batches / acc_steps) * cfg.world_model.epochs
+    # Prefer cfg.train.epochs, fallback to model if needed.
+    epochs = cfg.train.get("epochs", cfg.model.get("epochs", 100))
+    total_est_steps = int(train_batches / acc_steps) * epochs
     
     total_sched_steps = total_est_steps
     if is_range_test:

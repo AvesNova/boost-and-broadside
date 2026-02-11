@@ -32,16 +32,18 @@ def mock_components(tmp_path):
     logger = MagicMock()
     
     cfg = OmegaConf.create({
-        "world_model": {
-            "epochs": 10,
-            "batch_ratio": 4,
+        "model": {
             "noise_scale": 0.1,
             "validation": {
                 "max_batches": 10,
                 "heavy_eval_freq": 2
             }
         },
-        "train": {"amp": False},
+        "train": {
+            "amp": False,
+            "epochs": 10,
+            "batch_ratio": 4
+        },
         "wandb": {
             "enabled": True,
             "project": "test_project",

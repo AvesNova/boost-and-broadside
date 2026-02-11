@@ -1,11 +1,8 @@
 import torch
 import pytest
-from boost_and_broadside.agents.mamba_bb import MambaBB
+from boost_and_broadside.models.yemong.scaffolds import YemongFull
 
-class MambaConfig:
-    def __init__(self, **kwargs):
-        for k, v in kwargs.items():
-            setattr(self, k, v)
+from omegaconf import OmegaConf
 
 try:
     from mamba_ssm.utils.generation import InferenceParams
@@ -25,17 +22,19 @@ def test_mamba_sanity_echo(device):
     print(f"\nRunning Sanity Echo Test on {device}...")
     
     # 1. Setup Model
-    cfg = MambaConfig(
-        input_dim=16, # Arbitrary
-        d_model=64,
-        n_layers=2,
-        n_heads=2,
-        action_dim=12,
-        target_dim=16,
-        loss_type="fixed"
-    )
+    cfg = OmegaConf.create({
+        "input_dim": 16, # Arbitrary
+        "d_model": 64,
+        "n_layers": 2,
+        "n_heads": 2,
+        "action_dim": 12,
+        "target_dim": 16,
+        "loss_type": "fixed",
+        # Default spatial layer if not provided
+        # "spatial_layer": ...
+    })
     
-    model = MambaBB(cfg).to(device)
+    model = YemongFull(cfg).to(device)
     model.eval()
 
     # 2. Generate Synthetic Episode

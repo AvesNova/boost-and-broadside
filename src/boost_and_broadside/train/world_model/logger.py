@@ -17,7 +17,7 @@ class MetricLogger:
         self.log_freq = self.wb_cfg.get("log_frequency", 50) if self.wb_cfg else 50
         
         # Force frequency 1 for Range Tests
-        sched_cfg = cfg.world_model.get("scheduler", None)
+        sched_cfg = cfg.model.get("scheduler", None)
         self.is_range_test = sched_cfg and "range_test" in getattr(sched_cfg, "type", "")
         if self.is_range_test:
             self.log_freq = 1

@@ -1,4 +1,0 @@
-loss_type|state|power|turn|shoot|value|reward
-test_lr|3.5e-5|3.5e-5|3.5e-5|3.5e-5|3.5e-5|3.5e-5
-test_lambda|1.0|1.0|1.0|1.0|1.0|1.0
-test_0_lr_optimal|9.20e-07|2.32e-05|3.77e-05|2.11e-05|noise|noise

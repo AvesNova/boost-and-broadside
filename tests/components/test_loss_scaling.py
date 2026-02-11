@@ -3,28 +3,24 @@ import pytest
 import torch
 import torch.nn as nn
 
-from boost_and_broadside.agents.mamba_bb import MambaBB
-
-class MockConfig:
-    def __init__(self, **kwargs):
-        for k, v in kwargs.items():
-            setattr(self, k, v)
+from omegaconf import OmegaConf
+from boost_and_broadside.models.yemong.scaffolds import YemongFull
 
 @pytest.fixture
 def mamba_config():
-    return MockConfig(
-        input_dim=15,
-        d_model=32,
-        n_layers=1,
-        n_heads=2,
-        action_dim=12,
-        target_dim=15,
-        loss_type="uncertainty"  # Test target
-    )
+    return OmegaConf.create({
+        "input_dim": 15,
+        "d_model": 32,
+        "n_layers": 1,
+        "n_heads": 2,
+        "action_dim": 12,
+        "target_dim": 15,
+        "loss_type": "uncertainty"
+    })
 
 def test_uncertainty_params_initialization(mamba_config):
     """Test that log_vars are initialized when loss_type is uncertainty."""
-    model = MambaBB(mamba_config)
+    model = YemongFull(mamba_config)
     assert hasattr(model, "log_vars")
     assert model.log_vars is not None
     assert len(model.log_vars) == 4
@@ -40,12 +36,12 @@ def test_uncertainty_params_initialization(mamba_config):
 def test_fixed_params_initialization(mamba_config):
     """Test that log_vars are NOT initialized when loss_type is fixed."""
     mamba_config.loss_type = "fixed"
-    model = MambaBB(mamba_config)
+    model = YemongFull(mamba_config)
     assert model.log_vars is None
 
 def test_uncertainty_loss_computation(mamba_config):
     """Test that the loss computation includes the regularization term."""
-    model = MambaBB(mamba_config)
+    model = YemongFull(mamba_config)
     
     # Mock inputs
     B, T, N, D = 2, 4, 1, 15
@@ -96,7 +92,7 @@ def test_uncertainty_loss_computation(mamba_config):
 def test_fixed_loss_computation(mamba_config):
     """Test that fixed mode uses lambdas."""
     mamba_config.loss_type = "fixed"
-    model = MambaBB(mamba_config)
+    model = YemongFull(mamba_config)
     
     B, T, N, D = 2, 2, 1, 15
     pred_states = torch.randn(B, T, N, D)

@@ -1,5 +1,6 @@
 import torch
 from boost_and_broadside.agents.components.team_evaluator import TeamEvaluator
+from boost_and_broadside.models.components.layers.utils import RMSNorm
 
 def test_team_evaluator_shapes():
     """Test standard forward pass shapes."""

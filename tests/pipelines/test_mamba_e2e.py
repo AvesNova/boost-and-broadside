@@ -9,7 +9,7 @@ from omegaconf import OmegaConf
 from unittest.mock import patch
 
 # Import the training function
-from boost_and_broadside.train.train_world_model import train_world_model
+from boost_and_broadside.train.pretrain import pretrain
 
 from boost_and_broadside.core.constants import NORM_HEALTH, STATE_DIM
 
@@ -86,7 +86,7 @@ def test_mamba_training_pipeline(tmp_path, synthetic_mamba_data):
     # Construction is safer for unit tests to be self-contained, but we want to test
     # the actual mamba_bb.yaml config too if possible.
     
-    mamba_cfg_path = Path("configs/model/mamba_bb.yaml")
+    mamba_cfg_path = Path("configs/model/yemong_full.yaml")
     if not mamba_cfg_path.exists():
         pytest.skip("Mamba config not found")
         
@@ -94,7 +94,7 @@ def test_mamba_training_pipeline(tmp_path, synthetic_mamba_data):
     
     # Base skeleton
     cfg = OmegaConf.create({
-        "world_model": mamba_cfg,
+        "model": mamba_cfg,
         "environment": {
             "world_size": [100.0, 100.0],
             "n_ships": 4
@@ -103,7 +103,11 @@ def test_mamba_training_pipeline(tmp_path, synthetic_mamba_data):
             "amp": False,
             "seed": 42,
             "bc_data_path": str(synthetic_mamba_data), # Explicit path
-            "compile": False
+            "compile": False,
+            "epochs": 2,
+            "num_workers": 0,
+            "gradient_accumulation_steps": 1,
+            "batch_size": 2
         },
         "collect": {
             "output_dir": str(tmp_path / "data")
@@ -117,16 +121,16 @@ def test_mamba_training_pipeline(tmp_path, synthetic_mamba_data):
     })
     
     # 2. Overrides for Test Speed/Size
-    cfg.world_model.embed_dim = 64 # Size must satisfy Mamba2 constraints
-    cfg.world_model.n_layers = 2
-    cfg.world_model.n_heads = 2
-    cfg.world_model.short_batch_size = 2
-    cfg.world_model.batch_size = 2
-    cfg.world_model.seq_len = 5
-    cfg.world_model.epochs = 2
-    cfg.world_model.num_workers = 0
-    cfg.world_model.batch_ratio = 1 # Required by trainer, though ignored by Mamba loader
-    cfg.world_model.scheduler = OmegaConf.create({
+    cfg.model.d_model = 64 # Size must satisfy Mamba2 constraints
+    cfg.model.n_layers = 2
+    cfg.model.n_heads = 2
+    # cfg.model.short_batch_size = 2 # Removed from config
+    # cfg.model.batch_size = 2 # Moved to train
+    cfg.model.seq_len = 5
+    # cfg.model.epochs = 2 # Moved to train
+    # cfg.model.num_workers = 0 # Moved to train
+    # cfg.model.batch_ratio = 1 # Removed/Unused
+    cfg.model.scheduler = OmegaConf.create({
         "type": "warmup_constant",
          "warmup": {"steps": 1, "start_lr": 1e-5}
     })
@@ -150,7 +154,7 @@ def test_mamba_training_pipeline(tmp_path, synthetic_mamba_data):
     
     with patch("boost_and_broadside.train.data_loader.get_latest_data_path", return_value=h5_path), \
          patch("torch.cuda.is_available", return_value=False), \
-         patch("boost_and_broadside.agents.mamba_bb.Mamba2", MockMamba2):
+         patch("boost_and_broadside.models.components.layers.utils.Mamba2", MockMamba2):
          
          # We need to ensure models are saved to output_dir. 
          output_dir = tmp_path / "models" / "mamba_result"
@@ -159,7 +163,7 @@ def test_mamba_training_pipeline(tmp_path, synthetic_mamba_data):
          orig_cwd = os.getcwd()
          os.chdir(output_dir)
          try:
-             train_world_model(cfg)
+             pretrain(cfg)
          except Exception as e:
              import traceback
              traceback.print_exc()

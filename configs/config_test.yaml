@@ -92,13 +92,22 @@ train:
     vf_coef: 0.5
     max_grad_norm: 0.5
 
-world_model:
-  embed_dim: 64
+model:
+  _target_: boost_and_broadside.models.yemong.scaffolds.YemongFull
+  d_model: 64
   n_layers: 2
   n_heads: 2
   context_len: 96
   seq_len: 16 # Small seq len for integration tests
   n_ships: 4
+  input_dim: 9 # Matches synthetic data in most tests, but setup.py overrides this
+  target_dim: 9
+  action_dim: 12
+  loss_type: "uncertainty"
+  
+  rope_base: 10000.0
+  rope_max_seq_len: 256
+
   mask_ratio: 0.15
   noise_scale: 0.1
   input_noise_ratio: 0.1
@@ -106,9 +115,6 @@ world_model:
   learning_rate: 0.001
   epochs: 3
   batch_size: 8
-  
-  rope_base: 10000.0
-  rope_max_seq_len: 256
 
   rollout:
     enabled: true

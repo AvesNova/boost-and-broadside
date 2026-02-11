@@ -23,9 +23,15 @@ class Trainer:
         self.device = device
         self.run_dir = run_dir
         
-        self.epochs = cfg.world_model.epochs
+        self.epochs = cfg.train.get("epochs", 1000) # Moved to train section or model? Usually train.
+        # Let's assume we move generic train params to 'train' section in main config, 
+        # but model specific ones stay in model.
+        # For now, let's look in both or prefer 'model' for back compat if I didn't move it fully.
+        # Actually, I should check where I put 'epochs' in the new configs.
+        # In yemong_full.yaml I didn't put epochs. It should be in `train`.
+        self.epochs = cfg.train.get("epochs", 1000) if "epochs" in cfg.train else cfg.model.get("epochs", 1000)
 
-        self.acc_steps = cfg.world_model.get("gradient_accumulation_steps", 1)
+        self.acc_steps = cfg.train.get("gradient_accumulation_steps", 1)
         self.use_amp = cfg.train.get("amp", False) and device.type == 'cuda'
         
         self.global_step = 0
@@ -34,9 +40,9 @@ class Trainer:
         self.data_path = data_path
         
         # Curriculum State
-        self.curr_cfg = cfg.world_model.get("curriculum", {})
-        self.entropy_cfg = cfg.world_model.get("entropy", {})
-        self.loss_cfg = cfg.world_model.get("loss", {})
+        self.curr_cfg = cfg.model.get("curriculum", {})
+        self.entropy_cfg = cfg.model.get("entropy", {})
+        self.loss_cfg = cfg.model.get("loss", {})
         
         self.current_min_skill = self.curr_cfg.get("min_skill_start", 0.0) if self.curr_cfg.get("enabled", False) else 0.0
         self.last_reloaded_skill = self.current_min_skill
@@ -122,7 +128,7 @@ class Trainer:
     def train(self, train_loader, val_loader=None):
         """Main training loop."""
         
-        sched_cfg = self.cfg.world_model.get("scheduler", None)
+        sched_cfg = self.cfg.model.get("scheduler", None)
         is_range_test = sched_cfg and "range_test" in sched_cfg.type
 
         for epoch in range(self.epochs):
@@ -240,8 +246,12 @@ class Trainer:
         target_alive = target_states[..., 1] > 0
         
         # Forward & Loss
+        # Forward & Loss
         with torch.amp.autocast(device_type=self.device.type, dtype=torch.bfloat16, enabled=self.use_amp):
-             pred_states, pred_actions, pred_values, pred_rewards, _ = self.model(
+             # Model Forward
+             # Returns: state_pred, action_logits, value_pred, reward_pred, latent
+             # Some scaffolds might return None for some outputs
+             model_out = self.model(
                 state=input_states,
                 prev_action=input_actions,
                 pos=pos,
@@ -253,28 +263,39 @@ class Trainer:
                 reset_mask=batch_data["reset_mask"][:, :-1].to(self.device, non_blocking=True) if "reset_mask" in batch_data else None
              )
              
-             loss, state_loss, action_loss, relational_loss, metrics = self.model.get_loss(
+             # Unpack with defaults if tuple length varies or just pass positional? 
+             # Scaffolds are standardized to return 5 items.
+             pred_states, pred_actions, pred_values, pred_rewards, _ = model_out
+             
+             # Get Loss
+             # Scaffolds return: total_loss, state_loss, action_loss, relational_loss, metrics
+             loss_out = self.model.get_loss(
                 pred_states=pred_states,
                 pred_actions=pred_actions,
                 target_states=target_states,
                 target_actions=target_actions,
                 loss_mask=loss_mask_slice,
-                lambda_state=self.cfg.world_model.get("lambda_state", 1.0),
-                lambda_power=self.cfg.world_model.get("lambda_power", 0.05),
-                lambda_turn=self.cfg.world_model.get("lambda_turn", 0.05),
-                lambda_shoot=self.cfg.world_model.get("lambda_shoot", 0.05),
+                # Pass config params. 
+                # Note: Scaffolds might look up config internally too, but we pass overrides from cfg.train/model here if needed
+                # For now we pass what we have, ignoring what's unused by specific scaffold
+                lambda_state=self.cfg.model.get("lambda_state", 1.0),
+                lambda_power=self.cfg.model.get("lambda_power", 0.05),
+                lambda_turn=self.cfg.model.get("lambda_turn", 0.05),
+                lambda_shoot=self.cfg.model.get("lambda_shoot", 0.05),
                 pred_values=pred_values,
                 pred_rewards=pred_rewards,
                 target_returns=returns,
                 target_rewards=rewards,
-                lambda_value=self.cfg.world_model.get("lambda_value", 0.1),
-                lambda_reward=self.cfg.world_model.get("lambda_reward", 0.1),
+                lambda_value=self.cfg.model.get("lambda_value", 0.1),
+                lambda_reward=self.cfg.model.get("lambda_reward", 0.1),
                 weights_power=self.w_power,
                 weights_turn=self.w_turn,
                 weights_shoot=self.w_shoot,
                 target_alive=target_alive,
                 min_sigma=self.loss_cfg.get("min_sigma", 0.1)
              )
+             
+             loss, state_loss, action_loss, relational_loss, metrics = loss_out
 
 
         # Backward
@@ -413,7 +434,7 @@ class Trainer:
         val_metrics = self.validator.validate_validation_set(val_loaders)
         
         # Heavy Eval Frequency
-        val_cfg = self.cfg.world_model.get("validation", None)
+        val_cfg = self.cfg.model.get("validation", None)
         heavy_freq = val_cfg.heavy_eval_freq if val_cfg else 5
         is_heavy_eval = (epoch + 1) % heavy_freq == 0
 
@@ -486,12 +507,12 @@ class Trainer:
 
     def _handle_swa(self, epoch, val_loaders):
         swa_start_condition = False
-        sched_cfg = self.cfg.world_model.get("scheduler", None)
+        sched_cfg = self.cfg.model.get("scheduler", None)
         if sched_cfg and sched_cfg.type == "warmup_constant":
              if self.global_step > sched_cfg.warmup.steps:
                  swa_start_condition = True
         else:
-             if epoch >= self.cfg.world_model.get("swa_start_epoch", 2):
+             if epoch >= self.cfg.model.get("swa_start_epoch", 2):
                  swa_start_condition = True
 
         if swa_start_condition:
