@@ -6,7 +6,7 @@ from omegaconf import OmegaConf
 from unittest.mock import MagicMock, patch
 
 # Import the training function
-from src.train.train_world_model import train_world_model
+from boost_and_broadside.train.train_world_model import train_world_model
 
 def test_world_model_training_pipeline(tmp_path, synthetic_h5_data):
     """Test the World Model training pipeline using config_test.yaml."""
@@ -59,7 +59,7 @@ def test_world_model_training_pipeline(tmp_path, synthetic_h5_data):
     # Mock get_latest_data_path to return our synthetic file
     # Mock torch.cuda.is_available to ensure CPU path is taken
     
-    with patch("src.train.data_loader.get_latest_data_path", return_value=str(h5_path)), \
+    with patch("boost_and_broadside.train.data_loader.get_latest_data_path", return_value=str(h5_path)), \
          patch("torch.cuda.is_available", return_value=False):
         
         # Isolate execution directory

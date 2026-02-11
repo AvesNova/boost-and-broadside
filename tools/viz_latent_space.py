@@ -10,12 +10,10 @@ import yaml
 import argparse
 import h5py
 
-# Add src to sys.path
-sys.path.append(str(Path(__file__).parent.parent / "src"))
 
-from agents.mamba_bb import MambaBB, MambaConfig
-from train.data_loader import load_bc_data
-from core.constants import (
+from boost_and_broadside.agents.mamba_bb import MambaBB, MambaConfig
+from boost_and_broadside.train.data_loader import load_bc_data
+from boost_and_broadside.core.constants import (
     PowerActions, 
     TurnActions, 
     ShootActions,
@@ -109,7 +107,7 @@ def extract_embeddings(model, h5_path, device, max_batches=10, seq_len=96):
         ep_starts[1:] = np.cumsum(episode_lengths[:-1])
 
         # Resolve tokens using UnifiedDataset logic (granules)
-        from train.unified_dataset import UnifiedEpisodeDataset
+        from boost_and_broadside.train.unified_dataset import UnifiedEpisodeDataset
         dataset = UnifiedEpisodeDataset(h5_path)
 
         for i, length in enumerate(episode_lengths):

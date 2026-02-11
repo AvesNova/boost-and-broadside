@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from omegaconf import OmegaConf
 
-from agents.mamba_bb import MambaBB
+from boost_and_broadside.agents.mamba_bb import MambaBB
 
 class MockConfig:
     def __init__(self, **kwargs):
@@ -72,7 +72,7 @@ def test_uncertainty_loss_computation(mamba_config):
     
     # Let's verify manually
     # Get the raw state loss from metrics
-    raw_s_loss = metrics["state_loss"]
+    raw_s_loss = metrics["loss_sub/state_mse"]
     
     # The returned total_loss should contain: 0.5 * raw_s_loss
     # Plus other components.
@@ -111,7 +111,7 @@ def test_fixed_loss_computation(mamba_config):
          lambda_state=10.0
     )
     
-    raw_s_loss = metrics["state_loss"]
+    raw_s_loss = metrics["loss_sub/state_mse"]
     
     # In fixed mode, total loss includes 10.0 * state_loss
     # We assume other losses are small or we check relative magnitude

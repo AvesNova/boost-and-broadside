@@ -10,12 +10,12 @@ warnings.filterwarnings("ignore", message="pkg_resources is deprecated as an API
 import hydra
 from omegaconf import DictConfig
 
-from modes.collect import collect
-from modes.play import play
-from env2.collect_massive import collect_massive
-from modes.train import train
-from train.train_world_model import train_world_model
-from eval.eval_world_model import eval_world_model
+from boost_and_broadside.modes.collect import collect
+from boost_and_broadside.modes.play import play
+from boost_and_broadside.env2.collect_massive import collect_massive
+from boost_and_broadside.modes.train import train
+from boost_and_broadside.train.train_world_model import train_world_model
+from boost_and_broadside.eval.eval_world_model import eval_world_model
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")

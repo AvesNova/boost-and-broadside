@@ -6,9 +6,9 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-from env2.collector import AsyncCollector
-from train.unified_dataset import UnifiedEpisodeDataset
-from core.constants import NORM_HEALTH, NORM_VELOCITY
+from boost_and_broadside.env2.collector import AsyncCollector
+from boost_and_broadside.train.unified_dataset import UnifiedEpisodeDataset
+from boost_and_broadside.core.constants import NORM_HEALTH, NORM_VELOCITY
 
 @pytest.fixture
 def temp_h5_path(tmp_path):

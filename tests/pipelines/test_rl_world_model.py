@@ -3,10 +3,10 @@ from omegaconf import OmegaConf
 import torch
 import gymnasium as gym
 
-from env2.coordinator_wrapper import TensorEnvWrapper
-from env2.sb3_wrapper import SB3Wrapper
-from agents.sb3_world_model_adapter import WorldModelSB3Policy
-from train.ppo_world_model import WorldModelPPO
+from boost_and_broadside.env2.coordinator_wrapper import TensorEnvWrapper
+from boost_and_broadside.env2.sb3_wrapper import SB3Wrapper
+from boost_and_broadside.agents.sb3_world_model_adapter import WorldModelSB3Policy
+from boost_and_broadside.train.ppo_world_model import WorldModelPPO
 
 
 class TestRLWorldModel:
@@ -24,7 +24,7 @@ class TestRLWorldModel:
                     "random_positioning": True,
                     "random_speed": True,
                 },
-                "train": {"model": {"transformer": {"token_dim": 15}}},
+                "train": {"model": {"transformer": {"token_dim": 9}}},
                 "team2": "scripted",
                 "agents": {
                     "scripted": {
@@ -40,7 +40,7 @@ class TestRLWorldModel:
                     }
                 },
                 "world_model": {
-                    "state_dim": 15,
+                    "state_dim": 9,
                     "action_dim": 12,
                     "embed_dim": 64,  # Small for test
                     "n_layers": 2,

@@ -5,8 +5,8 @@ import os
 from pathlib import Path
 from omegaconf import OmegaConf
 
-from agents.world_model_agent import WorldModelAgent
-from agents.interleaved_world_model import InterleavedWorldModel
+from boost_and_broadside.agents.world_model_agent import WorldModelAgent
+from boost_and_broadside.agents.mamba_bb import MambaBB, MambaConfig
 
 # Mock config
 MOCK_CONFIG = {
@@ -31,9 +31,11 @@ def test_load_full_checkpoint(mock_checkpoint_dir):
     mock_checkpoint_dir.mkdir(parents=True, exist_ok=True)
     
     # Create a dummy model and save it as a full checkpoint
-    model = InterleavedWorldModel(
-        state_dim=15, embed_dim=32, n_layers=2, n_heads=2, max_ships=4
+    cfg = MambaConfig(
+        input_dim=15, d_model=32, n_layers=2, n_heads=2, 
+        action_dim=12, target_dim=15, loss_type="fixed"
     )
+    model = MambaBB(cfg)
     checkpoint = {
         "model_state_dict": model.state_dict(),
         "epoch": 1,
@@ -57,15 +59,15 @@ def test_load_full_checkpoint(mock_checkpoint_dir):
         context_len=16
     )
     
-    # Verify weights loaded (check first layer first weight)
-    saved_weight = model.state_encoder.fourier.freqs
-    loaded_weight = agent.model.state_encoder.fourier.freqs
+    # Verify weights loaded (check state_encoder first weight)
+    saved_weight = model.state_encoder[0].weight
+    loaded_weight = agent.model.state_encoder[0].weight
     
     assert torch.equal(saved_weight, loaded_weight)
     
     # Check another parameter
-    saved_weight = model.action_proj[0].weight
-    loaded_weight = agent.model.action_proj[0].weight
+    saved_weight = model.actor_head[0].weight
+    loaded_weight = agent.model.actor_head[0].weight
     
     assert torch.equal(saved_weight, loaded_weight)
 
@@ -74,9 +76,11 @@ def test_load_state_dict(mock_checkpoint_dir):
     mock_checkpoint_dir.mkdir(parents=True, exist_ok=True)
     
     # Create a dummy model and save it as raw state dict
-    model = InterleavedWorldModel(
-        state_dim=15, embed_dim=32, n_layers=2, n_heads=2, max_ships=4
+    cfg = MambaConfig(
+        input_dim=15, d_model=32, n_layers=2, n_heads=2, 
+        action_dim=12, target_dim=15, loss_type="fixed"
     )
+    model = MambaBB(cfg)
     
     ckpt_path = mock_checkpoint_dir / "best_world_model.pth"
     torch.save(model.state_dict(), ckpt_path)
@@ -96,8 +100,8 @@ def test_load_state_dict(mock_checkpoint_dir):
     )
     
     # Verify weights loaded
-    saved_weight = model.action_proj[0].weight
-    loaded_weight = agent.model.action_proj[0].weight
+    saved_weight = model.actor_head[0].weight
+    loaded_weight = agent.model.actor_head[0].weight
     
     assert torch.equal(saved_weight, loaded_weight)
 

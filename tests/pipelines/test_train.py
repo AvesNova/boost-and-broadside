@@ -1,7 +1,7 @@
 import pytest
 import os
 import torch
-from modes.train import train
+from boost_and_broadside.modes.train import train
 from omegaconf import OmegaConf
 
 

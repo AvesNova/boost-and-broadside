@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 import pytest
-from agents.interleaved_world_model import InterleavedWorldModel
-from agents.relational_features import RelationalFeatureExtractor
+from boost_and_broadside.agents.interleaved_world_model import InterleavedWorldModel
+from boost_and_broadside.agents.relational_features import RelationalFeatureExtractor
 
 def test_relational_feature_extractor_computation():
     """Verify that compute_features returns expected 12D shape."""

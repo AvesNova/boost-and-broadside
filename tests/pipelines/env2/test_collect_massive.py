@@ -3,7 +3,7 @@ import pytest
 import h5py
 from pathlib import Path
 
-from env2.collect_massive import run_collection, CollectionArgs
+from boost_and_broadside.env2.collect_massive import run_collection, CollectionArgs
 
 def test_collect_massive_pipeline(tmp_path):
     """

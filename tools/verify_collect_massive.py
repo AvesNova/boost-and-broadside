@@ -1,8 +1,8 @@
 import torch
 import numpy as np
-from src.env2.env import TensorEnv
-from src.env2.collector import AsyncCollector
-from core.config import ShipConfig
+from boost_and_broadside.env2.env import TensorEnv
+from boost_and_broadside.env2.collector import AsyncCollector
+from boost_and_broadside.core.config import ShipConfig
 from pathlib import Path
 
 def test_randomization():

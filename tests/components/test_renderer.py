@@ -1,9 +1,9 @@
 import os
 import numpy as np
 import pytest
-from src.env2.renderer import GameRenderer
-from src.core.config import ShipConfig
-from src.core.types import RenderState, RenderShip
+from boost_and_broadside.env2.renderer import GameRenderer
+from boost_and_broadside.core.config import ShipConfig
+from boost_and_broadside.core.types import RenderState, RenderShip
 
 def test_renderer_initialization():
     """Test that the renderer initializes with correct dimensions and scaling."""

@@ -6,10 +6,10 @@ import torch
 import os
 from pathlib import Path
 
-from train.unified_dataset import UnifiedEpisodeDataset
-from train.continuous_view import ContinuousView
-from train.data_loader import create_continuous_data_loader
-from core.constants import NORM_HEALTH, STATE_DIM
+from boost_and_broadside.train.unified_dataset import UnifiedEpisodeDataset
+from boost_and_broadside.train.continuous_view import ContinuousView
+from boost_and_broadside.train.data_loader import create_continuous_data_loader
+from boost_and_broadside.core.constants import NORM_HEALTH, STATE_DIM
 
 @pytest.fixture
 def dummy_h5_data(tmp_path):

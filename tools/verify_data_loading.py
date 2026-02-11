@@ -2,9 +2,8 @@ from pathlib import Path
 import sys
 
 # Add src to sys.path
-sys.path.append(str(Path(__file__).parent.parent / "src"))
 
-from train.data_loader import load_bc_data, create_unified_data_loaders
+from boost_and_broadside.train.data_loader import load_bc_data, create_unified_data_loaders
 
 
 def verify():

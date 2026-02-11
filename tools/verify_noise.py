@@ -1,6 +1,6 @@
 import torch
 from omegaconf import OmegaConf
-from train.data_loader import load_bc_data, create_unified_data_loaders
+from boost_and_broadside.train.data_loader import load_bc_data, create_unified_data_loaders
 
 
 def verify_noise_injection():

@@ -4,7 +4,7 @@ Unit tests for Continuous 2D RoPE implementation.
 
 import torch
 
-from agents.rope import Continuous2DRotaryEmbedding
+from boost_and_broadside.agents.rope import Continuous2DRotaryEmbedding
 
 
 def test_2d_rope_initialization():

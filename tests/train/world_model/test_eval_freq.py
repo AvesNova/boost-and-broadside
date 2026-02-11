@@ -5,9 +5,9 @@ import torch
 import numpy as np
 from omegaconf import OmegaConf
 
-from train.world_model.trainer import Trainer
-from train.world_model.validator import Validator
-from train.world_model.logger import MetricLogger
+from boost_and_broadside.train.world_model.trainer import Trainer
+from boost_and_broadside.train.world_model.validator import Validator
+from boost_and_broadside.train.world_model.logger import MetricLogger
 
 @pytest.fixture
 def mock_components(tmp_path):
@@ -69,10 +69,10 @@ def mock_components(tmp_path):
 def test_heavy_eval_freq(mock_components):
     """Test that heavy eval only runs on specific epochs."""
     with patch("torch.save"), \
-         patch("train.world_model.trainer.calculate_action_counts", return_value={"power": np.ones(3), "turn": np.ones(7), "shoot": np.ones(2)}), \
-         patch("train.world_model.trainer.compute_class_weights", return_value=torch.ones(3)), \
-         patch("train.world_model.trainer.apply_turn_exceptions", side_effect=lambda x: x), \
-         patch("train.world_model.trainer.normalize_weights", side_effect=lambda w, c: w):
+         patch("boost_and_broadside.train.world_model.trainer.calculate_action_counts", return_value={"power": np.ones(3), "turn": np.ones(7), "shoot": np.ones(2)}), \
+         patch("boost_and_broadside.train.world_model.trainer.compute_class_weights", return_value=torch.ones(3)), \
+         patch("boost_and_broadside.train.world_model.trainer.apply_turn_exceptions", side_effect=lambda x: x), \
+         patch("boost_and_broadside.train.world_model.trainer.normalize_weights", side_effect=lambda w, c: w):
         
         trainer = Trainer(**mock_components, data_path="dummy_path")
         
@@ -151,7 +151,8 @@ def test_max_batches_limit(mock_components):
         torch.zeros(1, 10, 2, 16), # Pred States
         torch.zeros(1, 10, 2, 12), # Pred Actions
         torch.zeros(1, 10, 1),     # Pred Values
-        torch.zeros(1, 10, 1)      # Pred Rewards
+        torch.zeros(1, 10, 1),     # Pred Rewards
+        torch.zeros(1, 10, 2, 128) # x_final
     )
     model.get_loss.return_value = (torch.tensor(0.0), torch.tensor(0.0), torch.tensor(0.0), torch.tensor(0.0), {})
     

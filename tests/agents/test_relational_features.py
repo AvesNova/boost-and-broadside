@@ -2,7 +2,7 @@
 import pytest
 import torch
 import torch.nn as nn
-from agents.relational_features import RelationalFeatureExtractor
+from boost_and_broadside.agents.relational_features import RelationalFeatureExtractor
 
 @pytest.fixture
 def extractor():

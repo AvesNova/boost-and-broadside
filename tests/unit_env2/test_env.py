@@ -2,8 +2,8 @@
 import pytest
 import torch
 import numpy as np
-from src.env2.env import TensorEnv
-from src.env2.state import ShipConfig
+from boost_and_broadside.env2.env import TensorEnv
+from boost_and_broadside.env2.state import ShipConfig
 
 @pytest.fixture
 def device():

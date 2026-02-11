@@ -1,10 +1,9 @@
 import sys
 from pathlib import Path
-sys.path.append(str(Path.cwd() / "src"))
 
 import torch
-from utils.dataset_stats import calculate_action_counts, compute_class_weights, apply_turn_exceptions, normalize_weights
-from core.constants import PowerActions, TurnActions, ShootActions
+from boost_and_broadside.utils.dataset_stats import calculate_action_counts, compute_class_weights, apply_turn_exceptions, normalize_weights
+from boost_and_broadside.core.constants import PowerActions, TurnActions, ShootActions
 
 def main():
     data_path = "data/bc_pretraining/aggregated_data.h5"

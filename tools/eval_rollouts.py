@@ -8,12 +8,12 @@ import datetime
 from pathlib import Path
 from omegaconf import OmegaConf
 
-from agents.world_model_agent import WorldModelAgent
-from agents.mamba_bb import MambaBB, MambaConfig, InferenceParams
-from train.data_loader import load_bc_data, create_unified_data_loaders
-from utils.model_finder import find_most_recent_model
-from eval.rollout_metrics import compute_rollout_metrics
-from core.constants import NORM_VELOCITY
+from boost_and_broadside.agents.world_model_agent import WorldModelAgent
+from boost_and_broadside.agents.mamba_bb import MambaBB, MambaConfig, InferenceParams
+from boost_and_broadside.train.data_loader import load_bc_data, create_unified_data_loaders
+from boost_and_broadside.utils.model_finder import find_most_recent_model
+from boost_and_broadside.eval.rollout_metrics import compute_rollout_metrics
+from boost_and_broadside.core.constants import NORM_VELOCITY
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

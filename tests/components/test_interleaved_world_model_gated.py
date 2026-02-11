@@ -1,6 +1,6 @@
 import torch
 import pytest
-from agents.interleaved_world_model import InterleavedWorldModel
+from boost_and_broadside.agents.interleaved_world_model import InterleavedWorldModel
 
 def test_interleaved_world_model_instantiation():
     model = InterleavedWorldModel(

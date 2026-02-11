@@ -9,9 +9,9 @@ from omegaconf import OmegaConf
 from unittest.mock import MagicMock, patch
 
 # Import the training function
-from src.train.train_world_model import train_world_model
+from boost_and_broadside.train.train_world_model import train_world_model
 
-from core.constants import NORM_HEALTH, STATE_DIM
+from boost_and_broadside.core.constants import NORM_HEALTH, STATE_DIM
 
 @pytest.fixture
 def synthetic_mamba_data(tmp_path):
@@ -148,9 +148,9 @@ def test_mamba_training_pipeline(tmp_path, synthetic_mamba_data):
 
     # 4. Run
     
-    with patch("src.train.data_loader.get_latest_data_path", return_value=h5_path), \
+    with patch("boost_and_broadside.train.data_loader.get_latest_data_path", return_value=h5_path), \
          patch("torch.cuda.is_available", return_value=False), \
-         patch("agents.mamba_bb.Mamba2", MockMamba2):
+         patch("boost_and_broadside.agents.mamba_bb.Mamba2", MockMamba2):
          
          # We need to ensure models are saved to output_dir. 
          output_dir = tmp_path / "models" / "mamba_result"

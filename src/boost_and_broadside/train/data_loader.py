@@ -1,0 +1,246 @@
+from pathlib import Path
+from torch.utils.data import DataLoader
+import torch
+
+from boost_and_broadside.train.unified_dataset import UnifiedEpisodeDataset, ShortView, LongView
+from boost_and_broadside.train.continuous_view import ContinuousView
+
+
+def get_latest_data_path() -> str:
+    """Find the latest aggregated HDF5 data file."""
+    base_path = Path("data/bc_pretraining")
+
+    # Find the latest folder that has aggregated_data.h5
+    latest_folder = None
+    for d in sorted(base_path.iterdir(), key=lambda d: d.name, reverse=True):
+        if d.is_dir() and (d / "aggregated_data.h5").exists():
+            latest_folder = d
+            break
+
+    if latest_folder is None:
+        raise FileNotFoundError("No folder with aggregated_data.h5 found")
+
+    return str(latest_folder / "aggregated_data.h5")
+
+
+
+def unified_collate_fn(batch):
+    """
+    Collate function for ShortView/LongView tuples.
+    Tuple structure:
+    (seq_tokens, seq_input_actions, seq_target_actions, seq_returns, seq_rewards, loss_mask, seq_masks, seq_skills, seq_team_ids, seq_pos)
+    """
+    # Transpose list of tuples -> tuple of lists
+    transposed = list(zip(*batch))
+    
+    return {
+        "states": torch.stack(transposed[0]),
+        "actions": torch.stack(transposed[1]),
+        "target_actions": torch.stack(transposed[2]),
+        "returns": torch.stack(transposed[3]),
+        "rewards": torch.stack(transposed[4]),
+        "loss_mask": torch.stack(transposed[5]),
+        "action_masks": torch.stack(transposed[6]),
+        "skills": torch.stack(transposed[7]),
+        "team_ids": torch.stack(transposed[8]),
+        "pos": torch.stack(transposed[9]),
+    }
+
+def load_bc_data(data_path: str = None) -> str:
+    """
+    Resolve the path to the BC data.
+
+    Args:
+        data_path: Optional path. If None, uses latest.
+
+    Returns:
+        Path string to the HDF5 file.
+    """
+    if data_path is None:
+        return get_latest_data_path()
+    return data_path
+
+
+def create_unified_data_loaders(
+    data_path: str,
+    short_batch_size: int,
+    long_batch_size: int,
+    short_batch_len: int = 32,
+    long_batch_len: int = 128,
+    batch_ratio: int = 4,  # Unused effectively, controlled by caller
+    validation_split: float = 0.2,
+    num_workers: int = 0,
+    prefetch_factor: int = 2,
+    world_size: tuple[float, float] = (1024.0, 1024.0),
+    min_skill: float = 0.0,
+) -> tuple[DataLoader, DataLoader, DataLoader, DataLoader]:
+    """
+    Create data loaders for unified pool mixed batch training using HDF5.
+    """
+    # Initialize Dataset (Lightweight, just loads lengths)
+    unified_dataset = UnifiedEpisodeDataset(data_path, world_size=world_size)
+    episode_lengths = unified_dataset.episode_lengths
+    num_episodes = len(episode_lengths)
+
+    # Create Indices
+    all_indices = torch.randperm(num_episodes).tolist()
+
+    # Filter by Skill (Curriculum)
+    if min_skill > 0.0:
+        filtered_indices = []
+        for idx in all_indices:
+             skill = unified_dataset.get_episode_mean_skill(idx)
+             if skill >= min_skill:
+                 filtered_indices.append(idx)
+        
+        all_indices = filtered_indices
+        # If we filtered everything, warn and fallback (or crash if desired)
+        if len(all_indices) == 0:
+            raise ValueError(f"No episodes found with skill >= {min_skill}")
+
+    # Split Indices for Train/Val
+    val_size = int(num_episodes * validation_split)
+    train_size = num_episodes - val_size
+    train_indices = all_indices[:train_size]
+    val_indices = all_indices[train_size:]
+
+    # Filter for Long Views
+    train_long_indices = [
+        i for i in train_indices if unified_dataset.get_length(i) >= long_batch_len
+    ]
+    val_long_indices = [
+        i for i in val_indices if unified_dataset.get_length(i) >= long_batch_len
+    ]
+
+    # Create Views
+    train_short_view = ShortView(
+        unified_dataset, train_indices, seq_len=short_batch_len
+    )
+    val_short_view = ShortView(unified_dataset, val_indices, seq_len=short_batch_len)
+
+    warmup_len = long_batch_len - 96
+    train_long_view = LongView(
+        unified_dataset,
+        train_long_indices,
+        seq_len=long_batch_len,
+        warmup_len=warmup_len,
+    )
+    val_long_view = LongView(
+        unified_dataset, val_long_indices, seq_len=long_batch_len, warmup_len=warmup_len
+    )
+
+    # Create Loaders
+    # Note: persistent_workers=True is recommended if num_workers > 0
+    # but requires lifecycle management.
+    kwargs = {
+        "num_workers": num_workers,
+        "pin_memory": True,
+        "persistent_workers": (num_workers > 0),
+        "prefetch_factor": prefetch_factor if num_workers > 0 else None,
+        "collate_fn": unified_collate_fn,
+    }
+
+    train_short_loader = DataLoader(
+        train_short_view, batch_size=short_batch_size, shuffle=True, **kwargs
+    )
+    val_short_loader = DataLoader(
+        val_short_view, batch_size=short_batch_size, shuffle=False, **kwargs
+    )
+
+    train_long_loader = DataLoader(
+        train_long_view, batch_size=long_batch_size, shuffle=True, **kwargs
+    )
+    val_long_loader = DataLoader(
+        val_long_view, batch_size=long_batch_size, shuffle=False, **kwargs
+    )
+
+    return train_short_loader, train_long_loader, val_short_loader, val_long_loader
+
+
+def create_bc_data_loader(
+    data_path: str,
+    batch_size: int,
+    gamma: float = 0.99,  # Deprecated/Unused, returns are precomputed
+    validation_split: float = 0.2,
+    num_workers: int = 4,
+) -> tuple[DataLoader, DataLoader]:
+    """
+    Create BC training data loaders (HDF5 backed, Sequence Length=1).
+    """
+    # Use ShortView with seq_len=1 to simulate timestep sampling
+    # It samples random timesteps from random episodes.
+
+    unified_dataset = UnifiedEpisodeDataset(data_path, world_size=(1024.0, 1024.0))
+    episode_lengths = unified_dataset.episode_lengths
+    num_episodes = len(episode_lengths)
+
+    all_indices = torch.randperm(num_episodes).tolist()
+    val_size = int(num_episodes * validation_split)
+    train_size = num_episodes - val_size
+    train_indices = all_indices[:train_size]
+    val_indices = all_indices[train_size:]
+
+    train_view = ShortView(unified_dataset, train_indices, seq_len=1)
+    val_view = ShortView(unified_dataset, val_indices, seq_len=1)
+
+    kwargs = {
+        "num_workers": num_workers,
+        "pin_memory": True,
+        "persistent_workers": (num_workers > 0),
+        "prefetch_factor": 2 if num_workers > 0 else None,
+    }
+
+    train_loader = DataLoader(train_view, batch_size=batch_size, shuffle=True, **kwargs)
+    val_loader = DataLoader(val_view, batch_size=batch_size, shuffle=False, **kwargs)
+
+    return train_loader, val_loader
+
+
+def create_continuous_data_loader(
+    data_path: str,
+    batch_size: int,
+    seq_len: int = 1024,
+    validation_split: float = 0.2,
+    num_workers: int = 4,
+    world_size: tuple[float, float] = (1024.0, 1024.0),
+    min_skill: float = 0.0, # Ignored for now unless filter needed
+) -> tuple[DataLoader, DataLoader]:
+    """
+    Create Continuous Data Loaders for Mamba training.
+    Splits the dataset into two contiguous chunks (Train / Val).
+    Samples strided chunks from each.
+    """
+    dataset = UnifiedEpisodeDataset(data_path, world_size=world_size)
+    total_steps = dataset.total_timesteps
+    
+    # Split Point
+    val_size = int(total_steps * validation_split)
+    train_size = total_steps - val_size - seq_len # Safety margin
+    
+    # Create Strided Indices
+    # Stride = seq_len (Non-overlapping)
+    # Or Stride = seq_len // 2 (Overlapping)?
+    # Let's use Stride = seq_len / 2 for data augmentation effect
+    stride = seq_len // 2
+    
+    train_indices = list(range(0, train_size, stride))
+    val_indices = list(range(train_size, total_steps - seq_len, stride))
+    
+    train_view = ContinuousView(dataset, train_indices, seq_len=seq_len)
+    val_view = ContinuousView(dataset, val_indices, seq_len=seq_len)
+    
+    kwargs = {
+        "num_workers": num_workers,
+        "pin_memory": True,
+        "persistent_workers": (num_workers > 0),
+        "prefetch_factor": 2 if num_workers > 0 else None,
+    }
+    
+    train_loader = DataLoader(
+        train_view, batch_size=batch_size, shuffle=True, **kwargs
+    )
+    val_loader = DataLoader(
+        val_view, batch_size=batch_size, shuffle=False, **kwargs
+    )
+    
+    return train_loader, val_loader

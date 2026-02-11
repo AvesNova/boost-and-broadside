@@ -3,9 +3,9 @@ import os
 import torch
 import h5py
 import numpy as np
-from modes.train import train
+from boost_and_broadside.modes.train import train
 from omegaconf import OmegaConf
-from core.constants import NORM_HEALTH, STATE_DIM
+from boost_and_broadside.core.constants import NORM_HEALTH, STATE_DIM
 
 def test_train_swa_pipeline(default_config, tmp_path):
     """Test the World Model training pipeline with SWA."""

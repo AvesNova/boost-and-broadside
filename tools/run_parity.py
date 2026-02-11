@@ -5,10 +5,9 @@ import torch
 import numpy as np
 
 # Add root to path
-sys.path.append(os.getcwd())
 
-from src.env.env import Environment
-from src.env2.env import TensorEnv
+from boost_and_broadside.env.env import Environment
+from boost_and_broadside.env2.env import TensorEnv
 
 def run_parity():
     device = "cuda" if torch.cuda.is_available() else "cpu"

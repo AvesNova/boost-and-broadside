@@ -1,5 +1,5 @@
 import os
-from modes.collect import collect
+from boost_and_broadside.modes.collect import collect
 
 
 def test_collect_pipeline(default_config, tmp_path):

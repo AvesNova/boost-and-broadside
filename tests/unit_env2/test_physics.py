@@ -3,9 +3,9 @@ import pytest
 import sys
 import torch
 import numpy as np
-from env2.state import TensorState, ShipConfig
-from env2.physics import update_ships, update_bullets, resolve_collisions
-from core.constants import PowerActions, TurnActions, ShootActions
+from boost_and_broadside.env2.state import TensorState, ShipConfig
+from boost_and_broadside.env2.physics import update_ships, update_bullets, resolve_collisions
+from boost_and_broadside.core.constants import PowerActions, TurnActions, ShootActions
 
 class TestPhysics:
     @pytest.fixture

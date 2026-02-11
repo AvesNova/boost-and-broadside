@@ -5,7 +5,7 @@ Unit tests for RoPE (Rotary Position Embedding) implementation.
 import torch
 import pytest
 
-from agents.rope import RotaryPositionEmbedding
+from boost_and_broadside.agents.rope import RotaryPositionEmbedding
 
 
 def test_rope_initialization():

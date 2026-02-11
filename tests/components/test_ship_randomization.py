@@ -2,8 +2,8 @@
 import pytest
 import torch
 import numpy as np
-from src.env2.env import TensorEnv
-from src.core.config import ShipConfig
+from boost_and_broadside.env2.env import TensorEnv
+from boost_and_broadside.core.config import ShipConfig
 
 def test_random_speed_initialization():
     """Test that ships are initialized with random speed when enabled."""

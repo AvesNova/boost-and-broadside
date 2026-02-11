@@ -6,9 +6,8 @@ import pytest
 from omegaconf import OmegaConf
 
 # Ensure project root is in sys.path
-sys.path.append(os.getcwd())
 
-from agents.mamba_bb import MambaBB
+from boost_and_broadside.agents.mamba_bb import MambaBB
 
 # Mock Config
 def get_config():

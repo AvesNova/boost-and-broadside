@@ -3,13 +3,13 @@ import torch
 import numpy as np
 import pytest
 
-from env2.state import TensorState, ShipConfig
-from env2.agents.scripted import VectorScriptedAgent
+from boost_and_broadside.env2.state import TensorState, ShipConfig
+from boost_and_broadside.env2.agents.scripted import VectorScriptedAgent
 try:
-    from agents.scripted import ScriptedAgent 
+    from boost_and_broadside.agents.scripted import ScriptedAgent 
 except ImportError:
     # Fallback if src not in path but running from root
-    from src.agents.scripted import ScriptedAgent
+    from boost_and_broadside.agents.scripted import ScriptedAgent
 
 class TestScriptedParity:
     def create_state(self, config, B=2, N=2):

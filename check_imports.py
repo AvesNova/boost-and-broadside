@@ -8,19 +8,19 @@ for p in sys.path:
     print(p)
 
 try:
-    import env2
+    import boost_and_broadside.env2
     print("SUCCESS: import env2")
 except ImportError as e:
     print(f"FAILURE: import env2 -> {e}")
 
 try:
-    import src.env2
-    print("SUCCESS: import src.env2")
+    import boost_and_broadside.env2
+    print("SUCCESS: import env2")
 except ImportError as e:
-    print(f"FAILURE: import src.env2 -> {e}")
+    print(f"FAILURE: import env2 -> {e}")
 
 try:
-    import core.constants
+    import boost_and_broadside.core.constants
     print("SUCCESS: import core.constants")
 except ImportError as e:
     print(f"FAILURE: import core.constants -> {e}")

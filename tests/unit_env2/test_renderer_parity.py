@@ -1,11 +1,11 @@
 import os
 import pytest
 import torch
-from src.env2.env import TensorEnv
-from src.env2.adapter import tensor_state_to_render_state
-from src.env2.renderer import GameRenderer
-from core.config import ShipConfig
-from core.types import RenderState
+from boost_and_broadside.env2.env import TensorEnv
+from boost_and_broadside.env2.adapter import tensor_state_to_render_state
+from boost_and_broadside.env2.renderer import GameRenderer
+from boost_and_broadside.core.config import ShipConfig
+from boost_and_broadside.core.types import RenderState
 
 # Set HEADLESS mode to avoid opening windows
 os.environ["HEADLESS"] = "1"

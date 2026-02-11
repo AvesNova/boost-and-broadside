@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import pytest
-from agents.mamba_bb import MambaBB
+from boost_and_broadside.agents.mamba_bb import MambaBB
 
 class MambaConfig:
     def __init__(self, **kwargs):

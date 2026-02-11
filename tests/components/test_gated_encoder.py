@@ -1,6 +1,6 @@
 import torch
 import pytest
-from agents.interleaved_world_model import GatedStateEncoder, GatedSwiGLU
+from boost_and_broadside.agents.interleaved_world_model import GatedStateEncoder, GatedSwiGLU
 
 def test_gated_swiglu_shape():
     batch_size = 4

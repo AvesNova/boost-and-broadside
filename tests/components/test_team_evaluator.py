@@ -1,6 +1,6 @@
 import torch
 import pytest
-from src.agents.components.team_evaluator import TeamEvaluator
+from boost_and_broadside.agents.components.team_evaluator import TeamEvaluator
 
 def test_team_evaluator_shapes():
     """Test standard forward pass shapes."""

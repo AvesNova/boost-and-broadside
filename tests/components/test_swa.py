@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from train.swa import SWAModule
+from boost_and_broadside.train.swa import SWAModule
 
 def test_swa_averaging():
     """Verify SWA averages weights correctly."""

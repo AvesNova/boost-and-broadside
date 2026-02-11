@@ -9,7 +9,7 @@ import numpy as np
 # Typically this involves loading a dataset and running a training loop.
 # We will mock the dataset.
 
-from src.env2.collector import compile_tokens
+from boost_and_broadside.env2.collector import compile_tokens
 
 def test_pretraining_pipeline(tmp_path):
     """

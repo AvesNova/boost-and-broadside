@@ -33,10 +33,11 @@ uv run main.py mode=play human_player=true
 
 ## Project Structure
 
-- **`src/`**: Source code for the environment, agents, and training logic.
+- **`src/boost_and_broadside/`**: Main namespaced package containing all core logic.
     - **`agents/`**: Agent implementations (Scripted, Transformer, World Model).
-    - **`env/`**: The core game environment (Ship dynamics, physics, state).
-    - **`train/`**: Training pipelines for BC and RL.
+    - **`core/`**: Core types, constants, and utilities.
+    - **`env2/`**: Vectorized game environment.
+    - **`train/`**: Training pipelines for World Model and RL.
     - **`modes/`**: Entry points for different execution modes (play, collect, train).
 - **`tools/`**: Utility scripts for data inspection and debugging.
 - **`configs/`**: Hydra configuration files.

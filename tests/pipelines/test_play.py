@@ -1,6 +1,6 @@
 import pytest
 
-from modes.play import play
+from boost_and_broadside.modes.play import play
 
 
 def test_play_pipeline(default_config):

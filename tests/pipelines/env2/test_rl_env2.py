@@ -3,8 +3,8 @@ import torch
 import gymnasium as gym
 from omegaconf import OmegaConf
 
-from env2.coordinator_wrapper import TensorEnvWrapper
-from env2.sb3_wrapper import SB3Wrapper
+from boost_and_broadside.env2.coordinator_wrapper import TensorEnvWrapper
+from boost_and_broadside.env2.sb3_wrapper import SB3Wrapper
 
 class MockPolicy:
     """Mock policy for testing."""

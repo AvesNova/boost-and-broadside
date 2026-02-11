@@ -3,8 +3,8 @@
 
 import torch
 import h5py
-from train.unified_dataset import UnifiedEpisodeDataset, ShortView, LongView
-from train.data_loader import create_unified_data_loaders
+from boost_and_broadside.train.unified_dataset import UnifiedEpisodeDataset, ShortView, LongView
+from boost_and_broadside.train.data_loader import create_unified_data_loaders
 
 
 def save_dummy_data_to_h5(

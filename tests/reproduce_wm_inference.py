@@ -1,9 +1,8 @@
 import sys
 import os
 
-sys.path.append(os.getcwd())
 import torch
-from agents.world_model import WorldModel
+from boost_and_broadside.agents.world_model import WorldModel
 
 
 def test_wm_inference():
