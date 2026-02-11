@@ -37,7 +37,7 @@ def play(cfg: DictConfig) -> None:
     def get_agent_config(agent_type: str) -> dict:
         # Use current global config as default for transformer-based agents
         transformer_config = OmegaConf.to_container(
-            cfg.train.model.transformer, resolve=True
+            cfg.model, resolve=True
         )
         if isinstance(transformer_config, dict) and "num_actions" in transformer_config:
             del transformer_config["num_actions"]

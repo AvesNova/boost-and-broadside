@@ -47,22 +47,14 @@ class DataCollector:
 
         self.save_frequency = config.collect.save_frequency
         # robust config access
+        # Robust config access (Strict)
         if "model" in config and "d_model" in config.model:
              self.token_dim = config.model.d_model
-        elif "train" in config and "model" in config.train:
-             # Legacy path
-             if "transformer" in config.train.model:
-                  self.token_dim = config.train.model.transformer.token_dim
-             else:
-                  self.token_dim = config.train.model.d_model
         else:
-             # Fallback
              self.token_dim = 64
 
         if "environment" in config and "max_ships" in config.environment:
              self.max_ships = config.environment.max_ships
-        elif "train" in config and "model" in config.train and "transformer" in config.train.model:
-              self.max_ships = config.train.model.transformer.max_ships
         else:
               self.max_ships = 8
         self.num_actions = 3
