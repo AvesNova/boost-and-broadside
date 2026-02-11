@@ -14,9 +14,27 @@ from enum import IntEnum
 # Specific runtime config might use fewer ships, but models are often 
 # built to support up to these limits.
 
+class StateFeature(IntEnum):
+    HEALTH = 0
+    POWER = 1
+    VX = 2
+    VY = 3
+    ANG_VEL = 4
+
+
+class TargetFeature(IntEnum):
+    DX = 0
+    DY = 1
+    DVX = 2
+    DVY = 3
+    DHEALTH = 4
+    DPOWER = 5
+    DANG_VEL = 6
+
+
 MAX_SHIPS = 8       # Maximum number of ships per team (for fixed-size buffers)
-STATE_DIM = 5       # [Health, Power, Vx, Vy, AngVel]
-TARGET_DIM = 7      # [dx, dy, dVx, dVy, dHealth, dPower, dAngVel]
+STATE_DIM = len(StateFeature)
+TARGET_DIM = len(TargetFeature)
 ACTION_DIM = 3      # Number of discrete action components (Power, Turn, Shoot)
 
 # =============================================================================

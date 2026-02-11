@@ -12,6 +12,8 @@ from boost_and_broadside.core.constants import (
     NORM_ANGULAR_VELOCITY,
     NORM_HEALTH,
     NORM_POWER,
+    StateFeature,
+    STATE_DIM,
 )
 
 
@@ -32,20 +34,26 @@ def observation_to_tokens(
 
     Returns:
         Token tensor of shape (1, num_ships, 5).
-        Features include:
-        - Health (normalized)                                       [0]
-        - Power (normalized)                                        [1]
-        - Velocity (normalized x and y components)                  [2, 3]
-        - Angular Velocity (normalized)                             [4]
+        Features include (via StateFeature enum):
+        - HEALTH (normalized)                                       [0]
+        - POWER (normalized)                                        [1]
+        - VX (normalized)                                           [2]
+        - VY (normalized)                                           [3]
+        - ANG_VEL (normalized)                                       [4]
     """
-    # Stack features
-    return torch.stack(
-        [
-            obs["health"].float() / NORM_HEALTH,
-            obs["power"].float() / NORM_POWER,
-            obs["velocity"].real / NORM_VELOCITY,
-            obs["velocity"].imag / NORM_VELOCITY,
-            obs["angular_velocity"] / NORM_ANGULAR_VELOCITY,
-        ],
-        dim=1,
-    ).unsqueeze(0)
+    # Allocate tokens based on global STATE_DIM
+    batch_size = 1
+    num_ships = obs["health"].shape[0]
+    tokens = torch.zeros((batch_size, num_ships, STATE_DIM), device=obs["health"].device)
+
+    # Fill features according to StateFeature enum
+    tokens[..., StateFeature.HEALTH] = obs["health"].float() / NORM_HEALTH
+    tokens[..., StateFeature.POWER] = obs["power"].float() / NORM_POWER
+    
+    # Handle velocity (complex -> real/imag)
+    tokens[..., StateFeature.VX] = obs["velocity"].real / NORM_VELOCITY
+    tokens[..., StateFeature.VY] = obs["velocity"].imag / NORM_VELOCITY
+    
+    tokens[..., StateFeature.ANG_VEL] = obs["angular_velocity"] / NORM_ANGULAR_VELOCITY
+
+    return tokens

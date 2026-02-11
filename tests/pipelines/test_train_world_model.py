@@ -4,6 +4,7 @@ from omegaconf import OmegaConf
 from unittest.mock import patch
 
 # Import the training function
+from boost_and_broadside.core.constants import STATE_DIM, TARGET_DIM
 from boost_and_broadside.train.pretrain import pretrain
 
 def test_world_model_training_pipeline(tmp_path, synthetic_h5_data):
@@ -36,7 +37,15 @@ def test_world_model_training_pipeline(tmp_path, synthetic_h5_data):
     # 3. Scheduler & Optimization Config
     # Create scheduler config if missing (config_test might be minimal)
     if "model" not in cfg:
-         cfg.model = OmegaConf.create({"_target_": "boost_and_broadside.models.yemong.scaffolds.YemongFull", "d_model": 64, "n_layers": 2, "n_heads": 2, "input_dim": 5, "target_dim": 7, "action_dim": 12}) # Minimal mock
+         cfg.model = OmegaConf.create({
+             "_target_": "boost_and_broadside.models.yemong.scaffolds.YemongFull", 
+             "d_model": 64, 
+             "n_layers": 2, 
+             "n_heads": 2, 
+             "input_dim": STATE_DIM, 
+             "target_dim": TARGET_DIM, 
+             "action_dim": 12
+         }) # Minimal mock
 
     cfg.model.scheduler = OmegaConf.create({
         "type": "warmup_constant",

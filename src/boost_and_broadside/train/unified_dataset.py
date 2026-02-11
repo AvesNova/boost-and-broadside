@@ -7,6 +7,8 @@ from boost_and_broadside.core.constants import (
     NORM_ANGULAR_VELOCITY,
     NORM_HEALTH,
     NORM_POWER,
+    StateFeature,
+    STATE_DIM,
 )
 
 
@@ -99,21 +101,21 @@ class UnifiedEpisodeDataset:
         shoot = torch.from_numpy(f["is_shooting"][start:end]).float()
         team = torch.from_numpy(f["team_ids"][start:end]).float()
         
-        # Allocate tokens (T, N, 5) - bf16
+        # Allocate tokens (T, N, STATE_DIM) - bf16
         T, N, _ = vel.shape
-        tokens = torch.zeros((T, N, 5), dtype=torch.bfloat16)
+        tokens = torch.zeros((T, N, STATE_DIM), dtype=torch.bfloat16)
         
         # 0: Health
-        tokens[..., 0] = health / NORM_HEALTH
+        tokens[..., StateFeature.HEALTH] = health / NORM_HEALTH
         # 1: Power
-        tokens[..., 1] = power / NORM_POWER
+        tokens[..., StateFeature.POWER] = power / NORM_POWER
         
         # 2-3: Vel
-        tokens[..., 2] = vel[..., 0] / NORM_VELOCITY
-        tokens[..., 3] = vel[..., 1] / NORM_VELOCITY
+        tokens[..., StateFeature.VX] = vel[..., 0] / NORM_VELOCITY
+        tokens[..., StateFeature.VY] = vel[..., 1] / NORM_VELOCITY
         
         # 4: Ang Vel
-        tokens[..., 4] = ang / NORM_ANGULAR_VELOCITY
+        tokens[..., StateFeature.ANG_VEL] = ang / NORM_ANGULAR_VELOCITY
         
         return tokens
 

@@ -10,6 +10,7 @@ from boost_and_broadside.models.components.encoders import StateEncoder, ActionE
 from boost_and_broadside.models.components.heads import ActorHead, WorldHead, ValueHead
 from boost_and_broadside.models.components.team_evaluator import TeamEvaluator 
 from boost_and_broadside.models.components.layers.attention import RelationalAttention
+from boost_and_broadside.core.constants import StateFeature, STATE_DIM, TARGET_DIM
 
 
 class BaseScaffold(nn.Module):
@@ -102,7 +103,7 @@ class YemongFull(BaseScaffold):
         d_model = self.config.d_model
 
         # Dead Masking
-        if alive is None: alive = state[..., 0] > 0
+        if alive is None: alive = state[..., StateFeature.HEALTH] > 0
         state = torch.where(alive.unsqueeze(-1), state.to(self.special_params['dead'].dtype), self.special_params['dead'].view(1, 1, 1, -1))
 
         # Reset Logic
@@ -146,7 +147,7 @@ class YemongFull(BaseScaffold):
             x_mamba = x_spatial.permute(0, 2, 1, 3).reshape(batch_size * num_ships, seq_len, -1)
 
         x_final = x_mamba.view(batch_size, num_ships, seq_len, -1).permute(0, 2, 1, 3)
-        state_pred = self.world_head(x_final if 'x_final' in locals() else x)
+        state_pred = self.world_head(x_final)
 
         # Actor
         if actor_cache is not None: history = actor_cache
@@ -280,7 +281,7 @@ class YemongSpatial(BaseScaffold):
             if team_ids is not None: team_ids = team_ids.unsqueeze(1)
             if alive is not None: alive = alive.unsqueeze(1)
 
-        if alive is None: alive = state[..., 0] > 0
+        if alive is None: alive = state[..., StateFeature.HEALTH] > 0
         state = torch.where(alive.unsqueeze(-1), state.to(self.special_params['dead'].dtype), self.special_params['dead'].view(1, 1, 1, -1))
 
         s_emb = self.state_encoder(state)

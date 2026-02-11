@@ -7,8 +7,10 @@ from boost_and_broadside.train.unified_dataset import UnifiedEpisodeDataset, Sho
 from boost_and_broadside.train.data_loader import create_unified_data_loaders
 
 
+from boost_and_broadside.core.constants import STATE_DIM
+
 def save_dummy_data_to_h5(
-    path, num_episodes=10, episode_len=200, num_ships=8, token_dim=9, action_dim=3
+    path, num_episodes=10, episode_len=200, num_ships=8, token_dim=STATE_DIM, action_dim=3
 ):
     """Create dummy data and save to HDF5."""
     total_timesteps = num_episodes * episode_len
@@ -50,6 +52,7 @@ def save_dummy_data_to_h5(
         f.create_dataset("episode_lengths", data=episode_lengths.numpy())
         f.create_dataset("agent_skills", data=agent_skills.numpy())
         f.attrs["token_dim"] = token_dim
+        f.attrs["num_actions"] = action_dim  # Fixed this line as well
 
     return episode_lengths
 
@@ -155,8 +158,8 @@ class TestUnifiedDataLoaders:
         # Verify batch shapes
         s_batch = next(iter(ts))
         s_tokens = s_batch["states"]
-        assert s_tokens.shape == (4, 32, 8, 9)
+        assert s_tokens.shape == (4, 32, 8, STATE_DIM)
 
         l_batch = next(iter(tl))
         l_tokens = l_batch["states"]
-        assert l_tokens.shape == (2, 128, 8, 9)
+        assert l_tokens.shape == (2, 128, 8, STATE_DIM)

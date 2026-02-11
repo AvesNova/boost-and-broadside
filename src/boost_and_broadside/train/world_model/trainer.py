@@ -5,7 +5,7 @@ from tqdm import tqdm
 from omegaconf import DictConfig, OmegaConf
 import wandb
 
-from boost_and_broadside.core.constants import PowerActions, TurnActions, ShootActions
+from boost_and_broadside.core.constants import PowerActions, TurnActions, ShootActions, StateFeature, TargetFeature, TARGET_DIM
 from boost_and_broadside.utils.dataset_stats import calculate_action_counts, compute_class_weights, apply_turn_exceptions, normalize_weights
 
 log = logging.getLogger(__name__)
@@ -240,24 +240,25 @@ class Trainer:
         d_pos[..., 1] = d_pos[..., 1] - torch.round(d_pos[..., 1] / H) * H
         
         # State Deltas (Next - Current)
-        # States: [Health(0), Power(1), Vx(2), Vy(3), AngVel(4)]
+        # States: [Health, Power, Vx, Vy, AngVel]
         d_state = next_states - input_states
         
-        # Construct 7D Target: [dx, dy, dVx, dVy, dHealth, dPower, dAngVel]
-        target_states = torch.cat([
-            d_pos,               # dx, dy
-            d_state[..., 2:4],   # dVx, dVy
-            d_state[..., 0:1],   # dHealth
-            d_state[..., 1:2],   # dPower
-            d_state[..., 4:5]    # dAngVel
-        ], dim=-1)
+        # Construct Target Vector using enums
+        # [dx, dy, dVx, dVy, dHealth, dPower, dAngVel]
+        target_states = torch.zeros((*d_state.shape[:-1], TARGET_DIM), device=d_state.device, dtype=d_state.dtype)
+        target_states[..., TargetFeature.DX:TargetFeature.DY+1] = d_pos
+        target_states[..., TargetFeature.DVX] = d_state[..., StateFeature.VX]
+        target_states[..., TargetFeature.DVY] = d_state[..., StateFeature.VY]
+        target_states[..., TargetFeature.DHEALTH] = d_state[..., StateFeature.HEALTH]
+        target_states[..., TargetFeature.DPOWER] = d_state[..., StateFeature.POWER]
+        target_states[..., TargetFeature.DANG_VEL] = d_state[..., StateFeature.ANG_VEL]
         
         # Velocity for Relational Trunk (Current Vx, Vy)
-        vel = input_states[..., 2:4]
+        vel = input_states[..., StateFeature.VX : StateFeature.VY+1]
         
         # Alive Mask
-        alive = input_states[..., 0] > 0
-        target_alive = next_states[..., 0] > 0
+        alive = input_states[..., StateFeature.HEALTH] > 0
+        target_alive = next_states[..., StateFeature.HEALTH] > 0
         
         # Forward & Loss
         # Forward & Loss

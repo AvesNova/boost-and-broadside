@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import logging
 from omegaconf import DictConfig
+from boost_and_broadside.core.constants import StateFeature, TargetFeature, TARGET_DIM
 
 
 log = logging.getLogger(__name__)
@@ -90,18 +91,18 @@ class Validator:
                     # State Deltas
                     d_state = next_states - input_states
                     
-                    # Target: [dx, dy, dVx, dVy, dHealth, dPower, dAngVel]
-                    target_states = torch.cat([
-                        d_pos,
-                        d_state[..., 2:4],
-                        d_state[..., 0:1],
-                        d_state[..., 1:2],
-                        d_state[..., 4:5]
-                    ], dim=-1)
+                    # Target construction using enums
+                    target_states = torch.zeros((*d_state.shape[:-1], TARGET_DIM), device=d_state.device, dtype=d_state.dtype)
+                    target_states[..., TargetFeature.DX:TargetFeature.DY+1] = d_pos
+                    target_states[..., TargetFeature.DVX] = d_state[..., StateFeature.VX]
+                    target_states[..., TargetFeature.DVY] = d_state[..., StateFeature.VY]
+                    target_states[..., TargetFeature.DHEALTH] = d_state[..., StateFeature.HEALTH]
+                    target_states[..., TargetFeature.DPOWER] = d_state[..., StateFeature.POWER]
+                    target_states[..., TargetFeature.DANG_VEL] = d_state[..., StateFeature.ANG_VEL]
                     
-                    vel = input_states[..., 2:4]
-                    alive = input_states[..., 0] > 0
-                    target_alive = next_states[..., 0] > 0
+                    vel = input_states[..., StateFeature.VX : StateFeature.VY+1]
+                    alive = input_states[..., StateFeature.HEALTH] > 0
+                    target_alive = next_states[..., StateFeature.HEALTH] > 0
 
                     # Cast inputs if AMP is disabled
                     if not self.amp and input_states.dtype == torch.bfloat16:

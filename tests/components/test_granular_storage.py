@@ -7,7 +7,7 @@ import numpy as np
 
 from boost_and_broadside.env2.collector import AsyncCollector
 from boost_and_broadside.train.unified_dataset import UnifiedEpisodeDataset
-from boost_and_broadside.core.constants import NORM_HEALTH, NORM_VELOCITY
+from boost_and_broadside.core.constants import NORM_HEALTH, NORM_VELOCITY, STATE_DIM, StateFeature
 
 @pytest.fixture
 def temp_h5_path(tmp_path):
@@ -81,27 +81,27 @@ def test_granular_storage_cycle(temp_h5_path):
     # UnifiedEpisodeDataset.get_slice("tokens", start, end)
     tokens = ds.get_slice("tokens", 0, total_steps)
     
-    assert tokens.shape == (total_steps, max_ships, 9)
+    assert tokens.shape == (total_steps, max_ships, STATE_DIM)
     assert tokens.dtype == torch.bfloat16
     
     # Verify content reconstruction
-    # Let's check Health (Index 1)
+    # Let's check Health
     # We wrote from 'obs' which was buffered. Use the data in file to compare exact values (modulo precision)
     
     with h5py.File(temp_h5_path, "r") as f:
         file_health = torch.from_numpy(f["health"][:]).float()
-        token_health = tokens[..., 1].float()
+        token_health = tokens[..., StateFeature.HEALTH].float()
         
         # f16 vs f32 tolerance
         # f16 vs f32 tolerance
         # Tokens are health / NORM_HEALTH
         assert torch.allclose(file_health / NORM_HEALTH, token_health, atol=1e-2)
         
-        # Check Velocity (Index 3,4)
-        # New Layout: Vel is at 3,4
+        # Check Velocity 
+        # New Layout
         file_vel = torch.from_numpy(f["velocity"][:]).float()
-        token_vel_x = tokens[..., 3].float()
-        token_vel_y = tokens[..., 4].float()
+        token_vel_x = tokens[..., StateFeature.VX].float()
+        token_vel_y = tokens[..., StateFeature.VY].float()
         
         # Verify normalization
         expected_vel_x = file_vel[..., 0] / NORM_VELOCITY

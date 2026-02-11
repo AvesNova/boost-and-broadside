@@ -116,10 +116,9 @@ def synthetic_h5_data(tmp_path):
     num_episodes = 5
     episode_len = 200
     total_timesteps = num_episodes * episode_len
-    # Assuming defaults from audit: max_ships=4, token_dim=15, num_actions=4 (simplified)
-    # Actually checking default_config fixture: token_dim=15, max_ships=4.
+    from boost_and_broadside.core.constants import STATE_DIM
     max_ships = 4
-    token_dim = 5
+    token_dim = STATE_DIM
     num_actions = 3 # 3 discrete action components (Power, Turn, Shoot)
 
     with h5py.File(file_path, "w") as f:

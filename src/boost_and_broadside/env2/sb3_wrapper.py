@@ -5,7 +5,7 @@ from omegaconf import DictConfig
 
 from boost_and_broadside.env2.coordinator_wrapper import TensorEnvWrapper
 from boost_and_broadside.agents.tokenizer import observation_to_tokens
-from boost_and_broadside.core.constants import NUM_POWER_ACTIONS, NUM_TURN_ACTIONS, NUM_SHOOT_ACTIONS
+from boost_and_broadside.core.constants import NUM_POWER_ACTIONS, NUM_TURN_ACTIONS, NUM_SHOOT_ACTIONS, STATE_DIM
 
 class SB3Wrapper(gym.Env):
     """
@@ -18,7 +18,7 @@ class SB3Wrapper(gym.Env):
         self.env = env
         self.config = config
         self.max_ships = config.environment.max_ships
-        self.token_dim = 9 # Defined in tokenizer.py docstring
+        self.token_dim = STATE_DIM # Defined in tokenizer.py docstring
         
         # Observation Space
         # SB3 policies will expect a Dict observation if using MultiInputPolicy

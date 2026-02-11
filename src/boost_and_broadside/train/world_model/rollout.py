@@ -1,7 +1,7 @@
 import random
 import torch
 
-from boost_and_broadside.core.constants import NORM_VELOCITY
+from boost_and_broadside.core.constants import NORM_VELOCITY, StateFeature, TargetFeature, STATE_DIM, TARGET_DIM
 
 def get_rollout_length(epoch: int, cfg) -> int:
     """
@@ -79,11 +79,11 @@ def perform_rollout(model, input_states, input_actions, input_pos, team_ids, rol
                 tm_in = team_ids # Assume (B, N)
                 
             # Extract features for relational encoder
-            # States: [Health(0), Power(1), Vx(2), Vy(3), AngVel(4)]
+            # States: [Health, Power, Vx, Vy, AngVel]
             # Target: [dx, dy, dVx, dVy, dHealth, dPower, dAngVel]
             pos = p_in
-            vel = s_in[..., 2:4] # Vx, Vy
-            alive = s_in[..., 0] > 0
+            vel = s_in[..., StateFeature.VX:StateFeature.VY+1]
+            alive = s_in[..., StateFeature.HEALTH] > 0
                 
             pred_s, pred_a_logits, _, _, _ = model(
                 state=s_in, 
@@ -131,21 +131,21 @@ def perform_rollout(model, input_states, input_actions, input_pos, team_ids, rol
                 alive=alive
             )
             
-            delta_target = pred_s[:, -1] # (B, N, 7)
+            delta_target = pred_s[:, -1] # (B, N, TARGET_DIM)
             
             # 2. Update State S_{t+1}
             # Delta Target Layout: [dx, dy, dVx, dVy, dH, dP, dAV]
             # State Layout: [H, P, Vx, Vy, AV]
             
-            curr_s = curr_states[:, t] # (B, N, 5)
+            curr_s = curr_states[:, t] # (B, N, STATE_DIM)
             next_state = curr_s.clone()
             
             # Update normalized components
-            next_state[..., 0] = (curr_s[..., 0] + delta_target[..., 4]).clamp(0, 1) # Health
-            next_state[..., 1] = (curr_s[..., 1] + delta_target[..., 5]).clamp(0, 1) # Power
-            next_state[..., 2] = (curr_s[..., 2] + delta_target[..., 2])             # Vx
-            next_state[..., 3] = (curr_s[..., 3] + delta_target[..., 3])             # Vy
-            next_state[..., 4] = (curr_s[..., 4] + delta_target[..., 6])             # AngVel
+            next_state[..., StateFeature.HEALTH] = (curr_s[..., StateFeature.HEALTH] + delta_target[..., TargetFeature.DHEALTH]).clamp(0, 1)
+            next_state[..., StateFeature.POWER] = (curr_s[..., StateFeature.POWER] + delta_target[..., TargetFeature.DPOWER]).clamp(0, 1)
+            next_state[..., StateFeature.VX] = (curr_s[..., StateFeature.VX] + delta_target[..., TargetFeature.DVX])
+            next_state[..., StateFeature.VY] = (curr_s[..., StateFeature.VY] + delta_target[..., TargetFeature.DVY])
+            next_state[..., StateFeature.ANG_VEL] = (curr_s[..., StateFeature.ANG_VEL] + delta_target[..., TargetFeature.DANG_VEL])
             
             # Update curr_states at t+1 if valid
             if t + 1 < time_steps:
@@ -155,8 +155,8 @@ def perform_rollout(model, input_states, input_actions, input_pos, team_ids, rol
             # 3. Update Position (Model-Predicted Deltas)
             # Maintain in F32
             pos_t = curr_pos[:, t].float()
-            dx = delta_target[..., 0].float()
-            dy = delta_target[..., 1].float()
+            dx = delta_target[..., TargetFeature.DX].float()
+            dy = delta_target[..., TargetFeature.DY].float()
             
             pos_next = pos_t + torch.stack([dx, dy], dim=-1)
             
