@@ -351,10 +351,14 @@ class MambaBB(nn.Module):
 
         for i, block in enumerate(self.blocks):
             normed = block['norm1'](x_mamba)
-            if x_mamba.device.type == 'cpu': m_out = normed
+            if x_mamba.device.type == 'cpu' or Mamba2 is None:
+                 m_out = normed # Mamba blocks don't support CPU
             else:
-                 try: m_out = block['mamba'](normed, seq_idx=mamba_seq_idx, inference_params=inference_params)
-                 except: m_out = block['mamba'](normed)
+                 try:
+                      m_out = block['mamba'](normed, seq_idx=mamba_seq_idx, inference_params=inference_params)
+                 except Exception as e:
+                      # print(f"DEBUG: Mamba forward failed with inference_params: {e}")
+                      m_out = block['mamba'](normed)
             x_mamba = x_mamba + m_out
             
             x_spatial = x_mamba.view(batch_size, num_ships, seq_len, -1).permute(0, 2, 1, 3)

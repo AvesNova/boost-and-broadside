@@ -66,6 +66,11 @@ class TensorEnvWrapper:
         self.human_ship_ids = set()
         
     @property
+    def state(self):
+        """Access underlying environment state."""
+        return self.env.state
+
+    @property
     def renderer(self):
         """Lazy-load renderer."""
         if self._renderer is None and self.render_mode == "human":

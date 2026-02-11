@@ -58,7 +58,7 @@ train:
 
   use_bc: true
   use_rl: true
-  bc_data_path: "data/test_data/20260116_201616/aggregated_data.h5"
+  bc_data_path: "data/test_data/aggregated_data.h5"
   
   model:
     transformer:

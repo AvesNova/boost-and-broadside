@@ -25,7 +25,6 @@ def test_train_pipeline_integration():
         "mode=train",
         "train.run_collect=true",
         "train.run_world_model=true",
-        "+device=cpu",
         "--config-name",
         "config_test",
     ]

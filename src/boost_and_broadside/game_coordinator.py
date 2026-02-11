@@ -6,6 +6,7 @@ import numpy as np
 from boost_and_broadside.agents.agents import create_agent
 from boost_and_broadside.agents.tokenizer import observation_to_tokens
 from boost_and_broadside.env2.coordinator_wrapper import TensorEnvWrapper
+from boost_and_broadside.env2.agents.scripted import VectorScriptedAgent
 
 
 @dataclass
@@ -220,12 +221,24 @@ class GameCoordinator:
 
             # 2. Get actions from agents for their respective teams
             # Expert actions
-            team_actions = {
-                team_id: self.agents[team_names[team_id]](
-                    self.obs_history[-1], ship_ids
-                )
-                for team_id, ship_ids in teams.items()
-            }
+            team_actions = {}
+            for team_id, ship_ids in teams.items():
+                agent = self.agents[team_names[team_id]]
+                if isinstance(agent, VectorScriptedAgent):
+                    # VectorScriptedAgent expects a TensorState (B, N)
+                    # We can use our env wrapper to get a TensorState or construct one
+                    from boost_and_broadside.env2.state import TensorState
+                    # self.env.state is a TensorState in the coordinator wrapper
+                    raw_actions = agent.get_actions(self.env.state) # (B, N, 3)
+                    
+                    # Convert to dict for the rest of GameCoordinator logic
+                    # We are in a single environment here (B=1)
+                    team_actions[team_id] = {
+                        ship_id: raw_actions[0, ship_id]
+                        for ship_id in ship_ids
+                    }
+                else:
+                    team_actions[team_id] = agent(self.obs_history[-1], ship_ids)
 
             # 3. Apply Sticky/Random Logic
             actions = {}

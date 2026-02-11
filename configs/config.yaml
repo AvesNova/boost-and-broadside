@@ -95,27 +95,11 @@ train:
   bc_data_path: data/bc_pretraining/aggregated_data.h5
   
   model:
-    transformer:
-      token_dim: 9
-      embed_dim: 128
-      num_heads: 4
-      num_layers: 8
-      max_ships: 8
-      num_actions: 6
-      dropout: 0.1
-      use_layer_norm: true
-
-  bc:
-    learning_rate: 0.001
-    batch_size: 8192
-    epochs: 50
-    validation_split: 0.2
-    early_stopping_patience: 10
-    policy_weight: 1.0
-    value_weight: 0.5
+    # Transformers / BC blocks removed as they are legacy
+    pass
 
   rl:
-    policy_type: "transformer" # or "world_model"
+    policy_type: "world_model"
     context_len: 32 # FrameStack k (for world_model)
     aux_loss_coef: 1.0 # Weight for WM aux loss
     freeze_world_model: false # Whether to freeze WM weights

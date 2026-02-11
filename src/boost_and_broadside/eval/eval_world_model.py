@@ -10,7 +10,7 @@ import logging
 import torch
 from omegaconf import DictConfig
 
-from boost_and_broadside.agents.world_model import WorldModel
+from boost_and_broadside.agents.mamba_bb import MambaBB, MambaConfig
 from boost_and_broadside.train.data_loader import load_bc_data, create_unified_data_loaders
 from omegaconf import OmegaConf
 
@@ -69,18 +69,19 @@ def eval_world_model(cfg: DictConfig) -> None:
 
     log.info(f"Loading model from {model_path}")
 
-    # Force action_dim to 12 (3+7+2 one-hot)
-    action_dim = 12
-
-    model = WorldModel(
-        state_dim=state_dim,
+    # Create MambaConfig from hydra config
+    mamba_cfg = MambaConfig(
+        input_dim=state_dim,
+        target_dim=state_dim, # Delta prediction
         action_dim=action_dim,
-        embed_dim=cfg.world_model.embed_dim,
+        d_model=cfg.world_model.embed_dim,
         n_layers=cfg.world_model.n_layers,
         n_heads=cfg.world_model.n_heads,
-        max_ships=cfg.world_model.n_ships,
-        max_context_len=cfg.world_model.context_len,
-    ).to(device)
+        n_ships=cfg.world_model.n_ships,
+        context_len=cfg.world_model.context_len,
+    )
+
+    model = MambaBB(mamba_cfg).to(device)
 
     model.load_state_dict(torch.load(model_path))
     model.eval()

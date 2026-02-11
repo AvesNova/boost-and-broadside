@@ -5,13 +5,11 @@ import logging
 from omegaconf import OmegaConf
 
 from .human import HumanAgent
-from .scripted import ScriptedAgent
-from .scripted_v2 import ScriptedAgentV2
-from .team_transformer_agent import TeamTransformerAgent
 from .world_model_agent import WorldModelAgent
 from .replay import ReplayAgent
 from .dummy import DummyAgent
 from .random_agent import RandomAgent
+from boost_and_broadside.env2.agents.scripted import VectorScriptedAgent
 from boost_and_broadside.utils.model_finder import find_most_recent_model, find_best_model
 
 log = logging.getLogger(__name__)
@@ -53,30 +51,14 @@ def _load_agent_config_from_model(
         log.info(f"Loading agent config from {config_path}")
         saved_cfg = OmegaConf.load(config_path)
 
-        # Determine if it's a World Model RL run
-        policy_type = "transformer"
-        if model_type == "rl" and "rl" in saved_cfg.train:
-            policy_type = saved_cfg.train.rl.get("policy_type", "transformer")
+        # Extract world model config
+        wm_cfg = OmegaConf.to_container(saved_cfg.world_model, resolve=True)
+        # Map keys to WorldModelAgent args
+        if "n_ships" in wm_cfg:
+            wm_cfg["max_ships"] = wm_cfg.pop("n_ships")
 
-        if model_type == "world_model" or policy_type == "world_model":
-            # Extract world model config
-            wm_cfg = OmegaConf.to_container(saved_cfg.world_model, resolve=True)
-            # Map keys to WorldModelAgent args
-            if "n_ships" in wm_cfg:
-                wm_cfg["max_ships"] = wm_cfg.pop("n_ships")
-
-            final_config.update(wm_cfg)
-            final_config["policy_type"] = "world_model"
-        else:
-            # Extract transformer config for BC/RL
-            transformer_cfg = OmegaConf.to_container(
-                saved_cfg.train.model.transformer, resolve=True
-            )
-            # Remove keys that are not arguments to TeamTransformerAgent
-            if "num_actions" in transformer_cfg:
-                del transformer_cfg["num_actions"]
-            final_config.update(transformer_cfg)
-            final_config["policy_type"] = "transformer"
+        final_config.update(wm_cfg)
+        final_config["policy_type"] = "world_model"
     else:
         log.warning(f"No config.yaml found in {run_dir}. Using current defaults.")
 
@@ -102,11 +84,15 @@ def create_agent(agent_type: str, agent_config: dict) -> nn.Module:
         case "human":
             return HumanAgent(**agent_config)
         case "scripted":
-            return ScriptedAgent(**agent_config)
-        case "scripted_v2":
-            return ScriptedAgentV2(**agent_config)
-        case "team_transformer_agent":
-            return TeamTransformerAgent(**agent_config)
+            # Bridge to vectorized version for consistency
+            from boost_and_broadside.core.config import ShipConfig
+            # Filter config to only include keys ShipConfig accepts to avoid TypeError
+            import inspect
+            sig = inspect.signature(ShipConfig.__init__)
+            valid_params = set(sig.parameters.keys())
+            filtered_config = {k: v for k, v in agent_config.items() if k in valid_params}
+            ship_cfg = ShipConfig(**filtered_config)
+            return VectorScriptedAgent(ship_cfg)
         case "replay_agent":
             return ReplayAgent(**agent_config)
         case "dummy":
@@ -114,17 +100,9 @@ def create_agent(agent_type: str, agent_config: dict) -> nn.Module:
         case "random":
             return RandomAgent(**agent_config)
 
-        case "most_recent_bc":
-            cfg = _load_agent_config_from_model(agent_config, "bc", "most_recent")
-            return TeamTransformerAgent(**cfg)
-
         case "most_recent_rl":
             cfg = _load_agent_config_from_model(agent_config, "rl", "most_recent")
             return _create_rl_agent(cfg)
-
-        case "best_bc":
-            cfg = _load_agent_config_from_model(agent_config, "bc", "best")
-            return TeamTransformerAgent(**cfg)
 
         case "best_rl":
             cfg = _load_agent_config_from_model(agent_config, "rl", "best")
@@ -153,22 +131,16 @@ def create_agent(agent_type: str, agent_config: dict) -> nn.Module:
 
 def _create_rl_agent(agent_config: dict) -> nn.Module:
     """
-    Instantiate appropriate agent for RL config (Transformer vs WorldModel).
+    Instantiate appropriate agent for RL config (WorldModel).
     Handles loading weights from SB3 checkpoints if needed.
     """
-    # Check policy type
-    policy_type = agent_config.get("policy_type", "transformer")
     model_path = agent_config.get("model_path")
-
-    if policy_type == "world_model":
-        agent = WorldModelAgent(**agent_config)
-    else:
-        agent = TeamTransformerAgent(**agent_config)
+    agent = WorldModelAgent(**agent_config)
 
     if model_path:
         # Check if it's a zip (SB3 checkpoint)
         if str(model_path).endswith(".zip"):
-            _load_from_sb3_zip(agent, model_path, policy_type)
+            _load_from_sb3_zip(agent, model_path, "world_model")
         else:
             # Assume .pth
             agent.load_model(model_path)
@@ -213,21 +185,6 @@ def _load_from_sb3_zip(agent: nn.Module, path: str, policy_type: str):
                     log.error(
                         "Agent does not have 'model' attribute to load WorldModel weights."
                     )
-
-            else:
-                # TeamTransformerSB3Policy structure:
-                # transformer_model.*
-                # value_head.*
-                # We need 'transformer_model.' prefix
-                tf_state_dict = {}
-                prefix = "transformer_model."
-                for k, v in state_dict.items():
-                    if k.startswith(prefix):
-                        tf_state_dict[k[len(prefix) :]] = v
-
-                if hasattr(agent, "model"):
-                    agent.model.load_state_dict(tf_state_dict, strict=False)
-                    log.info(f"Loaded Transformer weights from SB3 checkpoint: {path}")
 
     except Exception as e:
         log.error(f"Failed to load form SB3 zip {path}: {e}")
