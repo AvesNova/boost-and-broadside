@@ -4,7 +4,7 @@ from typing import Tuple
 
 from .state import TensorState
 from boost_and_broadside.core.config import ShipConfig
-from boost_and_broadside.core.constants import PowerActions, TurnActions, ShootActions, RewardConstants
+from boost_and_broadside.core.constants import ShootActions, RewardConstants
 
 
 def _get_lookup_tables(config: ShipConfig, device: torch.device) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:

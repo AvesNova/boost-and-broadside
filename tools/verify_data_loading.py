@@ -1,5 +1,4 @@
 from pathlib import Path
-import sys
 
 # Add src to sys.path
 

@@ -1,8 +1,7 @@
 
 import torch
 import numpy as np
-from typing import Optional, Tuple, Dict, Any, List
-import gymnasium as gym
+from typing import Optional, Tuple, Dict, Any
 
 from .state import TensorState
 from boost_and_broadside.core.config import ShipConfig

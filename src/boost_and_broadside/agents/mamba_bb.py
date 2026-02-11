@@ -356,7 +356,7 @@ class MambaBB(nn.Module):
             else:
                  try:
                       m_out = block['mamba'](normed, seq_idx=mamba_seq_idx, inference_params=inference_params)
-                 except Exception as e:
+                 except Exception:
                       # print(f"DEBUG: Mamba forward failed with inference_params: {e}")
                       m_out = block['mamba'](normed)
             x_mamba = x_mamba + m_out

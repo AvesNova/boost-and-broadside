@@ -1,11 +1,8 @@
 
 import torch
-import numpy as np
-from boost_and_broadside.env2.env import TensorEnv
 from boost_and_broadside.env2.env import TensorEnv
 from boost_and_broadside.env2.adapter import tensor_state_to_render_state
 from boost_and_broadside.env2.renderer import GameRenderer
-from boost_and_broadside.core.constants import RewardConstants
 from boost_and_broadside.core.config import ShipConfig
 
 class TensorEnvWrapper:

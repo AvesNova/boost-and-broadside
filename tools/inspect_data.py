@@ -3,7 +3,6 @@ import sys
 
 # Add src to sys.path
 
-import torch
 
 
 import h5py
@@ -34,7 +33,7 @@ def inspect_data_file(file_path: Path) -> None:
                             sample = obj[:1000]
                             print(f"    mean={np.mean(sample):.4f}, min={np.min(sample)}, max={np.max(sample)}")
                             if np.sum(sample) == 0 and np.max(sample) == 0 and np.min(sample) == 0:
-                                print(f"    [WARNING] First 1000 items are all zeros!")
+                                print("    [WARNING] First 1000 items are all zeros!")
                         except: pass
                 elif isinstance(obj, h5py.Group):
                     print(f"  Group: {name}")
@@ -47,7 +46,6 @@ def inspect_data_file(file_path: Path) -> None:
 
 def main() -> None:
     """Inspect all collected data files"""
-    import sys
 
     if len(sys.argv) > 1:
         file_path = Path(sys.argv[1])

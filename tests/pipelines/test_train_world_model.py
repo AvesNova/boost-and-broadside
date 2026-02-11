@@ -1,9 +1,7 @@
 import pytest
 import os
-import torch
-from pathlib import Path
 from omegaconf import OmegaConf
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 # Import the training function
 from boost_and_broadside.train.train_world_model import train_world_model

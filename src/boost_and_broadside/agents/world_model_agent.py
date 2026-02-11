@@ -21,7 +21,6 @@ from boost_and_broadside.agents.tokenizer import observation_to_tokens
 log = logging.getLogger(__name__)
 
 
-import torch.nn.functional as F
 
 
 class WorldModelAgent:
@@ -119,7 +118,7 @@ class WorldModelAgent:
                  cfg = MambaConfig(**mamba_cfg_args)
                  
                  self.model = MambaBB(cfg).to(self.device)
-                 log.info(f"Instantiated MambaBB from config.")
+                 log.info("Instantiated MambaBB from config.")
                  
              except Exception as e:
                  print(f"CRITICAL ERROR instantiating MambaBB: {e}") # Print to stdout to see in tool output

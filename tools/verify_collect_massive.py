@@ -1,5 +1,4 @@
 import torch
-import numpy as np
 from boost_and_broadside.env2.env import TensorEnv
 from boost_and_broadside.env2.collector import AsyncCollector
 from boost_and_broadside.core.config import ShipConfig

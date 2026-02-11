@@ -1,18 +1,11 @@
 import logging
 import time
 import torch
-import torch.nn as nn
 from tqdm import tqdm
 from omegaconf import DictConfig, OmegaConf
-from pathlib import Path
 import wandb
-import numpy as np
 
 from boost_and_broadside.core.constants import PowerActions, TurnActions, ShootActions
-from boost_and_broadside.core.features import compute_pairwise_features
-from boost_and_broadside.train.swa import SWAModule
-from boost_and_broadside.train.world_model.rollout import perform_rollout, get_rollout_length
-from boost_and_broadside.train.world_model.setup import get_data_loaders
 from boost_and_broadside.utils.dataset_stats import calculate_action_counts, compute_class_weights, apply_turn_exceptions, normalize_weights
 
 log = logging.getLogger(__name__)
@@ -78,7 +71,7 @@ class Trainer:
         log.info(f"Class Weights - Shoot: {self.w_shoot.tolist()}")
         
         # Log scaling effect
-        log.info(f"Action Loss Scaling: Power=1/log(3), Turn=1/log(7), Shoot=1/log(2)")
+        log.info("Action Loss Scaling: Power=1/log(3), Turn=1/log(7), Shoot=1/log(2)")
 
     def _get_current_params(self, step):
         """Calculate current values for scheduled parameters."""
@@ -138,7 +131,7 @@ class Trainer:
             # Setup Iterator
             if is_range_test:
                 limit = sched_cfg.range_test.steps
-                pbar = tqdm(total=limit, desc=f"LR Range Test")
+                pbar = tqdm(total=limit, desc="LR Range Test")
                 # Use a separate iterator for the loader
                 batch_iter = iter(train_loader)
             else:

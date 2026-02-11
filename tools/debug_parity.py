@@ -1,6 +1,4 @@
 
-import sys
-import os
 try:
     from boost_and_broadside.env.env import Environment
     print("Import src.env.env success")

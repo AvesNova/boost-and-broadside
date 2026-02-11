@@ -149,7 +149,7 @@ def run_collection(args: CollectionArgs) -> None:
         elapsed = end_time - start_time
         total_transitions = collector.total_transitions_completed
         
-        print(f"\nFinished collection.")
+        print("\nFinished collection.")
         print(f"Total Completed Transitions: {total_transitions}")
         print(f"Time: {elapsed:.2f}s")
         print(f"Throughput: {total_transitions / elapsed if elapsed > 0 else 0:.2f} transitions/sec")

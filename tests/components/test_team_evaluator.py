@@ -1,5 +1,4 @@
 import torch
-import pytest
 from boost_and_broadside.agents.components.team_evaluator import TeamEvaluator
 
 def test_team_evaluator_shapes():

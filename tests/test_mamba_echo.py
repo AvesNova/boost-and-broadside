@@ -1,5 +1,4 @@
 import torch
-import torch.nn as nn
 import pytest
 from boost_and_broadside.agents.mamba_bb import MambaBB
 

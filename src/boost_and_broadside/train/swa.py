@@ -1,4 +1,3 @@
-import torch
 import torch.nn as nn
 import logging
 from copy import deepcopy

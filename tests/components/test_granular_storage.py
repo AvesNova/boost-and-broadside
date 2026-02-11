@@ -1,7 +1,6 @@
 
 import pytest
 import torch
-import shutil
 from pathlib import Path
 import h5py
 import numpy as np

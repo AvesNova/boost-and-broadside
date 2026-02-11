@@ -1,7 +1,4 @@
-import pytest
-import shutil
 import torch
-import os
 import h5py
 import numpy as np
 
@@ -9,7 +6,6 @@ import numpy as np
 # Typically this involves loading a dataset and running a training loop.
 # We will mock the dataset.
 
-from boost_and_broadside.env2.collector import compile_tokens
 
 def test_pretraining_pipeline(tmp_path):
     """

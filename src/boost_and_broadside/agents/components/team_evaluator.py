@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from boost_and_broadside.agents.mamba_bb import RMSNorm
 

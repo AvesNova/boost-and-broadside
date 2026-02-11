@@ -4,7 +4,6 @@ from dataclasses import dataclass
 import numpy as np
 
 from boost_and_broadside.agents.agents import create_agent
-from boost_and_broadside.agents.tokenizer import observation_to_tokens
 from boost_and_broadside.env2.coordinator_wrapper import TensorEnvWrapper
 from boost_and_broadside.env2.agents.scripted import VectorScriptedAgent
 
@@ -227,7 +226,6 @@ class GameCoordinator:
                 if isinstance(agent, VectorScriptedAgent):
                     # VectorScriptedAgent expects a TensorState (B, N)
                     # We can use our env wrapper to get a TensorState or construct one
-                    from boost_and_broadside.env2.state import TensorState
                     # self.env.state is a TensorState in the coordinator wrapper
                     raw_actions = agent.get_actions(self.env.state) # (B, N, 3)
                     

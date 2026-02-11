@@ -9,7 +9,6 @@ import torch
 
 from boost_and_broadside.core.constants import (
     NORM_VELOCITY,
-    NORM_ACCELERATION,
     NORM_ANGULAR_VELOCITY,
     NORM_HEALTH,
     NORM_POWER,

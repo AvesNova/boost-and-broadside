@@ -1,7 +1,6 @@
 import os
 import pygame
 import math
-import numpy as np
 from typing import Dict, Tuple
 
 from boost_and_broadside.core.types import RenderState, RenderShip

@@ -1,10 +1,8 @@
 import argparse
-import sys
 from pathlib import Path
 
 import h5py
 import numpy as np
-import torch
 
 def inspect_h5_file(file_path: Path) -> None:
     """

@@ -8,7 +8,6 @@ import datetime
 from pathlib import Path
 from omegaconf import OmegaConf
 
-from boost_and_broadside.agents.world_model_agent import WorldModelAgent
 from boost_and_broadside.agents.mamba_bb import MambaBB, MambaConfig, InferenceParams
 from boost_and_broadside.train.data_loader import load_bc_data, create_unified_data_loaders
 from boost_and_broadside.utils.model_finder import find_most_recent_model

@@ -1,4 +1,3 @@
-import sys
 from pathlib import Path
 import datetime
 import torch
@@ -17,9 +16,7 @@ from boost_and_broadside.core.constants import (
     PowerActions, 
     TurnActions, 
     ShootActions,
-    MAX_SHIPS,
     STATE_DIM,
-    ACTION_DIM,
     TOTAL_ACTION_LOGITS
 )
 

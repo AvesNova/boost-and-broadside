@@ -2,7 +2,6 @@
 import pytest
 import torch
 import torch.nn as nn
-from omegaconf import OmegaConf
 
 from boost_and_broadside.agents.mamba_bb import MambaBB
 

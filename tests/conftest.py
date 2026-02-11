@@ -5,7 +5,7 @@ import pytest
 from omegaconf import OmegaConf
 import numpy as np
 import h5py
-from boost_and_broadside.core.constants import NORM_HEALTH, STATE_DIM
+from boost_and_broadside.core.constants import NORM_HEALTH
 
 # Ensure project root is in sys.path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))

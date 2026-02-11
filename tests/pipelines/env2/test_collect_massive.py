@@ -1,7 +1,6 @@
 
 import pytest
 import h5py
-from pathlib import Path
 
 from boost_and_broadside.env2.collect_massive import run_collection, CollectionArgs
 

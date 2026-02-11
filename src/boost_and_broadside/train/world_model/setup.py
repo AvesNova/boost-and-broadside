@@ -4,11 +4,11 @@ import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 import h5py
 import os
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 
 # New Model
 from boost_and_broadside.agents.mamba_bb import MambaBB
-from boost_and_broadside.train.data_loader import load_bc_data, create_continuous_data_loader
+from boost_and_broadside.train.data_loader import create_continuous_data_loader
 
 log = logging.getLogger(__name__)
 
