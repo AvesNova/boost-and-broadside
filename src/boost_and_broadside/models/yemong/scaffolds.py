@@ -314,6 +314,11 @@ class YemongSpatial(BaseScaffold):
                  weights_power=None, weights_turn=None, weights_shoot=None,
                  **kwargs):
         
+        # Expand loss_mask to match pred_actions shape (B, T, N)
+        if loss_mask.ndim == 2:
+            # loss_mask is (B, T), need to expand to (B, T, N)
+            loss_mask = loss_mask.unsqueeze(-1).expand_as(pred_actions[..., 0])
+        
         mask_flat = loss_mask.reshape(-1).float()
         denom = mask_flat.sum() + 1e-6
         
@@ -365,8 +370,9 @@ class YemongTemporal(BaseScaffold):
         # We assume input is (B, T, N, D) but we process as (B*N, T, D)
         if state.ndim == 4:
             B, T, N, D = state.shape
-            state = state.view(B*N, T, D)
-            prev_action = prev_action.view(B*N, T, -1)
+            # Use reshape instead of view to handle non-contiguous tensors
+            state = state.reshape(B*N, T, D)
+            prev_action = prev_action.reshape(B*N, T, -1)
             if seq_idx is not None:
                 seq_idx = seq_idx.unsqueeze(1).expand(B, N, T).reshape(B*N, T)
         
@@ -393,8 +399,9 @@ class YemongTemporal(BaseScaffold):
         if pred_states.ndim == 3 and target_states.ndim == 4:
             # Flatten target
             B, T, N, D = target_states.shape
-            target_states = target_states.view(B*N, T, D)
-            loss_mask = loss_mask.view(B*N, T)
+            target_states = target_states.reshape(B*N, T, D)
+            # loss_mask is (B, T), need to expand to (B, N, T) then reshape to (B*N, T)
+            loss_mask = loss_mask.unsqueeze(2).expand(B, T, N).permute(0, 2, 1).reshape(B*N, T)
             
         mask_flat = loss_mask.reshape(-1).float()
         denom = mask_flat.sum() + 1e-6
