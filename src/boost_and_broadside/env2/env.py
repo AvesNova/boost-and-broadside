@@ -27,7 +27,8 @@ class TensorEnv:
         config: ShipConfig, 
         device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
         max_ships: int = 8,
-        max_bullets: int = 20
+        max_bullets: int = 20,
+        max_episode_steps: int = 1000
     ):
         """
         Initializes the TensorEnv.
@@ -38,12 +39,14 @@ class TensorEnv:
             device: Computation device.
             max_ships: Maximum number of ships per matchup.
             max_bullets: Maximum bullet buffer size per ship.
+            max_episode_steps: Maximum steps before truncation.
         """
         self.num_envs = num_envs
         self.config = config
         self.device = device
         self.max_ships = max_ships
         self.max_bullets = max_bullets
+        self.max_episode_steps = max_episode_steps
         
         self.state: Optional[TensorState] = None
         
@@ -119,8 +122,12 @@ class TensorEnv:
         
         self.state.step_count += 1
         
-        # Truncation (not implemented)
-        truncated = torch.zeros_like(dones)
+        # Truncation
+        truncated = self.state.step_count >= self.max_episode_steps
+        
+        # Combine Dones
+        # If truncated, it counts as done for reset purposes
+        dones = torch.logical_or(dones, truncated)
         
         # Auto-Reset Logic
         if dones.any():

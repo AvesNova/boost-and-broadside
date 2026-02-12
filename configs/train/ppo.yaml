@@ -3,6 +3,7 @@ train:
   ppo:
     num_envs: 32         # High parallelism for GPU efficiency
     num_steps: 128       # Rollout length per environment
+    max_episode_steps: 512 # Max steps before truncation
     total_timesteps: 10000000
     learning_rate: 2.5e-4
     gamma: 0.99

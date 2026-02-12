@@ -5,6 +5,7 @@ import random
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions.categorical import Categorical
 from torch.utils.tensorboard import SummaryWriter
@@ -207,7 +208,7 @@ class PPOTrainer:
                 
                 iterator = self.buffer.get_minibatch_iterator(self.cfg.train.ppo.num_minibatches)
                 
-                for mb_obs, mb_actions, mb_logprobs, mb_advantages, mb_returns, mb_values, mb_initial_state in iterator:
+                for mb_obs, mb_next_obs, mb_actions, mb_logprobs, mb_advantages, mb_returns, mb_values, mb_dones, mb_rewards, mb_initial_state in iterator:
                     
                     # mb_obs is (T, B_chunk, N, F).
                     # We need (B_chunk, T, N, F)
@@ -233,10 +234,23 @@ class PPOTrainer:
                     mb_advantages = mb_advantages.permute(1, 0, 2).contiguous()
                     mb_returns = mb_returns.permute(1, 0, 2).contiguous()
                     mb_values = mb_values.permute(1, 0, 2).contiguous()
+                    
+                    mb_rewards_perm = mb_rewards.permute(1, 0, 2).contiguous() # (B, T, N)
+                    mb_next_obs_perm = mb_next_obs['state'].permute(1, 0, 2, 3).contiguous() # (B, T, N, F)
+                    mb_dones_perm = mb_dones.permute(1, 0).contiguous().long() # (B, T)
+
+                    # Construct seq_idx for Mamba2
+                    # We want seq_idx to change at step t if t was a reset (start of new episode).
+                    # mb_dones[t-1]=1 => step t is new episode => seq_idx[t] != seq_idx[t-1]
+                    # So we shift dones right by 1.
+                    dones_shifted = torch.roll(mb_dones_perm, 1, dims=1)
+                    dones_shifted[:, 0] = 0 # First step state is handled by passing 'flat_mamba_state'
+                    seq_idx = torch.cumsum(dones_shifted, dim=1).int()
 
                     # PARALLEL SCAN INFERENCE (entire sequence)
-                    _, new_logprob, entropy, new_value, _ = self.agent.get_action_and_value(
-                        obs_input, flat_mamba_state, action=mb_actions_perm
+                    # Returns: action(None), logprob, entropy, value, mamba_state(None), next_state_pred, reward_pred
+                    _, new_logprob, entropy, new_value, _, next_state_pred, reward_pred = self.agent.get_action_and_value(
+                        obs_input, flat_mamba_state, action=mb_actions_perm, seq_idx=seq_idx
                     )
                     
                     logratio = new_logprob - mb_logprobs
@@ -266,7 +280,38 @@ class PPOTrainer:
                     # Entropy Loss
                     entropy_loss = entropy.mean()
                     
-                    loss = pg_loss - self.cfg.train.ppo.ent_coef * entropy_loss + v_loss * self.cfg.train.ppo.vf_coef
+                    # --- Auxiliary Losses ---
+                    # 1. State MSE
+                    # Mask last step because next_obs is rolled
+                    # We can use mb_dones to mask end of episodes, but simpler to just mask T-1
+                    B, T, N, F_dim = mb_next_obs_perm.shape
+                    
+                    # Mask (B, T, N)
+                    # We want to ignore the LAST step of the sequence because it wrapped around
+                    valid_mask = torch.ones((B, T), device=self.device)
+                    valid_mask[:, -1] = 0.0 # Ignore last step
+                    valid_mask = valid_mask.unsqueeze(-1).expand(B, T, N)
+                    
+                    # 2. Reward MSE
+                    # reward_pred is (B, T, N, 1). mb_rewards_perm is (B, T, N).
+                    # We should squeeze or expand. `reward_head` outputs (B, T, N, 1) or similar.
+                    # Yemong update returns (BN, T, 1) usually.
+                    
+                    # Reshape predictions
+                    next_state_pred = next_state_pred.view(B, T, N, -1)
+                    reward_pred = reward_pred.view(B, T, N) 
+                    
+                    # State Loss with Mask
+                    s_loss = (F.mse_loss(next_state_pred, mb_next_obs_perm, reduction='none') * valid_mask.unsqueeze(-1)).sum() / (valid_mask.sum() * F_dim + 1e-6)
+
+                    # Reward Loss WITHOUT Mask
+                    # Predicting reward for step T is valid even if T is terminal.
+                    # Only next_state_pred is invalid at T.
+                    r_loss = F.mse_loss(reward_pred, mb_rewards_perm)
+                    
+                    # Total Loss
+                    # Coefficients 0.5 for now
+                    loss = pg_loss - self.cfg.train.ppo.ent_coef * entropy_loss + v_loss * self.cfg.train.ppo.vf_coef + 0.5 * s_loss + 0.5 * r_loss
                     
                     self.optimizer.zero_grad()
                     loss.backward()
@@ -284,20 +329,29 @@ class PPOTrainer:
             sps = int(global_step / (time.time() - start_time))
             
             if iteration % self.cfg.wandb.log_interval == 0:
-                 print(f"Iteration {iteration}: SPS={sps} P_Loss={pg_loss.item():.3f} V_Loss={v_loss.item():.3f} Exp_Var={explained_var:.3f}")
-                 self.writer.add_scalar("charts/SPS", sps, global_step)
-                 self.writer.add_scalar("losses/policy_loss", pg_loss.item(), global_step)
-                 self.writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
-                 self.writer.add_scalar("losses/explained_variance", explained_var, global_step)
-                 
-                 if self.cfg.wandb.enabled:
-                     wandb.log({
-                         "charts/SPS": sps,
-                         "losses/policy_loss": pg_loss.item(),
-                         "losses/value_loss": v_loss.item(),
-                         "losses/explained_variance": explained_var,
-                         "losses/old_approx_kl": old_approx_kl.item(),
-                         "losses/approx_kl": approx_kl.item(),
-                         "losses/clipfrac": np.mean(clipfracs),
-                         "global_step": global_step
-                     })
+                # Record losses
+                self.writer.add_scalar("losses/policy_loss", pg_loss.item(), global_step)
+                self.writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
+                self.writer.add_scalar("losses/entropy", entropy_loss.item(), global_step)
+                self.writer.add_scalar("losses/old_approx_kl", old_approx_kl, global_step)
+                self.writer.add_scalar("losses/approx_kl", approx_kl.item(), global_step)
+                self.writer.add_scalar("losses/clipfrac", np.mean(clipfracs), global_step)
+                self.writer.add_scalar("losses/explained_variance", explained_var, global_step)
+                self.writer.add_scalar("charts/SPS", sps, global_step)
+                self.writer.add_scalar("losses/state_loss", s_loss.item(), global_step)
+                self.writer.add_scalar("losses/reward_loss", r_loss.item(), global_step)
+                
+                print(f"Iteration {iteration}: SPS={sps} P_Loss={pg_loss.item():.3f} V_Loss={v_loss.item():.3f} S_Loss={s_loss.item():.3f} R_Loss={r_loss.item():.3f} Exp_Var={explained_var:.3f}")
+
+                if self.cfg.wandb.enabled:
+                    wandb.log({
+                        "losses/policy_loss": pg_loss.item(),
+                        "losses/value_loss": v_loss.item(),
+                        "losses/entropy": entropy_loss.item(),
+                        "losses/approx_kl": approx_kl.item(),
+                        "losses/explained_variance": explained_var,
+                        "losses/state_loss": s_loss.item(),
+                        "losses/reward_loss": r_loss.item(),
+                        "charts/SPS": sps,
+                        "global_step": global_step
+                    })

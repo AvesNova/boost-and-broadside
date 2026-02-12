@@ -494,12 +494,21 @@ class YemongDynamics(BaseScaffold):
             self.blocks.append(block)
             
         # Heads on Z
-        self.actor_head = ActorHead(d_model, config.get("action_dim", TOTAL_ACTION_LOGITS))
+        self.actor_head = nn.Linear(d_model, 3 + 7 + 2) # [Power(3), Turn(7), Shoot(2)]
         
-        # Value w/ Team Pooling
-        self.team_token_value = nn.Parameter(torch.randn(1, 1, d_model) * 0.02)
-        self.pooler_value = nn.MultiheadAttention(d_model, num_heads=4, batch_first=True)
-        self.norm_value = RMSNorm(d_model)
+        # Value Head (Team Level)
+        self.team_token_value = nn.Parameter(torch.randn(1, 1, d_model))
+        self.norm_value = nn.LayerNorm(d_model)
+        self.pooler_value = nn.MultiheadAttention(d_model, 4, batch_first=True)
+        self.value_head = nn.Linear(d_model, 1)
+
+        # Dynamics Heads (Auxiliary)
+        self.next_state_head = nn.Linear(d_model, 5) # [Health, Power, Vx, Vy, AngVel]
+        self.reward_head = nn.Linear(d_model, 1)
+
+        # Dynamics Heads (Auxiliary)
+        self.next_state_head = nn.Linear(d_model, 5) # [Health, Power, Vx, Vy, AngVel]
+        self.reward_head = nn.Linear(d_model, 1)
         self.value_head = nn.Sequential(
             nn.Linear(d_model, d_model),
             nn.SiLU(),
@@ -746,12 +755,13 @@ class YemongDynamics(BaseScaffold):
             cache[i] = block['mamba'].allocate_inference_cache(batch_size, max_seqlen, dtype=dtype, **kwargs)
         return cache
 
-    def get_action_and_value(self, x, mamba_state=None, action=None):
+    def get_action_and_value(self, x, mamba_state=None, action=None, seq_idx=None):
         """
         RL Interface for PPO.
         x: Dict of tensors (state, prev_action, pos, vel, team_ids, alive, etc.)
         mamba_state: Dict of states {layer_idx: (conv, ssm)}
         action: Optional action sequences for update phase.
+        seq_idx: Optional sequence indices for Mamba2 (B, T)
         """
         
         # Unpack Obs
@@ -866,6 +876,12 @@ class YemongDynamics(BaseScaffold):
 
         else: # PARALLEL MODE (Update)
             
+            # Prepare seq_idx for Mamba (B, T) -> (BN, T)
+            if seq_idx is not None:
+                mamba_seq_idx = seq_idx.unsqueeze(1).expand(-1, num_ships, -1).reshape(batch_size * num_ships, seq_len)
+            else:
+                mamba_seq_idx = None
+            
             # Loop blocks
             for i, block in enumerate(self.blocks):
                 normed = block['norm1'](x_mamba)
@@ -879,7 +895,7 @@ class YemongDynamics(BaseScaffold):
                 else:
                      ip = None
 
-                m_out = block['mamba'](normed, inference_params=ip)
+                m_out = block['mamba'](normed, inference_params=ip, seq_idx=mamba_seq_idx)
                 x_mamba = x_mamba + m_out
 
                 # Spatial
@@ -921,6 +937,21 @@ class YemongDynamics(BaseScaffold):
             new_logprob = probs_p.log_prob(a_p) + probs_t.log_prob(a_t) + probs_s.log_prob(a_s)
             entropy = probs_p.entropy() + probs_t.entropy() + probs_s.entropy()
             
-            return None, new_logprob, entropy, value_pred, None
+            # --- DYNAMICS PREDICTION (Auxiliary) ---
+            # 1. Embed Action (B, T, N, D)
+            a_curr_emb = self.action_encoder_dynamics(action.long())
+            
+            # 2. Fusion (Z + Action) -> Dynamics Content
+            # Z is (B, T, N, D)
+            x_dyn = self.dynamics_fusion(torch.cat([Z, a_curr_emb], dim=-1))
+            
+            # 3. Process
+            Z_prime = self.dynamics_ffn(x_dyn) + x_dyn
+            
+            # 4. Heads
+            next_state_pred = self.next_state_head(Z_prime)
+            reward_pred = self.reward_head(Z_prime)
+            
+            return None, new_logprob, entropy, value_pred, None, next_state_pred, reward_pred
 
 

@@ -41,7 +41,8 @@ def train_rl(cfg: DictConfig) -> None:
         config=ship_config,
         device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
         max_ships=max_ships,
-        max_bullets=env_cfg.get("max_bullets", 20)
+        max_bullets=env_cfg.get("max_bullets", 20),
+        max_episode_steps=cfg.train.ppo.get("max_episode_steps", 1024)
     )
     
     # Wrap for GPU-native RL Interface

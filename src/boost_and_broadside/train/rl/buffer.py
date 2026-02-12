@@ -136,11 +136,62 @@ class GPUBuffer:
             for key, val in self.obs.items():
                 mb_obs[key] = val[:, mb_env_inds]
             
+            # Next Obs (Targets)
+            # Obs buffer is usually (T, B, ...).
+            # We want obs[t+1] for each t.
+            # But standard buffer only stores obs[t].
+            # PPO usually discards the very last obs of rollout unless we store T+1 obs.
+            # However, for efficiency, people often just shift:
+            # target[t] = obs[t+1].
+            # We need to handle the boundary.
+            # Wait, `self.obs` has shape `num_steps`.
+            # Where is the "next" observation?
+            # In PPO, we usually overwrite obs.
+            # If we want next_obs targets, we need to store them OR shift.
+            # But the buffer is circular or fixed length.
+            # Let's check `add` method. It stores `obs` (current).
+            # So `self.obs[t]` is state at time t.
+            # We want `self.obs[t+1]` as target for state at t.
+            # But we only have `num_steps` storage.
+            # We need to peek at the NEXT batch or use the `next_obs` from the last step of the rollout?
+            # Actually, CleanerRL stores `next_obs` separately or uses `obs` with offset.
+            # Since `self.obs` is (T, B, ...), and we yield (T, B, ...), getting `obs[t+1]` is tricky inside the batch because T is the full sequence.
+            # Solution: We can create `mb_next_obs` by rolling `mb_obs` by -1 and filling the last step with the bootstrapping `next_obs` if we had saved it?
+            # But we don't save the final `next_obs` of the rollout in the buffer class persistently.
+            # Alternative: Just use `mb_obs` as target but shifted:
+            # target[t] = mb_obs[t+1]
+            # target[T-1] = ??? (Need the observation AFTER the rollout).
+            # The bootstrap phase has `next_obs`. We should modify `buffer.compute_gae` or `add` to optionally store `next_obs`?
+            # Or pass `last_next_obs` to `get_minibatch_iterator`?
+            
+            # For now, let's implement a "Same-Batch Shift" with a zero-pad/duplicate for the last step, or simpler:
+            # We can't perfectly predict T+1 without storage.
+            # Let's Modify `add` to store `next_obs`? Too expensive?
+            # Actually, `self.obs` is `num_steps`.
+            # If we want State Loss, we really should be storing (obs, next_obs) pairs or (obs sequence of length T+1).
+            # Let's use `mb_obs` rolled by 1 as an approximation, but that's wrong (first step predicts second).
+            # mb_next_obs[t] = mb_obs[t+1].
+            # For the last step `mb_next_obs[T-1]`, we don't have the data in `mb_obs`.
+            # Valid approach: Mask the loss for the last step?
+            # Or better: We can modify `add` to overwrite `obs` at `step+1`? No `obs` is inputs.
+            # Let's assume we Mask the last step for now.
+            
+            mb_next_obs = {}
+            for key, val in self.obs.items():
+                 # Shift by 1 time step
+                 shifted = torch.roll(val[:, mb_env_inds], shifts=-1, dims=0)
+                 # The last element is now the first element (wrapped), which is WRONG.
+                 # We must mask it in the loss or fill it if possible.
+                 # Let's rely on masking in the Trainer (set loss_mask[T-1] = 0).
+                 mb_next_obs[key] = shifted
+
             mb_actions = self.actions[:, mb_env_inds]
             mb_logprobs = self.logprobs[:, mb_env_inds]
             mb_advantages = self.advantages[:, mb_env_inds]
             mb_returns = self.returns[:, mb_env_inds]
             mb_values = self.values[:, mb_env_inds]
+            mb_dones = self.dones[:, mb_env_inds]
+            mb_rewards = self.rewards[:, mb_env_inds]
             
             # Initial states for these envs
             mb_mamba_state = {}
@@ -150,6 +201,6 @@ class GPUBuffer:
                 mb_mamba_state[layer_idx] = (conv, ssm)
             
             yield (
-                mb_obs, mb_actions, mb_logprobs, mb_advantages, mb_returns, mb_values,
+                mb_obs, mb_next_obs, mb_actions, mb_logprobs, mb_advantages, mb_returns, mb_values, mb_dones, mb_rewards,
                 mb_mamba_state
             )
