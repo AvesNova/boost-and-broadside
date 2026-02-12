@@ -141,11 +141,22 @@ class YemongFull(BaseScaffold):
             m_out = block['mamba'](normed, seq_idx=mamba_seq_idx, inference_params=inference_params)
             x_mamba = x_mamba + m_out
             
+            # Wrapper for Relational Attention taking (Batch*Ships, Time, Dim)
+            # We perform the layout change inside the forward pass or here cleanly
+            # Current Optimization: We inline the permute to keep implicit B*N structure
+            # But wait, Mamba is (BN, T, D). Attention needs (B, T, N, D).
+            # Let's perform the permute explicitly but efficiently.
+            
+            # (BN, T, D) -> (B, N, T, D) -> (B, T, N, D)
             x_spatial = x_mamba.view(batch_size, num_ships, seq_len, -1).permute(0, 2, 1, 3)
-            # rel_bias shape: (B, T, N, N, D) because trunk_out is (B, T, N, N, 64)
+            
+            # Calculate Attention
             rel_bias = self.relational_encoder.adapters[i+1](trunk_out)
-            x_spatial = x_spatial + block['attn'](block['norm2'](x_spatial), rel_bias, mask=alive)
-            x_mamba = x_spatial.permute(0, 2, 1, 3).reshape(batch_size * num_ships, seq_len, -1)
+            attn_out = block['attn'](block['norm2'](x_spatial), rel_bias, mask=alive)
+            
+            # (B, T, N, D) -> (B, N, T, D) -> (BN, T, D)
+            # Add Residual
+            x_mamba = x_mamba + attn_out.permute(0, 2, 1, 3).reshape(batch_size * num_ships, seq_len, -1)
 
         x_final = x_mamba.view(batch_size, num_ships, seq_len, -1).permute(0, 2, 1, 3)
         state_pred = self.world_head(x_final)
@@ -574,10 +585,14 @@ class YemongDynamics(BaseScaffold):
             m_out = block['mamba'](normed, seq_idx=mamba_seq_idx, inference_params=inference_params)
             x_mamba = x_mamba + m_out
             
+            # (BN, T, D) -> (B, T, N, D)
             x_spatial = x_mamba.view(batch_size, num_ships, seq_len, -1).permute(0, 2, 1, 3)
+            
             rel_bias = self.relational_encoder.adapters[i+1](trunk_out)
-            x_spatial = x_spatial + block['attn'](block['norm2'](x_spatial), rel_bias, mask=alive)
-            x_mamba = x_spatial.permute(0, 2, 1, 3).reshape(batch_size * num_ships, seq_len, -1)
+            attn_out = block['attn'](block['norm2'](x_spatial), rel_bias, mask=alive)
+            
+            # (B, T, N, D) -> (BN, T, D)
+            x_mamba = x_mamba + attn_out.permute(0, 2, 1, 3).reshape(batch_size * num_ships, seq_len, -1)
             
         Z = x_mamba.view(batch_size, num_ships, seq_len, -1).permute(0, 2, 1, 3) # (B, T, N, D)
         
