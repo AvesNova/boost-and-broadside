@@ -97,7 +97,7 @@ class YemongFull(BaseScaffold):
              })
              
     def forward(self, state, prev_action, pos, vel, att=None, team_ids=None, seq_idx=None, alive=None, reset_mask=None,
-                inference_params=None, actor_cache=None, world_size=(1024.0, 1024.0)):
+                inference_params=None, actor_cache=None, world_size=(1024.0, 1024.0), **kwargs):
         
         batch_size, seq_len, num_ships, _ = state.shape
         d_model = self.config.d_model
