@@ -78,6 +78,9 @@ class Trainer:
         
         # Log scaling effect
         log.info("Action Loss Scaling: Power=1/log(3), Turn=1/log(7), Shoot=1/log(2)")
+        
+        # Metrics
+        self.avg_tps = 0.0
 
     def _get_current_params(self, step):
         """Calculate current values for scheduled parameters."""
@@ -314,6 +317,11 @@ class Trainer:
         # Backward
         step_loss = loss / self.acc_steps
         self.scaler.scale(step_loss).backward()
+        
+        # Tokens (Batch * (SeqLen - 1))
+        # input_states is [B, T-1, ...]
+        B, T_minus_1 = input_states.shape[:2]
+        num_tokens = B * T_minus_1
 
         # Detach for logging
         return {
@@ -321,7 +329,8 @@ class Trainer:
             "state_loss": state_loss.detach(),
             "action_loss": action_loss.detach(),
             "relational_loss": relational_loss.detach(),
-            "metrics": metrics
+            "metrics": metrics,
+            "num_tokens": num_tokens
         }
 
     def _init_accumulators(self):
@@ -335,7 +344,7 @@ class Trainer:
            "total_reward_loss": torch.tensor(0.0, device=self.device),
            # Scalars/Values for step/epoch logging
            "acc_loss": 0.0, "acc_state": 0.0, "acc_action": 0.0, "acc_rel": 0.0,
-           "acc_time": 0.0,
+           "acc_time": 0.0, "acc_tokens": 0.0,
            "acc_errors": {} 
         }
         return acc
@@ -355,6 +364,7 @@ class Trainer:
         acc["acc_action"] += metrics["action_loss"]
         acc["acc_rel"] += metrics["relational_loss"]
         acc["acc_time"] += metrics["time"]
+        acc["acc_tokens"] += metrics["num_tokens"]
         
         m = metrics["metrics"]
         for k, v in m.items():
@@ -367,6 +377,7 @@ class Trainer:
         acc["acc_action"] = 0.0
         acc["acc_rel"] = 0.0
         acc["acc_time"] = 0.0
+        acc["acc_tokens"] = 0.0
         acc["acc_errors"] = {}
 
     def _optimize_step(self, acc, pbar, is_range_test, epoch):
@@ -385,6 +396,26 @@ class Trainer:
         current_lr = self.optimizer.param_groups[0]['lr']
         
         # Prepare Step Metrics
+        
+        # Calculate Tokens Per Second (TPS)
+        step_time = acc["acc_time"] # Pure compute time for this step (accumulated across micro-steps)
+        total_tokens = acc["acc_tokens"]
+        
+        # Instantaneous TPS (based on compute time)
+        # We use acc_time which is pure compute, but macro_batch time includes dataloading.
+        # Ideally user wants " throughput", so macro time is probably better for "system throughput",
+        # but "model throughput" is step_time.
+        # Let's use the macro time (since last macro step) for a realistic "training speed".
+        
+        macro_time = time.time() - self.t_last_macro
+        current_tps = total_tokens / (macro_time + 1e-6)
+        
+        # Moving Average
+        if self.avg_tps == 0.0:
+            self.avg_tps = current_tps
+        else:
+            self.avg_tps = 0.9 * self.avg_tps + 0.1 * current_tps
+            
         metrics = {
             "step": self.global_step,
             "epoch": epoch + 1,
@@ -393,12 +424,13 @@ class Trainer:
             "state_loss": acc["acc_state"] / self.acc_steps,
             "action_loss": acc["acc_action"] / self.acc_steps,
             "relational_loss": acc["acc_rel"] / self.acc_steps,
+            "perf/tokens_per_sec": current_tps,
+            "perf/tokens_per_sec_avg": self.avg_tps,
             "param/entropy_lambda": self._get_current_params(self.global_step)["lambda_entropy"],
             "param/focal_gamma": self._get_current_params(self.global_step)["focal_gamma"],
             "param/min_skill": self._get_current_params(self.global_step)["min_skill"],
             "time/micro_batch": acc["acc_time"] / self.acc_steps, # Avg pure compute time per micro step
-            "time/macro_batch": time.time() - self.t_last_macro,  # Wall time for full update (incl data load)
-            "time/macro_batch": time.time() - self.t_last_macro,  # Wall time for full update (incl data load)
+            "time/macro_batch": macro_time,  # Wall time for full update (incl data load)
             "grad_norm": total_norm.detach()
         }
         
