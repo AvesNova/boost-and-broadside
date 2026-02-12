@@ -4,6 +4,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import hydra
 from omegaconf import DictConfig, OmegaConf
+from types import SimpleNamespace
+from torch.distributions.categorical import Categorical
+from torch.distributions.normal import Normal
 
 from boost_and_broadside.models.components.layers.utils import RMSNorm, MambaBlock
 from boost_and_broadside.models.components.encoders import StateEncoder, ActionEncoder, RelationalEncoder
@@ -42,7 +45,7 @@ class YemongFull(BaseScaffold):
         )
         
         self.special_embeddings = nn.ModuleDict({
-            'ship_id': nn.Embedding(8, d_model),
+            'ship_id': nn.Embedding(config.get("max_ships", 8), d_model),
             'team_id': nn.Embedding(2, d_model)
         })
         
@@ -257,7 +260,7 @@ class YemongSpatial(BaseScaffold):
         self.relational_encoder = RelationalEncoder(d_model, config.n_layers) # n_layers here might range over stack
         
         self.special_embeddings = nn.ModuleDict({
-            'ship_id': nn.Embedding(8, d_model),
+            'ship_id': nn.Embedding(config.get("max_ships", 8), d_model),
             'team_id': nn.Embedding(2, d_model)
         })
         
@@ -469,7 +472,7 @@ class YemongDynamics(BaseScaffold):
         )
         
         self.special_embeddings = nn.ModuleDict({
-            'ship_id': nn.Embedding(8, d_model),
+            'ship_id': nn.Embedding(config.get("max_ships", 8), d_model),
             'team_id': nn.Embedding(2, d_model)
         })
         
@@ -734,5 +737,190 @@ class YemongDynamics(BaseScaffold):
                    "loss_sub/value_mse": v_loss.item(), 
                    "loss_sub/reward_mse": r_loss.item()}
         return total_loss, s_loss, a_loss, v_loss + r_loss, metrics
+
+    def allocate_inference_cache(self, batch_size, max_seqlen, dtype=None, **kwargs):
+        """Allocates Mamba state for all layers."""
+        cache = {}
+        for i, block in enumerate(self.blocks):
+            # MambaBlock.allocate_inference_cache returns (conv_state, ssm_state)
+            cache[i] = block['mamba'].allocate_inference_cache(batch_size, max_seqlen, dtype=dtype, **kwargs)
+        return cache
+
+    def get_action_and_value(self, x, mamba_state=None, action=None):
+        """
+        RL Interface for PPO.
+        x: Dict of tensors (state, prev_action, pos, vel, team_ids, alive, etc.)
+        mamba_state: Dict of states {layer_idx: (conv, ssm)}
+        action: Optional action sequences for update phase.
+        """
+        
+        # Unpack Obs
+        state = x['state']
+        pos = x['pos']
+        vel = x['vel']
+        prev_action = x['prev_action']
+        alive = x.get('alive', None)
+        team_ids = x.get('team_ids', None)
+        
+        batch_size, seq_len, num_ships, _ = state.shape
+        d_model = self.config.d_model
+        
+        # 1. Encode Inputs (Common)
+        if alive is None: 
+            alive = state[..., StateFeature.HEALTH] > 0
+        else:
+            alive = alive.bool()
+
+        state = torch.where(alive.unsqueeze(-1), state.to(self.special_params['dead'].dtype), self.special_params['dead'].view(1, 1, 1, -1))
+        
+        w_dtype = self.state_encoder.net[0].weight.dtype
+        s_emb = self.state_encoder(state.to(w_dtype))
+        
+        if team_ids is not None:
+             t_emb = self.special_embeddings['team_id'](team_ids.long())
+             s_emb = s_emb + (t_emb if t_emb.ndim == 4 else t_emb.unsqueeze(1))
+        
+        ship_ids = torch.arange(num_ships, device=state.device).view(1, 1, num_ships).expand(batch_size, seq_len, -1)
+        s_emb = s_emb + self.special_embeddings['ship_id'](ship_ids)
+        
+        trunk_out, _ = self.relational_encoder(pos, vel, att=x.get('att', None), world_size=(1024.0, 1024.0))
+        
+        a_prev_emb = self.action_encoder_input(prev_action)
+        x_in = self.fusion(torch.cat([s_emb, a_prev_emb], dim=-1))
+        
+        # 2. Backbone
+        # Reshape for Mamba: (BN, T, D)
+        x_mamba = x_in.permute(0, 2, 1, 3).reshape(batch_size * num_ships, seq_len, d_model)
+        
+        if action is None: # RECURRENT MODE (Step-by-Step)
+            # We assume seq_len == 1 for rollout step
+            # Iterate layers using .step()
+            
+            new_mamba_state = {}
+            
+            for i, block in enumerate(self.blocks):
+                normed = block['norm1'](x_mamba) # (BN, 1, D)
+                
+                # Mamba Step
+                layer_state = mamba_state[i]
+                
+                # Check for step method
+                if hasattr(block['mamba'], 'step'):
+                     m_out, new_conv, new_ssm = block['mamba'].step(normed, layer_state[0], layer_state[1])
+                     new_mamba_state[i] = (new_conv, new_ssm)
+                else:
+                     # Fallback if specific wrapper
+                     raise NotImplementedError("MambaBlock .step() not found")
+
+                x_mamba = x_mamba + m_out
+                
+                # Spatial Mixing
+                x_spatial = x_mamba.view(batch_size, num_ships, seq_len, -1).permute(0, 2, 1, 3) # (B, 1, N, D)
+                rel_bias = self.relational_encoder.adapters[i+1](trunk_out)
+                attn_out = block['attn'](block['norm2'](x_spatial), rel_bias, mask=alive)
+                x_mamba = x_mamba + attn_out.permute(0, 2, 1, 3).reshape(batch_size * num_ships, seq_len, -1)
+            
+            Z = x_mamba.view(batch_size, num_ships, seq_len, -1).permute(0, 2, 1, 3) 
+            
+            # Heads
+            action_logits = self.actor_head(Z)
+            
+            # Value
+            Batch_Time = batch_size * seq_len
+            Z_flat = Z.reshape(Batch_Time, num_ships, d_model)
+            if alive is not None:
+                 key_padding_mask = ~alive.reshape(Batch_Time, num_ships)
+            else:
+                 key_padding_mask = None
+                 
+            q_val = self.team_token_value.expand(Batch_Time, -1, -1)
+            Z_norm_val = self.norm_value(Z_flat)
+            team_vec_val, _ = self.pooler_value(q_val, Z_norm_val, Z_norm_val, key_padding_mask=key_padding_mask)
+            value_pred = self.value_head(team_vec_val.squeeze(1)).reshape(batch_size, seq_len, 1)
+
+            # Sampling Action
+            l_p, l_t, l_s = action_logits.split([3, 7, 2], dim=-1)
+            
+            # Multi-Categorical Sampling
+            probs_p = Categorical(logits=l_p)
+            probs_t = Categorical(logits=l_t)
+            probs_s = Categorical(logits=l_s)
+            
+            action_p = probs_p.sample()
+            action_t = probs_t.sample()
+            action_s = probs_s.sample()
+            
+            action_sampled = torch.stack([action_p, action_t, action_s], dim=-1) # (B, 1, N, 3)
+            
+            logprob_p = probs_p.log_prob(action_p)
+            logprob_t = probs_t.log_prob(action_t)
+            logprob_s = probs_s.log_prob(action_s)
+            
+            # Sum logprobs across action components
+            logprob = logprob_p + logprob_t + logprob_s 
+            
+            # Sum entropy
+            entropy = probs_p.entropy() + probs_t.entropy() + probs_s.entropy()
+            
+            return action_sampled, logprob, entropy, value_pred, new_mamba_state
+
+        else: # PARALLEL MODE (Update)
+            
+            # Loop blocks
+            for i, block in enumerate(self.blocks):
+                normed = block['norm1'](x_mamba)
+                
+                # Setup inference params for this block
+                if mamba_state is not None:
+                     ip = SimpleNamespace(
+                         key_value_memory_dict = {i: mamba_state[i]},
+                         seqlen_offset = 0 
+                     )
+                else:
+                     ip = None
+
+                m_out = block['mamba'](normed, inference_params=ip)
+                x_mamba = x_mamba + m_out
+
+                # Spatial
+                x_spatial = x_mamba.view(batch_size, num_ships, seq_len, -1).permute(0, 2, 1, 3)
+                rel_bias = self.relational_encoder.adapters[i+1](trunk_out)
+                attn_out = block['attn'](block['norm2'](x_spatial), rel_bias, mask=alive)
+                x_mamba = x_mamba + attn_out.permute(0, 2, 1, 3).reshape(batch_size * num_ships, seq_len, -1)
+                
+            Z = x_mamba.view(batch_size, num_ships, seq_len, -1).permute(0, 2, 1, 3) 
+            
+            # Heads
+            action_logits = self.actor_head(Z)
+            
+            # Value
+            Batch_Time = batch_size * seq_len
+            Z_flat = Z.reshape(Batch_Time, num_ships, d_model)
+            if alive is not None:
+                 key_padding_mask = ~alive.reshape(Batch_Time, num_ships)
+            else:
+                 key_padding_mask = None
+            
+            q_val = self.team_token_value.expand(Batch_Time, -1, -1)
+            Z_norm_val = self.norm_value(Z_flat)
+            team_vec_val, _ = self.pooler_value(q_val, Z_norm_val, Z_norm_val, key_padding_mask=key_padding_mask)
+            value_pred = self.value_head(team_vec_val.squeeze(1)).reshape(batch_size, seq_len, 1)
+
+            # Evaluation for Loss
+            # action is provided (B, T, N, 3)
+            l_p, l_t, l_s = action_logits.split([3, 7, 2], dim=-1)
+            
+            probs_p = Categorical(logits=l_p)
+            probs_t = Categorical(logits=l_t)
+            probs_s = Categorical(logits=l_s)
+            
+            a_p = action[..., 0]
+            a_t = action[..., 1]
+            a_s = action[..., 2]
+            
+            new_logprob = probs_p.log_prob(a_p) + probs_t.log_prob(a_t) + probs_s.log_prob(a_s)
+            entropy = probs_p.entropy() + probs_t.entropy() + probs_s.entropy()
+            
+            return None, new_logprob, entropy, value_pred, None
 
 

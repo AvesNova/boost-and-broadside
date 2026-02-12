@@ -9,6 +9,7 @@ data/
 outputs/
 *.egg-info/
 /models/
+/runs/
 .agent/
 wandb/
 .venv/

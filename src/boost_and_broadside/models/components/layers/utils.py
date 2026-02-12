@@ -42,3 +42,13 @@ class MambaBlock(nn.Module):
              return self.mamba(x, seq_idx=seq_idx, inference_params=inference_params)
          except Exception:
              return self.mamba(x)
+
+    def step(self, x, conv_state, ssm_state):
+        if hasattr(self.mamba, 'step'):
+            return self.mamba.step(x, conv_state, ssm_state)
+        return x, conv_state, ssm_state
+
+    def allocate_inference_cache(self, batch_size, max_seqlen, dtype=None, **kwargs):
+        if hasattr(self.mamba, 'allocate_inference_cache'):
+             return self.mamba.allocate_inference_cache(batch_size, max_seqlen, dtype=dtype, **kwargs)
+        return (None, None)

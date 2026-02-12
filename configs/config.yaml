@@ -1,6 +1,7 @@
 defaults:
   - _self_
   - model: yemong_full
+  - train: ppo
 
 mode: play
 team1: scripted

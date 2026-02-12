@@ -1,0 +1,40 @@
+# @package _global_
+train:
+  ppo:
+    num_envs: 32         # High parallelism for GPU efficiency
+    num_steps: 128       # Rollout length per environment
+    total_timesteps: 10000000
+    learning_rate: 2.5e-4
+    gamma: 0.99
+    gae_lambda: 0.95
+    num_minibatches: 4   # Dividing num_envs * num_steps into minibatches
+    update_epochs: 4     # Number of passes over the buffer
+    norm_adv: true       # Normalize advantages
+    clip_coef: 0.2       # PPO clipping range
+    clip_vloss: true     # Clip value loss
+    ent_coef: 0.01       # Entropy coefficient for exploration
+    vf_coef: 0.5         # Value function loss coefficient
+    max_grad_norm: 0.5   # Gradient clipping
+    target_kl: 0.015     # Early stopping based on KL divergence
+    anneal_lr: true      # Linear LR decay
+    
+    # Checkpointing
+    save_interval: 100   # Save every N updates
+
+wandb:
+  enabled: true
+  project: "avesnova-rl"
+  entity: null
+  log_interval: 1
+
+project_name: "boost-and-broadside"
+mode: "train_rl"
+
+model:
+  # Defaults for Yemong (should match model config)
+  max_ships: 16
+  token_dim: 128 # Depends on Yemong input dimension
+  dim: 512       # d_model
+  d_state: 64
+  d_conv: 4
+  expand: 2
