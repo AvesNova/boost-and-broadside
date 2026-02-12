@@ -33,7 +33,7 @@ class ValueHead(nn.Module):
     """
     def __init__(self, d_model: int):
         super().__init__()
-        # We reuse the TeamEvaluator logic/structure as it was in MambaBB
+        # We reuse the TeamEvaluator logic/structure as it was in the base architecture
         # But we decouple it into a head here if possible, or we keep it as a component
         # For now, let's implement the head logic directly
         self.net = nn.Sequential(

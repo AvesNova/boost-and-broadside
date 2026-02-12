@@ -56,7 +56,7 @@ class YemongFull(BaseScaffold):
         for i in range(config.n_layers):
             # We instantiate layers from config if provided, else default
             # For strict plug-and-play we would use hydra.utils.instantiate inside a loop
-            # But here we hardcode defaults for the "Full" version matching MambaBB
+            # But here we hardcode defaults for the "Full" version matching the original architecture
             # We can allow overrides via config later
             
             block = nn.ModuleDict({

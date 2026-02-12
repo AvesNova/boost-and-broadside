@@ -51,8 +51,15 @@ def _load_agent_config_from_model(
         log.info(f"Loading agent config from {config_path}")
         saved_cfg = OmegaConf.load(config_path)
 
-        # Extract world model config
-        wm_cfg = OmegaConf.to_container(saved_cfg.model, resolve=True)
+        # Resolve interpolations on the full config object before extracting the model sub-node
+        OmegaConf.resolve(saved_cfg)
+        wm_cfg = OmegaConf.to_container(saved_cfg.model, resolve=False)
+        
+        # Ensure _target_ is preserved (to_container might omit it if not careful, 
+        # but usually it keeps it. Let's be explicit if needed).
+        if "_target_" not in wm_cfg and "_target_" in saved_cfg.model:
+            wm_cfg["_target_"] = saved_cfg.model["_target_"]
+
         # Map keys to WorldModelAgent args
         if "n_ships" in wm_cfg:
             wm_cfg["max_ships"] = wm_cfg.pop("n_ships")

@@ -11,6 +11,11 @@ from collections import deque
 
 # Changed import to InterleavedWorldModel
 # from boost_and_broadside.agents.mamba_bb import MambaBB # Removed
+from boost_and_broadside.core.constants import (
+    STATE_DIM, 
+    TARGET_DIM, 
+    TOTAL_ACTION_LOGITS
+)
 try:
     from mamba_ssm.utils.generation import InferenceParams
 except ImportError:
@@ -49,7 +54,7 @@ class WorldModelAgent:
         model_path: str | None = None,
         context_len: int = 128,
         device: str = "cpu",
-        state_dim: int = 12,
+        state_dim: int = STATE_DIM,
         # embed_dim, n_layers etc. are loaded from config or default
         embed_dim: int = 128,
         n_layers: int = 4,
@@ -94,40 +99,38 @@ class WorldModelAgent:
             self.model = model
             self.model.to(self.device)
         else:
-             # Try to instantiate YemongFull from config
-             try:
-                 from boost_and_broadside.models.yemong.scaffolds import YemongFull
-                 from omegaconf import OmegaConf
-                 
-                 # Create config from kwargs
-                 # We filter kwargs to match MambaConfig fields if necessary, or just pass relevant ones.
-                 # MambaConfig typically needs: input_dim, d_model, n_layers, n_heads, action_dim, target_dim, loss_type
-                 # Some of these are in __init__ args (embed_dim -> d_model), others in kwargs.
-                 
-                 mamba_cfg_args = kwargs.copy()
-                 mamba_cfg_args['d_model'] = embed_dim
-                 mamba_cfg_args['n_layers'] = n_layers
-                 mamba_cfg_args['n_heads'] = n_heads
-                 mamba_cfg_args['input_dim'] = 5 
-                 
-                 # Set defaults if not in kwargs
-                 if 'action_dim' not in mamba_cfg_args:
-                     mamba_cfg_args['action_dim'] = 12
-                 if 'target_dim' not in mamba_cfg_args:
-                     mamba_cfg_args['target_dim'] = 7
-                 if 'loss_type' not in mamba_cfg_args:
-                     mamba_cfg_args['loss_type'] = 'fixed'
-                 
-                 # Construct OmegaConf
-                 cfg = OmegaConf.create(mamba_cfg_args)
-                 
-                 self.model = YemongFull(cfg).to(self.device)
-                 log.info("Instantiated YemongFull from config.")
-                 
-             except Exception as e:
-                 print(f"CRITICAL ERROR instantiating WorldModel: {e}") # Print to stdout to see in tool output
-                 log.error(f"Failed to instantiate WorldModel from config: {e}")
-                 raise ValueError(f"WorldModelAgent requires a 'model' instance or valid config. Error: {e}")
+            # Try to instantiate model from config (which is passed via kwargs)
+            try:
+                import hydra
+                from omegaconf import OmegaConf
+                
+                # Re-bundle explicit arguments into kwargs for model instantiation
+                mamba_cfg_args = kwargs.copy()
+                mamba_cfg_args.setdefault('d_model', embed_dim)
+                mamba_cfg_args.setdefault('n_layers', n_layers)
+                mamba_cfg_args.setdefault('n_heads', n_heads)
+                mamba_cfg_args.setdefault('input_dim', state_dim)
+                mamba_cfg_args.setdefault('action_dim', kwargs.get('action_dim', TOTAL_ACTION_LOGITS))
+                mamba_cfg_args.setdefault('target_dim', kwargs.get('target_dim', TARGET_DIM))
+
+                # We expect kwargs to contains model config fields including _target_
+                # If _target_ is missing, we fallback to YemongFull as a robust default
+                if "_target_" not in mamba_cfg_args:
+                    log.warning("No _target_ found in agent config. Falling back to YemongFull.")
+                    from boost_and_broadside.models.yemong.scaffolds import YemongFull
+                    cfg = OmegaConf.create(mamba_cfg_args)
+                    self.model = YemongFull(cfg).to(self.device)
+                else:
+                    # Instantiate via Hydra
+                    log.info(f"Instantiating model: {mamba_cfg_args['_target_']}")
+                    cfg = OmegaConf.create(mamba_cfg_args)
+                    self.model = hydra.utils.instantiate(cfg, _recursive_=False).to(self.device)
+                
+                log.info(f"Successfully instantiated {type(self.model).__name__}")
+                
+            except Exception as e:
+                log.error(f"Failed to instantiate model from config: {e}")
+                raise ValueError(f"WorldModelAgent requires a 'model' instance or valid config. Error: {e}")
 
         if model_path:
             self.load_model(model_path)
@@ -186,22 +189,25 @@ class WorldModelAgent:
                     log.warning(f"Checkpoint input_dim ({ckpt_input_dim}) != Current ({current_input_dim}). Re-instantiating MambaBB.")
                     
                     # Re-instantiate with correct input_dim
-                    # We need to access the config used to create the model
-                    new_config = self.model.config
+                    # Re-create model using hydra.utils.instantiate if possible, or fallback
+                    import hydra
+                    from omegaconf import OmegaConf
+                    
+                    new_config = self.model.config.copy()
                     new_config.input_dim = ckpt_input_dim
                     
                     # Also check target_dim (world_head.3.weight is target_dim, d_model)
                     if "world_head.3.weight" in state_dict:
                         ckpt_target_dim = state_dict["world_head.3.weight"].shape[0]
-                        new_config.target_dim = ckpt_target_dim # Update target dim as well
+                        new_config.target_dim = ckpt_target_dim 
                         
                     # Check for log_vars to set loss_type
                     has_log_vars = any(k.startswith("log_vars.") for k in state_dict.keys())
                     if has_log_vars:
                          new_config.loss_type = "uncertainty"
                          
-                    # Re-create model
-                    self.model = YemongFull(new_config).to(self.device)
+                    # Re-instantiate
+                    self.model = hydra.utils.instantiate(new_config, _recursive_=False).to(self.device)
             
             # Load with strict=False to handle potential minor mismatches (like missing buffers), 
             # but usually we want strict=True to catch real errors. 
@@ -272,22 +278,29 @@ class WorldModelAgent:
             self.inference_params = InferenceParams(max_seqlen=100000, max_batch_size=1)
             
         with torch.no_grad():
-             # current_state is (1, N, D) -> (1, 1, N, D)
-             state_in = current_state.unsqueeze(1)
+             # Preparation of inputs
+             state_in = current_state.unsqueeze(1) # (1, T=1, N, D)
              
-        with torch.no_grad():
-             # We assume alive=None means all alive for now, or derive from state
-             # Check mamba_bb.py forward signature
-             pred_s, pred_a_logits, _, _, new_cache = self.model(
-                state=state_in,
-                prev_action=prev_action,
-                pos=pos,
-                vel=vel,
-                att=None,
-                inference_params=self.inference_params,
-                actor_cache=self.actor_cache,
-                world_size=self.world_size
-             )
+             # Prepare generic kwargs for model forward
+             # All Yemong models handle **kwargs, so we can pass more than needed safely
+             forward_kwargs = {
+                 "state": state_in,
+                 "prev_action": prev_action,
+                 "pos": pos,
+                 "vel": vel,
+                 "att": None,
+                 "team_ids": torch.tensor([self.team_id], device=self.device).view(1, 1, 1).expand(1, 1, self.max_ships),
+                 "inference_params": self.inference_params,
+                 "actor_cache": self.actor_cache,
+                 "world_size": self.world_size
+             }
+             
+             # Call model
+             outputs = self.model(**forward_kwargs)
+             
+             # All Yemong scaffolds return (state_pred, action_logits, value_pred, reward_pred, x_final/cache)
+             # but some might return None for some indices
+             pred_s, pred_a_logits, _, _, new_cache = outputs
              
         # 3. Update Cache
         self.actor_cache = new_cache

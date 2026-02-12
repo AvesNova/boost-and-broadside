@@ -88,14 +88,8 @@ def compute_rollout_metrics(
         squad=[0],
         model=model,
         device=str(device),
-        max_ships=eval_env_config.get("max_ships", 8),
+        max_ships=eval_env_config.get("max_ships", eval_env_config.get("environment", {}).get("max_ships", 8)),
         world_size=eval_env_config.get("world_size", (1024.0, 1024.0)),
-        action_dim=12,
-        state_dim=10,
-        embed_dim=getattr(model.config, "embed_dim", getattr(model.config, "d_model", 128)),
-        n_layers=model.config.n_layers,
-        n_heads=model.config.n_heads,
-        context_len=model.config.max_context_len,
     )
 
     rng = np.random.default_rng(42)
@@ -216,16 +210,82 @@ def compute_rollout_metrics(
         # TensorEnvWrapper usually returns RAW (or check config).
         # Let's check `TensorEnvWrapper`. It likely returns raw pos.
         
+        # Dream Rollout
+        dream_tokens = [initial_token]
+        dream_actions = []
+        
+        curr_dream_state = initial_token
+        curr_dream_pos = initial_pos
+        curr_dream_actions = initial_action # (1, N, 12) - wait, initial_action is 0s
+        
+        # We need a proper history for the model
+        dream_history_states = [initial_token]
+        dream_history_pos = [initial_pos]
+        dream_history_actions = [torch.zeros(1, 1, wm_agent.max_ships, 3, device=device)]
+        
         with torch.no_grad():
-            dream_states, gen_actions = model.generate(
-                initial_token,
-                initial_action,
-                initial_pos=initial_pos,
-                steps=max_steps,
-                n_ships=wm_agent.max_ships,
-            )
-        # dream_states: (1, Steps, N, F)
-        # gen_actions: (1, Steps, N, 12) - One Hot
+            for t in range(max_steps):
+                # Prepare context
+                s_in = torch.stack(dream_history_states, dim=1) # (1, t+1, N, F)
+                p_in = torch.stack(dream_history_pos, dim=1)
+                a_in = torch.stack(dream_history_actions, dim=1) # (1, t+1, N, 3)
+                
+                # Predict
+                outputs = model(
+                    state=s_in,
+                    prev_action=a_in,
+                    pos=p_in,
+                    vel=s_in[:, -1, :, StateFeature.VX:StateFeature.VY+1],
+                    team_ids=torch.zeros(1, s_in.shape[1], wm_agent.max_ships, device=device, dtype=torch.long),
+                    world_size=eval_env_config.get("world_size", (1024.0, 1024.0))
+                )
+                pred_s, pred_a_logits, _, _, _ = outputs
+                
+                # Action
+                last_logits = pred_a_logits[:, -1]
+                p_idx = last_logits[..., 0:3].argmax(dim=-1)
+                t_idx = last_logits[..., 3:10].argmax(dim=-1)
+                s_idx = last_logits[..., 10:12].argmax(dim=-1)
+                next_act_idx = torch.stack([p_idx, t_idx, s_idx], dim=-1).float()
+                
+                # Dream State Update (Delta)
+                if pred_s is not None:
+                    delta = pred_s[:, -1]
+                    last_s = s_in[:, -1]
+                    next_s = last_s.clone()
+                    next_s[..., StateFeature.HEALTH] = (last_s[..., StateFeature.HEALTH] + delta[..., TargetFeature.DHEALTH]).clamp(0, 1)
+                    next_s[..., StateFeature.POWER] = (last_s[..., StateFeature.POWER] + delta[..., TargetFeature.DPOWER]).clamp(0, 1)
+                    next_s[..., StateFeature.VX] = (last_s[..., StateFeature.VX] + delta[..., TargetFeature.DVX])
+                    next_s[..., StateFeature.VY] = (last_s[..., StateFeature.VY] + delta[..., TargetFeature.DVY])
+                    next_s[..., StateFeature.ANG_VEL] = (last_s[..., StateFeature.ANG_VEL] + delta[..., TargetFeature.DANG_VEL])
+                    
+                    # Pos
+                    last_p = p_in[:, -1]
+                    next_p = last_p + delta[..., [TargetFeature.DX, TargetFeature.DY]]
+                    # Toroidal wrap
+                    ws = eval_env_config.get("world_size", (1024.0, 1024.0))
+                    next_p[..., 0] %= ws[0]
+                    next_p[..., 1] %= ws[1]
+                else:
+                    # Fallback for spatial models: no state update
+                    next_s = last_s
+                    next_p = p_in[:, -1]
+
+                dream_history_states.append(next_s.unsqueeze(1))
+                dream_history_pos.append(next_p.unsqueeze(1))
+                dream_history_actions.append(next_act_idx.unsqueeze(1))
+                
+                dream_tokens.append(next_s)
+                # Convert next_act_idx to one-hot for existing metric logic
+                oh_p = torch.zeros(1, wm_agent.max_ships, 3, device=device).scatter_(-1, p_idx.unsqueeze(-1), 1.0)
+                oh_t = torch.zeros(1, wm_agent.max_ships, 7, device=device).scatter_(-1, t_idx.unsqueeze(-1), 1.0)
+                oh_s = torch.zeros(1, wm_agent.max_ships, 2, device=device).scatter_(-1, s_idx.unsqueeze(-1), 1.0)
+                dream_actions.append(torch.cat([oh_p, oh_t, oh_s], dim=-1))
+
+        # dream_states: (Steps, 1, N, F)
+        dream_states = torch.stack(dream_tokens[1:]) # (Steps, 1, N, F)
+        # gen_actions: (Steps, 1, N, 12)
+        gen_actions = torch.stack(dream_actions).permute(1, 0, 2, 3) # (1, Steps, N, 12)
 
         # --- Action Error (Dream) ---
         # 1. Convert One-Hot to Indices for our agent (Index 0)

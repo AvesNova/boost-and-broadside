@@ -10,13 +10,17 @@ import argparse
 import h5py
 
 
-from boost_and_broadside.agents.mamba_bb import MambaBB, MambaConfig
+import logging
+
+log = logging.getLogger(__name__)
+
 from boost_and_broadside.train.data_loader import load_bc_data
 from boost_and_broadside.core.constants import (
     PowerActions, 
     TurnActions, 
     ShootActions,
     STATE_DIM,
+    TARGET_DIM,
     TOTAL_ACTION_LOGITS
 )
 
@@ -35,22 +39,44 @@ def load_config(run_dir: Path):
 
 
 def load_model(run_dir: Path, config: dict, device: str = "cpu"):
-    wm_config = config.get("world_model", {})
+    import hydra
+    from omegaconf import OmegaConf
+    
+    # The config passed here is the full run config (from config.yaml)
+    # We need the 'model' section
+    
+    # Load and resolve the full config to handle interpolations
+    config_path = run_dir / "config.yaml"
+    if not config_path.exists():
+        raise FileNotFoundError(f"Config not found at {config_path}")
+    
+    full_omega_config = OmegaConf.load(config_path)
+    OmegaConf.resolve(full_omega_config)
+    
+    model_cfg_dict = full_omega_config.get("model", {})
+    if not model_cfg_dict:
+        # Fallback to world_model if 'model' not found? (Older config format)
+        model_cfg_dict = full_omega_config.get("world_model", {})
+        
+    if not model_cfg_dict:
+        raise ValueError(f"No model configuration found in {run_dir}/config.yaml")
 
-    state_dim = wm_config.get("token_dim", STATE_DIM)
+    # Ensure n_heads/n_layers are present if missing (backwards compatibility)
+    if "n_layers" not in model_cfg_dict:
+        model_cfg_dict["n_layers"] = 4
+    if "n_heads" not in model_cfg_dict and model_cfg_dict.get("_target_") != "boost_and_broadside.models.yemong.scaffolds.YemongTemporal":
+        model_cfg_dict["n_heads"] = 4
+        
+    model_cfg = OmegaConf.create(model_cfg_dict)
     
-    # Map configuration to MambaConfig
-    model_cfg = MambaConfig(
-        input_dim=state_dim,
-        d_model=wm_config.get("embed_dim", 128),
-        n_layers=wm_config.get("n_layers", 4),
-        n_heads=wm_config.get("n_heads", 4),
-        action_dim=TOTAL_ACTION_LOGITS, # 3+7+2=12
-        target_dim=state_dim,
-        loss_type=wm_config.get("loss", {}).get("type", "fixed")
-    )
-    
-    model = MambaBB(model_cfg)
+    # Instantiate via Hydra
+    try:
+        print(f"Instantiating model from config...")
+        model = hydra.utils.instantiate(model_cfg, _recursive_=False)
+    except Exception as e:
+        print(f"WARNING: Hydra instantiation failed: {e}. Falling back to YemongFull.")
+        from boost_and_broadside.models.yemong.scaffolds import YemongFull
+        model = YemongFull(model_cfg)
 
     # Find checkpoint
     checkpoint_path = run_dir / "best_world_model.pth"
@@ -85,6 +111,7 @@ def extract_embeddings(model, h5_path, device, max_batches=10, seq_len=96):
     team_ids_list = []  # Added
     timesteps_list = []
     alive_list = []
+    traj_ids_list = [] # Unique ID for each ship trajectory
 
     print(f"Extracting embeddings using {device} from {h5_path}...")
 
@@ -169,49 +196,48 @@ def extract_embeddings(model, h5_path, device, max_batches=10, seq_len=96):
                 # Flatten: (B, T, N, E) -> (B*T*N, E)
                 B_dim, T_dim, N_dim, E_dim = embeddings.shape
 
-                embeddings_list.append(embeddings.reshape(-1, E_dim).cpu().numpy())
+                # Metadata per ship
+                for ship_idx in range(num_ships):
+                    # Unique ID: episode_idx * max_ships + ship_idx
+                    # Assuming max 8 ships per episode for ID space, adjust if needed
+                    traj_id = i * 8 + ship_idx 
+                    
+                    # Extract data for this specific ship across the sequence
+                    ship_embeddings = embeddings[0, :, ship_idx, :].cpu().numpy() # (T, E)
+                    ship_actions = all_actions[start_idx : start_idx + seq_len, ship_idx, :] # (T, 3)
+                    ship_values = pred_val[0, :, ship_idx, 0].cpu().numpy() # (T,)
+                    ship_alive = (tokens_np[:, ship_idx, 1] > 0).astype(np.float32) # (T,)
+                    ship_team_ids = team_ids_np[:, ship_idx] # (T,)
 
-                # Create ship IDs matching the flatten order
-                ship_ids = torch.arange(N_dim, device=device).view(1, 1, N_dim).expand(B_dim, T_dim, N_dim)
-                ship_ids_list.append(ship_ids.reshape(-1).cpu().numpy())
+                    embeddings_list.append(ship_embeddings)
+                    actions_list.append(ship_actions)
+                    values_list.append(ship_values)
+                    alive_list.append(ship_alive)
+                    team_ids_list.append(ship_team_ids)
 
-                # Create Team IDs (Flattened)
-                # Team IDs input was (1, T, N)
-                team_ids_list.append(input_team_ids.reshape(-1).cpu().numpy())
+                    # Append trajectory-specific metadata
+                    traj_ids_list.append(np.full((seq_len,), traj_id, dtype=np.int32))
+                    ship_ids_list.append(np.full((seq_len,), ship_idx, dtype=np.int32))
+                    timesteps_list.append(np.arange(seq_len, dtype=np.int32))
 
-                # Create Timesteps matching flatten order
-                timesteps = torch.arange(T_dim, device=device).view(1, T_dim, 1).expand(B_dim, T_dim, N_dim)
-                timesteps_list.append(timesteps.reshape(-1).cpu().numpy())
+                    count += 1
+                    if count >= max_batches:
+                        break
+            if count >= max_batches:
+                break
 
-                # Get target actions for coloring (actions at T)
-                # all_actions[start_idx : start_idx + seq_len]
-                target_actions_np = all_actions[start_idx : start_idx + seq_len]
-                actions_list.append(target_actions_np.reshape(-1, 3))
+        print(f"Processed {count} trajectories.")
 
-                # Get alive status from health (index 1)
-                # tokens_np is (T, N, D)
-                health = tokens_np[..., 1]
-                is_alive = (health > 0).astype(np.float32)
-                alive_list.append(is_alive.reshape(-1))
-
-                # Value
-                values_list.append(pred_val.reshape(-1).cpu().numpy())
-
-                count += 1
-                if count >= max_batches:
-                    break
-
-        print(f"Processed {count} episodes.")
-
-    return (
-        np.concatenate(embeddings_list, axis=0),
-        np.concatenate(actions_list, axis=0),
-        np.concatenate(values_list, axis=0),
-        np.concatenate(ship_ids_list, axis=0),
-        np.concatenate(team_ids_list, axis=0), # Added
-        np.concatenate(timesteps_list, axis=0),
-        np.concatenate(alive_list, axis=0),
-    )
+    return {
+        "embeddings": np.concatenate(embeddings_list, axis=0),
+        "actions": np.concatenate(actions_list, axis=0),
+        "values": np.concatenate(values_list, axis=0),
+        "ship_ids": np.concatenate(ship_ids_list, axis=0),
+        "team_ids": np.concatenate(team_ids_list, axis=0),
+        "timesteps": np.concatenate(timesteps_list, axis=0),
+        "alive_status": np.concatenate(alive_list, axis=0),
+        "traj_ids": np.concatenate(traj_ids_list, axis=0),
+    }
 
 
 def plot_with_legend(projections, labels, label_map, title, filename, is_enemy=None):
@@ -513,7 +539,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--models_dir", type=str, default="models/world_model")
     parser.add_argument("--output_dir", type=str, default="outputs/latent_viz")
-    parser.add_argument("--max_batches", type=int, default=200) # Increased default
+    parser.add_argument("--max_batches", type=int, default=1000) # Increased for density
     parser.add_argument(
         "--test-run", action="store_true", help="Run quick test on single model"
     )
@@ -569,15 +595,21 @@ def main():
 
             model = load_model(run_dir, config, device)
 
-            embeddings, actions, values, ship_ids, team_ids, timesteps, alive_status = (
-                extract_embeddings(
-                    model,
-                    data_path,
-                    device,
-                    max_batches=args.max_batches,
-                    seq_len=config.get("world_model", {}).get("context_len", 96),
-                )
+            raw_data_raw = extract_embeddings(
+                model,
+                data_path,
+                device,
+                max_batches=args.max_batches,
+                seq_len=config.get("world_model", {}).get("context_len", 96),
             )
+            
+            embeddings = raw_data_raw["embeddings"]
+            actions = raw_data_raw["actions"]
+            values = raw_data_raw["values"]
+            ship_ids = raw_data_raw["ship_ids"]
+            team_ids = raw_data_raw["team_ids"]
+            timesteps = raw_data_raw["timesteps"]
+            alive_status = raw_data_raw["alive_status"]
 
             raw_data = {
                 "embeddings": embeddings,
@@ -587,13 +619,14 @@ def main():
                 "team_ids": team_ids,
                 "timesteps": timesteps,
                 "alive_status": alive_status,
+                "traj_ids": raw_data_raw.get("traj_ids"),
             }
 
             passes = [
                 {
                     "name": "All Data",
                     "suffix": "",
-                    "sample_limit": 10000,
+                    "sample_limit": 10000, # Increased for density
                     "mask": np.ones(len(embeddings), dtype=bool),
                 },
                 {
@@ -639,19 +672,41 @@ def main():
                 curr_time = raw_data["timesteps"][mask]
                 curr_alive = raw_data["alive_status"][mask]
 
-                # Subsample for plotting if too large
+                # Trajectory-aware subsampling
                 sample_limit = p.get("sample_limit", 10000)
                 if len(curr_emb) > sample_limit:
-                    indices = np.random.choice(
-                        len(curr_emb), sample_limit, replace=False
-                    )
-                    curr_emb = curr_emb[indices]
-                    curr_act = curr_act[indices]
-                    curr_val = curr_val[indices]
-                    curr_sid = curr_sid[indices]
-                    curr_tid = curr_tid[indices]
-                    curr_time = curr_time[indices]
-                    curr_alive = curr_alive[indices]
+                    print(f"Subsampling to {sample_limit} points while preserving trajectories...")
+                    # Get unique trajectories in the current mask
+                    unique_trajs = np.unique(raw_data["traj_ids"][mask])
+                    # Estimate how many trajectories we can afford
+                    # avg points per traj = len(mask) / len(unique_trajs)
+                    # But we know seq_len is typically 96, but mask might have filtered some.
+                    avg_pts = len(curr_emb) / len(unique_trajs)
+                    n_needed = int(sample_limit / avg_pts)
+                    
+                    if n_needed < len(unique_trajs):
+                        selected_trajs = np.random.choice(unique_trajs, n_needed, replace=False)
+                        # Create mask for these trajectories
+                        traj_mask = np.isin(raw_data["traj_ids"][mask], selected_trajs)
+                        
+                        curr_emb = curr_emb[traj_mask]
+                        curr_act = curr_act[traj_mask]
+                        curr_val = curr_val[traj_mask]
+                        curr_sid = curr_sid[traj_mask]
+                        curr_tid = curr_tid[traj_mask]
+                        curr_time = curr_time[traj_mask]
+                        curr_alive = curr_alive[traj_mask]
+                    
+                    # Final fallback if still slightly over (due to varying traj lengths)
+                    if len(curr_emb) > sample_limit:
+                        indices = np.random.choice(len(curr_emb), sample_limit, replace=False)
+                        curr_emb = curr_emb[indices]
+                        curr_act = curr_act[indices]
+                        curr_val = curr_val[indices]
+                        curr_sid = curr_sid[indices]
+                        curr_tid = curr_tid[indices]
+                        curr_time = curr_time[indices]
+                        curr_alive = curr_alive[indices]
 
                 print(f"Projecting {len(curr_emb)} points...")
 

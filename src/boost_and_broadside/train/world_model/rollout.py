@@ -35,7 +35,7 @@ def perform_rollout(model, input_states, input_actions, input_pos, team_ids, rol
     Modifies input_states, input_actions, and input_pos in-place.
     
     Args:
-        model: MambaBB
+        model: WorldModel
         input_states: (B, T, N, D)
         input_actions: (B, T, N, 3) - Discrete indices
         input_pos: (B, T, N, 2) - Float32 Position
@@ -96,32 +96,33 @@ def perform_rollout(model, input_states, input_actions, input_pos, team_ids, rol
             )
             
             # 1. Update Action at t
-            last_a_logits = pred_a_logits[:, -1] # (B, N, 12)
-            
-            # Argmax
-            p_idx = last_a_logits[..., 0:3].argmax(dim=-1)
-            t_idx = last_a_logits[..., 3:10].argmax(dim=-1)
-            s_idx = last_a_logits[..., 10:12].argmax(dim=-1)
-            
-            next_action = torch.stack([p_idx, t_idx, s_idx], dim=-1).float() # (B, N, 3)
+            if pred_a_logits is None:
+                # Fallback if model doesn't predict actions
+                next_action = curr_actions[:, t]
+            else:
+                last_a_logits = pred_a_logits[:, -1] # (B, N, 12)
+                
+                # Argmax
+                p_idx = last_a_logits[..., 0:3].argmax(dim=-1)
+                t_idx = last_a_logits[..., 3:10].argmax(dim=-1)
+                s_idx = last_a_logits[..., 10:12].argmax(dim=-1)
+                
+                next_action = torch.stack([p_idx, t_idx, s_idx], dim=-1).float() # (B, N, 3)
             
             # Update curr_actions at t
             curr_actions[:, t] = next_action
             input_actions[:, t] = next_action # Update external tensor
             
             # 2. Update State S_{t+1}
-            # The model already produced pred_s (S_{t+1}) using the context and dummy action.
-            # But the spec says: Actor Pass (Phase 1) runs first, then World Model Pass (Phase 2).
-            # In MambaBB.forward, both are computed. 
-            # However, the `pred_s` was computed using `prev_action` which we set to 0.
-            # We should re-run the forward with the predicted action for better consistency
-            # if we want strictly Phase 2 after Phase 1.
+            # Phase 2: World Model Pass (optional re-run or use pred_s if available)
+            if pred_s is None:
+                # Spatial model or model that doesn't predict state
+                continue
             
             a_in[:, -1] = next_action
             
-            # Phase 2: World Model Pass
             # Predict S_{t+1} given Action_t
-            pred_s, _, _, _, _ = model(
+            pred_s_final, _, _, _, _ = model(
                 state=s_in, 
                 prev_action=a_in, 
                 pos=pos,
@@ -131,7 +132,8 @@ def perform_rollout(model, input_states, input_actions, input_pos, team_ids, rol
                 alive=alive
             )
             
-            delta_target = pred_s[:, -1] # (B, N, TARGET_DIM)
+            if pred_s_final is None: continue
+            delta_target = pred_s_final[:, -1] # (B, N, TARGET_DIM)
             
             # 2. Update State S_{t+1}
             # Delta Target Layout: [dx, dy, dVx, dVy, dH, dP, dAV]

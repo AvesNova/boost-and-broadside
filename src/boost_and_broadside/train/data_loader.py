@@ -10,15 +10,21 @@ def get_latest_data_path() -> str:
     """Find the latest aggregated HDF5 data file."""
     base_path = Path("data/bc_pretraining")
 
-    # Find the latest folder that has aggregated_data.h5
+    # 1. Check if the file exists directly in the base path
+    direct_file = base_path / "aggregated_data.h5"
+    if direct_file.exists():
+        return str(direct_file)
+
+    # 2. Otherwise, find the latest folder that has aggregated_data.h5
     latest_folder = None
-    for d in sorted(base_path.iterdir(), key=lambda d: d.name, reverse=True):
-        if d.is_dir() and (d / "aggregated_data.h5").exists():
-            latest_folder = d
-            break
+    if base_path.exists():
+        for d in sorted(base_path.iterdir(), key=lambda d: d.name, reverse=True):
+            if d.is_dir() and (d / "aggregated_data.h5").exists():
+                latest_folder = d
+                break
 
     if latest_folder is None:
-        raise FileNotFoundError("No folder with aggregated_data.h5 found")
+        raise FileNotFoundError(f"No aggregated_data.h5 found at {base_path} or its subdirectories")
 
     return str(latest_folder / "aggregated_data.h5")
 
