@@ -416,3 +416,307 @@ class YemongTemporal(BaseScaffold):
         metrics = {"loss": total_loss.item(), "loss_sub/state_mse": s_loss.item()}
         return total_loss, s_loss, torch.tensor(0.0), torch.tensor(0.0), metrics
 
+
+from boost_and_broadside.models.components.encoders import StateEncoder, ActionEncoder, RelationalEncoder, SeparatedActionEncoder
+
+class YemongDynamics(BaseScaffold):
+    """
+    Dynamics Scaffold (Model-Based).
+    Structure:
+    1. Encoder(State, PrevAction) -> Backbone -> Z
+    2. Z -> ActorHead -> ActionLogits
+    3. Z -> AttentionPooling -> ValueHead -> Value (Team)
+    4. Z + Action(Sampled/Target) -> FFN -> Z'
+    5. Z' -> WorldHead -> NextState
+    6. Z' -> AttentionPooling -> RewardHead -> Reward (Team)
+    Action Embeddings:
+    - Uses Modular 'SeparatedActionEncoder' for both stages.
+    """
+    def __init__(self, config=None, **kwargs):
+        if config is None:
+            config = OmegaConf.create(kwargs)
+        super().__init__(config)
+        d_model = config.d_model
+        
+        # Encoders
+        self.state_encoder = StateEncoder(config.get("input_dim", STATE_DIM), d_model)
+        self.relational_encoder = RelationalEncoder(d_model, config.n_layers)
+        
+        # Action Embeddings Component
+        embed_dim = config.get("action_embed_dim", 16)
+        self.action_encoder_input = SeparatedActionEncoder(embed_dim)
+        self.action_encoder_dynamics = SeparatedActionEncoder(embed_dim)
+        
+        total_action_emb = self.action_encoder_input.output_dim
+        
+        # Fusion for Backbone Input
+        self.fusion = nn.Sequential(
+            nn.Linear(d_model + total_action_emb, d_model),
+            RMSNorm(d_model),
+            nn.SiLU()
+        )
+        
+        self.special_embeddings = nn.ModuleDict({
+            'ship_id': nn.Embedding(8, d_model),
+            'team_id': nn.Embedding(2, d_model)
+        })
+        
+        self.special_params = nn.ParameterDict({
+            'dead': nn.Parameter(torch.zeros(config.get("input_dim", STATE_DIM))),
+            'reset': nn.Parameter(torch.zeros(d_model))
+        })
+        
+        # Backbone (Shared Trunk)
+        self.blocks = nn.ModuleList()
+        for i in range(config.n_layers):
+            block = nn.ModuleDict({
+                'mamba': MambaBlock(d_model, layer_idx=i),
+                'norm1': RMSNorm(d_model),
+                'norm2': RMSNorm(d_model),
+                'attn': hydra.utils.instantiate(config.spatial_layer) if 'spatial_layer' in config else \
+                        RelationalAttention(d_model, config.n_heads) 
+            })
+            self.blocks.append(block)
+            
+        # Heads on Z
+        self.actor_head = ActorHead(d_model, config.get("action_dim", TOTAL_ACTION_LOGITS))
+        
+        # Value w/ Team Pooling
+        self.team_token_value = nn.Parameter(torch.randn(1, 1, d_model) * 0.02)
+        self.pooler_value = nn.MultiheadAttention(d_model, num_heads=4, batch_first=True)
+        self.norm_value = RMSNorm(d_model)
+        self.value_head = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.SiLU(),
+            nn.Linear(d_model, 1)
+        )
+        
+        # Dynamics Module
+        # Fusion Z + Action(t)
+        self.dynamics_fusion = nn.Sequential(
+            nn.Linear(d_model + total_action_emb, d_model),
+            RMSNorm(d_model),
+            nn.SiLU()
+        )
+        self.dynamics_ffn = nn.Sequential(
+            nn.Linear(d_model, d_model * 2), # SwiGLU style expansion often good, but simple FFN here
+            nn.SiLU(),
+            nn.Linear(d_model * 2, d_model),
+            RMSNorm(d_model)
+        )
+        
+        # Heads on Z'
+        self.world_head = WorldHead(d_model, config.get("target_dim", TARGET_DIM))
+        
+        # Reward w/ Team Pooling
+        self.team_token_reward = nn.Parameter(torch.randn(1, 1, d_model) * 0.02)
+        self.pooler_reward = nn.MultiheadAttention(d_model, num_heads=4, batch_first=True)
+        self.norm_reward = RMSNorm(d_model)
+        self.reward_head = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.SiLU(),
+            nn.Linear(d_model, 1) # Total reward scalar
+        )
+        
+        # Loss Params
+        self.log_vars = None
+        if getattr(config, "loss_type", "fixed") == "uncertainty":
+             self.log_vars = nn.ParameterDict({
+                 "state": nn.Parameter(torch.tensor(0.0)),
+                 "actions": nn.Parameter(torch.tensor(0.0)),
+                 "value": nn.Parameter(torch.tensor(0.0)),
+                 "reward": nn.Parameter(torch.tensor(0.0))
+             })
+             
+    def forward(self, state, prev_action, pos, vel, att=None, team_ids=None, seq_idx=None, alive=None, reset_mask=None,
+                target_actions=None, # (B, T, N, 3) - raw actions to be embedded
+                inference_params=None, world_size=(1024.0, 1024.0), **kwargs):
+        
+        batch_size, seq_len, num_ships, _ = state.shape
+        d_model = self.config.d_model
+        
+        if alive is None: alive = state[..., StateFeature.HEALTH] > 0
+        state = torch.where(alive.unsqueeze(-1), state.to(self.special_params['dead'].dtype), self.special_params['dead'].view(1, 1, 1, -1))
+        
+        if reset_mask is None and seq_idx is not None:
+             diff = torch.zeros_like(seq_idx, dtype=torch.bool)
+             diff[:, 1:] = seq_idx[:, 1:] != seq_idx[:, :-1]
+             reset_mask = diff
+
+        # 1. Encode Inputs
+        w_dtype = self.state_encoder.net[0].weight.dtype
+        s_emb = self.state_encoder(state.to(w_dtype))
+        
+        if team_ids is not None:
+             t_emb = self.special_embeddings['team_id'](team_ids.long())
+             s_emb = s_emb + (t_emb if t_emb.ndim == 4 else t_emb.unsqueeze(1))
+        
+        ship_ids = torch.arange(num_ships, device=state.device).view(1, 1, num_ships).expand(batch_size, seq_len, -1)
+        s_emb = s_emb + self.special_embeddings['ship_id'](ship_ids)
+        
+        trunk_out, _ = self.relational_encoder(pos, vel, att=att, world_size=world_size)
+        
+        if reset_mask is not None:
+             s_emb = s_emb + (reset_mask.unsqueeze(-1).unsqueeze(-1) * self.special_params['reset'])
+             
+        # Embed Prev Action using Component
+        a_prev_emb = self.action_encoder_input(prev_action)
+        
+        x = self.fusion(torch.cat([s_emb, a_prev_emb], dim=-1))
+        
+        # 2. Backbone -> Z
+        x_mamba = x.permute(0, 2, 1, 3).reshape(batch_size * num_ships, seq_len, d_model)
+        mamba_seq_idx = seq_idx.unsqueeze(1).expand(-1, num_ships, -1).reshape(batch_size * num_ships, seq_len) if seq_idx is not None else None
+        
+        for i, block in enumerate(self.blocks):
+            normed = block['norm1'](x_mamba)
+            m_out = block['mamba'](normed, seq_idx=mamba_seq_idx, inference_params=inference_params)
+            x_mamba = x_mamba + m_out
+            
+            x_spatial = x_mamba.view(batch_size, num_ships, seq_len, -1).permute(0, 2, 1, 3)
+            rel_bias = self.relational_encoder.adapters[i+1](trunk_out)
+            x_spatial = x_spatial + block['attn'](block['norm2'](x_spatial), rel_bias, mask=alive)
+            x_mamba = x_spatial.permute(0, 2, 1, 3).reshape(batch_size * num_ships, seq_len, -1)
+            
+        Z = x_mamba.view(batch_size, num_ships, seq_len, -1).permute(0, 2, 1, 3) # (B, T, N, D)
+        
+        # 3. Heads on Z (Action + Value)
+        action_logits = self.actor_head(Z)
+        
+        # Value w/ Team Pooling
+        Batch_Time = batch_size * seq_len
+        Z_flat = Z.reshape(Batch_Time, num_ships, d_model)
+        # Note: alive mask logic for pooling. True=Keep. key_padding_mask True=Ignore.
+        # alive shape: (B, T, N)
+        if alive is not None:
+             key_padding_mask = ~alive.reshape(Batch_Time, num_ships)
+        else:
+             key_padding_mask = None
+             
+        # Value Pooling
+        q_val = self.team_token_value.expand(Batch_Time, -1, -1)
+        Z_norm_val = self.norm_value(Z_flat)
+        team_vec_val, _ = self.pooler_value(q_val, Z_norm_val, Z_norm_val, key_padding_mask=key_padding_mask)
+        value_pred = self.value_head(team_vec_val.squeeze(1)).reshape(batch_size, seq_len, 1)
+
+        # 4. Action for Dynamics
+        if target_actions is not None:
+             # Teacher Forcing: Ground Truth Indices
+             actions_to_embed = target_actions
+        else:
+             # Sampling: Argmax Indices
+             l_p, l_t, l_s = action_logits.split([3, 7, 2], dim=-1)
+             p = l_p.argmax(dim=-1)
+             t = l_t.argmax(dim=-1)
+             s_ = l_s.argmax(dim=-1)
+             actions_to_embed = torch.stack([p, t, s_], dim=-1)
+             
+        # Embed using Dynamics Component
+        a_curr_emb = self.action_encoder_dynamics(actions_to_embed)
+
+        # 5. Dynamics Fusion -> Z'
+        x_dyn = self.dynamics_fusion(torch.cat([Z, a_curr_emb], dim=-1))
+        Z_prime = self.dynamics_ffn(x_dyn) + x_dyn 
+        
+        # 6. Heads on Z' (NextState + Reward)
+        next_state_pred = self.world_head(Z_prime)
+        
+        # Reward w/ Team Pooling
+        # Need to re-flatten Z_prime and re-apply mask logic (same mask)
+        Z_prime_flat = Z_prime.reshape(Batch_Time, num_ships, d_model)
+        q_rew = self.team_token_reward.expand(Batch_Time, -1, -1)
+        Z_prime_norm_rew = self.norm_reward(Z_prime_flat)
+        team_vec_rew, _ = self.pooler_reward(q_rew, Z_prime_norm_rew, Z_prime_norm_rew, key_padding_mask=key_padding_mask)
+        reward_pred = self.reward_head(team_vec_rew.squeeze(1)).reshape(batch_size, seq_len, 1)
+        
+        # Return Tuple
+        return next_state_pred, action_logits, value_pred, reward_pred, Z
+        
+    def get_loss(self, pred_states, pred_actions, target_states, target_actions, loss_mask, 
+                 lambda_state=1.0, lambda_actions=1.0,
+                 pred_values=None, pred_rewards=None, target_returns=None, target_rewards=None,
+                 lambda_value=1.0, lambda_reward=1.0, weights_power=None, weights_turn=None, weights_shoot=None,
+                 target_alive=None, min_sigma=0.1):
+        
+        target_states = target_states.to(pred_states.dtype)
+        if loss_mask.ndim == 2: loss_mask = loss_mask.unsqueeze(-1).expand_as(pred_states[..., 0])
+        if target_alive is not None: loss_mask = loss_mask & target_alive
+             
+        mask_flat = loss_mask.reshape(-1).float()
+        denom = mask_flat.sum() + 1e-6
+        mse = F.mse_loss(pred_states, target_states, reduction='none')
+        s_loss = mse.mean(dim=-1).reshape(-1).mul(mask_flat).sum() / denom
+        
+        l_p, l_t, l_s = pred_actions[..., 0:3], pred_actions[..., 3:10], pred_actions[..., 10:12]
+        t_p, t_t, t_s = target_actions[..., 0].long().clamp(0, 2), target_actions[..., 1].long().clamp(0, 6), target_actions[..., 2].long().clamp(0, 1)
+        
+        a_loss_p = (F.cross_entropy(l_p.reshape(-1, 3), t_p.reshape(-1), weight=weights_power, reduction='none') * mask_flat).sum() / denom / math.log(3)
+        a_loss_t = (F.cross_entropy(l_t.reshape(-1, 7), t_t.reshape(-1), weight=weights_turn, reduction='none') * mask_flat).sum() / denom / math.log(7)
+        a_loss_s = (F.cross_entropy(l_s.reshape(-1, 2), t_s.reshape(-1), weight=weights_shoot, reduction='none') * mask_flat).sum() / denom / math.log(2)
+        a_loss = a_loss_p + a_loss_t + a_loss_s
+
+        v_loss = r_loss = torch.tensor(0.0, device=pred_states.device)
+        
+        # Value/Reward computation (Scalar/Team-Level)
+        # Targets are likely (B, T) or (B, T, 1)
+        # loss_mask is (B, T, N). We need to valid_cnt to average or mask
+        # If we have ground truth returns/rewards per team, we use them directly.
+        # If we have per-node rewards, we average them? Typically rewards are team-based.
+        # Let's assume target_returns is (B, T, 1) or (B, T).
+        
+        if pred_values is not None and target_returns is not None:
+             # Check if target_returns is per-node
+             if target_returns.ndim == 3 and target_returns.shape[-1] == 1:
+                  # Average over ships? Or assume targets are already team-level broadcasted?
+                  # If targets are per-ship, we should average them to get team target if we predict team value.
+                  # But usually we compute team return by summing/averaging.
+                  # Let's assume target_returns is provided as Team Return.
+                  # If it is (B, T, N, 1), we take mean? Or slice?
+                  if target_returns.shape[2] > 1:
+                      # It has N dimension > 1. Likely replicated team reward per ship. Take mean/slice.
+                      target_returns = target_returns.mean(dim=2)
+                  else:
+                      target_returns = target_returns.squeeze(2) # (B, T, 1) -> (B, T)
+             elif target_returns.ndim == 3:
+                  # (B, T, N) case
+                  target_returns = target_returns.mean(dim=2)
+             
+             # Re-shape to (B, T, 1) for MSE
+             if target_returns.ndim == 2: target_returns = target_returns.unsqueeze(-1)
+             
+             # Similarity for rewards
+             if target_rewards.ndim > 2:
+                  target_rewards = target_rewards.mean(dim=2) if target_rewards.shape[2] > 1 else target_rewards.squeeze(2)
+             if target_rewards.ndim == 2: target_rewards = target_rewards.unsqueeze(-1)
+
+             # Mask for team level? A team is valid if ANY ship is valid?
+             # loss_mask (B, T, N).
+             m_team = loss_mask.any(dim=-1).float().unsqueeze(-1) # (B, T, 1)
+             d_team = m_team.sum() + 1e-6
+             
+             v_loss = (F.mse_loss(pred_values, target_returns.to(pred_values.dtype), reduction='none') * m_team).sum() / d_team
+             r_loss = (F.mse_loss(pred_rewards, target_rewards.to(pred_rewards.dtype), reduction='none') * m_team).sum() / d_team
+
+        loss_type = getattr(self.config, "loss_type", "fixed")
+        if loss_type == "uncertainty" and self.log_vars is not None:
+             clamped_sigmas = {}
+             def apply_u(loss, name):
+                  s = torch.clamp(self.log_vars[name], min=2.0 * math.log(min_sigma))
+                  clamped_sigmas[name] = torch.exp(0.5 * s).item()
+                  return 0.5 * torch.exp(-s) * loss + 0.5 * s
+             l_state_w = apply_u(s_loss, "state")
+             l_actions_w = apply_u(a_loss, "actions")
+             l_value_w = apply_u(v_loss, "value")
+             l_reward_w = apply_u(r_loss, "reward")
+             total_loss = l_state_w + l_actions_w + l_value_w + l_reward_w
+        else:
+             total_loss = (lambda_state * s_loss) + (lambda_actions * a_loss) + (lambda_value * v_loss) + (lambda_reward * r_loss)
+
+        metrics = {"loss": total_loss.item(), 
+                   "loss_sub/state_mse": s_loss.item(), 
+                   "loss_sub/action_all": a_loss.item(), 
+                   "loss_sub/value_mse": v_loss.item(), 
+                   "loss_sub/reward_mse": r_loss.item()}
+        return total_loss, s_loss, a_loss, v_loss + r_loss, metrics
+
+

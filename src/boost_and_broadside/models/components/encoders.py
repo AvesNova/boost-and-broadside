@@ -32,6 +32,35 @@ class ActionEncoder(nn.Module):
         s = self.emb_shoot(action[..., 2].long().clamp(0, 1))
         return torch.cat([p, t, s], dim=-1)
 
+class SeparatedActionEncoder(nn.Module):
+    """
+    Modular Action Encoder for discrete sub-actions.
+    Embeds each component separately and concatenates them.
+    Output dim = 3 * embed_dim
+    """
+    def __init__(self, embed_dim: int = 16):
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.output_dim = embed_dim * 3
+        
+        self.emb_power = nn.Embedding(3, embed_dim)
+        self.emb_turn = nn.Embedding(7, embed_dim)
+        self.emb_shoot = nn.Embedding(2, embed_dim)
+        
+    def forward(self, action):
+        """
+        action: (..., 3) [power_idx, turn_idx, shoot_idx] indices (Long)
+        """
+        # Ensure input is Long
+        if action.dtype != torch.long:
+            action = action.long()
+            
+        p = self.emb_power(action[..., 0].clamp(0, 2))
+        t = self.emb_turn(action[..., 1].clamp(0, 6))
+        s = self.emb_shoot(action[..., 2].clamp(0, 1))
+        
+        return torch.cat([p, t, s], dim=-1)
+
 class RelationalEncoder(nn.Module):
     """
     Physics Trunk: Projects raw geometry into latent space.

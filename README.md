@@ -65,6 +65,12 @@ The core of the system is a **Factorized World Model (Yemong)** that separates t
 *   **Action Prediction ($S_t \to A_t$)**: Cross-entropy loss on discrete action indices (Power, Turn, Shoot).
 *   **State Prediction ($S_t, A_t \to S_{t+1}$)**: MSE loss on next-state reconstruction (Residual Delta).
 
+### Model Variants
+*   **`YemongFull`**: Standard World Model. Predicts everything from history.
+*   **`YemongDynamics`**: Explicit Dynamics Model. Latent $Z$ predicts Policy/Value. $Z$ + Action predicts Next State/Reward via a dynamics transition. Features modular action embeddings.
+*   **`YemongSpatial`**: Spatial-only (Attention) baseline.
+*   **`YemongTemporal`**: Temporal-only (Mamba) baseline.
+
 ## Workflows
 
 ### 1. Data Collection
@@ -94,6 +100,9 @@ uv run main.py mode=pretrain model=yemong_spatial
 
 # Train Temporal Layer Only (Next State Prediction from history)
 uv run main.py mode=pretrain model=yemong_temporal
+
+# Train Dynamics Model (Model-Based)
+uv run main.py mode=pretrain model=yemong_dynamics
 
 # Full Pipeline: Collect Data -> Train World Model
 uv run main.py mode=train train.run_collect=true train.run_world_model=true
