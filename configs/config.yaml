@@ -91,12 +91,14 @@ train:
   
   amp: true 
   compile: true
+  # compile_mode: "max-autotune"
+  compile_mode: "default"
   
   bc_data_path: data/bc_pretraining/aggregated_data.h5
   
   # Default Training Hyperparameters (can be overridden by model config)
   epochs: 1000
-  batch_size: 16
+  batch_size: 32
   num_workers: 4
   learning_rate: 3.5e-5
   gradient_accumulation_steps: 8

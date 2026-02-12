@@ -142,6 +142,7 @@ class YemongFull(BaseScaffold):
             x_mamba = x_mamba + m_out
             
             x_spatial = x_mamba.view(batch_size, num_ships, seq_len, -1).permute(0, 2, 1, 3)
+            # rel_bias shape: (B, T, N, N, D) because trunk_out is (B, T, N, N, 64)
             rel_bias = self.relational_encoder.adapters[i+1](trunk_out)
             x_spatial = x_spatial + block['attn'](block['norm2'](x_spatial), rel_bias, mask=alive)
             x_mamba = x_spatial.permute(0, 2, 1, 3).reshape(batch_size * num_ships, seq_len, -1)

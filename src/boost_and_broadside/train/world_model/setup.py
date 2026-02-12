@@ -43,9 +43,10 @@ def create_model(cfg: DictConfig, data_path: str, device: torch.device):
     is_wsl = 'wsl' in platform.release().lower() or 'microsoft' in platform.release().lower()
     
     if os.name != 'nt' and not is_wsl and cfg.train.get("compile", True):
-        log.info("Compiling model...")
+        mode = cfg.train.get("compile_mode", "default")
+        log.info(f"Compiling model with mode='{mode}'...")
         try:
-             model = torch.compile(model)
+             model = torch.compile(model, mode=mode)
         except Exception as e:
              log.warning(f"Torch compile failed: {e}. Running eager.")
     else:

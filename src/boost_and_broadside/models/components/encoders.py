@@ -163,7 +163,8 @@ class RelationalEncoder(nn.Module):
         
         # Final feature assembly
         fourier = fourier.to(torch.bfloat16)
-        features = torch.cat([base_features.to(fourier.dtype), fourier], dim=-1) # 18 + 32 = 50
+        base_features = base_features.to(torch.bfloat16)
+        features = torch.cat([base_features, fourier], dim=-1) # 18 + 32 = 50
         
         # Pad to 64
         pad_size = self.padded_dim - features.shape[-1]

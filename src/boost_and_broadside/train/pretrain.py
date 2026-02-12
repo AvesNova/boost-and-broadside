@@ -33,6 +33,7 @@ def pretrain(cfg: DictConfig) -> None:
     # 1. Enable TF32 globally
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
+    torch.backends.cudnn.benchmark = True
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
