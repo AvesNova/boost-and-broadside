@@ -3,9 +3,6 @@ _target_: boost_and_broadside.models.yemong.scaffolds.YemongFull
 d_model: 256
 n_layers: 6
 n_heads: 4
-input_dim: 5       # [Health, Power, Vx, Vy, AngVel]
-target_dim: 7      # [dx, dy, dVx, dVy, dHealth, dPower, dAngVel]
-action_dim: 12      # 3 Power + 7 Turn + 2 Shoot
 learning_rate: 1e-4
 
 scheduler:

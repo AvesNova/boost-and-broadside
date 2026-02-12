@@ -1,10 +1,29 @@
-
 import pytest
 import torch
 import math
+from pathlib import Path
 from omegaconf import OmegaConf
 from boost_and_broadside.models.yemong.scaffolds import YemongFull, YemongSpatial, YemongTemporal
 from boost_and_broadside.core.constants import STATE_DIM, TARGET_DIM, StateFeature
+
+# Get path to configs relative to this test file
+CONFIG_DIR = Path(__file__).parent.parent / "configs" / "model"
+
+@pytest.mark.parametrize("config_name, expected_class", [
+    ("yemong_full.yaml", YemongFull),
+    ("yemong_spatial.yaml", YemongSpatial),
+    ("yemong_temporal.yaml", YemongTemporal),
+])
+def test_instantiate_from_yaml(config_name, expected_class):
+    yaml_path = CONFIG_DIR / config_name
+    assert yaml_path.exists(), f"Config file not found: {yaml_path}"
+    
+    model_config = OmegaConf.load(yaml_path)
+    # Wrap in root to resolve ${model.d_model} interpolations
+    root = OmegaConf.create({"model": model_config})
+    
+    model = expected_class(root.model)
+    assert isinstance(model, expected_class)
 
 @pytest.mark.parametrize("scaffold_class", [YemongFull, YemongSpatial, YemongTemporal])
 def test_scaffold_instantiation(scaffold_class):

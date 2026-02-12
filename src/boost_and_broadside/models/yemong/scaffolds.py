@@ -10,7 +10,7 @@ from boost_and_broadside.models.components.encoders import StateEncoder, ActionE
 from boost_and_broadside.models.components.heads import ActorHead, WorldHead, ValueHead
 from boost_and_broadside.models.components.team_evaluator import TeamEvaluator 
 from boost_and_broadside.models.components.layers.attention import RelationalAttention
-from boost_and_broadside.core.constants import StateFeature, STATE_DIM, TARGET_DIM
+from boost_and_broadside.core.constants import StateFeature, STATE_DIM, TARGET_DIM, TOTAL_ACTION_LOGITS
 
 
 class BaseScaffold(nn.Module):
@@ -29,7 +29,7 @@ class YemongFull(BaseScaffold):
         d_model = config.d_model
         
         # Encoders
-        self.state_encoder = StateEncoder(config.input_dim, d_model)
+        self.state_encoder = StateEncoder(config.get("input_dim", STATE_DIM), d_model)
         self.relational_encoder = RelationalEncoder(d_model, config.n_layers)
         
         # Action Encoder (Embeddings)
@@ -47,7 +47,7 @@ class YemongFull(BaseScaffold):
         })
         
         self.special_params = nn.ParameterDict({
-            'dead': nn.Parameter(torch.zeros(config.input_dim)),
+            'dead': nn.Parameter(torch.zeros(config.get("input_dim", STATE_DIM))),
             'reset': nn.Parameter(torch.zeros(d_model))
         })
 
@@ -78,10 +78,10 @@ class YemongFull(BaseScaffold):
         self.actor_temporal_attn = nn.MultiheadAttention(d_model, num_heads=config.n_heads, batch_first=True)
         self.actor_temporal_norm = RMSNorm(d_model)
         
-        self.actor_head = ActorHead(d_model, config.action_dim)
+        self.actor_head = ActorHead(d_model, config.get("action_dim", TOTAL_ACTION_LOGITS))
         
         # World Components
-        self.world_head = WorldHead(d_model, config.target_dim)
+        self.world_head = WorldHead(d_model, config.get("target_dim", TARGET_DIM))
         
         # Value/Reward
         self.team_evaluator = TeamEvaluator(d_model)
@@ -241,7 +241,7 @@ class YemongSpatial(BaseScaffold):
         super().__init__(config)
         d_model = config.d_model
         
-        self.state_encoder = StateEncoder(config.input_dim, d_model)
+        self.state_encoder = StateEncoder(config.get("input_dim", STATE_DIM), d_model)
         self.relational_encoder = RelationalEncoder(d_model, config.n_layers) # n_layers here might range over stack
         
         self.special_embeddings = nn.ModuleDict({
@@ -250,7 +250,7 @@ class YemongSpatial(BaseScaffold):
         })
         
         self.special_params = nn.ParameterDict({
-            'dead': nn.Parameter(torch.zeros(config.input_dim))
+            'dead': nn.Parameter(torch.zeros(config.get("input_dim", STATE_DIM)))
         })
 
         # Stack of Relational Attention Layers
@@ -262,7 +262,7 @@ class YemongSpatial(BaseScaffold):
              }) for _ in range(config.n_layers)
         ])
         
-        self.actor_head = ActorHead(d_model, config.action_dim)
+        self.actor_head = ActorHead(d_model, config.get("action_dim", TOTAL_ACTION_LOGITS))
         
     def forward(self, state, pos, vel, att=None, team_ids=None, alive=None, world_size=(1024.0, 1024.0), **kwargs):
         # Flatten time dim if present, or treat as batch
@@ -348,7 +348,7 @@ class YemongTemporal(BaseScaffold):
         super().__init__(config)
         d_model = config.d_model
         
-        self.state_encoder = StateEncoder(config.input_dim, d_model)
+        self.state_encoder = StateEncoder(config.get("input_dim", STATE_DIM), d_model)
         self.action_encoder = ActionEncoder()
         
         self.fusion = nn.Sequential(
@@ -364,7 +364,7 @@ class YemongTemporal(BaseScaffold):
             }) for i in range(config.n_layers)
         ])
         
-        self.world_head = WorldHead(d_model, config.target_dim)
+        self.world_head = WorldHead(d_model, config.get("target_dim", TARGET_DIM))
         
     def forward(self, state, prev_action, seq_idx=None, inference_params=None, **kwargs):
         # We assume input is (B, T, N, D) but we process as (B*N, T, D)
@@ -400,8 +400,10 @@ class YemongTemporal(BaseScaffold):
             # Flatten target
             B, T, N, D = target_states.shape
             target_states = target_states.reshape(B*N, T, D)
-            # loss_mask is (B, T), need to expand to (B, N, T) then reshape to (B*N, T)
-            loss_mask = loss_mask.unsqueeze(2).expand(B, T, N).permute(0, 2, 1).reshape(B*N, T)
+            # loss_mask can be (B, T) or (B, T, N)
+            if loss_mask.ndim == 2:
+                loss_mask = loss_mask.unsqueeze(2).expand(B, T, N) # (B, T, N)
+            loss_mask = loss_mask.permute(0, 2, 1).reshape(B*N, T)
             
         mask_flat = loss_mask.reshape(-1).float()
         denom = mask_flat.sum() + 1e-6

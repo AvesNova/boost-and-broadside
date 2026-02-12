@@ -2,8 +2,6 @@ _target_: boost_and_broadside.models.yemong.scaffolds.YemongTemporal
 
 d_model: 256
 n_layers: 6
-input_dim: 5
-target_dim: 7
 learning_rate: 1e-4
 
 scheduler:
