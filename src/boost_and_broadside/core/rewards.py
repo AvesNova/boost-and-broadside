@@ -171,6 +171,80 @@ class VictoryReward(RewardComponent):
         
         return rewards * self.weight
 
+class LookingAtEnemyReward(RewardComponent):
+    """
+    Relational reward based on situational awareness.
+    Reward = (0.1 / (ata^2 + 0.1)) * (10 / (distance^2 + 10))
+    Summed for all enemy targets (from the perspective of the ship being evaluated).
+    """
+    def __init__(self, name: str = "looking_at_enemy", weight: float = 1.0, world_size: tuple = (1024.0, 1024.0)):
+        super().__init__(name, weight)
+        self.world_size = world_size
+
+    def compute(self, prev_state: TensorState, actions: torch.Tensor, next_state: TensorState, dones: torch.Tensor, is_terminal: bool=False) -> torch.Tensor:
+        # We use next_state for situational evaluation
+        pos = next_state.ship_pos # (B, N) complex
+        att = next_state.ship_attitude # (B, N) complex
+        teams = next_state.ship_team_id # (B, N)
+        alive = next_state.ship_alive # (B, N)
+        
+        B, N = pos.shape
+        W, H = self.world_size
+        
+        # 1. Calculate Relational Data (N x N)
+        # Pos: (B, N) -> (B, N, 1) and (B, 1, N)
+        pos_i = pos.unsqueeze(-1)
+        pos_j = pos.unsqueeze(-2)
+        
+        d_pos = pos_j - pos_i # (B, N, N) complex
+        
+        # Periodic Boundary
+        dx = d_pos.real
+        dy = d_pos.imag
+        dx = dx - torch.round(dx / W) * W
+        dy = dy - torch.round(dy / H) * H
+        d_pos = torch.complex(dx, dy)
+        
+        dist_sq = d_pos.abs().pow(2)
+        dist = dist_sq.sqrt()
+        
+        # 2. Angle To Antenna (ATA)
+        # Unit vector toward j
+        u_toward_j = d_pos / (dist + 1e-6)
+        
+        # Angle of my attitude relative to target
+        # att is [cos + i*sin]
+        # ata = angle(u_toward_j) - angle(att_i)
+        # Or dot product: cos_ata = Re(u_toward_j * conj(att_i))
+        # Wait, if u = target - me, then my attitude vector 'att' is where I look.
+        # dot(att, u) = cos(theta)
+        cos_ata = (u_toward_j * att.unsqueeze(-1).conj()).real
+        # Clamp for acos safety
+        ata = torch.acos(cos_ata.clamp(-1.0, 1.0)) # (B, N, N)
+        
+        # 3. Formula
+        # (0.1 / (ata^2 + 0.1)) * (10 / (distance^2 + 10))
+        comp_ata = 0.1 / (ata.pow(2) + 0.1)
+        comp_dist = 10.0 / (dist_sq + 10.0)
+        pair_reward = comp_ata * comp_dist # (B, N, N)
+        
+        # 4. Filter for Enemy and Alive
+        # is_enemy_j[i, j] = (teams[i] != teams[j])
+        teams_i = teams.unsqueeze(-1)
+        teams_j = teams.unsqueeze(-2)
+        is_enemy = (teams_i != teams_j)
+        
+        alive_j = alive.unsqueeze(-2).expand(B, N, N)
+        mask = is_enemy & alive_j # (B, N, N)
+        
+        # Sum targets
+        total_reward = (pair_reward * mask.float()).sum(dim=-1) # (B, N)
+        
+        # If I am dead, I get nothing
+        total_reward = total_reward * alive.float()
+        
+        return total_reward * self.weight
+
 class RewardRegistry:
     """
     Manages active reward components.
@@ -183,6 +257,7 @@ class RewardRegistry:
             self.components.append(DamageReward())
             self.components.append(DeathReward())
             self.components.append(VictoryReward())
+            self.components.append(LookingAtEnemyReward())
         else:
             # Load from config
             for name, cfg in config.items():
@@ -192,6 +267,8 @@ class RewardRegistry:
                     self.components.append(DeathReward(weight=cfg.get("weight", 1.0), die_penalty=cfg.get("die_penalty", 5.0), kill_reward=cfg.get("kill_reward", 5.0)))
                 elif name == "victory":
                     self.components.append(VictoryReward(weight=cfg.get("weight", 1.0), win_reward=cfg.get("win_reward", 100.0), lose_penalty=cfg.get("lose_penalty", 100.0)))
+                elif name == "looking_at_enemy":
+                    self.components.append(LookingAtEnemyReward(weight=cfg.get("weight", 1.0)))
                     
     def compute_all(self, prev_state: TensorState, actions: torch.Tensor, next_state: TensorState, dones: torch.Tensor, is_terminal: bool=False) -> Dict[str, torch.Tensor]:
         """

@@ -168,27 +168,16 @@ class BaseView(Dataset):
         self.seq_len = seq_len
         self.reward_registry = RewardRegistry(reward_config) if reward_config else None
 
-    def _compute_aligned_rewards(self, seq_tokens: torch.Tensor, seq_team_ids: torch.Tensor, seq_rewards: torch.Tensor) -> torch.Tensor:
+    def _compute_aligned_rewards(
+        self, 
+        seq_tokens: torch.Tensor, 
+        seq_team_ids: torch.Tensor, 
+        seq_rewards: torch.Tensor,
+        seq_pos: Optional[torch.Tensor] = None,
+        seq_att: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         """
         Computes rewards on-the-fly using the RewardRegistry if available.
-        
-        Args:
-            seq_tokens: (T, N, D)
-            seq_team_ids: (T, N)
-            seq_rewards: (T, N) - Original rewards from HDF5 (used as fallback/holder)
-            
-        Returns:
-            Updated rewards tensor (T, N) or (T, N, K) depending on configuration.
-            For now, we return sum(rewards) to match scalar expectation, or we can expand.
-            The user requested "each ship to predict each of our types of rewards".
-            This implies the target should be (T, N, K).
-            
-            However, 'seq_rewards' in current codebase is (T, N).
-            Changing the shape of the yielded reward tensor might break downstream collators 
-            if they expect specific shapes.
-            
-            If we want to support multi-head rewards, we need to stack them.
-            Let's assume we return a stacked tensor.
         """
         if self.reward_registry is None:
             return seq_rewards
@@ -196,61 +185,45 @@ class BaseView(Dataset):
         T, N, _ = seq_tokens.shape
         device = seq_tokens.device
         
-        # We need S_t and S_{t+1}
-        # The sequence is length T.
-        # We can compute rewards for T-1 transitions.
-        # The last step has no next state in this chunk (unless we fetched T+1 tokens).
-        # We usually fetch `actual_len` tokens.
-        # Strict calculation requires S_{t+1}.
-        
-        # Approximate:
-        # S_t = tokens[:-1]
-        # S_{t+1} = tokens[1:]
-        # This gives T-1 rewards. The last reward is unknown/pad.
-        # Or we should have fetched T+1 tokens in __getitem__.
-        
-        # For this implementation, let's assume we use the tokens we have.
-        # We'll pad the last reward with 0 or repeat.
-        
         # Reconstruct Partial States
-        # We need: Health, TeamID, Alive.
-        # Tokens: [Health, Power, Vx, Vy, AngVel, ...]
-        
         health = seq_tokens[..., StateFeature.HEALTH]
-        # Alive is implicitly Health > 0 (or we can assume so for reward calc)
         alive = health > 0
         
-        # Team IDs are passed separately
-        
+        # Handle Complex Pos/Att if provided as (T, N, 2)
+        if seq_pos is not None and seq_pos.shape[-1] == 2:
+             seq_pos = torch.complex(seq_pos[..., 0], seq_pos[..., 1])
+        if seq_att is not None and seq_att.shape[-1] == 2:
+             seq_att = torch.complex(seq_att[..., 0], seq_att[..., 1])
+
         # Create T-1 transitions
-        # prev_state
-        prev_health = health[:-1]
-        prev_alive = alive[:-1]
-        prev_team = seq_team_ids[:-1]
-        
         # next_state
         next_health = health[1:]
         next_alive = alive[1:]
         next_team = seq_team_ids[1:]
+        next_pos = seq_pos[1:] if seq_pos is not None else None
+        next_att = seq_att[1:] if seq_att is not None else None
         
         # Mock TensorStates (lightweight)
-        # We use a dummy class or just ensure RewardFunction only uses attributes we set.
-        # Since python is dynamic, we can create a SimpleNamespace or minimal object.
         class MockState:
-            def __init__(self, h, a, t):
+            def __init__(self, h, a, t, p=None, att=None):
                 self.ship_health = h
                 self.ship_alive = a
                 self.ship_team_id = t
+                self.ship_pos = p
+                self.ship_attitude = att
                 self.device = h.device
                 
-        p_state = MockState(prev_health, prev_alive, prev_team)
-        n_state = MockState(next_health, next_alive, next_team)
+        p_state = MockState(health[:-1], alive[:-1], seq_team_ids[:-1], 
+                          seq_pos[:-1] if seq_pos is not None else None,
+                          seq_att[:-1] if seq_att is not None else None)
+        n_state = MockState(next_health, next_alive, next_team, next_pos, next_att)
         
         # Dummy actions/dones
         actions = torch.zeros((T-1, N, 3), device=device) 
-        dones = torch.zeros((T-1,), dtype=torch.bool, device=device) # We ignore game over in partial chunk
+        dones = torch.zeros((T-1,), dtype=torch.bool, device=device) 
         
         rewards_dict = self.reward_registry.compute_all(p_state, actions, n_state, dones)
+
         
         # Stack rewards: (T-1, N, K)
         # We need to ensure deterministic order. 
@@ -509,7 +482,14 @@ class LongView(BaseView):
 
         # Compute Rewards On-The-Fly if configured
         if self.reward_registry:
-            seq_rewards = self._compute_aligned_rewards(seq_tokens, seq_team_ids, seq_rewards_raw)
+            seq_att = self.dataset.get_slice("attitude", abs_start, abs_end)
+            seq_rewards = self._compute_aligned_rewards(
+                seq_tokens, 
+                seq_team_ids, 
+                seq_rewards_raw, 
+                seq_pos=seq_pos, 
+                seq_att=seq_att
+            )
         else:
             seq_rewards = seq_rewards_raw
         

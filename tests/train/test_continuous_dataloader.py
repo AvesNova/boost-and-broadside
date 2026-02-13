@@ -62,6 +62,8 @@ def dummy_h5_data(tmp_path):
         f.create_dataset("actions", data=actions)
         f.create_dataset("episode_ids", data=ep_ids)
         f.create_dataset("episode_lengths", data=episode_lengths)
+        f.create_dataset("rewards", data=np.zeros((total_steps, num_ships), dtype=np.float32))
+        f.create_dataset("returns", data=np.zeros((total_steps, num_ships), dtype=np.float32))
         f.attrs["token_dim"] = STATE_DIM
         
     return str(file_path)

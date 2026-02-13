@@ -62,8 +62,9 @@ class ContinuousView(BaseView):
         # 4. Loss Masking
         loss_mask = ~reset_mask
         
-        # Fetch Position
+        # Fetch Position and Attitude
         pos = self.dataset.get_cross_episode_slice("position", global_start, self.seq_len)
+        att = self.dataset.get_cross_episode_slice("attitude", global_start, self.seq_len)
         
         # Rewards and Returns
         rewards_raw = self.dataset.get_cross_episode_slice("rewards", global_start, self.seq_len)
@@ -71,7 +72,7 @@ class ContinuousView(BaseView):
         
         # Compute Rewards On-The-Fly if configured
         if self.reward_registry:
-             rewards = self._compute_aligned_rewards(tokens, team_ids, rewards_raw)
+             rewards = self._compute_aligned_rewards(tokens, team_ids, rewards_raw, seq_pos=pos, seq_att=att)
         else:
              rewards = rewards_raw
 

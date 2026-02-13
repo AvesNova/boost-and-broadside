@@ -103,7 +103,7 @@ def test_yemong_full_forward_and_loss():
     assert state_pred.shape == (B, T, N, TARGET_DIM)
     assert action_logits.shape == (B, T, N, 12)
     assert value_pred.shape == (B, T, 1)
-    assert reward_pred.shape == (B, T, 1)
+    assert reward_pred.shape == (B, T, 4)
     
     # Loss
     target_states = torch.randn(B, T, N, TARGET_DIM) # Ground truth deltas

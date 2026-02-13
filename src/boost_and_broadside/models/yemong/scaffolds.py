@@ -119,7 +119,7 @@ class YemongFull(BaseScaffold):
 
         # Backbone (Interleaved)
         self.blocks = nn.ModuleList()
-        for i in range(config.n_layers):
+        for i in range(config.get("n_layers", 1)):
             # We instantiate layers from config if provided, else default
             # For strict plug-and-play we would use hydra.utils.instantiate inside a loop
             # But here we hardcode defaults for the "Full" version matching the original architecture
@@ -133,15 +133,15 @@ class YemongFull(BaseScaffold):
                 # 'attn': hydra.utils.instantiate(config.spatial_layer) 
                 # But for now, we use the specific implementation
                 'attn': hydra.utils.instantiate(config.spatial_layer) if 'spatial_layer' in config else \
-                        RelationalAttention(d_model, config.n_heads) 
+                        RelationalAttention(d_model, config.get("n_heads", 1)) 
             })
             self.blocks.append(block)
 
         # Actor Components
         self.actor_spatial_attn = hydra.utils.instantiate(config.spatial_layer) if 'spatial_layer' in config else \
-                                  RelationalAttention(d_model, config.n_heads)
+                                  RelationalAttention(d_model, config.get("n_heads", 1))
         self.actor_spatial_norm = RMSNorm(d_model)
-        self.actor_temporal_attn = nn.MultiheadAttention(d_model, num_heads=config.n_heads, batch_first=True)
+        self.actor_temporal_attn = nn.MultiheadAttention(d_model, num_heads=config.get("n_heads", 1), batch_first=True)
         self.actor_temporal_norm = RMSNorm(d_model)
         
         self.actor_head = ActorHead(d_model, config.get("action_dim", TOTAL_ACTION_LOGITS))
@@ -150,7 +150,7 @@ class YemongFull(BaseScaffold):
         self.world_head = WorldHead(d_model, config.get("target_dim", TARGET_DIM))
         
         # Value/Reward
-        num_rewards = config.get("num_reward_components", 3)
+        num_rewards = config.get("num_reward_components", 4)
         self.team_evaluator = TeamEvaluator(d_model, num_reward_components=num_rewards)
 
         # Uncertainty Weighting

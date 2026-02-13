@@ -7,7 +7,8 @@ def test_instantiation():
     # Simulate config
     cfg = OmegaConf.create({
         "d_model": 128,
-        "num_reward_components": 3,
+        "n_layers": 1,
+        "num_reward_components": 4,
         "target_dim": 7,
         "context_len": 32,
         "loss": {
@@ -25,7 +26,7 @@ def test_instantiation():
     last_layer = model.team_evaluator.reward_head[-1]
     print(f"Last layer out_features: {last_layer.out_features}")
     
-    assert last_layer.out_features == 3, f"Expected 3, got {last_layer.out_features}"
+    assert last_layer.out_features == 4, f"Expected 4, got {last_layer.out_features}"
 
 if __name__ == "__main__":
     test_instantiation()
