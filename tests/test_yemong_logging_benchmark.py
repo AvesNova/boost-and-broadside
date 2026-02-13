@@ -11,16 +11,26 @@ def test_logging_benchmark():
     cfg = OmegaConf.create({
         "d_model": 128,
         "n_layers": 2,
-        "n_heads": 2,
+        "n_heads": 4,
         "input_dim": STATE_DIM,
         "target_dim": TARGET_DIM,
-        "action_dim": TOTAL_ACTION_LOGITS,
-        "action_embed_dim": 8,
-        "max_ships": 4,
-        "use_pairwise_targets": False,
+        "action_dim": 12,
+        "action_embed_dim": 16,
         "loss_type": "fixed",
-        # New param (will be ignored by current code, but good for future)
-        "num_reward_components": 5 
+        "spatial_layer": {
+             "_target_": "boost_and_broadside.models.components.layers.attention.RelationalAttention",
+             "d_model": 128,
+             "n_heads": 4
+        },
+        "loss": {
+             "_target_": "boost_and_broadside.models.components.losses.CompositeLoss",
+             "losses": [
+                  {"_target_": "boost_and_broadside.models.components.losses.StateLoss", "weight": 1.0},
+                  {"_target_": "boost_and_broadside.models.components.losses.ActionLoss", "weight": 1.0},
+                  {"_target_": "boost_and_broadside.models.components.losses.ValueLoss", "weight": 1.0},
+                  {"_target_": "boost_and_broadside.models.components.losses.RewardLoss", "weight": 1.0}
+             ]
+        }
     })
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

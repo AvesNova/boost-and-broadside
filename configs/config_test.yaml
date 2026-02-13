@@ -89,6 +89,13 @@ model:
     ramp_epochs: 2
 
   loss:
-    use_focal_loss: false
-    weighted_loss_cap: 5.0
-    weighted_loss_power: 0.5
+    _target_: boost_and_broadside.models.components.losses.CompositeLoss
+    losses:
+      - _target_: boost_and_broadside.models.components.losses.StateLoss
+        weight: 1.0
+      - _target_: boost_and_broadside.models.components.losses.ActionLoss
+        weight: 1.0
+      - _target_: boost_and_broadside.models.components.losses.ValueLoss
+        weight: 1.0
+      - _target_: boost_and_broadside.models.components.losses.RewardLoss
+        weight: 1.0

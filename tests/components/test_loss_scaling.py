@@ -5,17 +5,33 @@ import torch.nn as nn
 
 from omegaconf import OmegaConf
 from boost_and_broadside.models.yemong.scaffolds import YemongFull
+from boost_and_broadside.core.constants import STATE_DIM, TARGET_DIM
 
 @pytest.fixture
 def mamba_config():
     return OmegaConf.create({
-        "input_dim": 15,
-        "d_model": 32,
-        "n_layers": 1,
-        "n_heads": 2,
+        "d_model": 128,
+        "n_layers": 2,
+        "n_heads": 4,
+        "input_dim": STATE_DIM,
+        "target_dim": TARGET_DIM,
         "action_dim": 12,
-        "target_dim": 15,
-        "loss_type": "uncertainty"
+        "loss_type": "uncertainty", # Default to uncertainty for these tests
+        "spatial_layer": {
+             "_target_": "boost_and_broadside.models.components.layers.attention.RelationalAttention",
+             "d_model": 128,
+             "n_heads": 4
+        },
+        "loss": {
+             "_target_": "boost_and_broadside.models.components.losses.CompositeLoss",
+             "loss_type": "uncertainty",
+             "losses": [
+                  {"_target_": "boost_and_broadside.models.components.losses.StateLoss", "weight": 1.0},
+                  {"_target_": "boost_and_broadside.models.components.losses.ActionLoss", "weight": 1.0},
+                  {"_target_": "boost_and_broadside.models.components.losses.ValueLoss", "weight": 1.0},
+                  {"_target_": "boost_and_broadside.models.components.losses.RewardLoss", "weight": 1.0}
+             ]
+        }
     })
 
 def test_uncertainty_params_initialization(mamba_config):
@@ -86,13 +102,23 @@ def test_uncertainty_loss_computation(mamba_config):
     assert total_loss < 100 * raw_s_loss # Should be much smaller
     
     # Check that we can backprop to log_vars
+    # Check that we can backprop to log_vars
+    # Note: log_vars are now in model.loss_fn.log_vars for CompositeLoss
     total_loss.backward()
-    assert model.log_vars["state"].grad is not None
-    assert model.log_vars["state"].grad != 0.0
+    
+    logger_keys = list(model.loss_fn.log_vars.keys())
+    assert len(logger_keys) > 0, "No log_vars found"
+    
+    # Check grad for the first key found (likely 'state' or 'loss_0')
+    first_key = logger_keys[0]
+    grad = model.loss_fn.log_vars[first_key].grad
+    assert grad is not None, f"Gradient for {first_key} is None"
+    assert grad != 0.0, f"Gradient for {first_key} is zero"
 
 def test_fixed_loss_computation(mamba_config):
     """Test that fixed mode uses lambdas."""
     mamba_config.loss_type = "fixed"
+    mamba_config.loss.loss_type = "fixed" # Crucial: Update the component config too
     model = YemongFull(mamba_config)
     
     B, T, N, D = 2, 2, 1, 15
@@ -102,9 +128,14 @@ def test_fixed_loss_computation(mamba_config):
     pred_actions = torch.randn(B, T, N, 12)
     target_actions = torch.zeros(B, T, N, 3)
     
+    # In new CompositeLoss system, weights are properties of LossModules, not kwargs to get_loss
+    # We must update the weight in the model instance
+    # StateLoss is index 0 in mamba_config fixture
+    model.loss_fn.losses[0].weight = 10.0
+    
     metrics = model.get_loss(
          pred_states, pred_actions, target_states, target_actions, loss_mask,
-         lambda_state=10.0
+         # lambda_state=10.0 # Ignored
     )
     total_loss = metrics["loss"]
     

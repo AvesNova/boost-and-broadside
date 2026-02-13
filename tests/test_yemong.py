@@ -40,6 +40,10 @@ def test_scaffold_instantiation(scaffold_class):
             "_target_": "boost_and_broadside.models.components.layers.attention.RelationalAttention",
             "d_model": 128,
             "n_heads": 4
+        },
+        "loss": {
+             "_target_": "boost_and_broadside.models.components.losses.CompositeLoss",
+             "losses": []
         }
     })
     model = scaffold_class(config)
@@ -54,7 +58,19 @@ def test_yemong_full_forward_and_loss():
         "input_dim": STATE_DIM,
         "target_dim": TARGET_DIM,
         "action_dim": 12,
-        "loss_type": "fixed"
+        "loss_type": "fixed",
+        "spatial_layer": {
+             "_target_": "boost_and_broadside.models.components.layers.attention.RelationalAttention",
+             "d_model": 128,
+             "n_heads": 4
+        },
+        "loss": {
+             "_target_": "boost_and_broadside.models.components.losses.CompositeLoss",
+             "losses": [
+                  {"_target_": "boost_and_broadside.models.components.losses.StateLoss", "weight": 1.0},
+                  {"_target_": "boost_and_broadside.models.components.losses.ActionLoss", "weight": 1.0}
+             ]
+        }
     })
     model = YemongFull(config)
     
@@ -114,7 +130,18 @@ def test_yemong_spatial_forward_and_loss():
         "n_layers": 2,
         "n_heads": 4,
         "input_dim": STATE_DIM,
-        "action_dim": 12
+        "action_dim": 12,
+        "spatial_layer": {
+             "_target_": "boost_and_broadside.models.components.layers.attention.RelationalAttention",
+             "d_model": 128,
+             "n_heads": 4
+        },
+        "loss": {
+             "_target_": "boost_and_broadside.models.components.losses.CompositeLoss",
+             "losses": [
+                  {"_target_": "boost_and_broadside.models.components.losses.ActionLoss", "weight": 1.0}
+             ]
+        }
     })
     model = YemongSpatial(config)
     
@@ -155,7 +182,13 @@ def test_yemong_temporal_forward_and_loss():
         "d_model": 128,
         "n_layers": 2,
         "input_dim": STATE_DIM,
-        "target_dim": TARGET_DIM
+        "target_dim": TARGET_DIM,
+        "loss": {
+             "_target_": "boost_and_broadside.models.components.losses.CompositeLoss",
+             "losses": [
+                  {"_target_": "boost_and_broadside.models.components.losses.StateLoss", "weight": 1.0}
+             ]
+        }
     })
     model = YemongTemporal(config)
     
@@ -171,7 +204,7 @@ def test_yemong_temporal_forward_and_loss():
     )
     
     # Temporal flattens internally if state is 4D
-    assert state_pred.shape == (B * N, T, TARGET_DIM)
+    assert state_pred.shape == (B, T, N, TARGET_DIM)
     
     # Loss
     target_states = torch.randn(B, T, N, TARGET_DIM)

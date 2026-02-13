@@ -142,6 +142,20 @@ def test_mamba_training_pipeline(tmp_path, synthetic_mamba_data):
     
     # 3. Paths
     h5_path = str(synthetic_mamba_data)
+
+    # Force float32 for CPU test to avoid BFloat16 issues
+    torch.set_default_dtype(torch.float32)
+    
+    # Ensure Test Config has Loss
+    cfg.model.loss = OmegaConf.create({
+             "_target_": "boost_and_broadside.models.components.losses.CompositeLoss",
+             "losses": [
+                  {"_target_": "boost_and_broadside.models.components.losses.StateLoss", "weight": 1.0},
+                  {"_target_": "boost_and_broadside.models.components.losses.ActionLoss", "weight": 1.0},
+                  {"_target_": "boost_and_broadside.models.components.losses.ValueLoss", "weight": 1.0},
+                  {"_target_": "boost_and_broadside.models.components.losses.RewardLoss", "weight": 1.0}
+             ]
+    })
     
     # Mock Mamba2 (CUDA kernel) for CPU testing of the Pipeline
     class MockMamba2(torch.nn.Module):

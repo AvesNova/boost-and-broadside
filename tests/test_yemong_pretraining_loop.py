@@ -8,10 +8,48 @@ from boost_and_broadside.models.yemong.scaffolds import YemongFull, YemongSpatia
 from boost_and_broadside.core.constants import STATE_DIM, TARGET_DIM, StateFeature
 
 @pytest.mark.parametrize("scaffold_cls, config_overrides", [
-    (YemongFull, {"loss_type": "fixed", "spatial_layer": {"_target_": "boost_and_broadside.models.components.layers.attention.RelationalAttention", "d_model": 128, "n_heads": 4}}),
-    (YemongSpatial, {"loss_type": "fixed"}),
-    (YemongTemporal, {"loss_type": "fixed"}),
-    (YemongDynamics, {"loss_type": "fixed", "action_embed_dim": 16, "spatial_layer": {"_target_": "boost_and_broadside.models.components.layers.attention.RelationalAttention", "d_model": 128, "n_heads": 4}})
+    (YemongFull, {
+        "loss_type": "fixed", 
+        "spatial_layer": {"_target_": "boost_and_broadside.models.components.layers.attention.RelationalAttention", "d_model": 128, "n_heads": 4},
+        "loss": {
+             "_target_": "boost_and_broadside.models.components.losses.CompositeLoss",
+             "losses": [
+                  {"_target_": "boost_and_broadside.models.components.losses.StateLoss", "weight": 1.0},
+                  {"_target_": "boost_and_broadside.models.components.losses.ActionLoss", "weight": 1.0},
+                  {"_target_": "boost_and_broadside.models.components.losses.ValueLoss", "weight": 1.0},
+                  {"_target_": "boost_and_broadside.models.components.losses.RewardLoss", "weight": 1.0}
+             ]
+        }
+    }),
+    (YemongSpatial, {
+        "loss_type": "fixed",
+        "spatial_layer": {"_target_": "boost_and_broadside.models.components.layers.attention.RelationalAttention", "d_model": 128, "n_heads": 4},
+        "loss": {
+             "_target_": "boost_and_broadside.models.components.losses.CompositeLoss",
+             "losses": [{"_target_": "boost_and_broadside.models.components.losses.ActionLoss", "weight": 1.0}]
+        }
+    }),
+    (YemongTemporal, {
+        "loss_type": "fixed",
+        "loss": {
+             "_target_": "boost_and_broadside.models.components.losses.CompositeLoss",
+             "losses": [{"_target_": "boost_and_broadside.models.components.losses.StateLoss", "weight": 1.0}]
+        }
+    }),
+    (YemongDynamics, {
+        "loss_type": "fixed", 
+        "action_embed_dim": 16, 
+        "spatial_layer": {"_target_": "boost_and_broadside.models.components.layers.attention.RelationalAttention", "d_model": 128, "n_heads": 4},
+        "loss": {
+             "_target_": "boost_and_broadside.models.components.losses.CompositeLoss",
+             "losses": [
+                  {"_target_": "boost_and_broadside.models.components.losses.StateLoss", "weight": 1.0},
+                  {"_target_": "boost_and_broadside.models.components.losses.ActionLoss", "weight": 1.0},
+                  {"_target_": "boost_and_broadside.models.components.losses.ValueLoss", "weight": 1.0},
+                  {"_target_": "boost_and_broadside.models.components.losses.RewardLoss", "weight": 1.0}
+             ]
+        }
+    })
 ])
 def test_pretraining_loop(scaffold_cls, config_overrides):
     # Setup

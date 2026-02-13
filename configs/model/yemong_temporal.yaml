@@ -10,4 +10,10 @@ scheduler:
     steps: 1000
     start_lr: 1e-7
 
+loss:
+  _target_: boost_and_broadside.models.components.losses.CompositeLoss
+  losses:
+    - _target_: boost_and_broadside.models.components.losses.StateLoss
+      weight: ${model.lambda_state}
+
 lambda_state: 1.0

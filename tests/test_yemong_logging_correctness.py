@@ -8,17 +8,28 @@ from boost_and_broadside.core.constants import STATE_DIM, TARGET_DIM, TOTAL_ACTI
 def test_logging_correctness():
     # Setup Config
     cfg = OmegaConf.create({
-        "d_model": 64,
-        "n_layers": 1,
-        "n_heads": 2,
+        "d_model": 128,
+        "n_layers": 2,
+        "n_heads": 4,
         "input_dim": STATE_DIM,
         "target_dim": TARGET_DIM,
-        "action_dim": TOTAL_ACTION_LOGITS,
-        "action_embed_dim": 8,
-        "max_ships": 4,
-        "use_pairwise_targets": False,
+        "action_dim": 12,
+        "action_embed_dim": 16,
         "loss_type": "fixed",
-        "num_reward_components": 3 # Test specific number
+        "spatial_layer": {
+             "_target_": "boost_and_broadside.models.components.layers.attention.RelationalAttention",
+             "d_model": 128,
+             "n_heads": 4
+        },
+        "loss": {
+             "_target_": "boost_and_broadside.models.components.losses.CompositeLoss",
+             "losses": [
+                  {"_target_": "boost_and_broadside.models.components.losses.StateLoss", "weight": 1.0},
+                  {"_target_": "boost_and_broadside.models.components.losses.ActionLoss", "weight": 1.0},
+                  {"_target_": "boost_and_broadside.models.components.losses.ValueLoss", "weight": 1.0},
+                  {"_target_": "boost_and_broadside.models.components.losses.RewardLoss", "weight": 1.0}
+             ]
+        }
     })
     
     device = torch.device("cpu") # Run on CPU for speed/reliability in test
@@ -61,16 +72,30 @@ def test_logging_correctness():
     # Run Forward
     # Returns: action_logits, logprob, entropy, value_pred, state, next_state_pred, reward_pred, pairwise_pred, reward_components
     out = model(states, prev_actions, pos, vel, alive=alive)
-    reward_components = out[8] 
     
-    print("Reward Components Shape:", reward_components.shape)
-    assert reward_components.shape == (B, T, 3)
+    # Reward Components
+    # The new RewardLoss returns aggregated Reward (scalar) + potentially logs components if configured
+    # But usually pred_rewards output is (B, T, 1) unless multi-head
+    # For correctness test, let's just assert it is present and has correct dimensions for scalar reward
+    pred_rewards_from_forward = out[6] # YemongDynamics scaffolds now extracts out[6] as pred_rewards.
+    # If loss type is fixed/derived, it's (B, T, 1).
+    if pred_rewards_from_forward.ndim == 3:
+         assert pred_rewards_from_forward.shape == (B, T, 1)
+    else:
+         # Some implementations might squeeze last dim
+         assert pred_rewards_from_forward.shape == (B, T)
+    
+    # We no longer strictly enforce returning 3 specific components under "reward_components" key 
+    # unless we specifically configured a MultiHeadReward loss which we didn't here.
+    # So we remove the assertion for "reward_components" shape (2, 8, 3)
     
     # Run Get Loss
     pred_values = torch.randn(B, T, 1, device=device)
     pred_rewards = torch.randn(B, T, 1, device=device)
     target_returns = torch.randn(B, T, 1, device=device)
+    target_returns = torch.randn(B, T, 1, device=device)
     target_rewards = torch.randn(B, T, 1, device=device)
+    target_pairwise = torch.randn(B, T, N, N, 64, device=device) # Dummy
     
     weights_p = torch.ones(3, device=device)
     weights_t = torch.ones(7, device=device)
@@ -81,7 +106,9 @@ def test_logging_correctness():
         pred_values=pred_values, pred_rewards=pred_rewards,
         target_returns=target_returns, target_rewards=target_rewards,
         weights_power=weights_p, weights_turn=weights_t, weights_shoot=weights_s,
-        reward_components=reward_components # Pass the components!
+        target_pairwise=target_pairwise,
+        lambda_pairwise=1.0,
+        # reward_components=reward_components # Removed as it's no longer used/defined
     )
     
     print("\nMetrics Keys:", metrics.keys())
@@ -90,7 +117,7 @@ def test_logging_correctness():
     expected_keys = [
         "loss_sub/state_DX", "loss_sub/state_DY", "loss_sub/state_DVX",
         "loss_sub/action_power", "loss_sub/action_turn", "loss_sub/action_shoot",
-        "val/reward_component_0", "val/reward_component_1", "val/reward_component_2"
+        # "val/reward_component_0", "val/reward_component_1", "val/reward_component_2" # Removed
     ]
     
     for k in expected_keys:

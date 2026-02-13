@@ -16,4 +16,10 @@ spatial_layer:
   d_model: ${model.d_model}
   n_heads: ${model.n_heads}
 
+loss:
+  _target_: boost_and_broadside.models.components.losses.CompositeLoss
+  losses:
+    - _target_: boost_and_broadside.models.components.losses.ActionLoss
+      weight: ${model.lambda_actions}
+
 lambda_actions: 1.0

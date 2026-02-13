@@ -57,6 +57,7 @@ class Trainer:
         
         # Calculate weights 
         dtype = torch.bfloat16 if self.use_amp else torch.float32
+        print(f"DEBUG: Trainer init - Device: {device}, Use AMP: {self.use_amp}, Dtype: {dtype}")
         w_power_full = compute_class_weights(counts["power"], cap=w_cap, power=w_pwr)
         self.w_power = w_power_full[:3].to(device, dtype=dtype)
         self.w_power = normalize_weights(self.w_power, counts["power"][:3])
@@ -198,7 +199,11 @@ class Trainer:
         """Performs forward pass, calculates loss, and scales gradients."""
         # Unpack Dict from ContinuousView
         # Keys: states, actions, seq_idx, reset_mask, loss_mask
-        states = batch_data["states"].to(self.device, non_blocking=True)
+        if not self.use_amp:
+             states = batch_data["states"].to(self.device, dtype=torch.float32, non_blocking=True)
+        else:
+             states = batch_data["states"].to(self.device, non_blocking=True)
+             
         actions = batch_data["actions"].to(self.device, non_blocking=True)
         team_ids = batch_data["team_ids"].to(self.device, non_blocking=True)
         seq_idx = batch_data["seq_idx"].to(self.device, non_blocking=True)

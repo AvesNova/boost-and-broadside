@@ -14,6 +14,7 @@ from boost_and_broadside.models.components.heads import ActorHead, WorldHead, Va
 from boost_and_broadside.models.components.team_evaluator import TeamEvaluator 
 from boost_and_broadside.models.components.layers.attention import RelationalAttention
 from boost_and_broadside.models.components.normalizer import FeatureNormalizer
+from boost_and_broadside.models.components.losses import CompositeLoss, LossModule
 from boost_and_broadside.core.constants import StateFeature, TargetFeature, STATE_DIM, TARGET_DIM, TOTAL_ACTION_LOGITS
 
 
@@ -25,9 +26,66 @@ class BaseScaffold(nn.Module):
         # Load Normalizer if stats_path is provided
         stats_path = config.get("stats_path", None)
         self.normalizer = FeatureNormalizer(stats_path) if stats_path else None
+
+        self.loss_fn = self.build_loss_fn(config)
     
-    def get_loss(self, *args, **kwargs):
-        raise NotImplementedError
+    def build_loss_fn(self, config):
+        if "loss" not in config:
+             raise ValueError("Loss configuration missing! Please add a 'loss' section to your model config.")
+        return hydra.utils.instantiate(config.loss)
+
+    def get_loss(self, pred_states=None, pred_actions=None, target_states=None, target_actions=None, loss_mask=None, 
+                 pred_values=None, pred_rewards=None, target_returns=None, target_rewards=None,
+                 target_alive=None, pairwise_pred=None, target_pairwise=None, reward_components=None, **kwargs):
+        
+        # Adapter to map arguments to generic structure
+        preds = {
+            "states": pred_states,
+            "actions": pred_actions,
+            "value": pred_values,
+            "reward": pred_rewards,
+            "pairwise": pairwise_pred,
+            "reward_components": reward_components
+        }
+        
+        targets = {
+            "states": target_states,
+            "actions": target_actions,
+            "returns": target_returns,
+            "rewards": target_rewards,
+            "pairwise": target_pairwise
+        }
+
+        # Pre-process Targets (Normalization)
+        if self.normalizer:
+            if preds["states"] is not None:
+                preds["states"] = self.normalizer.normalize_target(preds["states"])
+            if targets["states"] is not None:
+                targets["states"] = self.normalizer.normalize_target(targets["states"])
+        
+        # Combined Mask Logic
+        # loss_mask is typically (B, T, N) or (B, T)
+        # target_alive is (B, T, N)
+        # We merge them here for the generic mask
+        final_mask = loss_mask
+        
+        # Ensure loss_mask is expanded if needed for state/action (B, T, N)
+        # But if it's already generic mask, we pass it.
+        # Loss modules expect to handle their own dimensional logic, but usually we want
+        # a mask that matches the finest granularity (Ship Level).
+        
+        if final_mask.ndim == 2 and pred_states is not None:
+             final_mask = final_mask.unsqueeze(-1).expand_as(pred_states[..., 0])
+             
+        if target_alive is not None:
+             # Ensure shapes match for broadcast
+             if final_mask.shape != target_alive.shape:
+                  # Try to work with it or assume caller handles it?
+                  # trainer.py handles loss_mask slicing.
+                  pass
+             final_mask = final_mask & target_alive
+
+        return self.loss_fn(preds, targets, final_mask, **kwargs)
 
 class YemongFull(BaseScaffold):
     def __init__(self, config=None, **kwargs):
@@ -194,81 +252,7 @@ class YemongFull(BaseScaffold):
         
         return state_pred, action_logits, value_pred.reshape(batch_size, seq_len, 1), reward_components.sum(dim=-1, keepdim=True).reshape(batch_size, seq_len, 1), x_final
 
-    def get_loss(self, pred_states, pred_actions, target_states, target_actions, loss_mask, 
-                 lambda_state=1.0, lambda_actions=1.0,
-                 pred_values=None, pred_rewards=None, target_returns=None, target_rewards=None,
-                 lambda_value=1.0, lambda_reward=1.0, weights_power=None, weights_turn=None, weights_shoot=None,
-                 target_alive=None, min_sigma=0.1, **kwargs):
-        
-        target_states = target_states.to(pred_states.dtype)
-        
-        # Apply Target Normalization (Scale (RMS))
-        if self.normalizer:
-            # Vectorized normalization
-            pred_states = self.normalizer.normalize_target(pred_states)
-            target_states = self.normalizer.normalize_target(target_states)
 
-        if loss_mask.ndim == 2: loss_mask = loss_mask.unsqueeze(-1).expand_as(pred_states[..., 0])
-        if target_alive is not None: loss_mask = loss_mask & target_alive
-             
-        mask_flat = loss_mask.reshape(-1).float()
-        denom = mask_flat.sum() + 1e-6
-        mse = F.mse_loss(pred_states, target_states, reduction='none')
-        
-        s_loss = mse.mean(dim=-1).reshape(-1).mul(mask_flat).sum() / denom
-        
-        l_p, l_t, l_s = pred_actions[..., 0:3], pred_actions[..., 3:10], pred_actions[..., 10:12]
-        t_p, t_t, t_s = target_actions[..., 0].long().clamp(0, 2), target_actions[..., 1].long().clamp(0, 6), target_actions[..., 2].long().clamp(0, 1)
-        
-        a_loss_p = (F.cross_entropy(l_p.reshape(-1, 3), t_p.reshape(-1), weight=weights_power, reduction='none') * mask_flat).sum() / denom / math.log(3)
-        a_loss_t = (F.cross_entropy(l_t.reshape(-1, 7), t_t.reshape(-1), weight=weights_turn, reduction='none') * mask_flat).sum() / denom / math.log(7)
-        a_loss_s = (F.cross_entropy(l_s.reshape(-1, 2), t_s.reshape(-1), weight=weights_shoot, reduction='none') * mask_flat).sum() / denom / math.log(2)
-        
-        a_loss = a_loss_p + a_loss_t + a_loss_s
-
-        v_loss = r_loss = torch.tensor(0.0, device=pred_states.device)
-        if pred_values is not None and target_returns is not None:
-             valid_cnt = target_alive.sum(dim=-1, keepdim=True).clamp(min=1.0) if target_alive is not None else 1.0
-             team_ret = (target_returns * target_alive).sum(dim=-1, keepdim=True) / valid_cnt if target_alive is not None else target_returns.mean(dim=-1, keepdim=True)
-             team_rew = (target_rewards * target_alive).sum(dim=-1, keepdim=True) / valid_cnt if target_alive is not None else target_rewards.mean(dim=-1, keepdim=True)
-             m_glob = loss_mask.any(dim=-1, keepdim=True).float()
-             d_glob = m_glob.sum() + 1e-6
-             v_loss = (F.mse_loss(pred_values, team_ret, reduction='none') * m_glob).sum() / d_glob
-             r_loss = (F.mse_loss(pred_rewards, team_rew, reduction='none') * m_glob).sum() / d_glob
-
-        loss_type = getattr(self.config, "loss_type", "fixed")
-        if loss_type == "uncertainty" and self.log_vars is not None:
-             clamped_sigmas = {}
-             def apply_u(loss, name):
-                  s = torch.clamp(self.log_vars[name], min=2.0 * math.log(min_sigma))
-                  clamped_sigmas[name] = torch.exp(0.5 * s).item()
-                  return 0.5 * torch.exp(-s) * loss + 0.5 * s
-             l_state_w = apply_u(s_loss, "state")
-             l_actions_w = apply_u(a_loss, "actions")
-             l_value_w = apply_u(v_loss, "value")
-             l_reward_w = apply_u(r_loss, "reward")
-             total_loss = l_state_w + l_actions_w + l_value_w + l_reward_w
-        else:
-             total_loss = (lambda_state * s_loss) + (lambda_actions * a_loss) + (lambda_value * v_loss) + (lambda_reward * r_loss)
-
-        metrics = {
-            "loss": total_loss,
-            "state_loss": s_loss.detach(),
-            "action_loss": a_loss.detach(),
-            "value_loss": v_loss.detach(),
-            "reward_loss": r_loss.detach(),
-            "pairwise_loss": torch.tensor(0.0, device=total_loss.device),
-            
-            # Legacy Sub-losses
-            "loss_sub/state_mse": s_loss.detach(), 
-            "loss_sub/action_all": a_loss.detach(), 
-            "loss_sub/action_power": a_loss_p.detach(), 
-            "loss_sub/action_turn": a_loss_t.detach(), 
-            "loss_sub/action_shoot": a_loss_s.detach(), 
-            "loss_sub/value_mse": v_loss.detach(), 
-            "loss_sub/reward_mse": r_loss.detach()
-        }
-        return metrics
 
 
 class YemongSpatial(BaseScaffold):
@@ -352,43 +336,7 @@ class YemongSpatial(BaseScaffold):
         
         return None, action_logits, None, None, x
 
-    def get_loss(self, pred_actions, target_actions, loss_mask, 
-                 lambda_actions=1.0,
-                 weights_power=None, weights_turn=None, weights_shoot=None,
-                 **kwargs):
-        
-        # Expand loss_mask to match pred_actions shape (B, T, N)
-        if loss_mask.ndim == 2:
-            # loss_mask is (B, T), need to expand to (B, T, N)
-            loss_mask = loss_mask.unsqueeze(-1).expand_as(pred_actions[..., 0])
-        
-        mask_flat = loss_mask.reshape(-1).float()
-        denom = mask_flat.sum() + 1e-6
-        
-        l_p, l_t, l_s = pred_actions[..., 0:3], pred_actions[..., 3:10], pred_actions[..., 10:12]
-        t_p, t_t, t_s = target_actions[..., 0].long().clamp(0, 2), target_actions[..., 1].long().clamp(0, 6), target_actions[..., 2].long().clamp(0, 1)
-        
-        a_loss_p = (F.cross_entropy(l_p.reshape(-1, 3), t_p.reshape(-1), weight=weights_power, reduction='none') * mask_flat).sum() / denom / math.log(3)
-        a_loss_t = (F.cross_entropy(l_t.reshape(-1, 7), t_t.reshape(-1), weight=weights_turn, reduction='none') * mask_flat).sum() / denom / math.log(7)
-        a_loss_s = (F.cross_entropy(l_s.reshape(-1, 2), t_s.reshape(-1), weight=weights_shoot, reduction='none') * mask_flat).sum() / denom / math.log(2)
-        
-        a_loss = a_loss_p + a_loss_t + a_loss_s
-        total_loss = lambda_actions * a_loss
-        
-        metrics = {
-            "loss": total_loss,
-            "state_loss": torch.tensor(0.0, device=total_loss.device),
-            "action_loss": a_loss.detach(),
-            "value_loss": torch.tensor(0.0, device=total_loss.device),
-            "reward_loss": torch.tensor(0.0, device=total_loss.device),
-            "pairwise_loss": torch.tensor(0.0, device=total_loss.device),
 
-            "loss_sub/action_all": a_loss.detach(),
-            "loss_sub/action_power": a_loss_p.detach(),
-            "loss_sub/action_turn": a_loss_t.detach(),
-            "loss_sub/action_shoot": a_loss_s.detach()
-        }
-        return metrics
 
 
 class YemongTemporal(BaseScaffold):
@@ -423,7 +371,9 @@ class YemongTemporal(BaseScaffold):
         
     def forward(self, state, prev_action, seq_idx=None, inference_params=None, **kwargs):
         # We assume input is (B, T, N, D) but we process as (B*N, T, D)
+        state_is_4d = False
         if state.ndim == 4:
+            state_is_4d = True
             B, T, N, D = state.shape
             # Use reshape instead of view to handle non-contiguous tensors
             state = state.reshape(B*N, T, D)
@@ -442,6 +392,13 @@ class YemongTemporal(BaseScaffold):
             
         state_pred = self.world_head(x)
         
+        # Reshape back to (B, T, N, D) if input was 4D
+        if state_is_4d:
+             # state_pred is (B*N, T, D) -> (B, T, N, D)
+             # x is (B*N, T, D) -> (B, T, N, D)
+             state_pred = state_pred.view(B, N, T, -1).permute(0, 2, 1, 3)
+             x = x.view(B, N, T, -1).permute(0, 2, 1, 3)
+        
         # Reshape back if needed, but for loss we can keep flattened usually
         if 'num_ships' in kwargs: 
              # ... explicit reshape logic if needed by trainer
@@ -449,41 +406,7 @@ class YemongTemporal(BaseScaffold):
              
         return state_pred, None, None, None, x
 
-    def get_loss(self, pred_states, target_states, loss_mask, lambda_state=1.0, **kwargs):
-        
-        if pred_states.ndim == 3 and target_states.ndim == 4:
-            # Flatten target
-            B, T, N, D = target_states.shape
-            target_states = target_states.reshape(B*N, T, D)
-            # loss_mask can be (B, T) or (B, T, N)
-            if loss_mask.ndim == 2:
-                loss_mask = loss_mask.unsqueeze(2).expand(B, T, N) # (B, T, N)
-            loss_mask = loss_mask.permute(0, 2, 1).reshape(B*N, T)
-            
-        mask_flat = loss_mask.reshape(-1).float()
-        denom = mask_flat.sum() + 1e-6
-        mse = F.mse_loss(pred_states, target_states, reduction='none')
-        
-        s_loss = mse.mean(dim=-1).reshape(-1).mul(mask_flat).sum() / denom
-        
-        if self.normalizer:
-            # Vectorized normalization
-            pred_states = self.normalizer.normalize_target(pred_states)
-            target_states = self.normalizer.normalize_target(target_states)
 
-        total_loss = lambda_state * s_loss
-        
-        metrics = {
-            "loss": total_loss,
-            "state_loss": s_loss.detach(),
-            "action_loss": torch.tensor(0.0, device=total_loss.device),
-            "value_loss": torch.tensor(0.0, device=total_loss.device),
-            "reward_loss": torch.tensor(0.0, device=total_loss.device),
-            "pairwise_loss": torch.tensor(0.0, device=total_loss.device),
-
-            "loss_sub/state_mse": s_loss.detach()
-        }
-        return metrics
 
 
 from boost_and_broadside.models.components.encoders import StateEncoder, ActionEncoder, RelationalEncoder, SeparatedActionEncoder
@@ -726,77 +649,7 @@ class YemongDynamics(BaseScaffold):
         # 1.action_logits, 2.logprob, 3.entropy, 4.value, 5.state, 6.pred_states, 7.pred_rewards, 8.pred_pairwise, 9.reward_components
         return action_logits, None, None, value_pred, None, next_state_pred, reward_pred, pairwise_pred, reward_components
         
-    def get_loss(self, pred_states, pred_actions, target_states, target_actions, loss_mask,
-                 lambda_state=1.0, lambda_actions=1.0,
-                 pred_values=None, pred_rewards=None, target_returns=None, target_rewards=None,
-                 lambda_value=1.0, lambda_reward=1.0, weights_power=None, weights_turn=None, weights_shoot=None,
-                 target_alive=None, min_sigma=0.1,
-                 pairwise_pred=None, target_pairwise=None, lambda_pairwise=0.1,
-                 reward_components=None):
-        
-        target_states = target_states.to(pred_states.dtype)
-        
-        # Normalization
-        if self.normalizer:
-            # Vectorized normalization
-            pred_states = self.normalizer.normalize_target(pred_states)
-            target_states = self.normalizer.normalize_target(target_states)
 
-        if loss_mask.ndim == 2: loss_mask = loss_mask.unsqueeze(-1).expand_as(pred_states[..., 0])
-        if target_alive is not None: loss_mask = loss_mask & target_alive
-             
-        mask_flat = loss_mask.reshape(-1).float()
-        denom = mask_flat.sum() + 1e-6
-        mse = F.mse_loss(pred_states, target_states, reduction='none')
-        s_loss = mse.mean(dim=-1).reshape(-1).mul(mask_flat).sum() / denom
-        
-        # Detailed State Loss Logging (Detached)
-        # TargetFeature: DX=0, DY=1, DVX=2, DVY=3, DHEALTH=4, DPOWER=5, DANG_VEL=6
-        state_losses = {}
-        with torch.no_grad():
-             # mse shape: (B, T, N, D)
-             # mask shape: (B, T, N) -> (B, T, N, 1)
-             m_expanded = loss_mask.unsqueeze(-1).float()
-             # masked_mse: (B, T, N, D)
-             masked_mse = mse * m_expanded
-             # Sum over B, T, N
-             sum_mse = masked_mse.sum(dim=(0, 1, 2))
-             # Denom is same for all features (total valid items)
-             # avg_mse_per_feature = sum_mse / denom
-             
-             # Map to names
-             feature_names = ["DX", "DY", "DVX", "DVY", "DHEALTH", "DPOWER", "DANG_VEL"]
-             for i, name in enumerate(feature_names):
-                  if i < mse.shape[-1]:
-                       state_losses[f"loss_sub/state_{name}"] = (sum_mse[i] / denom).item()
-        
-        # Action Loss
-        a_loss = torch.tensor(0.0, device=pred_states.device)
-        if pred_actions is not None:
-            l_p, l_t, l_s = pred_actions[..., 0:3], pred_actions[..., 3:10], pred_actions[..., 10:12]
-            t_p, t_t, t_s = target_actions[..., 0].long().clamp(0, 2), target_actions[..., 1].long().clamp(0, 6), target_actions[..., 2].long().clamp(0, 1)
-            
-            a_loss_p = (F.cross_entropy(l_p.reshape(-1, 3), t_p.reshape(-1), weight=weights_power, reduction='none') * mask_flat).sum() / denom / math.log(3)
-            a_loss_t = (F.cross_entropy(l_t.reshape(-1, 7), t_t.reshape(-1), weight=weights_turn, reduction='none') * mask_flat).sum() / denom / math.log(7)
-            a_loss_s = (F.cross_entropy(l_s.reshape(-1, 2), t_s.reshape(-1), weight=weights_shoot, reduction='none') * mask_flat).sum() / denom / math.log(2)
-            a_loss = a_loss_p + a_loss_t + a_loss_s
-            
-        # Detailed Action Loss Logging (Detached)
-        action_losses = {}
-        with torch.no_grad():
-             if pred_actions is not None:
-                  action_losses["loss_sub/action_power"] = a_loss_p.item()
-                  action_losses["loss_sub/action_turn"] = a_loss_t.item()
-                  action_losses["loss_sub/action_shoot"] = a_loss_s.item()
-
-        v_loss = r_loss = torch.tensor(0.0, device=pred_states.device)
-        
-        # Value/Reward computation (Scalar/Team-Level)
-        # Targets are likely (B, T) or (B, T, 1)
-        # loss_mask is (B, T, N). We need to valid_cnt to average or mask
-        # If we have ground truth returns/rewards per team, we use them directly.
-        # If we have per-node rewards, we average them? Typically rewards are team-based.
-        # Let's assume target_returns is (B, T, 1) or (B, T).
         
         if pred_values is not None and target_returns is not None:
              # Check if target_returns is per-node
