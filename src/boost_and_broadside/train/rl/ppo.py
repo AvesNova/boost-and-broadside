@@ -129,6 +129,10 @@ class PPOTrainer:
                 lrnow = frac * self.cfg.train.ppo.learning_rate
                 self.optimizer.param_groups[0]["lr"] = lrnow
 
+            # Accumulators for Episode Stats
+            iter_episode_returns = []
+            iter_episode_lengths = []
+
             for step in range(0, self.cfg.train.ppo.num_steps):
                 global_step += self.cfg.train.ppo.num_envs
                 
@@ -160,15 +164,8 @@ class PPOTrainer:
                         if "episode" in item:
                             ep_ret = item["episode"]["r"]
                             ep_len = item["episode"]["l"]
-                            # print(f"global_step={global_step}, episodic_return={ep_ret}")
-                            self.writer.add_scalar("charts/episodic_return", ep_ret, global_step)
-                            self.writer.add_scalar("charts/episodic_length", ep_len, global_step)
-                            if self.cfg.wandb.enabled:
-                                wandb.log({
-                                    "charts/episodic_return": ep_ret,
-                                    "charts/episodic_length": ep_len,
-                                    "global_step": global_step
-                                })
+                            iter_episode_returns.append(ep_ret)
+                            iter_episode_lengths.append(ep_len)
 
                 # Buffer Add
                 self.buffer.add(next_obs, action, logprob, reward, next_done, value)
@@ -202,7 +199,24 @@ class PPOTrainer:
                 self.buffer.compute_gae(next_value, next_done)
                 
             # --- UPDATE PHASE ---
+            # Accumulators for Loss Stats
             clipfracs = []
+            loss_stats = {
+                "pg_loss": [],
+                "v_loss": [],
+                "entropy_loss": [],
+                "old_approx_kl": [],
+                "approx_kl": [],
+                "s_loss": [],
+                "r_loss": [],
+                "explained_var": []
+            }
+            
+            # Explained Variance (calculated once per update usually, but can average)
+            y_pred, y_true = self.buffer.values.flatten().cpu().numpy(), self.buffer.returns.flatten().cpu().numpy()
+            var_y = np.var(y_true)
+            explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
+            loss_stats["explained_var"].append(explained_var)
             
             for epoch in range(self.cfg.train.ppo.update_epochs):
                 
@@ -261,6 +275,9 @@ class PPOTrainer:
                         approx_kl = ((ratio - 1) - logratio).mean()
                         clipfracs += [((ratio - 1.0).abs() > self.cfg.train.ppo.clip_coef).float().mean().item()]
                         
+                        loss_stats["old_approx_kl"].append(old_approx_kl.item())
+                        loss_stats["approx_kl"].append(approx_kl.item())
+                        
                     # Normalize Advantage
                     if self.cfg.train.ppo.norm_adv:
                         mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
@@ -309,6 +326,13 @@ class PPOTrainer:
                     # Only next_state_pred is invalid at T.
                     r_loss = F.mse_loss(reward_pred, mb_rewards_perm)
                     
+                    # Accumulate Stats
+                    loss_stats["pg_loss"].append(pg_loss.item())
+                    loss_stats["v_loss"].append(v_loss.item())
+                    loss_stats["entropy_loss"].append(entropy_loss.item())
+                    loss_stats["s_loss"].append(s_loss.item())
+                    loss_stats["r_loss"].append(r_loss.item())
+
                     # Total Loss
                     # Coefficients 0.5 for now
                     loss = pg_loss - self.cfg.train.ppo.ent_coef * entropy_loss + v_loss * self.cfg.train.ppo.vf_coef + 0.5 * s_loss + 0.5 * r_loss
@@ -318,40 +342,58 @@ class PPOTrainer:
                     nn.utils.clip_grad_norm_(self.agent.parameters(), self.cfg.train.ppo.max_grad_norm)
                     self.optimizer.step()
                 
+                # Check KL divergence at end of epoch or use accumulated mean?
+                # Early stopping usually checks last batch? Or average?
+                # Using last batch KL for early stopping logic is standard.
                 if self.cfg.train.ppo.target_kl is not None and approx_kl > self.cfg.train.ppo.target_kl:
                     break
 
-            # Logging
-            y_pred, y_true = self.buffer.values.flatten().cpu().numpy(), self.buffer.returns.flatten().cpu().numpy()
-            var_y = np.var(y_true)
-            explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
-            
-            sps = int(global_step / (time.time() - start_time))
-            
+            # Logging at the END of Iteration (aggregated)
             if iteration % self.cfg.wandb.log_interval == 0:
-                # Record losses
-                self.writer.add_scalar("losses/policy_loss", pg_loss.item(), global_step)
-                self.writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
-                self.writer.add_scalar("losses/entropy", entropy_loss.item(), global_step)
-                self.writer.add_scalar("losses/old_approx_kl", old_approx_kl, global_step)
-                self.writer.add_scalar("losses/approx_kl", approx_kl.item(), global_step)
-                self.writer.add_scalar("losses/clipfrac", np.mean(clipfracs), global_step)
-                self.writer.add_scalar("losses/explained_variance", explained_var, global_step)
-                self.writer.add_scalar("charts/SPS", sps, global_step)
-                self.writer.add_scalar("losses/state_loss", s_loss.item(), global_step)
-                self.writer.add_scalar("losses/reward_loss", r_loss.item(), global_step)
+                sps = int(global_step / (time.time() - start_time))
                 
-                print(f"Iteration {iteration}: SPS={sps} P_Loss={pg_loss.item():.3f} V_Loss={v_loss.item():.3f} S_Loss={s_loss.item():.3f} R_Loss={r_loss.item():.3f} Exp_Var={explained_var:.3f}")
+                # Mean Losses
+                mean_losses = {k: np.mean(v) if len(v) > 0 else 0.0 for k, v in loss_stats.items()}
+                mean_clipfrac = np.mean(clipfracs) if len(clipfracs) > 0 else 0.0
+                
+                # Log Losses
+                self.writer.add_scalar("losses/policy_loss", mean_losses["pg_loss"], global_step)
+                self.writer.add_scalar("losses/value_loss", mean_losses["v_loss"], global_step)
+                self.writer.add_scalar("losses/entropy", mean_losses["entropy_loss"], global_step)
+                self.writer.add_scalar("losses/old_approx_kl", mean_losses["old_approx_kl"], global_step)
+                self.writer.add_scalar("losses/approx_kl", mean_losses["approx_kl"], global_step)
+                self.writer.add_scalar("losses/clipfrac", mean_clipfrac, global_step)
+                self.writer.add_scalar("losses/explained_variance", explained_var, global_step) # Use last calculation
+                self.writer.add_scalar("losses/state_loss", mean_losses["s_loss"], global_step)
+                self.writer.add_scalar("losses/reward_loss", mean_losses["r_loss"], global_step)
+                self.writer.add_scalar("charts/SPS", sps, global_step)
+                
+                # Log Returns
+                if len(iter_episode_returns) > 0:
+                    mean_ep_ret = np.mean(iter_episode_returns)
+                    mean_ep_len = np.mean(iter_episode_lengths)
+                    self.writer.add_scalar("charts/episodic_return", mean_ep_ret, global_step)
+                    self.writer.add_scalar("charts/episodic_length", mean_ep_len, global_step)
+                else:
+                    mean_ep_ret = 0.0 # Placeholder
+                    mean_ep_len = 0.0
+
+                print(f"Iteration {iteration}: SPS={sps} P_Loss={mean_losses['pg_loss']:.3f} V_Loss={mean_losses['v_loss']:.3f} S_Loss={mean_losses['s_loss']:.3f} R_Loss={mean_losses['r_loss']:.3f} Ep_Ret={mean_ep_ret:.1f}")
 
                 if self.cfg.wandb.enabled:
-                    wandb.log({
-                        "losses/policy_loss": pg_loss.item(),
-                        "losses/value_loss": v_loss.item(),
-                        "losses/entropy": entropy_loss.item(),
-                        "losses/approx_kl": approx_kl.item(),
+                    log_dict = {
+                        "losses/policy_loss": mean_losses["pg_loss"],
+                        "losses/value_loss": mean_losses["v_loss"],
+                        "losses/entropy": mean_losses["entropy_loss"],
+                        "losses/approx_kl": mean_losses["approx_kl"],
                         "losses/explained_variance": explained_var,
-                        "losses/state_loss": s_loss.item(),
-                        "losses/reward_loss": r_loss.item(),
+                        "losses/state_loss": mean_losses["s_loss"],
+                        "losses/reward_loss": mean_losses["r_loss"],
                         "charts/SPS": sps,
                         "global_step": global_step
-                    })
+                    }
+                    if len(iter_episode_returns) > 0:
+                        log_dict["charts/episodic_return"] = mean_ep_ret
+                        log_dict["charts/episodic_length"] = mean_ep_len
+                        
+                    wandb.log(log_dict)
