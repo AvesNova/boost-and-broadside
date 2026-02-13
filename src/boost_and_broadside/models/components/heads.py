@@ -52,3 +52,25 @@ class ValueHead(nn.Module):
 
     def forward(self, x):
         return self.net(x), self.reward_net(x)
+
+class PairwiseRelationalHead(nn.Module):
+    """
+    Predicts pairwise relational deltas between ships i and j.
+    Input: Concatenated tokens (Zi, Zj).
+    Output: 4 targets (drel_x, drel_y, drel_vx, drel_vy).
+    """
+    def __init__(self, d_model: int):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(d_model * 2, d_model),
+            RMSNorm(d_model),
+            nn.SiLU(),
+            nn.Linear(d_model, 4)
+        )
+
+    def forward(self, z):
+        """
+        z: (B, T, N, N, 2*D) - pairwise concatenated tokens
+        returns: (B, T, N, N, 4)
+        """
+        return self.net(z)

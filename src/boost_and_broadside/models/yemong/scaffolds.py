@@ -10,7 +10,7 @@ from torch.distributions.normal import Normal
 
 from boost_and_broadside.models.components.layers.utils import RMSNorm, MambaBlock
 from boost_and_broadside.models.components.encoders import StateEncoder, ActionEncoder, RelationalEncoder
-from boost_and_broadside.models.components.heads import ActorHead, WorldHead, ValueHead
+from boost_and_broadside.models.components.heads import ActorHead, WorldHead, ValueHead, PairwiseRelationalHead
 from boost_and_broadside.models.components.team_evaluator import TeamEvaluator 
 from boost_and_broadside.models.components.layers.attention import RelationalAttention
 from boost_and_broadside.models.components.normalizer import FeatureNormalizer
@@ -517,20 +517,14 @@ class YemongDynamics(BaseScaffold):
         self.team_token_value = nn.Parameter(torch.randn(1, 1, d_model))
         self.norm_value = nn.LayerNorm(d_model)
         self.pooler_value = nn.MultiheadAttention(d_model, 4, batch_first=True)
-        self.value_head = nn.Linear(d_model, 1)
-
-        # Dynamics Heads (Auxiliary)
-        self.next_state_head = nn.Linear(d_model, 5) # [Health, Power, Vx, Vy, AngVel]
-        self.reward_head = nn.Linear(d_model, 1)
-
-        # Dynamics Heads (Auxiliary)
-        self.next_state_head = nn.Linear(d_model, 5) # [Health, Power, Vx, Vy, AngVel]
-        self.reward_head = nn.Linear(d_model, 1)
         self.value_head = nn.Sequential(
             nn.Linear(d_model, d_model),
             nn.SiLU(),
             nn.Linear(d_model, 1)
         )
+
+        # Dynamics Heads (Auxiliary)
+        self.reward_head = nn.Linear(d_model, 1)
         
         # Dynamics Module
         # Fusion Z + Action(t)
@@ -548,6 +542,11 @@ class YemongDynamics(BaseScaffold):
         
         # Heads on Z'
         self.world_head = WorldHead(d_model, config.get("target_dim", TARGET_DIM))
+        
+        # Optional Pairwise Relational Head
+        self.use_pairwise = config.get("use_pairwise_targets", False)
+        if self.use_pairwise:
+            self.pairwise_head = PairwiseRelationalHead(d_model)
         
         # Reward w/ Team Pooling
         self.team_token_reward = nn.Parameter(torch.randn(1, 1, d_model) * 0.02)
@@ -666,6 +665,15 @@ class YemongDynamics(BaseScaffold):
         # 6. Heads on Z' (NextState + Reward)
         next_state_pred = self.world_head(Z_prime)
         
+        # Pairwise Relational (Optional)
+        if self.use_pairwise:
+            zi = Z_prime.unsqueeze(3).expand(-1, -1, -1, num_ships, -1)
+            zj = Z_prime.unsqueeze(2).expand(-1, -1, num_ships, -1, -1)
+            z_pair = torch.cat([zi, zj], dim=-1)
+            pairwise_pred = self.pairwise_head(z_pair)
+        else:
+            pairwise_pred = None
+        
         # Reward w/ Team Pooling
         # Need to re-flatten Z_prime and re-apply mask logic (same mask)
         Z_prime_flat = Z_prime.reshape(Batch_Time, num_ships, d_model)
@@ -675,13 +683,15 @@ class YemongDynamics(BaseScaffold):
         reward_pred = self.reward_head(team_vec_rew.squeeze(1)).reshape(batch_size, seq_len, 1)
         
         # Return Tuple
-        return next_state_pred, action_logits, value_pred, reward_pred, Z
+        # 1.action_logits, 2.logprob, 3.entropy, 4.value, 5.state, 6.pred_states, 7.pred_rewards, 8.pred_pairwise
+        return action_logits, None, None, value_pred, None, next_state_pred, reward_pred, pairwise_pred
         
-    def get_loss(self, pred_states, pred_actions, target_states, target_actions, loss_mask, 
+    def get_loss(self, pred_states, pred_actions, target_states, target_actions, loss_mask,
                  lambda_state=1.0, lambda_actions=1.0,
                  pred_values=None, pred_rewards=None, target_returns=None, target_rewards=None,
                  lambda_value=1.0, lambda_reward=1.0, weights_power=None, weights_turn=None, weights_shoot=None,
-                 target_alive=None, min_sigma=0.1):
+                 target_alive=None, min_sigma=0.1,
+                 pairwise_pred=None, target_pairwise=None, lambda_pairwise=0.1):
         
         target_states = target_states.to(pred_states.dtype)
         
@@ -699,13 +709,16 @@ class YemongDynamics(BaseScaffold):
         mse = F.mse_loss(pred_states, target_states, reduction='none')
         s_loss = mse.mean(dim=-1).reshape(-1).mul(mask_flat).sum() / denom
         
-        l_p, l_t, l_s = pred_actions[..., 0:3], pred_actions[..., 3:10], pred_actions[..., 10:12]
-        t_p, t_t, t_s = target_actions[..., 0].long().clamp(0, 2), target_actions[..., 1].long().clamp(0, 6), target_actions[..., 2].long().clamp(0, 1)
-        
-        a_loss_p = (F.cross_entropy(l_p.reshape(-1, 3), t_p.reshape(-1), weight=weights_power, reduction='none') * mask_flat).sum() / denom / math.log(3)
-        a_loss_t = (F.cross_entropy(l_t.reshape(-1, 7), t_t.reshape(-1), weight=weights_turn, reduction='none') * mask_flat).sum() / denom / math.log(7)
-        a_loss_s = (F.cross_entropy(l_s.reshape(-1, 2), t_s.reshape(-1), weight=weights_shoot, reduction='none') * mask_flat).sum() / denom / math.log(2)
-        a_loss = a_loss_p + a_loss_t + a_loss_s
+        # Action Loss
+        a_loss = torch.tensor(0.0, device=pred_states.device)
+        if pred_actions is not None:
+            l_p, l_t, l_s = pred_actions[..., 0:3], pred_actions[..., 3:10], pred_actions[..., 10:12]
+            t_p, t_t, t_s = target_actions[..., 0].long().clamp(0, 2), target_actions[..., 1].long().clamp(0, 6), target_actions[..., 2].long().clamp(0, 1)
+            
+            a_loss_p = (F.cross_entropy(l_p.reshape(-1, 3), t_p.reshape(-1), weight=weights_power, reduction='none') * mask_flat).sum() / denom / math.log(3)
+            a_loss_t = (F.cross_entropy(l_t.reshape(-1, 7), t_t.reshape(-1), weight=weights_turn, reduction='none') * mask_flat).sum() / denom / math.log(7)
+            a_loss_s = (F.cross_entropy(l_s.reshape(-1, 2), t_s.reshape(-1), weight=weights_shoot, reduction='none') * mask_flat).sum() / denom / math.log(2)
+            a_loss = a_loss_p + a_loss_t + a_loss_s
 
         v_loss = r_loss = torch.tensor(0.0, device=pred_states.device)
         
@@ -748,6 +761,43 @@ class YemongDynamics(BaseScaffold):
              
              v_loss = (F.mse_loss(pred_values, target_returns.to(pred_values.dtype), reduction='none') * m_team).sum() / d_team
              r_loss = (F.mse_loss(pred_rewards, target_rewards.to(pred_rewards.dtype), reduction='none') * m_team).sum() / d_team
+
+        # Pairwise Loss
+        p_loss = torch.tensor(0.0, device=pred_states.device)
+        if pairwise_pred is not None and target_pairwise is not None:
+            # target_pairwise: (B, T, N, N, 4)
+            # loss_mask: (B, T, N). Pair (i, j) is valid if both are alive.
+            # mask_2d: (B, T, N, N)
+            m_2d = loss_mask.unsqueeze(3) & loss_mask.unsqueeze(2)
+            m_2d_flat = m_2d.reshape(-1).float()
+            d_2d = m_2d_flat.sum() + 1e-6
+            
+            # Predict only for j != i? Or all? Spec says "pairwise comparisons... (ship_0, ship_1) is different from (ship_1, ship_0)".
+            # Usually i=j is just 0. Let's include all and let the model learn the diagonals or mask them.
+            # Masking diagonal:
+            num_ships = loss_mask.shape[2]
+            diag_mask = ~torch.eye(num_ships, device=pred_states.device).bool().view(1, 1, num_ships, num_ships)
+            m_2d = m_2d & diag_mask
+            m_2d_flat = m_2d.reshape(-1).float()
+            d_2d = m_2d_flat.sum() + 1e-6
+            
+            p_mse = F.mse_loss(pairwise_pred, target_pairwise.to(pairwise_pred.dtype), reduction='none')
+            p_loss = p_mse.mean(dim=-1).reshape(-1).mul(m_2d_flat).sum() / d_2d
+
+        loss = s_loss * lambda_state + \
+               a_loss * lambda_actions + \
+               v_loss * lambda_value + \
+               r_loss * lambda_reward + \
+               p_loss * lambda_pairwise
+               
+        return {
+            "loss": loss,
+            "state_loss": s_loss.detach(),
+            "action_loss": a_loss.detach(),
+            "value_loss": v_loss.detach(),
+            "reward_loss": r_loss.detach(),
+            "pairwise_loss": p_loss.detach()
+        }
 
         loss_type = getattr(self.config, "loss_type", "fixed")
         if loss_type == "uncertainty" and self.log_vars is not None:
@@ -973,9 +1023,19 @@ class YemongDynamics(BaseScaffold):
             Z_prime = self.dynamics_ffn(x_dyn) + x_dyn
             
             # 4. Heads
-            next_state_pred = self.next_state_head(Z_prime)
+            next_state_pred = self.world_head(Z_prime)
             reward_pred = self.reward_head(Z_prime)
             
-            return None, new_logprob, entropy, value_pred, None, next_state_pred, reward_pred
+            # 5. Pairwise Relational Head (Optional)
+            if self.use_pairwise:
+                # (B, T, N, D) -> (B, T, N, N, 2*D)
+                zi = Z_prime.unsqueeze(3).expand(-1, -1, -1, num_ships, -1)
+                zj = Z_prime.unsqueeze(2).expand(-1, -1, num_ships, -1, -1)
+                z_pair = torch.cat([zi, zj], dim=-1)
+                pairwise_pred = self.pairwise_head(z_pair)
+            else:
+                pairwise_pred = None
+            
+            return None, new_logprob, entropy, value_pred, None, next_state_pred, reward_pred, pairwise_pred
 
 

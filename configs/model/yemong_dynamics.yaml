@@ -25,6 +25,10 @@ lambda_state: 1.0
 lambda_actions: 1.0
 lambda_value: 1.0
 lambda_reward: 1.0
+lambda_pairwise: 0.1
+
+# Pairwise Relational Targets (N x N)
+use_pairwise_targets: false
 
 # Loss Type (fixed or uncertainty)
 loss_type: "fixed"

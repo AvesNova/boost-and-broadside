@@ -15,7 +15,7 @@ EGO_STATE_FIELDS = [
     ("State_ANG_VEL", "Scale"),
 ]
 
-# Targets: [DX, DY, DVX, DVY, DHEALTH, DPOWER, DANG_VEL]
+# Targets: [DX, DY, DVX, DVY, DHEALTH, DPOWER, DANG_VEL, DREL_X, DREL_Y, DREL_VX, DREL_VY]
 TARGET_FIELDS = [
     ("Target_DX", "Scale"),
     ("Target_DY", "Scale"),
@@ -34,7 +34,7 @@ RELATIONAL_FIELDS = [
     ("Relational_dvy", "Scale"),
     ("Relational_dist", "Scale"),
     ("Relational_inv_dist", "Scale"),
-    ("Relational_rel_speed", "Scale"),
+    ("Relational_rel_speed", "Z-Score"),
     ("Relational_closing", "Scale"),
     ("Relational_dir_x", "Identity"),
     ("Relational_dir_y", "Identity"),

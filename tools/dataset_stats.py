@@ -13,8 +13,7 @@ import time
 from boost_and_broadside.train.unified_dataset import UnifiedEpisodeDataset
 from boost_and_broadside.models.components.encoders import RelationalEncoder
 from boost_and_broadside.core.constants import (
-    StateFeature, TargetFeature, TARGET_DIM, STATE_DIM,
-    NORM_VELOCITY, NORM_ANGULAR_VELOCITY, NORM_HEALTH, NORM_POWER
+    StateFeature, TargetFeature, TARGET_DIM, STATE_DIM
 )
 from boost_and_broadside.train.data_loader import load_bc_data
 
@@ -118,19 +117,30 @@ def main():
     
     raw_d_state = raw_states[1:] - raw_states[:-1]
     raw_targets = torch.zeros((num_steps, N, TARGET_DIM), device=device)
-    raw_targets[..., 0:2] = d_pos
-    raw_targets[..., 2:] = raw_d_state
+    raw_targets[..., TargetFeature.DX:TargetFeature.DY+1] = d_pos
+    raw_targets[..., TargetFeature.DVX:TargetFeature.DANG_VEL+1] = raw_d_state
+    
+    # Part D: Relational Targets in dataset_stats
+    # Each ship i predicts how its "average neighbor" changed relative to it.
+    sum_d_pos = d_pos.sum(dim=1, keepdim=True) # (T, 1, 2)
+    sum_d_vel = raw_d_state[..., StateFeature.VX:StateFeature.VY+1].sum(dim=1, keepdim=True) # (T, 1, 2)
+    mean_others_d_pos = (sum_d_pos - d_pos) / (N - 1 + 1e-6)
+    mean_others_d_vel = (sum_d_vel - raw_d_state[..., StateFeature.VX:StateFeature.VY+1]) / (N - 1 + 1e-6)
+    
+    raw_targets[..., TargetFeature.DREL_X:TargetFeature.DREL_Y+1] = mean_others_d_pos - d_pos
+    raw_targets[..., TargetFeature.DREL_VX] = (mean_others_d_vel - raw_d_state[..., StateFeature.VX:StateFeature.VY+1])[..., 0]
+    raw_targets[..., TargetFeature.DREL_VY] = (mean_others_d_vel - raw_d_state[..., StateFeature.VX:StateFeature.VY+1])[..., 1]
+    
     all_raw_targets = raw_targets[valid_mask].reshape(-1, TARGET_DIM)
     
     # 5. Relational Features (Chunked)
     log.info("Computing relational features (chunked)...")
     batch_size = 50000 
     rel_feat_list = []
-    rel_target_list = []
     
+    num_analytic = 54 # Matching RelationalEncoder
     for i in range(0, num_steps, batch_size):
         end_idx = min(i + batch_size, num_steps)
-        # We need end_idx + 1 for relational targets (t+1)
         chunk_abs_end = min(i + batch_size + 1, num_steps + 1)
         
         chunk_pos = pos[i:chunk_abs_end].unsqueeze(0).float()
@@ -141,21 +151,12 @@ def main():
             chunk_rel = rel_encoder.compute_analytic_features(
                 chunk_pos, chunk_vel, att=chunk_att, world_size=(1024.0, 1024.0)
             )
-            # Analytic features at t
-            rel_feat_list.append(chunk_rel[0, :end_idx-i, ..., :50].reshape(-1, 50).cpu())
-            
-            # Relational Targets: dx, dy, dvx, dvy deltas
-            # rel[t] is (1, T, N, N, 50)
-            # dx, dy, dvx, dvy are at indices 0, 1, 2, 3
-            if chunk_rel.shape[1] > 1:
-                t_len = end_idx - i
-                rel_t = chunk_rel[0, :t_len, ..., :4]
-                rel_tp1 = chunk_rel[0, 1:t_len+1, ..., :4]
-                d_rel = rel_tp1 - rel_t # (T, N, N, 4)
-                
-                # Check valid mask for this chunk
-                chunk_mask = valid_mask[i:end_idx] # (T,)
-                rel_target_list.append(d_rel[chunk_mask].reshape(-1, 4).cpu())
+            # Analytic features at t are (1, T, N, N, 64) -> squeeze and take first 54
+            # We want to average over neighbors or just take all edges?
+            # Standard stats should be over all active edges.
+            # (1, T, N, N, 64) -> (T*N*N, 64)
+            rel_flat = chunk_rel[0, :end_idx-i, ..., :num_analytic].reshape(-1, num_analytic)
+            rel_feat_list.append(rel_flat.cpu())
 
     # 6. Final Stats Calculation
     log.info("Processing statistics...")
@@ -163,27 +164,17 @@ def main():
     raw_target_stats = compute_stats_vectorized(all_raw_targets)
     
     all_rel_cpu = torch.cat(rel_feat_list, dim=0)
-    all_rel_targets_cpu = torch.cat(rel_target_list, dim=0)
-    del rel_feat_list, rel_target_list
+    del rel_feat_list
     
     rel_res = {}
     for key in ["mean", "std", "rms", "min", "max", "median", "q1", "q3", "sem"]:
-        rel_res[key] = torch.zeros(50)
+        rel_res[key] = torch.zeros(num_analytic)
         
-    for i in range(50):
+    for i in range(num_analytic):
         col = all_rel_cpu[:, i].to(device)
         res = compute_stats_vectorized(col)
         for key in rel_res: rel_res[key][i] = res[key][0]
         
-    rel_target_res = {}
-    for key in ["mean", "std", "rms", "min", "max", "median", "q1", "q3", "sem"]:
-        rel_target_res[key] = torch.zeros(4)
-    
-    for i in range(4):
-        col = all_rel_targets_cpu[:, i].to(device)
-        res = compute_stats_vectorized(col)
-        for key in rel_target_res: rel_target_res[key][i] = res[key][0]
-    
     # 7. Report Generation
     data_dir = Path(data_path).parent
     report_path = data_dir / "dataset_stats_report.md"
@@ -222,13 +213,15 @@ def main():
         f.write(format_table("Raw Target Deltas", raw_target_stats, TargetFeature))
         
         f.write("## 3. Relational Features\n")
-        rel_names = ["dx", "dy", "dvx", "dvy", "dist", "inv_dist", "rel_speed", "closing", "dir_x", "dir_y", "log_dist", "tti", "cos_ata", "sin_ata", "cos_aa", "sin_aa", "cos_hca", "sin_hca"]
-        rel_names = rel_names + [f"Fourier_{i}" for i in range(32)]
-        f.write(format_table("Analytic Relational Features", rel_res, names=rel_names))
+        rel_names = [
+            "dvx", "dvy", "rel_speed", "closing", "log_dist", "tti",
+            "heading_x", "heading_y", 
+            "cos_ata", "sin_ata", "cos_aa", "sin_aa", "cos_hca", "sin_hca"
+        ]
+        rel_names = rel_names + [f"Fourier_{i}" for i in range(40)]
+        f_table = format_table("Analytic Relational Features", rel_res, names=rel_names)
+        f.write(f_table)
         
-        f.write("## 4. Relational Targets\n")
-        rel_target_names = ["delta_rel_x", "delta_rel_y", "delta_rel_vx", "delta_rel_vy"]
-        f.write(format_table("Relational Targets", rel_target_res, names=rel_target_names))
 
     # Write CSVs
     raw_csv_path = data_dir / "raw_stats.csv"
@@ -237,7 +230,6 @@ def main():
         ("State", raw_state_stats, [f.name for f in StateFeature]),
         ("Target", raw_target_stats, [f.name for f in TargetFeature]),
         ("Relational", rel_res, rel_names),
-        ("RelTarget", rel_target_res, rel_target_names)
     ])
     
     log.info(f"Report saved to {report_path}")

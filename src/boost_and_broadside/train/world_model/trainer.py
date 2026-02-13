@@ -246,7 +246,20 @@ class Trainer:
         # States: [Health, Power, Vx, Vy, AngVel]
         d_state = next_states - input_states
         
-        # Construct Target Vector using enums
+        # Pairwise Targets (Part D Refined): (Delta_P_j - Delta_P_i)
+        # d_pos: (B, T, N, 2)
+        d_pos_i = d_pos.unsqueeze(3) # (B, T, N, 1, 2)
+        d_pos_j = d_pos.unsqueeze(2) # (B, T, 1, N, 2)
+        target_pairwise_pos = d_pos_j - d_pos_i # (B, T, N, N, 2)
+        
+        d_vel = d_state[..., StateFeature.VX:StateFeature.VY+1]
+        d_vel_i = d_vel.unsqueeze(3)
+        d_vel_j = d_vel.unsqueeze(2)
+        target_pairwise_vel = d_vel_j - d_vel_i # (B, T, N, N, 2)
+        
+        target_pairwise = torch.cat([target_pairwise_pos, target_pairwise_vel], dim=-1)
+
+        # Construct Target Vector using enums (Ego ONLY)
         # [dx, dy, dVx, dVy, dHealth, dPower, dAngVel]
         target_states = torch.zeros((*d_state.shape[:-1], TARGET_DIM), device=d_state.device, dtype=d_state.dtype)
         target_states[..., TargetFeature.DX:TargetFeature.DY+1] = d_pos
@@ -284,19 +297,17 @@ class Trainer:
              
              # Unpack with defaults if tuple length varies or just pass positional? 
              # Scaffolds are standardized to return 5 items.
-             pred_states, pred_actions, pred_values, pred_rewards, _ = model_out
+             # Unpack model output (standardized to 8 items in world model mode)
+             # returns: action_sampled, logprob, entropy, value_pred, mamba_state, next_state_pred, reward_pred, pairwise_pred
+             pred_actions, _, _, pred_values, _, pred_states, pred_rewards, pairwise_pred = model_out
              
              # Get Loss
-             # Scaffolds return: total_loss, state_loss, action_loss, relational_loss, metrics
              loss_out = self.model.get_loss(
                 pred_states=pred_states,
                 pred_actions=pred_actions,
                 target_states=target_states,
                 target_actions=target_actions,
                 loss_mask=loss_mask_slice,
-                # Pass config params. 
-                # Note: Scaffolds might look up config internally too, but we pass overrides from cfg.train/model here if needed
-                # For now we pass what we have, ignoring what's unused by specific scaffold
                 lambda_state=self.cfg.model.get("lambda_state", 1.0),
                 lambda_actions=self.cfg.model.get("lambda_actions", 0.15),
                 pred_values=pred_values,
@@ -309,10 +320,17 @@ class Trainer:
                 weights_turn=self.w_turn,
                 weights_shoot=self.w_shoot,
                 target_alive=target_alive,
-                min_sigma=self.loss_cfg.get("min_sigma", 0.1)
+                min_sigma=self.loss_cfg.get("min_sigma", 0.1),
+                pairwise_pred=pairwise_pred,
+                target_pairwise=target_pairwise,
+                lambda_pairwise=self.cfg.model.get("lambda_pairwise", 0.1)
              )
              
-             loss, state_loss, action_loss, relational_loss, metrics = loss_out
+             loss = loss_out["loss"]
+             state_loss = loss_out["state_loss"]
+             action_loss = loss_out["action_loss"]
+             relational_loss = loss_out["pairwise_loss"] 
+             metrics = loss_out # Log everything in the dict
 
 
         # Backward
