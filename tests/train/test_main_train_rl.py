@@ -12,7 +12,8 @@ from main import my_app
 
 import torch
 
-def test_main_train_rl_execution():
+@pytest.mark.parametrize("model_name", ["yemong_dynamics"])
+def test_main_train_rl_execution(model_name):
     """
     Integration test that runs main.py with mode=train_rl.
     It mocks the training loop to avoid long execution but verifies 
@@ -25,6 +26,7 @@ def test_main_train_rl_execution():
     # Override total_timesteps to something very small for quick test
     overrides = [
         "mode=train_rl",
+        f"model={model_name}",
         "train.ppo.total_timesteps=32", # 1 iteration hopefully
         "train.ppo.num_envs=4",
         "train.ppo.num_steps=8",

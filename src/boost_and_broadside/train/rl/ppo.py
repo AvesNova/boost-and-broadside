@@ -316,7 +316,12 @@ class PPOTrainer:
                     
                     # Reshape predictions
                     next_state_pred = next_state_pred.view(B, T, N, -1)
-                    reward_pred = reward_pred.view(B, T, N) 
+                    
+                    if reward_pred.shape[-1] == 1 and reward_pred.ndim == 3:
+                        # Team Scalar Reward (B, T, 1) -> (B, T, N)
+                         reward_pred = reward_pred.expand(B, T, N)
+                    else:
+                         reward_pred = reward_pred.view(B, T, N) 
                     
                     # State Loss with Mask
                     if next_state_pred.shape[-1] == mb_next_obs_perm.shape[-1]:

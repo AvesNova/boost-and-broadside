@@ -1117,7 +1117,15 @@ class YemongDynamics(BaseScaffold):
             
             # 4. Heads
             next_state_pred = self.world_head(Z_prime)
-            reward_pred = self.reward_head(Z_prime)
+            next_state_pred = self.world_head(Z_prime)
+            
+            # Reward w/ Team Pooling (Match forward)
+            Z_prime_flat = Z_prime.reshape(Batch_Time, num_ships, d_model)
+            q_rew = self.team_token_reward.expand(Batch_Time, -1, -1)
+            Z_prime_norm_rew = self.norm_reward(Z_prime_flat)
+            team_vec_rew, _ = self.pooler_reward(q_rew, Z_prime_norm_rew, Z_prime_norm_rew, key_padding_mask=key_padding_mask)
+            reward_components = self.reward_head(team_vec_rew.squeeze(1)).reshape(batch_size, seq_len, self.num_reward_components)
+            reward_pred = reward_components.sum(dim=-1, keepdim=True) # (B, T, 1)
             
             # 5. Pairwise Relational Head (Optional)
             if self.use_pairwise:
