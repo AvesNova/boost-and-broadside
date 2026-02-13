@@ -112,7 +112,7 @@ class Validator:
                          vel = vel.float()
 
                     with torch.amp.autocast(device_type='cuda', dtype=torch.bfloat16, enabled=self.amp):
-                        pred_states, pred_actions, pred_values, pred_rewards, _ = model_to_use(
+                        model_out = model_to_use(
                             state=input_states, 
                             prev_action=input_actions, 
                             pos=pos_curr,
@@ -122,6 +122,17 @@ class Validator:
                             seq_idx=seq_idx[:, :-1],
                             alive=alive
                         )
+
+                        if len(model_out) == 5:
+                            # Legacy Scaffolds
+                            pred_states, pred_actions, pred_values, pred_rewards, _ = model_out
+                            pairwise_pred = None
+                            reward_components = None
+                        else:
+                            # YemongDynamics
+                            # returns: action_sampled, logprob, entropy, value_pred, mamba_state, next_state_pred, reward_pred, pairwise_pred, reward_components
+                            pred_actions, _, _, pred_values, _, pred_states, pred_rewards, pairwise_pred, *extras = model_out
+                            reward_components = extras[0] if extras else None
 
                         metrics = model_to_use.get_loss(
                            pred_states=pred_states,
@@ -137,7 +148,9 @@ class Validator:
                            target_rewards=rewards,
                            lambda_value=self.cfg.model.get("lambda_value", 0.1),
                            lambda_reward=self.cfg.model.get("lambda_reward", 0.1),
-                           target_alive=target_alive
+                           target_alive=target_alive,
+                           pairwise_pred=pairwise_pred,
+                           reward_components=reward_components
                         )
                         loss = metrics["loss"]
                     
