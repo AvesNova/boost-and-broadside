@@ -8,6 +8,7 @@ from boost_and_broadside.env2.env import TensorEnv
 from boost_and_broadside.env2.gpu_wrapper import GPUEnvWrapper
 from boost_and_broadside.models.yemong.scaffolds import YemongDynamics
 from boost_and_broadside.train.rl.ppo import PPOTrainer
+from boost_and_broadside.train.world_model.setup import automate_num_reward_components
 
 def train_rl(cfg: DictConfig) -> None:
     print("=== Starting RL Training (GPU Native) ===")
@@ -63,6 +64,7 @@ def train_rl(cfg: DictConfig) -> None:
 
     # 2. Setup Agent
     print("Initializing YemongDynamics...")
+    automate_num_reward_components(cfg)
     agent = YemongDynamics(cfg.model)
     agent.to(env.device)
     

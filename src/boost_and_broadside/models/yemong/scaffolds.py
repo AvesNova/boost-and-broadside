@@ -150,7 +150,8 @@ class YemongFull(BaseScaffold):
         self.world_head = WorldHead(d_model, config.get("target_dim", TARGET_DIM))
         
         # Value/Reward
-        self.team_evaluator = TeamEvaluator(d_model)
+        num_rewards = config.get("num_reward_components", 3)
+        self.team_evaluator = TeamEvaluator(d_model, num_reward_components=num_rewards)
 
         # Uncertainty Weighting
         self.log_vars = None
@@ -250,7 +251,8 @@ class YemongFull(BaseScaffold):
         eval_mask = alive.reshape(Batch_Time, num_ships) if alive is not None else None
         value_pred, reward_components = self.team_evaluator(x_eval_input, mask=eval_mask)
         
-        return state_pred, action_logits, value_pred.reshape(batch_size, seq_len, 1), reward_components.sum(dim=-1, keepdim=True).reshape(batch_size, seq_len, 1), x_final
+        num_rewards = reward_components.shape[-1]
+        return state_pred, action_logits, value_pred.reshape(batch_size, seq_len, 1), reward_components.reshape(batch_size, seq_len, num_rewards), x_final
 
 
 

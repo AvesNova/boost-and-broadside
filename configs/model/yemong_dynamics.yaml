@@ -50,4 +50,4 @@ use_pairwise_targets: false
 loss_type: "fixed"
 
 # Reward Decomposition
-num_reward_components: 5
+# num_reward_components: 5 (AUTOMATED)

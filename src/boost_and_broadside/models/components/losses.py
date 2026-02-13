@@ -201,33 +201,76 @@ class ValueLoss(LossModule):
 
 
 class RewardLoss(LossModule):
+    def __init__(self, weight: float = 1.0, component_names: Optional[List[str]] = None):
+        super().__init__(weight=weight)
+        self.component_names = component_names
+
     def forward(self, preds: Dict[str, torch.Tensor], targets: Dict[str, torch.Tensor], mask: torch.Tensor, **kwargs) -> Dict[str, torch.Tensor]:
-        pred_rew = preds.get("reward")
+        # Prioritize components if available for detailed logging
+        pred_rew = preds.get("reward_components")
+        if pred_rew is None:
+            pred_rew = preds.get("reward")
+            
         target_rew = targets.get("rewards")
         
         if pred_rew is None or target_rew is None:
              return {"loss": torch.tensor(0.0, device=mask.device), "reward_loss": torch.tensor(0.0, device=mask.device)}
 
-        # Aggregation Logic (Same as ValueLoss)
-        if target_rew.ndim == 3 and target_rew.shape[-1] > 1:
+        # Aggregation Logic
+        # targets["rewards"] could be (B, T, N) or (B, T, N, K) or (B, T, K)
+        # If N dimension exists, aggregate over it.
+        # print(f"DEBUG: RewardLoss ENTRY - pred_rew: {pred_rew.shape}, target_rew (raw): {target_rew.shape}, mask: {mask.shape}")
+        
+        is_vector_reward = pred_rew.shape[-1] > 1
+        num_components = pred_rew.shape[-1]
+        
+        # Helper to aggregate N dimension if present
+        if target_rew.ndim == 4: # (B, T, N, K)
+             m_broad = mask.float().unsqueeze(-1) # (B, T, N, 1)
+             t_weighted = (target_rew * m_broad).sum(dim=2) # Sum over N -> (B, T, K)
+             d_weighted = m_broad.sum(dim=2) + 1e-6 # (B, T, 1)
+             target_rew = t_weighted / d_weighted
+        elif target_rew.ndim == 3 and target_rew.shape[-1] > 1 and not is_vector_reward: 
+             # (B, T, N) case for scalar prediction (legacy)
              m_broad = mask.float()
              t_weighted = (target_rew * m_broad).sum(dim=-1, keepdim=True)
              d_weighted = m_broad.sum(dim=-1, keepdim=True) + 1e-6
              target_rew = t_weighted / d_weighted
-        elif target_rew.ndim == 2: 
-             target_rew = target_rew.unsqueeze(-1)
 
+        # Ensure shapes align (B, T, K)
+        if target_rew.ndim == 2: 
+             target_rew = target_rew.unsqueeze(-1)
+             
+        # Flatten for MSE
+        # pred: (B, T, K) -> (B*T, K)
+        # mask: (B, T) or (B, T, N) -> need team/global mask (B, T, 1)
         if mask.ndim == 3:
-             team_mask = mask.any(dim=-1, keepdim=True).float()
+             team_mask = mask.any(dim=-1).float().unsqueeze(-1) # (B, T, 1)
         else:
              team_mask = mask.unsqueeze(-1)
              
         d_glob = team_mask.sum() + 1e-6
         
-        r_loss = (F.mse_loss(pred_rew, target_rew.to(pred_rew.dtype), reduction='none') * team_mask).sum() / d_glob
+        # Calculate MSE
+        # (B, T, K)
+        mse = F.mse_loss(pred_rew, target_rew.to(pred_rew.dtype), reduction='none')
         
-        logs = {"reward_loss": r_loss.detach(), "loss_sub/reward_mse": r_loss.detach()}
-        return {"loss": r_loss * self.weight, **logs}
+        # Weighted sum over B, T
+        weighted_mse = (mse * team_mask).sum(dim=(0, 1)) / d_glob # (K,)
+        
+        r_loss_total = weighted_mse.sum() # Sum over components for scalar loss
+        
+        logs = {"reward_loss": r_loss_total.detach(), "loss_sub/reward_mse": r_loss_total.detach()}
+        
+        # Log individual components
+        if is_vector_reward:
+             for i in range(num_components):
+                  if i < weighted_mse.numel():
+                       # Use descriptive name if available
+                       name = self.component_names[i] if self.component_names and i < len(self.component_names) else i
+                       logs[f"loss_sub/reward_{name}"] = weighted_mse[i].detach()
+                  
+        return {"loss": r_loss_total * self.weight, **logs}
 
 
 class PairwiseRelationalLoss(LossModule):

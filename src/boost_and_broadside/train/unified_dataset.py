@@ -258,11 +258,14 @@ class BaseView(Dataset):
         reward_list = [rewards_dict[comp.name] for comp in self.reward_registry.components]
         stacked_rewards = torch.stack(reward_list, dim=-1) # (T-1, N, K)
         
-        # Pad back to T
-        # (1, N, K) zeros
-        pad = torch.zeros((1, N, stacked_rewards.shape[-1]), device=device, dtype=stacked_rewards.dtype)
-        full_rewards = torch.cat([stacked_rewards, pad], dim=0)
+        # Pad the last step (or first?) 
+        # We computed for t->t+1. Let's say reward[t] is the transition reward.
+        # The last state at T-1 has no next state.
+        # So we pad at end.
+        k = stacked_rewards.shape[-1]
+        pad = torch.zeros((1, N, k), device=device)
         
+        full_rewards = torch.cat([stacked_rewards, pad], dim=0) # (T, N, K)
         return full_rewards
 
     def __len__(self) -> int:

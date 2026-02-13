@@ -12,10 +12,25 @@ from boost_and_broadside.train.data_loader import create_continuous_data_loader
 
 log = logging.getLogger(__name__)
 
-class MambaConfig:
-    def __init__(self, **kwargs):
-        for k, v in kwargs.items():
-            setattr(self, k, v)
+def automate_num_reward_components(cfg: DictConfig):
+    """
+    Automatically set num_reward_components in cfg.model based on the top-level rewards config.
+    Also injects component names into RewardLoss if present.
+    """
+    if "rewards" in cfg:
+        reward_names = list(cfg.rewards.keys())
+        num_rewards = len(reward_names)
+        log.info(f"Implicitly setting num_reward_components = {num_rewards} from 'rewards' config.")
+        
+        OmegaConf.set_struct(cfg.model, False)
+        cfg.model.num_reward_components = num_rewards
+        
+        # Also inject component names into RewardLoss config for descriptive logging
+        if "loss" in cfg.model and "losses" in cfg.model.loss:
+             for loss_cfg in cfg.model.loss.losses:
+                  if "RewardLoss" in loss_cfg._target_:
+                       loss_cfg.component_names = reward_names
+                       log.info(f"Injected reward names into RewardLoss config: {reward_names}")
 
 def create_model(cfg: DictConfig, data_path: str, device: torch.device):
     """Initialize the Yemong Model."""
@@ -38,6 +53,9 @@ def create_model(cfg: DictConfig, data_path: str, device: torch.device):
         log.info(f"Adding stats_path to model config: {stats_path}")
         OmegaConf.set_struct(cfg.model, False)
         cfg.model.stats_path = stats_path
+
+    # Automate num_reward_components if rewards section exists
+    automate_num_reward_components(cfg)
 
     # Instantiate via Hydra
     log.info(f"Instantiating model target: {cfg.model._target_}")
@@ -123,7 +141,8 @@ def get_data_loaders(cfg: DictConfig, data_path: str, min_skill: float = 0.0):
         validation_split=0.2,
         num_workers=cfg.train.get("num_workers", 4),
         world_size=tuple(cfg.environment.world_size),
-        min_skill=min_skill
+        min_skill=min_skill,
+        reward_config=cfg.get("rewards", None)
     )
     
     return train_loader, val_loader

@@ -81,19 +81,28 @@ class MetricLogger:
                 wandb.log(log_item, step=step_val)
         
         # CSV Logging (Bulk)
+        # We use a simple comma-separated format. For "painless" extension, 
+        # we log all metrics found in the first row.
+        if not hasattr(self, "_csv_headers_written"):
+             self._csv_headers_written = False
+
         with open(self.step_log_path, "a") as f:
             for i in range(len(packed["step"])):
                 row_metrics = {k: packed[k][i] for k in packed}
-                # "global_step,epoch,learning_rate,loss,state_loss,action_loss,relational_loss,val_loss,val_loss_swa"
-                step = row_metrics.get("step", 0)
-                epoch = row_metrics.get("epoch", 0)
-                lr = row_metrics.get("lr", 0)
-                loss = row_metrics.get("loss", 0)
-                state = row_metrics.get("state_loss", 0)
-                action = row_metrics.get("action_loss", 0)
-                rel = row_metrics.get("relational_loss", 0)
                 
-                f.write(f"{step},{epoch},{lr:.8f},{loss:.6f},{state:.6f},{action:.6f},{rel:.6f},,\n")
+                # Write header if not done (and if we have metrics)
+                if not self._csv_headers_written:
+                     headers = list(row_metrics.keys())
+                     # Re-write the file with headers if it was just initialized with defaults
+                     # (MetricLogger.__init__ writes a default header, we might want to override)
+                     with open(self.step_log_path, "w") as f2:
+                          f2.write(",".join(headers) + "\n")
+                     self._csv_headers_written = True
+                     self._csv_column_order = headers
+                
+                # Write row in consistent order
+                row_vals = [str(row_metrics.get(k, "")) for k in self._csv_column_order]
+                f.write(",".join(row_vals) + "\n")
 
         self.log_buffer = []
 

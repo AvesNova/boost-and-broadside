@@ -12,7 +12,7 @@ class TeamEvaluator(nn.Module):
     2. Value Head: Predicts discounted future returns (Value).
     3. Reward Head: Predicts immediate frame reward.
     """
-    def __init__(self, d_model: int = 256):
+    def __init__(self, d_model: int = 256, num_reward_components: int = 3):
         super().__init__()
         self.d_model = d_model
         
@@ -34,11 +34,11 @@ class TeamEvaluator(nn.Module):
             nn.Linear(d_model, 1)
         )
         
-        # Reward: (256 -> 256 -> 3) - 3 Components
+        # Reward: (256 -> 256 -> K)
         self.reward_head = nn.Sequential(
             nn.Linear(d_model, d_model),
             nn.SiLU(),
-            nn.Linear(d_model, 3)
+            nn.Linear(d_model, num_reward_components)
         )
         
     def forward(self, x: torch.Tensor, mask: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor]:

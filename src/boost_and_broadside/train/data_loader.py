@@ -1,6 +1,7 @@
 from pathlib import Path
 from torch.utils.data import DataLoader
 import torch
+from typing import Optional
 
 from boost_and_broadside.train.unified_dataset import UnifiedEpisodeDataset, ShortView, LongView
 from boost_and_broadside.train.continuous_view import ContinuousView
@@ -210,6 +211,7 @@ def create_continuous_data_loader(
     num_workers: int = 4,
     world_size: tuple[float, float] = (1024.0, 1024.0),
     min_skill: float = 0.0, # Ignored for now unless filter needed
+    reward_config: Optional[dict] = None
 ) -> tuple[DataLoader, DataLoader]:
     """
     Create Continuous Data Loaders for Mamba training.
@@ -232,8 +234,8 @@ def create_continuous_data_loader(
     train_indices = list(range(0, train_size, stride))
     val_indices = list(range(train_size, total_steps - seq_len, stride))
     
-    train_view = ContinuousView(dataset, train_indices, seq_len=seq_len)
-    val_view = ContinuousView(dataset, val_indices, seq_len=seq_len)
+    train_view = ContinuousView(dataset, train_indices, seq_len=seq_len, reward_config=reward_config)
+    val_view = ContinuousView(dataset, val_indices, seq_len=seq_len, reward_config=reward_config)
     
     kwargs = {
         "num_workers": num_workers,
