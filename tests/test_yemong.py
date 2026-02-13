@@ -94,7 +94,7 @@ def test_yemong_full_forward_and_loss():
     target_actions = torch.randint(0, 2, (B, T, N, 3))
     loss_mask = torch.ones(B, T, N)
     
-    loss, s_loss, a_loss, r_loss, metrics = model.get_loss(
+    metrics = model.get_loss(
         pred_states=state_pred,
         pred_actions=action_logits,
         target_states=target_states,
@@ -103,6 +103,7 @@ def test_yemong_full_forward_and_loss():
         lambda_state=1.0,
         lambda_actions=1.0
     )
+    loss = metrics["loss"]
     
     assert loss > 0
     assert "loss_sub/action_all" in metrics
@@ -138,12 +139,13 @@ def test_yemong_spatial_forward_and_loss():
     target_actions = torch.randint(0, 2, (B, T, N, 3))
     loss_mask = torch.ones(B, T, N)
     
-    loss, _, _, _, metrics = model.get_loss(
+    metrics = model.get_loss(
         pred_actions=action_logits,
         target_actions=target_actions,
         loss_mask=loss_mask,
         lambda_actions=1.0
     )
+    loss = metrics["loss"]
     
     assert loss > 0
     assert "loss_sub/action_all" in metrics
@@ -175,12 +177,13 @@ def test_yemong_temporal_forward_and_loss():
     target_states = torch.randn(B, T, N, TARGET_DIM)
     loss_mask = torch.ones(B, T, N)
     
-    loss, s_loss, _, _, metrics = model.get_loss(
+    metrics = model.get_loss(
         pred_states=state_pred,
         target_states=target_states,
         loss_mask=loss_mask,
         lambda_state=1.0
     )
+    loss = metrics["loss"]
     
     assert loss > 0
     assert "loss_sub/state_mse" in metrics

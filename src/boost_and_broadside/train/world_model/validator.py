@@ -123,7 +123,7 @@ class Validator:
                             alive=alive
                         )
 
-                        loss, _, _, _, metrics = model_to_use.get_loss(
+                        metrics = model_to_use.get_loss(
                            pred_states=pred_states,
                            pred_actions=pred_actions,
                            target_states=target_states,
@@ -139,6 +139,7 @@ class Validator:
                            lambda_reward=self.cfg.model.get("lambda_reward", 0.1),
                            target_alive=target_alive
                         )
+                        loss = metrics["loss"]
                     
                     val_loss += loss
                     val_steps += 1

@@ -54,10 +54,11 @@ def test_uncertainty_loss_computation(mamba_config):
     target_actions = torch.zeros(B, T, N, 3) # Indices
     
     # Run get_loss
-    total_loss, s_loss, a_loss, v_loss, metrics = model.get_loss(
+    metrics = model.get_loss(
         pred_states, pred_actions, target_states, target_actions, loss_mask,
         lambda_state=100.0 # Should be ignored
     )
+    total_loss = metrics["loss"]
     
     # Computations for State Loss (MSE)
     # The model computes MSE internally.
@@ -101,10 +102,11 @@ def test_fixed_loss_computation(mamba_config):
     pred_actions = torch.randn(B, T, N, 12)
     target_actions = torch.zeros(B, T, N, 3)
     
-    total_loss, _, _, _, metrics = model.get_loss(
+    metrics = model.get_loss(
          pred_states, pred_actions, target_states, target_actions, loss_mask,
          lambda_state=10.0
     )
+    total_loss = metrics["loss"]
     
     raw_s_loss = metrics["loss_sub/state_mse"]
     

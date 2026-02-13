@@ -69,26 +69,34 @@ def test_pretraining_loop(scaffold_cls, config_overrides):
                  out = model(state, prev_action, pos, vel, att, team_ids, seq_idx)
                  
             # Unpack output
-            pred_states = out[0] if scaffold_cls in [YemongFull, YemongTemporal, YemongDynamics] else None
-            pred_actions = out[1] if scaffold_cls in [YemongFull, YemongSpatial, YemongDynamics] else None
-            pred_values = out[2] if scaffold_cls in [YemongFull, YemongDynamics] else None
-            pred_rewards = out[3] if scaffold_cls in [YemongFull, YemongDynamics] else None
+            if scaffold_cls == YemongDynamics:
+                # 0:action, 3:value, 5:state, 6:reward
+                pred_actions = out[0]
+                pred_values = out[3]
+                pred_states = out[5]
+                pred_rewards = out[6]
+            else:
+                pred_states = out[0] if scaffold_cls in [YemongFull, YemongTemporal] else None
+                pred_actions = out[1] if scaffold_cls in [YemongFull, YemongSpatial] else None
+                pred_values = out[2] if scaffold_cls in [YemongFull] else None
+                pred_rewards = out[3] if scaffold_cls in [YemongFull] else None
             
             # Loss Call
             if scaffold_cls == YemongDynamics:
-                 loss, _, _, _, _ = model.get_loss(
-                     pred_states=pred_states,
-                     pred_actions=pred_actions,
-                     target_states=target_states,
-                     target_actions=target_actions,
-                     loss_mask=loss_mask,
-                     pred_values=pred_values,
-                     pred_rewards=pred_rewards,
-                     target_returns=target_returns,
-                     target_rewards=target_rewards
-                 )
+                metrics = model.get_loss(
+                    pred_states=pred_states,
+                    pred_actions=pred_actions,
+                    target_states=target_states,
+                    target_actions=target_actions,
+                    loss_mask=loss_mask,
+                    pred_values=pred_values,
+                    pred_rewards=pred_rewards,
+                    target_returns=target_returns,
+                    target_rewards=target_rewards
+                )
+                loss = metrics["loss"]
             elif scaffold_cls == YemongFull:
-                 loss, _, _, _, _ = model.get_loss(
+                 metrics = model.get_loss(
                      pred_states=pred_states,
                      pred_actions=pred_actions,
                      target_states=target_states,
@@ -99,18 +107,21 @@ def test_pretraining_loop(scaffold_cls, config_overrides):
                      target_returns=target_returns,
                      target_rewards=target_rewards
                  )
+                 loss = metrics["loss"]
             elif scaffold_cls == YemongSpatial:
-                 loss, _, _, _, _ = model.get_loss(
+                 metrics = model.get_loss(
                      pred_actions=pred_actions,
                      target_actions=target_actions,
                      loss_mask=loss_mask
                  )
+                 loss = metrics["loss"]
             elif scaffold_cls == YemongTemporal:
-                 loss, _, _, _, _ = model.get_loss(
+                 metrics = model.get_loss(
                      pred_states=pred_states,
                      target_states=target_states,
                      loss_mask=loss_mask
                  )
+                 loss = metrics["loss"]
                  
             # Gradient Accumulation
             loss = loss / accum_steps

@@ -156,7 +156,7 @@ def test_max_batches_limit(mock_components):
         torch.zeros(1, 10, 1),     # Pred Rewards
         torch.zeros(1, 10, 2, 128) # x_final
     )
-    model.get_loss.return_value = (torch.tensor(0.0), torch.tensor(0.0), torch.tensor(0.0), torch.tensor(0.0), {})
+    model.get_loss.return_value = {"loss": torch.tensor(0.0)}
     
     # Run
     metrics = validator.validate_validation_set([loader])

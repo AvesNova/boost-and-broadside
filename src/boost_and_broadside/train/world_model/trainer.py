@@ -299,7 +299,17 @@ class Trainer:
              # Scaffolds are standardized to return 5 items.
              # Unpack model output (standardized to 8 items in world model mode)
              # returns: action_sampled, logprob, entropy, value_pred, mamba_state, next_state_pred, reward_pred, pairwise_pred
-             pred_actions, _, _, pred_values, _, pred_states, pred_rewards, pairwise_pred = model_out
+             if len(model_out) == 5:
+                 # Legacy Scaffolds (YemongFull, Spatial, Temporal)
+                 # Returns: state_pred, action_logits, value_pred, reward_pred, latent
+                 pred_states, pred_actions, pred_values, pred_rewards, _ = model_out
+                 pairwise_pred = None
+                 reward_components = None
+             else:
+                 # YemongDynamics (Standardized World Model Protocol)
+                 # returns: action_sampled, logprob, entropy, value_pred, mamba_state, next_state_pred, reward_pred, pairwise_pred, reward_components
+                 pred_actions, _, _, pred_values, _, pred_states, pred_rewards, pairwise_pred, *extras = model_out
+                 reward_components = extras[0] if extras else None
              
              # Get Loss
              loss_out = self.model.get_loss(
@@ -323,7 +333,8 @@ class Trainer:
                 min_sigma=self.loss_cfg.get("min_sigma", 0.1),
                 pairwise_pred=pairwise_pred,
                 target_pairwise=target_pairwise,
-                lambda_pairwise=self.cfg.model.get("lambda_pairwise", 0.1)
+                lambda_pairwise=self.cfg.model.get("lambda_pairwise", 0.1),
+                reward_components=reward_components
              )
              
              loss = loss_out["loss"]

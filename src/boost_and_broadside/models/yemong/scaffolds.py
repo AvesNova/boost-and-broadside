@@ -198,7 +198,7 @@ class YemongFull(BaseScaffold):
                  lambda_state=1.0, lambda_actions=1.0,
                  pred_values=None, pred_rewards=None, target_returns=None, target_rewards=None,
                  lambda_value=1.0, lambda_reward=1.0, weights_power=None, weights_turn=None, weights_shoot=None,
-                 target_alive=None, min_sigma=0.1):
+                 target_alive=None, min_sigma=0.1, **kwargs):
         
         target_states = target_states.to(pred_states.dtype)
         
@@ -251,8 +251,24 @@ class YemongFull(BaseScaffold):
         else:
              total_loss = (lambda_state * s_loss) + (lambda_actions * a_loss) + (lambda_value * v_loss) + (lambda_reward * r_loss)
 
-        metrics = {"loss": total_loss.item(), "loss_sub/state_mse": s_loss.item(), "loss_sub/action_all": a_loss.item(), "loss_sub/action_power": a_loss_p.item(), "loss_sub/action_turn": a_loss_t.item(), "loss_sub/action_shoot": a_loss_s.item(), "loss_sub/value_mse": v_loss.item(), "loss_sub/reward_mse": r_loss.item()}
-        return total_loss, s_loss, a_loss, torch.tensor(0.0), metrics
+        metrics = {
+            "loss": total_loss,
+            "state_loss": s_loss.detach(),
+            "action_loss": a_loss.detach(),
+            "value_loss": v_loss.detach(),
+            "reward_loss": r_loss.detach(),
+            "pairwise_loss": torch.tensor(0.0, device=total_loss.device),
+            
+            # Legacy Sub-losses
+            "loss_sub/state_mse": s_loss.detach(), 
+            "loss_sub/action_all": a_loss.detach(), 
+            "loss_sub/action_power": a_loss_p.detach(), 
+            "loss_sub/action_turn": a_loss_t.detach(), 
+            "loss_sub/action_shoot": a_loss_s.detach(), 
+            "loss_sub/value_mse": v_loss.detach(), 
+            "loss_sub/reward_mse": r_loss.detach()
+        }
+        return metrics
 
 
 class YemongSpatial(BaseScaffold):
@@ -359,8 +375,20 @@ class YemongSpatial(BaseScaffold):
         a_loss = a_loss_p + a_loss_t + a_loss_s
         total_loss = lambda_actions * a_loss
         
-        metrics = {"loss": total_loss.item(), "loss_sub/action_all": a_loss.item(), "loss_sub/action_power": a_loss_p.item(), "loss_sub/action_turn": a_loss_t.item(), "loss_sub/action_shoot": a_loss_s.item()}
-        return total_loss, torch.tensor(0.0), total_loss, torch.tensor(0.0), metrics
+        metrics = {
+            "loss": total_loss,
+            "state_loss": torch.tensor(0.0, device=total_loss.device),
+            "action_loss": a_loss.detach(),
+            "value_loss": torch.tensor(0.0, device=total_loss.device),
+            "reward_loss": torch.tensor(0.0, device=total_loss.device),
+            "pairwise_loss": torch.tensor(0.0, device=total_loss.device),
+
+            "loss_sub/action_all": a_loss.detach(),
+            "loss_sub/action_power": a_loss_p.detach(),
+            "loss_sub/action_turn": a_loss_t.detach(),
+            "loss_sub/action_shoot": a_loss_s.detach()
+        }
+        return metrics
 
 
 class YemongTemporal(BaseScaffold):
@@ -445,8 +473,17 @@ class YemongTemporal(BaseScaffold):
 
         total_loss = lambda_state * s_loss
         
-        metrics = {"loss": total_loss.item(), "loss_sub/state_mse": s_loss.item()}
-        return total_loss, s_loss, torch.tensor(0.0), torch.tensor(0.0), metrics
+        metrics = {
+            "loss": total_loss,
+            "state_loss": s_loss.detach(),
+            "action_loss": torch.tensor(0.0, device=total_loss.device),
+            "value_loss": torch.tensor(0.0, device=total_loss.device),
+            "reward_loss": torch.tensor(0.0, device=total_loss.device),
+            "pairwise_loss": torch.tensor(0.0, device=total_loss.device),
+
+            "loss_sub/state_mse": s_loss.detach()
+        }
+        return metrics
 
 
 from boost_and_broadside.models.components.encoders import StateEncoder, ActionEncoder, RelationalEncoder, SeparatedActionEncoder
@@ -524,7 +561,9 @@ class YemongDynamics(BaseScaffold):
         )
 
         # Dynamics Heads (Auxiliary)
-        self.reward_head = nn.Linear(d_model, 1)
+        num_reward_components = config.get("num_reward_components", 1)
+        self.num_reward_components = num_reward_components
+        self.reward_head = nn.Linear(d_model, num_reward_components)
         
         # Dynamics Module
         # Fusion Z + Action(t)
@@ -555,7 +594,7 @@ class YemongDynamics(BaseScaffold):
         self.reward_head = nn.Sequential(
             nn.Linear(d_model, d_model),
             nn.SiLU(),
-            nn.Linear(d_model, 1) # Total reward scalar
+            nn.Linear(d_model, num_reward_components) # Total reward scalar or components
         )
         
         # Loss Params
@@ -680,18 +719,20 @@ class YemongDynamics(BaseScaffold):
         q_rew = self.team_token_reward.expand(Batch_Time, -1, -1)
         Z_prime_norm_rew = self.norm_reward(Z_prime_flat)
         team_vec_rew, _ = self.pooler_reward(q_rew, Z_prime_norm_rew, Z_prime_norm_rew, key_padding_mask=key_padding_mask)
-        reward_pred = self.reward_head(team_vec_rew.squeeze(1)).reshape(batch_size, seq_len, 1)
+        reward_components = self.reward_head(team_vec_rew.squeeze(1)).reshape(batch_size, seq_len, self.num_reward_components)
+        reward_pred = reward_components.sum(dim=-1, keepdim=True)
         
         # Return Tuple
-        # 1.action_logits, 2.logprob, 3.entropy, 4.value, 5.state, 6.pred_states, 7.pred_rewards, 8.pred_pairwise
-        return action_logits, None, None, value_pred, None, next_state_pred, reward_pred, pairwise_pred
+        # 1.action_logits, 2.logprob, 3.entropy, 4.value, 5.state, 6.pred_states, 7.pred_rewards, 8.pred_pairwise, 9.reward_components
+        return action_logits, None, None, value_pred, None, next_state_pred, reward_pred, pairwise_pred, reward_components
         
     def get_loss(self, pred_states, pred_actions, target_states, target_actions, loss_mask,
                  lambda_state=1.0, lambda_actions=1.0,
                  pred_values=None, pred_rewards=None, target_returns=None, target_rewards=None,
                  lambda_value=1.0, lambda_reward=1.0, weights_power=None, weights_turn=None, weights_shoot=None,
                  target_alive=None, min_sigma=0.1,
-                 pairwise_pred=None, target_pairwise=None, lambda_pairwise=0.1):
+                 pairwise_pred=None, target_pairwise=None, lambda_pairwise=0.1,
+                 reward_components=None):
         
         target_states = target_states.to(pred_states.dtype)
         
@@ -709,6 +750,26 @@ class YemongDynamics(BaseScaffold):
         mse = F.mse_loss(pred_states, target_states, reduction='none')
         s_loss = mse.mean(dim=-1).reshape(-1).mul(mask_flat).sum() / denom
         
+        # Detailed State Loss Logging (Detached)
+        # TargetFeature: DX=0, DY=1, DVX=2, DVY=3, DHEALTH=4, DPOWER=5, DANG_VEL=6
+        state_losses = {}
+        with torch.no_grad():
+             # mse shape: (B, T, N, D)
+             # mask shape: (B, T, N) -> (B, T, N, 1)
+             m_expanded = loss_mask.unsqueeze(-1).float()
+             # masked_mse: (B, T, N, D)
+             masked_mse = mse * m_expanded
+             # Sum over B, T, N
+             sum_mse = masked_mse.sum(dim=(0, 1, 2))
+             # Denom is same for all features (total valid items)
+             # avg_mse_per_feature = sum_mse / denom
+             
+             # Map to names
+             feature_names = ["DX", "DY", "DVX", "DVY", "DHEALTH", "DPOWER", "DANG_VEL"]
+             for i, name in enumerate(feature_names):
+                  if i < mse.shape[-1]:
+                       state_losses[f"loss_sub/state_{name}"] = (sum_mse[i] / denom).item()
+        
         # Action Loss
         a_loss = torch.tensor(0.0, device=pred_states.device)
         if pred_actions is not None:
@@ -719,6 +780,14 @@ class YemongDynamics(BaseScaffold):
             a_loss_t = (F.cross_entropy(l_t.reshape(-1, 7), t_t.reshape(-1), weight=weights_turn, reduction='none') * mask_flat).sum() / denom / math.log(7)
             a_loss_s = (F.cross_entropy(l_s.reshape(-1, 2), t_s.reshape(-1), weight=weights_shoot, reduction='none') * mask_flat).sum() / denom / math.log(2)
             a_loss = a_loss_p + a_loss_t + a_loss_s
+            
+        # Detailed Action Loss Logging (Detached)
+        action_losses = {}
+        with torch.no_grad():
+             if pred_actions is not None:
+                  action_losses["loss_sub/action_power"] = a_loss_p.item()
+                  action_losses["loss_sub/action_turn"] = a_loss_t.item()
+                  action_losses["loss_sub/action_shoot"] = a_loss_s.item()
 
         v_loss = r_loss = torch.tensor(0.0, device=pred_states.device)
         
@@ -789,8 +858,9 @@ class YemongDynamics(BaseScaffold):
                v_loss * lambda_value + \
                r_loss * lambda_reward + \
                p_loss * lambda_pairwise
+
                
-        return {
+        metrics = {
             "loss": loss,
             "state_loss": s_loss.detach(),
             "action_loss": a_loss.detach(),
@@ -798,6 +868,29 @@ class YemongDynamics(BaseScaffold):
             "reward_loss": r_loss.detach(),
             "pairwise_loss": p_loss.detach()
         }
+        metrics.update(state_losses)
+        metrics.update(action_losses)
+        
+        # Log Reward Components Mean
+        if reward_components is not None:
+             with torch.no_grad():
+                  # shape: (B, T, K)
+                  # mask: (B, T, N) -> m_team (B, T, 1)
+                  # We want mean of valid steps?
+                  # Yes, using m_team
+                  m_team = loss_mask.any(dim=-1).float().unsqueeze(-1) # (B, T, 1)
+                  d_team = m_team.sum() + 1e-6
+                  
+                  # Mask reward components
+                  # (B, T, K) * (B, T, 1)
+                  rc_masked = reward_components * m_team
+                  rc_sum = rc_masked.sum(dim=(0, 1)) # Sum over B, T -> (K,)
+                  rc_mean = rc_sum / d_team
+                  
+                  for i in range(self.num_reward_components):
+                       metrics[f"val/reward_component_{i}"] = rc_mean[i].item()
+
+        return metrics
 
         loss_type = getattr(self.config, "loss_type", "fixed")
         if loss_type == "uncertainty" and self.log_vars is not None:

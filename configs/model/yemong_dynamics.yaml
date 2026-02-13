@@ -32,3 +32,6 @@ use_pairwise_targets: false
 
 # Loss Type (fixed or uncertainty)
 loss_type: "fixed"
+
+# Reward Decomposition
+num_reward_components: 5

@@ -55,7 +55,8 @@ def test_yemong_dynamics_forward_and_loss():
     # 1. Forward with Teacher Forcing (target_actions provided)
     target_actions = torch.randint(0, 2, (B, T, N, 3))
     
-    next_state_pred, action_logits, value_pred, reward_pred, latent = model(
+    # returns: action_logits, logprob, entropy, value_pred, mamba_state, next_state_pred, reward_pred, pairwise_pred, reward_components
+    action_logits, _, _, value_pred, _, next_state_pred, reward_pred, _, _ = model(
         state=state,
         prev_action=prev_action,
         pos=pos,
@@ -78,7 +79,7 @@ def test_yemong_dynamics_forward_and_loss():
     
     # 2. Forward with Sampling (no target_actions)
     # This exercises the sampling logic
-    next_state_pred_s, action_logits_s, _, _, _ = model(
+    action_logits_s, _, _, _, _, next_state_pred_s, _, _, _ = model(
         state=state,
         prev_action=prev_action,
         pos=pos,
@@ -96,7 +97,7 @@ def test_yemong_dynamics_forward_and_loss():
     target_returns = torch.randn(B, T, 1) # Team level targets
     target_rewards = torch.randn(B, T, 1) # Team level targets
     
-    loss, s_loss, a_loss, r_loss, metrics = model.get_loss(
+    metrics = model.get_loss(
         pred_states=next_state_pred,
         pred_actions=action_logits,
         target_states=target_states,
@@ -112,8 +113,9 @@ def test_yemong_dynamics_forward_and_loss():
         lambda_reward=1.0
     )
     
-    assert loss > 0
-    assert "loss_sub/action_all" in metrics
-    assert "loss_sub/state_mse" in metrics
-    assert "loss_sub/value_mse" in metrics
-    assert "loss_sub/reward_mse" in metrics
+    loss = metrics["loss"]
+    assert "action_loss" in metrics
+    assert "state_loss" in metrics
+    assert "value_loss" in metrics
+    assert "reward_loss" in metrics
+    assert "loss_sub/action_power" in metrics

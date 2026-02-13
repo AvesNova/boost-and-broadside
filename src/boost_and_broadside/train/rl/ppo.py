@@ -263,7 +263,7 @@ class PPOTrainer:
 
                     # PARALLEL SCAN INFERENCE (entire sequence)
                     # Returns: action(None), logprob, entropy, value, mamba_state(None), next_state_pred, reward_pred
-                    _, new_logprob, entropy, new_value, _, next_state_pred, reward_pred = self.agent.get_action_and_value(
+                    _, new_logprob, entropy, new_value, _, next_state_pred, reward_pred, *extras = self.agent.get_action_and_value(
                         obs_input, flat_mamba_state, action=mb_actions_perm, seq_idx=seq_idx
                     )
                     
@@ -319,7 +319,11 @@ class PPOTrainer:
                     reward_pred = reward_pred.view(B, T, N) 
                     
                     # State Loss with Mask
-                    s_loss = (F.mse_loss(next_state_pred, mb_next_obs_perm, reduction='none') * valid_mask.unsqueeze(-1)).sum() / (valid_mask.sum() * F_dim + 1e-6)
+                    if next_state_pred.shape[-1] == mb_next_obs_perm.shape[-1]:
+                         s_loss = (F.mse_loss(next_state_pred, mb_next_obs_perm, reduction='none') * valid_mask.unsqueeze(-1)).sum() / (valid_mask.sum() * F_dim + 1e-6)
+                    else:
+                         # Shape mismatch (e.g. Model predicts Targets vs Env State). Skip auxiliary state loss.
+                         s_loss = torch.tensor(0.0, device=self.device)
 
                     # Reward Loss WITHOUT Mask
                     # Predicting reward for step T is valid even if T is terminal.
