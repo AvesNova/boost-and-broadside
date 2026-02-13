@@ -166,16 +166,10 @@ class TestPhysics:
         state.bullet_time[0, 1, 0] = 1.0
         
         # Run resolution
-        state, rewards, dones = resolve_collisions(state, config)
+        state, dones = resolve_collisions(state, config)
         
         # Check damage
         assert state.ship_health[0, 0] == config.max_health - config.bullet_damage
-        
-        # Check reward (Ship 1 gets reward)
-        # rewards shape (B, N) -> (1, 2)
-        # RewardConstants.ENEMY_DAMAGE is likely tiny?
-        # rewards[0, 1] should be positive.
-        assert rewards[0, 1] > 0
         
 
 if __name__ == "__main__":

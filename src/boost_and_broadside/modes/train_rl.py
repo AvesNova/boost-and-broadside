@@ -36,13 +36,19 @@ def train_rl(cfg: DictConfig) -> None:
     # We use the max_ships from model config to ensure compatibility
     max_ships = cfg.model.max_ships
     
+    # Pass reward config if available
+    reward_config = None
+    if "rewards" in cfg:
+        reward_config = OmegaConf.to_container(cfg.rewards, resolve=True)
+
     env = TensorEnv(
         num_envs=num_envs,
         config=ship_config,
         device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
         max_ships=max_ships,
         max_bullets=env_cfg.get("max_bullets", 20),
-        max_episode_steps=cfg.train.ppo.get("max_episode_steps", 1024)
+        max_episode_steps=cfg.train.ppo.get("max_episode_steps", 1024),
+        reward_config=reward_config
     )
     
     # Wrap for GPU-native RL Interface

@@ -2,10 +2,13 @@ import torch
 from torch.utils.data import Dataset
 import logging
 import h5py
+from typing import Optional, Dict, Any
 from boost_and_broadside.core.constants import (
     StateFeature,
     STATE_DIM,
 )
+from boost_and_broadside.core.rewards import RewardRegistry
+from boost_and_broadside.env2.state import TensorState
 
 
 
@@ -154,11 +157,113 @@ class UnifiedEpisodeDataset:
 
 class BaseView(Dataset):
     def __init__(
-        self, dataset: UnifiedEpisodeDataset, indices: list[int], seq_len: int
+        self, 
+        dataset: UnifiedEpisodeDataset, 
+        indices: list[int], 
+        seq_len: int,
+        reward_config: Optional[Dict[str, Any]] = None
     ):
         self.dataset = dataset
         self.indices = indices
         self.seq_len = seq_len
+        self.reward_registry = RewardRegistry(reward_config) if reward_config else None
+
+    def _compute_aligned_rewards(self, seq_tokens: torch.Tensor, seq_team_ids: torch.Tensor, seq_rewards: torch.Tensor) -> torch.Tensor:
+        """
+        Computes rewards on-the-fly using the RewardRegistry if available.
+        
+        Args:
+            seq_tokens: (T, N, D)
+            seq_team_ids: (T, N)
+            seq_rewards: (T, N) - Original rewards from HDF5 (used as fallback/holder)
+            
+        Returns:
+            Updated rewards tensor (T, N) or (T, N, K) depending on configuration.
+            For now, we return sum(rewards) to match scalar expectation, or we can expand.
+            The user requested "each ship to predict each of our types of rewards".
+            This implies the target should be (T, N, K).
+            
+            However, 'seq_rewards' in current codebase is (T, N).
+            Changing the shape of the yielded reward tensor might break downstream collators 
+            if they expect specific shapes.
+            
+            If we want to support multi-head rewards, we need to stack them.
+            Let's assume we return a stacked tensor.
+        """
+        if self.reward_registry is None:
+            return seq_rewards
+            
+        T, N, _ = seq_tokens.shape
+        device = seq_tokens.device
+        
+        # We need S_t and S_{t+1}
+        # The sequence is length T.
+        # We can compute rewards for T-1 transitions.
+        # The last step has no next state in this chunk (unless we fetched T+1 tokens).
+        # We usually fetch `actual_len` tokens.
+        # Strict calculation requires S_{t+1}.
+        
+        # Approximate:
+        # S_t = tokens[:-1]
+        # S_{t+1} = tokens[1:]
+        # This gives T-1 rewards. The last reward is unknown/pad.
+        # Or we should have fetched T+1 tokens in __getitem__.
+        
+        # For this implementation, let's assume we use the tokens we have.
+        # We'll pad the last reward with 0 or repeat.
+        
+        # Reconstruct Partial States
+        # We need: Health, TeamID, Alive.
+        # Tokens: [Health, Power, Vx, Vy, AngVel, ...]
+        
+        health = seq_tokens[..., StateFeature.HEALTH]
+        # Alive is implicitly Health > 0 (or we can assume so for reward calc)
+        alive = health > 0
+        
+        # Team IDs are passed separately
+        
+        # Create T-1 transitions
+        # prev_state
+        prev_health = health[:-1]
+        prev_alive = alive[:-1]
+        prev_team = seq_team_ids[:-1]
+        
+        # next_state
+        next_health = health[1:]
+        next_alive = alive[1:]
+        next_team = seq_team_ids[1:]
+        
+        # Mock TensorStates (lightweight)
+        # We use a dummy class or just ensure RewardFunction only uses attributes we set.
+        # Since python is dynamic, we can create a SimpleNamespace or minimal object.
+        class MockState:
+            def __init__(self, h, a, t):
+                self.ship_health = h
+                self.ship_alive = a
+                self.ship_team_id = t
+                self.device = h.device
+                
+        p_state = MockState(prev_health, prev_alive, prev_team)
+        n_state = MockState(next_health, next_alive, next_team)
+        
+        # Dummy actions/dones
+        actions = torch.zeros((T-1, N, 3), device=device) 
+        dones = torch.zeros((T-1,), dtype=torch.bool, device=device) # We ignore game over in partial chunk
+        
+        rewards_dict = self.reward_registry.compute_all(p_state, actions, n_state, dones)
+        
+        # Stack rewards: (T-1, N, K)
+        # We need to ensure deterministic order. 
+        # RewardRegistry.components is a list.
+        reward_list = [rewards_dict[comp.name] for comp in self.reward_registry.components]
+        stacked_rewards = torch.stack(reward_list, dim=-1) # (T-1, N, K)
+        
+        # Pad back to T
+        # (1, N, K) zeros
+        pad = torch.zeros((1, N, stacked_rewards.shape[-1]), device=device, dtype=stacked_rewards.dtype)
+        full_rewards = torch.cat([stacked_rewards, pad], dim=0)
+        
+        return full_rewards
 
     def __len__(self) -> int:
         return len(self.indices)
@@ -211,9 +316,13 @@ class BaseView(Dataset):
 
 class ShortView(BaseView):
     def __init__(
-        self, dataset: UnifiedEpisodeDataset, indices: list[int], seq_len: int = 32
+        self, 
+        dataset: UnifiedEpisodeDataset, 
+        indices: list[int], 
+        seq_len: int = 32,
+        reward_config: Optional[Dict[str, Any]] = None
     ):
-        super().__init__(dataset, indices, seq_len)
+        super().__init__(dataset, indices, seq_len, reward_config)
 
     def __getitem__(
         self, idx: int
@@ -250,7 +359,20 @@ class ShortView(BaseView):
         seq_masks = self._get_shifted_masks_from_full(abs_start, abs_end, start_offset)
         seq_masks = self._get_shifted_masks_from_full(abs_start, abs_end, start_offset)
         seq_returns = self.dataset.get_slice("returns", abs_start, abs_end)
-        seq_rewards = self.dataset.get_slice("rewards", abs_start, abs_end)
+        seq_rewards_raw = self.dataset.get_slice("rewards", abs_start, abs_end)
+        
+        # Team IDs needed for Reward Calculation
+        # Load them early if we need to compute rewards
+        if self.dataset.has_dataset("team_ids"):
+            seq_team_ids = self.dataset.get_slice("team_ids", abs_start, abs_end)
+        else:
+            seq_team_ids = torch.zeros(actual_len, dtype=torch.int64)
+
+        # Compute Rewards On-The-Fly if configured
+        if self.reward_registry:
+            seq_rewards = self._compute_aligned_rewards(seq_tokens, seq_team_ids, seq_rewards_raw)
+        else:
+            seq_rewards = seq_rewards_raw
         
         # Optional Features
 
@@ -260,10 +382,7 @@ class ShortView(BaseView):
         else:
             seq_skills = torch.ones(actual_len, dtype=torch.float32)
 
-        if self.dataset.has_dataset("team_ids"):
-            seq_team_ids = self.dataset.get_slice("team_ids", abs_start, abs_end)
-        else:
-            seq_team_ids = torch.zeros(actual_len, dtype=torch.int64)
+        # Team IDs already loaded above
 
         # Padding
         if actual_len < self.seq_len:
@@ -342,8 +461,9 @@ class LongView(BaseView):
         indices: list[int],
         seq_len: int = 128,
         warmup_len: int = 32,
+        reward_config: Optional[Dict[str, Any]] = None
     ):
-        super().__init__(dataset, indices, seq_len)
+        super().__init__(dataset, indices, seq_len, reward_config)
         self.warmup_len = warmup_len
 
     def __getitem__(
@@ -377,7 +497,18 @@ class LongView(BaseView):
 
         seq_masks = self._get_shifted_masks_from_full(abs_start, abs_end, start_offset)
         seq_returns = self.dataset.get_slice("returns", abs_start, abs_end)
-        seq_rewards = self.dataset.get_slice("rewards", abs_start, abs_end)
+        seq_rewards_raw = self.dataset.get_slice("rewards", abs_start, abs_end)
+
+        if self.dataset.has_dataset("team_ids"):
+            seq_team_ids = self.dataset.get_slice("team_ids", abs_start, abs_end)
+        else:
+            seq_team_ids = torch.zeros(self.seq_len, dtype=torch.int64)
+
+        # Compute Rewards On-The-Fly if configured
+        if self.reward_registry:
+            seq_rewards = self._compute_aligned_rewards(seq_tokens, seq_team_ids, seq_rewards_raw)
+        else:
+            seq_rewards = seq_rewards_raw
         
 
 
@@ -386,10 +517,7 @@ class LongView(BaseView):
         else:
             seq_skills = torch.ones(self.seq_len, dtype=torch.float32)
 
-        if self.dataset.has_dataset("team_ids"):
-            seq_team_ids = self.dataset.get_slice("team_ids", abs_start, abs_end)
-        else:
-            seq_team_ids = torch.zeros(self.seq_len, dtype=torch.int64)
+        # Team ID loaded above
 
         loss_mask = torch.ones(self.seq_len, dtype=torch.bool)
         loss_mask[: self.warmup_len] = False

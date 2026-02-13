@@ -5,6 +5,7 @@ from typing import Optional, Tuple, Dict, Any
 
 from .state import TensorState
 from boost_and_broadside.core.config import ShipConfig
+from boost_and_broadside.core.rewards import RewardRegistry
 from .physics import update_ships, update_bullets, resolve_collisions
 
 class TensorEnv:
@@ -28,7 +29,8 @@ class TensorEnv:
         device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
         max_ships: int = 8,
         max_bullets: int = 20,
-        max_episode_steps: int = 1000
+        max_episode_steps: int = 1000,
+        reward_config: Optional[Dict[str, Any]] = None
     ):
         """
         Initializes the TensorEnv.
@@ -40,6 +42,7 @@ class TensorEnv:
             max_ships: Maximum number of ships per matchup.
             max_bullets: Maximum bullet buffer size per ship.
             max_episode_steps: Maximum steps before truncation.
+            reward_config: Configuration for RewardRegistry.
         """
         self.num_envs = num_envs
         self.config = config
@@ -48,6 +51,7 @@ class TensorEnv:
         self.max_bullets = max_bullets
         self.max_episode_steps = max_episode_steps
         
+        self.reward_registry = RewardRegistry(reward_config)
         self.state: Optional[TensorState] = None
         
     def reset(self, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None) -> Dict[str, torch.Tensor]:
@@ -117,16 +121,98 @@ class TensorEnv:
         self.state = update_ships(self.state, actions, self.config)
         self.state = update_bullets(self.state, self.config)
         
-        # Collision Resolution
-        self.state, rewards, dones = resolve_collisions(self.state, self.config)
+        # Collision Resolution (State Updates only)
+        # Note: We need a copy of the Previous State (t) to compute rewards based on delta.
+        # However, `physics.resolve_collisions` modifies state in-place.
+        # Ideally, we should capture state BEFORE modification.
+        # But `physics.resolve_collisions` computes damage.
+        # The RewardFunction needs: S_t (Pre-Damage) and S_{t+1} (Post-Damage).
+        # Actually, `state` entering step() is S_t.
+        # `update_ships` updates kinematics -> S_t'.
+        # `resolve_collisions` applies damage -> S_{t+1}.
+        
+        # We need a snapshot of relevant fields (Health, Alive) BEFORE damage application 
+        # to correctly compute delta.
+        
+        # Optimization: We only need specific fields.
+        prev_health = self.state.ship_health.clone()
+        prev_alive = self.state.ship_alive.clone()
+        # We construct a synthetic 'prev_state' using current pointers but old values for relevant fields.
+        # This is a bit hacky but efficient. 
+        # Better: Pass explicit arguments to `compute`.
+        # For now, let's create a shallow copy and restore old values.
+        
+        # Actually, `RewardComponent.compute` takes (prev_state, action, next_state, dones).
+        # We can just clone the whole state if it's small, or just passes needed tensors.
+        # `TensorState` is a dataclass of tensors. Cloning it is cheap (just ref copy), but tensors are shared.
+        # We must clone the health/alive tensors specifically.
+        
+        # To avoid massive clones, we can create a lightweight container or just rely on the fact 
+        # that we need to pass "Pre-Damage State" and "Post-Damage State".
+        
+        # Let's clone the state object and the specific tensors we know act as inputs to rewards.
+        # Ideally `RewardFunction` shouldn't depend on too much.
+        
+        # 3. Collision Resolution
+        next_state, dones = resolve_collisions(self.state, self.config)
+        
+        # NOTE: `resolve_collisions` modifies `self.state` in-place and returns it. 
+        # `next_state` IS `self.state`.
+        # So `prev_health` captured above is our only record of "before".
+        
+        # We need to construct a "Virtual Previous State" for the reward function
+        # matching the interface `compute(prev_state, ...)`
+        # We can temporarily patch `self.state` with old values, call compute, then restore? 
+        # Or construct a dummy object.
+        
+        # Construct simplified previous state for reward calculation
+        prev_state_proxy = TensorState(
+            step_count=self.state.step_count, # Doesn't change during physics
+            ship_pos=self.state.ship_pos, # Changed by kinematics, but damage reward doesn't care
+            ship_vel=self.state.ship_vel,
+            ship_attitude=self.state.ship_attitude,
+            ship_ang_vel=self.state.ship_ang_vel,
+            ship_health=prev_health, # KEY
+            ship_power=self.state.ship_power,
+            ship_cooldown=self.state.ship_cooldown,
+            ship_team_id=self.state.ship_team_id,
+            ship_alive=prev_alive, # KEY
+            ship_is_shooting=self.state.ship_is_shooting,
+            bullet_pos=self.state.bullet_pos,
+            bullet_vel=self.state.bullet_vel,
+            bullet_time=self.state.bullet_time,
+            bullet_active=self.state.bullet_active,
+            bullet_cursor=self.state.bullet_cursor
+        )
+
         
         self.state.step_count += 1
         
         # Truncation
         truncated = self.state.step_count >= self.max_episode_steps
         
-        # Combine Dones
-        # If truncated, it counts as done for reset purposes
+        # Create full dones (including truncation) for Reset purposes
+        # BUT for Reward purposes, we might distinguish.
+        # Typically PPO expects 'dones' to include Truncation? 
+        # Usually rewards are calculated based on Game Over specific logic.
+        
+        # Calculate Rewards
+        # We pass 'dones' (Game Over) explicitly.
+        # We assume 'dones' coming from physics is Game Over (Win/Loss).
+        
+        reward_dict = self.reward_registry.compute_all(
+            prev_state=prev_state_proxy,
+            actions=actions,
+            next_state=self.state,
+            dones=dones,
+            is_terminal=dones.any() # Optimization hint
+        )
+        
+        # For backward compatibility / PPO Interface: Sum all rewards to a scalar tensor
+        # dict -> tensor
+        rewards = sum(reward_dict.values())
+        
+        # Combine Dones (Truncation) for Return
         dones = torch.logical_or(dones, truncated)
         
         # Auto-Reset Logic
