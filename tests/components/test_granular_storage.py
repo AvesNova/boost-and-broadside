@@ -7,7 +7,10 @@ import numpy as np
 
 from boost_and_broadside.env2.collector import AsyncCollector
 from boost_and_broadside.train.unified_dataset import UnifiedEpisodeDataset
-from boost_and_broadside.core.constants import NORM_HEALTH, NORM_VELOCITY, STATE_DIM, StateFeature
+from boost_and_broadside.core.constants import STATE_DIM, StateFeature
+# Legacy normalization constants removed, use hardcoded 100.0/180.0
+NORM_HEALTH = 100.0
+NORM_VELOCITY = 180.0
 
 @pytest.fixture
 def temp_h5_path(tmp_path):
@@ -94,8 +97,8 @@ def test_granular_storage_cycle(temp_h5_path):
         
         # f16 vs f32 tolerance
         # f16 vs f32 tolerance
-        # Tokens are health / NORM_HEALTH
-        assert torch.allclose(file_health / NORM_HEALTH, token_health, atol=1e-2)
+        # Tokens are now RAW health
+        assert torch.allclose(file_health, token_health, atol=1e-2)
         
         # Check Velocity 
         # New Layout
@@ -103,12 +106,9 @@ def test_granular_storage_cycle(temp_h5_path):
         token_vel_x = tokens[..., StateFeature.VX].float()
         token_vel_y = tokens[..., StateFeature.VY].float()
         
-        # Verify normalization
-        expected_vel_x = file_vel[..., 0] / NORM_VELOCITY
-        expected_vel_y = file_vel[..., 1] / NORM_VELOCITY
-        
-        assert torch.allclose(expected_vel_x, token_vel_x, atol=1e-2)
-        assert torch.allclose(expected_vel_y, token_vel_y, atol=1e-2)
+        # Verify raw values
+        assert torch.allclose(file_vel[..., 0], token_vel_x, atol=1e-2)
+        assert torch.allclose(file_vel[..., 1], token_vel_y, atol=1e-2)
 
     print("Test Passed!")
 

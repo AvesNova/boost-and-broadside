@@ -13,13 +13,18 @@ from boost_and_broadside.models.components.encoders import StateEncoder, ActionE
 from boost_and_broadside.models.components.heads import ActorHead, WorldHead, ValueHead
 from boost_and_broadside.models.components.team_evaluator import TeamEvaluator 
 from boost_and_broadside.models.components.layers.attention import RelationalAttention
-from boost_and_broadside.core.constants import StateFeature, STATE_DIM, TARGET_DIM, TOTAL_ACTION_LOGITS
+from boost_and_broadside.models.components.normalizer import FeatureNormalizer
+from boost_and_broadside.core.constants import StateFeature, TargetFeature, STATE_DIM, TARGET_DIM, TOTAL_ACTION_LOGITS
 
 
 class BaseScaffold(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
+        
+        # Load Normalizer if stats_path is provided
+        stats_path = config.get("stats_path", None)
+        self.normalizer = FeatureNormalizer(stats_path) if stats_path else None
     
     def get_loss(self, *args, **kwargs):
         raise NotImplementedError
@@ -32,8 +37,8 @@ class YemongFull(BaseScaffold):
         d_model = config.d_model
         
         # Encoders
-        self.state_encoder = StateEncoder(config.get("input_dim", STATE_DIM), d_model)
-        self.relational_encoder = RelationalEncoder(d_model, config.n_layers)
+        self.state_encoder = StateEncoder(config.get("input_dim", STATE_DIM), d_model, normalizer=self.normalizer)
+        self.relational_encoder = RelationalEncoder(d_model, config.n_layers, normalizer=self.normalizer)
         
         # Action Encoder (Embeddings)
         self.action_encoder = ActionEncoder()
@@ -196,6 +201,20 @@ class YemongFull(BaseScaffold):
                  target_alive=None, min_sigma=0.1):
         
         target_states = target_states.to(pred_states.dtype)
+        
+        # Apply Target Normalization (Scale (RMS))
+        if self.normalizer:
+            # Predict labels: DX, DY, DVX, DVY, DHEALTH, DPOWER, DANG_VEL
+            names = ["DX", "DY", "DVX", "DVY", "DHEALTH", "DPOWER", "DANG_VEL"]
+            sigmas = []
+            for name in names:
+                sigmas.append(self.normalizer.get_stat(f"Target_{name}", "rms"))
+            sigmas = torch.stack(sigmas).to(pred_states.device).to(pred_states.dtype)
+            
+            # (..., 7) / (7,)
+            pred_states = pred_states / (sigmas + 1e-6)
+            target_states = target_states / (sigmas + 1e-6)
+
         if loss_mask.ndim == 2: loss_mask = loss_mask.unsqueeze(-1).expand_as(pred_states[..., 0])
         if target_alive is not None: loss_mask = loss_mask & target_alive
              
@@ -256,8 +275,8 @@ class YemongSpatial(BaseScaffold):
         super().__init__(config)
         d_model = config.d_model
         
-        self.state_encoder = StateEncoder(config.get("input_dim", STATE_DIM), d_model)
-        self.relational_encoder = RelationalEncoder(d_model, config.n_layers) # n_layers here might range over stack
+        self.state_encoder = StateEncoder(config.get("input_dim", STATE_DIM), d_model, normalizer=self.normalizer)
+        self.relational_encoder = RelationalEncoder(d_model, config.n_layers, normalizer=self.normalizer) # n_layers here might range over stack
         
         self.special_embeddings = nn.ModuleDict({
             'ship_id': nn.Embedding(config.get("max_ships", 8), d_model),
@@ -363,7 +382,7 @@ class YemongTemporal(BaseScaffold):
         super().__init__(config)
         d_model = config.d_model
         
-        self.state_encoder = StateEncoder(config.get("input_dim", STATE_DIM), d_model)
+        self.state_encoder = StateEncoder(config.get("input_dim", STATE_DIM), d_model, normalizer=self.normalizer)
         self.action_encoder = ActionEncoder()
         
         self.fusion = nn.Sequential(
@@ -426,6 +445,16 @@ class YemongTemporal(BaseScaffold):
         
         s_loss = mse.mean(dim=-1).reshape(-1).mul(mask_flat).sum() / denom
         
+        if self.normalizer:
+            names = ["DX", "DY", "DVX", "DVY", "DHEALTH", "DPOWER", "DANG_VEL"]
+            sigmas = []
+            for name in names:
+                sigmas.append(self.normalizer.get_stat(f"Target_{name}", "rms"))
+            sigmas = torch.stack(sigmas).to(pred_states.device).to(pred_states.dtype)
+            
+            pred_states = pred_states / (sigmas + 1e-6)
+            target_states = target_states / (sigmas + 1e-6)
+
         total_loss = lambda_state * s_loss
         
         metrics = {"loss": total_loss.item(), "loss_sub/state_mse": s_loss.item()}
@@ -454,8 +483,8 @@ class YemongDynamics(BaseScaffold):
         d_model = config.d_model
         
         # Encoders
-        self.state_encoder = StateEncoder(config.get("input_dim", STATE_DIM), d_model)
-        self.relational_encoder = RelationalEncoder(d_model, config.n_layers)
+        self.state_encoder = StateEncoder(config.get("input_dim", STATE_DIM), d_model, normalizer=self.normalizer)
+        self.relational_encoder = RelationalEncoder(d_model, config.n_layers, normalizer=self.normalizer)
         
         # Action Embeddings Component
         embed_dim = config.get("action_embed_dim", 16)
@@ -667,6 +696,18 @@ class YemongDynamics(BaseScaffold):
                  target_alive=None, min_sigma=0.1):
         
         target_states = target_states.to(pred_states.dtype)
+        
+        # Normalization
+        if self.normalizer:
+            names = ["DX", "DY", "DVX", "DVY", "DHEALTH", "DPOWER", "DANG_VEL"]
+            sigmas = []
+            for name in names:
+                sigmas.append(self.normalizer.get_stat(f"Target_{name}", "rms"))
+            sigmas = torch.stack(sigmas).to(pred_states.device).to(pred_states.dtype)
+            
+            pred_states = pred_states / (sigmas + 1e-6)
+            target_states = target_states / (sigmas + 1e-6)
+
         if loss_mask.ndim == 2: loss_mask = loss_mask.unsqueeze(-1).expand_as(pred_states[..., 0])
         if target_alive is not None: loss_mask = loss_mask & target_alive
              

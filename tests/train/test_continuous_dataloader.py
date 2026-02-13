@@ -7,7 +7,8 @@ import torch
 from boost_and_broadside.train.unified_dataset import UnifiedEpisodeDataset
 from boost_and_broadside.train.continuous_view import ContinuousView
 from boost_and_broadside.train.data_loader import create_continuous_data_loader
-from boost_and_broadside.core.constants import NORM_HEALTH, STATE_DIM, StateFeature
+from boost_and_broadside.core.constants import STATE_DIM, StateFeature
+NORM_HEALTH = 100.0
 
 @pytest.fixture
 def dummy_h5_data(tmp_path):
@@ -87,10 +88,10 @@ def test_cross_episode_slice(dummy_h5_data):
     # Index 1 is Health
     # slice_data is bfloat16, cast to float for comparison
     slice_data_f = slice_data.float()
-    assert torch.allclose(slice_data_f[0, 0, StateFeature.HEALTH], torch.tensor(1.0))
-    assert torch.allclose(slice_data_f[1, 0, StateFeature.HEALTH], torch.tensor(1.0))
-    assert torch.allclose(slice_data_f[2, 0, StateFeature.HEALTH], torch.tensor(2.0))
-    assert torch.allclose(slice_data_f[3, 0, StateFeature.HEALTH], torch.tensor(2.0))
+    assert torch.allclose(slice_data_f[0, 0, StateFeature.HEALTH], torch.tensor(100.0))
+    assert torch.allclose(slice_data_f[1, 0, StateFeature.HEALTH], torch.tensor(100.0))
+    assert torch.allclose(slice_data_f[2, 0, StateFeature.HEALTH], torch.tensor(200.0))
+    assert torch.allclose(slice_data_f[3, 0, StateFeature.HEALTH], torch.tensor(200.0))
 
 def test_continuous_view_masks(dummy_h5_data):
     dataset = UnifiedEpisodeDataset(dummy_h5_data)

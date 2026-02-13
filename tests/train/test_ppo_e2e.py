@@ -1,6 +1,7 @@
 
 import pytest
 import torch
+import torch.nn.functional as F
 from omegaconf import OmegaConf
 
 from boost_and_broadside.core.config import ShipConfig

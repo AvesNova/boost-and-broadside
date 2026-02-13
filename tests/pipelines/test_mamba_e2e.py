@@ -11,7 +11,8 @@ from unittest.mock import patch
 # Import the training function
 from boost_and_broadside.train.pretrain import pretrain
 
-from boost_and_broadside.core.constants import NORM_HEALTH, STATE_DIM
+from boost_and_broadside.core.constants import STATE_DIM
+NORM_HEALTH = 100.0
 
 @pytest.fixture
 def synthetic_mamba_data(tmp_path):

@@ -8,6 +8,7 @@ import warnings
 warnings.filterwarnings("ignore", message="pkg_resources is deprecated as an API")
 
 import hydra
+from pathlib import Path
 from omegaconf import DictConfig
 
 from boost_and_broadside.modes.collect import collect

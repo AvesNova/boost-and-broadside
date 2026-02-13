@@ -3,10 +3,6 @@ from torch.utils.data import Dataset
 import logging
 import h5py
 from boost_and_broadside.core.constants import (
-    NORM_VELOCITY,
-    NORM_ANGULAR_VELOCITY,
-    NORM_HEALTH,
-    NORM_POWER,
     StateFeature,
     STATE_DIM,
 )
@@ -106,16 +102,16 @@ class UnifiedEpisodeDataset:
         tokens = torch.zeros((T, N, STATE_DIM), dtype=torch.bfloat16)
         
         # 0: Health
-        tokens[..., StateFeature.HEALTH] = health / NORM_HEALTH
+        tokens[..., StateFeature.HEALTH] = health
         # 1: Power
-        tokens[..., StateFeature.POWER] = power / NORM_POWER
+        tokens[..., StateFeature.POWER] = power
         
         # 2-3: Vel
-        tokens[..., StateFeature.VX] = vel[..., 0] / NORM_VELOCITY
-        tokens[..., StateFeature.VY] = vel[..., 1] / NORM_VELOCITY
+        tokens[..., StateFeature.VX] = vel[..., 0]
+        tokens[..., StateFeature.VY] = vel[..., 1]
         
         # 4: Ang Vel
-        tokens[..., StateFeature.ANG_VEL] = ang / NORM_ANGULAR_VELOCITY
+        tokens[..., StateFeature.ANG_VEL] = ang
         
         return tokens
 

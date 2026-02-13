@@ -3,13 +3,7 @@ import torch
 import numpy as np
 from typing import Dict, Tuple, Any
 
-from boost_and_broadside.core.constants import (
-    StateFeature, 
-    NORM_VELOCITY, 
-    NORM_ANGULAR_VELOCITY, 
-    NORM_HEALTH, 
-    NORM_POWER
-)
+from boost_and_broadside.core.constants import StateFeature
 
 class GPUEnvWrapper:
     """
@@ -127,13 +121,13 @@ class GPUEnvWrapper:
         # 1. State Feature Tensor (Normalized)
         # Dimensions: (B, N, 5)
         
-        # Velocity (Complex -> Re/Im -> Norm)
-        vx = state.ship_vel.real / NORM_VELOCITY
-        vy = state.ship_vel.imag / NORM_VELOCITY
+        # Velocity (Complex -> Re/Im)
+        vx = state.ship_vel.real
+        vy = state.ship_vel.imag
         
-        health = state.ship_health / NORM_HEALTH
-        power = state.ship_power / NORM_POWER
-        ang_vel = state.ship_ang_vel / NORM_ANGULAR_VELOCITY
+        health = state.ship_health
+        power = state.ship_power
+        ang_vel = state.ship_ang_vel
         
         # Stack: [Health, Power, Vx, Vy, AngVel] matches StateFeature enum order
         state_tensor = torch.stack([health, power, vx, vy, ang_vel], dim=-1)

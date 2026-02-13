@@ -37,16 +37,9 @@ STATE_DIM = len(StateFeature)
 TARGET_DIM = len(TargetFeature)
 ACTION_DIM = 3      # Number of discrete action components (Power, Turn, Shoot)
 
-# =============================================================================
 # Normalization Constants (for Tokenizer)
-# =============================================================================
 # Used to normalize raw observation values into [0, 1] or [-1, 1] range.
-
-NORM_VELOCITY = 180.0
-NORM_ACCELERATION = 150.0
-NORM_ANGULAR_VELOCITY = 360.0
-NORM_HEALTH = 100.0
-NORM_POWER = 100.0
+# DEPRECATED: Use FeatureNormalizer with raw_stats.csv instead.
 
 # =============================================================================
 # Action Definitions

@@ -4,7 +4,7 @@ import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 import h5py
 import os
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 # New Model
 # New Model
@@ -31,6 +31,13 @@ def create_model(cfg: DictConfig, data_path: str, device: torch.device):
     # We trust the config values which should be aligned with the current code
     # (STATE_DIM=5, TARGET_DIM=7)
     log.info(f"Instantiating model with input_dim={cfg.model.get('input_dim')} and target_dim={cfg.model.get('target_dim')}")
+
+    # Pass stats_path to model if raw_stats.csv exists in the data directory
+    stats_path = os.path.join(os.path.dirname(data_path), "raw_stats.csv")
+    if os.path.exists(stats_path):
+        log.info(f"Adding stats_path to model config: {stats_path}")
+        OmegaConf.set_struct(cfg.model, False)
+        cfg.model.stats_path = stats_path
 
     # Instantiate via Hydra
     log.info(f"Instantiating model target: {cfg.model._target_}")

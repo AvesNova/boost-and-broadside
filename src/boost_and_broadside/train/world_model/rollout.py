@@ -1,7 +1,7 @@
 import random
 import torch
 
-from boost_and_broadside.core.constants import NORM_VELOCITY, StateFeature, TargetFeature, STATE_DIM, TARGET_DIM
+from boost_and_broadside.core.constants import StateFeature, TargetFeature, STATE_DIM, TARGET_DIM
 
 def get_rollout_length(epoch: int, cfg) -> int:
     """
@@ -135,6 +135,15 @@ def perform_rollout(model, input_states, input_actions, input_pos, team_ids, rol
             if pred_s_final is None: continue
             delta_target = pred_s_final[:, -1] # (B, N, TARGET_DIM)
             
+            # De-normalize delta_target if model has a normalizer
+            if hasattr(model, "normalizer") and model.normalizer is not None:
+                names = ["DX", "DY", "DVX", "DVY", "DHEALTH", "DPOWER", "DANG_VEL"]
+                sigmas = []
+                for name in names:
+                    sigmas.append(model.normalizer.get_stat(f"Target_{name}", "rms"))
+                sigmas = torch.stack(sigmas).to(delta_target.device).to(delta_target.dtype)
+                delta_target = delta_target * (sigmas + 1e-6)
+            
             # 2. Update State S_{t+1}
             # Delta Target Layout: [dx, dy, dVx, dVy, dH, dP, dAV]
             # State Layout: [H, P, Vx, Vy, AV]
@@ -142,9 +151,9 @@ def perform_rollout(model, input_states, input_actions, input_pos, team_ids, rol
             curr_s = curr_states[:, t] # (B, N, STATE_DIM)
             next_state = curr_s.clone()
             
-            # Update normalized components
-            next_state[..., StateFeature.HEALTH] = (curr_s[..., StateFeature.HEALTH] + delta_target[..., TargetFeature.DHEALTH]).clamp(0, 1)
-            next_state[..., StateFeature.POWER] = (curr_s[..., StateFeature.POWER] + delta_target[..., TargetFeature.DPOWER]).clamp(0, 1)
+            # Update raw components
+            next_state[..., StateFeature.HEALTH] = (curr_s[..., StateFeature.HEALTH] + delta_target[..., TargetFeature.DHEALTH]).clamp(0, 100.0)
+            next_state[..., StateFeature.POWER] = (curr_s[..., StateFeature.POWER] + delta_target[..., TargetFeature.DPOWER]).clamp(0, 100.0)
             next_state[..., StateFeature.VX] = (curr_s[..., StateFeature.VX] + delta_target[..., TargetFeature.DVX])
             next_state[..., StateFeature.VY] = (curr_s[..., StateFeature.VY] + delta_target[..., TargetFeature.DVY])
             next_state[..., StateFeature.ANG_VEL] = (curr_s[..., StateFeature.ANG_VEL] + delta_target[..., TargetFeature.DANG_VEL])

@@ -5,7 +5,7 @@ import pytest
 from omegaconf import OmegaConf
 import numpy as np
 import h5py
-from boost_and_broadside.core.constants import NORM_HEALTH
+# Normalization constants removed, use hardcoded values for synthetic tests
 
 # Ensure project root is in sys.path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -134,7 +134,7 @@ def synthetic_h5_data(tmp_path):
         # position: (N, MaxShips, 2)
         f.create_dataset("position", data=np.random.randn(total_timesteps, max_ships, 2).astype(np.float32))
         f.create_dataset("velocity", data=np.random.randn(total_timesteps, max_ships, 2).astype(np.float32))
-        f.create_dataset("health", data=np.random.rand(total_timesteps, max_ships).astype(np.float32) * NORM_HEALTH)
+        f.create_dataset("health", data=np.random.rand(total_timesteps, max_ships).astype(np.float32) * 100.0)
         f.create_dataset("power", data=np.random.rand(total_timesteps, max_ships).astype(np.float32) * 100.0)
         f.create_dataset("attitude", data=np.random.randn(total_timesteps, max_ships, 2).astype(np.float32))
         f.create_dataset("ang_vel", data=np.random.randn(total_timesteps, max_ships).astype(np.float32))

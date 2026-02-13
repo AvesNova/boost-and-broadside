@@ -1,7 +1,7 @@
-
 import hydra
 from omegaconf import DictConfig, OmegaConf
 import torch
+from pathlib import Path
 
 from boost_and_broadside.core.config import ShipConfig
 from boost_and_broadside.env2.env import TensorEnv
@@ -48,6 +48,13 @@ def train_rl(cfg: DictConfig) -> None:
     # Wrap for GPU-native RL Interface
     env = GPUEnvWrapper(env)
     
+    # Pass stats_path to model
+    # Usually data is in data/bc_pretraining/aggregated_data.h5
+    stats_path = "data/bc_pretraining/raw_stats.csv"
+    if torch.cuda.is_available() and "stats_path" not in cfg.model:
+        OmegaConf.set_struct(cfg.model, False)
+        cfg.model.stats_path = str(Path(stats_path).absolute())
+
     # 2. Setup Agent
     print("Initializing YemongDynamics...")
     agent = YemongDynamics(cfg.model)

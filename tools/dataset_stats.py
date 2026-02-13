@@ -33,21 +33,25 @@ def compute_stats_vectorized(data: torch.Tensor, max_samples: int = 1000000) -> 
         data_subset = data[indices]
     else:
         data_subset = data
+    
+    data_f64 = data.to(torch.float64)
 
     with torch.no_grad():
         # 1. Basic Stats (Full data)
-        means = data.mean(dim=0)
-        stds = data.std(dim=0)
-        mins = data.min(dim=0).values
-        maxs = data.max(dim=0).values
+        means = data_f64.mean(dim=0)
+        stds = data_f64.std(dim=0)
+        mins = data_f64.min(dim=0).values
+        maxs = data_f64.max(dim=0).values
+        rms = torch.sqrt(torch.mean(data_f64**2, dim=0))
         sem = stds / np.sqrt(data.shape[0])
         
         # 2. Quantiles (Expensive - Use subset)
-        q = torch.quantile(data_subset, torch.tensor([0.25, 0.5, 0.75], device=data.device), dim=0)
+        q = torch.quantile(data_subset.to(torch.float64), torch.tensor([0.25, 0.5, 0.75], device=data.device, dtype=torch.float64), dim=0)
         
     return {
         "mean": means.cpu(),
         "std": stds.cpu(),
+        "rms": rms.cpu(),
         "min": mins.cpu(),
         "max": maxs.cpu(),
         "median": q[1].cpu(),
@@ -89,9 +93,6 @@ def main():
     att = dataset.get_slice("attitude", abs_start, abs_end).to(device)
     T_total, N, _ = vel.shape
 
-    # Normalized tokens (post-norm)
-    tokens = dataset.get_slice("tokens", abs_start, abs_end).to(device).float()
-
     # Identify episode boundaries
     is_boundary = torch.zeros(num_steps, dtype=torch.bool, device=device)
     for start in dataset.episode_starts:
@@ -99,20 +100,19 @@ def main():
             is_boundary[int(start - abs_start - 1)] = True
     valid_mask = ~is_boundary
     
-    # 3. State Stats (Pre and Post)
+    # 3. State Stats
     log.info("Computing state statistics...")
     # Raw State (T, N, 5)
     raw_states = torch.stack([
         health, power, vel[..., 0], vel[..., 1], ang
     ], dim=-1)
     all_raw_states = raw_states[:-1].reshape(-1, STATE_DIM)
-    all_norm_states = tokens[:-1].reshape(-1, STATE_DIM)
     
-    # 4. Target Stats (Pre and Post)
+    # 4. Target Stats
     log.info("Computing target correlations...")
     # Pre-norm Target (Raw Deltas)
     d_pos = pos[1:] - pos[:-1]
-    W, H = 1024.0, 1024.0
+    W, H = 1024.0, 1024.0 # TODO: Pulled from dataset attrs?
     d_pos[..., 0] = d_pos[..., 0] - torch.round(d_pos[..., 0] / W) * W
     d_pos[..., 1] = d_pos[..., 1] - torch.round(d_pos[..., 1] / H) * H
     
@@ -122,54 +122,67 @@ def main():
     raw_targets[..., 2:] = raw_d_state
     all_raw_targets = raw_targets[valid_mask].reshape(-1, TARGET_DIM)
     
-    # Post-norm Target (Residual Deltas)
-    norm_d_state = tokens[1:] - tokens[:-1]
-    norm_targets = torch.zeros((num_steps, N, TARGET_DIM), device=device)
-    norm_targets[..., TargetFeature.DX:TargetFeature.DY+1] = d_pos # dx, dy are always raw
-    norm_targets[..., TargetFeature.DVX] = norm_d_state[..., StateFeature.VX]
-    norm_targets[..., TargetFeature.DVY] = norm_d_state[..., StateFeature.VY]
-    norm_targets[..., TargetFeature.DHEALTH] = norm_d_state[..., StateFeature.HEALTH]
-    norm_targets[..., TargetFeature.DPOWER] = norm_d_state[..., StateFeature.POWER]
-    norm_targets[..., TargetFeature.DANG_VEL] = norm_d_state[..., StateFeature.ANG_VEL]
-    all_norm_targets = norm_targets[valid_mask].reshape(-1, TARGET_DIM)
-    
     # 5. Relational Features (Chunked)
     log.info("Computing relational features (chunked)...")
     batch_size = 50000 
     rel_feat_list = []
+    rel_target_list = []
+    
     for i in range(0, num_steps, batch_size):
         end_idx = min(i + batch_size, num_steps)
-        chunk_pos = pos[i:end_idx].unsqueeze(0).float()
-        chunk_vel = vel[i:end_idx].unsqueeze(0)
-        chunk_att = att[i:end_idx].unsqueeze(0).float()
+        # We need end_idx + 1 for relational targets (t+1)
+        chunk_abs_end = min(i + batch_size + 1, num_steps + 1)
+        
+        chunk_pos = pos[i:chunk_abs_end].unsqueeze(0).float()
+        chunk_vel = vel[i:chunk_abs_end].unsqueeze(0)
+        chunk_att = att[i:chunk_abs_end].unsqueeze(0).float()
+        
         with torch.no_grad():
             chunk_rel = rel_encoder.compute_analytic_features(
                 chunk_pos, chunk_vel, att=chunk_att, world_size=(1024.0, 1024.0)
             )
-            rel_feat_list.append(chunk_rel[0, ..., :50].reshape(-1, 50).cpu())
+            # Analytic features at t
+            rel_feat_list.append(chunk_rel[0, :end_idx-i, ..., :50].reshape(-1, 50).cpu())
             
-    # Free raw inputs
-    del health, power, vel, ang, tokens, pos, att, raw_targets, norm_targets, d_pos, raw_d_state, norm_d_state
-    torch.cuda.empty_cache()
+            # Relational Targets: dx, dy, dvx, dvy deltas
+            # rel[t] is (1, T, N, N, 50)
+            # dx, dy, dvx, dvy are at indices 0, 1, 2, 3
+            if chunk_rel.shape[1] > 1:
+                t_len = end_idx - i
+                rel_t = chunk_rel[0, :t_len, ..., :4]
+                rel_tp1 = chunk_rel[0, 1:t_len+1, ..., :4]
+                d_rel = rel_tp1 - rel_t # (T, N, N, 4)
+                
+                # Check valid mask for this chunk
+                chunk_mask = valid_mask[i:end_idx] # (T,)
+                rel_target_list.append(d_rel[chunk_mask].reshape(-1, 4).cpu())
 
     # 6. Final Stats Calculation
     log.info("Processing statistics...")
     raw_state_stats = compute_stats_vectorized(all_raw_states)
-    norm_state_stats = compute_stats_vectorized(all_norm_states)
     raw_target_stats = compute_stats_vectorized(all_raw_targets)
-    norm_target_stats = compute_stats_vectorized(all_norm_targets)
     
     all_rel_cpu = torch.cat(rel_feat_list, dim=0)
-    del rel_feat_list
+    all_rel_targets_cpu = torch.cat(rel_target_list, dim=0)
+    del rel_feat_list, rel_target_list
     
     rel_res = {}
-    for key in ["mean", "std", "min", "max", "median", "q1", "q3", "sem"]:
+    for key in ["mean", "std", "rms", "min", "max", "median", "q1", "q3", "sem"]:
         rel_res[key] = torch.zeros(50)
         
     for i in range(50):
         col = all_rel_cpu[:, i].to(device)
         res = compute_stats_vectorized(col)
         for key in rel_res: rel_res[key][i] = res[key][0]
+        
+    rel_target_res = {}
+    for key in ["mean", "std", "rms", "min", "max", "median", "q1", "q3", "sem"]:
+        rel_target_res[key] = torch.zeros(4)
+    
+    for i in range(4):
+        col = all_rel_targets_cpu[:, i].to(device)
+        res = compute_stats_vectorized(col)
+        for key in rel_target_res: rel_target_res[key][i] = res[key][0]
     
     # 7. Report Generation
     data_dir = Path(data_path).parent
@@ -177,62 +190,58 @@ def main():
     
     summary_header = f"# Dataset Statistics Report\n\n- **Source**: `{data_path}`\n- **Steps**: {num_steps:,}\n- **Total Samples**: {all_raw_states.shape[0]:,}\n- **Execution Time**: {time.time() - t_start:.2f}s\n\n"
     
-    def format_table(name, stats_dict, enum_class):
+    def format_table(name, stats_dict, enum_class=None, names=None):
         s = stats_dict
         table = f"### {name}\n"
-        table += "| Feature | Mean | Std | SEM | Min | Q1 | Median | Q3 | Max |\n"
+        table += "| Feature | Mean | Std | RMS | Min | Q1 | Median | Q3 | Max |\n"
         table += "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n"
-        for i, feat in enumerate(enum_class):
-            table += f"| {feat.name} | {s['mean'][i]:.4f} | {s['std'][i]:.4f} | {s['sem'][i]:.6f} | {s['min'][i]:.4f} | {s['q1'][i]:.4f} | {s['median'][i]:.4f} | {s['q3'][i]:.4f} | {s['max'][i]:.4f} |\n"
+        if enum_class:
+            for i, feat in enumerate(enum_class):
+                table += f"| {feat.name} | {s['mean'][i]:.4f} | {s['std'][i]:.4f} | {s['rms'][i]:.4f} | {s['min'][i]:.4f} | {s['q1'][i]:.4f} | {s['median'][i]:.4f} | {s['q3'][i]:.4f} | {s['max'][i]:.4f} |\n"
+        elif names:
+             for i, name in enumerate(names):
+                table += f"| {name} | {s['mean'][i]:.4f} | {s['std'][i]:.4f} | {s['rms'][i]:.4f} | {s['min'][i]:.4f} | {s['q1'][i]:.4f} | {s['median'][i]:.4f} | {s['q3'][i]:.4f} | {s['max'][i]:.4f} |\n"
         return table + "\n"
 
     def write_csv(path, datasets):
         """datasets: list of (prefix, stats_dict, enum_or_names)"""
         with open(path, "w") as f:
-            f.write("Feature|Mean|Std|SEM|Min|Q1|Median|Q3|Max\n")
+            f.write("Feature|Mean|Std|RMS|SEM|Min|Q1|Median|Q3|Max\n")
             for prefix, s, names in datasets:
                 for i, name in enumerate(names):
                     feat_name = f"{prefix}_{name}" if prefix else name
-                    f.write(f"{feat_name}|{s['mean'][i]:.6f}|{s['std'][i]:.6f}|{s['sem'][i]:.8f}|{s['min'][i]:.6f}|{s['q1'][i]:.6f}|{s['median'][i]:.6f}|{s['q3'][i]:.6f}|{s['max'][i]:.6f}\n")
+                    f.write(f"{feat_name}|{s['mean'][i]:.6f}|{s['std'][i]:.6f}|{s['rms'][i]:.6f}|{s['sem'][i]:.8f}|{s['min'][i]:.6f}|{s['q1'][i]:.6f}|{s['median'][i]:.6f}|{s['q3'][i]:.6f}|{s['max'][i]:.6f}\n")
 
     with open(report_path, "w") as f:
         f.write(summary_header)
         
         f.write("## 1. State Features\n")
-        f.write(format_table("Raw State Features (Pre-Normalization)", raw_state_stats, StateFeature))
-        f.write(format_table("Normalized State Tokens (Post-Normalization)", norm_state_stats, StateFeature))
+        f.write(format_table("Raw State Features", raw_state_stats, StateFeature))
         
         f.write("## 2. Target Features\n")
-        f.write(format_table("Raw Target Deltas (Pre-Normalization)", raw_target_stats, TargetFeature))
-        f.write(format_table("Normalized Target Deltas (Post-Normalization)", norm_target_stats, TargetFeature))
+        f.write(format_table("Raw Target Deltas", raw_target_stats, TargetFeature))
         
         f.write("## 3. Relational Features\n")
-        f.write("| Index | Feature Description | Mean | Std | Min | Q1 | Median | Q3 | Max |\n")
-        f.write("| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n")
         rel_names = ["dx", "dy", "dvx", "dvy", "dist", "inv_dist", "rel_speed", "closing", "dir_x", "dir_y", "log_dist", "tti", "cos_ata", "sin_ata", "cos_aa", "sin_aa", "cos_hca", "sin_hca"]
-        for i in range(50):
-            name = rel_names[i] if i < len(rel_names) else f"Fourier_{i-18}"
-            f.write(f"| {i} | {name} | {rel_res['mean'][i]:.4f} | {rel_res['std'][i]:.4f} | {rel_res['min'][i]:.4f} | {rel_res['q1'][i]:.4f} | {rel_res['median'][i]:.4f} | {rel_res['q3'][i]:.4f} | {rel_res['max'][i]:.4f} |\n")
+        rel_names = rel_names + [f"Fourier_{i}" for i in range(32)]
+        f.write(format_table("Analytic Relational Features", rel_res, names=rel_names))
+        
+        f.write("## 4. Relational Targets\n")
+        rel_target_names = ["delta_rel_x", "delta_rel_y", "delta_rel_vx", "delta_rel_vy"]
+        f.write(format_table("Relational Targets", rel_target_res, names=rel_target_names))
 
     # Write CSVs
     raw_csv_path = data_dir / "raw_stats.csv"
-    norm_csv_path = data_dir / "norm_stats.csv"
-    
-    rel_names = rel_names + [f"Fourier_{i}" for i in range(32)]
     
     write_csv(raw_csv_path, [
         ("State", raw_state_stats, [f.name for f in StateFeature]),
         ("Target", raw_target_stats, [f.name for f in TargetFeature]),
-        ("Relational", rel_res, rel_names)
+        ("Relational", rel_res, rel_names),
+        ("RelTarget", rel_target_res, rel_target_names)
     ])
     
-    write_csv(norm_csv_path, [
-        ("State", norm_state_stats, [f.name for f in StateFeature]),
-        ("Target", norm_target_stats, [f.name for f in TargetFeature])
-    ])
-
     log.info(f"Report saved to {report_path}")
-    log.info(f"CSVs saved to {raw_csv_path} and {norm_csv_path}")
+    log.info(f"CSV saved to {raw_csv_path}")
 
 if __name__ == "__main__":
     main()

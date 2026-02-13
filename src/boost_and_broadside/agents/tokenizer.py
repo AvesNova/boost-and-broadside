@@ -8,10 +8,6 @@ transformer-based agents.
 import torch
 
 from boost_and_broadside.core.constants import (
-    NORM_VELOCITY,
-    NORM_ANGULAR_VELOCITY,
-    NORM_HEALTH,
-    NORM_POWER,
     StateFeature,
     STATE_DIM,
 )
@@ -47,13 +43,13 @@ def observation_to_tokens(
     tokens = torch.zeros((batch_size, num_ships, STATE_DIM), device=obs["health"].device)
 
     # Fill features according to StateFeature enum
-    tokens[..., StateFeature.HEALTH] = obs["health"].float() / NORM_HEALTH
-    tokens[..., StateFeature.POWER] = obs["power"].float() / NORM_POWER
+    tokens[..., StateFeature.HEALTH] = obs["health"].float()
+    tokens[..., StateFeature.POWER] = obs["power"].float()
     
     # Handle velocity (complex -> real/imag)
-    tokens[..., StateFeature.VX] = obs["velocity"].real / NORM_VELOCITY
-    tokens[..., StateFeature.VY] = obs["velocity"].imag / NORM_VELOCITY
+    tokens[..., StateFeature.VX] = obs["velocity"].real.float()
+    tokens[..., StateFeature.VY] = obs["velocity"].imag.float()
     
-    tokens[..., StateFeature.ANG_VEL] = obs["angular_velocity"] / NORM_ANGULAR_VELOCITY
+    tokens[..., StateFeature.ANG_VEL] = obs["angular_velocity"].float()
 
     return tokens
