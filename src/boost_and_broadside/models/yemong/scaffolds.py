@@ -204,16 +204,9 @@ class YemongFull(BaseScaffold):
         
         # Apply Target Normalization (Scale (RMS))
         if self.normalizer:
-            # Predict labels: DX, DY, DVX, DVY, DHEALTH, DPOWER, DANG_VEL
-            names = ["DX", "DY", "DVX", "DVY", "DHEALTH", "DPOWER", "DANG_VEL"]
-            sigmas = []
-            for name in names:
-                sigmas.append(self.normalizer.get_stat(f"Target_{name}", "rms"))
-            sigmas = torch.stack(sigmas).to(pred_states.device).to(pred_states.dtype)
-            
-            # (..., 7) / (7,)
-            pred_states = pred_states / (sigmas + 1e-6)
-            target_states = target_states / (sigmas + 1e-6)
+            # Vectorized normalization
+            pred_states = self.normalizer.normalize_target(pred_states)
+            target_states = self.normalizer.normalize_target(target_states)
 
         if loss_mask.ndim == 2: loss_mask = loss_mask.unsqueeze(-1).expand_as(pred_states[..., 0])
         if target_alive is not None: loss_mask = loss_mask & target_alive
@@ -446,14 +439,9 @@ class YemongTemporal(BaseScaffold):
         s_loss = mse.mean(dim=-1).reshape(-1).mul(mask_flat).sum() / denom
         
         if self.normalizer:
-            names = ["DX", "DY", "DVX", "DVY", "DHEALTH", "DPOWER", "DANG_VEL"]
-            sigmas = []
-            for name in names:
-                sigmas.append(self.normalizer.get_stat(f"Target_{name}", "rms"))
-            sigmas = torch.stack(sigmas).to(pred_states.device).to(pred_states.dtype)
-            
-            pred_states = pred_states / (sigmas + 1e-6)
-            target_states = target_states / (sigmas + 1e-6)
+            # Vectorized normalization
+            pred_states = self.normalizer.normalize_target(pred_states)
+            target_states = self.normalizer.normalize_target(target_states)
 
         total_loss = lambda_state * s_loss
         
@@ -699,14 +687,9 @@ class YemongDynamics(BaseScaffold):
         
         # Normalization
         if self.normalizer:
-            names = ["DX", "DY", "DVX", "DVY", "DHEALTH", "DPOWER", "DANG_VEL"]
-            sigmas = []
-            for name in names:
-                sigmas.append(self.normalizer.get_stat(f"Target_{name}", "rms"))
-            sigmas = torch.stack(sigmas).to(pred_states.device).to(pred_states.dtype)
-            
-            pred_states = pred_states / (sigmas + 1e-6)
-            target_states = target_states / (sigmas + 1e-6)
+            # Vectorized normalization
+            pred_states = self.normalizer.normalize_target(pred_states)
+            target_states = self.normalizer.normalize_target(target_states)
 
         if loss_mask.ndim == 2: loss_mask = loss_mask.unsqueeze(-1).expand_as(pred_states[..., 0])
         if target_alive is not None: loss_mask = loss_mask & target_alive

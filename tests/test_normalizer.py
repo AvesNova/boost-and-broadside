@@ -25,18 +25,33 @@ class TestFeatureNormalizer(unittest.TestCase):
 
     def test_min_max(self):
         x = torch.tensor([0.0, 50.0, 100.0])
-        normed = self.normalizer.normalize(x, "State_HEALTH", "Min-Max")
+        normed = self.normalizer.normalize(x, "State_HEALTH")
         self.assertTrue(torch.allclose(normed, torch.tensor([0.0, 0.5, 1.0]), atol=1e-5))
 
     def test_z_score(self):
-        x = torch.tensor([40.0, 50.0, 60.0])
-        normed = self.normalizer.normalize(x, "State_HEALTH", "Z-Score")
+        x = torch.tensor([4.0, 5.0, 6.0])
+        normed = self.normalizer.normalize(x, "Relational_log_dist")
         self.assertTrue(torch.allclose(normed, torch.tensor([-1.0, 0.0, 1.0]), atol=1e-5))
 
     def test_rms_scale(self):
         x = torch.tensor([0.0, 11.18, 22.36])
-        normed = self.normalizer.normalize(x, "State_VX", "Scale (RMS)")
+        normed = self.normalizer.normalize(x, "State_VX")
         self.assertTrue(torch.allclose(normed, torch.tensor([0.0, 1.0, 2.0]), atol=1e-2))
+
+    def test_vectorized_ego(self):
+        # [HEALTH, POWER, VX, VY, ANG_VEL]
+        # In dummy: H is min-max (0, 100), VX is scale (rms=11.18)
+        # Power, VY, ANG_VEL not in dummy -> Identity
+        x = torch.tensor([[0.0, 10.0, 0.0, 0.0, 0.0], [50.0, 20.0, 11.18, 5.0, 5.0]])
+        normed = self.normalizer.normalize_ego(x)
+        
+        # Row 0: H=0, P=10, VX=0
+        self.assertTrue(torch.allclose(normed[0, 0], torch.tensor(0.0), atol=1e-5))
+        self.assertTrue(torch.allclose(normed[0, 1], torch.tensor(10.0), atol=1e-5)) 
+        # Row 1: H=0.5, P=20, VX=1.0
+        self.assertTrue(torch.allclose(normed[1, 0], torch.tensor(0.5), atol=1e-5))
+        self.assertTrue(torch.allclose(normed[1, 1], torch.tensor(20.0), atol=1e-5))
+        self.assertTrue(torch.allclose(normed[1, 2], torch.tensor(1.0), atol=1e-5))
 
     def test_log_transform(self):
         x = torch.tensor([0.0, math.exp(1.0)-1.0])

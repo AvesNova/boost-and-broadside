@@ -20,13 +20,8 @@ class StateEncoder(nn.Module):
     def forward(self, x):
         if self.normalizer:
             # apply ego state normalization
-            # x: (..., 5) [health, power, vx, vy, ang_vel]
-            h = self.normalizer.normalize(x[..., StateFeature.HEALTH], "State_HEALTH", "Min-Max")
-            p = self.normalizer.normalize(x[..., StateFeature.POWER], "State_POWER", "Min-Max")
-            vx = self.normalizer.normalize(x[..., StateFeature.VX], "State_VX", "Scale (RMS)")
-            vy = self.normalizer.normalize(x[..., StateFeature.VY], "State_VY", "Scale (RMS)")
-            av = self.normalizer.normalize(x[..., StateFeature.ANG_VEL], "State_ANG_VEL", "Scale (RMS)")
-            x = torch.stack([h, p, vx, vy, av], dim=-1)
+            # Vectorized normalization
+            x = self.normalizer.normalize_ego(x)
             
         return self.net(x)
 
@@ -135,14 +130,14 @@ class RelationalEncoder(nn.Module):
         
         # Normalize/Transform Relational State
         if self.normalizer:
-            dvx = self.normalizer.normalize(dvx, "Relational_dvx", "Scale (RMS)")
-            dvy = self.normalizer.normalize(dvy, "Relational_dvy", "Scale (RMS)")
-            rel_speed = self.normalizer.normalize(rel_speed, "Relational_rel_speed", "Z-Score")
-            closing = self.normalizer.normalize(closing, "Relational_closing", "Scale (RMS)")
+            dvx = self.normalizer.normalize(dvx, "Relational_dvx")
+            dvy = self.normalizer.normalize(dvy, "Relational_dvy")
+            rel_speed = self.normalizer.normalize(rel_speed, "Relational_rel_speed")
+            closing = self.normalizer.normalize(closing, "Relational_closing")
             
             # dist: Log -> Z-Score
             dist_transformed = self.normalizer.transform(dist, "Log")
-            dist_norm = self.normalizer.normalize(dist_transformed, "Relational_log_dist", "Z-Score")
+            dist_norm = self.normalizer.normalize(dist_transformed, "Relational_log_dist")
             
             # tti: Symlog -> Identity
             tti_val = dist / (closing.clamp(min=1e-3))

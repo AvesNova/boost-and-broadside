@@ -137,12 +137,7 @@ def perform_rollout(model, input_states, input_actions, input_pos, team_ids, rol
             
             # De-normalize delta_target if model has a normalizer
             if hasattr(model, "normalizer") and model.normalizer is not None:
-                names = ["DX", "DY", "DVX", "DVY", "DHEALTH", "DPOWER", "DANG_VEL"]
-                sigmas = []
-                for name in names:
-                    sigmas.append(model.normalizer.get_stat(f"Target_{name}", "rms"))
-                sigmas = torch.stack(sigmas).to(delta_target.device).to(delta_target.dtype)
-                delta_target = delta_target * (sigmas + 1e-6)
+                delta_target = model.normalizer.denormalize_target(delta_target)
             
             # 2. Update State S_{t+1}
             # Delta Target Layout: [dx, dy, dVx, dVy, dH, dP, dAV]

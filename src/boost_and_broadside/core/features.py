@@ -1,43 +1,49 @@
-import torch
+"""
+Centralized feature definitions and normalization strategies for the Boost and Broadside project.
+"""
+from boost_and_broadside.core.constants import StateFeature, TargetFeature
 
-def compute_pairwise_features(states: torch.Tensor, world_size: tuple[float, float]) -> torch.Tensor:
-    """
-    Compute pairwise relative features (pos, vel) for all ships.
-    
-    Args:
-        states: Tensor of shape (..., N, D) containing ship states.
-                Expects indices 3,4 for Pos(x,y) and 5,6 for Vel(x,y).
-        world_size: Tuple (width, height) for wrapping logic.
-        
-    Returns:
-        Tensor of shape (..., N, N, 4) containing [rel_x, rel_y, rel_vx, rel_vy].
-    """
-    # states: (..., N, D)
-    # Pos=[3,4], Vel=[5,6] (based on compile_tokens)
-    
-    pos = states[..., 3:5] # (..., N, 2)
-    vel = states[..., 5:7] # (..., N, 2)
-    
-    # Broadcast for pairwise
-    # Input has shape (Batch, Time, N, 2) or (Batch, N, 2)
-    # leveraging unsqueeze relative to last dimmer (-2, -3) handles both cases
-    
-    # pos.unsqueeze(-2) -> (..., N, 1, 2)
-    # pos.unsqueeze(-3) -> (..., 1, N, 2)
-    # Result -> (..., N, N, 2)
-    
-    delta_pos = pos.unsqueeze(-2) - pos.unsqueeze(-3)
-    delta_vel = vel.unsqueeze(-2) - vel.unsqueeze(-3)
-    
-    # Wrap around
-    W, H = float(world_size[0]), float(world_size[1])
-    
-    dx = delta_pos[..., 0]
-    dy = delta_pos[..., 1]
-    
-    dx = dx - torch.round(dx / W) * W
-    dy = dy - torch.round(dy / H) * H
-    
-    delta_pos_wrapped = torch.stack([dx, dy], dim=-1)
-    
-    return torch.cat([delta_pos_wrapped, delta_vel], dim=-1) # (..., N, N, 4)
+# Ego State: [HEALTH, POWER, VX, VY, ANG_VEL]
+EGO_STATE_RESOURCES = ["State_HEALTH", "State_POWER"]
+EGO_STATE_DYNAMICS = ["State_VX", "State_VY", "State_ANG_VEL"]
+
+EGO_STATE_FIELDS = [
+    ("State_HEALTH", "Min-Max"),
+    ("State_POWER", "Min-Max"),
+    ("State_VX", "Scale"),
+    ("State_VY", "Scale"),
+    ("State_ANG_VEL", "Scale"),
+]
+
+# Targets: [DX, DY, DVX, DVY, DHEALTH, DPOWER, DANG_VEL]
+TARGET_FIELDS = [
+    ("Target_DX", "Scale"),
+    ("Target_DY", "Scale"),
+    ("Target_DVX", "Scale"),
+    ("Target_DVY", "Scale"),
+    ("Target_DHEALTH", "Scale"),
+    ("Target_DPOWER", "Scale"),
+    ("Target_DANG_VEL", "Scale"),
+]
+
+# Relational: [dx, dy, dvx, dvy, dist, inv_dist, rel_speed, closing, dir_x, dir_y, log_dist, tti, cos_ata, sin_ata, cos_aa, sin_aa, cos_hca, sin_hca]
+RELATIONAL_FIELDS = [
+    ("Relational_dx", "Scale"),
+    ("Relational_dy", "Scale"),
+    ("Relational_dvx", "Scale"),
+    ("Relational_dvy", "Scale"),
+    ("Relational_dist", "Scale"),
+    ("Relational_inv_dist", "Scale"),
+    ("Relational_rel_speed", "Scale"),
+    ("Relational_closing", "Scale"),
+    ("Relational_dir_x", "Identity"),
+    ("Relational_dir_y", "Identity"),
+    ("Relational_log_dist", "Z-Score"),
+    ("Relational_tti", "Identity"),
+    ("Relational_cos_ata", "Identity"),
+    ("Relational_sin_ata", "Identity"),
+    ("Relational_cos_aa", "Identity"),
+    ("Relational_sin_aa", "Identity"),
+    ("Relational_cos_hca", "Identity"),
+    ("Relational_sin_hca", "Identity"),
+]
