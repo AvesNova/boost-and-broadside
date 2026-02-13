@@ -169,14 +169,24 @@ class ActionLoss(LossModule):
 class ValueLoss(LossModule):
     def forward(self, preds: Dict[str, torch.Tensor], targets: Dict[str, torch.Tensor], mask: torch.Tensor, **kwargs) -> Dict[str, torch.Tensor]:
         pred_val = preds.get("value") # (B, T, 1)
-        target_ret = targets.get("returns") # (B, T) or (B, T, 1)
+        target_ret = targets.get("returns") # (B, T, N) usually
         
         if pred_val is None or target_ret is None:
              return {"loss": torch.tensor(0.0, device=mask.device), "value_loss": torch.tensor(0.0, device=mask.device)}
              
-        # Value is usually Team-Level, so mask should be "any alive in team" or similar.
-        # But here 'mask' is per-ship (B, T, N).
-        # We need a team-level mask (B, T).
+        # Value is Team-Level. Target might be per-ship.
+        # If target has extran dimension N, aggregate it.
+        if target_ret.ndim == 3 and target_ret.shape[-1] > 1:
+             # Weighted mean over N using mask
+             # mask: (B, T, N)
+             m_broad = mask.float()
+             t_weighted = (target_ret * m_broad).sum(dim=-1, keepdim=True)
+             d_weighted = m_broad.sum(dim=-1, keepdim=True) + 1e-6
+             target_ret = t_weighted / d_weighted # (B, T, 1)
+        elif target_ret.ndim == 2:
+             target_ret = target_ret.unsqueeze(-1)
+
+        # Team Mask: Valid if ANY ship is valid
         if mask.ndim == 3:
              team_mask = mask.any(dim=-1, keepdim=True).float() # (B, T, 1)
         else:
@@ -184,13 +194,7 @@ class ValueLoss(LossModule):
 
         d_glob = team_mask.sum() + 1e-6
         
-        # Ensure shapes match
-        if target_ret.ndim == 2: target_ret = target_ret.unsqueeze(-1)
-        
-        # We assume target_ret is already team aggregated if model is predicting team value
-        # If model expects averaging over N, we should do that, but Yemong team_evaluator normally outputs (B, T, 1).
-        
-        v_loss = (F.mse_loss(pred_val, target_ret, reduction='none') * team_mask).sum() / d_glob
+        v_loss = (F.mse_loss(pred_val, target_ret.to(pred_val.dtype), reduction='none') * team_mask).sum() / d_glob
         
         logs = {"value_loss": v_loss.detach(), "loss_sub/value_mse": v_loss.detach()}
         return {"loss": v_loss * self.weight, **logs}
@@ -204,15 +208,23 @@ class RewardLoss(LossModule):
         if pred_rew is None or target_rew is None:
              return {"loss": torch.tensor(0.0, device=mask.device), "reward_loss": torch.tensor(0.0, device=mask.device)}
 
+        # Aggregation Logic (Same as ValueLoss)
+        if target_rew.ndim == 3 and target_rew.shape[-1] > 1:
+             m_broad = mask.float()
+             t_weighted = (target_rew * m_broad).sum(dim=-1, keepdim=True)
+             d_weighted = m_broad.sum(dim=-1, keepdim=True) + 1e-6
+             target_rew = t_weighted / d_weighted
+        elif target_rew.ndim == 2: 
+             target_rew = target_rew.unsqueeze(-1)
+
         if mask.ndim == 3:
              team_mask = mask.any(dim=-1, keepdim=True).float()
         else:
              team_mask = mask.unsqueeze(-1)
              
         d_glob = team_mask.sum() + 1e-6
-        if target_rew.ndim == 2: target_rew = target_rew.unsqueeze(-1)
         
-        r_loss = (F.mse_loss(pred_rew, target_rew, reduction='none') * team_mask).sum() / d_glob
+        r_loss = (F.mse_loss(pred_rew, target_rew.to(pred_rew.dtype), reduction='none') * team_mask).sum() / d_glob
         
         logs = {"reward_loss": r_loss.detach(), "loss_sub/reward_mse": r_loss.detach()}
         return {"loss": r_loss * self.weight, **logs}

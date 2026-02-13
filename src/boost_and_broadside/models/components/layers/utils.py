@@ -14,15 +14,20 @@ class RMSNorm(nn.Module):
         self.weight = nn.Parameter(torch.ones(dim))
 
     def forward(self, x):
+        # Flatten to (Total, Dim) to unify rank for compilation
         # Cast weight to x.dtype for fused kernel support (especially in BF16)
+        orig_shape = x.shape
+        x_flat = x.reshape(-1, orig_shape[-1])
+        
         if hasattr(F, "rms_norm"):
-             return F.rms_norm(x, (x.size(-1),), self.weight.to(x.dtype), self.eps)
+             out = F.rms_norm(x_flat, (orig_shape[-1],), self.weight.to(x.dtype), self.eps)
         else:
              # Manual fallback
-             dims = x.shape[-1]
-             var = x.pow(2).mean(-1, keepdim=True)
-             x_normed = x * torch.rsqrt(var + self.eps)
-             return self.weight.to(x.dtype) * x_normed
+             var = x_flat.pow(2).mean(-1, keepdim=True)
+             x_normed = x_flat * torch.rsqrt(var + self.eps)
+             out = self.weight.to(x.dtype) * x_normed
+             
+        return out.view(*orig_shape)
 
 class MambaBlock(nn.Module):
     def __init__(self, d_model: int, d_state: int = 128, expand: int = 2, layer_idx: int = 0):
