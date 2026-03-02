@@ -78,14 +78,14 @@ class BaseScaffold(nn.Module):
         if input_alive is not None:
              if final_mask.shape != input_alive.shape:
                   pass  # let downstream handle shape
-             final_mask = final_mask & input_alive
+             final_mask = final_mask.bool() & input_alive.bool()
         elif target_alive is not None:
              # Fallback for callers that only provide target_alive
              if final_mask.shape != target_alive.shape:
                   pass
-             final_mask = final_mask & target_alive
+             final_mask = final_mask.bool() & target_alive.bool()
 
-        return self.loss_fn(preds, targets, final_mask, **kwargs)
+        return self.loss_fn(preds, targets, final_mask.float(), **kwargs)
 
 class YemongFull(BaseScaffold):
     def __init__(self, config=None, **kwargs):
@@ -1017,5 +1017,389 @@ class YemongDynamics(BaseScaffold):
                 pairwise_pred = None
             
             return None, new_logprob, entropy, value_pred, None, next_state_pred, reward_pred, pairwise_pred
+
+
+class YemongDynamicsInterleaved(BaseScaffold):
+    """
+    Interleaved Dynamics Scaffold (Autoregressive Sequence).
+    Structure:
+    1. Encoder(State) -> S_emb
+    2. Encoder(Action) -> A_emb
+    3. Interleaved Sequence: [S_0, A_0, S_1, A_1, ... S_T, A_T] (Shape: 2T)
+    4. Backbone (Mamba + Spatial Attention) processes all 2T tokens identically.
+    5. State Tokens (0::2 indices) -> ActorHead (Action) & ValueHead (Value)
+    6. Action Tokens (1::2 indices) -> WorldHead (NextState) & RewardHead (Reward)
+    """
+    def __init__(self, config=None, **kwargs):
+        if config is None:
+            config = OmegaConf.create(kwargs)
+        super().__init__(config)
+        d_model = config.d_model
+        
+        # Encoders
+        self.state_encoder = StateEncoder(config.get("input_dim", STATE_DIM), d_model, normalizer=self.normalizer)
+        self.relational_encoder = RelationalEncoder(d_model, config.n_layers, normalizer=self.normalizer)
+        
+        # Action Embeddings Component
+        embed_dim = config.get("action_embed_dim", 16)
+        self.action_encoder = SeparatedActionEncoder(embed_dim)
+        total_action_emb = self.action_encoder.output_dim
+        
+        # Action embedding expansion to d_model (so it matches state embedding dim)
+        self.action_proj = nn.Sequential(
+            nn.Linear(total_action_emb, d_model),
+            RMSNorm(d_model),
+            nn.SiLU()
+        )
+        
+        self.special_embeddings = nn.ModuleDict({
+            'ship_id': nn.Embedding(config.get("max_ships", 8), d_model),
+            'team_id': nn.Embedding(2, d_model)
+        })
+        
+        self.special_params = nn.ParameterDict({
+            'dead': nn.Parameter(torch.zeros(config.get("input_dim", STATE_DIM))),
+            'reset': nn.Parameter(torch.zeros(d_model)),
+            'action_mask': nn.Parameter(torch.zeros(total_action_emb)) # For padding/first step
+        })
+        
+        # Backbone (Shared Trunk)
+        self.blocks = nn.ModuleList()
+        for i in range(config.n_layers):
+            block = nn.ModuleDict({
+                'mamba': MambaBlock(d_model, layer_idx=i),
+                'norm1': RMSNorm(d_model),
+                'norm2': RMSNorm(d_model),
+                'attn': hydra.utils.instantiate(config.spatial_layer) if 'spatial_layer' in config else \
+                        RelationalAttention(d_model, config.n_heads) 
+            })
+            self.blocks.append(block)
+            
+        # Heads on State Tokens
+        self.actor_head = nn.Linear(d_model, 3 + 7 + 2) # [Power(3), Turn(7), Shoot(2)]
+        
+        # Value Head (Team Level)
+        self.team_token_value = nn.Parameter(torch.randn(1, 1, d_model))
+        self.norm_value = nn.LayerNorm(d_model)
+        self.pooler_value = nn.MultiheadAttention(d_model, 4, batch_first=True)
+        self.value_head = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.SiLU(),
+            nn.Linear(d_model, 1)
+        )
+
+        # Heads on Action Tokens
+        self.world_head = WorldHead(d_model, config.get("target_dim", TARGET_DIM))
+        
+        # Optional Pairwise Relational Head
+        self.use_pairwise = config.get("use_pairwise_targets", False)
+        if self.use_pairwise:
+            self.pairwise_head = PairwiseRelationalHead(d_model)
+        
+        # Reward w/ Team Pooling
+        num_reward_components = config.get("num_reward_components", 1)
+        self.num_reward_components = num_reward_components
+        
+        self.team_token_reward = nn.Parameter(torch.randn(1, 1, d_model) * 0.02)
+        self.pooler_reward = nn.MultiheadAttention(d_model, num_heads=4, batch_first=True)
+        self.norm_reward = RMSNorm(d_model)
+        self.reward_head = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.SiLU(),
+            nn.Linear(d_model, num_reward_components)
+        )
+        
+        # Loss Params
+        self.log_vars = None
+        if getattr(config, "loss_type", "fixed") == "uncertainty":
+             self.log_vars = nn.ParameterDict({
+                 "state": nn.Parameter(torch.tensor(0.0)),
+                 "actions": nn.Parameter(torch.tensor(0.0)),
+                 "value": nn.Parameter(torch.tensor(0.0)),
+                 "reward": nn.Parameter(torch.tensor(0.0))
+             })
+
+    def allocate_inference_cache(self, batch_size, max_seqlen, dtype=None, **kwargs):
+        """Allocates Mamba state for all layers."""
+        cache = {}
+        for i, block in enumerate(self.blocks):
+            # MambaBlock.allocate_inference_cache returns (conv_state, ssm_state)
+            cache[i] = block['mamba'].allocate_inference_cache(batch_size, max_seqlen * 2, dtype=dtype, **kwargs) # 2x seqlen for interleaved
+        return cache
+
+    def forward(self, state, prev_action, pos, vel, att=None, team_ids=None, seq_idx=None, alive=None, reset_mask=None,
+                target_actions=None, # (B, T, N, 3) - raw actions to be interleaved at t
+                inference_params=None, world_size=(1024.0, 1024.0), **kwargs):
+        """
+        Parallel Forward Pass (Pretraining).
+        Given sequences of S_0..S_T and A_0..A_T (from target_actions), predicts:
+        A_logits (from S), V (from S), S' (from A), R (from A).
+        """
+        
+        batch_size, seq_len, num_ships, _ = state.shape
+        d_model = self.config.d_model
+        
+        if alive is None: alive = state[..., StateFeature.HEALTH] > 0
+        state = torch.where(alive.unsqueeze(-1), state.to(self.special_params['dead'].dtype), self.special_params['dead'].view(1, 1, 1, -1))
+        
+        if reset_mask is None and seq_idx is not None:
+             diff = torch.zeros_like(seq_idx, dtype=torch.bool)
+             diff[:, 1:] = seq_idx[:, 1:] != seq_idx[:, :-1]
+             reset_mask = diff
+
+        # 1. Encode State (Evens)
+        w_dtype = self.state_encoder.net[0].weight.dtype
+        s_emb = self.state_encoder(state.to(w_dtype))
+        
+        if team_ids is not None:
+             t_emb = self.special_embeddings['team_id'](team_ids.long())
+             s_emb = s_emb + (t_emb if t_emb.ndim == 4 else t_emb.unsqueeze(1))
+        
+        ship_ids = torch.arange(num_ships, device=state.device).view(1, 1, num_ships).expand(batch_size, seq_len, -1)
+        s_emb = s_emb + self.special_embeddings['ship_id'](ship_ids)
+        
+        if reset_mask is not None:
+             s_emb = s_emb + (reset_mask.unsqueeze(-1).unsqueeze(-1) * self.special_params['reset'])
+             
+        # Trunk relational output is shared for both State and Action tokens at timestep t
+        trunk_out, _ = self.relational_encoder(pos, vel, att=att, world_size=world_size)
+        
+        # 2. Encode Action (Odds)
+        # We use target_actions to condition the world model. If not provided, we must sample (unsupported in parallel mode without teacher forcing).
+        if target_actions is None:
+            raise ValueError("target_actions must be provided for parallel forward pass in YemongDynamicsInterleaved.")
+            
+        a_emb = self.action_encoder(target_actions)
+        a_emb = self.action_proj(a_emb) # Project to d_model
+        
+        # 3. Interleave Sequences
+        # s_emb: (B, T, N, D), a_emb: (B, T, N, D)
+        # We want (B, 2T, N, D) -> [S_0, A_0, S_1, A_1 ...]
+        interleaved = torch.empty(batch_size, seq_len * 2, num_ships, d_model, device=s_emb.device, dtype=s_emb.dtype)
+        interleaved[:, 0::2, :, :] = s_emb
+        interleaved[:, 1::2, :, :] = a_emb
+        
+        # Interleave sequence indices for Mamba
+        if seq_idx is not None:
+            # seq_idx: (B, T)
+            interleaved_seq_idx = torch.empty(batch_size, seq_len * 2, device=seq_idx.device, dtype=seq_idx.dtype)
+            interleaved_seq_idx[:, 0::2] = seq_idx
+            interleaved_seq_idx[:, 1::2] = seq_idx # Action token shares the same sequence index as its state
+            mamba_seq_idx = interleaved_seq_idx.unsqueeze(1).expand(-1, num_ships, -1).reshape(batch_size * num_ships, seq_len * 2)
+        else:
+            mamba_seq_idx = None
+            
+        # Alive mask for spatial attention is shared across S and A at time t
+        interleaved_alive = torch.empty(batch_size, seq_len * 2, num_ships, device=alive.device, dtype=alive.dtype)
+        interleaved_alive[:, 0::2, :] = alive
+        interleaved_alive[:, 1::2, :] = alive
+
+        # 4. Backbone Loop
+        total_seq_len = seq_len * 2
+        x_mamba = interleaved.permute(0, 2, 1, 3).reshape(batch_size * num_ships, total_seq_len, d_model)
+        
+        for i, block in enumerate(self.blocks):
+            normed = block['norm1'](x_mamba)
+            m_out = block['mamba'](normed, seq_idx=mamba_seq_idx, inference_params=inference_params)
+            x_mamba = x_mamba + m_out
+            
+            x_spatial = x_mamba.view(batch_size, num_ships, total_seq_len, -1).permute(0, 2, 1, 3) # (B, 2T, N, D)
+            
+            # rel_bias doesn't change from State to Action at same t. Repeat it from (B, T, ...) -> (B, 2T, ...)
+            rel_bias_t = self.relational_encoder.adapters[i+1](trunk_out)
+            # Repeat along time dimension: T -> 2T. Use repeat_interleave over dim 1.
+            # Example: [S_0, S_1] -> [S_0, S_0, S_1, S_1] to match [S_0, A_0, S_1, A_1]
+            rel_bias_2t = torch.repeat_interleave(rel_bias_t, 2, dim=1)
+            
+            attn_out = block['attn'](block['norm2'](x_spatial), rel_bias_2t, mask=interleaved_alive)
+            x_mamba = x_mamba + attn_out.permute(0, 2, 1, 3).reshape(batch_size * num_ships, total_seq_len, -1)
+            
+        Z_interleaved = x_mamba.view(batch_size, num_ships, total_seq_len, -1).permute(0, 2, 1, 3) # (B, 2T, N, D)
+        
+        # 5. Extract Readouts
+        Z_state = Z_interleaved[:, 0::2, :, :] # (B, T, N, D)
+        Z_action = Z_interleaved[:, 1::2, :, :] # (B, T, N, D)
+        
+        # Heads on State Tokens
+        action_logits = self.actor_head(Z_state)
+        
+        Batch_Time = batch_size * seq_len
+        if alive is not None:
+             key_padding_mask = ~alive.reshape(Batch_Time, num_ships)
+             all_masked = key_padding_mask.all(dim=-1, keepdim=True)
+             key_padding_mask = key_padding_mask & ~all_masked
+        else:
+             key_padding_mask = None
+             
+        Z_state_flat = Z_state.reshape(Batch_Time, num_ships, d_model)
+        q_val = self.team_token_value.expand(Batch_Time, -1, -1)
+        Z_norm_val = self.norm_value(Z_state_flat)
+        team_vec_val, _ = self.pooler_value(q_val, Z_norm_val, Z_norm_val, key_padding_mask=key_padding_mask)
+        value_pred = self.value_head(team_vec_val.squeeze(1)).reshape(batch_size, seq_len, 1)
+
+        # Heads on Action Tokens
+        next_state_pred = self.world_head(Z_action)
+        
+        Z_action_flat = Z_action.reshape(Batch_Time, num_ships, d_model)
+        q_rew = self.team_token_reward.expand(Batch_Time, -1, -1)
+        Z_norm_rew = self.norm_reward(Z_action_flat)
+        team_vec_rew, _ = self.pooler_reward(q_rew, Z_norm_rew, Z_norm_rew, key_padding_mask=key_padding_mask)
+        reward_components = self.reward_head(team_vec_rew.squeeze(1)).reshape(batch_size, seq_len, self.num_reward_components)
+        reward_pred = reward_components.sum(dim=-1, keepdim=True)
+        
+        if self.use_pairwise:
+            zi = Z_action.unsqueeze(3).expand(-1, -1, -1, num_ships, -1)
+            zj = Z_action.unsqueeze(2).expand(-1, -1, num_ships, -1, -1)
+            z_pair = torch.cat([zi, zj], dim=-1)
+            pairwise_pred = self.pairwise_head(z_pair)
+        else:
+            pairwise_pred = None
+            
+        return action_logits, None, None, value_pred, None, next_state_pred, reward_pred, pairwise_pred, reward_components
+
+    def get_action_and_value(self, x, mamba_state=None, action=None, seq_idx=None, step_type=None):
+        """
+        RL Interface for PPO. Step-by-Step Inference or Parallel Update.
+        """
+        # PARALLEL UPDATE PHASE
+        if action is not None and step_type is None:
+            # Call standard forward
+            # For Interleaved, forward expects `target_actions`
+            pred_actions, pred_values, pred_states, pred_rewards, pairwise_pred, reward_components = self.forward(
+                state=x['state'],
+                prev_action=x['prev_action'],
+                pos=x['pos'],
+                vel=x['vel'],
+                team_ids=x.get('team_ids', None),
+                seq_idx=seq_idx,
+                alive=x.get('alive', None),
+                target_actions=action
+            )
+            
+            # Compute logprobs and entropy from pred_actions using the targets
+            l_p, l_t, l_s = pred_actions.split([3, 7, 2], dim=-1)
+            dist_p = torch.distributions.Categorical(logits=l_p)
+            dist_t = torch.distributions.Categorical(logits=l_t)
+            dist_s = torch.distributions.Categorical(logits=l_s)
+            
+            logprob = dist_p.log_prob(action[..., 0]) + dist_t.log_prob(action[..., 1]) + dist_s.log_prob(action[..., 2])
+            entropy = dist_p.entropy() + dist_t.entropy() + dist_s.entropy()
+            
+            # Pack extras
+            extras = [pairwise_pred, reward_components]
+            
+            return None, logprob, entropy, pred_values, None, pred_states, pred_rewards, *extras
+
+        # RECURRENT ROLLOUT PHASE
+        # Unpack Obs
+        state = x['state']
+        pos = x['pos']
+        vel = x['vel']
+        prev_action = x['prev_action']
+        alive = x.get('alive', None)
+        team_ids = x.get('team_ids', None)
+        
+        batch_size, seq_len, num_ships, _ = state.shape
+        d_model = self.config.d_model
+        
+        if alive is None: alive = state[..., StateFeature.HEALTH] > 0
+        else: alive = alive.bool()
+        
+        trunk_out, _ = self.relational_encoder(pos, vel, att=x.get('att', None), world_size=(1024.0, 1024.0))
+
+        if step_type == "state":
+            # Encode State (Wait! In Step 1, we pass the State token)
+            state_proc = torch.where(alive.unsqueeze(-1), state.to(self.special_params['dead'].dtype), self.special_params['dead'].view(1, 1, 1, -1))
+            w_dtype = self.state_encoder.net[0].weight.dtype
+            emb = self.state_encoder(state_proc.to(w_dtype))
+            
+            if team_ids is not None:
+                t_emb = self.special_embeddings['team_id'](team_ids.long())
+                emb = emb + (t_emb if t_emb.ndim == 4 else t_emb.unsqueeze(1))
+                
+            ship_ids = torch.arange(num_ships, device=state.device).view(1, 1, num_ships).expand(batch_size, seq_len, -1)
+            emb = emb + self.special_embeddings['ship_id'](ship_ids)
+            
+            # No reset mask for recurrent mode since seq_len=1 and mamba state handles resets via `ppo.py` zeroing
+            
+        elif step_type == "action":
+            # Encode Action (Step 2)
+            emb = self.action_encoder(action)
+            emb = self.action_proj(emb)
+        else:
+            raise ValueError("step_type must be defined for step-by-step rollout.")
+            
+        # Backbone loop
+        x_mamba_flat = emb.permute(0, 2, 1, 3).reshape(batch_size * num_ships, seq_len, d_model)
+        new_mamba_state = {}
+        
+        for i, block in enumerate(self.blocks):
+            normed = block['norm1'](x_mamba_flat)
+            layer_state = mamba_state[i]
+            
+            if not hasattr(block['mamba'], 'step'):
+                 raise NotImplementedError("MambaBlock .step() not found")
+                 
+            m_out, new_conv, new_ssm = block['mamba'].step(normed, layer_state[0], layer_state[1])
+            new_mamba_state[i] = (new_conv, new_ssm)
+            
+            x_mamba_flat = x_mamba_flat + m_out
+            
+            x_spatial = x_mamba_flat.view(batch_size, num_ships, seq_len, -1).permute(0, 2, 1, 3)
+            rel_bias = self.relational_encoder.adapters[i+1](trunk_out)
+            attn_out = block['attn'](block['norm2'](x_spatial), rel_bias, mask=alive)
+            x_mamba_flat = x_mamba_flat + attn_out.permute(0, 2, 1, 3).reshape(batch_size * num_ships, seq_len, -1)
+            
+        Z = x_mamba_flat.view(batch_size, num_ships, seq_len, -1).permute(0, 2, 1, 3)
+        
+        # Readout
+        if step_type == "state":
+            # Predict Actions & Value
+            action_logits = self.actor_head(Z)
+            
+            Z_flat = Z.reshape(batch_size * seq_len, num_ships, d_model)
+            kpm_val = ~alive.reshape(batch_size * seq_len, num_ships)
+            all_masked_val = kpm_val.all(dim=-1, keepdim=True)
+            kpm_val = kpm_val & ~all_masked_val
+            
+            q_val = self.team_token_value.expand(batch_size * seq_len, -1, -1)
+            Z_norm_val = self.norm_value(Z_flat)
+            team_vec_val, _ = self.pooler_value(q_val, Z_norm_val, Z_norm_val, key_padding_mask=kpm_val)
+            value_pred = self.value_head(team_vec_val.squeeze(1)).reshape(batch_size, seq_len, 1)
+            
+            # Sampling Action
+            l_p, l_t, l_s = action_logits.split([3, 7, 2], dim=-1)
+            probs_p, probs_t, probs_s = torch.distributions.Categorical(logits=l_p), torch.distributions.Categorical(logits=l_t), torch.distributions.Categorical(logits=l_s)
+            
+            action_p, action_t, action_s = probs_p.sample(), probs_t.sample(), probs_s.sample()
+            action_sampled = torch.stack([action_p, action_t, action_s], dim=-1)
+            
+            logprob = probs_p.log_prob(action_p) + probs_t.log_prob(action_t) + probs_s.log_prob(action_s)
+            entropy = probs_p.entropy() + probs_t.entropy() + probs_s.entropy()
+            
+            return action_sampled, logprob, entropy, value_pred, new_mamba_state
+            
+        elif step_type == "action":
+            # Predict Next State & Reward
+            # Note: We don't sample next state for env, we just return predictions and mamba memory
+            next_state_pred = self.world_head(Z)
+            
+            Z_flat = Z.reshape(batch_size * seq_len, num_ships, d_model)
+            kpm_rew = ~alive.reshape(batch_size * seq_len, num_ships)
+            all_masked_rew = kpm_rew.all(dim=-1, keepdim=True)
+            kpm_rew = kpm_rew & ~all_masked_rew
+            
+            q_rew = self.team_token_reward.expand(batch_size * seq_len, -1, -1)
+            Z_norm_rew = self.norm_reward(Z_flat)
+            team_vec_rew, _ = self.pooler_reward(q_rew, Z_norm_rew, Z_norm_rew, key_padding_mask=kpm_rew)
+            reward_outputs = self.reward_head(team_vec_rew.squeeze(1)).reshape(batch_size, seq_len, -1)
+            
+            reward_pred = reward_outputs.sum(dim=-1, keepdim=True)
+            
+            return None, None, None, None, new_mamba_state, next_state_pred, reward_pred
+
+    @property
+    def is_interleaved(self):
+        return True
 
 

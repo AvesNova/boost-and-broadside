@@ -14,6 +14,7 @@ from omegaconf import DictConfig, OmegaConf
 
 from boost_and_broadside.train.rl.buffer import GPUBuffer
 from boost_and_broadside.core.constants import StateFeature
+from boost_and_broadside.train.batch_processor import BatchProcessor
 # We assume YemongDynamics is importable and has the right interface
 # from boost_and_broadside.models.yemong.scaffolds import YemongDynamics
 
@@ -140,24 +141,35 @@ class PPOTrainer:
                 with torch.no_grad():
                     # RECURRENT INFERENCE
                     # Add Time dimension (T=1) for Mamba
-                    # next_obs values are (B, N, F) -> (B, 1, N, F)
-                    # We pass (B, 1, N, F)
                     obs_input = {k: v.unsqueeze(1) for k, v in next_obs.items()}
                     
-                    # agent.get_action_and_value expects (B, T, N, F)
-                    # next_mamba_state is (B*N, ...) flat from previous step
-                    action, logprob, _, value, next_mamba_state = self.agent.get_action_and_value(
-                        obs_input, next_mamba_state
-                    )
-                    
-                    # Squeeze Time dimension
-                    action = action.squeeze(1)
-                    logprob = logprob.squeeze(1)
-                    value = value.squeeze(1)
+                    if getattr(self.agent, 'is_interleaved', False):
+                        # Step 1: Predict Action and Value from State
+                        action, logprob, _, value, next_mamba_state, *_ = self.agent.get_action_and_value(
+                            obs_input, next_mamba_state, step_type="state"
+                        )
+                        action_sq = action.squeeze(1)
+                        logprob_sq = logprob.squeeze(1)
+                        value_sq = value.squeeze(1)
+                        
+                    else:
+                        action, logprob, _, value, next_mamba_state, *_ = self.agent.get_action_and_value(
+                            obs_input, next_mamba_state
+                        )
+                        action_sq = action.squeeze(1)
+                        logprob_sq = logprob.squeeze(1)
+                        value_sq = value.squeeze(1)
                     
                 # Execute Step
-                next_obs_new, reward, terminated, truncated, info = self.env.step(action)
+                next_obs_new, reward, terminated, truncated, info = self.env.step(action_sq)
                 done = torch.logical_or(terminated, truncated).float()
+                
+                with torch.no_grad():
+                    if getattr(self.agent, 'is_interleaved', False):
+                        # Step 2: Update Mamba memory with Action token
+                        _, _, _, _, next_mamba_state, *_ = self.agent.get_action_and_value(
+                            obs_input, next_mamba_state, action=action, step_type="action"
+                        )
                 
                 # Track Episodic Return
                 if "final_info" in info:
@@ -169,7 +181,7 @@ class PPOTrainer:
                             iter_episode_lengths.append(ep_len)
 
                 # Buffer Add
-                self.buffer.add(next_obs, action, logprob, reward, next_done, value)
+                self.buffer.add(next_obs, action_sq, logprob_sq, reward, next_done, value_sq)
                 
                 next_obs = next_obs_new
                 next_done = done
@@ -299,52 +311,55 @@ class PPOTrainer:
                     entropy_loss = entropy.mean()
                     
                     # --- Auxiliary Losses ---
-                    # 1. State MSE
-                    # Mask last step because next_obs is rolled
-                    # We can use mb_dones to mask end of episodes, but simpler to just mask T-1
-                    # Permute current obs for delta computation (Fix C)
+                    # Use BatchProcessor for standardized targets
                     mb_curr_obs_perm = mb_obs['state'].permute(1, 0, 2, 3).contiguous()  # (B, T, N, F)
+                    mb_next_obs_perm = mb_next_obs['state'].permute(1, 0, 2, 3).contiguous()
+                    mb_curr_pos = mb_obs['pos'].permute(1, 0, 2, 3).contiguous()
+                    mb_next_pos = mb_next_obs['pos'].permute(1, 0, 2, 3).contiguous()
+                    
+                    W, H = self.cfg.environment.world_size
+                    target_states, target_pairwise = BatchProcessor.compute_targets(
+                        mb_curr_obs_perm, mb_next_obs_perm, mb_curr_pos, mb_next_pos, W, H, self.device
+                    )
                     
                     B, T, N, F_dim = mb_next_obs_perm.shape
                     
-                    # Fix C: compare deltas, not raw next obs
-                    mb_delta_obs = mb_next_obs_perm - mb_curr_obs_perm  # (B, T, N, F)
-                    
-                    # Fix E: mask all terminal steps, not just the last one
+                    # Masks
                     valid_mask = (1.0 - mb_dones_perm.float())  # (B, T), zero at done steps
+                    input_alive = mb_curr_obs_perm[..., StateFeature.HEALTH] > 0
+                    target_alive = mb_next_obs_perm[..., StateFeature.HEALTH] > 0
                     
-                    # Fix F: mask dead ships (health=0)
-                    valid_mask = valid_mask.unsqueeze(-1).expand(B, T, N)  # (B, T, N)
-                    alive_mask = (mb_next_obs_perm[..., StateFeature.HEALTH] > 0).float()
-                    valid_mask = valid_mask * alive_mask
+                    # Extract Pairwise and Components from extras if available
+                    pairwise_pred = extras[0] if len(extras) > 0 else None
+                    reward_components = extras[1] if len(extras) > 1 else None
                     
-                    # 2. Reward MSE
-                    # reward_pred is (B, T, N, 1). mb_rewards_perm is (B, T, N).
-                    # We should squeeze or expand. `reward_head` outputs (B, T, N, 1) or similar.
-                    # Yemong update returns (BN, T, 1) usually.
+                    # Compute Auxiliary Losses via model.get_loss()
+                    loss_out = self.agent.get_loss(
+                        pred_states=next_state_pred.view(B, T, N, -1),
+                        pred_actions=None, # PPO update doesn't output logits for Behavioral Cloning by default
+                        target_states=target_states,
+                        target_actions=mb_actions_perm,
+                        loss_mask=valid_mask,
+                        lambda_state=self.cfg.train.ppo.get("lambda_state", 0.5), # Configurable RL weights
+                        lambda_actions=self.cfg.train.ppo.get("lambda_actions", 0.0), # Off by default
+                        pred_values=new_value.unsqueeze(-1) if new_value.ndim == 2 else new_value,
+                        pred_rewards=reward_pred,
+                        target_returns=mb_returns[..., 0:1],
+                        target_rewards=mb_rewards_perm[..., 0:1],
+                        lambda_value=self.cfg.train.ppo.get("lambda_value", self.cfg.train.ppo.vf_coef),
+                        lambda_reward=self.cfg.train.ppo.get("lambda_reward", 0.5),
+                        weights_power=None, weights_turn=None, weights_shoot=None,
+                        target_alive=target_alive,
+                        input_alive=input_alive,
+                        pairwise_pred=pairwise_pred,
+                        target_pairwise=target_pairwise,
+                        lambda_pairwise=self.cfg.train.ppo.get("lambda_pairwise", 0.0),
+                        reward_components=reward_components
+                    )
                     
-                    # Reshape state prediction to (B, T, N, F)
-                    next_state_pred = next_state_pred.view(B, T, N, -1)
-                    
-                    # State Loss with Mask (Fix C: use delta as target)
-                    if next_state_pred.shape[-1] == mb_delta_obs.shape[-1]:
-                         s_loss = (F.mse_loss(next_state_pred, mb_delta_obs, reduction='none') * valid_mask.unsqueeze(-1)).sum() / (valid_mask.sum() * F_dim + 1e-6)
-                    else:
-                         # Shape mismatch: model state-head dim != obs dim. Skip.
-                         s_loss = torch.tensor(0.0, device=self.device)
-
-                    # Reward Loss: team scalar vs. team scalar
-                    # reward_pred from YemongDynamics is (B, T, 1) — already summed over reward components
-                    # mb_rewards_perm is (B, T, 1) — aggregated team scalar (Fix D)
-                    # Normalize both to (B, T, 1) for an unambiguous comparison
-                    if reward_pred.ndim == 3 and reward_pred.shape[-1] != 1:
-                        # Multi-component output: sum components to get scalar
-                        reward_pred_scalar = reward_pred.sum(dim=-1, keepdim=True)  # (B, T, 1)
-                    elif reward_pred.ndim == 3:
-                        reward_pred_scalar = reward_pred  # already (B, T, 1)
-                    else:
-                        reward_pred_scalar = reward_pred.reshape(B, T, 1)
-                    r_loss = F.mse_loss(reward_pred_scalar, mb_rewards_perm)
+                    s_loss = loss_out.get("state_loss", torch.tensor(0.0))
+                    v_loss = loss_out.get("value_loss", torch.tensor(0.0))
+                    r_loss = loss_out.get("reward_loss", torch.tensor(0.0))
                     
                     # Accumulate Stats
                     loss_stats["pg_loss"].append(pg_loss.item())
@@ -353,9 +368,8 @@ class PPOTrainer:
                     loss_stats["s_loss"].append(s_loss.item())
                     loss_stats["r_loss"].append(r_loss.item())
 
-                    # Total Loss
-                    # Coefficients 0.5 for now
-                    loss = pg_loss - self.cfg.train.ppo.ent_coef * entropy_loss + v_loss * self.cfg.train.ppo.vf_coef + 0.5 * s_loss + 0.5 * r_loss
+                    # Total Loss = PG + Entropy + Weighted Model Aux Losses (Value, Reward, State, etc)
+                    loss = pg_loss - self.cfg.train.ppo.ent_coef * entropy_loss + loss_out["loss"]
                     
                     self.optimizer.zero_grad()
                     loss.backward()

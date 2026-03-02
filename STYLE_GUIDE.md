@@ -109,7 +109,8 @@ def calculate_velocity(distance: float, time: float) -> float:
     *   Avoid deep inheritance chains (A -> B -> C -> D).
 
 ### 6.5. Entry Point
-*   The only valid entry point is `uv run main.py`.
+*   The only valid entry point is `uv run --no-sync main.py`.
+*   **Note for AI Agents**: Always use `uv run --no-sync` instead of `uv run` when executing Python commands or scripts to avoid background execution issues.
 *   All other scripts in `src/` should be modules, not executable scripts (unless they are specific utility scripts in `tools/`).
 
 ### 6.6. Backward Compatibility

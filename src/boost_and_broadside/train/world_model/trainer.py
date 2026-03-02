@@ -7,6 +7,7 @@ import wandb
 
 from boost_and_broadside.core.constants import PowerActions, TurnActions, ShootActions, StateFeature, TargetFeature, TARGET_DIM
 from boost_and_broadside.utils.dataset_stats import calculate_action_counts, compute_class_weights, apply_turn_exceptions, normalize_weights
+from boost_and_broadside.train.batch_processor import BatchProcessor
 
 log = logging.getLogger(__name__)
 
@@ -197,91 +198,17 @@ class Trainer:
 
     def _train_step(self, batch_data, epoch, params):
         """Performs forward pass, calculates loss, and scales gradients."""
-        # Unpack Dict from ContinuousView
-        # Keys: states, actions, seq_idx, reset_mask, loss_mask
-        if not self.use_amp:
-             states = batch_data["states"].to(self.device, dtype=torch.float32, non_blocking=True)
-        else:
-             states = batch_data["states"].to(self.device, non_blocking=True)
-             
-        actions = batch_data["actions"].to(self.device, non_blocking=True)
-        team_ids = batch_data["team_ids"].to(self.device, non_blocking=True)
-        seq_idx = batch_data["seq_idx"].to(self.device, non_blocking=True)
-        loss_mask = batch_data["loss_mask"].to(self.device, non_blocking=True)
+        # Process Batch using shared utility
+        processed = BatchProcessor.process_batch(
+            batch_data, 
+            self.cfg, 
+            self.device, 
+            use_amp=self.use_amp
+        )
         
-        # New: Value and Reward Targets
-        # Target for Value(S_t) is G_t. Input is S_t (index :-1).
-        # Target for Reward(S_t, A_t) is R_t. Input is S_t.
-        # So we align with inputs.
-        rewards = batch_data["rewards"].to(self.device, non_blocking=True)[:, :-1]
-        if rewards.dim() == 2:
-             rewards = rewards.unsqueeze(-1)
-
-        returns = batch_data["returns"].to(self.device, non_blocking=True)[:, :-1]
-        if returns.dim() == 2:
-             returns = returns.unsqueeze(-1)
-        
-        # Inputs: [0 : -1] -> Targets: [1 : End]
-        # State_t -> State_{t+1}
-        # Action_t (Teacher Forcing) -> Action_t (Prediction)
-        
-        input_states = states[:, :-1]
-        next_states = states[:, 1:]
-        
-        target_actions = actions[:, :-1]
-        # Prepend zero-action so input_actions[t] = A_{t-1} (proper prev-action conditioning)
-        zero_action = torch.zeros_like(actions[:, :1])
-        input_actions = torch.cat([zero_action, actions[:, :-1]], dim=1)[:, :-1]
-        
-        loss_mask_slice = loss_mask[:, 1:] 
-        
-        # Pos is now explicitly passed from dataset (float32)
-        pos = batch_data["pos"].to(self.device, non_blocking=True)[:, :-1]
-        
-        # Position Data for Deltas
-        pos_all = batch_data["pos"].to(self.device, non_blocking=True)
-        pos_curr = pos_all[:, :-1]
-        pos_next = pos_all[:, 1:]
-        
-        # Toroidal Delta Pos
-        d_pos = pos_next - pos_curr
-        W, H = self.cfg.environment.world_size
-        d_pos[..., 0] = d_pos[..., 0] - torch.round(d_pos[..., 0] / W) * W
-        d_pos[..., 1] = d_pos[..., 1] - torch.round(d_pos[..., 1] / H) * H
-        
-        # State Deltas (Next - Current)
-        # States: [Health, Power, Vx, Vy, AngVel]
-        d_state = next_states - input_states
-        
-        # Pairwise Targets: relative position at t+1 (pos_next[j] - pos_next[i])
-        # pos_next: (B, T, N, 2)
-        pos_next_i = pos_next.unsqueeze(3)   # (B, T, N, 1, 2)
-        pos_next_j = pos_next.unsqueeze(2)   # (B, T, 1, N, 2)
-        target_pairwise_pos = pos_next_j - pos_next_i  # (B, T, N, N, 2)
-        
-        d_vel = d_state[..., StateFeature.VX:StateFeature.VY+1]
-        d_vel_i = d_vel.unsqueeze(3)
-        d_vel_j = d_vel.unsqueeze(2)
-        target_pairwise_vel = d_vel_j - d_vel_i # (B, T, N, N, 2)
-        
-        target_pairwise = torch.cat([target_pairwise_pos, target_pairwise_vel], dim=-1)
-
-        # Construct Target Vector using enums (Ego ONLY)
-        # [dx, dy, dVx, dVy, dHealth, dPower, dAngVel]
-        target_states = torch.zeros((*d_state.shape[:-1], TARGET_DIM), device=d_state.device, dtype=d_state.dtype)
-        target_states[..., TargetFeature.DX:TargetFeature.DY+1] = d_pos
-        target_states[..., TargetFeature.DVX] = d_state[..., StateFeature.VX]
-        target_states[..., TargetFeature.DVY] = d_state[..., StateFeature.VY]
-        target_states[..., TargetFeature.DHEALTH] = d_state[..., StateFeature.HEALTH]
-        target_states[..., TargetFeature.DPOWER] = d_state[..., StateFeature.POWER]
-        target_states[..., TargetFeature.DANG_VEL] = d_state[..., StateFeature.ANG_VEL]
-        
-        # Velocity for Relational Trunk (Current Vx, Vy)
-        vel = input_states[..., StateFeature.VX : StateFeature.VY+1]
-        
-        # Alive Mask
-        alive = input_states[..., StateFeature.HEALTH] > 0
-        target_alive = next_states[..., StateFeature.HEALTH] > 0
+        inputs = processed["inputs"]
+        targets = processed["targets"]
+        masks = processed["masks"]
         
         # Forward & Loss
         # Forward & Loss
@@ -290,16 +217,16 @@ class Trainer:
              # Returns: state_pred, action_logits, value_pred, reward_pred, latent
              # Some scaffolds might return None for some outputs
              model_out = self.model(
-                state=input_states,
-                prev_action=input_actions,
-                pos=pos_curr,
-                vel=vel,
+                state=inputs["state"],
+                prev_action=inputs["prev_action"],
+                pos=inputs["pos"],
+                vel=inputs["vel"],
                 att=None,
-                team_ids=team_ids[:, :-1],
-                seq_idx=seq_idx[:, :-1], # Match temporal dim
-                 alive=alive,
-                 reset_mask=batch_data["reset_mask"][:, :-1].to(self.device, non_blocking=True) if "reset_mask" in batch_data else None,
-                 target_actions=target_actions
+                team_ids=inputs["team_ids"],
+                seq_idx=inputs["seq_idx"],
+                 alive=inputs["alive"],
+                 reset_mask=inputs.get("reset_mask"),
+                 target_actions=inputs["target_actions"]
               )
              
              # Unpack with defaults if tuple length varies or just pass positional? 
@@ -322,25 +249,25 @@ class Trainer:
              loss_out = self.model.get_loss(
                 pred_states=pred_states,
                 pred_actions=pred_actions,
-                target_states=target_states,
-                target_actions=target_actions,
-                loss_mask=loss_mask_slice,
+                target_states=targets["target_states"],
+                target_actions=targets["target_actions"],
+                loss_mask=masks["loss_mask"],
                 lambda_state=self.cfg.model.get("lambda_state", 1.0),
                 lambda_actions=self.cfg.model.get("lambda_actions", 0.15),
                 pred_values=pred_values,
                 pred_rewards=pred_rewards,
-                target_returns=returns,
-                target_rewards=rewards,
+                target_returns=targets.get("target_returns"),
+                target_rewards=targets.get("target_rewards"),
                 lambda_value=self.cfg.model.get("lambda_value", 0.1),
                 lambda_reward=self.cfg.model.get("lambda_reward", 0.1),
                 weights_power=self.w_power,
                 weights_turn=self.w_turn,
                 weights_shoot=self.w_shoot,
-                target_alive=target_alive,
-                input_alive=alive,        # Fix H: pass input alive mask
+                target_alive=targets["target_alive"],
+                input_alive=masks["input_alive"],        # Fix H: pass input alive mask
                 min_sigma=self.loss_cfg.get("min_sigma", 0.1),
                 pairwise_pred=pairwise_pred,
-                target_pairwise=target_pairwise,
+                target_pairwise=targets["target_pairwise"],
                 lambda_pairwise=self.cfg.model.get("lambda_pairwise", 0.1),
                 reward_components=reward_components
              )
@@ -357,8 +284,9 @@ class Trainer:
         self.scaler.scale(step_loss).backward()
         
         # Tokens (Batch * (SeqLen - 1))
-        # input_states is [B, T-1, ...]
-        B, T_minus_1 = input_states.shape[:2]
+        # Tokens (Batch * (SeqLen - 1))
+        # inputs["state"] is [B, T-1, ...]
+        B, T_minus_1 = inputs["state"].shape[:2]
         num_tokens = B * T_minus_1
 
         # Detach for logging
