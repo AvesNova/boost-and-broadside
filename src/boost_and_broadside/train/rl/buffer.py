@@ -44,7 +44,7 @@ class GPUBuffer:
         
         # Per-Ship Scalars
         self.logprobs = torch.zeros((num_steps, num_envs, self.num_ships), device=device, dtype=torch.float32)
-        self.rewards = torch.zeros((num_steps, num_envs, self.num_ships), device=device, dtype=torch.float32)
+        self.rewards = torch.zeros((num_steps, num_envs, 1), device=device, dtype=torch.float32)  # team scalar
         self.dones = torch.zeros((num_steps, num_envs), device=device, dtype=torch.float32) # Dones are per-env
         self.values = torch.zeros((num_steps, num_envs, self.num_ships), device=device, dtype=torch.float32)
         self.advantages = torch.zeros((num_steps, num_envs, self.num_ships), device=device, dtype=torch.float32)
@@ -82,7 +82,8 @@ class GPUBuffer:
         
         self.actions[self.ptr] = action
         self.logprobs[self.ptr] = logprob
-        self.rewards[self.ptr] = reward
+        # Aggregate per-ship rewards to a team scalar (B, 1) to match value head shape
+        self.rewards[self.ptr] = reward.mean(-1, keepdim=True)
         self.dones[self.ptr] = done
         self.values[self.ptr] = value
         

@@ -91,6 +91,8 @@ class TensorEnv:
             ship_alive=torch.zeros((self.num_envs, self.max_ships), dtype=torch.bool, device=self.device),
             ship_is_shooting=torch.zeros((self.num_envs, self.max_ships), dtype=torch.bool, device=self.device),
             
+            prev_action=torch.zeros((self.num_envs, self.max_ships, 3), dtype=torch.float32, device=self.device),
+            
             bullet_pos=torch.zeros((self.num_envs, self.max_ships, self.max_bullets), dtype=torch.complex64, device=self.device),
             bullet_vel=torch.zeros((self.num_envs, self.max_ships, self.max_bullets), dtype=torch.complex64, device=self.device),
             bullet_time=torch.zeros((self.num_envs, self.max_ships, self.max_bullets), dtype=torch.float32, device=self.device),
@@ -116,6 +118,9 @@ class TensorEnv:
         if isinstance(actions, dict) and "action" in actions:
              # Support for legacy dict-based action input
              actions = actions["action"]
+
+        # Record actions taken BEFORE physics updates
+        self.state.prev_action = actions.float()
 
         # Physics Updates
         self.state = update_ships(self.state, actions, self.config)
@@ -178,6 +183,7 @@ class TensorEnv:
             ship_team_id=self.state.ship_team_id,
             ship_alive=prev_alive, # KEY
             ship_is_shooting=self.state.ship_is_shooting,
+            prev_action=self.state.prev_action,
             bullet_pos=self.state.bullet_pos,
             bullet_vel=self.state.bullet_vel,
             bullet_time=self.state.bullet_time,
@@ -292,6 +298,9 @@ class TensorEnv:
         self.state.bullet_active[reset_indices] = False
         self.state.bullet_time[reset_indices] = 0.0
         self.state.bullet_cursor[reset_indices] = 0
+        
+        # --- Reset Previous Action ---
+        self.state.prev_action[env_mask] = 0.0
 
     def _get_obs(self) -> Dict[str, torch.Tensor]:
         """
@@ -314,5 +323,6 @@ class TensorEnv:
             "attitude": self.state.ship_attitude,
             "cooldown": self.state.ship_cooldown,
             "ang_vel": self.state.ship_ang_vel,
-            "is_shooting": self.state.ship_is_shooting
+            "is_shooting": self.state.ship_is_shooting,
+            "prev_action": self.state.prev_action
         }

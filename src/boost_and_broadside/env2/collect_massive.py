@@ -122,8 +122,10 @@ def run_collection(args: CollectionArgs) -> None:
                 # We ALSO need to reset these in the environment so they don't stay in inf loop
                 if over_limit.any():
                     env._reset_envs(over_limit)
-                    # Update obs for reset envs
-                    obs = env._get_obs()
+                    # Fix K: only update obs for reset envs, preserve obs for active envs
+                    fresh_obs = env._get_obs()
+                    for k in obs:
+                        obs[k][over_limit] = fresh_obs[k][over_limit]
             else:
                 force_dones = dones
 

@@ -228,8 +228,10 @@ class Trainer:
         input_states = states[:, :-1]
         next_states = states[:, 1:]
         
-        input_actions = actions[:, :-1]
         target_actions = actions[:, :-1]
+        # Prepend zero-action so input_actions[t] = A_{t-1} (proper prev-action conditioning)
+        zero_action = torch.zeros_like(actions[:, :1])
+        input_actions = torch.cat([zero_action, actions[:, :-1]], dim=1)[:, :-1]
         
         loss_mask_slice = loss_mask[:, 1:] 
         
@@ -251,11 +253,11 @@ class Trainer:
         # States: [Health, Power, Vx, Vy, AngVel]
         d_state = next_states - input_states
         
-        # Pairwise Targets (Part D Refined): (Delta_P_j - Delta_P_i)
-        # d_pos: (B, T, N, 2)
-        d_pos_i = d_pos.unsqueeze(3) # (B, T, N, 1, 2)
-        d_pos_j = d_pos.unsqueeze(2) # (B, T, 1, N, 2)
-        target_pairwise_pos = d_pos_j - d_pos_i # (B, T, N, N, 2)
+        # Pairwise Targets: relative position at t+1 (pos_next[j] - pos_next[i])
+        # pos_next: (B, T, N, 2)
+        pos_next_i = pos_next.unsqueeze(3)   # (B, T, N, 1, 2)
+        pos_next_j = pos_next.unsqueeze(2)   # (B, T, 1, N, 2)
+        target_pairwise_pos = pos_next_j - pos_next_i  # (B, T, N, N, 2)
         
         d_vel = d_state[..., StateFeature.VX:StateFeature.VY+1]
         d_vel_i = d_vel.unsqueeze(3)
@@ -335,6 +337,7 @@ class Trainer:
                 weights_turn=self.w_turn,
                 weights_shoot=self.w_shoot,
                 target_alive=target_alive,
+                input_alive=alive,        # Fix H: pass input alive mask
                 min_sigma=self.loss_cfg.get("min_sigma", 0.1),
                 pairwise_pred=pairwise_pred,
                 target_pairwise=target_pairwise,
@@ -386,7 +389,7 @@ class Trainer:
 
     def _update_accumulators(self, acc, metrics):
         # Epoch Totals
-        acc["total_loss"] += metrics["loss"] * self.acc_steps # Undo div
+        acc["total_loss"] += metrics["loss"]  # No need to undo div; loss is not scaled here
         acc["total_state_loss"] += metrics["state_loss"]
         acc["total_action_loss"] += metrics["action_loss"]
         acc["total_relational_loss"] += metrics["relational_loss"]
@@ -394,7 +397,7 @@ class Trainer:
         acc["total_reward_loss"] += metrics["metrics"].get("reward_loss", 0.0)
         
         # Step Totals
-        acc["acc_loss"] += metrics["loss"] * self.acc_steps
+        acc["acc_loss"] += metrics["loss"]
         acc["acc_state"] += metrics["state_loss"]
         acc["acc_action"] += metrics["action_loss"]
         acc["acc_rel"] += metrics["relational_loss"]

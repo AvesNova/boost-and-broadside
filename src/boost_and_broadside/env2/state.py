@@ -43,6 +43,9 @@ class TensorState:
     ship_alive: torch.Tensor            # (B, N) bool
     ship_is_shooting: torch.Tensor      # (B, N) bool
     
+    # Previous action taken (B, N, 3) float32 [power, turn, shoot]
+    prev_action: torch.Tensor           # (B, N, 3) float32
+    
     # Bullet State (B, N, K) - Ring buffer per ship
     # K should be >= bullet_lifetime / firing_cooldown
     bullet_pos: torch.Tensor            # (B, N, K) complex64
@@ -67,6 +70,7 @@ class TensorState:
             ship_team_id=self.ship_team_id.clone(),
             ship_alive=self.ship_alive.clone(),
             ship_is_shooting=self.ship_is_shooting.clone(),
+            prev_action=self.prev_action.clone(),
             bullet_pos=self.bullet_pos.clone(),
             bullet_vel=self.bullet_vel.clone(),
             bullet_time=self.bullet_time.clone(),

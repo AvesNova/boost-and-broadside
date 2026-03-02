@@ -13,6 +13,7 @@ import wandb
 from omegaconf import DictConfig, OmegaConf
 
 from boost_and_broadside.train.rl.buffer import GPUBuffer
+from boost_and_broadside.core.constants import StateFeature
 # We assume YemongDynamics is importable and has the right interface
 # from boost_and_broadside.models.yemong.scaffolds import YemongDynamics
 
@@ -301,39 +302,49 @@ class PPOTrainer:
                     # 1. State MSE
                     # Mask last step because next_obs is rolled
                     # We can use mb_dones to mask end of episodes, but simpler to just mask T-1
+                    # Permute current obs for delta computation (Fix C)
+                    mb_curr_obs_perm = mb_obs['state'].permute(1, 0, 2, 3).contiguous()  # (B, T, N, F)
+                    
                     B, T, N, F_dim = mb_next_obs_perm.shape
                     
-                    # Mask (B, T, N)
-                    # We want to ignore the LAST step of the sequence because it wrapped around
-                    valid_mask = torch.ones((B, T), device=self.device)
-                    valid_mask[:, -1] = 0.0 # Ignore last step
-                    valid_mask = valid_mask.unsqueeze(-1).expand(B, T, N)
+                    # Fix C: compare deltas, not raw next obs
+                    mb_delta_obs = mb_next_obs_perm - mb_curr_obs_perm  # (B, T, N, F)
+                    
+                    # Fix E: mask all terminal steps, not just the last one
+                    valid_mask = (1.0 - mb_dones_perm.float())  # (B, T), zero at done steps
+                    
+                    # Fix F: mask dead ships (health=0)
+                    valid_mask = valid_mask.unsqueeze(-1).expand(B, T, N)  # (B, T, N)
+                    alive_mask = (mb_next_obs_perm[..., StateFeature.HEALTH] > 0).float()
+                    valid_mask = valid_mask * alive_mask
                     
                     # 2. Reward MSE
                     # reward_pred is (B, T, N, 1). mb_rewards_perm is (B, T, N).
                     # We should squeeze or expand. `reward_head` outputs (B, T, N, 1) or similar.
                     # Yemong update returns (BN, T, 1) usually.
                     
-                    # Reshape predictions
+                    # Reshape state prediction to (B, T, N, F)
                     next_state_pred = next_state_pred.view(B, T, N, -1)
                     
-                    if reward_pred.shape[-1] == 1 and reward_pred.ndim == 3:
-                        # Team Scalar Reward (B, T, 1) -> (B, T, N)
-                         reward_pred = reward_pred.expand(B, T, N)
+                    # State Loss with Mask (Fix C: use delta as target)
+                    if next_state_pred.shape[-1] == mb_delta_obs.shape[-1]:
+                         s_loss = (F.mse_loss(next_state_pred, mb_delta_obs, reduction='none') * valid_mask.unsqueeze(-1)).sum() / (valid_mask.sum() * F_dim + 1e-6)
                     else:
-                         reward_pred = reward_pred.view(B, T, N) 
-                    
-                    # State Loss with Mask
-                    if next_state_pred.shape[-1] == mb_next_obs_perm.shape[-1]:
-                         s_loss = (F.mse_loss(next_state_pred, mb_next_obs_perm, reduction='none') * valid_mask.unsqueeze(-1)).sum() / (valid_mask.sum() * F_dim + 1e-6)
-                    else:
-                         # Shape mismatch (e.g. Model predicts Targets vs Env State). Skip auxiliary state loss.
+                         # Shape mismatch: model state-head dim != obs dim. Skip.
                          s_loss = torch.tensor(0.0, device=self.device)
 
-                    # Reward Loss WITHOUT Mask
-                    # Predicting reward for step T is valid even if T is terminal.
-                    # Only next_state_pred is invalid at T.
-                    r_loss = F.mse_loss(reward_pred, mb_rewards_perm)
+                    # Reward Loss: team scalar vs. team scalar
+                    # reward_pred from YemongDynamics is (B, T, 1) — already summed over reward components
+                    # mb_rewards_perm is (B, T, 1) — aggregated team scalar (Fix D)
+                    # Normalize both to (B, T, 1) for an unambiguous comparison
+                    if reward_pred.ndim == 3 and reward_pred.shape[-1] != 1:
+                        # Multi-component output: sum components to get scalar
+                        reward_pred_scalar = reward_pred.sum(dim=-1, keepdim=True)  # (B, T, 1)
+                    elif reward_pred.ndim == 3:
+                        reward_pred_scalar = reward_pred  # already (B, T, 1)
+                    else:
+                        reward_pred_scalar = reward_pred.reshape(B, T, 1)
+                    r_loss = F.mse_loss(reward_pred_scalar, mb_rewards_perm)
                     
                     # Accumulate Stats
                     loss_stats["pg_loss"].append(pg_loss.item())

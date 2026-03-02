@@ -28,7 +28,7 @@ class TestPhysics:
             ship_team_id=torch.zeros((num_envs, max_ships), dtype=torch.int32, device=device),
             ship_alive=torch.ones((num_envs, max_ships), dtype=torch.bool, device=device),
             ship_is_shooting=torch.zeros((num_envs, max_ships), dtype=torch.bool, device=device),
-            
+            prev_action=torch.zeros((num_envs, max_ships, 3), dtype=torch.float32, device=device),
             bullet_pos=torch.zeros((num_envs, max_ships, max_bullets), dtype=torch.complex64, device=device),
             bullet_vel=torch.zeros((num_envs, max_ships, max_bullets), dtype=torch.complex64, device=device),
             bullet_time=torch.zeros((num_envs, max_ships, max_bullets), dtype=torch.float32, device=device),
@@ -146,7 +146,7 @@ class TestPhysics:
             ship_team_id=torch.zeros((num_envs, max_ships), dtype=torch.int32, device=device),
             ship_alive=torch.ones((num_envs, max_ships), dtype=torch.bool, device=device),
             ship_is_shooting=torch.zeros((num_envs, max_ships), dtype=torch.bool, device=device),
-            
+            prev_action=torch.zeros((num_envs, max_ships, 3), dtype=torch.float32, device=device),
             bullet_pos=torch.zeros((num_envs, max_ships, max_bullets), dtype=torch.complex64, device=device),
             bullet_vel=torch.zeros((num_envs, max_ships, max_bullets), dtype=torch.complex64, device=device),
             bullet_time=torch.zeros((num_envs, max_ships, max_bullets), dtype=torch.float32, device=device),

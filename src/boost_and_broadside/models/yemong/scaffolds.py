@@ -36,7 +36,7 @@ class BaseScaffold(nn.Module):
 
     def get_loss(self, pred_states=None, pred_actions=None, target_states=None, target_actions=None, loss_mask=None, 
                  pred_values=None, pred_rewards=None, target_returns=None, target_rewards=None,
-                 target_alive=None, pairwise_pred=None, target_pairwise=None, reward_components=None, **kwargs):
+                 target_alive=None, input_alive=None, pairwise_pred=None, target_pairwise=None, reward_components=None, **kwargs):
         
         # Adapter to map arguments to generic structure
         preds = {
@@ -65,23 +65,23 @@ class BaseScaffold(nn.Module):
         
         # Combined Mask Logic
         # loss_mask is typically (B, T, N) or (B, T)
-        # target_alive is (B, T, N)
-        # We merge them here for the generic mask
+        # input_alive  is (B, T, N) — mask ships already dead at input (no new signal)
+        # target_alive is (B, T, N) — kept for backward compat but not used for masking
         final_mask = loss_mask
         
         # Ensure loss_mask is expanded if needed for state/action (B, T, N)
-        # But if it's already generic mask, we pass it.
-        # Loss modules expect to handle their own dimensional logic, but usually we want
-        # a mask that matches the finest granularity (Ship Level).
-        
         if final_mask.ndim == 2 and pred_states is not None:
              final_mask = final_mask.unsqueeze(-1).expand_as(pred_states[..., 0])
              
-        if target_alive is not None:
-             # Ensure shapes match for broadcast
+        # Fix H: use input_alive so death-transitions are still trained
+        # (ship alive at input → ship dead at target = useful gradient)
+        if input_alive is not None:
+             if final_mask.shape != input_alive.shape:
+                  pass  # let downstream handle shape
+             final_mask = final_mask & input_alive
+        elif target_alive is not None:
+             # Fallback for callers that only provide target_alive
              if final_mask.shape != target_alive.shape:
-                  # Try to work with it or assume caller handles it?
-                  # trainer.py handles loss_mask slicing.
                   pass
              final_mask = final_mask & target_alive
 
@@ -602,9 +602,14 @@ class YemongDynamics(BaseScaffold):
              key_padding_mask = None
              
         # Value Pooling
+        # Fix I: Guard against all-dead scenario (all keys masked -> NaN softmax)
+        kpm_val = key_padding_mask
+        if kpm_val is not None:
+            all_masked_val = kpm_val.all(dim=-1, keepdim=True)  # (BT, 1)
+            kpm_val = kpm_val & ~all_masked_val  # keep >= 1 key unmasked
         q_val = self.team_token_value.expand(Batch_Time, -1, -1)
         Z_norm_val = self.norm_value(Z_flat)
-        team_vec_val, _ = self.pooler_value(q_val, Z_norm_val, Z_norm_val, key_padding_mask=key_padding_mask)
+        team_vec_val, _ = self.pooler_value(q_val, Z_norm_val, Z_norm_val, key_padding_mask=kpm_val)
         value_pred = self.value_head(team_vec_val.squeeze(1)).reshape(batch_size, seq_len, 1)
 
         # 4. Action for Dynamics
@@ -641,9 +646,14 @@ class YemongDynamics(BaseScaffold):
         # Reward w/ Team Pooling
         # Need to re-flatten Z_prime and re-apply mask logic (same mask)
         Z_prime_flat = Z_prime.reshape(Batch_Time, num_ships, d_model)
+        # Fix I: Guard against all-dead scenario
+        kpm_rew = key_padding_mask
+        if kpm_rew is not None:
+            all_masked_rew = kpm_rew.all(dim=-1, keepdim=True)  # (BT, 1)
+            kpm_rew = kpm_rew & ~all_masked_rew
         q_rew = self.team_token_reward.expand(Batch_Time, -1, -1)
         Z_prime_norm_rew = self.norm_reward(Z_prime_flat)
-        team_vec_rew, _ = self.pooler_reward(q_rew, Z_prime_norm_rew, Z_prime_norm_rew, key_padding_mask=key_padding_mask)
+        team_vec_rew, _ = self.pooler_reward(q_rew, Z_prime_norm_rew, Z_prime_norm_rew, key_padding_mask=kpm_rew)
         reward_components = self.reward_head(team_vec_rew.squeeze(1)).reshape(batch_size, seq_len, self.num_reward_components)
         reward_pred = reward_components.sum(dim=-1, keepdim=True)
         
@@ -865,9 +875,14 @@ class YemongDynamics(BaseScaffold):
             else:
                  key_padding_mask = None
                  
+            # Fix I: Guard against all-dead scenario (NaN in softmax)
+            kpm_val = key_padding_mask
+            if kpm_val is not None:
+                all_masked_val = kpm_val.all(dim=-1, keepdim=True)
+                kpm_val = kpm_val & ~all_masked_val
             q_val = self.team_token_value.expand(Batch_Time, -1, -1)
             Z_norm_val = self.norm_value(Z_flat)
-            team_vec_val, _ = self.pooler_value(q_val, Z_norm_val, Z_norm_val, key_padding_mask=key_padding_mask)
+            team_vec_val, _ = self.pooler_value(q_val, Z_norm_val, Z_norm_val, key_padding_mask=kpm_val)
             value_pred = self.value_head(team_vec_val.squeeze(1)).reshape(batch_size, seq_len, 1)
 
             # Sampling Action
@@ -939,9 +954,14 @@ class YemongDynamics(BaseScaffold):
             else:
                  key_padding_mask = None
             
+            # Fix I: Guard against all-dead scenario (NaN in softmax) - parallel mode
+            kpm_val_p = key_padding_mask
+            if kpm_val_p is not None:
+                all_masked_val_p = kpm_val_p.all(dim=-1, keepdim=True)
+                kpm_val_p = kpm_val_p & ~all_masked_val_p
             q_val = self.team_token_value.expand(Batch_Time, -1, -1)
             Z_norm_val = self.norm_value(Z_flat)
-            team_vec_val, _ = self.pooler_value(q_val, Z_norm_val, Z_norm_val, key_padding_mask=key_padding_mask)
+            team_vec_val, _ = self.pooler_value(q_val, Z_norm_val, Z_norm_val, key_padding_mask=kpm_val_p)
             value_pred = self.value_head(team_vec_val.squeeze(1)).reshape(batch_size, seq_len, 1)
 
             # Evaluation for Loss
@@ -972,13 +992,17 @@ class YemongDynamics(BaseScaffold):
             
             # 4. Heads
             next_state_pred = self.world_head(Z_prime)
-            next_state_pred = self.world_head(Z_prime)
             
             # Reward w/ Team Pooling (Match forward)
             Z_prime_flat = Z_prime.reshape(Batch_Time, num_ships, d_model)
+            # Fix I: Guard against all-dead scenario
+            kpm_rew = key_padding_mask
+            if kpm_rew is not None:
+                all_masked_rew = kpm_rew.all(dim=-1, keepdim=True)
+                kpm_rew = kpm_rew & ~all_masked_rew
             q_rew = self.team_token_reward.expand(Batch_Time, -1, -1)
             Z_prime_norm_rew = self.norm_reward(Z_prime_flat)
-            team_vec_rew, _ = self.pooler_reward(q_rew, Z_prime_norm_rew, Z_prime_norm_rew, key_padding_mask=key_padding_mask)
+            team_vec_rew, _ = self.pooler_reward(q_rew, Z_prime_norm_rew, Z_prime_norm_rew, key_padding_mask=kpm_rew)
             reward_components = self.reward_head(team_vec_rew.squeeze(1)).reshape(batch_size, seq_len, self.num_reward_components)
             reward_pred = reward_components.sum(dim=-1, keepdim=True) # (B, T, 1)
             
