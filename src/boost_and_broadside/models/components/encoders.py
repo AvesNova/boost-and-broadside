@@ -70,6 +70,41 @@ class SeparatedActionEncoder(nn.Module):
         
         return torch.cat([p, t, s], dim=-1)
 
+from boost_and_broadside.core.constants import NUM_FLATTENED_ACTIONS, NUM_TURN_ACTIONS, NUM_SHOOT_ACTIONS
+
+class FlattenedActionEncoder(nn.Module):
+    """
+    Modular Action Encoder for flattened discrete actions.
+    Decodes the (..., 3) standard environment actions into a single 42-class
+    index and applies a single learned embedding representing the combined state.
+    Output dim = 3 * embed_dim (to match the size of SeparatedActionEncoder for backbone compatibility).
+    """
+    def __init__(self, embed_dim: int = 16):
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.output_dim = embed_dim * 3
+        
+        self.emb_flat = nn.Embedding(NUM_FLATTENED_ACTIONS, self.output_dim)
+        
+    def forward(self, action):
+        """
+        action: (..., 3) [power_idx, turn_idx, shoot_idx] indices (Long)
+        or      (..., 1) flat index (Long)
+        """
+        if action.dtype != torch.long:
+            action = action.long().clamp(0)
+            
+        if action.shape[-1] == 3:
+            # Flatten to 1D index: p * (7*2) + t * (2) + s
+            flat_idx = action[..., 0] * (NUM_TURN_ACTIONS * NUM_SHOOT_ACTIONS) + \
+                       action[..., 1] * NUM_SHOOT_ACTIONS + \
+                       action[..., 2]
+        else:
+            flat_idx = action.squeeze(-1)
+            
+        flat_idx = flat_idx.clamp(0, NUM_FLATTENED_ACTIONS-1)
+        return self.emb_flat(flat_idx)
+
 class RelationalEncoder(nn.Module):
     """
     Physics Trunk: Projects raw geometry into latent space.

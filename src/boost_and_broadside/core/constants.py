@@ -67,6 +67,7 @@ class ShootActions(IntEnum):
 NUM_POWER_ACTIONS = len(PowerActions)
 NUM_TURN_ACTIONS = len(TurnActions)
 NUM_SHOOT_ACTIONS = len(ShootActions)
+NUM_FLATTENED_ACTIONS = NUM_POWER_ACTIONS * NUM_TURN_ACTIONS * NUM_SHOOT_ACTIONS
 TOTAL_ACTION_LOGITS = NUM_POWER_ACTIONS + NUM_TURN_ACTIONS + NUM_SHOOT_ACTIONS  # 3 + 7 + 2 = 12
 
 # =============================================================================

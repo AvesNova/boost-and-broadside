@@ -348,7 +348,7 @@ class PPOTrainer:
                         target_rewards=mb_rewards_perm[..., 0:1],
                         lambda_value=self.cfg.train.ppo.get("lambda_value", self.cfg.train.ppo.vf_coef),
                         lambda_reward=self.cfg.train.ppo.get("lambda_reward", 0.5),
-                        weights_power=None, weights_turn=None, weights_shoot=None,
+                        weights_power=None, weights_turn=None, weights_shoot=None, weights_flat=None,
                         target_alive=target_alive,
                         input_alive=input_alive,
                         pairwise_pred=pairwise_pred,

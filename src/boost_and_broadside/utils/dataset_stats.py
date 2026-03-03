@@ -4,6 +4,8 @@ import torch
 import logging
 from boost_and_broadside.core.constants import NUM_POWER_ACTIONS, NUM_TURN_ACTIONS, NUM_SHOOT_ACTIONS
 
+NUM_FLATTENED_ACTIONS = NUM_POWER_ACTIONS * NUM_TURN_ACTIONS * NUM_SHOOT_ACTIONS
+
 log = logging.getLogger(__name__)
 
 def calculate_action_counts(data_path: str) -> dict[str, np.ndarray]:
@@ -74,6 +76,55 @@ def calculate_action_counts(data_path: str) -> dict[str, np.ndarray]:
             "turn": counts_t,
             "shoot": counts_s
         }
+
+def calculate_flattened_action_counts(data_path: str) -> np.ndarray:
+    """
+    Calculate or retrieve flattened action counts from HDF5 dataset.
+    Returns 1D array of counts for all 42 combinations.
+    Index = power * (NUM_TURN * NUM_SHOOT) + turn * NUM_SHOOT + shoot
+    """
+    try:
+        f = h5py.File(data_path, "r+")
+        mode = "r+"
+    except OSError:
+        try:
+            f = h5py.File(data_path, "r")
+            mode = "r"
+        except Exception:
+            log.warning(f"Could not open {data_path}. Returning uniform flattened weights.")
+            return np.ones(NUM_FLATTENED_ACTIONS)
+        
+    with f:
+        if "action_counts_flattened" in f.attrs:
+            cached = f.attrs["action_counts_flattened"]
+            if len(cached) == NUM_FLATTENED_ACTIONS:
+                return cached
+            
+        if "actions" not in f:
+            return np.ones(NUM_FLATTENED_ACTIONS)
+            
+        actions = f["actions"][:]
+        flat_actions = actions.reshape(-1, 3).astype(np.int64)
+        
+        # Clip to ensure dataset padding or invalid actions don't expand bincount length
+        p_idx = np.clip(flat_actions[:, 0], 0, NUM_POWER_ACTIONS - 1)
+        t_idx = np.clip(flat_actions[:, 1], 0, NUM_TURN_ACTIONS - 1)
+        s_idx = np.clip(flat_actions[:, 2], 0, NUM_SHOOT_ACTIONS - 1)
+        
+        # p * 14 + t * 2 + s
+        indices = p_idx * (NUM_TURN_ACTIONS * NUM_SHOOT_ACTIONS) + \
+                  t_idx * NUM_SHOOT_ACTIONS + \
+                  s_idx
+                  
+        counts_f = np.bincount(indices, minlength=NUM_FLATTENED_ACTIONS)
+        
+        if mode == "r+":
+            try:
+                f.attrs["action_counts_flattened"] = counts_f
+            except Exception:
+                pass
+                
+        return counts_f
 
 def compute_class_weights(counts: np.ndarray, cap: float = 10.0, power: float = 0.5) -> torch.Tensor:
     """

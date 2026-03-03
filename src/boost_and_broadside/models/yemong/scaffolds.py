@@ -9,13 +9,13 @@ from torch.distributions.categorical import Categorical
 from torch.distributions.normal import Normal
 
 from boost_and_broadside.models.components.layers.utils import RMSNorm, MambaBlock
-from boost_and_broadside.models.components.encoders import StateEncoder, ActionEncoder, RelationalEncoder
+from boost_and_broadside.models.components.encoders import StateEncoder, ActionEncoder, RelationalEncoder, SeparatedActionEncoder, FlattenedActionEncoder
 from boost_and_broadside.models.components.heads import ActorHead, WorldHead, ValueHead, PairwiseRelationalHead
 from boost_and_broadside.models.components.team_evaluator import TeamEvaluator 
 from boost_and_broadside.models.components.layers.attention import RelationalAttention
 from boost_and_broadside.models.components.normalizer import FeatureNormalizer
 from boost_and_broadside.models.components.losses import CompositeLoss, LossModule
-from boost_and_broadside.core.constants import StateFeature, TargetFeature, STATE_DIM, TARGET_DIM, TOTAL_ACTION_LOGITS
+from boost_and_broadside.core.constants import StateFeature, TargetFeature, STATE_DIM, TARGET_DIM, TOTAL_ACTION_LOGITS, NUM_FLATTENED_ACTIONS, NUM_TURN_ACTIONS, NUM_SHOOT_ACTIONS
 
 
 class BaseScaffold(nn.Module):
@@ -1042,7 +1042,15 @@ class YemongDynamicsInterleaved(BaseScaffold):
         
         # Action Embeddings Component
         embed_dim = config.get("action_embed_dim", 16)
-        self.action_encoder = SeparatedActionEncoder(embed_dim)
+        self.action_space_type = config.get("action_space_type", "separated")
+        
+        if self.action_space_type == "flattened":
+            self.action_encoder = FlattenedActionEncoder(embed_dim)
+            action_dim = NUM_FLATTENED_ACTIONS
+        else:
+            self.action_encoder = SeparatedActionEncoder(embed_dim)
+            action_dim = TOTAL_ACTION_LOGITS
+            
         total_action_emb = self.action_encoder.output_dim
         
         # Action embedding expansion to d_model (so it matches state embedding dim)
@@ -1076,7 +1084,7 @@ class YemongDynamicsInterleaved(BaseScaffold):
             self.blocks.append(block)
             
         # Heads on State Tokens
-        self.actor_head = nn.Linear(d_model, 3 + 7 + 2) # [Power(3), Turn(7), Shoot(2)]
+        self.actor_head = nn.Linear(d_model, action_dim) 
         
         # Value Head (Team Level)
         self.team_token_value = nn.Parameter(torch.randn(1, 1, d_model))
@@ -1277,13 +1285,25 @@ class YemongDynamicsInterleaved(BaseScaffold):
             )
             
             # Compute logprobs and entropy from pred_actions using the targets
-            l_p, l_t, l_s = pred_actions.split([3, 7, 2], dim=-1)
-            dist_p = torch.distributions.Categorical(logits=l_p)
-            dist_t = torch.distributions.Categorical(logits=l_t)
-            dist_s = torch.distributions.Categorical(logits=l_s)
-            
-            logprob = dist_p.log_prob(action[..., 0]) + dist_t.log_prob(action[..., 1]) + dist_s.log_prob(action[..., 2])
-            entropy = dist_p.entropy() + dist_t.entropy() + dist_s.entropy()
+            if self.action_space_type == "flattened":
+                if action.shape[-1] == 3:
+                     t_flat = action[..., 0].long().clamp(0, 2) * (NUM_TURN_ACTIONS * NUM_SHOOT_ACTIONS) + \
+                              action[..., 1].long().clamp(0, 6) * NUM_SHOOT_ACTIONS + \
+                              action[..., 2].long().clamp(0, 1)
+                else:
+                     t_flat = action.squeeze(-1)
+                
+                dist = torch.distributions.Categorical(logits=pred_actions)
+                logprob = dist.log_prob(t_flat)
+                entropy = dist.entropy()
+            else:
+                l_p, l_t, l_s = pred_actions.split([3, 7, 2], dim=-1)
+                dist_p = torch.distributions.Categorical(logits=l_p)
+                dist_t = torch.distributions.Categorical(logits=l_t)
+                dist_s = torch.distributions.Categorical(logits=l_s)
+                
+                logprob = dist_p.log_prob(action[..., 0]) + dist_t.log_prob(action[..., 1]) + dist_s.log_prob(action[..., 2])
+                entropy = dist_p.entropy() + dist_t.entropy() + dist_s.entropy()
             
             # Pack extras
             extras = [pairwise_pred, reward_components]
@@ -1368,14 +1388,28 @@ class YemongDynamicsInterleaved(BaseScaffold):
             value_pred = self.value_head(team_vec_val.squeeze(1)).reshape(batch_size, seq_len, 1)
             
             # Sampling Action
-            l_p, l_t, l_s = action_logits.split([3, 7, 2], dim=-1)
-            probs_p, probs_t, probs_s = torch.distributions.Categorical(logits=l_p), torch.distributions.Categorical(logits=l_t), torch.distributions.Categorical(logits=l_s)
-            
-            action_p, action_t, action_s = probs_p.sample(), probs_t.sample(), probs_s.sample()
-            action_sampled = torch.stack([action_p, action_t, action_s], dim=-1)
-            
-            logprob = probs_p.log_prob(action_p) + probs_t.log_prob(action_t) + probs_s.log_prob(action_s)
-            entropy = probs_p.entropy() + probs_t.entropy() + probs_s.entropy()
+            if self.action_space_type == "flattened":
+                dist = torch.distributions.Categorical(logits=action_logits)
+                action_flat = dist.sample()
+                logprob = dist.log_prob(action_flat)
+                entropy = dist.entropy()
+                
+                # Decode into [p, t, s] for the environment
+                action_p = action_flat // (NUM_TURN_ACTIONS * NUM_SHOOT_ACTIONS)
+                rem = action_flat % (NUM_TURN_ACTIONS * NUM_SHOOT_ACTIONS)
+                action_t = rem // NUM_SHOOT_ACTIONS
+                action_s = rem % NUM_SHOOT_ACTIONS
+                
+                action_sampled = torch.stack([action_p, action_t, action_s], dim=-1)
+            else:
+                l_p, l_t, l_s = action_logits.split([3, 7, 2], dim=-1)
+                probs_p, probs_t, probs_s = torch.distributions.Categorical(logits=l_p), torch.distributions.Categorical(logits=l_t), torch.distributions.Categorical(logits=l_s)
+                
+                action_p, action_t, action_s = probs_p.sample(), probs_t.sample(), probs_s.sample()
+                action_sampled = torch.stack([action_p, action_t, action_s], dim=-1)
+                
+                logprob = probs_p.log_prob(action_p) + probs_t.log_prob(action_t) + probs_s.log_prob(action_s)
+                entropy = probs_p.entropy() + probs_t.entropy() + probs_s.entropy()
             
             return action_sampled, logprob, entropy, value_pred, new_mamba_state
             

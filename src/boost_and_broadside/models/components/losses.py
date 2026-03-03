@@ -166,6 +166,45 @@ class ActionLoss(LossModule):
         return {"loss": a_loss * self.weight, **logs}
 
 
+from boost_and_broadside.core.constants import NUM_FLATTENED_ACTIONS, NUM_TURN_ACTIONS, NUM_SHOOT_ACTIONS
+
+class FlattenedActionLoss(LossModule):
+    name = "actions"
+    def forward(self, preds: Dict[str, torch.Tensor], targets: Dict[str, torch.Tensor], mask: torch.Tensor, 
+                weights_flat=None, **kwargs) -> Dict[str, torch.Tensor]:
+        
+        pred_actions = preds.get("actions")
+        target_actions = targets.get("actions")
+        
+        if pred_actions is None or target_actions is None:
+             return {"loss": torch.tensor(0.0, device=mask.device), "action_loss": torch.tensor(0.0, device=mask.device)}
+
+        mask_flat = mask.reshape(-1).float()
+        denom = mask_flat.sum() + 1e-6
+        
+        # Ensure target is 1D flat index
+        if target_actions.shape[-1] == 3:
+            t_flat = target_actions[..., 0].long().clamp(0, 2) * (NUM_TURN_ACTIONS * NUM_SHOOT_ACTIONS) + \
+                     target_actions[..., 1].long().clamp(0, 6) * NUM_SHOOT_ACTIONS + \
+                     target_actions[..., 2].long().clamp(0, 1)
+        else:
+            t_flat = target_actions.long().squeeze(-1)
+            
+        t_flat = t_flat.clamp(0, NUM_FLATTENED_ACTIONS-1)
+        
+        # pred_actions should be (..., NUM_FLATTENED_ACTIONS)
+        l_f = pred_actions
+        
+        a_loss = (F.cross_entropy(l_f.reshape(-1, NUM_FLATTENED_ACTIONS), t_flat.reshape(-1), weight=weights_flat, reduction='none') * mask_flat).sum() / denom / math.log(NUM_FLATTENED_ACTIONS)
+        
+        logs = {
+            "action_loss": a_loss.detach(),
+            "loss_sub/action_all": a_loss.detach(),
+        }
+        
+        return {"loss": a_loss * self.weight, **logs}
+
+
 class ValueLoss(LossModule):
     def forward(self, preds: Dict[str, torch.Tensor], targets: Dict[str, torch.Tensor], mask: torch.Tensor, **kwargs) -> Dict[str, torch.Tensor]:
         pred_val = preds.get("value") # (B, T, 1)

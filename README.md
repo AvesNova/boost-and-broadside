@@ -68,10 +68,11 @@ The core of the system is a **Factorized World Model (Yemong)** that separates t
 *   **State Prediction ($S_t, A_t \to S_{t+1}$)**: MSE loss on next-state reconstruction (Residual Delta).
 
 ### Model Variants
-*   **`YemongFull`**: Standard World Model. Predicts everything from history.
-*   **`YemongDynamics`**: Explicit Dynamics Model. Latent $Z$ predicts Policy/Value. $Z$ + Action predicts Next State/Reward via a dynamics transition. Features modular action embeddings.
-*   **`YemongSpatial`**: Spatial-only (Attention) baseline.
-*   **`YemongTemporal`**: Temporal-only (Mamba) baseline.
+*   **`YemongFull`** (`model=yemong_full`): Standard World Model. Predicts everything from history.
+*   **`YemongDynamics`** (`model=yemong_dynamics`): Explicit Dynamics Model. Latent $Z$ predicts Policy/Value. $Z$ + Action predicts Next State/Reward via a dynamics transition. Features modular action embeddings.
+*   **`YemongDynamicsInterleaved`** (`model=yemong_interleaved`): Autoregressive Sequence Model. Interleaves State and Action tokens during sequence processing, conditioning the latent memory directly on executed actions.
+*   **`YemongSpatial`** (`model=yemong_spatial`): Spatial-only (Attention) baseline.
+*   **`YemongTemporal`** (`model=yemong_temporal`): Temporal-only (Mamba) baseline.
 
 ## Workflows
 
@@ -105,6 +106,9 @@ uv run main.py mode=pretrain model=yemong_temporal
 
 # Train Dynamics Model (Model-Based)
 uv run main.py mode=pretrain model=yemong_dynamics
+
+# Train Interleaved Dynamics Model (State/Action Sequence)
+uv run main.py mode=pretrain model=yemong_interleaved
 
 # Full Pipeline: Collect Data -> Train World Model
 uv run main.py mode=train train.run_collect=true train.run_world_model=true

@@ -6,7 +6,7 @@ from omegaconf import DictConfig, OmegaConf
 import wandb
 
 from boost_and_broadside.core.constants import PowerActions, TurnActions, ShootActions, StateFeature, TargetFeature, TARGET_DIM
-from boost_and_broadside.utils.dataset_stats import calculate_action_counts, compute_class_weights, apply_turn_exceptions, normalize_weights
+from boost_and_broadside.utils.dataset_stats import calculate_action_counts, compute_class_weights, apply_turn_exceptions, normalize_weights, calculate_flattened_action_counts
 from boost_and_broadside.train.batch_processor import BatchProcessor
 
 log = logging.getLogger(__name__)
@@ -74,6 +74,14 @@ class Trainer:
         log.info(f"Action Counts - Power: {counts['power'][:3]}")
         log.info(f"Action Counts - Turn:  {counts['turn'][:7]}")
         log.info(f"Action Counts - Shoot: {counts['shoot'][:2]}")
+        
+        # Flattened Actions Weights
+        counts_f = calculate_flattened_action_counts(data_path)
+        w_flat_full = compute_class_weights(counts_f, cap=w_cap, power=w_pwr)
+        self.w_flat = w_flat_full.to(device, dtype=dtype)
+        self.w_flat = normalize_weights(self.w_flat, counts_f)
+        log.info(f"Action Counts - Flat: {counts_f[:10]}... (first 10)")
+        
         log.info(f"Class Weights - Power: {self.w_power.tolist()}")
         log.info(f"Class Weights - Turn:  {self.w_turn.tolist()}")
         log.info(f"Class Weights - Shoot: {self.w_shoot.tolist()}")
@@ -263,6 +271,7 @@ class Trainer:
                 weights_power=self.w_power,
                 weights_turn=self.w_turn,
                 weights_shoot=self.w_shoot,
+                weights_flat=self.w_flat,
                 target_alive=targets["target_alive"],
                 input_alive=masks["input_alive"],        # Fix H: pass input alive mask
                 min_sigma=self.loss_cfg.get("min_sigma", 0.1),
