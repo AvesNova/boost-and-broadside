@@ -221,11 +221,16 @@ class TensorEnv:
         # Combine Dones (Truncation) for Return
         dones = torch.logical_or(dones, truncated)
         
+        info = {}
+        
         # Auto-Reset Logic
         if dones.any():
+            # Store the state immediately before reset for evaluation
+            info["final_observation"] = {k: v.clone() for k, v in self._get_obs().items()}
+            info["_final_observation"] = dones.clone()
             self._reset_envs(dones)
             
-        return self._get_obs(), rewards, dones, truncated, {}
+        return self._get_obs(), rewards, dones, truncated, info
 
     def _reset_envs(self, env_mask: torch.Tensor, options: Optional[Dict[str, Any]] = None):
         """

@@ -45,33 +45,23 @@ class VectorScriptedAgent:
         world_width, world_height = self.config.world_size
         device = state.device
         
-        # Calculate pairwise differences: pos[target] - pos[source]
-        # pos_targets: (B, 1, N), pos_sources: (B, N, 1) -> (B, N_src, N_tgt)
         pos_targets = state.ship_pos.unsqueeze(1)
         pos_sources = state.ship_pos.unsqueeze(2)
         
         diff = pos_targets - pos_sources
-        
-        # Wrap World Boundaries
         diff.real = (diff.real + world_width / 2) % world_width - world_width / 2
         diff.imag = (diff.imag + world_height / 2) % world_height - world_height / 2
         
         dist = torch.abs(diff)
         
-        # Masking: Different Team AND Alive
         team_src = state.ship_team_id.unsqueeze(2)
         team_tgt = state.ship_team_id.unsqueeze(1)
         enemy_mask = team_src != team_tgt
-        
         alive_tgt = state.ship_alive.unsqueeze(1)
         valid_tgt = enemy_mask & alive_tgt
         
-        # Set invalid distances to infinity so they are not selected
         dist_masked = torch.where(valid_tgt, dist, torch.tensor(float('inf'), device=device))
-        
-        # Find closest target index
         closest_dist, target_idx = torch.min(dist_masked, dim=2)
-        
         has_target = closest_dist < float('inf')
         
         return closest_dist, target_idx, has_target

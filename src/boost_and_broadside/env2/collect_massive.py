@@ -60,7 +60,12 @@ def run_collection(args: CollectionArgs) -> None:
     )
 
     # Initialize Environment
-    env = TensorEnv(args.num_envs, config, device=device)
+    env = TensorEnv(
+        num_envs=args.num_envs,
+        config=config,
+        device=device,
+        max_episode_steps=args.buffer_steps
+    )
     obs = env.reset(seed=args.seed)
 
     # Initialize with low health to ensure episodes finish quickly for verification
@@ -125,23 +130,8 @@ def run_collection(args: CollectionArgs) -> None:
             prev_obs = obs
             obs, rewards, dones, _, _ = env.step(taken_actions)
 
-            # 3. Check for infinite loops (max steps)
-            # If an env exceeds buffer_steps, force its 'dones' to True to trigger reset/capture
-            if (collector.step_counts >= args.buffer_steps).any():
-                over_limit = (collector.step_counts >= args.buffer_steps).to(dones.device)
-                # Inject 'done' into the collector's view for these envs
-                force_dones = dones | over_limit
-                
-                # We ALSO need to reset these in the environment so they don't stay in inf loop
-                if over_limit.any():
-                    env._reset_envs(over_limit)
-                    # Fix K: only update obs for reset envs, preserve obs for active envs
-                    fresh_obs = env._get_obs()
-                    for k in obs:
-                        obs[k] = obs[k].clone()
-                        obs[k][over_limit] = fresh_obs[k][over_limit]
-            else:
-                force_dones = dones
+            # 3. Handle terminations and native truncations
+            force_dones = dones
 
             # 4. Collect Data
             collector.step(

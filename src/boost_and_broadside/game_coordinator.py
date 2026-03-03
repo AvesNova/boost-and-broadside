@@ -292,7 +292,7 @@ class GameCoordinator:
                 self.all_action_masks[ship_id].append(action_masks[ship_id])
 
             # 5. Step the environment
-            obs, rewards, terminated, _, info = self.env.step(actions=actions)
+            obs, rewards, terminated_env, truncated_env, info = self.env.step(actions=actions)
 
             # 6. Record rewards and observations
             for team_id, reward in rewards.items():
@@ -301,11 +301,33 @@ class GameCoordinator:
             self.obs_history.append(obs)
 
             step_count += 1
-            if step_count >= max_episode_length:
-                terminated = True
+            if terminated_env or truncated_env:
+                self.final_obs = info.get("final_observation", obs)
+                terminated = terminated_env
+                truncated = truncated_env
+                break
 
         episode_sim_time = info.get("current_time", 0.0)
-        return episode_sim_time, terminated
+        
+        # Determine winners and win_reason
+        winners = []
+        win_reason = ""
+        alive_teams = self._get_teams_from_obs(self.final_obs)
+        if terminated:
+             # Terminated means someone died
+             if 0 in alive_teams and 1 not in alive_teams:
+                  winners = [0]
+                  win_reason = "Elimination"
+             elif 1 in alive_teams and 0 not in alive_teams:
+                  winners = [1]
+                  win_reason = "Elimination"
+             else:
+                  # Both dead
+                  win_reason = "Mutual Destruction"
+        elif truncated:
+             win_reason = "Time Limit"
+
+        return episode_sim_time, terminated, truncated, step_count, winners, win_reason
 
     def get_features(self) -> dict[str, torch.Tensor]:
         """

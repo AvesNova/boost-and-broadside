@@ -1,9 +1,11 @@
 
 import torch
+import numpy as np
+import dataclasses
 from boost_and_broadside.env2.env import TensorEnv
+from boost_and_broadside.core.config import ShipConfig
 from boost_and_broadside.env2.adapter import tensor_state_to_render_state
 from boost_and_broadside.env2.renderer import GameRenderer
-from boost_and_broadside.core.config import ShipConfig
 
 class TensorEnvWrapper:
     """
@@ -39,22 +41,30 @@ class TensorEnvWrapper:
         self.physics_dt = kwargs.get("physics_dt", 0.015)
         self.num_teams = kwargs.get("num_teams", 2)
         
-        # Create Config
-        self.config = ShipConfig(
-            world_size=tuple(float(x) for x in self.world_size),
-            dt=self.physics_dt,
-            random_speed=kwargs.get("random_speed", False),
-            min_speed=kwargs.get("min_speed", 1.0),
-            max_speed=kwargs.get("max_speed", 180.0),
-            default_speed=kwargs.get("default_speed", 100.0)
-        )
+        # Create Config dynamically from kwargs
+        config_args = {
+            "world_size": tuple(float(x) for x in self.world_size),
+            "dt": self.physics_dt,
+            "random_speed": kwargs.get("random_speed", False),
+            "min_speed": kwargs.get("min_speed", 1.0),
+            "max_speed": kwargs.get("max_speed", 180.0),
+            "default_speed": kwargs.get("default_speed", 100.0)
+        }
+        
+        # Add any other matching keys from kwargs
+        for field in dataclasses.fields(ShipConfig):
+            if field.name not in config_args and field.name in kwargs:
+                config_args[field.name] = kwargs[field.name]
+
+        self.config = ShipConfig(**config_args)
 
         # TensorEnv supports batch_size=1 for single game play
         self.env = TensorEnv(
             num_envs=1,
             config=self.config,
             device=self.device,
-            max_ships=self.max_ships
+            max_ships=self.max_ships,
+            max_episode_steps=kwargs.get("max_episode_steps", 1000)
         )
         
         # Rendering
@@ -186,7 +196,33 @@ class TensorEnvWrapper:
         # 6. Return standard tuple
         obs_dict = self.get_observation()
         
+        if "_final_observation" in info and info["_final_observation"][0]:
+            info["final_observation"] = self._convert_batched_obs(info["final_observation"])
+        
         return obs_dict, rewards, terminated, False, info
+
+    def _convert_batched_obs(self, batched_obs: dict) -> dict:
+        """Converts a batched observation dict from TensorEnv into the legacy format."""
+        batch_idx = 0
+        def to_cpu(tensor):
+            return tensor[batch_idx].detach().cpu()
+            
+        num_ships = self.max_ships
+        
+        return {
+            "ship_id": torch.arange(num_ships),
+            "team_id": to_cpu(batched_obs["team_id"]),
+            "alive": to_cpu(batched_obs["alive"]).long(),
+            "health": to_cpu(batched_obs["health"]).long(),
+            "power": to_cpu(batched_obs["power"]),
+            "position": to_cpu(batched_obs["position"]),
+            "velocity": to_cpu(batched_obs["velocity"]),
+            "acceleration": torch.zeros(num_ships, dtype=torch.complex64),
+            "speed": to_cpu(batched_obs["velocity"]).abs(),
+            "attitude": to_cpu(batched_obs["attitude"]),
+            "angular_velocity": to_cpu(batched_obs["ang_vel"]),
+            "is_shooting": to_cpu(batched_obs["is_shooting"]).long()
+        }
 
     def get_observation(self) -> dict:
         """

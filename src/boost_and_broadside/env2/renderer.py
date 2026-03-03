@@ -104,8 +104,9 @@ class GameRenderer:
         """Process Pygame events and update human actions."""
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
+                import sys
                 self.close()
-                return
+                sys.exit(0)
             elif event.type == pygame.VIDEORESIZE:
                 self.window_width = event.w
                 self.window_height = event.h

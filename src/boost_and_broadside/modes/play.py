@@ -64,6 +64,9 @@ def play(cfg: DictConfig) -> None:
 
     # Set teams for the game
     cfg.collect.teams = ["team1_agent", "team2_agent"]
+    
+    # 2048 steps
+    cfg.collect.max_episode_length = 2048
 
     # Create game coordinator
     coordinator = GameCoordinator(cfg)
@@ -74,10 +77,44 @@ def play(cfg: DictConfig) -> None:
         coordinator.env.add_human_player(0)
         print("Human control enabled for Ship 0")
 
+    import time
+    import pygame # Added import for pygame.time.wait
+
+    blue_wins = 0
+    red_wins = 0
+    ties = 0
+
     try:
-        # Run a single episode
-        coordinator.reset(game_mode="nvn")
-        coordinator.step()
+        while True:
+            # Run a single episode
+            coordinator.reset(game_mode="nvn")
+            time, terminated, truncated, steps, winners, win_reason = coordinator.step()
+            
+            # Use final observation right before the auto-reset
+            final_obs = getattr(coordinator, 'final_obs', coordinator.obs_history[-1])
+            print(f"Final Obs Alive Mask: {final_obs['alive']}")
+            
+            alive_teams = coordinator._get_teams_from_obs(final_obs)
+            
+            if len(winners) == 1 and winners[0] == 0:
+                blue_wins += 1
+                outcome = f"Blue Wins! ({win_reason})"
+            elif len(winners) == 1 and winners[0] == 1:
+                red_wins += 1
+                outcome = f"Red Wins! ({win_reason})"
+            else:
+                ties += 1
+                outcome = f"TIE ({win_reason})"
+            
+            print(f"\nEpisode Finished in {steps} steps ({time:.1f}s): {outcome}")
+            print(f"Alive indices: Blue: {alive_teams.get(0, [])}, Red: {alive_teams.get(1, [])}")
+            print(f"Standings -> Blue: {blue_wins} | Red: {red_wins} | Ties: {ties}\n")
+            
+            print("Restarting next episode in 1 second...")
+            pygame.time.wait(1000)
+            
+            # Re-init pygame since a ship might trigger close if it was closed via GUI
+            # actually we don't want to close between episodes, we just loop.
 
     except KeyboardInterrupt:
         print("\nGame interrupted by user")
