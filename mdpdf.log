@@ -1,0 +1,6 @@
+    INFO: 2026-03-03 13:51:07,501:               log.py:   20: Logging to /home/vizia/avesnova/boost-and-broadside/mdpdf.log
+   DEBUG: 2026-03-03 13:51:07,501:               cli.py:  103: outputs/feature_analysis/report.md
+    INFO: 2026-03-03 13:51:07,502:         converter.py:   14: outputs/feature_analysis/report.md
+   DEBUG: 2026-03-03 13:51:07,507:      pdf_renderer.py:  470: printSegment: Yemong State Feature Analysis Report
+   DEBUG: 2026-03-03 13:51:07,508:      pdf_renderer.py:  470: printSegment: This document was automatically generated to group the feature distribution charts.
+   DEBUG: 2026-03-03 13:51:07,510:      pdf_renderer.py:  470: printSegment: Raw 1D Cartesian Plots

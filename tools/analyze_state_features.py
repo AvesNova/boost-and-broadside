@@ -185,30 +185,49 @@ def load_and_aggregate_features(h5_path: str, max_samples: int = 500_000, world_
         'delta_health': dhealth
     }
     
-    # Compute Semi-Implicit Euler Integration Errors
-    # Assuming dt=1 for internal logic, or adjusting if velocities are natively scaled
-    # Euler: x' = x + v * dt
-    # Error: x_actual' - (x + v * dt)
-    
-    # The actual integration in game engine might be x' = x + vx' * dt
-    # So error based on vx_t vs vx_t1 might vary. We'll test standard Euler: x + vx_t.
-    dt = 1.0 # Or whatever your physics timestep scaling is
-    
+    # Calculate empirical physics clock dynamically (to map error safely into spatial components)
+    valid_speed = speed_t > 1e-2
+    if np.any(valid_speed):
+        dt = np.median(dpos_mag[valid_speed] / speed_t[valid_speed])
+    else:
+        dt = 1.0
+
+    # Compute Semi-Implicit Euler Integration Errors (spatial deviations)
     x_euler = x_t + vx_t * dt
-    euler_error_x = wrap_torus(x_t1 - x_euler, world_size)
-    
     y_euler = y_t + vy_t * dt
+    
+    euler_error_x = wrap_torus(x_t1 - x_euler, world_size)
     euler_error_y = wrap_torus(y_t1 - y_euler, world_size)
     
+    euler_error_x = np.where(np.abs(euler_error_x) < 1e-2, 0.0, euler_error_x)
+    euler_error_y = np.where(np.abs(euler_error_y) < 1e-2, 0.0, euler_error_y)
+    
+    error_mag = np.sqrt(euler_error_x**2 + euler_error_y**2)
+    error_angle = np.arctan2(euler_error_y, euler_error_x)
+    
+    error_x_local = euler_error_x * cos_t + euler_error_y * sin_t
+    error_y_local = -euler_error_x * sin_t + euler_error_y * cos_t
+    
+    error_x_local = np.where(np.abs(error_x_local) < 1e-2, 0.0, error_x_local)
+    error_y_local = np.where(np.abs(error_y_local) < 1e-2, 0.0, error_y_local)
+    error_local_angle = np.arctan2(error_y_local, error_x_local)
+    
     errors = {
-        'euler_error_x': euler_error_x,
-        'euler_error_y': euler_error_y
+        'x': euler_error_x,
+        'y': euler_error_y,
+        'mag': error_mag,
+        'angle': error_angle
+    }
+    errors_local = {
+        'x_local': error_x_local,
+        'y_local': error_y_local,
+        'local_angle': error_local_angle
     }
     
     f.close()
-    return raw_features, deltas, errors
+    return raw_features, deltas, errors, errors_local
 
-def plot_distributions(data_dict, output_dir: Path, prefix: str, log_y: bool = False):
+def plot_distributions(data_dict, output_dir: Path, prefix: str, log_y: bool = False, max_plot_samples: int = 100_000):
     """
     Renders histogram/density plots for a dictionary of 1D numpy arrays.
     """
@@ -218,8 +237,8 @@ def plot_distributions(data_dict, output_dir: Path, prefix: str, log_y: bool = F
         plt.figure(figsize=(10, 6))
         
         # Subsample if extremely large to speed up KDE calculation
-        if len(values) > 100_000:
-            plot_vals = np.random.choice(values, size=100_000, replace=False)
+        if len(values) > max_plot_samples:
+            plot_vals = np.random.choice(values, size=max_plot_samples, replace=False)
         else:
             plot_vals = values
             
@@ -250,7 +269,7 @@ def plot_distributions(data_dict, output_dir: Path, prefix: str, log_y: bool = F
         plt.savefig(save_path, dpi=150)
         plt.close()
 
-def plot_2d_distributions(x_vals, y_vals, output_dir: Path, prefix: str, name_x: str, name_y: str, log_colors: bool = False):
+def plot_2d_distributions(x_vals, y_vals, output_dir: Path, prefix: str, name_x: str, name_y: str, log_colors: bool = False, max_plot_samples: int = 500_000):
     """
     Renders 2D Histogram/Heatmap plots for paired features like (x, y) or (vx, vy).
     """
@@ -258,8 +277,8 @@ def plot_2d_distributions(x_vals, y_vals, output_dir: Path, prefix: str, name_x:
     plt.figure(figsize=(9, 7))
     
     # Subsample if extremely large
-    if len(x_vals) > 500_000:
-        idx = np.random.choice(len(x_vals), size=500_000, replace=False)
+    if len(x_vals) > max_plot_samples:
+        idx = np.random.choice(len(x_vals), size=max_plot_samples, replace=False)
         x_plot, y_plot = x_vals[idx], y_vals[idx]
     else:
         x_plot, y_plot = x_vals, y_vals
@@ -284,7 +303,9 @@ def main():
     parser = argparse.ArgumentParser(description="State Feature Distribution Analyzer")
     parser.add_argument("--data_path", type=str, default="data/bc_pretraining/aggregated_data.h5", help="Path to aggregated setup.")
     parser.add_argument("--out_dir", type=str, default="outputs/feature_analysis", help="Output directory for charts.")
-    parser.add_argument("--samples", type=int, default=1_000_000, help="Max transitions to process.")
+    parser.add_argument("--samples", type=int, default=1_000_000, help="Max transitions to load from dataset.")
+    parser.add_argument("--plot_1d_samples", type=int, default=100_000, help="Max samples to render in 1D density plots.")
+    parser.add_argument("--plot_2d_samples", type=int, default=500_000, help="Max samples to render in 2D Heatmaps.")
     parser.add_argument("--world_size", type=float, default=1024.0, help="World width/height for toroidal space.")
     args = parser.parse_args()
 
@@ -295,39 +316,147 @@ def main():
     print("🚀 Yemong State Feature Analyzer")
     print("=" * 50)
     
-    raw, deltas, errors = load_and_aggregate_features(args.data_path, max_samples=args.samples, world_size=args.world_size)
+    raw, deltas, errors, errors_local = load_and_aggregate_features(args.data_path, max_samples=args.samples, world_size=args.world_size)
     
     if raw is None:
         return
         
     print(f"\nExtracted {len(raw['x'])} valid state records, and {len(deltas['delta_x'])} valid transitions.")
     
-    plot_distributions(raw, out_dir, prefix="raw", log_y=False)
-    plot_distributions(deltas, out_dir, prefix="delta", log_y=True)
-    plot_distributions(errors, out_dir, prefix="integration_error", log_y=True)
+    plot_distributions(raw, out_dir, prefix="raw", log_y=False, max_plot_samples=args.plot_1d_samples)
+    plot_distributions(deltas, out_dir, prefix="delta", log_y=True, max_plot_samples=args.plot_1d_samples)
+    plot_distributions(errors, out_dir, prefix="error", log_y=True, max_plot_samples=args.plot_1d_samples)
+    plot_distributions(errors_local, out_dir, prefix="error_local", log_y=True, max_plot_samples=args.plot_1d_samples)
     
     # 2D Heatmaps
     print("Generating 2D Spatial & Velocity Heatmaps...")
-    plot_2d_distributions(raw['x'], raw['y'], out_dir, prefix="raw", name_x="x", name_y="y", log_colors=False)
-    plot_2d_distributions(raw['vx'], raw['vy'], out_dir, prefix="raw", name_x="vx", name_y="vy", log_colors=True)
-    plot_2d_distributions(deltas['delta_x'], deltas['delta_y'], out_dir, prefix="delta", name_x="delta_x", name_y="delta_y", log_colors=True)
-    plot_2d_distributions(deltas['delta_vx'], deltas['delta_vy'], out_dir, prefix="delta", name_x="delta_vx", name_y="delta_vy", log_colors=True)
+    plot_2d_distributions(raw['x'], raw['y'], out_dir, prefix="raw", name_x="x", name_y="y", log_colors=False, max_plot_samples=args.plot_2d_samples)
+    plot_2d_distributions(raw['vx'], raw['vy'], out_dir, prefix="raw", name_x="vx", name_y="vy", log_colors=True, max_plot_samples=args.plot_2d_samples)
+    plot_2d_distributions(deltas['delta_x'], deltas['delta_y'], out_dir, prefix="delta", name_x="delta_x", name_y="delta_y", log_colors=True, max_plot_samples=args.plot_2d_samples)
+    plot_2d_distributions(deltas['delta_vx'], deltas['delta_vy'], out_dir, prefix="delta", name_x="delta_vx", name_y="delta_vy", log_colors=True, max_plot_samples=args.plot_2d_samples)
     
     print("Generating 2D Spatial & Velocity Heatmaps (Ship Reference Frame)...")
-    plot_2d_distributions(deltas['delta_x_local'], deltas['delta_y_local'], out_dir, prefix="delta_local", name_x="delta_x_local", name_y="delta_y_local", log_colors=True)
-    plot_2d_distributions(deltas['delta_vx_local'], deltas['delta_vy_local'], out_dir, prefix="delta_local", name_x="delta_vx_local", name_y="delta_vy_local", log_colors=True)
+    plot_2d_distributions(deltas['delta_x_local'], deltas['delta_y_local'], out_dir, prefix="delta_local", name_x="delta_x_local", name_y="delta_y_local", log_colors=True, max_plot_samples=args.plot_2d_samples)
+    plot_2d_distributions(deltas['delta_vx_local'], deltas['delta_vy_local'], out_dir, prefix="delta_local", name_x="delta_vx_local", name_y="delta_vy_local", log_colors=True, max_plot_samples=args.plot_2d_samples)
+    
+    # Error Heatmaps
+    print("Generating 2D Error Heatmaps...")
+    plot_2d_distributions(errors['x'], errors['y'], out_dir, prefix="error", name_x="x", name_y="y", log_colors=True, max_plot_samples=args.plot_2d_samples)
+    plot_2d_distributions(errors_local['x_local'], errors_local['y_local'], out_dir, prefix="error_local", name_x="x_local", name_y="y_local", log_colors=True, max_plot_samples=args.plot_2d_samples)
     
     # Angle vs Radius (Magnitude) Polar Heatmaps
     print("Generating 2D Polar (Angle vs Radius) Heatmaps...")
-    plot_2d_distributions(raw['angle'], raw['speed'], out_dir, prefix="polar", name_x="vel_angle", name_y="vel_magnitude", log_colors=True)
-    plot_2d_distributions(deltas['delta_pos_angle'], deltas['delta_pos_mag'], out_dir, prefix="polar", name_x="dpos_angle", name_y="dpos_magnitude", log_colors=True)
-    plot_2d_distributions(deltas['delta_vel_angle'], deltas['delta_vel_mag'], out_dir, prefix="polar", name_x="dvel_angle", name_y="dvel_magnitude", log_colors=True)
+    plot_2d_distributions(raw['angle'], raw['speed'], out_dir, prefix="polar", name_x="vel_angle", name_y="vel_magnitude", log_colors=True, max_plot_samples=args.plot_2d_samples)
+    plot_2d_distributions(deltas['delta_pos_angle'], deltas['delta_pos_mag'], out_dir, prefix="polar", name_x="dpos_angle", name_y="dpos_magnitude", log_colors=True, max_plot_samples=args.plot_2d_samples)
+    plot_2d_distributions(deltas['delta_vel_angle'], deltas['delta_vel_mag'], out_dir, prefix="polar", name_x="dvel_angle", name_y="dvel_magnitude", log_colors=True, max_plot_samples=args.plot_2d_samples)
+    plot_2d_distributions(errors['angle'], errors['mag'], out_dir, prefix="error_polar", name_x="angle", name_y="mag", log_colors=True, max_plot_samples=args.plot_2d_samples)
     
     print("Generating 2D Polar Heatmaps (Ship Reference Frame)...")
-    plot_2d_distributions(deltas['delta_pos_local_angle'], deltas['delta_pos_mag'], out_dir, prefix="polar_local", name_x="dpos_local_angle", name_y="dpos_magnitude", log_colors=True)
-    plot_2d_distributions(deltas['delta_vel_local_angle'], deltas['delta_vel_mag'], out_dir, prefix="polar_local", name_x="dvel_local_angle", name_y="dvel_magnitude", log_colors=True)
+    plot_2d_distributions(deltas['delta_pos_local_angle'], deltas['delta_pos_mag'], out_dir, prefix="polar_local", name_x="dpos_local_angle", name_y="dpos_magnitude", log_colors=True, max_plot_samples=args.plot_2d_samples)
+    plot_2d_distributions(deltas['delta_vel_local_angle'], deltas['delta_vel_mag'], out_dir, prefix="polar_local", name_x="dvel_local_angle", name_y="dvel_magnitude", log_colors=True, max_plot_samples=args.plot_2d_samples)
+    plot_2d_distributions(errors_local['local_angle'], errors['mag'], out_dir, prefix="error_polar_local", name_x="local_angle", name_y="mag", log_colors=True, max_plot_samples=args.plot_2d_samples)
+    
+    # Generate Markdown Report
+    print("Generating Markdown Plot Report...")
+    generate_markdown_report(out_dir)
     
     print(f"\n✅ All distribution plots saved to {out_dir.absolute()}")
 
+def generate_markdown_report(out_dir: Path):
+    import glob
+    
+    def get_images(pattern: str, exclude_patterns: list = None):
+        files = glob.glob(str(out_dir / pattern))
+        if exclude_patterns:
+            for exc in exclude_patterns:
+                exc_files = glob.glob(str(out_dir / exc))
+                files = [f for f in files if f not in exc_files]
+        return sorted([Path(f).name for f in files])
+        
+    sections = [
+        ("Raw 1D Cartesian Plots", get_images("raw_*.png", exclude_patterns=["raw_2D_*.png"])),
+        ("Raw 2D Spatial & Velocity Heatmaps", get_images("raw_2D_*.png")),
+        
+        ("Global Delta 1D Cartesian Plots", get_images("delta_*.png", exclude_patterns=["delta_2D_*.png", "delta_local_*.png"])),
+        ("Global Delta 2D Spatial & Velocity Heatmaps", get_images("delta_2D_*.png")),
+        
+        ("Local Delta (Ship Frame) 1D Cartesian Plots", get_images("delta_local_*.png", exclude_patterns=["delta_local_2D_*.png"])),
+        ("Local Delta (Ship Frame) 2D Spatial & Velocity Heatmaps", get_images("delta_local_2D_*.png")),
+        
+        ("Global Polar Heatmaps (Angle vs Radius)", get_images("polar_2D_*.png")),
+        ("Local Polar Heatmaps (Ship Frame)", get_images("polar_local_2D_*.png")),
+        
+        ("Global Integration Error 1D Plots", get_images("error_*.png", exclude_patterns=["error_2D_*.png", "error_local_*.png", "error_polar_*.png"])),
+        ("Global Integration Error 2D Heatmaps", get_images("error_2D_*.png")),
+        
+        ("Local Integration Error (Ship Frame) 1D", get_images("error_local_*.png", exclude_patterns=["error_local_2D_*.png"])),
+        ("Local Integration Error (Ship Frame) 2D", get_images("error_local_2D_*.png")),
+        
+        ("Global Polar Error Heatmaps", get_images("error_polar_2D_*.png")),
+        ("Local Polar Error Heatmaps (Ship Frame)", get_images("error_polar_local_2D_*.png"))
+    ]
+    
+    css_path = out_dir / "report.css"
+    with open(css_path, 'w') as f:
+        f.write("""
+@page { size: A4 portrait; margin: 1cm; }
+body { font-family: sans-serif; }
+table { width: 100%; table-layout: fixed; border-collapse: collapse; page-break-inside: avoid; }
+td { width: 50%; padding: 5px; text-align: center; vertical-align: middle; }
+img { max-width: 100%; max-height: 290px; object-fit: contain; }
+.page-break { page-break-before: always; }
+h2 { text-align: center; font-size: 20px; margin-bottom: 20px; }
+code { font-size: 11px; word-wrap: break-word; }
+        """)
+
+    report_path = out_dir / "report.md"
+    with open(report_path, 'w') as f:
+        f.write("# Yemong State Feature Analysis Report\n\n")
+        f.write("This document was automatically generated to group the feature distribution charts.\n\n")
+        
+        first_page = True
+        for title, images in sections:
+            if not images:
+                continue
+                
+            chunk_size = 6
+            for chunk_idx in range(0, len(images), chunk_size):
+                page_images = images[chunk_idx:chunk_idx+chunk_size]
+                
+                if not first_page:
+                    f.write("<div class='page-break'></div>\n\n")
+                first_page = False
+                
+                if chunk_idx == 0:
+                    f.write(f"## {title}\n\n")
+                else:
+                    f.write(f"## {title} (Continued)\n\n")
+                
+                f.write("<table>\n")
+                for i in range(0, len(page_images), 2):
+                    f.write("<tr>\n")
+                    img1 = page_images[i]
+                    f.write(f"<td><img src='{img1}'><br><code>{img1}</code></td>\n")
+                    
+                    if i + 1 < len(page_images):
+                        img2 = page_images[i+1]
+                        f.write(f"<td><img src='{img2}'><br><code>{img2}</code></td>\n")
+                    else:
+                        f.write("<td></td>\n")
+                    f.write("</tr>\n")
+                f.write("</table>\n\n")
+
+    # Generate PDF Report
+    try:
+        from md2pdf.core import md2pdf
+        pdf_path = out_dir / "report.pdf"
+        print("Converting Markdown Report to PDF...")
+        md2pdf(pdf_path, md=report_path, css=css_path, base_url=out_dir)
+        print(f"✅ PDF Report saved to {pdf_path.absolute()}")
+    except ImportError:
+        print("⚠️ 'md2pdf' not found. Skipping PDF generation. Install with 'uv add md2pdf'.")
+    except Exception as e:
+        print(f"⚠️ Failed to generate PDF: {e}")
+                
 if __name__ == "__main__":
     main()

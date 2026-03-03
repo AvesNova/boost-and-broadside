@@ -15,6 +15,7 @@ dependencies = [
     "ipython>=9.6.0",
     "mamba-ssm>=2.3.0",
     "matplotlib>=3.10.7",
+    "md2pdf>=3.1.0",
     "omegaconf>=2.3.0",
     "pacmap>=0.8.0",
     "pygame>=2.6.1",
