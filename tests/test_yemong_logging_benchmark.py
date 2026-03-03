@@ -92,8 +92,6 @@ def test_logging_benchmark():
     
     # Verification of Keys
     print("Keys in return dict:", out.keys())
-    
-    return avg_time
 
 if __name__ == "__main__":
     test_logging_benchmark()

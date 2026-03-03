@@ -280,6 +280,14 @@ class RewardLoss(LossModule):
         if target_rew.ndim == 2: 
              target_rew = target_rew.unsqueeze(-1)
              
+        if pred_rew.shape[-1] > 1 and target_rew.shape[-1] == 1:
+             # If predicting components but given a scalar target, supervise the sum of predictions
+             pred_rew = pred_rew.sum(dim=-1, keepdim=True)
+             is_vector_reward = False
+             num_components = 1
+        elif target_rew.shape[-1] > 1 and pred_rew.shape[-1] == 1:
+             target_rew = target_rew.sum(dim=-1, keepdim=True)
+             
         # Flatten for MSE
         # pred: (B, T, K) -> (B*T, K)
         # mask: (B, T) or (B, T, N) -> need team/global mask (B, T, 1)

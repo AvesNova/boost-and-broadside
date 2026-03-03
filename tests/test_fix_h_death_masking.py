@@ -68,7 +68,7 @@ def test_fix_h_already_dead_ships_still_masked():
 
     # Loss from 3 ships only (ship 0 masked)
     expected = mse_with_mask(pred, target, input_alive)
-    assert torch.allclose(torch.tensor(loss), torch.tensor(expected)), \
+    assert torch.allclose(torch.as_tensor(loss).clone().detach(), torch.as_tensor(expected).clone().detach()), \
         "Already-dead ships should be masked from loss"
 
 

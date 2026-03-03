@@ -149,5 +149,5 @@ def test_fixed_loss_computation(mamba_config):
     assert total_loss >= expected_part
     
     # Allow some tolerance for float math
-    assert torch.isclose(total_loss, torch.tensor(expected_part), atol=1e-3) or total_loss > expected_part
+    assert torch.isclose(total_loss, expected_part.clone().detach(), atol=1e-3) or total_loss > expected_part
 

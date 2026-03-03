@@ -125,6 +125,7 @@ def run_collection(args: CollectionArgs) -> None:
                     # Fix K: only update obs for reset envs, preserve obs for active envs
                     fresh_obs = env._get_obs()
                     for k in obs:
+                        obs[k] = obs[k].clone()
                         obs[k][over_limit] = fresh_obs[k][over_limit]
             else:
                 force_dones = dones
