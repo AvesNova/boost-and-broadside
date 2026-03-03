@@ -14,26 +14,17 @@ class StochasticScriptedAgent:
         self.ship_config = ship_config
         self.config = agent_config
         
-    def _linear_ramp(self, x: torch.Tensor, low: float, high: float, invert: bool = False) -> torch.Tensor:
+    def _linear_ramp(self, x: torch.Tensor, low: float, high: float, prob_lo: float, prob_hi: float) -> torch.Tensor:
         """
-        Maps x through a piecewise linear ramp [low, high] -> [0, 1].
-        If invert is True, maps [low, high] -> [1, 0].
-        Values outside [low, high] are clamped to 0 or 1.
+        Maps x linearly from [low, high] to [prob_lo, prob_hi], clamped.
+        prob_lo is the output probability when x <= low.
+        prob_hi is the output probability when x >= high.
+        For an inverted ramp, pass prob_lo=1.0, prob_hi=0.0.
         """
-        # Avoid division by zero
         if high == low:
-            # Step function
-            prob = torch.where(x >= low, 1.0, 0.0)
-            if invert:
-                return 1.0 - prob
-            return prob
-            
-        prob = (x - low) / (high - low)
-        prob = torch.clamp(prob, 0.0, 1.0)
-        
-        if invert:
-            return 1.0 - prob
-        return prob
+            return torch.full_like(x, prob_lo)
+        t = torch.clamp((x - low) / (high - low), 0.0, 1.0)
+        return prob_lo + t * (prob_hi - prob_lo)
         
     def _prob_or(self, p_a: torch.Tensor, p_b: torch.Tensor) -> torch.Tensor:
         """Independent OR logic: P(A or B) = P(A) + P(B) - P(A)*P(B)"""
@@ -100,8 +91,8 @@ class StochasticScriptedAgent:
         
         # --- 1. Turn Probabilities (7 options) ---
         # Options: Straight=0, L=1, R=2, Sharp L=3, Sharp R=4, AirBrake=5, Sharp AirBrake=6
-        p_needs_turn = self._linear_ramp(abs_angle, self.config.turn_angle_ramp[0], self.config.turn_angle_ramp[1])
-        p_is_sharp = self._linear_ramp(abs_angle, self.config.sharp_turn_angle_ramp[0], self.config.sharp_turn_angle_ramp[1])
+        p_needs_turn = self._linear_ramp(abs_angle, self.config.turn_angle_ramp[0], self.config.turn_angle_ramp[1], *self.config.turn_angle_prob)
+        p_is_sharp = self._linear_ramp(abs_angle, self.config.sharp_turn_angle_ramp[0], self.config.sharp_turn_angle_ramp[1], *self.config.sharp_turn_angle_prob)
         
         # Determine direction logic (deterministic boundary on 0 for direction, since it's symmetric)
         p_dir_right = torch.where(rel_angle > 0, 1.0, 0.0)
@@ -139,18 +130,19 @@ class StochasticScriptedAgent:
         speed = state.ship_vel.abs()
         power_ratio = state.ship_power / self.ship_config.max_power
         
-        # Reverse reason: close to target (invert so low dist = 1.0 prob)
-        p_is_close = self._linear_ramp(closest_dist, self.config.close_range_ramp[0], self.config.close_range_ramp[1], invert=True)
+        # Reverse reason: close to target
+        p_is_close = self._linear_ramp(closest_dist, self.config.close_range_ramp[0], self.config.close_range_ramp[1], *self.config.close_range_prob)
         p_reverse = p_is_close
         
         # Boost reasons: moving too slow OR far away with power
-        p_slow = self._linear_ramp(speed, self.config.boost_speed_ramp[0], self.config.boost_speed_ramp[1], invert=True)
+        p_slow = self._linear_ramp(speed, self.config.boost_speed_ramp[0], self.config.boost_speed_ramp[1], *self.config.boost_speed_prob)
         
-        # "far away and have power": old logic was want_boost = power_ratio > 0.9 * (1.0 - closest_dist/max_range)
-        # We can make a ramp based on this metric: M = power_ratio - (1.0 - closest_dist/max_range). If M > 0, boost.
-        boost_metric = power_ratio - (1.0 - closest_dist / self.config.max_shooting_range)
-        # Ramp from M=-0.2 to M=0.2 (arbitrary spread for the old deterministic boundary at 0)
-        p_far_power = self._linear_ramp(boost_metric, -0.2, 0.2)
+        # "far away and have power": metric M = power_ratio - (1 - dist/max_range). If M > 0, boost.
+        # max_range is implicitly the end of the shoot distance ramp.
+        max_shooting_range = self.config.shoot_distance_ramp[1]
+        boost_metric = power_ratio - (1.0 - closest_dist / max_shooting_range)
+        # Ramp from M=-0.2 to M=0.2 (spread around the deterministic boundary at 0)
+        p_far_power = self._linear_ramp(boost_metric, -0.2, 0.2, 0.0, 1.0)
         
         p_want_boost = self._prob_or(p_slow, p_far_power)
         
@@ -171,18 +163,17 @@ class StochasticScriptedAgent:
         
         # --- 3. Shoot Probabilities (2 options) ---
         # Options: No Shoot=0, Shoot=1
-        target_angular_size = 2.0 * torch.atan(self.config.target_radius / (closest_dist + 1e-8))
-        shoot_threshold = self.config.radius_multiplier * target_angular_size
-        shoot_threshold = torch.clamp(shoot_threshold, np.deg2rad(1.0), np.deg2rad(45.0))
         
-        # Alignment prob
-        angle_ratio = abs_angle / shoot_threshold
-        p_aligned = self._linear_ramp(angle_ratio, self.config.shoot_angle_multiplier_ramp[0], self.config.shoot_angle_multiplier_ramp[1], invert=True)
+        # Alignment: use apparent angular size of target based on its collision radius.
+        target_angular_size = 2.0 * torch.atan(self.ship_config.collision_radius / (closest_dist + 1e-8))
+        shoot_threshold = torch.clamp(target_angular_size, np.deg2rad(1.0), np.deg2rad(45.0))
         
-        # Distance prob
-        max_dist = self.config.max_shooting_range * torch.sqrt(power_ratio + 1e-8)
-        dist_ratio = closest_dist / (max_dist + 1e-8)
-        p_in_range = self._linear_ramp(dist_ratio, self.config.shoot_distance_ramp[0], self.config.shoot_distance_ramp[1], invert=True)
+        # Alignment prob: ramp over ratio = abs_angle / threshold
+        angle_ratio = abs_angle / (shoot_threshold + 1e-8)
+        p_aligned = self._linear_ramp(angle_ratio, self.config.shoot_angle_ramp[0], self.config.shoot_angle_ramp[1], *self.config.shoot_angle_prob)
+        
+        # Distance prob: direct world-unit distances
+        p_in_range = self._linear_ramp(closest_dist, self.config.shoot_distance_ramp[0], self.config.shoot_distance_ramp[1], *self.config.shoot_distance_prob)
         
         p_shoot = self._prob_and(p_aligned, p_in_range)
         p_no_shoot = 1.0 - p_shoot

@@ -16,7 +16,6 @@ This project uses `uv` for dependency management.
 # Install dependencies
 uv sync
 ```
-
 > **IMPORTANT FOR AI AGENTS**: Always use `uv run --no-sync` instead of `uv run` when executing Python commands or scripts in this project. Using `uv run` without `--no-sync` performs a lockfile sync on startup which causes the command to be sent to the background, making output invisible to the agent.
 
 ### Playing the Game
@@ -25,7 +24,7 @@ Run the game in play mode to watch agents compete or play yourself.
 
 ```powershell
 # Watch a match (Scripted vs Scripted)
-uv run main.py mode=play team1=scripted team2=scripted
+uv run main.py mode=play team1=scripted team2=stochastic_scripted
 
 # Watch World Model Agents
 uv run main.py mode=play team1=most_recent_world_model team2=most_recent_world_model
