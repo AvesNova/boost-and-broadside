@@ -79,7 +79,8 @@ class GameCoordinator:
         self.obs_history: list[dict] = []
         # Initialize other attributes to satisfy type checkers
         self.all_actions: dict[int, list[torch.Tensor]] = {}
-        self.all_expert_actions: dict[int, list[torch.Tensor]] = {} # New: Save expert actions
+        self.all_expert_actions: dict[int, list[torch.Tensor]] = {} 
+        self.all_expert_action_probs: dict[int, list[torch.Tensor]] = {} # New: Save expert probs
         self.all_action_masks: dict[int, list[float]] = {}
         self.all_rewards: dict[int, list[float]] = {}
         
@@ -114,6 +115,9 @@ class GameCoordinator:
             ship_id: [] for ship_id in range(self.config.environment.max_ships)
         }
         self.all_expert_actions = {
+            ship_id: [] for ship_id in range(self.config.environment.max_ships)
+        }
+        self.all_expert_action_probs = {
             ship_id: [] for ship_id in range(self.config.environment.max_ships)
         }
         self.all_action_masks = {
@@ -221,13 +225,17 @@ class GameCoordinator:
             # 2. Get actions from agents for their respective teams
             # Expert actions
             team_actions = {}
+            team_action_probs = {}
             for team_id, ship_ids in teams.items():
                 agent = self.agents[team_names[team_id]]
-                if isinstance(agent, VectorScriptedAgent):
-                    # VectorScriptedAgent expects a TensorState (B, N)
+                if isinstance(agent, VectorScriptedAgent) or agent.__class__.__name__ == "StochasticScriptedAgent":
                     # We can use our env wrapper to get a TensorState or construct one
                     # self.env.state is a TensorState in the coordinator wrapper
-                    raw_actions = agent.get_actions(self.env.state) # (B, N, 3)
+                    if hasattr(agent, "get_actions_and_probs"):
+                        raw_actions, raw_probs = agent.get_actions_and_probs(self.env.state)
+                    else:
+                        raw_actions = agent.get_actions(self.env.state) # (B, N, 3)
+                        raw_probs = None
                     
                     # Convert to dict for the rest of GameCoordinator logic
                     # We are in a single environment here (B=1)
@@ -235,21 +243,31 @@ class GameCoordinator:
                         ship_id: raw_actions[0, ship_id]
                         for ship_id in ship_ids
                     }
+                    if raw_probs is not None:
+                        team_action_probs[team_id] = {
+                            ship_id: raw_probs[0, ship_id]
+                            for ship_id in ship_ids
+                        }
                 else:
                     team_actions[team_id] = agent(self.obs_history[-1], ship_ids)
 
             # 3. Apply Sticky/Random Logic
             actions = {}
             expert_actions_dict = {}
+            expert_action_probs_dict = {}
             action_masks = {}
 
             for team_id, ship_ids in teams.items():
                 ship_actions_expert = team_actions[team_id]
+                ship_action_probs_expert = team_action_probs.get(team_id, {})
                 skill_level = self.team_skills.get(team_id, 1.0)
                 
                 for ship_id in ship_ids:
                     expert_tensor = ship_actions_expert[ship_id]
                     expert_actions_dict[ship_id] = expert_tensor.to(dtype=torch.uint8)
+                    
+                    if ship_id in ship_action_probs_expert:
+                        expert_action_probs_dict[ship_id] = ship_action_probs_expert[ship_id]
                     
                     # Update Sticky State
                     sticky_state = self.sticky_states[ship_id]
@@ -269,6 +287,8 @@ class GameCoordinator:
             for ship_id, action in actions.items():
                 self.all_actions[ship_id].append(action)
                 self.all_expert_actions[ship_id].append(expert_actions_dict[ship_id])
+                if ship_id in expert_action_probs_dict:
+                    self.all_expert_action_probs[ship_id].append(expert_action_probs_dict[ship_id])
                 self.all_action_masks[ship_id].append(action_masks[ship_id])
 
             # 5. Step the environment

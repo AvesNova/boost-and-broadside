@@ -78,9 +78,10 @@ class TestShortView:
         dataset = UnifiedEpisodeDataset(str(h5_path))
         view = ShortView(dataset, list(range(len(episode_lengths))), seq_len=32)
 
-        batch_tokens, batch_input_actions, batch_target_actions, batch_returns, batch_rewards, loss_mask, batch_masks, _, _, _ = view[
-            0
-        ]
+        item = view[0]
+        batch_tokens = item["states"]
+        batch_input_actions = item["actions"]
+        loss_mask = item["loss_mask"]
 
         assert batch_tokens.shape[0] == 32
         assert batch_input_actions.shape[0] == 32
@@ -120,9 +121,10 @@ class TestLongView:
             dataset, list(range(len(episode_lengths))), seq_len=128, warmup_len=32
         )
 
-        batch_tokens, batch_input_actions, batch_target_actions, batch_returns, batch_rewards, loss_mask, batch_masks, _, _, _ = view[
-            0
-        ]
+        item = view[0]
+        batch_tokens = item["states"]
+        batch_input_actions = item["actions"]
+        loss_mask = item["loss_mask"]
 
         assert batch_tokens.shape[0] == 128
         assert batch_input_actions.shape[0] == 128

@@ -38,7 +38,7 @@ def test_collect_massive_pipeline(tmp_path):
         assert "actions" in f
         assert "rewards" in f
         assert "returns" in f
-        assert "expert_actions" in f
+        assert "expert_action_probs" in f
         assert "agent_skills" in f
         
         # Check shapes

@@ -263,16 +263,23 @@ class BaseView(Dataset):
             # Previous action exists
             return self.dataset.get_slice("actions", abs_start - 1, abs_end - 1)
             
-    def _get_target_actions(self, abs_start: int, abs_end: int) -> torch.Tensor:
+    def _get_target_actions(self, abs_start: int, abs_end: int) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
         Helper to extract target actions (Current timestep).
         Target at time t is ExpertAction_{t}.
+        Returns (target_actions, expert_action_probs).
         """
+        probs = None
+        if self.dataset.has_dataset("expert_action_probs"):
+            probs = self.dataset.get_slice("expert_action_probs", abs_start, abs_end)
+            
         if self.dataset.has_dataset("expert_actions"):
-            return self.dataset.get_slice("expert_actions", abs_start, abs_end)
+            actions = self.dataset.get_slice("expert_actions", abs_start, abs_end)
         else:
             # Fallback to standard actions if expert actions not available
-            return self.dataset.get_slice("actions", abs_start, abs_end)
+            actions = self.dataset.get_slice("actions", abs_start, abs_end)
+            
+        return actions, probs
 
     def _get_shifted_masks_from_full(
         self, abs_start: int, abs_end: int, start_offset: int
@@ -324,7 +331,7 @@ class ShortView(BaseView):
         seq_input_actions = self._get_shifted_actions_from_full(
             abs_start, abs_end, start_offset
         )
-        seq_target_actions = self._get_target_actions(abs_start, abs_end)
+        seq_target_actions, seq_expert_probs = self._get_target_actions(abs_start, abs_end)
         
         # Convert to long if they are uint8 (byte)
         if seq_input_actions.dtype == torch.uint8:
@@ -384,6 +391,12 @@ class ShortView(BaseView):
                 pad_len, *seq_target_actions.shape[1:], dtype=seq_target_actions.dtype
             )
             seq_target_actions = torch.cat([seq_target_actions, target_action_pad], dim=0)
+            
+            if seq_expert_probs is not None:
+                prob_pad = torch.zeros(
+                    pad_len, *seq_expert_probs.shape[1:], dtype=seq_expert_probs.dtype
+                )
+                seq_expert_probs = torch.cat([seq_expert_probs, prob_pad], dim=0)
 
             # Pad masks
             mask_pad = torch.ones(pad_len, *seq_masks.shape[1:], dtype=seq_masks.dtype)
@@ -416,18 +429,19 @@ class ShortView(BaseView):
         else:
             loss_mask = torch.ones(self.seq_len, dtype=torch.bool)
 
-        return (
-            seq_tokens,
-            seq_input_actions,
-            seq_target_actions, 
-            seq_returns,
-            seq_rewards,
-            loss_mask,
-            seq_masks,
-            seq_skills,
-            seq_team_ids,
-            seq_pos,
-        )
+        return {
+            "states": seq_tokens,
+            "actions": seq_input_actions, # input
+            "target_actions": seq_target_actions, 
+            "expert_action_probs": seq_expert_probs if seq_expert_probs is not None else torch.empty(0),
+            "returns": seq_returns,
+            "rewards": seq_rewards,
+            "loss_mask": loss_mask,
+            "action_masks": seq_masks,
+            "agent_skills": seq_skills,
+            "team_ids": seq_team_ids,
+            "pos": seq_pos,
+        }
 
 
 class LongView(BaseView):
@@ -463,7 +477,7 @@ class LongView(BaseView):
         seq_input_actions = self._get_shifted_actions_from_full(
             abs_start, abs_end, start_offset
         )
-        seq_target_actions = self._get_target_actions(abs_start, abs_end)
+        seq_target_actions, seq_expert_probs = self._get_target_actions(abs_start, abs_end)
         
         # Convert to long
         if seq_input_actions.dtype == torch.uint8:
@@ -505,16 +519,17 @@ class LongView(BaseView):
         loss_mask = torch.ones(self.seq_len, dtype=torch.bool)
         loss_mask[: self.warmup_len] = False
 
-        return (
-            seq_tokens,
-            seq_input_actions,
-            seq_target_actions,
-            seq_returns,
-            seq_rewards,
-            loss_mask,
-            seq_masks,
-            seq_skills,
-            seq_team_ids,
-            seq_pos,
-        )
+        return {
+            "states": seq_tokens,
+            "actions": seq_input_actions, # input
+            "target_actions": seq_target_actions,
+            "expert_action_probs": seq_expert_probs if seq_expert_probs is not None else torch.empty(0),
+            "returns": seq_returns,
+            "rewards": seq_rewards,
+            "loss_mask": loss_mask,
+            "action_masks": seq_masks,
+            "agent_skills": seq_skills,
+            "team_ids": seq_team_ids,
+            "pos": seq_pos,
+        }
 

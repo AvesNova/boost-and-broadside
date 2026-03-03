@@ -32,6 +32,14 @@ class ContinuousView(BaseView):
         # 1. Fetch Data
         tokens = self.dataset.get_cross_episode_slice("tokens", global_start, self.seq_len)
         actions = self.dataset.get_cross_episode_slice("actions", global_start, self.seq_len)
+        
+        target_actions = actions
+        if self.dataset.has_dataset("expert_actions"):
+            target_actions = self.dataset.get_cross_episode_slice("expert_actions", global_start, self.seq_len)
+            
+        expert_action_probs = None
+        if self.dataset.has_dataset("expert_action_probs"):
+            expert_action_probs = self.dataset.get_cross_episode_slice("expert_action_probs", global_start, self.seq_len)
         episode_ids = self.dataset.get_cross_episode_slice("episode_ids", global_start, self.seq_len)
         
         if self.dataset.has_dataset("team_ids"):
@@ -78,7 +86,9 @@ class ContinuousView(BaseView):
 
         return {
             "states": tokens,
-            "actions": actions,
+            "actions": actions, # we should probably shift this as in BaseView if MambaBB actually expects shifted, but legacy says no?
+            "target_actions": target_actions,
+            "expert_action_probs": expert_action_probs if expert_action_probs is not None else torch.empty(0),
             "team_ids": team_ids,
             "seq_idx": seq_idx,
             "reset_mask": reset_mask,

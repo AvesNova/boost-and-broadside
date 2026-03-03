@@ -10,6 +10,8 @@ from .replay import ReplayAgent
 from .dummy import DummyAgent
 from .random_agent import RandomAgent
 from boost_and_broadside.env2.agents.scripted import VectorScriptedAgent
+from boost_and_broadside.env2.agents.stochastic_scripted import StochasticScriptedAgent
+from boost_and_broadside.env2.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.utils.model_finder import find_most_recent_model, find_best_model
 
 log = logging.getLogger(__name__)
@@ -100,6 +102,22 @@ def create_agent(agent_type: str, agent_config: dict) -> nn.Module:
             filtered_config = {k: v for k, v in agent_config.items() if k in valid_params}
             ship_cfg = ShipConfig(**filtered_config)
             return VectorScriptedAgent(ship_cfg)
+        case "stochastic_scripted":
+            from boost_and_broadside.core.config import ShipConfig
+            import inspect
+            # Extract ship config
+            sig_ship = inspect.signature(ShipConfig.__init__)
+            valid_ship_params = set(sig_ship.parameters.keys())
+            ship_cfg_dict = {k: v for k, v in agent_config.items() if k in valid_ship_params}
+            ship_cfg = ShipConfig(**ship_cfg_dict)
+            
+            # Extract stochastic config
+            sig_stoch = inspect.signature(StochasticAgentConfig.__init__)
+            valid_stoch_params = set(sig_stoch.parameters.keys())
+            stoch_cfg_dict = {k: v for k, v in agent_config.items() if k in valid_stoch_params}
+            stoch_cfg = StochasticAgentConfig(**stoch_cfg_dict)
+            
+            return StochasticScriptedAgent(ship_cfg, stoch_cfg)
         case "replay_agent":
             return ReplayAgent(**agent_config)
         case "dummy":

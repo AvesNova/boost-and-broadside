@@ -107,6 +107,15 @@ class AsyncCollector:
         self.save_interval = save_interval
         self.max_steps = max_steps
 
+        # Determine size of probabilties
+        # 42 if flat, 12 if marginal. Since we don't strictly know here, we can parameterize it or just use 42 as max and pad.
+        # It's cleaner to accept prob_dim. Defaulting to 12.
+        self.prob_dim = 12
+        if total_steps is not None:
+             # Just a hack if we pass flat_action_sampling info in kwargs later. We'll default to 42 to be safe for memory, or dynamically resize.
+             # Actually, we can just allocate 42 and only use what's passed.
+             self.prob_dim = 42
+
         # Pinned CPU buffers for current episodes (pre-allocated)
         buffer_shape = (num_envs, self.max_steps, max_ships)
         self.pos_buffer = torch.zeros((*buffer_shape, 2), dtype=torch.float32, pin_memory=True)
@@ -121,8 +130,8 @@ class AsyncCollector:
         self.team_buffer = torch.zeros(buffer_shape, dtype=torch.uint8, pin_memory=True)
 
         self.action_buffer = torch.zeros((*buffer_shape, 3), dtype=torch.uint8, pin_memory=True)
-        self.expert_action_buffer = torch.zeros(
-            (*buffer_shape, 3), dtype=torch.uint8, pin_memory=True
+        self.expert_action_probs_buffer = torch.zeros(
+            (*buffer_shape, self.prob_dim), dtype=torch.float32, pin_memory=True
         )
         self.reward_buffer = torch.zeros(buffer_shape, dtype=torch.float32, pin_memory=True)
         self.skill_buffer = torch.zeros(buffer_shape, dtype=torch.float32, pin_memory=True)
@@ -186,7 +195,7 @@ class AsyncCollector:
 
             # --- Standard Datasets ---
             create_feature_ds("actions", (self.max_ships, 3), "u1", (self.max_ships, 3))
-            create_feature_ds("expert_actions", (self.max_ships, 3), "u1", (self.max_ships, 3))
+            create_feature_ds("expert_action_probs", (self.max_ships, self.prob_dim), "f4", (self.max_ships, self.prob_dim))
             h5_file.create_dataset(
                 "episode_ids",
                 (init_size,),
@@ -255,8 +264,11 @@ class AsyncCollector:
         # Grow if necessary (if pre-allocation was smaller or not used)
         if h5_file["actions"].shape[0] < target_size:
             for key in ["position", "velocity", "health", "power", "attitude", "ang_vel", 
-                        "is_shooting", "team_ids", "actions", "expert_actions", "rewards", 
+                        "is_shooting", "team_ids", "actions", "expert_action_probs", "rewards", 
                         "returns", "episode_ids", "agent_skills", "action_masks"]:
+                # Correctly resize based on new prob_dim if it changed dynamically
+                if key == "expert_action_probs" and h5_file[key].shape[2] != self.prob_dim:
+                    pass # HDF5 doesn't easily resize secondary dims, we assume 42 is max
                 h5_file[key].resize((target_size, *h5_file[key].shape[1:]))
 
         h5_file["episode_lengths"].resize((current_episodes + len(batch),))
@@ -274,14 +286,28 @@ class AsyncCollector:
                 return np.ones((total_new_steps, self.max_ships), dtype=bool)
             elif key == "agent_skills":
                 return np.concatenate([item.get("agent_skills", torch.ones((item["length"], self.max_ships))) for item in batch], axis=0)
-            elif key == "expert_actions":
-                return np.concatenate([item.get("expert_actions", item["actions"]) for item in batch], axis=0)
+            elif key == "expert_action_probs":
+                # Handle dynamic prob dims in batch matching
+                probs_list = []
+                for item in batch:
+                    probs = item.get("expert_action_probs")
+                    if probs is None: # Fallback generating one-hot from actions
+                        acts = item["actions"] # (T, N, 3)
+                        # We don't know if 12 or 42 is expected, default to zeros
+                        probs = np.zeros((acts.shape[0], acts.shape[1], h5_file[key].shape[2]), dtype=np.float32)
+                    elif probs.shape[-1] != h5_file[key].shape[2]:
+                        # Pad if needed (e.g. got 12 but dataset is 42)
+                        padded = np.zeros((probs.shape[0], probs.shape[1], h5_file[key].shape[2]), dtype=np.float32)
+                        padded[..., :probs.shape[-1]] = probs
+                        probs = padded
+                    probs_list.append(probs)
+                return np.concatenate(probs_list, axis=0)
             else:
                 return np.concatenate([item[key] for item in batch], axis=0)
 
         # Write each field in one call
         for key in ["position", "velocity", "health", "power", "attitude", "ang_vel", 
-                    "is_shooting", "team_ids", "actions", "expert_actions", "rewards", 
+                    "is_shooting", "team_ids", "actions", "expert_action_probs", "rewards", 
                     "returns", "episode_ids", "agent_skills", "action_masks"]:
             h5_file[key][current_size:target_size] = aggregate(key)
 
@@ -299,6 +325,7 @@ class AsyncCollector:
         rewards: torch.Tensor,
         dones: torch.Tensor,
         expert_actions: Optional[torch.Tensor] = None,
+        expert_action_probs: Optional[torch.Tensor] = None,
         agent_skills: Optional[torch.Tensor] = None,
     ):
         """Records a single step of data from all environments.
@@ -308,7 +335,7 @@ class AsyncCollector:
             actions: Actions taken at time T.
             rewards: Rewards received.
             dones: Termination flag.
-            expert_actions: (Optional) Optimal actions.
+            expert_action_probs: (Optional) Action probabilities from expert.
             agent_skills: (Optional) Skill levels for each ship.
         """
         # Deconstruct Obs
@@ -343,10 +370,11 @@ class AsyncCollector:
         cpu_actions = actions.to("cpu", dtype=torch.uint8, non_blocking=True)
         cpu_rewards = rewards.to("cpu", non_blocking=True)
 
-        if expert_actions is not None:
-            cpu_expert = expert_actions.to("cpu", dtype=torch.uint8, non_blocking=True)
+        if expert_action_probs is not None:
+            cpu_expert_probs = expert_action_probs.to("cpu", dtype=torch.float32, non_blocking=True)
+            self.prob_dim = cpu_expert_probs.shape[-1]
         else:
-            cpu_expert = cpu_actions
+            cpu_expert_probs = torch.zeros((num_envs, self.max_ships, self.prob_dim), dtype=torch.float32)
 
         if agent_skills is not None:
             cpu_skills = agent_skills.to("cpu", dtype=torch.float32, non_blocking=True)
@@ -369,7 +397,15 @@ class AsyncCollector:
         self.team_buffer[indices, write_steps] = cpu_team
 
         self.action_buffer[indices, write_steps] = cpu_actions
-        self.expert_action_buffer[indices, write_steps] = cpu_expert
+        # Make sure shapes match
+        if cpu_expert_probs.shape[-1] != self.expert_action_probs_buffer.shape[-1]:
+             # Reallocate if we got it wrong initially
+             self.expert_action_probs_buffer = torch.zeros(
+                (self.num_envs, self.max_steps, self.max_ships, cpu_expert_probs.shape[-1]), 
+                dtype=torch.float32, pin_memory=True
+             )
+        self.expert_action_probs_buffer[indices, write_steps] = cpu_expert_probs
+        
         self.reward_buffer[indices, write_steps] = cpu_rewards
         self.skill_buffer[indices, write_steps] = cpu_skills
 
@@ -404,7 +440,7 @@ class AsyncCollector:
                 "is_shooting": self.is_shooting_buffer[env_idx, :length].clone(),
                 "team_ids": self.team_buffer[env_idx, :length].clone(),
                 "actions": self.action_buffer[env_idx, :length].clone(),
-                "expert_actions": self.expert_action_buffer[env_idx, :length].clone(),
+                "expert_action_probs": self.expert_action_probs_buffer[env_idx, :length].clone(),
                 "rewards": self.reward_buffer[env_idx, :length].clone(),
                 "agent_skills": self.skill_buffer[env_idx, :length].clone(),
                 "returns": self._compute_returns(

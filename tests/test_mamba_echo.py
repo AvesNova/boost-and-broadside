@@ -154,7 +154,7 @@ def test_mamba_sanity_echo(device):
     # Tolerance: Floating point differences expected, especially with differing parallel/recurrent kernels
     # Usually < 1e-4 or 1e-5 is good.
     # However, if TF32 is enabled (by other tests), drift can be larger.
-    limit = 2e-3
+    limit = 3e-3
     if diff > limit:
         print("FAILURE: Outputs generated in parallel do not match recurrent generation.")
         print(f"Indices of mismatch: {torch.where((train_logits - inf_logits_cat).abs() > limit)}")

@@ -137,8 +137,12 @@ class VectorStickyAgent:
                 - expert_actions: Optimal actions (B, N, 3).
                 - skills: Skill levels (B, N).
         """
-        # 1. Get Expert Actions
-        expert_actions = self.agent.get_actions(state)  # (B, N, 3)
+        # 1. Get Expert Actions and optionally Probs
+        expert_action_probs = None
+        if hasattr(self.agent, "get_actions_and_probs"):
+             expert_actions, expert_action_probs = self.agent.get_actions_and_probs(state)
+        else:
+             expert_actions = self.agent.get_actions(state)  # (B, N, 3)
 
         # 2. Decrement Timers
         self.timers -= 1
@@ -174,5 +178,8 @@ class VectorStickyAgent:
         random_mask = ~self.is_expert_mode
         taken_actions[random_mask] = self.sticky_values[random_mask]
 
+        if expert_action_probs is not None:
+             return taken_actions, expert_actions, self.skills.squeeze(-1), expert_action_probs
+             
         return taken_actions, expert_actions, self.skills.squeeze(-1)
 

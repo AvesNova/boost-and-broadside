@@ -106,7 +106,20 @@ def run_collection(args: CollectionArgs) -> None:
         last_reported_steps = 0
         while collector.total_transitions_completed < args.total_steps:
             # 1. Compute Actions
-            taken_actions, expert_actions, skills = agent.get_actions(env.state)
+            expert_action_probs = None
+            if hasattr(agent, "get_actions"):
+                # Sticky agent return signature: taken_actions, expert_actions, skills, [expert_action_probs]
+                outs = agent.get_actions(env.state)
+                taken_actions = outs[0]
+                expert_actions = outs[1]
+                skills = outs[2]
+                if len(outs) > 3:
+                     expert_action_probs = outs[3]
+            else:
+                 # Fallback
+                 taken_actions = agent(env.state)
+                 expert_actions = taken_actions
+                 skills = torch.ones_like(taken_actions[..., 0]).float()
 
             # 2. Step Environment
             prev_obs = obs
@@ -137,6 +150,7 @@ def run_collection(args: CollectionArgs) -> None:
                 rewards,
                 force_dones,
                 expert_actions=expert_actions,
+                expert_action_probs=expert_action_probs,
                 agent_skills=skills,
             )
 

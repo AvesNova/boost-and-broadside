@@ -136,22 +136,35 @@ class ActionLoss(LossModule):
         
         pred_actions = preds.get("actions")
         target_actions = targets.get("actions")
+        expert_action_probs = targets.get("expert_action_probs")
         
-        if pred_actions is None or target_actions is None:
+        if pred_actions is None or (target_actions is None and expert_action_probs is None):
              return {"loss": torch.tensor(0.0, device=mask.device), "action_loss": torch.tensor(0.0, device=mask.device)}
 
         mask_flat = mask.reshape(-1).float()
         denom = mask_flat.sum() + 1e-6
         
         l_p, l_t, l_s = pred_actions[..., 0:3], pred_actions[..., 3:10], pred_actions[..., 10:12]
-        # Targets: (B, T, N, 3) -> slice
-        t_p = target_actions[..., 0].long().clamp(0, 2)
-        t_t = target_actions[..., 1].long().clamp(0, 6)
-        t_s = target_actions[..., 2].long().clamp(0, 1)
         
-        a_loss_p = (F.cross_entropy(l_p.reshape(-1, 3), t_p.reshape(-1), weight=weights_power, reduction='none') * mask_flat).sum() / denom / math.log(3)
-        a_loss_t = (F.cross_entropy(l_t.reshape(-1, 7), t_t.reshape(-1), weight=weights_turn, reduction='none') * mask_flat).sum() / denom / math.log(7)
-        a_loss_s = (F.cross_entropy(l_s.reshape(-1, 2), t_s.reshape(-1), weight=weights_shoot, reduction='none') * mask_flat).sum() / denom / math.log(2)
+        if expert_action_probs is not None:
+             # Soft targets using probabilities (3, 7, 2 = 12 dim)
+             t_p_probs = expert_action_probs[..., 0:3]
+             t_t_probs = expert_action_probs[..., 3:10]
+             t_s_probs = expert_action_probs[..., 10:12]
+             
+             # cross_entropy supports soft labels (probabilities) directly in PyTorch when targets match pred shape
+             a_loss_p = (F.cross_entropy(l_p.reshape(-1, 3), t_p_probs.reshape(-1, 3), weight=weights_power, reduction='none') * mask_flat).sum() / denom / math.log(3)
+             a_loss_t = (F.cross_entropy(l_t.reshape(-1, 7), t_t_probs.reshape(-1, 7), weight=weights_turn, reduction='none') * mask_flat).sum() / denom / math.log(7)
+             a_loss_s = (F.cross_entropy(l_s.reshape(-1, 2), t_s_probs.reshape(-1, 2), weight=weights_shoot, reduction='none') * mask_flat).sum() / denom / math.log(2)
+        else:
+             # Hard targets using action indices
+             t_p = target_actions[..., 0].long().clamp(0, 2)
+             t_t = target_actions[..., 1].long().clamp(0, 6)
+             t_s = target_actions[..., 2].long().clamp(0, 1)
+             
+             a_loss_p = (F.cross_entropy(l_p.reshape(-1, 3), t_p.reshape(-1), weight=weights_power, reduction='none') * mask_flat).sum() / denom / math.log(3)
+             a_loss_t = (F.cross_entropy(l_t.reshape(-1, 7), t_t.reshape(-1), weight=weights_turn, reduction='none') * mask_flat).sum() / denom / math.log(7)
+             a_loss_s = (F.cross_entropy(l_s.reshape(-1, 2), t_s.reshape(-1), weight=weights_shoot, reduction='none') * mask_flat).sum() / denom / math.log(2)
         
         a_loss = a_loss_p + a_loss_t + a_loss_s
         
@@ -175,27 +188,33 @@ class FlattenedActionLoss(LossModule):
         
         pred_actions = preds.get("actions")
         target_actions = targets.get("actions")
+        expert_action_probs = targets.get("expert_action_probs")
         
-        if pred_actions is None or target_actions is None:
+        if pred_actions is None or (target_actions is None and expert_action_probs is None):
              return {"loss": torch.tensor(0.0, device=mask.device), "action_loss": torch.tensor(0.0, device=mask.device)}
 
         mask_flat = mask.reshape(-1).float()
         denom = mask_flat.sum() + 1e-6
         
-        # Ensure target is 1D flat index
-        if target_actions.shape[-1] == 3:
-            t_flat = target_actions[..., 0].long().clamp(0, 2) * (NUM_TURN_ACTIONS * NUM_SHOOT_ACTIONS) + \
-                     target_actions[..., 1].long().clamp(0, 6) * NUM_SHOOT_ACTIONS + \
-                     target_actions[..., 2].long().clamp(0, 1)
-        else:
-            t_flat = target_actions.long().squeeze(-1)
-            
-        t_flat = t_flat.clamp(0, NUM_FLATTENED_ACTIONS-1)
-        
         # pred_actions should be (..., NUM_FLATTENED_ACTIONS)
         l_f = pred_actions
         
-        a_loss = (F.cross_entropy(l_f.reshape(-1, NUM_FLATTENED_ACTIONS), t_flat.reshape(-1), weight=weights_flat, reduction='none') * mask_flat).sum() / denom / math.log(NUM_FLATTENED_ACTIONS)
+        if expert_action_probs is not None and expert_action_probs.shape[-1] == NUM_FLATTENED_ACTIONS:
+             # Soft targets using 42-dim probabilities vector
+             t_probs_flat = expert_action_probs.reshape(-1, NUM_FLATTENED_ACTIONS)
+             a_loss = (F.cross_entropy(l_f.reshape(-1, NUM_FLATTENED_ACTIONS), t_probs_flat, weight=weights_flat, reduction='none') * mask_flat).sum() / denom / math.log(NUM_FLATTENED_ACTIONS)
+        else:
+             # Ensure target is 1D flat index
+             if target_actions.shape[-1] == 3:
+                 t_flat = target_actions[..., 0].long().clamp(0, 2) * (NUM_TURN_ACTIONS * NUM_SHOOT_ACTIONS) + \
+                          target_actions[..., 1].long().clamp(0, 6) * NUM_SHOOT_ACTIONS + \
+                          target_actions[..., 2].long().clamp(0, 1)
+             else:
+                 t_flat = target_actions.long().squeeze(-1)
+                 
+             t_flat = t_flat.clamp(0, NUM_FLATTENED_ACTIONS-1)
+             
+             a_loss = (F.cross_entropy(l_f.reshape(-1, NUM_FLATTENED_ACTIONS), t_flat.reshape(-1), weight=weights_flat, reduction='none') * mask_flat).sum() / denom / math.log(NUM_FLATTENED_ACTIONS)
         
         logs = {
             "action_loss": a_loss.detach(),
