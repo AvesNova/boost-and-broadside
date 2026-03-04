@@ -35,6 +35,7 @@ uv run main.py mode=play human_player=true
 
 **Supported Agents**:
 *   `scripted`: Rule-based expert agent.
+*   `stochastic_scripted`: Parameterized expert agent developed for evolutionary tuning.
 *   `most_recent_world_model`: Latest trained World Model (Yemong).
 *   `best_world_model`: Best performing World Model based on validation loss.
 *   `most_recent_rl`: Latest RL agent (PPO).
@@ -46,8 +47,8 @@ uv run main.py mode=play human_player=true
     *   **`core/`**: Core types, constants, and utilities.
     *   **`env2/`**: Vectorized (GPU) game environment.
     *   **`models/`**: Neural network architectures (Yemong, Heads, Encoders).
-    *   **`modes/`**: Entry points (`play`, `collect`, `train`, `pretrain`).
-    *   **`train/`**: Training pipelines.
+    *   **`modes/`**: Entry points (`play`, `collect`, `train`, `pretrain`, `train_rl`, `train_evolve`).
+    *   **`train/`**: Training pipelines (`rl`, `pretrain`, `evolve`).
 *   **`tools/`**: Utility scripts for data inspection, visualization, and debugging.
 *   **`configs/`**: Hydra configuration files.
 *   **`tests/`**: Unit and integration tests.
@@ -108,6 +109,9 @@ uv run main.py mode=pretrain model=yemong_dynamics
 
 # Train Interleaved Dynamics Model (State/Action Sequence)
 uv run main.py mode=pretrain model=yemong_interleaved
+
+# Train Evolutionary Optimizer for Stochastic Agents (GPU batched)
+uv run main.py mode=train_evolve
 
 # Full Pipeline: Collect Data -> Train World Model
 uv run main.py mode=train train.run_collect=true train.run_world_model=true

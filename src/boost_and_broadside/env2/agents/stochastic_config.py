@@ -50,27 +50,27 @@ class StochasticAgentConfig:
     prob_offset: float = 0.1
 
     # Power Ramps
-    boost_speed_ramp: Tuple[float, float] = (20.0, 40.0)
-    boost_speed_prob: Tuple[float, float] = (1.0 - prob_offset, prob_offset)
+    boost_speed_ramp: Tuple[float, float] = (16, 32)
+    boost_speed_prob: Tuple[float, float] = (0.68, 0.04)
 
-    close_range_ramp: Tuple[float, float] = (30.0, 50.0)
-    close_range_prob: Tuple[float, float] = (1.0 - prob_offset, prob_offset)
+    close_range_ramp: Tuple[float, float] = (300, 500)
+    close_range_prob: Tuple[float, float] = (0.067, 0.95)
 
     # Turn Ramps
-    turn_angle_ramp: Tuple[float, float] = (np.deg2rad(2.0), np.deg2rad(5.0))
-    turn_angle_prob: Tuple[float, float] = (prob_offset, 1.0 - prob_offset)
+    turn_angle_ramp: Tuple[float, float] = (0.03, 0.12)
+    turn_angle_prob: Tuple[float, float] = (0.068, 0.95)
 
-    sharp_turn_angle_ramp: Tuple[float, float] = (np.deg2rad(10.0), np.deg2rad(20.0))
-    sharp_turn_angle_prob: Tuple[float, float] = (prob_offset, 1.0 - prob_offset)
+    sharp_turn_angle_ramp: Tuple[float, float] = (0.24, 0.42)
+    sharp_turn_angle_prob: Tuple[float, float] = (0.05, 0.95)
 
     # Shoot Ramps
     # Angle: ratio = abs_angle / shoot_threshold (threshold derived from ShipConfig.collision_radius)
-    shoot_angle_ramp: Tuple[float, float] = (0.8, 1.2)
-    shoot_angle_prob: Tuple[float, float] = (1.0 - prob_offset, prob_offset)
+    shoot_angle_ramp: Tuple[float, float] = (1.0, 1.5)
+    shoot_angle_prob: Tuple[float, float] = (0.95, 0.05)
 
     # Distance: direct world-unit distances
-    shoot_distance_ramp: Tuple[float, float] = (200.0, 400.0)
-    shoot_distance_prob: Tuple[float, float] = (1.0 - prob_offset, prob_offset)
+    shoot_distance_ramp: Tuple[float, float] = (200, 500)
+    shoot_distance_prob: Tuple[float, float] = (0.95, 0.05)
 
     # ---------------------------------------------------------------------------
     # Flat-vector interface for hyperparameter search

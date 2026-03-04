@@ -1,0 +1,11 @@
+# configs/train/evolve.yaml
+pop_size: 100
+num_elites: 10
+matches_per_agent: 10
+alpha_buchholz: 0.5
+mutation_prob: 0.041666666666  # roughly 1/24
+mutation_std: 0.05
+macro_crossover_prob: 0.10
+micro_crossover_prob: 0.05
+num_generations: 100
+max_episode_steps: 1024

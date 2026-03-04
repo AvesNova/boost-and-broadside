@@ -20,6 +20,8 @@ from boost_and_broadside.train.pretrain import pretrain
 from boost_and_broadside.eval.eval_world_model import eval_world_model
 
 
+from boost_and_broadside.modes.train_evolve import train_evolve
+
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def my_app(cfg: DictConfig) -> None:
     match cfg.mode:
@@ -35,11 +37,13 @@ def my_app(cfg: DictConfig) -> None:
             pretrain(cfg)
         case "train_rl":
             train_rl(cfg)
+        case "train_evolve":
+            train_evolve(cfg)
         case "eval_wm":
             eval_world_model(cfg)
         case _:
             raise TypeError(
-                f"Mode should be one of [play, collect, train, pretrain, eval_wm]. You used: {cfg.mode}"
+                f"Mode should be one of [play, collect, train, pretrain, train_rl, train_evolve, eval_wm]. You used: {cfg.mode}"
             )
 
 

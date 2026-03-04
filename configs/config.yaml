@@ -120,6 +120,15 @@ train:
   num_workers: 4
   learning_rate: 3.5e-5
   gradient_accumulation_steps: 8
+  
+  evolve:
+    pop_size: 256
+    matches_per_eval: 64
+    num_elites: 32
+    mutation_std: 0.05
+    num_generations: 100
+    max_episode_steps: 512
+    shared_parameters: true
 
 # Model specific overrides come from defaults list 'model' group.
 # See configs/model/*.yaml
