@@ -227,7 +227,7 @@ def load_and_aggregate_features(h5_path: str, max_samples: int = 500_000, world_
     f.close()
     return raw_features, deltas, errors, errors_local
 
-def apply_symlog(arr, linthresh=1e-2):
+def apply_symlog(arr, linthresh=1):
     """
     Applies a smooth symmetric logarithm based on log10.
     Useful for mapping speeds, deltas, and multi-scale variables safely across zero.

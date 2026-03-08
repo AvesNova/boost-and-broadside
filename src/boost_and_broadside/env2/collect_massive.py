@@ -68,8 +68,6 @@ def run_collection(args: CollectionArgs) -> None:
     )
     obs = env.reset(seed=args.seed)
 
-    # Initialize with low health to ensure episodes finish quickly for verification
-    env.state.ship_health[:] = 10.0
 
     # Initialize Agent
     base_agent = VectorScriptedAgent(config)
