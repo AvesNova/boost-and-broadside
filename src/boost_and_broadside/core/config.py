@@ -49,6 +49,10 @@ class ShipConfig:
     boost_thrust: float = 80.0
     reverse_thrust: float = -10.0
     
+    # Gravity Dynamics
+    gravity_factor: float = 10.0
+    gravity_eps: float = 10000.0
+    
     # Power Dynamics
     base_power_gain: float = 10.0
     boost_power_gain: float = -40.0

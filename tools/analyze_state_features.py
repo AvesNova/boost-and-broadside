@@ -227,6 +227,26 @@ def load_and_aggregate_features(h5_path: str, max_samples: int = 500_000, world_
     f.close()
     return raw_features, deltas, errors, errors_local
 
+def apply_symlog(arr, linthresh=1e-2):
+    """
+    Applies a smooth symmetric logarithm based on log10.
+    Useful for mapping speeds, deltas, and multi-scale variables safely across zero.
+    """
+    return np.sign(arr) * np.log10(1.0 + np.abs(arr) / linthresh)
+
+def generate_symlog_data(data_dict):
+    """
+    Creates a mapped dictionary with symlog applied to appropriate features.
+    Leaves absolute locations, angles, and health points unmodified.
+    """
+    out = {}
+    for k, v in data_dict.items():
+        if 'angle' in k or k in ['x', 'y', 'health']:
+            out[k] = v
+        else:
+            out[k] = apply_symlog(v)
+    return out
+
 def plot_distributions(data_dict, output_dir: Path, prefix: str, log_y: bool = False, max_plot_samples: int = 100_000):
     """
     Renders histogram/density plots for a dictionary of 1D numpy arrays.
@@ -356,20 +376,58 @@ def main():
     plot_2d_distributions(deltas['delta_vel_local_angle'], deltas['delta_vel_mag'], out_dir, prefix="polar_local", name_x="dvel_local_angle", name_y="dvel_magnitude", log_colors=True, max_plot_samples=args.plot_2d_samples)
     plot_2d_distributions(errors_local['local_angle'], errors['mag'], out_dir, prefix="error_polar_local", name_x="local_angle", name_y="mag", log_colors=True, max_plot_samples=args.plot_2d_samples)
     
-    # Generate Markdown Report
+    # Generate Original Markdown Report
     print("Generating Markdown Plot Report...")
-    generate_markdown_report(out_dir)
+    generate_markdown_report(out_dir, report_filename="report.md", prefix="", title="Yemong State Feature Analysis Report")
     
+    # Generate Symlog Plots
+    print("\n" + "=" * 50)
+    print("Generating Symlog Distributions (this may take a moment)...")
+    sym_raw = generate_symlog_data(raw)
+    sym_deltas = generate_symlog_data(deltas)
+    sym_errors = generate_symlog_data(errors)
+    sym_errors_local = generate_symlog_data(errors_local)
+
+    plot_distributions(sym_raw, out_dir, prefix="symlog_raw", log_y=False, max_plot_samples=args.plot_1d_samples)
+    plot_distributions(sym_deltas, out_dir, prefix="symlog_delta", log_y=True, max_plot_samples=args.plot_1d_samples)
+    plot_distributions(sym_errors, out_dir, prefix="symlog_error", log_y=True, max_plot_samples=args.plot_1d_samples)
+    plot_distributions(sym_errors_local, out_dir, prefix="symlog_error_local", log_y=True, max_plot_samples=args.plot_1d_samples)
+    
+    print("Generating Symlog 2D Heatmaps...")
+    plot_2d_distributions(sym_raw['x'], sym_raw['y'], out_dir, prefix="symlog_raw", name_x="x", name_y="y", log_colors=False, max_plot_samples=args.plot_2d_samples)
+    plot_2d_distributions(sym_raw['vx'], sym_raw['vy'], out_dir, prefix="symlog_raw", name_x="vx", name_y="vy", log_colors=True, max_plot_samples=args.plot_2d_samples)
+    plot_2d_distributions(sym_deltas['delta_x'], sym_deltas['delta_y'], out_dir, prefix="symlog_delta", name_x="delta_x", name_y="delta_y", log_colors=True, max_plot_samples=args.plot_2d_samples)
+    plot_2d_distributions(sym_deltas['delta_vx'], sym_deltas['delta_vy'], out_dir, prefix="symlog_delta", name_x="delta_vx", name_y="delta_vy", log_colors=True, max_plot_samples=args.plot_2d_samples)
+    
+    plot_2d_distributions(sym_deltas['delta_x_local'], sym_deltas['delta_y_local'], out_dir, prefix="symlog_delta_local", name_x="delta_x_local", name_y="delta_y_local", log_colors=True, max_plot_samples=args.plot_2d_samples)
+    plot_2d_distributions(sym_deltas['delta_vx_local'], sym_deltas['delta_vy_local'], out_dir, prefix="symlog_delta_local", name_x="delta_vx_local", name_y="delta_vy_local", log_colors=True, max_plot_samples=args.plot_2d_samples)
+
+    plot_2d_distributions(sym_errors['x'], sym_errors['y'], out_dir, prefix="symlog_error", name_x="x", name_y="y", log_colors=True, max_plot_samples=args.plot_2d_samples)
+    plot_2d_distributions(sym_errors_local['x_local'], sym_errors_local['y_local'], out_dir, prefix="symlog_error_local", name_x="x_local", name_y="y_local", log_colors=True, max_plot_samples=args.plot_2d_samples)
+    
+    print("Generating Symlog Polar Heatmaps...")
+    plot_2d_distributions(sym_raw['angle'], sym_raw['speed'], out_dir, prefix="symlog_polar", name_x="vel_angle", name_y="vel_magnitude", log_colors=True, max_plot_samples=args.plot_2d_samples)
+    plot_2d_distributions(sym_deltas['delta_pos_angle'], sym_deltas['delta_pos_mag'], out_dir, prefix="symlog_polar", name_x="dpos_angle", name_y="dpos_magnitude", log_colors=True, max_plot_samples=args.plot_2d_samples)
+    plot_2d_distributions(sym_deltas['delta_vel_angle'], sym_deltas['delta_vel_mag'], out_dir, prefix="symlog_polar", name_x="dvel_angle", name_y="dvel_magnitude", log_colors=True, max_plot_samples=args.plot_2d_samples)
+    plot_2d_distributions(sym_errors['angle'], sym_errors['mag'], out_dir, prefix="symlog_error_polar", name_x="angle", name_y="mag", log_colors=True, max_plot_samples=args.plot_2d_samples)
+    
+    plot_2d_distributions(sym_deltas['delta_pos_local_angle'], sym_deltas['delta_pos_mag'], out_dir, prefix="symlog_polar_local", name_x="dpos_local_angle", name_y="dpos_magnitude", log_colors=True, max_plot_samples=args.plot_2d_samples)
+    plot_2d_distributions(sym_deltas['delta_vel_local_angle'], sym_deltas['delta_vel_mag'], out_dir, prefix="symlog_polar_local", name_x="dvel_local_angle", name_y="dvel_magnitude", log_colors=True, max_plot_samples=args.plot_2d_samples)
+    plot_2d_distributions(sym_errors_local['local_angle'], sym_errors['mag'], out_dir, prefix="symlog_error_polar_local", name_x="local_angle", name_y="mag", log_colors=True, max_plot_samples=args.plot_2d_samples)
+
+    print("Generating Symlog Markdown Plot Report...")
+    generate_markdown_report(out_dir, report_filename="report_symlog.md", prefix="symlog_", title="Yemong State Feature Analysis Report (Symlog Normalized)")
+
     print(f"\n✅ All distribution plots saved to {out_dir.absolute()}")
 
-def generate_markdown_report(out_dir: Path):
+def generate_markdown_report(out_dir: Path, report_filename="report.md", prefix="", title="Yemong State Feature Analysis Report"):
     import glob
     
     def get_images(pattern: str, exclude_patterns: list = None):
-        files = glob.glob(str(out_dir / pattern))
+        files = glob.glob(str(out_dir / f"{prefix}{pattern}"))
         if exclude_patterns:
             for exc in exclude_patterns:
-                exc_files = glob.glob(str(out_dir / exc))
+                exc_files = glob.glob(str(out_dir / f"{prefix}{exc}"))
                 files = [f for f in files if f not in exc_files]
         return sorted([Path(f).name for f in files])
         
@@ -409,9 +467,9 @@ h2 { text-align: center; font-size: 20px; margin-bottom: 20px; }
 code { font-size: 11px; word-wrap: break-word; }
         """)
 
-    report_path = out_dir / "report.md"
+    report_path = out_dir / report_filename
     with open(report_path, 'w') as f:
-        f.write("# Yemong State Feature Analysis Report\n\n")
+        f.write(f"# {title}\n\n")
         f.write("This document was automatically generated to group the feature distribution charts.\n\n")
         
         first_page = True
@@ -449,8 +507,8 @@ code { font-size: 11px; word-wrap: break-word; }
     # Generate PDF Report
     try:
         from md2pdf.core import md2pdf
-        pdf_path = out_dir / "report.pdf"
-        print("Converting Markdown Report to PDF...")
+        pdf_path = out_dir / report_filename.replace('.md', '.pdf')
+        print(f"Converting Markdown Report '{report_filename}' to PDF...")
         md2pdf(pdf_path, md=report_path, css=css_path, base_url=out_dir)
         print(f"✅ PDF Report saved to {pdf_path.absolute()}")
     except ImportError:

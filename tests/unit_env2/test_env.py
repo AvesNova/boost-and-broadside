@@ -64,3 +64,35 @@ def test_step_mechanics(device):
     # Check positions changed (velocity is initialized to 100)
     assert torch.abs(env.state.ship_vel).mean() > 0
 
+
+def test_gravity_force(device):
+    """Test that gravity pulls ships together."""
+    from boost_and_broadside.core.config import ShipConfig
+    config = ShipConfig(gravity_factor=1000.0, gravity_eps=1.0)
+    env = TensorEnv(num_envs=1, config=config, device=device, max_ships=2)
+    env.reset(options={"team_sizes": (1, 1)})
+    
+    # Position them
+    env.state.ship_pos[0, 0] = 500 + 500j
+    env.state.ship_pos[0, 1] = 520 + 500j
+    
+    # Give them speed to activate gravity
+    env.state.ship_vel[0, 0] = 100j
+    env.state.ship_vel[0, 1] = 100j
+    env.state.ship_attitude[0, 0] = 1j
+    env.state.ship_attitude[0, 1] = 1j
+    
+    initial_vel_0 = env.state.ship_vel[0, 0].clone()
+    initial_vel_1 = env.state.ship_vel[0, 1].clone()
+    
+    actions = torch.zeros((1, 2, 3), dtype=torch.long, device=device)
+    env.step(actions)
+    
+    # Ship 0 should be pulled towards ship 1 (positive X direction)
+    # Ship 1 should be pulled towards ship 0 (negative X direction)
+    
+    vel_0 = env.state.ship_vel[0, 0]
+    vel_1 = env.state.ship_vel[0, 1]
+    
+    assert vel_0.real > initial_vel_0.real, f"Ship 0 didn't pull right: {vel_0}"
+    assert vel_1.real < initial_vel_1.real, f"Ship 1 didn't pull left: {vel_1}"

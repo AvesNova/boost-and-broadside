@@ -117,7 +117,37 @@ def _update_kinematics(state: TensorState, actions: torch.Tensor, config: ShipCo
     lift_vector = state.ship_vel * 1j
     lift_force = lift_coeff * speed * lift_vector
     
-    total_force = thrust_force + drag_force + lift_force
+    # Pairwise gravity force
+    batch_size, num_ships = state.ship_pos.shape
+    world_width, world_height = config.world_size
+    
+    # Diff vector from ship i to ship j. shape: (B, N_i, N_j)
+    diff = state.ship_pos.unsqueeze(1) - state.ship_pos.unsqueeze(2) 
+    diff.real = (diff.real + world_width / 2) % world_width - world_width / 2
+    diff.imag = (diff.imag + world_height / 2) % world_height - world_height / 2
+    
+    dist_sq = diff.real**2 + diff.imag**2
+    dist = torch.sqrt(dist_sq)
+    
+    speed_i = speed.unsqueeze(2)
+    speed_j = speed.unsqueeze(1)
+
+    def symlog(x):
+        return torch.sign(x) * torch.log(torch.abs(x) + 1)
+
+    force_mag = config.gravity_factor * config.gravity_eps * symlog(speed_i * speed_j) / (dist_sq + config.gravity_eps)
+    force_dir = diff / torch.clamp(dist, min=1e-6)
+    
+    force_vec = force_mag * force_dir
+    
+    alive_mask = state.ship_alive.unsqueeze(2) & state.ship_alive.unsqueeze(1)
+    self_mask = torch.eye(num_ships, device=device, dtype=torch.bool).unsqueeze(0)
+    valid_mask = alive_mask & ~self_mask
+    
+    force_vec = torch.where(valid_mask, force_vec, torch.zeros_like(force_vec))
+    gravity_force = force_vec.sum(dim=2)
+    
+    total_force = thrust_force + drag_force + lift_force + gravity_force
     
     # Update Kinematics
     accel = total_force
