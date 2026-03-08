@@ -276,8 +276,8 @@ class TestSoftBinnedStateLoss:
 
     def test_weight_scaling(self):
         B, T, N = 2, 4, 3
-        loss_a = SoftBinnedStateLoss(weight=1.0).set_specs(INTERLEAVED_SOFT_BIN_SPECS)
-        loss_b = SoftBinnedStateLoss(weight=2.0).set_specs(INTERLEAVED_SOFT_BIN_SPECS)
+        loss_a = SoftBinnedStateLoss(lambda_state=1.0, lambda_value=1.0, lambda_reward=1.0).set_specs(INTERLEAVED_SOFT_BIN_SPECS)
+        loss_b = SoftBinnedStateLoss(lambda_state=2.0, lambda_value=2.0, lambda_reward=2.0).set_specs(INTERLEAVED_SOFT_BIN_SPECS)
         logits, tgts = self._make_logits_and_targets(B, T, N)
         preds = {"soft_bin_logits": logits}
         targets = {"soft_bin_targets": tgts}
@@ -285,6 +285,7 @@ class TestSoftBinnedStateLoss:
         la = loss_a(preds, targets, mask)["loss"]
         lb = loss_b(preds, targets, mask)["loss"]
         assert lb.item() == pytest.approx(2.0 * la.item(), rel=1e-5)
+
 
 
 # ---------------------------------------------------------------------------

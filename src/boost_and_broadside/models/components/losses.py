@@ -370,25 +370,41 @@ class PairwiseRelationalLoss(LossModule):
 
 class SoftBinnedStateLoss(LossModule):
     """
-    Soft-binned categorical prediction loss.
+    Soft-binned categorical prediction loss with proper per-bin-count normalisation.
+
+    Each field's CE is divided by log(n_bins) so that a maximally-uncertain
+    (uniform) prediction yields loss ≈ 1.0 regardless of bin count.
+
+    Fields are grouped into three types:
+      - state  : per-ship specs that are not team-level (health, power, pos/vel
+                  angle and magnitude).  Averaged across the group.
+      - value  : the team-level "value" spec.
+      - reward : the team-level "reward" spec.
+
+    Final loss = lambda_state * mean(state fields)
+               + lambda_value * value_field
+               + lambda_reward * reward_field
 
     Consumes:
-        preds["soft_bin_logits"]   — List[Tensor], one (B,T,N,n_bins_i) per spec
-                                     (team-level specs have shape (B,T,1,n_bins_i)).
-        targets["soft_bin_targets"] — List[Tensor] of soft probability distributions,
-                                      same shapes as logits.
+        preds["soft_bin_logits"]    — List[Tensor] (B,T,N_,n_bins_i) per spec
+        targets["soft_bin_targets"] — List[Tensor] same shapes, soft probabilities
 
-    Each field is supervised with cross-entropy using soft (probability) targets:
-        CE(logits, probs) = -sum(probs * log_softmax(logits), dim=-1)
-
-    Loss is masked per-token using `mask` (B,T,N) for per-ship fields and
-    any-alive (B,T,1) for team-level fields.  Each field's loss is averaged
-    over valid tokens, then summed, then multiplied by self.weight.
-
-    Returns zero gracefully if either key is absent from preds/targets.
+    Returns zero gracefully when either key is absent.
     """
 
     name = "soft_bins"
+
+    def __init__(
+        self,
+        weight: float = 1.0,          # kept for API compatibility; not used
+        lambda_state: float = 1.0,
+        lambda_value: float = 1.0,
+        lambda_reward: float = 1.0,
+    ):
+        super().__init__(weight=weight)
+        self.lambda_state  = lambda_state
+        self.lambda_value  = lambda_value
+        self.lambda_reward = lambda_reward
 
     def forward(
         self,
@@ -397,50 +413,80 @@ class SoftBinnedStateLoss(LossModule):
         mask: torch.Tensor,
         **kwargs,
     ) -> Dict[str, torch.Tensor]:
-        logits_list = preds.get("soft_bin_logits")
+        logits_list      = preds.get("soft_bin_logits")
         soft_targets_list = targets.get("soft_bin_targets")
 
         zero = torch.tensor(0.0, device=mask.device)
         if logits_list is None or soft_targets_list is None:
             return {"loss": zero, "soft_bin_loss": zero}
 
-        # Pre-compute masks
-        # Per-ship:   mask (B,T,N)   → (B,T,N,1) for broadcasting
-        # Team-level: any-alive (B,T,1) → (B,T,1,1)
-        ship_mask   = mask.float()                                   # (B,T,N)
-        team_mask   = mask.any(dim=-1, keepdim=True).float()         # (B,T,1)
+        ship_mask = mask.float()                                # (B,T,N)
+        team_mask = mask.any(dim=-1, keepdim=True).float()     # (B,T,1)
 
-        total_loss = zero
+        specs = getattr(self, "_specs", None)
+
+        state_losses:  list[torch.Tensor] = []
+        value_losses:  list[torch.Tensor] = []
+        reward_losses: list[torch.Tensor] = []
         logs: Dict[str, torch.Tensor] = {}
 
         for i, (logits, soft_t) in enumerate(zip(logits_list, soft_targets_list)):
-            # Determine which mask to use
-            is_team = (logits.shape[-2] == 1)   # True if N-dim == 1 (team-level)
-            m = team_mask if is_team else ship_mask    # (B,T,1) or (B,T,N)
+            n_bins   = logits.shape[-1]
+            log_bins = math.log(n_bins)                        # normalisation factor
 
+            is_team = (logits.shape[-2] == 1)
+            m     = team_mask if is_team else ship_mask
             denom = m.sum() + 1e-6
 
-            # Cross-entropy with soft targets:
-            # logits: (B,T,N_,bins), soft_t: (B,T,N_,bins)
-            log_probs = F.log_softmax(logits.float(), dim=-1)      # (B,T,N_,bins)
-            ce = -(soft_t.float() * log_probs).sum(dim=-1)         # (B,T,N_)
+            log_probs  = F.log_softmax(logits.float(), dim=-1)
+            ce         = -(soft_t.float() * log_probs).sum(dim=-1)   # (B,T,N_)
+            field_loss = (ce * m).sum() / denom / log_bins           # normalised to ~[0,1]
 
-            # Mask and average
-            field_loss = (ce * m).sum() / denom
-
-            # Metric name from spec if available (fall back to index)
             spec_name = f"spec{i}"
-            if hasattr(self, "_specs") and i < len(self._specs):
-                spec_name = self._specs[i].name
+            if specs is not None and i < len(specs):
+                spec_name = specs[i].name
+
             logs[f"loss_sub/softbin_{spec_name}"] = field_loss.detach()
 
-            total_loss = total_loss + field_loss
+            # Route to appropriate group
+            if specs is not None and i < len(specs):
+                if specs[i].name == "value":
+                    value_losses.append(field_loss)
+                elif specs[i].name == "reward":
+                    reward_losses.append(field_loss)
+                else:
+                    state_losses.append(field_loss)
+            else:
+                # No spec metadata: treat team-level as value/reward by position
+                if is_team:
+                    if len(value_losses) == 0:
+                        value_losses.append(field_loss)
+                    else:
+                        reward_losses.append(field_loss)
+                else:
+                    state_losses.append(field_loss)
 
-        logs["soft_bin_loss"] = total_loss.detach()
-        return {"loss": total_loss * self.weight, **logs}
+        def _mean(lst):
+            return sum(lst) / len(lst) if lst else zero
+
+        state_loss  = _mean(state_losses)
+        value_loss  = _mean(value_losses)
+        reward_loss = _mean(reward_losses)
+
+        total_loss = (
+            self.lambda_state  * state_loss
+            + self.lambda_value  * value_loss
+            + self.lambda_reward * reward_loss
+        )
+
+        logs["loss_sub/softbin_state"]  = state_loss.detach()
+        logs["loss_sub/softbin_value"]  = value_loss.detach()
+        logs["loss_sub/softbin_reward"] = reward_loss.detach()
+        logs["soft_bin_loss"]           = total_loss.detach()
+        return {"loss": total_loss, **logs}
 
     def set_specs(self, specs) -> "SoftBinnedStateLoss":
-        """Optional: attach spec list for per-field log names."""
+        """Optional: attach spec list for per-field log names and routing."""
         self._specs = specs
         return self
 

@@ -36,15 +36,20 @@ loss:
     - _target_: boost_and_broadside.models.components.losses.PairwiseRelationalLoss
       weight: ${model.lambda_pairwise}
     - _target_: boost_and_broadside.models.components.losses.SoftBinnedStateLoss
-      weight: ${model.lambda_soft_bins}
+      lambda_state:  ${model.lambda_soft_state}
+      lambda_value:  ${model.lambda_soft_value}
+      lambda_reward: ${model.lambda_soft_reward}
 
 # Loss weights
-lambda_state: 0.0        # disabled — replaced by soft-bin loss
+lambda_state: 0.0            # regression StateLoss disabled — replaced by soft-bin loss
 lambda_actions: 1.0
 lambda_value: 1.0
 lambda_reward: 1.0
 lambda_pairwise: 0.1
-lambda_soft_bins: 1.0
+# Soft-bin group lambdas (each group is already averaged + log-normalised → ~[0,1])
+lambda_soft_state:  1.0
+lambda_soft_value:  1.0
+lambda_soft_reward: 1.0
 
 # Soft-binned World Head (toggle here)
 use_soft_bin_targets: true
