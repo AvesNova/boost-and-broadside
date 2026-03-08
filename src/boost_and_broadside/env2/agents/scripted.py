@@ -90,15 +90,18 @@ class VectorScriptedAgent:
         target_pos = torch.gather(state.ship_pos, 1, target_idx)
         target_vel = torch.gather(state.ship_vel, 1, target_idx)
         
-        # Estimate time to intercept
+        # Estimate time to intercept (first-order: use current distance)
         t_intercept = closest_dist / self.config.bullet_speed
         
-        # Predict future position
-        pred_displacement = target_vel * t_intercept
-        pred_pos = target_pos + pred_displacement
+        # Predict future position of target AND shooter.
+        # The bullet origin drifts with the shooter (bullet_vel = shooter_vel + bullet_speed*aim),
+        # so the intercept direction must be computed in the frame that accounts for the
+        # shooter's own movement during bullet travel time.
+        pred_pos = target_pos + target_vel * t_intercept
+        shooter_future_pos = state.ship_pos + state.ship_vel * t_intercept
         
-        # Calculate vector to predicted position
-        diff_pred = pred_pos - state.ship_pos
+        # Calculate vector to predicted intercept from predicted shooter position
+        diff_pred = pred_pos - shooter_future_pos
         
         # Wrap vector
         diff_pred.real = (diff_pred.real + world_width / 2) % world_width - world_width / 2

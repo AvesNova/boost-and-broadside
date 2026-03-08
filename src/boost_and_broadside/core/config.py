@@ -50,7 +50,7 @@ class ShipConfig:
     reverse_thrust: float = -10.0
     
     # Gravity Dynamics
-    gravity_factor: float = 10.0
+    gravity_factor: float = 5.0
     gravity_eps: float = 10000.0
     
     # Power Dynamics

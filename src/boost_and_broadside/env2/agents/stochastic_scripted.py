@@ -62,15 +62,25 @@ class StochasticScriptedAgent:
         return closest_dist, target_idx, has_target
 
     def _predict_interception(self, state: TensorState, target_idx: torch.Tensor, closest_dist: torch.Tensor) -> torch.Tensor:
-        """Same logic as VectorScriptedAgent._predict_interception"""
+        """Predicts the unit direction vector to the interception point.
+        
+        Accounts for both target and shooter movement during bullet travel time,
+        since bullet velocity = shooter_vel + bullet_speed * aim_dir.
+        Uses relative velocity (v_target - v_shooter) for the lead correction.
+        """
         world_width, world_height = self.ship_config.world_size
         target_pos = torch.gather(state.ship_pos, 1, target_idx)
         target_vel = torch.gather(state.ship_vel, 1, target_idx)
         
+        # First-order time estimate using current distance
         t_intercept = closest_dist / self.ship_config.bullet_speed
-        pred_pos = target_pos + (target_vel * t_intercept)
         
-        diff_pred = pred_pos - state.ship_pos
+        # Project both target and shooter forward by t_intercept.
+        # This correctly uses relative velocity (v_target - v_shooter) for the lead.
+        pred_pos = target_pos + target_vel * t_intercept
+        shooter_future_pos = state.ship_pos + state.ship_vel * t_intercept
+        
+        diff_pred = pred_pos - shooter_future_pos
         diff_pred.real = (diff_pred.real + world_width / 2) % world_width - world_width / 2
         diff_pred.imag = (diff_pred.imag + world_height / 2) % world_height - world_height / 2
         
