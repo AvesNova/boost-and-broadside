@@ -328,9 +328,16 @@ def _apply_combat_damage(state: TensorState, config: ShipConfig) -> Tuple[Tensor
     if not valid_hit.any():
         return state
 
-    # Count hits per ship
-    hits_per_ship = valid_hit.sum(dim=2) # (B, N_target)
-    damage = hits_per_ship.float() * config.bullet_damage
+    # Calculate angle-scaled damage
+    flat_bullets_vel = state.bullet_vel.view(batch_size, num_ships * num_bullets_per_ship)
+    expanded_bullet_vel = flat_bullets_vel.unsqueeze(1) # (B, 1, N_total_bullets)
+    expanded_ship_att = state.ship_attitude.unsqueeze(2) # (B, N_target_ships, 1)
+    
+    hit_angles = torch.angle(-expanded_bullet_vel * torch.conj(expanded_ship_att))
+    damage_scales = 1.0 - 0.9 * torch.exp(-(hit_angles**2) * 4.0 / torch.pi)
+    
+    actual_damage = damage_scales * valid_hit.float() * config.bullet_damage
+    damage = actual_damage.sum(dim=2) # (B, N_target_ships)
     
     # Apply Damage
     state.ship_health = state.ship_health - damage
