@@ -157,19 +157,31 @@ class TestPhysics:
         # Ship 1 shoots (idx 1)
         # Bullet placed at Ship 0 location (fake it)
         state.ship_pos[0, 0] = 100 + 100j
+        state.ship_pos[0, 1] = 0 + 0j
         state.ship_team_id[0, 0] = 0
         state.ship_team_id[0, 1] = 1 # Enemy
         
-        # Place a bullet owned by Ship 1 at Ship 0 location
+        # Place a bullet owned by Ship 1 at Ship 0 location,
+        # travelling in the +x direction (toward the ship).
+        # Ship 0's attitude also points +x so the angle between
+        # bullet velocity and ship attitude is 0 → damage_scale ≈ 1.0
         state.bullet_pos[0, 1, 0] = 100 + 100j
         state.bullet_active[0, 1, 0] = True
         state.bullet_time[0, 1, 0] = 1.0
+        # Bullet velocity pointing in +x (head-on relative to ship attitude (1+0j))
+        state.bullet_vel[0, 1, 0] = 500 + 0j   # ship attitude is 1+0j by default
         
         # Run resolution
         state, dones = resolve_collisions(state, config)
         
-        # Check damage
-        assert state.ship_health[0, 0] == config.max_health - config.bullet_damage
+        # Check damage: head-on hit → damage_scale ≈ 1.0
+        # Formula: 1 - 0.9 * exp(-angle^2 * 4/pi)
+        # angle between -bullet_vel and ship_att = angle(-(500+0j) * conj(1+0j)) = angle(-500) = pi
+        # scale = 1 - 0.9 * exp(-pi^2 * 4/pi) = 1 - 0.9 * exp(-4*pi) ≈ 1.0
+        expected_damage = config.bullet_damage * (1.0 - 0.9 * torch.exp(torch.tensor(-4.0 * torch.pi)))
+        assert abs(state.ship_health[0, 0].item() - (config.max_health - expected_damage.item())) < 0.01, \
+            f"Expected health ≈ {config.max_health - expected_damage.item():.2f}, got {state.ship_health[0, 0].item():.2f}"
+
         
 
 if __name__ == "__main__":

@@ -150,7 +150,7 @@ def collect_worker(
                 team_skills = {0: skill_0, 1: skill_1}
 
                 coordinator.reset(game_mode=mode, team_skills=team_skills)
-                episode_sim_time, terminated = coordinator.step()
+                episode_sim_time, terminated, *_ = coordinator.step()
 
                 features = coordinator.get_features()
 

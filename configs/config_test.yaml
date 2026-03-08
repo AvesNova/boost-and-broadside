@@ -30,23 +30,17 @@ agents:
 
 collect:
   teams: [scripted, scripted]
-  total_episodes: 32
+  total_episodes: 4
   type_ratios:
-    type1: 0.25
-    type2: 0.25
-    type3: 0.25
-    type4: 0.25
+    type1: 1.0
   ship_count_ratios:
-    "1v1": 0.25
-    "2v2": 0.25
-    "3v3": 0.25
-    "4v4": 0.25
+    "1v1": 1.0
 
   output_dir: "data/test_data"
   num_workers: 2
   save_frequency: 2
   render_mode: "none"
-  max_episode_length: 512
+  max_episode_length: 64
   random_action_prob: 0.05
 
 train:

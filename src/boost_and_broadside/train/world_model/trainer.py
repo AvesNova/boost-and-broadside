@@ -237,22 +237,63 @@ class Trainer:
                  target_actions=inputs["target_actions"]
               )
              
-             # Unpack with defaults if tuple length varies or just pass positional? 
-             # Scaffolds are standardized to return 5 items.
-             # Unpack model output (standardized to 8 items in world model mode)
-             # returns: action_sampled, logprob, entropy, value_pred, mamba_state, next_state_pred, reward_pred, pairwise_pred
+             # Unpack model output.  Scaffolds return either 5, 9, or 10 items.
+             # 5:  legacy (YemongFull, Spatial, Temporal)
+             # 9:  YemongDynamics / Interleaved without soft bins
+             # 10: YemongDynamicsInterleaved with use_soft_bin_targets=True
+             soft_bin_logits = None
              if len(model_out) == 5:
                  # Legacy Scaffolds (YemongFull, Spatial, Temporal)
-                 # Returns: state_pred, action_logits, value_pred, reward_pred, latent
                  pred_states, pred_actions, pred_values, pred_rewards, _ = model_out
                  pairwise_pred = None
                  reward_components = None
-             else:
-                 # YemongDynamics (Standardized World Model Protocol)
-                 # returns: action_sampled, logprob, entropy, value_pred, mamba_state, next_state_pred, reward_pred, pairwise_pred, reward_components
-                 pred_actions, _, _, pred_values, _, pred_states, pred_rewards, pairwise_pred, *extras = model_out
-                 reward_components = extras[0] if extras else None
-             
+             elif len(model_out) >= 9:
+                 # YemongDynamics / Interleaved
+                 # returns: action_logits, _, _, value_pred, _, next_state_pred, reward_pred, pairwise_pred, reward_components[, soft_bin_logits]
+                 pred_actions, _, _, pred_values, _, pred_states, pred_rewards, pairwise_pred, reward_components = model_out[:9]
+                 if len(model_out) >= 10:
+                     soft_bin_logits = model_out[9]
+
+             # Compute soft-bin targets (gated)
+             soft_bin_targets = None
+             use_soft_bins = self.cfg.model.get("use_soft_bin_targets", False)
+             if use_soft_bins and soft_bin_logits is not None:
+                 from boost_and_broadside.models.components.soft_bins import compute_soft_bin_targets, INTERLEAVED_SOFT_BIN_SPECS
+                 if "environment" in self.cfg and "world_size" in self.cfg.environment:
+                     W, H = self.cfg.environment.world_size
+                 else:
+                     W, H = 1000, 1000
+                 # inputs["state"] = (B,T,N,D), next state is one step ahead
+                 # We need next states. BatchProcessor slices inputs[0:-1] / targets[1:].
+                 # targets["target_states"] is computed from next_states already.
+                 # We pass vel for the vel_tp1 from next_states vx/vy.
+                 from boost_and_broadside.core.constants import StateFeature as SF
+                 next_states_vel = processed["inputs"]["state"]  # (B,T,N,D) — this is input states
+                 # Reconstruct vel_tp1 from the next state: it's stored in target_states DVX/DVY as delta.
+                 # Better: pass raw next states vel. We have them in batch_data.
+                 # next_states = states[:, 1:] in batch_processor. We need to re-extract.
+                 states_full = batch_data["states"].to(self.device, dtype=torch.float32, non_blocking=True)
+                 pos_full = batch_data["pos"].to(self.device, dtype=torch.float32, non_blocking=True)
+                 state_t   = states_full[:, :-1]   # (B, T, N, D)
+                 state_tp1 = states_full[:, 1:]    # (B, T, N, D)
+                 pos_t     = pos_full[:, :-1]
+                 pos_tp1   = pos_full[:, 1:]
+                 vel_t   = state_t[..., SF.VX : SF.VY + 1]
+                 vel_tp1 = state_tp1[..., SF.VX : SF.VY + 1]
+
+                 soft_bin_targets = compute_soft_bin_targets(
+                     state_t=state_t,
+                     state_tp1=state_tp1,
+                     pos_t=pos_t,
+                     pos_tp1=pos_tp1,
+                     vel_t=vel_t,
+                     vel_tp1=vel_tp1,
+                     W=W, H=H,
+                     value=targets.get("target_returns"),
+                     reward=targets.get("target_rewards"),
+                     specs=INTERLEAVED_SOFT_BIN_SPECS,
+                 )
+
              # Get Loss
              loss_out = self.model.get_loss(
                 pred_states=pred_states,
@@ -278,11 +319,14 @@ class Trainer:
                 pairwise_pred=pairwise_pred,
                 target_pairwise=targets["target_pairwise"],
                 lambda_pairwise=self.cfg.model.get("lambda_pairwise", 0.1),
-                reward_components=reward_components
+                reward_components=reward_components,
+                # Soft-bin targets (passed through **kwargs → CompositeLoss → SoftBinnedStateLoss)
+                soft_bin_logits=soft_bin_logits,
+                soft_bin_targets=soft_bin_targets,
              )
              
              loss = loss_out["loss"]
-             state_loss = loss_out["state_loss"]
+             state_loss = loss_out.get("state_loss", torch.tensor(0.0))
              action_loss = loss_out["action_loss"]
              relational_loss = loss_out["pairwise_loss"] 
              metrics = loss_out # Log everything in the dict

@@ -366,3 +366,81 @@ class PairwiseRelationalLoss(LossModule):
         
         logs = {"pairwise_loss": loss.detach(), "loss_sub/pairwise_mse": loss.detach()}
         return {"loss": loss * self.weight, **logs}
+
+
+class SoftBinnedStateLoss(LossModule):
+    """
+    Soft-binned categorical prediction loss.
+
+    Consumes:
+        preds["soft_bin_logits"]   — List[Tensor], one (B,T,N,n_bins_i) per spec
+                                     (team-level specs have shape (B,T,1,n_bins_i)).
+        targets["soft_bin_targets"] — List[Tensor] of soft probability distributions,
+                                      same shapes as logits.
+
+    Each field is supervised with cross-entropy using soft (probability) targets:
+        CE(logits, probs) = -sum(probs * log_softmax(logits), dim=-1)
+
+    Loss is masked per-token using `mask` (B,T,N) for per-ship fields and
+    any-alive (B,T,1) for team-level fields.  Each field's loss is averaged
+    over valid tokens, then summed, then multiplied by self.weight.
+
+    Returns zero gracefully if either key is absent from preds/targets.
+    """
+
+    name = "soft_bins"
+
+    def forward(
+        self,
+        preds: Dict[str, torch.Tensor],
+        targets: Dict[str, torch.Tensor],
+        mask: torch.Tensor,
+        **kwargs,
+    ) -> Dict[str, torch.Tensor]:
+        logits_list = preds.get("soft_bin_logits")
+        soft_targets_list = targets.get("soft_bin_targets")
+
+        zero = torch.tensor(0.0, device=mask.device)
+        if logits_list is None or soft_targets_list is None:
+            return {"loss": zero, "soft_bin_loss": zero}
+
+        # Pre-compute masks
+        # Per-ship:   mask (B,T,N)   → (B,T,N,1) for broadcasting
+        # Team-level: any-alive (B,T,1) → (B,T,1,1)
+        ship_mask   = mask.float()                                   # (B,T,N)
+        team_mask   = mask.any(dim=-1, keepdim=True).float()         # (B,T,1)
+
+        total_loss = zero
+        logs: Dict[str, torch.Tensor] = {}
+
+        for i, (logits, soft_t) in enumerate(zip(logits_list, soft_targets_list)):
+            # Determine which mask to use
+            is_team = (logits.shape[-2] == 1)   # True if N-dim == 1 (team-level)
+            m = team_mask if is_team else ship_mask    # (B,T,1) or (B,T,N)
+
+            denom = m.sum() + 1e-6
+
+            # Cross-entropy with soft targets:
+            # logits: (B,T,N_,bins), soft_t: (B,T,N_,bins)
+            log_probs = F.log_softmax(logits.float(), dim=-1)      # (B,T,N_,bins)
+            ce = -(soft_t.float() * log_probs).sum(dim=-1)         # (B,T,N_)
+
+            # Mask and average
+            field_loss = (ce * m).sum() / denom
+
+            # Metric name from spec if available (fall back to index)
+            spec_name = f"spec{i}"
+            if hasattr(self, "_specs") and i < len(self._specs):
+                spec_name = self._specs[i].name
+            logs[f"loss_sub/softbin_{spec_name}"] = field_loss.detach()
+
+            total_loss = total_loss + field_loss
+
+        logs["soft_bin_loss"] = total_loss.detach()
+        return {"loss": total_loss * self.weight, **logs}
+
+    def set_specs(self, specs) -> "SoftBinnedStateLoss":
+        """Optional: attach spec list for per-field log names."""
+        self._specs = specs
+        return self
+

@@ -47,7 +47,7 @@ def test_yemong_dynamics_interleaved_parallel_forward():
     
     target_actions = torch.randint(0, 2, (B, T, N, 3))
     
-    action_logits, _, _, value_pred, _, next_state_pred, reward_pred, _, _ = model(
+    action_logits, _, _, value_pred, _, next_state_pred, reward_pred, _, _, _ = model(
         state=state,
         prev_action=prev_action,
         pos=pos,
@@ -65,6 +65,7 @@ def test_yemong_dynamics_interleaved_parallel_forward():
     # Action token outputs
     assert next_state_pred.shape == (B, T, N, TARGET_DIM)
     assert reward_pred.shape == (B, T, 1)
+
 
 def test_yemong_dynamics_interleaved_missing_targets():
     config = OmegaConf.create({

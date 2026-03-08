@@ -6,7 +6,7 @@ import queue
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 import h5py
 import numpy as np
@@ -420,38 +420,38 @@ class AsyncCollector:
                 if length > self.max_steps:
                     length = self.max_steps
 
-                # Offload cloning and processing to worker pool
-                self.process_pool.submit(self._finalize_episode, idx, length)
+                # CLONE IN MAIN THREAD TO AVOID RACE CONDITIONS!
+                ep_data = {
+                    "position": self.pos_buffer[idx, :length].clone(),
+                    "velocity": self.vel_buffer[idx, :length].clone(),
+                    "health": self.health_buffer[idx, :length].clone(),
+                    "power": self.power_buffer[idx, :length].clone(),
+                    "attitude": self.attitude_buffer[idx, :length].clone(),
+                    "ang_vel": self.ang_vel_buffer[idx, :length].clone(),
+                    "is_shooting": self.is_shooting_buffer[idx, :length].clone(),
+                    "team_ids": self.team_buffer[idx, :length].clone(),
+                    "actions": self.action_buffer[idx, :length].clone(),
+                    "expert_action_probs": self.expert_action_probs_buffer[idx, :length].clone(),
+                    "rewards": self.reward_buffer[idx, :length].clone(),
+                    "agent_skills": self.skill_buffer[idx, :length].clone(),
+                    "length": length,
+                }
+
+                # Offload processing to worker pool
+                self.process_pool.submit(self._finalize_episode, ep_data)
                 self.step_counts[idx] = 0
 
-    def _finalize_episode(self, env_idx: int, length: int):
-        """Processes and clones a finished episode from the buffer.
+    def _finalize_episode(self, ep_data: Dict[str, Any]):
+        """Processes a finished episode.
 
         Runs in a worker thread.
         """
         try:
-            episode = {
-                "position": self.pos_buffer[env_idx, :length].clone(),
-                "velocity": self.vel_buffer[env_idx, :length].clone(),
-                "health": self.health_buffer[env_idx, :length].clone(),
-                "power": self.power_buffer[env_idx, :length].clone(),
-                "attitude": self.attitude_buffer[env_idx, :length].clone(),
-                "ang_vel": self.ang_vel_buffer[env_idx, :length].clone(),
-                "is_shooting": self.is_shooting_buffer[env_idx, :length].clone(),
-                "team_ids": self.team_buffer[env_idx, :length].clone(),
-                "actions": self.action_buffer[env_idx, :length].clone(),
-                "expert_action_probs": self.expert_action_probs_buffer[env_idx, :length].clone(),
-                "rewards": self.reward_buffer[env_idx, :length].clone(),
-                "agent_skills": self.skill_buffer[env_idx, :length].clone(),
-                "returns": self._compute_returns(
-                    self.reward_buffer[env_idx, :length], gamma=0.99
-                ),
-                "length": length,
-            }
-            self.total_transitions_completed += length
-            self.write_queue.put(episode)
+            ep_data["returns"] = self._compute_returns(ep_data["rewards"], gamma=0.99)
+            self.total_transitions_completed += ep_data["length"]
+            self.write_queue.put(ep_data)
         except Exception as e:
-            print(f"Error finalizing episode from env {env_idx}: {e}")
+            print(f"Error finalizing episode: {e}")
 
     def _compute_returns(self, rewards: torch.Tensor, gamma: float) -> torch.Tensor:
         """Computes returns-to-go using vectorized operations.

@@ -10,7 +10,7 @@ from torch.distributions.normal import Normal
 
 from boost_and_broadside.models.components.layers.utils import RMSNorm, MambaBlock
 from boost_and_broadside.models.components.encoders import StateEncoder, ActionEncoder, RelationalEncoder, SeparatedActionEncoder, FlattenedActionEncoder
-from boost_and_broadside.models.components.heads import ActorHead, WorldHead, ValueHead, PairwiseRelationalHead
+from boost_and_broadside.models.components.heads import ActorHead, WorldHead, ValueHead, PairwiseRelationalHead, SoftBinnedWorldHead, TeamPoolingHead
 from boost_and_broadside.models.components.team_evaluator import TeamEvaluator 
 from boost_and_broadside.models.components.layers.attention import RelationalAttention
 from boost_and_broadside.models.components.normalizer import FeatureNormalizer
@@ -36,7 +36,8 @@ class BaseScaffold(nn.Module):
 
     def get_loss(self, pred_states=None, pred_actions=None, target_states=None, target_actions=None, loss_mask=None, 
                  pred_values=None, pred_rewards=None, target_returns=None, target_rewards=None,
-                 target_alive=None, input_alive=None, pairwise_pred=None, target_pairwise=None, reward_components=None, **kwargs):
+                 target_alive=None, input_alive=None, pairwise_pred=None, target_pairwise=None, reward_components=None,
+                 soft_bin_logits=None, soft_bin_targets=None, **kwargs):
         
         # Adapter to map arguments to generic structure
         preds = {
@@ -45,7 +46,8 @@ class BaseScaffold(nn.Module):
             "value": pred_values,
             "reward": pred_rewards,
             "pairwise": pairwise_pred,
-            "reward_components": reward_components
+            "reward_components": reward_components,
+            "soft_bin_logits": soft_bin_logits,
         }
         
         targets = {
@@ -53,7 +55,8 @@ class BaseScaffold(nn.Module):
             "actions": target_actions,
             "returns": target_returns,
             "rewards": target_rewards,
-            "pairwise": target_pairwise
+            "pairwise": target_pairwise,
+            "soft_bin_targets": soft_bin_targets,
         }
 
         # Pre-process Targets (Normalization)
@@ -88,6 +91,7 @@ class BaseScaffold(nn.Module):
         return self.loss_fn(preds, targets, final_mask.float(), **kwargs)
 
 class YemongFull(BaseScaffold):
+
     def __init__(self, config=None, **kwargs):
         if config is None:
             config = OmegaConf.create(kwargs)
@@ -1083,40 +1087,38 @@ class YemongDynamicsInterleaved(BaseScaffold):
             })
             self.blocks.append(block)
             
-        # Heads on State Tokens
-        self.actor_head = nn.Linear(d_model, action_dim) 
-        
-        # Value Head (Team Level)
-        self.team_token_value = nn.Parameter(torch.randn(1, 1, d_model))
-        self.norm_value = nn.LayerNorm(d_model)
-        self.pooler_value = nn.MultiheadAttention(d_model, 4, batch_first=True)
-        self.value_head = nn.Sequential(
-            nn.Linear(d_model, d_model),
-            nn.SiLU(),
-            nn.Linear(d_model, 1)
-        )
+        # ── State-token heads ──────────────────────────────────────────────
+        # Applied exclusively to Z_state (even interleaved positions)
+        self.actor_head = nn.Linear(d_model, action_dim)      # flat / separated action logits
+        self.value_head = TeamPoolingHead(d_model, out_dim=1)  # team-level value scalar
 
-        # Heads on Action Tokens
-        self.world_head = WorldHead(d_model, config.get("target_dim", TARGET_DIM))
-        
-        # Optional Pairwise Relational Head
+        # ── Action-token heads ─────────────────────────────────────────────
+        # Applied exclusively to Z_action (odd interleaved positions)
+        self.world_head = WorldHead(d_model, config.get("target_dim", TARGET_DIM))  # regression state
+
+        # Optional Pairwise Relational Head (action tokens)
         self.use_pairwise = config.get("use_pairwise_targets", False)
         if self.use_pairwise:
             self.pairwise_head = PairwiseRelationalHead(d_model)
-        
-        # Reward w/ Team Pooling
+
         num_reward_components = config.get("num_reward_components", 1)
         self.num_reward_components = num_reward_components
+        self.reward_head = TeamPoolingHead(d_model, out_dim=num_reward_components)  # team-level reward
         
-        self.team_token_reward = nn.Parameter(torch.randn(1, 1, d_model) * 0.02)
-        self.pooler_reward = nn.MultiheadAttention(d_model, num_heads=4, batch_first=True)
-        self.norm_reward = RMSNorm(d_model)
-        self.reward_head = nn.Sequential(
-            nn.Linear(d_model, d_model),
-            nn.SiLU(),
-            nn.Linear(d_model, num_reward_components)
-        )
-        
+        # Soft-binned World Head (optional, additive to regression WorldHead)
+        self.use_soft_bin_targets = config.get("use_soft_bin_targets", False)
+        if self.use_soft_bin_targets:
+            from boost_and_broadside.models.components.soft_bins import INTERLEAVED_SOFT_BIN_SPECS
+            self.soft_bin_specs = INTERLEAVED_SOFT_BIN_SPECS
+            self.soft_bin_head = SoftBinnedWorldHead(d_model, self.soft_bin_specs)
+            # Attach spec names to the SoftBinnedStateLoss in CompositeLoss if present
+            for loss_mod in getattr(getattr(self, 'loss_fn', None), 'losses', []):
+                if getattr(loss_mod, 'name', None) == 'soft_bins':
+                    loss_mod.set_specs(self.soft_bin_specs)
+        else:
+            self.soft_bin_specs = None
+            self.soft_bin_head = None
+
         # Loss Params
         self.log_vars = None
         if getattr(config, "loss_type", "fixed") == "uncertainty":
@@ -1224,37 +1226,33 @@ class YemongDynamicsInterleaved(BaseScaffold):
             
         Z_interleaved = x_mamba.view(batch_size, num_ships, total_seq_len, -1).permute(0, 2, 1, 3) # (B, 2T, N, D)
         
-        # 5. Extract Readouts
-        Z_state = Z_interleaved[:, 0::2, :, :] # (B, T, N, D)
-        Z_action = Z_interleaved[:, 1::2, :, :] # (B, T, N, D)
-        
-        # Heads on State Tokens
-        action_logits = self.actor_head(Z_state)
-        
-        Batch_Time = batch_size * seq_len
-        if alive is not None:
-             key_padding_mask = ~alive.reshape(Batch_Time, num_ships)
-             all_masked = key_padding_mask.all(dim=-1, keepdim=True)
-             key_padding_mask = key_padding_mask & ~all_masked
-        else:
-             key_padding_mask = None
-             
-        Z_state_flat = Z_state.reshape(Batch_Time, num_ships, d_model)
-        q_val = self.team_token_value.expand(Batch_Time, -1, -1)
-        Z_norm_val = self.norm_value(Z_state_flat)
-        team_vec_val, _ = self.pooler_value(q_val, Z_norm_val, Z_norm_val, key_padding_mask=key_padding_mask)
-        value_pred = self.value_head(team_vec_val.squeeze(1)).reshape(batch_size, seq_len, 1)
+        # 5. Extract Readouts — state and action tokens go to different heads
+        Z_state  = Z_interleaved[:, 0::2, :, :]   # (B, T, N, D) — even positions
+        Z_action = Z_interleaved[:, 1::2, :, :]   # (B, T, N, D) — odd  positions
 
-        # Heads on Action Tokens
-        next_state_pred = self.world_head(Z_action)
-        
-        Z_action_flat = Z_action.reshape(Batch_Time, num_ships, d_model)
-        q_rew = self.team_token_reward.expand(Batch_Time, -1, -1)
-        Z_norm_rew = self.norm_reward(Z_action_flat)
-        team_vec_rew, _ = self.pooler_reward(q_rew, Z_norm_rew, Z_norm_rew, key_padding_mask=key_padding_mask)
-        reward_components = self.reward_head(team_vec_rew.squeeze(1)).reshape(batch_size, seq_len, self.num_reward_components)
-        reward_pred = reward_components.sum(dim=-1, keepdim=True)
-        
+        Batch_Time = batch_size * seq_len
+        key_padding_mask = None
+        if alive is not None:
+            key_padding_mask = ~alive.reshape(Batch_Time, num_ships)  # True = dead/ignore
+
+        # ── State-token heads ──────────────────────────────────────────────
+        action_logits = self.actor_head(Z_state)                        # (B, T, N, action_dim)
+        value_out = self.value_head(                                    # (BT, 1)
+            Z_state.reshape(Batch_Time, num_ships, d_model),
+            key_padding_mask=key_padding_mask
+        )
+        value_pred = value_out.reshape(batch_size, seq_len, 1)         # (B, T, 1)
+
+        # ── Action-token heads ─────────────────────────────────────────────
+        next_state_pred = self.world_head(Z_action)                     # (B, T, N, target_dim)
+
+        reward_out = self.reward_head(                                  # (BT, K)
+            Z_action.reshape(Batch_Time, num_ships, d_model),
+            key_padding_mask=key_padding_mask
+        )
+        reward_components = reward_out.reshape(batch_size, seq_len, self.num_reward_components)
+        reward_pred = reward_components.sum(dim=-1, keepdim=True)       # (B, T, 1)
+
         if self.use_pairwise:
             zi = Z_action.unsqueeze(3).expand(-1, -1, -1, num_ships, -1)
             zj = Z_action.unsqueeze(2).expand(-1, -1, num_ships, -1, -1)
@@ -1262,8 +1260,14 @@ class YemongDynamicsInterleaved(BaseScaffold):
             pairwise_pred = self.pairwise_head(z_pair)
         else:
             pairwise_pred = None
-            
-        return action_logits, None, None, value_pred, None, next_state_pred, reward_pred, pairwise_pred, reward_components
+
+        # Soft-binned predictions from Action tokens
+        if self.use_soft_bin_targets and self.soft_bin_head is not None:
+            soft_bin_logits = self.soft_bin_head(Z_action)  # List[(B,T,N,bins_i)]
+        else:
+            soft_bin_logits = None
+
+        return action_logits, None, None, value_pred, None, next_state_pred, reward_pred, pairwise_pred, reward_components, soft_bin_logits
 
     def get_action_and_value(self, x, mamba_state=None, action=None, seq_idx=None, step_type=None):
         """
