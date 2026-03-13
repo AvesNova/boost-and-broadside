@@ -246,16 +246,18 @@ def compute_soft_bin_targets(
             B, T = state_t.shape[:2]
             return torch.zeros(B, T, 1, device=device, dtype=dtype)
         t = t.float()
-        if t.ndim == 2:
-            t = t.unsqueeze(-1)          # (B, T) → (B, T, 1)
-        elif t.ndim == 3 and t.shape[-1] != 1:
-            # (B, T, N) → aggregate over N (mean) → (B, T, 1)
+        # Robust reduction to (B, T, 1)
+        while t.ndim > 3:
+            t = t.mean(dim=-1)
+        if t.ndim == 3:
             t = t.mean(dim=-1, keepdim=True)
-        # t is now (B, T, 1)
-        return t.mean(dim=-2, keepdim=False) if t.ndim == 4 else t  # defensive
+        if t.ndim == 2:
+            t = t.unsqueeze(-1)
+        return t
 
     val_t  = _prepare_scalar(value)    # (B, T, 1)
     rew_t  = _prepare_scalar(reward)   # (B, T, 1)
+
 
     val_sym  = symlog(val_t,  linthresh=1.0).clamp(0.0, 2.0)
     rew_sym  = symlog(rew_t,  linthresh=1.0).clamp(0.0, 2.0)

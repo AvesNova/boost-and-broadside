@@ -158,8 +158,16 @@ class SoftBinnedWorldHead(nn.Module):
 
     def forward(self, x: torch.Tensor) -> "List[torch.Tensor]":
         """
-        x: (*, d_model)
-        Returns: list of (*, n_bins_i) tensors in spec order.
+        x: (*, N, d_model)
+        Returns: list of tensors. Per-ship specs: (B, T, N, n_bins). Team specs: (B, T, 1, n_bins).
         """
         z = self.trunk(x)
-        return [head(z) for head in self.heads]
+        out = []
+        for i, spec in enumerate(self.specs):
+            if spec.is_team_level and z.ndim == 4:
+                # Pool across ships: (B, T, N, D) -> (B, T, 1, D)
+                z_spec = z.mean(dim=2, keepdim=True)
+                out.append(self.heads[i](z_spec))
+            else:
+                out.append(self.heads[i](z))
+        return out

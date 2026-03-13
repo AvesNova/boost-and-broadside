@@ -120,19 +120,41 @@ class Validator:
                             att=None,
                             team_ids=team_ids[:, :-1],
                             seq_idx=seq_idx[:, :-1],
-                            alive=alive
+                            alive=alive,
+                            target_actions=target_actions
                         )
 
+                        soft_bin_logits = None
                         if len(model_out) == 5:
                             # Legacy Scaffolds
                             pred_states, pred_actions, pred_values, pred_rewards, _ = model_out
                             pairwise_pred = None
                             reward_components = None
                         else:
-                            # YemongDynamics
-                            # returns: action_sampled, logprob, entropy, value_pred, mamba_state, next_state_pred, reward_pred, pairwise_pred, reward_components
+                            # YemongDynamics / Interleaved
+                            # returns: action_logits, _, _, value_pred, _, next_state_pred, reward_pred, pairwise_pred, reward_components[, soft_bin_logits]
                             pred_actions, _, _, pred_values, _, pred_states, pred_rewards, pairwise_pred, *extras = model_out
                             reward_components = extras[0] if extras else None
+                            if len(model_out) >= 10:
+                                soft_bin_logits = model_out[9]
+
+                        # Compute soft-bin targets if needed
+                        soft_bin_targets = None
+                        if self.cfg.model.get("use_soft_bin_targets", False) and soft_bin_logits is not None:
+                             from boost_and_broadside.models.components.soft_bins import compute_soft_bin_targets, INTERLEAVED_SOFT_BIN_SPECS
+                             vel_tp1 = next_states[..., StateFeature.VX : StateFeature.VY+1]
+                             soft_bin_targets = compute_soft_bin_targets(
+                                 state_t=input_states.float(),
+                                 state_tp1=next_states.float(),
+                                 pos_t=pos_curr.float(),
+                                 pos_tp1=pos_next.float(),
+                                 vel_t=vel.float(),
+                                 vel_tp1=vel_tp1.float(),
+                                 W=W, H=H,
+                                 value=returns,
+                                 reward=rewards,
+                                 specs=INTERLEAVED_SOFT_BIN_SPECS,
+                             )
 
                         metrics = model_to_use.get_loss(
                            pred_states=pred_states,
@@ -150,7 +172,9 @@ class Validator:
                            lambda_reward=self.cfg.model.get("lambda_reward", 0.1),
                            target_alive=target_alive,
                            pairwise_pred=pairwise_pred,
-                           reward_components=reward_components
+                           reward_components=reward_components,
+                           soft_bin_logits=soft_bin_logits,
+                           soft_bin_targets=soft_bin_targets
                         )
                         loss = metrics["loss"]
                     
@@ -165,29 +189,42 @@ class Validator:
                         
                         # Flat mask
                         flat_mask = valid_mask.reshape(-1)
-                        valid_pred = pred_actions.reshape(-1, 12)[flat_mask]
+                        valid_pred = pred_actions.reshape(-1, pred_actions.shape[-1])[flat_mask]
                         valid_target = target_actions.reshape(-1, 3)[flat_mask]
                         
-                        p_logits = valid_pred[..., 0:3]
-                        t_logits = valid_pred[..., 3:10]
-                        s_logits = valid_pred[..., 10:12]
-                        
-                        p_target = valid_target[..., 0].long()
-                        t_target = valid_target[..., 1].long()
-                        s_target = valid_target[..., 2].long()
-                        
-                        if p_target.numel() > 0:
-                            val_error_p += (p_logits.argmax(-1) != p_target).float().mean()
-                            val_error_t += (t_logits.argmax(-1) != t_target).float().mean()
-                            val_error_s += (s_logits.argmax(-1) != s_target).float().mean()
+                        if valid_pred.shape[-1] == 12:
+                            p_logits = valid_pred[..., 0:3]
+                            t_logits = valid_pred[..., 3:10]
+                            s_logits = valid_pred[..., 10:12]
+                            
+                            p_target = valid_target[..., 0].long()
+                            t_target = valid_target[..., 1].long()
+                            s_target = valid_target[..., 2].long()
+                            
+                            if p_target.numel() > 0:
+                                val_error_p += (p_logits.argmax(-1) != p_target).float().mean()
+                                val_error_t += (t_logits.argmax(-1) != t_target).float().mean()
+                                val_error_s += (s_logits.argmax(-1) != s_target).float().mean()
 
-                            # Collect for Confusion Matrix
-                            all_preds_p.append(p_logits.argmax(-1).cpu().numpy())
-                            all_targets_p.append(p_target.cpu().numpy())
-                            all_preds_t.append(t_logits.argmax(-1).cpu().numpy())
-                            all_targets_t.append(t_target.cpu().numpy())
-                            all_preds_s.append(s_logits.argmax(-1).cpu().numpy())
-                            all_targets_s.append(s_target.cpu().numpy())
+                                # Collect for Confusion Matrix
+                                all_preds_p.append(p_logits.argmax(-1).cpu().numpy())
+                                all_targets_p.append(p_target.cpu().numpy())
+                                all_preds_t.append(t_logits.argmax(-1).cpu().numpy())
+                                all_targets_t.append(t_target.cpu().numpy())
+                                all_preds_s.append(s_logits.argmax(-1).cpu().numpy())
+                                all_targets_s.append(s_target.cpu().numpy())
+                        elif valid_pred.shape[-1] == 42: # NUM_FLATTENED_ACTIONS
+                            # Handle flattened actions
+                            p_target = valid_target[..., 0].long()
+                            t_target = valid_target[..., 1].long()
+                            s_target = valid_target[..., 2].long()
+                            
+                            target_flat = p_target * (7 * 2) + t_target * 2 + s_target
+                            val_error_p += (valid_pred.argmax(-1) != target_flat).float().mean()
+                            # For simplicity, we just put the total error into power slots for now
+                            # or we can leave them 0.
+                            all_preds_p.append(valid_pred.argmax(-1).cpu().numpy())
+                            all_targets_p.append(target_flat.cpu().numpy())
 
         avg_val_loss = val_loss.item() / val_steps if val_steps > 0 else 0.0
         avg_val_err_p = val_error_p.item() / val_steps if val_steps > 0 else 0.0

@@ -166,7 +166,7 @@ class ActionLoss(LossModule):
              a_loss_t = (F.cross_entropy(l_t.reshape(-1, 7), t_t.reshape(-1), weight=weights_turn, reduction='none') * mask_flat).sum() / denom / math.log(7)
              a_loss_s = (F.cross_entropy(l_s.reshape(-1, 2), t_s.reshape(-1), weight=weights_shoot, reduction='none') * mask_flat).sum() / denom / math.log(2)
         
-        a_loss = a_loss_p + a_loss_t + a_loss_s
+        a_loss = (a_loss_p + a_loss_t + a_loss_s) / 3.0
         
         logs = {
             "action_loss": a_loss.detach(),
@@ -434,9 +434,10 @@ class SoftBinnedStateLoss(LossModule):
             n_bins   = logits.shape[-1]
             log_bins = math.log(n_bins)                        # normalisation factor
 
-            is_team = (logits.shape[-2] == 1)
-            m     = team_mask if is_team else ship_mask
-            denom = m.sum() + 1e-6
+            spec = specs[i] if specs is not None and i < len(specs) else None
+            is_team    = spec.is_team_level if spec is not None else (logits.shape[-2] == 1)
+            m          = team_mask if is_team else ship_mask
+            denom      = m.sum() + 1e-6
 
             log_probs  = F.log_softmax(logits.float(), dim=-1)
             ce         = -(soft_t.float() * log_probs).sum(dim=-1)   # (B,T,N_)
@@ -479,6 +480,10 @@ class SoftBinnedStateLoss(LossModule):
             + self.lambda_reward * reward_loss
         )
 
+        logs["state_loss"]              = state_loss.detach()
+        logs["value_loss"]              = value_loss.detach()
+        logs["reward_loss"]             = reward_loss.detach()
+        
         logs["loss_sub/softbin_state"]  = state_loss.detach()
         logs["loss_sub/softbin_value"]  = value_loss.detach()
         logs["loss_sub/softbin_reward"] = reward_loss.detach()

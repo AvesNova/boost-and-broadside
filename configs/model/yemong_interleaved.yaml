@@ -43,8 +43,8 @@ loss:
 # Loss weights
 lambda_state: 0.0            # regression StateLoss disabled — replaced by soft-bin loss
 lambda_actions: 1.0
-lambda_value: 1.0
-lambda_reward: 1.0
+lambda_value: 0.0
+lambda_reward: 0.0
 lambda_pairwise: 0.1
 # Soft-bin group lambdas (each group is already averaged + log-normalised → ~[0,1])
 lambda_soft_state:  1.0
