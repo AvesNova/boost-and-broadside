@@ -1277,7 +1277,7 @@ class YemongDynamicsInterleaved(BaseScaffold):
         if action is not None and step_type is None:
             # Call standard forward
             # For Interleaved, forward expects `target_actions`
-            pred_actions, pred_values, pred_states, pred_rewards, pairwise_pred, reward_components = self.forward(
+            pred_actions, _, _, pred_values, _, pred_states, pred_rewards, pairwise_pred, *extras = self.forward(
                 state=x['state'],
                 prev_action=x['prev_action'],
                 pos=x['pos'],
@@ -1287,6 +1287,7 @@ class YemongDynamicsInterleaved(BaseScaffold):
                 alive=x.get('alive', None),
                 target_actions=action
             )
+            reward_components = extras[0] if extras else None
             
             # Compute logprobs and entropy from pred_actions using the targets
             if self.action_space_type == "flattened":
@@ -1353,6 +1354,9 @@ class YemongDynamicsInterleaved(BaseScaffold):
         else:
             raise ValueError("step_type must be defined for step-by-step rollout.")
             
+        if mamba_state is None:
+            mamba_state = self.allocate_inference_cache(batch_size * num_ships, seq_len, dtype=emb.dtype)
+            
         # Backbone loop
         x_mamba_flat = emb.permute(0, 2, 1, 3).reshape(batch_size * num_ships, seq_len, d_model)
         new_mamba_state = {}
@@ -1383,13 +1387,11 @@ class YemongDynamicsInterleaved(BaseScaffold):
             
             Z_flat = Z.reshape(batch_size * seq_len, num_ships, d_model)
             kpm_val = ~alive.reshape(batch_size * seq_len, num_ships)
-            all_masked_val = kpm_val.all(dim=-1, keepdim=True)
-            kpm_val = kpm_val & ~all_masked_val
             
-            q_val = self.team_token_value.expand(batch_size * seq_len, -1, -1)
-            Z_norm_val = self.norm_value(Z_flat)
-            team_vec_val, _ = self.pooler_value(q_val, Z_norm_val, Z_norm_val, key_padding_mask=kpm_val)
-            value_pred = self.value_head(team_vec_val.squeeze(1)).reshape(batch_size, seq_len, 1)
+            value_pred = self.value_head(
+                Z_flat,
+                key_padding_mask=kpm_val
+            ).reshape(batch_size, seq_len, 1)
             
             # Sampling Action
             if self.action_space_type == "flattened":
@@ -1424,13 +1426,11 @@ class YemongDynamicsInterleaved(BaseScaffold):
             
             Z_flat = Z.reshape(batch_size * seq_len, num_ships, d_model)
             kpm_rew = ~alive.reshape(batch_size * seq_len, num_ships)
-            all_masked_rew = kpm_rew.all(dim=-1, keepdim=True)
-            kpm_rew = kpm_rew & ~all_masked_rew
             
-            q_rew = self.team_token_reward.expand(batch_size * seq_len, -1, -1)
-            Z_norm_rew = self.norm_reward(Z_flat)
-            team_vec_rew, _ = self.pooler_reward(q_rew, Z_norm_rew, Z_norm_rew, key_padding_mask=kpm_rew)
-            reward_outputs = self.reward_head(team_vec_rew.squeeze(1)).reshape(batch_size, seq_len, -1)
+            reward_outputs = self.reward_head(
+                Z_flat,
+                key_padding_mask=kpm_rew
+            ).reshape(batch_size, seq_len, -1)
             
             reward_pred = reward_outputs.sum(dim=-1, keepdim=True)
             

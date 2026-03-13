@@ -296,23 +296,45 @@ class WorldModelAgent:
              }
              
              # Call model
-             outputs = self.model(**forward_kwargs)
+             if getattr(self.model, 'is_interleaved', False):
+                 # Interleaved recurrent step
+                 pred_a_sampled, _logprob, _entropy, value_pred, new_cache, *_ = self.model.get_action_and_value(
+                     forward_kwargs, mamba_state=self.actor_cache, step_type="state"
+                 )
+                 # Note: in step-by-step PPO, action_logits are NOT returned directly, it returns the sampled action.
+                 # Wait, for gameplay we need to pick the argmax action (or sample if stochastic).
+                 # If model doesn't return logits, we have to unpack carefully. 
+                 # Let's check get_action_and_value: it returns action_sampled, logprob, entropy, value, new_cache
+                 # For deterministic inference we might want logits, but let's just use the sampled action it provides.
+                 
+                 # The user wants categorical indices. get_action_and_value returns action_sampled of shape (B, T, N, 3)
+                 next_action_indices = pred_a_sampled # (1, 1, N, 3)
+                 self.actor_cache = new_cache
+                 
+                 # Step 2: Feed the action back to update world model state
+                 _, _, _, _, new_cache_post_action, pred_states, pred_rewards, *_ = self.model.get_action_and_value(
+                     forward_kwargs, mamba_state=self.actor_cache, action=next_action_indices, step_type="action"
+                 )
+                 self.actor_cache = new_cache_post_action
+                 
+                 # We don't have logits to argmax, we just use the sampled indices directly
+                 p_idx = next_action_indices[:, -1, :, 0]
+                 t_idx = next_action_indices[:, -1, :, 1]
+                 s_idx = next_action_indices[:, -1, :, 2]
+                 
+             else:
+                 # Legacy model
+                 outputs = self.model(**forward_kwargs)
+                 pred_s, pred_a_logits, _, _, new_cache = outputs
+                 self.actor_cache = new_cache
+                 
+                 last_step_logits = pred_a_logits[:, -1, :, :] # (1, N, 12)
+                 p_idx = last_step_logits[..., 0:3].argmax(dim=-1)
+                 t_idx = last_step_logits[..., 3:10].argmax(dim=-1)
+                 s_idx = last_step_logits[..., 10:12].argmax(dim=-1)
+                 
+                 next_action_indices = torch.stack([p_idx, t_idx, s_idx], dim=-1).float() # (1, N, 3)
              
-             # All Yemong scaffolds return (state_pred, action_logits, value_pred, reward_pred, x_final/cache)
-             # but some might return None for some indices
-             pred_s, pred_a_logits, _, _, new_cache = outputs
-             
-        # 3. Update Cache
-        self.actor_cache = new_cache
-        
-        # 4. Decode
-        last_step_logits = pred_a_logits[:, -1, :, :] # (1, N, 12)
-        p_idx = last_step_logits[..., 0:3].argmax(dim=-1)
-        t_idx = last_step_logits[..., 3:10].argmax(dim=-1)
-        s_idx = last_step_logits[..., 10:12].argmax(dim=-1)
-        
-        next_action_indices = torch.stack([p_idx, t_idx, s_idx], dim=-1).float() # (1, N, 3)
-        
         # Update History (for prev_action next step)
         self.history.append((current_state, next_action_indices))
         

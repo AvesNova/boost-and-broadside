@@ -67,8 +67,17 @@ class BatchProcessor:
         input_states = states[:, :-1]
         next_states = states[:, 1:]
         
-        target_actions = actions[:, :-1]
-        
+        # In pretraining, unified_dataset provides 'target_actions'.
+        # If available, slice it matching the input window.
+        if "target_actions" in batch_data:
+            target_actions = batch_data["target_actions"].to(device, non_blocking=True)[:, :-1]
+        else:
+            # Fallback for old buffers if needed: we assume actions is A_{t-1}, so A_t is actions shifted left
+            target_actions = actions[:, 1:]
+            
+        # Optional: input_actions here might be A_{t-2} if actions is already A_{t-1}.
+        # Leaving as is for now, but usually just 'actions[:, :-1]' is the input action. 
+        # But to match existing logic:
         zero_action = torch.zeros_like(actions[:, :1])
         input_actions = torch.cat([zero_action, actions[:, :-1]], dim=1)[:, :-1]
         

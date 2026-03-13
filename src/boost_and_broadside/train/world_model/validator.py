@@ -73,7 +73,11 @@ class Validator:
                     next_states = states[:, 1:]
                     
                     input_actions = actions[:, :-1]
-                    target_actions = actions[:, :-1]
+                    
+                    if "target_actions" in batch:
+                        target_actions = batch["target_actions"].to(self.device)[:, :-1]
+                    else:
+                        target_actions = actions[:, 1:]
                     
                     loss_mask_slice = loss_mask[:, 1:]
                     
@@ -182,10 +186,14 @@ class Validator:
                     val_steps += 1
                     
                     valid_mask = loss_mask_slice.bool()
-                    if valid_mask.sum() > 0:
+                    if valid_mask.sum() > 0 and pred_actions is not None:
                         if valid_mask.ndim == 2:
                              # Expand if mask is (B,T) and pred is (B,T,N,...)
-                             valid_mask = valid_mask.unsqueeze(-1).expand_as(pred_actions[..., 0])
+                             # We use pred_actions shape to determine expansion
+                             shape_diff = pred_actions.ndim - valid_mask.ndim
+                             for _ in range(shape_diff):
+                                 valid_mask = valid_mask.unsqueeze(-1)
+                             valid_mask = valid_mask.expand(*pred_actions.shape[:-1])
                         
                         # Flat mask
                         flat_mask = valid_mask.reshape(-1)
