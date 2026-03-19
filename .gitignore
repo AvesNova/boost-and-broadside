@@ -13,3 +13,4 @@ outputs/
 .agent/
 wandb/
 .venv/
+/tmp/

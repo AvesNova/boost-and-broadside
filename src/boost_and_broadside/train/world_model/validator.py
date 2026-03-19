@@ -190,10 +190,10 @@ class Validator:
                         if valid_mask.ndim == 2:
                              # Expand if mask is (B,T) and pred is (B,T,N,...)
                              # We use pred_actions shape to determine expansion
-                             shape_diff = pred_actions.ndim - valid_mask.ndim
-                             for _ in range(shape_diff):
+                             target_shape = pred_actions.shape[:-1]
+                             while valid_mask.ndim < len(target_shape):
                                  valid_mask = valid_mask.unsqueeze(-1)
-                             valid_mask = valid_mask.expand(*pred_actions.shape[:-1])
+                             valid_mask = valid_mask.expand(*target_shape)
                         
                         # Flat mask
                         flat_mask = valid_mask.reshape(-1)

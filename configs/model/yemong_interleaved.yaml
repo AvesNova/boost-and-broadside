@@ -3,7 +3,7 @@ _target_: boost_and_broadside.models.yemong.scaffolds.YemongDynamicsInterleaved
 d_model: 256
 n_layers: 6
 n_heads: 4
-learning_rate: 1e-4
+learning_rate: 2e-5
 
 # Action Embedding configuration
 action_space_type: "flattened"
@@ -45,7 +45,7 @@ lambda_state: 0.0            # regression StateLoss disabled — replaced by sof
 lambda_actions: 1.0
 lambda_value: 0.0
 lambda_reward: 0.0
-lambda_pairwise: 0.1
+lambda_pairwise: 0.0
 # Soft-bin group lambdas (each group is already averaged + log-normalised → ~[0,1])
 lambda_soft_state:  1.0
 lambda_soft_value:  1.0
