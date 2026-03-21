@@ -18,6 +18,7 @@ from abc import ABC, abstractmethod
 
 from boost_and_broadside.env.state import TensorState
 from boost_and_broadside.config import RewardConfig, ShipConfig
+from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 
 
 class RewardComponent(ABC):
@@ -638,8 +639,73 @@ class ShootQualityReward(RewardComponent):
         return self.shoot_quality_weight * shooting * best_quality * alive.float()
 
 
+class ScriptedAgentReward(RewardComponent):
+    """Reward the RL agent for taking actions the scripted expert recommends.
+
+    Computes log P_scripted(rl_action) = sum of log-probs of each sub-action
+    (power, turn, shoot) under the scripted agent's marginal distributions.
+    A 1% uniform mixture is applied before taking logs to prevent divergence
+    from zero-probability actions (e.g. air brakes, which the scripted agent
+    never uses).
+
+    The scripted distributions are evaluated on prev_state — the same state
+    the RL policy observed when selecting its action.
+
+    Both teams are rewarded for following their own scripted expert, so
+    team-1 rewards are pre-inverted (like ProximityReward) so the zero-sum
+    transform leaves both teams with a positive signal for expert-matching.
+    """
+
+    name = "scripted_agent"
+
+    def __init__(self, weight: float, agent: StochasticScriptedAgent) -> None:
+        self.weight = weight
+        self.agent  = agent
+
+    def compute(
+        self,
+        prev_state: TensorState,
+        actions: torch.Tensor,
+        next_state: TensorState,
+        dones: torch.Tensor,
+    ) -> torch.Tensor:
+        closest_dist, target_idx, has_target = self.agent._select_targets(prev_state)
+        dir_pred    = self.agent._predict_interception(prev_state, target_idx, closest_dist)
+        active_mask = prev_state.ship_alive & has_target
+
+        p_power, p_turn, p_shoot = self.agent._compute_action_probs(
+            prev_state, closest_dist, dir_pred, active_mask
+        )
+
+        a_pow = actions[..., 0].long()   # (B, N)
+        a_trn = actions[..., 1].long()
+        a_sht = actions[..., 2].long()
+
+        # Mix 1% uniform into each head to prevent log(0) divergence when the
+        # scripted agent assigns zero probability to an action (e.g. air brakes).
+        p_power = 0.99 * p_power + 0.01 / 3
+        p_turn  = 0.99 * p_turn  + 0.01 / 7
+        p_shoot = 0.99 * p_shoot + 0.01 / 2
+
+        log_p = (
+            p_power.gather(-1, a_pow.unsqueeze(-1)).squeeze(-1).log()
+          + p_turn.gather(-1,  a_trn.unsqueeze(-1)).squeeze(-1).log()
+          + p_shoot.gather(-1, a_sht.unsqueeze(-1)).squeeze(-1).log()
+        )
+
+        reward = self.weight * log_p * prev_state.ship_alive.float()
+
+        # Pre-invert team-1 so the zero-sum transform rewards both teams
+        # positively for matching their own expert (same trick as ProximityReward).
+        team1 = prev_state.ship_team_id == 1
+        reward[team1] = -reward[team1]
+        return reward
+
+
 def build_reward_components(
-    reward_config: RewardConfig, ship_config: ShipConfig
+    reward_config: RewardConfig,
+    ship_config: ShipConfig,
+    scripted_agent: StochasticScriptedAgent | None = None,
 ) -> list[RewardComponent]:
     """Construct the list of active reward components from config.
 
@@ -647,13 +713,16 @@ def build_reward_components(
     an instance here. Tracking and logging require no further changes.
 
     Args:
-        reward_config: Reward weights and radii.
-        ship_config:   Physics config (used for world_size).
+        reward_config:   Reward weights and radii.
+        ship_config:     Physics config (used for world_size).
+        scripted_agent:  Optional stochastic scripted agent. When provided and
+                         reward_config.scripted_agent_weight > 0, a
+                         ScriptedAgentReward component is appended.
 
     Returns:
         List of RewardComponent instances to apply each step.
     """
-    return [
+    components: list[RewardComponent] = [
         DamageReward(damage_weight=reward_config.damage_weight),
         DeathReward(kill_weight=reward_config.kill_weight, death_weight=reward_config.death_weight),
         VictoryReward(victory_weight=reward_config.victory_weight),
@@ -698,6 +767,9 @@ def build_reward_components(
             world_size=ship_config.world_size,
         ),
     ]
+    if scripted_agent is not None and reward_config.scripted_agent_weight > 0.0:
+        components.append(ScriptedAgentReward(reward_config.scripted_agent_weight, scripted_agent))
+    return components
 
 
 def compute_rewards(

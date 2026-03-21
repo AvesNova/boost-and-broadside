@@ -16,6 +16,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import TrainConfig, ModelConfig, ShipConfig, EnvConfig, RewardConfig
 from boost_and_broadside.env.wrapper import MVPEnvWrapper
 from boost_and_broadside.models.mvp.policy import MVPPolicy
@@ -37,13 +38,14 @@ class PPOTrainer:
 
     def __init__(
         self,
-        train_config:  TrainConfig,
-        model_config:  ModelConfig,
-        ship_config:   ShipConfig,
-        env_config:    EnvConfig,
-        reward_config: RewardConfig,
-        device:        str | torch.device,
-        use_wandb:     bool = False,
+        train_config:   TrainConfig,
+        model_config:   ModelConfig,
+        ship_config:    ShipConfig,
+        env_config:     EnvConfig,
+        reward_config:  RewardConfig,
+        device:         str | torch.device,
+        use_wandb:      bool = False,
+        scripted_agent: StochasticScriptedAgent | None = None,
     ) -> None:
         self.cfg          = train_config
         self.model_config = model_config
@@ -54,11 +56,12 @@ class PPOTrainer:
         self.use_wandb    = use_wandb
 
         self.wrapper = MVPEnvWrapper(
-            num_envs     = train_config.num_envs,
-            ship_config  = ship_config,
-            env_config   = env_config,
-            reward_config = reward_config,
-            device       = device,
+            num_envs       = train_config.num_envs,
+            ship_config    = ship_config,
+            env_config     = env_config,
+            reward_config  = reward_config,
+            device         = device,
+            scripted_agent = scripted_agent,
         )
         self.policy = MVPPolicy(model_config, ship_config).to(self.device)
         self.optim  = optim.Adam(self.policy.parameters(), lr=train_config.learning_rate, eps=1e-5)

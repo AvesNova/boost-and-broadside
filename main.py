@@ -14,6 +14,8 @@ import sys
 
 import torch
 
+from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
+from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import (
     ShipConfig, EnvConfig, ModelConfig, RewardConfig, TrainConfig,
 )
@@ -55,7 +57,7 @@ def main() -> None:
     ship_config = ShipConfig(bullet_energy_cost=0)
 
     env_config = EnvConfig(
-        num_ships         = 2,    # 4v4
+        num_ships         = 4,    # 4v4
         max_bullets       = 20,
         max_episode_steps = 512,
     )
@@ -94,8 +96,10 @@ def main() -> None:
         speed_range_lo     = 40.0,
         speed_range_hi     = 120.0,
 
-        shoot_quality_weight = 0.05,
-        shoot_quality_radius = 100.0,
+        shoot_quality_weight = 0.005,
+        shoot_quality_radius = 200.0,
+
+        scripted_agent_weight = 0.001,
     )
 
     render_config = RenderConfig()
@@ -105,6 +109,7 @@ def main() -> None:
     # ------------------------------------------------------------------
     match args.mode:
         case "train":
+            scripted_agent = StochasticScriptedAgent(ship_config, StochasticAgentConfig())
             train_config = TrainConfig(
                 num_envs            = 256 + 128,
                 num_steps           = 512,
@@ -122,13 +127,14 @@ def main() -> None:
                 checkpoint_dir      = "checkpoints",
             )
             trainer = PPOTrainer(
-                train_config  = train_config,
-                model_config  = model_config,
-                ship_config   = ship_config,
-                env_config    = env_config,
-                reward_config = reward_config,
-                device        = device,
-                use_wandb     = True,
+                train_config   = train_config,
+                model_config   = model_config,
+                ship_config    = ship_config,
+                env_config     = env_config,
+                reward_config  = reward_config,
+                device         = device,
+                use_wandb      = True,
+                scripted_agent = scripted_agent,
             )
             trainer.train()
 

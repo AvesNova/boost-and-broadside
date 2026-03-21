@@ -10,6 +10,7 @@ Responsibilities:
 import torch
 from typing import Any
 
+from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import ShipConfig, EnvConfig, RewardConfig
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.rewards import RewardComponent, build_reward_components, compute_rewards
@@ -37,13 +38,14 @@ class MVPEnvWrapper:
         env_config: EnvConfig,
         reward_config: RewardConfig,
         device: str | torch.device,
+        scripted_agent: StochasticScriptedAgent | None = None,
     ) -> None:
         self.env            = TensorEnv(num_envs, ship_config, env_config, device)
         self.ship_config    = ship_config
         self.env_config     = env_config
         self.device         = torch.device(device)
         self._components: list[RewardComponent] = build_reward_components(
-            reward_config, ship_config
+            reward_config, ship_config, scripted_agent
         )
 
         # Episode stat accumulators for async logging — (B, N) tensors
