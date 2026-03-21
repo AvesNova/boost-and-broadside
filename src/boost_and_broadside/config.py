@@ -39,7 +39,7 @@ class ShipConfig:
     reverse_thrust: float = -10.0
 
     # Gravity (attraction between fast-moving ships)
-    gravity_factor: float = 5.0
+    gravity_factor: float = 0.0 #5.0
     gravity_eps: float = 10000.0
 
     # Power regeneration / consumption rates (per second)
