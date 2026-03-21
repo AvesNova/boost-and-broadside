@@ -95,7 +95,7 @@ def main() -> None:
                 vf_coef             = 0.5,
                 max_grad_norm       = 0.5,
                 total_timesteps     = 50_000_000,
-                checkpoint_interval = 500,
+                checkpoint_interval = 10,
                 checkpoint_dir      = "checkpoints",
             )
             trainer = PPOTrainer(

@@ -111,6 +111,10 @@ class PPOTrainer:
             self.buffer.reset()
             self.buffer.store_initial_hidden(hidden)
 
+            # Accumulate episode stats across the rollout — flushed once per update
+            ep_rewards: list[torch.Tensor] = []
+            ep_lengths: list[torch.Tensor] = []
+
             # ----------------------------------------------------------------
             # Rollout collection
             # ----------------------------------------------------------------
@@ -119,13 +123,9 @@ class PPOTrainer:
 
                 next_obs, reward, dones, truncated, info = self.wrapper.step(action)
 
-                # Log episode completions (CPU-side, async)
                 if info.get("ep_reward") is not None:
-                    self._enqueue_log(
-                        {"ep/reward_mean": info["ep_reward"].mean().item(),
-                         "ep/length_mean": info["ep_length"].float().mean().item()},
-                        step=self._global_step,
-                    )
+                    ep_rewards.append(info["ep_reward"])
+                    ep_lengths.append(info["ep_length"].float())
 
                 done_any = dones | truncated
                 self.buffer.add(
@@ -156,10 +156,20 @@ class PPOTrainer:
             # ----------------------------------------------------------------
             metrics = self._update_epochs()
 
-            # Log training metrics
+            # Merge episode stats collected during rollout into the metrics dict
+            if ep_rewards:
+                all_rewards = torch.cat(ep_rewards)  # (num_finished_eps * N,)
+                all_lengths = torch.cat(ep_lengths)
+                metrics["ep/reward_mean"] = all_rewards.mean().item()
+                metrics["ep/reward_min"]  = all_rewards.min().item()
+                metrics["ep/reward_max"]  = all_rewards.max().item()
+                metrics["ep/length_mean"] = all_lengths.mean().item()
+
             sps = int(self._global_step / (time.time() - start_time))
             metrics["train/global_step"] = self._global_step
             metrics["train/sps"]         = sps
+
+            # Single log call per update — all metrics at the same step
             self._enqueue_log(metrics, step=self._global_step)
 
             if update % 10 == 0:
@@ -187,12 +197,15 @@ class PPOTrainer:
         """
         cfg = self.cfg
         accum: dict[str, list[float]] = {
-            "train/loss":       [],
-            "train/pg_loss":    [],
-            "train/vf_loss":    [],
-            "train/ent_loss":   [],
-            "train/approx_kl":  [],
-            "train/clip_frac":  [],
+            "train/loss":               [],
+            "train/pg_loss":            [],
+            "train/vf_loss":            [],
+            "train/ent_loss":           [],
+            "train/approx_kl":          [],
+            "train/clip_frac":          [],
+            "train/value_mean":         [],
+            "train/return_mean":        [],
+            "train/explained_variance": [],
         }
 
         for _ in range(cfg.num_epochs):
@@ -233,15 +246,20 @@ class PPOTrainer:
                 self.optim.step()
 
                 with torch.no_grad():
-                    approx_kl = ((ratio - 1) - log_ratio).mean().item()
-                    clip_frac = ((ratio - 1).abs() > cfg.clip_coef).float().mean().item()
+                    approx_kl        = ((ratio - 1) - log_ratio).mean().item()
+                    clip_frac        = ((ratio - 1).abs() > cfg.clip_coef).float().mean().item()
+                    var_returns      = mb_returns.var().item()
+                    explained_var    = (1.0 - (mb_returns - mb_values).var().item() / (var_returns + 1e-8))
 
-                accum["train/loss"]      .append(loss.item())
-                accum["train/pg_loss"]   .append(pg_loss.item())
-                accum["train/vf_loss"]   .append(vf_loss.item())
-                accum["train/ent_loss"]  .append(ent_loss.item())
-                accum["train/approx_kl"] .append(approx_kl)
-                accum["train/clip_frac"] .append(clip_frac)
+                accum["train/loss"]              .append(loss.item())
+                accum["train/pg_loss"]           .append(pg_loss.item())
+                accum["train/vf_loss"]           .append(vf_loss.item())
+                accum["train/ent_loss"]          .append(ent_loss.item())
+                accum["train/approx_kl"]         .append(approx_kl)
+                accum["train/clip_frac"]         .append(clip_frac)
+                accum["train/value_mean"]        .append(mb_values.mean().item())
+                accum["train/return_mean"]       .append(mb_returns.mean().item())
+                accum["train/explained_variance"].append(explained_var)
 
         return {k: sum(v) / len(v) for k, v in accum.items() if v}
 
@@ -266,6 +284,10 @@ class PPOTrainer:
             "optimizer_state_dict": self.optim.state_dict(),
             "update":               update,
             "global_step":          self._global_step,
+            "train_config":         dataclasses.asdict(self.cfg),
+            "model_config":         dataclasses.asdict(self.model_config),
+            "env_config":           dataclasses.asdict(self.env_config),
+            "reward_config":        dataclasses.asdict(self.reward_config),
         }, path)
         print(f"Checkpoint saved: {path}")
 
