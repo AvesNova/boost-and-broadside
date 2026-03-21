@@ -24,8 +24,14 @@ from boost_and_broadside.config import ModelConfig, ShipConfig
 from boost_and_broadside.constants import NUM_POWER_ACTIONS, NUM_TURN_ACTIONS, NUM_SHOOT_ACTIONS
 
 
-_TEAM_EMBED_DIM  = 4
-_RAW_DIM         = 32 + 2 + 2 + 1 + 3 + _TEAM_EMBED_DIM + 1 + (NUM_POWER_ACTIONS + NUM_TURN_ACTIONS + NUM_SHOOT_ACTIONS)  # 57
+_TEAM_EMBED_DIM = 4
+_ACTION_DIM     = NUM_POWER_ACTIONS + NUM_TURN_ACTIONS + NUM_SHOOT_ACTIONS  # 12
+
+
+def _raw_dim(n_fourier_freqs: int) -> int:
+    """Compute raw feature dimension given number of Fourier frequencies."""
+    pos_dim = 4 * n_fourier_freqs  # x and y, each (sin+cos) * n_freqs
+    return pos_dim + 2 + 2 + 1 + 3 + _TEAM_EMBED_DIM + 1 + _ACTION_DIM
 
 
 def _symlog(x: torch.Tensor) -> torch.Tensor:
@@ -74,7 +80,7 @@ class ShipEncoder(nn.Module):
         self.d_model  = model_config.d_model
 
         self.team_embed   = nn.Embedding(2, _TEAM_EMBED_DIM)
-        self.proj         = nn.Linear(_RAW_DIM, model_config.d_model)
+        self.proj         = nn.Linear(_raw_dim(self.n_freqs), model_config.d_model)
         self.layer_norm   = nn.LayerNorm(model_config.d_model)
 
     def forward(self, obs: dict[str, torch.Tensor]) -> torch.Tensor:
@@ -99,7 +105,7 @@ class ShipEncoder(nn.Module):
         att         = obs["att"]        # (..., N, 2)
         ang_vel     = obs["ang_vel"]    # (..., N, 1)
         scalars     = obs["scalars"]    # (..., N, 3)
-        team_id     = obs["team_id"]    # (..., N)
+        team_id     = obs["team_id"].long()  # (..., N)
         alive       = obs["alive"]      # (..., N)
         prev_action = obs["prev_action"].long()  # (..., N, 3)
 
