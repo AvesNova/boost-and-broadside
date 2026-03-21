@@ -1,165 +1,72 @@
-import os
-import sys
+"""Shared pytest fixtures for all test modules."""
 
+import torch
 import pytest
-from omegaconf import OmegaConf
-import numpy as np
-import h5py
-# Normalization constants removed, use hardcoded values for synthetic tests
 
-# Ensure project root is in sys.path
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
+from boost_and_broadside.config import ShipConfig, EnvConfig, ModelConfig, RewardConfig
+from boost_and_broadside.env.state import TensorState
 
 
 @pytest.fixture
-def default_config():
-    """Return a default configuration for testing."""
-    return OmegaConf.create(
-        {
-            "mode": "play",
-            "environment": {
-                "world_size": [1000, 1000],
-                "memory_size": 10000,
-                "max_ships": 4,
-                "agent_dt": 0.04,
-                "physics_dt": 0.02,
-                "render_mode": "none",
-                "random_positioning": False,
-                "random_speed": False,
-            },
-            "team1": "scripted",
-            "team2": "scripted",
-            "agents": {
-                "scripted": {
-                    "agent_type": "scripted",
-                    "agent_config": {
-                        "max_shooting_range": 500.0,
-                        "angle_threshold": 5.0,
-                        "bullet_speed": 500.0,
-                        "target_radius": 10.0,
-                        "radius_multiplier": 1.5,
-                        "world_size": [1000, 1000],
-                    },
-                },
-            },
-            "collect": {
-                "teams": ["scripted", "scripted"],
-                "max_episode_length": 100,
-                "num_workers": 1,
-                "episodes_per_mode": {"1v1": 1},
-                "output_dir": "data/bc_pretraining",
-                "render_mode": "none",
-                "save_frequency": 10,
-            },
-            "train": {
-                "run_collect": False,
-                "run_bc": False,
-                "run_rl": False,
-                "use_bc": True,
-                "use_rl": True,
-                "bc_data_path": "data/bc_pretraining/aggregated_data.pkl",
-                "batch_size": 32,
-                "model": {
-                    "transformer": {
-                        "token_dim": 9,
-                        "max_ships": 4,
-                        "num_actions": 6,
-                        "embed_dim": 16,
-                        "num_heads": 2,
-                        "num_layers": 1,
-                        "dropout": 0.0,
-                        "use_layer_norm": True,
-                    }
-                },
-                "bc": {
-                    "learning_rate": 0.001,
-                    "batch_size": 32,
-                    "epochs": 1,
-                    "validation_split": 0.2,
-                    "early_stopping_patience": 10,
-                    "policy_weight": 1.0,
-                    "value_weight": 0.5,
-                },
-                "rl": {
-                    "pretrained_model_path": None,
-                    "n_envs": 1,
-                    "total_timesteps": 1000,
-                    "learning_rate": 0.0003,
-                    "n_steps": 128,
-                    "batch_size": 32,
-                    "n_epochs": 3,
-                    "gamma": 0.99,
-                    "gae_lambda": 0.95,
-                    "clip_range": 0.2,
-                    "ent_coef": 0.01,
-                    "vf_coef": 0.5,
-                    "max_grad_norm": 0.5,
-                },
-            },
-        }
+def ship_config() -> ShipConfig:
+    """Default ship physics config (reference game values)."""
+    return ShipConfig()
+
+
+@pytest.fixture
+def env_config() -> EnvConfig:
+    return EnvConfig(num_ships=8, max_bullets=20, max_episode_steps=500)
+
+
+@pytest.fixture
+def model_config() -> ModelConfig:
+    return ModelConfig(d_model=64, n_heads=4, n_fourier_freqs=8)
+
+
+@pytest.fixture
+def reward_config() -> RewardConfig:
+    return RewardConfig(
+        damage_weight=0.01,
+        kill_weight=0.5,
+        death_weight=0.5,
+        victory_weight=1.0,
+        positioning_weight=0.05,
+        positioning_radius=300.0,
     )
 
 
-# Legacy fixtures removed
-
-
-
 @pytest.fixture
-def synthetic_h5_data(tmp_path):
-    """Create a synthetic HDF5 dataset for testing."""
-    data_dir = tmp_path / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
-    file_path = data_dir / "aggregated_data.h5"
-
-    num_episodes = 5
-    episode_len = 200
-    total_timesteps = num_episodes * episode_len
-    from boost_and_broadside.core.constants import STATE_DIM
-    max_ships = 4
-    token_dim = STATE_DIM
-    num_actions = 3 # 3 discrete action components (Power, Turn, Shoot)
-
-    with h5py.File(file_path, "w") as f:
-        # Attributes
-        f.attrs["num_episodes"] = num_episodes
-        f.attrs["total_timesteps"] = total_timesteps
-        f.attrs["total_sim_time"] = 100.0
-        f.attrs["max_ships"] = max_ships
-        f.attrs["token_dim"] = token_dim
-        f.attrs["num_actions"] = num_actions
-
-        # Granular Datasets replacing 'tokens'
-        # position: (N, MaxShips, 2)
-        f.create_dataset("position", data=np.random.randn(total_timesteps, max_ships, 2).astype(np.float32))
-        f.create_dataset("velocity", data=np.random.randn(total_timesteps, max_ships, 2).astype(np.float32))
-        f.create_dataset("health", data=np.random.rand(total_timesteps, max_ships).astype(np.float32) * 100.0)
-        f.create_dataset("power", data=np.random.rand(total_timesteps, max_ships).astype(np.float32) * 100.0)
-        f.create_dataset("attitude", data=np.random.randn(total_timesteps, max_ships, 2).astype(np.float32))
-        f.create_dataset("ang_vel", data=np.random.randn(total_timesteps, max_ships).astype(np.float32))
-        f.create_dataset("is_shooting", data=np.random.randint(0, 2, (total_timesteps, max_ships)).astype(np.float32))
-        f.create_dataset("team_ids", data=np.zeros((total_timesteps, max_ships), dtype=np.float32))
-        
-        # actions: (N, MaxShips, NumActions) - discrete indices
-        # Generate integers 0..1 (Safe for all: Power=3, Turn=7, Shoot=2)
-        f.create_dataset("actions", data=np.random.randint(0, 2, (total_timesteps, max_ships, num_actions)).astype(np.int64))
-
-        # action_masks: (N, MaxShips, NumActions) - boolean
-        f.create_dataset("action_masks", data=np.ones((total_timesteps, max_ships, num_actions), dtype=bool))
+def device() -> str:
+    return "cpu"
 
 
-        # rewards: (N, MaxShips) - Granular rewards per ship
-        f.create_dataset("rewards", data=np.random.randn(total_timesteps, max_ships).astype(np.float32))
-
-        # returns: (N, MaxShips) - Granular returns per ship
-        f.create_dataset("returns", data=np.random.randn(total_timesteps, max_ships).astype(np.float32))
-
-        # episode_ids: (N,)
-        ids = np.repeat(np.arange(num_episodes), episode_len)
-        f.create_dataset("episode_ids", data=ids.astype(np.int64))
-        
-        # episode_lengths: (NumEpisodes,)
-        f.create_dataset("episode_lengths", data=np.full((num_episodes,), episode_len, dtype=np.int64))
-
-    return str(file_path)
+def make_state(
+    num_envs: int = 2,
+    max_ships: int = 4,
+    max_bullets: int = 5,
+    device: str = "cpu",
+    ship_config: ShipConfig | None = None,
+) -> TensorState:
+    """Build a TensorState with sane initial values for unit testing."""
+    if ship_config is None:
+        ship_config = ShipConfig()
+    dev = torch.device(device)
+    return TensorState(
+        step_count      = torch.zeros((num_envs,), dtype=torch.int32, device=dev),
+        ship_pos        = torch.zeros((num_envs, max_ships), dtype=torch.complex64, device=dev),
+        ship_vel        = torch.zeros((num_envs, max_ships), dtype=torch.complex64, device=dev),
+        ship_attitude   = torch.ones( (num_envs, max_ships), dtype=torch.complex64, device=dev),
+        ship_ang_vel    = torch.zeros((num_envs, max_ships), dtype=torch.float32,   device=dev),
+        ship_health     = torch.full( (num_envs, max_ships), ship_config.max_health, device=dev),
+        ship_power      = torch.full( (num_envs, max_ships), ship_config.max_power,  device=dev),
+        ship_cooldown   = torch.zeros((num_envs, max_ships), dtype=torch.float32,   device=dev),
+        ship_team_id    = torch.zeros((num_envs, max_ships), dtype=torch.int32,     device=dev),
+        ship_alive      = torch.ones( (num_envs, max_ships), dtype=torch.bool,      device=dev),
+        ship_is_shooting = torch.zeros((num_envs, max_ships), dtype=torch.bool,    device=dev),
+        prev_action     = torch.zeros((num_envs, max_ships, 3), dtype=torch.float32, device=dev),
+        bullet_pos      = torch.zeros((num_envs, max_ships, max_bullets), dtype=torch.complex64, device=dev),
+        bullet_vel      = torch.zeros((num_envs, max_ships, max_bullets), dtype=torch.complex64, device=dev),
+        bullet_time     = torch.zeros((num_envs, max_ships, max_bullets), dtype=torch.float32,   device=dev),
+        bullet_active   = torch.zeros((num_envs, max_ships, max_bullets), dtype=torch.bool,      device=dev),
+        bullet_cursor   = torch.zeros((num_envs, max_ships), dtype=torch.long, device=dev),
+    )

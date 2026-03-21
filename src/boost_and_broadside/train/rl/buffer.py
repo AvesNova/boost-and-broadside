@@ -1,207 +1,214 @@
+"""GPU-resident rollout buffer for recurrent PPO.
 
-import torch
+All data is pre-allocated on-device. No CPU-GPU transfers during rollout
+collection. GAE is computed fully on GPU.
+
+Shape conventions throughout:
+    T = num_steps (rollout length)
+    B = num_envs
+    N = num_ships
+    D = d_model
+"""
+
 import numpy as np
-from typing import Optional, Generator, Dict
+import torch
+from typing import Generator
 
-class GPUBuffer:
+
+class RolloutBuffer:
+    """Pre-allocated GPU rollout buffer for one PPO rollout.
+
+    Supports per-ship rewards and values (zero-sum multi-agent PPO).
+    Stores one initial GRU hidden state per rollout for recurrent re-evaluation.
+
+    Args:
+        num_steps:    Rollout horizon T.
+        num_envs:     Parallel environments B.
+        num_ships:    Ships per environment N.
+        obs_shapes:   Dict mapping obs key → trailing shape, e.g. {"pos": (N, 2)}.
+        gamma:        Discount factor.
+        gae_lambda:   GAE lambda.
+        device:       GPU device for all storage.
     """
-    A GPU-resident replay buffer for PPO.
-    
-    Stores all rollout data as pre-allocated tensors on the device to avoid
-    CPU-GPU transfer overhead. Implements GAE computation natively.
-    Supports Dictionary Observations for complex environments.
-    """
-    
+
     def __init__(
         self,
         num_steps: int,
         num_envs: int,
-        obs_shapes: Dict[str, tuple], # Dict of shapes for each key
-        action_shape: tuple,
-        gamma: float = 0.99,
-        gae_lambda: float = 0.95,
-        device: torch.device = torch.device("cuda")
-    ):
-        self.num_steps = num_steps
-        self.num_envs = num_envs
-        self.num_ships = obs_shapes['state'][0] # Assuming dim 0 is num_ships
-        self.gamma = gamma
-        self.gae_lambda = gae_lambda
-        self.device = device
-        
-        # Calculate buffer size
-        self.batch_size = num_steps * num_envs
-        
-        # Storage initialization
-        # Obs is a dictionary of tensors
-        self.obs = {}
-        for key, shape in obs_shapes.items():
-            self.obs[key] = torch.zeros((num_steps, num_envs, *shape), device=device, dtype=torch.float32)
-        
-        # Actions: (T, B, N, 3)
-        # action_shape passed in is (N, 3)
-        self.actions = torch.zeros((num_steps, num_envs, *action_shape), device=device, dtype=torch.float32)
-        
-        # Per-Ship Scalars
-        self.logprobs = torch.zeros((num_steps, num_envs, self.num_ships), device=device, dtype=torch.float32)
-        self.rewards = torch.zeros((num_steps, num_envs, 1), device=device, dtype=torch.float32)  # team scalar
-        self.dones = torch.zeros((num_steps, num_envs), device=device, dtype=torch.float32) # Dones are per-env
-        self.values = torch.zeros((num_steps, num_envs, self.num_ships), device=device, dtype=torch.float32)
-        self.advantages = torch.zeros((num_steps, num_envs, self.num_ships), device=device, dtype=torch.float32)
-        self.returns = torch.zeros((num_steps, num_envs, self.num_ships), device=device, dtype=torch.float32)
-        
-        # Mamba States Storage (Initial per rollout)
-        self.initial_conv_state = {}
-        self.initial_ssm_state = {}
-        
+        num_ships: int,
+        obs_shapes: dict[str, tuple],
+        gamma: float,
+        gae_lambda: float,
+        device: torch.device,
+    ) -> None:
+        self.num_steps   = num_steps
+        self.num_envs    = num_envs
+        self.num_ships   = num_ships
+        self.gamma       = gamma
+        self.gae_lambda  = gae_lambda
+        self.device      = device
+
+        T, B, N = num_steps, num_envs, num_ships
+
+        # Observations — one entry per obs key
+        self.obs: dict[str, torch.Tensor] = {
+            key: torch.zeros((T, B, *shape), device=device, dtype=torch.float32)
+            for key, shape in obs_shapes.items()
+        }
+        # Store integer obs separately (team_id, alive, prev_action)
+        # We cast them to float for the obs dict above; keep originals as float too.
+
+        self.actions    = torch.zeros((T, B, N, 3), device=device, dtype=torch.int32)
+        self.logprobs   = torch.zeros((T, B, N),    device=device, dtype=torch.float32)
+        self.rewards    = torch.zeros((T, B, N),    device=device, dtype=torch.float32)
+        self.values     = torch.zeros((T, B, N),    device=device, dtype=torch.float32)
+        self.dones      = torch.zeros((T, B),       device=device, dtype=torch.float32)
+        self.alive_mask = torch.zeros((T, B, N),    device=device, dtype=torch.bool)
+
+        self.advantages = torch.zeros_like(self.values)
+        self.returns    = torch.zeros_like(self.values)
+
+        # Initial GRU hidden state at the start of this rollout
+        self.initial_hidden: torch.Tensor | None = None
+
         self.ptr = 0
-        
-    def reset(self):
-        self.ptr = 0
-        self.initial_conv_state = {}
-        self.initial_ssm_state = {}
-        
-    def add(
-        self, 
-        obs: Dict[str, torch.Tensor], 
-        action: torch.Tensor, 
-        logprob: torch.Tensor, 
-        reward: torch.Tensor, 
-        done: torch.Tensor, 
-        value: torch.Tensor
-    ):
+
+    # ------------------------------------------------------------------
+    # Data collection
+    # ------------------------------------------------------------------
+
+    def reset(self) -> None:
+        """Clear the write pointer (tensors are overwritten, not zeroed)."""
+        self.ptr            = 0
+        self.initial_hidden = None
+
+    def store_initial_hidden(self, hidden: torch.Tensor) -> None:
+        """Store the GRU hidden state at rollout start.
+
+        Args:
+            hidden: (1, B*N, D) float32.
         """
-        Add a step to the buffer. All inputs should be GPU tensors.
+        self.initial_hidden = hidden.clone()
+
+    def add(
+        self,
+        obs: dict[str, torch.Tensor],
+        action: torch.Tensor,
+        logprob: torch.Tensor,
+        reward: torch.Tensor,
+        done: torch.Tensor,
+        value: torch.Tensor,
+        alive: torch.Tensor,
+    ) -> None:
+        """Store one step.
+
+        Args:
+            obs:     Dict with (B, N, ...) tensors — float32.
+            action:  (B, N, 3) int.
+            logprob: (B, N) float.
+            reward:  (B, N) float.
+            done:    (B,) float (0.0 or 1.0).
+            value:   (B, N) float.
+            alive:   (B, N) bool.
         """
         if self.ptr >= self.num_steps:
-            raise IndexError("Buffer is full")
-            
+            raise IndexError("Buffer is full — call reset() before reuse.")
+
+        t = self.ptr
         for key, val in obs.items():
             if key in self.obs:
-                self.obs[key][self.ptr] = val
-        
-        self.actions[self.ptr] = action
-        self.logprobs[self.ptr] = logprob
-        # Aggregate per-ship rewards to a team scalar (B, 1) to match value head shape
-        self.rewards[self.ptr] = reward.mean(-1, keepdim=True)
-        self.dones[self.ptr] = done
-        self.values[self.ptr] = value
-        
-        self.ptr += 1
-        
-    def store_initial_state(self, mamba_state: Dict):
-        """Stores the Mamba state at the beginning of the rollout."""
-        # mamba_state is {layer_idx: (conv, ssm)}
-        for layer_idx, (conv, ssm) in mamba_state.items():
-            self.initial_conv_state[layer_idx] = conv.clone()
-            self.initial_ssm_state[layer_idx] = ssm.clone()
+                self.obs[key][t] = val.float()
 
-    def compute_gae(self, next_value: torch.Tensor, next_done: torch.Tensor):
-        """
-        Computes GAE separately.
-        next_value: (num_envs, num_ships)
-        next_done: (num_envs,)
+        self.actions   [t] = action.int()
+        self.logprobs  [t] = logprob
+        self.rewards   [t] = reward
+        self.dones     [t] = done.float()
+        self.values    [t] = value
+        self.alive_mask[t] = alive
+
+        self.ptr += 1
+
+    # ------------------------------------------------------------------
+    # GAE computation
+    # ------------------------------------------------------------------
+
+    def compute_gae(
+        self, next_value: torch.Tensor, next_done: torch.Tensor
+    ) -> None:
+        """Compute GAE advantages and returns in-place.
+
+        Args:
+            next_value: (B, N) float — critic value at step T+1.
+            next_done:  (B,) float — whether step T+1 is terminal.
         """
         with torch.no_grad():
-            lastgaelam = 0
+            lastgaelam = torch.zeros_like(next_value)    # (B, N)
+
             for t in reversed(range(self.num_steps)):
                 if t == self.num_steps - 1:
-                    nextnonterminal = 1.0 - next_done # (B,)
-                    nextvalues = next_value
+                    # After the last step: bootstrap from next_value unless next ep is done
+                    non_terminal = 1.0 - next_done.unsqueeze(-1)   # (B, 1)
+                    next_val     = next_value                        # (B, N)
                 else:
-                    nextnonterminal = 1.0 - self.dones[t + 1] # (B,)
-                    nextvalues = self.values[t + 1]
-                
-                # Broadcast non-terminal to ships (B, 1)
-                nextnonterminal = nextnonterminal.unsqueeze(-1)
-                
-                delta = self.rewards[t] + self.gamma * nextvalues * nextnonterminal - self.values[t]
-                self.advantages[t] = lastgaelam = delta + self.gamma * self.gae_lambda * nextnonterminal * lastgaelam
-                
+                    # Step t is terminal → the observation at t+1 is a new episode
+                    # nextnonterminal blocks bootstrap from t+1 if THIS step was terminal
+                    non_terminal = 1.0 - self.dones[t].unsqueeze(-1)  # (B, 1)
+                    next_val     = self.values[t + 1]                  # (B, N)
+
+                delta              = self.rewards[t] + self.gamma * next_val * non_terminal - self.values[t]
+                lastgaelam         = delta + self.gamma * self.gae_lambda * non_terminal * lastgaelam
+                self.advantages[t] = lastgaelam
+
             self.returns = self.advantages + self.values
 
-    def get_minibatch_iterator(self, num_minibatches: int) -> Generator:
-        """
-        Yields minibatches of (T, N_sub, ...).
-        """
-        envs_per_batch = self.num_envs // num_minibatches
-        env_indices = np.arange(self.num_envs)
-        np.random.shuffle(env_indices)
-        
-        for start in range(0, self.num_envs, envs_per_batch):
-            end = start + envs_per_batch
-            mb_env_inds = env_indices[start:end]
-            
-            # Slice Dict Obs
-            mb_obs = {}
-            for key, val in self.obs.items():
-                mb_obs[key] = val[:, mb_env_inds]
-            
-            # Next Obs (Targets)
-            # Obs buffer is usually (T, B, ...).
-            # We want obs[t+1] for each t.
-            # But standard buffer only stores obs[t].
-            # PPO usually discards the very last obs of rollout unless we store T+1 obs.
-            # However, for efficiency, people often just shift:
-            # target[t] = obs[t+1].
-            # We need to handle the boundary.
-            # Wait, `self.obs` has shape `num_steps`.
-            # Where is the "next" observation?
-            # In PPO, we usually overwrite obs.
-            # If we want next_obs targets, we need to store them OR shift.
-            # But the buffer is circular or fixed length.
-            # Let's check `add` method. It stores `obs` (current).
-            # So `self.obs[t]` is state at time t.
-            # We want `self.obs[t+1]` as target for state at t.
-            # But we only have `num_steps` storage.
-            # We need to peek at the NEXT batch or use the `next_obs` from the last step of the rollout?
-            # Actually, CleanerRL stores `next_obs` separately or uses `obs` with offset.
-            # Since `self.obs` is (T, B, ...), and we yield (T, B, ...), getting `obs[t+1]` is tricky inside the batch because T is the full sequence.
-            # Solution: We can create `mb_next_obs` by rolling `mb_obs` by -1 and filling the last step with the bootstrapping `next_obs` if we had saved it?
-            # But we don't save the final `next_obs` of the rollout in the buffer class persistently.
-            # Alternative: Just use `mb_obs` as target but shifted:
-            # target[t] = mb_obs[t+1]
-            # target[T-1] = ??? (Need the observation AFTER the rollout).
-            # The bootstrap phase has `next_obs`. We should modify `buffer.compute_gae` or `add` to optionally store `next_obs`?
-            # Or pass `last_next_obs` to `get_minibatch_iterator`?
-            
-            # For now, let's implement a "Same-Batch Shift" with a zero-pad/duplicate for the last step, or simpler:
-            # We can't perfectly predict T+1 without storage.
-            # Let's Modify `add` to store `next_obs`? Too expensive?
-            # Actually, `self.obs` is `num_steps`.
-            # If we want State Loss, we really should be storing (obs, next_obs) pairs or (obs sequence of length T+1).
-            # Let's use `mb_obs` rolled by 1 as an approximation, but that's wrong (first step predicts second).
-            # mb_next_obs[t] = mb_obs[t+1].
-            # For the last step `mb_next_obs[T-1]`, we don't have the data in `mb_obs`.
-            # Valid approach: Mask the loss for the last step?
-            # Or better: We can modify `add` to overwrite `obs` at `step+1`? No `obs` is inputs.
-            # Let's assume we Mask the last step for now.
-            
-            mb_next_obs = {}
-            for key, val in self.obs.items():
-                 # Shift by 1 time step
-                 shifted = torch.roll(val[:, mb_env_inds], shifts=-1, dims=0)
-                 # The last element is now the first element (wrapped), which is WRONG.
-                 # We must mask it in the loss or fill it if possible.
-                 # Let's rely on masking in the Trainer (set loss_mask[T-1] = 0).
-                 mb_next_obs[key] = shifted
+    # ------------------------------------------------------------------
+    # Minibatch iteration for PPO update
+    # ------------------------------------------------------------------
 
-            mb_actions = self.actions[:, mb_env_inds]
-            mb_logprobs = self.logprobs[:, mb_env_inds]
-            mb_advantages = self.advantages[:, mb_env_inds]
-            mb_returns = self.returns[:, mb_env_inds]
-            mb_values = self.values[:, mb_env_inds]
-            mb_dones = self.dones[:, mb_env_inds]
-            mb_rewards = self.rewards[:, mb_env_inds]
-            
-            # Initial states for these envs
-            mb_mamba_state = {}
-            for layer_idx in self.initial_conv_state:
-                conv = self.initial_conv_state[layer_idx][mb_env_inds]
-                ssm = self.initial_ssm_state[layer_idx][mb_env_inds]
-                mb_mamba_state[layer_idx] = (conv, ssm)
-            
+    def get_minibatch_iterator(
+        self, num_minibatches: int
+    ) -> Generator[tuple, None, None]:
+        """Yield minibatches of environments for PPO update epochs.
+
+        Shuffles environments and slices them into num_minibatches chunks.
+        Each chunk yields the full T-length sequence for those environments,
+        enabling recurrent re-evaluation from the stored initial hidden state.
+
+        Yields:
+            Tuple of:
+                mb_obs:         dict[str, (T, B_mb, N, ...)] float32
+                mb_actions:     (T, B_mb, N, 3) int32
+                mb_logprobs:    (T, B_mb, N) float32
+                mb_advantages:  (T, B_mb, N) float32
+                mb_returns:     (T, B_mb, N) float32
+                mb_values:      (T, B_mb, N) float32
+                mb_alive:       (T, B_mb, N) bool
+                mb_hidden:      (1, B_mb*N, D) float32
+        """
+        assert self.initial_hidden is not None, "Call store_initial_hidden() before iterating."
+
+        envs_per_batch = self.num_envs // num_minibatches
+        env_order      = np.random.permutation(self.num_envs)
+        D              = self.initial_hidden.shape[-1]
+
+        for start in range(0, self.num_envs, envs_per_batch):
+            end    = start + envs_per_batch
+            idx    = env_order[start:end]                          # (B_mb,)
+
+            mb_obs = {key: val[:, idx] for key, val in self.obs.items()}
+
+            # Reconstruct initial hidden for this minibatch: (1, B_mb*N, D)
+            # initial_hidden is (1, B*N, D); select envs by reshaping
+            hidden_full = self.initial_hidden.reshape(1, self.num_envs, self.num_ships, D)
+            mb_hidden   = hidden_full[:, idx, :, :].reshape(1, len(idx) * self.num_ships, D)
+
             yield (
-                mb_obs, mb_next_obs, mb_actions, mb_logprobs, mb_advantages, mb_returns, mb_values, mb_dones, mb_rewards,
-                mb_mamba_state
+                mb_obs,
+                self.actions   [:, idx],
+                self.logprobs  [:, idx],
+                self.advantages[:, idx],
+                self.returns   [:, idx],
+                self.values    [:, idx],
+                self.alive_mask[:, idx],
+                mb_hidden.contiguous(),
             )

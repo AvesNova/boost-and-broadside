@@ -1,51 +1,91 @@
+"""MVP RL training entry point.
+
+All hyperparameters are defined here — no config files, no CLI flags.
+To experiment: duplicate this file or edit these values directly.
+
+Run with:
+    uv run --no-sync main.py
 """
-Main entry point for the Boost and Broadside application.
-"""
 
-import warnings
+import torch
 
-# Suppress pkg_resources deprecation warning from pygame
-warnings.filterwarnings("ignore", message="pkg_resources is deprecated as an API")
-
-import hydra
-from pathlib import Path
-from omegaconf import DictConfig
-
-from boost_and_broadside.modes.collect import collect
-from boost_and_broadside.modes.play import play
-from boost_and_broadside.env2.collect_massive import collect_massive
-from boost_and_broadside.modes.train import train
-from boost_and_broadside.modes.train_rl import train_rl
-from boost_and_broadside.train.pretrain import pretrain
-from boost_and_broadside.eval.eval_world_model import eval_world_model
+from boost_and_broadside.config import (
+    ShipConfig, EnvConfig, ModelConfig, RewardConfig, TrainConfig,
+)
+from boost_and_broadside.train.rl.ppo import PPOTrainer
 
 
-from boost_and_broadside.modes.train_evolve import train_evolve
+def main() -> None:
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Training on device: {device}")
 
-@hydra.main(version_base=None, config_path="configs", config_name="config")
-def my_app(cfg: DictConfig) -> None:
-    match cfg.mode:
-        case "play":
-            play(cfg)
-        case "collect":
-            collect(cfg)
-        case "collect_massive":
-            collect_massive(cfg)
-        case "train":
-            train(cfg)
-        case "pretrain":
-            pretrain(cfg)
-        case "train_rl":
-            train_rl(cfg)
-        case "train_evolve":
-            train_evolve(cfg)
-        case "eval_wm":
-            eval_world_model(cfg)
-        case _:
-            raise TypeError(
-                f"Mode should be one of [play, collect, train, pretrain, train_rl, train_evolve, eval_wm]. You used: {cfg.mode}"
-            )
+    # ------------------------------------------------------------------
+    # Physics (reference game values — edit carefully)
+    # ------------------------------------------------------------------
+    ship_config = ShipConfig()
+
+    # ------------------------------------------------------------------
+    # Environment
+    # ------------------------------------------------------------------
+    env_config = EnvConfig(
+        num_ships         = 8,    # 4v4
+        max_bullets       = 20,
+        max_episode_steps = 2000,
+    )
+
+    # ------------------------------------------------------------------
+    # Model architecture
+    # ------------------------------------------------------------------
+    model_config = ModelConfig(
+        d_model       = 128,
+        n_heads       = 4,
+        n_fourier_freqs = 8,
+    )
+
+    # ------------------------------------------------------------------
+    # Reward shaping
+    # ------------------------------------------------------------------
+    reward_config = RewardConfig(
+        damage_weight      = 0.01,   # per HP of damage
+        kill_weight        = 0.5,    # per kill
+        death_weight       = 0.5,    # per death
+        victory_weight     = 1.0,    # win / lose outcome
+        positioning_weight = 0.05,   # offensive/defensive geometry
+        positioning_radius = 400.0,  # world units (world_size = 1024)
+    )
+
+    # ------------------------------------------------------------------
+    # PPO hyperparameters
+    # ------------------------------------------------------------------
+    train_config = TrainConfig(
+        num_envs        = 128,
+        num_steps       = 512,        # steps per rollout per env
+        num_epochs      = 4,
+        num_minibatches = 4,          # 128 envs / 4 = 32 envs per batch
+        learning_rate   = 3e-4,
+        gamma           = 0.99,
+        gae_lambda      = 0.95,
+        clip_coef       = 0.2,
+        ent_coef        = 0.01,
+        vf_coef         = 0.5,
+        max_grad_norm   = 0.5,
+        total_timesteps = 50_000_000,
+    )
+
+    # ------------------------------------------------------------------
+    # Launch
+    # ------------------------------------------------------------------
+    trainer = PPOTrainer(
+        train_config  = train_config,
+        model_config  = model_config,
+        ship_config   = ship_config,
+        env_config    = env_config,
+        reward_config = reward_config,
+        device        = device,
+        use_wandb     = False,   # set True and run `wandb login` to enable logging
+    )
+    trainer.train()
 
 
 if __name__ == "__main__":
-    my_app()
+    main()
