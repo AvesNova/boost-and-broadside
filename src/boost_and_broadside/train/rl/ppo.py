@@ -6,8 +6,10 @@ Zero Mamba, zero auxiliary losses. One clean loop:
 Logging is async (CPU-side via wandb) to avoid GPU sync on the hot path.
 """
 
+import dataclasses
 import time
 import threading
+from pathlib import Path
 from queue import Queue, Empty
 
 import torch
@@ -43,9 +45,13 @@ class PPOTrainer:
         device:        str | torch.device,
         use_wandb:     bool = False,
     ) -> None:
-        self.cfg     = train_config
-        self.device  = torch.device(device)
-        self.use_wandb = use_wandb
+        self.cfg          = train_config
+        self.model_config = model_config
+        self.ship_config  = ship_config
+        self.env_config   = env_config
+        self.reward_config = reward_config
+        self.device       = torch.device(device)
+        self.use_wandb    = use_wandb
 
         self.wrapper = MVPEnvWrapper(
             num_envs     = train_config.num_envs,
@@ -80,6 +86,7 @@ class PPOTrainer:
         # Async logging queue
         self._log_queue: Queue = Queue()
         if use_wandb:
+            self._init_wandb(train_config, model_config, ship_config, env_config, reward_config)
             self._log_thread = threading.Thread(target=self._log_worker, daemon=True)
             self._log_thread.start()
 
@@ -163,6 +170,9 @@ class PPOTrainer:
                     f"loss={metrics.get('train/loss', 0.0):.4f}"
                 )
 
+            if self.cfg.checkpoint_interval > 0 and update % self.cfg.checkpoint_interval == 0:
+                self._save_checkpoint(update)
+
         self._log_queue.put(None)  # signal logger thread to exit
 
     # ------------------------------------------------------------------
@@ -236,8 +246,76 @@ class PPOTrainer:
         return {k: sum(v) / len(v) for k, v in accum.items() if v}
 
     # ------------------------------------------------------------------
+    # Checkpointing
+    # ------------------------------------------------------------------
+
+    def _save_checkpoint(self, update: int) -> None:
+        """Save policy and optimizer state to a .pt file.
+
+        Written to cfg.checkpoint_dir/checkpoint_{update:06d}.pt.
+        Directory is created if it does not exist.
+
+        Args:
+            update: Current update index (used as filename suffix).
+        """
+        ckpt_dir = Path(self.cfg.checkpoint_dir)
+        ckpt_dir.mkdir(parents=True, exist_ok=True)
+        path = ckpt_dir / f"checkpoint_{update:06d}.pt"
+        torch.save({
+            "policy_state_dict":    self.policy.state_dict(),
+            "optimizer_state_dict": self.optim.state_dict(),
+            "update":               update,
+            "global_step":          self._global_step,
+        }, path)
+        print(f"Checkpoint saved: {path}")
+
+    def load_checkpoint(self, path: str) -> int:
+        """Load policy and optimizer weights from a checkpoint file.
+
+        Args:
+            path: Path to a .pt checkpoint file.
+
+        Returns:
+            The update index stored in the checkpoint.
+        """
+        ckpt = torch.load(path, map_location=self.device)
+        self.policy.load_state_dict(ckpt["policy_state_dict"])
+        self.optim.load_state_dict(ckpt["optimizer_state_dict"])
+        return ckpt["update"]
+
+    # ------------------------------------------------------------------
     # Async logging
     # ------------------------------------------------------------------
+
+    def _init_wandb(
+        self,
+        train_config:  TrainConfig,
+        model_config:  ModelConfig,
+        ship_config:   ShipConfig,
+        env_config:    EnvConfig,
+        reward_config: RewardConfig,
+    ) -> None:
+        """Initialize W&B run with all configs serialized as the run config.
+
+        Args:
+            train_config:  PPO hyperparameters.
+            model_config:  Policy architecture.
+            ship_config:   Physics constants.
+            env_config:    Environment sizing.
+            reward_config: Reward weights.
+        """
+        import wandb
+        config: dict = {}
+        for prefix, cfg in [
+            ("train",  train_config),
+            ("model",  model_config),
+            ("ship",   ship_config),
+            ("env",    env_config),
+            ("reward", reward_config),
+        ]:
+            for k, v in dataclasses.asdict(cfg).items():
+                config[f"{prefix}/{k}"] = v
+        wandb.init(project="boost-and-broadside", config=config)
 
     def _enqueue_log(self, metrics: dict, step: int) -> None:
         """Put metrics onto the async log queue (non-blocking)."""

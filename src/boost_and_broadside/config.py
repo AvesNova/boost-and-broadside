@@ -121,6 +121,8 @@ class TrainConfig:
     vf_coef: float          # value loss coefficient
     max_grad_norm: float    # gradient clipping norm
     total_timesteps: int    # total environment steps before stopping
+    checkpoint_interval: int = 0           # save every N updates; 0 = disabled
+    checkpoint_dir: str = "checkpoints"    # directory to write .pt files
 
     def __post_init__(self) -> None:
         if self.num_envs % self.num_minibatches != 0:

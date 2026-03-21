@@ -10,9 +10,23 @@ A GPU-accelerated multi-agent RL environment where teams of ships compete in 2D 
 # Install dependencies
 uv sync
 
-# Train (edit main.py to configure)
-uv run  main.py
+# Train with W&B logging and checkpointing
+uv run --no-sync main.py
+
+# Play against a fresh AI (WASD + Shift for sharp turns, Space to shoot)
+uv run --no-sync main.py --mode play
+
+# Watch a checkpointed agent play itself
+uv run --no-sync main.py --mode watch --checkpoint checkpoints/checkpoint_000500.pt
 ```
+
+## Modes
+
+| Flag | Description |
+|---|---|
+| `--mode train` (default) | PPO self-play training with async W&B logging and periodic checkpoints |
+| `--mode play` | Human controls ship 0; AI (fresh policy) controls ships 1–7 |
+| `--mode watch --checkpoint <path>` | Load a checkpoint and watch self-play at 60fps |
 
 ## Project Structure
 
@@ -30,9 +44,13 @@ src/boost_and_broadside/
 │   ├── encoder.py     # ShipEncoder — Fourier position + symlog vel + team embed
 │   ├── attention.py   # RelationalSelfAttention — MHSA with alive masking
 │   └── policy.py      # MVPPolicy — encoder → attention → per-ship GRU → action/value heads
-└── train/rl/
-    ├── buffer.py      # RolloutBuffer — pre-allocated GAE buffer with recurrent hidden storage
-    └── ppo.py         # PPOTrainer — rollout collection, GAE, PPO epochs, async wandb logging
+├── modes/
+│   └── interactive.py # run_play_mode, run_watch_mode — shared render loop + keyboard input
+├── train/rl/
+│   ├── buffer.py      # RolloutBuffer — pre-allocated GAE buffer with recurrent hidden storage
+│   └── ppo.py         # PPOTrainer — rollout collection, GAE, PPO epochs, async W&B, checkpointing
+└── ui/
+    └── renderer.py    # GameRenderer — pygame renderer reading TensorState directly
 
 tests/
 ├── env/               # physics, rewards, env + wrapper tests
@@ -86,24 +104,28 @@ Team-1 rewards are negated after summing to enforce zero-sum self-play.
 
 ## Configuration
 
-All hyperparameters live in [main.py](main.py) as frozen dataclasses — no config files, no CLI flags. To experiment, edit `main.py` directly.
+All hyperparameters live in [main.py](main.py) as frozen dataclasses — no config files. To experiment, edit `main.py` directly.
 
 ```python
 ship_config   = ShipConfig()                    # physics defaults
 env_config    = EnvConfig(num_ships=8, ...)
 model_config  = ModelConfig(d_model=128, n_heads=4, n_fourier_freqs=8)
 reward_config = RewardConfig(damage_weight=0.01, ...)
-train_config  = TrainConfig(num_envs=128, num_steps=512, ...)
+train_config  = TrainConfig(num_envs=128, num_steps=512, checkpoint_interval=500, ...)
 ```
 
 ## Logging
 
-Set `use_wandb=True` in `main.py` and run `wandb login`. Logging runs in a background thread to avoid GPU sync on the hot path.
+Training logs metrics to W&B asynchronously (background thread) to avoid GPU sync on the hot path. Run `wandb login` before training. All configs are serialized into the W&B run config for reproducibility.
+
+## Checkpointing
+
+Checkpoints are saved to `checkpoints/checkpoint_{update:06d}.pt` every `checkpoint_interval` updates. Each file contains policy weights, optimizer state, update index, and global step count.
 
 ## Development
 
 - **Style Guide**: [STYLE_GUIDE.md](STYLE_GUIDE.md)
-- **Tests**: 71 tests across env, models, and train modules.
+- **Tests**: 74 tests across env, models, and train modules.
 
 ```bash
 uv run pytest

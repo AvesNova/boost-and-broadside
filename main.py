@@ -1,90 +1,123 @@
-"""MVP RL training entry point.
+"""Boost and Broadside — entry point.
 
-All hyperparameters are defined here — no config files, no CLI flags.
-To experiment: duplicate this file or edit these values directly.
+All hyperparameters are defined here — no config files.
+Modes are selected via the --mode CLI flag.
 
 Run with:
-    uv run --no-sync main.py
+    uv run --no-sync main.py                                         # train
+    uv run --no-sync main.py --mode play                             # human vs AI
+    uv run --no-sync main.py --mode watch --checkpoint <path.pt>    # watch checkpoint
 """
+
+import argparse
+import sys
 
 import torch
 
 from boost_and_broadside.config import (
     ShipConfig, EnvConfig, ModelConfig, RewardConfig, TrainConfig,
 )
+from boost_and_broadside.modes.interactive import run_play_mode, run_watch_mode
 from boost_and_broadside.train.rl.ppo import PPOTrainer
+from boost_and_broadside.ui.renderer import RenderConfig
+
+
+def _parse_args() -> argparse.Namespace:
+    """Parse CLI arguments for mode selection.
+
+    Returns:
+        Parsed args with .mode and .checkpoint fields.
+    """
+    parser = argparse.ArgumentParser(description="Boost and Broadside")
+    parser.add_argument(
+        "--mode",
+        choices=["train", "play", "watch"],
+        default="train",
+        help="Operating mode: train (PPO), play (human + AI), watch (checkpoint self-play).",
+    )
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        default=None,
+        help="Path to a .pt checkpoint file. Required for --mode watch.",
+    )
+    return parser.parse_args()
 
 
 def main() -> None:
+    args   = _parse_args()
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Training on device: {device}")
+    print(f"Device: {device}")
 
     # ------------------------------------------------------------------
-    # Physics (reference game values — edit carefully)
+    # Shared configs (all modes)
     # ------------------------------------------------------------------
     ship_config = ShipConfig()
 
-    # ------------------------------------------------------------------
-    # Environment
-    # ------------------------------------------------------------------
     env_config = EnvConfig(
         num_ships         = 8,    # 4v4
         max_bullets       = 20,
         max_episode_steps = 2000,
     )
 
-    # ------------------------------------------------------------------
-    # Model architecture
-    # ------------------------------------------------------------------
     model_config = ModelConfig(
-        d_model       = 128,
-        n_heads       = 4,
+        d_model         = 128,
+        n_heads         = 4,
         n_fourier_freqs = 8,
     )
 
-    # ------------------------------------------------------------------
-    # Reward shaping
-    # ------------------------------------------------------------------
     reward_config = RewardConfig(
-        damage_weight      = 0.01,   # per HP of damage
-        kill_weight        = 0.5,    # per kill
-        death_weight       = 0.5,    # per death
-        victory_weight     = 1.0,    # win / lose outcome
-        positioning_weight = 0.05,   # offensive/defensive geometry
-        positioning_radius = 400.0,  # world units (world_size = 1024)
+        damage_weight      = 0.01,
+        kill_weight        = 0.5,
+        death_weight       = 0.5,
+        victory_weight     = 1.0,
+        positioning_weight = 0.05,
+        positioning_radius = 400.0,
     )
 
-    # ------------------------------------------------------------------
-    # PPO hyperparameters
-    # ------------------------------------------------------------------
-    train_config = TrainConfig(
-        num_envs        = 128,
-        num_steps       = 512,        # steps per rollout per env
-        num_epochs      = 4,
-        num_minibatches = 4,          # 128 envs / 4 = 32 envs per batch
-        learning_rate   = 3e-4,
-        gamma           = 0.99,
-        gae_lambda      = 0.95,
-        clip_coef       = 0.2,
-        ent_coef        = 0.01,
-        vf_coef         = 0.5,
-        max_grad_norm   = 0.5,
-        total_timesteps = 50_000_000,
-    )
+    render_config = RenderConfig()
 
     # ------------------------------------------------------------------
-    # Launch
+    # Mode dispatch
     # ------------------------------------------------------------------
-    trainer = PPOTrainer(
-        train_config  = train_config,
-        model_config  = model_config,
-        ship_config   = ship_config,
-        env_config    = env_config,
-        reward_config = reward_config,
-        device        = device,
-        use_wandb     = False,   # set True and run `wandb login` to enable logging
-    )
-    trainer.train()
+    match args.mode:
+        case "train":
+            train_config = TrainConfig(
+                num_envs            = 128,
+                num_steps           = 512,
+                num_epochs          = 4,
+                num_minibatches     = 4,
+                learning_rate       = 3e-4,
+                gamma               = 0.99,
+                gae_lambda          = 0.95,
+                clip_coef           = 0.2,
+                ent_coef            = 0.01,
+                vf_coef             = 0.5,
+                max_grad_norm       = 0.5,
+                total_timesteps     = 50_000_000,
+                checkpoint_interval = 500,
+                checkpoint_dir      = "checkpoints",
+            )
+            trainer = PPOTrainer(
+                train_config  = train_config,
+                model_config  = model_config,
+                ship_config   = ship_config,
+                env_config    = env_config,
+                reward_config = reward_config,
+                device        = device,
+                use_wandb     = True,
+            )
+            trainer.train()
+
+        case "play":
+            run_play_mode(ship_config, env_config, reward_config, model_config,
+                          render_config, device)
+
+        case "watch":
+            if args.checkpoint is None:
+                sys.exit("Error: --checkpoint <path> is required for watch mode.")
+            run_watch_mode(args.checkpoint, ship_config, env_config, reward_config,
+                           model_config, render_config, device)
 
 
 if __name__ == "__main__":
