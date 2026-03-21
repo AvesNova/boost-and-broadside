@@ -15,6 +15,14 @@ import torch
 from typing import Generator
 
 
+def symlog(x: torch.Tensor) -> torch.Tensor:
+    """Symmetric log transform: sign(x) * log(1 + |x|).
+
+    Compresses large reward magnitudes while preserving sign and the zero point.
+    """
+    return torch.sign(x) * torch.log1p(x.abs())
+
+
 class RolloutBuffer:
     """Pre-allocated GPU rollout buffer for one PPO rollout.
 
@@ -121,7 +129,7 @@ class RolloutBuffer:
 
         self.actions   [t] = action.int()
         self.logprobs  [t] = logprob
-        self.rewards   [t] = reward
+        self.rewards   [t] = symlog(reward)
         self.dones     [t] = done.float()
         self.values    [t] = value
         self.alive_mask[t] = alive

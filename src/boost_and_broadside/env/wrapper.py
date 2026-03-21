@@ -50,10 +50,12 @@ class MVPEnvWrapper:
         B, N = num_envs, env_config.num_ships
         self._ep_reward  = torch.zeros((B, N), device=self.device)
         self._ep_length  = torch.zeros((B,),   device=self.device, dtype=torch.int32)
-        # Per-component accumulators keyed by component name — populated automatically
+        # Per-component accumulators keyed by log key — populated automatically.
+        # Components may contribute multiple keys (e.g. "damage_given"/"damage_taken").
         self._ep_reward_components: dict[str, torch.Tensor] = {
-            comp.name: torch.zeros((B, N), device=self.device)
+            key: torch.zeros((B, N), device=self.device)
             for comp in self._components
+            for key in comp.log_keys
         }
 
     # ------------------------------------------------------------------

@@ -104,6 +104,19 @@ class RewardConfig:
     victory_weight: float       # bonus/penalty for win/loss
     positioning_weight: float   # weight on the positioning formula reward
     positioning_radius: float   # R: influence radius for positioning reward (world units)
+    facing_weight: float        # weight on facing-toward-enemy reward
+    exposure_weight: float      # weight on being-in-enemy-sights penalty
+    proximity_weight: float     # weight on close-to-enemy reward
+    proximity_radius: float     # R: falloff radius for proximity reward (world units)
+    approach_weight: float      # weight on velocity-toward-enemy reward
+    power_range_weight: float   # weight on power-in-range reward
+    power_range_lo: float       # lower bound as fraction of max_power (e.g. 0.2)
+    power_range_hi: float       # upper bound as fraction of max_power (e.g. 0.8)
+    speed_range_weight: float   # weight on speed-in-range reward
+    speed_range_lo: float       # lower speed bound (world units/s)
+    speed_range_hi: float       # upper speed bound (world units/s)
+    shoot_quality_weight: float # weight on shoot-quality reward/penalty
+    shoot_quality_radius: float # R: effective range for shot quality evaluation (world units)
 
 
 @dataclass(frozen=True)
