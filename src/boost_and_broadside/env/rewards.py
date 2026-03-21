@@ -3,6 +3,14 @@
 All computations are GPU-vectorized. No Python loops over ships or envs.
 Rewards are computed from the perspective of each ship's team, then the
 zero-sum wrapper negates team-1 rewards so the shared policy trains correctly.
+
+Adding a new reward
+-------------------
+1. Create a subclass of RewardComponent with a unique `name` class attribute.
+2. Optionally add a weight field to RewardConfig in config.py and set it in main.py.
+3. Add an instance to the list in build_reward_components().
+
+No other files need to change — tracking and logging pick up the new component automatically.
 """
 
 import torch
@@ -13,7 +21,13 @@ from boost_and_broadside.config import RewardConfig, ShipConfig
 
 
 class RewardComponent(ABC):
-    """Base class for a single reward signal."""
+    """Base class for a single reward signal.
+
+    Subclasses must define:
+        name: str — unique key used as W&B metric label (e.g. "damage", "victory").
+    """
+
+    name: str
 
     @abstractmethod
     def compute(
@@ -23,7 +37,7 @@ class RewardComponent(ABC):
         next_state: TensorState,
         dones: torch.Tensor,
     ) -> torch.Tensor:
-        """Compute per-ship rewards.
+        """Compute per-ship rewards from the ship's own-team perspective.
 
         Args:
             prev_state: State snapshot immediately before physics/damage.
@@ -37,11 +51,9 @@ class RewardComponent(ABC):
 
 
 class DamageReward(RewardComponent):
-    """Reward each ship for dealing damage and penalize for receiving damage.
+    """Reward each ship for dealing damage and penalize for receiving damage."""
 
-    From each ship's perspective: dealing damage to enemies = positive,
-    receiving damage = negative. The sign is applied per-team below.
-    """
+    name = "damage"
 
     def __init__(self, damage_weight: float) -> None:
         self.damage_weight = damage_weight
@@ -56,33 +68,26 @@ class DamageReward(RewardComponent):
         # Positive delta = damage taken (health decreased)
         delta = (prev_state.ship_health - next_state.ship_health).clamp(min=0.0)  # (B, N)
 
-        # From a team-0 ship's perspective: enemy damage = good, ally damage = bad
         team0 = next_state.ship_team_id == 0   # (B, N)
         team1 = next_state.ship_team_id == 1   # (B, N)
 
+        # From team-0's perspective
         reward = torch.zeros_like(delta)
-        reward[team0]  = -delta[team0]  # own team hurt = bad for team-0 ships
-        reward[team1]  =  delta[team1]  # enemy hurt = good for team-0 ships
+        reward[team0]  = -delta[team0]  # ally hurt = bad
+        reward[team1]  =  delta[team1]  # enemy hurt = good
 
-        # Negate for team-1 ships: their enemies are team-0
-        # (zero-sum wrapper negates team-1 rewards later, so we keep sign consistent here)
-        # Actually: compute from each ship's own-team perspective so the
-        # zero-sum negation in the wrapper is clean.
-        #
-        # For team-1 ships: damage TO team-0 ships is good, damage TO team-1 ships is bad.
-        # We recompute their reward symmetrically.
-        reward_t1     = torch.zeros_like(delta)
-        reward_t1[team1] = -delta[team1]   # own team hurt = bad for team-1 ships
-        reward_t1[team0] =  delta[team0]   # enemy (team-0) hurt = good for team-1 ships
+        # From team-1's perspective (symmetric)
+        reward_t1 = torch.zeros_like(delta)
+        reward_t1[team1] = -delta[team1]
+        reward_t1[team0] =  delta[team0]
 
-        # Each ship uses its own-team reward
-        final = torch.where(team0, reward, reward_t1)
-
-        return final * self.damage_weight
+        return torch.where(team0, reward, reward_t1) * self.damage_weight
 
 
 class DeathReward(RewardComponent):
     """Penalty for dying; bonus for killing."""
+
+    name = "death"
 
     def __init__(self, kill_weight: float, death_weight: float) -> None:
         self.kill_weight  = kill_weight
@@ -101,26 +106,20 @@ class DeathReward(RewardComponent):
         team1 = next_state.ship_team_id == 1
 
         reward = torch.zeros_like(next_state.ship_health)
+        reward[just_died & team0] -= self.death_weight
+        reward[just_died & team1] += self.kill_weight
 
-        # Team-0 perspective
-        t0_penalty = just_died & team0    # ally died
-        t0_bonus   = just_died & team1    # enemy died
-        reward[t0_penalty] -= self.death_weight
-        reward[t0_bonus]   += self.kill_weight
-
-        # Team-1 perspective (symmetric, stored in reward negated)
-        # For team-1 ships their "ally died" is team1, "enemy died" is team0
-        t1_penalty = just_died & team1
-        t1_bonus   = just_died & team0
-        reward_t1  = torch.zeros_like(reward)
-        reward_t1[t1_penalty] -= self.death_weight
-        reward_t1[t1_bonus]   += self.kill_weight
+        reward_t1 = torch.zeros_like(reward)
+        reward_t1[just_died & team1] -= self.death_weight
+        reward_t1[just_died & team0] += self.kill_weight
 
         return torch.where(team0, reward, reward_t1)
 
 
 class VictoryReward(RewardComponent):
     """Terminal reward: win, lose, or draw."""
+
+    name = "victory"
 
     def __init__(self, victory_weight: float) -> None:
         self.victory_weight = victory_weight
@@ -137,21 +136,17 @@ class VictoryReward(RewardComponent):
         if not dones.any():
             return reward
 
-        # (B,) counts of alive ships per team
         t0_alive = ((next_state.ship_team_id == 0) & next_state.ship_alive).sum(dim=1)
         t1_alive = ((next_state.ship_team_id == 1) & next_state.ship_alive).sum(dim=1)
 
         team0 = next_state.ship_team_id == 0   # (B, N)
 
-        # From team-0's perspective (broadcast to ship dim)
         t0_wins  = ((t0_alive > 0) & (t1_alive == 0) & dones).unsqueeze(1)  # (B, 1)
         t0_loses = ((t0_alive == 0) & (t1_alive > 0) & dones).unsqueeze(1)
 
-        # Team-0 ships get the team-0 outcome
         reward[team0 & t0_wins.expand_as(team0)]  =  self.victory_weight
         reward[team0 & t0_loses.expand_as(team0)] = -self.victory_weight
 
-        # Team-1 ships get the mirror
         reward[~team0 & t0_wins.expand_as(team0)]  = -self.victory_weight
         reward[~team0 & t0_loses.expand_as(team0)] =  self.victory_weight
 
@@ -174,7 +169,10 @@ class PositioningReward(RewardComponent):
         R         = config.positioning_radius
     """
 
-    def __init__(self, positioning_weight: float, positioning_radius: float, world_size: tuple[float, float]) -> None:
+    name = "positioning"
+
+    def __init__(self, positioning_weight: float, positioning_radius: float,
+                 world_size: tuple[float, float]) -> None:
         self.positioning_weight  = positioning_weight
         self.positioning_radius  = positioning_radius
         self.world_size          = world_size
@@ -196,49 +194,33 @@ class PositioningReward(RewardComponent):
         R     = self.positioning_radius
         W, H  = self.world_size
 
-        # Pairwise toroidal displacement: from ship j to ship i
-        d       = pos.unsqueeze(2) - pos.unsqueeze(1)   # (B, N_i, N_j) — i receives from j
+        d       = pos.unsqueeze(2) - pos.unsqueeze(1)   # (B, N_i, N_j)
         d.real  = (d.real + W / 2) % W - W / 2
         d.imag  = (d.imag + H / 2) % H - H / 2
-        dist    = d.abs()                               # (B, N_i, N_j)
+        dist    = d.abs()
 
-        # Proximity weight w(r) = (1 - r/R)^2, zero beyond R
-        w = (1.0 - dist / R).clamp(min=0.0) ** 2       # (B, N_i, N_j)
+        w          = (1.0 - dist / R).clamp(min=0.0) ** 2
+        safe_dist  = dist.clamp(min=1e-6)
+        dir_j_to_i = d / safe_dist
 
-        # Unit vector from j to i
-        safe_dist = dist.clamp(min=1e-6)
-        dir_j_to_i = d / safe_dist                     # (B, N_i, N_j) complex — j→i direction
+        att_i  = att.unsqueeze(2)
+        alpha  = (att_i * torch.conj(-dir_j_to_i)).real
 
-        # Offensive alignment: how well ship i points at enemy j
-        # dot(att_i, dir_i_to_j) = Re(att_i * conj(-dir_j_to_i))
-        att_i   = att.unsqueeze(2)                      # (B, N_i, 1)
-        alpha   = (att_i * torch.conj(-dir_j_to_i)).real  # (B, N_i, N_j)
+        att_j  = att.unsqueeze(1)
+        beta   = (att_j * torch.conj(dir_j_to_i)).real
 
-        # Defensive exposure: how well enemy j points at ship i
-        att_j   = att.unsqueeze(1)                      # (B, 1, N_j)
-        beta    = (att_j * torch.conj(dir_j_to_i)).real   # (B, N_i, N_j)
+        is_enemy  = teams.unsqueeze(2) != teams.unsqueeze(1)
+        alive_j   = alive.unsqueeze(1).expand(B, N, N)
+        alive_i   = alive.unsqueeze(2).expand(B, N, N)
+        valid     = is_enemy & alive_j & alive_i & ~torch.eye(N, device=pos.device, dtype=torch.bool).unsqueeze(0)
 
-        # Enemy mask: j is an enemy of i if team_id differs
-        is_enemy = (teams.unsqueeze(2) != teams.unsqueeze(1))  # (B, N_i, N_j)
-        alive_j  = alive.unsqueeze(1).expand(B, N, N)          # (B, N_i, N_j)
-        alive_i  = alive.unsqueeze(2).expand(B, N, N)          # (B, N_i, N_j)
-        valid    = is_enemy & alive_j & alive_i & ~torch.eye(N, device=pos.device, dtype=torch.bool).unsqueeze(0)
+        alpha_masked = torch.where(valid, alpha, torch.full_like(alpha, -1.0))
+        alpha_max, _ = (w * alpha_masked * valid.float()).max(dim=2)
 
-        # Offensive: best alignment to any enemy within R
-        alpha_masked  = torch.where(valid, alpha, torch.full_like(alpha, -1.0))
-        alpha_max, _  = (w * alpha_masked * valid.float()).max(dim=2)  # (B, N)
+        beta_sum  = (w * beta * valid.float()).sum(dim=2)
+        n_enemies = (valid & (dist < R)).sum(dim=2).float()
 
-        # Defensive: weighted sum of enemy exposures
-        beta_sum      = (w * beta * valid.float()).sum(dim=2)          # (B, N)
-
-        # Number of enemies in range
-        n_enemies     = (valid & (dist < R)).sum(dim=2).float()        # (B, N)
-
-        reward = (alpha_max - beta_sum) / (1.0 + n_enemies)            # (B, N)
-
-        # Dead ships get no reward
-        reward = reward * alive.float()
-
+        reward = (alpha_max - beta_sum) / (1.0 + n_enemies) * alive.float()
         return reward * self.positioning_weight
 
 
@@ -247,19 +229,19 @@ def build_reward_components(
 ) -> list[RewardComponent]:
     """Construct the list of active reward components from config.
 
+    To add a new reward: create a RewardComponent subclass above, then append
+    an instance here. Tracking and logging require no further changes.
+
     Args:
         reward_config: Reward weights and radii.
-        ship_config: Physics config (used for world_size).
+        ship_config:   Physics config (used for world_size).
 
     Returns:
         List of RewardComponent instances to apply each step.
     """
     return [
         DamageReward(damage_weight=reward_config.damage_weight),
-        DeathReward(
-            kill_weight=reward_config.kill_weight,
-            death_weight=reward_config.death_weight,
-        ),
+        DeathReward(kill_weight=reward_config.kill_weight, death_weight=reward_config.death_weight),
         VictoryReward(victory_weight=reward_config.victory_weight),
         PositioningReward(
             positioning_weight=reward_config.positioning_weight,
@@ -275,33 +257,33 @@ def compute_rewards(
     actions: torch.Tensor,
     next_state: TensorState,
     dones: torch.Tensor,
-) -> torch.Tensor:
-    """Sum all reward components into a single (B, N) tensor.
+) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    """Compute total rewards and a per-component breakdown.
 
-    Each component computes rewards from the ship's own-team perspective.
-    The zero-sum transformation (negating team-1 rewards) is applied here
-    so the PPO buffer always receives zero-sum rewards.
+    Each component computes rewards from each ship's own-team perspective.
+    The zero-sum transformation (negating team-1 rewards) is applied to every
+    tensor before returning, so callers always receive zero-sum values.
 
     Args:
         components: Built by build_reward_components().
         prev_state: State before this step's physics.
-        actions: Actions taken.
+        actions:    Actions taken.
         next_state: State after physics + damage (before auto-reset).
-        dones: (B,) game-over flags.
+        dones:      (B,) game-over flags.
 
     Returns:
-        (B, N) float32 rewards — zero-sum across teams.
+        total:     (B, N) float32 — summed zero-sum rewards.
+        breakdown: dict mapping component.name → (B, N) zero-sum reward tensor.
     """
-    total = torch.zeros(
-        next_state.ship_health.shape,
-        dtype=torch.float32,
-        device=next_state.device,
-    )
+    team1_mask = next_state.ship_team_id == 1  # (B, N)
+
+    breakdown: dict[str, torch.Tensor] = {}
+    total = torch.zeros(next_state.ship_health.shape, dtype=torch.float32, device=next_state.device)
+
     for comp in components:
-        total = total + comp.compute(prev_state, actions, next_state, dones)
+        r = comp.compute(prev_state, actions, next_state, dones)
+        r[team1_mask] = -r[team1_mask]   # zero-sum transform
+        breakdown[comp.name] = r
+        total = total + r
 
-    # Zero-sum: negate team-1 rewards so the shared policy optimises symmetrically
-    team1_mask = next_state.ship_team_id == 1   # (B, N)
-    total[team1_mask] = -total[team1_mask]
-
-    return total
+    return total, breakdown

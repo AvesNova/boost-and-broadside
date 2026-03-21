@@ -114,6 +114,7 @@ class PPOTrainer:
             # Accumulate episode stats across the rollout — flushed once per update
             ep_rewards: list[torch.Tensor] = []
             ep_lengths: list[torch.Tensor] = []
+            ep_components: dict[str, list[torch.Tensor]] = {}
 
             # ----------------------------------------------------------------
             # Rollout collection
@@ -126,6 +127,8 @@ class PPOTrainer:
                 if info.get("ep_reward") is not None:
                     ep_rewards.append(info["ep_reward"])
                     ep_lengths.append(info["ep_length"].float())
+                    for name, t in info["ep_reward_components"].items():
+                        ep_components.setdefault(name, []).append(t)
 
                 done_any = dones | truncated
                 self.buffer.add(
@@ -164,6 +167,8 @@ class PPOTrainer:
                 metrics["ep/reward_min"]  = all_rewards.min().item()
                 metrics["ep/reward_max"]  = all_rewards.max().item()
                 metrics["ep/length_mean"] = all_lengths.mean().item()
+                for name, tensors in ep_components.items():
+                    metrics[f"ep/reward_{name}"] = torch.cat(tensors).mean().item()
 
             sps = int(self._global_step / (time.time() - start_time))
             metrics["train/global_step"] = self._global_step

@@ -50,6 +50,11 @@ class MVPEnvWrapper:
         B, N = num_envs, env_config.num_ships
         self._ep_reward  = torch.zeros((B, N), device=self.device)
         self._ep_length  = torch.zeros((B,),   device=self.device, dtype=torch.int32)
+        # Per-component accumulators keyed by component name — populated automatically
+        self._ep_reward_components: dict[str, torch.Tensor] = {
+            comp.name: torch.zeros((B, N), device=self.device)
+            for comp in self._components
+        }
 
     # ------------------------------------------------------------------
     # Reset
@@ -64,6 +69,8 @@ class MVPEnvWrapper:
         self.env.reset(options=options, seed=seed)
         self._ep_reward.zero_()
         self._ep_length.zero_()
+        for t in self._ep_reward_components.values():
+            t.zero_()
         return self._get_obs()
 
     # ------------------------------------------------------------------
@@ -98,26 +105,34 @@ class MVPEnvWrapper:
         dones, truncated = self.env.step(actions)
 
         # Compute rewards from post-damage, pre-reset state
-        rewards = compute_rewards(
+        rewards, breakdown = compute_rewards(
             self._components, prev_state, actions, self.env.state, dones
         )
 
-        # Accumulate episode stats (alive ships only)
-        self._ep_reward  += rewards
-        self._ep_length  += 1
+        # Accumulate episode stats
+        self._ep_reward += rewards
+        self._ep_length += 1
+        for name, comp_r in breakdown.items():
+            self._ep_reward_components[name] += comp_r
 
         # Collect episode info for done envs before resetting
-        done_mask    = dones | truncated
-        info: dict   = {}
+        done_mask = dones | truncated
+        info: dict = {}
         if done_mask.any():
             info["ep_reward"] = self._ep_reward[done_mask].detach().cpu()
             info["ep_length"] = self._ep_length[done_mask].detach().cpu()
+            info["ep_reward_components"] = {
+                name: t[done_mask].detach().cpu()
+                for name, t in self._ep_reward_components.items()
+            }
 
         # Reset done environments (state mutated in-place)
         if done_mask.any():
             self.env.reset_envs(done_mask)
             self._ep_reward[done_mask] = 0.0
             self._ep_length[done_mask] = 0
+            for t in self._ep_reward_components.values():
+                t[done_mask] = 0.0
 
         return self._get_obs(), rewards, dones, truncated, info
 

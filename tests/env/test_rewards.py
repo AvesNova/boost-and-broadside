@@ -168,7 +168,7 @@ class TestZeroSumTransform:
         dones = torch.zeros(2, dtype=torch.bool)
 
         components = [DamageReward(damage_weight=1.0)]
-        rewards = compute_rewards(components, prev, torch.zeros(2, 4, 3), next_, dones)
+        rewards, _ = compute_rewards(components, prev, torch.zeros(2, 4, 3), next_, dones)
 
         # Ship 0 (team-0) took damage → negative reward for team-0
         # Ship 2 (team-1) did not take damage directly, but via zero-sum...
