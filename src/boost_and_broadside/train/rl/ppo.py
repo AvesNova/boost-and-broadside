@@ -136,7 +136,7 @@ class PPOTrainer:
                     action  = action,
                     logprob = logprob,
                     reward  = reward,
-                    done    = done_any.float(),
+                    done    = dones.float(),      # only true termination cuts GAE bootstrap
                     value   = value,
                     alive   = obs["alive"].bool(),
                 )
@@ -152,7 +152,7 @@ class PPOTrainer:
             # ----------------------------------------------------------------
             with torch.no_grad():
                 _, _, next_value, _ = self.policy.get_action_and_value(obs, hidden)
-            self.buffer.compute_gae(next_value, (dones | truncated).float())
+            self.buffer.compute_gae(next_value, dones.float())
 
             # ----------------------------------------------------------------
             # PPO update epochs
@@ -226,22 +226,28 @@ class PPOTrainer:
                     alive_mask     = mb_alive,
                 )
 
-                # Normalise advantages per minibatch
-                adv = mb_advantages
-                adv = (adv - adv.mean()) / (adv.std() + 1e-8)
+                # Mask dead ships out of all loss and metric computations
+                alive_f  = mb_alive.float()                        # (T, B_mb, N)
+                mask_sum = alive_f.sum().clamp(min=1.0)
+
+                # Normalise advantages per minibatch — only over alive ships
+                adv      = mb_advantages
+                adv_mean = (adv * alive_f).sum() / mask_sum
+                adv_var  = ((adv - adv_mean).pow(2) * alive_f).sum() / mask_sum
+                adv      = (adv - adv_mean) / (adv_var.sqrt() + 1e-8)
 
                 # Policy gradient loss
                 log_ratio  = logprob - mb_old_logprobs
                 ratio      = log_ratio.exp()
                 pg_loss1   = -adv * ratio
                 pg_loss2   = -adv * ratio.clamp(1 - cfg.clip_coef, 1 + cfg.clip_coef)
-                pg_loss    = torch.max(pg_loss1, pg_loss2).mean()
+                pg_loss    = (torch.max(pg_loss1, pg_loss2) * alive_f).sum() / mask_sum
 
                 # Value loss (clipped)
-                vf_loss    = 0.5 * (new_value - mb_returns).pow(2).mean()
+                vf_loss    = 0.5 * ((new_value - mb_returns).pow(2) * alive_f).sum() / mask_sum
 
                 # Entropy bonus
-                ent_loss   = -entropy.mean()
+                ent_loss   = -(entropy * alive_f).sum() / mask_sum
 
                 loss = pg_loss + cfg.vf_coef * vf_loss + cfg.ent_coef * ent_loss
 
@@ -251,8 +257,8 @@ class PPOTrainer:
                 self.optim.step()
 
                 with torch.no_grad():
-                    approx_kl        = ((ratio - 1) - log_ratio).mean().item()
-                    clip_frac        = ((ratio - 1).abs() > cfg.clip_coef).float().mean().item()
+                    approx_kl        = (((ratio - 1) - log_ratio) * alive_f).sum().item() / mask_sum.item()
+                    clip_frac        = (((ratio - 1).abs() > cfg.clip_coef).float() * alive_f).sum().item() / mask_sum.item()
                     var_returns      = mb_returns.var().item()
                     explained_var    = (1.0 - (mb_returns - mb_values).var().item() / (var_returns + 1e-8))
 
