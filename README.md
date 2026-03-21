@@ -1,161 +1,110 @@
 # Boost and Broadside
 
-A high-performance codebase for **Boost and Broadside**, a compiled competitive multi-agent environment where teams of ships compete in 2D dogfights.
-
-This project features a **GPU-Accelerated Environment (`env2`)** capable of simulating thousands of games in parallel for massive data collection, and a state-of-the-art **World Model (Yemong)** based on **Mamba2** and **Relational Attention**.
+A GPU-accelerated multi-agent RL environment where teams of ships compete in 2D naval dogfights. The current focus is an **MVP RL pipeline** training a shared recurrent policy via self-play PPO.
 
 **Game Details**: See [docs/game_design.md](docs/game_design.md) for rules, physics, and action space.
 
 ## Quick Start
 
-### Installation
-
-This project uses `uv` for dependency management.
-
-```powershell
+```bash
 # Install dependencies
 uv sync
+
+# Train (edit main.py to configure)
+uv run  main.py
 ```
-> **IMPORTANT FOR AI AGENTS**: Always use `uv run --no-sync` instead of `uv run` when executing Python commands or scripts in this project. Using `uv run` without `--no-sync` performs a lockfile sync on startup which causes the command to be sent to the background, making output invisible to the agent.
-
-### Playing the Game
-
-Run the game in play mode to watch agents compete or play yourself.
-
-```powershell
-# Watch a match (Scripted vs Scripted)
-uv run main.py mode=play team1=scripted team2=stochastic_scripted
-
-# Watch World Model Agents
-uv run main.py mode=play team1=most_recent_world_model team2=most_recent_world_model
-
-# Play as a human (Use Arrow Keys + Space to shoot)
-uv run main.py mode=play human_player=true
-```
-
-**Supported Agents**:
-*   `scripted`: Rule-based expert agent.
-*   `stochastic_scripted`: Parameterized expert agent developed for evolutionary tuning.
-*   `most_recent_world_model`: Latest trained World Model (Yemong).
-*   `best_world_model`: Best performing World Model based on validation loss.
-*   `most_recent_rl`: Latest RL agent (PPO).
 
 ## Project Structure
 
-*   **`src/boost_and_broadside/`**: Main namespaced package.
-    *   **`agents/`**: Agent implementations (Scripted, Yemong/WorldModel, RL).
-    *   **`core/`**: Core types, constants, and utilities.
-    *   **`env2/`**: Vectorized (GPU) game environment.
-    *   **`models/`**: Neural network architectures (Yemong, Heads, Encoders).
-    *   **`modes/`**: Entry points (`play`, `collect`, `train`, `pretrain`, `train_rl`, `train_evolve`).
-    *   **`train/`**: Training pipelines (`rl`, `pretrain`, `evolve`).
-*   **`tools/`**: Utility scripts for data inspection, visualization, and debugging.
-*   **`configs/`**: Hydra configuration files.
-*   **`tests/`**: Unit and integration tests.
+```
+src/boost_and_broadside/
+├── config.py          # Frozen dataclass configs (ShipConfig, EnvConfig, ModelConfig, ...)
+├── constants.py       # Action space constants and slices
+├── env/
+│   ├── state.py       # TensorState — mutable GPU state for B parallel envs
+│   ├── physics.py     # Pure physics functions (kinematics, shooting, collisions)
+│   ├── env.py         # TensorEnv — vectorized physics engine, no rewards
+│   ├── rewards.py     # Modular reward components, zero-sum transform
+│   └── wrapper.py     # MVPEnvWrapper — obs construction, reward orchestration, auto-reset
+├── models/mvp/
+│   ├── encoder.py     # ShipEncoder — Fourier position + symlog vel + team embed
+│   ├── attention.py   # RelationalSelfAttention — MHSA with alive masking
+│   └── policy.py      # MVPPolicy — encoder → attention → per-ship GRU → action/value heads
+└── train/rl/
+    ├── buffer.py      # RolloutBuffer — pre-allocated GAE buffer with recurrent hidden storage
+    └── ppo.py         # PPOTrainer — rollout collection, GAE, PPO epochs, async wandb logging
 
-## World Model Architecture (Yemong)
+tests/
+├── env/               # physics, rewards, env + wrapper tests
+├── models/            # encoder, attention, policy tests
+└── train/             # buffer, GAE, minibatch iterator tests
 
-The core of the system is a **Factorized World Model (Yemong)** that separates temporal and spatial processing for efficiency and performance. It is designed to learn the physics and agent behaviors from the `env2` massive datasets.
-
-### Architecture Highlights
-*   **Backbone**: `Mamba2` (State Space Model) handles temporal mixing along the time axis.
-*   **Spatial Layer**: `RelationalAttention` handles mixing between ships (spatial axis) at each timestep.
-*   **Physics Trunk**: A shared relational encoder computes analytic edge features (distance, closing speed, etc.) to bias the attention.
-*   **Factorization**: The model alternates between Mamba (Time) and Attention (Space) blocks.
-
-### Training Objectives
-*   **Action Prediction ($S_t \to A_t$)**: Cross-entropy loss on discrete action indices (Power, Turn, Shoot).
-*   **State Prediction ($S_t, A_t \to S_{t+1}$)**: MSE loss on next-state reconstruction (Residual Delta).
-
-### Model Variants
-*   **`YemongFull`** (`model=yemong_full`): Standard World Model. Predicts everything from history.
-*   **`YemongDynamics`** (`model=yemong_dynamics`): Explicit Dynamics Model. Latent $Z$ predicts Policy/Value. $Z$ + Action predicts Next State/Reward via a dynamics transition. Features modular action embeddings.
-*   **`YemongDynamicsInterleaved`** (`model=yemong_interleaved`): Autoregressive Sequence Model. Interleaves State and Action tokens during sequence processing, conditioning the latent memory directly on executed actions.
-*   **`YemongSpatial`** (`model=yemong_spatial`): Spatial-only (Attention) baseline.
-*   **`YemongTemporal`** (`model=yemong_temporal`): Temporal-only (Mamba) baseline.
-
-## Workflows
-
-### 1. Data Collection
-
-Generate training data using scripted agents.
-
-```powershell
-# Collect data (CPU, single worker) - Good for small tests
-uv run main.py mode=collect
-
-# Massive GPU Data Collection (Recommended for pretraining)
-# Generates HDF5 data using the vectorized environment (env2).
-# Configured via 'collect.massive' in config.yaml.
-uv run main.py mode=collect_massive
+old_code/              # Archived prior codebase (world model / Hydra era)
 ```
 
-### 2. Training
+## Architecture
 
-Train models using the collected data.
+### Environment
 
-```powershell
-# Pretrain World Model (Yemong) on collected data
-uv run main.py mode=pretrain
+- **`TensorEnv`**: Pure physics, no rewards. `step()` returns `(dones, truncated)` only.
+- **`MVPEnvWrapper`**: Owns observation construction, reward computation, and auto-reset. Snapshots pre-step state to compute per-ship rewards.
+- **8 ships, 4v4**, all running the same shared policy (zero-sum self-play).
 
-# Train Spatial Layer Only (Action Prediction from single state)
-uv run main.py mode=pretrain model=yemong_spatial
+### Observations (per ship)
 
-# Train Temporal Layer Only (Next State Prediction from history)
-uv run main.py mode=pretrain model=yemong_temporal
+| Feature | Encoding | Dims |
+|---|---|---|
+| Position (x, y) | Fourier (log-spaced freqs) | `4 * n_fourier_freqs` |
+| Velocity (vx, vy) | Symlog | 2 |
+| Attitude (cos, sin) | Raw | 2 |
+| Angular velocity | Symlog | 1 |
+| Health, power, cooldown | Normalized scalars | 3 |
+| Team | Learned embedding | 4 |
+| Alive flag | Float | 1 |
+| Previous action | One-hot (power\|turn\|shoot) | 12 |
 
-# Train Dynamics Model (Model-Based)
-uv run main.py mode=pretrain model=yemong_dynamics
+### Policy (`MVPPolicy`)
 
-# Train Interleaved Dynamics Model (State/Action Sequence)
-uv run main.py mode=pretrain model=yemong_interleaved
-
-# Train Evolutionary Optimizer for Stochastic Agents (GPU batched)
-uv run main.py mode=train_evolve
-
-# Full Pipeline: Collect Data -> Train World Model
-uv run main.py mode=train train.run_collect=true train.run_world_model=true
+```
+obs dict → ShipEncoder → RelationalSelfAttention (alive masking) → per-ship GRU → action/value heads
 ```
 
-### 3. Evaluation
+- **Action space**: Factored categorical — 3 power × 7 turn × 2 shoot (joint log-prob = sum of three).
+- **GRU hidden state**: `(1, B*N, D)`, `batch_first=False`.
+- **Value**: scalar per ship; GAE computed per-ship.
 
-Evaluate model performance.
+### Rewards (zero-sum)
 
-```powershell
-# Evaluate World Model rollouts
-uv run main.py mode=eval_wm
-```
+| Component | Signal |
+|---|---|
+| Damage | +reward for damage dealt, -reward for damage taken |
+| Kill / Death | +kill\_weight per kill, -death\_weight per death |
+| Victory | ±victory\_weight at episode end |
+| Positioning | Offensive alignment minus defensive exposure, distance-weighted |
 
-## Tools & Debugging
-
-We provide tools in the `tools/` directory to help with development.
-
-```powershell
-# Inspect collected data files
-uv run python tools/inspect_data.py data/bc_pretraining/latest/aggregated_data.h5
-
-# Analyze Learning Rate Range Test Results
-uv run python tools/analyze_lr_test.py --latest
-
-# Generates 2D projections (PCA, PaCMAP) of world model embeddings
-uv run python tools/viz_latent_space.py --latest
-```
+Team-1 rewards are negated after summing to enforce zero-sum self-play.
 
 ## Configuration
 
-The project uses [Hydra](https://hydra.cc/) for configuration. Key config files are in `configs/`. Do not modify source code for parameters; use command line overrides or edit `configs/config.yaml`.
+All hyperparameters live in [main.py](main.py) as frozen dataclasses — no config files, no CLI flags. To experiment, edit `main.py` directly.
 
-**Common Overrides:**
-*   `cw` (World Size): `environment.world_size=[2000,2000]`
-*   `max_ships`: `environment.max_ships=16`
-*   `render`: `collect.render_mode='human'`
+```python
+ship_config   = ShipConfig()                    # physics defaults
+env_config    = EnvConfig(num_ships=8, ...)
+model_config  = ModelConfig(d_model=128, n_heads=4, n_fourier_freqs=8)
+reward_config = RewardConfig(damage_weight=0.01, ...)
+train_config  = TrainConfig(num_envs=128, num_steps=512, ...)
+```
+
+## Logging
+
+Set `use_wandb=True` in `main.py` and run `wandb login`. Logging runs in a background thread to avoid GPU sync on the hot path.
 
 ## Development
 
-*   **Style Guide**: Please refer to [STYLE_GUIDE.md](STYLE_GUIDE.md) for coding standards.
-*   **Tests**: Run `uv run pytest` to ensure everything is working.
+- **Style Guide**: [STYLE_GUIDE.md](STYLE_GUIDE.md)
+- **Tests**: 71 tests across env, models, and train modules.
 
-```powershell
-# Run all tests
+```bash
 uv run pytest
 ```
