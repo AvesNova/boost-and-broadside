@@ -32,6 +32,19 @@ def reward_config() -> RewardConfig:
         victory_weight=1.0,
         positioning_weight=0.05,
         positioning_radius=300.0,
+        facing_weight=0.01,
+        exposure_weight=0.01,
+        proximity_weight=0.01,
+        proximity_radius=300.0,
+        approach_weight=0.01,
+        power_range_weight=0.01,
+        power_range_lo=0.2,
+        power_range_hi=0.8,
+        speed_range_weight=0.01,
+        speed_range_lo=40.0,
+        speed_range_hi=120.0,
+        shoot_quality_weight=0.01,
+        shoot_quality_radius=200.0,
     )
 
 

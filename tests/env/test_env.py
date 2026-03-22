@@ -27,6 +27,19 @@ def reward_cfg() -> RewardConfig:
         victory_weight=1.0,
         positioning_weight=0.05,
         positioning_radius=300.0,
+        facing_weight=0.01,
+        exposure_weight=0.01,
+        proximity_weight=0.01,
+        proximity_radius=300.0,
+        approach_weight=0.01,
+        power_range_weight=0.01,
+        power_range_lo=0.2,
+        power_range_hi=0.8,
+        speed_range_weight=0.01,
+        speed_range_lo=40.0,
+        speed_range_hi=120.0,
+        shoot_quality_weight=0.01,
+        shoot_quality_radius=200.0,
     )
 
 
@@ -48,7 +61,11 @@ class TestTensorEnvReset:
         assert env.state.ship_health.shape == (B, N)
 
     def test_team_sizes_respected(self, ship_cfg, env_cfg):
-        """reset() with team_sizes option must assign correct team counts."""
+        """reset() with team_sizes option must assign correct team counts.
+
+        Team IDs may be randomly flipped per env, but the sizes {3, 4} must
+        always be present regardless of which ID got which count.
+        """
         B = 2
         env = TensorEnv(num_envs=B, ship_config=ship_cfg, env_config=env_cfg, device="cpu")
         env.reset(options={"team_sizes": (3, 4)})
@@ -59,8 +76,16 @@ class TestTensorEnvReset:
         for b in range(B):
             t0_alive = (alive[b] & (teams[b] == 0)).sum().item()
             t1_alive = (alive[b] & (teams[b] == 1)).sum().item()
-            assert t0_alive == 3
-            assert t1_alive == 4
+            assert {t0_alive, t1_alive} == {3, 4}
+
+    def test_team_assignment_is_randomized(self, ship_cfg, env_cfg):
+        """With many parallel envs, both team-ID orderings must occur."""
+        env = TensorEnv(num_envs=200, ship_config=ship_cfg, env_config=env_cfg, device="cpu")
+        env.reset()
+        # ship slot 0: should be team-0 in some envs and team-1 in others
+        first_slot_team = env.state.ship_team_id[:, 0]
+        assert (first_slot_team == 0).any(), "slot-0 was always team-0 — randomization broken"
+        assert (first_slot_team == 1).any(), "slot-0 was always team-1 — randomization broken"
 
     def test_step_count_starts_at_zero(self, ship_cfg, env_cfg):
         env = TensorEnv(num_envs=2, ship_config=ship_cfg, env_config=env_cfg, device="cpu")

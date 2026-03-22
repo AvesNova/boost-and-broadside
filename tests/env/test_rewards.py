@@ -9,6 +9,7 @@ import torch
 from boost_and_broadside.config import ShipConfig, RewardConfig
 from boost_and_broadside.env.rewards import (
     DamageReward, DeathReward, VictoryReward, PositioningReward,
+    FacingReward, ExposureReward, SpeedRangeReward, PowerRangeReward,
     compute_rewards, build_reward_components,
 )
 from tests.conftest import make_state
@@ -237,3 +238,121 @@ class TestPositioningReward:
         reward = r.compute(state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool))
 
         assert reward[0, 0].item() == 0.0
+
+
+def _facing_state(cfg):
+    """Two ships pointing at each other, 100 units apart."""
+    state = make_state(num_envs=1, max_ships=2, ship_config=cfg)
+    state.ship_team_id[0, 0] = 0
+    state.ship_team_id[0, 1] = 1
+    state.ship_pos[0, 0] = 0.0 + 0j
+    state.ship_pos[0, 1] = 100.0 + 0j
+    state.ship_attitude[0, 0] = 1.0 + 0j    # team-0 pointing toward team-1
+    state.ship_attitude[0, 1] = -1.0 + 0j   # team-1 pointing toward team-0
+    return state
+
+
+class TestFacingRewardZeroSum:
+    """FacingReward must incentivise BOTH teams to face their enemies."""
+
+    def test_both_teams_positive_after_zero_sum(self, cfg):
+        """After compute_rewards zero-sum transform both ships get positive facing reward."""
+        state = _facing_state(cfg)
+        comp = FacingReward(facing_weight=1.0, radius=500.0, world_size=cfg.world_size)
+        rewards, _ = compute_rewards(
+            [comp], state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool)
+        )
+        assert rewards[0, 0].item() > 0, "team-0 should get positive facing reward"
+        assert rewards[0, 1].item() > 0, "team-1 should get positive facing reward"
+
+    def test_team1_raw_is_pre_inverted(self, cfg):
+        """Raw compute() output for team-1 must be negative so zero-sum makes it positive."""
+        state = _facing_state(cfg)
+        comp = FacingReward(facing_weight=1.0, radius=500.0, world_size=cfg.world_size)
+        raw = comp.compute(state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool))
+        assert raw[0, 0].item() > 0, "team-0 raw reward should be positive"
+        assert raw[0, 1].item() < 0, "team-1 raw reward should be pre-inverted negative"
+
+
+class TestExposureRewardZeroSum:
+    """ExposureReward must penalise BOTH teams for being in crosshairs."""
+
+    def test_both_teams_negative_after_zero_sum(self, cfg):
+        """After zero-sum both ships facing each other get negative exposure reward."""
+        state = _facing_state(cfg)  # both ships aim at each other = both exposed
+        comp = ExposureReward(exposure_weight=1.0, radius=500.0, world_size=cfg.world_size)
+        rewards, _ = compute_rewards(
+            [comp], state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool)
+        )
+        assert rewards[0, 0].item() < 0, "team-0 should be penalised for being exposed"
+        assert rewards[0, 1].item() < 0, "team-1 should be penalised for being exposed"
+
+    def test_team1_raw_is_pre_inverted(self, cfg):
+        """Raw compute() for team-1 must be positive so zero-sum makes it negative."""
+        state = _facing_state(cfg)
+        comp = ExposureReward(exposure_weight=1.0, radius=500.0, world_size=cfg.world_size)
+        raw = comp.compute(state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool))
+        assert raw[0, 0].item() < 0, "team-0 raw reward should be negative (direct penalty)"
+        assert raw[0, 1].item() > 0, "team-1 raw reward should be pre-inverted positive"
+
+
+class TestSpeedRangeRewardZeroSum:
+    """SpeedRangeReward must reward BOTH teams for staying in range."""
+
+    def test_both_teams_positive_after_zero_sum(self, cfg):
+        state = make_state(num_envs=1, max_ships=2, ship_config=cfg)
+        state.ship_team_id[0, 0] = 0
+        state.ship_team_id[0, 1] = 1
+        state.ship_vel[0, 0] = 80.0 + 0j   # speed 80, in [40, 120] range
+        state.ship_vel[0, 1] = 80.0 + 0j
+
+        comp = SpeedRangeReward(speed_range_weight=1.0, speed_range_lo=40.0, speed_range_hi=120.0)
+        rewards, _ = compute_rewards(
+            [comp], state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool)
+        )
+        assert rewards[0, 0].item() > 0, "team-0 should be rewarded for in-range speed"
+        assert rewards[0, 1].item() > 0, "team-1 should be rewarded for in-range speed"
+
+    def test_out_of_range_gives_less_reward_than_in_range(self, cfg):
+        """The trapezoidal function gives less reward when speed is outside [lo, hi]."""
+        comp = SpeedRangeReward(speed_range_weight=1.0, speed_range_lo=40.0, speed_range_hi=120.0)
+
+        in_state = make_state(num_envs=1, max_ships=2, ship_config=cfg)
+        in_state.ship_team_id[0, 0] = 0
+        in_state.ship_team_id[0, 1] = 1
+        in_state.ship_vel[0, 0] = 80.0 + 0j   # in range
+        in_state.ship_vel[0, 1] = 80.0 + 0j
+
+        out_state = make_state(num_envs=1, max_ships=2, ship_config=cfg)
+        out_state.ship_team_id[0, 0] = 0
+        out_state.ship_team_id[0, 1] = 1
+        out_state.ship_vel[0, 0] = 0.0 + 0j   # stopped — well below lo
+        out_state.ship_vel[0, 1] = 0.0 + 0j
+
+        r_in,  _ = compute_rewards([comp], in_state,  torch.zeros(1, 2, 3), in_state,  torch.zeros(1, dtype=torch.bool))
+        r_out, _ = compute_rewards([comp], out_state, torch.zeros(1, 2, 3), out_state, torch.zeros(1, dtype=torch.bool))
+
+        assert r_in[0, 0].item() > r_out[0, 0].item(), "team-0: in-range speed gives more reward"
+        assert r_in[0, 1].item() > r_out[0, 1].item(), "team-1: in-range speed gives more reward"
+
+
+class TestPowerRangeRewardZeroSum:
+    """PowerRangeReward must reward BOTH teams for keeping power in range."""
+
+    def test_both_teams_positive_after_zero_sum(self, cfg):
+        state = make_state(num_envs=1, max_ships=2, ship_config=cfg)
+        state.ship_team_id[0, 0] = 0
+        state.ship_team_id[0, 1] = 1
+        # Default state has full power (100); range is [0.2, 0.8] * max_power = [20, 80]
+        state.ship_power[0, 0] = 50.0   # in range
+        state.ship_power[0, 1] = 50.0
+
+        comp = PowerRangeReward(
+            power_range_weight=1.0, power_range_lo=0.2, power_range_hi=0.8,
+            max_power=cfg.max_power,
+        )
+        rewards, _ = compute_rewards(
+            [comp], state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool)
+        )
+        assert rewards[0, 0].item() > 0, "team-0 should be rewarded for in-range power"
+        assert rewards[0, 1].item() > 0, "team-1 should be rewarded for in-range power"

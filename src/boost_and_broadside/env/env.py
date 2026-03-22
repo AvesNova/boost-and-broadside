@@ -147,6 +147,12 @@ class TensorEnv:
         new_alive    = torch.zeros((num_reset, N), dtype=torch.bool,  device=self.device)
         new_team_ids[:, n_team0 : n_team0 + n_team1] = 1
         new_alive   [:, : n_team0 + n_team1]          = True
+
+        # Randomly flip team assignments for ~50% of envs so the shared policy
+        # cannot exploit a fixed mapping between ship-slot indices and team IDs.
+        flip = torch.rand((num_reset,), device=self.device) > 0.5   # (num_reset,)
+        new_team_ids[flip] = 1 - new_team_ids[flip]
+
         self.state.ship_team_id[idx] = new_team_ids
         self.state.ship_alive  [idx] = new_alive
 

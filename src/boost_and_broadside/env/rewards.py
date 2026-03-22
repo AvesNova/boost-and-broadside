@@ -276,6 +276,10 @@ class FacingReward(RewardComponent):
 
     Score = max over enemies of w(dist) * dot(my_attitude, dir_to_enemy).clamp(0)
     where w(dist) = (1 - dist/R).clamp(0)  — linear falloff to zero at radius R.
+
+    Team-1 rewards are pre-inverted (same trick as ProximityReward) so that after
+    the zero-sum negation both teams receive a positive signal for facing their
+    enemies — not a perverse incentive to turn away.
     """
 
     name = "facing"
@@ -324,7 +328,10 @@ class FacingReward(RewardComponent):
         best_score   = score_masked.max(dim=2).values              # (B, N)
         best_score   = best_score * valid.any(dim=2).float()
 
-        return self.facing_weight * best_score * alive.float()
+        reward = self.facing_weight * best_score * alive.float()
+        team1 = teams == 1
+        reward[team1] = -reward[team1]
+        return reward
 
 
 class ExposureReward(RewardComponent):
@@ -335,6 +342,9 @@ class ExposureReward(RewardComponent):
 
     Score = sum over enemies of w(dist) * dot(enemy_attitude, dir_from_enemy_to_me).clamp(0)
     where w(dist) = (1 - dist/R).clamp(0)  — applied as a negative reward.
+
+    Team-1 rewards are pre-inverted so that after zero-sum negation both teams
+    receive a penalty for being in crosshairs — not a reward for presenting as targets.
     """
 
     name = "exposure"
@@ -383,7 +393,10 @@ class ExposureReward(RewardComponent):
         score_masked   = score.masked_fill(~valid, 0.0)
         total_exposure = score_masked.sum(dim=2)               # (B, N) — sum over threatening enemies
 
-        return -self.exposure_weight * total_exposure * alive.float()
+        reward = -self.exposure_weight * total_exposure * alive.float()
+        team1 = teams == 1
+        reward[team1] = -reward[team1]
+        return reward
 
 
 class ProximityReward(RewardComponent):
@@ -505,6 +518,9 @@ class PowerRangeReward(RewardComponent):
 
     Uses a smooth trapezoidal function: 1.0 inside the range, linearly
     decaying to 0.0 outside.
+
+    Team-1 rewards are pre-inverted so both teams are rewarded (not penalized)
+    for staying in the target power range after zero-sum negation.
     """
 
     name = "power_range"
@@ -530,7 +546,10 @@ class PowerRangeReward(RewardComponent):
         above  = (power_norm - self.power_range_hi).clamp(min=0.0)
         reward = 1.0 - (below + above).clamp(max=1.0)
 
-        return self.power_range_weight * reward * alive.float()
+        reward = self.power_range_weight * reward * alive.float()
+        team1 = next_state.ship_team_id == 1
+        reward[team1] = -reward[team1]
+        return reward
 
 
 class SpeedRangeReward(RewardComponent):
@@ -538,6 +557,9 @@ class SpeedRangeReward(RewardComponent):
 
     Uses a smooth trapezoidal function: 1.0 inside the range, linearly
     decaying to 0.0 outside. Speed is normalised by hi for the outer clamp.
+
+    Team-1 rewards are pre-inverted so both teams are rewarded (not penalized)
+    for staying in the target speed range after zero-sum negation.
     """
 
     name = "speed_range"
@@ -565,7 +587,10 @@ class SpeedRangeReward(RewardComponent):
         span   = max(self.speed_range_hi - self.speed_range_lo, 1.0)
         reward = 1.0 - ((below + above) / span).clamp(max=1.0)
 
-        return self.speed_range_weight * reward * alive.float()
+        reward = self.speed_range_weight * reward * alive.float()
+        team1 = next_state.ship_team_id == 1
+        reward[team1] = -reward[team1]
+        return reward
 
 
 class ShootQualityReward(RewardComponent):
