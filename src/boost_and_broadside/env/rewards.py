@@ -98,20 +98,28 @@ class DamageReward(RewardComponent):
         # Positive delta = damage taken (health decreased)
         delta = (prev_state.ship_health - next_state.ship_health).clamp(min=0.0)  # (B, N)
 
+        alive = next_state.ship_alive
         team0 = next_state.ship_team_id == 0   # (B, N)
         team1 = next_state.ship_team_id == 1   # (B, N)
 
-        # From team-0's perspective
-        reward = torch.zeros_like(delta)
-        reward[team0]  = -delta[team0]  # ally hurt = bad
-        reward[team1]  =  delta[team1]  # enemy hurt = good
+        # Per-ship penalty for own damage taken.
+        reward = -delta
 
-        # From team-1's perspective (symmetric)
-        reward_t1 = torch.zeros_like(delta)
-        reward_t1[team1] = -delta[team1]
-        reward_t1[team0] =  delta[team0]
+        # Cross-team bonus: each ship gets a share of the mean damage dealt to enemies.
+        # Distributing enemy damage across friendly ships keeps the signal per-ship
+        # without inflating total reward magnitude.
+        n_team0 = (team0 & alive).float().sum(dim=1, keepdim=True).clamp(min=1.0)
+        n_team1 = (team1 & alive).float().sum(dim=1, keepdim=True).clamp(min=1.0)
+        team0_dmg = (delta * team0.float()).sum(dim=1, keepdim=True)   # (B, 1) total dmg to team0
+        team1_dmg = (delta * team1.float()).sum(dim=1, keepdim=True)   # (B, 1) total dmg to team1
 
-        return torch.where(team0, reward, reward_t1) * self.damage_weight
+        reward += torch.where(team0, team1_dmg / n_team0, team0_dmg / n_team1)
+        reward *= alive.float()
+
+        # Pre-invert team-1 so the zero-sum negation in compute_rewards produces
+        # the correct sign: damage taken → penalty, damage dealt → bonus.
+        reward[team1] = -reward[team1]
+        return reward * self.damage_weight
 
 
 class DeathReward(RewardComponent):
@@ -142,15 +150,27 @@ class DeathReward(RewardComponent):
         team0 = next_state.ship_team_id == 0
         team1 = next_state.ship_team_id == 1
 
+        # Count deaths per team per batch for distributing kill bonuses.
+        team0_deaths = (just_died & team0).float().sum(dim=1, keepdim=True)  # (B, 1)
+        team1_deaths = (just_died & team1).float().sum(dim=1, keepdim=True)  # (B, 1)
+
+        n_team0 = team0.float().sum(dim=1, keepdim=True).clamp(min=1.0)
+        n_team1 = team1.float().sum(dim=1, keepdim=True).clamp(min=1.0)
+
         reward = torch.zeros_like(next_state.ship_health)
-        reward[just_died & team0] -= self.death_weight
-        reward[just_died & team1] += self.kill_weight
 
-        reward_t1 = torch.zeros_like(reward)
-        reward_t1[just_died & team1] -= self.death_weight
-        reward_t1[just_died & team0] += self.kill_weight
+        # Own-ship death penalty.
+        reward[just_died & team0] = -self.death_weight
+        # Pre-inverted: +death_weight raw → -death_weight after zero-sum (penalty ✓).
+        reward[just_died & team1] = +self.death_weight
 
-        return torch.where(team0, reward, reward_t1)
+        # Kill bonus distributed to every surviving friendly ship.
+        # team0 ships get +kill_weight per team1 death (not pre-inverted: team0 slots unchanged).
+        reward[team0] += self.kill_weight * (team1_deaths / n_team0).expand_as(reward)[team0]
+        # Pre-inverted for team1: −bonus raw → +bonus after zero-sum (reward for killing ✓).
+        reward[team1] += -self.kill_weight * (team0_deaths / n_team1).expand_as(reward)[team1]
+
+        return reward
 
 
 class VictoryReward(RewardComponent):
@@ -191,8 +211,10 @@ class VictoryReward(RewardComponent):
         reward[team0 & t0_wins.expand_as(team0)]  =  self.victory_weight
         reward[team0 & t0_loses.expand_as(team0)] = -self.victory_weight
 
-        reward[~team0 & t0_wins.expand_as(team0)]  = -self.victory_weight
-        reward[~team0 & t0_loses.expand_as(team0)] =  self.victory_weight
+        # Pre-inverted for team-1: +raw → -victory after zero-sum (penalty for losing ✓)
+        #                          -raw → +victory after zero-sum (reward for winning ✓)
+        reward[~team0 & t0_wins.expand_as(team0)]  = +self.victory_weight
+        reward[~team0 & t0_loses.expand_as(team0)] = -self.victory_weight
 
         return reward
 

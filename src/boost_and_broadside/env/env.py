@@ -142,16 +142,18 @@ class TensorEnv:
         self.state.ship_cooldown[idx] = 0.0
         self.state.ship_ang_vel [idx] = 0.0
 
-        # Team assignment: indices [0, n_team0) → team 0, [n_team0, n_team0+n_team1) → team 1
-        new_team_ids = torch.zeros((num_reset, N), dtype=torch.int32, device=self.device)
+        # Team assignment: randomly shuffle which N slots belong to team 0 vs team 1.
+        # A full shuffle (C(N, n_team0) possible assignments) prevents the policy
+        # from exploiting any fixed slot-to-team mapping, unlike a simple whole-team flip.
         new_alive    = torch.zeros((num_reset, N), dtype=torch.bool,  device=self.device)
-        new_team_ids[:, n_team0 : n_team0 + n_team1] = 1
-        new_alive   [:, : n_team0 + n_team1]          = True
+        new_alive   [:, : n_team0 + n_team1] = True
 
-        # Randomly flip team assignments for ~50% of envs so the shared policy
-        # cannot exploit a fixed mapping between ship-slot indices and team IDs.
-        flip = torch.rand((num_reset,), device=self.device) > 0.5   # (num_reset,)
-        new_team_ids[flip] = 1 - new_team_ids[flip]
+        base_team_ids = torch.zeros((num_reset, N), dtype=torch.int32, device=self.device)
+        base_team_ids[:, n_team0 : n_team0 + n_team1] = 1   # last n_team1 slots = team 1
+
+        # Independent random permutation per env → any slot can be any team.
+        perm = torch.rand((num_reset, N), device=self.device).argsort(dim=1)
+        new_team_ids = base_team_ids.gather(1, perm)
 
         self.state.ship_team_id[idx] = new_team_ids
         self.state.ship_alive  [idx] = new_alive

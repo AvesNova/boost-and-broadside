@@ -56,7 +56,7 @@ class TestDamageReward:
         assert reward[0, 0].item() < 0
 
     def test_enemy_taking_damage_gives_positive_reward_to_ally(self, cfg):
-        """When a team-1 ship takes damage, team-0 ships should get positive reward."""
+        """When a team-1 ship takes damage, raw output is pre-inverted so zero-sum yields penalty."""
         prev  = _make_4ship_state(cfg)
         next_ = _make_4ship_state(cfg)
         next_.ship_health[0, 2] = prev.ship_health[0, 2] - 20.0  # ship 2 (enemy) took 20 damage
@@ -64,10 +64,8 @@ class TestDamageReward:
         r = DamageReward(damage_weight=1.0)
         reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
 
-        # Team-1 ship (ship 2) gets negative reward (from its own-team perspective)
-        # Then zero-sum negation in compute_rewards flips it — but here we test raw component
-        # Team-1 ship: damage to itself = negative for team-1
-        assert reward[0, 2].item() < 0  # ship 2 is team-1; took ally (self) damage = bad
+        # Ship 2 is team-1; pre-inverted raw = +20 so zero-sum negation gives -20 (penalty ✓)
+        assert reward[0, 2].item() > 0
 
     def test_zero_damage_gives_zero_reward(self, cfg):
         """No damage → zero reward from damage component."""
@@ -108,7 +106,7 @@ class TestDeathReward:
         assert reward[0, 0].item() == pytest.approx(-5.0, rel=1e-5)
 
     def test_enemy_dying_gives_positive_reward(self, cfg):
-        """When a team-1 ship dies, team-1 ship (enemy) gets positive reward from team-0 view."""
+        """When a team-1 ship dies, raw output is pre-inverted (+5) so zero-sum yields penalty."""
         prev  = _make_4ship_state(cfg)
         next_ = _make_4ship_state(cfg)
         next_.ship_alive[0, 2] = False  # ship 2 (team 1) died
@@ -116,8 +114,8 @@ class TestDeathReward:
         r = DeathReward(kill_weight=5.0, death_weight=5.0)
         reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
 
-        # Ship 2 is team-1 — from team-1's perspective, an ally (itself) died = penalty
-        assert reward[0, 2].item() == pytest.approx(-5.0, rel=1e-5)
+        # Ship 2 is team-1; pre-inverted raw = +5.0 so zero-sum negation gives -5.0 (penalty ✓)
+        assert reward[0, 2].item() == pytest.approx(+5.0, rel=1e-5)
 
     def test_no_death_gives_zero_reward(self, cfg):
         """No ships died → zero death reward."""
@@ -145,8 +143,8 @@ class TestVictoryReward:
         # Team-0 ships (0, 1) in env 0 should get +10
         assert reward[0, 0].item() == pytest.approx(10.0, rel=1e-5)
         assert reward[0, 1].item() == pytest.approx(10.0, rel=1e-5)
-        # Team-1 ships in env 0 get -10 (from team-1 perspective, their team lost)
-        assert reward[0, 2].item() == pytest.approx(-10.0, rel=1e-5)
+        # Team-1 ships: pre-inverted raw = +10 so zero-sum negation gives -10 (penalty ✓)
+        assert reward[0, 2].item() == pytest.approx(+10.0, rel=1e-5)
 
     def test_non_terminal_gives_zero_reward(self, cfg):
         """No victory reward when done=False."""
@@ -181,11 +179,13 @@ class TestZeroSumTransform:
         # Verify team-0 ship hurt = negative
         assert rewards[0, 0].item() < 0
 
-        # Verify zero-sum symmetry: the reward structure should be antisymmetric
-        # between teams for a damage-only scenario with pure symmetric geometry
-        # (here it's not purely symmetric so just verify sign of team-1)
-        # team-1 ship 2 is NOT damaged, so its component is 0 → after negation still 0
-        assert rewards[0, 2].item() == pytest.approx(0.0, abs=1e-5)
+        # Team-1 ships get the cross-team damage bonus: team-0 took damage → team-1 gains.
+        # Raw for team-1 = -(team0_dmg / n_team1), pre-inverted → +(team0_dmg / n_team1).
+        # After zero-sum negation: -(pre-inverted) = -(positive) which should be negative...
+        # Actually: team-1 BENEFITS when team-0 takes damage.
+        # Raw ship2: reward = -0 (own dmg) + team0_dmg/n_team1 = +5.0
+        # Pre-invert: -5.0. Zero-sum negates: +5.0. Team-1 correctly gets positive (gain) ✓
+        assert rewards[0, 2].item() > 0
 
 
 class TestPositioningReward:
