@@ -4,13 +4,15 @@ This class owns the physics simulation only. Observation construction, reward
 computation, and episode tracking are handled by MVPEnvWrapper (env/wrapper.py).
 """
 
-import numpy as np
+import math
 import torch
 from typing import Any
 
 from boost_and_broadside.config import ShipConfig, EnvConfig
 from boost_and_broadside.env.state import TensorState
-from boost_and_broadside.env.physics import update_ships, update_bullets, resolve_collisions
+from boost_and_broadside.env.physics import (
+    _get_lookup_tables, update_ships, update_bullets, resolve_collisions
+)
 
 
 class TensorEnv:
@@ -37,6 +39,13 @@ class TensorEnv:
         self.device      = torch.device(device)
         self.state: TensorState | None = None
 
+        # Pre-cached per-step constants — built once, reused every step
+        self._physics_tables: tuple | None = None
+        self._self_mask: torch.Tensor | None = None
+        # Pre-built reset templates — avoid per-episode allocation
+        self._reset_alive: torch.Tensor | None = None
+        self._reset_base_teams: torch.Tensor | None = None
+
     # ------------------------------------------------------------------
     # Reset
     # ------------------------------------------------------------------
@@ -56,6 +65,7 @@ class TensorEnv:
         if seed is not None:
             torch.manual_seed(seed)
         self._allocate_state()
+        self._build_cached_tensors()
         mask = torch.ones(self.num_envs, dtype=torch.bool, device=self.device)
         self.reset_envs(mask, options)
 
@@ -86,6 +96,26 @@ class TensorEnv:
             bullet_cursor  = torch.zeros((B, N),     dtype=torch.long,      device=dev),
         )
 
+    def _build_cached_tensors(self) -> None:
+        """Build per-step constants and reset templates once after state allocation."""
+        N = self.env_config.num_ships
+        n_team0 = N // 2
+        n_team1 = N - n_team0
+
+        # Physics lookup tables — 5 small 1-D tensors, reused every step
+        self._physics_tables = _get_lookup_tables(self.ship_config, self.device)
+
+        # Self-gravity exclusion mask — (1, N, N) eye, reused every step
+        self._self_mask = torch.eye(N, device=self.device, dtype=torch.bool).unsqueeze(0)
+
+        # Reset alive template — always the same pattern (all ships alive)
+        self._reset_alive = torch.zeros(N, dtype=torch.bool, device=self.device)
+        self._reset_alive[:n_team0 + n_team1] = True
+
+        # Reset team-ID template — first n_team0 slots = team 0, next n_team1 = team 1
+        self._reset_base_teams = torch.zeros(N, dtype=torch.int32, device=self.device)
+        self._reset_base_teams[n_team0:n_team0 + n_team1] = 1
+
     def reset_envs(
         self,
         mask: torch.Tensor,
@@ -93,78 +123,91 @@ class TensorEnv:
     ) -> None:
         """Reset the environments selected by the boolean mask.
 
+        Sync-free: no .item(), no nonzero(), no Python branching on tensor values.
+        Random tensors are always allocated at full (B, N) size; wasted values for
+        non-reset envs are trivially cheap compared to the cost of a GPU→CPU sync.
+
         Args:
             mask: (B,) bool — True for envs that need resetting.
             options: Same as reset() options.
         """
-        num_reset = int(mask.sum().item())
-        if num_reset == 0:
-            return
-
-        world_w, world_h = self.ship_config.world_size
+        B = self.num_envs
         N = self.env_config.num_ships
+        K = self.env_config.max_bullets
+        world_w, world_h = self.ship_config.world_size
 
         n_team0 = N // 2
         n_team1 = N - n_team0
         if options and "team_sizes" in options:
             n_team0, n_team1 = options["team_sizes"]
+            # Custom team sizes — build fresh templates (rare path, not hot path)
+            reset_alive = torch.zeros(N, dtype=torch.bool, device=self.device)
+            reset_alive[:n_team0 + n_team1] = True
+            reset_base_teams = torch.zeros(N, dtype=torch.int32, device=self.device)
+            reset_base_teams[n_team0:n_team0 + n_team1] = 1
+        else:
+            # Hot path — reuse pre-allocated templates
+            reset_alive      = self._reset_alive
+            reset_base_teams = self._reset_base_teams
 
-        idx = torch.nonzero(mask, as_tuple=True)[0]  # indices of envs to reset
+        mask_n  = mask.unsqueeze(1).expand(B, N)          # (B, N)
+        mask_nk = mask.view(B, 1, 1).expand(B, N, K)      # (B, N, K)
+        mask_n3 = mask.view(B, 1, 1).expand(B, N, 3)      # (B, N, 3)
 
-        self.state.step_count[mask] = 0
+        # step_count
+        self.state.step_count.masked_fill_(mask, 0)
 
         # Positions — uniformly random in world
-        rand_x   = torch.rand((num_reset, N), device=self.device) * world_w
-        rand_y   = torch.rand((num_reset, N), device=self.device) * world_h
-        self.state.ship_pos[idx] = torch.complex(rand_x, rand_y)
+        rand_x   = torch.rand(B, N, device=self.device) * world_w   # (B, N)
+        rand_y   = torch.rand(B, N, device=self.device) * world_h   # (B, N)
+        new_pos  = torch.complex(rand_x, rand_y)
+        self.state.ship_pos = torch.where(mask_n, new_pos, self.state.ship_pos)
 
         # Attitude — random unit vectors
-        rand_angle = torch.rand((num_reset, N), device=self.device) * 2 * np.pi
-        att        = torch.polar(torch.ones_like(rand_angle), rand_angle)
-        self.state.ship_attitude[idx] = att
+        rand_angle = torch.rand(B, N, device=self.device) * (2 * math.pi)  # (B, N)
+        new_att    = torch.polar(torch.ones(B, N, device=self.device), rand_angle)
+        self.state.ship_attitude = torch.where(mask_n, new_att, self.state.ship_attitude)
 
         # Velocity — along attitude at configured speed
         if self.ship_config.random_speed:
             speed = (
                 self.ship_config.min_speed
-                + torch.rand((num_reset, N), device=self.device)
+                + torch.rand(B, N, device=self.device)
                 * (self.ship_config.max_speed - self.ship_config.min_speed)
-            )
+            )                                                        # (B, N)
         else:
             speed = torch.full(
-                (num_reset, N), self.ship_config.default_speed, device=self.device
+                (B, N), self.ship_config.default_speed, device=self.device
             )
-        self.state.ship_vel[idx] = speed * att
+        self.state.ship_vel = torch.where(mask_n, speed * new_att, self.state.ship_vel)
 
-        # Resources
-        self.state.ship_health  [idx] = self.ship_config.max_health
-        self.state.ship_power   [idx] = self.ship_config.max_power
-        self.state.ship_cooldown[idx] = 0.0
-        self.state.ship_ang_vel [idx] = 0.0
+        # Resources — masked_fill_ for scalar constants (in-place CUDA kernel, no sync)
+        self.state.ship_health  .masked_fill_(mask_n, self.ship_config.max_health)
+        self.state.ship_power   .masked_fill_(mask_n, self.ship_config.max_power)
+        self.state.ship_cooldown.masked_fill_(mask_n, 0.0)
+        self.state.ship_ang_vel .masked_fill_(mask_n, 0.0)
 
         # Team assignment: randomly shuffle which N slots belong to team 0 vs team 1.
         # A full shuffle (C(N, n_team0) possible assignments) prevents the policy
         # from exploiting any fixed slot-to-team mapping, unlike a simple whole-team flip.
-        new_alive    = torch.zeros((num_reset, N), dtype=torch.bool,  device=self.device)
-        new_alive   [:, : n_team0 + n_team1] = True
+        #
+        # Expand templates to (B, N) — expand creates a view, no copy
+        base_team_ids = reset_base_teams.unsqueeze(0).expand(B, N)        # (B, N) view
+        new_alive     = reset_alive.unsqueeze(0).expand(B, N)             # (B, N) view
 
-        base_team_ids = torch.zeros((num_reset, N), dtype=torch.int32, device=self.device)
-        base_team_ids[:, n_team0 : n_team0 + n_team1] = 1   # last n_team1 slots = team 1
+        perm         = torch.rand(B, N, device=self.device).argsort(dim=1)
+        new_team_ids = base_team_ids.gather(1, perm)                      # (B, N) — new tensor
 
-        # Independent random permutation per env → any slot can be any team.
-        perm = torch.rand((num_reset, N), device=self.device).argsort(dim=1)
-        new_team_ids = base_team_ids.gather(1, perm)
-
-        self.state.ship_team_id[idx] = new_team_ids
-        self.state.ship_alive  [idx] = new_alive
+        self.state.ship_team_id = torch.where(mask_n, new_team_ids, self.state.ship_team_id)
+        self.state.ship_alive   = torch.where(mask_n, new_alive,    self.state.ship_alive)
 
         # Clear bullets
-        self.state.bullet_active[idx] = False
-        self.state.bullet_time  [idx] = 0.0
-        self.state.bullet_cursor[idx] = 0
+        self.state.bullet_active.masked_fill_(mask_nk, False)
+        self.state.bullet_time  .masked_fill_(mask_nk, 0.0)
+        self.state.bullet_cursor.masked_fill_(mask_n,  0)
 
         # Clear previous action
-        self.state.prev_action[mask] = 0.0
+        self.state.prev_action.masked_fill_(mask_n3, 0.0)
 
     # ------------------------------------------------------------------
     # Step
@@ -187,7 +230,10 @@ class TensorEnv:
         """
         self.state.prev_action = actions.float()
 
-        self.state = update_ships(self.state, actions, self.ship_config)
+        self.state = update_ships(
+            self.state, actions, self.ship_config,
+            self._physics_tables, self._self_mask,
+        )
         self.state = update_bullets(self.state, self.ship_config)
         self.state, dones = resolve_collisions(self.state, self.ship_config)
 

@@ -21,6 +21,8 @@ def _get_lookup_tables(
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Build per-action physics lookup tensors from config.
 
+    Called once at TensorEnv construction time and cached — NOT per step.
+
     Returns:
         (thrust, power_gain, turn_offset, drag_coeff, lift_coeff) — all float32.
     """
@@ -63,13 +65,17 @@ def _update_kinematics(
     actions: torch.Tensor,
     config: ShipConfig,
     tables: tuple[torch.Tensor, ...],
+    self_mask: torch.Tensor,
 ) -> TensorState:
     """Update power, attitude, velocity, and position for all ships.
 
     GPU kernel: kept together for performance — splitting would force extra tensor
     allocations and destroy cache locality.
+
+    Args:
+        tables:    Pre-cached lookup tensors from _get_lookup_tables().
+        self_mask: Pre-cached (1, N, N) bool eye matrix — excludes self-gravity.
     """
-    device = state.device
     thrust_table, power_gain_table, turn_offset_table, drag_coeff_table, lift_coeff_table = tables
 
     power_action = actions[..., 0].long()   # (B, N)
@@ -130,8 +136,8 @@ def _update_kinematics(
     force_vec  = force_mag * force_dir                        # (B, N, N) complex
 
     alive_mask = state.ship_alive.unsqueeze(2) & state.ship_alive.unsqueeze(1)  # (B, N, N)
-    self_mask  = torch.eye(num_ships, device=device, dtype=torch.bool).unsqueeze(0)
-    force_vec  = torch.where(alive_mask & ~self_mask, force_vec, torch.zeros_like(force_vec))
+    # Zero out self-gravity and dead ships in-place — pre-cached self_mask, no allocation
+    force_vec.masked_fill_(~(alive_mask & ~self_mask), 0)
     gravity    = force_vec.sum(dim=2)                         # (B, N) complex
 
     # Integrate
@@ -146,7 +152,8 @@ def _update_kinematics(
     # Prevent exactly-zero velocity (would break direction computations)
     new_speed  = state.ship_vel.abs()
     too_slow   = new_speed < 1e-6
-    min_vel    = torch.tensor(1e-6, device=device, dtype=torch.complex64) * state.ship_attitude
+    # Scalar multiply — no torch.tensor() allocation
+    min_vel    = 1e-6 * state.ship_attitude                   # (B, N) complex
     state.ship_vel = torch.where(too_slow, min_vel, state.ship_vel)
 
     return state
@@ -159,8 +166,12 @@ def _update_kinematics(
 def _handle_shooting(
     state: TensorState, shoot_action: torch.Tensor, config: ShipConfig
 ) -> TensorState:
-    """Manage cooldowns and spawn bullets for ships that fire."""
-    device = state.device
+    """Manage cooldowns and spawn bullets for ships that fire.
+
+    GPU kernel: no nonzero/sync — uses gather/scatter_ for dense bullet spawn.
+    """
+    B, N = state.ship_pos.shape
+    K    = state.max_bullets
 
     state.ship_cooldown = state.ship_cooldown - config.dt
 
@@ -172,35 +183,52 @@ def _handle_shooting(
     )                                                          # (B, N) bool
     state.ship_is_shooting = can_shoot
 
-    if not can_shoot.any():
-        return state
-
+    # Energy and cooldown updates — torch.where avoids indexing
     state.ship_power = torch.where(
         can_shoot, state.ship_power - config.bullet_energy_cost, state.ship_power
     )
     state.ship_cooldown = torch.where(
-        can_shoot,
-        torch.tensor(config.firing_cooldown, device=device),
-        state.ship_cooldown,
+        can_shoot, config.firing_cooldown, state.ship_cooldown  # scalar, no tensor alloc
     )
 
-    batch_idx, ship_idx = torch.nonzero(can_shoot, as_tuple=True)
-    slots     = state.bullet_cursor[batch_idx, ship_idx]      # write positions
-    spawn_pos = state.ship_pos[batch_idx, ship_idx]
-    att       = state.ship_attitude[batch_idx, ship_idx]
-    vel       = state.ship_vel[batch_idx, ship_idx]
+    # Bullet spawn — scatter_ pattern: no nonzero, no CPU sync
+    slot_idx = state.bullet_cursor.unsqueeze(2)                # (B, N, 1)
+    can_shoot_k = can_shoot.unsqueeze(2)                       # (B, N, 1)
 
-    base_vel   = vel + config.bullet_speed * att
-    noise      = torch.complex(
-        torch.randn_like(base_vel.real) * config.bullet_spread,
-        torch.randn_like(base_vel.real) * config.bullet_spread,
+    # New bullet kinematics (computed for all ships; only written for can_shoot ones)
+    base_vel = state.ship_vel + config.bullet_speed * state.ship_attitude  # (B, N) complex
+    noise    = torch.complex(
+        torch.randn(B, N, device=state.device, dtype=torch.float32) * config.bullet_spread,
+        torch.randn(B, N, device=state.device, dtype=torch.float32) * config.bullet_spread,
     )
+    new_bullet_vel = base_vel + noise                          # (B, N) complex
 
-    state.bullet_pos   [batch_idx, ship_idx, slots] = spawn_pos
-    state.bullet_vel   [batch_idx, ship_idx, slots] = base_vel + noise
-    state.bullet_time  [batch_idx, ship_idx, slots] = config.bullet_lifetime
-    state.bullet_active[batch_idx, ship_idx, slots] = True
-    state.bullet_cursor[batch_idx, ship_idx]        = (slots + 1) % state.max_bullets
+    # For each field: gather current value at cursor slot, select new vs old, scatter back.
+    # Non-shooting ships write their existing value back — effectively a no-op.
+
+    # bullet_pos
+    cur_pos  = state.bullet_pos.gather(2, slot_idx)            # (B, N, 1) complex
+    state.bullet_pos.scatter_(2, slot_idx,
+        torch.where(can_shoot_k, state.ship_pos.unsqueeze(2), cur_pos))
+
+    # bullet_vel
+    cur_vel  = state.bullet_vel.gather(2, slot_idx)            # (B, N, 1) complex
+    state.bullet_vel.scatter_(2, slot_idx,
+        torch.where(can_shoot_k, new_bullet_vel.unsqueeze(2), cur_vel))
+
+    # bullet_time
+    cur_time = state.bullet_time.gather(2, slot_idx)           # (B, N, 1) float
+    state.bullet_time.scatter_(2, slot_idx,
+        torch.where(can_shoot_k, config.bullet_lifetime, cur_time))
+
+    # bullet_active — OR in can_shoot; no-op for non-shooting ships
+    cur_active = state.bullet_active.gather(2, slot_idx)       # (B, N, 1) bool
+    state.bullet_active.scatter_(2, slot_idx, cur_active | can_shoot_k)
+
+    # Advance cursor only for shooting ships
+    state.bullet_cursor = torch.where(
+        can_shoot, (state.bullet_cursor + 1) % K, state.bullet_cursor
+    )
 
     return state
 
@@ -210,20 +238,32 @@ def _handle_shooting(
 # ---------------------------------------------------------------------------
 
 def update_ships(
-    state: TensorState, actions: torch.Tensor, config: ShipConfig
+    state: TensorState,
+    actions: torch.Tensor,
+    config: ShipConfig,
+    tables: tuple[torch.Tensor, ...] | None = None,
+    self_mask: torch.Tensor | None = None,
 ) -> TensorState:
     """Apply one physics timestep: kinematics + shooting.
 
     Args:
-        state: Current environment state (mutated in-place).
-        actions: (B, N, 3) int tensor — [power_action, turn_action, shoot_action].
-        config: Physics configuration.
+        state:     Current environment state (mutated in-place).
+        actions:   (B, N, 3) int tensor — [power_action, turn_action, shoot_action].
+        config:    Physics configuration.
+        tables:    Pre-cached lookup tensors (from TensorEnv._physics_tables).
+                   Computed on demand if None — pass pre-cached for hot-path performance.
+        self_mask: Pre-cached (1, N, N) bool eye matrix (from TensorEnv._self_mask).
+                   Computed on demand if None — pass pre-cached for hot-path performance.
 
     Returns:
         The mutated state.
     """
-    tables = _get_lookup_tables(config, state.device)
-    state  = _update_kinematics(state, actions, config, tables)
+    if tables is None:
+        tables = _get_lookup_tables(config, state.device)
+    if self_mask is None:
+        N = state.ship_pos.shape[1]
+        self_mask = torch.eye(N, device=state.device, dtype=torch.bool).unsqueeze(0)
+    state  = _update_kinematics(state, actions, config, tables, self_mask)
     state  = _handle_shooting(state, actions[..., 2].long(), config)
     return state
 
@@ -274,7 +314,6 @@ def _apply_combat_damage(state: TensorState, config: ShipConfig) -> TensorState:
     """
     batch_size, num_ships = state.ship_pos.shape
     num_bullets           = state.max_bullets
-    device                = state.device
     world_w, world_h      = config.world_size
 
     # Flatten bullet arrays over the ship dimension for broadcasting
@@ -296,13 +335,11 @@ def _apply_combat_damage(state: TensorState, config: ShipConfig) -> TensorState:
     )
 
     # Exclude own bullets — bullet j belongs to ship j // num_bullets
+    device       = state.device
     bullet_owner = torch.arange(num_ships * num_bullets, device=device) // num_bullets  # (N*K,)
     ship_idx     = torch.arange(num_ships, device=device)                               # (N,)
     own_bullet   = (bullet_owner.view(1, 1, -1) == ship_idx.view(1, -1, 1))            # (1, N, N*K)
     valid_hit    = hit_mask & ~own_bullet                                               # (B, N, N*K)
-
-    if not valid_hit.any():
-        return state
 
     # Angle-scaled damage: head-on hits deal full damage, side hits reduced
     flat_bullet_vel  = state.bullet_vel.view(batch_size, num_ships * num_bullets)      # (B, N*K)
@@ -314,12 +351,13 @@ def _apply_combat_damage(state: TensorState, config: ShipConfig) -> TensorState:
     total_damage     = damage_per_hit.sum(dim=2)                                       # (B, N)
 
     state.ship_health = state.ship_health - total_damage
-    state.ship_alive  = state.ship_health > 0
+    # Use &= so already-dead ships stay dead even if health wasn't zero yet
+    state.ship_alive  = state.ship_alive & (state.ship_health > 0)
     state.ship_health = torch.clamp(state.ship_health, min=0.0)
 
-    # Deactivate bullets that connected
+    # Deactivate bullets that connected — in-place AND, no boolean fancy-index sync
     hit_any_ship = valid_hit.any(dim=1)                        # (B, N*K)
-    state.bullet_active.view(batch_size, -1)[hit_any_ship] = False
+    state.bullet_active &= ~hit_any_ship.view(batch_size, num_ships, num_bullets)
 
     return state
 

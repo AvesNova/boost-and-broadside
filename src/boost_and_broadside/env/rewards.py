@@ -195,28 +195,19 @@ class VictoryReward(RewardComponent):
         next_state: TensorState,
         dones: torch.Tensor,
     ) -> torch.Tensor:
-        reward = torch.zeros_like(next_state.ship_health)
+        B, N = next_state.ship_health.shape
 
-        if not dones.any():
-            return reward
+        t0_alive = ((next_state.ship_team_id == 0) & next_state.ship_alive).sum(dim=1)  # (B,)
+        t1_alive = ((next_state.ship_team_id == 1) & next_state.ship_alive).sum(dim=1)  # (B,)
 
-        t0_alive = ((next_state.ship_team_id == 0) & next_state.ship_alive).sum(dim=1)
-        t1_alive = ((next_state.ship_team_id == 1) & next_state.ship_alive).sum(dim=1)
+        t0_wins  = ((t0_alive > 0) & (t1_alive == 0) & dones).float()  # (B,)
+        t0_loses = ((t0_alive == 0) & (t1_alive > 0) & dones).float()  # (B,)
 
-        team0 = next_state.ship_team_id == 0   # (B, N)
-
-        t0_wins  = ((t0_alive > 0) & (t1_alive == 0) & dones).unsqueeze(1)  # (B, 1)
-        t0_loses = ((t0_alive == 0) & (t1_alive > 0) & dones).unsqueeze(1)
-
-        reward[team0 & t0_wins.expand_as(team0)]  =  self.victory_weight
-        reward[team0 & t0_loses.expand_as(team0)] = -self.victory_weight
-
-        # Pre-inverted for team-1: +raw → -victory after zero-sum (penalty for losing ✓)
-        #                          -raw → +victory after zero-sum (reward for winning ✓)
-        reward[~team0 & t0_wins.expand_as(team0)]  = +self.victory_weight
-        reward[~team0 & t0_loses.expand_as(team0)] = -self.victory_weight
-
-        return reward
+        # All ships receive the same sign — team-1 rewards are flipped by the
+        # zero-sum transform in compute_rewards (+raw → penalty after negation ✓).
+        # No early-return guard; all ops are GPU-only.
+        outcome = (t0_wins - t0_loses).unsqueeze(1) * self.victory_weight  # (B, 1)
+        return outcome.expand(B, N).contiguous()                           # (B, N)
 
 
 class PositioningReward(RewardComponent):

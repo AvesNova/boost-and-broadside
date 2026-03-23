@@ -72,6 +72,9 @@ class MVPPolicy(nn.Module):
     ) -> torch.Tensor:
         """Zero hidden states for all ships in done environments.
 
+        Sync-free: no .any() guard, no boolean fancy-indexing.
+        masked_fill dispatches a CUDA kernel with no host round-trip.
+
         Args:
             hidden:    (1, B*N, D) current hidden state.
             done_mask: (B,) bool — True for envs that finished.
@@ -80,13 +83,9 @@ class MVPPolicy(nn.Module):
         Returns:
             Updated hidden state with done envs zeroed.
         """
-        if not done_mask.any():
-            return hidden
-        # done_mask (B,) → expand to (B*N,)
+        # done_mask (B,) → (1, B*N, 1) for broadcasting over D
         ship_done = done_mask.repeat_interleave(num_ships)  # (B*N,)
-        hidden    = hidden.clone()
-        hidden[0, ship_done, :] = 0.0
-        return hidden
+        return hidden.masked_fill(ship_done.view(1, -1, 1), 0.0)
 
     # ------------------------------------------------------------------
     # Rollout-time forward (single step)

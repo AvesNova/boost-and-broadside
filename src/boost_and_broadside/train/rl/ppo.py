@@ -131,12 +131,16 @@ class PPOTrainer:
             device         = device,
             scripted_agent = scripted_agent,
         )
-        self.policy = MVPPolicy(model_config, ship_config).to(self.device)
+        self.policy = torch.compile(
+            MVPPolicy(model_config, ship_config).to(self.device)
+        )
         self.optim  = optim.Adam(self.policy.parameters(), lr=train_config.learning_rate, eps=1e-5)
 
         # Uniform average policy — frozen opponent used in half of self-play envs.
         # Maintained as a running arithmetic mean of main policy weights.
-        self.avg_policy: MVPPolicy = MVPPolicy(model_config, ship_config).to(self.device)
+        self.avg_policy: MVPPolicy = torch.compile(
+            MVPPolicy(model_config, ship_config).to(self.device)
+        )
         self.avg_policy.load_state_dict(self.policy.state_dict())  # start identical
         self.avg_policy.requires_grad_(False)
         self._avg_count = 0  # number of updates included in the running mean
@@ -207,10 +211,11 @@ class PPOTrainer:
             self.buffer.reset()
             self.buffer.store_initial_hidden(hidden)
 
-            # Accumulate episode stats across the rollout — flushed once per update
-            ep_rewards: list[torch.Tensor] = []
-            ep_lengths: list[torch.Tensor] = []
-            ep_components: dict[str, list[torch.Tensor]] = {}
+            # Accumulate episode stats across the rollout as GPU tensors.
+            # Two small (B,)/(B,N) clones per step; single CPU transfer after the loop.
+            ep_done_masks: list[torch.Tensor] = []
+            ep_rewards:    list[torch.Tensor] = []
+            ep_lengths:    list[torch.Tensor] = []
 
             # ----------------------------------------------------------------
             # Rollout collection
@@ -222,11 +227,10 @@ class PPOTrainer:
 
                 next_obs, reward, dones, truncated, info = self.wrapper.step(action)
 
-                if info.get("ep_reward") is not None:
-                    ep_rewards.append(info["ep_reward"])
-                    ep_lengths.append(info["ep_length"].float())
-                    for name, t in info["ep_reward_components"].items():
-                        ep_components.setdefault(name, []).append(t)
+                # Collect GPU tensors every step — no .any() guard, no sync
+                ep_done_masks.append(info["done_mask"])
+                ep_rewards.append(info["ep_reward"])
+                ep_lengths.append(info["ep_length"].float())
 
                 done_any = dones | truncated
                 self.buffer.add(
@@ -263,16 +267,21 @@ class PPOTrainer:
             metrics = self._update_epochs()
             metrics["train/learning_rate"] = self._step_lr_warmup()
 
-            # Merge episode stats collected during rollout into the metrics dict
-            if ep_rewards:
-                all_rewards = torch.cat(ep_rewards)  # (num_finished_eps * N,)
-                all_lengths = torch.cat(ep_lengths)
-                metrics["ep/reward_mean"] = all_rewards.mean().item()
-                metrics["ep/reward_min"]  = all_rewards.min().item()
-                metrics["ep/reward_max"]  = all_rewards.max().item()
-                metrics["ep/length_mean"] = all_lengths.mean().item()
-                for name, tensors in ep_components.items():
-                    metrics[f"ep/reward_{name}"] = torch.cat(tensors).mean().item()
+            # Merge episode stats into metrics — single CPU transfer after full rollout.
+            # Stack GPU tensors, select done episodes, then do one .cpu() call.
+            done_masks_t = torch.stack(ep_done_masks)                 # (T, B) GPU
+            ep_rewards_t = torch.stack(ep_rewards)                   # (T, B, N) GPU
+            ep_lengths_t = torch.stack(ep_lengths)                   # (T, B) GPU
+            done_flat    = done_masks_t.view(-1)                     # (T*B,)
+            rewards_flat = ep_rewards_t.view(-1, N)                  # (T*B, N)
+            lengths_flat = ep_lengths_t.view(-1)                     # (T*B,)
+            done_rewards = rewards_flat[done_flat].cpu()             # one sync point
+            done_lengths = lengths_flat[done_flat].cpu()
+            if done_rewards.numel() > 0:                             # .numel() is metadata, no sync
+                metrics["ep/reward_mean"] = done_rewards.mean().item()
+                metrics["ep/reward_min"]  = done_rewards.min().item()
+                metrics["ep/reward_max"]  = done_rewards.max().item()
+                metrics["ep/length_mean"] = done_lengths.mean().item()
 
             sps = int(self._global_step / (time.time() - start_time))
             metrics["train/global_step"] = self._global_step
