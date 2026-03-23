@@ -682,7 +682,8 @@ class PPOTrainer:
             ("reward", reward_config),
         ]:
             for k, v in dataclasses.asdict(cfg).items():
-                config[f"{prefix}/{k}"] = v
+                # frozenset is not JSON-serializable; convert to sorted list
+                config[f"{prefix}/{k}"] = sorted(v) if isinstance(v, (frozenset, set)) else v
         wandb.init(project="boost-and-broadside", config=config)
 
     def _enqueue_log(self, metrics: dict, step: int) -> None:
