@@ -59,7 +59,7 @@ def main() -> None:
     env_config = EnvConfig(
         num_ships         = 2,    # 4v4
         max_bullets       = 20,
-        max_episode_steps = 512,
+        max_episode_steps = 1024,
     )
 
     model_config = ModelConfig(
@@ -112,8 +112,8 @@ def main() -> None:
         case "train":
             scripted_agent = StochasticScriptedAgent(ship_config, StochasticAgentConfig())
             train_config = TrainConfig(
-                num_envs            = 256 + 128,
-                num_steps           = 512,
+                num_envs            = 1024,
+                num_steps           = 128 + 64,
                 num_epochs          = 4,
                 num_minibatches     = 4,
                 learning_rate       = 3e-4,
@@ -126,9 +126,9 @@ def main() -> None:
                 total_timesteps     = 100_000_000_000,
                 checkpoint_interval        = 10,
                 checkpoint_dir             = "checkpoints",
-                avg_policy_warmup_steps    = 5_000_000,
+                lr_warmup_steps            = 50_000_000,
                 avg_policy_opp_fraction    = 0.5,
-                shaping_decay_steps        = 50_000_000,
+                shaping_decay_steps        = 200_000_000,
                 video_log_interval         = 50,
             )
             trainer = PPOTrainer(

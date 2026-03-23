@@ -139,7 +139,7 @@ class TrainConfig:
     total_timesteps: int    # total environment steps before stopping
     checkpoint_interval: int = 0           # save every N updates; 0 = disabled
     checkpoint_dir: str = "checkpoints"    # directory to write .pt files
-    avg_policy_warmup_steps: int = 0       # global steps before weight averaging begins; 0 = immediate
+    lr_warmup_steps: int = 0               # linear LR warmup over N steps; also gates avg_policy; 0 = disabled
     avg_policy_opp_fraction: float = 0.5  # fraction of envs that play against avg_policy
     shaping_decay_steps: int = 0           # anneal shaping weights to 0 over N steps; 0 = no decay
     video_log_interval: int = 0            # log a W&B video every N updates; 0 = disabled

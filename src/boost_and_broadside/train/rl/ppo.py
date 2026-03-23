@@ -261,6 +261,7 @@ class PPOTrainer:
             # PPO update epochs
             # ----------------------------------------------------------------
             metrics = self._update_epochs()
+            metrics["train/learning_rate"] = self._step_lr_warmup()
 
             # Merge episode stats collected during rollout into the metrics dict
             if ep_rewards:
@@ -277,8 +278,8 @@ class PPOTrainer:
             metrics["train/global_step"] = self._global_step
             metrics["train/sps"]         = sps
 
-            # Update weight-averaged policy once past warmup
-            if self._global_step >= self.cfg.avg_policy_warmup_steps:
+            # Update weight-averaged policy once LR warmup is complete
+            if self._global_step >= self.cfg.lr_warmup_steps:
                 self._update_avg_policy()
 
             # Decay shaping weights based on training progress
@@ -559,6 +560,26 @@ class PPOTrainer:
         with torch.no_grad():
             for avg_p, main_p in zip(self.avg_policy.parameters(), self.policy.parameters()):
                 avg_p.data.add_((main_p.data - avg_p.data) / n)
+
+    # ------------------------------------------------------------------
+    # LR warmup
+    # ------------------------------------------------------------------
+
+    def _step_lr_warmup(self) -> float:
+        """Apply linear LR warmup and return the current learning rate.
+
+        lr(t) = learning_rate * min(1, t / lr_warmup_steps)
+
+        lr_warmup_steps == 0 disables warmup (LR stays at learning_rate).
+        Called once per PPO update after the optimizer steps.
+        """
+        if self.cfg.lr_warmup_steps <= 0:
+            return self.cfg.learning_rate
+        factor = min(1.0, self._global_step / self.cfg.lr_warmup_steps)
+        lr = self.cfg.learning_rate * factor
+        for group in self.optim.param_groups:
+            group["lr"] = lr
+        return lr
 
     # ------------------------------------------------------------------
     # Reward decay
