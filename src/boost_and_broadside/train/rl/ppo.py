@@ -21,6 +21,7 @@ from boost_and_broadside.config import TrainConfig, ModelConfig, ShipConfig, Env
 from boost_and_broadside.env.wrapper import MVPEnvWrapper
 from boost_and_broadside.models.mvp.policy import MVPPolicy
 from boost_and_broadside.train.rl.buffer import RolloutBuffer
+from boost_and_broadside.train.rl.video_logger import VideoLogger
 
 
 # ---------------------------------------------------------------------------
@@ -170,6 +171,16 @@ class PPOTrainer:
             self._log_thread = threading.Thread(target=self._log_worker, daemon=True)
             self._log_thread.start()
 
+        # Async video logger (only when W&B + interval configured)
+        self._video_logger: VideoLogger | None = None
+        if use_wandb and train_config.video_log_interval > 0:
+            self._video_logger = VideoLogger(
+                ship_config=ship_config,
+                env_config=env_config,
+                reward_config=reward_config,
+                model_config=model_config,
+            )
+
         self._global_step = 0
         self._num_updates = train_config.total_timesteps // (train_config.num_envs * train_config.num_steps)
 
@@ -286,6 +297,10 @@ class PPOTrainer:
 
             if self.cfg.checkpoint_interval > 0 and update % self.cfg.checkpoint_interval == 0:
                 self._save_checkpoint(update)
+
+            if (self._video_logger is not None
+                    and update % self.cfg.video_log_interval == 0):
+                self._video_logger.schedule(self.policy, self._global_step)
 
         self._log_queue.put(None)  # signal logger thread to exit
 

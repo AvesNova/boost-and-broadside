@@ -128,6 +128,8 @@ def main() -> None:
                 checkpoint_dir             = "checkpoints",
                 avg_policy_warmup_steps    = 5_000_000,
                 avg_policy_opp_fraction    = 0.5,
+                shaping_decay_steps        = 50_000_000,
+                video_log_interval         = 50,
             )
             trainer = PPOTrainer(
                 train_config   = train_config,

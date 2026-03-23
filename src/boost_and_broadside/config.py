@@ -142,6 +142,7 @@ class TrainConfig:
     avg_policy_warmup_steps: int = 0       # global steps before weight averaging begins; 0 = immediate
     avg_policy_opp_fraction: float = 0.5  # fraction of envs that play against avg_policy
     shaping_decay_steps: int = 0           # anneal shaping weights to 0 over N steps; 0 = no decay
+    video_log_interval: int = 0            # log a W&B video every N updates; 0 = disabled
 
     def __post_init__(self) -> None:
         if self.num_envs % self.num_minibatches != 0:
