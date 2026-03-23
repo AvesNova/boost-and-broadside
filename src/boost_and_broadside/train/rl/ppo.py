@@ -64,49 +64,29 @@ def _gather_ships(t: torch.Tensor, idx: torch.Tensor, dim: int) -> torch.Tensor:
     return t.gather(dim, idx.view(*vs).expand(*tgt))
 
 
-class _DecayScheduler:
-    """Anneals reward shaping weights to zero once training metrics cross thresholds.
+class _StepDecayScheduler:
+    """Linearly anneals shaping reward weights to zero over a fixed step budget.
 
-    Each target watches one W&B metric key via an EMA.  When the EMA stays above
-    the threshold for `sustain` consecutive updates the weight is halved every
-    `half_life` updates until it reaches zero.
+    weight(t) = weight_0 * max(0, 1 - t / decay_steps)
 
-    Missing metric keys (e.g. no episodes finished this update) leave the EMA
-    unchanged — the scheduler simply waits.
+    decay_steps == 0 disables decay (weights remain at their initial values).
     """
 
-    def __init__(
-        self,
-        targets: list[dict],
-        ema_alpha: float = 0.05,
-    ) -> None:
-        self._targets   = targets   # list of mutable dicts (see _build_decay_targets)
-        self._alpha     = ema_alpha
-        self._ema: dict[str, float] = {}
+    def __init__(self, targets: list[dict], decay_steps: int) -> None:
+        self._targets     = targets     # list of {component, weight_attr, initial_value}
+        self._decay_steps = decay_steps
 
-    def step(self, metrics: dict[str, float]) -> dict[str, float]:
-        """Update EMAs, advance counters, and apply decay. Returns decay log dict."""
-        for key, val in metrics.items():
-            prev = self._ema.get(key)
-            self._ema[key] = val if prev is None else (1.0 - self._alpha) * prev + self._alpha * val
+    def step(self, global_step: int) -> dict[str, float]:
+        """Apply linear decay for current global_step. Returns decay log dict."""
+        if self._decay_steps <= 0:
+            return {}
 
+        factor  = max(0.0, 1.0 - global_step / self._decay_steps)
         logged: dict[str, float] = {}
         for t in self._targets:
-            ema = self._ema.get(t["watch_key"], 0.0)
-
-            if ema >= t["threshold"]:
-                t["count"] = min(t["count"] + 1, t["sustain"])
-            else:
-                t["count"] = max(t["count"] - 1, 0)
-
-            if t["count"] >= t["sustain"]:
-                factor = 0.5 ** (1.0 / t["half_life"])
-                cur    = getattr(t["component"], t["weight_attr"])
-                if cur > 0.0:
-                    new_val = cur * factor
-                    setattr(t["component"], t["weight_attr"], new_val)
-                    logged[f"decay/{t['weight_attr']}"] = new_val
-
+            new_val = t["initial_value"] * factor
+            setattr(t["component"], t["weight_attr"], new_val)
+            logged[f"decay/{t['weight_attr']}"] = new_val
         return logged
 
 
@@ -193,7 +173,7 @@ class PPOTrainer:
         self._global_step = 0
         self._num_updates = train_config.total_timesteps // (train_config.num_envs * train_config.num_steps)
 
-        self._decay = self._build_decay_scheduler()
+        self._decay = self._build_step_decay_scheduler()
 
     # ------------------------------------------------------------------
     # Main training loop
@@ -291,7 +271,7 @@ class PPOTrainer:
                 self._update_avg_policy()
 
             # Decay shaping weights based on training progress
-            metrics.update(self._decay.step(metrics))
+            metrics.update(self._decay.step(self._global_step))
 
             # Single log call per update — all metrics at the same step
             self._enqueue_log(metrics, step=self._global_step)
@@ -569,62 +549,35 @@ class PPOTrainer:
     # Reward decay
     # ------------------------------------------------------------------
 
-    def _build_decay_scheduler(self) -> _DecayScheduler:
-        """Register all shaping rewards for metric-triggered annealing.
+    def _build_step_decay_scheduler(self) -> _StepDecayScheduler:
+        """Register all shaping rewards for step-based linear annealing.
 
-        Thresholds are calibrated to training-curve observations:
-          - kill-based triggers use ep/reward_kill (kill_weight=20 → ~9-10 at convergence)
-          - self-metric triggers use the component's own ep/reward_X key
-
-        Each weight decays with a half-life of 100 updates once armed.
-        The "count" field tracks consecutive updates above threshold (hysteresis).
+        Objective rewards (damage, kill, death, victory) are excluded — only
+        shaping components have their weights decayed to zero.
         """
-        # (watch_key, threshold) → components that decay on that signal
-        _kill = "ep/reward_kill"
+        _OBJECTIVE_NAMES = {"damage", "kill", "death", "victory"}
+        _WEIGHT_ATTR: dict[str, str] = {
+            "closing_speed": "closing_speed_weight",
+            "turn_rate":     "turn_rate_weight",
+            "facing":        "facing_weight",
+            "exposure":      "exposure_weight",
+            "positioning":   "positioning_weight",
+            "proximity":     "proximity_weight",
+            "speed_range":   "speed_range_weight",
+            "power_range":   "power_range_weight",
+            "shoot_quality": "shoot_quality_weight",
+            "scripted_agent": "weight",
+        }
         targets = []
         for comp in self.wrapper._components:
-            if comp.name == "closing_speed":
-                # Closing speed has done its job once kills start happening
-                targets.append({"component": comp, "weight_attr": "closing_speed_weight",
-                                 "watch_key": _kill, "threshold": 3.0,
-                                 "sustain": 30, "half_life": 100, "count": 0})
-            elif comp.name == "turn_rate":
-                # Turn rate shaping decays once kills are consistent
-                targets.append({"component": comp, "weight_attr": "turn_rate_weight",
-                                 "watch_key": _kill, "threshold": 3.0,
-                                 "sustain": 30, "half_life": 100, "count": 0})
-            elif comp.name == "shoot_quality":
-                targets.append({"component": comp, "weight_attr": "shoot_quality_weight",
-                                 "watch_key": _kill, "threshold": 3.0,
-                                 "sustain": 30, "half_life": 100, "count": 0})
-            elif comp.name == "facing":
-                # Facing is no longer needed once kills are consistent
-                targets.append({"component": comp, "weight_attr": "facing_weight",
-                                 "watch_key": _kill, "threshold": 6.0,
-                                 "sustain": 30, "half_life": 100, "count": 0})
-            elif comp.name == "exposure":
-                targets.append({"component": comp, "weight_attr": "exposure_weight",
-                                 "watch_key": _kill, "threshold": 6.0,
-                                 "sustain": 30, "half_life": 100, "count": 0})
-            elif comp.name == "positioning":
-                targets.append({"component": comp, "weight_attr": "positioning_weight",
-                                 "watch_key": _kill, "threshold": 6.0,
-                                 "sustain": 30, "half_life": 100, "count": 0})
-            elif comp.name == "speed_range":
-                # Decay when agents consistently stay in target range (metric > 70% of weight * ep_len)
-                targets.append({"component": comp, "weight_attr": "speed_range_weight",
-                                 "watch_key": "ep/reward_speed_range", "threshold": 0.20,
-                                 "sustain": 30, "half_life": 100, "count": 0})
-            elif comp.name == "power_range":
-                targets.append({"component": comp, "weight_attr": "power_range_weight",
-                                 "watch_key": "ep/reward_power_range", "threshold": 0.08,
-                                 "sustain": 30, "half_life": 100, "count": 0})
-            elif comp.name == "scripted_agent":
-                # Behavioral cloning is no longer needed once the agent dominates
-                targets.append({"component": comp, "weight_attr": "weight",
-                                 "watch_key": _kill, "threshold": 9.0,
-                                 "sustain": 30, "half_life": 100, "count": 0})
-        return _DecayScheduler(targets)
+            if comp.name in _OBJECTIVE_NAMES:
+                continue
+            attr = _WEIGHT_ATTR.get(comp.name)
+            if attr is None:
+                continue
+            initial = getattr(comp, attr)
+            targets.append({"component": comp, "weight_attr": attr, "initial_value": initial})
+        return _StepDecayScheduler(targets, self.cfg.shaping_decay_steps)
 
     # ------------------------------------------------------------------
     # Checkpointing
