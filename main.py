@@ -57,7 +57,7 @@ def main() -> None:
     ship_config = ShipConfig(bullet_energy_cost=2)
 
     env_config = EnvConfig(
-        num_ships         = 4,    # 4v4
+        num_ships         = 2,    # 4v4
         max_bullets       = 20,
         max_episode_steps = 512,
     )
@@ -70,37 +70,37 @@ def main() -> None:
 
     reward_config = RewardConfig(
         # --- Objective rewards
-        victory_weight     = 8.0 * 10,
-        kill_weight        = 2.0 * 10,
-        death_weight       = 2.0 * 10,
-        damage_weight      = 0.04 * 10,
+        victory_weight     = 80.0,
+        kill_weight        = 20.0,
+        death_weight       = 20.0,
+        damage_weight      = 0.5,
 
         # --- Shaping rewards
-        positioning_weight = 0.05 / 10,
+        positioning_weight = 0,
         positioning_radius = 400.0 / 10,
 
-        facing_weight      = 0.04 / 10,
-        exposure_weight    = 0.04 / 10,
+        facing_weight      = 2.0,
+        exposure_weight    = 2.0,
 
-        closing_speed_weight = 0.0005 / 10,
-        turn_rate_weight     = 0.0005 / 10,
+        closing_speed_weight = 0.002,
+        turn_rate_weight     = 0.05,
 
-        proximity_weight   = 0.02 / 10,
+        proximity_weight   = 0,
         proximity_radius   = 400.0 / 10,
 
         # --- Behavioral regularizers ---
-        power_range_weight = 0.005 / 10,
+        power_range_weight = 0,
         power_range_lo     = 0.2 / 10,
         power_range_hi     = 0.8 / 10,
 
-        speed_range_weight = 0.01 / 10,
+        speed_range_weight = 0,
         speed_range_lo     = 40.0 / 10,
         speed_range_hi     = 120.0 / 10,
 
-        shoot_quality_weight = 0.005 / 10,
-        shoot_quality_radius = 200.0 / 10,
+        shoot_quality_weight = 0,
+        shoot_quality_radius = 0,
 
-        scripted_agent_weight = 0.001 / 10,
+        scripted_agent_weight = 0.0003,
     )
 
     render_config = RenderConfig()

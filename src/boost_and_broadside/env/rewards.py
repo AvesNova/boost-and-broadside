@@ -820,7 +820,8 @@ def build_reward_components(
 
     To add a new reward: create a RewardComponent subclass above, then append
     an instance here. Tracking and logging require no further changes.
-    To disable a reward at runtime: add its name to reward_config.disabled_rewards.
+    To disable a reward: set its weight to 0.0 in RewardConfig, or add its name
+    to reward_config.disabled_rewards.
 
     Args:
         reward_config:   Reward weights and radii.
@@ -832,60 +833,73 @@ def build_reward_components(
     Returns:
         List of RewardComponent instances to apply each step.
     """
-    all_components: list[RewardComponent] = [
-        DamageReward(damage_weight=reward_config.damage_weight),
-        DeathReward(kill_weight=reward_config.kill_weight, death_weight=reward_config.death_weight),
-        VictoryReward(victory_weight=reward_config.victory_weight),
-        PositioningReward(
-            positioning_weight=reward_config.positioning_weight,
-            positioning_radius=reward_config.positioning_radius,
+    rc = reward_config
+    all_components: list[RewardComponent] = []
+
+    if rc.damage_weight:
+        all_components.append(DamageReward(damage_weight=rc.damage_weight))
+    if rc.kill_weight or rc.death_weight:
+        all_components.append(DeathReward(kill_weight=rc.kill_weight, death_weight=rc.death_weight))
+    if rc.victory_weight:
+        all_components.append(VictoryReward(victory_weight=rc.victory_weight))
+    if rc.positioning_weight:
+        all_components.append(PositioningReward(
+            positioning_weight=rc.positioning_weight,
+            positioning_radius=rc.positioning_radius,
             world_size=ship_config.world_size,
-        ),
-        FacingReward(
-            facing_weight=reward_config.facing_weight,
-            radius=reward_config.proximity_radius,
+        ))
+    if rc.facing_weight:
+        all_components.append(FacingReward(
+            facing_weight=rc.facing_weight,
+            radius=rc.proximity_radius,
             world_size=ship_config.world_size,
-        ),
-        ExposureReward(
-            exposure_weight=reward_config.exposure_weight,
-            radius=reward_config.proximity_radius,
+        ))
+    if rc.exposure_weight:
+        all_components.append(ExposureReward(
+            exposure_weight=rc.exposure_weight,
+            radius=rc.proximity_radius,
             world_size=ship_config.world_size,
-        ),
-        ProximityReward(
-            proximity_weight=reward_config.proximity_weight,
-            proximity_radius=reward_config.proximity_radius,
+        ))
+    if rc.proximity_weight:
+        all_components.append(ProximityReward(
+            proximity_weight=rc.proximity_weight,
+            proximity_radius=rc.proximity_radius,
             world_size=ship_config.world_size,
-        ),
-        ClosingSpeedReward(
-            closing_speed_weight=reward_config.closing_speed_weight,
+        ))
+    if rc.closing_speed_weight:
+        all_components.append(ClosingSpeedReward(
+            closing_speed_weight=rc.closing_speed_weight,
             world_size=ship_config.world_size,
-        ),
-        TurnRateReward(
-            turn_rate_weight=reward_config.turn_rate_weight,
+        ))
+    if rc.turn_rate_weight:
+        all_components.append(TurnRateReward(
+            turn_rate_weight=rc.turn_rate_weight,
             world_size=ship_config.world_size,
-        ),
-        PowerRangeReward(
-            power_range_weight=reward_config.power_range_weight,
-            power_range_lo=reward_config.power_range_lo,
-            power_range_hi=reward_config.power_range_hi,
+        ))
+    if rc.power_range_weight:
+        all_components.append(PowerRangeReward(
+            power_range_weight=rc.power_range_weight,
+            power_range_lo=rc.power_range_lo,
+            power_range_hi=rc.power_range_hi,
             max_power=ship_config.max_power,
-        ),
-        SpeedRangeReward(
-            speed_range_weight=reward_config.speed_range_weight,
-            speed_range_lo=reward_config.speed_range_lo,
-            speed_range_hi=reward_config.speed_range_hi,
-        ),
-        ShootQualityReward(
-            shoot_quality_weight=reward_config.shoot_quality_weight,
-            shoot_quality_radius=reward_config.shoot_quality_radius,
+        ))
+    if rc.speed_range_weight:
+        all_components.append(SpeedRangeReward(
+            speed_range_weight=rc.speed_range_weight,
+            speed_range_lo=rc.speed_range_lo,
+            speed_range_hi=rc.speed_range_hi,
+        ))
+    if rc.shoot_quality_weight:
+        all_components.append(ShootQualityReward(
+            shoot_quality_weight=rc.shoot_quality_weight,
+            shoot_quality_radius=rc.shoot_quality_radius,
             world_size=ship_config.world_size,
-        ),
-    ]
-    if scripted_agent is not None and reward_config.scripted_agent_weight > 0.0:
-        all_components.append(ScriptedAgentReward(reward_config.scripted_agent_weight, scripted_agent))
+        ))
+    if scripted_agent is not None and rc.scripted_agent_weight:
+        all_components.append(ScriptedAgentReward(rc.scripted_agent_weight, scripted_agent))
 
     # Filter out any components listed in disabled_rewards
-    components = [c for c in all_components if c.name not in reward_config.disabled_rewards]
+    components = [c for c in all_components if c.name not in rc.disabled_rewards]
     return components
 
 

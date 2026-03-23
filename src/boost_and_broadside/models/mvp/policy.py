@@ -117,7 +117,7 @@ class MVPPolicy(nn.Module):
         B, N, D = x.shape
         # batch_first=False → GRU expects (seq_len, batch, D)
         x_step  = x.reshape(B * N, D).unsqueeze(0)    # (1, B*N, D)
-        gru_out, new_hidden = self.gru(x_step, hidden) # (1, B*N, D), (1, B*N, D)
+        gru_out, new_hidden = self.gru(x_step, hidden.contiguous()) # (1, B*N, D), (1, B*N, D)
         gru_out = gru_out.squeeze(0).reshape(B, N, D)  # (B, N, D)
 
         logits = self.action_head(gru_out)             # (B, N, 12)
@@ -171,7 +171,7 @@ class MVPPolicy(nn.Module):
 
         # nn.GRU with batch_first=True expects (B, T, D); we use (T, B*N, D)
         # since batch_first=False (default)
-        gru_out, _ = self.gru(x_seq, initial_hidden)           # (T, B*N, D)
+        gru_out, _ = self.gru(x_seq, initial_hidden.contiguous()) # (T, B*N, D)
         gru_out    = gru_out.reshape(T, B, N, D)               # (T, B, N, D)
 
         logits = self.action_head(gru_out)                      # (T, B, N, 12)

@@ -124,6 +124,70 @@ class TestDecayScheduler:
         assert comp.closing_speed_weight == initial
 
 
+class TestProductionConfig:
+    """Smoke tests using the same config shape as main.py to catch device/size regressions."""
+
+    def _make_production_trainer(self, device: str) -> PPOTrainer:
+        return PPOTrainer(
+            train_config=TrainConfig(
+                num_envs=4, num_steps=4, num_epochs=1, num_minibatches=2,
+                learning_rate=3e-4, gamma=0.99, gae_lambda=0.95, clip_coef=0.2,
+                ent_coef=0.01, vf_coef=0.5, max_grad_norm=0.5, total_timesteps=16,
+                avg_policy_warmup_steps=0, avg_policy_opp_fraction=0.5,
+            ),
+            model_config=ModelConfig(d_model=32, n_heads=4, n_fourier_freqs=4),
+            ship_config=ShipConfig(),
+            env_config=EnvConfig(num_ships=2, max_bullets=8, max_episode_steps=20),
+            reward_config=RewardConfig(
+                damage_weight=0.01, kill_weight=0.5, death_weight=0.5,
+                victory_weight=1.0, positioning_weight=0.0, positioning_radius=400.0,
+                facing_weight=0.01, exposure_weight=0.01,
+                proximity_weight=0.0, proximity_radius=300.0,
+                closing_speed_weight=0.01, turn_rate_weight=0.01,
+                power_range_weight=0.0, power_range_lo=0.2, power_range_hi=0.8,
+                speed_range_weight=0.0, speed_range_lo=40.0, speed_range_hi=120.0,
+                shoot_quality_weight=0.0, shoot_quality_radius=200.0,
+            ),
+            device=device,
+            use_wandb=False,
+        )
+
+    def test_training_loop_cpu_num_ships_2(self):
+        """Same num_ships as main.py (1v1) must train without error on CPU."""
+        trainer = self._make_production_trainer("cpu")
+        trainer.train()
+
+    @torch.no_grad()
+    def test_two_team_forward_cpu_num_ships_2(self):
+        """_two_team_forward with num_ships=2 must not raise on CPU."""
+        trainer = self._make_production_trainer("cpu")
+        obs = trainer.wrapper.reset()
+        B, N, N_t = trainer.cfg.num_envs, trainer.wrapper.num_ships, trainer.wrapper.num_ships // 2
+        hidden     = trainer.policy.initial_hidden(B, N, torch.device("cpu"))
+        avg_hidden = trainer.avg_policy.initial_hidden(trainer._envs_vs_avg, N_t, torch.device("cpu"))
+        trainer._two_team_forward(obs, hidden, avg_hidden)  # must not raise
+
+    @torch.no_grad()
+    def test_two_team_forward_cuda_num_ships_2(self):
+        """_two_team_forward with num_ships=2 must not raise on CUDA (GRU contiguity)."""
+        if not torch.cuda.is_available():
+            return
+        trainer = self._make_production_trainer("cuda")
+        obs = trainer.wrapper.reset()
+        B, N, N_t = trainer.cfg.num_envs, trainer.wrapper.num_ships, trainer.wrapper.num_ships // 2
+        device = torch.device("cuda")
+        hidden     = trainer.policy.initial_hidden(B, N, device)
+        avg_hidden = trainer.avg_policy.initial_hidden(trainer._envs_vs_avg, N_t, device)
+        trainer._two_team_forward(obs, hidden, avg_hidden)  # must not raise
+
+    def test_training_loop_cuda_num_ships_2(self):
+        """Full train() with num_ships=2 on CUDA — catches GRU contiguity in both forward and evaluate."""
+        if not torch.cuda.is_available():
+            return
+        trainer = self._make_production_trainer("cuda")
+        trainer.train()  # exercises _two_team_forward AND _two_team_evaluate
+
+
 class TestTeamSplit:
     def test_team_sort_idx_puts_team0_first(self):
         """sort_idx must place team-0 ship indices before team-1 indices."""

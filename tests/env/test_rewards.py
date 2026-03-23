@@ -477,3 +477,22 @@ class TestDisabledRewards:
         assert "facing" not in names
         assert "turn_rate" not in names
         assert "closing_speed" in names  # not disabled
+
+    def test_zero_weight_excludes_component(self, cfg):
+        """A component whose weight is 0.0 must be omitted from the list."""
+        rc = RewardConfig(
+            damage_weight=0.0, kill_weight=0.5, death_weight=0.5,
+            victory_weight=1.0, positioning_weight=0.0, positioning_radius=300.0,
+            facing_weight=0.01, exposure_weight=0.01,
+            proximity_weight=0.01, proximity_radius=300.0,
+            closing_speed_weight=0.01, turn_rate_weight=0.01,
+            power_range_weight=0.01, power_range_lo=0.2, power_range_hi=0.8,
+            speed_range_weight=0.01, speed_range_lo=40.0, speed_range_hi=120.0,
+            shoot_quality_weight=0.01, shoot_quality_radius=200.0,
+        )
+        components = build_reward_components(rc, cfg)
+        names = {c.name for c in components}
+
+        assert "damage" not in names
+        assert "positioning" not in names
+        assert "death" in names  # kill_weight still non-zero
