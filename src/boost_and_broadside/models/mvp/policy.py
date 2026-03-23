@@ -110,9 +110,9 @@ class MVPPolicy(nn.Module):
             value:      (B, N) float — critic estimate.
             new_hidden: (1, B*N, D) updated GRU state.
         """
-        alive = obs["alive"]           # (B, N) bool
-        x     = self.encoder(obs)      # (B, N, D)
-        x     = self.attention(x, alive)  # (B, N, D)
+        alive = obs["alive"]                      # (B, N) bool
+        x     = self.encoder(obs)              # (B, N, D)
+        x     = self.attention(x, alive, obs)  # (B, N, D)
 
         B, N, D = x.shape
         # batch_first=False → GRU expects (seq_len, batch, D)
@@ -162,8 +162,8 @@ class MVPPolicy(nn.Module):
         flat_obs = {k: v.reshape(T * B, *v.shape[2:]) for k, v in obs.items()}
         flat_alive = alive_mask.reshape(T * B, N)
 
-        x = self.encoder(flat_obs)            # (T*B, N, D)
-        x = self.attention(x, flat_alive)     # (T*B, N, D)
+        x = self.encoder(flat_obs)                      # (T*B, N, D)
+        x = self.attention(x, flat_alive, flat_obs)   # (T*B, N, D)
 
         # GRU over time — reshape to (T, B*N, D) for sequential processing
         x_seq   = x.reshape(T, B, N, D).permute(0, 1, 2, 3)  # (T, B, N, D)
