@@ -113,7 +113,7 @@ def main() -> None:
             scripted_agent = StochasticScriptedAgent(ship_config, StochasticAgentConfig())
             train_config = TrainConfig(
                 num_envs            = 1024,
-                num_steps           = 128 + 64,
+                num_steps           = 512 + 256,
                 num_epochs          = 4,
                 num_minibatches     = 4,
                 learning_rate       = 3e-4,
