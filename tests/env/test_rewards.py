@@ -10,6 +10,7 @@ from boost_and_broadside.config import ShipConfig, RewardConfig
 from boost_and_broadside.env.rewards import (
     DamageReward, DeathReward, VictoryReward, PositioningReward,
     FacingReward, ExposureReward, SpeedRangeReward, PowerRangeReward,
+    ClosingSpeedReward, TurnRateReward,
     compute_rewards, build_reward_components,
 )
 from tests.conftest import make_state
@@ -356,3 +357,101 @@ class TestPowerRangeRewardZeroSum:
         )
         assert rewards[0, 0].item() > 0, "team-0 should be rewarded for in-range power"
         assert rewards[0, 1].item() > 0, "team-1 should be rewarded for in-range power"
+
+
+class TestClosingSpeedReward:
+    def test_moving_toward_enemy_gives_positive_reward(self, cfg):
+        """Ship moving directly toward enemy should get positive closing speed reward."""
+        state = make_state(num_envs=1, max_ships=2, ship_config=cfg)
+        state.ship_team_id[0, 0] = 0
+        state.ship_team_id[0, 1] = 1
+        # Ship 0 at origin, ship 1 at (100, 0); ship 0 moving east (+x) toward ship 1
+        state.ship_pos[0, 0] = 0.0 + 0j
+        state.ship_pos[0, 1] = 100.0 + 0j
+        state.ship_vel[0, 0] = 50.0 + 0j  # moving east
+        state.ship_vel[0, 1] = 0.0 + 0j
+
+        comp = ClosingSpeedReward(closing_speed_weight=1.0, world_size=cfg.world_size)
+        reward = comp.compute(state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool))
+
+        assert reward[0, 0].item() > 0
+
+    def test_moving_away_from_enemy_gives_zero_reward(self, cfg):
+        """Ship moving away from enemy gets zero (clamped) reward."""
+        state = make_state(num_envs=1, max_ships=2, ship_config=cfg)
+        state.ship_team_id[0, 0] = 0
+        state.ship_team_id[0, 1] = 1
+        state.ship_pos[0, 0] = 0.0 + 0j
+        state.ship_pos[0, 1] = 100.0 + 0j
+        state.ship_vel[0, 0] = -50.0 + 0j  # moving west, away from enemy
+
+        comp = ClosingSpeedReward(closing_speed_weight=1.0, world_size=cfg.world_size)
+        reward = comp.compute(state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool))
+
+        assert reward[0, 0].item() == 0.0
+
+    def test_dead_ship_gets_zero_reward(self, cfg):
+        """Dead ships must receive zero closing speed reward."""
+        state = make_state(num_envs=1, max_ships=2, ship_config=cfg)
+        state.ship_team_id[0, 0] = 0
+        state.ship_team_id[0, 1] = 1
+        state.ship_alive[0, 0] = False
+        state.ship_pos[0, 0] = 0.0 + 0j
+        state.ship_pos[0, 1] = 100.0 + 0j
+        state.ship_vel[0, 0] = 50.0 + 0j
+
+        comp = ClosingSpeedReward(closing_speed_weight=1.0, world_size=cfg.world_size)
+        reward = comp.compute(state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool))
+
+        assert reward[0, 0].item() == 0.0
+
+
+class TestTurnRateReward:
+    def test_turning_toward_enemy_gives_positive_reward(self, cfg):
+        """Ship rotating counterclockwise with enemy to the left gets positive reward."""
+        state = make_state(num_envs=1, max_ships=2, ship_config=cfg)
+        state.ship_team_id[0, 0] = 0
+        state.ship_team_id[0, 1] = 1
+        # Ship 0 pointing east, enemy is to the north (left of heading)
+        state.ship_pos[0, 0] = 0.0 + 0j
+        state.ship_pos[0, 1] = 0.0 + 100j   # enemy is directly north
+        state.ship_attitude[0, 0] = 1.0 + 0j  # heading east
+        # Positive ang_vel = counterclockwise = toward enemy (enemy is to the left)
+        state.ship_ang_vel[0, 0] = 1.0
+
+        comp = TurnRateReward(turn_rate_weight=1.0, world_size=cfg.world_size)
+        reward = comp.compute(state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool))
+
+        assert reward[0, 0].item() > 0
+
+    def test_turning_away_from_enemy_gives_negative_reward(self, cfg):
+        """Ship rotating clockwise with enemy to the left gets negative reward."""
+        state = make_state(num_envs=1, max_ships=2, ship_config=cfg)
+        state.ship_team_id[0, 0] = 0
+        state.ship_team_id[0, 1] = 1
+        state.ship_pos[0, 0] = 0.0 + 0j
+        state.ship_pos[0, 1] = 0.0 + 100j   # enemy is directly north
+        state.ship_attitude[0, 0] = 1.0 + 0j  # heading east
+        # Negative ang_vel = clockwise = away from enemy (enemy is to the left)
+        state.ship_ang_vel[0, 0] = -1.0
+
+        comp = TurnRateReward(turn_rate_weight=1.0, world_size=cfg.world_size)
+        reward = comp.compute(state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool))
+
+        assert reward[0, 0].item() < 0
+
+    def test_dead_ship_gets_zero_reward(self, cfg):
+        """Dead ships must receive zero turn rate reward."""
+        state = make_state(num_envs=1, max_ships=2, ship_config=cfg)
+        state.ship_team_id[0, 0] = 0
+        state.ship_team_id[0, 1] = 1
+        state.ship_alive[0, 0] = False
+        state.ship_pos[0, 0] = 0.0 + 0j
+        state.ship_pos[0, 1] = 0.0 + 100j
+        state.ship_attitude[0, 0] = 1.0 + 0j
+        state.ship_ang_vel[0, 0] = 1.0
+
+        comp = TurnRateReward(turn_rate_weight=1.0, world_size=cfg.world_size)
+        reward = comp.compute(state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool))
+
+        assert reward[0, 0].item() == 0.0

@@ -346,9 +346,14 @@ class PPOTrainer:
         _kill = "ep/reward_kill"
         targets = []
         for comp in self.wrapper._components:
-            if comp.name == "approach":
-                # Approach has done its job once kills start happening
-                targets.append({"component": comp, "weight_attr": "approach_weight",
+            if comp.name == "closing_speed":
+                # Closing speed has done its job once kills start happening
+                targets.append({"component": comp, "weight_attr": "closing_speed_weight",
+                                 "watch_key": _kill, "threshold": 3.0,
+                                 "sustain": 30, "half_life": 100, "count": 0})
+            elif comp.name == "turn_rate":
+                # Turn rate shaping decays once kills are consistent
+                targets.append({"component": comp, "weight_attr": "turn_rate_weight",
                                  "watch_key": _kill, "threshold": 3.0,
                                  "sustain": 30, "half_life": 100, "count": 0})
             elif comp.name == "shoot_quality":

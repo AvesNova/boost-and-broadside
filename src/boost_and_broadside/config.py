@@ -108,7 +108,8 @@ class RewardConfig:
     exposure_weight: float      # weight on being-in-enemy-sights penalty
     proximity_weight: float     # weight on close-to-enemy reward
     proximity_radius: float     # R: falloff radius for proximity reward (world units)
-    approach_weight: float      # weight on velocity-toward-enemy reward
+    closing_speed_weight: float  # weight on velocity-toward-enemy (closing speed) reward
+    turn_rate_weight: float      # weight on angular-velocity-toward-enemy reward
     power_range_weight: float   # weight on power-in-range reward
     power_range_lo: float       # lower bound as fraction of max_power (e.g. 0.2)
     power_range_hi: float       # upper bound as fraction of max_power (e.g. 0.8)

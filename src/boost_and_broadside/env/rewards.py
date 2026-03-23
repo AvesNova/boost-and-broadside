@@ -481,18 +481,18 @@ class ProximityReward(RewardComponent):
         return reward
 
 
-class ApproachReward(RewardComponent):
+class ClosingSpeedReward(RewardComponent):
     """Reward for velocity aligned toward the nearest alive enemy.
 
     Score = dot(my_velocity, dir_from_me_to_nearest_enemy), clamped to [0, inf).
     Encourages actively closing the gap, not just being close.
     """
 
-    name = "approach"
+    name = "closing_speed"
 
-    def __init__(self, approach_weight: float, world_size: tuple[float, float]) -> None:
-        self.approach_weight = approach_weight
-        self.world_size      = world_size
+    def __init__(self, closing_speed_weight: float, world_size: tuple[float, float]) -> None:
+        self.closing_speed_weight = closing_speed_weight
+        self.world_size           = world_size
 
     def compute(
         self,
@@ -532,7 +532,69 @@ class ApproachReward(RewardComponent):
         best_approach = best_approach.clamp(min=0.0)
         best_approach = best_approach * valid.any(dim=2).float()
 
-        return self.approach_weight * best_approach * alive.float()
+        return self.closing_speed_weight * best_approach * alive.float()
+
+
+class TurnRateReward(RewardComponent):
+    """Reward for angular velocity directed toward the nearest alive enemy.
+
+    Score = ang_vel_i * sin(angle from heading to nearest enemy direction).
+    Positive when rotating toward the nearest enemy, negative when rotating away.
+    This gives a direct rate-of-change signal rather than rewarding the absolute
+    facing angle.
+    """
+
+    name = "turn_rate"
+
+    def __init__(self, turn_rate_weight: float, world_size: tuple[float, float]) -> None:
+        self.turn_rate_weight = turn_rate_weight
+        self.world_size       = world_size
+
+    def compute(
+        self,
+        prev_state: TensorState,
+        actions: torch.Tensor,
+        next_state: TensorState,
+        dones: torch.Tensor,
+    ) -> torch.Tensor:
+        pos     = next_state.ship_pos       # (B, N) complex64
+        att     = next_state.ship_attitude  # (B, N) complex64, unit vector
+        ang_vel = next_state.ship_ang_vel   # (B, N) float32, + = counterclockwise
+        alive   = next_state.ship_alive     # (B, N) bool
+        teams   = next_state.ship_team_id   # (B, N) int32
+
+        B, N = pos.shape
+        W, H = self.world_size
+
+        # Wrap-around displacement from j to i
+        d      = pos.unsqueeze(2) - pos.unsqueeze(1)   # (B, N, N) complex64
+        d.real = (d.real + W / 2) % W - W / 2
+        d.imag = (d.imag + H / 2) % H - H / 2
+        dist   = d.abs()
+
+        # Unit vector from i toward j (negate d which is i-j)
+        dir_i_to_j = (-d) / dist.clamp(min=1e-6)      # (B, N, N) complex64
+
+        is_enemy = teams.unsqueeze(2) != teams.unsqueeze(1)
+        alive_j  = alive.unsqueeze(1).expand(B, N, N)
+        alive_i  = alive.unsqueeze(2).expand(B, N, N)
+        valid    = is_enemy & alive_j & alive_i
+
+        # Find nearest enemy for each ship
+        dist_masked = dist.masked_fill(~valid, float('inf'))
+        nearest_idx = dist_masked.argmin(dim=2, keepdim=True)  # (B, N, 1)
+
+        # sin(angle from heading to nearest-enemy direction)
+        # Im(conj(att_i) * dir_i_to_j) > 0 means enemy is counterclockwise from heading
+        att_i   = att.unsqueeze(2)                                       # (B, N, 1)
+        cross   = (torch.conj(att_i) * dir_i_to_j).imag                 # (B, N, N)
+        nearest_cross = cross.gather(2, nearest_idx).squeeze(2)          # (B, N)
+
+        # Reward = ang_vel * cross: positive when turning toward enemy
+        has_enemy = valid.any(dim=2).float()
+        score     = ang_vel * nearest_cross * has_enemy                  # (B, N)
+
+        return self.turn_rate_weight * score * alive.float()
 
 
 class PowerRangeReward(RewardComponent):
@@ -793,8 +855,12 @@ def build_reward_components(
             proximity_radius=reward_config.proximity_radius,
             world_size=ship_config.world_size,
         ),
-        ApproachReward(
-            approach_weight=reward_config.approach_weight,
+        ClosingSpeedReward(
+            closing_speed_weight=reward_config.closing_speed_weight,
+            world_size=ship_config.world_size,
+        ),
+        TurnRateReward(
+            turn_rate_weight=reward_config.turn_rate_weight,
             world_size=ship_config.world_size,
         ),
         PowerRangeReward(

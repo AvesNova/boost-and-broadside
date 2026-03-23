@@ -23,7 +23,8 @@ def _make_trainer(n_fourier_freqs: int = 4) -> PPOTrainer:
             victory_weight=1.0, positioning_weight=0.05, positioning_radius=400.0,
             facing_weight=0.01, exposure_weight=0.01,
             proximity_weight=0.01, proximity_radius=300.0,
-            approach_weight=0.01,
+            closing_speed_weight=0.01,
+            turn_rate_weight=0.01,
             power_range_weight=0.01, power_range_lo=0.2, power_range_hi=0.8,
             speed_range_weight=0.01, speed_range_lo=40.0, speed_range_hi=120.0,
             shoot_quality_weight=0.01, shoot_quality_radius=200.0,
@@ -63,25 +64,25 @@ class TestDecayScheduler:
     def test_weight_decays_after_threshold_sustained(self):
         """Decay scheduler must reduce a component weight once the metric EMA stays above threshold."""
         trainer = _make_trainer()
-        approach_comp = next(c for c in trainer.wrapper._components if c.name == "approach")
-        initial_weight = approach_comp.approach_weight
+        approach_comp = next(c for c in trainer.wrapper._components if c.name == "closing_speed")
+        initial_weight = approach_comp.closing_speed_weight
 
-        # Feed kill metric above the approach threshold (3.0) for more than sustain (30) updates
+        # Feed kill metric above the closing_speed threshold (3.0) for more than sustain (30) updates
         for _ in range(35):
             trainer._decay.step({"ep/reward_kill": 5.0})
 
-        assert approach_comp.approach_weight < initial_weight
+        assert approach_comp.closing_speed_weight < initial_weight
 
     def test_weight_does_not_decay_below_threshold(self):
         """Decay must not trigger when metric stays below threshold."""
         trainer = _make_trainer()
-        approach_comp = next(c for c in trainer.wrapper._components if c.name == "approach")
-        initial_weight = approach_comp.approach_weight
+        approach_comp = next(c for c in trainer.wrapper._components if c.name == "closing_speed")
+        initial_weight = approach_comp.closing_speed_weight
 
         for _ in range(50):
             trainer._decay.step({"ep/reward_kill": 1.0})  # below threshold of 3.0
 
-        assert approach_comp.approach_weight == initial_weight
+        assert approach_comp.closing_speed_weight == initial_weight
 
     def test_count_does_not_accumulate_with_brief_pulses(self):
         """Short bursts above threshold separated by cool-down gaps should never trigger decay.
@@ -91,8 +92,8 @@ class TestDecayScheduler:
         second on-pulse — final count stays well below sustain=30.
         """
         trainer = _make_trainer()
-        approach_comp = next(c for c in trainer.wrapper._components if c.name == "approach")
-        initial_weight = approach_comp.approach_weight
+        approach_comp = next(c for c in trainer.wrapper._components if c.name == "closing_speed")
+        initial_weight = approach_comp.closing_speed_weight
 
         for _ in range(5):
             trainer._decay.step({"ep/reward_kill": 5.0})   # brief pulse
@@ -101,4 +102,4 @@ class TestDecayScheduler:
         for _ in range(5):
             trainer._decay.step({"ep/reward_kill": 5.0})   # second brief pulse
 
-        assert approach_comp.approach_weight == initial_weight
+        assert approach_comp.closing_speed_weight == initial_weight
