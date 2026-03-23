@@ -5,7 +5,7 @@ import torch
 from boost_and_broadside.config import (
     ShipConfig, EnvConfig, ModelConfig, RewardConfig, TrainConfig,
 )
-from boost_and_broadside.train.rl.ppo import PPOTrainer
+from boost_and_broadside.train.rl.ppo import PPOTrainer, _team_sort_idx, _gather_ships
 
 
 def _make_trainer(n_fourier_freqs: int = 4) -> PPOTrainer:
@@ -103,3 +103,42 @@ class TestDecayScheduler:
             trainer._decay.step({"ep/reward_kill": 5.0})   # second brief pulse
 
         assert approach_comp.closing_speed_weight == initial_weight
+
+
+class TestTeamSplit:
+    def test_team_sort_idx_puts_team0_first(self):
+        """sort_idx must place team-0 ship indices before team-1 indices."""
+        team_id = torch.tensor([[1, 0, 1, 0], [0, 1, 0, 1]], dtype=torch.int32)
+        sort_idx, unsort_idx = _team_sort_idx(team_id)
+
+        # After sorting, the first N_t=2 positions are team 0
+        for b in range(2):
+            t0_slots = sort_idx[b, :2]
+            t1_slots = sort_idx[b, 2:]
+            assert (team_id[b][t0_slots] == 0).all()
+            assert (team_id[b][t1_slots] == 1).all()
+
+    def test_unsort_idx_is_inverse_of_sort_idx(self):
+        """Applying sort then unsort must recover the original order."""
+        team_id = torch.tensor([[1, 0, 1, 0]], dtype=torch.int32)
+        sort_idx, unsort_idx = _team_sort_idx(team_id)
+        original = torch.arange(4).unsqueeze(0)
+        sorted_  = _gather_ships(original, sort_idx, dim=1)
+        restored = _gather_ships(sorted_,  unsort_idx, dim=1)
+        assert torch.equal(restored, original)
+
+    def test_two_team_forward_produces_full_action_tensor(self):
+        """_two_team_forward must return (B, N, 3) actions covering all ship slots."""
+        trainer = _make_trainer()
+        obs = trainer.wrapper.reset()
+        B = trainer.cfg.num_envs
+        N = trainer.wrapper.num_ships
+        D = trainer.model_config.d_model
+
+        hidden = trainer.policy.initial_hidden(B, N, torch.device("cpu"))
+        action, logprob, value, new_hidden = trainer._two_team_forward(obs, hidden)
+
+        assert action.shape     == (B, N, 3)
+        assert logprob.shape    == (B, N)
+        assert value.shape      == (B, N)
+        assert new_hidden.shape == (1, B * N, D)

@@ -23,6 +23,47 @@ from boost_and_broadside.models.mvp.policy import MVPPolicy
 from boost_and_broadside.train.rl.buffer import RolloutBuffer
 
 
+# ---------------------------------------------------------------------------
+# Team-split helpers for two-pass self-play
+# ---------------------------------------------------------------------------
+
+def _team_sort_idx(team_id: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """Stable-sort ship indices so team-0 ships precede team-1 ships.
+
+    Args:
+        team_id: (B, N) int32 or float32 — 0 for team 0, 1 for team 1.
+
+    Returns:
+        sort_idx:   (B, N) long — sorted indices (team 0 first).
+        unsort_idx: (B, N) long — inverse permutation of sort_idx.
+    """
+    sort_idx   = team_id.float().argsort(dim=1, stable=True).long()
+    unsort_idx = sort_idx.argsort(dim=1, stable=True).long()
+    return sort_idx, unsort_idx
+
+
+def _gather_ships(t: torch.Tensor, idx: torch.Tensor, dim: int) -> torch.Tensor:
+    """Select ships from tensor t along ship dimension `dim` using per-batch indices.
+
+    B must be at dimension dim-1.
+
+    Args:
+        t:   Tensor with N ships at `dim`.
+        idx: (B, N_t) long — per-batch ship indices to select.
+        dim: Position of the N (ships) dimension in t.
+
+    Returns:
+        Same tensor with N replaced by N_t at `dim`.
+    """
+    B, N_t   = idx.shape
+    tgt      = list(t.shape)
+    tgt[dim] = N_t
+    vs       = [1] * t.dim()
+    vs[dim - 1] = B
+    vs[dim]     = N_t
+    return t.gather(dim, idx.view(*vs).expand(*tgt))
+
+
 class _DecayScheduler:
     """Anneals reward shaping weights to zero once training metrics cross thresholds.
 
@@ -171,7 +212,7 @@ class PPOTrainer:
             # Rollout collection
             # ----------------------------------------------------------------
             for _ in range(self.cfg.num_steps):
-                action, logprob, value, hidden = self.policy.get_action_and_value(obs, hidden)
+                action, logprob, value, hidden = self._two_team_forward(obs, hidden)
 
                 next_obs, reward, dones, truncated, info = self.wrapper.step(action)
 
@@ -202,7 +243,7 @@ class PPOTrainer:
             # GAE computation
             # ----------------------------------------------------------------
             with torch.no_grad():
-                _, _, next_value, _ = self.policy.get_action_and_value(obs, hidden)
+                _, _, next_value, _ = self._two_team_forward(obs, hidden)
             self.buffer.compute_gae(next_value, dones.float())
 
             # ----------------------------------------------------------------
@@ -272,12 +313,12 @@ class PPOTrainer:
                 (mb_obs, mb_actions, mb_old_logprobs, mb_advantages,
                  mb_returns, mb_values, mb_alive, mb_hidden) = batch
 
-                # Re-evaluate actions with current policy
-                logprob, entropy, new_value = self.policy.evaluate_actions(
-                    obs            = mb_obs,
-                    actions        = mb_actions.long(),
-                    initial_hidden = mb_hidden,
-                    alive_mask     = mb_alive,
+                # Re-evaluate actions with current policy (two separate team passes)
+                logprob, entropy, new_value = self._two_team_evaluate(
+                    mb_obs     = mb_obs,
+                    mb_actions = mb_actions,
+                    mb_hidden  = mb_hidden,
+                    mb_alive   = mb_alive,
                 )
 
                 # Mask dead ships out of all loss and metric computations
@@ -327,6 +368,137 @@ class PPOTrainer:
                 accum["train/explained_variance"].append(explained_var)
 
         return {k: sum(v) / len(v) for k, v in accum.items() if v}
+
+    # ------------------------------------------------------------------
+    # Two-team forward helpers
+    # ------------------------------------------------------------------
+
+    @torch.no_grad()
+    def _two_team_forward(
+        self,
+        obs: dict[str, torch.Tensor],
+        hidden: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Run two per-team forward passes; each team sees itself as team 0.
+
+        Ships are split by team_id, passed through the policy independently,
+        then merged back into the original ship-slot order.
+
+        Args:
+            obs:    Full (B, N, ...) obs for all ships.
+            hidden: (1, B*N, D) GRU hidden state in original ship-slot order.
+
+        Returns:
+            action:     (B, N, 3) int.
+            logprob:    (B, N) float.
+            value:      (B, N) float.
+            new_hidden: (1, B*N, D) updated hidden state in original ship-slot order.
+        """
+        B, N = obs["team_id"].shape
+        N_t  = N // 2
+        D    = self.policy.gru.hidden_size
+
+        sort_idx, unsort_idx = _team_sort_idx(obs["team_id"])
+        t0_idx = sort_idx[:, :N_t]   # (B, N_t)
+        t1_idx = sort_idx[:, N_t:]   # (B, N_t)
+
+        t0_obs = {k: _gather_ships(v, t0_idx, 1) for k, v in obs.items()}
+        t1_obs = {k: _gather_ships(v, t1_idx, 1) for k, v in obs.items()}
+        t1_obs["team_id"] = torch.zeros_like(t1_obs["team_id"])  # team 1 thinks it's team 0
+
+        # Sort hidden then split into per-team halves
+        sort_exp  = sort_idx.unsqueeze(-1).expand(B, N, D)
+        h_sorted  = hidden.squeeze(0).reshape(B, N, D).gather(1, sort_exp)
+        h_t0      = h_sorted[:, :N_t].reshape(1, B * N_t, D)
+        h_t1      = h_sorted[:, N_t:].reshape(1, B * N_t, D)
+
+        a_t0, lp_t0, v_t0, new_h_t0 = self.policy.get_action_and_value(t0_obs, h_t0)
+        a_t1, lp_t1, v_t1, new_h_t1 = self.policy.get_action_and_value(t1_obs, h_t1)
+
+        # Merge hidden back to original slot order
+        new_h_sorted = torch.cat([new_h_t0.reshape(B, N_t, D), new_h_t1.reshape(B, N_t, D)], dim=1)
+        unsort_exp   = unsort_idx.unsqueeze(-1).expand(B, N, D)
+        new_hidden   = new_h_sorted.gather(1, unsort_exp).reshape(1, B * N, D)
+
+        # Scatter per-team outputs back to original slot order
+        action  = torch.zeros(B, N, 3, dtype=a_t0.dtype, device=self.device)
+        logprob = torch.zeros(B, N, device=self.device)
+        value   = torch.zeros(B, N, device=self.device)
+        action .scatter_(1, t0_idx.unsqueeze(-1).expand(B, N_t, 3), a_t0)
+        action .scatter_(1, t1_idx.unsqueeze(-1).expand(B, N_t, 3), a_t1)
+        logprob.scatter_(1, t0_idx, lp_t0)
+        logprob.scatter_(1, t1_idx, lp_t1)
+        value  .scatter_(1, t0_idx, v_t0)
+        value  .scatter_(1, t1_idx, v_t1)
+
+        return action, logprob, value, new_hidden
+
+    def _two_team_evaluate(
+        self,
+        mb_obs: dict[str, torch.Tensor],
+        mb_actions: torch.Tensor,
+        mb_hidden: torch.Tensor,
+        mb_alive: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Re-evaluate actions for both teams separately for the PPO update.
+
+        Uses first-timestep team IDs to compute sort order; valid because team
+        assignments are fixed within each episode and hidden is zeroed at
+        episode boundaries.
+
+        Args:
+            mb_obs:     Dict with (T, B, N, ...) tensors.
+            mb_actions: (T, B, N, 3) int.
+            mb_hidden:  (1, B*N, D) initial hidden state in original slot order.
+            mb_alive:   (T, B, N) bool.
+
+        Returns:
+            logprob: (T, B, N) float.
+            entropy: (T, B, N) float.
+            value:   (T, B, N) float.
+        """
+        T, B, N, _ = mb_actions.shape
+        N_t = N // 2
+        D   = self.policy.gru.hidden_size
+
+        sort_idx, _ = _team_sort_idx(mb_obs["team_id"][0])  # sort by first-step team IDs
+        t0_idx = sort_idx[:, :N_t]
+        t1_idx = sort_idx[:, N_t:]
+
+        t0_obs = {k: _gather_ships(v, t0_idx, 2) for k, v in mb_obs.items()}
+        t1_obs = {k: _gather_ships(v, t1_idx, 2) for k, v in mb_obs.items()}
+        t1_obs["team_id"] = torch.zeros_like(t1_obs["team_id"])
+
+        t0_acts  = _gather_ships(mb_actions, t0_idx, 2)   # (T, B, N_t, 3)
+        t1_acts  = _gather_ships(mb_actions, t1_idx, 2)
+        t0_alive = _gather_ships(mb_alive,   t0_idx, 2)   # (T, B, N_t)
+        t1_alive = _gather_ships(mb_alive,   t1_idx, 2)
+
+        # Split initial hidden
+        sort_exp  = sort_idx.unsqueeze(-1).expand(B, N, D)
+        h_sorted  = mb_hidden.squeeze(0).reshape(B, N, D).gather(1, sort_exp)
+        h_t0      = h_sorted[:, :N_t].reshape(1, B * N_t, D)
+        h_t1      = h_sorted[:, N_t:].reshape(1, B * N_t, D)
+
+        lp_t0, ent_t0, val_t0 = self.policy.evaluate_actions(t0_obs, t0_acts.long(), h_t0, t0_alive)
+        lp_t1, ent_t1, val_t1 = self.policy.evaluate_actions(t1_obs, t1_acts.long(), h_t1, t1_alive)
+
+        # Scatter back to (T, B, N)
+        t0_exp = t0_idx.unsqueeze(0).expand(T, B, N_t)
+        t1_exp = t1_idx.unsqueeze(0).expand(T, B, N_t)
+
+        logprob = torch.zeros(T, B, N, device=self.device)
+        entropy = torch.zeros(T, B, N, device=self.device)
+        value   = torch.zeros(T, B, N, device=self.device)
+
+        logprob.scatter_(2, t0_exp, lp_t0)
+        logprob.scatter_(2, t1_exp, lp_t1)
+        entropy.scatter_(2, t0_exp, ent_t0)
+        entropy.scatter_(2, t1_exp, ent_t1)
+        value  .scatter_(2, t0_exp, val_t0)
+        value  .scatter_(2, t1_exp, val_t1)
+
+        return logprob, entropy, value
 
     # ------------------------------------------------------------------
     # Reward decay
