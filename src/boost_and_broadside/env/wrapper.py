@@ -120,15 +120,14 @@ class MVPEnvWrapper:
             self._ep_reward_components[name] += comp_r
 
         # Snapshot episode stats before resetting accumulators.
-        # Only clone the two small tensors needed every update (reward + length);
-        # component breakdown is omitted here — the trainer computes it separately.
         # GPU tensors — no .cpu() here; the trainer does a single bulk transfer
         # at the end of the rollout to keep the hot path sync-free.
         done_mask = dones | truncated
         info = {
-            "done_mask": done_mask,
-            "ep_reward": self._ep_reward.clone(),   # (B, N) GPU snapshot
-            "ep_length": self._ep_length.clone(),   # (B,) GPU snapshot
+            "done_mask":            done_mask,
+            "ep_reward":            self._ep_reward.clone(),   # (B, N) GPU snapshot
+            "ep_length":            self._ep_length.clone(),   # (B,) GPU snapshot
+            "ep_reward_components": {k: t.clone() for k, t in self._ep_reward_components.items()},
         }
 
         # Reset done environments — sync-free (uses torch.where + masked_fill_ internally)

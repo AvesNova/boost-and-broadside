@@ -101,7 +101,8 @@ class PPOTrainer:
         env_config:    Environment sizing.
         reward_config: Reward weights.
         device:        Torch device.
-        use_wandb:     Whether to log metrics to W&B.
+        use_wandb:      Whether to log metrics to W&B.
+        compile_policy: Apply torch.compile() to both policies (faster throughput, slower startup).
     """
 
     def __init__(
@@ -114,6 +115,7 @@ class PPOTrainer:
         device:         str | torch.device,
         use_wandb:      bool = False,
         scripted_agent: StochasticScriptedAgent | None = None,
+        compile_policy: bool = False,
     ) -> None:
         self.cfg          = train_config
         self.model_config = model_config
@@ -131,16 +133,14 @@ class PPOTrainer:
             device         = device,
             scripted_agent = scripted_agent,
         )
-        self.policy = torch.compile(
-            MVPPolicy(model_config, ship_config).to(self.device)
-        )
+        policy = MVPPolicy(model_config, ship_config).to(self.device)
+        self.policy = torch.compile(policy) if compile_policy else policy
         self.optim  = optim.Adam(self.policy.parameters(), lr=train_config.learning_rate, eps=1e-5)
 
         # Uniform average policy — frozen opponent used in half of self-play envs.
         # Maintained as a running arithmetic mean of main policy weights.
-        self.avg_policy: MVPPolicy = torch.compile(
-            MVPPolicy(model_config, ship_config).to(self.device)
-        )
+        avg_policy = MVPPolicy(model_config, ship_config).to(self.device)
+        self.avg_policy: MVPPolicy = torch.compile(avg_policy) if compile_policy else avg_policy
         self.avg_policy.load_state_dict(self.policy.state_dict())  # start identical
         self.avg_policy.requires_grad_(False)
         self._avg_count = 0  # number of updates included in the running mean
@@ -212,10 +212,11 @@ class PPOTrainer:
             self.buffer.store_initial_hidden(hidden)
 
             # Accumulate episode stats across the rollout as GPU tensors.
-            # Two small (B,)/(B,N) clones per step; single CPU transfer after the loop.
-            ep_done_masks: list[torch.Tensor] = []
-            ep_rewards:    list[torch.Tensor] = []
-            ep_lengths:    list[torch.Tensor] = []
+            # Single CPU transfer after the loop.
+            ep_done_masks:  list[torch.Tensor] = []
+            ep_rewards:     list[torch.Tensor] = []
+            ep_lengths:     list[torch.Tensor] = []
+            ep_components:  dict[str, list[torch.Tensor]] = {}
 
             # ----------------------------------------------------------------
             # Rollout collection
@@ -231,6 +232,8 @@ class PPOTrainer:
                 ep_done_masks.append(info["done_mask"])
                 ep_rewards.append(info["ep_reward"])
                 ep_lengths.append(info["ep_length"].float())
+                for k, t in info["ep_reward_components"].items():
+                    ep_components.setdefault(k, []).append(t)
 
                 done_any = dones | truncated
                 self.buffer.add(
@@ -282,6 +285,10 @@ class PPOTrainer:
                 metrics["ep/reward_min"]  = done_rewards.min().item()
                 metrics["ep/reward_max"]  = done_rewards.max().item()
                 metrics["ep/length_mean"] = done_lengths.mean().item()
+                for k, tensors in ep_components.items():
+                    comp_t    = torch.stack(tensors)          # (T, B, N)
+                    comp_flat = comp_t.view(-1, N)[done_flat].cpu()
+                    metrics[f"ep/reward_{k}"] = comp_flat.mean().item()
 
             sps = int(self._global_step / (time.time() - start_time))
             metrics["train/global_step"] = self._global_step

@@ -43,6 +43,12 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="Path to a .pt checkpoint file. Required for --mode watch.",
     )
+    parser.add_argument(
+        "--compile",
+        action="store_true",
+        default=False,
+        help="Apply torch.compile() to the policy (faster throughput, slower startup).",
+    )
     return parser.parse_args()
 
 
@@ -140,6 +146,7 @@ def main() -> None:
                 device         = device,
                 use_wandb      = True,
                 scripted_agent = scripted_agent,
+                compile_policy = args.compile,
             )
             trainer.train()
 

@@ -64,7 +64,12 @@ class VideoLogger:
             policy:      Main policy (CPU copy is made here).
             global_step: Current training step (used as W&B x-axis key).
         """
-        state_dict = copy.deepcopy({k: v.cpu() for k, v in policy.state_dict().items()})
+        raw = {k: v.cpu() for k, v in policy.state_dict().items()}
+        # torch.compile wraps parameters under "_orig_mod.*"; strip for a plain model load
+        state_dict = copy.deepcopy({
+            (k[len("_orig_mod."):] if k.startswith("_orig_mod.") else k): v
+            for k, v in raw.items()
+        })
         try:
             self._queue.put_nowait({"state_dict": state_dict, "step": global_step})
         except Full:
