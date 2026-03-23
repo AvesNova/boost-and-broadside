@@ -153,6 +153,16 @@ class PPOTrainer:
         self.policy = MVPPolicy(model_config, ship_config).to(self.device)
         self.optim  = optim.Adam(self.policy.parameters(), lr=train_config.learning_rate, eps=1e-5)
 
+        # Uniform average policy — frozen opponent used in half of self-play envs.
+        # Maintained as a running arithmetic mean of main policy weights.
+        self.avg_policy: MVPPolicy = MVPPolicy(model_config, ship_config).to(self.device)
+        self.avg_policy.load_state_dict(self.policy.state_dict())  # start identical
+        self.avg_policy.requires_grad_(False)
+        self._avg_count = 0  # number of updates included in the running mean
+
+        # How many envs play against avg_policy (team 1 = avg_policy opponent)
+        self._envs_vs_avg = int(train_config.num_envs * train_config.avg_policy_opp_fraction)
+
         N = env_config.num_ships
 
         # Build obs shapes for the buffer from a dummy reset
@@ -194,8 +204,11 @@ class PPOTrainer:
         B = self.cfg.num_envs
         N = self.wrapper.num_ships
 
-        obs     = self.wrapper.reset()
-        hidden  = self.policy.initial_hidden(B, N, self.device)
+        obs         = self.wrapper.reset()
+        hidden      = self.policy.initial_hidden(B, N, self.device)
+        # avg_policy hidden for pool-B team 1 (separate from main policy hidden)
+        N_t         = N // 2
+        avg_hidden  = self.avg_policy.initial_hidden(self._envs_vs_avg, N_t, self.device)
 
         start_time = time.time()
 
@@ -212,7 +225,9 @@ class PPOTrainer:
             # Rollout collection
             # ----------------------------------------------------------------
             for _ in range(self.cfg.num_steps):
-                action, logprob, value, hidden = self._two_team_forward(obs, hidden)
+                action, logprob, value, hidden, avg_hidden = self._two_team_forward(
+                    obs, hidden, avg_hidden
+                )
 
                 next_obs, reward, dones, truncated, info = self.wrapper.step(action)
 
@@ -235,6 +250,11 @@ class PPOTrainer:
 
                 # Reset hidden for envs that terminated
                 hidden = self.policy.reset_hidden_for_envs(hidden, done_any, N)
+                # Reset avg_policy hidden for pool-B envs that terminated
+                done_avg = done_any[B - self._envs_vs_avg:]  # pool-B done flags
+                avg_hidden = self.avg_policy.reset_hidden_for_envs(
+                    avg_hidden, done_avg, N_t
+                )
 
                 obs = next_obs
                 self._global_step += B
@@ -243,7 +263,7 @@ class PPOTrainer:
             # GAE computation
             # ----------------------------------------------------------------
             with torch.no_grad():
-                _, _, next_value, _ = self._two_team_forward(obs, hidden)
+                _, _, next_value, _, _ = self._two_team_forward(obs, hidden, avg_hidden)
             self.buffer.compute_gae(next_value, dones.float())
 
             # ----------------------------------------------------------------
@@ -265,6 +285,10 @@ class PPOTrainer:
             sps = int(self._global_step / (time.time() - start_time))
             metrics["train/global_step"] = self._global_step
             metrics["train/sps"]         = sps
+
+            # Update weight-averaged policy once past warmup
+            if self._global_step >= self.cfg.avg_policy_warmup_steps:
+                self._update_avg_policy()
 
             # Decay shaping weights based on training progress
             metrics.update(self._decay.step(metrics))
@@ -378,25 +402,30 @@ class PPOTrainer:
         self,
         obs: dict[str, torch.Tensor],
         hidden: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        avg_hidden: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Run two per-team forward passes; each team sees itself as team 0.
 
-        Ships are split by team_id, passed through the policy independently,
-        then merged back into the original ship-slot order.
+        Pool A (first B - envs_vs_avg envs): team 1 uses main policy.
+        Pool B (last envs_vs_avg envs):      team 1 uses avg_policy as frozen opponent.
 
         Args:
-            obs:    Full (B, N, ...) obs for all ships.
-            hidden: (1, B*N, D) GRU hidden state in original ship-slot order.
+            obs:        Full (B, N, ...) obs for all ships.
+            hidden:     (1, B*N, D) main policy hidden in original ship-slot order.
+            avg_hidden: (1, B_avg*N_t, D) avg_policy hidden for pool-B team 1.
 
         Returns:
-            action:     (B, N, 3) int.
-            logprob:    (B, N) float.
-            value:      (B, N) float.
-            new_hidden: (1, B*N, D) updated hidden state in original ship-slot order.
+            action:         (B, N, 3) int.
+            logprob:        (B, N) float.
+            value:          (B, N) float.
+            new_hidden:     (1, B*N, D) updated main hidden in original slot order.
+            new_avg_hidden: (1, B_avg*N_t, D) updated avg_policy hidden.
         """
-        B, N = obs["team_id"].shape
-        N_t  = N // 2
-        D    = self.policy.gru.hidden_size
+        B, N   = obs["team_id"].shape
+        N_t    = N // 2
+        D      = self.policy.gru.hidden_size
+        B_avg  = self._envs_vs_avg
+        B_self = B - B_avg
 
         sort_idx, unsort_idx = _team_sort_idx(obs["team_id"])
         t0_idx = sort_idx[:, :N_t]   # (B, N_t)
@@ -404,21 +433,40 @@ class PPOTrainer:
 
         t0_obs = {k: _gather_ships(v, t0_idx, 1) for k, v in obs.items()}
         t1_obs = {k: _gather_ships(v, t1_idx, 1) for k, v in obs.items()}
-        t1_obs["team_id"] = torch.zeros_like(t1_obs["team_id"])  # team 1 thinks it's team 0
 
         # Sort hidden then split into per-team halves
-        sort_exp  = sort_idx.unsqueeze(-1).expand(B, N, D)
-        h_sorted  = hidden.squeeze(0).reshape(B, N, D).gather(1, sort_exp)
-        h_t0      = h_sorted[:, :N_t].reshape(1, B * N_t, D)
-        h_t1      = h_sorted[:, N_t:].reshape(1, B * N_t, D)
+        sort_exp = sort_idx.unsqueeze(-1).expand(B, N, D)
+        h_sorted = hidden.squeeze(0).reshape(B, N, D).gather(1, sort_exp)
+        h_t0     = h_sorted[:, :N_t].reshape(1, B * N_t, D)
 
-        a_t0, lp_t0, v_t0, new_h_t0 = self.policy.get_action_and_value(t0_obs, h_t0)
-        a_t1, lp_t1, v_t1, new_h_t1 = self.policy.get_action_and_value(t1_obs, h_t1)
+        # Pool A team 1: main policy (first B_self envs)
+        t1_obs_self = {k: v[:B_self] for k, v in t1_obs.items()}
+        t1_obs_self["team_id"] = torch.zeros_like(t1_obs_self["team_id"])
+        h_t1_self = h_sorted[:B_self, N_t:].reshape(1, B_self * N_t, D)
 
-        # Merge hidden back to original slot order
-        new_h_sorted = torch.cat([new_h_t0.reshape(B, N_t, D), new_h_t1.reshape(B, N_t, D)], dim=1)
+        # Pool B team 1: avg_policy (last B_avg envs)
+        t1_obs_avg = {k: v[B_self:] for k, v in t1_obs.items()}
+        t1_obs_avg["team_id"] = torch.zeros_like(t1_obs_avg["team_id"])
+
+        # Team 0 needs team_id = 0 (it already is, but be explicit)
+        t0_obs_relabeled = dict(t0_obs)
+        t0_obs_relabeled["team_id"] = torch.zeros_like(t0_obs["team_id"])
+
+        a_t0,  lp_t0,  v_t0,  new_h_t0    = self.policy.get_action_and_value(t0_obs_relabeled, h_t0)
+        a_t1s, lp_t1s, v_t1s, new_h_t1s   = self.policy.get_action_and_value(t1_obs_self, h_t1_self)
+        a_t1a, lp_t1a, v_t1a, new_avg_h   = self.avg_policy.get_action_and_value(t1_obs_avg, avg_hidden)
+
+        # Merge main-policy hidden back to original slot order
+        new_h_t1 = torch.cat([new_h_t1s.reshape(B_self, N_t, D),
+                               h_sorted[B_self:, N_t:]], dim=0)  # keep avg envs' main hidden unchanged
+        new_h_sorted = torch.cat([new_h_t0.reshape(B, N_t, D), new_h_t1], dim=1)
         unsort_exp   = unsort_idx.unsqueeze(-1).expand(B, N, D)
         new_hidden   = new_h_sorted.gather(1, unsort_exp).reshape(1, B * N, D)
+
+        # Combine team 1 outputs (pool A + pool B)
+        a_t1  = torch.cat([a_t1s,  a_t1a],  dim=0)
+        lp_t1 = torch.cat([lp_t1s, lp_t1a], dim=0)
+        v_t1  = torch.cat([v_t1s,  v_t1a],  dim=0)
 
         # Scatter per-team outputs back to original slot order
         action  = torch.zeros(B, N, 3, dtype=a_t0.dtype, device=self.device)
@@ -431,7 +479,7 @@ class PPOTrainer:
         value  .scatter_(1, t0_idx, v_t0)
         value  .scatter_(1, t1_idx, v_t1)
 
-        return action, logprob, value, new_hidden
+        return action, logprob, value, new_hidden, new_avg_h
 
     def _two_team_evaluate(
         self,
@@ -501,6 +549,23 @@ class PPOTrainer:
         return logprob, entropy, value
 
     # ------------------------------------------------------------------
+    # Avg-policy update
+    # ------------------------------------------------------------------
+
+    def _update_avg_policy(self) -> None:
+        """Update avg_policy as the uniform running arithmetic mean of main policy.
+
+        avg_θ = avg_θ + (θ - avg_θ) / count   (true running mean)
+
+        Only called once past avg_policy_warmup_steps.
+        """
+        self._avg_count += 1
+        n = self._avg_count
+        with torch.no_grad():
+            for avg_p, main_p in zip(self.avg_policy.parameters(), self.policy.parameters()):
+                avg_p.data.add_((main_p.data - avg_p.data) / n)
+
+    # ------------------------------------------------------------------
     # Reward decay
     # ------------------------------------------------------------------
 
@@ -568,24 +633,36 @@ class PPOTrainer:
     def _save_checkpoint(self, update: int) -> None:
         """Save policy and optimizer state to a .pt file.
 
-        Written to cfg.checkpoint_dir/checkpoint_{update:06d}.pt.
-        Directory is created if it does not exist.
+        Written to cfg.checkpoint_dir/{run_name}/step_{global_step:012d}.pt.
+        The run_name is taken from wandb.run.name when W&B is active,
+        otherwise falls back to "local".
 
         Args:
-            update: Current update index (used as filename suffix).
+            update: Current update index (used for logging only).
         """
-        ckpt_dir = Path(self.cfg.checkpoint_dir)
+        run_name = "local"
+        if self.use_wandb:
+            try:
+                import wandb
+                if wandb.run is not None:
+                    run_name = wandb.run.name
+            except Exception:
+                pass
+
+        ckpt_dir = Path(self.cfg.checkpoint_dir) / run_name
         ckpt_dir.mkdir(parents=True, exist_ok=True)
-        path = ckpt_dir / f"checkpoint_{update:06d}.pt"
+        path = ckpt_dir / f"step_{self._global_step:012d}.pt"
         torch.save({
-            "policy_state_dict":    self.policy.state_dict(),
-            "optimizer_state_dict": self.optim.state_dict(),
-            "update":               update,
-            "global_step":          self._global_step,
-            "train_config":         dataclasses.asdict(self.cfg),
-            "model_config":         dataclasses.asdict(self.model_config),
-            "env_config":           dataclasses.asdict(self.env_config),
-            "reward_config":        dataclasses.asdict(self.reward_config),
+            "policy_state_dict":     self.policy.state_dict(),
+            "avg_policy_state_dict": self.avg_policy.state_dict(),
+            "avg_count":             self._avg_count,
+            "optimizer_state_dict":  self.optim.state_dict(),
+            "update":                update,
+            "global_step":           self._global_step,
+            "train_config":          dataclasses.asdict(self.cfg),
+            "model_config":          dataclasses.asdict(self.model_config),
+            "env_config":            dataclasses.asdict(self.env_config),
+            "reward_config":         dataclasses.asdict(self.reward_config),
         }, path)
         print(f"Checkpoint saved: {path}")
 
@@ -601,6 +678,9 @@ class PPOTrainer:
         ckpt = torch.load(path, map_location=self.device)
         self.policy.load_state_dict(ckpt["policy_state_dict"])
         self.optim.load_state_dict(ckpt["optimizer_state_dict"])
+        if "avg_policy_state_dict" in ckpt:
+            self.avg_policy.load_state_dict(ckpt["avg_policy_state_dict"])
+            self._avg_count = ckpt.get("avg_count", 0)
         return ckpt["update"]
 
     # ------------------------------------------------------------------

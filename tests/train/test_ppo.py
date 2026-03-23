@@ -14,6 +14,7 @@ def _make_trainer(n_fourier_freqs: int = 4) -> PPOTrainer:
             num_envs=4, num_steps=16, num_epochs=1, num_minibatches=2,
             learning_rate=3e-4, gamma=0.99, gae_lambda=0.95, clip_coef=0.2,
             ent_coef=0.01, vf_coef=0.5, max_grad_norm=0.5, total_timesteps=64,
+            avg_policy_warmup_steps=0, avg_policy_opp_fraction=0.5,
         ),
         model_config=ModelConfig(d_model=32, n_heads=4, n_fourier_freqs=n_fourier_freqs),
         ship_config=ShipConfig(),
@@ -131,14 +132,20 @@ class TestTeamSplit:
         """_two_team_forward must return (B, N, 3) actions covering all ship slots."""
         trainer = _make_trainer()
         obs = trainer.wrapper.reset()
-        B = trainer.cfg.num_envs
-        N = trainer.wrapper.num_ships
-        D = trainer.model_config.d_model
+        B   = trainer.cfg.num_envs
+        N   = trainer.wrapper.num_ships
+        N_t = N // 2
+        D   = trainer.model_config.d_model
+        B_avg = trainer._envs_vs_avg
 
-        hidden = trainer.policy.initial_hidden(B, N, torch.device("cpu"))
-        action, logprob, value, new_hidden = trainer._two_team_forward(obs, hidden)
+        hidden     = trainer.policy.initial_hidden(B, N, torch.device("cpu"))
+        avg_hidden = trainer.avg_policy.initial_hidden(B_avg, N_t, torch.device("cpu"))
+        action, logprob, value, new_hidden, new_avg_hidden = trainer._two_team_forward(
+            obs, hidden, avg_hidden
+        )
 
-        assert action.shape     == (B, N, 3)
-        assert logprob.shape    == (B, N)
-        assert value.shape      == (B, N)
-        assert new_hidden.shape == (1, B * N, D)
+        assert action.shape         == (B, N, 3)
+        assert logprob.shape        == (B, N)
+        assert value.shape          == (B, N)
+        assert new_hidden.shape     == (1, B * N, D)
+        assert new_avg_hidden.shape == (1, B_avg * N_t, D)

@@ -139,6 +139,8 @@ class TrainConfig:
     total_timesteps: int    # total environment steps before stopping
     checkpoint_interval: int = 0           # save every N updates; 0 = disabled
     checkpoint_dir: str = "checkpoints"    # directory to write .pt files
+    avg_policy_warmup_steps: int = 0       # global steps before weight averaging begins; 0 = immediate
+    avg_policy_opp_fraction: float = 0.5  # fraction of envs that play against avg_policy
 
     def __post_init__(self) -> None:
         if self.num_envs % self.num_minibatches != 0:
