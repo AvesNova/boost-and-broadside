@@ -1,9 +1,11 @@
 """Tests for the rollout buffer and GAE computation."""
 
+import math
+
 import pytest
 import torch
 
-from boost_and_broadside.train.rl.buffer import RolloutBuffer
+from boost_and_broadside.train.rl.buffer import RolloutBuffer, symlog
 
 
 def _make_buffer(T=4, B=2, N=4, D=16) -> tuple[RolloutBuffer, int, int, int, int]:
@@ -66,8 +68,8 @@ class TestBufferAdd:
     def test_rewards_stored_correctly(self):
         buf, T, B, N, D = _make_buffer()
         _fill_buffer(buf, T, B, N, D)
-        # All rewards were 0.1
-        assert torch.allclose(buf.rewards, torch.full((T, B, N), 0.1))
+        # Buffer applies symlog transform on storage, so 0.1 → symlog(0.1)
+        assert torch.allclose(buf.rewards, symlog(torch.full((T, B, N), 0.1)))
 
 
 class TestGAEComputation:
@@ -128,9 +130,10 @@ class TestGAEComputation:
         # next_value should not matter for t<=1 because done=1 at t=1
         buf.compute_gae(next_value=torch.full((B, N), 99.0), next_done=torch.zeros(B))
 
-        # At t=1 (done), next value should be 0, so advantage[1] = reward[1] = 1
+        # At t=1 (done), next value should be 0, so advantage[1] = symlog(reward[1]) = log(2)
+        # Buffer applies symlog on storage, so raw reward=1 becomes symlog(1)=log(2)≈0.693
         adv_t1 = buf.advantages[1, 0, 0].item()
-        assert abs(adv_t1 - 1.0) < 0.1  # roughly 1 since no bootstrap beyond done
+        assert abs(adv_t1 - math.log(2)) < 0.05
 
 
 class TestMinibatchIterator:
