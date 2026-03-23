@@ -119,6 +119,7 @@ class RewardConfig:
     shoot_quality_weight: float # weight on shoot-quality reward/penalty
     shoot_quality_radius: float # R: effective range for shot quality evaluation (world units)
     scripted_agent_weight: float = 0.0  # weight on scripted-agent log-prob reward (0.0 = disabled)
+    disabled_rewards: frozenset[str] = frozenset()  # component names to exclude entirely
 
 
 @dataclass(frozen=True)

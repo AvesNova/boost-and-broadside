@@ -820,6 +820,7 @@ def build_reward_components(
 
     To add a new reward: create a RewardComponent subclass above, then append
     an instance here. Tracking and logging require no further changes.
+    To disable a reward at runtime: add its name to reward_config.disabled_rewards.
 
     Args:
         reward_config:   Reward weights and radii.
@@ -831,7 +832,7 @@ def build_reward_components(
     Returns:
         List of RewardComponent instances to apply each step.
     """
-    components: list[RewardComponent] = [
+    all_components: list[RewardComponent] = [
         DamageReward(damage_weight=reward_config.damage_weight),
         DeathReward(kill_weight=reward_config.kill_weight, death_weight=reward_config.death_weight),
         VictoryReward(victory_weight=reward_config.victory_weight),
@@ -881,7 +882,10 @@ def build_reward_components(
         ),
     ]
     if scripted_agent is not None and reward_config.scripted_agent_weight > 0.0:
-        components.append(ScriptedAgentReward(reward_config.scripted_agent_weight, scripted_agent))
+        all_components.append(ScriptedAgentReward(reward_config.scripted_agent_weight, scripted_agent))
+
+    # Filter out any components listed in disabled_rewards
+    components = [c for c in all_components if c.name not in reward_config.disabled_rewards]
     return components
 
 

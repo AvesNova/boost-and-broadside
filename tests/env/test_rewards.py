@@ -455,3 +455,25 @@ class TestTurnRateReward:
         reward = comp.compute(state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool))
 
         assert reward[0, 0].item() == 0.0
+
+
+class TestDisabledRewards:
+    def test_disabled_component_is_excluded_from_list(self, cfg):
+        """build_reward_components must omit any component named in disabled_rewards."""
+        rc = RewardConfig(
+            damage_weight=0.01, kill_weight=0.5, death_weight=0.5,
+            victory_weight=1.0, positioning_weight=0.05, positioning_radius=300.0,
+            facing_weight=0.01, exposure_weight=0.01,
+            proximity_weight=0.01, proximity_radius=300.0,
+            closing_speed_weight=0.01, turn_rate_weight=0.01,
+            power_range_weight=0.01, power_range_lo=0.2, power_range_hi=0.8,
+            speed_range_weight=0.01, speed_range_lo=40.0, speed_range_hi=120.0,
+            shoot_quality_weight=0.01, shoot_quality_radius=200.0,
+            disabled_rewards=frozenset({"facing", "turn_rate"}),
+        )
+        components = build_reward_components(rc, cfg)
+        names = {c.name for c in components}
+
+        assert "facing" not in names
+        assert "turn_rate" not in names
+        assert "closing_speed" in names  # not disabled
