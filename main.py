@@ -10,7 +10,6 @@ Run with:
 """
 
 import argparse
-import sys
 
 import torch
 
@@ -151,10 +150,9 @@ def main() -> None:
                           render_config, device)
 
         case "watch":
-            if args.checkpoint is None:
-                sys.exit("Error: --checkpoint <path> is required for watch mode.")
             run_watch_mode(args.checkpoint, ship_config, env_config, reward_config,
-                           model_config, render_config, device)
+                           model_config, render_config, device,
+                           checkpoint_dir="checkpoints")
 
 
 if __name__ == "__main__":

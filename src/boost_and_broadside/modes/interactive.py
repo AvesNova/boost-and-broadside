@@ -7,6 +7,9 @@ Two entry points:
 Both share a common render loop (_run_interactive_loop).
 """
 
+import sys
+from pathlib import Path
+
 import torch
 
 from boost_and_broadside.config import ShipConfig, EnvConfig, ModelConfig, RewardConfig
@@ -14,6 +17,18 @@ from boost_and_broadside.constants import PowerActions, TurnActions, ShootAction
 from boost_and_broadside.env.wrapper import MVPEnvWrapper
 from boost_and_broadside.models.mvp.policy import MVPPolicy
 from boost_and_broadside.ui.renderer import GameRenderer, RenderConfig
+
+
+def _find_latest_checkpoint(checkpoint_dir: str = "checkpoints") -> str:
+    """Return path to the most recently modified .pt file under checkpoint_dir.
+
+    Searches all subdirectories (e.g. checkpoints/run-name/*.pt).
+    Exits with an error message if no checkpoints are found.
+    """
+    pts = sorted(Path(checkpoint_dir).glob("**/*.pt"), key=lambda p: p.stat().st_mtime)
+    if not pts:
+        sys.exit(f"Error: no checkpoint files found under '{checkpoint_dir}'.")
+    return str(pts[-1])
 
 
 def run_play_mode(
@@ -36,7 +51,8 @@ def run_play_mode(
     """
     wrapper  = MVPEnvWrapper(num_envs=1, ship_config=ship_config, env_config=env_config,
                              reward_config=reward_config, device=device)
-    policy   = MVPPolicy(model_config, ship_config).to(device)
+    K        = wrapper.num_active_components
+    policy   = MVPPolicy(model_config, ship_config, num_value_components=K).to(device)
     renderer = GameRenderer(ship_config, render_config)
 
     policy.eval()
@@ -48,31 +64,42 @@ def run_play_mode(
 
 
 def run_watch_mode(
-    checkpoint_path: str,
+    checkpoint_path: str | None,
     ship_config:     ShipConfig,
     env_config:      EnvConfig,
     reward_config:   RewardConfig,
     model_config:    ModelConfig,
     render_config:   RenderConfig,
     device:          str,
+    checkpoint_dir:  str = "checkpoints",
 ) -> None:
     """Load a checkpoint and watch self-play at 60fps.
 
     Args:
-        checkpoint_path: Path to a .pt checkpoint file saved by PPOTrainer.
+        checkpoint_path: Path to a .pt checkpoint file, or None to auto-select
+                         the most recently modified checkpoint under checkpoint_dir.
         ship_config:     Physics constants.
         env_config:      Environment sizing.
         reward_config:   Reward weights.
         model_config:    Policy architecture.
         render_config:   Display settings.
         device:          Torch device string.
+        checkpoint_dir:  Root directory to search when checkpoint_path is None.
     """
+    if checkpoint_path is None:
+        checkpoint_path = _find_latest_checkpoint(checkpoint_dir)
+        print(f"Auto-selected checkpoint: {checkpoint_path}")
+
+    ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
+
+    # Infer K (num_value_components) from the saved weight shape
+    K = ckpt["policy_state_dict"]["value_head.weight"].shape[0]
+
     wrapper  = MVPEnvWrapper(num_envs=1, ship_config=ship_config, env_config=env_config,
                              reward_config=reward_config, device=device)
-    policy   = MVPPolicy(model_config, ship_config).to(device)
+    policy   = MVPPolicy(model_config, ship_config, num_value_components=K).to(device)
     renderer = GameRenderer(ship_config, render_config)
 
-    ckpt = torch.load(checkpoint_path, map_location=device)
     policy.load_state_dict(ckpt["policy_state_dict"])
     policy.eval()
 

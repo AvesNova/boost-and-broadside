@@ -266,6 +266,14 @@ class PPOTrainer:
         self._global_step = 0
         self._num_updates = train_config.total_timesteps // (train_config.num_envs * train_config.num_steps)
 
+        # Run name used as checkpoint subdirectory (e.g. "checkpoints/good-spaceship-223/")
+        if use_wandb:
+            import wandb as _wandb
+            self._run_name: str = _wandb.run.name
+        else:
+            from datetime import datetime
+            self._run_name = datetime.now().strftime("%Y%m%d-%H%M%S")
+
         self._decay = self._build_decay_scheduler()
 
     # ------------------------------------------------------------------
@@ -699,9 +707,9 @@ class PPOTrainer:
         Args:
             update: Current update index (used as filename suffix).
         """
-        ckpt_dir = Path(self.cfg.checkpoint_dir)
+        ckpt_dir = Path(self.cfg.checkpoint_dir) / self._run_name
         ckpt_dir.mkdir(parents=True, exist_ok=True)
-        path = ckpt_dir / f"checkpoint_{update:06d}.pt"
+        path = ckpt_dir / f"step_{self._global_step:012d}.pt"
         torch.save({
             "policy_state_dict":    self.policy.state_dict(),
             "optimizer_state_dict": self.optim.state_dict(),
