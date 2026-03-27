@@ -174,8 +174,9 @@ class RolloutBuffer:
         self.dones      = torch.zeros((T, B),       device=device, dtype=torch.float32)
         self.alive_mask = torch.zeros((T, B, N),    device=device, dtype=torch.bool)
 
-        self.advantages = torch.zeros((T, B, N, K), device=device, dtype=torch.float32)
-        self.returns    = torch.zeros((T, B, N, K), device=device, dtype=torch.float32)
+        self.advantages  = torch.zeros((T, B, N, K), device=device, dtype=torch.float32)
+        self.returns     = torch.zeros((T, B, N, K), device=device, dtype=torch.float32)
+        self.actor_masks = torch.ones( (T, B, N),    device=device, dtype=torch.bool)
 
         # Initial GRU hidden state at the start of this rollout
         self.initial_hidden: torch.Tensor | None = None
@@ -208,17 +209,21 @@ class RolloutBuffer:
         done: torch.Tensor,
         value: torch.Tensor,
         alive: torch.Tensor,
+        actor_mask: torch.Tensor | None = None,
     ) -> None:
         """Store one step.
 
         Args:
-            obs:     Dict with (B, N, ...) tensors — float32.
-            action:  (B, N, 3) int.
-            logprob: (B, N) float.
-            reward:  (B, N, K) float — raw per-component per-ship rewards.
-            done:    (B,) float (0.0 or 1.0).
-            value:   (B, N, K) float — critic expected values (symlog-reward space).
-            alive:   (B, N) bool.
+            obs:        Dict with (B, N, ...) tensors — float32.
+            action:     (B, N, 3) int.
+            logprob:    (B, N) float.
+            reward:     (B, N, K) float — raw per-component per-ship rewards.
+            done:       (B,) float (0.0 or 1.0).
+            value:      (B, N, K) float — critic expected values (symlog-reward space).
+            alive:      (B, N) bool.
+            actor_mask: (B, N) bool — True for ships whose actions came from the training
+                        policy and should contribute to the actor/entropy loss. Defaults to
+                        all-True (pure self-play: all ships are training ships).
         """
         if self.ptr >= self.num_steps:
             raise IndexError("Buffer is full — call reset() before reuse.")
@@ -228,12 +233,13 @@ class RolloutBuffer:
             if key in self.obs:
                 self.obs[key][t] = val.float()
 
-        self.actions   [t] = action.int()
-        self.logprobs  [t] = logprob
-        self.rewards   [t] = symlog(reward)   # symlog #1: compress raw reward scale
-        self.dones     [t] = done.float()
-        self.values    [t] = value
-        self.alive_mask[t] = alive
+        self.actions    [t] = action.int()
+        self.logprobs   [t] = logprob
+        self.rewards    [t] = symlog(reward)   # symlog #1: compress raw reward scale
+        self.dones      [t] = done.float()
+        self.values     [t] = value
+        self.alive_mask [t] = alive
+        self.actor_masks[t] = actor_mask if actor_mask is not None else torch.ones_like(alive)
 
         self.ptr += 1
 
@@ -294,6 +300,7 @@ class RolloutBuffer:
                 mb_values:      (T, B_mb, N, K) float32
                 mb_alive:       (T, B_mb, N) bool
                 mb_hidden:      (1, B_mb*N, D) float32
+                mb_actor_mask:  (T, B_mb, N) bool
         """
         assert self.initial_hidden is not None, "Call store_initial_hidden() before iterating."
 
@@ -313,11 +320,12 @@ class RolloutBuffer:
 
             yield (
                 mb_obs,
-                self.actions   [:, idx],
-                self.logprobs  [:, idx],
-                self.advantages[:, idx],
-                self.returns   [:, idx],
-                self.values    [:, idx],
-                self.alive_mask[:, idx],
+                self.actions    [:, idx],
+                self.logprobs   [:, idx],
+                self.advantages [:, idx],
+                self.returns    [:, idx],
+                self.values     [:, idx],
+                self.alive_mask [:, idx],
                 mb_hidden.contiguous(),
+                self.actor_masks[:, idx],
             )

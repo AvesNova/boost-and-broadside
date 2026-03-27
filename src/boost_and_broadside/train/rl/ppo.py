@@ -20,9 +20,63 @@ import torch.optim as optim
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import TrainConfig, ModelConfig, ShipConfig, EnvConfig, RewardConfig
 from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
+from boost_and_broadside.env.state import TensorState
 from boost_and_broadside.env.wrapper import MVPEnvWrapper
 from boost_and_broadside.models.mvp.policy import MVPPolicy
 from boost_and_broadside.train.rl.buffer import RolloutBuffer, ReturnScaler, symlog
+
+
+# ------------------------------------------------------------------
+# Opponent-management helpers (module-level, no class coupling)
+# ------------------------------------------------------------------
+
+def _slice_obs(obs: dict[str, torch.Tensor], start: int, end: int) -> dict[str, torch.Tensor]:
+    """Return a view of obs tensors for envs [start, end)."""
+    return {k: v[start:end] for k, v in obs.items()}
+
+
+def _slice_state(state: TensorState, start: int, end: int) -> TensorState:
+    """Return a new TensorState containing only envs [start, end)."""
+    return TensorState(
+        step_count      = state.step_count     [start:end],
+        ship_pos        = state.ship_pos        [start:end],
+        ship_vel        = state.ship_vel        [start:end],
+        ship_attitude   = state.ship_attitude   [start:end],
+        ship_ang_vel    = state.ship_ang_vel    [start:end],
+        ship_health     = state.ship_health     [start:end],
+        ship_power      = state.ship_power      [start:end],
+        ship_cooldown   = state.ship_cooldown   [start:end],
+        ship_team_id    = state.ship_team_id    [start:end],
+        ship_alive      = state.ship_alive      [start:end],
+        ship_is_shooting= state.ship_is_shooting[start:end],
+        prev_action     = state.prev_action     [start:end],
+        bullet_pos      = state.bullet_pos      [start:end],
+        bullet_vel      = state.bullet_vel      [start:end],
+        bullet_time     = state.bullet_time     [start:end],
+        bullet_active   = state.bullet_active   [start:end],
+        bullet_cursor   = state.bullet_cursor   [start:end],
+    )
+
+
+def _override_opponent(
+    action: torch.Tensor,
+    team_id: torch.Tensor,
+    opp_team_flag: torch.Tensor,
+    start: int,
+    end: int,
+    opp_action: torch.Tensor,
+) -> None:
+    """Replace team-opp_team_flag actions in envs [start, end) with opp_action in-place.
+
+    Args:
+        action:        (B, N, 3) combined action tensor — modified in-place.
+        team_id:       (B, N) int — team assignment per ship.
+        opp_team_flag: (end-start,) int — which team_id is the opponent per env.
+        start, end:    slice of envs to update.
+        opp_action:    (end-start, N, 3) — opponent agent's actions.
+    """
+    opp_mask = (team_id[start:end] == opp_team_flag.unsqueeze(1))  # (slice, N)
+    action[start:end] = torch.where(opp_mask.unsqueeze(-1), opp_action, action[start:end])
 
 
 class _DecayScheduler:
@@ -95,13 +149,28 @@ class PPOTrainer:
         use_wandb:      bool = False,
         scripted_agent: StochasticScriptedAgent | None = None,
     ) -> None:
-        self.cfg          = train_config
-        self.model_config = model_config
-        self.ship_config  = ship_config
-        self.env_config   = env_config
+        self.cfg           = train_config
+        self.model_config  = model_config
+        self.ship_config   = ship_config
+        self.env_config    = env_config
         self.reward_config = reward_config
-        self.device       = torch.device(device)
-        self.use_wandb    = use_wandb
+        self.device        = torch.device(device)
+        self.use_wandb     = use_wandb
+        self.scripted_agent = scripted_agent
+
+        # Env group sizes — contiguous slices of the B envs:
+        #   [0, B_self)            → pure self-play
+        #   [B_self, B_self+B_sc)  → scripted opponent
+        #   [B_self+B_sc, B)       → avg-model opponent
+        B = train_config.num_envs
+        self.B_sc   = round(train_config.scripted_frac  * B)
+        self.B_avg  = round(train_config.avg_model_frac * B)
+        self.B_self = B - self.B_sc - self.B_avg
+
+        if self.B_sc > 0 and scripted_agent is None:
+            raise ValueError(
+                "scripted_frac > 0 requires a scripted_agent to be provided."
+            )
 
         self.wrapper = MVPEnvWrapper(
             num_envs       = train_config.num_envs,
@@ -167,6 +236,26 @@ class PPOTrainer:
             min_span       = train_config.return_min_span,
         )
 
+        # --- Avg-model opponent (uniform mean of all post-warmup policy snapshots) ---
+        # Weights initialized as a copy of the training policy.
+        # Only updated after LR warmup completes; avg group envs use self-play until then.
+        self.avg_policy = MVPPolicy(model_config, ship_config, num_value_components=K).to(self.device)
+        self.avg_policy.load_state_dict(self.policy.state_dict())
+        for p in self.avg_policy.parameters():
+            p.requires_grad_(False)
+        self._avg_param_cumsum: list[torch.Tensor] = [
+            torch.zeros_like(p) for p in self.policy.parameters()
+        ]
+        self._avg_update_count: int = 0
+
+        # Per-env flag: which team_id is the opponent in scripted/avg groups.
+        # Randomised at init and re-randomised each episode reset.
+        # Shape: (B_sc + B_avg,) — indexed relative to the non-self-play slice.
+        n_opp_envs = self.B_sc + self.B_avg
+        self._opp_team_flag = torch.randint(
+            0, 2, (n_opp_envs,), device=self.device, dtype=torch.int32
+        ) if n_opp_envs > 0 else torch.empty(0, device=self.device, dtype=torch.int32)
+
         # Async logging queue
         self._log_queue: Queue = Queue()
         if use_wandb:
@@ -183,13 +272,30 @@ class PPOTrainer:
     # Main training loop
     # ------------------------------------------------------------------
 
+    def _update_avg_model(self) -> None:
+        """Add the current training policy snapshot to the uniform running average."""
+        self._avg_update_count += 1
+        for cum, p in zip(self._avg_param_cumsum, self.policy.parameters()):
+            cum.add_(p.detach())
+        for avg_p, cum in zip(self.avg_policy.parameters(), self._avg_param_cumsum):
+            avg_p.data.copy_(cum / self._avg_update_count)
+
     def train(self) -> None:
         """Run the full PPO training loop."""
-        B = self.cfg.num_envs
-        N = self.wrapper.num_ships
+        B  = self.cfg.num_envs
+        N  = self.wrapper.num_ships
+        sc_start  = self.B_self
+        sc_end    = self.B_self + self.B_sc
+        avg_start = sc_end
+        avg_end   = B
 
         obs     = self.wrapper.reset()
         hidden  = self.policy.initial_hidden(B, N, self.device)
+
+        # Avg-model hidden state — lives across the whole training run.
+        avg_hidden: torch.Tensor | None = None
+        if self.B_avg > 0:
+            avg_hidden = self.avg_policy.initial_hidden(self.B_avg, N, self.device)
 
         start_time = time.time()
 
@@ -206,7 +312,48 @@ class PPOTrainer:
             # Rollout collection
             # ----------------------------------------------------------------
             for _ in range(self.cfg.num_steps):
+                # Training policy: all envs, all ships
                 action, logprob, value_norm, hidden = self.policy.get_action_and_value(obs, hidden)
+
+                # Whether the avg model is ready (at least one post-warmup snapshot)
+                use_avg = self._avg_update_count > 0 and self.B_avg > 0
+
+                # Avg-model opponent actions (when ready)
+                if use_avg:
+                    with torch.no_grad():
+                        obs_avg = _slice_obs(obs, avg_start, avg_end)
+                        action_avg, _, _, avg_hidden = self.avg_policy.get_action_and_value(
+                            obs_avg, avg_hidden
+                        )
+
+                # Scripted opponent actions
+                if self.B_sc > 0:
+                    with torch.no_grad():
+                        state_sc = _slice_state(self.wrapper.env.state, sc_start, sc_end)
+                        action_scripted = self.scripted_agent.get_actions(state_sc)
+
+                # Override opponent team actions; training-policy actions are the base
+                team_id = obs["team_id"]  # (B, N) int
+                action  = action.clone()
+                if self.B_sc > 0:
+                    _override_opponent(
+                        action, team_id, self._opp_team_flag[:self.B_sc],
+                        sc_start, sc_end, action_scripted,
+                    )
+                if use_avg:
+                    _override_opponent(
+                        action, team_id, self._opp_team_flag[self.B_sc:],
+                        avg_start, avg_end, action_avg,
+                    )
+
+                # Actor mask: True for ships whose actions were chosen by training policy
+                actor_mask = torch.ones(B, N, dtype=torch.bool, device=self.device)
+                if self.B_sc > 0:
+                    opp_flag_sc = self._opp_team_flag[:self.B_sc].unsqueeze(1)   # (B_sc, 1)
+                    actor_mask[sc_start:sc_end] = (team_id[sc_start:sc_end] != opp_flag_sc)
+                if use_avg:
+                    opp_flag_avg = self._opp_team_flag[self.B_sc:].unsqueeze(1)  # (B_avg, 1)
+                    actor_mask[avg_start:avg_end] = (team_id[avg_start:avg_end] != opp_flag_avg)
 
                 next_obs, reward, dones, truncated, info = self.wrapper.step(action)
 
@@ -218,17 +365,31 @@ class PPOTrainer:
 
                 done_any = dones | truncated
                 self.buffer.add(
-                    obs     = obs,
-                    action  = action,
-                    logprob = logprob,
-                    reward  = reward,
-                    done    = dones.float(),      # only true termination cuts GAE bootstrap
-                    value   = self.scaler.denormalize(value_norm),  # symlog-reward space for GAE
-                    alive   = obs["alive"].bool(),
+                    obs        = obs,
+                    action     = action,
+                    logprob    = logprob,
+                    reward     = reward,
+                    done       = dones.float(),      # only true termination cuts GAE bootstrap
+                    value      = self.scaler.denormalize(value_norm),  # symlog-reward space for GAE
+                    alive      = obs["alive"].bool(),
+                    actor_mask = actor_mask,
                 )
 
-                # Reset hidden for envs that terminated
+                # Reset hidden states for terminated envs
                 hidden = self.policy.reset_hidden_for_envs(hidden, done_any, N)
+                if use_avg and self.B_avg > 0:
+                    avg_hidden = self.avg_policy.reset_hidden_for_envs(
+                        avg_hidden, done_any[avg_start:avg_end], N
+                    )
+
+                # Re-randomise opponent team for envs that just ended an episode
+                if self.B_sc + self.B_avg > 0:
+                    done_non_self = done_any[self.B_self:]          # (B_sc + B_avg,)
+                    new_flags = torch.randint(
+                        0, 2, self._opp_team_flag.shape,
+                        device=self.device, dtype=torch.int32,
+                    )
+                    self._opp_team_flag = torch.where(done_non_self, new_flags, self._opp_team_flag)
 
                 obs = next_obs
                 self._global_step += B
@@ -250,6 +411,15 @@ class PPOTrainer:
             record_hist = (update % 10 == 0)
             metrics = self._update_epochs(record_histograms=record_hist)
 
+            if self.lr_scheduler is not None:
+                self.lr_scheduler.step()
+
+            # Update avg model after warmup completes
+            warmup_done = (self.cfg.lr_warmup_steps == 0 or
+                           self._global_step >= self.cfg.lr_warmup_steps)
+            if self.B_avg > 0 and warmup_done:
+                self._update_avg_model()
+
             # Scaler stats — one CPU transfer per component group
             p5_cpu   = self.scaler._p5.cpu()
             p95_cpu  = self.scaler._p95.cpu()
@@ -269,9 +439,6 @@ class PPOTrainer:
                 metrics["ep/length_mean"] = all_lengths.mean().item()
                 for name, tensors in ep_components.items():
                     metrics[f"ep/reward_{name}"] = torch.cat(tensors).mean().item()
-
-            if self.lr_scheduler is not None:
-                self.lr_scheduler.step()
 
             sps = int(self._global_step / (time.time() - start_time))
             metrics["train/lr"]          = self.optim.param_groups[0]["lr"]
@@ -345,7 +512,7 @@ class PPOTrainer:
         for epoch_idx in range(cfg.num_epochs):
             for batch in self.buffer.get_minibatch_iterator(cfg.num_minibatches):
                 (mb_obs, mb_actions, mb_old_logprobs, mb_advantages,
-                 mb_returns, mb_values, mb_alive, mb_hidden) = batch
+                 mb_returns, mb_values, mb_alive, mb_hidden, mb_actor_mask) = batch
 
                 # Re-evaluate actions with current policy
                 # new_value: (T, B_mb, N, K) in normalized space
@@ -356,10 +523,15 @@ class PPOTrainer:
                     alive_mask     = mb_alive,
                 )
 
-                # Alive mask for loss weighting
+                # Alive mask — used for critic loss (all alive ships, all groups)
                 alive_f  = mb_alive.float()            # (T, B_mb, N)
                 alive_k  = alive_f.unsqueeze(-1)       # (T, B_mb, N, 1) — broadcasts over K
                 mask_sum = alive_f.sum().clamp(min=1.0)
+
+                # Actor mask — subset of alive: only ships controlled by training policy
+                # Used for actor loss, entropy, advantage normalization, and KL/clip diags.
+                actor_f   = (mb_actor_mask & mb_alive).float()   # (T, B_mb, N)
+                actor_sum = actor_f.sum().clamp(min=1.0)
 
                 # ---- Lambda aggregation: per-ship aggregated advantage ----------
                 # Build lambda matrix from team_id (teams are fixed within episode)
@@ -376,25 +548,25 @@ class PPOTrainer:
                 # Aggregate: A_i = Σ_j Σ_k lambda[b,i,j,k] * adv[t,b,j,k]
                 adv_agg  = torch.einsum('bijk,tbjk->tbi', lambda_ij, mb_advantages)  # (T, B_mb, N)
 
-                # Normalise aggregated advantage per minibatch over alive ships
-                adv_mean = (adv_agg * alive_f).sum() / mask_sum
-                adv_var  = ((adv_agg - adv_mean).pow(2) * alive_f).sum() / mask_sum
+                # Normalise over training-controlled ships (actor_f)
+                adv_mean = (adv_agg * actor_f).sum() / actor_sum
+                adv_var  = ((adv_agg - adv_mean).pow(2) * actor_f).sum() / actor_sum
                 adv_norm = (adv_agg - adv_mean) / (adv_var.sqrt() + 1e-8)
 
-                # ---- Policy gradient loss (per-ship ratio, aggregated advantage) -
+                # ---- Policy gradient loss (training ships only) ---------------
                 log_ratio = logprob - mb_old_logprobs
                 ratio     = log_ratio.exp()
                 pg_loss1  = -adv_norm * ratio
                 pg_loss2  = -adv_norm * ratio.clamp(1 - cfg.clip_coef, 1 + cfg.clip_coef)
-                pg_loss   = (torch.max(pg_loss1, pg_loss2) * alive_f).sum() / mask_sum
+                pg_loss   = (torch.max(pg_loss1, pg_loss2) * actor_f).sum() / actor_sum
 
-                # ---- Value loss (MSE in normalized space) --------------------
+                # ---- Value loss (MSE in normalized space, all alive ships) ----
                 target_norm = self.scaler.normalize(mb_returns).detach()  # (T, B_mb, N, K)
                 vf_loss_raw = (new_value - target_norm).pow(2)            # (T, B_mb, N, K)
                 vf_loss     = (vf_loss_raw * alive_k).sum() / (mask_sum * K)
 
-                # ---- Entropy bonus ------------------------------------------
-                ent_loss = -(entropy * alive_f).sum() / mask_sum
+                # ---- Entropy bonus (training ships only) ---------------------
+                ent_loss = -(entropy * actor_f).sum() / actor_sum
 
                 loss = pg_loss + cfg.vf_coef * vf_loss + cfg.ent_coef * ent_loss
 
@@ -404,8 +576,8 @@ class PPOTrainer:
                 self.optim.step()
 
                 with torch.no_grad():
-                    approx_kl = (((ratio - 1) - log_ratio) * alive_f).sum().item() / mask_sum.item()
-                    clip_frac = (((ratio - 1).abs() > cfg.clip_coef).float() * alive_f).sum().item() / mask_sum.item()
+                    approx_kl = (((ratio - 1) - log_ratio) * actor_f).sum().item() / actor_sum.item()
+                    clip_frac = (((ratio - 1).abs() > cfg.clip_coef).float() * actor_f).sum().item() / actor_sum.item()
 
                     # Per-component stats — single GPU→CPU transfer for all K dims
                     pred_k      = self.scaler.denormalize(new_value.detach())            # (T, B_mb, N, K)
@@ -534,6 +706,9 @@ class PPOTrainer:
             "policy_state_dict":    self.policy.state_dict(),
             "optimizer_state_dict": self.optim.state_dict(),
             "scaler_state_dict":    self.scaler.state_dict(),
+            "avg_policy_state_dict": self.avg_policy.state_dict(),
+            "avg_param_cumsum":     [c.cpu() for c in self._avg_param_cumsum],
+            "avg_update_count":     self._avg_update_count,
             "update":               update,
             "global_step":          self._global_step,
             "train_config":         dataclasses.asdict(self.cfg),
@@ -557,6 +732,10 @@ class PPOTrainer:
         self.optim.load_state_dict(ckpt["optimizer_state_dict"])
         if "scaler_state_dict" in ckpt:
             self.scaler.load_state_dict(ckpt["scaler_state_dict"])
+        if "avg_policy_state_dict" in ckpt:
+            self.avg_policy.load_state_dict(ckpt["avg_policy_state_dict"])
+            self._avg_param_cumsum = [c.to(self.device) for c in ckpt["avg_param_cumsum"]]
+            self._avg_update_count = ckpt["avg_update_count"]
         return ckpt["update"]
 
     # ------------------------------------------------------------------

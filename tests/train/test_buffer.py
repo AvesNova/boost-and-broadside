@@ -254,9 +254,10 @@ class TestMinibatchIterator:
         buf.store_initial_hidden(torch.zeros(1, B * N, D))
         buf.compute_gae(torch.zeros(B, N, Kc), torch.zeros(B))
 
-        *_, mb_hidden = next(iter(buf.get_minibatch_iterator(num_minibatches=2)))
+        *_, mb_hidden, mb_actor_mask = next(iter(buf.get_minibatch_iterator(num_minibatches=2)))
         B_mb = B // 2
         assert mb_hidden.shape == (1, B_mb * N, D)
+        assert mb_actor_mask.shape == (T, B_mb, N)
 
     def test_requires_initial_hidden(self):
         T, B, N, D = 4, 4, 4, 16

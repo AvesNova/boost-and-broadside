@@ -128,9 +128,11 @@ def main() -> None:
                 total_timesteps     = 100_000_000_000,
                 return_ema_alpha    = 0.005,  # ~200-update memory for percentile EMA
                 return_min_span     = 1.0,    # guard against zero-return disabled components
-                lr_warmup_steps     = 5_000_000,
+                lr_warmup_steps     = 10_000_000,
                 checkpoint_interval = 10,
                 checkpoint_dir      = "checkpoints",
+                scripted_frac       = 0.25,
+                avg_model_frac      = 0.25,
             )
             trainer = PPOTrainer(
                 train_config   = train_config,

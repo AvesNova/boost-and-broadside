@@ -142,10 +142,17 @@ class TrainConfig:
     lr_warmup_steps: int = 0               # linearly ramp LR from 0 over this many global steps; 0 = disabled
     checkpoint_interval: int = 0           # save every N updates; 0 = disabled
     checkpoint_dir: str = "checkpoints"    # directory to write .pt files
+    scripted_frac: float = 0.0             # fraction of envs using scripted opponent for team-1
+    avg_model_frac: float = 0.0            # fraction of envs using avg-model opponent for team-1
 
     def __post_init__(self) -> None:
         if self.num_envs % self.num_minibatches != 0:
             raise ValueError(
                 f"num_envs={self.num_envs} must be divisible by "
                 f"num_minibatches={self.num_minibatches}"
+            )
+        if self.scripted_frac + self.avg_model_frac >= 1.0:
+            raise ValueError(
+                f"scripted_frac + avg_model_frac must be < 1.0, "
+                f"got {self.scripted_frac} + {self.avg_model_frac}"
             )
