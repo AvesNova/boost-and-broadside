@@ -516,21 +516,24 @@ class PPOTrainer:
         )  # (K,)
 
         accum_scalar: dict[str, list[float]] = {
-            "train/loss":      [],
-            "train/pg_loss":   [],
-            "train/vf_loss":   [],
-            "train/ent_loss":  [],
-            "train/bc_loss":   [],
-            "train/approx_kl": [],
-            "train/clip_frac": [],
-            "train/grad_norm": [],
-            "train/adv_std":   [],
+            "train/loss":                      [],
+            "train/policy_gradient_loss":      [],
+            "train/value_loss":                [],
+            "train/entropy_loss":              [],
+            "train/behavioral_cloning_loss":   [],
+            "train/approximate_kl":            [],
+            "train/clip_fraction":             [],
+            "train/gradient_norm":             [],
+            "train/advantage_std":             [],
+            "returns/aggregate":               [],  # λ-aggregated return, actor ships, symlog space
+            "returns/aggregate_std":           [],
         }
         # Per-component (K,) CPU tensors accumulated across minibatches
         accum_k: dict[str, list[torch.Tensor]] = {
-            "critic/vf_loss":       [],
-            "critic/explained_var": [],
-            "critic/return_mean":   [],
+            "critic/value_loss":        [],
+            "critic/explained_variance":[],
+            "critic/return_mean":       [],
+            "returns/component":        [],  # λ-weighted per-component return, actor ships
         }
         last_returns_np = None
         last_logprob_np = None
@@ -574,7 +577,9 @@ class PPOTrainer:
                              ) * comp_weights                              # (B_mb, N, N, K)
 
                 # Aggregate: A_i = Σ_j Σ_k lambda[b,i,j,k] * adv[t,b,j,k]
-                adv_agg  = torch.einsum('bijk,tbjk->tbi', lambda_ij, mb_advantages)  # (T, B_mb, N)
+                adv_agg      = torch.einsum('bijk,tbjk->tbi',  lambda_ij, mb_advantages)  # (T, B_mb, N)
+                ret_agg      = torch.einsum('bijk,tbjk->tbi',  lambda_ij, mb_returns)     # (T, B_mb, N)
+                ret_per_comp = torch.einsum('bijk,tbjk->tbik', lambda_ij, mb_returns)     # (T, B_mb, N, K)
 
                 # Normalise over training-controlled ships (actor_f)
                 adv_mean = (adv_agg * actor_f).sum() / actor_sum
@@ -623,37 +628,48 @@ class PPOTrainer:
                     approx_kl = (((ratio - 1) - log_ratio) * actor_f).sum().item() / actor_sum.item()
                     clip_frac = (((ratio - 1).abs() > cfg.clip_coef).float() * actor_f).sum().item() / actor_sum.item()
 
-                    # Per-component stats — single GPU→CPU transfer for all K dims
-                    pred_k      = self.scaler.denormalize(new_value.detach())            # (T, B_mb, N, K)
-                    vf_loss_k   = (vf_loss_raw.detach() * alive_k).sum((0,1,2)) / mask_sum  # (K,)
-                    ret_mean_k  = (mb_returns * alive_k).sum((0,1,2)) / mask_sum            # (K,)
-                    ret_var_k   = ((mb_returns - ret_mean_k) ** 2 * alive_k).sum((0,1,2)) / mask_sum
+                    # λ-aggregated return stats (symlog-reward space, actor ships only)
+                    ret_agg_mean = (ret_agg * actor_f).sum() / actor_sum
+                    ret_agg_var  = ((ret_agg - ret_agg_mean).pow(2) * actor_f).sum() / actor_sum
+
+                    # Per-component λ-weighted return (same scale as aggregate, actor ships)
+                    actor_k             = actor_f.unsqueeze(-1)                                # (T, B_mb, N, 1)
+                    ret_per_comp_mean_k = (ret_per_comp * actor_k).sum((0,1,2)) / actor_sum   # (K,)
+
+                    # Per-component critic stats — single GPU→CPU transfer for all K dims
+                    pred_k       = self.scaler.denormalize(new_value.detach())                     # (T, B_mb, N, K)
+                    value_loss_k = (vf_loss_raw.detach() * alive_k).sum((0,1,2)) / mask_sum       # (K,)
+                    ret_mean_k   = (mb_returns * alive_k).sum((0,1,2)) / mask_sum                 # (K,)
+                    ret_var_k    = ((mb_returns - ret_mean_k) ** 2 * alive_k).sum((0,1,2)) / mask_sum
                     # Var(y - ŷ) not MSE: subtract residual mean to avoid penalising bias.
                     # MSE would give EV < 0 for a biased-constant predictor even though
                     # its predictive variance is the same as the naive mean predictor.
-                    residuals_k = mb_returns - pred_k                                        # (T, B_mb, N, K)
-                    res_mean_k  = (residuals_k * alive_k).sum((0,1,2)) / mask_sum           # (K,)
+                    residuals_k = mb_returns - pred_k                                              # (T, B_mb, N, K)
+                    res_mean_k  = (residuals_k * alive_k).sum((0,1,2)) / mask_sum                 # (K,)
                     res_var_k   = ((residuals_k - res_mean_k) ** 2 * alive_k).sum((0,1,2)) / mask_sum
-                    ev_k        = 1.0 - res_var_k / (ret_var_k + 1e-8)                      # (K,)
-                    # One transfer: stack → (3, K) → cpu
-                    stats_k_cpu = torch.stack([vf_loss_k, ev_k, ret_mean_k]).cpu()
+                    ev_k        = 1.0 - res_var_k / (ret_var_k + 1e-8)                            # (K,)
+                    # One transfer: stack → (4, K) → cpu
+                    stats_k_cpu = torch.stack([value_loss_k, ev_k, ret_mean_k, ret_per_comp_mean_k]).cpu()
 
-                accum_scalar["train/loss"]      .append(loss.item())
-                accum_scalar["train/pg_loss"]   .append(pg_loss.item())
-                accum_scalar["train/vf_loss"]   .append(vf_loss.item())
-                accum_scalar["train/ent_loss"]  .append(ent_loss.item())
-                accum_scalar["train/bc_loss"]   .append(bc_loss.item())
-                accum_scalar["train/approx_kl"] .append(approx_kl)
-                accum_scalar["train/clip_frac"] .append(clip_frac)
-                accum_scalar["train/grad_norm"] .append(grad_norm.item())
-                accum_scalar["train/adv_std"]   .append(adv_var.sqrt().item())
+                accum_scalar["train/loss"]                    .append(loss.item())
+                accum_scalar["train/policy_gradient_loss"]    .append(pg_loss.item())
+                accum_scalar["train/value_loss"]              .append(vf_loss.item())
+                accum_scalar["train/entropy_loss"]            .append(ent_loss.item())
+                accum_scalar["train/behavioral_cloning_loss"] .append(bc_loss.item())
+                accum_scalar["train/approximate_kl"]          .append(approx_kl)
+                accum_scalar["train/clip_fraction"]           .append(clip_frac)
+                accum_scalar["train/gradient_norm"]           .append(grad_norm.item())
+                accum_scalar["train/advantage_std"]           .append(adv_var.sqrt().item())
+                accum_scalar["returns/aggregate"]             .append(ret_agg_mean.item())
+                accum_scalar["returns/aggregate_std"]         .append(ret_agg_var.sqrt().item())
 
-                accum_k["critic/vf_loss"]   .append(stats_k_cpu[0])
-                accum_k["critic/return_mean"].append(stats_k_cpu[2])
-                # EV from last epoch only — reflects the value head after training,
+                accum_k["critic/value_loss"]        .append(stats_k_cpu[0])
+                accum_k["critic/return_mean"]       .append(stats_k_cpu[2])
+                accum_k["returns/component"]        .append(stats_k_cpu[3])
+                # Explained variance from last epoch only — reflects the value head after training,
                 # not the average over all updates (which is dampened by early epochs).
                 if epoch_idx == cfg.num_epochs - 1:
-                    accum_k["critic/explained_var"].append(stats_k_cpu[1])
+                    accum_k["critic/explained_variance"].append(stats_k_cpu[1])
 
                 if record_histograms:
                     # Capture alive-ship returns/logprobs from last minibatch for histograms.
@@ -665,11 +681,13 @@ class PPOTrainer:
         # --- Build output metrics dict ---
         metrics: dict = {k: sum(v) / len(v) for k, v in accum_scalar.items() if v}
 
-        # Expand per-component averages into named keys
+        # Expand per-component averages into named keys.
+        # "returns/component" uses the section prefix directly so keys become "returns/{name}".
         for key, tensors in accum_k.items():
             avg = torch.stack(tensors).mean(0)   # (K,) CPU
+            prefix = "returns" if key == "returns/component" else key
             for i, name in enumerate(self._active_names):
-                metrics[f"{key}/{name}"] = avg[i].item()
+                metrics[f"{prefix}/{name}"] = avg[i].item()
 
         # Raw numpy arrays — worker thread converts to wandb.Histogram
         if last_returns_np is not None:

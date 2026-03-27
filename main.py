@@ -71,7 +71,7 @@ def main() -> None:
         # --- Objective rewards
         victory_weight     = 1.0,
         death_weight       = 1.0,
-        damage_weight      = 10.0,
+        damage_weight      = 1.0,
 
         # Lambda=-1 for these components on enemy ships (outcome rewards)
         enemy_neg_lambda_components = frozenset({"damage", "death", "victory", "exposure"}),
@@ -80,11 +80,11 @@ def main() -> None:
         positioning_weight = 0.0,
         positioning_radius = 400.0,
 
-        facing_weight      = 1.0,
+        facing_weight      = 0.01,
         exposure_weight    = 0.0,
 
-        closing_speed_weight = 1.0,
-        turn_rate_weight     = 1.0,
+        closing_speed_weight = 0.001,
+        turn_rate_weight     = 0.001,
 
         proximity_weight   = 0.0,
         proximity_radius   = 400.0,
