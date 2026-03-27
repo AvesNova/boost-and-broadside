@@ -19,6 +19,9 @@ def model_cfg() -> ModelConfig:
     return ModelConfig(d_model=64, n_heads=4, n_fourier_freqs=8)
 
 
+NUM_VALUE_COMPONENTS = 12  # fixed K for encoder/policy unit tests
+
+
 def _make_obs(B: int, N: int) -> dict[str, torch.Tensor]:
     """Build a minimal random obs dict matching MVPEnvWrapper output."""
     return {
@@ -119,22 +122,23 @@ class TestMVPPolicy:
     def test_get_action_and_value_shapes(self, model_cfg, ship_cfg):
         """get_action_and_value must return correct tensor shapes."""
         B, N = 2, 8
-        policy = MVPPolicy(model_cfg, ship_cfg)
+        policy = MVPPolicy(model_cfg, ship_cfg, num_value_components=NUM_VALUE_COMPONENTS)
         obs    = _make_obs(B, N)
         hidden = policy.initial_hidden(B, N, torch.device("cpu"))
 
         action, logprob, value, new_hidden = policy.get_action_and_value(obs, hidden)
 
+        K = NUM_VALUE_COMPONENTS
         assert action.shape     == (B, N, 3)
         assert logprob.shape    == (B, N)
-        assert value.shape      == (B, N)
+        assert value.shape      == (B, N, K)
         assert new_hidden.shape == (1, B * N, model_cfg.d_model)
 
     def test_action_indices_in_valid_range(self, model_cfg, ship_cfg):
         """Sampled actions must be valid indices for each action head."""
         from boost_and_broadside.constants import NUM_POWER_ACTIONS, NUM_TURN_ACTIONS, NUM_SHOOT_ACTIONS
         B, N   = 2, 4
-        policy = MVPPolicy(model_cfg, ship_cfg)
+        policy = MVPPolicy(model_cfg, ship_cfg, num_value_components=NUM_VALUE_COMPONENTS)
         obs    = _make_obs(B, N)
         hidden = policy.initial_hidden(B, N, torch.device("cpu"))
 
@@ -145,25 +149,26 @@ class TestMVPPolicy:
         assert (action[..., 2] >= 0).all() and (action[..., 2] < NUM_SHOOT_ACTIONS).all()
 
     def test_evaluate_actions_shapes(self, model_cfg, ship_cfg):
-        """evaluate_actions must return (T, B, N) tensors."""
+        """evaluate_actions must return (T, B, N) for logprob/entropy and (T, B, N, K) for new_value."""
         T, B, N = 4, 2, 8
-        policy = MVPPolicy(model_cfg, ship_cfg)
+        policy = MVPPolicy(model_cfg, ship_cfg, num_value_components=NUM_VALUE_COMPONENTS)
+        K = NUM_VALUE_COMPONENTS
 
         obs = {k: v.unsqueeze(0).expand(T, *v.shape) for k, v in _make_obs(B, N).items()}
         actions     = torch.zeros(T, B, N, 3, dtype=torch.long)
         hidden      = policy.initial_hidden(B, N, torch.device("cpu"))
         alive_mask  = torch.ones(T, B, N, dtype=torch.bool)
 
-        logprob, entropy, value = policy.evaluate_actions(obs, actions, hidden, alive_mask)
+        logprob, entropy, new_value = policy.evaluate_actions(obs, actions, hidden, alive_mask)
 
-        assert logprob.shape  == (T, B, N)
-        assert entropy.shape  == (T, B, N)
-        assert value.shape    == (T, B, N)
+        assert logprob.shape   == (T, B, N)
+        assert entropy.shape   == (T, B, N)
+        assert new_value.shape == (T, B, N, K)
 
     def test_hidden_reset_zeros_done_envs(self, model_cfg, ship_cfg):
         """reset_hidden_for_envs must zero hidden states for done environments."""
         B, N   = 3, 4
-        policy = MVPPolicy(model_cfg, ship_cfg)
+        policy = MVPPolicy(model_cfg, ship_cfg, num_value_components=NUM_VALUE_COMPONENTS)
         hidden = torch.ones(1, B * N, model_cfg.d_model)
         done   = torch.tensor([True, False, True])
 

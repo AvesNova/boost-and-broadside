@@ -1,16 +1,16 @@
-"""Modular reward components for the MVP RL pipeline.
+"""Modular reward components for the decomposed per-ship per-component critic.
 
 All computations are GPU-vectorized. No Python loops over ships or envs.
-Rewards are computed from the perspective of each ship's team, then the
-zero-sum wrapper negates team-1 rewards so the shared policy trains correctly.
+Each component returns the reward from the perspective of that specific ship —
+no zero-sum pre-inversion. Zero-sum accounting is handled at PPO update time
+via the lambda aggregation matrix (allied ships: +1, enemy ships: component-dependent).
 
 Adding a new reward
 -------------------
 1. Create a subclass of RewardComponent with a unique `name` class attribute.
-2. Optionally add a weight field to RewardConfig in config.py and set it in main.py.
-3. Add an instance to the list in build_reward_components().
-
-No other files need to change — tracking and logging pick up the new component automatically.
+2. Add its name to REWARD_COMPONENT_NAMES (fixes K and value head ordering).
+3. Optionally add a weight field to RewardConfig in config.py and set it in main.py.
+4. Add an instance to the list in build_reward_components().
 """
 
 import torch
@@ -74,19 +74,21 @@ class RewardComponent(ABC):
 
 
 class DamageReward(RewardComponent):
-    """Reward each ship for dealing damage and penalize for receiving damage."""
+    """Penalty for damage taken by this ship.
+
+    Each ship predicts its own future damage taken. No kill/damage-dealt bonus —
+    that would require bullet tracking and risks double-counting with DeathReward.
+    Zero-sum accounting is deferred to the PPO lambda aggregation (enemy ships: lambda=-1).
+    """
 
     name = "damage"
 
-    @property
-    def log_keys(self) -> list[str]:
-        return ["damage_given", "damage_taken"]
-
-    def log_breakdown(self, r: torch.Tensor) -> dict[str, torch.Tensor]:
-        return {"damage_given": r.clamp(min=0.0), "damage_taken": r.clamp(max=0.0)}
-
     def __init__(self, damage_weight: float) -> None:
         self.damage_weight = damage_weight
+
+    @property
+    def weight(self) -> float:
+        return self.damage_weight
 
     def compute(
         self,
@@ -95,48 +97,26 @@ class DamageReward(RewardComponent):
         next_state: TensorState,
         dones: torch.Tensor,
     ) -> torch.Tensor:
-        # Positive delta = damage taken (health decreased)
+        # delta > 0 when health decreased (damage taken)
         delta = (prev_state.ship_health - next_state.ship_health).clamp(min=0.0)  # (B, N)
-
-        alive = next_state.ship_alive
-        team0 = next_state.ship_team_id == 0   # (B, N)
-        team1 = next_state.ship_team_id == 1   # (B, N)
-
-        # Per-ship penalty for own damage taken.
-        reward = -delta
-
-        # Cross-team bonus: each ship gets a share of the mean damage dealt to enemies.
-        # Distributing enemy damage across friendly ships keeps the signal per-ship
-        # without inflating total reward magnitude.
-        n_team0 = (team0 & alive).float().sum(dim=1, keepdim=True).clamp(min=1.0)
-        n_team1 = (team1 & alive).float().sum(dim=1, keepdim=True).clamp(min=1.0)
-        team0_dmg = (delta * team0.float()).sum(dim=1, keepdim=True)   # (B, 1) total dmg to team0
-        team1_dmg = (delta * team1.float()).sum(dim=1, keepdim=True)   # (B, 1) total dmg to team1
-
-        reward += torch.where(team0, team1_dmg / n_team0, team0_dmg / n_team1)
-        reward *= alive.float()
-
-        # Pre-invert team-1 so the zero-sum negation in compute_rewards produces
-        # the correct sign: damage taken → penalty, damage dealt → bonus.
-        reward[team1] = -reward[team1]
-        return reward * self.damage_weight
+        return -delta * next_state.ship_alive.float()
 
 
 class DeathReward(RewardComponent):
-    """Penalty for dying; bonus for killing."""
+    """Penalty for the ship that dies.
+
+    Each ship predicts its own probability of dying this step. No kill bonus —
+    the kill incentive is captured by the enemy ships' DeathReward with lambda=-1.
+    """
 
     name = "death"
 
-    @property
-    def log_keys(self) -> list[str]:
-        return ["kill", "death"]
-
-    def log_breakdown(self, r: torch.Tensor) -> dict[str, torch.Tensor]:
-        return {"kill": r.clamp(min=0.0), "death": r.clamp(max=0.0)}
-
-    def __init__(self, kill_weight: float, death_weight: float) -> None:
-        self.kill_weight  = kill_weight
+    def __init__(self, death_weight: float) -> None:
         self.death_weight = death_weight
+
+    @property
+    def weight(self) -> float:
+        return self.death_weight
 
     def compute(
         self,
@@ -146,30 +126,8 @@ class DeathReward(RewardComponent):
         dones: torch.Tensor,
     ) -> torch.Tensor:
         just_died = prev_state.ship_alive & ~next_state.ship_alive  # (B, N)
-
-        team0 = next_state.ship_team_id == 0
-        team1 = next_state.ship_team_id == 1
-
-        # Count deaths per team per batch for distributing kill bonuses.
-        team0_deaths = (just_died & team0).float().sum(dim=1, keepdim=True)  # (B, 1)
-        team1_deaths = (just_died & team1).float().sum(dim=1, keepdim=True)  # (B, 1)
-
-        n_team0 = team0.float().sum(dim=1, keepdim=True).clamp(min=1.0)
-        n_team1 = team1.float().sum(dim=1, keepdim=True).clamp(min=1.0)
-
         reward = torch.zeros_like(next_state.ship_health)
-
-        # Own-ship death penalty.
-        reward[just_died & team0] = -self.death_weight
-        # Pre-inverted: +death_weight raw → -death_weight after zero-sum (penalty ✓).
-        reward[just_died & team1] = +self.death_weight
-
-        # Kill bonus distributed to every surviving friendly ship.
-        # team0 ships get +kill_weight per team1 death (not pre-inverted: team0 slots unchanged).
-        reward[team0] += self.kill_weight * (team1_deaths / n_team0).expand_as(reward)[team0]
-        # Pre-inverted for team1: −bonus raw → +bonus after zero-sum (reward for killing ✓).
-        reward[team1] += -self.kill_weight * (team0_deaths / n_team1).expand_as(reward)[team1]
-
+        reward[just_died] = -1.0
         return reward
 
 
@@ -188,6 +146,10 @@ class VictoryReward(RewardComponent):
     def __init__(self, victory_weight: float) -> None:
         self.victory_weight = victory_weight
 
+    @property
+    def weight(self) -> float:
+        return self.victory_weight
+
     def compute(
         self,
         prev_state: TensorState,
@@ -200,21 +162,21 @@ class VictoryReward(RewardComponent):
         if not dones.any():
             return reward
 
-        t0_alive = ((next_state.ship_team_id == 0) & next_state.ship_alive).sum(dim=1)
-        t1_alive = ((next_state.ship_team_id == 1) & next_state.ship_alive).sum(dim=1)
-
         team0 = next_state.ship_team_id == 0   # (B, N)
+        team1 = next_state.ship_team_id == 1   # (B, N)
+
+        t0_alive = (team0 & next_state.ship_alive).sum(dim=1)
+        t1_alive = (team1 & next_state.ship_alive).sum(dim=1)
 
         t0_wins  = ((t0_alive > 0) & (t1_alive == 0) & dones).unsqueeze(1)  # (B, 1)
         t0_loses = ((t0_alive == 0) & (t1_alive > 0) & dones).unsqueeze(1)
 
-        reward[team0 & t0_wins.expand_as(team0)]  =  self.victory_weight
-        reward[team0 & t0_loses.expand_as(team0)] = -self.victory_weight
-
-        # Pre-inverted for team-1: +raw → -victory after zero-sum (penalty for losing ✓)
-        #                          -raw → +victory after zero-sum (reward for winning ✓)
-        reward[~team0 & t0_wins.expand_as(team0)]  = +self.victory_weight
-        reward[~team0 & t0_loses.expand_as(team0)] = -self.victory_weight
+        # Each ship gets ±1 from its OWN team's perspective — no pre-inversion.
+        # Lambda aggregation applies victory_weight and handles zero-sum (enemy lambda=-1).
+        reward[team0 & t0_wins.expand_as(team0)]  = +1.0
+        reward[team0 & t0_loses.expand_as(team0)] = -1.0
+        reward[team1 & t0_loses.expand_as(team1)] = +1.0  # team1 wins
+        reward[team1 & t0_wins.expand_as(team1)]  = -1.0  # team1 loses
 
         return reward
 
@@ -242,6 +204,10 @@ class PositioningReward(RewardComponent):
         self.positioning_weight  = positioning_weight
         self.positioning_radius  = positioning_radius
         self.world_size          = world_size
+
+    @property
+    def weight(self) -> float:
+        return self.positioning_weight
 
     def compute(
         self,
@@ -287,7 +253,7 @@ class PositioningReward(RewardComponent):
         n_enemies = (valid & (dist < R)).sum(dim=2).float()
 
         reward = (alpha_max - beta_sum) / (1.0 + n_enemies) * alive.float()
-        return reward * self.positioning_weight
+        return reward
 
 
 class FacingReward(RewardComponent):
@@ -299,9 +265,9 @@ class FacingReward(RewardComponent):
     Score = max over enemies of w(dist) * dot(my_attitude, dir_to_enemy).clamp(0)
     where w(dist) = (1 - dist/R).clamp(0)  — linear falloff to zero at radius R.
 
-    Team-1 rewards are pre-inverted (same trick as ProximityReward) so that after
-    the zero-sum negation both teams receive a positive signal for facing their
-    enemies — not a perverse incentive to turn away.
+    Both teams receive a positive signal for facing their enemies directly from
+    compute(). Zero-sum accounting is handled by lambda aggregation in the PPO
+    trainer (lambda=0 for enemy ships on this shaping component).
     """
 
     name = "facing"
@@ -311,6 +277,10 @@ class FacingReward(RewardComponent):
         self.facing_weight = facing_weight
         self.radius        = radius
         self.world_size    = world_size
+
+    @property
+    def weight(self) -> float:
+        return self.facing_weight
 
     def compute(
         self,
@@ -350,10 +320,7 @@ class FacingReward(RewardComponent):
         best_score   = score_masked.max(dim=2).values              # (B, N)
         best_score   = best_score * valid.any(dim=2).float()
 
-        reward = self.facing_weight * best_score * alive.float()
-        team1 = teams == 1
-        reward[team1] = -reward[team1]
-        return reward
+        return best_score * alive.float()
 
 
 class ExposureReward(RewardComponent):
@@ -365,8 +332,9 @@ class ExposureReward(RewardComponent):
     Score = sum over enemies of w(dist) * dot(enemy_attitude, dir_from_enemy_to_me).clamp(0)
     where w(dist) = (1 - dist/R).clamp(0)  — applied as a negative reward.
 
-    Team-1 rewards are pre-inverted so that after zero-sum negation both teams
-    receive a penalty for being in crosshairs — not a reward for presenting as targets.
+    Both teams receive a negative signal for being in crosshairs directly from
+    compute(). Zero-sum accounting is handled by lambda aggregation in the PPO
+    trainer (lambda=-1 for enemy ships on this outcome component).
     """
 
     name = "exposure"
@@ -376,6 +344,10 @@ class ExposureReward(RewardComponent):
         self.exposure_weight = exposure_weight
         self.radius          = radius
         self.world_size      = world_size
+
+    @property
+    def weight(self) -> float:
+        return self.exposure_weight
 
     def compute(
         self,
@@ -415,10 +387,7 @@ class ExposureReward(RewardComponent):
         score_masked   = score.masked_fill(~valid, 0.0)
         total_exposure = score_masked.sum(dim=2)               # (B, N) — sum over threatening enemies
 
-        reward = -self.exposure_weight * total_exposure * alive.float()
-        team1 = teams == 1
-        reward[team1] = -reward[team1]
-        return reward
+        return -total_exposure * alive.float()
 
 
 class ProximityReward(RewardComponent):
@@ -427,12 +396,10 @@ class ProximityReward(RewardComponent):
     Score = max over enemies of (1 - dist/R).clamp(0) — linear falloff
     from 1.0 at distance 0 to 0.0 at distance R.
 
-    Distance is symmetric, so without correction both ships would receive the
-    same raw score and the zero-sum transform would cancel them to zero.  To
-    fix this the component pre-inverts team-1's reward so that after the
-    zero-sum negation in compute_rewards both teams end up with a positive
-    proximity signal — i.e. proximity becomes a cooperative shaping reward
-    that incentivises both sides to close the gap.
+    Both teams receive a positive proximity signal directly from compute().
+    Zero-sum accounting is handled by lambda aggregation in the PPO trainer
+    (lambda=0 for enemy ships on this shaping component — proximity is a
+    cooperative incentive that encourages both sides to close the gap).
     """
 
     name = "proximity"
@@ -442,6 +409,10 @@ class ProximityReward(RewardComponent):
         self.proximity_weight = proximity_weight
         self.proximity_radius = proximity_radius
         self.world_size       = world_size
+
+    @property
+    def weight(self) -> float:
+        return self.proximity_weight
 
     def compute(
         self,
@@ -472,13 +443,7 @@ class ProximityReward(RewardComponent):
         prox_masked = prox.masked_fill(~valid, 0.0)
         best_prox   = prox_masked.max(dim=2).values          # (B, N)
 
-        reward = self.proximity_weight * best_prox * alive.float()
-
-        # Pre-invert team-1 so the zero-sum negation in compute_rewards
-        # results in both teams receiving +proximity (not a cancelling pair).
-        team1 = teams == 1
-        reward[team1] = -reward[team1]
-        return reward
+        return best_prox * alive.float()
 
 
 class ClosingSpeedReward(RewardComponent):
@@ -493,6 +458,10 @@ class ClosingSpeedReward(RewardComponent):
     def __init__(self, closing_speed_weight: float, world_size: tuple[float, float]) -> None:
         self.closing_speed_weight = closing_speed_weight
         self.world_size           = world_size
+
+    @property
+    def weight(self) -> float:
+        return self.closing_speed_weight
 
     def compute(
         self,
@@ -532,7 +501,7 @@ class ClosingSpeedReward(RewardComponent):
         best_approach = best_approach.clamp(min=0.0)
         best_approach = best_approach * valid.any(dim=2).float()
 
-        return self.closing_speed_weight * best_approach * alive.float()
+        return best_approach * alive.float()
 
 
 class TurnRateReward(RewardComponent):
@@ -549,6 +518,10 @@ class TurnRateReward(RewardComponent):
     def __init__(self, turn_rate_weight: float, world_size: tuple[float, float]) -> None:
         self.turn_rate_weight = turn_rate_weight
         self.world_size       = world_size
+
+    @property
+    def weight(self) -> float:
+        return self.turn_rate_weight
 
     def compute(
         self,
@@ -594,17 +567,15 @@ class TurnRateReward(RewardComponent):
         has_enemy = valid.any(dim=2).float()
         score     = ang_vel * nearest_cross * has_enemy                  # (B, N)
 
-        return self.turn_rate_weight * score * alive.float()
+        return score * alive.float()
 
 
 class PowerRangeReward(RewardComponent):
     """Reward for keeping power in the target fraction range [lo, hi] of max_power.
 
     Uses a smooth trapezoidal function: 1.0 inside the range, linearly
-    decaying to 0.0 outside.
-
-    Team-1 rewards are pre-inverted so both teams are rewarded (not penalized)
-    for staying in the target power range after zero-sum negation.
+    decaying to 0.0 outside. Both teams receive a positive signal directly
+    from compute(). Lambda=0 for enemy ships in the PPO aggregation.
     """
 
     name = "power_range"
@@ -615,6 +586,10 @@ class PowerRangeReward(RewardComponent):
         self.power_range_lo     = power_range_lo
         self.power_range_hi     = power_range_hi
         self.max_power          = max_power
+
+    @property
+    def weight(self) -> float:
+        return self.power_range_weight
 
     def compute(
         self,
@@ -630,10 +605,7 @@ class PowerRangeReward(RewardComponent):
         above  = (power_norm - self.power_range_hi).clamp(min=0.0)
         reward = 1.0 - (below + above).clamp(max=1.0)
 
-        reward = self.power_range_weight * reward * alive.float()
-        team1 = next_state.ship_team_id == 1
-        reward[team1] = -reward[team1]
-        return reward
+        return reward * alive.float()
 
 
 class SpeedRangeReward(RewardComponent):
@@ -641,9 +613,8 @@ class SpeedRangeReward(RewardComponent):
 
     Uses a smooth trapezoidal function: 1.0 inside the range, linearly
     decaying to 0.0 outside. Speed is normalised by hi for the outer clamp.
-
-    Team-1 rewards are pre-inverted so both teams are rewarded (not penalized)
-    for staying in the target speed range after zero-sum negation.
+    Both teams receive a positive signal directly from compute(). Lambda=0
+    for enemy ships in the PPO aggregation.
     """
 
     name = "speed_range"
@@ -653,6 +624,10 @@ class SpeedRangeReward(RewardComponent):
         self.speed_range_weight = speed_range_weight
         self.speed_range_lo     = speed_range_lo
         self.speed_range_hi     = speed_range_hi
+
+    @property
+    def weight(self) -> float:
+        return self.speed_range_weight
 
     def compute(
         self,
@@ -671,10 +646,7 @@ class SpeedRangeReward(RewardComponent):
         span   = max(self.speed_range_hi - self.speed_range_lo, 1.0)
         reward = 1.0 - ((below + above) / span).clamp(max=1.0)
 
-        reward = self.speed_range_weight * reward * alive.float()
-        team1 = next_state.ship_team_id == 1
-        reward[team1] = -reward[team1]
-        return reward
+        return reward * alive.float()
 
 
 class ShootQualityReward(RewardComponent):
@@ -700,6 +672,10 @@ class ShootQualityReward(RewardComponent):
         self.shoot_quality_weight = shoot_quality_weight
         self.shoot_quality_radius = shoot_quality_radius
         self.world_size           = world_size
+
+    @property
+    def weight(self) -> float:
+        return self.shoot_quality_weight
 
     def compute(
         self,
@@ -745,7 +721,7 @@ class ShootQualityReward(RewardComponent):
         best_quality   = quality_masked.max(dim=2).values      # (B, N)
         best_quality   = best_quality * valid.any(dim=2).float()  # 0 when no enemies
 
-        return self.shoot_quality_weight * shooting * best_quality * alive.float()
+        return shooting * best_quality * alive.float()
 
 
 class ScriptedAgentReward(RewardComponent):
@@ -760,9 +736,9 @@ class ScriptedAgentReward(RewardComponent):
     The scripted distributions are evaluated on prev_state — the same state
     the RL policy observed when selecting its action.
 
-    Both teams are rewarded for following their own scripted expert, so
-    team-1 rewards are pre-inverted (like ProximityReward) so the zero-sum
-    transform leaves both teams with a positive signal for expert-matching.
+    Both teams are rewarded for following their own scripted expert. Lambda=0
+    for enemy ships in the PPO aggregation (scripted_agent is not in
+    REWARD_COMPONENT_NAMES and is excluded from the decomposed critic).
     """
 
     name = "scripted_agent"
@@ -802,13 +778,29 @@ class ScriptedAgentReward(RewardComponent):
           + p_shoot.gather(-1, a_sht.unsqueeze(-1)).squeeze(-1).log()
         )
 
-        reward = self.weight * log_p * prev_state.ship_alive.float()
+        return self.weight * log_p * prev_state.ship_alive.float()
 
-        # Pre-invert team-1 so the zero-sum transform rewards both teams
-        # positively for matching their own expert (same trick as ProximityReward).
-        team1 = prev_state.ship_team_id == 1
-        reward[team1] = -reward[team1]
-        return reward
+
+# Fixed ordered tuple of K=12 reward component names.
+# The index of each name determines the corresponding slice in (B, N, K) tensors.
+# ScriptedAgentReward is intentionally excluded — it's an optional auxiliary signal
+# not suitable for per-ship per-component critic decomposition.
+REWARD_COMPONENT_NAMES: tuple[str, ...] = (
+    "damage",        # 0 — damage taken (negative)
+    "death",         # 1 — death penalty (negative)
+    "victory",       # 2 — team win/loss (positive/negative)
+    "exposure",      # 3 — being in crosshairs (negative)
+    "facing",        # 4 — facing enemies (positive)
+    "turn_rate",     # 5 — turning toward enemies (positive)
+    "proximity",     # 6 — being close to enemies (positive)
+    "closing_speed", # 7 — approaching enemies (positive)
+    "positioning",   # 8 — positioning formula (positive)
+    "power_range",   # 9 — power in target range (positive)
+    "speed_range",   # 10 — speed in target range (positive)
+    "shoot_quality", # 11 — shot quality when firing (positive/negative)
+)
+
+_NAME_TO_K: dict[str, int] = {name: k for k, name in enumerate(REWARD_COMPONENT_NAMES)}
 
 
 def build_reward_components(
@@ -818,23 +810,21 @@ def build_reward_components(
 ) -> list[RewardComponent]:
     """Construct the list of active reward components from config.
 
-    To add a new reward: create a RewardComponent subclass above, then append
-    an instance here. Tracking and logging require no further changes.
-    To disable a reward at runtime: add its name to reward_config.disabled_rewards.
+    To add a new reward: create a RewardComponent subclass, add its name to
+    REWARD_COMPONENT_NAMES, then append an instance here.
+    To disable at runtime: add its name to reward_config.disabled_rewards.
 
     Args:
         reward_config:   Reward weights and radii.
         ship_config:     Physics config (used for world_size).
-        scripted_agent:  Optional stochastic scripted agent. When provided and
-                         reward_config.scripted_agent_weight > 0, a
-                         ScriptedAgentReward component is appended.
+        scripted_agent:  Optional stochastic scripted agent for behavioral cloning.
 
     Returns:
         List of RewardComponent instances to apply each step.
     """
     all_components: list[RewardComponent] = [
         DamageReward(damage_weight=reward_config.damage_weight),
-        DeathReward(kill_weight=reward_config.kill_weight, death_weight=reward_config.death_weight),
+        DeathReward(death_weight=reward_config.death_weight),
         VictoryReward(victory_weight=reward_config.victory_weight),
         PositioningReward(
             positioning_weight=reward_config.positioning_weight,
@@ -885,22 +875,21 @@ def build_reward_components(
         all_components.append(ScriptedAgentReward(reward_config.scripted_agent_weight, scripted_agent))
 
     # Filter out any components listed in disabled_rewards
-    components = [c for c in all_components if c.name not in reward_config.disabled_rewards]
-    return components
+    return [c for c in all_components if c.name not in reward_config.disabled_rewards]
 
 
-def compute_rewards(
+def compute_per_component_rewards(
     components: list[RewardComponent],
     prev_state: TensorState,
     actions: torch.Tensor,
     next_state: TensorState,
     dones: torch.Tensor,
-) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-    """Compute total rewards and a per-component breakdown.
+) -> torch.Tensor:
+    """Compute per-ship per-component rewards without zero-sum transform.
 
-    Each component computes rewards from each ship's own-team perspective.
-    The zero-sum transformation (negating team-1 rewards) is applied to every
-    tensor before returning, so callers always receive zero-sum values.
+    Each component predicts events that happen directly to that ship.
+    Components not in REWARD_COMPONENT_NAMES (e.g. scripted_agent) are ignored.
+    Zero-sum accounting is deferred to the PPO lambda aggregation step.
 
     Args:
         components: Built by build_reward_components().
@@ -910,18 +899,14 @@ def compute_rewards(
         dones:      (B,) game-over flags.
 
     Returns:
-        total:     (B, N) float32 — summed zero-sum rewards.
-        breakdown: dict mapping component.name → (B, N) zero-sum reward tensor.
+        (B, N, K) float32 — per-component per-ship rewards.
+        K = len(REWARD_COMPONENT_NAMES), components in REWARD_COMPONENT_NAMES order.
     """
-    team1_mask = next_state.ship_team_id == 1  # (B, N)
-
-    breakdown: dict[str, torch.Tensor] = {}
-    total = torch.zeros(next_state.ship_health.shape, dtype=torch.float32, device=next_state.device)
-
+    B, N = next_state.ship_health.shape
+    K = len(REWARD_COMPONENT_NAMES)
+    result = torch.zeros(B, N, K, device=next_state.device, dtype=torch.float32)
     for comp in components:
-        r = comp.compute(prev_state, actions, next_state, dones)
-        r[team1_mask] = -r[team1_mask]   # zero-sum transform
-        breakdown.update(comp.log_breakdown(r))
-        total = total + r
-
-    return total, breakdown
+        k = _NAME_TO_K.get(comp.name)
+        if k is not None:
+            result[:, :, k] = comp.compute(prev_state, actions, next_state, dones)
+    return result

@@ -22,9 +22,9 @@ def env_cfg() -> EnvConfig:
 def reward_cfg() -> RewardConfig:
     return RewardConfig(
         damage_weight=0.01,
-        kill_weight=0.5,
         death_weight=0.5,
         victory_weight=1.0,
+        enemy_neg_lambda_components=frozenset({"damage", "death", "victory", "exposure"}),
         positioning_weight=0.05,
         positioning_radius=300.0,
         facing_weight=0.01,
@@ -195,7 +195,8 @@ class TestMVPEnvWrapper:
         actions = torch.zeros((B, N, 3), dtype=torch.long)
         obs, rewards, dones, truncated, info = wrapper.step(actions)
 
-        assert rewards.shape   == (B, N)
+        K = 12  # num_value_components
+        assert rewards.shape   == (B, N, K)
         assert dones.shape     == (B,)
         assert truncated.shape == (B,)
 

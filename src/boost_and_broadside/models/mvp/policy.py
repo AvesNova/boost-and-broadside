@@ -2,10 +2,14 @@
 
 Architecture (per timestep):
     obs → ShipEncoder → (B, N, D)
-         → RelationalSelfAttention → (B, N, D)   [ships attend to each other]
-         → per-ship GRU             → (B, N, D)   [temporal memory per ship]
-         → ActionHead               → (B, N, 12)  [logits: power|turn|shoot]
-         → ValueHead                → (B, N)      [state value]
+         → RelationalSelfAttention → (B, N, D)      [ships attend to each other]
+         → per-ship GRU             → (B, N, D)      [temporal memory per ship]
+         → ActionHead               → (B, N, 12)     [logits: power|turn|shoot]
+         → ValueHead                → (B, N, K)      [MSE critic: K components in normalized space]
+
+K = num_value_components (one head per reward component).
+Value head outputs in normalized space. The ReturnScaler in PPOTrainer maps
+between symlog-reward space (GAE) and normalized space (value head I/O).
 
 GRU hidden state shape: (1, B*N, D) — ships are treated as independent sequences.
 The wrapper zeros hidden states for ships in reset environments.
@@ -33,16 +37,23 @@ class MVPPolicy(nn.Module):
         ship_config: Physics constants (used by encoder for world_size).
     """
 
-    def __init__(self, model_config: ModelConfig, ship_config: ShipConfig) -> None:
+    def __init__(
+        self,
+        model_config: ModelConfig,
+        ship_config: ShipConfig,
+        num_value_components: int,
+    ) -> None:
         super().__init__()
-        D = model_config.d_model
+        D        = model_config.d_model
+        self._K  = num_value_components
 
         self.encoder   = ShipEncoder(model_config, ship_config)
         self.attention = RelationalSelfAttention(model_config)
         self.gru       = nn.GRU(D, D, num_layers=1, batch_first=False)
 
         self.action_head = nn.Linear(D, TOTAL_ACTION_LOGITS)
-        self.value_head  = nn.Linear(D, 1)
+        # K independent scalar heads — one per reward component, in normalized space
+        self.value_head  = nn.Linear(D, self._K)
 
         # Orthogonal init — standard PPO practice
         for layer in [self.action_head, self.value_head]:
@@ -107,21 +118,21 @@ class MVPPolicy(nn.Module):
         Returns:
             action:     (B, N, 3) int — sampled [power, turn, shoot].
             logprob:    (B, N) float — sum of log probs for each sub-action.
-            value:      (B, N) float — critic estimate.
+            value:      (B, N, K) float — per-component value in normalized space.
+                        Caller must denormalize via ReturnScaler before using for GAE.
             new_hidden: (1, B*N, D) updated GRU state.
         """
-        alive = obs["alive"]           # (B, N) bool
-        x     = self.encoder(obs)      # (B, N, D)
+        alive = obs["alive"]              # (B, N) bool
+        x     = self.encoder(obs)         # (B, N, D)
         x     = self.attention(x, alive)  # (B, N, D)
 
         B, N, D = x.shape
-        # batch_first=False → GRU expects (seq_len, batch, D)
-        x_step  = x.reshape(B * N, D).unsqueeze(0)    # (1, B*N, D)
-        gru_out, new_hidden = self.gru(x_step, hidden) # (1, B*N, D), (1, B*N, D)
-        gru_out = gru_out.squeeze(0).reshape(B, N, D)  # (B, N, D)
+        x_step  = x.reshape(B * N, D).unsqueeze(0)      # (1, B*N, D)
+        gru_out, new_hidden = self.gru(x_step, hidden)  # (1, B*N, D)
+        gru_out = gru_out.squeeze(0).reshape(B, N, D)   # (B, N, D)
 
-        logits = self.action_head(gru_out)             # (B, N, 12)
-        value  = self.value_head(gru_out).squeeze(-1)  # (B, N)
+        logits = self.action_head(gru_out)               # (B, N, 12)
+        value  = self.value_head(gru_out)                # (B, N, K) — normalized space
 
         action, logprob = _sample_action(logits)
 
@@ -151,35 +162,31 @@ class MVPPolicy(nn.Module):
             alive_mask:     (T, B, N) bool — alive ships per timestep.
 
         Returns:
-            logprob:  (T, B, N) float.
-            entropy:  (T, B, N) float.
-            value:    (T, B, N) float.
+            logprob:   (T, B, N) float.
+            entropy:   (T, B, N) float.
+            new_value: (T, B, N, K) float — per-component value in normalized space.
         """
         T, B, N = actions.shape[:3]
         D       = self.gru.hidden_size
 
         # Flatten T into B for encoder and attention
-        flat_obs = {k: v.reshape(T * B, *v.shape[2:]) for k, v in obs.items()}
+        flat_obs   = {k: v.reshape(T * B, *v.shape[2:]) for k, v in obs.items()}
         flat_alive = alive_mask.reshape(T * B, N)
 
-        x = self.encoder(flat_obs)            # (T*B, N, D)
-        x = self.attention(x, flat_alive)     # (T*B, N, D)
+        x = self.encoder(flat_obs)         # (T*B, N, D)
+        x = self.attention(x, flat_alive)  # (T*B, N, D)
 
         # GRU over time — reshape to (T, B*N, D) for sequential processing
-        x_seq   = x.reshape(T, B, N, D).permute(0, 1, 2, 3)  # (T, B, N, D)
-        x_seq   = x_seq.reshape(T, B * N, D)                   # (T, B*N, D)
+        x_seq      = x.reshape(T, B, N, D).reshape(T, B * N, D)  # (T, B*N, D)
+        gru_out, _ = self.gru(x_seq, initial_hidden)              # (T, B*N, D)
+        gru_out    = gru_out.reshape(T, B, N, D)                  # (T, B, N, D)
 
-        # nn.GRU with batch_first=True expects (B, T, D); we use (T, B*N, D)
-        # since batch_first=False (default)
-        gru_out, _ = self.gru(x_seq, initial_hidden)           # (T, B*N, D)
-        gru_out    = gru_out.reshape(T, B, N, D)               # (T, B, N, D)
-
-        logits = self.action_head(gru_out)                      # (T, B, N, 12)
-        value  = self.value_head(gru_out).squeeze(-1)           # (T, B, N)
+        logits    = self.action_head(gru_out)   # (T, B, N, 12)
+        new_value = self.value_head(gru_out)    # (T, B, N, K) — normalized space
 
         logprob, entropy = _evaluate_action(logits, actions)
 
-        return logprob, entropy, value
+        return logprob, entropy, new_value
 
 
 # ---------------------------------------------------------------------------

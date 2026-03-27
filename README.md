@@ -38,16 +38,16 @@ src/boost_and_broadside/
 │   ├── state.py       # TensorState — mutable GPU state for B parallel envs
 │   ├── physics.py     # Pure physics functions (kinematics, shooting, collisions)
 │   ├── env.py         # TensorEnv — vectorized physics engine, no rewards
-│   ├── rewards.py     # Modular reward components, zero-sum transform
+│   ├── rewards.py     # Modular reward components, REWARD_COMPONENT_NAMES, compute_per_component_rewards
 │   └── wrapper.py     # MVPEnvWrapper — obs construction, reward orchestration, auto-reset
 ├── models/mvp/
 │   ├── encoder.py     # ShipEncoder — Fourier position + symlog vel + team embed
 │   ├── attention.py   # RelationalSelfAttention — MHSA with alive masking
-│   └── policy.py      # MVPPolicy — encoder → attention → per-ship GRU → action/value heads
+│   └── policy.py      # MVPPolicy — encoder → attention → per-ship GRU → action/distributional-value heads
 ├── modes/
 │   └── interactive.py # run_play_mode, run_watch_mode — shared render loop + keyboard input
 ├── train/rl/
-│   ├── buffer.py      # RolloutBuffer — pre-allocated GAE buffer with recurrent hidden storage
+│   ├── buffer.py      # RolloutBuffer — pre-allocated GAE buffer, (T,B,N,K) shapes, symlog/twohot utilities
 │   └── ppo.py         # PPOTrainer — rollout collection, GAE, PPO epochs, async W&B, checkpointing
 └── ui/
     └── renderer.py    # GameRenderer — pygame renderer reading TensorState directly
@@ -66,7 +66,7 @@ old_code/              # Archived prior codebase (world model / Hydra era)
 
 - **`TensorEnv`**: Pure physics, no rewards. `step()` returns `(dones, truncated)` only.
 - **`MVPEnvWrapper`**: Owns observation construction, reward computation, and auto-reset. Snapshots pre-step state to compute per-ship rewards.
-- **8 ships, 4v4**, all running the same shared policy (zero-sum self-play).
+- **Ships per environment** set by `EnvConfig.num_ships`; all run the same shared policy (self-play).
 
 ### Observations (per ship)
 
@@ -89,18 +89,28 @@ obs dict → ShipEncoder → RelationalSelfAttention (alive masking) → per-shi
 
 - **Action space**: Factored categorical — 3 power × 7 turn × 2 shoot (joint log-prob = sum of three).
 - **GRU hidden state**: `(1, B*N, D)`, `batch_first=False`.
-- **Value**: scalar per ship; GAE computed per-ship.
+- **Value**: K=12 distributional heads per ship (one per reward component); 255 categorical bins in double-symlog space `[-20, 20]`, trained with cross-entropy on twohot targets (DreamerV3-style).
 
-### Rewards (zero-sum)
+### Rewards (decomposed critic + lambda aggregation)
 
-| Component | Signal |
-|---|---|
-| Damage | +reward for damage dealt, -reward for damage taken |
-| Kill / Death | +kill\_weight per kill, -death\_weight per death |
-| Victory | ±victory\_weight at episode end |
-| Positioning | Offensive alignment minus defensive exposure, distance-weighted |
+Each ship has K=12 independent value heads, each predicting only events that happen **to that ship**. Zero-sum accounting is deferred to advantage aggregation.
 
-Team-1 rewards are negated after summing to enforce zero-sum self-play.
+| Component | Allied λ | Enemy λ | Signal |
+|---|---|---|---|
+| damage | +1 | −1 | damage taken this step |
+| death | +1 | −1 | ship destroyed |
+| victory | +1 | −1 | game outcome |
+| exposure | +1 | −1 | in enemy crosshairs |
+| facing | +1 | 0 | turning toward nearest enemy |
+| turn_rate | +1 | 0 | angular velocity reward |
+| proximity | +1 | 0 | closing distance to enemy |
+| closing_speed | +1 | 0 | radial closing speed |
+| positioning | +1 | 0 | offensive alignment |
+| power_range | +1 | 0 | power in useful range |
+| speed_range | +1 | 0 | speed in useful range |
+| shoot_quality | +1 | 0 | shot quality |
+
+**Advantage aggregation**: For ship _i_, `A_i = Σ_j Σ_k λ(same_team[i,j], k) · A_j^(k)` where lambdas are relative to the querying ship's team. Allied component advantages add; outcome component advantages subtract for enemies. This replaces explicit team-1 reward negation.
 
 ## Configuration
 
@@ -109,7 +119,7 @@ All hyperparameters live in [main.py](main.py) as frozen dataclasses — no conf
 ```python
 ship_config   = ShipConfig()                    # physics defaults
 env_config    = EnvConfig(num_ships=8, ...)
-model_config  = ModelConfig(d_model=128, n_heads=4, n_fourier_freqs=8)
+model_config  = ModelConfig(d_model=128, n_heads=4, n_fourier_freqs=8, num_value_components=12, num_bins=255, bin_lo=-20.0, bin_hi=20.0)
 reward_config = RewardConfig(damage_weight=0.01, ...)
 train_config  = TrainConfig(num_envs=128, num_steps=512, checkpoint_interval=500, ...)
 ```

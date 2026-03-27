@@ -13,7 +13,10 @@ from typing import Any
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import ShipConfig, EnvConfig, RewardConfig
 from boost_and_broadside.env.env import TensorEnv
-from boost_and_broadside.env.rewards import RewardComponent, build_reward_components, compute_rewards
+from boost_and_broadside.env.rewards import (
+    RewardComponent, REWARD_COMPONENT_NAMES,
+    build_reward_components,
+)
 from boost_and_broadside.env.state import TensorState
 
 
@@ -44,20 +47,30 @@ class MVPEnvWrapper:
         self.ship_config    = ship_config
         self.env_config     = env_config
         self.device         = torch.device(device)
-        self._components: list[RewardComponent] = build_reward_components(
+
+        # All components (decay scheduler and other callers may need access to inactive ones)
+        self._all_components: list[RewardComponent] = build_reward_components(
             reward_config, ship_config, scripted_agent
         )
 
-        # Episode stat accumulators for async logging — (B, N) tensors
+        # Active components: weight != 0 and registered in REWARD_COMPONENT_NAMES,
+        # in canonical REWARD_COMPONENT_NAMES order.
+        _comp_by_name = {c.name: c for c in self._all_components}
+        self._active_names: list[str] = [
+            name for name in REWARD_COMPONENT_NAMES
+            if name in _comp_by_name and _comp_by_name[name].weight != 0
+        ]
+        self._active_components: list[RewardComponent] = [
+            _comp_by_name[name] for name in self._active_names
+        ]
+
+        # Episode stat accumulators — active components only
         B, N = num_envs, env_config.num_ships
         self._ep_reward  = torch.zeros((B, N), device=self.device)
         self._ep_length  = torch.zeros((B,),   device=self.device, dtype=torch.int32)
-        # Per-component accumulators keyed by log key — populated automatically.
-        # Components may contribute multiple keys (e.g. "damage_given"/"damage_taken").
         self._ep_reward_components: dict[str, torch.Tensor] = {
-            key: torch.zeros((B, N), device=self.device)
-            for comp in self._components
-            for key in comp.log_keys
+            name: torch.zeros((B, N), device=self.device)
+            for name in self._active_names
         }
 
     # ------------------------------------------------------------------
@@ -94,11 +107,11 @@ class MVPEnvWrapper:
             actions: (B, N, 3) int tensor — [power, turn, shoot].
 
         Returns:
-            obs:       dict of (B, N, ...) tensors.
-            rewards:   (B, N) float32 — zero-sum per-ship rewards.
-            dones:     (B,) bool — game-over (physics termination).
-            truncated: (B,) bool — episode length limit reached.
-            info:      dict with optional "ep_reward" and "ep_length" for done envs.
+            obs:          dict of (B, N, ...) tensors.
+            comp_rewards: (B, N, K) float32 — per-component per-ship rewards (no zero-sum).
+            dones:        (B,) bool — game-over (physics termination).
+            truncated:    (B,) bool — episode length limit reached.
+            info:         dict with optional "ep_reward" and "ep_length" for done envs.
         """
         # Snapshot pre-physics state fields needed for reward delta
         prev_health = self.env.state.ship_health.clone()  # (B, N)
@@ -108,16 +121,18 @@ class MVPEnvWrapper:
         # Physics step (no auto-reset)
         dones, truncated = self.env.step(actions)
 
-        # Compute rewards from post-damage, pre-reset state
-        rewards, breakdown = compute_rewards(
-            self._components, prev_state, actions, self.env.state, dones
-        )
+        # Compute rewards for active components only — (B, N, K_active)
+        B, N = self.env.state.ship_health.shape
+        K    = len(self._active_names)
+        comp_rewards = torch.zeros(B, N, K, device=self.device, dtype=torch.float32)
+        for k, comp in enumerate(self._active_components):
+            comp_rewards[:, :, k] = comp.compute(prev_state, actions, self.env.state, dones)
 
-        # Accumulate episode stats
-        self._ep_reward += rewards
+        # Accumulate episode stats (active components only)
+        self._ep_reward += comp_rewards.sum(dim=-1)
         self._ep_length += 1
-        for name, comp_r in breakdown.items():
-            self._ep_reward_components[name] += comp_r
+        for k, name in enumerate(self._active_names):
+            self._ep_reward_components[name] += comp_rewards[:, :, k]
 
         # Collect episode info for done envs before resetting
         done_mask = dones | truncated
@@ -138,7 +153,7 @@ class MVPEnvWrapper:
             for t in self._ep_reward_components.values():
                 t[done_mask] = 0.0
 
-        return self._get_obs(), rewards, dones, truncated, info
+        return self._get_obs(), comp_rewards, dones, truncated, info
 
     # ------------------------------------------------------------------
     # Observation construction
@@ -185,6 +200,16 @@ class MVPEnvWrapper:
     def state(self) -> TensorState:
         """Direct access to the underlying physics state."""
         return self.env.state
+
+    @property
+    def active_names(self) -> list[str]:
+        """Reward component names that are active (weight != 0), in canonical order."""
+        return self._active_names
+
+    @property
+    def num_active_components(self) -> int:
+        """Number of active reward components (= K, value head width)."""
+        return len(self._active_names)
 
     @property
     def num_envs(self) -> int:

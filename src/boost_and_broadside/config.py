@@ -98,10 +98,10 @@ class ModelConfig:
 @dataclass(frozen=True)
 class RewardConfig:
     """Reward shaping weights. No defaults — all values required."""
-    damage_weight: float        # weight on damage-given vs damage-taken reward
-    kill_weight: float          # bonus per enemy kill
-    death_weight: float         # penalty per ally death
-    victory_weight: float       # bonus/penalty for win/loss
+    damage_weight: float        # weight on damage-taken per ship
+    death_weight: float         # penalty for dying (own ship only)
+    victory_weight: float       # bonus/penalty for win/loss (per-ship, from own team's perspective)
+    enemy_neg_lambda_components: frozenset[str]  # component names where enemy ships get lambda=-1
     positioning_weight: float   # weight on the positioning formula reward
     positioning_radius: float   # R: influence radius for positioning reward (world units)
     facing_weight: float        # weight on facing-toward-enemy reward
@@ -137,6 +137,9 @@ class TrainConfig:
     vf_coef: float          # value loss coefficient
     max_grad_norm: float    # gradient clipping norm
     total_timesteps: int    # total environment steps before stopping
+    return_ema_alpha: float  # EMA decay for per-component return percentile scaler
+    return_min_span: float   # minimum p95-p5 span (symlog-space) — guards disabled components
+    lr_warmup_steps: int = 0               # linearly ramp LR from 0 over this many global steps; 0 = disabled
     checkpoint_interval: int = 0           # save every N updates; 0 = disabled
     checkpoint_dir: str = "checkpoints"    # directory to write .pt files
 

@@ -70,37 +70,39 @@ def main() -> None:
 
     reward_config = RewardConfig(
         # --- Objective rewards
-        victory_weight     = 80.0,
-        kill_weight        = 20.0,
-        death_weight       = 20.0,
+        victory_weight     = 1.0,
+        death_weight       = 1.0,
         damage_weight      = 1.0,
 
+        # Lambda=-1 for these components on enemy ships (outcome rewards)
+        enemy_neg_lambda_components = frozenset({"damage", "death", "victory", "exposure"}),
+
         # --- Shaping rewards
-        positioning_weight = 0,
+        positioning_weight = 0.0,
         positioning_radius = 400.0,
 
-        facing_weight      = 0,
-        exposure_weight    = 0,
+        facing_weight      = 0.0,
+        exposure_weight    = 0.0,
 
-        closing_speed_weight = 0.0005,
-        turn_rate_weight     = 0.1,
+        closing_speed_weight = 1.0,
+        turn_rate_weight     = 1.0,
 
-        proximity_weight   = 0,
+        proximity_weight   = 0.0,
         proximity_radius   = 400.0,
 
         # --- Behavioral regularizers ---
-        power_range_weight = 0,
+        power_range_weight = 0.0,
         power_range_lo     = 0.2,
         power_range_hi     = 0.8,
 
-        speed_range_weight = 0,
+        speed_range_weight = 0.0,
         speed_range_lo     = 40.0,
         speed_range_hi     = 120.0,
 
-        shoot_quality_weight = 0,
+        shoot_quality_weight = 0.0,
         shoot_quality_radius = 200.0,
 
-        scripted_agent_weight = 0.001,
+        scripted_agent_weight = 0.0,
     )
 
     render_config = RenderConfig()
@@ -124,6 +126,9 @@ def main() -> None:
                 vf_coef             = 0.5,
                 max_grad_norm       = 0.5,
                 total_timesteps     = 100_000_000_000,
+                return_ema_alpha    = 0.005,  # ~200-update memory for percentile EMA
+                return_min_span     = 1.0,    # guard against zero-return disabled components
+                lr_warmup_steps     = 5_000_000,
                 checkpoint_interval = 10,
                 checkpoint_dir      = "checkpoints",
             )

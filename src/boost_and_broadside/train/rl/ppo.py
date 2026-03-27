@@ -14,13 +14,15 @@ from queue import Queue, Empty
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import TrainConfig, ModelConfig, ShipConfig, EnvConfig, RewardConfig
+from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
 from boost_and_broadside.env.wrapper import MVPEnvWrapper
 from boost_and_broadside.models.mvp.policy import MVPPolicy
-from boost_and_broadside.train.rl.buffer import RolloutBuffer
+from boost_and_broadside.train.rl.buffer import RolloutBuffer, ReturnScaler, symlog
 
 
 class _DecayScheduler:
@@ -109,8 +111,25 @@ class PPOTrainer:
             device         = device,
             scripted_agent = scripted_agent,
         )
-        self.policy = MVPPolicy(model_config, ship_config).to(self.device)
+        K = self.wrapper.num_active_components
+        self._active_names = self.wrapper.active_names  # stable ref used throughout
+
+        self.policy = MVPPolicy(model_config, ship_config, num_value_components=K).to(self.device)
         self.optim  = optim.Adam(self.policy.parameters(), lr=train_config.learning_rate, eps=1e-5)
+
+        # Linear LR warmup: ramp from 0 → learning_rate over lr_warmup_steps global steps.
+        # Implemented as a per-update scheduler (steps once per rollout update).
+        steps_per_update = train_config.num_envs * train_config.num_steps
+        warmup_updates   = max(1, train_config.lr_warmup_steps // steps_per_update)
+        if train_config.lr_warmup_steps > 0:
+            self.lr_scheduler = optim.lr_scheduler.LinearLR(
+                self.optim,
+                start_factor = 1.0 / warmup_updates,
+                end_factor   = 1.0,
+                total_iters  = warmup_updates,
+            )
+        else:
+            self.lr_scheduler = None
 
         N = env_config.num_ships
 
@@ -123,13 +142,29 @@ class PPOTrainer:
         }
 
         self.buffer = RolloutBuffer(
-            num_steps    = train_config.num_steps,
-            num_envs     = train_config.num_envs,
-            num_ships    = N,
-            obs_shapes   = obs_shapes,
-            gamma        = train_config.gamma,
-            gae_lambda   = train_config.gae_lambda,
-            device       = self.device,
+            num_steps       = train_config.num_steps,
+            num_envs        = train_config.num_envs,
+            num_ships       = N,
+            num_components  = K,
+            obs_shapes      = obs_shapes,
+            gamma           = train_config.gamma,
+            gae_lambda      = train_config.gae_lambda,
+            device          = self.device,
+        )
+
+        # Pre-compute lambda mask for active components only
+        enemy_neg_set    = reward_config.enemy_neg_lambda_components
+        self.enemy_neg_k = torch.tensor(
+            [name in enemy_neg_set for name in self._active_names],
+            dtype=torch.bool, device=self.device,
+        )  # (K,)
+
+        # Per-component return scaler: EMA of p5/p95 in symlog-reward space
+        self.scaler = ReturnScaler(
+            num_components = K,
+            device         = self.device,
+            ema_alpha      = train_config.return_ema_alpha,
+            min_span       = train_config.return_min_span,
         )
 
         # Async logging queue
@@ -171,7 +206,7 @@ class PPOTrainer:
             # Rollout collection
             # ----------------------------------------------------------------
             for _ in range(self.cfg.num_steps):
-                action, logprob, value, hidden = self.policy.get_action_and_value(obs, hidden)
+                action, logprob, value_norm, hidden = self.policy.get_action_and_value(obs, hidden)
 
                 next_obs, reward, dones, truncated, info = self.wrapper.step(action)
 
@@ -188,7 +223,7 @@ class PPOTrainer:
                     logprob = logprob,
                     reward  = reward,
                     done    = dones.float(),      # only true termination cuts GAE bootstrap
-                    value   = value,
+                    value   = self.scaler.denormalize(value_norm),  # symlog-reward space for GAE
                     alive   = obs["alive"].bool(),
                 )
 
@@ -202,13 +237,27 @@ class PPOTrainer:
             # GAE computation
             # ----------------------------------------------------------------
             with torch.no_grad():
-                _, _, next_value, _ = self.policy.get_action_and_value(obs, hidden)
+                _, _, next_value_norm, _ = self.policy.get_action_and_value(obs, hidden)
+            next_value = self.scaler.denormalize(next_value_norm)  # symlog-reward space
             self.buffer.compute_gae(next_value, dones.float())
+
+            # Update per-component return percentiles from this rollout's returns
+            self.scaler.update(self.buffer.returns)
 
             # ----------------------------------------------------------------
             # PPO update epochs
             # ----------------------------------------------------------------
-            metrics = self._update_epochs()
+            record_hist = (update % 10 == 0)
+            metrics = self._update_epochs(record_histograms=record_hist)
+
+            # Scaler stats — one CPU transfer per component group
+            p5_cpu   = self.scaler._p5.cpu()
+            p95_cpu  = self.scaler._p95.cpu()
+            span_cpu = p95_cpu - p5_cpu
+            for i, name in enumerate(self._active_names):
+                metrics[f"scaler/p5/{name}"]   = p5_cpu[i].item()
+                metrics[f"scaler/p95/{name}"]  = p95_cpu[i].item()
+                metrics[f"scaler/span/{name}"] = span_cpu[i].item()
 
             # Merge episode stats collected during rollout into the metrics dict
             if ep_rewards:
@@ -221,7 +270,11 @@ class PPOTrainer:
                 for name, tensors in ep_components.items():
                     metrics[f"ep/reward_{name}"] = torch.cat(tensors).mean().item()
 
+            if self.lr_scheduler is not None:
+                self.lr_scheduler.step()
+
             sps = int(self._global_step / (time.time() - start_time))
+            metrics["train/lr"]          = self.optim.param_groups[0]["lr"]
             metrics["train/global_step"] = self._global_step
             metrics["train/sps"]         = sps
 
@@ -248,31 +301,54 @@ class PPOTrainer:
     # PPO update inner loop
     # ------------------------------------------------------------------
 
-    def _update_epochs(self) -> dict:
+    def _update_epochs(self, record_histograms: bool = False) -> dict:
         """Run num_epochs × num_minibatches of PPO updates.
+
+        Args:
+            record_histograms: If True, capture return/logprob distributions from
+                the last minibatch for async histogram logging.
 
         Returns:
             Dict of mean metric values over all minibatch updates.
+            Per-component keys use the format ``critic/<metric>/<component_name>``.
+            Histogram entries are raw numpy arrays; the log worker creates
+            ``wandb.Histogram`` objects off the training thread.
         """
         cfg = self.cfg
-        accum: dict[str, list[float]] = {
-            "train/loss":               [],
-            "train/pg_loss":            [],
-            "train/vf_loss":            [],
-            "train/ent_loss":           [],
-            "train/approx_kl":          [],
-            "train/clip_frac":          [],
-            "train/value_mean":         [],
-            "train/return_mean":        [],
-            "train/explained_variance": [],
-        }
+        K   = self.buffer.num_components
 
-        for _ in range(cfg.num_epochs):
+        # Per-component lambda weights — active components only, may change via decay.
+        comp_weights  = torch.tensor(
+            [c.weight for c in self.wrapper._active_components],
+            dtype=torch.float32, device=self.device,
+        )  # (K,)
+
+        accum_scalar: dict[str, list[float]] = {
+            "train/loss":      [],
+            "train/pg_loss":   [],
+            "train/vf_loss":   [],
+            "train/ent_loss":  [],
+            "train/approx_kl": [],
+            "train/clip_frac": [],
+            "train/grad_norm": [],
+            "train/adv_std":   [],
+        }
+        # Per-component (K,) CPU tensors accumulated across minibatches
+        accum_k: dict[str, list[torch.Tensor]] = {
+            "critic/vf_loss":       [],
+            "critic/explained_var": [],
+            "critic/return_mean":   [],
+        }
+        last_returns_np = None
+        last_logprob_np = None
+
+        for epoch_idx in range(cfg.num_epochs):
             for batch in self.buffer.get_minibatch_iterator(cfg.num_minibatches):
                 (mb_obs, mb_actions, mb_old_logprobs, mb_advantages,
                  mb_returns, mb_values, mb_alive, mb_hidden) = batch
 
                 # Re-evaluate actions with current policy
+                # new_value: (T, B_mb, N, K) in normalized space
                 logprob, entropy, new_value = self.policy.evaluate_actions(
                     obs            = mb_obs,
                     actions        = mb_actions.long(),
@@ -280,53 +356,110 @@ class PPOTrainer:
                     alive_mask     = mb_alive,
                 )
 
-                # Mask dead ships out of all loss and metric computations
-                alive_f  = mb_alive.float()                        # (T, B_mb, N)
+                # Alive mask for loss weighting
+                alive_f  = mb_alive.float()            # (T, B_mb, N)
+                alive_k  = alive_f.unsqueeze(-1)       # (T, B_mb, N, 1) — broadcasts over K
                 mask_sum = alive_f.sum().clamp(min=1.0)
 
-                # Normalise advantages per minibatch — only over alive ships
-                adv      = mb_advantages
-                adv_mean = (adv * alive_f).sum() / mask_sum
-                adv_var  = ((adv - adv_mean).pow(2) * alive_f).sum() / mask_sum
-                adv      = (adv - adv_mean) / (adv_var.sqrt() + 1e-8)
+                # ---- Lambda aggregation: per-ship aggregated advantage ----------
+                # Build lambda matrix from team_id (teams are fixed within episode)
+                team_id   = mb_obs["team_id"][0].long()                   # (B_mb, N)
+                same_team = team_id.unsqueeze(2) == team_id.unsqueeze(1)  # (B_mb, N, N)
 
-                # Policy gradient loss
-                log_ratio  = logprob - mb_old_logprobs
-                ratio      = log_ratio.exp()
-                pg_loss1   = -adv * ratio
-                pg_loss2   = -adv * ratio.clamp(1 - cfg.clip_coef, 1 + cfg.clip_coef)
-                pg_loss    = (torch.max(pg_loss1, pg_loss2) * alive_f).sum() / mask_sum
+                # lambda_ij[b,i,j,k]: sign (+1 allied, -1 enemy outcome, 0 enemy shaping)
+                #                    × component weight (from reward config, may decay)
+                enemy_lam = torch.where(self.enemy_neg_k, -1.0, 0.0)     # (K,)
+                lambda_ij = (same_team.float().unsqueeze(-1)
+                             + (~same_team).float().unsqueeze(-1) * enemy_lam
+                             ) * comp_weights                              # (B_mb, N, N, K)
 
-                # Value loss (clipped)
-                vf_loss    = 0.5 * ((new_value - mb_returns).pow(2) * alive_f).sum() / mask_sum
+                # Aggregate: A_i = Σ_j Σ_k lambda[b,i,j,k] * adv[t,b,j,k]
+                adv_agg  = torch.einsum('bijk,tbjk->tbi', lambda_ij, mb_advantages)  # (T, B_mb, N)
 
-                # Entropy bonus
-                ent_loss   = -(entropy * alive_f).sum() / mask_sum
+                # Normalise aggregated advantage per minibatch over alive ships
+                adv_mean = (adv_agg * alive_f).sum() / mask_sum
+                adv_var  = ((adv_agg - adv_mean).pow(2) * alive_f).sum() / mask_sum
+                adv_norm = (adv_agg - adv_mean) / (adv_var.sqrt() + 1e-8)
+
+                # ---- Policy gradient loss (per-ship ratio, aggregated advantage) -
+                log_ratio = logprob - mb_old_logprobs
+                ratio     = log_ratio.exp()
+                pg_loss1  = -adv_norm * ratio
+                pg_loss2  = -adv_norm * ratio.clamp(1 - cfg.clip_coef, 1 + cfg.clip_coef)
+                pg_loss   = (torch.max(pg_loss1, pg_loss2) * alive_f).sum() / mask_sum
+
+                # ---- Value loss (MSE in normalized space) --------------------
+                target_norm = self.scaler.normalize(mb_returns).detach()  # (T, B_mb, N, K)
+                vf_loss_raw = (new_value - target_norm).pow(2)            # (T, B_mb, N, K)
+                vf_loss     = (vf_loss_raw * alive_k).sum() / (mask_sum * K)
+
+                # ---- Entropy bonus ------------------------------------------
+                ent_loss = -(entropy * alive_f).sum() / mask_sum
 
                 loss = pg_loss + cfg.vf_coef * vf_loss + cfg.ent_coef * ent_loss
 
                 self.optim.zero_grad()
                 loss.backward()
-                nn.utils.clip_grad_norm_(self.policy.parameters(), cfg.max_grad_norm)
+                grad_norm = nn.utils.clip_grad_norm_(self.policy.parameters(), cfg.max_grad_norm)
                 self.optim.step()
 
                 with torch.no_grad():
-                    approx_kl        = (((ratio - 1) - log_ratio) * alive_f).sum().item() / mask_sum.item()
-                    clip_frac        = (((ratio - 1).abs() > cfg.clip_coef).float() * alive_f).sum().item() / mask_sum.item()
-                    var_returns      = mb_returns.var().item()
-                    explained_var    = (1.0 - (mb_returns - mb_values).var().item() / (var_returns + 1e-8))
+                    approx_kl = (((ratio - 1) - log_ratio) * alive_f).sum().item() / mask_sum.item()
+                    clip_frac = (((ratio - 1).abs() > cfg.clip_coef).float() * alive_f).sum().item() / mask_sum.item()
 
-                accum["train/loss"]              .append(loss.item())
-                accum["train/pg_loss"]           .append(pg_loss.item())
-                accum["train/vf_loss"]           .append(vf_loss.item())
-                accum["train/ent_loss"]          .append(ent_loss.item())
-                accum["train/approx_kl"]         .append(approx_kl)
-                accum["train/clip_frac"]         .append(clip_frac)
-                accum["train/value_mean"]        .append(mb_values.mean().item())
-                accum["train/return_mean"]       .append(mb_returns.mean().item())
-                accum["train/explained_variance"].append(explained_var)
+                    # Per-component stats — single GPU→CPU transfer for all K dims
+                    pred_k      = self.scaler.denormalize(new_value.detach())            # (T, B_mb, N, K)
+                    vf_loss_k   = (vf_loss_raw.detach() * alive_k).sum((0,1,2)) / mask_sum  # (K,)
+                    ret_mean_k  = (mb_returns * alive_k).sum((0,1,2)) / mask_sum            # (K,)
+                    ret_var_k   = ((mb_returns - ret_mean_k) ** 2 * alive_k).sum((0,1,2)) / mask_sum
+                    # Var(y - ŷ) not MSE: subtract residual mean to avoid penalising bias.
+                    # MSE would give EV < 0 for a biased-constant predictor even though
+                    # its predictive variance is the same as the naive mean predictor.
+                    residuals_k = mb_returns - pred_k                                        # (T, B_mb, N, K)
+                    res_mean_k  = (residuals_k * alive_k).sum((0,1,2)) / mask_sum           # (K,)
+                    res_var_k   = ((residuals_k - res_mean_k) ** 2 * alive_k).sum((0,1,2)) / mask_sum
+                    ev_k        = 1.0 - res_var_k / (ret_var_k + 1e-8)                      # (K,)
+                    # One transfer: stack → (3, K) → cpu
+                    stats_k_cpu = torch.stack([vf_loss_k, ev_k, ret_mean_k]).cpu()
 
-        return {k: sum(v) / len(v) for k, v in accum.items() if v}
+                accum_scalar["train/loss"]      .append(loss.item())
+                accum_scalar["train/pg_loss"]   .append(pg_loss.item())
+                accum_scalar["train/vf_loss"]   .append(vf_loss.item())
+                accum_scalar["train/ent_loss"]  .append(ent_loss.item())
+                accum_scalar["train/approx_kl"] .append(approx_kl)
+                accum_scalar["train/clip_frac"] .append(clip_frac)
+                accum_scalar["train/grad_norm"] .append(grad_norm.item())
+                accum_scalar["train/adv_std"]   .append(adv_var.sqrt().item())
+
+                accum_k["critic/vf_loss"]   .append(stats_k_cpu[0])
+                accum_k["critic/return_mean"].append(stats_k_cpu[2])
+                # EV from last epoch only — reflects the value head after training,
+                # not the average over all updates (which is dampened by early epochs).
+                if epoch_idx == cfg.num_epochs - 1:
+                    accum_k["critic/explained_var"].append(stats_k_cpu[1])
+
+                if record_histograms:
+                    # Capture alive-ship returns/logprobs from last minibatch for histograms.
+                    # .cpu().numpy() here is fine: only runs every hist_interval updates.
+                    alive_flat      = mb_alive.reshape(-1).bool()
+                    last_returns_np = mb_returns.reshape(-1, K)[alive_flat].cpu().numpy()
+                    last_logprob_np = logprob.detach().reshape(-1)[alive_flat].cpu().numpy()
+
+        # --- Build output metrics dict ---
+        metrics: dict = {k: sum(v) / len(v) for k, v in accum_scalar.items() if v}
+
+        # Expand per-component averages into named keys
+        for key, tensors in accum_k.items():
+            avg = torch.stack(tensors).mean(0)   # (K,) CPU
+            for i, name in enumerate(self._active_names):
+                metrics[f"{key}/{name}"] = avg[i].item()
+
+        # Raw numpy arrays — worker thread converts to wandb.Histogram
+        if last_returns_np is not None:
+            metrics["hist/returns"] = last_returns_np   # (alive_count, K)
+            metrics["hist/logprob"] = last_logprob_np   # (alive_count,)
+
+        return metrics
 
     # ------------------------------------------------------------------
     # Reward decay
@@ -342,50 +475,42 @@ class PPOTrainer:
         Each weight decays with a half-life of 100 updates once armed.
         The "count" field tracks consecutive updates above threshold (hysteresis).
         """
-        # (watch_key, threshold) → components that decay on that signal
-        _kill = "ep/reward_kill"
+        # Proxy for "agent is learning to fight": victory reward is +victory_weight
+        # when winning. Threshold ~20 = agent wins >25% of the time (victory_weight=80).
+        _victory = "ep/reward_victory"
         targets = []
-        for comp in self.wrapper._components:
+        for comp in self.wrapper._all_components:
             if comp.name == "closing_speed":
-                # Closing speed has done its job once kills start happening
                 targets.append({"component": comp, "weight_attr": "closing_speed_weight",
-                                 "watch_key": _kill, "threshold": 3.0,
+                                 "watch_key": _victory, "threshold": 20.0,
                                  "sustain": 30, "half_life": 100, "count": 0})
             elif comp.name == "turn_rate":
-                # Turn rate shaping decays once kills are consistent
                 targets.append({"component": comp, "weight_attr": "turn_rate_weight",
-                                 "watch_key": _kill, "threshold": 3.0,
+                                 "watch_key": _victory, "threshold": 20.0,
                                  "sustain": 30, "half_life": 100, "count": 0})
             elif comp.name == "shoot_quality":
                 targets.append({"component": comp, "weight_attr": "shoot_quality_weight",
-                                 "watch_key": _kill, "threshold": 3.0,
+                                 "watch_key": _victory, "threshold": 20.0,
                                  "sustain": 30, "half_life": 100, "count": 0})
             elif comp.name == "facing":
-                # Facing is no longer needed once kills are consistent
                 targets.append({"component": comp, "weight_attr": "facing_weight",
-                                 "watch_key": _kill, "threshold": 6.0,
+                                 "watch_key": _victory, "threshold": 40.0,
                                  "sustain": 30, "half_life": 100, "count": 0})
             elif comp.name == "exposure":
                 targets.append({"component": comp, "weight_attr": "exposure_weight",
-                                 "watch_key": _kill, "threshold": 6.0,
+                                 "watch_key": _victory, "threshold": 40.0,
                                  "sustain": 30, "half_life": 100, "count": 0})
             elif comp.name == "positioning":
                 targets.append({"component": comp, "weight_attr": "positioning_weight",
-                                 "watch_key": _kill, "threshold": 6.0,
+                                 "watch_key": _victory, "threshold": 40.0,
                                  "sustain": 30, "half_life": 100, "count": 0})
             elif comp.name == "speed_range":
-                # Decay when agents consistently stay in target range (metric > 70% of weight * ep_len)
                 targets.append({"component": comp, "weight_attr": "speed_range_weight",
                                  "watch_key": "ep/reward_speed_range", "threshold": 0.20,
                                  "sustain": 30, "half_life": 100, "count": 0})
             elif comp.name == "power_range":
                 targets.append({"component": comp, "weight_attr": "power_range_weight",
                                  "watch_key": "ep/reward_power_range", "threshold": 0.08,
-                                 "sustain": 30, "half_life": 100, "count": 0})
-            elif comp.name == "scripted_agent":
-                # Behavioral cloning is no longer needed once the agent dominates
-                targets.append({"component": comp, "weight_attr": "weight",
-                                 "watch_key": _kill, "threshold": 9.0,
                                  "sustain": 30, "half_life": 100, "count": 0})
         return _DecayScheduler(targets)
 
@@ -408,6 +533,7 @@ class PPOTrainer:
         torch.save({
             "policy_state_dict":    self.policy.state_dict(),
             "optimizer_state_dict": self.optim.state_dict(),
+            "scaler_state_dict":    self.scaler.state_dict(),
             "update":               update,
             "global_step":          self._global_step,
             "train_config":         dataclasses.asdict(self.cfg),
@@ -429,6 +555,8 @@ class PPOTrainer:
         ckpt = torch.load(path, map_location=self.device)
         self.policy.load_state_dict(ckpt["policy_state_dict"])
         self.optim.load_state_dict(ckpt["optimizer_state_dict"])
+        if "scaler_state_dict" in ckpt:
+            self.scaler.load_state_dict(ckpt["scaler_state_dict"])
         return ckpt["update"]
 
     # ------------------------------------------------------------------
@@ -472,7 +600,15 @@ class PPOTrainer:
         self._log_queue.put((metrics, step))
 
     def _log_worker(self) -> None:
-        """Background thread: drains the log queue and calls wandb.log()."""
+        """Background thread: drains the log queue and calls wandb.log().
+
+        Handles two special value types so the training thread stays off the
+        W&B serialization path:
+          - ``np.ndarray`` with key ``"hist/returns"`` → one ``wandb.Histogram``
+            per reward component, keyed ``hist/returns/<name>``.
+          - ``np.ndarray`` with any other key → ``wandb.Histogram`` directly.
+        """
+        import numpy as np
         import wandb
         while True:
             try:
@@ -481,5 +617,16 @@ class PPOTrainer:
                 continue
             if item is None:
                 break
-            metrics, step = item
-            wandb.log(metrics, step=step)
+            raw_metrics, step = item
+            processed: dict = {}
+            for k, v in raw_metrics.items():
+                if isinstance(v, np.ndarray):
+                    if k == "hist/returns":
+                        # v shape: (alive_count, K) — one histogram per active component
+                        for i, name in enumerate(self._active_names):
+                            processed[f"hist/returns/{name}"] = wandb.Histogram(v[:, i])
+                    else:
+                        processed[k] = wandb.Histogram(v)
+                else:
+                    processed[k] = v
+            wandb.log(processed, step=step)
