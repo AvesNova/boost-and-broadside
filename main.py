@@ -4,9 +4,19 @@ All hyperparameters are defined here — no config files.
 Modes are selected via the --mode CLI flag.
 
 Run with:
-    uv run --no-sync main.py                                         # train
-    uv run --no-sync main.py --mode play                             # human vs AI
-    uv run --no-sync main.py --mode watch --checkpoint <path.pt>    # watch checkpoint
+    uv run --no-sync main.py                                                   # train
+    uv run --no-sync main.py --mode watch                                      # human vs latest checkpoint
+    uv run --no-sync main.py --mode watch --team0 null --team1 scripted        # human vs scripted
+    uv run --no-sync main.py --mode watch --team0 latest --team1 latest        # self-play
+    uv run --no-sync main.py --mode collect_stats                              # scripted vs random
+    uv run --no-sync main.py --mode collect_stats --team0 latest --team1 scripted
+
+Agent specs (--team0 / --team1):
+    null        human keyboard (watch only)
+    random      uniform random actions
+    scripted    stochastic scripted agent
+    latest      most recently modified checkpoint
+    <path.pt>   specific checkpoint file
 """
 
 import argparse
@@ -18,29 +28,38 @@ from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAge
 from boost_and_broadside.config import (
     ShipConfig, EnvConfig, ModelConfig, RewardConfig, TrainConfig,
 )
-from boost_and_broadside.modes.interactive import run_play_mode, run_watch_mode
+from boost_and_broadside.modes.collect import run_collect_stats_mode
+from boost_and_broadside.modes.interactive import run_watch_mode
 from boost_and_broadside.train.rl.ppo import PPOTrainer
 from boost_and_broadside.ui.renderer import RenderConfig
 
 
 def _parse_args() -> argparse.Namespace:
-    """Parse CLI arguments for mode selection.
-
-    Returns:
-        Parsed args with .mode and .checkpoint fields.
-    """
-    parser = argparse.ArgumentParser(description="Boost and Broadside")
-    parser.add_argument(
-        "--mode",
-        choices=["train", "play", "watch"],
-        default="train",
-        help="Operating mode: train (PPO), play (human + AI), watch (checkpoint self-play).",
+    parser = argparse.ArgumentParser(
+        description="Boost and Broadside",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "--checkpoint",
+        "--mode",
+        choices=["train", "watch", "collect_stats"],
+        default="train",
+        help="Operating mode.",
+    )
+    parser.add_argument(
+        "--team0",
         type=str,
         default=None,
-        help="Path to a .pt checkpoint file. Required for --mode watch.",
+        metavar="SPEC",
+        help="Agent for team 0: null, random, scripted, latest, or path/to/checkpoint.pt. "
+             "Defaults: watch→null, collect_stats→scripted.",
+    )
+    parser.add_argument(
+        "--team1",
+        type=str,
+        default=None,
+        metavar="SPEC",
+        help="Agent for team 1: null, random, scripted, latest, or path/to/checkpoint.pt. "
+             "Defaults: watch→latest, collect_stats→random.",
     )
     return parser.parse_args()
 
@@ -56,7 +75,7 @@ def main() -> None:
     ship_config = ShipConfig(bullet_energy_cost=2, bullet_min_damage_frac=1.0)
 
     env_config = EnvConfig(
-        num_ships         = 2,    # 4v4
+        num_ships         = 2,
         max_bullets       = 20,
         max_episode_steps = 1024,
     )
@@ -124,7 +143,7 @@ def main() -> None:
                 ent_coef            = 0.01,
                 vf_coef             = 0.5,
                 max_grad_norm       = 0.5,
-                total_timesteps     = 100_000_000_000,
+                total_timesteps     = 1_000_000_000,
                 return_ema_alpha    = 0.005,  # ~200-update memory for percentile EMA
                 return_min_span     = 1.0,    # guard against zero-return disabled components
                 lr_warmup_steps     = 10_000_000,
@@ -146,14 +165,35 @@ def main() -> None:
             )
             trainer.train()
 
-        case "play":
-            run_play_mode(ship_config, env_config, reward_config, model_config,
-                          render_config, device)
-
         case "watch":
-            run_watch_mode(args.checkpoint, ship_config, env_config, reward_config,
-                           model_config, render_config, device,
-                           checkpoint_dir="checkpoints")
+            team0 = args.team0 if args.team0 is not None else "null"
+            team1 = args.team1 if args.team1 is not None else "latest"
+            run_watch_mode(
+                team0_spec    = team0,
+                team1_spec    = team1,
+                ship_config   = ship_config,
+                env_config    = env_config,
+                reward_config = reward_config,
+                model_config  = model_config,
+                render_config = render_config,
+                device        = device,
+                checkpoint_dir = "checkpoints",
+            )
+
+        case "collect_stats":
+            collect_stats_num_envs = 4096
+            team0 = args.team0 if args.team0 is not None else "scripted"
+            team1 = args.team1 if args.team1 is not None else "random"
+            run_collect_stats_mode(
+                team0_spec    = team0,
+                team1_spec    = team1,
+                num_envs      = collect_stats_num_envs,
+                ship_config   = ship_config,
+                env_config    = env_config,
+                model_config  = model_config,
+                device        = device,
+                checkpoint_dir = "checkpoints",
+            )
 
 
 if __name__ == "__main__":

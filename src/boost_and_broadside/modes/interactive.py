@@ -1,155 +1,115 @@
-"""Interactive game modes: human play and checkpoint watch.
+"""Interactive game modes: watch and human play.
 
-Two entry points:
-  - run_play_mode: human controls ship 0 (WASD + Space); AI controls the rest.
-  - run_watch_mode: load a checkpoint and watch self-play at 60fps.
+Entry point:
+  - run_watch_mode: render live gameplay between two specified agents at 60fps.
 
-Both share a common render loop (_run_interactive_loop).
+Supported agent specs (--team0 / --team1):
+    null        — human keyboard (WASD + Space)
+    random      — uniform random actions
+    scripted    — StochasticScriptedAgent
+    latest      — most recently modified checkpoint
+    <path.pt>   — specific checkpoint file
 """
-
-import sys
-from pathlib import Path
 
 import torch
 
 from boost_and_broadside.config import ShipConfig, EnvConfig, ModelConfig, RewardConfig
 from boost_and_broadside.constants import PowerActions, TurnActions, ShootActions
 from boost_and_broadside.env.wrapper import MVPEnvWrapper
-from boost_and_broadside.models.mvp.policy import MVPPolicy
+from boost_and_broadside.modes.agent_factory import (
+    ResolvedAgent,
+    get_actions,
+    init_hidden,
+    reset_done_envs,
+    resolve_agent_spec,
+)
 from boost_and_broadside.ui.renderer import GameRenderer, RenderConfig
 
 
-def _find_latest_checkpoint(checkpoint_dir: str = "checkpoints") -> str:
-    """Return path to the most recently modified .pt file under checkpoint_dir.
-
-    Searches all subdirectories (e.g. checkpoints/run-name/*.pt).
-    Exits with an error message if no checkpoints are found.
-    """
-    pts = sorted(Path(checkpoint_dir).glob("**/*.pt"), key=lambda p: p.stat().st_mtime)
-    if not pts:
-        sys.exit(f"Error: no checkpoint files found under '{checkpoint_dir}'.")
-    return str(pts[-1])
-
-
-def run_play_mode(
+def run_watch_mode(
+    team0_spec:    str,
+    team1_spec:    str,
     ship_config:   ShipConfig,
     env_config:    EnvConfig,
     reward_config: RewardConfig,
     model_config:  ModelConfig,
     render_config: RenderConfig,
     device:        str,
+    checkpoint_dir: str = "checkpoints",
 ) -> None:
-    """Human plays ship 0 (WASD + Space). A fresh AI policy controls ships 1-N.
+    """Render live gameplay between two agents at 60fps.
 
     Args:
-        ship_config:   Physics constants.
-        env_config:    Environment sizing.
-        reward_config: Reward weights.
-        model_config:  Policy architecture.
-        render_config: Display settings.
-        device:        Torch device string.
+        team0_spec:     Agent spec for team 0 (null, random, scripted, latest, or path.pt).
+        team1_spec:     Agent spec for team 1.
+        ship_config:    Physics constants.
+        env_config:     Environment sizing.
+        reward_config:  Reward weights (needed to build the env wrapper).
+        model_config:   Policy architecture (needed if either spec is a checkpoint).
+        render_config:  Display settings.
+        device:         Torch device string.
+        checkpoint_dir: Root directory searched when a spec is "latest".
     """
-    wrapper  = MVPEnvWrapper(num_envs=1, ship_config=ship_config, env_config=env_config,
-                             reward_config=reward_config, device=device)
-    K        = wrapper.num_active_components
-    policy   = MVPPolicy(model_config, ship_config, num_value_components=K).to(device)
-    renderer = GameRenderer(ship_config, render_config)
-
-    policy.eval()
-    try:
-        _run_interactive_loop(wrapper, policy, renderer, human_ship_idx=0,
-                              device=torch.device(device))
-    finally:
-        renderer.close()
-
-
-def run_watch_mode(
-    checkpoint_path: str | None,
-    ship_config:     ShipConfig,
-    env_config:      EnvConfig,
-    reward_config:   RewardConfig,
-    model_config:    ModelConfig,
-    render_config:   RenderConfig,
-    device:          str,
-    checkpoint_dir:  str = "checkpoints",
-) -> None:
-    """Load a checkpoint and watch self-play at 60fps.
-
-    Args:
-        checkpoint_path: Path to a .pt checkpoint file, or None to auto-select
-                         the most recently modified checkpoint under checkpoint_dir.
-        ship_config:     Physics constants.
-        env_config:      Environment sizing.
-        reward_config:   Reward weights.
-        model_config:    Policy architecture.
-        render_config:   Display settings.
-        device:          Torch device string.
-        checkpoint_dir:  Root directory to search when checkpoint_path is None.
-    """
-    if checkpoint_path is None:
-        checkpoint_path = _find_latest_checkpoint(checkpoint_dir)
-        print(f"Auto-selected checkpoint: {checkpoint_path}")
-
-    ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
-
-    # Infer K (num_value_components) from the saved weight shape
-    K = ckpt["policy_state_dict"]["value_head.weight"].shape[0]
+    agent0 = resolve_agent_spec(team0_spec, ship_config, model_config, device, checkpoint_dir)
+    agent1 = resolve_agent_spec(team1_spec, ship_config, model_config, device, checkpoint_dir)
 
     wrapper  = MVPEnvWrapper(num_envs=1, ship_config=ship_config, env_config=env_config,
                              reward_config=reward_config, device=device)
-    policy   = MVPPolicy(model_config, ship_config, num_value_components=K).to(device)
     renderer = GameRenderer(ship_config, render_config)
 
-    policy.load_state_dict(ckpt["policy_state_dict"])
-    policy.eval()
-
-    update = ckpt.get("update", "?")
-    step   = ckpt.get("global_step", "?")
-    print(f"Loaded checkpoint: update={update}, global_step={step}")
-
     try:
-        _run_interactive_loop(wrapper, policy, renderer, human_ship_idx=None,
-                              device=torch.device(device))
+        _run_interactive_loop(wrapper, agent0, agent1, renderer, torch.device(device))
     finally:
         renderer.close()
 
 
 def _run_interactive_loop(
-    wrapper:          MVPEnvWrapper,
-    policy:           MVPPolicy,
-    renderer:         GameRenderer,
-    human_ship_idx:   int | None,
-    device:           torch.device,
+    wrapper:  MVPEnvWrapper,
+    agent0:   ResolvedAgent,
+    agent1:   ResolvedAgent,
+    renderer: GameRenderer,
+    device:   torch.device,
 ) -> None:
-    """Core render loop shared by play and watch modes.
-
-    Runs episodes back-to-back until the user closes the window.
+    """Core render loop.  Runs episodes back-to-back until the window is closed.
 
     Args:
-        wrapper:         Single-env MVPEnvWrapper (num_envs=1).
-        policy:          Policy to run under torch.no_grad.
-        renderer:        Pygame renderer.
-        human_ship_idx:  Ship index controlled by keyboard, or None for full AI.
-        device:          Torch device.
+        wrapper:  Single-env MVPEnvWrapper (num_envs=1).
+        agent0:   Agent controlling team-0 ships.
+        agent1:   Agent controlling team-1 ships.
+        renderer: Pygame renderer.
+        device:   Torch device.
     """
     N = wrapper.num_ships
 
     while True:
-        obs    = wrapper.reset()
-        hidden = policy.initial_hidden(1, N, device)
+        obs = wrapper.reset()
+        init_hidden(agent0, 1, N, device)
+        init_hidden(agent1, 1, N, device)
 
         while True:
-            with torch.no_grad():
-                action, _, _, hidden = policy.get_action_and_value(obs, hidden)
+            state = wrapper.state
 
-            if human_ship_idx is not None:
-                action[0, human_ship_idx, :] = _decode_keyboard().to(device)
+            action0 = get_actions(agent0, obs, state, 1, N, device)
+            action1 = get_actions(agent1, obs, state, 1, N, device)
+
+            # Select each agent's actions for their respective team
+            team_id = obs["team_id"]  # (1, N)
+            action  = torch.where((team_id == 0).unsqueeze(-1), action0, action1)
+
+            # Human keyboard overrides for null agents
+            if agent0.kind == "null" or agent1.kind == "null":
+                keyboard = _decode_keyboard().to(device)
+                for ship_idx in range(N):
+                    t = int(team_id[0, ship_idx].item())
+                    if (t == 0 and agent0.kind == "null") or (t == 1 and agent1.kind == "null"):
+                        action[0, ship_idx] = keyboard
 
             obs, _, dones, truncated, _ = wrapper.step(action)
 
             if (dones | truncated).any():
-                hidden = policy.initial_hidden(1, N, device)
-                obs    = wrapper.reset()
+                reset_done_envs(agent0, dones | truncated, N)
+                reset_done_envs(agent1, dones | truncated, N)
+                obs = wrapper.reset()
 
             running = renderer.render(wrapper.state)
             if not running:
