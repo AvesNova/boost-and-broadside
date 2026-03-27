@@ -299,6 +299,10 @@ class PPOTrainer:
         avg_end   = B
 
         obs     = self.wrapper.reset()
+        # Stagger initial step counts so envs don't all truncate simultaneously.
+        # Uniformly distributed over [0, max_episode_steps) — after the first wave
+        # of truncations they naturally desynchronize on their own.
+        self.wrapper.env.state.step_count.random_(0, self.env_config.max_episode_steps)
         hidden  = self.policy.initial_hidden(B, N, self.device)
 
         # Avg-model hidden state — lives across the whole training run.
