@@ -186,7 +186,7 @@ class MVPPolicy(nn.Module):
 
         logprob, entropy = _evaluate_action(logits, actions)
 
-        return logprob, entropy, new_value
+        return logprob, entropy, new_value, logits
 
 
 # ---------------------------------------------------------------------------

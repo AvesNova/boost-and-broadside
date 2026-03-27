@@ -130,8 +130,9 @@ def main() -> None:
                 lr_warmup_steps     = 10_000_000,
                 checkpoint_interval = 10,
                 checkpoint_dir      = "checkpoints",
-                scripted_frac       = 0.25,
-                avg_model_frac      = 0.25,
+                scripted_frac       = 0.0,
+                avg_model_frac      = 0.50,
+                bc_coef             = 0.1,
             )
             trainer = PPOTrainer(
                 train_config   = train_config,

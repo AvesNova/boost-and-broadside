@@ -145,6 +145,7 @@ class TrainConfig:
     checkpoint_dir: str = "checkpoints"    # directory to write .pt files
     scripted_frac: float = 0.0             # fraction of envs using scripted opponent for team-1
     avg_model_frac: float = 0.0            # fraction of envs using avg-model opponent for team-1
+    bc_coef: float = 0.0                   # auxiliary BC loss coefficient (0 = disabled)
 
     def __post_init__(self) -> None:
         if self.num_envs % self.num_minibatches != 0:

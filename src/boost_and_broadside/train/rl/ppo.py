@@ -19,6 +19,7 @@ import torch.optim as optim
 
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import TrainConfig, ModelConfig, ShipConfig, EnvConfig, RewardConfig
+from boost_and_broadside.constants import POWER_SLICE, TURN_SLICE, SHOOT_SLICE
 from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
 from boost_and_broadside.env.state import TensorState
 from boost_and_broadside.env.wrapper import MVPEnvWrapper
@@ -334,14 +335,25 @@ class PPOTrainer:
                             obs_avg, avg_hidden
                         )
 
-                # Scripted opponent actions
+                # Team IDs — used for opponent overrides, actor mask, and BC expert masking
+                team_id = obs["team_id"]  # (B, N) int
+
+                # Scripted opponent actions + expert probs for BC loss
+                expert_probs_step: torch.Tensor | None = None
                 if self.B_sc > 0:
                     with torch.no_grad():
                         state_sc = _slice_state(self.wrapper.env.state, sc_start, sc_end)
-                        action_scripted = self.scripted_agent.get_actions(state_sc)
+                        action_scripted, expert_probs_sc = self.scripted_agent.get_actions_and_probs(state_sc)
+                    # Only fill BC targets for training-policy ships (not the opponent team)
+                    opp_flag_sc = self._opp_team_flag[:self.B_sc].unsqueeze(1)  # (B_sc, 1)
+                    train_mask_sc = (team_id[sc_start:sc_end] != opp_flag_sc)   # (B_sc, N) bool
+                    expert_probs_step = torch.zeros(
+                        self.cfg.num_envs, self.env_config.num_ships, 12,
+                        device=self.device,
+                    )
+                    expert_probs_step[sc_start:sc_end] = expert_probs_sc * train_mask_sc.unsqueeze(-1)
 
                 # Override opponent team actions; training-policy actions are the base
-                team_id = obs["team_id"]  # (B, N) int
                 action  = action.clone()
                 if self.B_sc > 0:
                     _override_opponent(
@@ -373,14 +385,15 @@ class PPOTrainer:
 
                 done_any = dones | truncated
                 self.buffer.add(
-                    obs        = obs,
-                    action     = action,
-                    logprob    = logprob,
-                    reward     = reward,
-                    done       = dones.float(),      # only true termination cuts GAE bootstrap
-                    value      = self.scaler.denormalize(value_norm),  # symlog-reward space for GAE
-                    alive      = obs["alive"].bool(),
-                    actor_mask = actor_mask,
+                    obs          = obs,
+                    action       = action,
+                    logprob      = logprob,
+                    reward       = reward,
+                    done         = dones.float(),      # only true termination cuts GAE bootstrap
+                    value        = self.scaler.denormalize(value_norm),  # symlog-reward space for GAE
+                    alive        = obs["alive"].bool(),
+                    actor_mask   = actor_mask,
+                    expert_probs = expert_probs_step,
                 )
 
                 # Reset hidden states for terminated envs
@@ -503,6 +516,7 @@ class PPOTrainer:
             "train/pg_loss":   [],
             "train/vf_loss":   [],
             "train/ent_loss":  [],
+            "train/bc_loss":   [],
             "train/approx_kl": [],
             "train/clip_frac": [],
             "train/grad_norm": [],
@@ -520,11 +534,13 @@ class PPOTrainer:
         for epoch_idx in range(cfg.num_epochs):
             for batch in self.buffer.get_minibatch_iterator(cfg.num_minibatches):
                 (mb_obs, mb_actions, mb_old_logprobs, mb_advantages,
-                 mb_returns, mb_values, mb_alive, mb_hidden, mb_actor_mask) = batch
+                 mb_returns, mb_values, mb_alive, mb_hidden, mb_actor_mask,
+                 mb_expert_probs) = batch
 
                 # Re-evaluate actions with current policy
                 # new_value: (T, B_mb, N, K) in normalized space
-                logprob, entropy, new_value = self.policy.evaluate_actions(
+                # policy_logits: (T, B_mb, N, 12) — needed for BC loss
+                logprob, entropy, new_value, policy_logits = self.policy.evaluate_actions(
                     obs            = mb_obs,
                     actions        = mb_actions.long(),
                     initial_hidden = mb_hidden,
@@ -576,7 +592,23 @@ class PPOTrainer:
                 # ---- Entropy bonus (training ships only) ---------------------
                 ent_loss = -(entropy * actor_f).sum() / actor_sum
 
-                loss = pg_loss + cfg.vf_coef * vf_loss + cfg.ent_coef * ent_loss
+                # ---- Behavioral cloning loss (scripted-group training ships) -
+                # bc_f: alive, training-policy, scripted-group ships
+                # expert_probs > 0 exactly where scripted agent filled in targets.
+                bc_valid = (mb_expert_probs.sum(-1) > 0)           # (T, B_mb, N)
+                bc_f     = (bc_valid & mb_actor_mask & mb_alive).float()
+                bc_sum   = bc_f.sum().clamp(min=1.0)
+                ce = (
+                    -(mb_expert_probs[..., POWER_SLICE] *
+                      F.log_softmax(policy_logits[..., POWER_SLICE], dim=-1)).sum(-1)
+                    -(mb_expert_probs[..., TURN_SLICE] *
+                      F.log_softmax(policy_logits[..., TURN_SLICE],  dim=-1)).sum(-1)
+                    -(mb_expert_probs[..., SHOOT_SLICE] *
+                      F.log_softmax(policy_logits[..., SHOOT_SLICE], dim=-1)).sum(-1)
+                )  # (T, B_mb, N)
+                bc_loss = (ce * bc_f).sum() / bc_sum
+
+                loss = pg_loss + cfg.vf_coef * vf_loss + cfg.ent_coef * ent_loss + cfg.bc_coef * bc_loss
 
                 self.optim.zero_grad()
                 loss.backward()
@@ -606,6 +638,7 @@ class PPOTrainer:
                 accum_scalar["train/pg_loss"]   .append(pg_loss.item())
                 accum_scalar["train/vf_loss"]   .append(vf_loss.item())
                 accum_scalar["train/ent_loss"]  .append(ent_loss.item())
+                accum_scalar["train/bc_loss"]   .append(bc_loss.item())
                 accum_scalar["train/approx_kl"] .append(approx_kl)
                 accum_scalar["train/clip_frac"] .append(clip_frac)
                 accum_scalar["train/grad_norm"] .append(grad_norm.item())

@@ -159,11 +159,12 @@ class TestMVPPolicy:
         hidden      = policy.initial_hidden(B, N, torch.device("cpu"))
         alive_mask  = torch.ones(T, B, N, dtype=torch.bool)
 
-        logprob, entropy, new_value = policy.evaluate_actions(obs, actions, hidden, alive_mask)
+        logprob, entropy, new_value, logits = policy.evaluate_actions(obs, actions, hidden, alive_mask)
 
         assert logprob.shape   == (T, B, N)
         assert entropy.shape   == (T, B, N)
         assert new_value.shape == (T, B, N, K)
+        assert logits.shape    == (T, B, N, 12)
 
     def test_hidden_reset_zeros_done_envs(self, model_cfg, ship_cfg):
         """reset_hidden_for_envs must zero hidden states for done environments."""

@@ -174,9 +174,10 @@ class RolloutBuffer:
         self.dones      = torch.zeros((T, B),       device=device, dtype=torch.float32)
         self.alive_mask = torch.zeros((T, B, N),    device=device, dtype=torch.bool)
 
-        self.advantages  = torch.zeros((T, B, N, K), device=device, dtype=torch.float32)
-        self.returns     = torch.zeros((T, B, N, K), device=device, dtype=torch.float32)
-        self.actor_masks = torch.ones( (T, B, N),    device=device, dtype=torch.bool)
+        self.advantages   = torch.zeros((T, B, N, K),  device=device, dtype=torch.float32)
+        self.returns      = torch.zeros((T, B, N, K),  device=device, dtype=torch.float32)
+        self.actor_masks  = torch.ones( (T, B, N),     device=device, dtype=torch.bool)
+        self.expert_probs = torch.zeros((T, B, N, 12), device=device, dtype=torch.float32)
 
         # Initial GRU hidden state at the start of this rollout
         self.initial_hidden: torch.Tensor | None = None
@@ -191,6 +192,7 @@ class RolloutBuffer:
         """Clear the write pointer (tensors are overwritten, not zeroed)."""
         self.ptr            = 0
         self.initial_hidden = None
+        self.expert_probs.zero_()  # only filled for scripted-group envs; rest must be zero
 
     def store_initial_hidden(self, hidden: torch.Tensor) -> None:
         """Store the GRU hidden state at rollout start.
@@ -210,20 +212,23 @@ class RolloutBuffer:
         value: torch.Tensor,
         alive: torch.Tensor,
         actor_mask: torch.Tensor | None = None,
+        expert_probs: torch.Tensor | None = None,
     ) -> None:
         """Store one step.
 
         Args:
-            obs:        Dict with (B, N, ...) tensors — float32.
-            action:     (B, N, 3) int.
-            logprob:    (B, N) float.
-            reward:     (B, N, K) float — raw per-component per-ship rewards.
-            done:       (B,) float (0.0 or 1.0).
-            value:      (B, N, K) float — critic expected values (symlog-reward space).
-            alive:      (B, N) bool.
-            actor_mask: (B, N) bool — True for ships whose actions came from the training
-                        policy and should contribute to the actor/entropy loss. Defaults to
-                        all-True (pure self-play: all ships are training ships).
+            obs:          Dict with (B, N, ...) tensors — float32.
+            action:       (B, N, 3) int.
+            logprob:      (B, N) float.
+            reward:       (B, N, K) float — raw per-component per-ship rewards.
+            done:         (B,) float (0.0 or 1.0).
+            value:        (B, N, K) float — critic expected values (symlog-reward space).
+            alive:        (B, N) bool.
+            actor_mask:   (B, N) bool — True for ships whose actions came from the training
+                          policy and should contribute to the actor/entropy loss. Defaults to
+                          all-True (pure self-play: all ships are training ships).
+            expert_probs: (B, N, 12) float — scripted-agent marginal probs [power|turn|shoot]
+                          for BC loss. Zero for envs without a scripted opponent.
         """
         if self.ptr >= self.num_steps:
             raise IndexError("Buffer is full — call reset() before reuse.")
@@ -240,6 +245,8 @@ class RolloutBuffer:
         self.values     [t] = value
         self.alive_mask [t] = alive
         self.actor_masks[t] = actor_mask if actor_mask is not None else torch.ones_like(alive)
+        if expert_probs is not None:
+            self.expert_probs[t] = expert_probs
 
         self.ptr += 1
 
@@ -292,15 +299,16 @@ class RolloutBuffer:
 
         Yields:
             Tuple of:
-                mb_obs:         dict[str, (T, B_mb, N, ...)] float32
-                mb_actions:     (T, B_mb, N, 3) int32
-                mb_logprobs:    (T, B_mb, N) float32
-                mb_advantages:  (T, B_mb, N, K) float32
-                mb_returns:     (T, B_mb, N, K) float32
-                mb_values:      (T, B_mb, N, K) float32
-                mb_alive:       (T, B_mb, N) bool
-                mb_hidden:      (1, B_mb*N, D) float32
-                mb_actor_mask:  (T, B_mb, N) bool
+                mb_obs:           dict[str, (T, B_mb, N, ...)] float32
+                mb_actions:       (T, B_mb, N, 3) int32
+                mb_logprobs:      (T, B_mb, N) float32
+                mb_advantages:    (T, B_mb, N, K) float32
+                mb_returns:       (T, B_mb, N, K) float32
+                mb_values:        (T, B_mb, N, K) float32
+                mb_alive:         (T, B_mb, N) bool
+                mb_hidden:        (1, B_mb*N, D) float32
+                mb_actor_mask:    (T, B_mb, N) bool
+                mb_expert_probs:  (T, B_mb, N, 12) float32
         """
         assert self.initial_hidden is not None, "Call store_initial_hidden() before iterating."
 
@@ -320,12 +328,13 @@ class RolloutBuffer:
 
             yield (
                 mb_obs,
-                self.actions    [:, idx],
-                self.logprobs   [:, idx],
-                self.advantages [:, idx],
-                self.returns    [:, idx],
-                self.values     [:, idx],
-                self.alive_mask [:, idx],
+                self.actions      [:, idx],
+                self.logprobs     [:, idx],
+                self.advantages   [:, idx],
+                self.returns      [:, idx],
+                self.values       [:, idx],
+                self.alive_mask   [:, idx],
                 mb_hidden.contiguous(),
-                self.actor_masks[:, idx],
+                self.actor_masks  [:, idx],
+                self.expert_probs [:, idx],
             )
