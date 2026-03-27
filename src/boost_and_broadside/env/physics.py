@@ -309,7 +309,7 @@ def _apply_combat_damage(state: TensorState, config: ShipConfig) -> TensorState:
     hit_angles       = torch.angle(
         -flat_bullet_vel.unsqueeze(1) * torch.conj(state.ship_attitude.unsqueeze(2))
     )                                                                                   # (B, N, N*K)
-    damage_scale     = 1.0 - 0.9 * torch.exp(-(hit_angles ** 2) * 4.0 / torch.pi)
+    damage_scale     = 1.0 - (1.0 - config.bullet_min_damage_frac) * torch.exp(-(hit_angles ** 2) * 4.0 / torch.pi)
     damage_per_hit   = damage_scale * valid_hit.float() * config.bullet_damage
     total_damage     = damage_per_hit.sum(dim=2)                                       # (B, N)
 

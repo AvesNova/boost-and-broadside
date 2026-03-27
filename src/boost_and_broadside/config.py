@@ -62,6 +62,7 @@ class ShipConfig:
     bullet_speed: float = 500.0
     bullet_energy_cost: float = 3.0
     bullet_damage: float = 10.0
+    bullet_min_damage_frac: float = 0.1  # fraction of bullet_damage at a head-on hit
     bullet_lifetime: float = 1.0       # seconds
     bullet_spread: float = 12.0        # pixels/s of noise added to velocity
     firing_cooldown: float = 0.1       # seconds

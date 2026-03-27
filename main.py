@@ -53,12 +53,12 @@ def main() -> None:
     # ------------------------------------------------------------------
     # Shared configs (all modes)
     # ------------------------------------------------------------------
-    ship_config = ShipConfig(bullet_energy_cost=2)
+    ship_config = ShipConfig(bullet_energy_cost=2, bullet_min_damage_frac=1.0)
 
     env_config = EnvConfig(
         num_ships         = 2,    # 4v4
         max_bullets       = 20,
-        max_episode_steps = 512,
+        max_episode_steps = 1024,
     )
 
     model_config = ModelConfig(
@@ -71,7 +71,7 @@ def main() -> None:
         # --- Objective rewards
         victory_weight     = 1.0,
         death_weight       = 1.0,
-        damage_weight      = 1.0,
+        damage_weight      = 10.0,
 
         # Lambda=-1 for these components on enemy ships (outcome rewards)
         enemy_neg_lambda_components = frozenset({"damage", "death", "victory", "exposure"}),
@@ -80,7 +80,7 @@ def main() -> None:
         positioning_weight = 0.0,
         positioning_radius = 400.0,
 
-        facing_weight      = 0.0,
+        facing_weight      = 1.0,
         exposure_weight    = 0.0,
 
         closing_speed_weight = 1.0,
@@ -113,8 +113,8 @@ def main() -> None:
         case "train":
             scripted_agent = StochasticScriptedAgent(ship_config, StochasticAgentConfig())
             train_config = TrainConfig(
-                num_envs            = 256 + 128,
-                num_steps           = 512,
+                num_envs            = 1700,
+                num_steps           = 128,
                 num_epochs          = 4,
                 num_minibatches     = 4,
                 learning_rate       = 3e-4,
