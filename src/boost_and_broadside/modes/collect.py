@@ -1,4 +1,8 @@
-"""collect_stats mode: run parallel games between two specified agents and report stats."""
+"""collect_stats mode: run parallel games between two specified agents and report stats.
+
+Also exports ``_run_matchup`` — a low-level helper used by the PPO trainer to compute
+ELO win rates without printing any output.
+"""
 
 import time
 
@@ -14,6 +18,88 @@ from boost_and_broadside.modes.agent_factory import (
     reset_done_envs,
     resolve_agent_spec,
 )
+
+
+def _run_matchup(
+    policy_a,  # MVPPolicy — always plays as team 0
+    opponent,  # MVPPolicy | StochasticScriptedAgent | None (None = random)
+    env:        TensorEnv,
+    ship_config: ShipConfig,
+    env_config:  EnvConfig,
+    num_games:   int,
+    device,
+) -> float:
+    """Run num_games parallel games and return policy_a's win rate.
+
+    policy_a controls all team-0 ships; opponent controls all team-1 ships.
+    Ties count as 0.5 wins.  Returns a float in [0, 1].
+
+    Args:
+        policy_a:   The policy whose win rate we measure (always team 0).
+        opponent:   Opponent policy, scripted agent, or None for random actions.
+        env:        Pre-allocated TensorEnv with num_envs == num_games.
+        ship_config: Physics constants.
+        env_config:  Environment sizing.
+        num_games:   Number of parallel games (must match env.num_envs).
+        device:      Torch device.
+
+    Returns:
+        Win rate in [0.0, 1.0] where ties contribute 0.5.
+    """
+    from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
+    from boost_and_broadside.models.mvp.policy import MVPPolicy
+
+    B   = num_games
+    N   = env_config.num_ships
+    dev = torch.device(device)
+
+    agent_a = ResolvedAgent("policy", policy_a)
+    if isinstance(opponent, MVPPolicy):
+        agent_b = ResolvedAgent("policy", opponent)
+    elif isinstance(opponent, StochasticScriptedAgent):
+        agent_b = ResolvedAgent("scripted", opponent)
+    else:
+        agent_b = ResolvedAgent("random", None)
+
+    finished     = torch.zeros(B, dtype=torch.bool, device=dev)
+    n_team0_wins = 0
+    n_ties       = 0
+
+    init_hidden(agent_a, B, N, dev)
+    init_hidden(agent_b, B, N, dev)
+    env.reset()
+
+    while not finished.all():
+        state   = env.state
+        obs     = _obs_from_state(state, ship_config)
+        action_a = get_actions(agent_a, obs, state, B, N, dev)
+        action_b = get_actions(agent_b, obs, state, B, N, dev)
+
+        team_id = state.ship_team_id  # (B, N)
+        action  = torch.where((team_id == 0).unsqueeze(-1), action_a, action_b)
+
+        dones, truncated = env.step(action)
+        done_any = dones | truncated
+
+        new_done = done_any & ~finished
+        if new_done.any():
+            alive        = env.state.ship_alive
+            team         = env.state.ship_team_id
+            team0_alive  = (alive & (team == 0)).any(dim=1)
+            team1_alive  = (alive & (team == 1)).any(dim=1)
+            team1_won    = new_done & team1_alive & ~team0_alive
+            team0_won    = new_done & team0_alive & ~team1_alive
+            tied         = new_done & ~team0_won & ~team1_won
+            n_team0_wins += int(team0_won.sum().item())
+            n_ties       += int(tied.sum().item())
+            finished     |= new_done
+
+        if done_any.any():
+            env.reset_envs(done_any)
+            reset_done_envs(agent_a, done_any, N)
+            reset_done_envs(agent_b, done_any, N)
+
+    return (n_team0_wins + 0.5 * n_ties) / B
 
 
 def _obs_from_state(state: TensorState, ship_config: ShipConfig) -> dict[str, torch.Tensor]:

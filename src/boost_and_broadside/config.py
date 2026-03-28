@@ -147,14 +147,24 @@ class TrainConfig:
     avg_model_frac: float = 0.0            # fraction of envs using avg-model opponent for team-1
     bc_coef: float = 0.0                   # auxiliary BC loss coefficient (0 = disabled)
 
+    # --- League play + ELO ---
+    league_frac:              float = 0.0          # fraction of envs using a roster-sampled opponent
+    league_size:              int   = 20           # max number of checkpoint entries in the roster
+    elo_eval_games:           int   = 256          # parallel games per ELO evaluation matchup
+    elo_eval_interval:        int   = 10           # run ELO eval every N updates (0 = disabled)
+    elo_milestone_gap:        float = 50.0         # add checkpoint to roster every N ELO points gained
+    elo_k_factor:             float = 32.0         # ELO K-factor (score sensitivity per match)
+    elo_temperature:          float = 200.0        # ELO bandwidth for proximity-weighted sampling
+    scripted_roster_min_steps: int  = 100_000_000  # delay adding scripted to roster until this many steps
+
     def __post_init__(self) -> None:
         if self.num_envs % self.num_minibatches != 0:
             raise ValueError(
                 f"num_envs={self.num_envs} must be divisible by "
                 f"num_minibatches={self.num_minibatches}"
             )
-        if self.scripted_frac + self.avg_model_frac >= 1.0:
+        if self.scripted_frac + self.avg_model_frac + self.league_frac >= 1.0:
             raise ValueError(
-                f"scripted_frac + avg_model_frac must be < 1.0, "
-                f"got {self.scripted_frac} + {self.avg_model_frac}"
+                f"scripted_frac + avg_model_frac + league_frac must be < 1.0, "
+                f"got {self.scripted_frac} + {self.avg_model_frac} + {self.league_frac}"
             )

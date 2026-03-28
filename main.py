@@ -152,6 +152,15 @@ def main() -> None:
                 scripted_frac       = 0.0,
                 avg_model_frac      = 0.50,
                 bc_coef             = 0.1,
+
+                league_frac         = 0.0,
+                league_size         = 20,
+                elo_eval_games      = 256,
+                elo_eval_interval   = 10,
+                elo_milestone_gap         = 50.0,
+                elo_k_factor              = 32.0,
+                elo_temperature           = 200.0,
+                scripted_roster_min_steps = 100_000_000,
             )
             trainer = PPOTrainer(
                 train_config   = train_config,

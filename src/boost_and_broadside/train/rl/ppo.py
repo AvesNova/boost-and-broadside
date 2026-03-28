@@ -20,11 +20,13 @@ import torch.optim as optim
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import TrainConfig, ModelConfig, ShipConfig, EnvConfig, RewardConfig
 from boost_and_broadside.constants import POWER_SLICE, TURN_SLICE, SHOOT_SLICE
+from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
 from boost_and_broadside.env.state import TensorState
 from boost_and_broadside.env.wrapper import MVPEnvWrapper
 from boost_and_broadside.models.mvp.policy import MVPPolicy
 from boost_and_broadside.train.rl.buffer import RolloutBuffer, ReturnScaler, symlog
+from boost_and_broadside.train.rl.roster import EloRoster, RosterEntry
 
 
 # ------------------------------------------------------------------
@@ -160,18 +162,23 @@ class PPOTrainer:
         self.scripted_agent = scripted_agent
 
         # Env group sizes — contiguous slices of the B envs:
-        #   [0, B_self)            → pure self-play
-        #   [B_self, B_self+B_sc)  → scripted opponent
-        #   [B_self+B_sc, B)       → avg-model opponent
+        #   [0, B_self)                          → pure self-play
+        #   [B_self, B_self+B_sc)               → scripted opponent (+ BC targets)
+        #   [B_self+B_sc, B_self+B_sc+B_avg)   → avg-model opponent
+        #   [B_self+B_sc+B_avg, B)              → league roster opponent
         B = train_config.num_envs
-        self.B_sc   = round(train_config.scripted_frac  * B)
-        self.B_avg  = round(train_config.avg_model_frac * B)
-        self.B_self = B - self.B_sc - self.B_avg
+        self.B_sc     = round(train_config.scripted_frac  * B)
+        self.B_avg    = round(train_config.avg_model_frac * B)
+        self.B_league = round(train_config.league_frac    * B)
+        self.B_self   = B - self.B_sc - self.B_avg - self.B_league
 
         if self.B_sc > 0 and scripted_agent is None:
             raise ValueError(
                 "scripted_frac > 0 requires a scripted_agent to be provided."
             )
+        if self.B_league > 0 and scripted_agent is None and train_config.avg_model_frac == 0.0:
+            # League can still work with only checkpoint entries (none yet at startup).
+            pass
 
         self.wrapper = MVPEnvWrapper(
             num_envs       = train_config.num_envs,
@@ -249,13 +256,36 @@ class PPOTrainer:
         ]
         self._avg_update_count: int = 0
 
-        # Per-env flag: which team_id is the opponent in scripted/avg groups.
+        # Per-env flag: which team_id is the opponent in scripted/avg/league groups.
         # Randomised at init and re-randomised each episode reset.
-        # Shape: (B_sc + B_avg,) — indexed relative to the non-self-play slice.
-        n_opp_envs = self.B_sc + self.B_avg
+        # Shape: (B_sc + B_avg + B_league,) — indexed relative to the non-self-play slice.
+        #   [:B_sc]                → scripted group
+        #   [B_sc : B_sc+B_avg]   → avg-model group
+        #   [B_sc+B_avg :]         → league group
+        n_opp_envs = self.B_sc + self.B_avg + self.B_league
         self._opp_team_flag = torch.randint(
             0, 2, (n_opp_envs,), device=self.device, dtype=torch.int32
         ) if n_opp_envs > 0 else torch.empty(0, device=self.device, dtype=torch.int32)
+
+        # --- League play + ELO ---
+        self.roster = EloRoster(
+            max_size        = train_config.league_size,
+            k_factor        = train_config.elo_k_factor,
+            elo_temperature = train_config.elo_temperature,
+        )
+        # Random anchor is added by EloRoster.__init__ (ELO=0, fixed).
+        # "avg" entry is added when _update_avg_model() is first called.
+        # "scripted" entry is added lazily after scripted_roster_min_steps.
+
+        # Training ELO starts at 0 (same as the random anchor) — reflecting that an
+        # untrained policy behaves like random.  It will climb as eval progresses.
+        self._training_elo:  float = 0.0
+        self._elo_milestone: float = 0.0   # training ELO at the last milestone checkpoint
+        self._last_checkpoint_path: Path | None = None
+
+        # Current league opponent for the ongoing rollout (rotated each rollout).
+        self._current_league_entry:  RosterEntry | None = None
+        self._current_league_policy: MVPPolicy | None = None
 
         # Async logging queue
         self._log_queue: Queue = Queue()
@@ -283,20 +313,28 @@ class PPOTrainer:
 
     def _update_avg_model(self) -> None:
         """Add the current training policy snapshot to the uniform running average."""
+        first_update = (self._avg_update_count == 0)
         self._avg_update_count += 1
         for cum, p in zip(self._avg_param_cumsum, self.policy.parameters()):
             cum.add_(p.detach())
         for avg_p, cum in zip(self.avg_policy.parameters(), self._avg_param_cumsum):
             avg_p.data.copy_(cum / self._avg_update_count)
+        # Register the avg model as a roster entry the first time it's ready,
+        # seeded at current training ELO (it's a recent snapshot, so it's a
+        # reasonable starting estimate that will quickly self-correct via eval).
+        if first_update:
+            self.roster.add_special("avg", self._global_step, 0, initial_elo=self._training_elo)
 
     def train(self) -> None:
         """Run the full PPO training loop."""
         B  = self.cfg.num_envs
         N  = self.wrapper.num_ships
-        sc_start  = self.B_self
-        sc_end    = self.B_self + self.B_sc
-        avg_start = sc_end
-        avg_end   = B
+        sc_start     = self.B_self
+        sc_end       = self.B_self + self.B_sc
+        avg_start    = sc_end
+        avg_end      = avg_start + self.B_avg
+        league_start = avg_end
+        league_end   = B
 
         obs     = self.wrapper.reset()
         # Stagger initial step counts so envs don't all truncate simultaneously.
@@ -310,6 +348,9 @@ class PPOTrainer:
         if self.B_avg > 0:
             avg_hidden = self.avg_policy.initial_hidden(self.B_avg, N, self.device)
 
+        # League hidden state — re-initialised each rollout when the entry changes.
+        league_hidden: torch.Tensor | None = None
+
         start_time = time.time()
 
         for update in range(1, self._num_updates + 1):
@@ -320,6 +361,34 @@ class PPOTrainer:
             ep_rewards: list[torch.Tensor] = []
             ep_lengths: list[torch.Tensor] = []
             ep_components: dict[str, list[torch.Tensor]] = {}
+
+            # Sample a league opponent for this rollout (rotated each update).
+            # Evict the previous checkpoint's weights before loading the new one.
+            if self.B_league > 0:
+                self.roster.evict_all_checkpoint_policies()
+                entry = self.roster.sample(self._training_elo)
+                self._current_league_entry = entry
+                if entry is None or (entry.kind == "avg" and self._avg_update_count == 0):
+                    # No valid opponent yet — league group falls back to self-play this rollout.
+                    self._current_league_entry  = None
+                    self._current_league_policy = None
+                elif entry.kind == "checkpoint":
+                    self.roster.load_policy(
+                        entry, self.model_config, self.ship_config,
+                        self.wrapper.num_active_components, self.device,
+                    )
+                    self._current_league_policy = entry._policy
+                    league_hidden = self._current_league_policy.initial_hidden(
+                        self.B_league, N, self.device
+                    )
+                elif entry.kind == "avg":
+                    self._current_league_policy = self.avg_policy
+                    league_hidden = self._current_league_policy.initial_hidden(
+                        self.B_league, N, self.device
+                    )
+                else:  # "scripted" — no policy forward pass needed
+                    self._current_league_policy = None
+                    league_hidden = None
 
             # ----------------------------------------------------------------
             # Rollout collection
@@ -338,6 +407,23 @@ class PPOTrainer:
                         action_avg, _, _, avg_hidden = self.avg_policy.get_action_and_value(
                             obs_avg, avg_hidden
                         )
+
+                # League opponent actions (when a valid entry is loaded for this rollout)
+                use_league = self.B_league > 0 and self._current_league_entry is not None
+                if use_league:
+                    if self._current_league_policy is not None:
+                        with torch.no_grad():
+                            obs_league = _slice_obs(obs, league_start, league_end)
+                            action_league, _, _, league_hidden = \
+                                self._current_league_policy.get_action_and_value(
+                                    obs_league, league_hidden
+                                )
+                    else:  # scripted
+                        state_league = _slice_state(
+                            self.wrapper.env.state, league_start, league_end
+                        )
+                        with torch.no_grad():
+                            action_league = self.scripted_agent.get_actions(state_league)
 
                 # Team IDs — used for opponent overrides, actor mask, and BC expert masking
                 team_id = obs["team_id"]  # (B, N) int
@@ -359,25 +445,30 @@ class PPOTrainer:
 
                 # Override opponent team actions; training-policy actions are the base
                 action  = action.clone()
+                sc_flags  = self._opp_team_flag[:self.B_sc]
+                avg_flags = self._opp_team_flag[self.B_sc : self.B_sc + self.B_avg]
+                lg_flags  = self._opp_team_flag[self.B_sc + self.B_avg :]
                 if self.B_sc > 0:
-                    _override_opponent(
-                        action, team_id, self._opp_team_flag[:self.B_sc],
-                        sc_start, sc_end, action_scripted,
-                    )
+                    _override_opponent(action, team_id, sc_flags,  sc_start,     sc_end,     action_scripted)
                 if use_avg:
-                    _override_opponent(
-                        action, team_id, self._opp_team_flag[self.B_sc:],
-                        avg_start, avg_end, action_avg,
-                    )
+                    _override_opponent(action, team_id, avg_flags, avg_start,    avg_end,    action_avg)
+                if use_league:
+                    _override_opponent(action, team_id, lg_flags,  league_start, league_end, action_league)
 
                 # Actor mask: True for ships whose actions were chosen by training policy
                 actor_mask = torch.ones(B, N, dtype=torch.bool, device=self.device)
                 if self.B_sc > 0:
-                    opp_flag_sc = self._opp_team_flag[:self.B_sc].unsqueeze(1)   # (B_sc, 1)
-                    actor_mask[sc_start:sc_end] = (team_id[sc_start:sc_end] != opp_flag_sc)
+                    actor_mask[sc_start:sc_end] = (
+                        team_id[sc_start:sc_end] != sc_flags.unsqueeze(1)
+                    )
                 if use_avg:
-                    opp_flag_avg = self._opp_team_flag[self.B_sc:].unsqueeze(1)  # (B_avg, 1)
-                    actor_mask[avg_start:avg_end] = (team_id[avg_start:avg_end] != opp_flag_avg)
+                    actor_mask[avg_start:avg_end] = (
+                        team_id[avg_start:avg_end] != avg_flags.unsqueeze(1)
+                    )
+                if use_league:
+                    actor_mask[league_start:league_end] = (
+                        team_id[league_start:league_end] != lg_flags.unsqueeze(1)
+                    )
 
                 next_obs, reward, dones, truncated, info = self.wrapper.step(action)
 
@@ -406,10 +497,14 @@ class PPOTrainer:
                     avg_hidden = self.avg_policy.reset_hidden_for_envs(
                         avg_hidden, done_any[avg_start:avg_end], N
                     )
+                if use_league and self._current_league_policy is not None:
+                    league_hidden = self._current_league_policy.reset_hidden_for_envs(
+                        league_hidden, done_any[league_start:league_end], N
+                    )
 
                 # Re-randomise opponent team for envs that just ended an episode
-                if self.B_sc + self.B_avg > 0:
-                    done_non_self = done_any[self.B_self:]          # (B_sc + B_avg,)
+                if self.B_sc + self.B_avg + self.B_league > 0:
+                    done_non_self = done_any[self.B_self:]
                     new_flags = torch.randint(
                         0, 2, self._opp_team_flag.shape,
                         device=self.device, dtype=torch.int32,
@@ -473,19 +568,37 @@ class PPOTrainer:
             # Decay shaping weights based on training progress
             metrics.update(self._decay.step(metrics))
 
+            # ELO evaluation — runs sync matchups against all roster entries
+            if self.cfg.elo_eval_interval > 0 and update % self.cfg.elo_eval_interval == 0:
+                elo_metrics = self._run_elo_eval()
+                metrics.update(elo_metrics)
+
             # Single log call per update — all metrics at the same step
             self._enqueue_log(metrics, step=self._global_step)
 
             if update % 10 == 0:
+                elo_str = f"  elo={self._training_elo:.0f}" if self.cfg.elo_eval_interval > 0 else ""
                 print(
                     f"update={update}/{self._num_updates}  "
                     f"step={self._global_step:,}  "
                     f"sps={sps:,}  "
                     f"loss={metrics.get('train/loss', 0.0):.4f}"
+                    f"{elo_str}"
                 )
 
             if self.cfg.checkpoint_interval > 0 and update % self.cfg.checkpoint_interval == 0:
                 self._save_checkpoint(update)
+                # Add to roster if training ELO has crossed the next milestone
+                if (self._last_checkpoint_path is not None and
+                        self._last_checkpoint_path.exists() and
+                        self.cfg.elo_milestone_gap > 0 and
+                        self._training_elo - self._elo_milestone >= self.cfg.elo_milestone_gap):
+                    self.roster.add_checkpoint(
+                        str(self._last_checkpoint_path), self._global_step, update,
+                        initial_elo=self._training_elo,
+                    )
+                    self._elo_milestone = self._training_elo
+                    self._save_roster_json()
 
         self._log_queue.put(None)  # signal logger thread to exit
 
@@ -750,6 +863,78 @@ class PPOTrainer:
         return _DecayScheduler(targets)
 
     # ------------------------------------------------------------------
+    # ELO evaluation
+    # ------------------------------------------------------------------
+
+    def _run_elo_eval(self) -> dict[str, float]:
+        """Run sync matchups against every roster entry and update ELO ratings.
+
+        Also lazily adds the scripted entry once scripted_roster_min_steps is reached.
+
+        Creates a temporary TensorEnv for the matchups, then evicts all loaded
+        checkpoint policies to reclaim memory.  The current league opponent is
+        reloaded at the next rollout start.
+
+        Returns:
+            Dict of ELO metrics suitable for W&B logging.
+        """
+        from boost_and_broadside.modes.collect import _run_matchup
+
+        # Lazily add the scripted agent once enough training has happened.
+        if (self.scripted_agent is not None
+                and self._global_step >= self.cfg.scripted_roster_min_steps
+                and not any(e.kind == "scripted" for e in self.roster.entries)):
+            self.roster.add_special(
+                "scripted", self._global_step, 0, initial_elo=self._training_elo,
+            )
+
+        games = self.cfg.elo_eval_games
+        env   = TensorEnv(games, self.ship_config, self.env_config, self.device)
+        self.policy.eval()
+        metrics: dict[str, float] = {}
+
+        try:
+            with torch.no_grad():
+                for entry in list(self.roster.entries):  # copy: entries may grow
+                    if entry.kind == "random":
+                        opponent = None  # random agent
+                    elif entry.kind == "checkpoint":
+                        self.roster.load_policy(
+                            entry, self.model_config, self.ship_config,
+                            self.wrapper.num_active_components, self.device,
+                        )
+                        opponent = entry._policy
+                    elif entry.kind == "avg":
+                        if self._avg_update_count == 0:
+                            continue  # avg not ready yet
+                        opponent = self.avg_policy
+                    else:  # "scripted"
+                        if self.scripted_agent is None:
+                            continue
+                        opponent = self.scripted_agent
+
+                    win_rate = _run_matchup(
+                        self.policy, opponent, env,
+                        self.ship_config, self.env_config, games, self.device,
+                    )
+                    self._training_elo = self.roster.update_elo(
+                        self._training_elo, entry, win_rate,
+                    )
+                    metrics[f"elo/{entry.label}"] = entry.elo
+        finally:
+            self.policy.train()
+            self.roster.evict_all_checkpoint_policies()
+
+        metrics["elo/training"] = self._training_elo
+        return metrics
+
+    def _save_roster_json(self) -> None:
+        """Persist roster metadata alongside the run's checkpoints."""
+        ckpt_dir = Path(self.cfg.checkpoint_dir) / self._run_name
+        ckpt_dir.mkdir(parents=True, exist_ok=True)
+        self.roster.save_json(ckpt_dir / "roster.json")
+
+    # ------------------------------------------------------------------
     # Checkpointing
     # ------------------------------------------------------------------
 
@@ -766,20 +951,29 @@ class PPOTrainer:
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         path = ckpt_dir / f"step_{self._global_step:012d}.pt"
         torch.save({
-            "policy_state_dict":    self.policy.state_dict(),
-            "optimizer_state_dict": self.optim.state_dict(),
-            "scaler_state_dict":    self.scaler.state_dict(),
+            "policy_state_dict":     self.policy.state_dict(),
+            "optimizer_state_dict":  self.optim.state_dict(),
+            "scaler_state_dict":     self.scaler.state_dict(),
             "avg_policy_state_dict": self.avg_policy.state_dict(),
-            "avg_param_cumsum":     [c.cpu() for c in self._avg_param_cumsum],
-            "avg_update_count":     self._avg_update_count,
-            "update":               update,
-            "global_step":          self._global_step,
-            "train_config":         dataclasses.asdict(self.cfg),
-            "model_config":         dataclasses.asdict(self.model_config),
-            "env_config":           dataclasses.asdict(self.env_config),
-            "reward_config":        dataclasses.asdict(self.reward_config),
+            "avg_param_cumsum":      [c.cpu() for c in self._avg_param_cumsum],
+            "avg_update_count":      self._avg_update_count,
+            "update":                update,
+            "global_step":           self._global_step,
+            "training_elo":          self._training_elo,
+            "train_config":          dataclasses.asdict(self.cfg),
+            "model_config":          dataclasses.asdict(self.model_config),
+            "env_config":            dataclasses.asdict(self.env_config),
+            "reward_config":         dataclasses.asdict(self.reward_config),
         }, path)
+        self._last_checkpoint_path = path
         print(f"Checkpoint saved: {path}")
+
+        # Prune: keep only the latest checkpoint + all roster-referenced files
+        kept = self.roster.kept_paths()
+        kept.add(str(path))
+        for old_path in ckpt_dir.glob("step_*.pt"):
+            if str(old_path) not in kept:
+                old_path.unlink(missing_ok=True)
 
     def load_checkpoint(self, path: str) -> int:
         """Load policy and optimizer weights from a checkpoint file.
@@ -799,6 +993,15 @@ class PPOTrainer:
             self.avg_policy.load_state_dict(ckpt["avg_policy_state_dict"])
             self._avg_param_cumsum = [c.to(self.device) for c in ckpt["avg_param_cumsum"]]
             self._avg_update_count = ckpt["avg_update_count"]
+        if "training_elo" in ckpt:
+            self._training_elo  = ckpt["training_elo"]
+            self._elo_milestone = ckpt["training_elo"]
+
+        # Restore roster if its JSON exists alongside the checkpoint
+        roster_path = Path(path).parent / "roster.json"
+        if roster_path.exists():
+            self.roster.load_json(roster_path)
+
         return ckpt["update"]
 
     # ------------------------------------------------------------------
