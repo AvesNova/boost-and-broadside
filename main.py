@@ -143,15 +143,31 @@ def main() -> None:
                 ent_coef            = 0.01,
                 vf_coef             = 0.5,
                 max_grad_norm       = 0.5,
-                total_timesteps     = 1_000_000_000,
+                total_timesteps     = 2_000_000_000,
                 return_ema_alpha    = 0.005,  # ~200-update memory for percentile EMA
                 return_min_span     = 1.0,    # guard against zero-return disabled components
-                lr_warmup_steps     = 10_000_000,
+                lr_warmup_steps     = 20_000_000,
                 checkpoint_interval = 10,
                 checkpoint_dir      = "checkpoints",
-                scripted_frac       = 0.0,
-                avg_model_frac      = 0.50,
-                bc_coef             = 0.1,
+                scripted_frac         = 0.0,
+                avg_model_frac        = 0.50,
+                avg_model_min_steps   = 200_000_000,
+                bc_coef               = 0.1,
+                bc_hold_steps         = 0,
+                bc_decay_steps        = 0,
+                shaping_schedules     = (
+                    # (component_name, hold_steps, decay_steps)
+                    # Hold at full weight for hold_steps, then linearly decay to 0.
+                    ("facing",          250_000_000, 500_000_000),
+                    ("exposure",        250_000_000, 500_000_000),
+                    ("closing_speed",   250_000_000, 500_000_000),
+                    ("turn_rate",       250_000_000, 500_000_000),
+                    ("positioning",     250_000_000, 500_000_000),
+                    ("proximity",       250_000_000, 500_000_000),
+                    ("power_range",     250_000_000, 500_000_000),
+                    ("speed_range",     250_000_000, 500_000_000),
+                    ("shoot_quality",   250_000_000, 500_000_000),
+                ),
 
                 league_frac         = 0.0,
                 league_size         = 20,
@@ -160,7 +176,7 @@ def main() -> None:
                 elo_milestone_gap         = 50.0,
                 elo_k_factor              = 32.0,
                 elo_temperature           = 200.0,
-                scripted_roster_min_steps = 100_000_000,
+                scripted_roster_min_steps = 300_000_000,
             )
             trainer = PPOTrainer(
                 train_config   = train_config,

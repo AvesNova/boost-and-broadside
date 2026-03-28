@@ -65,41 +65,72 @@ class TestPPOSmokeTest:
         assert any_changed, "No parameters changed after training"
 
 
-class TestDecayScheduler:
-    def test_weight_decays_after_threshold_sustained(self):
-        """Decay scheduler must reduce a component weight once the metric EMA stays above threshold."""
-        trainer = _make_trainer()
-        approach_comp = next(c for c in trainer.wrapper._all_components if c.name == "closing_speed")
-        initial_weight = approach_comp.closing_speed_weight
+class TestShapingScheduler:
+    def _make_trainer_with_schedule(self, **schedule_kwargs):
+        from boost_and_broadside.config import TrainConfig
+        return PPOTrainer(
+            train_config=TrainConfig(
+                num_envs=4, num_steps=16, num_epochs=1, num_minibatches=2,
+                learning_rate=3e-4, gamma=0.99, gae_lambda=0.95, clip_coef=0.2,
+                ent_coef=0.01, vf_coef=0.5, max_grad_norm=0.5, total_timesteps=64,
+                return_ema_alpha=0.005, return_min_span=1.0,
+                **schedule_kwargs,
+            ),
+            model_config=ModelConfig(d_model=32, n_heads=4, n_fourier_freqs=4),
+            ship_config=ShipConfig(),
+            env_config=EnvConfig(num_ships=4, max_bullets=8, max_episode_steps=50),
+            reward_config=RewardConfig(
+                damage_weight=0.01, death_weight=0.5, victory_weight=1.0,
+                enemy_neg_lambda_components=frozenset({"damage", "death", "victory", "exposure"}),
+                positioning_weight=0.05, positioning_radius=400.0,
+                facing_weight=0.01, exposure_weight=0.01,
+                proximity_weight=0.01, proximity_radius=300.0,
+                closing_speed_weight=0.01, turn_rate_weight=0.01,
+                power_range_weight=0.01, power_range_lo=0.2, power_range_hi=0.8,
+                speed_range_weight=0.01, speed_range_lo=40.0, speed_range_hi=120.0,
+                shoot_quality_weight=0.01, shoot_quality_radius=200.0,
+            ),
+            device="cpu", use_wandb=False,
+        )
 
-        # Feed victory metric above the closing_speed threshold (20.0) for more than sustain (30) updates
-        for _ in range(35):
-            trainer._decay.step({"ep/reward_victory": 25.0})
+    def test_weight_constant_during_hold(self):
+        """Component weight must not change before hold_steps."""
+        trainer = self._make_trainer_with_schedule(
+            shaping_schedules=(("closing_speed", 1_000_000, 500_000),),
+        )
+        comp = next(c for c in trainer.wrapper._all_components if c.name == "closing_speed")
+        initial = comp.closing_speed_weight
 
-        assert approach_comp.closing_speed_weight < initial_weight
+        _, _ = trainer._shaping_scheduler.step(500_000)
+        assert comp.closing_speed_weight == initial
 
-    def test_weight_does_not_decay_below_threshold(self):
-        """Decay must not trigger when metric stays below threshold."""
-        trainer = _make_trainer()
-        approach_comp = next(c for c in trainer.wrapper._all_components if c.name == "closing_speed")
-        initial_weight = approach_comp.closing_speed_weight
+    def test_weight_decays_after_hold(self):
+        """Component weight must be strictly between 0 and initial halfway through decay."""
+        trainer = self._make_trainer_with_schedule(
+            shaping_schedules=(("closing_speed", 0, 1_000_000),),
+        )
+        comp = next(c for c in trainer.wrapper._all_components if c.name == "closing_speed")
+        initial = comp.closing_speed_weight
 
-        for _ in range(50):
-            trainer._decay.step({"ep/reward_victory": 1.0})  # below threshold of 20.0
+        _, _ = trainer._shaping_scheduler.step(500_000)
+        assert 0.0 < comp.closing_speed_weight < initial
 
-        assert approach_comp.closing_speed_weight == initial_weight
+    def test_weight_reaches_zero_after_full_decay(self):
+        """Component weight must be 0 after hold + decay steps."""
+        trainer = self._make_trainer_with_schedule(
+            shaping_schedules=(("closing_speed", 100_000, 500_000),),
+        )
+        comp = next(c for c in trainer.wrapper._all_components if c.name == "closing_speed")
 
-    def test_count_does_not_accumulate_with_brief_pulses(self):
-        """Short bursts above threshold separated by cool-down gaps should never trigger decay."""
-        trainer = _make_trainer()
-        approach_comp = next(c for c in trainer.wrapper._all_components if c.name == "closing_speed")
-        initial_weight = approach_comp.closing_speed_weight
+        _, _ = trainer._shaping_scheduler.step(600_001)
+        assert comp.closing_speed_weight == 0.0
 
-        for _ in range(5):
-            trainer._decay.step({"ep/reward_victory": 25.0})  # brief pulse
-        for _ in range(35):
-            trainer._decay.step({"ep/reward_victory": 0.0})   # long cool-down
-        for _ in range(5):
-            trainer._decay.step({"ep/reward_victory": 25.0})  # second brief pulse
-
-        assert approach_comp.closing_speed_weight == initial_weight
+    def test_bc_coef_schedule(self):
+        """BC coefficient must decay correctly through the scheduler."""
+        trainer = self._make_trainer_with_schedule(
+            bc_coef=0.1, bc_hold_steps=0, bc_decay_steps=1_000_000,
+        )
+        _, bc_half = trainer._shaping_scheduler.step(500_000)
+        assert abs(bc_half - 0.05) < 1e-6
+        _, bc_zero = trainer._shaping_scheduler.step(1_000_001)
+        assert bc_zero == 0.0

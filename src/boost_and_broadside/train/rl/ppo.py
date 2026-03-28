@@ -82,50 +82,53 @@ def _override_opponent(
     action[start:end] = torch.where(opp_mask.unsqueeze(-1), opp_action, action[start:end])
 
 
-class _DecayScheduler:
-    """Anneals reward shaping weights to zero once training metrics cross thresholds.
+class _ShapingScheduler:
+    """Anneals reward shaping weights and the BC coefficient on a step-based linear schedule.
 
-    Each target watches one W&B metric key via an EMA.  When the EMA stays above
-    the threshold for `sustain` consecutive updates the weight is halved every
-    `half_life` updates until it reaches zero.
+    Each entry holds its initial value constant for ``hold_steps`` global steps, then
+    linearly decays to zero over the following ``decay_steps`` steps.  Components with
+    no entry are left unchanged forever.
 
-    Missing metric keys (e.g. no episodes finished this update) leave the EMA
-    unchanged — the scheduler simply waits.
+    The BC coefficient follows the same hold-then-linear-decay pattern.
     """
 
     def __init__(
         self,
-        targets: list[dict],
-        ema_alpha: float = 0.05,
+        # (component_object, attr_name, initial_weight, hold_steps, decay_steps)
+        component_targets: list[tuple],
+        bc_initial:    float,
+        bc_hold_steps:  int,
+        bc_decay_steps: int,
     ) -> None:
-        self._targets   = targets   # list of mutable dicts (see _build_decay_targets)
-        self._alpha     = ema_alpha
-        self._ema: dict[str, float] = {}
+        self._targets      = component_targets
+        self._bc_initial   = bc_initial
+        self._bc_hold      = bc_hold_steps
+        self._bc_decay     = bc_decay_steps
 
-    def step(self, metrics: dict[str, float]) -> dict[str, float]:
-        """Update EMAs, advance counters, and apply decay. Returns decay log dict."""
-        for key, val in metrics.items():
-            prev = self._ema.get(key)
-            self._ema[key] = val if prev is None else (1.0 - self._alpha) * prev + self._alpha * val
+    @staticmethod
+    def _linear(initial: float, step: int, hold: int, decay: int) -> float:
+        if decay == 0 or step < hold:
+            return initial
+        return initial * max(0.0, 1.0 - (step - hold) / decay)
 
+    def step(self, global_step: int) -> tuple[dict[str, float], float]:
+        """Apply schedules for current ``global_step``.
+
+        Updates all component weights in-place via setattr.
+
+        Returns:
+            (log_dict, effective_bc_coef) — log_dict contains ``schedule/*`` entries.
+        """
         logged: dict[str, float] = {}
-        for t in self._targets:
-            ema = self._ema.get(t["watch_key"], 0.0)
+        for comp, attr, initial, hold, decay in self._targets:
+            new_val = self._linear(initial, global_step, hold, decay)
+            setattr(comp, attr, new_val)
+            logged[f"schedule/{attr}"] = new_val
 
-            if ema >= t["threshold"]:
-                t["count"] = min(t["count"] + 1, t["sustain"])
-            else:
-                t["count"] = max(t["count"] - 1, 0)
-
-            if t["count"] >= t["sustain"]:
-                factor = 0.5 ** (1.0 / t["half_life"])
-                cur    = getattr(t["component"], t["weight_attr"])
-                if cur > 0.0:
-                    new_val = cur * factor
-                    setattr(t["component"], t["weight_attr"], new_val)
-                    logged[f"decay/{t['weight_attr']}"] = new_val
-
-        return logged
+        bc_eff = self._linear(self._bc_initial, global_step, self._bc_hold, self._bc_decay)
+        if self._bc_initial > 0.0:
+            logged["schedule/bc_coef"] = bc_eff
+        return logged, bc_eff
 
 
 class PPOTrainer:
@@ -277,10 +280,10 @@ class PPOTrainer:
         # "avg" entry is added when _update_avg_model() is first called.
         # "scripted" entry is added lazily after scripted_roster_min_steps.
 
-        # Training ELO starts at 0 (same as the random anchor) — reflecting that an
-        # untrained policy behaves like random.  It will climb as eval progresses.
-        self._training_elo:  float = 0.0
-        self._elo_milestone: float = 0.0   # training ELO at the last milestone checkpoint
+        # Training ELO starts at 1000 (same as the random anchor) — all ratings begin
+        # at the same point and diverge as eval matchups accumulate.
+        self._training_elo:  float = 1000.0
+        self._elo_milestone: float = 1000.0   # training ELO at the last milestone checkpoint
         self._last_checkpoint_path: Path | None = None
 
         # Current league opponent for the ongoing rollout (rotated each rollout).
@@ -305,7 +308,8 @@ class PPOTrainer:
             from datetime import datetime
             self._run_name = datetime.now().strftime("%Y%m%d-%H%M%S")
 
-        self._decay = self._build_decay_scheduler()
+        self._shaping_scheduler = self._build_shaping_scheduler()
+        self._bc_coef_eff: float = train_config.bc_coef  # updated each step by scheduler
 
     # ------------------------------------------------------------------
     # Main training loop
@@ -537,7 +541,11 @@ class PPOTrainer:
             # Update avg model after warmup completes
             warmup_done = (self.cfg.lr_warmup_steps == 0 or
                            self._global_step >= self.cfg.lr_warmup_steps)
-            if self.B_avg > 0 and warmup_done:
+            avg_model_ready = (
+                warmup_done and
+                self._global_step >= self.cfg.avg_model_min_steps
+            )
+            if self.B_avg > 0 and avg_model_ready:
                 self._update_avg_model()
 
             # Scaler stats — one CPU transfer per component group
@@ -565,8 +573,9 @@ class PPOTrainer:
             metrics["train/global_step"] = self._global_step
             metrics["train/sps"]         = sps
 
-            # Decay shaping weights based on training progress
-            metrics.update(self._decay.step(metrics))
+            # Apply step-based shaping / BC schedules
+            schedule_metrics, self._bc_coef_eff = self._shaping_scheduler.step(self._global_step)
+            metrics.update(schedule_metrics)
 
             # ELO evaluation — runs sync matchups against all roster entries
             if self.cfg.elo_eval_interval > 0 and update % self.cfg.elo_eval_interval == 0:
@@ -730,7 +739,7 @@ class PPOTrainer:
                 )  # (T, B_mb, N)
                 bc_loss = (ce * bc_f).sum() / bc_sum
 
-                loss = pg_loss + cfg.vf_coef * vf_loss + cfg.ent_coef * ent_loss + cfg.bc_coef * bc_loss
+                loss = pg_loss + cfg.vf_coef * vf_loss + cfg.ent_coef * ent_loss + self._bc_coef_eff * bc_loss
 
                 self.optim.zero_grad()
                 loss.backward()
@@ -810,57 +819,40 @@ class PPOTrainer:
         return metrics
 
     # ------------------------------------------------------------------
-    # Reward decay
+    # Shaping reward + BC schedule
     # ------------------------------------------------------------------
 
-    def _build_decay_scheduler(self) -> _DecayScheduler:
-        """Register all shaping rewards for metric-triggered annealing.
+    def _build_shaping_scheduler(self) -> _ShapingScheduler:
+        """Build the step-based linear hold-then-decay scheduler.
 
-        Thresholds are calibrated to training-curve observations:
-          - kill-based triggers use ep/reward_kill (kill_weight=20 → ~9-10 at convergence)
-          - self-metric triggers use the component's own ep/reward_X key
-
-        Each weight decays with a half-life of 100 updates once armed.
-        The "count" field tracks consecutive updates above threshold (hysteresis).
+        For each ``(component_name, hold_steps, decay_steps)`` entry in
+        ``train_config.shaping_schedules``, the matching reward component's weight is
+        held at its ``RewardConfig`` value for ``hold_steps`` global steps then linearly
+        decayed to 0 over ``decay_steps`` more steps.  Components not listed are never
+        modified.  The BC coefficient follows ``bc_hold_steps`` / ``bc_decay_steps``.
         """
-        # Proxy for "agent is learning to fight": victory reward is +victory_weight
-        # when winning. Threshold ~20 = agent wins >25% of the time (victory_weight=80).
-        _victory = "ep/reward_victory"
+        schedule_map = {
+            name: (hold, decay)
+            for name, hold, decay in self.cfg.shaping_schedules
+        }
+        comp_by_name = {comp.name: comp for comp in self.wrapper._all_components}
+
         targets = []
-        for comp in self.wrapper._all_components:
-            if comp.name == "closing_speed":
-                targets.append({"component": comp, "weight_attr": "closing_speed_weight",
-                                 "watch_key": _victory, "threshold": 20.0,
-                                 "sustain": 30, "half_life": 100, "count": 0})
-            elif comp.name == "turn_rate":
-                targets.append({"component": comp, "weight_attr": "turn_rate_weight",
-                                 "watch_key": _victory, "threshold": 20.0,
-                                 "sustain": 30, "half_life": 100, "count": 0})
-            elif comp.name == "shoot_quality":
-                targets.append({"component": comp, "weight_attr": "shoot_quality_weight",
-                                 "watch_key": _victory, "threshold": 20.0,
-                                 "sustain": 30, "half_life": 100, "count": 0})
-            elif comp.name == "facing":
-                targets.append({"component": comp, "weight_attr": "facing_weight",
-                                 "watch_key": _victory, "threshold": 40.0,
-                                 "sustain": 30, "half_life": 100, "count": 0})
-            elif comp.name == "exposure":
-                targets.append({"component": comp, "weight_attr": "exposure_weight",
-                                 "watch_key": _victory, "threshold": 40.0,
-                                 "sustain": 30, "half_life": 100, "count": 0})
-            elif comp.name == "positioning":
-                targets.append({"component": comp, "weight_attr": "positioning_weight",
-                                 "watch_key": _victory, "threshold": 40.0,
-                                 "sustain": 30, "half_life": 100, "count": 0})
-            elif comp.name == "speed_range":
-                targets.append({"component": comp, "weight_attr": "speed_range_weight",
-                                 "watch_key": "ep/reward_speed_range", "threshold": 0.20,
-                                 "sustain": 30, "half_life": 100, "count": 0})
-            elif comp.name == "power_range":
-                targets.append({"component": comp, "weight_attr": "power_range_weight",
-                                 "watch_key": "ep/reward_power_range", "threshold": 0.08,
-                                 "sustain": 30, "half_life": 100, "count": 0})
-        return _DecayScheduler(targets)
+        for name, (hold, decay) in schedule_map.items():
+            comp = comp_by_name.get(name)
+            if comp is None:
+                continue
+            attr    = f"{name}_weight"
+            initial = getattr(comp, attr, 0.0)
+            if initial > 0.0 and (hold > 0 or decay > 0):
+                targets.append((comp, attr, initial, hold, decay))
+
+        return _ShapingScheduler(
+            component_targets = targets,
+            bc_initial        = self.cfg.bc_coef,
+            bc_hold_steps     = self.cfg.bc_hold_steps,
+            bc_decay_steps    = self.cfg.bc_decay_steps,
+        )
 
     # ------------------------------------------------------------------
     # ELO evaluation

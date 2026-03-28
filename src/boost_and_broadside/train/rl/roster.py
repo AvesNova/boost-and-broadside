@@ -68,10 +68,10 @@ class EloRoster:
         self.k_factor        = k_factor
         self.elo_temperature = elo_temperature
         self.entries: list[RosterEntry] = []
-        # Always-present random anchor: ELO=0, fixed forever.
+        # Random agent entry: ELO starts at 1000 and participates in zero-sum updates.
         self.entries.append(RosterEntry(
-            kind="random", label="random", elo=0.0,
-            global_step=0, update=0, fixed=True,
+            kind="random", label="random", elo=_DEFAULT_ELO,
+            global_step=0, update=0,
         ))
 
     # ------------------------------------------------------------------

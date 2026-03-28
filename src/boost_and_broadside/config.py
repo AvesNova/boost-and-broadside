@@ -145,7 +145,17 @@ class TrainConfig:
     checkpoint_dir: str = "checkpoints"    # directory to write .pt files
     scripted_frac: float = 0.0             # fraction of envs using scripted opponent for team-1
     avg_model_frac: float = 0.0            # fraction of envs using avg-model opponent for team-1
+    avg_model_min_steps: int = 0           # don't start building avg model until this many global steps
     bc_coef: float = 0.0                   # auxiliary BC loss coefficient (0 = disabled)
+    bc_hold_steps: int = 0                 # hold bc_coef at full value for this many global steps
+    bc_decay_steps: int = 0               # then linearly decay bc_coef to 0 over this many steps
+
+    # --- Shaping reward schedules ---
+    # Each entry: (component_name, hold_steps, decay_steps)
+    # hold_steps:  weight stays at its RewardConfig value for this many global steps.
+    # decay_steps: then linearly decays to 0 over this many more steps.
+    # Components not listed here are held constant forever (no decay).
+    shaping_schedules: tuple[tuple[str, int, int], ...] = ()
 
     # --- League play + ELO ---
     league_frac:              float = 0.0          # fraction of envs using a roster-sampled opponent
@@ -155,7 +165,7 @@ class TrainConfig:
     elo_milestone_gap:        float = 50.0         # add checkpoint to roster every N ELO points gained
     elo_k_factor:             float = 32.0         # ELO K-factor (score sensitivity per match)
     elo_temperature:          float = 200.0        # ELO bandwidth for proximity-weighted sampling
-    scripted_roster_min_steps: int  = 100_000_000  # delay adding scripted to roster until this many steps
+    scripted_roster_min_steps: int  = 300_000_000  # delay adding scripted to roster until this many steps
 
     def __post_init__(self) -> None:
         if self.num_envs % self.num_minibatches != 0:
