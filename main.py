@@ -158,15 +158,15 @@ def main() -> None:
                 shaping_schedules     = (
                     # (component_name, hold_steps, decay_steps)
                     # Hold at full weight for hold_steps, then linearly decay to 0.
-                    ("facing",          250_000_000, 500_000_000),
-                    ("exposure",        250_000_000, 500_000_000),
-                    ("closing_speed",   250_000_000, 500_000_000),
-                    ("turn_rate",       250_000_000, 500_000_000),
-                    ("positioning",     250_000_000, 500_000_000),
-                    ("proximity",       250_000_000, 500_000_000),
-                    ("power_range",     250_000_000, 500_000_000),
-                    ("speed_range",     250_000_000, 500_000_000),
-                    ("shoot_quality",   250_000_000, 500_000_000),
+                    # ("facing",          250_000_000, 500_000_000),
+                    # ("exposure",        250_000_000, 500_000_000),
+                    # ("closing_speed",   250_000_000, 500_000_000),
+                    # ("turn_rate",       250_000_000, 500_000_000),
+                    # ("positioning",     250_000_000, 500_000_000),
+                    # ("proximity",       250_000_000, 500_000_000),
+                    # ("power_range",     250_000_000, 500_000_000),
+                    # ("speed_range",     250_000_000, 500_000_000),
+                    # ("shoot_quality",   250_000_000, 500_000_000),
                 ),
 
                 league_frac         = 0.0,

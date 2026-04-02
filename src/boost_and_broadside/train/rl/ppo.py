@@ -286,6 +286,10 @@ class PPOTrainer:
         self._elo_milestone: float = 1000.0   # training ELO at the last milestone checkpoint
         self._last_checkpoint_path: Path | None = None
 
+        # ELO history for multi-line W&B charts: label → [(global_step, elo), ...]
+        # "training" tracks the live policy ELO; one entry per roster label otherwise.
+        self._elo_history: dict[str, list[tuple[int, float]]] = {}
+
         # Current league opponent for the ongoing rollout (rotated each rollout).
         self._current_league_entry:  RosterEntry | None = None
         self._current_league_policy: MVPPolicy | None = None
@@ -918,7 +922,57 @@ class PPOTrainer:
             self.roster.evict_all_checkpoint_policies()
 
         metrics["elo/training"] = self._training_elo
+
+        # Update ELO history and build multi-line W&B charts.
+        self._elo_history.setdefault("training", []).append((self._global_step, self._training_elo))
+        for entry in self.roster.entries:
+            self._elo_history.setdefault(entry.label, []).append((self._global_step, entry.elo))
+
+        if self.use_wandb:
+            metrics.update(self._build_elo_charts())
+
         return metrics
+
+    def _build_elo_charts(self) -> dict:
+        """Build two W&B line_series charts from accumulated ELO history.
+
+        Returns:
+            Dict with two custom W&B chart objects:
+              - ``charts/elo_history``           — raw ELO per label over time.
+              - ``charts/elo_history_normalized`` — ELO minus the random agent's
+                contemporaneous ELO (so random stays near 0 as a baseline).
+        """
+        import wandb
+
+        # Build a step→random-elo lookup for the normalization chart.
+        random_elo_at_step: dict[int, float] = dict(self._elo_history.get("random", []))
+
+        xs:      list[list[int]]   = []
+        ys_raw:  list[list[float]] = []
+        ys_norm: list[list[float]] = []
+        keys:    list[str]         = []
+
+        for label, history in self._elo_history.items():
+            if not history:
+                continue
+            steps = [h[0] for h in history]
+            elos  = [h[1] for h in history]
+            norm  = [e - random_elo_at_step.get(s, 1000.0) for s, e in history]
+            xs.append(steps)
+            ys_raw.append(elos)
+            ys_norm.append(norm)
+            keys.append(label)
+
+        return {
+            "charts/elo_history": wandb.plot.line_series(
+                xs=xs, ys=ys_raw, keys=keys,
+                title="Roster ELO History", xname="Global Step",
+            ),
+            "charts/elo_history_normalized": wandb.plot.line_series(
+                xs=xs, ys=ys_norm, keys=keys,
+                title="Roster ELO (normalized vs random)", xname="Global Step",
+            ),
+        }
 
     def _save_roster_json(self) -> None:
         """Persist roster metadata alongside the run's checkpoints."""
