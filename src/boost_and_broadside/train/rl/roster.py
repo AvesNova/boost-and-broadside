@@ -17,7 +17,7 @@ from pathlib import Path
 import torch
 
 
-_DEFAULT_ELO = 1000.0
+_DEFAULT_ELO = 0.0
 
 
 @dataclass
@@ -53,22 +53,26 @@ class EloRoster:
     Args:
         max_size:        Maximum number of "checkpoint" entries.  Special entries
                          are not counted toward this cap.
-        k_factor:        ELO K-factor — how many points change per match.
-        elo_temperature: ELO bandwidth for proximity sampling (in ELO points).
-                         Higher → more uniform; lower → tighter focus on peers.
+        k_factor:         ELO K-factor — how many points change per match.
+        elo_temperature:  ELO bandwidth for proximity sampling (in ELO points).
+                          Higher → more uniform; lower → tighter focus on peers.
+        uniform_sampling: If True, sample opponents uniformly at random instead
+                          of ELO-proximity weighting.
     """
 
     def __init__(
         self,
-        max_size:        int   = 20,
-        k_factor:        float = 32.0,
-        elo_temperature: float = 200.0,
+        max_size:         int   = 20,
+        k_factor:         float = 32.0,
+        elo_temperature:  float = 200.0,
+        uniform_sampling: bool  = False,
     ) -> None:
-        self.max_size        = max_size
-        self.k_factor        = k_factor
-        self.elo_temperature = elo_temperature
+        self.max_size         = max_size
+        self.k_factor         = k_factor
+        self.elo_temperature  = elo_temperature
+        self.uniform_sampling = uniform_sampling
         self.entries: list[RosterEntry] = []
-        # Random agent entry: ELO starts at 1000 and participates in zero-sum updates.
+        # Random agent entry: ELO starts at 0 and participates in zero-sum updates.
         self.entries.append(RosterEntry(
             kind="random", label="random", elo=_DEFAULT_ELO,
             global_step=0, update=0,
@@ -153,7 +157,7 @@ class EloRoster:
     # ------------------------------------------------------------------
 
     def sample(self, training_elo: float) -> RosterEntry | None:
-        """Sample one entry with probability proportional to ELO proximity.
+        """Sample one entry, either uniformly or weighted by ELO proximity.
 
         Fixed entries (e.g. the random anchor) are excluded from sampling.
         Returns None if no non-fixed entries exist.
@@ -161,6 +165,10 @@ class EloRoster:
         candidates = [e for e in self.entries if not e.fixed]
         if not candidates:
             return None
+
+        if self.uniform_sampling:
+            idx = int(torch.randint(len(candidates), (1,)).item())
+            return candidates[idx]
 
         weights = [
             math.exp(-abs(e.elo - training_elo) / self.elo_temperature)

@@ -179,6 +179,7 @@ def main() -> None:
 
                 league_frac         = 0.10,
                 league_size         = 20,
+                league_uniform_sampling=False,
                 elo_eval_games      = 256,
                 elo_eval_interval   = 10,
                 elo_milestone_gap         = 40.0,

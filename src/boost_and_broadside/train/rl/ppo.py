@@ -272,17 +272,18 @@ class PPOTrainer:
 
         # --- League play + ELO ---
         self.roster = EloRoster(
-            max_size        = train_config.league_size,
-            k_factor        = train_config.elo_k_factor,
-            elo_temperature = train_config.elo_temperature,
+            max_size         = train_config.league_size,
+            k_factor         = train_config.elo_k_factor,
+            elo_temperature  = train_config.elo_temperature,
+            uniform_sampling = train_config.league_uniform_sampling,
         )
         # Random anchor is added by EloRoster.__init__ (ELO=0, fixed).
         # "avg" entry is added when _update_avg_model() is first called.
         # "scripted" entry is added lazily after scripted_roster_min_steps.
 
-        # Training ELO starts at 1000 (same as the random anchor) — all ratings begin
+        # Training ELO starts at 0 — all ratings begin
         # at the same point and diverge as eval matchups accumulate.
-        self._training_elo:           float = 1000.0
+        self._training_elo:           float = 0.0
         self._elo_milestone:          float = 0.0    # normalized training ELO (vs random) at last milestone
         self._best_training_elo_norm: float = 0.0    # best normalized training ELO seen so far
         self._best_avg_elo_norm:      float = 0.0    # best normalized avg ELO seen so far
@@ -892,7 +893,7 @@ class PPOTrainer:
         for e in self.roster.entries:
             if e.kind == "random":
                 return e.elo
-        return 1000.0  # fallback; random entry should always exist
+        return 0.0  # fallback; random entry should always exist
 
     def _run_elo_eval(self) -> dict[str, float]:
         """Run sync matchups against every roster entry and update ELO ratings.
@@ -913,7 +914,7 @@ class PPOTrainer:
                 and self._global_step >= self.cfg.scripted_roster_min_steps
                 and not any(e.kind == "scripted" for e in self.roster.entries)):
             self.roster.add_special(
-                "scripted", self._global_step, 0, initial_elo=1400.0,
+                "scripted", self._global_step, 0, initial_elo=400.0,
             )
 
         games = self.cfg.elo_eval_games
@@ -989,7 +990,7 @@ class PPOTrainer:
                 continue
             steps = [h[0] for h in history]
             elos  = [h[1] for h in history]
-            norm  = [e - random_elo_at_step.get(s, 1000.0) for s, e in history]
+            norm  = [e - random_elo_at_step.get(s, 0.0) for s, e in history]
             xs.append(steps)
             ys_raw.append(elos)
             ys_norm.append(norm)

@@ -165,6 +165,7 @@ class TrainConfig:
     elo_milestone_gap:        float = 50.0         # add checkpoint to roster every N normalized ELO points gained (training ELO minus random ELO)
     elo_k_factor:             float = 32.0         # ELO K-factor (score sensitivity per match)
     elo_temperature:          float = 200.0        # ELO bandwidth for proximity-weighted sampling
+    league_uniform_sampling:  bool  = False        # if True, sample league opponents uniformly instead of ELO-proximity weighted
     scripted_roster_min_steps: int  = 300_000_000  # delay adding scripted to roster until this many steps
 
     def __post_init__(self) -> None:

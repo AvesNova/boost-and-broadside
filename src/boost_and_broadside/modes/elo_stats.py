@@ -252,7 +252,7 @@ def run_elo_stats_mode(
     # ------------------------------------------------------------------ #
     # Step 5 — ELO computation (iterative convergence)                   #
     # ------------------------------------------------------------------ #
-    elo = [1000.0] * K
+    elo = [0.0] * K
     a_wins_cpu = matchup_a_wins.cpu().tolist()
     b_wins_cpu = matchup_b_wins.cpu().tolist()
     ties_cpu   = matchup_ties.cpu().tolist()
