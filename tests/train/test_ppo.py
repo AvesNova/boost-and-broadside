@@ -17,7 +17,7 @@ def _make_trainer(n_fourier_freqs: int = 4) -> PPOTrainer:
             return_ema_alpha=0.005, return_min_span=1.0,
         ),
         model_config=ModelConfig(
-            d_model=32, n_heads=4, n_fourier_freqs=n_fourier_freqs,
+            d_model=32, n_heads=4, n_fourier_freqs=n_fourier_freqs, n_transformer_blocks=1,
         ),
         ship_config=ShipConfig(),
         env_config=EnvConfig(num_ships=4, max_bullets=8, max_episode_steps=50),
@@ -76,7 +76,7 @@ class TestShapingScheduler:
                 return_ema_alpha=0.005, return_min_span=1.0,
                 **schedule_kwargs,
             ),
-            model_config=ModelConfig(d_model=32, n_heads=4, n_fourier_freqs=4),
+            model_config=ModelConfig(d_model=32, n_heads=4, n_fourier_freqs=4, n_transformer_blocks=1),
             ship_config=ShipConfig(),
             env_config=EnvConfig(num_ships=4, max_bullets=8, max_episode_steps=50),
             reward_config=RewardConfig(

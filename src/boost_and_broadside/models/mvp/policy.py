@@ -2,7 +2,7 @@
 
 Architecture (per timestep):
     obs → ShipEncoder → (B, N, D)
-         → RelationalSelfAttention → (B, N, D)      [ships attend to each other]
+         → N × TransformerBlock    → (B, N, D)      [ships attend to each other]
          → per-ship GRU             → (B, N, D)      [temporal memory per ship]
          → ActionHead               → (B, N, 12)     [logits: power|turn|shoot]
          → ValueHead                → (B, N, K)      [MSE critic: K components in normalized space]
@@ -26,7 +26,7 @@ from boost_and_broadside.constants import (
     POWER_SLICE, TURN_SLICE, SHOOT_SLICE,
 )
 from boost_and_broadside.models.mvp.encoder import ShipEncoder
-from boost_and_broadside.models.mvp.attention import RelationalSelfAttention
+from boost_and_broadside.models.mvp.attention import TransformerBlock
 
 
 class MVPPolicy(nn.Module):
@@ -47,9 +47,12 @@ class MVPPolicy(nn.Module):
         D        = model_config.d_model
         self._K  = num_value_components
 
-        self.encoder   = ShipEncoder(model_config, ship_config)
-        self.attention = RelationalSelfAttention(model_config)
-        self.gru       = nn.GRU(D, D, num_layers=1, batch_first=False)
+        self.encoder            = ShipEncoder(model_config, ship_config)
+        self.transformer_blocks = nn.ModuleList([
+            TransformerBlock(model_config)
+            for _ in range(model_config.n_transformer_blocks)
+        ])
+        self.gru = nn.GRU(D, D, num_layers=1, batch_first=False)
 
         self.action_head = nn.Linear(D, TOTAL_ACTION_LOGITS)
         # K independent scalar heads — one per reward component, in normalized space
@@ -124,7 +127,8 @@ class MVPPolicy(nn.Module):
         """
         alive = obs["alive"]              # (B, N) bool
         x     = self.encoder(obs)         # (B, N, D)
-        x     = self.attention(x, alive)  # (B, N, D)
+        for block in self.transformer_blocks:
+            x = block(x, alive)           # (B, N, D)
 
         B, N, D = x.shape
         x_step  = x.reshape(B * N, D).unsqueeze(0)      # (1, B*N, D)
@@ -173,8 +177,9 @@ class MVPPolicy(nn.Module):
         flat_obs   = {k: v.reshape(T * B, *v.shape[2:]) for k, v in obs.items()}
         flat_alive = alive_mask.reshape(T * B, N)
 
-        x = self.encoder(flat_obs)         # (T*B, N, D)
-        x = self.attention(x, flat_alive)  # (T*B, N, D)
+        x = self.encoder(flat_obs)                      # (T*B, N, D)
+        for block in self.transformer_blocks:
+            x = block(x, flat_alive)                    # (T*B, N, D)
 
         # GRU over time — reshape to (T, B*N, D) for sequential processing
         x_seq      = x.reshape(T, B, N, D).reshape(T, B * N, D)  # (T, B*N, D)

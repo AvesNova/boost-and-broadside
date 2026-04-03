@@ -5,7 +5,7 @@ import torch
 
 from boost_and_broadside.config import ShipConfig, ModelConfig, EnvConfig
 from boost_and_broadside.models.mvp.encoder import ShipEncoder
-from boost_and_broadside.models.mvp.attention import RelationalSelfAttention
+from boost_and_broadside.models.mvp.attention import TransformerBlock
 from boost_and_broadside.models.mvp.policy import MVPPolicy
 
 
@@ -16,7 +16,7 @@ def ship_cfg() -> ShipConfig:
 
 @pytest.fixture
 def model_cfg() -> ModelConfig:
-    return ModelConfig(d_model=64, n_heads=4, n_fourier_freqs=8)
+    return ModelConfig(d_model=64, n_heads=4, n_fourier_freqs=8, n_transformer_blocks=2)
 
 
 NUM_VALUE_COMPONENTS = 12  # fixed K for encoder/policy unit tests
@@ -81,38 +81,38 @@ class TestShipEncoder:
         assert out.shape == (1, 1, model_cfg.d_model)
 
 
-class TestRelationalSelfAttention:
+class TestTransformerBlock:
     def test_output_shape_unchanged(self, model_cfg):
-        """Attention output must match input shape (B, N, D)."""
-        B, N = 3, 8
-        attn = RelationalSelfAttention(model_cfg)
-        x    = torch.randn(B, N, model_cfg.d_model)
+        """Transformer block output must match input shape (B, N, D)."""
+        B, N  = 3, 8
+        block = TransformerBlock(model_cfg)
+        x     = torch.randn(B, N, model_cfg.d_model)
 
-        out  = attn(x)
+        out = block(x)
 
         assert out.shape == (B, N, model_cfg.d_model)
 
     def test_alive_mask_does_not_crash(self, model_cfg):
-        """Attention with a partial alive mask must not raise errors."""
-        B, N = 2, 4
-        attn  = RelationalSelfAttention(model_cfg)
+        """Transformer block with a partial alive mask must not raise errors."""
+        B, N  = 2, 4
+        block = TransformerBlock(model_cfg)
         x     = torch.randn(B, N, model_cfg.d_model)
         alive = torch.ones(B, N, dtype=torch.bool)
         alive[0, 2] = False  # one dead ship
 
-        out = attn(x, alive_mask=alive)
+        out = block(x, alive_mask=alive)
 
         assert out.shape == (B, N, model_cfg.d_model)
         assert torch.isfinite(out).all()
 
     def test_all_dead_mask_does_not_produce_nan(self, model_cfg):
         """All-dead alive mask should not produce NaN (edge case)."""
-        B, N = 1, 4
-        attn  = RelationalSelfAttention(model_cfg)
+        B, N  = 1, 4
+        block = TransformerBlock(model_cfg)
         x     = torch.randn(B, N, model_cfg.d_model)
         alive = torch.zeros(B, N, dtype=torch.bool)  # everyone dead
 
-        out = attn(x, alive_mask=alive)
+        out = block(x, alive_mask=alive)
 
         # May be all-zero or garbage but must not be NaN
         assert not torch.isnan(out).any()

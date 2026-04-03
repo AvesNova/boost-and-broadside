@@ -85,15 +85,18 @@ class EnvConfig:
 @dataclass(frozen=True)
 class ModelConfig:
     """Policy network architecture. No defaults — all values required."""
-    d_model: int        # token embedding dimension
-    n_heads: int        # attention heads (must divide d_model)
-    n_fourier_freqs: int  # number of Fourier frequencies for position encoding
+    d_model: int              # token embedding dimension
+    n_heads: int              # attention heads (must divide d_model)
+    n_fourier_freqs: int      # number of Fourier frequencies for position encoding
+    n_transformer_blocks: int  # number of pre-norm transformer blocks before the GRU
 
     def __post_init__(self) -> None:
         if self.d_model % self.n_heads != 0:
             raise ValueError(f"d_model={self.d_model} must be divisible by n_heads={self.n_heads}")
         if self.n_fourier_freqs < 1:
             raise ValueError(f"n_fourier_freqs must be >= 1, got {self.n_fourier_freqs}")
+        if self.n_transformer_blocks < 0:
+            raise ValueError(f"n_transformer_blocks must be >= 0, got {self.n_transformer_blocks}")
 
 
 @dataclass(frozen=True)

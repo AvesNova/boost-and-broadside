@@ -89,9 +89,10 @@ def main() -> None:
     )
 
     model_config = ModelConfig(
-        d_model         = 128,
-        n_heads         = 4,
-        n_fourier_freqs = 8,
+        d_model              = 128,
+        n_heads              = 4,
+        n_fourier_freqs      = 10,
+        n_transformer_blocks = 2,
     )
 
     reward_config = RewardConfig(
