@@ -162,7 +162,7 @@ class TrainConfig:
     league_size:              int   = 20           # max number of checkpoint entries in the roster
     elo_eval_games:           int   = 256          # parallel games per ELO evaluation matchup
     elo_eval_interval:        int   = 10           # run ELO eval every N updates (0 = disabled)
-    elo_milestone_gap:        float = 50.0         # add checkpoint to roster every N ELO points gained
+    elo_milestone_gap:        float = 50.0         # add checkpoint to roster every N normalized ELO points gained (training ELO minus random ELO)
     elo_k_factor:             float = 32.0         # ELO K-factor (score sensitivity per match)
     elo_temperature:          float = 200.0        # ELO bandwidth for proximity-weighted sampling
     scripted_roster_min_steps: int  = 300_000_000  # delay adding scripted to roster until this many steps

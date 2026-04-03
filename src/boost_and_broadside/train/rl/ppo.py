@@ -282,8 +282,10 @@ class PPOTrainer:
 
         # Training ELO starts at 1000 (same as the random anchor) — all ratings begin
         # at the same point and diverge as eval matchups accumulate.
-        self._training_elo:  float = 1000.0
-        self._elo_milestone: float = 1000.0   # training ELO at the last milestone checkpoint
+        self._training_elo:           float = 1000.0
+        self._elo_milestone:          float = 0.0    # normalized training ELO (vs random) at last milestone
+        self._best_training_elo_norm: float = 0.0    # best normalized training ELO seen so far
+        self._best_avg_elo_norm:      float = 0.0    # best normalized avg ELO seen so far
         self._last_checkpoint_path: Path | None = None
 
         # ELO history for multi-line W&B charts: label → [(global_step, elo), ...]
@@ -436,15 +438,25 @@ class PPOTrainer:
                 # Team IDs — used for opponent overrides, actor mask, and BC expert masking
                 team_id = obs["team_id"]  # (B, N) int
 
-                # Scripted opponent actions + expert probs for BC loss
+                # use_sc_bc:       generate expert probs for BC loss (active whenever B_sc > 0)
+                # use_sc_opponent: also override one team with scripted actions (after min_steps)
+                use_sc_bc       = self.B_sc > 0
+                use_sc_opponent = use_sc_bc and self._global_step >= self.cfg.scripted_roster_min_steps
+
                 expert_probs_step: torch.Tensor | None = None
-                if self.B_sc > 0:
+                if use_sc_bc:
                     with torch.no_grad():
                         state_sc = _slice_state(self.wrapper.env.state, sc_start, sc_end)
                         action_scripted, expert_probs_sc = self.scripted_agent.get_actions_and_probs(state_sc)
-                    # Only fill BC targets for training-policy ships (not the opponent team)
-                    opp_flag_sc = self._opp_team_flag[:self.B_sc].unsqueeze(1)  # (B_sc, 1)
-                    train_mask_sc = (team_id[sc_start:sc_end] != opp_flag_sc)   # (B_sc, N) bool
+                    if use_sc_opponent:
+                        # One team is the scripted opponent — only supervise training-policy ships.
+                        opp_flag_sc   = self._opp_team_flag[:self.B_sc].unsqueeze(1)  # (B_sc, 1)
+                        train_mask_sc = (team_id[sc_start:sc_end] != opp_flag_sc)     # (B_sc, N)
+                    else:
+                        # Both teams are training-policy — supervise all ships.
+                        train_mask_sc = torch.ones(
+                            self.B_sc, N, dtype=torch.bool, device=self.device,
+                        )
                     expert_probs_step = torch.zeros(
                         self.cfg.num_envs, self.env_config.num_ships, 12,
                         device=self.device,
@@ -452,11 +464,11 @@ class PPOTrainer:
                     expert_probs_step[sc_start:sc_end] = expert_probs_sc * train_mask_sc.unsqueeze(-1)
 
                 # Override opponent team actions; training-policy actions are the base
-                action  = action.clone()
+                action    = action.clone()
                 sc_flags  = self._opp_team_flag[:self.B_sc]
                 avg_flags = self._opp_team_flag[self.B_sc : self.B_sc + self.B_avg]
                 lg_flags  = self._opp_team_flag[self.B_sc + self.B_avg :]
-                if self.B_sc > 0:
+                if use_sc_opponent:
                     _override_opponent(action, team_id, sc_flags,  sc_start,     sc_end,     action_scripted)
                 if use_avg:
                     _override_opponent(action, team_id, avg_flags, avg_start,    avg_end,    action_avg)
@@ -465,7 +477,7 @@ class PPOTrainer:
 
                 # Actor mask: True for ships whose actions were chosen by training policy
                 actor_mask = torch.ones(B, N, dtype=torch.bool, device=self.device)
-                if self.B_sc > 0:
+                if use_sc_opponent:
                     actor_mask[sc_start:sc_end] = (
                         team_id[sc_start:sc_end] != sc_flags.unsqueeze(1)
                     )
@@ -585,6 +597,18 @@ class PPOTrainer:
             if self.cfg.elo_eval_interval > 0 and update % self.cfg.elo_eval_interval == 0:
                 elo_metrics = self._run_elo_eval()
                 metrics.update(elo_metrics)
+                # Save overwriting best-model checkpoints when normalized ELO improves.
+                random_elo = self._random_elo()
+                training_elo_norm = self._training_elo - random_elo
+                if training_elo_norm > self._best_training_elo_norm:
+                    self._best_training_elo_norm = training_elo_norm
+                    self._save_best_checkpoint("best_training.pt")
+                avg_entry = next((e for e in self.roster.entries if e.kind == "avg"), None)
+                if avg_entry is not None:
+                    avg_elo_norm = avg_entry.elo - random_elo
+                    if avg_elo_norm > self._best_avg_elo_norm:
+                        self._best_avg_elo_norm = avg_elo_norm
+                        self._save_best_checkpoint("best_avg.pt")
 
             # Single log call per update — all metrics at the same step
             self._enqueue_log(metrics, step=self._global_step)
@@ -601,16 +625,17 @@ class PPOTrainer:
 
             if self.cfg.checkpoint_interval > 0 and update % self.cfg.checkpoint_interval == 0:
                 self._save_checkpoint(update)
-                # Add to roster if training ELO has crossed the next milestone
+                # Add to roster when normalized training ELO (vs random) crosses the next milestone.
+                training_elo_norm = self._training_elo - self._random_elo()
                 if (self._last_checkpoint_path is not None and
                         self._last_checkpoint_path.exists() and
                         self.cfg.elo_milestone_gap > 0 and
-                        self._training_elo - self._elo_milestone >= self.cfg.elo_milestone_gap):
+                        training_elo_norm - self._elo_milestone >= self.cfg.elo_milestone_gap):
                     self.roster.add_checkpoint(
                         str(self._last_checkpoint_path), self._global_step, update,
                         initial_elo=self._training_elo,
                     )
-                    self._elo_milestone = self._training_elo
+                    self._elo_milestone = training_elo_norm
                     self._save_roster_json()
 
         self._log_queue.put(None)  # signal logger thread to exit
@@ -862,6 +887,13 @@ class PPOTrainer:
     # ELO evaluation
     # ------------------------------------------------------------------
 
+    def _random_elo(self) -> float:
+        """Return the current ELO of the random anchor roster entry."""
+        for e in self.roster.entries:
+            if e.kind == "random":
+                return e.elo
+        return 1000.0  # fallback; random entry should always exist
+
     def _run_elo_eval(self) -> dict[str, float]:
         """Run sync matchups against every roster entry and update ELO ratings.
 
@@ -881,7 +913,7 @@ class PPOTrainer:
                 and self._global_step >= self.cfg.scripted_roster_min_steps
                 and not any(e.kind == "scripted" for e in self.roster.entries)):
             self.roster.add_special(
-                "scripted", self._global_step, 0, initial_elo=self._training_elo,
+                "scripted", self._global_step, 0, initial_elo=1400.0,
             )
 
         games = self.cfg.elo_eval_games
@@ -984,6 +1016,25 @@ class PPOTrainer:
     # Checkpointing
     # ------------------------------------------------------------------
 
+    def _checkpoint_payload(self, update: int) -> dict:
+        """Build the data dict shared by all checkpoint saves."""
+        return {
+            "policy_state_dict":     self.policy.state_dict(),
+            "optimizer_state_dict":  self.optim.state_dict(),
+            "scaler_state_dict":     self.scaler.state_dict(),
+            "avg_policy_state_dict": self.avg_policy.state_dict(),
+            "avg_param_cumsum":      [c.cpu() for c in self._avg_param_cumsum],
+            "avg_update_count":      self._avg_update_count,
+            "update":                update,
+            "global_step":           self._global_step,
+            "training_elo":          self._training_elo,
+            "elo_milestone":         self._elo_milestone,
+            "train_config":          dataclasses.asdict(self.cfg),
+            "model_config":          dataclasses.asdict(self.model_config),
+            "env_config":            dataclasses.asdict(self.env_config),
+            "reward_config":         dataclasses.asdict(self.reward_config),
+        }
+
     def _save_checkpoint(self, update: int) -> None:
         """Save policy and optimizer state to a .pt file.
 
@@ -996,30 +1047,29 @@ class PPOTrainer:
         ckpt_dir = Path(self.cfg.checkpoint_dir) / self._run_name
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         path = ckpt_dir / f"step_{self._global_step:012d}.pt"
-        torch.save({
-            "policy_state_dict":     self.policy.state_dict(),
-            "optimizer_state_dict":  self.optim.state_dict(),
-            "scaler_state_dict":     self.scaler.state_dict(),
-            "avg_policy_state_dict": self.avg_policy.state_dict(),
-            "avg_param_cumsum":      [c.cpu() for c in self._avg_param_cumsum],
-            "avg_update_count":      self._avg_update_count,
-            "update":                update,
-            "global_step":           self._global_step,
-            "training_elo":          self._training_elo,
-            "train_config":          dataclasses.asdict(self.cfg),
-            "model_config":          dataclasses.asdict(self.model_config),
-            "env_config":            dataclasses.asdict(self.env_config),
-            "reward_config":         dataclasses.asdict(self.reward_config),
-        }, path)
+        torch.save(self._checkpoint_payload(update), path)
         self._last_checkpoint_path = path
         print(f"Checkpoint saved: {path}")
 
-        # Prune: keep only the latest checkpoint + all roster-referenced files
+        # Prune: keep only the latest checkpoint + all roster-referenced files.
+        # best_*.pt files are not touched (they don't match the step_*.pt glob).
         kept = self.roster.kept_paths()
         kept.add(str(path))
         for old_path in ckpt_dir.glob("step_*.pt"):
             if str(old_path) not in kept:
                 old_path.unlink(missing_ok=True)
+
+    def _save_best_checkpoint(self, name: str) -> None:
+        """Save a named best-model checkpoint, overwriting any previous version.
+
+        Args:
+            name: Filename, e.g. "best_training.pt" or "best_avg.pt".
+        """
+        ckpt_dir = Path(self.cfg.checkpoint_dir) / self._run_name
+        ckpt_dir.mkdir(parents=True, exist_ok=True)
+        path = ckpt_dir / name
+        torch.save(self._checkpoint_payload(update=0), path)
+        print(f"Best checkpoint saved: {path}")
 
     def load_checkpoint(self, path: str) -> int:
         """Load policy and optimizer weights from a checkpoint file.
@@ -1041,7 +1091,7 @@ class PPOTrainer:
             self._avg_update_count = ckpt["avg_update_count"]
         if "training_elo" in ckpt:
             self._training_elo  = ckpt["training_elo"]
-            self._elo_milestone = ckpt["training_elo"]
+            self._elo_milestone = ckpt.get("elo_milestone", 0.0)
 
         # Restore roster if its JSON exists alongside the checkpoint
         roster_path = Path(path).parent / "roster.json"
