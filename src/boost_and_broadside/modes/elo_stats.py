@@ -254,13 +254,34 @@ def run_elo_stats_mode(
     # ------------------------------------------------------------------ #
     elo = [1000.0] * K
     a_wins_cpu = matchup_a_wins.cpu().tolist()
+    b_wins_cpu = matchup_b_wins.cpu().tolist()
     ties_cpu   = matchup_ties.cpu().tolist()
+
+    # Precompute lookup: (i, j) -> matchup index
+    matchup_lookup: dict[tuple[int, int], int] = {pair: m for m, pair in enumerate(matchups)}
+
+    def _score_as_team0(i: int, j: int) -> float:
+        """Win rate of i playing as team-0 against j (team-1)."""
+        m = matchup_lookup[(i, j)]
+        n = matchup_sizes[m]
+        return (a_wins_cpu[m] + 0.5 * ties_cpu[m]) / n if n > 0 else 0.5
+
+    def _win_rate_vs(a_idx: int, opp_idx: int) -> float | None:
+        """Win rate of a_idx vs opp_idx, averaged over both role directions."""
+        if a_idx == opp_idx or (a_idx, opp_idx) not in matchup_lookup:
+            return None
+        # Direction 1: a as team-0
+        r0 = _score_as_team0(a_idx, opp_idx)
+        # Direction 2: a as team-1 (opp as team-0); a's score = b_wins + 0.5*ties
+        m2 = matchup_lookup[(opp_idx, a_idx)]
+        n2 = matchup_sizes[m2]
+        r1 = (b_wins_cpu[m2] + 0.5 * ties_cpu[m2]) / n2 if n2 > 0 else 0.5
+        return (r0 + r1) / 2.0
 
     for _ in range(200):
         for m_idx, (i, j) in enumerate(matchups):
             n_games    = matchup_sizes[m_idx]
-            score_i    = a_wins_cpu[m_idx] + 0.5 * ties_cpu[m_idx]
-            win_rate_i = score_i / n_games
+            win_rate_i = (a_wins_cpu[m_idx] + 0.5 * ties_cpu[m_idx]) / n_games
             expected_i = 1.0 / (1.0 + 10.0 ** ((elo[j] - elo[i]) / 400.0))
             delta      = elo_k_factor * (win_rate_i - expected_i)
             elo[i]    += delta
@@ -269,60 +290,29 @@ def run_elo_stats_mode(
     # ------------------------------------------------------------------ #
     # Step 6 — Per-agent stats                                            #
     # ------------------------------------------------------------------ #
-    def _matchup_win_rate(agent_as_team0: int, opponent: int) -> float | None:
-        """Win rate of agent_as_team0 vs opponent (agent_as_team0 controls team-0 ships)."""
-        try:
-            m_idx = matchups.index((agent_as_team0, opponent))
-        except ValueError:
-            return None
-        n    = matchup_sizes[m_idx]
-        wins = a_wins_cpu[m_idx] + 0.5 * ties_cpu[m_idx]
-        return wins / n if n > 0 else None
 
-    def _agent_win_rate_vs(a_idx: int, opp_idx: int) -> float | None:
-        """Overall win rate of a_idx vs opp_idx (average of both directions)."""
-        if a_idx == opp_idx:
-            return None
-        r1 = _matchup_win_rate(a_idx, opp_idx)   # a as team-0
-        r2 = _matchup_win_rate(opp_idx, a_idx)   # a as team-1 → 1 - win_rate of opp
-        rates = []
-        if r1 is not None:
-            rates.append(r1)
-        if r2 is not None:
-            # win rate of opp as team-0 against a = r2; so a's win rate = 1 - r2
-            b_wins = matchup_b_wins.cpu().tolist()[matchups.index((opp_idx, a_idx))]
-            t      = ties_cpu[matchups.index((opp_idx, a_idx))]
-            n      = matchup_sizes[matchups.index((opp_idx, a_idx))]
-            a_score = b_wins + 0.5 * t
-            rates.append(a_score / n if n > 0 else 0.0)
-        return sum(rates) / len(rates) if rates else None
-
-    b_wins_cpu = matchup_b_wins.cpu().tolist()
-
-    def _win_rate_vs(a_idx: int, opp_idx: int) -> float | None:
-        """Win rate of a_idx vs opp_idx, averaged over both playing-as-team directions."""
-        if a_idx == opp_idx:
-            return None
-        scores = []
-        # Direction 1: a is team-0, opp is team-1
-        m1 = next((m for m, (x, y) in enumerate(matchups) if x == a_idx and y == opp_idx), None)
-        if m1 is not None:
-            n = matchup_sizes[m1]
-            scores.append((a_wins_cpu[m1] + 0.5 * ties_cpu[m1]) / n)
-        # Direction 2: opp is team-0, a is team-1
-        m2 = next((m for m, (x, y) in enumerate(matchups) if x == opp_idx and y == a_idx), None)
-        if m2 is not None:
-            n = matchup_sizes[m2]
-            scores.append((b_wins_cpu[m2] + 0.5 * ties_cpu[m2]) / n)
-        return sum(scores) / len(scores) if scores else None
+    # Identify special agents by label
+    avg_idx = next((a for a, lb in enumerate(labels) if lb == "best_avg"), None)
 
     # Per-agent average episode length across all their active envs
     ep_lengths_cpu = ep_lengths.cpu()
+    agent_ep_len = [
+        float(ep_lengths_cpu[active_envs[a].cpu()].float().mean())
+        for a in range(K)
+    ]
 
-    agent_ep_len = []
-    for a_idx in range(K):
-        active_cpu = active_envs[a_idx].cpu()
-        agent_ep_len.append(float(ep_lengths_cpu[active_cpu].float().mean()))
+    # Role delta: avg win rate as team-0 minus avg win rate as team-1
+    # (positive = better when controlling team-0 ships)
+    def _role_delta(a_idx: int) -> float:
+        as_t0 = [_score_as_team0(a_idx, j) for j in range(K) if j != a_idx]
+        as_t1 = []
+        for i in range(K):
+            if i == a_idx:
+                continue
+            m = matchup_lookup[(i, a_idx)]
+            n = matchup_sizes[m]
+            as_t1.append((b_wins_cpu[m] + 0.5 * ties_cpu[m]) / n if n > 0 else 0.5)
+        return (sum(as_t0) / len(as_t0)) - (sum(as_t1) / len(as_t1))
 
     # ------------------------------------------------------------------ #
     # Step 7 — Print report                                               #
@@ -334,28 +324,77 @@ def run_elo_stats_mode(
     order = sorted(range(K), key=lambda a: elo[a], reverse=True)
 
     label_w = max(len(lb) for lb in labels)
-    w       = max(72, label_w + 50)
-    sep     = "─" * w
+    has_avg = avg_idx is not None
+
+    # Build header columns
+    cols = [
+        ("ELO",        6),
+        ("vs random",  10),
+        ("vs scripted", 12),
+    ]
+    if has_avg:
+        cols.append(("vs avg", 8))
+    cols += [
+        ("role Δ",    8),
+        ("avg ep len", 10),
+    ]
+
+    hdr_parts = "  ".join(f"{name:>{w}}" for name, w in cols)
+    row_w     = label_w + 4 + sum(w + 2 for _, w in cols)
+    w_total   = max(72, row_w)
+    sep       = "─" * w_total
 
     print(f"\n{sep}")
     print(f"  ELO Stats: {run_dir.name}")
     print(f"  {K} agents  |  {B:,} total envs  |  {M} directed matchups  |  ~{B // M} envs/matchup")
     print(f"{sep}")
-    hdr = f"  {'Agent':<{label_w}}  {'ELO':>6}  {'vs random':>10}  {'vs scripted':>12}  {'avg ep len':>10}"
-    print(hdr)
-    print(f"  {'─' * (w - 4)}")
+    print(f"  {'Agent':<{label_w}}  {hdr_parts}")
+    print(f"  {'─' * (w_total - 4)}")
+
+    def _pct(v: float | None) -> str:
+        return f"{100 * v:.1f}%" if v is not None else "—"
 
     for a_idx in order:
-        lb  = labels[a_idx]
-        e   = elo[a_idx]
-        vr  = _win_rate_vs(a_idx, random_idx)
-        vs  = _win_rate_vs(a_idx, scripted_idx)
-        el  = agent_ep_len[a_idx]
+        lb    = labels[a_idx]
+        vr    = _win_rate_vs(a_idx, random_idx)
+        vs    = _win_rate_vs(a_idx, scripted_idx)
+        va    = _win_rate_vs(a_idx, avg_idx) if has_avg else None
+        delta = _role_delta(a_idx)
+        el    = agent_ep_len[a_idx]
 
-        vr_str = f"{100 * vr:.1f}%" if vr is not None else "   —  "
-        vs_str = f"{100 * vs:.1f}%" if vs is not None else "   —  "
-        print(f"  {lb:<{label_w}}  {e:>6.0f}  {vr_str:>10}  {vs_str:>12}  {el:>10.1f}")
+        row = (
+            f"  {lb:<{label_w}}"
+            f"  {elo[a_idx]:>6.0f}"
+            f"  {_pct(vr):>10}"
+            f"  {_pct(vs):>12}"
+        )
+        if has_avg:
+            row += f"  {_pct(va):>8}"
+        delta_sign = "+" if delta >= 0 else ""
+        row += f"  {delta_sign}{100 * delta:.1f}%{'':<4}  {el:>10.1f}"
+        print(row)
 
     print(f"{sep}")
     print(f"  Wall time: {elapsed:.2f}s   |   {sps:,.0f} steps/s  ({sps / sim_fps:,.0f} sim-steps/s)")
-    print(f"{sep}\n")
+    print(f"{sep}")
+
+    # ------------------------------------------------------------------ #
+    # Step 8 — Win-rate heatmap (tab-separated, copyable as CSV)         #
+    # ------------------------------------------------------------------ #
+    # Rows = team-0 agent, columns = team-1 agent, cell = team-0 win rate
+    print(f"\n  Win-rate heatmap (row=team-0, col=team-1)  —  tab-separated")
+    print(f"  Copy into a spreadsheet for colour formatting\n")
+
+    short = [lb[:16] for lb in labels]  # truncate for readability
+
+    # Header row
+    print("\t" + "\t".join(short[j] for j in order))
+    for i in order:
+        cells = []
+        for j in order:
+            if i == j:
+                cells.append("—")
+            else:
+                cells.append(f"{100 * _score_as_team0(i, j):.1f}%")
+        print(short[i] + "\t" + "\t".join(cells))
+    print()

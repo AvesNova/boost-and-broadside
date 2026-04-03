@@ -231,7 +231,7 @@ def main() -> None:
         case "elo_stats":
             run_elo_stats_mode(
                 run_spec       = args.run,
-                num_envs       = 32768,
+                num_envs       = 32768*4,
                 ship_config    = ship_config,
                 env_config     = env_config,
                 model_config   = model_config,
