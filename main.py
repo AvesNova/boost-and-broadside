@@ -29,6 +29,7 @@ from boost_and_broadside.config import (
     ShipConfig, EnvConfig, ModelConfig, RewardConfig, TrainConfig,
 )
 from boost_and_broadside.modes.collect import run_collect_stats_mode
+from boost_and_broadside.modes.elo_stats import run_elo_stats_mode
 from boost_and_broadside.modes.interactive import run_watch_mode
 from boost_and_broadside.train.rl.ppo import PPOTrainer
 from boost_and_broadside.ui.renderer import RenderConfig
@@ -41,9 +42,16 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--mode",
-        choices=["train", "watch", "collect_stats"],
+        choices=["train", "watch", "collect_stats", "elo_stats"],
         default="train",
         help="Operating mode.",
+    )
+    parser.add_argument(
+        "--run",
+        type=str,
+        default="latest",
+        metavar="RUN",
+        help="Run name for elo_stats mode (e.g. 'bright-cloud-219') or 'latest'.",
     )
     parser.add_argument(
         "--team0",
@@ -206,7 +214,7 @@ def main() -> None:
             )
 
         case "collect_stats":
-            collect_stats_num_envs = 4096
+            collect_stats_num_envs = 32768
             team0 = args.team0 if args.team0 is not None else "scripted"
             team1 = args.team1 if args.team1 is not None else "random"
             run_collect_stats_mode(
@@ -218,6 +226,18 @@ def main() -> None:
                 model_config  = model_config,
                 device        = device,
                 checkpoint_dir = "checkpoints",
+            )
+
+        case "elo_stats":
+            run_elo_stats_mode(
+                run_spec       = args.run,
+                num_envs       = 32768,
+                ship_config    = ship_config,
+                env_config     = env_config,
+                model_config   = model_config,
+                device         = device,
+                checkpoint_dir = "checkpoints",
+                elo_k_factor   = 32.0,
             )
 
 
