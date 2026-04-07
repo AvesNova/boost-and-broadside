@@ -26,6 +26,7 @@ from boost_and_broadside.core.constants import STATE_DIM, TARGET_DIM, StateFeatu
 # symlog
 # ---------------------------------------------------------------------------
 
+
 class TestSymlog:
     def test_zero_maps_to_zero(self):
         x = torch.tensor(0.0)
@@ -53,6 +54,7 @@ class TestSymlog:
 # soft_bin_uniform
 # ---------------------------------------------------------------------------
 
+
 class TestSoftBinUniform:
     def test_sums_to_one(self):
         x = torch.linspace(0.0, 100.0, 50)
@@ -73,8 +75,10 @@ class TestSoftBinUniform:
     def test_two_bin_split_midpoint(self):
         # Midpoint between bin 0 and bin 1 → equal weight
         n, lo, hi = 64, 0.0, 100.0
-        w = (hi - lo) / n   # bin width
-        x = torch.tensor(lo + w)  # x = lo + 1 bin width → bin boundary → equal split on bins 1 and 2
+        w = (hi - lo) / n  # bin width
+        x = torch.tensor(
+            lo + w
+        )  # x = lo + 1 bin width → bin boundary → equal split on bins 1 and 2
         out = soft_bin_uniform(x, n_bins=n, lo=lo, hi=hi)
         assert out.sum().item() == pytest.approx(1.0, abs=1e-6)
         # at most 2 nonzero bins
@@ -91,6 +95,7 @@ class TestSoftBinUniform:
 # ---------------------------------------------------------------------------
 # soft_bin_angular (seam handling)
 # ---------------------------------------------------------------------------
+
 
 class TestSoftBinAngular:
     def test_sums_to_one(self):
@@ -125,7 +130,7 @@ class TestSoftBinAngular:
     def test_midpoint_two_bins(self):
         # x at the exact boundary between bin 0 and bin 1 → equal split
         w = 2.0 * math.pi / 128
-        x = torch.tensor(w)   # start of bin 1
+        x = torch.tensor(w)  # start of bin 1
         out = soft_bin_angular(x, n_bins=128)
         assert out.sum().item() == pytest.approx(1.0, abs=1e-6)
         nonzero = (out > 1e-9).sum().item()
@@ -136,64 +141,77 @@ class TestSoftBinAngular:
 # compute_soft_bin_targets
 # ---------------------------------------------------------------------------
 
+
 class TestComputeSoftBinTargets:
     def _make_states(self, B=2, T=4, N=3, seed=42):
         torch.manual_seed(seed)
-        state_t   = torch.rand(B, T, N, STATE_DIM)
+        state_t = torch.rand(B, T, N, STATE_DIM)
         state_tp1 = torch.rand(B, T, N, STATE_DIM)
-        state_t[..., StateFeature.HEALTH]  = torch.rand(B, T, N) * 100.0
+        state_t[..., StateFeature.HEALTH] = torch.rand(B, T, N) * 100.0
         state_tp1[..., StateFeature.HEALTH] = torch.rand(B, T, N) * 100.0
-        state_t[..., StateFeature.POWER]   = torch.rand(B, T, N) * 100.0
-        state_tp1[..., StateFeature.POWER]  = torch.rand(B, T, N) * 100.0
-        pos_t   = torch.rand(B, T, N, 2) * 1000.0
+        state_t[..., StateFeature.POWER] = torch.rand(B, T, N) * 100.0
+        state_tp1[..., StateFeature.POWER] = torch.rand(B, T, N) * 100.0
+        pos_t = torch.rand(B, T, N, 2) * 1000.0
         pos_tp1 = torch.rand(B, T, N, 2) * 1000.0
-        vel_t   = state_t[..., StateFeature.VX : StateFeature.VY + 1]
+        vel_t = state_t[..., StateFeature.VX : StateFeature.VY + 1]
         vel_tp1 = state_tp1[..., StateFeature.VX : StateFeature.VY + 1]
         return state_t, state_tp1, pos_t, pos_tp1, vel_t, vel_tp1
 
     def test_output_count_and_shapes(self):
         B, T, N = 2, 4, 3
         s_t, s_tp1, p_t, p_tp1, v_t, v_tp1 = self._make_states(B, T, N)
-        targets = compute_soft_bin_targets(s_t, s_tp1, p_t, p_tp1, v_t, v_tp1, W=1000, H=1000)
+        targets = compute_soft_bin_targets(
+            s_t, s_tp1, p_t, p_tp1, v_t, v_tp1, W=1000, H=1000
+        )
         assert len(targets) == len(INTERLEAVED_SOFT_BIN_SPECS)
         for tgt, spec in zip(targets, INTERLEAVED_SOFT_BIN_SPECS):
             if spec.is_team_level:
-                assert tgt.shape == (B, T, 1, spec.n_bins), f"{spec.name}: expected (B,T,1,bins)"
+                assert tgt.shape == (B, T, 1, spec.n_bins), (
+                    f"{spec.name}: expected (B,T,1,bins)"
+                )
             else:
-                assert tgt.shape == (B, T, N, spec.n_bins), f"{spec.name}: expected (B,T,N,bins)"
+                assert tgt.shape == (B, T, N, spec.n_bins), (
+                    f"{spec.name}: expected (B,T,N,bins)"
+                )
 
     def test_all_sum_to_one(self):
         B, T, N = 2, 4, 3
         s_t, s_tp1, p_t, p_tp1, v_t, v_tp1 = self._make_states(B, T, N)
-        targets = compute_soft_bin_targets(s_t, s_tp1, p_t, p_tp1, v_t, v_tp1, W=1000, H=1000)
+        targets = compute_soft_bin_targets(
+            s_t, s_tp1, p_t, p_tp1, v_t, v_tp1, W=1000, H=1000
+        )
         for tgt, spec in zip(targets, INTERLEAVED_SOFT_BIN_SPECS):
             sums = tgt.sum(dim=-1)
-            assert torch.allclose(sums, torch.ones_like(sums), atol=1e-5), \
-                f"{spec.name}: soft bins don't sum to 1 (max err={( sums - 1).abs().max():.6f})"
+            assert torch.allclose(sums, torch.ones_like(sums), atol=1e-5), (
+                f"{spec.name}: soft bins don't sum to 1 (max err={(sums - 1).abs().max():.6f})"
+            )
 
     def test_angle_seam_with_large_wrap(self):
         """Toroidal wrap in position delta should not break angular binning."""
         B, T, N = 1, 1, 1
-        state_t   = torch.zeros(B, T, N, STATE_DIM)
+        state_t = torch.zeros(B, T, N, STATE_DIM)
         state_tp1 = torch.zeros(B, T, N, STATE_DIM)
         state_tp1[..., StateFeature.HEALTH] = 5.0
-        state_tp1[..., StateFeature.POWER]  = 5.0
+        state_tp1[..., StateFeature.POWER] = 5.0
         # Ship crosses world boundary: pos near edge
-        pos_t   = torch.tensor([[[[999.0, 999.0]]]])
-        pos_tp1 = torch.tensor([[[[1.0,   1.0]]]])  # wrapped around
-        vel_t   = torch.zeros(B, T, N, 2)
+        pos_t = torch.tensor([[[[999.0, 999.0]]]])
+        pos_tp1 = torch.tensor([[[[1.0, 1.0]]]])  # wrapped around
+        vel_t = torch.zeros(B, T, N, 2)
         vel_tp1 = torch.zeros(B, T, N, 2)
-        targets = compute_soft_bin_targets(state_t, state_tp1, pos_t, pos_tp1, vel_t, vel_tp1,
-                                           W=1000.0, H=1000.0)
+        targets = compute_soft_bin_targets(
+            state_t, state_tp1, pos_t, pos_tp1, vel_t, vel_tp1, W=1000.0, H=1000.0
+        )
         for tgt, spec in zip(targets, INTERLEAVED_SOFT_BIN_SPECS):
             sums = tgt.sum(dim=-1)
-            assert torch.allclose(sums, torch.ones_like(sums), atol=1e-5), \
+            assert torch.allclose(sums, torch.ones_like(sums), atol=1e-5), (
                 f"seam test {spec.name}: sums={sums}"
+            )
 
 
 # ---------------------------------------------------------------------------
 # SoftBinnedWorldHead
 # ---------------------------------------------------------------------------
+
 
 class TestSoftBinnedWorldHead:
     def test_output_shapes(self):
@@ -213,6 +231,7 @@ class TestSoftBinnedWorldHead:
 # ---------------------------------------------------------------------------
 # SoftBinnedStateLoss
 # ---------------------------------------------------------------------------
+
 
 class TestSoftBinnedStateLoss:
     def _make_logits_and_targets(self, B=2, T=4, N=3):
@@ -253,7 +272,9 @@ class TestSoftBinnedStateLoss:
         logits_list = []
         tgts_list = []
         for spec in INTERLEAVED_SOFT_BIN_SPECS:
-            shape = (B, T, 1, spec.n_bins) if spec.is_team_level else (B, T, N, spec.n_bins)
+            shape = (
+                (B, T, 1, spec.n_bins) if spec.is_team_level else (B, T, N, spec.n_bins)
+            )
             logits_list.append(torch.randn(*shape))
             # Spiky target: one-hot on a random bin so different ships differ
             idx = torch.randint(0, spec.n_bins, shape[:-1])
@@ -262,22 +283,27 @@ class TestSoftBinnedStateLoss:
             tgts_list.append(t)
         preds = {"soft_bin_logits": logits_list}
         targets = {"soft_bin_targets": tgts_list}
-        full_mask  = torch.ones(B, T, N)
+        full_mask = torch.ones(B, T, N)
         # Half mask: only ship 0 valid → denominator differs
-        half_mask  = torch.zeros(B, T, N)
+        half_mask = torch.zeros(B, T, N)
         half_mask[:, :, 0] = 1.0
         out_full = loss_fn(preds, targets, full_mask)["loss"]
         out_half = loss_fn(preds, targets, half_mask)["loss"]
         # Both should be finite
         assert torch.isfinite(out_full) and torch.isfinite(out_half)
         # Losses should differ by more than 1% absolute (different denominator matters)
-        assert abs(out_full.item() - out_half.item()) > 0.01, \
-            f"Expected loss difference >0.01, got {abs(out_full.item()-out_half.item()):.4f}"
+        assert abs(out_full.item() - out_half.item()) > 0.01, (
+            f"Expected loss difference >0.01, got {abs(out_full.item() - out_half.item()):.4f}"
+        )
 
     def test_weight_scaling(self):
         B, T, N = 2, 4, 3
-        loss_a = SoftBinnedStateLoss(lambda_state=1.0, lambda_value=1.0, lambda_reward=1.0).set_specs(INTERLEAVED_SOFT_BIN_SPECS)
-        loss_b = SoftBinnedStateLoss(lambda_state=2.0, lambda_value=2.0, lambda_reward=2.0).set_specs(INTERLEAVED_SOFT_BIN_SPECS)
+        loss_a = SoftBinnedStateLoss(
+            lambda_state=1.0, lambda_value=1.0, lambda_reward=1.0
+        ).set_specs(INTERLEAVED_SOFT_BIN_SPECS)
+        loss_b = SoftBinnedStateLoss(
+            lambda_state=2.0, lambda_value=2.0, lambda_reward=2.0
+        ).set_specs(INTERLEAVED_SOFT_BIN_SPECS)
         logits, tgts = self._make_logits_and_targets(B, T, N)
         preds = {"soft_bin_logits": logits}
         targets = {"soft_bin_targets": tgts}
@@ -287,36 +313,44 @@ class TestSoftBinnedStateLoss:
         assert lb.item() == pytest.approx(2.0 * la.item(), rel=1e-5)
 
 
-
 # ---------------------------------------------------------------------------
 # YemongDynamicsInterleaved end-to-end with soft bins
 # ---------------------------------------------------------------------------
 
+
 def _interleaved_config(d_model=64, use_soft_bins=True):
-    return OmegaConf.create({
-        "d_model": d_model,
-        "n_layers": 1,
-        "n_heads": 2,
-        "input_dim": STATE_DIM,
-        "target_dim": TARGET_DIM,
-        "action_space_type": "separated",
-        "action_embed_dim": 8,
-        "loss_type": "fixed",
-        "use_soft_bin_targets": use_soft_bins,
-        "spatial_layer": {
-            "_target_": "boost_and_broadside.models.components.layers.attention.RelationalAttention",
+    return OmegaConf.create(
+        {
             "d_model": d_model,
+            "n_layers": 1,
             "n_heads": 2,
-        },
-        "loss": {
-            "_target_": "boost_and_broadside.models.components.losses.CompositeLoss",
-            "losses": [
-                # Use ActionLoss (separated 3+7+2=12 logits) to match action_space_type=separated
-                {"_target_": "boost_and_broadside.models.components.losses.ActionLoss", "weight": 1.0},
-                {"_target_": "boost_and_broadside.models.components.losses.SoftBinnedStateLoss", "weight": 1.0},
-            ],
-        },
-    })
+            "input_dim": STATE_DIM,
+            "target_dim": TARGET_DIM,
+            "action_space_type": "separated",
+            "action_embed_dim": 8,
+            "loss_type": "fixed",
+            "use_soft_bin_targets": use_soft_bins,
+            "spatial_layer": {
+                "_target_": "boost_and_broadside.models.components.layers.attention.RelationalAttention",
+                "d_model": d_model,
+                "n_heads": 2,
+            },
+            "loss": {
+                "_target_": "boost_and_broadside.models.components.losses.CompositeLoss",
+                "losses": [
+                    # Use ActionLoss (separated 3+7+2=12 logits) to match action_space_type=separated
+                    {
+                        "_target_": "boost_and_broadside.models.components.losses.ActionLoss",
+                        "weight": 1.0,
+                    },
+                    {
+                        "_target_": "boost_and_broadside.models.components.losses.SoftBinnedStateLoss",
+                        "weight": 1.0,
+                    },
+                ],
+            },
+        }
+    )
 
 
 class TestYemongInterleavedSoftBins:
@@ -330,8 +364,13 @@ class TestYemongInterleavedSoftBins:
         pos = torch.randn(B, T, N, 2)
         vel = torch.randn(B, T, N, 2)
         target_actions = torch.randint(0, 2, (B, T, N, 3))
-        out = model(state=state, prev_action=prev_action, pos=pos, vel=vel,
-                    target_actions=target_actions)
+        out = model(
+            state=state,
+            prev_action=prev_action,
+            pos=pos,
+            vel=vel,
+            target_actions=target_actions,
+        )
         assert len(out) == 10, f"Expected 10 outputs, got {len(out)}"
 
     def test_soft_bin_logits_shapes(self):
@@ -344,8 +383,13 @@ class TestYemongInterleavedSoftBins:
         pos = torch.randn(B, T, N, 2)
         vel = torch.randn(B, T, N, 2)
         target_actions = torch.randint(0, 2, (B, T, N, 3))
-        out = model(state=state, prev_action=prev_action, pos=pos, vel=vel,
-                    target_actions=target_actions)
+        out = model(
+            state=state,
+            prev_action=prev_action,
+            pos=pos,
+            vel=vel,
+            target_actions=target_actions,
+        )
         soft_bin_logits = out[9]
         assert soft_bin_logits is not None
         assert len(soft_bin_logits) == len(INTERLEAVED_SOFT_BIN_SPECS)
@@ -369,8 +413,13 @@ class TestYemongInterleavedSoftBins:
         pos = torch.randn(B, T, N, 2)
         vel = torch.randn(B, T, N, 2)
         target_actions = torch.randint(0, 2, (B, T, N, 3))
-        out = model(state=state, prev_action=prev_action, pos=pos, vel=vel,
-                    target_actions=target_actions)
+        out = model(
+            state=state,
+            prev_action=prev_action,
+            pos=pos,
+            vel=vel,
+            target_actions=target_actions,
+        )
         # With soft bins disabled: 10 items but last is None
         assert len(out) == 10
         assert out[9] is None
@@ -393,14 +442,29 @@ class TestYemongInterleavedSoftBins:
         vel_tp1 = state_tp1[..., StateFeature.VX : StateFeature.VY + 1]
         target_actions = torch.randint(0, 2, (B, T, N, 3))
 
-        out = model(state=state, prev_action=prev_action, pos=pos, vel=vel,
-                    target_actions=target_actions)
+        out = model(
+            state=state,
+            prev_action=prev_action,
+            pos=pos,
+            vel=vel,
+            target_actions=target_actions,
+        )
         soft_bin_logits = out[9]
 
-        from boost_and_broadside.models.components.soft_bins import compute_soft_bin_targets, INTERLEAVED_SOFT_BIN_SPECS
+        from boost_and_broadside.models.components.soft_bins import (
+            compute_soft_bin_targets,
+            INTERLEAVED_SOFT_BIN_SPECS,
+        )
+
         soft_bin_targets = compute_soft_bin_targets(
-            state, state_tp1, pos, pos_tp1, vel, vel_tp1,
-            W=1000.0, H=1000.0,
+            state,
+            state_tp1,
+            pos,
+            pos_tp1,
+            vel,
+            vel_tp1,
+            W=1000.0,
+            H=1000.0,
         )
 
         loss_mask = torch.ones(B, T, N)
@@ -412,5 +476,7 @@ class TestYemongInterleavedSoftBins:
             soft_bin_targets=soft_bin_targets,
         )
         assert "loss" in loss_out
-        assert torch.isfinite(loss_out["loss"]), f"get_loss returned non-finite: {loss_out['loss']}"
+        assert torch.isfinite(loss_out["loss"]), (
+            f"get_loss returned non-finite: {loss_out['loss']}"
+        )
         assert "soft_bin_loss" in loss_out

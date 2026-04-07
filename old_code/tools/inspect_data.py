@@ -4,9 +4,9 @@ import sys
 # Add src to sys.path
 
 
-
 import h5py
 import numpy as np
+
 
 def inspect_data_file(file_path: Path) -> None:
     """
@@ -22,7 +22,7 @@ def inspect_data_file(file_path: Path) -> None:
             for key, value in f.attrs.items():
                 print(f"  {key}: {value}")
             print("\nDatasets:")
-            
+
             def print_structure(name, obj):
                 if isinstance(obj, h5py.Dataset):
                     print(f"  {name}: shape={obj.shape}, dtype={obj.dtype}")
@@ -31,15 +31,22 @@ def inspect_data_file(file_path: Path) -> None:
                         try:
                             # Sample first chunk to be fast
                             sample = obj[:1000]
-                            print(f"    mean={np.mean(sample):.4f}, min={np.min(sample)}, max={np.max(sample)}")
-                            if np.sum(sample) == 0 and np.max(sample) == 0 and np.min(sample) == 0:
+                            print(
+                                f"    mean={np.mean(sample):.4f}, min={np.min(sample)}, max={np.max(sample)}"
+                            )
+                            if (
+                                np.sum(sample) == 0
+                                and np.max(sample) == 0
+                                and np.min(sample) == 0
+                            ):
                                 print("    [WARNING] First 1000 items are all zeros!")
-                        except: pass
+                        except:
+                            pass
                 elif isinstance(obj, h5py.Group):
                     print(f"  Group: {name}")
 
             f.visititems(print_structure)
-            
+
     except Exception as e:
         print(f"Failed to inspect HDF5: {e}")
 

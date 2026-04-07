@@ -41,7 +41,9 @@ def compile_tokens(
     """
     batch_size, num_ships = position.shape
     device = position.device
-    tokens = torch.zeros((batch_size, num_ships, 15), dtype=torch.float32, device=device)
+    tokens = torch.zeros(
+        (batch_size, num_ships, 15), dtype=torch.float32, device=device
+    )
 
     # 0: Team
     tokens[..., 0] = team_id.float()
@@ -112,29 +114,47 @@ class AsyncCollector:
         # It's cleaner to accept prob_dim. Defaulting to 12.
         self.prob_dim = 12
         if total_steps is not None:
-             # Just a hack if we pass flat_action_sampling info in kwargs later. We'll default to 42 to be safe for memory, or dynamically resize.
-             # Actually, we can just allocate 42 and only use what's passed.
-             self.prob_dim = 42
+            # Just a hack if we pass flat_action_sampling info in kwargs later. We'll default to 42 to be safe for memory, or dynamically resize.
+            # Actually, we can just allocate 42 and only use what's passed.
+            self.prob_dim = 42
 
         # Pinned CPU buffers for current episodes (pre-allocated)
         buffer_shape = (num_envs, self.max_steps, max_ships)
-        self.pos_buffer = torch.zeros((*buffer_shape, 2), dtype=torch.float32, pin_memory=True)
-        self.vel_buffer = torch.zeros((*buffer_shape, 2), dtype=torch.float16, pin_memory=True)
-        self.health_buffer = torch.zeros(buffer_shape, dtype=torch.float16, pin_memory=True)
-        self.power_buffer = torch.zeros(buffer_shape, dtype=torch.float16, pin_memory=True)
-        self.ang_vel_buffer = torch.zeros(buffer_shape, dtype=torch.float16, pin_memory=True)
+        self.pos_buffer = torch.zeros(
+            (*buffer_shape, 2), dtype=torch.float32, pin_memory=True
+        )
+        self.vel_buffer = torch.zeros(
+            (*buffer_shape, 2), dtype=torch.float16, pin_memory=True
+        )
+        self.health_buffer = torch.zeros(
+            buffer_shape, dtype=torch.float16, pin_memory=True
+        )
+        self.power_buffer = torch.zeros(
+            buffer_shape, dtype=torch.float16, pin_memory=True
+        )
+        self.ang_vel_buffer = torch.zeros(
+            buffer_shape, dtype=torch.float16, pin_memory=True
+        )
         self.attitude_buffer = torch.zeros(
             (*buffer_shape, 2), dtype=torch.float16, pin_memory=True
         )
-        self.is_shooting_buffer = torch.zeros(buffer_shape, dtype=torch.uint8, pin_memory=True)
+        self.is_shooting_buffer = torch.zeros(
+            buffer_shape, dtype=torch.uint8, pin_memory=True
+        )
         self.team_buffer = torch.zeros(buffer_shape, dtype=torch.uint8, pin_memory=True)
 
-        self.action_buffer = torch.zeros((*buffer_shape, 3), dtype=torch.uint8, pin_memory=True)
+        self.action_buffer = torch.zeros(
+            (*buffer_shape, 3), dtype=torch.uint8, pin_memory=True
+        )
         self.expert_action_probs_buffer = torch.zeros(
             (*buffer_shape, self.prob_dim), dtype=torch.float32, pin_memory=True
         )
-        self.reward_buffer = torch.zeros(buffer_shape, dtype=torch.float32, pin_memory=True)
-        self.skill_buffer = torch.zeros(buffer_shape, dtype=torch.float32, pin_memory=True)
+        self.reward_buffer = torch.zeros(
+            buffer_shape, dtype=torch.float32, pin_memory=True
+        )
+        self.skill_buffer = torch.zeros(
+            buffer_shape, dtype=torch.float32, pin_memory=True
+        )
 
         self.step_counts = torch.zeros(num_envs, dtype=torch.long)
 
@@ -164,15 +184,19 @@ class AsyncCollector:
 
             # We always initialize with 0 size so that current_size starts at 0.
             # HDF5 resize is efficient for growing datasets.
-            init_size = 0 
+            init_size = 0
             ep_init_size = 0  # We don't know episode count in advance
 
             h5_file.create_dataset(
-                "episode_lengths", (ep_init_size,), maxshape=(None,), dtype="i8", compression="lzf"
+                "episode_lengths",
+                (ep_init_size,),
+                maxshape=(None,),
+                dtype="i8",
+                compression="lzf",
             )
 
             chunk_size = 1024 * 10
-            
+
             def create_feature_ds(name, shape_suffix, dtype, chunks_suffix):
                 return h5_file.create_dataset(
                     name,
@@ -184,18 +208,29 @@ class AsyncCollector:
                 )
 
             # --- Feature Datasets ---
-            create_feature_ds("position", (self.max_ships, 2), "f4", (self.max_ships, 2))
-            create_feature_ds("velocity", (self.max_ships, 2), "f2", (self.max_ships, 2))
+            create_feature_ds(
+                "position", (self.max_ships, 2), "f4", (self.max_ships, 2)
+            )
+            create_feature_ds(
+                "velocity", (self.max_ships, 2), "f2", (self.max_ships, 2)
+            )
             create_feature_ds("health", (self.max_ships,), "f2", (self.max_ships,))
             create_feature_ds("power", (self.max_ships,), "f2", (self.max_ships,))
-            create_feature_ds("attitude", (self.max_ships, 2), "f2", (self.max_ships, 2))
+            create_feature_ds(
+                "attitude", (self.max_ships, 2), "f2", (self.max_ships, 2)
+            )
             create_feature_ds("ang_vel", (self.max_ships,), "f2", (self.max_ships,))
             create_feature_ds("is_shooting", (self.max_ships,), "u1", (self.max_ships,))
             create_feature_ds("team_ids", (self.max_ships,), "u1", (self.max_ships,))
 
             # --- Standard Datasets ---
             create_feature_ds("actions", (self.max_ships, 3), "u1", (self.max_ships, 3))
-            create_feature_ds("expert_action_probs", (self.max_ships, self.prob_dim), "f4", (self.max_ships, self.prob_dim))
+            create_feature_ds(
+                "expert_action_probs",
+                (self.max_ships, self.prob_dim),
+                "f4",
+                (self.max_ships, self.prob_dim),
+            )
             h5_file.create_dataset(
                 "episode_ids",
                 (init_size,),
@@ -204,10 +239,14 @@ class AsyncCollector:
                 chunks=(chunk_size,),
                 compression="lzf",
             )
-            create_feature_ds("agent_skills", (self.max_ships,), "f4", (self.max_ships,))
+            create_feature_ds(
+                "agent_skills", (self.max_ships,), "f4", (self.max_ships,)
+            )
             create_feature_ds("rewards", (self.max_ships,), "f4", (self.max_ships,))
             create_feature_ds("returns", (self.max_ships,), "f4", (self.max_ships,))
-            create_feature_ds("action_masks", (self.max_ships,), "bool", (self.max_ships,))
+            create_feature_ds(
+                "action_masks", (self.max_ships,), "bool", (self.max_ships,)
+            )
 
     def _writer_loop(self):
         """Background thread loop to write to HDF5."""
@@ -243,7 +282,9 @@ class AsyncCollector:
         except Exception as e:
             print(f"Writer Thread Fatal Error: {e}")
 
-    def _flush_batch_to_handle(self, h5_file: h5py.File, batch: List[Dict[str, torch.Tensor]]):
+    def _flush_batch_to_handle(
+        self, h5_file: h5py.File, batch: List[Dict[str, torch.Tensor]]
+    ):
         """Writes a batch of episodes to the HDF5 file in a single bulk operation.
 
         Args:
@@ -260,15 +301,32 @@ class AsyncCollector:
 
         # Target total size
         target_size = current_size + total_new_steps
-        
+
         # Grow if necessary (if pre-allocation was smaller or not used)
         if h5_file["actions"].shape[0] < target_size:
-            for key in ["position", "velocity", "health", "power", "attitude", "ang_vel", 
-                        "is_shooting", "team_ids", "actions", "expert_action_probs", "rewards", 
-                        "returns", "episode_ids", "agent_skills", "action_masks"]:
+            for key in [
+                "position",
+                "velocity",
+                "health",
+                "power",
+                "attitude",
+                "ang_vel",
+                "is_shooting",
+                "team_ids",
+                "actions",
+                "expert_action_probs",
+                "rewards",
+                "returns",
+                "episode_ids",
+                "agent_skills",
+                "action_masks",
+            ]:
                 # Correctly resize based on new prob_dim if it changed dynamically
-                if key == "expert_action_probs" and h5_file[key].shape[2] != self.prob_dim:
-                    pass # HDF5 doesn't easily resize secondary dims, we assume 42 is max
+                if (
+                    key == "expert_action_probs"
+                    and h5_file[key].shape[2] != self.prob_dim
+                ):
+                    pass  # HDF5 doesn't easily resize secondary dims, we assume 42 is max
                 h5_file[key].resize((target_size, *h5_file[key].shape[1:]))
 
         h5_file["episode_lengths"].resize((current_episodes + len(batch),))
@@ -280,25 +338,41 @@ class AsyncCollector:
                 # Special handling for episode_ids: assign sequential IDs
                 ids = []
                 for i, item in enumerate(batch):
-                    ids.append(np.full((item["length"],), current_episodes + i, dtype=np.int64))
+                    ids.append(
+                        np.full((item["length"],), current_episodes + i, dtype=np.int64)
+                    )
                 return np.concatenate(ids, axis=0)
             elif key == "action_masks":
                 return np.ones((total_new_steps, self.max_ships), dtype=bool)
             elif key == "agent_skills":
-                return np.concatenate([item.get("agent_skills", torch.ones((item["length"], self.max_ships))) for item in batch], axis=0)
+                return np.concatenate(
+                    [
+                        item.get(
+                            "agent_skills", torch.ones((item["length"], self.max_ships))
+                        )
+                        for item in batch
+                    ],
+                    axis=0,
+                )
             elif key == "expert_action_probs":
                 # Handle dynamic prob dims in batch matching
                 probs_list = []
                 for item in batch:
                     probs = item.get("expert_action_probs")
-                    if probs is None: # Fallback generating one-hot from actions
-                        acts = item["actions"] # (T, N, 3)
+                    if probs is None:  # Fallback generating one-hot from actions
+                        acts = item["actions"]  # (T, N, 3)
                         # We don't know if 12 or 42 is expected, default to zeros
-                        probs = np.zeros((acts.shape[0], acts.shape[1], h5_file[key].shape[2]), dtype=np.float32)
+                        probs = np.zeros(
+                            (acts.shape[0], acts.shape[1], h5_file[key].shape[2]),
+                            dtype=np.float32,
+                        )
                     elif probs.shape[-1] != h5_file[key].shape[2]:
                         # Pad if needed (e.g. got 12 but dataset is 42)
-                        padded = np.zeros((probs.shape[0], probs.shape[1], h5_file[key].shape[2]), dtype=np.float32)
-                        padded[..., :probs.shape[-1]] = probs
+                        padded = np.zeros(
+                            (probs.shape[0], probs.shape[1], h5_file[key].shape[2]),
+                            dtype=np.float32,
+                        )
+                        padded[..., : probs.shape[-1]] = probs
                         probs = padded
                     probs_list.append(probs)
                 return np.concatenate(probs_list, axis=0)
@@ -306,9 +380,23 @@ class AsyncCollector:
                 return np.concatenate([item[key] for item in batch], axis=0)
 
         # Write each field in one call
-        for key in ["position", "velocity", "health", "power", "attitude", "ang_vel", 
-                    "is_shooting", "team_ids", "actions", "expert_action_probs", "rewards", 
-                    "returns", "episode_ids", "agent_skills", "action_masks"]:
+        for key in [
+            "position",
+            "velocity",
+            "health",
+            "power",
+            "attitude",
+            "ang_vel",
+            "is_shooting",
+            "team_ids",
+            "actions",
+            "expert_action_probs",
+            "rewards",
+            "returns",
+            "episode_ids",
+            "agent_skills",
+            "action_masks",
+        ]:
             h5_file[key][current_size:target_size] = aggregate(key)
 
         # Write episode lengths
@@ -371,10 +459,14 @@ class AsyncCollector:
         cpu_rewards = rewards.to("cpu", non_blocking=True)
 
         if expert_action_probs is not None:
-            cpu_expert_probs = expert_action_probs.to("cpu", dtype=torch.float32, non_blocking=True)
+            cpu_expert_probs = expert_action_probs.to(
+                "cpu", dtype=torch.float32, non_blocking=True
+            )
             self.prob_dim = cpu_expert_probs.shape[-1]
         else:
-            cpu_expert_probs = torch.zeros((num_envs, self.max_ships, self.prob_dim), dtype=torch.float32)
+            cpu_expert_probs = torch.zeros(
+                (num_envs, self.max_ships, self.prob_dim), dtype=torch.float32
+            )
 
         if agent_skills is not None:
             cpu_skills = agent_skills.to("cpu", dtype=torch.float32, non_blocking=True)
@@ -399,13 +491,19 @@ class AsyncCollector:
         self.action_buffer[indices, write_steps] = cpu_actions
         # Make sure shapes match
         if cpu_expert_probs.shape[-1] != self.expert_action_probs_buffer.shape[-1]:
-             # Reallocate if we got it wrong initially
-             self.expert_action_probs_buffer = torch.zeros(
-                (self.num_envs, self.max_steps, self.max_ships, cpu_expert_probs.shape[-1]), 
-                dtype=torch.float32, pin_memory=True
-             )
+            # Reallocate if we got it wrong initially
+            self.expert_action_probs_buffer = torch.zeros(
+                (
+                    self.num_envs,
+                    self.max_steps,
+                    self.max_ships,
+                    cpu_expert_probs.shape[-1],
+                ),
+                dtype=torch.float32,
+                pin_memory=True,
+            )
         self.expert_action_probs_buffer[indices, write_steps] = cpu_expert_probs
-        
+
         self.reward_buffer[indices, write_steps] = cpu_rewards
         self.skill_buffer[indices, write_steps] = cpu_skills
 
@@ -431,7 +529,9 @@ class AsyncCollector:
                     "is_shooting": self.is_shooting_buffer[idx, :length].clone(),
                     "team_ids": self.team_buffer[idx, :length].clone(),
                     "actions": self.action_buffer[idx, :length].clone(),
-                    "expert_action_probs": self.expert_action_probs_buffer[idx, :length].clone(),
+                    "expert_action_probs": self.expert_action_probs_buffer[
+                        idx, :length
+                    ].clone(),
                     "rewards": self.reward_buffer[idx, :length].clone(),
                     "agent_skills": self.skill_buffer[idx, :length].clone(),
                     "length": length,
@@ -468,7 +568,9 @@ class AsyncCollector:
         # G_t = (sum_{j=t}^{L-1} gamma^j R_j) / gamma^t
 
         device = rewards.device
-        gamma_powers = torch.pow(gamma, torch.arange(seq_len, device=device, dtype=torch.float32))
+        gamma_powers = torch.pow(
+            gamma, torch.arange(seq_len, device=device, dtype=torch.float32)
+        )
 
         # Y_j = gamma^j * R_j
         # Use unsqueeze to multiply across the ships dimension (dim 1)
@@ -477,7 +579,9 @@ class AsyncCollector:
         # Suffix sums of weighted_rewards
         # torch.cumsum is prefix sum. Suffix sum = TotalSum - PrefixSum(t-1)
         # Or more easily: flip -> cumsum -> flip
-        suffix_sums = torch.flip(torch.cumsum(torch.flip(weighted_rewards, dims=[0]), dim=0), dims=[0])
+        suffix_sums = torch.flip(
+            torch.cumsum(torch.flip(weighted_rewards, dims=[0]), dim=0), dims=[0]
+        )
 
         # G_t = suffix_sums / gamma^t
         returns = suffix_sums / gamma_powers.unsqueeze(1)

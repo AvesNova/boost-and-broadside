@@ -20,11 +20,12 @@ def train(cfg: DictConfig) -> None:
         print("\n=== Starting Pipeline Step 1: Data Collection ===")
         collected_path = collect(cfg)
         if collected_path:
-             cfg.train.bc_data_path = str(collected_path)
-             print(f"Pipeline: Using newly collected data at {collected_path}")
+            cfg.train.bc_data_path = str(collected_path)
+            print(f"Pipeline: Using newly collected data at {collected_path}")
 
     # 2. World Model Training
     if cfg.train.get("run_world_model", True):
         print("\n=== Starting Pipeline Step 2: World Model Training ===")
         from boost_and_broadside.train.pretrain import pretrain as train_world_model
+
         train_world_model(cfg)

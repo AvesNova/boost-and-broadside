@@ -1,10 +1,12 @@
 """Fixes C, E, F: PPO auxiliary state loss improvements."""
+
 import pytest
 import torch
 from boost_and_broadside.core.constants import StateFeature
 
 
 # --- Pure logic helpers matching what ppo.py now does ---
+
 
 def compute_valid_mask_and_delta(mb_obs_state, mb_next_obs_state, mb_dones_perm):
     """Replicate the fixed PPO loss mask + delta computation."""
@@ -14,7 +16,7 @@ def compute_valid_mask_and_delta(mb_obs_state, mb_next_obs_state, mb_dones_perm)
     mb_delta_obs = mb_next_obs_perm - mb_curr_obs_perm
 
     # Fix E: all terminal steps masked
-    valid_mask = (1.0 - mb_dones_perm.float())  # (B, T)
+    valid_mask = 1.0 - mb_dones_perm.float()  # (B, T)
     # Fix F: dead ships masked
     valid_mask = valid_mask.unsqueeze(-1).expand(B, T, N)
     alive_mask = (mb_next_obs_perm[..., StateFeature.HEALTH] > 0).float()
@@ -23,6 +25,7 @@ def compute_valid_mask_and_delta(mb_obs_state, mb_next_obs_state, mb_dones_perm)
 
 
 # --- Tests ---
+
 
 def test_fix_c_delta_target():
     """delta obs = next_obs - curr_obs (not raw next obs)."""

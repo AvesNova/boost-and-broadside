@@ -3,7 +3,11 @@ from torch.utils.data import DataLoader
 import torch
 from typing import Optional
 
-from boost_and_broadside.train.unified_dataset import UnifiedEpisodeDataset, ShortView, LongView
+from boost_and_broadside.train.unified_dataset import (
+    UnifiedEpisodeDataset,
+    ShortView,
+    LongView,
+)
 from boost_and_broadside.train.continuous_view import ContinuousView
 
 
@@ -25,20 +29,19 @@ def get_latest_data_path() -> str:
                 break
 
     if latest_folder is None:
-        raise FileNotFoundError(f"No aggregated_data.h5 found at {base_path} or its subdirectories")
+        raise FileNotFoundError(
+            f"No aggregated_data.h5 found at {base_path} or its subdirectories"
+        )
 
     return str(latest_folder / "aggregated_data.h5")
-
 
 
 def unified_collate_fn(batch):
     """
     Collate function for ShortView/LongView dicts.
     """
-    return {
-        key: torch.stack([item[key] for item in batch])
-        for key in batch[0].keys()
-    }
+    return {key: torch.stack([item[key] for item in batch]) for key in batch[0].keys()}
+
 
 def load_bc_data(data_path: str = None) -> str:
     """
@@ -83,10 +86,10 @@ def create_unified_data_loaders(
     if min_skill > 0.0:
         filtered_indices = []
         for idx in all_indices:
-             skill = unified_dataset.get_episode_mean_skill(idx)
-             if skill >= min_skill:
-                 filtered_indices.append(idx)
-        
+            skill = unified_dataset.get_episode_mean_skill(idx)
+            if skill >= min_skill:
+                filtered_indices.append(idx)
+
         all_indices = filtered_indices
         # If we filtered everything, warn and fallback (or crash if desired)
         if len(all_indices) == 0:
@@ -197,8 +200,8 @@ def create_continuous_data_loader(
     validation_split: float = 0.2,
     num_workers: int = 4,
     world_size: tuple[float, float] = (1024.0, 1024.0),
-    min_skill: float = 0.0, # Ignored for now unless filter needed
-    reward_config: Optional[dict] = None
+    min_skill: float = 0.0,  # Ignored for now unless filter needed
+    reward_config: Optional[dict] = None,
 ) -> tuple[DataLoader, DataLoader]:
     """
     Create Continuous Data Loaders for Mamba training.
@@ -207,35 +210,35 @@ def create_continuous_data_loader(
     """
     dataset = UnifiedEpisodeDataset(data_path, world_size=world_size)
     total_steps = dataset.total_timesteps
-    
+
     # Split Point
     val_size = int(total_steps * validation_split)
-    train_size = total_steps - val_size - seq_len # Safety margin
-    
+    train_size = total_steps - val_size - seq_len  # Safety margin
+
     # Create Strided Indices
     # Stride = seq_len (Non-overlapping)
     # Or Stride = seq_len // 2 (Overlapping)?
     # Let's use Stride = seq_len / 2 for data augmentation effect
     stride = seq_len // 2
-    
+
     train_indices = list(range(0, train_size, stride))
     val_indices = list(range(train_size, total_steps - seq_len, stride))
-    
-    train_view = ContinuousView(dataset, train_indices, seq_len=seq_len, reward_config=reward_config)
-    val_view = ContinuousView(dataset, val_indices, seq_len=seq_len, reward_config=reward_config)
-    
+
+    train_view = ContinuousView(
+        dataset, train_indices, seq_len=seq_len, reward_config=reward_config
+    )
+    val_view = ContinuousView(
+        dataset, val_indices, seq_len=seq_len, reward_config=reward_config
+    )
+
     kwargs = {
         "num_workers": num_workers,
         "pin_memory": True,
         "persistent_workers": (num_workers > 0),
         "prefetch_factor": 2 if num_workers > 0 else None,
     }
-    
-    train_loader = DataLoader(
-        train_view, batch_size=batch_size, shuffle=True, **kwargs
-    )
-    val_loader = DataLoader(
-        val_view, batch_size=batch_size, shuffle=False, **kwargs
-    )
-    
+
+    train_loader = DataLoader(train_view, batch_size=batch_size, shuffle=True, **kwargs)
+    val_loader = DataLoader(val_view, batch_size=batch_size, shuffle=False, **kwargs)
+
     return train_loader, val_loader

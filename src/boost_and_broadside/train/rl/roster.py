@@ -23,14 +23,17 @@ _DEFAULT_ELO = 0.0
 @dataclass
 class RosterEntry:
     """A single rated agent in the league roster."""
-    kind:        str         # "random" | "checkpoint" | "avg" | "scripted"
-    label:       str         # W&B key suffix (e.g. "random", "avg", "scripted", "ckpt_1024000")
-    elo:         float       # Current ELO rating
-    global_step: int         # Training step when this agent was snapshotted
-    update:      int         # PPO update index when snapshotted
-    path:        str | None = None   # .pt file path; None for all non-checkpoint kinds
-    fixed:       bool = False        # If True, ELO is never modified (e.g. random anchor at 0)
-    _policy:     object = field(default=None, repr=False)  # Loaded MVPPolicy; None if evicted
+
+    kind: str  # "random" | "checkpoint" | "avg" | "scripted"
+    label: str  # W&B key suffix (e.g. "random", "avg", "scripted", "ckpt_1024000")
+    elo: float  # Current ELO rating
+    global_step: int  # Training step when this agent was snapshotted
+    update: int  # PPO update index when snapshotted
+    path: str | None = None  # .pt file path; None for all non-checkpoint kinds
+    fixed: bool = False  # If True, ELO is never modified (e.g. random anchor at 0)
+    _policy: object = field(
+        default=None, repr=False
+    )  # Loaded MVPPolicy; None if evicted
 
 
 class EloRoster:
@@ -62,21 +65,26 @@ class EloRoster:
 
     def __init__(
         self,
-        max_size:         int   = 20,
-        k_factor:         float = 32.0,
-        elo_temperature:  float = 200.0,
-        uniform_sampling: bool  = False,
+        max_size: int = 20,
+        k_factor: float = 32.0,
+        elo_temperature: float = 200.0,
+        uniform_sampling: bool = False,
     ) -> None:
-        self.max_size         = max_size
-        self.k_factor         = k_factor
-        self.elo_temperature  = elo_temperature
+        self.max_size = max_size
+        self.k_factor = k_factor
+        self.elo_temperature = elo_temperature
         self.uniform_sampling = uniform_sampling
         self.entries: list[RosterEntry] = []
         # Random agent entry: ELO starts at 0 and participates in zero-sum updates.
-        self.entries.append(RosterEntry(
-            kind="random", label="random", elo=_DEFAULT_ELO,
-            global_step=0, update=0,
-        ))
+        self.entries.append(
+            RosterEntry(
+                kind="random",
+                label="random",
+                elo=_DEFAULT_ELO,
+                global_step=0,
+                update=0,
+            )
+        )
 
     # ------------------------------------------------------------------
     # Entry management
@@ -84,9 +92,9 @@ class EloRoster:
 
     def add_special(
         self,
-        kind:        str,
-        global_step: int   = 0,
-        update:      int   = 0,
+        kind: str,
+        global_step: int = 0,
+        update: int = 0,
         initial_elo: float = _DEFAULT_ELO,
     ) -> RosterEntry:
         """Add or return the existing entry for a special agent ("avg" or "scripted").
@@ -105,17 +113,20 @@ class EloRoster:
             if e.kind == kind:
                 return e
         entry = RosterEntry(
-            kind=kind, label=kind, elo=initial_elo,
-            global_step=global_step, update=update,
+            kind=kind,
+            label=kind,
+            elo=initial_elo,
+            global_step=global_step,
+            update=update,
         )
         self.entries.append(entry)
         return entry
 
     def add_checkpoint(
         self,
-        path:        str,
+        path: str,
         global_step: int,
-        update:      int,
+        update: int,
         initial_elo: float = _DEFAULT_ELO,
     ) -> RosterEntry:
         """Add a checkpoint entry, evicting the lowest-ELO checkpoint if at capacity.
@@ -190,8 +201,8 @@ class EloRoster:
     def update_elo(
         self,
         training_elo: float,
-        entry:        RosterEntry,
-        win_rate:     float,
+        entry: RosterEntry,
+        win_rate: float,
     ) -> float:
         """Apply a zero-sum ELO update for one matchup.
 
@@ -207,7 +218,7 @@ class EloRoster:
         expected = 1.0 / (1.0 + 10.0 ** ((entry.elo - training_elo) / 400.0))
         delta = self.k_factor * (win_rate - expected)
         if not entry.fixed:
-            entry.elo -= delta   # zero-sum; fixed entries (e.g. random) stay put
+            entry.elo -= delta  # zero-sum; fixed entries (e.g. random) stay put
         return training_elo + delta
 
     # ------------------------------------------------------------------
@@ -216,7 +227,7 @@ class EloRoster:
 
     def load_policy(
         self,
-        entry:                RosterEntry,
+        entry: RosterEntry,
         model_config,
         ship_config,
         num_value_components: int,
@@ -226,8 +237,11 @@ class EloRoster:
         if entry._policy is not None or entry.kind != "checkpoint":
             return
         from boost_and_broadside.models.mvp.policy import MVPPolicy
-        ckpt   = torch.load(entry.path, map_location=device, weights_only=False)
-        policy = MVPPolicy(model_config, ship_config, num_value_components=num_value_components)
+
+        ckpt = torch.load(entry.path, map_location=device, weights_only=False)
+        policy = MVPPolicy(
+            model_config, ship_config, num_value_components=num_value_components
+        )
         policy.load_state_dict(ckpt["policy_state_dict"])
         policy.eval()
         policy.to(device)
@@ -256,13 +270,13 @@ class EloRoster:
         data = {
             "entries": [
                 {
-                    "kind":        e.kind,
-                    "label":       e.label,
-                    "elo":         e.elo,
+                    "kind": e.kind,
+                    "label": e.label,
+                    "elo": e.elo,
                     "global_step": e.global_step,
-                    "update":      e.update,
-                    "path":        e.path,
-                    "fixed":       e.fixed,
+                    "update": e.update,
+                    "path": e.path,
+                    "fixed": e.fixed,
                 }
                 for e in self.entries
             ],

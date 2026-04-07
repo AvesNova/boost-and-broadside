@@ -66,21 +66,41 @@ def make_state(
         ship_config = ShipConfig()
     dev = torch.device(device)
     return TensorState(
-        step_count      = torch.zeros((num_envs,), dtype=torch.int32, device=dev),
-        ship_pos        = torch.zeros((num_envs, max_ships), dtype=torch.complex64, device=dev),
-        ship_vel        = torch.zeros((num_envs, max_ships), dtype=torch.complex64, device=dev),
-        ship_attitude   = torch.ones( (num_envs, max_ships), dtype=torch.complex64, device=dev),
-        ship_ang_vel    = torch.zeros((num_envs, max_ships), dtype=torch.float32,   device=dev),
-        ship_health     = torch.full( (num_envs, max_ships), ship_config.max_health, device=dev),
-        ship_power      = torch.full( (num_envs, max_ships), ship_config.max_power,  device=dev),
-        ship_cooldown   = torch.zeros((num_envs, max_ships), dtype=torch.float32,   device=dev),
-        ship_team_id    = torch.zeros((num_envs, max_ships), dtype=torch.int32,     device=dev),
-        ship_alive      = torch.ones( (num_envs, max_ships), dtype=torch.bool,      device=dev),
-        ship_is_shooting = torch.zeros((num_envs, max_ships), dtype=torch.bool,    device=dev),
-        prev_action     = torch.zeros((num_envs, max_ships, 3), dtype=torch.float32, device=dev),
-        bullet_pos      = torch.zeros((num_envs, max_ships, max_bullets), dtype=torch.complex64, device=dev),
-        bullet_vel      = torch.zeros((num_envs, max_ships, max_bullets), dtype=torch.complex64, device=dev),
-        bullet_time     = torch.zeros((num_envs, max_ships, max_bullets), dtype=torch.float32,   device=dev),
-        bullet_active   = torch.zeros((num_envs, max_ships, max_bullets), dtype=torch.bool,      device=dev),
-        bullet_cursor   = torch.zeros((num_envs, max_ships), dtype=torch.long, device=dev),
+        step_count=torch.zeros((num_envs,), dtype=torch.int32, device=dev),
+        ship_pos=torch.zeros((num_envs, max_ships), dtype=torch.complex64, device=dev),
+        ship_vel=torch.zeros((num_envs, max_ships), dtype=torch.complex64, device=dev),
+        ship_attitude=torch.ones(
+            (num_envs, max_ships), dtype=torch.complex64, device=dev
+        ),
+        ship_ang_vel=torch.zeros(
+            (num_envs, max_ships), dtype=torch.float32, device=dev
+        ),
+        ship_health=torch.full(
+            (num_envs, max_ships), ship_config.max_health, device=dev
+        ),
+        ship_power=torch.full((num_envs, max_ships), ship_config.max_power, device=dev),
+        ship_cooldown=torch.zeros(
+            (num_envs, max_ships), dtype=torch.float32, device=dev
+        ),
+        ship_team_id=torch.zeros((num_envs, max_ships), dtype=torch.int32, device=dev),
+        ship_alive=torch.ones((num_envs, max_ships), dtype=torch.bool, device=dev),
+        ship_is_shooting=torch.zeros(
+            (num_envs, max_ships), dtype=torch.bool, device=dev
+        ),
+        prev_action=torch.zeros(
+            (num_envs, max_ships, 3), dtype=torch.float32, device=dev
+        ),
+        bullet_pos=torch.zeros(
+            (num_envs, max_ships, max_bullets), dtype=torch.complex64, device=dev
+        ),
+        bullet_vel=torch.zeros(
+            (num_envs, max_ships, max_bullets), dtype=torch.complex64, device=dev
+        ),
+        bullet_time=torch.zeros(
+            (num_envs, max_ships, max_bullets), dtype=torch.float32, device=dev
+        ),
+        bullet_active=torch.zeros(
+            (num_envs, max_ships, max_bullets), dtype=torch.bool, device=dev
+        ),
+        bullet_cursor=torch.zeros((num_envs, max_ships), dtype=torch.long, device=dev),
     )

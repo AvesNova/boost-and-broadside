@@ -8,7 +8,11 @@ import torch
 
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.constants import PowerActions, TurnActions, ShootActions
-from boost_and_broadside.env.physics import update_ships, update_bullets, resolve_collisions
+from boost_and_broadside.env.physics import (
+    update_ships,
+    update_bullets,
+    resolve_collisions,
+)
 from tests.conftest import make_state
 
 
@@ -117,6 +121,7 @@ class TestTurning:
 
     def test_sharp_turn_larger_angle_than_normal(self, cfg):
         """SHARP_LEFT should produce a larger attitude change than TURN_LEFT."""
+
         def run_turn(turn_action):
             state = make_state(num_envs=1, max_ships=1, ship_config=cfg)
             state.ship_attitude[:] = 1.0 + 0j
@@ -172,8 +177,10 @@ class TestShooting:
 
         # Power: clamp(max_power + regen*dt, 0, max_power) → max_power (already at cap)
         #        then deduct bullet_energy_cost
-        power_after_regen = min(cfg.max_power + cfg.base_power_gain * cfg.dt, cfg.max_power)
-        expected          = power_after_regen - cfg.bullet_energy_cost
+        power_after_regen = min(
+            cfg.max_power + cfg.base_power_gain * cfg.dt, cfg.max_power
+        )
+        expected = power_after_regen - cfg.bullet_energy_cost
         assert abs(state.ship_power[0, 0].item() - expected) < 1e-3
 
     def test_shoot_blocked_by_cooldown(self, cfg):
@@ -209,7 +216,7 @@ class TestBulletLifetime:
         state = make_state(num_envs=1, max_ships=1, max_bullets=2, ship_config=cfg)
         # Manually place a bullet with lifetime just under dt — will expire next step
         state.bullet_active[0, 0, 0] = True
-        state.bullet_time  [0, 0, 0] = cfg.dt * 0.5  # less than one step
+        state.bullet_time[0, 0, 0] = cfg.dt * 0.5  # less than one step
 
         state = update_bullets(state, cfg)
 
@@ -219,7 +226,7 @@ class TestBulletLifetime:
         """A bullet with ample lifetime must stay active after one step."""
         state = make_state(num_envs=1, max_ships=1, max_bullets=2, ship_config=cfg)
         state.bullet_active[0, 0, 0] = True
-        state.bullet_time  [0, 0, 0] = cfg.bullet_lifetime
+        state.bullet_time[0, 0, 0] = cfg.bullet_lifetime
 
         state = update_bullets(state, cfg)
 
@@ -232,9 +239,9 @@ class TestBulletLifetime:
         bullet_vel = 500.0 + 0j
 
         state.bullet_active[0, 0, 0] = True
-        state.bullet_pos   [0, 0, 0] = init_pos
-        state.bullet_vel   [0, 0, 0] = bullet_vel
-        state.bullet_time  [0, 0, 0] = cfg.bullet_lifetime
+        state.bullet_pos[0, 0, 0] = init_pos
+        state.bullet_vel[0, 0, 0] = bullet_vel
+        state.bullet_time[0, 0, 0] = cfg.bullet_lifetime
 
         state = update_bullets(state, cfg)
 
@@ -261,10 +268,10 @@ class TestCollisions:
         state.ship_pos[0, 1] = 0.0 + 0j
 
         # Ship 1 fires a bullet at ship 0 (place it on top of ship 0)
-        state.bullet_pos   [0, 1, 0] = target_pos
-        state.bullet_vel   [0, 1, 0] = 500.0 + 0j
+        state.bullet_pos[0, 1, 0] = target_pos
+        state.bullet_vel[0, 1, 0] = 500.0 + 0j
         state.bullet_active[0, 1, 0] = True
-        state.bullet_time  [0, 1, 0] = 1.0
+        state.bullet_time[0, 1, 0] = 1.0
 
         initial_health = state.ship_health[0, 0].item()
         state, _ = resolve_collisions(state, cfg)
@@ -283,10 +290,10 @@ class TestCollisions:
 
         # Enough bullets to kill
         for k in range(5):
-            state.bullet_pos   [0, 1, k] = target_pos
-            state.bullet_vel   [0, 1, k] = 500.0 + 0j
+            state.bullet_pos[0, 1, k] = target_pos
+            state.bullet_vel[0, 1, k] = 500.0 + 0j
             state.bullet_active[0, 1, k] = True
-            state.bullet_time  [0, 1, k] = 1.0
+            state.bullet_time[0, 1, k] = 1.0
 
         state, _ = resolve_collisions(state, cfg)
 
@@ -303,10 +310,10 @@ class TestCollisions:
         state.ship_pos[0, 0] = target_pos
 
         # Ship 0's OWN bullet overlapping ship 0
-        state.bullet_pos   [0, 0, 0] = target_pos
-        state.bullet_vel   [0, 0, 0] = 500.0 + 0j
+        state.bullet_pos[0, 0, 0] = target_pos
+        state.bullet_vel[0, 0, 0] = 500.0 + 0j
         state.bullet_active[0, 0, 0] = True
-        state.bullet_time  [0, 0, 0] = 1.0
+        state.bullet_time[0, 0, 0] = 1.0
 
         initial_health = state.ship_health[0, 0].item()
         state, _ = resolve_collisions(state, cfg)
@@ -319,7 +326,7 @@ class TestCollisions:
         state = make_state(num_envs=1, max_ships=2, ship_config=cfg)
         state.ship_team_id[0, 0] = 0
         state.ship_team_id[0, 1] = 1
-        state.ship_alive  [0, 1] = False  # team 1 already dead
+        state.ship_alive[0, 1] = False  # team 1 already dead
 
         _, dones = resolve_collisions(state, cfg)
 

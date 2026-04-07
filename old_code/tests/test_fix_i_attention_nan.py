@@ -1,4 +1,5 @@
 """Fix I: Guard against NaN in attention when all ships are dead (all keys masked)."""
+
 import pytest
 import torch
 import torch.nn as nn
@@ -62,12 +63,13 @@ def test_fix_i_attention_no_nan_all_dead():
     # Without guard: may produce NaN
     # With guard: should be finite
     guarded_kpm = apply_nan_guard(kpm)
-    
+
     with torch.no_grad():
         out, _ = attn(q, kv, kv, key_padding_mask=guarded_kpm)
 
-    assert torch.isfinite(out).all(), \
+    assert torch.isfinite(out).all(), (
         "Attention output should be finite even when all ships were originally masked"
+    )
 
 
 def test_fix_i_attention_correct_unmasked_row_survives():
@@ -75,9 +77,9 @@ def test_fix_i_attention_correct_unmasked_row_survives():
     BT, N = 2, 4
     # Row 0: all dead, Row 1: all dead
     kpm = torch.ones(BT, N, dtype=torch.bool)
-    
+
     guarded = apply_nan_guard(kpm)
-    
+
     # Each row: all_masked=True so we AND with ~True = ~all = False everywhere
     # That means: guarded = all & ~True = all & False = False for those rows
     # So guarded[0] should be all False (all unmasked)

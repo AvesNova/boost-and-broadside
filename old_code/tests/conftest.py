@@ -105,7 +105,6 @@ def default_config():
 # Legacy fixtures removed
 
 
-
 @pytest.fixture
 def synthetic_h5_data(tmp_path):
     """Create a synthetic HDF5 dataset for testing."""
@@ -117,9 +116,10 @@ def synthetic_h5_data(tmp_path):
     episode_len = 200
     total_timesteps = num_episodes * episode_len
     from boost_and_broadside.core.constants import STATE_DIM
+
     max_ships = 4
     token_dim = STATE_DIM
-    num_actions = 3 # 3 discrete action components (Power, Turn, Shoot)
+    num_actions = 3  # 3 discrete action components (Power, Turn, Shoot)
 
     with h5py.File(file_path, "w") as f:
         # Attributes
@@ -132,34 +132,75 @@ def synthetic_h5_data(tmp_path):
 
         # Granular Datasets replacing 'tokens'
         # position: (N, MaxShips, 2)
-        f.create_dataset("position", data=np.random.randn(total_timesteps, max_ships, 2).astype(np.float32))
-        f.create_dataset("velocity", data=np.random.randn(total_timesteps, max_ships, 2).astype(np.float32))
-        f.create_dataset("health", data=np.random.rand(total_timesteps, max_ships).astype(np.float32) * 100.0)
-        f.create_dataset("power", data=np.random.rand(total_timesteps, max_ships).astype(np.float32) * 100.0)
-        f.create_dataset("attitude", data=np.random.randn(total_timesteps, max_ships, 2).astype(np.float32))
-        f.create_dataset("ang_vel", data=np.random.randn(total_timesteps, max_ships).astype(np.float32))
-        f.create_dataset("is_shooting", data=np.random.randint(0, 2, (total_timesteps, max_ships)).astype(np.float32))
-        f.create_dataset("team_ids", data=np.zeros((total_timesteps, max_ships), dtype=np.float32))
-        
+        f.create_dataset(
+            "position",
+            data=np.random.randn(total_timesteps, max_ships, 2).astype(np.float32),
+        )
+        f.create_dataset(
+            "velocity",
+            data=np.random.randn(total_timesteps, max_ships, 2).astype(np.float32),
+        )
+        f.create_dataset(
+            "health",
+            data=np.random.rand(total_timesteps, max_ships).astype(np.float32) * 100.0,
+        )
+        f.create_dataset(
+            "power",
+            data=np.random.rand(total_timesteps, max_ships).astype(np.float32) * 100.0,
+        )
+        f.create_dataset(
+            "attitude",
+            data=np.random.randn(total_timesteps, max_ships, 2).astype(np.float32),
+        )
+        f.create_dataset(
+            "ang_vel",
+            data=np.random.randn(total_timesteps, max_ships).astype(np.float32),
+        )
+        f.create_dataset(
+            "is_shooting",
+            data=np.random.randint(0, 2, (total_timesteps, max_ships)).astype(
+                np.float32
+            ),
+        )
+        f.create_dataset(
+            "team_ids", data=np.zeros((total_timesteps, max_ships), dtype=np.float32)
+        )
+
         # actions: (N, MaxShips, NumActions) - discrete indices
         # Generate integers 0..1 (Safe for all: Power=3, Turn=7, Shoot=2)
-        f.create_dataset("actions", data=np.random.randint(0, 2, (total_timesteps, max_ships, num_actions)).astype(np.int64))
+        f.create_dataset(
+            "actions",
+            data=np.random.randint(
+                0, 2, (total_timesteps, max_ships, num_actions)
+            ).astype(np.int64),
+        )
 
         # action_masks: (N, MaxShips, NumActions) - boolean
-        f.create_dataset("action_masks", data=np.ones((total_timesteps, max_ships, num_actions), dtype=bool))
-
+        f.create_dataset(
+            "action_masks",
+            data=np.ones((total_timesteps, max_ships, num_actions), dtype=bool),
+        )
 
         # rewards: (N, MaxShips) - Granular rewards per ship
-        f.create_dataset("rewards", data=np.random.randn(total_timesteps, max_ships).astype(np.float32))
+        f.create_dataset(
+            "rewards",
+            data=np.random.randn(total_timesteps, max_ships).astype(np.float32),
+        )
 
         # returns: (N, MaxShips) - Granular returns per ship
-        f.create_dataset("returns", data=np.random.randn(total_timesteps, max_ships).astype(np.float32))
+        f.create_dataset(
+            "returns",
+            data=np.random.randn(total_timesteps, max_ships).astype(np.float32),
+        )
 
         # episode_ids: (N,)
         ids = np.repeat(np.arange(num_episodes), episode_len)
         f.create_dataset("episode_ids", data=ids.astype(np.int64))
-        
+
         # episode_lengths: (NumEpisodes,)
-        f.create_dataset("episode_lengths", data=np.full((num_episodes,), episode_len, dtype=np.int64))
+        f.create_dataset(
+            "episode_lengths",
+            data=np.full((num_episodes,), episode_len, dtype=np.int64),
+        )
 
     return str(file_path)

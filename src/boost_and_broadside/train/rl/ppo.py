@@ -18,7 +18,13 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
-from boost_and_broadside.config import TrainConfig, ModelConfig, ShipConfig, EnvConfig, RewardConfig
+from boost_and_broadside.config import (
+    TrainConfig,
+    ModelConfig,
+    ShipConfig,
+    EnvConfig,
+    RewardConfig,
+)
 from boost_and_broadside.constants import POWER_SLICE, TURN_SLICE, SHOOT_SLICE
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
@@ -33,7 +39,10 @@ from boost_and_broadside.train.rl.roster import EloRoster, RosterEntry
 # Opponent-management helpers (module-level, no class coupling)
 # ------------------------------------------------------------------
 
-def _slice_obs(obs: dict[str, torch.Tensor], start: int, end: int) -> dict[str, torch.Tensor]:
+
+def _slice_obs(
+    obs: dict[str, torch.Tensor], start: int, end: int
+) -> dict[str, torch.Tensor]:
     """Return a view of obs tensors for envs [start, end)."""
     return {k: v[start:end] for k, v in obs.items()}
 
@@ -41,23 +50,23 @@ def _slice_obs(obs: dict[str, torch.Tensor], start: int, end: int) -> dict[str, 
 def _slice_state(state: TensorState, start: int, end: int) -> TensorState:
     """Return a new TensorState containing only envs [start, end)."""
     return TensorState(
-        step_count      = state.step_count     [start:end],
-        ship_pos        = state.ship_pos        [start:end],
-        ship_vel        = state.ship_vel        [start:end],
-        ship_attitude   = state.ship_attitude   [start:end],
-        ship_ang_vel    = state.ship_ang_vel    [start:end],
-        ship_health     = state.ship_health     [start:end],
-        ship_power      = state.ship_power      [start:end],
-        ship_cooldown   = state.ship_cooldown   [start:end],
-        ship_team_id    = state.ship_team_id    [start:end],
-        ship_alive      = state.ship_alive      [start:end],
-        ship_is_shooting= state.ship_is_shooting[start:end],
-        prev_action     = state.prev_action     [start:end],
-        bullet_pos      = state.bullet_pos      [start:end],
-        bullet_vel      = state.bullet_vel      [start:end],
-        bullet_time     = state.bullet_time     [start:end],
-        bullet_active   = state.bullet_active   [start:end],
-        bullet_cursor   = state.bullet_cursor   [start:end],
+        step_count=state.step_count[start:end],
+        ship_pos=state.ship_pos[start:end],
+        ship_vel=state.ship_vel[start:end],
+        ship_attitude=state.ship_attitude[start:end],
+        ship_ang_vel=state.ship_ang_vel[start:end],
+        ship_health=state.ship_health[start:end],
+        ship_power=state.ship_power[start:end],
+        ship_cooldown=state.ship_cooldown[start:end],
+        ship_team_id=state.ship_team_id[start:end],
+        ship_alive=state.ship_alive[start:end],
+        ship_is_shooting=state.ship_is_shooting[start:end],
+        prev_action=state.prev_action[start:end],
+        bullet_pos=state.bullet_pos[start:end],
+        bullet_vel=state.bullet_vel[start:end],
+        bullet_time=state.bullet_time[start:end],
+        bullet_active=state.bullet_active[start:end],
+        bullet_cursor=state.bullet_cursor[start:end],
     )
 
 
@@ -78,8 +87,10 @@ def _override_opponent(
         start, end:    slice of envs to update.
         opp_action:    (end-start, N, 3) — opponent agent's actions.
     """
-    opp_mask = (team_id[start:end] == opp_team_flag.unsqueeze(1))  # (slice, N)
-    action[start:end] = torch.where(opp_mask.unsqueeze(-1), opp_action, action[start:end])
+    opp_mask = team_id[start:end] == opp_team_flag.unsqueeze(1)  # (slice, N)
+    action[start:end] = torch.where(
+        opp_mask.unsqueeze(-1), opp_action, action[start:end]
+    )
 
 
 class _ShapingScheduler:
@@ -96,14 +107,14 @@ class _ShapingScheduler:
         self,
         # (component_object, attr_name, initial_weight, hold_steps, decay_steps)
         component_targets: list[tuple],
-        bc_initial:    float,
-        bc_hold_steps:  int,
+        bc_initial: float,
+        bc_hold_steps: int,
         bc_decay_steps: int,
     ) -> None:
-        self._targets      = component_targets
-        self._bc_initial   = bc_initial
-        self._bc_hold      = bc_hold_steps
-        self._bc_decay     = bc_decay_steps
+        self._targets = component_targets
+        self._bc_initial = bc_initial
+        self._bc_hold = bc_hold_steps
+        self._bc_decay = bc_decay_steps
 
     @staticmethod
     def _linear(initial: float, step: int, hold: int, decay: int) -> float:
@@ -125,7 +136,9 @@ class _ShapingScheduler:
             setattr(comp, attr, new_val)
             logged[f"schedule/{attr}"] = new_val
 
-        bc_eff = self._linear(self._bc_initial, global_step, self._bc_hold, self._bc_decay)
+        bc_eff = self._linear(
+            self._bc_initial, global_step, self._bc_hold, self._bc_decay
+        )
         if self._bc_initial > 0.0:
             logged["schedule/bc_coef"] = bc_eff
         return logged, bc_eff
@@ -146,21 +159,21 @@ class PPOTrainer:
 
     def __init__(
         self,
-        train_config:   TrainConfig,
-        model_config:   ModelConfig,
-        ship_config:    ShipConfig,
-        reward_config:  RewardConfig,
-        device:         str | torch.device,
-        use_wandb:      bool = False,
+        train_config: TrainConfig,
+        model_config: ModelConfig,
+        ship_config: ShipConfig,
+        reward_config: RewardConfig,
+        device: str | torch.device,
+        use_wandb: bool = False,
         scripted_agent: StochasticScriptedAgent | None = None,
     ) -> None:
-        self.cfg           = train_config
-        self.model_config  = model_config
-        self.ship_config   = ship_config
-        self.env_config    = train_config.scales[0].env_config
+        self.cfg = train_config
+        self.model_config = model_config
+        self.ship_config = ship_config
+        self.env_config = train_config.scales[0].env_config
         self.reward_config = reward_config
-        self.device        = torch.device(device)
-        self.use_wandb     = use_wandb
+        self.device = torch.device(device)
+        self.use_wandb = use_wandb
         self.scripted_agent = scripted_agent
 
         # Primary scale — supports scripted / avg-model / league opponents.
@@ -170,45 +183,53 @@ class PPOTrainer:
         #   [B_self+B_sc, B_self+B_sc+B_avg)   → avg-model opponent
         #   [B_self+B_sc+B_avg, B)              → league roster opponent
         B = train_config.scales[0].num_envs
-        self.B_sc     = round(train_config.scripted_frac  * B)
-        self.B_avg    = round(train_config.avg_model_frac * B)
-        self.B_league = round(train_config.league_frac    * B)
-        self.B_self   = B - self.B_sc - self.B_avg - self.B_league
+        self.B_sc = round(train_config.scripted_frac * B)
+        self.B_avg = round(train_config.avg_model_frac * B)
+        self.B_league = round(train_config.league_frac * B)
+        self.B_self = B - self.B_sc - self.B_avg - self.B_league
 
         if self.B_sc > 0 and scripted_agent is None:
             raise ValueError(
                 "scripted_frac > 0 requires a scripted_agent to be provided."
             )
-        if self.B_league > 0 and scripted_agent is None and train_config.avg_model_frac == 0.0:
+        if (
+            self.B_league > 0
+            and scripted_agent is None
+            and train_config.avg_model_frac == 0.0
+        ):
             # League can still work with only checkpoint entries (none yet at startup).
             pass
 
         self.wrapper = MVPEnvWrapper(
-            num_envs       = train_config.scales[0].num_envs,
-            ship_config    = ship_config,
-            env_config     = train_config.scales[0].env_config,
-            reward_config  = reward_config,
-            device         = device,
-            scripted_agent = scripted_agent,
+            num_envs=train_config.scales[0].num_envs,
+            ship_config=ship_config,
+            env_config=train_config.scales[0].env_config,
+            reward_config=reward_config,
+            device=device,
+            scripted_agent=scripted_agent,
         )
         K = self.wrapper.num_active_components
         self._active_names = self.wrapper.active_names  # stable ref used throughout
 
-        self.policy = MVPPolicy(model_config, ship_config, num_value_components=K).to(self.device)
-        self.optim  = optim.Adam(self.policy.parameters(), lr=train_config.learning_rate, eps=1e-5)
+        self.policy = MVPPolicy(model_config, ship_config, num_value_components=K).to(
+            self.device
+        )
+        self.optim = optim.Adam(
+            self.policy.parameters(), lr=train_config.learning_rate, eps=1e-5
+        )
 
         # Linear LR warmup: ramp from 0 → learning_rate over lr_warmup_steps global steps.
         # Implemented as a per-update scheduler (steps once per rollout update).
         # Use total env-steps across all scales for a more accurate warmup duration.
         total_envs_per_step = sum(sc.num_envs for sc in train_config.scales)
-        steps_per_update    = total_envs_per_step * train_config.num_steps
-        warmup_updates      = max(1, train_config.lr_warmup_steps // steps_per_update)
+        steps_per_update = total_envs_per_step * train_config.num_steps
+        warmup_updates = max(1, train_config.lr_warmup_steps // steps_per_update)
         if train_config.lr_warmup_steps > 0:
             self.lr_scheduler = optim.lr_scheduler.LinearLR(
                 self.optim,
-                start_factor = 1.0 / warmup_updates,
-                end_factor   = 1.0,
-                total_iters  = warmup_updates,
+                start_factor=1.0 / warmup_updates,
+                end_factor=1.0,
+                total_iters=warmup_updates,
             )
         else:
             self.lr_scheduler = None
@@ -216,43 +237,46 @@ class PPOTrainer:
         N = train_config.scales[0].env_config.num_ships
 
         # Build obs shapes for the buffer from a dummy reset
-        sample_obs  = self.wrapper.reset()
-        obs_shapes  = {
-            k: v.shape[1:]   # strip batch dim → (N, ...) or (N,)
+        sample_obs = self.wrapper.reset()
+        obs_shapes = {
+            k: v.shape[1:]  # strip batch dim → (N, ...) or (N,)
             for k, v in sample_obs.items()
             if v.dtype in (torch.float32, torch.int32, torch.int64, torch.bool)
         }
 
         self.buffer = RolloutBuffer(
-            num_steps       = train_config.num_steps,
-            num_envs        = train_config.scales[0].num_envs,
-            num_ships       = N,
-            num_components  = K,
-            obs_shapes      = obs_shapes,
-            gamma           = train_config.gamma,
-            gae_lambda      = train_config.gae_lambda,
-            device          = self.device,
+            num_steps=train_config.num_steps,
+            num_envs=train_config.scales[0].num_envs,
+            num_ships=N,
+            num_components=K,
+            obs_shapes=obs_shapes,
+            gamma=train_config.gamma,
+            gae_lambda=train_config.gae_lambda,
+            device=self.device,
         )
 
         # Pre-compute lambda mask for active components only
-        enemy_neg_set    = reward_config.enemy_neg_lambda_components
+        enemy_neg_set = reward_config.enemy_neg_lambda_components
         self.enemy_neg_k = torch.tensor(
             [name in enemy_neg_set for name in self._active_names],
-            dtype=torch.bool, device=self.device,
+            dtype=torch.bool,
+            device=self.device,
         )  # (K,)
 
         # Per-component return scaler: EMA of p5/p95 in symlog-reward space
         self.scaler = ReturnScaler(
-            num_components = K,
-            device         = self.device,
-            ema_alpha      = train_config.return_ema_alpha,
-            min_span       = train_config.return_min_span,
+            num_components=K,
+            device=self.device,
+            ema_alpha=train_config.return_ema_alpha,
+            min_span=train_config.return_min_span,
         )
 
         # --- Avg-model opponent (uniform mean of all post-warmup policy snapshots) ---
         # Weights initialized as a copy of the training policy.
         # Only updated after LR warmup completes; avg group envs use self-play until then.
-        self.avg_policy = MVPPolicy(model_config, ship_config, num_value_components=K).to(self.device)
+        self.avg_policy = MVPPolicy(
+            model_config, ship_config, num_value_components=K
+        ).to(self.device)
         self.avg_policy.load_state_dict(self.policy.state_dict())
         for p in self.avg_policy.parameters():
             p.requires_grad_(False)
@@ -268,16 +292,18 @@ class PPOTrainer:
         #   [B_sc : B_sc+B_avg]   → avg-model group
         #   [B_sc+B_avg :]         → league group
         n_opp_envs = self.B_sc + self.B_avg + self.B_league
-        self._opp_team_flag = torch.randint(
-            0, 2, (n_opp_envs,), device=self.device, dtype=torch.int32
-        ) if n_opp_envs > 0 else torch.empty(0, device=self.device, dtype=torch.int32)
+        self._opp_team_flag = (
+            torch.randint(0, 2, (n_opp_envs,), device=self.device, dtype=torch.int32)
+            if n_opp_envs > 0
+            else torch.empty(0, device=self.device, dtype=torch.int32)
+        )
 
         # --- League play + ELO ---
         self.roster = EloRoster(
-            max_size         = train_config.league_size,
-            k_factor         = train_config.elo_k_factor,
-            elo_temperature  = train_config.elo_temperature,
-            uniform_sampling = train_config.league_uniform_sampling,
+            max_size=train_config.league_size,
+            k_factor=train_config.elo_k_factor,
+            elo_temperature=train_config.elo_temperature,
+            uniform_sampling=train_config.league_uniform_sampling,
         )
         # Random anchor is added by EloRoster.__init__ (ELO=0, fixed).
         # "avg" entry is added when _update_avg_model() is first called.
@@ -285,10 +311,14 @@ class PPOTrainer:
 
         # Training ELO starts at 0 — all ratings begin
         # at the same point and diverge as eval matchups accumulate.
-        self._training_elo:           float = 0.0
-        self._elo_milestone:          float = 0.0    # normalized training ELO (vs random) at last milestone
-        self._best_training_elo_norm: float = 0.0    # best normalized training ELO seen so far
-        self._best_avg_elo_norm:      float = 0.0    # best normalized avg ELO seen so far
+        self._training_elo: float = 0.0
+        self._elo_milestone: float = (
+            0.0  # normalized training ELO (vs random) at last milestone
+        )
+        self._best_training_elo_norm: float = (
+            0.0  # best normalized training ELO seen so far
+        )
+        self._best_avg_elo_norm: float = 0.0  # best normalized avg ELO seen so far
         self._last_checkpoint_path: Path | None = None
 
         # ELO history for multi-line W&B charts: label → [(global_step, elo), ...]
@@ -296,45 +326,53 @@ class PPOTrainer:
         self._elo_history: dict[str, list[tuple[int, float]]] = {}
 
         # Current league opponent for the ongoing rollout (rotated each rollout).
-        self._current_league_entry:  RosterEntry | None = None
+        self._current_league_entry: RosterEntry | None = None
         self._current_league_policy: MVPPolicy | None = None
 
         # Async logging queue
         self._log_queue: Queue = Queue()
         if use_wandb:
-            self._init_wandb(train_config, model_config, ship_config, self.env_config, reward_config)
+            self._init_wandb(
+                train_config, model_config, ship_config, self.env_config, reward_config
+            )
             self._log_thread = threading.Thread(target=self._log_worker, daemon=True)
             self._log_thread.start()
 
         self._global_step = 0
-        total_envs_all    = sum(sc.num_envs for sc in train_config.scales)
-        self._num_updates = train_config.total_timesteps // (total_envs_all * train_config.num_steps)
+        total_envs_all = sum(sc.num_envs for sc in train_config.scales)
+        self._num_updates = train_config.total_timesteps // (
+            total_envs_all * train_config.num_steps
+        )
 
         # Run name used as checkpoint subdirectory (e.g. "checkpoints/good-spaceship-223/")
         if use_wandb:
             import wandb as _wandb
+
             self._run_name: str = _wandb.run.name
         else:
             from datetime import datetime
+
             self._run_name = datetime.now().strftime("%Y%m%d-%H%M%S")
 
         self._shaping_scheduler = self._build_shaping_scheduler()
-        self._bc_coef_eff: float = train_config.bc_coef  # updated each step by scheduler
+        self._bc_coef_eff: float = (
+            train_config.bc_coef
+        )  # updated each step by scheduler
 
         # --- Auxiliary training scales (multi-scale curriculum) ---
         # Each scale has its own env + buffer; policy, optimizer, and scaler are shared.
         # Pure self-play only — no scripted/avg/league opponents on aux scales.
         self.aux_wrappers: list[MVPEnvWrapper] = []
-        self.aux_buffers:  list[RolloutBuffer]  = []
+        self.aux_buffers: list[RolloutBuffer] = []
 
         for sc in train_config.scales[1:]:
             aux_w = MVPEnvWrapper(
-                num_envs       = sc.num_envs,
-                ship_config    = ship_config,
-                env_config     = sc.env_config,
-                reward_config  = reward_config,
-                device         = device,
-                scripted_agent = None,
+                num_envs=sc.num_envs,
+                ship_config=ship_config,
+                env_config=sc.env_config,
+                reward_config=reward_config,
+                device=device,
+                scripted_agent=None,
             )
             aux_sample_obs = aux_w.reset()
             aux_obs_shapes = {
@@ -343,14 +381,14 @@ class PPOTrainer:
                 if v.dtype in (torch.float32, torch.int32, torch.int64, torch.bool)
             }
             aux_buf = RolloutBuffer(
-                num_steps      = train_config.num_steps,
-                num_envs       = sc.num_envs,
-                num_ships      = sc.env_config.num_ships,
-                num_components = K,
-                obs_shapes     = aux_obs_shapes,
-                gamma          = train_config.gamma,
-                gae_lambda     = train_config.gae_lambda,
-                device         = self.device,
+                num_steps=train_config.num_steps,
+                num_envs=sc.num_envs,
+                num_ships=sc.env_config.num_ships,
+                num_components=K,
+                obs_shapes=aux_obs_shapes,
+                gamma=train_config.gamma,
+                gae_lambda=train_config.gae_lambda,
+                device=self.device,
             )
             self.aux_wrappers.append(aux_w)
             self.aux_buffers.append(aux_buf)
@@ -361,7 +399,7 @@ class PPOTrainer:
 
     def _update_avg_model(self) -> None:
         """Add the current training policy snapshot to the uniform running average."""
-        first_update = (self._avg_update_count == 0)
+        first_update = self._avg_update_count == 0
         self._avg_update_count += 1
         for cum, p in zip(self._avg_param_cumsum, self.policy.parameters()):
             cum.add_(p.detach())
@@ -371,25 +409,27 @@ class PPOTrainer:
         # seeded at current training ELO (it's a recent snapshot, so it's a
         # reasonable starting estimate that will quickly self-correct via eval).
         if first_update:
-            self.roster.add_special("avg", self._global_step, 0, initial_elo=self._training_elo)
+            self.roster.add_special(
+                "avg", self._global_step, 0, initial_elo=self._training_elo
+            )
 
     def train(self) -> None:
         """Run the full PPO training loop."""
-        B  = self.cfg.scales[0].num_envs
-        N  = self.wrapper.num_ships
-        sc_start     = self.B_self
-        sc_end       = self.B_self + self.B_sc
-        avg_start    = sc_end
-        avg_end      = avg_start + self.B_avg
+        B = self.cfg.scales[0].num_envs
+        N = self.wrapper.num_ships
+        sc_start = self.B_self
+        sc_end = self.B_self + self.B_sc
+        avg_start = sc_end
+        avg_end = avg_start + self.B_avg
         league_start = avg_end
-        league_end   = B
+        league_end = B
 
-        obs     = self.wrapper.reset()
+        obs = self.wrapper.reset()
         # Stagger initial step counts so envs don't all truncate simultaneously.
         # Uniformly distributed over [0, max_episode_steps) — after the first wave
         # of truncations they naturally desynchronize on their own.
         self.wrapper.env.state.step_count.random_(0, self.env_config.max_episode_steps)
-        hidden  = self.policy.initial_hidden(B, N, self.device)
+        hidden = self.policy.initial_hidden(B, N, self.device)
 
         # Avg-model hidden state — lives across the whole training run.
         avg_hidden: torch.Tensor | None = None
@@ -407,7 +447,9 @@ class PPOTrainer:
             aux_obs.append(aux_w.reset())
             aux_w.env.state.step_count.random_(0, sc.env_config.max_episode_steps)
             aux_hiddens.append(
-                self.policy.initial_hidden(sc.num_envs, sc.env_config.num_ships, self.device)
+                self.policy.initial_hidden(
+                    sc.num_envs, sc.env_config.num_ships, self.device
+                )
             )
             aux_last_dones.append(
                 torch.zeros(sc.num_envs, dtype=torch.bool, device=self.device)
@@ -433,14 +475,19 @@ class PPOTrainer:
                 self.roster.evict_all_checkpoint_policies()
                 entry = self.roster.sample(self._training_elo)
                 self._current_league_entry = entry
-                if entry is None or (entry.kind == "avg" and self._avg_update_count == 0):
+                if entry is None or (
+                    entry.kind == "avg" and self._avg_update_count == 0
+                ):
                     # No valid opponent yet — league group falls back to self-play this rollout.
-                    self._current_league_entry  = None
+                    self._current_league_entry = None
                     self._current_league_policy = None
                 elif entry.kind == "checkpoint":
                     self.roster.load_policy(
-                        entry, self.model_config, self.ship_config,
-                        self.wrapper.num_active_components, self.device,
+                        entry,
+                        self.model_config,
+                        self.ship_config,
+                        self.wrapper.num_active_components,
+                        self.device,
                     )
                     self._current_league_policy = entry._policy
                     league_hidden = self._current_league_policy.initial_hidden(
@@ -460,7 +507,9 @@ class PPOTrainer:
             # ----------------------------------------------------------------
             for _ in range(self.cfg.num_steps):
                 # Training policy: all envs, all ships
-                action, logprob, value_norm, hidden = self.policy.get_action_and_value(obs, hidden)
+                action, logprob, value_norm, hidden = self.policy.get_action_and_value(
+                    obs, hidden
+                )
 
                 # Whether the avg model is ready (at least one post-warmup snapshot)
                 use_avg = self._avg_update_count > 0 and self.B_avg > 0
@@ -469,81 +518,115 @@ class PPOTrainer:
                 if use_avg:
                     with torch.no_grad():
                         obs_avg = _slice_obs(obs, avg_start, avg_end)
-                        action_avg, _, _, avg_hidden = self.avg_policy.get_action_and_value(
-                            obs_avg, avg_hidden
+                        action_avg, _, _, avg_hidden = (
+                            self.avg_policy.get_action_and_value(obs_avg, avg_hidden)
                         )
 
                 # League opponent actions (when a valid entry is loaded for this rollout)
-                use_league = self.B_league > 0 and self._current_league_entry is not None
+                use_league = (
+                    self.B_league > 0 and self._current_league_entry is not None
+                )
                 if use_league:
                     if self._current_league_policy is not None:
                         with torch.no_grad():
                             obs_league = _slice_obs(obs, league_start, league_end)
-                            action_league, _, _, league_hidden = \
+                            action_league, _, _, league_hidden = (
                                 self._current_league_policy.get_action_and_value(
                                     obs_league, league_hidden
                                 )
+                            )
                     else:  # scripted
                         state_league = _slice_state(
                             self.wrapper.env.state, league_start, league_end
                         )
                         with torch.no_grad():
-                            action_league = self.scripted_agent.get_actions(state_league)
+                            action_league = self.scripted_agent.get_actions(
+                                state_league
+                            )
 
                 # Team IDs — used for opponent overrides, actor mask, and BC expert masking
                 team_id = obs["team_id"]  # (B, N) int
 
                 # use_sc_bc:       generate expert probs for BC loss (active whenever B_sc > 0)
                 # use_sc_opponent: also override one team with scripted actions (after min_steps)
-                use_sc_bc       = self.B_sc > 0
-                use_sc_opponent = use_sc_bc and self._global_step >= self.cfg.scripted_roster_min_steps
+                use_sc_bc = self.B_sc > 0
+                use_sc_opponent = (
+                    use_sc_bc
+                    and self._global_step >= self.cfg.scripted_roster_min_steps
+                )
 
                 expert_probs_step: torch.Tensor | None = None
                 if use_sc_bc:
                     with torch.no_grad():
-                        state_sc = _slice_state(self.wrapper.env.state, sc_start, sc_end)
-                        action_scripted, expert_probs_sc = self.scripted_agent.get_actions_and_probs(state_sc)
+                        state_sc = _slice_state(
+                            self.wrapper.env.state, sc_start, sc_end
+                        )
+                        action_scripted, expert_probs_sc = (
+                            self.scripted_agent.get_actions_and_probs(state_sc)
+                        )
                     if use_sc_opponent:
                         # One team is the scripted opponent — only supervise training-policy ships.
-                        opp_flag_sc   = self._opp_team_flag[:self.B_sc].unsqueeze(1)  # (B_sc, 1)
-                        train_mask_sc = (team_id[sc_start:sc_end] != opp_flag_sc)     # (B_sc, N)
+                        opp_flag_sc = self._opp_team_flag[: self.B_sc].unsqueeze(
+                            1
+                        )  # (B_sc, 1)
+                        train_mask_sc = (
+                            team_id[sc_start:sc_end] != opp_flag_sc
+                        )  # (B_sc, N)
                     else:
                         # Both teams are training-policy — supervise all ships.
                         train_mask_sc = torch.ones(
-                            self.B_sc, N, dtype=torch.bool, device=self.device,
+                            self.B_sc,
+                            N,
+                            dtype=torch.bool,
+                            device=self.device,
                         )
                     expert_probs_step = torch.zeros(
-                        self.cfg.scales[0].num_envs, self.env_config.num_ships, 12,
+                        self.cfg.scales[0].num_envs,
+                        self.env_config.num_ships,
+                        12,
                         device=self.device,
                     )
-                    expert_probs_step[sc_start:sc_end] = expert_probs_sc * train_mask_sc.unsqueeze(-1)
+                    expert_probs_step[sc_start:sc_end] = (
+                        expert_probs_sc * train_mask_sc.unsqueeze(-1)
+                    )
 
                 # Override opponent team actions; training-policy actions are the base
-                action    = action.clone()
-                sc_flags  = self._opp_team_flag[:self.B_sc]
+                action = action.clone()
+                sc_flags = self._opp_team_flag[: self.B_sc]
                 avg_flags = self._opp_team_flag[self.B_sc : self.B_sc + self.B_avg]
-                lg_flags  = self._opp_team_flag[self.B_sc + self.B_avg :]
+                lg_flags = self._opp_team_flag[self.B_sc + self.B_avg :]
                 if use_sc_opponent:
-                    _override_opponent(action, team_id, sc_flags,  sc_start,     sc_end,     action_scripted)
+                    _override_opponent(
+                        action, team_id, sc_flags, sc_start, sc_end, action_scripted
+                    )
                 if use_avg:
-                    _override_opponent(action, team_id, avg_flags, avg_start,    avg_end,    action_avg)
+                    _override_opponent(
+                        action, team_id, avg_flags, avg_start, avg_end, action_avg
+                    )
                 if use_league:
-                    _override_opponent(action, team_id, lg_flags,  league_start, league_end, action_league)
+                    _override_opponent(
+                        action,
+                        team_id,
+                        lg_flags,
+                        league_start,
+                        league_end,
+                        action_league,
+                    )
 
                 # Actor mask: True for ships whose actions were chosen by training policy
                 actor_mask = torch.ones(B, N, dtype=torch.bool, device=self.device)
                 if use_sc_opponent:
-                    actor_mask[sc_start:sc_end] = (
-                        team_id[sc_start:sc_end] != sc_flags.unsqueeze(1)
-                    )
+                    actor_mask[sc_start:sc_end] = team_id[
+                        sc_start:sc_end
+                    ] != sc_flags.unsqueeze(1)
                 if use_avg:
-                    actor_mask[avg_start:avg_end] = (
-                        team_id[avg_start:avg_end] != avg_flags.unsqueeze(1)
-                    )
+                    actor_mask[avg_start:avg_end] = team_id[
+                        avg_start:avg_end
+                    ] != avg_flags.unsqueeze(1)
                 if use_league:
-                    actor_mask[league_start:league_end] = (
-                        team_id[league_start:league_end] != lg_flags.unsqueeze(1)
-                    )
+                    actor_mask[league_start:league_end] = team_id[
+                        league_start:league_end
+                    ] != lg_flags.unsqueeze(1)
 
                 next_obs, reward, dones, truncated, info = self.wrapper.step(action)
 
@@ -555,15 +638,17 @@ class PPOTrainer:
 
                 done_any = dones | truncated
                 self.buffer.add(
-                    obs          = obs,
-                    action       = action,
-                    logprob      = logprob,
-                    reward       = reward,
-                    done         = dones.float(),      # only true termination cuts GAE bootstrap
-                    value        = self.scaler.denormalize(value_norm),  # symlog-reward space for GAE
-                    alive        = obs["alive"].bool(),
-                    actor_mask   = actor_mask,
-                    expert_probs = expert_probs_step,
+                    obs=obs,
+                    action=action,
+                    logprob=logprob,
+                    reward=reward,
+                    done=dones.float(),  # only true termination cuts GAE bootstrap
+                    value=self.scaler.denormalize(
+                        value_norm
+                    ),  # symlog-reward space for GAE
+                    alive=obs["alive"].bool(),
+                    actor_mask=actor_mask,
+                    expert_probs=expert_probs_step,
                 )
 
                 # Reset hidden states for terminated envs
@@ -579,12 +664,17 @@ class PPOTrainer:
 
                 # Re-randomise opponent team for envs that just ended an episode
                 if self.B_sc + self.B_avg + self.B_league > 0:
-                    done_non_self = done_any[self.B_self:]
+                    done_non_self = done_any[self.B_self :]
                     new_flags = torch.randint(
-                        0, 2, self._opp_team_flag.shape,
-                        device=self.device, dtype=torch.int32,
+                        0,
+                        2,
+                        self._opp_team_flag.shape,
+                        device=self.device,
+                        dtype=torch.int32,
                     )
-                    self._opp_team_flag = torch.where(done_non_self, new_flags, self._opp_team_flag)
+                    self._opp_team_flag = torch.where(
+                        done_non_self, new_flags, self._opp_team_flag
+                    )
 
                 obs = next_obs
                 self._global_step += B
@@ -598,26 +688,28 @@ class PPOTrainer:
                         aux_action, aux_logprob, aux_value_norm, aux_hiddens[i] = (
                             self.policy.get_action_and_value(aux_obs[i], aux_hiddens[i])
                         )
-                    next_aux_obs, aux_reward, aux_dones, aux_truncated, _ = aux_w.step(aux_action)
+                    next_aux_obs, aux_reward, aux_dones, aux_truncated, _ = aux_w.step(
+                        aux_action
+                    )
                     aux_buf.add(
-                        obs          = aux_obs[i],
-                        action       = aux_action,
-                        logprob      = aux_logprob,
-                        reward       = aux_reward,
-                        done         = aux_dones.float(),
-                        value        = self.scaler.denormalize(aux_value_norm),
-                        alive        = aux_obs[i]["alive"].bool(),
-                        actor_mask   = torch.ones(
+                        obs=aux_obs[i],
+                        action=aux_action,
+                        logprob=aux_logprob,
+                        reward=aux_reward,
+                        done=aux_dones.float(),
+                        value=self.scaler.denormalize(aux_value_norm),
+                        alive=aux_obs[i]["alive"].bool(),
+                        actor_mask=torch.ones(
                             sc.num_envs, aux_N, dtype=torch.bool, device=self.device
                         ),
-                        expert_probs = None,
+                        expert_probs=None,
                     )
                     aux_done_any = aux_dones | aux_truncated
                     aux_hiddens[i] = self.policy.reset_hidden_for_envs(
                         aux_hiddens[i], aux_done_any, aux_N
                     )
                     aux_last_dones[i] = aux_dones
-                    aux_obs[i]        = next_aux_obs
+                    aux_obs[i] = next_aux_obs
                     self._global_step += sc.num_envs
 
             # ----------------------------------------------------------------
@@ -643,32 +735,33 @@ class PPOTrainer:
             # ----------------------------------------------------------------
             # PPO update epochs
             # ----------------------------------------------------------------
-            record_hist = (update % 10 == 0)
+            record_hist = update % 10 == 0
             metrics = self._update_epochs(
-                all_buffers       = [self.buffer] + self.aux_buffers,
-                record_histograms = record_hist,
+                all_buffers=[self.buffer] + self.aux_buffers,
+                record_histograms=record_hist,
             )
 
             if self.lr_scheduler is not None:
                 self.lr_scheduler.step()
 
             # Update avg model after warmup completes
-            warmup_done = (self.cfg.lr_warmup_steps == 0 or
-                           self._global_step >= self.cfg.lr_warmup_steps)
+            warmup_done = (
+                self.cfg.lr_warmup_steps == 0
+                or self._global_step >= self.cfg.lr_warmup_steps
+            )
             avg_model_ready = (
-                warmup_done and
-                self._global_step >= self.cfg.avg_model_min_steps
+                warmup_done and self._global_step >= self.cfg.avg_model_min_steps
             )
             if self.B_avg > 0 and avg_model_ready:
                 self._update_avg_model()
 
             # Scaler stats — one CPU transfer per component group
-            p5_cpu   = self.scaler._p5.cpu()
-            p95_cpu  = self.scaler._p95.cpu()
+            p5_cpu = self.scaler._p5.cpu()
+            p95_cpu = self.scaler._p95.cpu()
             span_cpu = p95_cpu - p5_cpu
             for i, name in enumerate(self._active_names):
-                metrics[f"scaler/p5/{name}"]   = p5_cpu[i].item()
-                metrics[f"scaler/p95/{name}"]  = p95_cpu[i].item()
+                metrics[f"scaler/p5/{name}"] = p5_cpu[i].item()
+                metrics[f"scaler/p95/{name}"] = p95_cpu[i].item()
                 metrics[f"scaler/span/{name}"] = span_cpu[i].item()
 
             # Merge episode stats collected during rollout into the metrics dict
@@ -676,23 +769,28 @@ class PPOTrainer:
                 all_rewards = torch.cat(ep_rewards)  # (num_finished_eps * N,)
                 all_lengths = torch.cat(ep_lengths)
                 metrics["ep/reward_mean"] = all_rewards.mean().item()
-                metrics["ep/reward_min"]  = all_rewards.min().item()
-                metrics["ep/reward_max"]  = all_rewards.max().item()
+                metrics["ep/reward_min"] = all_rewards.min().item()
+                metrics["ep/reward_max"] = all_rewards.max().item()
                 metrics["ep/length_mean"] = all_lengths.mean().item()
                 for name, tensors in ep_components.items():
                     metrics[f"ep/reward_{name}"] = torch.cat(tensors).mean().item()
 
             sps = int(self._global_step / (time.time() - start_time))
-            metrics["train/lr"]          = self.optim.param_groups[0]["lr"]
+            metrics["train/lr"] = self.optim.param_groups[0]["lr"]
             metrics["train/global_step"] = self._global_step
-            metrics["train/sps"]         = sps
+            metrics["train/sps"] = sps
 
             # Apply step-based shaping / BC schedules
-            schedule_metrics, self._bc_coef_eff = self._shaping_scheduler.step(self._global_step)
+            schedule_metrics, self._bc_coef_eff = self._shaping_scheduler.step(
+                self._global_step
+            )
             metrics.update(schedule_metrics)
 
             # ELO evaluation — runs sync matchups against all roster entries
-            if self.cfg.elo_eval_interval > 0 and update % self.cfg.elo_eval_interval == 0:
+            if (
+                self.cfg.elo_eval_interval > 0
+                and update % self.cfg.elo_eval_interval == 0
+            ):
                 elo_metrics = self._run_elo_eval()
                 metrics.update(elo_metrics)
                 # Save overwriting best-model checkpoints when normalized ELO improves.
@@ -701,7 +799,9 @@ class PPOTrainer:
                 if training_elo_norm > self._best_training_elo_norm:
                     self._best_training_elo_norm = training_elo_norm
                     self._save_best_checkpoint("best_training.pt")
-                avg_entry = next((e for e in self.roster.entries if e.kind == "avg"), None)
+                avg_entry = next(
+                    (e for e in self.roster.entries if e.kind == "avg"), None
+                )
                 if avg_entry is not None:
                     avg_elo_norm = avg_entry.elo - random_elo
                     if avg_elo_norm > self._best_avg_elo_norm:
@@ -712,7 +812,11 @@ class PPOTrainer:
             self._enqueue_log(metrics, step=self._global_step)
 
             if update % 10 == 0:
-                elo_str = f"  elo={self._training_elo:.0f}" if self.cfg.elo_eval_interval > 0 else ""
+                elo_str = (
+                    f"  elo={self._training_elo:.0f}"
+                    if self.cfg.elo_eval_interval > 0
+                    else ""
+                )
                 print(
                     f"update={update}/{self._num_updates}  "
                     f"step={self._global_step:,}  "
@@ -721,16 +825,24 @@ class PPOTrainer:
                     f"{elo_str}"
                 )
 
-            if self.cfg.checkpoint_interval > 0 and update % self.cfg.checkpoint_interval == 0:
+            if (
+                self.cfg.checkpoint_interval > 0
+                and update % self.cfg.checkpoint_interval == 0
+            ):
                 self._save_checkpoint(update)
                 # Add to roster when normalized training ELO (vs random) crosses the next milestone.
                 training_elo_norm = self._training_elo - self._random_elo()
-                if (self._last_checkpoint_path is not None and
-                        self._last_checkpoint_path.exists() and
-                        self.cfg.elo_milestone_gap > 0 and
-                        training_elo_norm - self._elo_milestone >= self.cfg.elo_milestone_gap):
+                if (
+                    self._last_checkpoint_path is not None
+                    and self._last_checkpoint_path.exists()
+                    and self.cfg.elo_milestone_gap > 0
+                    and training_elo_norm - self._elo_milestone
+                    >= self.cfg.elo_milestone_gap
+                ):
                     self.roster.add_checkpoint(
-                        str(self._last_checkpoint_path), self._global_step, update,
+                        str(self._last_checkpoint_path),
+                        self._global_step,
+                        update,
                         initial_elo=self._training_elo,
                     )
                     self._elo_milestone = training_elo_norm
@@ -744,9 +856,9 @@ class PPOTrainer:
 
     def _compute_minibatch_loss(
         self,
-        batch:        tuple,
+        batch: tuple,
         comp_weights: torch.Tensor,
-        is_primary:   bool,
+        is_primary: bool,
     ) -> tuple[torch.Tensor, dict]:
         """Compute PPO loss for one minibatch. Does NOT call zero_grad / backward / step.
 
@@ -761,54 +873,68 @@ class PPOTrainer:
             (loss, diag) where diag is a dict of scalar/tensor diagnostics.
         """
         cfg = self.cfg
-        K   = self.buffer.num_components
+        K = self.buffer.num_components
 
-        (mb_obs, mb_actions, mb_old_logprobs, mb_advantages,
-         mb_returns, mb_values, mb_alive, mb_hidden, mb_actor_mask,
-         mb_expert_probs) = batch
+        (
+            mb_obs,
+            mb_actions,
+            mb_old_logprobs,
+            mb_advantages,
+            mb_returns,
+            mb_values,
+            mb_alive,
+            mb_hidden,
+            mb_actor_mask,
+            mb_expert_probs,
+        ) = batch
 
         logprob, entropy, new_value, policy_logits = self.policy.evaluate_actions(
-            obs            = mb_obs,
-            actions        = mb_actions.long(),
-            initial_hidden = mb_hidden,
-            alive_mask     = mb_alive,
+            obs=mb_obs,
+            actions=mb_actions.long(),
+            initial_hidden=mb_hidden,
+            alive_mask=mb_alive,
         )
 
-        alive_f  = mb_alive.float()            # (T, B_mb, N)
-        alive_k  = alive_f.unsqueeze(-1)       # (T, B_mb, N, 1)
+        alive_f = mb_alive.float()  # (T, B_mb, N)
+        alive_k = alive_f.unsqueeze(-1)  # (T, B_mb, N, 1)
         mask_sum = alive_f.sum().clamp(min=1.0)
 
-        actor_f   = (mb_actor_mask & mb_alive).float()   # (T, B_mb, N)
+        actor_f = (mb_actor_mask & mb_alive).float()  # (T, B_mb, N)
         actor_sum = actor_f.sum().clamp(min=1.0)
 
         # ---- Lambda aggregation -------------------------------------------
-        team_id   = mb_obs["team_id"][0].long()                   # (B_mb, N)
+        team_id = mb_obs["team_id"][0].long()  # (B_mb, N)
         same_team = team_id.unsqueeze(2) == team_id.unsqueeze(1)  # (B_mb, N, N)
 
-        enemy_lam = torch.where(self.enemy_neg_k, -1.0, 0.0)     # (K,)
-        lambda_ij = (same_team.float().unsqueeze(-1)
-                     + (~same_team).float().unsqueeze(-1) * enemy_lam
-                     ) * comp_weights                              # (B_mb, N, N, K)
+        enemy_lam = torch.where(self.enemy_neg_k, -1.0, 0.0)  # (K,)
+        lambda_ij = (
+            same_team.float().unsqueeze(-1)
+            + (~same_team).float().unsqueeze(-1) * enemy_lam
+        ) * comp_weights  # (B_mb, N, N, K)
 
-        adv_agg      = torch.einsum('bijk,tbjk->tbi',  lambda_ij, mb_advantages)  # (T, B_mb, N)
-        ret_agg      = torch.einsum('bijk,tbjk->tbi',  lambda_ij, mb_returns)     # (T, B_mb, N)
-        ret_per_comp = torch.einsum('bijk,tbjk->tbik', lambda_ij, mb_returns)     # (T, B_mb, N, K)
+        adv_agg = torch.einsum(
+            "bijk,tbjk->tbi", lambda_ij, mb_advantages
+        )  # (T, B_mb, N)
+        ret_agg = torch.einsum("bijk,tbjk->tbi", lambda_ij, mb_returns)  # (T, B_mb, N)
+        ret_per_comp = torch.einsum(
+            "bijk,tbjk->tbik", lambda_ij, mb_returns
+        )  # (T, B_mb, N, K)
 
         adv_mean = (adv_agg * actor_f).sum() / actor_sum
-        adv_var  = ((adv_agg - adv_mean).pow(2) * actor_f).sum() / actor_sum
+        adv_var = ((adv_agg - adv_mean).pow(2) * actor_f).sum() / actor_sum
         adv_norm = (adv_agg - adv_mean) / (adv_var.sqrt() + 1e-8)
 
         # ---- Policy gradient loss ----------------------------------------
         log_ratio = logprob - mb_old_logprobs
-        ratio     = log_ratio.exp()
-        pg_loss1  = -adv_norm * ratio
-        pg_loss2  = -adv_norm * ratio.clamp(1 - cfg.clip_coef, 1 + cfg.clip_coef)
-        pg_loss   = (torch.max(pg_loss1, pg_loss2) * actor_f).sum() / actor_sum
+        ratio = log_ratio.exp()
+        pg_loss1 = -adv_norm * ratio
+        pg_loss2 = -adv_norm * ratio.clamp(1 - cfg.clip_coef, 1 + cfg.clip_coef)
+        pg_loss = (torch.max(pg_loss1, pg_loss2) * actor_f).sum() / actor_sum
 
         # ---- Value loss --------------------------------------------------
         target_norm = self.scaler.normalize(mb_returns).detach()  # (T, B_mb, N, K)
-        vf_loss_raw = (new_value - target_norm).pow(2)            # (T, B_mb, N, K)
-        vf_loss     = (vf_loss_raw * alive_k).sum() / (mask_sum * K)
+        vf_loss_raw = (new_value - target_norm).pow(2)  # (T, B_mb, N, K)
+        vf_loss = (vf_loss_raw * alive_k).sum() / (mask_sum * K)
 
         # ---- Entropy bonus -----------------------------------------------
         ent_loss = -(entropy * actor_f).sum() / actor_sum
@@ -816,66 +942,87 @@ class PPOTrainer:
         # ---- Behavioral cloning loss (primary scale only) ----------------
         bc_loss = torch.tensor(0.0, device=self.device)
         if is_primary and self._bc_coef_eff > 0.0:
-            bc_valid = (mb_expert_probs.sum(-1) > 0)           # (T, B_mb, N)
-            bc_f     = (bc_valid & mb_actor_mask & mb_alive).float()
-            bc_sum   = bc_f.sum().clamp(min=1.0)
+            bc_valid = mb_expert_probs.sum(-1) > 0  # (T, B_mb, N)
+            bc_f = (bc_valid & mb_actor_mask & mb_alive).float()
+            bc_sum = bc_f.sum().clamp(min=1.0)
             ce = (
-                -(mb_expert_probs[..., POWER_SLICE] *
-                  F.log_softmax(policy_logits[..., POWER_SLICE], dim=-1)).sum(-1)
-                -(mb_expert_probs[..., TURN_SLICE] *
-                  F.log_softmax(policy_logits[..., TURN_SLICE],  dim=-1)).sum(-1)
-                -(mb_expert_probs[..., SHOOT_SLICE] *
-                  F.log_softmax(policy_logits[..., SHOOT_SLICE], dim=-1)).sum(-1)
+                -(
+                    mb_expert_probs[..., POWER_SLICE]
+                    * F.log_softmax(policy_logits[..., POWER_SLICE], dim=-1)
+                ).sum(-1)
+                - (
+                    mb_expert_probs[..., TURN_SLICE]
+                    * F.log_softmax(policy_logits[..., TURN_SLICE], dim=-1)
+                ).sum(-1)
+                - (
+                    mb_expert_probs[..., SHOOT_SLICE]
+                    * F.log_softmax(policy_logits[..., SHOOT_SLICE], dim=-1)
+                ).sum(-1)
             )  # (T, B_mb, N)
             bc_loss = (ce * bc_f).sum() / bc_sum
 
-        loss = pg_loss + cfg.vf_coef * vf_loss + cfg.ent_coef * ent_loss + self._bc_coef_eff * bc_loss
+        loss = (
+            pg_loss
+            + cfg.vf_coef * vf_loss
+            + cfg.ent_coef * ent_loss
+            + self._bc_coef_eff * bc_loss
+        )
 
         # ---- Diagnostics (no grad) ---------------------------------------
         diag: dict = {}
         with torch.no_grad():
-            diag["loss"]      = loss.item()
-            diag["pg_loss"]   = pg_loss.item()
-            diag["vf_loss"]   = vf_loss.item()
-            diag["ent_loss"]  = ent_loss.item()
-            diag["bc_loss"]   = bc_loss.item()
-            diag["adv_var"]   = adv_var.item()
-            diag["approx_kl"] = (((ratio - 1) - log_ratio) * actor_f).sum().item() / actor_sum.item()
+            diag["loss"] = loss.item()
+            diag["pg_loss"] = pg_loss.item()
+            diag["vf_loss"] = vf_loss.item()
+            diag["ent_loss"] = ent_loss.item()
+            diag["bc_loss"] = bc_loss.item()
+            diag["adv_var"] = adv_var.item()
+            diag["approx_kl"] = (
+                ((ratio - 1) - log_ratio) * actor_f
+            ).sum().item() / actor_sum.item()
             diag["clip_frac"] = (
                 ((ratio - 1).abs() > cfg.clip_coef).float() * actor_f
             ).sum().item() / actor_sum.item()
 
             ret_agg_mean = (ret_agg * actor_f).sum() / actor_sum
-            ret_agg_var  = ((ret_agg - ret_agg_mean).pow(2) * actor_f).sum() / actor_sum
+            ret_agg_var = ((ret_agg - ret_agg_mean).pow(2) * actor_f).sum() / actor_sum
             diag["ret_agg_mean"] = ret_agg_mean.item()
-            diag["ret_agg_std"]  = ret_agg_var.sqrt().item()
+            diag["ret_agg_std"] = ret_agg_var.sqrt().item()
 
             # Per-component critic stats — primary scale only (K matches buffer.num_components)
             if is_primary:
-                actor_k             = actor_f.unsqueeze(-1)                                # (T, B_mb, N, 1)
-                ret_per_comp_mean_k = (ret_per_comp * actor_k).sum((0,1,2)) / actor_sum   # (K,)
+                actor_k = actor_f.unsqueeze(-1)  # (T, B_mb, N, 1)
+                ret_per_comp_mean_k = (ret_per_comp * actor_k).sum(
+                    (0, 1, 2)
+                ) / actor_sum  # (K,)
 
-                pred_k       = self.scaler.denormalize(new_value.detach())                 # (T, B_mb, N, K)
-                value_loss_k = (vf_loss_raw.detach() * alive_k).sum((0,1,2)) / mask_sum   # (K,)
-                ret_mean_k   = (mb_returns * alive_k).sum((0,1,2)) / mask_sum             # (K,)
-                ret_var_k    = ((mb_returns - ret_mean_k) ** 2 * alive_k).sum((0,1,2)) / mask_sum
-                residuals_k  = mb_returns - pred_k                                         # (T, B_mb, N, K)
-                res_mean_k   = (residuals_k * alive_k).sum((0,1,2)) / mask_sum            # (K,)
-                res_var_k    = ((residuals_k - res_mean_k) ** 2 * alive_k).sum((0,1,2)) / mask_sum
-                ev_k         = 1.0 - res_var_k / (ret_var_k + 1e-8)                       # (K,)
+                pred_k = self.scaler.denormalize(new_value.detach())  # (T, B_mb, N, K)
+                value_loss_k = (vf_loss_raw.detach() * alive_k).sum(
+                    (0, 1, 2)
+                ) / mask_sum  # (K,)
+                ret_mean_k = (mb_returns * alive_k).sum((0, 1, 2)) / mask_sum  # (K,)
+                ret_var_k = ((mb_returns - ret_mean_k) ** 2 * alive_k).sum(
+                    (0, 1, 2)
+                ) / mask_sum
+                residuals_k = mb_returns - pred_k  # (T, B_mb, N, K)
+                res_mean_k = (residuals_k * alive_k).sum((0, 1, 2)) / mask_sum  # (K,)
+                res_var_k = ((residuals_k - res_mean_k) ** 2 * alive_k).sum(
+                    (0, 1, 2)
+                ) / mask_sum
+                ev_k = 1.0 - res_var_k / (ret_var_k + 1e-8)  # (K,)
                 # One GPU→CPU transfer: stack → (4, K) → cpu
                 diag["stats_k_cpu"] = torch.stack(
                     [value_loss_k, ev_k, ret_mean_k, ret_per_comp_mean_k]
                 ).cpu()
-                diag["alive_flat"]   = mb_alive.reshape(-1).bool()
-                diag["mb_returns"]   = mb_returns
+                diag["alive_flat"] = mb_alive.reshape(-1).bool()
+                diag["mb_returns"] = mb_returns
                 diag["logprob_flat"] = logprob.detach().reshape(-1)
 
         return loss, diag
 
     def _update_epochs(
         self,
-        all_buffers:       list[RolloutBuffer],
+        all_buffers: list[RolloutBuffer],
         record_histograms: bool = False,
     ) -> dict:
         """Run num_epochs × num_minibatches of PPO updates across all scales.
@@ -891,39 +1038,42 @@ class PPOTrainer:
         Returns:
             Dict of mean metric values over all minibatch updates.
         """
-        cfg      = self.cfg
-        K        = self.buffer.num_components
+        cfg = self.cfg
+        K = self.buffer.num_components
         n_scales = len(all_buffers)
 
         comp_weights = torch.tensor(
             [c.weight for c in self.wrapper._active_components],
-            dtype=torch.float32, device=self.device,
+            dtype=torch.float32,
+            device=self.device,
         )  # (K,)
 
         accum_scalar: dict[str, list[float]] = {
-            "train/loss":                      [],
-            "train/policy_gradient_loss":      [],
-            "train/value_loss":                [],
-            "train/entropy_loss":              [],
-            "train/behavioral_cloning_loss":   [],
-            "train/approximate_kl":            [],
-            "train/clip_fraction":             [],
-            "train/gradient_norm":             [],
-            "train/advantage_std":             [],
-            "returns/aggregate":               [],
-            "returns/aggregate_std":           [],
+            "train/loss": [],
+            "train/policy_gradient_loss": [],
+            "train/value_loss": [],
+            "train/entropy_loss": [],
+            "train/behavioral_cloning_loss": [],
+            "train/approximate_kl": [],
+            "train/clip_fraction": [],
+            "train/gradient_norm": [],
+            "train/advantage_std": [],
+            "returns/aggregate": [],
+            "returns/aggregate_std": [],
         }
         accum_k: dict[str, list[torch.Tensor]] = {
-            "critic/value_loss":        [],
-            "critic/explained_variance":[],
-            "critic/return_mean":       [],
-            "returns/component":        [],
+            "critic/value_loss": [],
+            "critic/explained_variance": [],
+            "critic/return_mean": [],
+            "returns/component": [],
         }
         last_returns_np = None
         last_logprob_np = None
 
         for epoch_idx in range(cfg.num_epochs):
-            iters = [buf.get_minibatch_iterator(cfg.num_minibatches) for buf in all_buffers]
+            iters = [
+                buf.get_minibatch_iterator(cfg.num_minibatches) for buf in all_buffers
+            ]
             for batches in zip(*iters):
                 self.optim.zero_grad()
 
@@ -932,63 +1082,91 @@ class PPOTrainer:
                 # stays comparable to single-scale training.
                 diag_primary: dict = {}
                 scalar_accum_step: dict[str, float] = {
-                    "loss": 0.0, "pg": 0.0, "vf": 0.0, "ent": 0.0,
-                    "bc": 0.0, "kl": 0.0, "clip": 0.0, "adv_var": 0.0,
-                    "ret_agg_mean": 0.0, "ret_agg_std": 0.0,
+                    "loss": 0.0,
+                    "pg": 0.0,
+                    "vf": 0.0,
+                    "ent": 0.0,
+                    "bc": 0.0,
+                    "kl": 0.0,
+                    "clip": 0.0,
+                    "adv_var": 0.0,
+                    "ret_agg_mean": 0.0,
+                    "ret_agg_std": 0.0,
                 }
 
                 for scale_idx, (buf, batch) in enumerate(zip(all_buffers, batches)):
-                    is_primary = (scale_idx == 0)
-                    loss, diag = self._compute_minibatch_loss(batch, comp_weights, is_primary)
+                    is_primary = scale_idx == 0
+                    loss, diag = self._compute_minibatch_loss(
+                        batch, comp_weights, is_primary
+                    )
                     (loss / n_scales).backward()
 
                     # Accumulate scalar diagnostics (average across scales)
-                    scalar_accum_step["loss"]        += diag["loss"]      / n_scales
-                    scalar_accum_step["pg"]          += diag["pg_loss"]   / n_scales
-                    scalar_accum_step["vf"]          += diag["vf_loss"]   / n_scales
-                    scalar_accum_step["ent"]         += diag["ent_loss"]  / n_scales
-                    scalar_accum_step["bc"]          += diag["bc_loss"]   / n_scales
-                    scalar_accum_step["kl"]          += diag["approx_kl"] / n_scales
-                    scalar_accum_step["clip"]        += diag["clip_frac"] / n_scales
-                    scalar_accum_step["adv_var"]     += diag["adv_var"]   / n_scales
-                    scalar_accum_step["ret_agg_mean"]+= diag["ret_agg_mean"] / n_scales
-                    scalar_accum_step["ret_agg_std"] += diag["ret_agg_std"]  / n_scales
+                    scalar_accum_step["loss"] += diag["loss"] / n_scales
+                    scalar_accum_step["pg"] += diag["pg_loss"] / n_scales
+                    scalar_accum_step["vf"] += diag["vf_loss"] / n_scales
+                    scalar_accum_step["ent"] += diag["ent_loss"] / n_scales
+                    scalar_accum_step["bc"] += diag["bc_loss"] / n_scales
+                    scalar_accum_step["kl"] += diag["approx_kl"] / n_scales
+                    scalar_accum_step["clip"] += diag["clip_frac"] / n_scales
+                    scalar_accum_step["adv_var"] += diag["adv_var"] / n_scales
+                    scalar_accum_step["ret_agg_mean"] += diag["ret_agg_mean"] / n_scales
+                    scalar_accum_step["ret_agg_std"] += diag["ret_agg_std"] / n_scales
 
                     if is_primary:
                         diag_primary = diag
 
-                grad_norm = nn.utils.clip_grad_norm_(self.policy.parameters(), cfg.max_grad_norm)
+                grad_norm = nn.utils.clip_grad_norm_(
+                    self.policy.parameters(), cfg.max_grad_norm
+                )
                 self.optim.step()
 
-                accum_scalar["train/loss"]                    .append(scalar_accum_step["loss"])
-                accum_scalar["train/policy_gradient_loss"]    .append(scalar_accum_step["pg"])
-                accum_scalar["train/value_loss"]              .append(scalar_accum_step["vf"])
-                accum_scalar["train/entropy_loss"]            .append(scalar_accum_step["ent"])
-                accum_scalar["train/behavioral_cloning_loss"] .append(scalar_accum_step["bc"])
-                accum_scalar["train/approximate_kl"]          .append(scalar_accum_step["kl"])
-                accum_scalar["train/clip_fraction"]           .append(scalar_accum_step["clip"])
-                accum_scalar["train/gradient_norm"]           .append(grad_norm.item())
-                accum_scalar["train/advantage_std"]           .append(scalar_accum_step["adv_var"] ** 0.5)
-                accum_scalar["returns/aggregate"]             .append(scalar_accum_step["ret_agg_mean"])
-                accum_scalar["returns/aggregate_std"]         .append(scalar_accum_step["ret_agg_std"])
+                accum_scalar["train/loss"].append(scalar_accum_step["loss"])
+                accum_scalar["train/policy_gradient_loss"].append(
+                    scalar_accum_step["pg"]
+                )
+                accum_scalar["train/value_loss"].append(scalar_accum_step["vf"])
+                accum_scalar["train/entropy_loss"].append(scalar_accum_step["ent"])
+                accum_scalar["train/behavioral_cloning_loss"].append(
+                    scalar_accum_step["bc"]
+                )
+                accum_scalar["train/approximate_kl"].append(scalar_accum_step["kl"])
+                accum_scalar["train/clip_fraction"].append(scalar_accum_step["clip"])
+                accum_scalar["train/gradient_norm"].append(grad_norm.item())
+                accum_scalar["train/advantage_std"].append(
+                    scalar_accum_step["adv_var"] ** 0.5
+                )
+                accum_scalar["returns/aggregate"].append(
+                    scalar_accum_step["ret_agg_mean"]
+                )
+                accum_scalar["returns/aggregate_std"].append(
+                    scalar_accum_step["ret_agg_std"]
+                )
 
                 if "stats_k_cpu" in diag_primary:
                     stats_k_cpu = diag_primary["stats_k_cpu"]
-                    accum_k["critic/value_loss"]  .append(stats_k_cpu[0])
-                    accum_k["critic/return_mean"] .append(stats_k_cpu[2])
-                    accum_k["returns/component"]  .append(stats_k_cpu[3])
+                    accum_k["critic/value_loss"].append(stats_k_cpu[0])
+                    accum_k["critic/return_mean"].append(stats_k_cpu[2])
+                    accum_k["returns/component"].append(stats_k_cpu[3])
                     if epoch_idx == cfg.num_epochs - 1:
                         accum_k["critic/explained_variance"].append(stats_k_cpu[1])
 
                 if record_histograms and "alive_flat" in diag_primary:
-                    alive_flat      = diag_primary["alive_flat"]
-                    last_returns_np = diag_primary["mb_returns"].reshape(-1, K)[alive_flat].cpu().numpy()
-                    last_logprob_np = diag_primary["logprob_flat"][alive_flat].cpu().numpy()
+                    alive_flat = diag_primary["alive_flat"]
+                    last_returns_np = (
+                        diag_primary["mb_returns"]
+                        .reshape(-1, K)[alive_flat]
+                        .cpu()
+                        .numpy()
+                    )
+                    last_logprob_np = (
+                        diag_primary["logprob_flat"][alive_flat].cpu().numpy()
+                    )
 
         metrics: dict = {k: sum(v) / len(v) for k, v in accum_scalar.items() if v}
 
         for key, tensors in accum_k.items():
-            avg    = torch.stack(tensors).mean(0)   # (K,) CPU
+            avg = torch.stack(tensors).mean(0)  # (K,) CPU
             prefix = "returns" if key == "returns/component" else key
             for i, name in enumerate(self._active_names):
                 metrics[f"{prefix}/{name}"] = avg[i].item()
@@ -1013,8 +1191,7 @@ class PPOTrainer:
         modified.  The BC coefficient follows ``bc_hold_steps`` / ``bc_decay_steps``.
         """
         schedule_map = {
-            name: (hold, decay)
-            for name, hold, decay in self.cfg.shaping_schedules
+            name: (hold, decay) for name, hold, decay in self.cfg.shaping_schedules
         }
         comp_by_name = {comp.name: comp for comp in self.wrapper._all_components}
 
@@ -1023,16 +1200,16 @@ class PPOTrainer:
             comp = comp_by_name.get(name)
             if comp is None:
                 continue
-            attr    = f"{name}_weight"
+            attr = f"{name}_weight"
             initial = getattr(comp, attr, 0.0)
             if initial > 0.0 and (hold > 0 or decay > 0):
                 targets.append((comp, attr, initial, hold, decay))
 
         return _ShapingScheduler(
-            component_targets = targets,
-            bc_initial        = self.cfg.bc_coef,
-            bc_hold_steps     = self.cfg.bc_hold_steps,
-            bc_decay_steps    = self.cfg.bc_decay_steps,
+            component_targets=targets,
+            bc_initial=self.cfg.bc_coef,
+            bc_hold_steps=self.cfg.bc_hold_steps,
+            bc_decay_steps=self.cfg.bc_decay_steps,
         )
 
     # ------------------------------------------------------------------
@@ -1061,15 +1238,20 @@ class PPOTrainer:
         from boost_and_broadside.modes.collect import _run_matchup
 
         # Lazily add the scripted agent once enough training has happened.
-        if (self.scripted_agent is not None
-                and self._global_step >= self.cfg.scripted_roster_min_steps
-                and not any(e.kind == "scripted" for e in self.roster.entries)):
+        if (
+            self.scripted_agent is not None
+            and self._global_step >= self.cfg.scripted_roster_min_steps
+            and not any(e.kind == "scripted" for e in self.roster.entries)
+        ):
             self.roster.add_special(
-                "scripted", self._global_step, 0, initial_elo=400.0,
+                "scripted",
+                self._global_step,
+                0,
+                initial_elo=400.0,
             )
 
         games = self.cfg.elo_eval_games
-        env   = TensorEnv(games, self.ship_config, self.env_config, self.device)
+        env = TensorEnv(games, self.ship_config, self.env_config, self.device)
         self.policy.eval()
         metrics: dict[str, float] = {}
 
@@ -1080,8 +1262,11 @@ class PPOTrainer:
                         opponent = None  # random agent
                     elif entry.kind == "checkpoint":
                         self.roster.load_policy(
-                            entry, self.model_config, self.ship_config,
-                            self.wrapper.num_active_components, self.device,
+                            entry,
+                            self.model_config,
+                            self.ship_config,
+                            self.wrapper.num_active_components,
+                            self.device,
                         )
                         opponent = entry._policy
                     elif entry.kind == "avg":
@@ -1094,11 +1279,18 @@ class PPOTrainer:
                         opponent = self.scripted_agent
 
                     win_rate = _run_matchup(
-                        self.policy, opponent, env,
-                        self.ship_config, self.env_config, games, self.device,
+                        self.policy,
+                        opponent,
+                        env,
+                        self.ship_config,
+                        self.env_config,
+                        games,
+                        self.device,
                     )
                     self._training_elo = self.roster.update_elo(
-                        self._training_elo, entry, win_rate,
+                        self._training_elo,
+                        entry,
+                        win_rate,
                     )
                     metrics[f"elo/{entry.label}"] = entry.elo
         finally:
@@ -1108,9 +1300,13 @@ class PPOTrainer:
         metrics["elo/training"] = self._training_elo
 
         # Update ELO history and build multi-line W&B charts.
-        self._elo_history.setdefault("training", []).append((self._global_step, self._training_elo))
+        self._elo_history.setdefault("training", []).append(
+            (self._global_step, self._training_elo)
+        )
         for entry in self.roster.entries:
-            self._elo_history.setdefault(entry.label, []).append((self._global_step, entry.elo))
+            self._elo_history.setdefault(entry.label, []).append(
+                (self._global_step, entry.elo)
+            )
 
         if self.use_wandb:
             metrics.update(self._build_elo_charts())
@@ -1131,17 +1327,17 @@ class PPOTrainer:
         # Build a step→random-elo lookup for the normalization chart.
         random_elo_at_step: dict[int, float] = dict(self._elo_history.get("random", []))
 
-        xs:      list[list[int]]   = []
-        ys_raw:  list[list[float]] = []
+        xs: list[list[int]] = []
+        ys_raw: list[list[float]] = []
         ys_norm: list[list[float]] = []
-        keys:    list[str]         = []
+        keys: list[str] = []
 
         for label, history in self._elo_history.items():
             if not history:
                 continue
             steps = [h[0] for h in history]
-            elos  = [h[1] for h in history]
-            norm  = [e - random_elo_at_step.get(s, 0.0) for s, e in history]
+            elos = [h[1] for h in history]
+            norm = [e - random_elo_at_step.get(s, 0.0) for s, e in history]
             xs.append(steps)
             ys_raw.append(elos)
             ys_norm.append(norm)
@@ -1149,12 +1345,18 @@ class PPOTrainer:
 
         return {
             "charts/elo_history": wandb.plot.line_series(
-                xs=xs, ys=ys_raw, keys=keys,
-                title="Roster ELO History", xname="Global Step",
+                xs=xs,
+                ys=ys_raw,
+                keys=keys,
+                title="Roster ELO History",
+                xname="Global Step",
             ),
             "charts/elo_history_normalized": wandb.plot.line_series(
-                xs=xs, ys=ys_norm, keys=keys,
-                title="Roster ELO (normalized vs random)", xname="Global Step",
+                xs=xs,
+                ys=ys_norm,
+                keys=keys,
+                title="Roster ELO (normalized vs random)",
+                xname="Global Step",
             ),
         }
 
@@ -1171,20 +1373,20 @@ class PPOTrainer:
     def _checkpoint_payload(self, update: int) -> dict:
         """Build the data dict shared by all checkpoint saves."""
         return {
-            "policy_state_dict":     self.policy.state_dict(),
-            "optimizer_state_dict":  self.optim.state_dict(),
-            "scaler_state_dict":     self.scaler.state_dict(),
+            "policy_state_dict": self.policy.state_dict(),
+            "optimizer_state_dict": self.optim.state_dict(),
+            "scaler_state_dict": self.scaler.state_dict(),
             "avg_policy_state_dict": self.avg_policy.state_dict(),
-            "avg_param_cumsum":      [c.cpu() for c in self._avg_param_cumsum],
-            "avg_update_count":      self._avg_update_count,
-            "update":                update,
-            "global_step":           self._global_step,
-            "training_elo":          self._training_elo,
-            "elo_milestone":         self._elo_milestone,
-            "train_config":          dataclasses.asdict(self.cfg),
-            "model_config":          dataclasses.asdict(self.model_config),
-            "env_config":            dataclasses.asdict(self.env_config),
-            "reward_config":         dataclasses.asdict(self.reward_config),
+            "avg_param_cumsum": [c.cpu() for c in self._avg_param_cumsum],
+            "avg_update_count": self._avg_update_count,
+            "update": update,
+            "global_step": self._global_step,
+            "training_elo": self._training_elo,
+            "elo_milestone": self._elo_milestone,
+            "train_config": dataclasses.asdict(self.cfg),
+            "model_config": dataclasses.asdict(self.model_config),
+            "env_config": dataclasses.asdict(self.env_config),
+            "reward_config": dataclasses.asdict(self.reward_config),
         }
 
     def _save_checkpoint(self, update: int) -> None:
@@ -1239,10 +1441,12 @@ class PPOTrainer:
             self.scaler.load_state_dict(ckpt["scaler_state_dict"])
         if "avg_policy_state_dict" in ckpt:
             self.avg_policy.load_state_dict(ckpt["avg_policy_state_dict"])
-            self._avg_param_cumsum = [c.to(self.device) for c in ckpt["avg_param_cumsum"]]
+            self._avg_param_cumsum = [
+                c.to(self.device) for c in ckpt["avg_param_cumsum"]
+            ]
             self._avg_update_count = ckpt["avg_update_count"]
         if "training_elo" in ckpt:
-            self._training_elo  = ckpt["training_elo"]
+            self._training_elo = ckpt["training_elo"]
             self._elo_milestone = ckpt.get("elo_milestone", 0.0)
 
         # Restore roster if its JSON exists alongside the checkpoint
@@ -1258,10 +1462,10 @@ class PPOTrainer:
 
     def _init_wandb(
         self,
-        train_config:  TrainConfig,
-        model_config:  ModelConfig,
-        ship_config:   ShipConfig,
-        env_config:    EnvConfig,
+        train_config: TrainConfig,
+        model_config: ModelConfig,
+        ship_config: ShipConfig,
+        env_config: EnvConfig,
         reward_config: RewardConfig,
     ) -> None:
         """Initialize W&B run with all configs serialized as the run config.
@@ -1274,17 +1478,20 @@ class PPOTrainer:
             reward_config: Reward weights.
         """
         import wandb
+
         config: dict = {}
         for prefix, cfg in [
-            ("train",  train_config),
-            ("model",  model_config),
-            ("ship",   ship_config),
-            ("env",    env_config),
+            ("train", train_config),
+            ("model", model_config),
+            ("ship", ship_config),
+            ("env", env_config),
             ("reward", reward_config),
         ]:
             for k, v in dataclasses.asdict(cfg).items():
                 # frozenset is not JSON-serializable; convert to sorted list
-                config[f"{prefix}/{k}"] = sorted(v) if isinstance(v, (frozenset, set)) else v
+                config[f"{prefix}/{k}"] = (
+                    sorted(v) if isinstance(v, (frozenset, set)) else v
+                )
 
         wandb.init(project="boost-and-broadside", config=config)
 
@@ -1303,6 +1510,7 @@ class PPOTrainer:
         """
         import numpy as np
         import wandb
+
         while True:
             try:
                 item = self._log_queue.get(timeout=1.0)

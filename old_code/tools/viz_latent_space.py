@@ -16,12 +16,12 @@ log = logging.getLogger(__name__)
 
 from boost_and_broadside.train.data_loader import load_bc_data
 from boost_and_broadside.core.constants import (
-    PowerActions, 
-    TurnActions, 
+    PowerActions,
+    TurnActions,
     ShootActions,
     STATE_DIM,
     TARGET_DIM,
-    TOTAL_ACTION_LOGITS
+    TOTAL_ACTION_LOGITS,
 )
 
 
@@ -41,34 +41,38 @@ def load_config(run_dir: Path):
 def load_model(run_dir: Path, config: dict, device: str = "cpu"):
     import hydra
     from omegaconf import OmegaConf
-    
+
     # The config passed here is the full run config (from config.yaml)
     # We need the 'model' section
-    
+
     # Load and resolve the full config to handle interpolations
     config_path = run_dir / "config.yaml"
     if not config_path.exists():
         raise FileNotFoundError(f"Config not found at {config_path}")
-    
+
     full_omega_config = OmegaConf.load(config_path)
     OmegaConf.resolve(full_omega_config)
-    
+
     model_cfg_dict = full_omega_config.get("model", {})
     if not model_cfg_dict:
         # Fallback to world_model if 'model' not found? (Older config format)
         model_cfg_dict = full_omega_config.get("world_model", {})
-        
+
     if not model_cfg_dict:
         raise ValueError(f"No model configuration found in {run_dir}/config.yaml")
 
     # Ensure n_heads/n_layers are present if missing (backwards compatibility)
     if "n_layers" not in model_cfg_dict:
         model_cfg_dict["n_layers"] = 4
-    if "n_heads" not in model_cfg_dict and model_cfg_dict.get("_target_") != "boost_and_broadside.models.yemong.scaffolds.YemongTemporal":
+    if (
+        "n_heads" not in model_cfg_dict
+        and model_cfg_dict.get("_target_")
+        != "boost_and_broadside.models.yemong.scaffolds.YemongTemporal"
+    ):
         model_cfg_dict["n_heads"] = 4
-        
+
     model_cfg = OmegaConf.create(model_cfg_dict)
-    
+
     # Instantiate via Hydra
     try:
         print(f"Instantiating model from config...")
@@ -76,6 +80,7 @@ def load_model(run_dir: Path, config: dict, device: str = "cpu"):
     except Exception as e:
         print(f"WARNING: Hydra instantiation failed: {e}. Falling back to YemongFull.")
         from boost_and_broadside.models.yemong.scaffolds import YemongFull
+
         model = YemongFull(model_cfg)
 
     # Find checkpoint
@@ -92,11 +97,11 @@ def load_model(run_dir: Path, config: dict, device: str = "cpu"):
 
     print(f"Loading checkpoint: {checkpoint_path}")
     state_dict = torch.load(checkpoint_path, map_location=device)
-    
+
     # Handle torch.compile wrappers if present
     if any(k.startswith("_orig_mod.") for k in state_dict.keys()):
         state_dict = {k.replace("_orig_mod.", ""): v for k, v in state_dict.items()}
-        
+
     model.load_state_dict(state_dict)
     model.to(device)
     model.eval()
@@ -111,7 +116,7 @@ def extract_embeddings(model, h5_path, device, max_batches=10, seq_len=96):
     team_ids_list = []  # Added
     timesteps_list = []
     alive_list = []
-    traj_ids_list = [] # Unique ID for each ship trajectory
+    traj_ids_list = []  # Unique ID for each ship trajectory
 
     print(f"Extracting embeddings using {device} from {h5_path}...")
 
@@ -120,18 +125,19 @@ def extract_embeddings(model, h5_path, device, max_batches=10, seq_len=96):
         all_actions = f["actions"]
         all_pos = f["position"]
         all_vel = f["velocity"]
-        
+
         has_team_ids = "team_ids" in f
         all_team_ids = f["team_ids"] if has_team_ids else None
-        
+
         count = 0
-        
+
         # Pre-calculate starts
         ep_starts = np.zeros_like(episode_lengths)
         ep_starts[1:] = np.cumsum(episode_lengths[:-1])
 
         # Resolve tokens using UnifiedDataset logic (granules)
         from boost_and_broadside.train.unified_dataset import UnifiedEpisodeDataset
+
         dataset = UnifiedEpisodeDataset(h5_path)
 
         for i, length in enumerate(episode_lengths):
@@ -140,16 +146,24 @@ def extract_embeddings(model, h5_path, device, max_batches=10, seq_len=96):
             # Only process if long enough for sequence
             if length >= seq_len:
                 # Slice first seq_len steps
-                tokens_np = dataset.get_slice("tokens", start_idx, start_idx + seq_len).to(torch.float32).numpy()
+                tokens_np = (
+                    dataset.get_slice("tokens", start_idx, start_idx + seq_len)
+                    .to(torch.float32)
+                    .numpy()
+                )
                 pos_np = all_pos[start_idx : start_idx + seq_len]
                 vel_np = all_vel[start_idx : start_idx + seq_len]
-                
+
                 # actions: shift right.
                 raw_actions_np = all_actions[start_idx : start_idx + seq_len - 1]
-                
+
                 # Zeros for first step
-                zeros = np.zeros((1, *raw_actions_np.shape[1:]), dtype=raw_actions_np.dtype)
-                p_actions_np = np.concatenate([zeros, raw_actions_np], axis=0) # (T, N, 3)
+                zeros = np.zeros(
+                    (1, *raw_actions_np.shape[1:]), dtype=raw_actions_np.dtype
+                )
+                p_actions_np = np.concatenate(
+                    [zeros, raw_actions_np], axis=0
+                )  # (T, N, 3)
 
                 # Team IDs
                 num_ships = tokens_np.shape[1]
@@ -158,20 +172,26 @@ def extract_embeddings(model, h5_path, device, max_batches=10, seq_len=96):
                 else:
                     # Default: first half 0, second half 1
                     tid_frame = np.zeros((num_ships,), dtype=np.int64)
-                    tid_frame[num_ships//2:] = 1
-                    team_ids_np = np.tile(tid_frame, (seq_len, 1)) # (T, N)
+                    tid_frame[num_ships // 2 :] = 1
+                    team_ids_np = np.tile(tid_frame, (seq_len, 1))  # (T, N)
 
                 # Convert to Tensor
-                tokens = torch.from_numpy(tokens_np).unsqueeze(0).to(device) # (1, T, N, D)
-                p_actions = torch.from_numpy(p_actions_np).unsqueeze(0).to(device) # (1, T, N, 3)
-                input_team_ids = torch.from_numpy(team_ids_np).unsqueeze(0).to(device) # (1, T, N)
-                pos = torch.from_numpy(pos_np).unsqueeze(0).to(device) # (1, T, N, 2)
-                vel = torch.from_numpy(vel_np).unsqueeze(0).to(device) # (1, T, N, 2)
+                tokens = (
+                    torch.from_numpy(tokens_np).unsqueeze(0).to(device)
+                )  # (1, T, N, D)
+                p_actions = (
+                    torch.from_numpy(p_actions_np).unsqueeze(0).to(device)
+                )  # (1, T, N, 3)
+                input_team_ids = (
+                    torch.from_numpy(team_ids_np).unsqueeze(0).to(device)
+                )  # (1, T, N)
+                pos = torch.from_numpy(pos_np).unsqueeze(0).to(device)  # (1, T, N, 2)
+                vel = torch.from_numpy(vel_np).unsqueeze(0).to(device)  # (1, T, N, 2)
 
                 # Cast actions to long
                 if p_actions.dtype != torch.long:
                     p_actions = p_actions.long()
-                    
+
                 # Ensure tokens are bfloat16 for MambaBB if using GPU, or float32
                 tokens = tokens.to(torch.float32)
                 pos = pos.to(torch.float32)
@@ -180,18 +200,24 @@ def extract_embeddings(model, h5_path, device, max_batches=10, seq_len=96):
                 with torch.no_grad():
                     # MambaBB forward returns: state_pred, action_logits, value_pred, reward_pred, x_final
                     outputs = model(
-                        state=tokens, 
-                        prev_action=p_actions, 
+                        state=tokens,
+                        prev_action=p_actions,
                         pos=pos,
                         vel=vel,
-                        team_ids=input_team_ids
+                        team_ids=input_team_ids,
                     )
                     # x_final is index 4
                     embeddings = outputs[4]
-                    pred_val = outputs[2] if outputs[2] is not None else torch.zeros(tokens.shape[0], tokens.shape[1], 1, device=device)
+                    pred_val = (
+                        outputs[2]
+                        if outputs[2] is not None
+                        else torch.zeros(
+                            tokens.shape[0], tokens.shape[1], 1, device=device
+                        )
+                    )
                     # If pred_val is (B, T, 1), we expand to (B, T, N) for flattening
                     if pred_val.ndim == 3:
-                         pred_val = pred_val.unsqueeze(-1).expand(-1, -1, num_ships, -1)
+                        pred_val = pred_val.unsqueeze(-1).expand(-1, -1, num_ships, -1)
 
                 # Flatten: (B, T, N, E) -> (B*T*N, E)
                 B_dim, T_dim, N_dim, E_dim = embeddings.shape
@@ -200,14 +226,20 @@ def extract_embeddings(model, h5_path, device, max_batches=10, seq_len=96):
                 for ship_idx in range(num_ships):
                     # Unique ID: episode_idx * max_ships + ship_idx
                     # Assuming max 8 ships per episode for ID space, adjust if needed
-                    traj_id = i * 8 + ship_idx 
-                    
+                    traj_id = i * 8 + ship_idx
+
                     # Extract data for this specific ship across the sequence
-                    ship_embeddings = embeddings[0, :, ship_idx, :].cpu().numpy() # (T, E)
-                    ship_actions = all_actions[start_idx : start_idx + seq_len, ship_idx, :] # (T, 3)
-                    ship_values = pred_val[0, :, ship_idx, 0].cpu().numpy() # (T,)
-                    ship_alive = (tokens_np[:, ship_idx, 1] > 0).astype(np.float32) # (T,)
-                    ship_team_ids = team_ids_np[:, ship_idx] # (T,)
+                    ship_embeddings = (
+                        embeddings[0, :, ship_idx, :].cpu().numpy()
+                    )  # (T, E)
+                    ship_actions = all_actions[
+                        start_idx : start_idx + seq_len, ship_idx, :
+                    ]  # (T, 3)
+                    ship_values = pred_val[0, :, ship_idx, 0].cpu().numpy()  # (T,)
+                    ship_alive = (tokens_np[:, ship_idx, 1] > 0).astype(
+                        np.float32
+                    )  # (T,)
+                    ship_team_ids = team_ids_np[:, ship_idx]  # (T,)
 
                     embeddings_list.append(ship_embeddings)
                     actions_list.append(ship_actions)
@@ -291,7 +323,7 @@ def plot_with_legend(projections, labels, label_map, title, filename, is_enemy=N
                     projections[enemy_mask, 0],
                     projections[enemy_mask, 1],
                     c=[colors[i]],
-                    s=20, 
+                    s=20,
                     alpha=0.7,
                     label=label_name if not has_label else None,
                     marker="+",
@@ -354,8 +386,8 @@ def plot_continuous(projections, values, title, filename, is_enemy=None):
                 projections[mask_enemy, 1],
                 c=values[mask_enemy],
                 cmap="turbo",
-                s=10, 
-                alpha=0.7, 
+                s=10,
+                alpha=0.7,
                 vmin=vmin,
                 vmax=vmax,
                 marker="+",
@@ -521,7 +553,7 @@ def generate_report(model_name, run_dir, config, output_dir, passes):
             f.write(f"![PCA Team](PCA_team{suffix}.png)\n")
             f.write(f"![PCA Timestep](PCA_timestep{suffix}.png)\n")
             f.write(f"![PCA Alive](PCA_alive{suffix}.png)\n\n")
-            
+
             f.write("### PaCMAP Projections\n")
             f.write(f"![PaCMAP Power](PaCMAP_power{suffix}.png)\n")
             f.write(f"![PaCMAP Turn](PaCMAP_turn{suffix}.png)\n")
@@ -531,7 +563,7 @@ def generate_report(model_name, run_dir, config, output_dir, passes):
             f.write(f"![PaCMAP Team](PaCMAP_team{suffix}.png)\n")
             f.write(f"![PaCMAP Timestep](PaCMAP_timestep{suffix}.png)\n")
             f.write(f"![PaCMAP Alive](PaCMAP_alive{suffix}.png)\n\n")
-            
+
     print(f"Report generated at: {report_path}")
 
 
@@ -539,7 +571,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--models_dir", type=str, default="models/world_model")
     parser.add_argument("--output_dir", type=str, default="outputs/latent_viz")
-    parser.add_argument("--max_batches", type=int, default=1000) # Increased for density
+    parser.add_argument(
+        "--max_batches", type=int, default=1000
+    )  # Increased for density
     parser.add_argument(
         "--test-run", action="store_true", help="Run quick test on single model"
     )
@@ -585,7 +619,7 @@ def main():
             if args.data_path:
                 data_path = args.data_path
             else:
-                data_path = load_bc_data() # Gets latest by default
+                data_path = load_bc_data()  # Gets latest by default
 
             print(f"Loading data from: {data_path}")
             # Validating data path exists
@@ -602,7 +636,7 @@ def main():
                 max_batches=args.max_batches,
                 seq_len=config.get("world_model", {}).get("context_len", 96),
             )
-            
+
             embeddings = raw_data_raw["embeddings"]
             actions = raw_data_raw["actions"]
             values = raw_data_raw["values"]
@@ -626,7 +660,7 @@ def main():
                 {
                     "name": "All Data",
                     "suffix": "",
-                    "sample_limit": 10000, # Increased for density
+                    "sample_limit": 10000,  # Increased for density
                     "mask": np.ones(len(embeddings), dtype=bool),
                 },
                 {
@@ -675,7 +709,9 @@ def main():
                 # Trajectory-aware subsampling
                 sample_limit = p.get("sample_limit", 10000)
                 if len(curr_emb) > sample_limit:
-                    print(f"Subsampling to {sample_limit} points while preserving trajectories...")
+                    print(
+                        f"Subsampling to {sample_limit} points while preserving trajectories..."
+                    )
                     # Get unique trajectories in the current mask
                     unique_trajs = np.unique(raw_data["traj_ids"][mask])
                     # Estimate how many trajectories we can afford
@@ -683,12 +719,14 @@ def main():
                     # But we know seq_len is typically 96, but mask might have filtered some.
                     avg_pts = len(curr_emb) / len(unique_trajs)
                     n_needed = int(sample_limit / avg_pts)
-                    
+
                     if n_needed < len(unique_trajs):
-                        selected_trajs = np.random.choice(unique_trajs, n_needed, replace=False)
+                        selected_trajs = np.random.choice(
+                            unique_trajs, n_needed, replace=False
+                        )
                         # Create mask for these trajectories
                         traj_mask = np.isin(raw_data["traj_ids"][mask], selected_trajs)
-                        
+
                         curr_emb = curr_emb[traj_mask]
                         curr_act = curr_act[traj_mask]
                         curr_val = curr_val[traj_mask]
@@ -696,10 +734,12 @@ def main():
                         curr_tid = curr_tid[traj_mask]
                         curr_time = curr_time[traj_mask]
                         curr_alive = curr_alive[traj_mask]
-                    
+
                     # Final fallback if still slightly over (due to varying traj lengths)
                     if len(curr_emb) > sample_limit:
-                        indices = np.random.choice(len(curr_emb), sample_limit, replace=False)
+                        indices = np.random.choice(
+                            len(curr_emb), sample_limit, replace=False
+                        )
                         curr_emb = curr_emb[indices]
                         curr_act = curr_act[indices]
                         curr_val = curr_val[indices]
@@ -759,7 +799,9 @@ def main():
         except Exception as e:
             print(f"Error processing {model_name}: {e}")
             import traceback
+
             traceback.print_exc()
+
 
 if __name__ == "__main__":
     main()

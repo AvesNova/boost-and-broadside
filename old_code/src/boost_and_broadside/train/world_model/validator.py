@@ -7,12 +7,13 @@ from boost_and_broadside.core.constants import StateFeature, TargetFeature, TARG
 
 log = logging.getLogger(__name__)
 
+
 class Validator:
     def __init__(self, model, device, cfg: DictConfig):
         self.model = model
         self.device = device
         self.cfg = cfg
-        self.amp = cfg.train.get("amp", False) and device.type == 'cuda'
+        self.amp = cfg.train.get("amp", False) and device.type == "cuda"
 
     def validate_validation_set(self, loaders, swa_model=None, max_batches=None):
         """
@@ -21,7 +22,7 @@ class Validator:
         """
         model_to_use = swa_model if swa_model is not None else self.model
         model_to_use.eval()
-        
+
         val_loss = torch.tensor(0.0, device=self.device)
         val_steps = 0
         val_error_p = torch.tensor(0.0, device=self.device)
@@ -40,7 +41,7 @@ class Validator:
         if max_batches is None:
             val_cfg = self.cfg.model.get("validation", None)
             max_batches = val_cfg.max_batches if val_cfg else 100
-        
+
         total_batches_processed = 0
 
         # loaders is a list of data loaders
@@ -50,169 +51,215 @@ class Validator:
                     if total_batches_processed >= max_batches:
                         break
                     total_batches_processed += 1
-                    
+
                     # Unpack Dict
-                # Unpack Dict
+                    # Unpack Dict
                     states = batch["states"].to(self.device)
                     actions = batch["actions"].to(self.device)
                     team_ids = batch["team_ids"].to(self.device)
                     loss_mask = batch["loss_mask"].to(self.device)
                     seq_idx = batch["seq_idx"].to(self.device)
-                    
+
                     # New: Value and Reward Targets
                     rewards = batch["rewards"].to(self.device)[:, :-1]
                     if rewards.dim() == 2:
-                         rewards = rewards.unsqueeze(-1)
+                        rewards = rewards.unsqueeze(-1)
 
                     returns = batch["returns"].to(self.device)[:, :-1]
                     if returns.dim() == 2:
-                         returns = returns.unsqueeze(-1)
-                    
+                        returns = returns.unsqueeze(-1)
+
                     # Inputs/Targets
                     input_states = states[:, :-1]
                     next_states = states[:, 1:]
-                    
+
                     input_actions = actions[:, :-1]
-                    
+
                     if "target_actions" in batch:
                         target_actions = batch["target_actions"].to(self.device)[:, :-1]
                     else:
                         target_actions = actions[:, 1:]
-                    
+
                     loss_mask_slice = loss_mask[:, 1:]
-                    
+
                     # Position Data for Deltas
                     pos_all = batch["pos"].to(self.device).float()
                     pos_curr = pos_all[:, :-1]
                     pos_next = pos_all[:, 1:]
-                    
+
                     # Toroidal Delta Pos
                     d_pos = pos_next - pos_curr
                     W, H = self.cfg.environment.world_size
                     d_pos[..., 0] = d_pos[..., 0] - torch.round(d_pos[..., 0] / W) * W
                     d_pos[..., 1] = d_pos[..., 1] - torch.round(d_pos[..., 1] / H) * H
-                    
+
                     # State Deltas
                     d_state = next_states - input_states
-                    
+
                     # Target construction using enums
-                    target_states = torch.zeros((*d_state.shape[:-1], TARGET_DIM), device=d_state.device, dtype=d_state.dtype)
-                    target_states[..., TargetFeature.DX:TargetFeature.DY+1] = d_pos
-                    target_states[..., TargetFeature.DVX] = d_state[..., StateFeature.VX]
-                    target_states[..., TargetFeature.DVY] = d_state[..., StateFeature.VY]
-                    target_states[..., TargetFeature.DHEALTH] = d_state[..., StateFeature.HEALTH]
-                    target_states[..., TargetFeature.DPOWER] = d_state[..., StateFeature.POWER]
-                    target_states[..., TargetFeature.DANG_VEL] = d_state[..., StateFeature.ANG_VEL]
-                    
-                    vel = input_states[..., StateFeature.VX : StateFeature.VY+1]
+                    target_states = torch.zeros(
+                        (*d_state.shape[:-1], TARGET_DIM),
+                        device=d_state.device,
+                        dtype=d_state.dtype,
+                    )
+                    target_states[..., TargetFeature.DX : TargetFeature.DY + 1] = d_pos
+                    target_states[..., TargetFeature.DVX] = d_state[
+                        ..., StateFeature.VX
+                    ]
+                    target_states[..., TargetFeature.DVY] = d_state[
+                        ..., StateFeature.VY
+                    ]
+                    target_states[..., TargetFeature.DHEALTH] = d_state[
+                        ..., StateFeature.HEALTH
+                    ]
+                    target_states[..., TargetFeature.DPOWER] = d_state[
+                        ..., StateFeature.POWER
+                    ]
+                    target_states[..., TargetFeature.DANG_VEL] = d_state[
+                        ..., StateFeature.ANG_VEL
+                    ]
+
+                    vel = input_states[..., StateFeature.VX : StateFeature.VY + 1]
                     alive = input_states[..., StateFeature.HEALTH] > 0
                     target_alive = next_states[..., StateFeature.HEALTH] > 0
 
                     # Cast inputs if AMP is disabled
                     if not self.amp and input_states.dtype == torch.bfloat16:
-                         input_states = input_states.float()
-                         target_states = target_states.float()
-                         pos_curr = pos_curr.float()
-                         vel = vel.float()
+                        input_states = input_states.float()
+                        target_states = target_states.float()
+                        pos_curr = pos_curr.float()
+                        vel = vel.float()
 
-                    with torch.amp.autocast(device_type='cuda', dtype=torch.bfloat16, enabled=self.amp):
+                    with torch.amp.autocast(
+                        device_type="cuda", dtype=torch.bfloat16, enabled=self.amp
+                    ):
                         model_out = model_to_use(
-                            state=input_states, 
-                            prev_action=input_actions, 
+                            state=input_states,
+                            prev_action=input_actions,
                             pos=pos_curr,
                             vel=vel,
                             att=None,
                             team_ids=team_ids[:, :-1],
                             seq_idx=seq_idx[:, :-1],
                             alive=alive,
-                            target_actions=target_actions
+                            target_actions=target_actions,
                         )
 
                         soft_bin_logits = None
                         if len(model_out) == 5:
                             # Legacy Scaffolds
-                            pred_states, pred_actions, pred_values, pred_rewards, _ = model_out
+                            pred_states, pred_actions, pred_values, pred_rewards, _ = (
+                                model_out
+                            )
                             pairwise_pred = None
                             reward_components = None
                         else:
                             # YemongDynamics / Interleaved
                             # returns: action_logits, _, _, value_pred, _, next_state_pred, reward_pred, pairwise_pred, reward_components[, soft_bin_logits]
-                            pred_actions, _, _, pred_values, _, pred_states, pred_rewards, pairwise_pred, *extras = model_out
+                            (
+                                pred_actions,
+                                _,
+                                _,
+                                pred_values,
+                                _,
+                                pred_states,
+                                pred_rewards,
+                                pairwise_pred,
+                                *extras,
+                            ) = model_out
                             reward_components = extras[0] if extras else None
                             if len(model_out) >= 10:
                                 soft_bin_logits = model_out[9]
 
                         # Compute soft-bin targets if needed
                         soft_bin_targets = None
-                        if self.cfg.model.get("use_soft_bin_targets", False) and soft_bin_logits is not None:
-                             from boost_and_broadside.models.components.soft_bins import compute_soft_bin_targets, INTERLEAVED_SOFT_BIN_SPECS
-                             vel_tp1 = next_states[..., StateFeature.VX : StateFeature.VY+1]
-                             soft_bin_targets = compute_soft_bin_targets(
-                                 state_t=input_states.float(),
-                                 state_tp1=next_states.float(),
-                                 pos_t=pos_curr.float(),
-                                 pos_tp1=pos_next.float(),
-                                 vel_t=vel.float(),
-                                 vel_tp1=vel_tp1.float(),
-                                 W=W, H=H,
-                                 value=returns,
-                                 reward=rewards,
-                                 specs=INTERLEAVED_SOFT_BIN_SPECS,
-                             )
+                        if (
+                            self.cfg.model.get("use_soft_bin_targets", False)
+                            and soft_bin_logits is not None
+                        ):
+                            from boost_and_broadside.models.components.soft_bins import (
+                                compute_soft_bin_targets,
+                                INTERLEAVED_SOFT_BIN_SPECS,
+                            )
+
+                            vel_tp1 = next_states[
+                                ..., StateFeature.VX : StateFeature.VY + 1
+                            ]
+                            soft_bin_targets = compute_soft_bin_targets(
+                                state_t=input_states.float(),
+                                state_tp1=next_states.float(),
+                                pos_t=pos_curr.float(),
+                                pos_tp1=pos_next.float(),
+                                vel_t=vel.float(),
+                                vel_tp1=vel_tp1.float(),
+                                W=W,
+                                H=H,
+                                value=returns,
+                                reward=rewards,
+                                specs=INTERLEAVED_SOFT_BIN_SPECS,
+                            )
 
                         metrics = model_to_use.get_loss(
-                           pred_states=pred_states,
-                           pred_actions=pred_actions,
-                           target_states=target_states,
-                           target_actions=target_actions,
-                           loss_mask=loss_mask_slice,
-                           lambda_state=self.cfg.model.get("lambda_state", 1.0),
-                           lambda_actions=self.cfg.model.get("lambda_actions", 0.15),
-                           pred_values=pred_values,
-                           pred_rewards=pred_rewards,
-                           target_returns=returns,
-                           target_rewards=rewards,
-                           lambda_value=self.cfg.model.get("lambda_value", 0.1),
-                           lambda_reward=self.cfg.model.get("lambda_reward", 0.1),
-                           target_alive=target_alive,
-                           pairwise_pred=pairwise_pred,
-                           reward_components=reward_components,
-                           soft_bin_logits=soft_bin_logits,
-                           soft_bin_targets=soft_bin_targets
+                            pred_states=pred_states,
+                            pred_actions=pred_actions,
+                            target_states=target_states,
+                            target_actions=target_actions,
+                            loss_mask=loss_mask_slice,
+                            lambda_state=self.cfg.model.get("lambda_state", 1.0),
+                            lambda_actions=self.cfg.model.get("lambda_actions", 0.15),
+                            pred_values=pred_values,
+                            pred_rewards=pred_rewards,
+                            target_returns=returns,
+                            target_rewards=rewards,
+                            lambda_value=self.cfg.model.get("lambda_value", 0.1),
+                            lambda_reward=self.cfg.model.get("lambda_reward", 0.1),
+                            target_alive=target_alive,
+                            pairwise_pred=pairwise_pred,
+                            reward_components=reward_components,
+                            soft_bin_logits=soft_bin_logits,
+                            soft_bin_targets=soft_bin_targets,
                         )
                         loss = metrics["loss"]
-                    
+
                     val_loss += loss
                     val_steps += 1
-                    
+
                     valid_mask = loss_mask_slice.bool()
                     if valid_mask.sum() > 0 and pred_actions is not None:
                         if valid_mask.ndim == 2:
-                             # Expand if mask is (B,T) and pred is (B,T,N,...)
-                             # We use pred_actions shape to determine expansion
-                             target_shape = pred_actions.shape[:-1]
-                             while valid_mask.ndim < len(target_shape):
-                                 valid_mask = valid_mask.unsqueeze(-1)
-                             valid_mask = valid_mask.expand(*target_shape)
-                        
+                            # Expand if mask is (B,T) and pred is (B,T,N,...)
+                            # We use pred_actions shape to determine expansion
+                            target_shape = pred_actions.shape[:-1]
+                            while valid_mask.ndim < len(target_shape):
+                                valid_mask = valid_mask.unsqueeze(-1)
+                            valid_mask = valid_mask.expand(*target_shape)
+
                         # Flat mask
                         flat_mask = valid_mask.reshape(-1)
-                        valid_pred = pred_actions.reshape(-1, pred_actions.shape[-1])[flat_mask]
+                        valid_pred = pred_actions.reshape(-1, pred_actions.shape[-1])[
+                            flat_mask
+                        ]
                         valid_target = target_actions.reshape(-1, 3)[flat_mask]
-                        
+
                         if valid_pred.shape[-1] == 12:
                             p_logits = valid_pred[..., 0:3]
                             t_logits = valid_pred[..., 3:10]
                             s_logits = valid_pred[..., 10:12]
-                            
+
                             p_target = valid_target[..., 0].long()
                             t_target = valid_target[..., 1].long()
                             s_target = valid_target[..., 2].long()
-                            
+
                             if p_target.numel() > 0:
-                                val_error_p += (p_logits.argmax(-1) != p_target).float().mean()
-                                val_error_t += (t_logits.argmax(-1) != t_target).float().mean()
-                                val_error_s += (s_logits.argmax(-1) != s_target).float().mean()
+                                val_error_p += (
+                                    (p_logits.argmax(-1) != p_target).float().mean()
+                                )
+                                val_error_t += (
+                                    (t_logits.argmax(-1) != t_target).float().mean()
+                                )
+                                val_error_s += (
+                                    (s_logits.argmax(-1) != s_target).float().mean()
+                                )
 
                                 # Collect for Confusion Matrix
                                 all_preds_p.append(p_logits.argmax(-1).cpu().numpy())
@@ -221,14 +268,16 @@ class Validator:
                                 all_targets_t.append(t_target.cpu().numpy())
                                 all_preds_s.append(s_logits.argmax(-1).cpu().numpy())
                                 all_targets_s.append(s_target.cpu().numpy())
-                        elif valid_pred.shape[-1] == 42: # NUM_FLATTENED_ACTIONS
+                        elif valid_pred.shape[-1] == 42:  # NUM_FLATTENED_ACTIONS
                             # Handle flattened actions
                             p_target = valid_target[..., 0].long()
                             t_target = valid_target[..., 1].long()
                             s_target = valid_target[..., 2].long()
-                            
+
                             target_flat = p_target * (7 * 2) + t_target * 2 + s_target
-                            val_error_p += (valid_pred.argmax(-1) != target_flat).float().mean()
+                            val_error_p += (
+                                (valid_pred.argmax(-1) != target_flat).float().mean()
+                            )
                             # For simplicity, we just put the total error into power slots for now
                             # or we can leave them 0.
                             all_preds_p.append(valid_pred.argmax(-1).cpu().numpy())
@@ -245,11 +294,17 @@ class Validator:
             "error_turn": avg_val_err_t,
             "error_shoot": avg_val_err_s,
             "preds_p": np.concatenate(all_preds_p) if all_preds_p else np.array([]),
-            "targets_p": np.concatenate(all_targets_p) if all_targets_p else np.array([]),
+            "targets_p": np.concatenate(all_targets_p)
+            if all_targets_p
+            else np.array([]),
             "preds_t": np.concatenate(all_preds_t) if all_preds_t else np.array([]),
-            "targets_t": np.concatenate(all_targets_t) if all_targets_t else np.array([]),
+            "targets_t": np.concatenate(all_targets_t)
+            if all_targets_t
+            else np.array([]),
             "preds_s": np.concatenate(all_preds_s) if all_preds_s else np.array([]),
-            "targets_s": np.concatenate(all_targets_s) if all_targets_s else np.array([])
+            "targets_s": np.concatenate(all_targets_s)
+            if all_targets_s
+            else np.array([]),
         }
 
     def validate_autoregressive(self, loader, steps=50):

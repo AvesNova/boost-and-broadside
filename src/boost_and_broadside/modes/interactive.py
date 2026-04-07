@@ -27,14 +27,14 @@ from boost_and_broadside.ui.renderer import GameRenderer, RenderConfig
 
 
 def run_watch_mode(
-    team0_spec:    str,
-    team1_spec:    str,
-    ship_config:   ShipConfig,
-    env_config:    EnvConfig,
+    team0_spec: str,
+    team1_spec: str,
+    ship_config: ShipConfig,
+    env_config: EnvConfig,
     reward_config: RewardConfig,
-    model_config:  ModelConfig,
+    model_config: ModelConfig,
     render_config: RenderConfig,
-    device:        str,
+    device: str,
     checkpoint_dir: str = "checkpoints",
 ) -> None:
     """Render live gameplay between two agents at 60fps.
@@ -50,11 +50,20 @@ def run_watch_mode(
         device:         Torch device string.
         checkpoint_dir: Root directory searched when a spec is "latest".
     """
-    agent0 = resolve_agent_spec(team0_spec, ship_config, model_config, device, checkpoint_dir)
-    agent1 = resolve_agent_spec(team1_spec, ship_config, model_config, device, checkpoint_dir)
+    agent0 = resolve_agent_spec(
+        team0_spec, ship_config, model_config, device, checkpoint_dir
+    )
+    agent1 = resolve_agent_spec(
+        team1_spec, ship_config, model_config, device, checkpoint_dir
+    )
 
-    wrapper  = MVPEnvWrapper(num_envs=1, ship_config=ship_config, env_config=env_config,
-                             reward_config=reward_config, device=device)
+    wrapper = MVPEnvWrapper(
+        num_envs=1,
+        ship_config=ship_config,
+        env_config=env_config,
+        reward_config=reward_config,
+        device=device,
+    )
     renderer = GameRenderer(ship_config, render_config)
 
     try:
@@ -64,11 +73,11 @@ def run_watch_mode(
 
 
 def _run_interactive_loop(
-    wrapper:  MVPEnvWrapper,
-    agent0:   ResolvedAgent,
-    agent1:   ResolvedAgent,
+    wrapper: MVPEnvWrapper,
+    agent0: ResolvedAgent,
+    agent1: ResolvedAgent,
     renderer: GameRenderer,
-    device:   torch.device,
+    device: torch.device,
 ) -> None:
     """Core render loop.  Runs episodes back-to-back until the window is closed.
 
@@ -94,14 +103,16 @@ def _run_interactive_loop(
 
             # Select each agent's actions for their respective team
             team_id = obs["team_id"]  # (1, N)
-            action  = torch.where((team_id == 0).unsqueeze(-1), action0, action1)
+            action = torch.where((team_id == 0).unsqueeze(-1), action0, action1)
 
             # Human keyboard overrides for null agents
             if agent0.kind == "null" or agent1.kind == "null":
                 keyboard = _decode_keyboard().to(device)
                 for ship_idx in range(N):
                     t = int(team_id[0, ship_idx].item())
-                    if (t == 0 and agent0.kind == "null") or (t == 1 and agent1.kind == "null"):
+                    if (t == 0 and agent0.kind == "null") or (
+                        t == 1 and agent1.kind == "null"
+                    ):
                         action[0, ship_idx] = keyboard
 
             obs, _, dones, truncated, _ = wrapper.step(action)
@@ -132,6 +143,7 @@ def _decode_keyboard() -> torch.Tensor:
         (3,) int tensor with [power_action, turn_action, shoot_action].
     """
     import pygame
+
     keys = pygame.key.get_pressed()
 
     if keys[pygame.K_w]:

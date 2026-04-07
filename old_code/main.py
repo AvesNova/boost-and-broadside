@@ -22,6 +22,7 @@ from boost_and_broadside.eval.eval_world_model import eval_world_model
 
 from boost_and_broadside.modes.train_evolve import train_evolve
 
+
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def my_app(cfg: DictConfig) -> None:
     match cfg.mode:

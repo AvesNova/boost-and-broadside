@@ -14,35 +14,36 @@ class TensorState:
     The dataclass is NOT frozen so that physics functions can write into fields
     in-place. Callers that need a snapshot must call .clone() explicitly.
     """
-    step_count: torch.Tensor       # (B,) int32
+
+    step_count: torch.Tensor  # (B,) int32
 
     # Ship kinematic state
-    ship_pos: torch.Tensor         # (B, N) complex64  — world position
-    ship_vel: torch.Tensor         # (B, N) complex64  — velocity
-    ship_attitude: torch.Tensor    # (B, N) complex64  — unit heading vector
-    ship_ang_vel: torch.Tensor     # (B, N) float32    — angular velocity (rad/s)
+    ship_pos: torch.Tensor  # (B, N) complex64  — world position
+    ship_vel: torch.Tensor  # (B, N) complex64  — velocity
+    ship_attitude: torch.Tensor  # (B, N) complex64  — unit heading vector
+    ship_ang_vel: torch.Tensor  # (B, N) float32    — angular velocity (rad/s)
 
     # Ship resource state
-    ship_health: torch.Tensor      # (B, N) float32
-    ship_power: torch.Tensor       # (B, N) float32
-    ship_cooldown: torch.Tensor    # (B, N) float32    — seconds until next shot
+    ship_health: torch.Tensor  # (B, N) float32
+    ship_power: torch.Tensor  # (B, N) float32
+    ship_cooldown: torch.Tensor  # (B, N) float32    — seconds until next shot
 
     # Identity / status
-    ship_team_id: torch.Tensor     # (B, N) int32
-    ship_alive: torch.Tensor       # (B, N) bool
-    ship_is_shooting: torch.Tensor # (B, N) bool
+    ship_team_id: torch.Tensor  # (B, N) int32
+    ship_alive: torch.Tensor  # (B, N) bool
+    ship_is_shooting: torch.Tensor  # (B, N) bool
 
     # Action taken at the previous step (for observation)
-    prev_action: torch.Tensor      # (B, N, 3) float32  — [power, turn, shoot]
+    prev_action: torch.Tensor  # (B, N, 3) float32  — [power, turn, shoot]
 
     # Bullet ring-buffer (K = max_bullets per ship)
-    bullet_pos: torch.Tensor       # (B, N, K) complex64
-    bullet_vel: torch.Tensor       # (B, N, K) complex64
-    bullet_time: torch.Tensor      # (B, N, K) float32  — remaining lifetime (s)
-    bullet_active: torch.Tensor    # (B, N, K) bool
+    bullet_pos: torch.Tensor  # (B, N, K) complex64
+    bullet_vel: torch.Tensor  # (B, N, K) complex64
+    bullet_time: torch.Tensor  # (B, N, K) float32  — remaining lifetime (s)
+    bullet_active: torch.Tensor  # (B, N, K) bool
 
     # Ring-buffer write cursor
-    bullet_cursor: torch.Tensor    # (B, N) int64
+    bullet_cursor: torch.Tensor  # (B, N) int64
 
     # ------------------------------------------------------------------
     # Convenience properties

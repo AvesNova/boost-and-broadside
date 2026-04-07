@@ -36,9 +36,7 @@ def play(cfg: DictConfig) -> None:
     # Helper to create agent config
     def get_agent_config(agent_type: str) -> dict:
         # Use current global config as default for transformer-based agents
-        transformer_config = OmegaConf.to_container(
-            cfg.model, resolve=True
-        )
+        transformer_config = OmegaConf.to_container(cfg.model, resolve=True)
         if isinstance(transformer_config, dict) and "num_actions" in transformer_config:
             del transformer_config["num_actions"]
 
@@ -64,7 +62,7 @@ def play(cfg: DictConfig) -> None:
 
     # Set teams for the game
     cfg.collect.teams = ["team1_agent", "team2_agent"]
-    
+
     # 2048 steps
     cfg.collect.max_episode_length = 2048
 
@@ -78,7 +76,7 @@ def play(cfg: DictConfig) -> None:
         print("Human control enabled for Ship 0")
 
     import time
-    import pygame # Added import for pygame.time.wait
+    import pygame  # Added import for pygame.time.wait
 
     blue_wins = 0
     red_wins = 0
@@ -89,13 +87,13 @@ def play(cfg: DictConfig) -> None:
             # Run a single episode
             coordinator.reset(game_mode="nvn")
             time, terminated, truncated, steps, winners, win_reason = coordinator.step()
-            
+
             # Use final observation right before the auto-reset
-            final_obs = getattr(coordinator, 'final_obs', coordinator.obs_history[-1])
+            final_obs = getattr(coordinator, "final_obs", coordinator.obs_history[-1])
             print(f"Final Obs Alive Mask: {final_obs['alive']}")
-            
+
             alive_teams = coordinator._get_teams_from_obs(final_obs)
-            
+
             if len(winners) == 1 and winners[0] == 0:
                 blue_wins += 1
                 outcome = f"Blue Wins! ({win_reason})"
@@ -105,14 +103,16 @@ def play(cfg: DictConfig) -> None:
             else:
                 ties += 1
                 outcome = f"TIE ({win_reason})"
-            
+
             print(f"\nEpisode Finished in {steps} steps ({time:.1f}s): {outcome}")
-            print(f"Alive indices: Blue: {alive_teams.get(0, [])}, Red: {alive_teams.get(1, [])}")
+            print(
+                f"Alive indices: Blue: {alive_teams.get(0, [])}, Red: {alive_teams.get(1, [])}"
+            )
             print(f"Standings -> Blue: {blue_wins} | Red: {red_wins} | Ties: {ties}\n")
-            
+
             print("Restarting next episode in 1 second...")
             pygame.time.wait(1000)
-            
+
             # Re-init pygame since a ship might trigger close if it was closed via GUI
             # actually we don't want to close between episodes, we just loop.
 

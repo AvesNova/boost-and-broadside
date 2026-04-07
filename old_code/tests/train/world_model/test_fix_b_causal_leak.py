@@ -1,4 +1,5 @@
 """Fix B: Causal leak fix — input_actions is properly offset (prev-action conditioning)."""
+
 import pytest
 import torch
 
@@ -18,8 +19,9 @@ def test_input_actions_first_step_is_zero():
     input_actions, _ = compute_input_actions(actions)
 
     # First timestep should always be zero
-    assert input_actions[:, 0].sum() == 0, \
+    assert input_actions[:, 0].sum() == 0, (
         "input_actions[:, 0] must be zero (no prev-action before t=0)"
+    )
 
 
 def test_input_actions_is_properly_shifted():
@@ -32,8 +34,9 @@ def test_input_actions_is_properly_shifted():
     # input_actions has shape (B, T-1, N, 3)
     # input_actions[:, 1:] should equal actions[:, :-2]
     assert input_actions.shape[1] == T_minus_1
-    assert torch.allclose(input_actions[:, 1:], actions[:, :-2]), \
+    assert torch.allclose(input_actions[:, 1:], actions[:, :-2]), (
         "input_actions[t] should equal actions[t-1] for t>=1"
+    )
 
 
 def test_target_and_input_differ():
@@ -44,8 +47,9 @@ def test_target_and_input_differ():
 
     # Because of the zero-prepend + shift, they cannot be equal
     # (input_actions[:, 0] == 0 but target_actions[:, 0] == actions[:, 0] != 0)
-    assert not torch.equal(input_actions, target_actions), \
+    assert not torch.equal(input_actions, target_actions), (
         "After fix, input_actions must differ from target_actions"
+    )
 
 
 def test_seq_length_preserved():

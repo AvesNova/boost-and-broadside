@@ -11,17 +11,17 @@ from boost_and_broadside.env2.agents.scripted import VectorScriptedAgent
 @dataclass
 class StickyActionState:
     """Tracks the state of sticky actions for a single ship."""
-    
+
     # Current active action for each head
     power: int = 0
     turn: int = 0
     shoot: int = 0
-    
+
     # Remaining steps for the current sticky choice
     power_steps: int = 0
     turn_steps: int = 0
     shoot_steps: int = 0
-    
+
     # Whether the current period is "expert" (True) or "random" (False)
     power_expert: bool = True
     turn_expert: bool = True
@@ -50,12 +50,14 @@ class GameCoordinator:
         env_config = dict(config.environment)
         if render_mode is not None:
             env_config["render_mode"] = render_mode
-        
+
         # Inject number of teams from collect config
         env_config["num_teams"] = len(config.collect.teams)
-        
+
         # Always use TensorEnvWrapper (Env2)
-        print(f"Initializing TensorEnvWrapper (backend={env_config.get('backend', 'cpu')})...")
+        print(
+            f"Initializing TensorEnvWrapper (backend={env_config.get('backend', 'cpu')})..."
+        )
         self.env = TensorEnvWrapper(**env_config)
 
         self.agents = {}
@@ -79,11 +81,13 @@ class GameCoordinator:
         self.obs_history: list[dict] = []
         # Initialize other attributes to satisfy type checkers
         self.all_actions: dict[int, list[torch.Tensor]] = {}
-        self.all_expert_actions: dict[int, list[torch.Tensor]] = {} 
-        self.all_expert_action_probs: dict[int, list[torch.Tensor]] = {} # New: Save expert probs
+        self.all_expert_actions: dict[int, list[torch.Tensor]] = {}
+        self.all_expert_action_probs: dict[
+            int, list[torch.Tensor]
+        ] = {}  # New: Save expert probs
         self.all_action_masks: dict[int, list[float]] = {}
         self.all_rewards: dict[int, list[float]] = {}
-        
+
         # Sticky Action States
         self.sticky_states: dict[int, StickyActionState] = {}
         self._rng = np.random.default_rng()
@@ -110,7 +114,7 @@ class GameCoordinator:
 
         self.obs_history = [obs]
         self.obs_history = [obs]
-        
+
         self.all_actions = {
             ship_id: [] for ship_id in range(self.config.environment.max_ships)
         }
@@ -124,10 +128,10 @@ class GameCoordinator:
             ship_id: [] for ship_id in range(self.config.environment.max_ships)
         }
         self.all_rewards = {team_id: [] for team_id in range(num_teams)}
-        
+
         # Reset sticky states
         self.sticky_states = {
-            ship_id: StickyActionState() 
+            ship_id: StickyActionState()
             for ship_id in range(self.config.environment.max_ships)
         }
 
@@ -148,12 +152,12 @@ class GameCoordinator:
     ) -> torch.Tensor:
         """
         Update sticky state and determine the action to take.
-        
+
         Args:
             state: StickyActionState for the ship.
             expert_action: (3,) tensor [Power, Turn, Shoot] from expert.
             skill_level: Probability of choosing 'Expert' profile.
-            
+
         Returns:
             Taken action as (3,) tensor.
         """
@@ -161,7 +165,7 @@ class GameCoordinator:
         exp_p = int(expert_action[0].item())
         exp_t = int(expert_action[1].item())
         exp_s = int(expert_action[2].item())
-        
+
         # --- POWER ---
         if state.power_steps <= 0:
             # Resample profile
@@ -171,13 +175,13 @@ class GameCoordinator:
             else:
                 state.power_expert = False
                 # Sample random action to stick to
-                state.power = self._rng.integers(0, 3) # 0, 1, 2
-        
+                state.power = self._rng.integers(0, 3)  # 0, 1, 2
+
         state.power_steps -= 1
-        
+
         # Determine output
         final_p = exp_p if state.power_expert else state.power
-        
+
         # --- TURN ---
         if state.turn_steps <= 0:
             state.turn_steps = self._sample_sticky_duration()
@@ -186,10 +190,10 @@ class GameCoordinator:
             else:
                 state.turn_expert = False
                 state.turn = self._rng.integers(0, 7)
-                
+
         state.turn_steps -= 1
         final_t = exp_t if state.turn_expert else state.turn
-        
+
         # --- SHOOT ---
         if state.shoot_steps <= 0:
             state.shoot_steps = self._sample_sticky_duration()
@@ -198,10 +202,10 @@ class GameCoordinator:
             else:
                 state.shoot_expert = False
                 state.shoot = self._rng.integers(0, 2)
-                
+
         state.shoot_steps -= 1
         final_s = exp_s if state.shoot_expert else state.shoot
-        
+
         return torch.tensor([final_p, final_t, final_s], dtype=torch.uint8)
 
     def step(self) -> tuple[float, bool]:
@@ -228,25 +232,28 @@ class GameCoordinator:
             team_action_probs = {}
             for team_id, ship_ids in teams.items():
                 agent = self.agents[team_names[team_id]]
-                if isinstance(agent, VectorScriptedAgent) or agent.__class__.__name__ == "StochasticScriptedAgent":
+                if (
+                    isinstance(agent, VectorScriptedAgent)
+                    or agent.__class__.__name__ == "StochasticScriptedAgent"
+                ):
                     # We can use our env wrapper to get a TensorState or construct one
                     # self.env.state is a TensorState in the coordinator wrapper
                     if hasattr(agent, "get_actions_and_probs"):
-                        raw_actions, raw_probs = agent.get_actions_and_probs(self.env.state)
+                        raw_actions, raw_probs = agent.get_actions_and_probs(
+                            self.env.state
+                        )
                     else:
-                        raw_actions = agent.get_actions(self.env.state) # (B, N, 3)
+                        raw_actions = agent.get_actions(self.env.state)  # (B, N, 3)
                         raw_probs = None
-                    
+
                     # Convert to dict for the rest of GameCoordinator logic
                     # We are in a single environment here (B=1)
                     team_actions[team_id] = {
-                        ship_id: raw_actions[0, ship_id]
-                        for ship_id in ship_ids
+                        ship_id: raw_actions[0, ship_id] for ship_id in ship_ids
                     }
                     if raw_probs is not None:
                         team_action_probs[team_id] = {
-                            ship_id: raw_probs[0, ship_id]
-                            for ship_id in ship_ids
+                            ship_id: raw_probs[0, ship_id] for ship_id in ship_ids
                         }
                 else:
                     team_actions[team_id] = agent(self.obs_history[-1], ship_ids)
@@ -261,26 +268,32 @@ class GameCoordinator:
                 ship_actions_expert = team_actions[team_id]
                 ship_action_probs_expert = team_action_probs.get(team_id, {})
                 skill_level = self.team_skills.get(team_id, 1.0)
-                
+
                 for ship_id in ship_ids:
                     expert_tensor = ship_actions_expert[ship_id]
                     expert_actions_dict[ship_id] = expert_tensor.to(dtype=torch.uint8)
-                    
+
                     if ship_id in ship_action_probs_expert:
-                        expert_action_probs_dict[ship_id] = ship_action_probs_expert[ship_id]
-                    
+                        expert_action_probs_dict[ship_id] = ship_action_probs_expert[
+                            ship_id
+                        ]
+
                     # Update Sticky State
                     sticky_state = self.sticky_states[ship_id]
                     taken_tensor = self._update_sticky_state(
                         sticky_state, expert_tensor, skill_level
                     )
-                    
+
                     actions[ship_id] = taken_tensor
-                    
+
                     # Mask isn't really used same way anymore, but we can track expert usage ratio?
                     # Let's just store 1.0 if Fully Expert this step?
                     # Or maybe just average of the 3 heads.
-                    is_expert = float(sticky_state.power_expert and sticky_state.turn_expert and sticky_state.shoot_expert)
+                    is_expert = float(
+                        sticky_state.power_expert
+                        and sticky_state.turn_expert
+                        and sticky_state.shoot_expert
+                    )
                     action_masks[ship_id] = is_expert
 
             # 4. Record actions and masks for history
@@ -288,11 +301,15 @@ class GameCoordinator:
                 self.all_actions[ship_id].append(action)
                 self.all_expert_actions[ship_id].append(expert_actions_dict[ship_id])
                 if ship_id in expert_action_probs_dict:
-                    self.all_expert_action_probs[ship_id].append(expert_action_probs_dict[ship_id])
+                    self.all_expert_action_probs[ship_id].append(
+                        expert_action_probs_dict[ship_id]
+                    )
                 self.all_action_masks[ship_id].append(action_masks[ship_id])
 
             # 5. Step the environment
-            obs, rewards, terminated_env, truncated_env, info = self.env.step(actions=actions)
+            obs, rewards, terminated_env, truncated_env, info = self.env.step(
+                actions=actions
+            )
 
             # 6. Record rewards and observations
             for team_id, reward in rewards.items():
@@ -308,24 +325,24 @@ class GameCoordinator:
                 break
 
         episode_sim_time = info.get("current_time", 0.0)
-        
+
         # Determine winners and win_reason
         winners = []
         win_reason = ""
         alive_teams = self._get_teams_from_obs(self.final_obs)
         if terminated:
-             # Terminated means someone died
-             if 0 in alive_teams and 1 not in alive_teams:
-                  winners = [0]
-                  win_reason = "Elimination"
-             elif 1 in alive_teams and 0 not in alive_teams:
-                  winners = [1]
-                  win_reason = "Elimination"
-             else:
-                  # Both dead
-                  win_reason = "Mutual Destruction"
+            # Terminated means someone died
+            if 0 in alive_teams and 1 not in alive_teams:
+                winners = [0]
+                win_reason = "Elimination"
+            elif 1 in alive_teams and 0 not in alive_teams:
+                winners = [1]
+                win_reason = "Elimination"
+            else:
+                # Both dead
+                win_reason = "Mutual Destruction"
         elif truncated:
-             win_reason = "Time Limit"
+            win_reason = "Time Limit"
 
         return episode_sim_time, terminated, truncated, step_count, winners, win_reason
 
@@ -336,20 +353,20 @@ class GameCoordinator:
         """
         # We need to stack each key from obs_history
         # keys: position, velocity, health, power, attitude, angular_velocity (as ang_vel), is_shooting, team_id
-        
+
         if not self.obs_history:
             return {}
-            
+
         # Keys mapping (obs_key -> feature_key)
         # obs usually has: position, velocity, health, power, attitude, angular_velocity, is_shooting, team_id
-        
+
         # We assume all obs have same keys and shapes
         T = len(self.obs_history)
         N = self.config.environment.max_ships
-        
+
         # Pre-allocate or just stack list
         # Stacking list is easier
-        
+
         pos_list = []
         vel_list = []
         health_list = []
@@ -358,38 +375,40 @@ class GameCoordinator:
         ang_list = []
         shoot_list = []
         tid_list = []
-        
+
         for obs in self.obs_history:
             # Position (complex) -> (x, y)
             p = obs["position"]
             pos_list.append(torch.stack([p.real, p.imag], dim=-1))
-            
+
             # Velocity (complex) -> (vx, vy)
             v = obs["velocity"]
             vel_list.append(torch.stack([v.real, v.imag], dim=-1))
-            
+
             # Health
             health_list.append(obs["health"])
-            
+
             # Power
             power_list.append(obs["power"])
-            
+
             # Attitude (complex) -> (ax, ay)
             a = obs["attitude"]
             att_list.append(torch.stack([a.real, a.imag], dim=-1))
-            
+
             # Ang Vel
             ang_list.append(obs["angular_velocity"])
-            
+
             # Is Shooting
             shoot_list.append(obs["is_shooting"].float())
-            
+
             # Team ID
             tid_list.append(obs["team_id"].long())
-            
+
         return {
             "position": torch.stack(pos_list, dim=0).float(),
-            "velocity": torch.stack(vel_list, dim=0).float(), # Keep float32 for pickle, cast later if needed? Or cast to float16 now to save pickle size? AsyncCollector used float16.
+            "velocity": torch.stack(
+                vel_list, dim=0
+            ).float(),  # Keep float32 for pickle, cast later if needed? Or cast to float16 now to save pickle size? AsyncCollector used float16.
             "health": torch.stack(health_list, dim=0).float(),
             "power": torch.stack(power_list, dim=0).float(),
             "attitude": torch.stack(att_list, dim=0).float(),

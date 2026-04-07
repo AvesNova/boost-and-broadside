@@ -5,27 +5,34 @@ import math
 import pytest
 import torch
 
-from boost_and_broadside.train.rl.buffer import RolloutBuffer, ReturnScaler, symlog, symexp
+from boost_and_broadside.train.rl.buffer import (
+    RolloutBuffer,
+    ReturnScaler,
+    symlog,
+    symexp,
+)
 
 
 K = 4  # num_components used across tests (smaller than prod K=12 for speed)
 
 
-def _make_buffer(T=4, B=2, N=4, D=16, num_components=K) -> tuple[RolloutBuffer, int, int, int, int]:
+def _make_buffer(
+    T=4, B=2, N=4, D=16, num_components=K
+) -> tuple[RolloutBuffer, int, int, int, int]:
     obs_shapes = {
-        "pos"    : (N, 2),
-        "vel"    : (N, 2),
-        "alive"  : (N,),
+        "pos": (N, 2),
+        "vel": (N, 2),
+        "alive": (N,),
     }
     buf = RolloutBuffer(
-        num_steps      = T,
-        num_envs       = B,
-        num_ships      = N,
-        num_components = num_components,
-        obs_shapes     = obs_shapes,
-        gamma          = 0.99,
-        gae_lambda     = 0.95,
-        device         = torch.device("cpu"),
+        num_steps=T,
+        num_envs=B,
+        num_ships=N,
+        num_components=num_components,
+        obs_shapes=obs_shapes,
+        gamma=0.99,
+        gae_lambda=0.95,
+        device=torch.device("cpu"),
     )
     return buf, T, B, N, D
 
@@ -35,18 +42,18 @@ def _fill_buffer(buf: RolloutBuffer, T: int, B: int, N: int, D: int) -> None:
     Kc = buf.num_components
     for _ in range(T):
         obs = {
-            "pos"  : torch.rand(B, N, 2),
-            "vel"  : torch.rand(B, N, 2),
+            "pos": torch.rand(B, N, 2),
+            "vel": torch.rand(B, N, 2),
             "alive": torch.ones(B, N),
         }
         buf.add(
-            obs     = obs,
-            action  = torch.zeros(B, N, 3, dtype=torch.int32),
-            logprob = torch.zeros(B, N),
-            reward  = torch.ones(B, N, Kc) * 0.1,
-            done    = torch.zeros(B),
-            value   = torch.ones(B, N, Kc) * 0.5,
-            alive   = torch.ones(B, N, dtype=torch.bool),
+            obs=obs,
+            action=torch.zeros(B, N, 3, dtype=torch.int32),
+            logprob=torch.zeros(B, N),
+            reward=torch.ones(B, N, Kc) * 0.1,
+            done=torch.zeros(B),
+            value=torch.ones(B, N, Kc) * 0.5,
+            alive=torch.ones(B, N, dtype=torch.bool),
         )
 
 
@@ -74,19 +81,21 @@ class TestReturnScaler:
 
     def test_normalize_maps_percentiles_to_unit_range(self):
         """After a single update the p5/p95 percentiles of the data should map near ±1."""
-        scaler = ReturnScaler(num_components=1, device=torch.device("cpu"),
-                              ema_alpha=1.0)  # alpha=1: EMA = current batch exactly
+        scaler = ReturnScaler(
+            num_components=1, device=torch.device("cpu"), ema_alpha=1.0
+        )  # alpha=1: EMA = current batch exactly
         returns = torch.arange(-10.0, 10.0).reshape(20, 1, 1, 1)
         scaler.update(returns)
-        p5  = torch.quantile(returns.reshape(-1), 0.05)
+        p5 = torch.quantile(returns.reshape(-1), 0.05)
         p95 = torch.quantile(returns.reshape(-1), 0.95)
         assert scaler.normalize(p5.unsqueeze(-1)).abs().item() < 1.1
         assert scaler.normalize(p95.unsqueeze(-1)).abs().item() < 1.1
 
     def test_min_span_guards_zero_returns(self):
         """Disabled components (all-zero returns) must not produce NaN."""
-        scaler = ReturnScaler(num_components=2, device=torch.device("cpu"),
-                              ema_alpha=1.0, min_span=1.0)
+        scaler = ReturnScaler(
+            num_components=2, device=torch.device("cpu"), ema_alpha=1.0, min_span=1.0
+        )
         returns = torch.zeros(4, 4, 2, 2)
         scaler.update(returns)
         x = torch.zeros(2)
@@ -118,9 +127,20 @@ class TestBufferAdd:
         Kc = buf.num_components
         _fill_buffer(buf, T, B, N, D)
         with pytest.raises(IndexError):
-            obs = {"pos": torch.rand(B, N, 2), "vel": torch.rand(B, N, 2), "alive": torch.ones(B, N)}
-            buf.add(obs, torch.zeros(B, N, 3), torch.zeros(B, N), torch.zeros(B, N, Kc),
-                    torch.zeros(B), torch.zeros(B, N, Kc), torch.ones(B, N, dtype=torch.bool))
+            obs = {
+                "pos": torch.rand(B, N, 2),
+                "vel": torch.rand(B, N, 2),
+                "alive": torch.ones(B, N),
+            }
+            buf.add(
+                obs,
+                torch.zeros(B, N, 3),
+                torch.zeros(B, N),
+                torch.zeros(B, N, Kc),
+                torch.zeros(B),
+                torch.zeros(B, N, Kc),
+                torch.ones(B, N, dtype=torch.bool),
+            )
 
     def test_reset_clears_pointer(self):
         buf, T, B, N, D = _make_buffer()
@@ -147,7 +167,7 @@ class TestGAEComputation:
             next_done=torch.zeros(B),
         )
         assert buf.advantages.shape == (T, B, N, Kc)
-        assert buf.returns.shape    == (T, B, N, Kc)
+        assert buf.returns.shape == (T, B, N, Kc)
 
     def test_returns_equals_advantages_plus_values(self):
         buf, T, B, N, D = _make_buffer()
@@ -165,12 +185,20 @@ class TestGAEComputation:
         Kc = buf.num_components
 
         for _ in range(T):
-            obs = {"pos": torch.rand(B, N, 2), "vel": torch.rand(B, N, 2), "alive": torch.ones(B, N)}
-            buf.add(obs, torch.zeros(B, N, 3), torch.zeros(B, N),
-                    torch.zeros(B, N, Kc),   # reward = 0
-                    torch.zeros(B),
-                    torch.zeros(B, N, Kc),   # value = 0
-                    torch.ones(B, N, dtype=torch.bool))
+            obs = {
+                "pos": torch.rand(B, N, 2),
+                "vel": torch.rand(B, N, 2),
+                "alive": torch.ones(B, N),
+            }
+            buf.add(
+                obs,
+                torch.zeros(B, N, 3),
+                torch.zeros(B, N),
+                torch.zeros(B, N, Kc),  # reward = 0
+                torch.zeros(B),
+                torch.zeros(B, N, Kc),  # value = 0
+                torch.ones(B, N, dtype=torch.bool),
+            )
 
         buf.compute_gae(next_value=torch.zeros(B, N, Kc), next_done=torch.zeros(B))
 
@@ -180,7 +208,10 @@ class TestGAEComputation:
         """When done=1, bootstrap from next_value should be blocked."""
         T, B, N, Kc = 3, 1, 2, 1
         buf = RolloutBuffer(
-            num_steps=T, num_envs=B, num_ships=N, num_components=Kc,
+            num_steps=T,
+            num_envs=B,
+            num_ships=N,
+            num_components=Kc,
             obs_shapes={"pos": (N, 2)},
             gamma=1.0,
             gae_lambda=1.0,
@@ -189,13 +220,19 @@ class TestGAEComputation:
         for t in range(T):
             obs = {"pos": torch.zeros(B, N, 2)}
             done = torch.tensor([1.0]) if t == 1 else torch.tensor([0.0])
-            buf.add(obs, torch.zeros(B, N, 3), torch.zeros(B, N),
-                    torch.ones(B, N, Kc),    # reward = 1
-                    done,
-                    torch.zeros(B, N, Kc),   # value = 0
-                    torch.ones(B, N, dtype=torch.bool))
+            buf.add(
+                obs,
+                torch.zeros(B, N, 3),
+                torch.zeros(B, N),
+                torch.ones(B, N, Kc),  # reward = 1
+                done,
+                torch.zeros(B, N, Kc),  # value = 0
+                torch.ones(B, N, dtype=torch.bool),
+            )
 
-        buf.compute_gae(next_value=torch.full((B, N, Kc), 99.0), next_done=torch.zeros(B))
+        buf.compute_gae(
+            next_value=torch.full((B, N, Kc), 99.0), next_done=torch.zeros(B)
+        )
 
         # Buffer applies symlog on storage: raw reward=1 → symlog(1)=log(2)≈0.693
         adv_t1 = buf.advantages[1, 0, 0, 0].item()
@@ -224,11 +261,13 @@ class TestMinibatchIterator:
         buf.store_initial_hidden(torch.zeros(1, B * N, D))
         buf.compute_gae(torch.zeros(B, N, Kc), torch.zeros(B))
 
-        mb_obs, mb_actions, *_ = next(iter(buf.get_minibatch_iterator(num_minibatches=2)))
+        mb_obs, mb_actions, *_ = next(
+            iter(buf.get_minibatch_iterator(num_minibatches=2))
+        )
 
         B_mb = B // 2
         assert mb_obs["pos"].shape == (T, B_mb, N, 2)
-        assert mb_actions.shape    == (T, B_mb, N, 3)
+        assert mb_actions.shape == (T, B_mb, N, 3)
 
     def test_minibatch_advantage_shape(self):
         T, B, N, D = 4, 8, 4, 16
@@ -239,7 +278,9 @@ class TestMinibatchIterator:
         buf.store_initial_hidden(torch.zeros(1, B * N, D))
         buf.compute_gae(torch.zeros(B, N, Kc), torch.zeros(B))
 
-        _, _, _, mb_adv, mb_ret, mb_val, *_ = next(iter(buf.get_minibatch_iterator(num_minibatches=2)))
+        _, _, _, mb_adv, mb_ret, mb_val, *_ = next(
+            iter(buf.get_minibatch_iterator(num_minibatches=2))
+        )
         B_mb = B // 2
         assert mb_adv.shape == (T, B_mb, N, Kc)
         assert mb_ret.shape == (T, B_mb, N, Kc)
@@ -254,7 +295,9 @@ class TestMinibatchIterator:
         buf.store_initial_hidden(torch.zeros(1, B * N, D))
         buf.compute_gae(torch.zeros(B, N, Kc), torch.zeros(B))
 
-        *_, mb_hidden, mb_actor_mask, mb_expert_probs = next(iter(buf.get_minibatch_iterator(num_minibatches=2)))
+        *_, mb_hidden, mb_actor_mask, mb_expert_probs = next(
+            iter(buf.get_minibatch_iterator(num_minibatches=2))
+        )
         B_mb = B // 2
         assert mb_hidden.shape == (1, B_mb * N, D)
         assert mb_actor_mask.shape == (T, B_mb, N)

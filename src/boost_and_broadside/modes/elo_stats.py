@@ -14,7 +14,11 @@ import torch
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
-from boost_and_broadside.constants import NUM_POWER_ACTIONS, NUM_SHOOT_ACTIONS, NUM_TURN_ACTIONS
+from boost_and_broadside.constants import (
+    NUM_POWER_ACTIONS,
+    NUM_SHOOT_ACTIONS,
+    NUM_TURN_ACTIONS,
+)
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.modes.agent_factory import ResolvedAgent
 from boost_and_broadside.modes.collect import _obs_from_state
@@ -32,10 +36,12 @@ def find_run_dir(run_spec: str, checkpoint_dir: str) -> Path:
         subdirs = [p for p in root.iterdir() if p.is_dir()]
         if not subdirs:
             sys.exit(f"Error: no run directories found under '{checkpoint_dir}'.")
+
         # Pick the subdir whose newest .pt file is most recent
         def newest_pt_mtime(d: Path) -> float:
             pts = list(d.glob("*.pt"))
             return max(p.stat().st_mtime for p in pts) if pts else 0.0
+
         return max(subdirs, key=newest_pt_mtime)
     else:
         run_dir = root / run_spec
@@ -44,11 +50,14 @@ def find_run_dir(run_spec: str, checkpoint_dir: str) -> Path:
         return run_dir
 
 
-def _load_checkpoint_agent(path: Path, model_config: ModelConfig, ship_config: ShipConfig, device: str) -> ResolvedAgent:
+def _load_checkpoint_agent(
+    path: Path, model_config: ModelConfig, ship_config: ShipConfig, device: str
+) -> ResolvedAgent:
     """Load a .pt checkpoint and return a ResolvedAgent."""
     from boost_and_broadside.models.mvp.policy import MVPPolicy
-    ckpt   = torch.load(str(path), map_location=device, weights_only=False)
-    K      = ckpt["policy_state_dict"]["value_head.weight"].shape[0]
+
+    ckpt = torch.load(str(path), map_location=device, weights_only=False)
+    K = ckpt["policy_state_dict"]["value_head.weight"].shape[0]
     policy = MVPPolicy(model_config, ship_config, num_value_components=K).to(device)
     result = policy.load_state_dict(ckpt["policy_state_dict"], strict=False)
     if result.missing_keys:
@@ -58,14 +67,14 @@ def _load_checkpoint_agent(path: Path, model_config: ModelConfig, ship_config: S
 
 
 def run_elo_stats_mode(
-    run_spec:       str,
-    num_envs:       int,
-    ship_config:    ShipConfig,
-    env_config:     EnvConfig,
-    model_config:   ModelConfig,
-    device:         str,
+    run_spec: str,
+    num_envs: int,
+    ship_config: ShipConfig,
+    env_config: EnvConfig,
+    model_config: ModelConfig,
+    device: str,
     checkpoint_dir: str = "checkpoints",
-    elo_k_factor:   float = 32.0,
+    elo_k_factor: float = 32.0,
 ) -> None:
     """Run all-vs-all parallel matchups and report ELO ratings.
 
@@ -79,8 +88,8 @@ def run_elo_stats_mode(
         checkpoint_dir: Root directory containing run subdirectories.
         elo_k_factor:   ELO K-factor (same as training default).
     """
-    B   = num_envs
-    N   = env_config.num_ships
+    B = num_envs
+    N = env_config.num_ships
     dev = torch.device(device)
 
     # ------------------------------------------------------------------ #
@@ -121,7 +130,7 @@ def run_elo_stats_mode(
     # Directed pairs: agent i as team-0, agent j as team-1, for all i≠j
     matchups = [(i, j) for i in range(K) for j in range(K) if i != j]
     M = len(matchups)  # K*(K-1)
-    print(f"Directed matchups: {M}  ({K}×{K-1})")
+    print(f"Directed matchups: {M}  ({K}×{K - 1})")
 
     if B < M:
         sys.exit(f"Error: num_envs ({B}) < num_matchups ({M}). Increase --num_envs.")
@@ -138,9 +147,9 @@ def run_elo_stats_mode(
     offset = 0
     for m_idx, (i, j) in enumerate(matchups):
         sz = matchup_sizes[m_idx]
-        env_agent0_idx[offset:offset + sz]  = i
-        env_agent1_idx[offset:offset + sz]  = j
-        env_matchup_idx[offset:offset + sz] = m_idx
+        env_agent0_idx[offset : offset + sz] = i
+        env_agent1_idx[offset : offset + sz] = j
+        env_matchup_idx[offset : offset + sz] = m_idx
         offset += sz
 
     # Per-agent sorted env indices (for sliced forward passes and hidden state)
@@ -160,11 +169,11 @@ def run_elo_stats_mode(
     env = TensorEnv(B, ship_config, env_config, dev)
     env.reset()
 
-    finished        = torch.zeros(B,  dtype=torch.bool,  device=dev)
-    ep_lengths      = torch.zeros(B,  dtype=torch.int64, device=dev)
-    matchup_a_wins  = torch.zeros(M,  dtype=torch.float32, device=dev)
-    matchup_b_wins  = torch.zeros(M,  dtype=torch.float32, device=dev)
-    matchup_ties    = torch.zeros(M,  dtype=torch.float32, device=dev)
+    finished = torch.zeros(B, dtype=torch.bool, device=dev)
+    ep_lengths = torch.zeros(B, dtype=torch.int64, device=dev)
+    matchup_a_wins = torch.zeros(M, dtype=torch.float32, device=dev)
+    matchup_b_wins = torch.zeros(M, dtype=torch.float32, device=dev)
+    matchup_ties = torch.zeros(M, dtype=torch.float32, device=dev)
 
     # Preallocate reusable tensors
     all_acts = torch.zeros(K, B, N, 3, dtype=torch.int32, device=dev)
@@ -178,19 +187,22 @@ def run_elo_stats_mode(
     # ------------------------------------------------------------------ #
     while not finished.all():
         state = env.state
-        obs   = _obs_from_state(state, ship_config)
+        obs = _obs_from_state(state, ship_config)
 
         # Compute each agent's actions for its active envs
         for a_idx, agent in enumerate(agents):
             active = active_envs[a_idx]
-            B_a    = active.shape[0]
+            B_a = active.shape[0]
 
             if agent.kind == "random":
-                all_acts[a_idx, active] = torch.stack([
-                    torch.randint(0, NUM_POWER_ACTIONS, (B_a, N), device=dev),
-                    torch.randint(0, NUM_TURN_ACTIONS,  (B_a, N), device=dev),
-                    torch.randint(0, NUM_SHOOT_ACTIONS, (B_a, N), device=dev),
-                ], dim=-1).int()
+                all_acts[a_idx, active] = torch.stack(
+                    [
+                        torch.randint(0, NUM_POWER_ACTIONS, (B_a, N), device=dev),
+                        torch.randint(0, NUM_TURN_ACTIONS, (B_a, N), device=dev),
+                        torch.randint(0, NUM_SHOOT_ACTIONS, (B_a, N), device=dev),
+                    ],
+                    dim=-1,
+                ).int()
 
             elif agent.kind == "scripted":
                 # Scripted is a cheap vectorized op — run on full state, fill all B
@@ -200,12 +212,14 @@ def run_elo_stats_mode(
             else:  # policy
                 obs_a = {k: v[active] for k, v in obs.items()}
                 with torch.no_grad():
-                    acts_a, _, _, agent.hidden = agent.agent.get_action_and_value(obs_a, agent.hidden)
+                    acts_a, _, _, agent.hidden = agent.agent.get_action_and_value(
+                        obs_a, agent.hidden
+                    )
                 all_acts[a_idx, active] = acts_a.int()
 
         # Assemble: team-0 ships get env_agent0's actions, team-1 ships get env_agent1's
-        team0_acts = all_acts[env_agent0_idx, arange_B]   # (B, N, 3)
-        team1_acts = all_acts[env_agent1_idx, arange_B]   # (B, N, 3)
+        team0_acts = all_acts[env_agent0_idx, arange_B]  # (B, N, 3)
+        team1_acts = all_acts[env_agent1_idx, arange_B]  # (B, N, 3)
         action = torch.where(
             (state.ship_team_id == 0).unsqueeze(-1),
             team0_acts,
@@ -213,7 +227,7 @@ def run_elo_stats_mode(
         )
 
         dones, truncated = env.step(action)
-        done_any     = dones | truncated
+        done_any = dones | truncated
         total_steps += B
 
         new_done = done_any & ~finished
@@ -221,18 +235,18 @@ def run_elo_stats_mode(
             ep_lengths[new_done] = env.state.step_count[new_done].long()
 
             alive = env.state.ship_alive
-            team  = env.state.ship_team_id
+            team = env.state.ship_team_id
             team0_alive = (alive & (team == 0)).any(dim=1)
             team1_alive = (alive & (team == 1)).any(dim=1)
             team0_won = new_done & team0_alive & ~team1_alive
             team1_won = new_done & team1_alive & ~team0_alive
-            tied      = new_done & ~team0_won & ~team1_won
+            tied = new_done & ~team0_won & ~team1_won
 
             # Scatter outcomes into per-matchup accumulators
             nd_idx = env_matchup_idx[new_done]
             matchup_a_wins.scatter_add_(0, nd_idx, team0_won[new_done].float())
             matchup_b_wins.scatter_add_(0, nd_idx, team1_won[new_done].float())
-            matchup_ties.scatter_add_(  0, nd_idx, tied[new_done].float())
+            matchup_ties.scatter_add_(0, nd_idx, tied[new_done].float())
 
             finished |= new_done
 
@@ -240,11 +254,13 @@ def run_elo_stats_mode(
             env.reset_envs(done_any)
             for a_idx, agent in enumerate(agents):
                 if agent.kind == "policy":
-                    active      = active_envs[a_idx]
+                    active = active_envs[a_idx]
                     active_done = done_any[active]
                     if active_done.any():
                         agent.hidden = agent.agent.reset_hidden_for_envs(
-                            agent.hidden, active_done, N,
+                            agent.hidden,
+                            active_done,
+                            N,
                         )
 
     elapsed = time.perf_counter() - t0
@@ -255,10 +271,12 @@ def run_elo_stats_mode(
     elo = [0.0] * K
     a_wins_cpu = matchup_a_wins.cpu().tolist()
     b_wins_cpu = matchup_b_wins.cpu().tolist()
-    ties_cpu   = matchup_ties.cpu().tolist()
+    ties_cpu = matchup_ties.cpu().tolist()
 
     # Precompute lookup: (i, j) -> matchup index
-    matchup_lookup: dict[tuple[int, int], int] = {pair: m for m, pair in enumerate(matchups)}
+    matchup_lookup: dict[tuple[int, int], int] = {
+        pair: m for m, pair in enumerate(matchups)
+    }
 
     def _score_as_team0(i: int, j: int) -> float:
         """Win rate of i playing as team-0 against j (team-1)."""
@@ -280,12 +298,12 @@ def run_elo_stats_mode(
 
     for _ in range(200):
         for m_idx, (i, j) in enumerate(matchups):
-            n_games    = matchup_sizes[m_idx]
+            n_games = matchup_sizes[m_idx]
             win_rate_i = (a_wins_cpu[m_idx] + 0.5 * ties_cpu[m_idx]) / n_games
             expected_i = 1.0 / (1.0 + 10.0 ** ((elo[j] - elo[i]) / 400.0))
-            delta      = elo_k_factor * (win_rate_i - expected_i)
-            elo[i]    += delta
-            elo[j]    -= delta
+            delta = elo_k_factor * (win_rate_i - expected_i)
+            elo[i] += delta
+            elo[j] -= delta
 
     # ------------------------------------------------------------------ #
     # Step 6 — Per-agent stats                                            #
@@ -297,8 +315,7 @@ def run_elo_stats_mode(
     # Per-agent average episode length across all their active envs
     ep_lengths_cpu = ep_lengths.cpu()
     agent_ep_len = [
-        float(ep_lengths_cpu[active_envs[a].cpu()].float().mean())
-        for a in range(K)
+        float(ep_lengths_cpu[active_envs[a].cpu()].float().mean()) for a in range(K)
     ]
 
     # Role delta: avg win rate as team-0 minus avg win rate as team-1
@@ -318,7 +335,7 @@ def run_elo_stats_mode(
     # Step 7 — Print report                                               #
     # ------------------------------------------------------------------ #
     sim_fps = 1.0 / ship_config.dt
-    sps     = total_steps / elapsed
+    sps = total_steps / elapsed
 
     # Sort agents by ELO descending for display
     order = sorted(range(K), key=lambda a: elo[a], reverse=True)
@@ -328,25 +345,27 @@ def run_elo_stats_mode(
 
     # Build header columns
     cols = [
-        ("ELO",        6),
-        ("vs random",  10),
+        ("ELO", 6),
+        ("vs random", 10),
         ("vs scripted", 12),
     ]
     if has_avg:
         cols.append(("vs avg", 8))
     cols += [
-        ("role Δ",    8),
+        ("role Δ", 8),
         ("avg ep len", 10),
     ]
 
     hdr_parts = "  ".join(f"{name:>{w}}" for name, w in cols)
-    row_w     = label_w + 4 + sum(w + 2 for _, w in cols)
-    w_total   = max(72, row_w)
-    sep       = "─" * w_total
+    row_w = label_w + 4 + sum(w + 2 for _, w in cols)
+    w_total = max(72, row_w)
+    sep = "─" * w_total
 
     print(f"\n{sep}")
     print(f"  ELO Stats: {run_dir.name}")
-    print(f"  {K} agents  |  {B:,} total envs  |  {M} directed matchups  |  ~{B // M} envs/matchup")
+    print(
+        f"  {K} agents  |  {B:,} total envs  |  {M} directed matchups  |  ~{B // M} envs/matchup"
+    )
     print(f"{sep}")
     print(f"  {'Agent':<{label_w}}  {hdr_parts}")
     print(f"  {'─' * (w_total - 4)}")
@@ -355,19 +374,14 @@ def run_elo_stats_mode(
         return f"{100 * v:.1f}%" if v is not None else "—"
 
     for a_idx in order:
-        lb    = labels[a_idx]
-        vr    = _win_rate_vs(a_idx, random_idx)
-        vs    = _win_rate_vs(a_idx, scripted_idx)
-        va    = _win_rate_vs(a_idx, avg_idx) if has_avg else None
+        lb = labels[a_idx]
+        vr = _win_rate_vs(a_idx, random_idx)
+        vs = _win_rate_vs(a_idx, scripted_idx)
+        va = _win_rate_vs(a_idx, avg_idx) if has_avg else None
         delta = _role_delta(a_idx)
-        el    = agent_ep_len[a_idx]
+        el = agent_ep_len[a_idx]
 
-        row = (
-            f"  {lb:<{label_w}}"
-            f"  {elo[a_idx]:>6.0f}"
-            f"  {_pct(vr):>10}"
-            f"  {_pct(vs):>12}"
-        )
+        row = f"  {lb:<{label_w}}  {elo[a_idx]:>6.0f}  {_pct(vr):>10}  {_pct(vs):>12}"
         if has_avg:
             row += f"  {_pct(va):>8}"
         delta_sign = "+" if delta >= 0 else ""
@@ -375,7 +389,9 @@ def run_elo_stats_mode(
         print(row)
 
     print(f"{sep}")
-    print(f"  Wall time: {elapsed:.2f}s   |   {sps:,.0f} steps/s  ({sps / sim_fps:,.0f} sim-steps/s)")
+    print(
+        f"  Wall time: {elapsed:.2f}s   |   {sps:,.0f} steps/s  ({sps / sim_fps:,.0f} sim-steps/s)"
+    )
     print(f"{sep}")
 
     # ------------------------------------------------------------------ #

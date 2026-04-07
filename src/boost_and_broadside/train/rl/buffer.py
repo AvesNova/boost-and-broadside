@@ -55,12 +55,12 @@ class ReturnScaler:
         num_components: int,
         device: torch.device,
         ema_alpha: float = 0.005,
-        min_span: float  = 1.0,
+        min_span: float = 1.0,
     ) -> None:
-        self.alpha    = ema_alpha
+        self.alpha = ema_alpha
         self.min_span = min_span
         self._initialized = False
-        self._p5  = torch.zeros(num_components, device=device)
+        self._p5 = torch.zeros(num_components, device=device)
         self._p95 = torch.zeros(num_components, device=device)
 
     @torch.no_grad()
@@ -74,15 +74,15 @@ class ReturnScaler:
             returns: (T, B, N, K) float32 — GAE returns in symlog-reward space.
         """
         T, B, N, K = returns.shape
-        flat = returns.reshape(-1, K)                                    # (T*B*N, K)
-        p5  = torch.quantile(flat.float(), 0.05, dim=0)                 # (K,)
+        flat = returns.reshape(-1, K)  # (T*B*N, K)
+        p5 = torch.quantile(flat.float(), 0.05, dim=0)  # (K,)
         p95 = torch.quantile(flat.float(), 0.95, dim=0)
         if not self._initialized:
-            self._p5  = p5
+            self._p5 = p5
             self._p95 = p95
             self._initialized = True
         else:
-            self._p5  = (1.0 - self.alpha) * self._p5  + self.alpha * p5
+            self._p5 = (1.0 - self.alpha) * self._p5 + self.alpha * p5
             self._p95 = (1.0 - self.alpha) * self._p95 + self.alpha * p95
 
     def _half_span(self) -> torch.Tensor:
@@ -98,7 +98,7 @@ class ReturnScaler:
         Returns:
             (..., K) float — normalized values.
         """
-        center = (self._p95 + self._p5) * 0.5   # (K,)
+        center = (self._p95 + self._p5) * 0.5  # (K,)
         return (x - center) / self._half_span()
 
     def denormalize(self, x: torch.Tensor) -> torch.Tensor:
@@ -114,13 +114,18 @@ class ReturnScaler:
         return x * self._half_span() + center
 
     def state_dict(self) -> dict:
-        return {"p5": self._p5.cpu(), "p95": self._p95.cpu(),
-                "initialized": self._initialized}
+        return {
+            "p5": self._p5.cpu(),
+            "p95": self._p95.cpu(),
+            "initialized": self._initialized,
+        }
 
     def load_state_dict(self, d: dict) -> None:
-        self._p5          = d["p5"].to(self._p5.device)
-        self._p95         = d["p95"].to(self._p95.device)
-        self._initialized = d.get("initialized", True)  # assume initialized if loading old ckpt
+        self._p5 = d["p5"].to(self._p5.device)
+        self._p95 = d["p95"].to(self._p95.device)
+        self._initialized = d.get(
+            "initialized", True
+        )  # assume initialized if loading old ckpt
 
 
 class RolloutBuffer:
@@ -151,13 +156,13 @@ class RolloutBuffer:
         gae_lambda: float,
         device: torch.device,
     ) -> None:
-        self.num_steps      = num_steps
-        self.num_envs       = num_envs
-        self.num_ships      = num_ships
+        self.num_steps = num_steps
+        self.num_envs = num_envs
+        self.num_ships = num_ships
         self.num_components = num_components
-        self.gamma          = gamma
-        self.gae_lambda     = gae_lambda
-        self.device         = device
+        self.gamma = gamma
+        self.gae_lambda = gae_lambda
+        self.device = device
 
         T, B, N, K = num_steps, num_envs, num_ships, num_components
 
@@ -167,17 +172,19 @@ class RolloutBuffer:
             for key, shape in obs_shapes.items()
         }
 
-        self.actions    = torch.zeros((T, B, N, 3), device=device, dtype=torch.int32)
-        self.logprobs   = torch.zeros((T, B, N),    device=device, dtype=torch.float32)
-        self.rewards    = torch.zeros((T, B, N, K), device=device, dtype=torch.float32)
-        self.values     = torch.zeros((T, B, N, K), device=device, dtype=torch.float32)
-        self.dones      = torch.zeros((T, B),       device=device, dtype=torch.float32)
-        self.alive_mask = torch.zeros((T, B, N),    device=device, dtype=torch.bool)
+        self.actions = torch.zeros((T, B, N, 3), device=device, dtype=torch.int32)
+        self.logprobs = torch.zeros((T, B, N), device=device, dtype=torch.float32)
+        self.rewards = torch.zeros((T, B, N, K), device=device, dtype=torch.float32)
+        self.values = torch.zeros((T, B, N, K), device=device, dtype=torch.float32)
+        self.dones = torch.zeros((T, B), device=device, dtype=torch.float32)
+        self.alive_mask = torch.zeros((T, B, N), device=device, dtype=torch.bool)
 
-        self.advantages   = torch.zeros((T, B, N, K),  device=device, dtype=torch.float32)
-        self.returns      = torch.zeros((T, B, N, K),  device=device, dtype=torch.float32)
-        self.actor_masks  = torch.ones( (T, B, N),     device=device, dtype=torch.bool)
-        self.expert_probs = torch.zeros((T, B, N, 12), device=device, dtype=torch.float32)
+        self.advantages = torch.zeros((T, B, N, K), device=device, dtype=torch.float32)
+        self.returns = torch.zeros((T, B, N, K), device=device, dtype=torch.float32)
+        self.actor_masks = torch.ones((T, B, N), device=device, dtype=torch.bool)
+        self.expert_probs = torch.zeros(
+            (T, B, N, 12), device=device, dtype=torch.float32
+        )
 
         # Initial GRU hidden state at the start of this rollout
         self.initial_hidden: torch.Tensor | None = None
@@ -190,7 +197,7 @@ class RolloutBuffer:
 
     def reset(self) -> None:
         """Clear the write pointer (tensors are overwritten, not zeroed)."""
-        self.ptr            = 0
+        self.ptr = 0
         self.initial_hidden = None
         self.expert_probs.zero_()  # only filled for scripted-group envs; rest must be zero
 
@@ -238,13 +245,15 @@ class RolloutBuffer:
             if key in self.obs:
                 self.obs[key][t] = val.float()
 
-        self.actions    [t] = action.int()
-        self.logprobs   [t] = logprob
-        self.rewards    [t] = symlog(reward)   # symlog #1: compress raw reward scale
-        self.dones      [t] = done.float()
-        self.values     [t] = value
-        self.alive_mask [t] = alive
-        self.actor_masks[t] = actor_mask if actor_mask is not None else torch.ones_like(alive)
+        self.actions[t] = action.int()
+        self.logprobs[t] = logprob
+        self.rewards[t] = symlog(reward)  # symlog #1: compress raw reward scale
+        self.dones[t] = done.float()
+        self.values[t] = value
+        self.alive_mask[t] = alive
+        self.actor_masks[t] = (
+            actor_mask if actor_mask is not None else torch.ones_like(alive)
+        )
         if expert_probs is not None:
             self.expert_probs[t] = expert_probs
 
@@ -254,9 +263,7 @@ class RolloutBuffer:
     # GAE computation
     # ------------------------------------------------------------------
 
-    def compute_gae(
-        self, next_value: torch.Tensor, next_done: torch.Tensor
-    ) -> None:
+    def compute_gae(self, next_value: torch.Tensor, next_done: torch.Tensor) -> None:
         """Compute GAE advantages and returns in-place over K components.
 
         All tensor ops broadcast over the K dimension automatically — the
@@ -268,18 +275,24 @@ class RolloutBuffer:
             next_done:  (B,) float — whether step T+1 is terminal.
         """
         with torch.no_grad():
-            lastgaelam = torch.zeros_like(next_value)    # (B, N, K)
+            lastgaelam = torch.zeros_like(next_value)  # (B, N, K)
 
             for t in reversed(range(self.num_steps)):
                 if t == self.num_steps - 1:
-                    non_terminal = 1.0 - next_done.view(-1, 1, 1)   # (B, 1, 1)
-                    next_val     = next_value                         # (B, N, K)
+                    non_terminal = 1.0 - next_done.view(-1, 1, 1)  # (B, 1, 1)
+                    next_val = next_value  # (B, N, K)
                 else:
                     non_terminal = 1.0 - self.dones[t].view(-1, 1, 1)  # (B, 1, 1)
-                    next_val     = self.values[t + 1]                    # (B, N, K)
+                    next_val = self.values[t + 1]  # (B, N, K)
 
-                delta              = self.rewards[t] + self.gamma * next_val * non_terminal - self.values[t]
-                lastgaelam         = delta + self.gamma * self.gae_lambda * non_terminal * lastgaelam
+                delta = (
+                    self.rewards[t]
+                    + self.gamma * next_val * non_terminal
+                    - self.values[t]
+                )
+                lastgaelam = (
+                    delta + self.gamma * self.gae_lambda * non_terminal * lastgaelam
+                )
                 self.advantages[t] = lastgaelam
 
             self.returns = self.advantages + self.values
@@ -310,31 +323,37 @@ class RolloutBuffer:
                 mb_actor_mask:    (T, B_mb, N) bool
                 mb_expert_probs:  (T, B_mb, N, 12) float32
         """
-        assert self.initial_hidden is not None, "Call store_initial_hidden() before iterating."
+        assert self.initial_hidden is not None, (
+            "Call store_initial_hidden() before iterating."
+        )
 
         envs_per_batch = self.num_envs // num_minibatches
-        env_order      = np.random.permutation(self.num_envs)
-        D              = self.initial_hidden.shape[-1]
+        env_order = np.random.permutation(self.num_envs)
+        D = self.initial_hidden.shape[-1]
 
         for start in range(0, self.num_envs, envs_per_batch):
-            end    = start + envs_per_batch
-            idx    = env_order[start:end]                          # (B_mb,)
+            end = start + envs_per_batch
+            idx = env_order[start:end]  # (B_mb,)
 
             mb_obs = {key: val[:, idx] for key, val in self.obs.items()}
 
             # Reconstruct initial hidden for this minibatch: (1, B_mb*N, D)
-            hidden_full = self.initial_hidden.reshape(1, self.num_envs, self.num_ships, D)
-            mb_hidden   = hidden_full[:, idx, :, :].reshape(1, len(idx) * self.num_ships, D)
+            hidden_full = self.initial_hidden.reshape(
+                1, self.num_envs, self.num_ships, D
+            )
+            mb_hidden = hidden_full[:, idx, :, :].reshape(
+                1, len(idx) * self.num_ships, D
+            )
 
             yield (
                 mb_obs,
-                self.actions      [:, idx],
-                self.logprobs     [:, idx],
-                self.advantages   [:, idx],
-                self.returns      [:, idx],
-                self.values       [:, idx],
-                self.alive_mask   [:, idx],
+                self.actions[:, idx],
+                self.logprobs[:, idx],
+                self.advantages[:, idx],
+                self.returns[:, idx],
+                self.values[:, idx],
+                self.alive_mask[:, idx],
                 mb_hidden.contiguous(),
-                self.actor_masks  [:, idx],
-                self.expert_probs [:, idx],
+                self.actor_masks[:, idx],
+                self.expert_probs[:, idx],
             )

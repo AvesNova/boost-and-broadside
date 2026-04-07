@@ -16,7 +16,7 @@ class EpisodeData:
     features_team_0: dict[str, torch.Tensor]
     features_team_1: dict[str, torch.Tensor]
     actions: dict[int, list[torch.Tensor]]
-    expert_actions: dict[int, list[torch.Tensor]] = None 
+    expert_actions: dict[int, list[torch.Tensor]] = None
     action_masks: dict[int, list[float]] = None
     rewards: dict[int, list[float]] = None
     episode_length: int = 0
@@ -49,14 +49,14 @@ class DataCollector:
         # robust config access
         # Robust config access (Strict)
         if "model" in config and "d_model" in config.model:
-             self.token_dim = config.model.d_model
+            self.token_dim = config.model.d_model
         else:
-             self.token_dim = 64
+            self.token_dim = 64
 
         if "environment" in config and "max_ships" in config.environment:
-             self.max_ships = config.environment.max_ships
+            self.max_ships = config.environment.max_ships
         else:
-              self.max_ships = 8
+            self.max_ships = 8
         self.num_actions = 3
 
         self.episodes: list[EpisodeData] = []
@@ -90,14 +90,14 @@ class DataCollector:
         if "position" in features_team_0:
             episode_length = features_team_0["position"].shape[0]
         else:
-             # Fallback if empty features? Should not happen.
+            # Fallback if empty features? Should not happen.
             episode_length = 0
 
         episode = EpisodeData(
             features_team_0=features_team_0,
             features_team_1=features_team_1,
             actions=actions,
-            expert_actions=expert_actions, 
+            expert_actions=expert_actions,
             action_masks=action_masks,
             rewards=rewards,
             episode_length=episode_length,
@@ -139,13 +139,19 @@ class DataCollector:
         # We need to scan keys from first episode
         first_ep = self.episodes[0]
         feature_keys = list(first_ep.features_team_0.keys())
-        
+
         features_team_0 = {
-            k: torch.zeros((total_timesteps, *first_ep.features_team_0[k].shape[1:]), dtype=first_ep.features_team_0[k].dtype)
+            k: torch.zeros(
+                (total_timesteps, *first_ep.features_team_0[k].shape[1:]),
+                dtype=first_ep.features_team_0[k].dtype,
+            )
             for k in feature_keys
         }
         features_team_1 = {
-             k: torch.zeros((total_timesteps, *first_ep.features_team_1[k].shape[1:]), dtype=first_ep.features_team_1[k].dtype)
+            k: torch.zeros(
+                (total_timesteps, *first_ep.features_team_1[k].shape[1:]),
+                dtype=first_ep.features_team_1[k].dtype,
+            )
             for k in feature_keys
         }
 
@@ -156,7 +162,7 @@ class DataCollector:
         actions_team_1 = torch.zeros(
             (total_timesteps, self.max_ships, self.num_actions), dtype=torch.uint8
         )
-        
+
         # Expert Actions
         expert_actions_team_0 = torch.zeros(
             (total_timesteps, self.max_ships, self.num_actions), dtype=torch.uint8
@@ -204,7 +210,7 @@ class DataCollector:
                         actions_team_1[
                             current_idx + t, ship_id - self.max_ships // 2
                         ] = action_u8
-                        
+
             # Expert Actions
             if episode.expert_actions:
                 for ship_id, ship_actions in episode.expert_actions.items():
@@ -263,7 +269,7 @@ class DataCollector:
             "team_0": {
                 "features": features_team_0,
                 "actions": actions_team_0,
-                "expert_actions": expert_actions_team_0, # New
+                "expert_actions": expert_actions_team_0,  # New
                 "action_masks": actions_mask_team_0,
                 "rewards": rewards_team_0,
                 "agent_skills": agent_skills_team_0,
@@ -272,7 +278,7 @@ class DataCollector:
             "team_1": {
                 "features": features_team_1,
                 "actions": actions_team_1,
-                "expert_actions": expert_actions_team_1, # New
+                "expert_actions": expert_actions_team_1,  # New
                 "action_masks": actions_mask_team_1,
                 "rewards": rewards_team_1,
                 "agent_skills": agent_skills_team_1,

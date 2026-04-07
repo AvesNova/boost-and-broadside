@@ -1,16 +1,25 @@
-
 """Tests for world model batch length alternation."""
 
 import torch
 import h5py
-from boost_and_broadside.train.unified_dataset import UnifiedEpisodeDataset, ShortView, LongView
+from boost_and_broadside.train.unified_dataset import (
+    UnifiedEpisodeDataset,
+    ShortView,
+    LongView,
+)
 from boost_and_broadside.train.data_loader import create_unified_data_loaders
 
 
 from boost_and_broadside.core.constants import STATE_DIM
 
+
 def save_dummy_data_to_h5(
-    path, num_episodes=10, episode_len=200, num_ships=8, token_dim=STATE_DIM, action_dim=3
+    path,
+    num_episodes=10,
+    episode_len=200,
+    num_ships=8,
+    token_dim=STATE_DIM,
+    action_dim=3,
 ):
     """Create dummy data and save to HDF5."""
     total_timesteps = num_episodes * episode_len

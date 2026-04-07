@@ -33,16 +33,16 @@ class TransformerBlock(nn.Module):
         super().__init__()
         D = model_config.d_model
 
-        self.n_heads  = model_config.n_heads
+        self.n_heads = model_config.n_heads
         self.head_dim = D // model_config.n_heads
-        self.d_model  = D
+        self.d_model = D
 
-        self.norm1    = nn.RMSNorm(D)
-        self.qkv      = nn.Linear(D, 3 * D, bias=False)
+        self.norm1 = nn.RMSNorm(D)
+        self.qkv = nn.Linear(D, 3 * D, bias=False)
         self.out_proj = nn.Linear(D, D, bias=False)
 
         self.norm2 = nn.RMSNorm(D)
-        self.ffn   = nn.Sequential(
+        self.ffn = nn.Sequential(
             nn.Linear(D, 4 * D, bias=False),
             nn.GELU(),
             nn.Linear(4 * D, D, bias=False),
@@ -64,8 +64,8 @@ class TransformerBlock(nn.Module):
         Returns:
             (B, N, D) updated ship tokens.
         """
-        x = x + self._attn(self.norm1(x), alive_mask)   # pre-norm attn + residual
-        x = x + self.ffn(self.norm2(x))                  # pre-norm FFN + residual
+        x = x + self._attn(self.norm1(x), alive_mask)  # pre-norm attn + residual
+        x = x + self.ffn(self.norm2(x))  # pre-norm FFN + residual
         return x
 
     def _attn(self, x: torch.Tensor, alive_mask: torch.Tensor | None) -> torch.Tensor:
@@ -79,12 +79,12 @@ class TransformerBlock(nn.Module):
             (B, N, D) attention output.
         """
         B, N, D = x.shape
-        H, dh   = self.n_heads, self.head_dim
+        H, dh = self.n_heads, self.head_dim
 
-        qkv     = self.qkv(x)                                      # (B, N, 3*D)
+        qkv = self.qkv(x)  # (B, N, 3*D)
         q, k, v = qkv.chunk(3, dim=-1)
 
-        q = q.view(B, N, H, dh).permute(0, 2, 1, 3)               # (B, H, N, dh)
+        q = q.view(B, N, H, dh).permute(0, 2, 1, 3)  # (B, H, N, dh)
         k = k.view(B, N, H, dh).permute(0, 2, 1, 3)
         v = v.view(B, N, H, dh).permute(0, 2, 1, 3)
 
@@ -92,15 +92,17 @@ class TransformerBlock(nn.Module):
         if alive_mask is not None:
             # Mask out dead ships as keys — they cannot emit information.
             # Shape: (B, 1, 1, N) broadcastable over (B, H, N_q, N_k).
-            key_mask  = alive_mask.view(B, 1, 1, N).float()        # 1.0 = alive
+            key_mask = alive_mask.view(B, 1, 1, N).float()  # 1.0 = alive
             large_neg = torch.finfo(x.dtype).min / 2
-            attn_bias = (1.0 - key_mask) * large_neg               # (B, 1, 1, N)
+            attn_bias = (1.0 - key_mask) * large_neg  # (B, 1, 1, N)
 
         out = F.scaled_dot_product_attention(
-            q, k, v,
+            q,
+            k,
+            v,
             attn_mask=attn_bias,
             dropout_p=0.0,
-        )                                                           # (B, H, N, dh)
+        )  # (B, H, N, dh)
 
-        out = out.permute(0, 2, 1, 3).reshape(B, N, D)            # (B, N, D)
+        out = out.permute(0, 2, 1, 3).reshape(B, N, D)  # (B, N, D)
         return self.out_proj(out)

@@ -64,10 +64,9 @@ def run_collection(args: CollectionArgs) -> None:
         num_envs=args.num_envs,
         config=config,
         device=device,
-        max_episode_steps=args.buffer_steps
+        max_episode_steps=args.buffer_steps,
     )
     obs = env.reset(seed=args.seed)
-
 
     # Initialize Agent
     base_agent = VectorScriptedAgent(config)
@@ -117,12 +116,12 @@ def run_collection(args: CollectionArgs) -> None:
                 expert_actions = outs[1]
                 skills = outs[2]
                 if len(outs) > 3:
-                     expert_action_probs = outs[3]
+                    expert_action_probs = outs[3]
             else:
-                 # Fallback
-                 taken_actions = agent(env.state)
-                 expert_actions = taken_actions
-                 skills = torch.ones_like(taken_actions[..., 0]).float()
+                # Fallback
+                taken_actions = agent(env.state)
+                expert_actions = taken_actions
+                skills = torch.ones_like(taken_actions[..., 0]).float()
 
             # 2. Step Environment
             prev_obs = obs
@@ -153,11 +152,13 @@ def run_collection(args: CollectionArgs) -> None:
         end_time = time.time()
         elapsed = end_time - start_time
         total_transitions = collector.total_transitions_completed
-        
+
         print("\nFinished collection.")
         print(f"Total Completed Transitions: {total_transitions}")
         print(f"Time: {elapsed:.2f}s")
-        print(f"Throughput: {total_transitions / elapsed if elapsed > 0 else 0:.2f} transitions/sec")
+        print(
+            f"Throughput: {total_transitions / elapsed if elapsed > 0 else 0:.2f} transitions/sec"
+        )
 
         collector.close()
         progress_bar.close()
@@ -200,7 +201,9 @@ if __name__ == "__main__":
     parser.add_argument("--total_steps", type=int, default=100000)
     parser.add_argument("--output_dir", type=str, default="data/massive_collection")
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument(
+        "--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu"
+    )
     parser.add_argument("--min_skill", type=float, default=1.0)
     parser.add_argument("--max_skill", type=float, default=1.0)
     parser.add_argument("--expert_ratio", type=float, default=0.0)

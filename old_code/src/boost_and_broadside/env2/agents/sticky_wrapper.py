@@ -6,7 +6,11 @@ from typing import Any, Literal
 
 import torch
 
-from boost_and_broadside.core.constants import NUM_POWER_ACTIONS, NUM_SHOOT_ACTIONS, NUM_TURN_ACTIONS
+from boost_and_broadside.core.constants import (
+    NUM_POWER_ACTIONS,
+    NUM_SHOOT_ACTIONS,
+    NUM_TURN_ACTIONS,
+)
 
 
 class VectorStickyAgent:
@@ -67,13 +71,19 @@ class VectorStickyAgent:
 
         # State Tensors (B, N, 3) -> [Power, Turn, Shoot]
         # Timers: Int
-        self.timers = torch.zeros((num_envs, max_ships, 3), dtype=torch.long, device=device)
+        self.timers = torch.zeros(
+            (num_envs, max_ships, 3), dtype=torch.long, device=device
+        )
 
         # Expert Mode: Bool (True = Use Expert Action, False = Use Sticky Random)
-        self.is_expert_mode = torch.ones((num_envs, max_ships, 3), dtype=torch.bool, device=device)
+        self.is_expert_mode = torch.ones(
+            (num_envs, max_ships, 3), dtype=torch.bool, device=device
+        )
 
         # Sticky Values: Int (The random action selected)
-        self.sticky_values = torch.zeros((num_envs, max_ships, 3), dtype=torch.long, device=device)
+        self.sticky_values = torch.zeros(
+            (num_envs, max_ships, 3), dtype=torch.long, device=device
+        )
 
         # Skill Levels: Float (Probability of Expert)
         num_experts = int(num_envs * expert_ratio)
@@ -117,15 +127,21 @@ class VectorStickyAgent:
         elif self.random_dist == "exponential":
             # Exponential(lambda). Mean = 1/lambda.
             lambd = 1.0 / self.mean_sticky_steps
-            dist = torch.distributions.Exponential(torch.tensor(lambd, device=self.device))
+            dist = torch.distributions.Exponential(
+                torch.tensor(lambd, device=self.device)
+            )
             steps = dist.sample((count,)).long()
 
         else:
-            steps = torch.full((count,), int(self.mean_sticky_steps), device=self.device)
+            steps = torch.full(
+                (count,), int(self.mean_sticky_steps), device=self.device
+            )
 
         return torch.clamp(steps, min=1)
 
-    def get_actions(self, state: Any) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def get_actions(
+        self, state: Any
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Computes taken actions, expert actions, and skill levels.
 
         Args:
@@ -140,9 +156,11 @@ class VectorStickyAgent:
         # 1. Get Expert Actions and optionally Probs
         expert_action_probs = None
         if hasattr(self.agent, "get_actions_and_probs"):
-             expert_actions, expert_action_probs = self.agent.get_actions_and_probs(state)
+            expert_actions, expert_action_probs = self.agent.get_actions_and_probs(
+                state
+            )
         else:
-             expert_actions = self.agent.get_actions(state)  # (B, N, 3)
+            expert_actions = self.agent.get_actions(state)  # (B, N, 3)
 
         # 2. Decrement Timers
         self.timers -= 1
@@ -164,12 +182,14 @@ class VectorStickyAgent:
             # C. Sample New Sticky Values (Random Actions)
             # Power: 0-2, Turn: 0-6, Shoot: 0-1
             max_vals = torch.tensor(
-                [NUM_POWER_ACTIONS, NUM_TURN_ACTIONS, NUM_SHOOT_ACTIONS], device=self.device
+                [NUM_POWER_ACTIONS, NUM_TURN_ACTIONS, NUM_SHOOT_ACTIONS],
+                device=self.device,
             ).expand(self.num_envs, self.max_ships, 3)
 
             # Limit random values
             rand_vals = (
-                torch.rand(expired_mask.sum(), device=self.device) * max_vals[expired_mask]
+                torch.rand(expired_mask.sum(), device=self.device)
+                * max_vals[expired_mask]
             ).long()
             self.sticky_values[expired_mask] = rand_vals
 
@@ -179,7 +199,11 @@ class VectorStickyAgent:
         taken_actions[random_mask] = self.sticky_values[random_mask]
 
         if expert_action_probs is not None:
-             return taken_actions, expert_actions, self.skills.squeeze(-1), expert_action_probs
-             
-        return taken_actions, expert_actions, self.skills.squeeze(-1)
+            return (
+                taken_actions,
+                expert_actions,
+                self.skills.squeeze(-1),
+                expert_action_probs,
+            )
 
+        return taken_actions, expert_actions, self.skills.squeeze(-1)

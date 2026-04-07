@@ -10,7 +10,9 @@ import logging
 import torch
 import hydra
 from omegaconf import DictConfig, OmegaConf
-from boost_and_broadside.train.data_loader import create_continuous_data_loader # Use new loader if needed, or keep for now
+from boost_and_broadside.train.data_loader import (
+    create_continuous_data_loader,
+)  # Use new loader if needed, or keep for now
 
 log = logging.getLogger(__name__)
 
@@ -31,18 +33,20 @@ def eval_world_model(cfg: DictConfig) -> None:
     data_path = cfg.train.bc_data_path
     if data_path is None:
         from boost_and_broadside.train.data_loader import get_latest_data_path
+
         data_path = get_latest_data_path()
 
     log.info(f"Loading data from {data_path}")
-    
+
     from boost_and_broadside.train.data_loader import create_continuous_data_loader
+
     _, val_loader = create_continuous_data_loader(
         data_path,
         batch_size=1,
         seq_len=cfg.model.get("seq_len", 96),
         validation_split=0.2,
         num_workers=0,
-        world_size=tuple(cfg.environment.world_size)
+        world_size=tuple(cfg.environment.world_size),
     )
 
     # Get a sample
@@ -66,7 +70,7 @@ def eval_world_model(cfg: DictConfig) -> None:
 
     # Use the setup helper instead of manual instantiation
     model = create_model(cfg, data_path, device)
-    
+
     # Load state dict
     try:
         model.load_state_dict(torch.load(model_path, map_location=device))
@@ -74,10 +78,10 @@ def eval_world_model(cfg: DictConfig) -> None:
         log.warning(f"Direct load failed: {e}. Trying via 'model_state_dict' key.")
         checkpoint = torch.load(model_path, map_location=device)
         if "model_state_dict" in checkpoint:
-             model.load_state_dict(checkpoint["model_state_dict"])
+            model.load_state_dict(checkpoint["model_state_dict"])
         else:
-             raise e
-             
+            raise e
+
     model.eval()
 
     # 3. Evaluation Loop

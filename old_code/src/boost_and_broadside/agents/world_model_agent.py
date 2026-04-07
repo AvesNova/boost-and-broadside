@@ -12,10 +12,11 @@ from collections import deque
 # Changed import to InterleavedWorldModel
 # from boost_and_broadside.agents.mamba_bb import MambaBB # Removed
 from boost_and_broadside.core.constants import (
-    STATE_DIM, 
-    TARGET_DIM, 
-    TOTAL_ACTION_LOGITS
+    STATE_DIM,
+    TARGET_DIM,
+    TOTAL_ACTION_LOGITS,
 )
+
 try:
     from mamba_ssm.utils.generation import InferenceParams
 except ImportError:
@@ -26,8 +27,6 @@ from boost_and_broadside.agents.tokenizer import observation_to_tokens
 log = logging.getLogger(__name__)
 
 
-
-
 class WorldModelAgent:
     """
     Agent that uses the Interleaved World Model to predict actions.
@@ -35,11 +34,11 @@ class WorldModelAgent:
     It maintains a sliding window of history (tokens) and at each step:
     1. Appends the current observation token to history.
     2. Runs the World Model to predict the action for the current step.
-    
+
     The InterleavedWorldModel takes:
     S0 -> A0
     S1 -> A1
-    
+
     In inference:
     We have S_t. We want to predict A_t.
     We pass [S0, A0, S1, A1, ..., S_t] (and dummy A_t which is masked/ignored by model for prediction).
@@ -83,14 +82,13 @@ class WorldModelAgent:
         self.device = torch.device(device)
         self.max_ships = max_ships
         self.world_size = world_size
-        
+
         # Interleaved World Model Config Arguments
         # If loading from checkpoint, these might be overwritten or unused if we load state_dict
         # But we need to initialize the architecture first.
-        
+
         # Check if kwargs has 'world_model' config dict (from hydra)
         # The calling code in agents.py flattens it, but let's be safe.
-        
 
         if model is not None:
             self.model = model
@@ -103,34 +101,45 @@ class WorldModelAgent:
             try:
                 import hydra
                 from omegaconf import OmegaConf
-                
+
                 # Re-bundle explicit arguments into kwargs for model instantiation
                 mamba_cfg_args = kwargs.copy()
-                mamba_cfg_args.setdefault('d_model', embed_dim)
-                mamba_cfg_args.setdefault('n_layers', n_layers)
-                mamba_cfg_args.setdefault('n_heads', n_heads)
-                mamba_cfg_args.setdefault('input_dim', state_dim)
-                mamba_cfg_args.setdefault('action_dim', kwargs.get('action_dim', TOTAL_ACTION_LOGITS))
-                mamba_cfg_args.setdefault('target_dim', kwargs.get('target_dim', TARGET_DIM))
+                mamba_cfg_args.setdefault("d_model", embed_dim)
+                mamba_cfg_args.setdefault("n_layers", n_layers)
+                mamba_cfg_args.setdefault("n_heads", n_heads)
+                mamba_cfg_args.setdefault("input_dim", state_dim)
+                mamba_cfg_args.setdefault(
+                    "action_dim", kwargs.get("action_dim", TOTAL_ACTION_LOGITS)
+                )
+                mamba_cfg_args.setdefault(
+                    "target_dim", kwargs.get("target_dim", TARGET_DIM)
+                )
 
                 # We expect kwargs to contains model config fields including _target_
                 # If _target_ is missing, we fallback to YemongFull as a robust default
                 if "_target_" not in mamba_cfg_args:
-                    log.warning("No _target_ found in agent config. Falling back to YemongFull.")
+                    log.warning(
+                        "No _target_ found in agent config. Falling back to YemongFull."
+                    )
                     from boost_and_broadside.models.yemong.scaffolds import YemongFull
+
                     cfg = OmegaConf.create(mamba_cfg_args)
                     self.model = YemongFull(cfg).to(self.device)
                 else:
                     # Instantiate via Hydra
                     log.info(f"Instantiating model: {mamba_cfg_args['_target_']}")
                     cfg = OmegaConf.create(mamba_cfg_args)
-                    self.model = hydra.utils.instantiate(cfg, _recursive_=False).to(self.device)
-                
+                    self.model = hydra.utils.instantiate(cfg, _recursive_=False).to(
+                        self.device
+                    )
+
                 log.info(f"Successfully instantiated {type(self.model).__name__}")
-                
+
             except Exception as e:
                 log.error(f"Failed to instantiate model from config: {e}")
-                raise ValueError(f"WorldModelAgent requires a 'model' instance or valid config. Error: {e}")
+                raise ValueError(
+                    f"WorldModelAgent requires a 'model' instance or valid config. Error: {e}"
+                )
 
         if model_path:
             self.load_model(model_path)
@@ -145,14 +154,14 @@ class WorldModelAgent:
         # state_token: (1, num_ships, state_dim)
         # action_indices: (1, num_ships, 3) - Discrete Indices [Power, Turn, Shoot]
         # We need this to reconstruct the sequence.
-        
+
         # Max length: We keep enough context.
-        # Interleaved model can handle long context. 
-        self.history = deque(maxlen=context_len) 
-        
+        # Interleaved model can handle long context.
+        self.history = deque(maxlen=context_len)
+
         # MambaBB State
         self.inference_params = None
-        self.actor_cache = None 
+        self.actor_cache = None
 
     def load_model(self, path: str) -> None:
         """
@@ -161,7 +170,7 @@ class WorldModelAgent:
         """
         try:
             state_dict = torch.load(path, map_location=self.device)
-            
+
             # unwrapping checkpoint if necessary
             # unwrapping checkpoint if necessary
             if "model_state_dict" in state_dict:
@@ -184,44 +193,50 @@ class WorldModelAgent:
             if "state_encoder.0.weight" in state_dict:
                 ckpt_input_dim = state_dict["state_encoder.0.weight"].shape[1]
                 current_input_dim = self.model.config.input_dim
-                
+
                 if ckpt_input_dim != current_input_dim:
-                    log.warning(f"Checkpoint input_dim ({ckpt_input_dim}) != Current ({current_input_dim}). Re-instantiating MambaBB.")
-                    
+                    log.warning(
+                        f"Checkpoint input_dim ({ckpt_input_dim}) != Current ({current_input_dim}). Re-instantiating MambaBB."
+                    )
+
                     # Re-instantiate with correct input_dim
                     # Re-create model using hydra.utils.instantiate if possible, or fallback
                     import hydra
                     from omegaconf import OmegaConf
-                    
+
                     new_config = self.model.config.copy()
                     new_config.input_dim = ckpt_input_dim
-                    
+
                     # Also check target_dim (world_head.3.weight is target_dim, d_model)
                     if "world_head.3.weight" in state_dict:
                         ckpt_target_dim = state_dict["world_head.3.weight"].shape[0]
-                        new_config.target_dim = ckpt_target_dim 
-                        
+                        new_config.target_dim = ckpt_target_dim
+
                     # Check for log_vars to set loss_type
-                    has_log_vars = any(k.startswith("log_vars.") for k in state_dict.keys())
+                    has_log_vars = any(
+                        k.startswith("log_vars.") for k in state_dict.keys()
+                    )
                     if has_log_vars:
-                         new_config.loss_type = "uncertainty"
-                         
+                        new_config.loss_type = "uncertainty"
+
                     # Re-instantiate
-                    self.model = hydra.utils.instantiate(new_config, _recursive_=False).to(self.device)
-            
-            # Load with strict=False to handle potential minor mismatches (like missing buffers), 
-            # but usually we want strict=True to catch real errors. 
+                    self.model = hydra.utils.instantiate(
+                        new_config, _recursive_=False
+                    ).to(self.device)
+
+            # Load with strict=False to handle potential minor mismatches (like missing buffers),
+            # but usually we want strict=True to catch real errors.
             # However, since we might have unexpected keys (like "log_vars" if we didn't set loss_type correctly above),
-            # let's try to handle it. 
+            # let's try to handle it.
             # If we detected log_vars above and set loss_type="uncertainty", the model should have log_vars parameters now.
-            
+
             missing, unexpected = self.model.load_state_dict(state_dict, strict=False)
-            
+
             if missing:
                 log.warning(f"Missing keys in state_dict: {missing}")
             if unexpected:
                 log.warning(f"Unexpected keys in state_dict: {unexpected}")
-                
+
             log.info(f"Successfully loaded MambaBB from {path}")
         except Exception as e:
             log.error(f"Failed to load WorldModel from {path}: {e}")
@@ -257,87 +272,103 @@ class WorldModelAgent:
         # observation["position"] is complex (N,)
         pos_c = observation["position"]
         vel_c = observation["velocity"]
-        
+
         # Stack to (1, 1, N, 2)
         def complex_to_tensor(c):
-            return torch.stack([c.real, c.imag], dim=-1).float().to(self.device).view(1, 1, self.max_ships, 2)
-            
+            return (
+                torch.stack([c.real, c.imag], dim=-1)
+                .float()
+                .to(self.device)
+                .view(1, 1, self.max_ships, 2)
+            )
+
         pos = complex_to_tensor(pos_c)
         vel = complex_to_tensor(vel_c)
-        
+
         # Prev Action
         if len(self.history) > 0:
             _, last_action = self.history[-1]
             prev_action = last_action.view(1, 1, self.max_ships, 3)
         else:
             prev_action = torch.zeros(1, 1, self.max_ships, 3, device=self.device)
-            
+
         # Inference Params
         if self.inference_params is None and InferenceParams is not None:
             # Initialize for max_batch_size=1, max_seqlen big enough
             self.inference_params = InferenceParams(max_seqlen=100000, max_batch_size=1)
-            
+
         with torch.no_grad():
-             # Preparation of inputs
-             state_in = current_state.unsqueeze(1) # (1, T=1, N, D)
-             
-             # Prepare generic kwargs for model forward
-             # All Yemong models handle **kwargs, so we can pass more than needed safely
-             forward_kwargs = {
-                 "state": state_in,
-                 "prev_action": prev_action,
-                 "pos": pos,
-                 "vel": vel,
-                 "att": None,
-                 "team_ids": torch.tensor([self.team_id], device=self.device).view(1, 1, 1).expand(1, 1, self.max_ships),
-                 "inference_params": self.inference_params,
-                 "actor_cache": self.actor_cache,
-                 "world_size": self.world_size
-             }
-             
-             # Call model
-             if getattr(self.model, 'is_interleaved', False):
-                 # Interleaved recurrent step
-                 pred_a_sampled, _logprob, _entropy, value_pred, new_cache, *_ = self.model.get_action_and_value(
-                     forward_kwargs, mamba_state=self.actor_cache, step_type="state"
-                 )
-                 # Note: in step-by-step PPO, action_logits are NOT returned directly, it returns the sampled action.
-                 # Wait, for gameplay we need to pick the argmax action (or sample if stochastic).
-                 # If model doesn't return logits, we have to unpack carefully. 
-                 # Let's check get_action_and_value: it returns action_sampled, logprob, entropy, value, new_cache
-                 # For deterministic inference we might want logits, but let's just use the sampled action it provides.
-                 
-                 # The user wants categorical indices. get_action_and_value returns action_sampled of shape (B, T, N, 3)
-                 next_action_indices = pred_a_sampled # (1, 1, N, 3)
-                 self.actor_cache = new_cache
-                 
-                 # Step 2: Feed the action back to update world model state
-                 _, _, _, _, new_cache_post_action, pred_states, pred_rewards, *_ = self.model.get_action_and_value(
-                     forward_kwargs, mamba_state=self.actor_cache, action=next_action_indices, step_type="action"
-                 )
-                 self.actor_cache = new_cache_post_action
-                 
-                 # We don't have logits to argmax, we just use the sampled indices directly
-                 p_idx = next_action_indices[:, -1, :, 0]
-                 t_idx = next_action_indices[:, -1, :, 1]
-                 s_idx = next_action_indices[:, -1, :, 2]
-                 
-             else:
-                 # Legacy model
-                 outputs = self.model(**forward_kwargs)
-                 pred_s, pred_a_logits, _, _, new_cache = outputs
-                 self.actor_cache = new_cache
-                 
-                 last_step_logits = pred_a_logits[:, -1, :, :] # (1, N, 12)
-                 p_idx = last_step_logits[..., 0:3].argmax(dim=-1)
-                 t_idx = last_step_logits[..., 3:10].argmax(dim=-1)
-                 s_idx = last_step_logits[..., 10:12].argmax(dim=-1)
-                 
-                 next_action_indices = torch.stack([p_idx, t_idx, s_idx], dim=-1).float() # (1, N, 3)
-             
+            # Preparation of inputs
+            state_in = current_state.unsqueeze(1)  # (1, T=1, N, D)
+
+            # Prepare generic kwargs for model forward
+            # All Yemong models handle **kwargs, so we can pass more than needed safely
+            forward_kwargs = {
+                "state": state_in,
+                "prev_action": prev_action,
+                "pos": pos,
+                "vel": vel,
+                "att": None,
+                "team_ids": torch.tensor([self.team_id], device=self.device)
+                .view(1, 1, 1)
+                .expand(1, 1, self.max_ships),
+                "inference_params": self.inference_params,
+                "actor_cache": self.actor_cache,
+                "world_size": self.world_size,
+            }
+
+            # Call model
+            if getattr(self.model, "is_interleaved", False):
+                # Interleaved recurrent step
+                pred_a_sampled, _logprob, _entropy, value_pred, new_cache, *_ = (
+                    self.model.get_action_and_value(
+                        forward_kwargs, mamba_state=self.actor_cache, step_type="state"
+                    )
+                )
+                # Note: in step-by-step PPO, action_logits are NOT returned directly, it returns the sampled action.
+                # Wait, for gameplay we need to pick the argmax action (or sample if stochastic).
+                # If model doesn't return logits, we have to unpack carefully.
+                # Let's check get_action_and_value: it returns action_sampled, logprob, entropy, value, new_cache
+                # For deterministic inference we might want logits, but let's just use the sampled action it provides.
+
+                # The user wants categorical indices. get_action_and_value returns action_sampled of shape (B, T, N, 3)
+                next_action_indices = pred_a_sampled  # (1, 1, N, 3)
+                self.actor_cache = new_cache
+
+                # Step 2: Feed the action back to update world model state
+                _, _, _, _, new_cache_post_action, pred_states, pred_rewards, *_ = (
+                    self.model.get_action_and_value(
+                        forward_kwargs,
+                        mamba_state=self.actor_cache,
+                        action=next_action_indices,
+                        step_type="action",
+                    )
+                )
+                self.actor_cache = new_cache_post_action
+
+                # We don't have logits to argmax, we just use the sampled indices directly
+                p_idx = next_action_indices[:, -1, :, 0]
+                t_idx = next_action_indices[:, -1, :, 1]
+                s_idx = next_action_indices[:, -1, :, 2]
+
+            else:
+                # Legacy model
+                outputs = self.model(**forward_kwargs)
+                pred_s, pred_a_logits, _, _, new_cache = outputs
+                self.actor_cache = new_cache
+
+                last_step_logits = pred_a_logits[:, -1, :, :]  # (1, N, 12)
+                p_idx = last_step_logits[..., 0:3].argmax(dim=-1)
+                t_idx = last_step_logits[..., 3:10].argmax(dim=-1)
+                s_idx = last_step_logits[..., 10:12].argmax(dim=-1)
+
+                next_action_indices = torch.stack(
+                    [p_idx, t_idx, s_idx], dim=-1
+                ).float()  # (1, N, 3)
+
         # Update History (for prev_action next step)
         self.history.append((current_state, next_action_indices))
-        
+
         # Return
         team_actions = {}
         for ship_id in ship_ids:
@@ -346,14 +377,13 @@ class WorldModelAgent:
                     [
                         p_idx[0, ship_id].item(),
                         t_idx[0, ship_id].item(),
-                        s_idx[0, ship_id].item()
+                        s_idx[0, ship_id].item(),
                     ],
                     dtype=torch.float32,
-                    device=self.device
+                    device=self.device,
                 )
         return team_actions
 
     def get_agent_type(self) -> str:
         """Return agent type identifier."""
         return "world_model"
-

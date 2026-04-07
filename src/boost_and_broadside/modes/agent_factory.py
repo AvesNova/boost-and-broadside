@@ -16,7 +16,11 @@ import torch
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import ModelConfig, ShipConfig
-from boost_and_broadside.constants import NUM_POWER_ACTIONS, NUM_SHOOT_ACTIONS, NUM_TURN_ACTIONS
+from boost_and_broadside.constants import (
+    NUM_POWER_ACTIONS,
+    NUM_SHOOT_ACTIONS,
+    NUM_TURN_ACTIONS,
+)
 from boost_and_broadside.env.state import TensorState
 
 
@@ -24,8 +28,8 @@ class ResolvedAgent:
     """An agent resolved from a spec string, with mutable hidden state for policy agents."""
 
     def __init__(self, kind: str, agent, hidden=None):
-        self.kind   = kind    # "null" | "random" | "scripted" | "policy"
-        self.agent  = agent   # None | StochasticScriptedAgent | MVPPolicy
+        self.kind = kind  # "null" | "random" | "scripted" | "policy"
+        self.agent = agent  # None | StochasticScriptedAgent | MVPPolicy
         self.hidden = hidden  # (1, B*N, D) float tensor, policy agents only
 
     def __repr__(self) -> str:
@@ -78,14 +82,14 @@ def resolve_agent_spec(
     # Deferred import to avoid circular dependency
     from boost_and_broadside.models.mvp.policy import MVPPolicy
 
-    ckpt   = torch.load(path, map_location=device, weights_only=False)
-    K      = ckpt["policy_state_dict"]["value_head.weight"].shape[0]
+    ckpt = torch.load(path, map_location=device, weights_only=False)
+    K = ckpt["policy_state_dict"]["value_head.weight"].shape[0]
     policy = MVPPolicy(model_config, ship_config, num_value_components=K).to(device)
     policy.load_state_dict(ckpt["policy_state_dict"])
     policy.eval()
 
     update = ckpt.get("update", "?")
-    step   = ckpt.get("global_step", "?")
+    step = ckpt.get("global_step", "?")
     print(f"Loaded checkpoint: update={update}  step={step}  path={path}")
 
     return ResolvedAgent("policy", policy)
@@ -98,10 +102,10 @@ def init_hidden(agent: ResolvedAgent, num_envs: int, num_ships: int, device) -> 
 
 
 def get_actions(
-    agent:     ResolvedAgent,
-    obs:       dict[str, torch.Tensor] | None,
-    state:     TensorState,
-    num_envs:  int,
+    agent: ResolvedAgent,
+    obs: dict[str, torch.Tensor] | None,
+    state: TensorState,
+    num_envs: int,
     num_ships: int,
     device,
 ) -> torch.Tensor:
@@ -114,11 +118,14 @@ def get_actions(
     B, N = num_envs, num_ships
 
     if agent.kind == "random":
-        return torch.stack([
-            torch.randint(0, NUM_POWER_ACTIONS, (B, N), device=device),
-            torch.randint(0, NUM_TURN_ACTIONS,  (B, N), device=device),
-            torch.randint(0, NUM_SHOOT_ACTIONS, (B, N), device=device),
-        ], dim=-1).int()
+        return torch.stack(
+            [
+                torch.randint(0, NUM_POWER_ACTIONS, (B, N), device=device),
+                torch.randint(0, NUM_TURN_ACTIONS, (B, N), device=device),
+                torch.randint(0, NUM_SHOOT_ACTIONS, (B, N), device=device),
+            ],
+            dim=-1,
+        ).int()
 
     if agent.kind == "scripted":
         with torch.no_grad():
@@ -126,14 +133,20 @@ def get_actions(
 
     if agent.kind == "policy":
         with torch.no_grad():
-            action, _, _, agent.hidden = agent.agent.get_action_and_value(obs, agent.hidden)
+            action, _, _, agent.hidden = agent.agent.get_action_and_value(
+                obs, agent.hidden
+            )
         return action
 
     # null — zero placeholder; caller must override with keyboard input
     return torch.zeros(B, N, 3, dtype=torch.int32, device=device)
 
 
-def reset_done_envs(agent: ResolvedAgent, done_mask: torch.Tensor, num_ships: int) -> None:
+def reset_done_envs(
+    agent: ResolvedAgent, done_mask: torch.Tensor, num_ships: int
+) -> None:
     """Reset GRU hidden state for completed envs; no-op for non-policy agents."""
     if agent.kind == "policy" and agent.hidden is not None:
-        agent.hidden = agent.agent.reset_hidden_for_envs(agent.hidden, done_mask, num_ships)
+        agent.hidden = agent.agent.reset_hidden_for_envs(
+            agent.hidden, done_mask, num_ships
+        )

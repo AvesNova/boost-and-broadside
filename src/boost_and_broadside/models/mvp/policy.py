@@ -22,8 +22,12 @@ from torch.distributions import Categorical
 from boost_and_broadside.config import ModelConfig, ShipConfig
 from boost_and_broadside.constants import (
     TOTAL_ACTION_LOGITS,
-    NUM_POWER_ACTIONS, NUM_TURN_ACTIONS, NUM_SHOOT_ACTIONS,
-    POWER_SLICE, TURN_SLICE, SHOOT_SLICE,
+    NUM_POWER_ACTIONS,
+    NUM_TURN_ACTIONS,
+    NUM_SHOOT_ACTIONS,
+    POWER_SLICE,
+    TURN_SLICE,
+    SHOOT_SLICE,
 )
 from boost_and_broadside.models.mvp.encoder import ShipEncoder
 from boost_and_broadside.models.mvp.attention import TransformerBlock
@@ -44,19 +48,21 @@ class MVPPolicy(nn.Module):
         num_value_components: int,
     ) -> None:
         super().__init__()
-        D        = model_config.d_model
-        self._K  = num_value_components
+        D = model_config.d_model
+        self._K = num_value_components
 
-        self.encoder            = ShipEncoder(model_config, ship_config)
-        self.transformer_blocks = nn.ModuleList([
-            TransformerBlock(model_config)
-            for _ in range(model_config.n_transformer_blocks)
-        ])
+        self.encoder = ShipEncoder(model_config, ship_config)
+        self.transformer_blocks = nn.ModuleList(
+            [
+                TransformerBlock(model_config)
+                for _ in range(model_config.n_transformer_blocks)
+            ]
+        )
         self.gru = nn.GRU(D, D, num_layers=1, batch_first=False)
 
         self.action_head = nn.Linear(D, TOTAL_ACTION_LOGITS)
         # K independent scalar heads — one per reward component, in normalized space
-        self.value_head  = nn.Linear(D, self._K)
+        self.value_head = nn.Linear(D, self._K)
 
         # Orthogonal init — standard PPO practice
         for layer in [self.action_head, self.value_head]:
@@ -98,7 +104,7 @@ class MVPPolicy(nn.Module):
             return hidden
         # done_mask (B,) → expand to (B*N,)
         ship_done = done_mask.repeat_interleave(num_ships)  # (B*N,)
-        hidden    = hidden.clone()
+        hidden = hidden.clone()
         hidden[0, ship_done, :] = 0.0
         return hidden
 
@@ -125,18 +131,18 @@ class MVPPolicy(nn.Module):
                         Caller must denormalize via ReturnScaler before using for GAE.
             new_hidden: (1, B*N, D) updated GRU state.
         """
-        alive = obs["alive"]              # (B, N) bool
-        x     = self.encoder(obs)         # (B, N, D)
+        alive = obs["alive"]  # (B, N) bool
+        x = self.encoder(obs)  # (B, N, D)
         for block in self.transformer_blocks:
-            x = block(x, alive)           # (B, N, D)
+            x = block(x, alive)  # (B, N, D)
 
         B, N, D = x.shape
-        x_step  = x.reshape(B * N, D).unsqueeze(0)      # (1, B*N, D)
+        x_step = x.reshape(B * N, D).unsqueeze(0)  # (1, B*N, D)
         gru_out, new_hidden = self.gru(x_step, hidden)  # (1, B*N, D)
-        gru_out = gru_out.squeeze(0).reshape(B, N, D)   # (B, N, D)
+        gru_out = gru_out.squeeze(0).reshape(B, N, D)  # (B, N, D)
 
-        logits = self.action_head(gru_out)               # (B, N, 12)
-        value  = self.value_head(gru_out)                # (B, N, K) — normalized space
+        logits = self.action_head(gru_out)  # (B, N, 12)
+        value = self.value_head(gru_out)  # (B, N, K) — normalized space
 
         action, logprob = _sample_action(logits)
 
@@ -171,23 +177,23 @@ class MVPPolicy(nn.Module):
             new_value: (T, B, N, K) float — per-component value in normalized space.
         """
         T, B, N = actions.shape[:3]
-        D       = self.gru.hidden_size
+        D = self.gru.hidden_size
 
         # Flatten T into B for encoder and attention
-        flat_obs   = {k: v.reshape(T * B, *v.shape[2:]) for k, v in obs.items()}
+        flat_obs = {k: v.reshape(T * B, *v.shape[2:]) for k, v in obs.items()}
         flat_alive = alive_mask.reshape(T * B, N)
 
-        x = self.encoder(flat_obs)                      # (T*B, N, D)
+        x = self.encoder(flat_obs)  # (T*B, N, D)
         for block in self.transformer_blocks:
-            x = block(x, flat_alive)                    # (T*B, N, D)
+            x = block(x, flat_alive)  # (T*B, N, D)
 
         # GRU over time — reshape to (T, B*N, D) for sequential processing
-        x_seq      = x.reshape(T, B, N, D).reshape(T, B * N, D)  # (T, B*N, D)
-        gru_out, _ = self.gru(x_seq, initial_hidden)              # (T, B*N, D)
-        gru_out    = gru_out.reshape(T, B, N, D)                  # (T, B, N, D)
+        x_seq = x.reshape(T, B, N, D).reshape(T, B * N, D)  # (T, B*N, D)
+        gru_out, _ = self.gru(x_seq, initial_hidden)  # (T, B*N, D)
+        gru_out = gru_out.reshape(T, B, N, D)  # (T, B, N, D)
 
-        logits    = self.action_head(gru_out)   # (T, B, N, 12)
-        new_value = self.value_head(gru_out)    # (T, B, N, K) — normalized space
+        logits = self.action_head(gru_out)  # (T, B, N, 12)
+        new_value = self.value_head(gru_out)  # (T, B, N, K) — normalized space
 
         logprob, entropy = _evaluate_action(logits, actions)
 
@@ -197,6 +203,7 @@ class MVPPolicy(nn.Module):
 # ---------------------------------------------------------------------------
 # Action sampling helpers (pure functions, no state)
 # ---------------------------------------------------------------------------
+
 
 def _sample_action(
     logits: torch.Tensor,
@@ -211,19 +218,19 @@ def _sample_action(
         logprob: (...) float — sum of log-probs across sub-actions.
     """
     power_dist = Categorical(logits=logits[..., POWER_SLICE])
-    turn_dist  = Categorical(logits=logits[..., TURN_SLICE])
+    turn_dist = Categorical(logits=logits[..., TURN_SLICE])
     shoot_dist = Categorical(logits=logits[..., SHOOT_SLICE])
 
-    power_a = power_dist.sample()   # (...,)
-    turn_a  = turn_dist.sample()
+    power_a = power_dist.sample()  # (...,)
+    turn_a = turn_dist.sample()
     shoot_a = shoot_dist.sample()
 
-    action  = torch.stack([power_a, turn_a, shoot_a], dim=-1)   # (..., 3)
+    action = torch.stack([power_a, turn_a, shoot_a], dim=-1)  # (..., 3)
     logprob = (
         power_dist.log_prob(power_a)
         + turn_dist.log_prob(turn_a)
         + shoot_dist.log_prob(shoot_a)
-    )                                                             # (...)
+    )  # (...)
     return action, logprob
 
 
@@ -242,7 +249,7 @@ def _evaluate_action(
         entropy: (...) float.
     """
     power_dist = Categorical(logits=logits[..., POWER_SLICE])
-    turn_dist  = Categorical(logits=logits[..., TURN_SLICE])
+    turn_dist = Categorical(logits=logits[..., TURN_SLICE])
     shoot_dist = Categorical(logits=logits[..., SHOOT_SLICE])
 
     logprob = (
@@ -250,9 +257,5 @@ def _evaluate_action(
         + turn_dist.log_prob(actions[..., 1])
         + shoot_dist.log_prob(actions[..., 2])
     )
-    entropy = (
-        power_dist.entropy()
-        + turn_dist.entropy()
-        + shoot_dist.entropy()
-    )
+    entropy = power_dist.entropy() + turn_dist.entropy() + shoot_dist.entropy()
     return logprob, entropy

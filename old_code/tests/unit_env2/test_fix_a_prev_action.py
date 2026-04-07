@@ -1,4 +1,5 @@
 """Fix A: prev_action tensor in TensorState and env observation."""
+
 import pytest
 import torch
 from boost_and_broadside.core.config import ShipConfig
@@ -8,8 +9,13 @@ from boost_and_broadside.env2.env import TensorEnv
 @pytest.fixture
 def simple_env():
     config = ShipConfig()
-    env = TensorEnv(num_envs=4, config=config, device=torch.device("cpu"),
-                    max_ships=4, max_episode_steps=100)
+    env = TensorEnv(
+        num_envs=4,
+        config=config,
+        device=torch.device("cpu"),
+        max_ships=4,
+        max_episode_steps=100,
+    )
     return env
 
 
@@ -20,8 +26,9 @@ def test_prev_action_in_obs_after_reset(simple_env):
 
     assert "prev_action" in obs, "prev_action missing from obs dict"
     pa = obs["prev_action"]
-    assert pa.shape == (env.num_envs, env.max_ships, 3), \
+    assert pa.shape == (env.num_envs, env.max_ships, 3), (
         f"Expected shape ({env.num_envs}, {env.max_ships}, 3), got {pa.shape}"
+    )
     assert pa.dtype == torch.float32
     assert pa.sum() == 0.0, "prev_action should be all zeros after reset"
 
@@ -31,16 +38,18 @@ def test_prev_action_matches_taken_action(simple_env):
     env = simple_env
     env.reset(seed=0)
 
-    actions = torch.tensor([[1, 3, 1], [0, 2, 0], [2, 6, 1], [1, 1, 0]],
-                            dtype=torch.long).unsqueeze(0)  # (1, 4, 3)
+    actions = torch.tensor(
+        [[1, 3, 1], [0, 2, 0], [2, 6, 1], [1, 1, 0]], dtype=torch.long
+    ).unsqueeze(0)  # (1, 4, 3)
     actions = actions.expand(env.num_envs, -1, -1)  # (4, 4, 3)
 
     obs, *_ = env.step(actions)
 
     pa = obs["prev_action"]
     expected = actions.float()
-    assert torch.allclose(pa, expected), \
+    assert torch.allclose(pa, expected), (
         "prev_action does not match the action that was passed to step()"
+    )
 
 
 def test_prev_action_zeroed_on_reset(simple_env):

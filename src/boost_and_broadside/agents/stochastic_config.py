@@ -6,6 +6,7 @@ import numpy as np
 # Max distance on a toroidal 1024x1024 world (half-world diagonal)
 _MAX_WORLD_DIST: float = float(np.sqrt(512.0**2 + 512.0**2))  # ≈ 724.1
 
+
 @dataclass
 class StochasticAgentConfig:
     """
@@ -46,6 +47,7 @@ class StochasticAgentConfig:
                          shooting range for the boost metric.
     shoot_distance_prob: (prob at close distance, prob at far distance).
     """
+
     flat_action_sampling: bool = False
     prob_offset: float = 0.1
 
@@ -78,23 +80,25 @@ class StochasticAgentConfig:
     # One (lo, hi) bound per field. Both elements of a Tuple[float, float] field
     # are scaled using the same bound. All input values are expected in [0, 1].
     PARAM_BOUNDS: ClassVar[list[tuple[float, float]]] = [
-        (0.0, 180.0),            # boost_speed_ramp       — speed units
-        (0.0, 1.0),              # boost_speed_prob        — probability
+        (0.0, 180.0),  # boost_speed_ramp       — speed units
+        (0.0, 1.0),  # boost_speed_prob        — probability
         (0.0, _MAX_WORLD_DIST),  # close_range_ramp        — world units
-        (0.0, 1.0),              # close_range_prob        — probability
-        (0.0, np.pi),            # turn_angle_ramp         — radians
-        (0.0, 1.0),              # turn_angle_prob         — probability
-        (0.0, np.pi),            # sharp_turn_angle_ramp   — radians
-        (0.0, 1.0),              # sharp_turn_angle_prob   — probability
-        (0.0, 3.0),              # shoot_angle_ramp        — ratio
-        (0.0, 1.0),              # shoot_angle_prob        — probability
+        (0.0, 1.0),  # close_range_prob        — probability
+        (0.0, np.pi),  # turn_angle_ramp         — radians
+        (0.0, 1.0),  # turn_angle_prob         — probability
+        (0.0, np.pi),  # sharp_turn_angle_ramp   — radians
+        (0.0, 1.0),  # sharp_turn_angle_prob   — probability
+        (0.0, 3.0),  # shoot_angle_ramp        — ratio
+        (0.0, 1.0),  # shoot_angle_prob        — probability
         (0.0, _MAX_WORLD_DIST),  # shoot_distance_ramp     — world units
-        (0.0, 1.0),              # shoot_distance_prob     — probability
+        (0.0, 1.0),  # shoot_distance_prob     — probability
     ]
     # Vector length = 2 * len(PARAM_BOUNDS) = 24
 
     @classmethod
-    def from_vector(cls, v: Sequence[float], flat_action_sampling: bool = False) -> "StochasticAgentConfig":
+    def from_vector(
+        cls, v: Sequence[float], flat_action_sampling: bool = False
+    ) -> "StochasticAgentConfig":
         """
         Construct a StochasticAgentConfig from a 24-element flat vector.
         All values in v must be in [0, 1]; they are scaled to physical units
@@ -132,12 +136,18 @@ class StochasticAgentConfig:
         """Returns the 24-element [0, 1]-normalized vector for the default config."""
         cfg = cls()
         raw = [
-            *cfg.boost_speed_ramp,      *cfg.boost_speed_prob,
-            *cfg.close_range_ramp,      *cfg.close_range_prob,
-            *cfg.turn_angle_ramp,       *cfg.turn_angle_prob,
-            *cfg.sharp_turn_angle_ramp, *cfg.sharp_turn_angle_prob,
-            *cfg.shoot_angle_ramp,      *cfg.shoot_angle_prob,
-            *cfg.shoot_distance_ramp,   *cfg.shoot_distance_prob,
+            *cfg.boost_speed_ramp,
+            *cfg.boost_speed_prob,
+            *cfg.close_range_ramp,
+            *cfg.close_range_prob,
+            *cfg.turn_angle_ramp,
+            *cfg.turn_angle_prob,
+            *cfg.sharp_turn_angle_ramp,
+            *cfg.sharp_turn_angle_prob,
+            *cfg.shoot_angle_ramp,
+            *cfg.shoot_angle_prob,
+            *cfg.shoot_distance_ramp,
+            *cfg.shoot_distance_prob,
         ]
         expanded_bounds = [b for b in cls.PARAM_BOUNDS for _ in range(2)]
         return [(r - lo) / (hi - lo) for r, (lo, hi) in zip(raw, expanded_bounds)]

@@ -24,6 +24,7 @@ from boost_and_broadside.core.constants import StateFeature
 # Symlog
 # ---------------------------------------------------------------------------
 
+
 def symlog(x: torch.Tensor, linthresh: float = 1.0) -> torch.Tensor:
     """
     Signed log compression.  Identity near zero, log growth beyond ±linthresh.
@@ -40,6 +41,7 @@ def symlog_inv(y: torch.Tensor, linthresh: float = 1.0) -> torch.Tensor:
 # ---------------------------------------------------------------------------
 # 2-bin Soft Binning (triangular / linear-interpolation kernel)
 # ---------------------------------------------------------------------------
+
 
 def soft_bin_uniform(
     x: torch.Tensor,
@@ -82,11 +84,11 @@ def soft_bin_uniform(
     # Continuous bin index (fractional), in [0, n_bins]
     frac = (xc - lo) / w  # [...], ∈ [0, n_bins]
 
-    left = frac.floor().long().clamp(0, n_bins - 1)   # [...], ∈ [0, n_bins-1]
-    right = (left + 1).clamp(0, n_bins - 1)           # [...], ∈ [0, n_bins-1]
+    left = frac.floor().long().clamp(0, n_bins - 1)  # [...], ∈ [0, n_bins-1]
+    right = (left + 1).clamp(0, n_bins - 1)  # [...], ∈ [0, n_bins-1]
 
-    right_w = (frac - left.float()).clamp(0.0, 1.0)   # weight for right bin
-    left_w = 1.0 - right_w                             # weight for left bin
+    right_w = (frac - left.float()).clamp(0.0, 1.0)  # weight for right bin
+    left_w = 1.0 - right_w  # weight for left bin
 
     # Scatter into output
     out = torch.zeros(*x.shape, n_bins, dtype=dtype, device=device)
@@ -129,8 +131,8 @@ def soft_bin_angular(x: torch.Tensor, n_bins: int) -> torch.Tensor:
     # Continuous bin index, in [0, n_bins)
     frac = xw / w  # [...], ∈ [0, n_bins)
 
-    left = frac.floor().long() % n_bins     # [...], ∈ [0, n_bins-1]
-    right = (left + 1) % n_bins             # wraps at seam
+    left = frac.floor().long() % n_bins  # [...], ∈ [0, n_bins-1]
+    right = (left + 1) % n_bins  # wraps at seam
 
     right_w = (frac - frac.floor()).clamp(0.0, 1.0)
     left_w = 1.0 - right_w
@@ -146,30 +148,100 @@ def soft_bin_angular(x: torch.Tensor, n_bins: int) -> torch.Tensor:
 # Spec Definition
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class SoftBinSpec:
     """Describes one soft-binned target field."""
+
     name: str
     n_bins: int
-    lo: float       # lower bound of the bin range (after symlog if apply_symlog=True)
-    hi: float       # upper bound of the bin range
+    lo: float  # lower bound of the bin range (after symlog if apply_symlog=True)
+    hi: float  # upper bound of the bin range
     is_angular: bool = False
     apply_symlog: bool = False
     linthresh: float = 1.0
-    is_team_level: bool = False   # True for value/reward (no ship dim)
+    is_team_level: bool = False  # True for value/reward (no ship dim)
 
 
 # Canonical specs for YemongDynamicsInterleaved.
 # Order defines the output head order.  Total bins = 768.
 INTERLEAVED_SOFT_BIN_SPECS: List[SoftBinSpec] = [
-    SoftBinSpec("health",    64,  0.0,             100.0,          is_angular=False, apply_symlog=False, is_team_level=False),
-    SoftBinSpec("power",     64,  0.0,             100.0,          is_angular=False, apply_symlog=False, is_team_level=False),
-    SoftBinSpec("pos_angle", 128, 0.0,   2*math.pi,               is_angular=True,  apply_symlog=False, is_team_level=False),
-    SoftBinSpec("pos_mag",   128, 0.0,             1.0,            is_angular=False, apply_symlog=True,  linthresh=1.0, is_team_level=False),
-    SoftBinSpec("vel_angle", 128, 0.0,   2*math.pi,               is_angular=True,  apply_symlog=False, is_team_level=False),
-    SoftBinSpec("vel_mag",   128, 0.0,             2.0,            is_angular=False, apply_symlog=True,  linthresh=1.0, is_team_level=False),
-    SoftBinSpec("value",      64, 0.0,             2.0,            is_angular=False, apply_symlog=True,  linthresh=1.0, is_team_level=True),
-    SoftBinSpec("reward",     64, 0.0,             2.0,            is_angular=False, apply_symlog=True,  linthresh=1.0, is_team_level=True),
+    SoftBinSpec(
+        "health",
+        64,
+        0.0,
+        100.0,
+        is_angular=False,
+        apply_symlog=False,
+        is_team_level=False,
+    ),
+    SoftBinSpec(
+        "power",
+        64,
+        0.0,
+        100.0,
+        is_angular=False,
+        apply_symlog=False,
+        is_team_level=False,
+    ),
+    SoftBinSpec(
+        "pos_angle",
+        128,
+        0.0,
+        2 * math.pi,
+        is_angular=True,
+        apply_symlog=False,
+        is_team_level=False,
+    ),
+    SoftBinSpec(
+        "pos_mag",
+        128,
+        0.0,
+        1.0,
+        is_angular=False,
+        apply_symlog=True,
+        linthresh=1.0,
+        is_team_level=False,
+    ),
+    SoftBinSpec(
+        "vel_angle",
+        128,
+        0.0,
+        2 * math.pi,
+        is_angular=True,
+        apply_symlog=False,
+        is_team_level=False,
+    ),
+    SoftBinSpec(
+        "vel_mag",
+        128,
+        0.0,
+        2.0,
+        is_angular=False,
+        apply_symlog=True,
+        linthresh=1.0,
+        is_team_level=False,
+    ),
+    SoftBinSpec(
+        "value",
+        64,
+        0.0,
+        2.0,
+        is_angular=False,
+        apply_symlog=True,
+        linthresh=1.0,
+        is_team_level=True,
+    ),
+    SoftBinSpec(
+        "reward",
+        64,
+        0.0,
+        2.0,
+        is_angular=False,
+        apply_symlog=True,
+        linthresh=1.0,
+        is_team_level=True,
+    ),
 ]
 
 TOTAL_SOFT_BIN_LOGITS = sum(s.n_bins for s in INTERLEAVED_SOFT_BIN_SPECS)  # 768
@@ -179,16 +251,17 @@ TOTAL_SOFT_BIN_LOGITS = sum(s.n_bins for s in INTERLEAVED_SOFT_BIN_SPECS)  # 768
 # Target Computation
 # ---------------------------------------------------------------------------
 
+
 def compute_soft_bin_targets(
-    state_t: torch.Tensor,        # (B, T, N, state_dim) — current states
-    state_tp1: torch.Tensor,      # (B, T, N, state_dim) — next states
-    pos_t: torch.Tensor,          # (B, T, N, 2)
-    pos_tp1: torch.Tensor,        # (B, T, N, 2)
-    vel_t: torch.Tensor,          # (B, T, N, 2)   (vx, vy)
-    vel_tp1: torch.Tensor,        # (B, T, N, 2)
-    W: float,                     # world width  (for toroidal wrap)
-    H: float,                     # world height (for toroidal wrap)
-    value: Optional[torch.Tensor] = None,   # (B, T, 1) or (B, T, N)
+    state_t: torch.Tensor,  # (B, T, N, state_dim) — current states
+    state_tp1: torch.Tensor,  # (B, T, N, state_dim) — next states
+    pos_t: torch.Tensor,  # (B, T, N, 2)
+    pos_tp1: torch.Tensor,  # (B, T, N, 2)
+    vel_t: torch.Tensor,  # (B, T, N, 2)   (vx, vy)
+    vel_tp1: torch.Tensor,  # (B, T, N, 2)
+    W: float,  # world width  (for toroidal wrap)
+    H: float,  # world height (for toroidal wrap)
+    value: Optional[torch.Tensor] = None,  # (B, T, 1) or (B, T, N)
     reward: Optional[torch.Tensor] = None,  # (B, T, 1) or (B, T, N)
     specs: Optional[List[SoftBinSpec]] = None,
     label_smoothing: float = 0.01,  # mix in this fraction of uniform to prevent zero-probability bins
@@ -214,27 +287,27 @@ def compute_soft_bin_targets(
 
     # --- Health / Power (absolute next step) ---
     health = state_tp1[..., StateFeature.HEALTH]  # (B, T, N)
-    power  = state_tp1[..., StateFeature.POWER]   # (B, T, N)
+    power = state_tp1[..., StateFeature.POWER]  # (B, T, N)
 
     # --- Position delta (toroidal) ---
-    d_pos = pos_tp1 - pos_t                                     # (B, T, N, 2)
+    d_pos = pos_tp1 - pos_t  # (B, T, N, 2)
     d_pos[..., 0] -= torch.round(d_pos[..., 0] / W) * W
     d_pos[..., 1] -= torch.round(d_pos[..., 1] / H) * H
 
     dx, dy = d_pos[..., 0], d_pos[..., 1]
 
     # Global direction angle: atan2(dy, dx) → [0, 2π)
-    pos_angle = torch.atan2(dy, dx) % (2 * math.pi)            # (B, T, N)
+    pos_angle = torch.atan2(dy, dx) % (2 * math.pi)  # (B, T, N)
 
     # Magnitude → symlog → clamp to [0, 1]
     pos_mag_raw = torch.sqrt(dx**2 + dy**2)
     pos_mag = symlog(pos_mag_raw, linthresh=1.0).clamp(0.0, 1.0)
 
     # --- Velocity delta ---
-    d_vel = vel_tp1 - vel_t                                     # (B, T, N, 2)
+    d_vel = vel_tp1 - vel_t  # (B, T, N, 2)
     dvx, dvy = d_vel[..., 0], d_vel[..., 1]
 
-    vel_angle = torch.atan2(dvy, dvx) % (2 * math.pi)          # (B, T, N)
+    vel_angle = torch.atan2(dvy, dvx) % (2 * math.pi)  # (B, T, N)
 
     vel_mag_raw = torch.sqrt(dvx**2 + dvy**2)
     vel_mag = symlog(vel_mag_raw, linthresh=1.0).clamp(0.0, 2.0)
@@ -255,23 +328,22 @@ def compute_soft_bin_targets(
             t = t.unsqueeze(-1)
         return t
 
-    val_t  = _prepare_scalar(value)    # (B, T, 1)
-    rew_t  = _prepare_scalar(reward)   # (B, T, 1)
+    val_t = _prepare_scalar(value)  # (B, T, 1)
+    rew_t = _prepare_scalar(reward)  # (B, T, 1)
 
-
-    val_sym  = symlog(val_t,  linthresh=1.0).clamp(0.0, 2.0)
-    rew_sym  = symlog(rew_t,  linthresh=1.0).clamp(0.0, 2.0)
+    val_sym = symlog(val_t, linthresh=1.0).clamp(0.0, 2.0)
+    rew_sym = symlog(rew_t, linthresh=1.0).clamp(0.0, 2.0)
 
     # --- Assemble per-spec ---
     _raw = {
-        "health":    health,
-        "power":     power,
+        "health": health,
+        "power": power,
         "pos_angle": pos_angle,
-        "pos_mag":   pos_mag,
+        "pos_mag": pos_mag,
         "vel_angle": vel_angle,
-        "vel_mag":   vel_mag,
-        "value":     val_sym,
-        "reward":    rew_sym,
+        "vel_mag": vel_mag,
+        "value": val_sym,
+        "reward": rew_sym,
     }
 
     results: List[torch.Tensor] = []

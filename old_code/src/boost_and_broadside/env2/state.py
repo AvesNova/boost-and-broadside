@@ -1,4 +1,3 @@
-
 import torch
 import numpy as np
 from dataclasses import dataclass
@@ -6,11 +5,12 @@ from typing import Tuple
 
 from boost_and_broadside.core.config import ShipConfig
 
+
 @dataclass
 class TensorState:
     """
     State of the environment in tensor format.
-    
+
     Attributes:
         step_count: (B,) Current step count for each environment.
         ship_pos: (B, N) Complex position of ships.
@@ -29,34 +29,37 @@ class TensorState:
         bullet_active: (B, N, K) Boolean indicating if bullet is active.
         bullet_cursor: (B, N) Index of the next bullet slot to use (circular buffer).
     """
-    step_count: torch.Tensor            # (B,) int32
-    
+
+    step_count: torch.Tensor  # (B,) int32
+
     # Ship State (B, N)
-    ship_pos: torch.Tensor              # (B, N) complex64
-    ship_vel: torch.Tensor              # (B, N) complex64
-    ship_attitude: torch.Tensor         # (B, N) complex64 (unit vector)
-    ship_ang_vel: torch.Tensor          # (B, N) float32 (radians/sec)
-    ship_health: torch.Tensor           # (B, N) float32
-    ship_power: torch.Tensor            # (B, N) float32
-    ship_cooldown: torch.Tensor         # (B, N) float32 (seconds remaining)
-    ship_team_id: torch.Tensor          # (B, N) int32
-    ship_alive: torch.Tensor            # (B, N) bool
-    ship_is_shooting: torch.Tensor      # (B, N) bool
-    
+    ship_pos: torch.Tensor  # (B, N) complex64
+    ship_vel: torch.Tensor  # (B, N) complex64
+    ship_attitude: torch.Tensor  # (B, N) complex64 (unit vector)
+    ship_ang_vel: torch.Tensor  # (B, N) float32 (radians/sec)
+    ship_health: torch.Tensor  # (B, N) float32
+    ship_power: torch.Tensor  # (B, N) float32
+    ship_cooldown: torch.Tensor  # (B, N) float32 (seconds remaining)
+    ship_team_id: torch.Tensor  # (B, N) int32
+    ship_alive: torch.Tensor  # (B, N) bool
+    ship_is_shooting: torch.Tensor  # (B, N) bool
+
     # Previous action taken (B, N, 3) float32 [power, turn, shoot]
-    prev_action: torch.Tensor           # (B, N, 3) float32
-    
+    prev_action: torch.Tensor  # (B, N, 3) float32
+
     # Bullet State (B, N, K) - Ring buffer per ship
     # K should be >= bullet_lifetime / firing_cooldown
-    bullet_pos: torch.Tensor            # (B, N, K) complex64
-    bullet_vel: torch.Tensor            # (B, N, K) complex64
-    bullet_time: torch.Tensor           # (B, N, K) float32 (seconds remaining)
-    bullet_active: torch.Tensor         # (B, N, K) bool
-    
-    # Bullet Manager State (B, N)
-    bullet_cursor: torch.Tensor         # (B, N) int64 - current write index in ring buffer (0 to K-1)
+    bullet_pos: torch.Tensor  # (B, N, K) complex64
+    bullet_vel: torch.Tensor  # (B, N, K) complex64
+    bullet_time: torch.Tensor  # (B, N, K) float32 (seconds remaining)
+    bullet_active: torch.Tensor  # (B, N, K) bool
 
-    def clone(self) -> 'TensorState':
+    # Bullet Manager State (B, N)
+    bullet_cursor: (
+        torch.Tensor
+    )  # (B, N) int64 - current write index in ring buffer (0 to K-1)
+
+    def clone(self) -> "TensorState":
         """Creates a deep copy of the state."""
         return TensorState(
             step_count=self.step_count.clone(),
@@ -75,9 +78,9 @@ class TensorState:
             bullet_vel=self.bullet_vel.clone(),
             bullet_time=self.bullet_time.clone(),
             bullet_active=self.bullet_active.clone(),
-            bullet_cursor=self.bullet_cursor.clone()
+            bullet_cursor=self.bullet_cursor.clone(),
         )
-    
+
     @property
     def num_envs(self) -> int:
         """Returns the batch size (number of environments)."""
@@ -87,12 +90,12 @@ class TensorState:
     def max_ships(self) -> int:
         """Returns the maximum number of ships per environment."""
         return self.ship_pos.shape[1]
-        
+
     @property
     def max_bullets(self) -> int:
         """Returns the maximum buffer size for bullets per ship."""
         return self.bullet_pos.shape[2]
-        
+
     @property
     def device(self) -> torch.device:
         """Returns the device governing the state tensors."""

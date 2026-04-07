@@ -11,8 +11,9 @@ from enum import IntEnum
 # Global Dimensions & Configuration Limits
 # =============================================================================
 # These values represent the architectural maximums or defaults.
-# Specific runtime config might use fewer ships, but models are often 
+# Specific runtime config might use fewer ships, but models are often
 # built to support up to these limits.
+
 
 class StateFeature(IntEnum):
     HEALTH = 0
@@ -32,10 +33,10 @@ class TargetFeature(IntEnum):
     DANG_VEL = 6
 
 
-MAX_SHIPS = 8       # Maximum number of ships per team (for fixed-size buffers)
+MAX_SHIPS = 8  # Maximum number of ships per team (for fixed-size buffers)
 STATE_DIM = len(StateFeature)
 TARGET_DIM = len(TargetFeature)
-ACTION_DIM = 3      # Number of discrete action components (Power, Turn, Shoot)
+ACTION_DIM = 3  # Number of discrete action components (Power, Turn, Shoot)
 
 # Normalization Constants (for Tokenizer)
 # Used to normalize raw observation values into [0, 1] or [-1, 1] range.
@@ -45,10 +46,12 @@ ACTION_DIM = 3      # Number of discrete action components (Power, Turn, Shoot)
 # Action Definitions
 # =============================================================================
 
+
 class PowerActions(IntEnum):
     COAST = 0
     BOOST = 1
     REVERSE = 2
+
 
 class TurnActions(IntEnum):
     GO_STRAIGHT = 0
@@ -59,23 +62,29 @@ class TurnActions(IntEnum):
     AIR_BRAKE = 5
     SHARP_AIR_BRAKE = 6
 
+
 class ShootActions(IntEnum):
     NO_SHOOT = 0
     SHOOT = 1
+
 
 # Derived Action Statistics
 NUM_POWER_ACTIONS = len(PowerActions)
 NUM_TURN_ACTIONS = len(TurnActions)
 NUM_SHOOT_ACTIONS = len(ShootActions)
 NUM_FLATTENED_ACTIONS = NUM_POWER_ACTIONS * NUM_TURN_ACTIONS * NUM_SHOOT_ACTIONS
-TOTAL_ACTION_LOGITS = NUM_POWER_ACTIONS + NUM_TURN_ACTIONS + NUM_SHOOT_ACTIONS  # 3 + 7 + 2 = 12
+TOTAL_ACTION_LOGITS = (
+    NUM_POWER_ACTIONS + NUM_TURN_ACTIONS + NUM_SHOOT_ACTIONS
+)  # 3 + 7 + 2 = 12
 
 # =============================================================================
 # Reward Constants
 # =============================================================================
 
+
 class RewardConstants:
     """Constants for reward calculation."""
+
     VICTORY = 1.0
     DEFEAT = -1.0
     DRAW = 0.0

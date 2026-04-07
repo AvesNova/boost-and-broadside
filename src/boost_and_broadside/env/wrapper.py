@@ -14,7 +14,8 @@ from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAge
 from boost_and_broadside.config import ShipConfig, EnvConfig, RewardConfig
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.rewards import (
-    RewardComponent, REWARD_COMPONENT_NAMES,
+    RewardComponent,
+    REWARD_COMPONENT_NAMES,
     build_reward_components,
 )
 from boost_and_broadside.env.state import TensorState
@@ -43,10 +44,10 @@ class MVPEnvWrapper:
         device: str | torch.device,
         scripted_agent: StochasticScriptedAgent | None = None,
     ) -> None:
-        self.env            = TensorEnv(num_envs, ship_config, env_config, device)
-        self.ship_config    = ship_config
-        self.env_config     = env_config
-        self.device         = torch.device(device)
+        self.env = TensorEnv(num_envs, ship_config, env_config, device)
+        self.ship_config = ship_config
+        self.env_config = env_config
+        self.device = torch.device(device)
 
         # All components (decay scheduler and other callers may need access to inactive ones)
         self._all_components: list[RewardComponent] = build_reward_components(
@@ -57,7 +58,8 @@ class MVPEnvWrapper:
         # in canonical REWARD_COMPONENT_NAMES order.
         _comp_by_name = {c.name: c for c in self._all_components}
         self._active_names: list[str] = [
-            name for name in REWARD_COMPONENT_NAMES
+            name
+            for name in REWARD_COMPONENT_NAMES
             if name in _comp_by_name and _comp_by_name[name].weight != 0
         ]
         self._active_components: list[RewardComponent] = [
@@ -66,11 +68,10 @@ class MVPEnvWrapper:
 
         # Episode stat accumulators — active components only
         B, N = num_envs, env_config.num_ships
-        self._ep_reward  = torch.zeros((B, N), device=self.device)
-        self._ep_length  = torch.zeros((B,),   device=self.device, dtype=torch.int32)
+        self._ep_reward = torch.zeros((B, N), device=self.device)
+        self._ep_length = torch.zeros((B,), device=self.device, dtype=torch.int32)
         self._ep_reward_components: dict[str, torch.Tensor] = {
-            name: torch.zeros((B, N), device=self.device)
-            for name in self._active_names
+            name: torch.zeros((B, N), device=self.device) for name in self._active_names
         }
 
     # ------------------------------------------------------------------
@@ -115,18 +116,20 @@ class MVPEnvWrapper:
         """
         # Snapshot pre-physics state fields needed for reward delta
         prev_health = self.env.state.ship_health.clone()  # (B, N)
-        prev_alive  = self.env.state.ship_alive.clone()   # (B, N)
-        prev_state  = _make_prev_state_proxy(self.env.state, prev_health, prev_alive)
+        prev_alive = self.env.state.ship_alive.clone()  # (B, N)
+        prev_state = _make_prev_state_proxy(self.env.state, prev_health, prev_alive)
 
         # Physics step (no auto-reset)
         dones, truncated = self.env.step(actions)
 
         # Compute rewards for active components only — (B, N, K_active)
         B, N = self.env.state.ship_health.shape
-        K    = len(self._active_names)
+        K = len(self._active_names)
         comp_rewards = torch.zeros(B, N, K, device=self.device, dtype=torch.float32)
         for k, comp in enumerate(self._active_components):
-            comp_rewards[:, :, k] = comp.compute(prev_state, actions, self.env.state, dones)
+            comp_rewards[:, :, k] = comp.compute(
+                prev_state, actions, self.env.state, dones
+            )
 
         # Accumulate episode stats (active components only)
         self._ep_reward += comp_rewards.sum(dim=-1)
@@ -161,35 +164,43 @@ class MVPEnvWrapper:
 
     def _get_obs(self) -> dict[str, torch.Tensor]:
         """Build the float observation dict from the current TensorState."""
-        s        = self.env.state
+        s = self.env.state
         world_w, world_h = self.ship_config.world_size
 
-        pos_norm = torch.stack([
-            s.ship_pos.real / world_w,
-            s.ship_pos.imag / world_h,
-        ], dim=-1)                                                 # (B, N, 2)
+        pos_norm = torch.stack(
+            [
+                s.ship_pos.real / world_w,
+                s.ship_pos.imag / world_h,
+            ],
+            dim=-1,
+        )  # (B, N, 2)
 
         vel = torch.stack([s.ship_vel.real, s.ship_vel.imag], dim=-1)  # (B, N, 2)
 
-        att = torch.stack([s.ship_attitude.real, s.ship_attitude.imag], dim=-1)  # (B, N, 2)
+        att = torch.stack(
+            [s.ship_attitude.real, s.ship_attitude.imag], dim=-1
+        )  # (B, N, 2)
 
-        ang_vel = s.ship_ang_vel.unsqueeze(-1)                     # (B, N, 1)
+        ang_vel = s.ship_ang_vel.unsqueeze(-1)  # (B, N, 1)
 
-        scalars = torch.stack([
-            s.ship_health   / self.ship_config.max_health,
-            s.ship_power    / self.ship_config.max_power,
-            (s.ship_cooldown / self.ship_config.firing_cooldown).clamp(0.0, 1.0),
-        ], dim=-1)                                                 # (B, N, 3)
+        scalars = torch.stack(
+            [
+                s.ship_health / self.ship_config.max_health,
+                s.ship_power / self.ship_config.max_power,
+                (s.ship_cooldown / self.ship_config.firing_cooldown).clamp(0.0, 1.0),
+            ],
+            dim=-1,
+        )  # (B, N, 3)
 
         return {
-            "pos"         : pos_norm,
-            "vel"         : vel,
-            "att"         : att,
-            "ang_vel"     : ang_vel,
-            "scalars"     : scalars,
-            "team_id"     : s.ship_team_id,
-            "alive"       : s.ship_alive,
-            "prev_action" : s.prev_action.long(),
+            "pos": pos_norm,
+            "vel": vel,
+            "att": att,
+            "ang_vel": ang_vel,
+            "scalars": scalars,
+            "team_id": s.ship_team_id,
+            "alive": s.ship_alive,
+            "prev_action": s.prev_action.long(),
         }
 
     # ------------------------------------------------------------------
@@ -231,21 +242,21 @@ def _make_prev_state_proxy(
     delta (health before → health after damage).
     """
     return TensorState(
-        step_count      = state.step_count,
-        ship_pos        = state.ship_pos,
-        ship_vel        = state.ship_vel,
-        ship_attitude   = state.ship_attitude,
-        ship_ang_vel    = state.ship_ang_vel,
-        ship_health     = prev_health,
-        ship_power      = state.ship_power,
-        ship_cooldown   = state.ship_cooldown,
-        ship_team_id    = state.ship_team_id,
-        ship_alive      = prev_alive,
-        ship_is_shooting = state.ship_is_shooting,
-        prev_action     = state.prev_action,
-        bullet_pos      = state.bullet_pos,
-        bullet_vel      = state.bullet_vel,
-        bullet_time     = state.bullet_time,
-        bullet_active   = state.bullet_active,
-        bullet_cursor   = state.bullet_cursor,
+        step_count=state.step_count,
+        ship_pos=state.ship_pos,
+        ship_vel=state.ship_vel,
+        ship_attitude=state.ship_attitude,
+        ship_ang_vel=state.ship_ang_vel,
+        ship_health=prev_health,
+        ship_power=state.ship_power,
+        ship_cooldown=state.ship_cooldown,
+        ship_team_id=state.ship_team_id,
+        ship_alive=prev_alive,
+        ship_is_shooting=state.ship_is_shooting,
+        prev_action=state.prev_action,
+        bullet_pos=state.bullet_pos,
+        bullet_vel=state.bullet_vel,
+        bullet_time=state.bullet_time,
+        bullet_active=state.bullet_active,
+        bullet_cursor=state.bullet_cursor,
     )

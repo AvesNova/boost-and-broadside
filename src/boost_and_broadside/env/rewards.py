@@ -98,7 +98,9 @@ class DamageReward(RewardComponent):
         dones: torch.Tensor,
     ) -> torch.Tensor:
         # delta > 0 when health decreased (damage taken)
-        delta = (prev_state.ship_health - next_state.ship_health).clamp(min=0.0)  # (B, N)
+        delta = (prev_state.ship_health - next_state.ship_health).clamp(
+            min=0.0
+        )  # (B, N)
         return -delta * next_state.ship_alive.float()
 
 
@@ -162,21 +164,21 @@ class VictoryReward(RewardComponent):
         if not dones.any():
             return reward
 
-        team0 = next_state.ship_team_id == 0   # (B, N)
-        team1 = next_state.ship_team_id == 1   # (B, N)
+        team0 = next_state.ship_team_id == 0  # (B, N)
+        team1 = next_state.ship_team_id == 1  # (B, N)
 
         t0_alive = (team0 & next_state.ship_alive).sum(dim=1)
         t1_alive = (team1 & next_state.ship_alive).sum(dim=1)
 
-        t0_wins  = ((t0_alive > 0) & (t1_alive == 0) & dones).unsqueeze(1)  # (B, 1)
+        t0_wins = ((t0_alive > 0) & (t1_alive == 0) & dones).unsqueeze(1)  # (B, 1)
         t0_loses = ((t0_alive == 0) & (t1_alive > 0) & dones).unsqueeze(1)
 
         # Each ship gets ±1 from its OWN team's perspective — no pre-inversion.
         # Lambda aggregation applies victory_weight and handles zero-sum (enemy lambda=-1).
-        reward[team0 & t0_wins.expand_as(team0)]  = +1.0
+        reward[team0 & t0_wins.expand_as(team0)] = +1.0
         reward[team0 & t0_loses.expand_as(team0)] = -1.0
         reward[team1 & t0_loses.expand_as(team1)] = +1.0  # team1 wins
-        reward[team1 & t0_wins.expand_as(team1)]  = -1.0  # team1 loses
+        reward[team1 & t0_wins.expand_as(team1)] = -1.0  # team1 loses
 
         return reward
 
@@ -199,11 +201,15 @@ class PositioningReward(RewardComponent):
 
     name = "positioning"
 
-    def __init__(self, positioning_weight: float, positioning_radius: float,
-                 world_size: tuple[float, float]) -> None:
-        self.positioning_weight  = positioning_weight
-        self.positioning_radius  = positioning_radius
-        self.world_size          = world_size
+    def __init__(
+        self,
+        positioning_weight: float,
+        positioning_radius: float,
+        world_size: tuple[float, float],
+    ) -> None:
+        self.positioning_weight = positioning_weight
+        self.positioning_radius = positioning_radius
+        self.world_size = world_size
 
     @property
     def weight(self) -> float:
@@ -217,39 +223,44 @@ class PositioningReward(RewardComponent):
         dones: torch.Tensor,
     ) -> torch.Tensor:
         # GPU kernel: kept together for performance
-        pos   = next_state.ship_pos        # (B, N) complex64
-        att   = next_state.ship_attitude   # (B, N) complex64
-        alive = next_state.ship_alive      # (B, N) bool
-        teams = next_state.ship_team_id    # (B, N) int32
+        pos = next_state.ship_pos  # (B, N) complex64
+        att = next_state.ship_attitude  # (B, N) complex64
+        alive = next_state.ship_alive  # (B, N) bool
+        teams = next_state.ship_team_id  # (B, N) int32
 
-        B, N  = pos.shape
-        R     = self.positioning_radius
-        W, H  = self.world_size
+        B, N = pos.shape
+        R = self.positioning_radius
+        W, H = self.world_size
 
-        d       = pos.unsqueeze(2) - pos.unsqueeze(1)   # (B, N_i, N_j)
-        d.real  = (d.real + W / 2) % W - W / 2
-        d.imag  = (d.imag + H / 2) % H - H / 2
-        dist    = d.abs()
+        d = pos.unsqueeze(2) - pos.unsqueeze(1)  # (B, N_i, N_j)
+        d.real = (d.real + W / 2) % W - W / 2
+        d.imag = (d.imag + H / 2) % H - H / 2
+        dist = d.abs()
 
-        w          = (1.0 - dist / R).clamp(min=0.0) ** 2
-        safe_dist  = dist.clamp(min=1e-6)
+        w = (1.0 - dist / R).clamp(min=0.0) ** 2
+        safe_dist = dist.clamp(min=1e-6)
         dir_j_to_i = d / safe_dist
 
-        att_i  = att.unsqueeze(2)
-        alpha  = (att_i * torch.conj(-dir_j_to_i)).real
+        att_i = att.unsqueeze(2)
+        alpha = (att_i * torch.conj(-dir_j_to_i)).real
 
-        att_j  = att.unsqueeze(1)
-        beta   = (att_j * torch.conj(dir_j_to_i)).real
+        att_j = att.unsqueeze(1)
+        beta = (att_j * torch.conj(dir_j_to_i)).real
 
-        is_enemy  = teams.unsqueeze(2) != teams.unsqueeze(1)
-        alive_j   = alive.unsqueeze(1).expand(B, N, N)
-        alive_i   = alive.unsqueeze(2).expand(B, N, N)
-        valid     = is_enemy & alive_j & alive_i & ~torch.eye(N, device=pos.device, dtype=torch.bool).unsqueeze(0)
+        is_enemy = teams.unsqueeze(2) != teams.unsqueeze(1)
+        alive_j = alive.unsqueeze(1).expand(B, N, N)
+        alive_i = alive.unsqueeze(2).expand(B, N, N)
+        valid = (
+            is_enemy
+            & alive_j
+            & alive_i
+            & ~torch.eye(N, device=pos.device, dtype=torch.bool).unsqueeze(0)
+        )
 
         alpha_masked = torch.where(valid, alpha, torch.full_like(alpha, -1.0))
         alpha_max, _ = (w * alpha_masked * valid.float()).max(dim=2)
 
-        beta_sum  = (w * beta * valid.float()).sum(dim=2)
+        beta_sum = (w * beta * valid.float()).sum(dim=2)
         n_enemies = (valid & (dist < R)).sum(dim=2).float()
 
         reward = (alpha_max - beta_sum) / (1.0 + n_enemies) * alive.float()
@@ -272,11 +283,12 @@ class FacingReward(RewardComponent):
 
     name = "facing"
 
-    def __init__(self, facing_weight: float, radius: float,
-                 world_size: tuple[float, float]) -> None:
+    def __init__(
+        self, facing_weight: float, radius: float, world_size: tuple[float, float]
+    ) -> None:
         self.facing_weight = facing_weight
-        self.radius        = radius
-        self.world_size    = world_size
+        self.radius = radius
+        self.world_size = world_size
 
     @property
     def weight(self) -> float:
@@ -289,36 +301,36 @@ class FacingReward(RewardComponent):
         next_state: TensorState,
         dones: torch.Tensor,
     ) -> torch.Tensor:
-        pos   = next_state.ship_pos       # (B, N) complex64
-        att   = next_state.ship_attitude  # (B, N) complex64
-        alive = next_state.ship_alive     # (B, N) bool
-        teams = next_state.ship_team_id   # (B, N) int32
+        pos = next_state.ship_pos  # (B, N) complex64
+        att = next_state.ship_attitude  # (B, N) complex64
+        alive = next_state.ship_alive  # (B, N) bool
+        teams = next_state.ship_team_id  # (B, N) int32
 
         B, N = pos.shape
         W, H = self.world_size
-        R    = self.radius
+        R = self.radius
 
-        d      = pos.unsqueeze(2) - pos.unsqueeze(1)   # pos_i - pos_j  (B, N, N)
+        d = pos.unsqueeze(2) - pos.unsqueeze(1)  # pos_i - pos_j  (B, N, N)
         d.real = (d.real + W / 2) % W - W / 2
         d.imag = (d.imag + H / 2) % H - H / 2
-        dist   = d.abs()
+        dist = d.abs()
 
         dir_j_to_i = d / dist.clamp(min=1e-6)
 
-        att_i     = att.unsqueeze(2)                               # (B, N, 1)
-        alignment = (att_i * torch.conj(-dir_j_to_i)).real        # (B, N, N)
+        att_i = att.unsqueeze(2)  # (B, N, 1)
+        alignment = (att_i * torch.conj(-dir_j_to_i)).real  # (B, N, N)
 
-        prox  = (1.0 - dist / R).clamp(min=0.0)                   # (B, N, N)
-        score = prox * alignment.clamp(min=0.0)                    # (B, N, N)
+        prox = (1.0 - dist / R).clamp(min=0.0)  # (B, N, N)
+        score = prox * alignment.clamp(min=0.0)  # (B, N, N)
 
         is_enemy = teams.unsqueeze(2) != teams.unsqueeze(1)
-        alive_j  = alive.unsqueeze(1).expand(B, N, N)
-        alive_i  = alive.unsqueeze(2).expand(B, N, N)
-        valid    = is_enemy & alive_j & alive_i
+        alive_j = alive.unsqueeze(1).expand(B, N, N)
+        alive_i = alive.unsqueeze(2).expand(B, N, N)
+        valid = is_enemy & alive_j & alive_i
 
         score_masked = score.masked_fill(~valid, 0.0)
-        best_score   = score_masked.max(dim=2).values              # (B, N)
-        best_score   = best_score * valid.any(dim=2).float()
+        best_score = score_masked.max(dim=2).values  # (B, N)
+        best_score = best_score * valid.any(dim=2).float()
 
         return best_score * alive.float()
 
@@ -339,11 +351,12 @@ class ExposureReward(RewardComponent):
 
     name = "exposure"
 
-    def __init__(self, exposure_weight: float, radius: float,
-                 world_size: tuple[float, float]) -> None:
+    def __init__(
+        self, exposure_weight: float, radius: float, world_size: tuple[float, float]
+    ) -> None:
         self.exposure_weight = exposure_weight
-        self.radius          = radius
-        self.world_size      = world_size
+        self.radius = radius
+        self.world_size = world_size
 
     @property
     def weight(self) -> float:
@@ -356,36 +369,38 @@ class ExposureReward(RewardComponent):
         next_state: TensorState,
         dones: torch.Tensor,
     ) -> torch.Tensor:
-        pos   = next_state.ship_pos       # (B, N) complex64
-        att   = next_state.ship_attitude  # (B, N) complex64
-        alive = next_state.ship_alive     # (B, N) bool
-        teams = next_state.ship_team_id   # (B, N) int32
+        pos = next_state.ship_pos  # (B, N) complex64
+        att = next_state.ship_attitude  # (B, N) complex64
+        alive = next_state.ship_alive  # (B, N) bool
+        teams = next_state.ship_team_id  # (B, N) int32
 
         B, N = pos.shape
         W, H = self.world_size
-        R    = self.radius
+        R = self.radius
 
-        d      = pos.unsqueeze(2) - pos.unsqueeze(1)   # pos_i - pos_j  (B, N, N)
+        d = pos.unsqueeze(2) - pos.unsqueeze(1)  # pos_i - pos_j  (B, N, N)
         d.real = (d.real + W / 2) % W - W / 2
         d.imag = (d.imag + H / 2) % H - H / 2
-        dist   = d.abs()
+        dist = d.abs()
 
         dir_j_to_i = d / dist.clamp(min=1e-6)  # unit vector from j to i
 
         # beta[b, i, j] = how much enemy j is aimed at ship i
-        att_j = att.unsqueeze(1)                               # (B, 1, N)
-        beta  = (att_j * torch.conj(dir_j_to_i)).real         # (B, N, N)
+        att_j = att.unsqueeze(1)  # (B, 1, N)
+        beta = (att_j * torch.conj(dir_j_to_i)).real  # (B, N, N)
 
-        prox  = (1.0 - dist / R).clamp(min=0.0)               # (B, N, N)
-        score = prox * beta.clamp(min=0.0)                     # (B, N, N)
+        prox = (1.0 - dist / R).clamp(min=0.0)  # (B, N, N)
+        score = prox * beta.clamp(min=0.0)  # (B, N, N)
 
         is_enemy = teams.unsqueeze(2) != teams.unsqueeze(1)
-        alive_j  = alive.unsqueeze(1).expand(B, N, N)
-        alive_i  = alive.unsqueeze(2).expand(B, N, N)
-        valid    = is_enemy & alive_j & alive_i
+        alive_j = alive.unsqueeze(1).expand(B, N, N)
+        alive_i = alive.unsqueeze(2).expand(B, N, N)
+        valid = is_enemy & alive_j & alive_i
 
-        score_masked   = score.masked_fill(~valid, 0.0)
-        total_exposure = score_masked.sum(dim=2)               # (B, N) — sum over threatening enemies
+        score_masked = score.masked_fill(~valid, 0.0)
+        total_exposure = score_masked.sum(
+            dim=2
+        )  # (B, N) — sum over threatening enemies
 
         return -total_exposure * alive.float()
 
@@ -404,11 +419,15 @@ class ProximityReward(RewardComponent):
 
     name = "proximity"
 
-    def __init__(self, proximity_weight: float, proximity_radius: float,
-                 world_size: tuple[float, float]) -> None:
+    def __init__(
+        self,
+        proximity_weight: float,
+        proximity_radius: float,
+        world_size: tuple[float, float],
+    ) -> None:
         self.proximity_weight = proximity_weight
         self.proximity_radius = proximity_radius
-        self.world_size       = world_size
+        self.world_size = world_size
 
     @property
     def weight(self) -> float:
@@ -421,27 +440,27 @@ class ProximityReward(RewardComponent):
         next_state: TensorState,
         dones: torch.Tensor,
     ) -> torch.Tensor:
-        pos   = next_state.ship_pos      # (B, N) complex64
-        alive = next_state.ship_alive    # (B, N) bool
+        pos = next_state.ship_pos  # (B, N) complex64
+        alive = next_state.ship_alive  # (B, N) bool
         teams = next_state.ship_team_id  # (B, N) int32
 
         B, N = pos.shape
         W, H = self.world_size
-        R    = self.proximity_radius
+        R = self.proximity_radius
 
-        d      = pos.unsqueeze(2) - pos.unsqueeze(1)
+        d = pos.unsqueeze(2) - pos.unsqueeze(1)
         d.real = (d.real + W / 2) % W - W / 2
         d.imag = (d.imag + H / 2) % H - H / 2
-        dist   = d.abs()  # (B, N, N)
+        dist = d.abs()  # (B, N, N)
 
         is_enemy = teams.unsqueeze(2) != teams.unsqueeze(1)
-        alive_j  = alive.unsqueeze(1).expand(B, N, N)
-        alive_i  = alive.unsqueeze(2).expand(B, N, N)
-        valid    = is_enemy & alive_j & alive_i
+        alive_j = alive.unsqueeze(1).expand(B, N, N)
+        alive_i = alive.unsqueeze(2).expand(B, N, N)
+        valid = is_enemy & alive_j & alive_i
 
-        prox        = (1.0 - dist / R).clamp(min=0.0)       # (B, N, N)
+        prox = (1.0 - dist / R).clamp(min=0.0)  # (B, N, N)
         prox_masked = prox.masked_fill(~valid, 0.0)
-        best_prox   = prox_masked.max(dim=2).values          # (B, N)
+        best_prox = prox_masked.max(dim=2).values  # (B, N)
 
         return best_prox * alive.float()
 
@@ -455,9 +474,11 @@ class ClosingSpeedReward(RewardComponent):
 
     name = "closing_speed"
 
-    def __init__(self, closing_speed_weight: float, world_size: tuple[float, float]) -> None:
+    def __init__(
+        self, closing_speed_weight: float, world_size: tuple[float, float]
+    ) -> None:
         self.closing_speed_weight = closing_speed_weight
-        self.world_size           = world_size
+        self.world_size = world_size
 
     @property
     def weight(self) -> float:
@@ -470,34 +491,34 @@ class ClosingSpeedReward(RewardComponent):
         next_state: TensorState,
         dones: torch.Tensor,
     ) -> torch.Tensor:
-        pos   = next_state.ship_pos       # (B, N) complex64
-        vel   = next_state.ship_vel       # (B, N) complex64
-        alive = next_state.ship_alive     # (B, N) bool
-        teams = next_state.ship_team_id   # (B, N) int32
+        pos = next_state.ship_pos  # (B, N) complex64
+        vel = next_state.ship_vel  # (B, N) complex64
+        alive = next_state.ship_alive  # (B, N) bool
+        teams = next_state.ship_team_id  # (B, N) int32
 
         B, N = pos.shape
         W, H = self.world_size
 
-        d      = pos.unsqueeze(2) - pos.unsqueeze(1)   # pos_i - pos_j  (B, N, N)
+        d = pos.unsqueeze(2) - pos.unsqueeze(1)  # pos_i - pos_j  (B, N, N)
         d.real = (d.real + W / 2) % W - W / 2
         d.imag = (d.imag + H / 2) % H - H / 2
-        dist   = d.abs()
+        dist = d.abs()
 
         dir_j_to_i = d / dist.clamp(min=1e-6)
 
         is_enemy = teams.unsqueeze(2) != teams.unsqueeze(1)
-        alive_j  = alive.unsqueeze(1).expand(B, N, N)
-        alive_i  = alive.unsqueeze(2).expand(B, N, N)
-        valid    = is_enemy & alive_j & alive_i
+        alive_j = alive.unsqueeze(1).expand(B, N, N)
+        alive_i = alive.unsqueeze(2).expand(B, N, N)
+        valid = is_enemy & alive_j & alive_i
 
         # Approach score toward each enemy j: dot(vel_i, dir_i_to_j)
-        vel_i    = vel.unsqueeze(2)                                  # (B, N, 1)
-        approach = (vel_i * torch.conj(-dir_j_to_i)).real            # (B, N, N)
+        vel_i = vel.unsqueeze(2)  # (B, N, 1)
+        approach = (vel_i * torch.conj(-dir_j_to_i)).real  # (B, N, N)
 
         # Score for the nearest enemy
-        dist_masked  = dist.masked_fill(~valid, float('inf'))
-        nearest_idx  = dist_masked.argmin(dim=2, keepdim=True)       # (B, N, 1)
-        best_approach = approach.gather(2, nearest_idx).squeeze(2)   # (B, N)
+        dist_masked = dist.masked_fill(~valid, float("inf"))
+        nearest_idx = dist_masked.argmin(dim=2, keepdim=True)  # (B, N, 1)
+        best_approach = approach.gather(2, nearest_idx).squeeze(2)  # (B, N)
         best_approach = best_approach.clamp(min=0.0)
         best_approach = best_approach * valid.any(dim=2).float()
 
@@ -515,9 +536,11 @@ class TurnRateReward(RewardComponent):
 
     name = "turn_rate"
 
-    def __init__(self, turn_rate_weight: float, world_size: tuple[float, float]) -> None:
+    def __init__(
+        self, turn_rate_weight: float, world_size: tuple[float, float]
+    ) -> None:
         self.turn_rate_weight = turn_rate_weight
-        self.world_size       = world_size
+        self.world_size = world_size
 
     @property
     def weight(self) -> float:
@@ -530,42 +553,42 @@ class TurnRateReward(RewardComponent):
         next_state: TensorState,
         dones: torch.Tensor,
     ) -> torch.Tensor:
-        pos     = next_state.ship_pos       # (B, N) complex64
-        att     = next_state.ship_attitude  # (B, N) complex64, unit vector
-        ang_vel = next_state.ship_ang_vel   # (B, N) float32, + = counterclockwise
-        alive   = next_state.ship_alive     # (B, N) bool
-        teams   = next_state.ship_team_id   # (B, N) int32
+        pos = next_state.ship_pos  # (B, N) complex64
+        att = next_state.ship_attitude  # (B, N) complex64, unit vector
+        ang_vel = next_state.ship_ang_vel  # (B, N) float32, + = counterclockwise
+        alive = next_state.ship_alive  # (B, N) bool
+        teams = next_state.ship_team_id  # (B, N) int32
 
         B, N = pos.shape
         W, H = self.world_size
 
         # Wrap-around displacement from j to i
-        d      = pos.unsqueeze(2) - pos.unsqueeze(1)   # (B, N, N) complex64
+        d = pos.unsqueeze(2) - pos.unsqueeze(1)  # (B, N, N) complex64
         d.real = (d.real + W / 2) % W - W / 2
         d.imag = (d.imag + H / 2) % H - H / 2
-        dist   = d.abs()
+        dist = d.abs()
 
         # Unit vector from i toward j (negate d which is i-j)
-        dir_i_to_j = (-d) / dist.clamp(min=1e-6)      # (B, N, N) complex64
+        dir_i_to_j = (-d) / dist.clamp(min=1e-6)  # (B, N, N) complex64
 
         is_enemy = teams.unsqueeze(2) != teams.unsqueeze(1)
-        alive_j  = alive.unsqueeze(1).expand(B, N, N)
-        alive_i  = alive.unsqueeze(2).expand(B, N, N)
-        valid    = is_enemy & alive_j & alive_i
+        alive_j = alive.unsqueeze(1).expand(B, N, N)
+        alive_i = alive.unsqueeze(2).expand(B, N, N)
+        valid = is_enemy & alive_j & alive_i
 
         # Find nearest enemy for each ship
-        dist_masked = dist.masked_fill(~valid, float('inf'))
+        dist_masked = dist.masked_fill(~valid, float("inf"))
         nearest_idx = dist_masked.argmin(dim=2, keepdim=True)  # (B, N, 1)
 
         # sin(angle from heading to nearest-enemy direction)
         # Im(conj(att_i) * dir_i_to_j) > 0 means enemy is counterclockwise from heading
-        att_i   = att.unsqueeze(2)                                       # (B, N, 1)
-        cross   = (torch.conj(att_i) * dir_i_to_j).imag                 # (B, N, N)
-        nearest_cross = cross.gather(2, nearest_idx).squeeze(2)          # (B, N)
+        att_i = att.unsqueeze(2)  # (B, N, 1)
+        cross = (torch.conj(att_i) * dir_i_to_j).imag  # (B, N, N)
+        nearest_cross = cross.gather(2, nearest_idx).squeeze(2)  # (B, N)
 
         # Reward = ang_vel * cross: positive when turning toward enemy
         has_enemy = valid.any(dim=2).float()
-        score     = ang_vel * nearest_cross * has_enemy                  # (B, N)
+        score = ang_vel * nearest_cross * has_enemy  # (B, N)
 
         return score * alive.float()
 
@@ -580,12 +603,17 @@ class PowerRangeReward(RewardComponent):
 
     name = "power_range"
 
-    def __init__(self, power_range_weight: float, power_range_lo: float,
-                 power_range_hi: float, max_power: float) -> None:
+    def __init__(
+        self,
+        power_range_weight: float,
+        power_range_lo: float,
+        power_range_hi: float,
+        max_power: float,
+    ) -> None:
         self.power_range_weight = power_range_weight
-        self.power_range_lo     = power_range_lo
-        self.power_range_hi     = power_range_hi
-        self.max_power          = max_power
+        self.power_range_lo = power_range_lo
+        self.power_range_hi = power_range_hi
+        self.max_power = max_power
 
     @property
     def weight(self) -> float:
@@ -599,10 +627,10 @@ class PowerRangeReward(RewardComponent):
         dones: torch.Tensor,
     ) -> torch.Tensor:
         power_norm = next_state.ship_power / self.max_power  # (B, N) in [0, 1]
-        alive      = next_state.ship_alive
+        alive = next_state.ship_alive
 
-        below  = (self.power_range_lo - power_norm).clamp(min=0.0)
-        above  = (power_norm - self.power_range_hi).clamp(min=0.0)
+        below = (self.power_range_lo - power_norm).clamp(min=0.0)
+        above = (power_norm - self.power_range_hi).clamp(min=0.0)
         reward = 1.0 - (below + above).clamp(max=1.0)
 
         return reward * alive.float()
@@ -619,11 +647,12 @@ class SpeedRangeReward(RewardComponent):
 
     name = "speed_range"
 
-    def __init__(self, speed_range_weight: float, speed_range_lo: float,
-                 speed_range_hi: float) -> None:
+    def __init__(
+        self, speed_range_weight: float, speed_range_lo: float, speed_range_hi: float
+    ) -> None:
         self.speed_range_weight = speed_range_weight
-        self.speed_range_lo     = speed_range_lo
-        self.speed_range_hi     = speed_range_hi
+        self.speed_range_lo = speed_range_lo
+        self.speed_range_hi = speed_range_hi
 
     @property
     def weight(self) -> float:
@@ -639,11 +668,11 @@ class SpeedRangeReward(RewardComponent):
         speed = next_state.ship_vel.abs()  # (B, N) float32
         alive = next_state.ship_alive
 
-        below  = (self.speed_range_lo - speed).clamp(min=0.0)
-        above  = (speed - self.speed_range_hi).clamp(min=0.0)
+        below = (self.speed_range_lo - speed).clamp(min=0.0)
+        above = (speed - self.speed_range_hi).clamp(min=0.0)
         # Normalise deviation by the range width so reward decays over a
         # sensible distance rather than requiring exact pixel values.
-        span   = max(self.speed_range_hi - self.speed_range_lo, 1.0)
+        span = max(self.speed_range_hi - self.speed_range_lo, 1.0)
         reward = 1.0 - ((below + above) / span).clamp(max=1.0)
 
         return reward * alive.float()
@@ -667,11 +696,15 @@ class ShootQualityReward(RewardComponent):
 
     name = "shoot_quality"
 
-    def __init__(self, shoot_quality_weight: float, shoot_quality_radius: float,
-                 world_size: tuple[float, float]) -> None:
+    def __init__(
+        self,
+        shoot_quality_weight: float,
+        shoot_quality_radius: float,
+        world_size: tuple[float, float],
+    ) -> None:
         self.shoot_quality_weight = shoot_quality_weight
         self.shoot_quality_radius = shoot_quality_radius
-        self.world_size           = world_size
+        self.world_size = world_size
 
     @property
     def weight(self) -> float:
@@ -684,42 +717,42 @@ class ShootQualityReward(RewardComponent):
         next_state: TensorState,
         dones: torch.Tensor,
     ) -> torch.Tensor:
-        pos      = next_state.ship_pos          # (B, N) complex64
-        att      = next_state.ship_attitude     # (B, N) complex64
-        alive    = next_state.ship_alive        # (B, N) bool
-        teams    = next_state.ship_team_id      # (B, N) int32
+        pos = next_state.ship_pos  # (B, N) complex64
+        att = next_state.ship_attitude  # (B, N) complex64
+        alive = next_state.ship_alive  # (B, N) bool
+        teams = next_state.ship_team_id  # (B, N) int32
         shooting = next_state.ship_is_shooting.float()  # (B, N)
 
         B, N = pos.shape
         W, H = self.world_size
-        R    = self.shoot_quality_radius
+        R = self.shoot_quality_radius
 
-        d      = pos.unsqueeze(2) - pos.unsqueeze(1)   # pos_i - pos_j  (B, N, N)
+        d = pos.unsqueeze(2) - pos.unsqueeze(1)  # pos_i - pos_j  (B, N, N)
         d.real = (d.real + W / 2) % W - W / 2
         d.imag = (d.imag + H / 2) % H - H / 2
-        dist   = d.abs()
+        dist = d.abs()
 
         dir_j_to_i = d / dist.clamp(min=1e-6)
 
         # Facing: dot(att_i, dir_i_to_j)  where dir_i_to_j = -dir_j_to_i
-        att_i  = att.unsqueeze(2)                              # (B, N, 1)
-        facing = (att_i * torch.conj(-dir_j_to_i)).real        # (B, N, N)
+        att_i = att.unsqueeze(2)  # (B, N, 1)
+        facing = (att_i * torch.conj(-dir_j_to_i)).real  # (B, N, N)
 
         # Proximity
-        prox = (1.0 - dist / R).clamp(min=0.0)                # (B, N, N)
+        prox = (1.0 - dist / R).clamp(min=0.0)  # (B, N, N)
 
         # Shot quality: only positive when aimed AND close
-        quality = 2.0 * facing.clamp(min=0.0) * prox - 1.0   # (B, N, N) in [-1, 1]
+        quality = 2.0 * facing.clamp(min=0.0) * prox - 1.0  # (B, N, N) in [-1, 1]
 
         is_enemy = teams.unsqueeze(2) != teams.unsqueeze(1)
-        alive_j  = alive.unsqueeze(1).expand(B, N, N)
-        alive_i  = alive.unsqueeze(2).expand(B, N, N)
-        valid    = is_enemy & alive_j & alive_i
+        alive_j = alive.unsqueeze(1).expand(B, N, N)
+        alive_i = alive.unsqueeze(2).expand(B, N, N)
+        valid = is_enemy & alive_j & alive_i
 
         # Best quality over all valid enemies (judge against most favourable target)
         quality_masked = quality.masked_fill(~valid, -1.0)
-        best_quality   = quality_masked.max(dim=2).values      # (B, N)
-        best_quality   = best_quality * valid.any(dim=2).float()  # 0 when no enemies
+        best_quality = quality_masked.max(dim=2).values  # (B, N)
+        best_quality = best_quality * valid.any(dim=2).float()  # 0 when no enemies
 
         return shooting * best_quality * alive.float()
 
@@ -745,7 +778,7 @@ class ScriptedAgentReward(RewardComponent):
 
     def __init__(self, weight: float, agent: StochasticScriptedAgent) -> None:
         self.weight = weight
-        self.agent  = agent
+        self.agent = agent
 
     def compute(
         self,
@@ -755,27 +788,29 @@ class ScriptedAgentReward(RewardComponent):
         dones: torch.Tensor,
     ) -> torch.Tensor:
         closest_dist, target_idx, has_target = self.agent._select_targets(prev_state)
-        dir_pred    = self.agent._predict_interception(prev_state, target_idx, closest_dist)
+        dir_pred = self.agent._predict_interception(
+            prev_state, target_idx, closest_dist
+        )
         active_mask = prev_state.ship_alive & has_target
 
         p_power, p_turn, p_shoot = self.agent._compute_action_probs(
             prev_state, closest_dist, dir_pred, active_mask
         )
 
-        a_pow = actions[..., 0].long()   # (B, N)
+        a_pow = actions[..., 0].long()  # (B, N)
         a_trn = actions[..., 1].long()
         a_sht = actions[..., 2].long()
 
         # Mix 1% uniform into each head to prevent log(0) divergence when the
         # scripted agent assigns zero probability to an action (e.g. air brakes).
         p_power = 0.99 * p_power + 0.01 / 3
-        p_turn  = 0.99 * p_turn  + 0.01 / 7
+        p_turn = 0.99 * p_turn + 0.01 / 7
         p_shoot = 0.99 * p_shoot + 0.01 / 2
 
         log_p = (
             p_power.gather(-1, a_pow.unsqueeze(-1)).squeeze(-1).log()
-          + p_turn.gather(-1,  a_trn.unsqueeze(-1)).squeeze(-1).log()
-          + p_shoot.gather(-1, a_sht.unsqueeze(-1)).squeeze(-1).log()
+            + p_turn.gather(-1, a_trn.unsqueeze(-1)).squeeze(-1).log()
+            + p_shoot.gather(-1, a_sht.unsqueeze(-1)).squeeze(-1).log()
         )
 
         return self.weight * log_p * prev_state.ship_alive.float()
@@ -786,18 +821,18 @@ class ScriptedAgentReward(RewardComponent):
 # ScriptedAgentReward is intentionally excluded — it's an optional auxiliary signal
 # not suitable for per-ship per-component critic decomposition.
 REWARD_COMPONENT_NAMES: tuple[str, ...] = (
-    "damage",        # 0 — damage taken (negative)
-    "death",         # 1 — death penalty (negative)
-    "victory",       # 2 — team win/loss (positive/negative)
-    "exposure",      # 3 — being in crosshairs (negative)
-    "facing",        # 4 — facing enemies (positive)
-    "turn_rate",     # 5 — turning toward enemies (positive)
-    "proximity",     # 6 — being close to enemies (positive)
-    "closing_speed", # 7 — approaching enemies (positive)
-    "positioning",   # 8 — positioning formula (positive)
-    "power_range",   # 9 — power in target range (positive)
-    "speed_range",   # 10 — speed in target range (positive)
-    "shoot_quality", # 11 — shot quality when firing (positive/negative)
+    "damage",  # 0 — damage taken (negative)
+    "death",  # 1 — death penalty (negative)
+    "victory",  # 2 — team win/loss (positive/negative)
+    "exposure",  # 3 — being in crosshairs (negative)
+    "facing",  # 4 — facing enemies (positive)
+    "turn_rate",  # 5 — turning toward enemies (positive)
+    "proximity",  # 6 — being close to enemies (positive)
+    "closing_speed",  # 7 — approaching enemies (positive)
+    "positioning",  # 8 — positioning formula (positive)
+    "power_range",  # 9 — power in target range (positive)
+    "speed_range",  # 10 — speed in target range (positive)
+    "shoot_quality",  # 11 — shot quality when firing (positive/negative)
 )
 
 _NAME_TO_K: dict[str, int] = {name: k for k, name in enumerate(REWARD_COMPONENT_NAMES)}
@@ -872,7 +907,9 @@ def build_reward_components(
         ),
     ]
     if scripted_agent is not None and reward_config.scripted_agent_weight > 0.0:
-        all_components.append(ScriptedAgentReward(reward_config.scripted_agent_weight, scripted_agent))
+        all_components.append(
+            ScriptedAgentReward(reward_config.scripted_agent_weight, scripted_agent)
+        )
 
     # Filter out any components listed in disabled_rewards
     return [c for c in all_components if c.name not in reward_config.disabled_rewards]

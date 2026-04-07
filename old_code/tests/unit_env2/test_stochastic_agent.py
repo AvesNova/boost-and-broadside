@@ -7,6 +7,7 @@ Covers:
   - _linear_ramp behaviour (prob_lo/prob_hi, no invert flag)
   - get_actions_and_probs output shapes and validity
 """
+
 import pytest
 import torch
 import numpy as np
@@ -20,6 +21,7 @@ from boost_and_broadside.env2.env import TensorEnv
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def ship_config():
@@ -53,8 +55,8 @@ def simple_state(ship_config, device):
 # StochasticAgentConfig: structure
 # ---------------------------------------------------------------------------
 
-class TestStochasticAgentConfig:
 
+class TestStochasticAgentConfig:
     def test_default_fields_present(self, default_cfg):
         assert hasattr(default_cfg, "boost_speed_ramp")
         assert hasattr(default_cfg, "boost_speed_prob")
@@ -77,14 +79,26 @@ class TestStochasticAgentConfig:
 
     def test_all_ramps_are_ordered(self, default_cfg):
         """low <= high for every ramp (not a hard requirement but a sanity check)."""
-        for attr in ["boost_speed_ramp", "close_range_ramp", "turn_angle_ramp",
-                     "sharp_turn_angle_ramp", "shoot_angle_ramp", "shoot_distance_ramp"]:
+        for attr in [
+            "boost_speed_ramp",
+            "close_range_ramp",
+            "turn_angle_ramp",
+            "sharp_turn_angle_ramp",
+            "shoot_angle_ramp",
+            "shoot_distance_ramp",
+        ]:
             lo, hi = getattr(default_cfg, attr)
             assert lo <= hi, f"{attr}: {lo} > {hi}"
 
     def test_all_probs_in_unit_interval(self, default_cfg):
-        for attr in ["boost_speed_prob", "close_range_prob", "turn_angle_prob",
-                     "sharp_turn_angle_prob", "shoot_angle_prob", "shoot_distance_prob"]:
+        for attr in [
+            "boost_speed_prob",
+            "close_range_prob",
+            "turn_angle_prob",
+            "sharp_turn_angle_prob",
+            "shoot_angle_prob",
+            "shoot_distance_prob",
+        ]:
             for val in getattr(default_cfg, attr):
                 assert 0.0 <= val <= 1.0, f"{attr} value {val} out of [0, 1]"
 
@@ -93,26 +107,36 @@ class TestStochasticAgentConfig:
 # from_vector / default_vector
 # ---------------------------------------------------------------------------
 
-class TestFromVector:
 
+class TestFromVector:
     def test_vector_length(self):
         v = StochasticAgentConfig.default_vector()
         assert len(v) == 2 * len(StochasticAgentConfig.PARAM_BOUNDS)
 
     def test_default_vector_in_unit_interval(self):
         v = StochasticAgentConfig.default_vector()
-        assert all(0.0 <= x <= 1.0 for x in v), f"Out-of-range values: {[x for x in v if not 0<=x<=1]}"
+        assert all(0.0 <= x <= 1.0 for x in v), (
+            f"Out-of-range values: {[x for x in v if not 0 <= x <= 1]}"
+        )
 
     def test_round_trip(self):
         cfg = StochasticAgentConfig()
         v = StochasticAgentConfig.default_vector()
         cfg2 = StochasticAgentConfig.from_vector(v)
-        for attr in ["boost_speed_ramp", "boost_speed_prob",
-                     "close_range_ramp", "close_range_prob",
-                     "turn_angle_ramp", "turn_angle_prob",
-                     "sharp_turn_angle_ramp", "sharp_turn_angle_prob",
-                     "shoot_angle_ramp", "shoot_angle_prob",
-                     "shoot_distance_ramp", "shoot_distance_prob"]:
+        for attr in [
+            "boost_speed_ramp",
+            "boost_speed_prob",
+            "close_range_ramp",
+            "close_range_prob",
+            "turn_angle_ramp",
+            "turn_angle_prob",
+            "sharp_turn_angle_ramp",
+            "sharp_turn_angle_prob",
+            "shoot_angle_ramp",
+            "shoot_angle_prob",
+            "shoot_distance_ramp",
+            "shoot_distance_prob",
+        ]:
             orig = getattr(cfg, attr)
             rt = getattr(cfg2, attr)
             assert abs(orig[0] - rt[0]) < 1e-9, f"{attr}[0]: {orig[0]} vs {rt[0]}"
@@ -124,12 +148,18 @@ class TestFromVector:
         cfg = StochasticAgentConfig.from_vector(v)
         for field_idx, (lo, _) in enumerate(StochasticAgentConfig.PARAM_BOUNDS):
             attr_name = [
-                "boost_speed_ramp", "boost_speed_prob",
-                "close_range_ramp", "close_range_prob",
-                "turn_angle_ramp", "turn_angle_prob",
-                "sharp_turn_angle_ramp", "sharp_turn_angle_prob",
-                "shoot_angle_ramp", "shoot_angle_prob",
-                "shoot_distance_ramp", "shoot_distance_prob",
+                "boost_speed_ramp",
+                "boost_speed_prob",
+                "close_range_ramp",
+                "close_range_prob",
+                "turn_angle_ramp",
+                "turn_angle_prob",
+                "sharp_turn_angle_ramp",
+                "sharp_turn_angle_prob",
+                "shoot_angle_ramp",
+                "shoot_angle_prob",
+                "shoot_distance_ramp",
+                "shoot_distance_prob",
             ][field_idx]
             val = getattr(cfg, attr_name)
             assert abs(val[0] - lo) < 1e-9
@@ -141,12 +171,18 @@ class TestFromVector:
         cfg = StochasticAgentConfig.from_vector(v)
         for field_idx, (_, hi) in enumerate(StochasticAgentConfig.PARAM_BOUNDS):
             attr_name = [
-                "boost_speed_ramp", "boost_speed_prob",
-                "close_range_ramp", "close_range_prob",
-                "turn_angle_ramp", "turn_angle_prob",
-                "sharp_turn_angle_ramp", "sharp_turn_angle_prob",
-                "shoot_angle_ramp", "shoot_angle_prob",
-                "shoot_distance_ramp", "shoot_distance_prob",
+                "boost_speed_ramp",
+                "boost_speed_prob",
+                "close_range_ramp",
+                "close_range_prob",
+                "turn_angle_ramp",
+                "turn_angle_prob",
+                "sharp_turn_angle_ramp",
+                "sharp_turn_angle_prob",
+                "shoot_angle_ramp",
+                "shoot_angle_prob",
+                "shoot_distance_ramp",
+                "shoot_distance_prob",
             ][field_idx]
             val = getattr(cfg, attr_name)
             assert abs(val[0] - hi) < 1e-9
@@ -161,8 +197,8 @@ class TestFromVector:
 # _linear_ramp
 # ---------------------------------------------------------------------------
 
-class TestLinearRamp:
 
+class TestLinearRamp:
     def test_normal_ramp(self, agent):
         x = torch.tensor([0.0, 0.5, 1.0])
         # prob_lo=0.0, prob_hi=1.0 → identity mapping on [0,1]
@@ -202,8 +238,8 @@ class TestLinearRamp:
 # get_actions_and_probs: shapes and validity
 # ---------------------------------------------------------------------------
 
-class TestAgentOutputs:
 
+class TestAgentOutputs:
     def test_action_shapes_marginal(self, agent, simple_state):
         actions, probs = agent.get_actions_and_probs(simple_state)
         B, N = simple_state.ship_pos.shape
@@ -228,10 +264,10 @@ class TestAgentOutputs:
     def test_probs_sum_to_one(self, agent, simple_state):
         _, probs = agent.get_actions_and_probs(simple_state)
         power_sum = probs[..., :3].sum(dim=-1)
-        turn_sum  = probs[..., 3:10].sum(dim=-1)
+        turn_sum = probs[..., 3:10].sum(dim=-1)
         shoot_sum = probs[..., 10:].sum(dim=-1)
         assert torch.allclose(power_sum, torch.ones_like(power_sum), atol=1e-5)
-        assert torch.allclose(turn_sum,  torch.ones_like(turn_sum),  atol=1e-5)
+        assert torch.allclose(turn_sum, torch.ones_like(turn_sum), atol=1e-5)
         assert torch.allclose(shoot_sum, torch.ones_like(shoot_sum), atol=1e-5)
 
     def test_probs_non_negative(self, agent, simple_state):

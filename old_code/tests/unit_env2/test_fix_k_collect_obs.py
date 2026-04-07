@@ -1,4 +1,5 @@
 """Fix K: collect_massive partial reset only updates obs for reset envs."""
+
 import pytest
 import torch
 
@@ -21,12 +22,9 @@ def test_fix_k_non_reset_envs_unaffected():
     B, N = 8, 4
     obs = {
         "health": torch.arange(B * N, dtype=torch.float).reshape(B, N),
-        "position": torch.randn(B, N, 2)
+        "position": torch.randn(B, N, 2),
     }
-    fresh_obs = {
-        "health": torch.zeros(B, N),
-        "position": torch.zeros(B, N, 2)
-    }
+    fresh_obs = {"health": torch.zeros(B, N), "position": torch.zeros(B, N, 2)}
     over_limit = torch.zeros(B, dtype=torch.bool)
     over_limit[[0, 2, 5]] = True  # Only envs 0, 2, 5 reset
 
@@ -35,8 +33,9 @@ def test_fix_k_non_reset_envs_unaffected():
     obs = apply_fix_k(obs, over_limit, fresh_obs)
 
     # Non-reset envs should be unchanged
-    assert torch.allclose(obs["health"][[1, 3, 4, 6, 7]], original_non_reset_health), \
+    assert torch.allclose(obs["health"][[1, 3, 4, 6, 7]], original_non_reset_health), (
         "Non-reset envs should keep their original obs"
+    )
 
 
 def test_fix_k_reset_envs_get_fresh_obs():
@@ -54,8 +53,9 @@ def test_fix_k_reset_envs_get_fresh_obs():
 
     reset_indices = [0, 2, 5]
     for idx in reset_indices:
-        assert (obs["health"][idx] == 0.0).all(), \
+        assert (obs["health"][idx] == 0.0).all(), (
             f"Env {idx} (reset) should have fresh obs"
+        )
 
 
 def test_fix_k_old_behavior_corrupts_active_envs():
@@ -73,8 +73,9 @@ def test_fix_k_old_behavior_corrupts_active_envs():
     obs_old = apply_old_behavior(obs, over_limit, fresh_obs)
 
     # Old behavior: non-reset envs lost their data
-    assert (obs_old["health"][1] == 0.0).all(), \
+    assert (obs_old["health"][1] == 0.0).all(), (
         "Old behavior should corrupt non-reset envs (demonstrating the bug)"
+    )
 
 
 def test_fix_k_handles_multiple_keys():

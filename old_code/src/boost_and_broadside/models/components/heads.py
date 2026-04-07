@@ -32,7 +32,9 @@ class TeamPoolingHead(nn.Module):
         super().__init__()
         self.team_token = nn.Parameter(torch.randn(1, 1, d_model) * 0.02)
         self.norm = RMSNorm(d_model)
-        self.pooler = nn.MultiheadAttention(d_model, num_heads=n_heads, batch_first=True)
+        self.pooler = nn.MultiheadAttention(
+            d_model, num_heads=n_heads, batch_first=True
+        )
         self.mlp = nn.Sequential(
             nn.Linear(d_model, d_model),
             nn.SiLU(),
@@ -51,10 +53,10 @@ class TeamPoolingHead(nn.Module):
             all_masked = key_padding_mask.all(dim=-1, keepdim=True)
             key_padding_mask = key_padding_mask & ~all_masked
 
-        q = self.team_token.expand(BT, -1, -1)          # (BT, 1, D)
-        kv = self.norm(x)                               # (BT, N, D)
+        q = self.team_token.expand(BT, -1, -1)  # (BT, 1, D)
+        kv = self.norm(x)  # (BT, N, D)
         team_vec, _ = self.pooler(q, kv, kv, key_padding_mask=key_padding_mask)
-        return self.mlp(team_vec.squeeze(1))             # (BT, out_dim)
+        return self.mlp(team_vec.squeeze(1))  # (BT, out_dim)
 
 
 class ActorHead(nn.Module):
@@ -64,10 +66,12 @@ class ActorHead(nn.Module):
             nn.Linear(d_model, d_model),
             RMSNorm(d_model),
             nn.SiLU(),
-            nn.Linear(d_model, action_dim)
+            nn.Linear(d_model, action_dim),
         )
+
     def forward(self, x):
         return self.net(x)
+
 
 class WorldHead(nn.Module):
     def __init__(self, d_model: int, target_dim: int):
@@ -76,16 +80,19 @@ class WorldHead(nn.Module):
             nn.Linear(d_model, d_model),
             RMSNorm(d_model),
             nn.SiLU(),
-            nn.Linear(d_model, target_dim)
+            nn.Linear(d_model, target_dim),
         )
+
     def forward(self, x):
         return self.net(x)
+
 
 class ValueHead(nn.Module):
     """
     Predicts Value and Reward components.
     Often shared or closely related in the architecture.
     """
+
     def __init__(self, d_model: int):
         super().__init__()
         # We reuse the TeamEvaluator logic/structure as it was in the base architecture
@@ -95,18 +102,19 @@ class ValueHead(nn.Module):
             nn.Linear(d_model, d_model),
             RMSNorm(d_model),
             nn.SiLU(),
-            nn.Linear(d_model, 1) # Value scalar
+            nn.Linear(d_model, 1),  # Value scalar
         )
         # Assuming rewards are also scalar or small vector
         self.reward_net = nn.Sequential(
-             nn.Linear(d_model, d_model),
-             RMSNorm(d_model),
-             nn.SiLU(),
-             nn.Linear(d_model, 1) 
+            nn.Linear(d_model, d_model),
+            RMSNorm(d_model),
+            nn.SiLU(),
+            nn.Linear(d_model, 1),
         )
 
     def forward(self, x):
         return self.net(x), self.reward_net(x)
+
 
 class PairwiseRelationalHead(nn.Module):
     """
@@ -114,13 +122,14 @@ class PairwiseRelationalHead(nn.Module):
     Input: Concatenated tokens (Zi, Zj).
     Output: 4 targets (drel_x, drel_y, drel_vx, drel_vy).
     """
+
     def __init__(self, d_model: int):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(d_model * 2, d_model),
             RMSNorm(d_model),
             nn.SiLU(),
-            nn.Linear(d_model, 4)
+            nn.Linear(d_model, 4),
         )
 
     def forward(self, z):
@@ -152,9 +161,7 @@ class SoftBinnedWorldHead(nn.Module):
             nn.SiLU(),
         )
 
-        self.heads = nn.ModuleList([
-            nn.Linear(d_model, spec.n_bins) for spec in specs
-        ])
+        self.heads = nn.ModuleList([nn.Linear(d_model, spec.n_bins) for spec in specs])
 
     def forward(self, x: torch.Tensor) -> "List[torch.Tensor]":
         """

@@ -33,7 +33,7 @@ def test_train_pipeline_integration():
     # Run the command with CUDA masked
     env = os.environ.copy()
     env["CUDA_VISIBLE_DEVICES"] = ""
-    
+
     result = subprocess.run(
         command, cwd=str(project_root), capture_output=True, text=True, env=env
     )

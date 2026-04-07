@@ -220,7 +220,6 @@ def _compute_discounted_returns(
     return returns
 
 
-
 def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
     """
     Aggregate data from all workers into a single HDF5 dataset file.
@@ -252,7 +251,7 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
     total_timesteps = 0
     total_sim_time = 0.0
     worker_metadata_list = []
-    
+
     world_size = tuple(cfg.environment.world_size)
 
     # Initialize HDF5 file
@@ -278,14 +277,16 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
                 # Extract Team 0 data
                 team_0 = data["team_0"]
                 # New granular features dict
-                t0_features = team_0["features"] # Expecting this dict from DataCollector
-                
+                t0_features = team_0[
+                    "features"
+                ]  # Expecting this dict from DataCollector
+
                 t0_actions = team_0["actions"]
                 t0_rewards = team_0["rewards"]
                 t0_expert_actions = team_0.get("expert_actions")
                 if t0_expert_actions is None:
-                     t0_expert_actions = t0_actions.clone()
-                
+                    t0_expert_actions = t0_actions.clone()
+
                 t0_masks = team_0.get("action_masks")
                 if t0_masks is None:
                     t0_masks = torch.ones(
@@ -301,12 +302,12 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
                 # Extract Team 1 data
                 team_1 = data["team_1"]
                 t1_features = team_1["features"]
-                
+
                 t1_actions = team_1["actions"]
                 t1_rewards = team_1["rewards"]
                 t1_expert_actions = team_1.get("expert_actions")
                 if t1_expert_actions is None:
-                     t1_expert_actions = t1_actions.clone()
+                    t1_expert_actions = t1_actions.clone()
 
                 t1_masks = team_1.get("action_masks")
                 if t1_masks is None:
@@ -331,10 +332,9 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
                 t1_returns = _compute_discounted_returns(
                     t1_rewards, episode_lengths, gamma=gamma
                 )
-                
 
                 # Concatenate Data
-                
+
                 # Aggregate/Concat Features Dict
                 # Keys: position, velocity, etc.
                 features = {}
@@ -343,8 +343,10 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
                     features[k] = torch.cat([t0_features[k], t1_features[k]], dim=0)
 
                 actions = torch.cat([t0_actions, t1_actions], dim=0)
-                expert_actions = torch.cat([t0_expert_actions, t1_expert_actions], dim=0)
-                
+                expert_actions = torch.cat(
+                    [t0_expert_actions, t1_expert_actions], dim=0
+                )
+
                 action_masks = torch.cat([t0_masks, t1_masks], dim=0)
                 rewards = torch.cat([t0_rewards, t1_rewards], dim=0)
                 returns = torch.cat([t0_returns, t1_returns], dim=0)
@@ -359,20 +361,21 @@ def aggregate_worker_data(cfg: DictConfig, run_timestamp: str) -> Path | None:
                 team_ids_tensor = torch.cat([t0_ids, t1_ids], dim=0)
 
                 # Prepare batch dict
-                batch_data = features.copy() # Add all feature tensors
-                batch_data.update({
-                    "actions": actions,
-                    "expert_actions": expert_actions,
-                    "action_masks": action_masks,
-                    "rewards": rewards,
-                    "returns": returns,
-                    "episode_ids": batch_episode_ids,
-                    "episode_lengths": batch_episode_lengths,
-                    "agent_skills": agent_skills,
-                   # "team_ids" is already in features, don't overwrite with scalar version
-                   # "team_ids": team_ids_tensor, 
-                })
-                
+                batch_data = features.copy()  # Add all feature tensors
+                batch_data.update(
+                    {
+                        "actions": actions,
+                        "expert_actions": expert_actions,
+                        "action_masks": action_masks,
+                        "rewards": rewards,
+                        "returns": returns,
+                        "episode_ids": batch_episode_ids,
+                        "episode_lengths": batch_episode_lengths,
+                        "agent_skills": agent_skills,
+                        # "team_ids" is already in features, don't overwrite with scalar version
+                        # "team_ids": team_ids_tensor,
+                    }
+                )
 
                 # Write to HDF5
                 for key, tensor in batch_data.items():

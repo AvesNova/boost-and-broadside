@@ -40,16 +40,18 @@ def observation_to_tokens(
     # Allocate tokens based on global STATE_DIM
     batch_size = 1
     num_ships = obs["health"].shape[0]
-    tokens = torch.zeros((batch_size, num_ships, STATE_DIM), device=obs["health"].device)
+    tokens = torch.zeros(
+        (batch_size, num_ships, STATE_DIM), device=obs["health"].device
+    )
 
     # Fill features according to StateFeature enum
     tokens[..., StateFeature.HEALTH] = obs["health"].float()
     tokens[..., StateFeature.POWER] = obs["power"].float()
-    
+
     # Handle velocity (complex -> real/imag)
     tokens[..., StateFeature.VX] = obs["velocity"].real.float()
     tokens[..., StateFeature.VY] = obs["velocity"].imag.float()
-    
+
     tokens[..., StateFeature.ANG_VEL] = obs["angular_velocity"].float()
 
     return tokens

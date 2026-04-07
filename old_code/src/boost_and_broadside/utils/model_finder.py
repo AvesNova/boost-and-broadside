@@ -153,11 +153,11 @@ def find_best_model(model_type: Literal["bc", "rl", "world_model"]) -> str | Non
                         # Check for .pt (Interleaved) or .pth (Legacy)
                         best_path = run_dir / "best_world_model.pt"
                         if not best_path.exists():
-                             best_path = run_dir / "best_world_model.pth"
-                             
+                            best_path = run_dir / "best_world_model.pth"
+
                         final_path = run_dir / "final_world_model.pt"
                         if not final_path.exists():
-                             final_path = run_dir / "final_world_model.pth"
+                            final_path = run_dir / "final_world_model.pth"
                     else:
                         continue
 

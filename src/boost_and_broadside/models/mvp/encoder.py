@@ -21,11 +21,15 @@ import torch
 import torch.nn as nn
 
 from boost_and_broadside.config import ModelConfig, ShipConfig
-from boost_and_broadside.constants import NUM_POWER_ACTIONS, NUM_TURN_ACTIONS, NUM_SHOOT_ACTIONS
+from boost_and_broadside.constants import (
+    NUM_POWER_ACTIONS,
+    NUM_TURN_ACTIONS,
+    NUM_SHOOT_ACTIONS,
+)
 
 
 _TEAM_EMBED_DIM = 4
-_ACTION_DIM     = NUM_POWER_ACTIONS + NUM_TURN_ACTIONS + NUM_SHOOT_ACTIONS  # 12
+_ACTION_DIM = NUM_POWER_ACTIONS + NUM_TURN_ACTIONS + NUM_SHOOT_ACTIONS  # 12
 
 
 def _raw_dim(n_fourier_freqs: int) -> int:
@@ -39,7 +43,9 @@ def _symlog(x: torch.Tensor) -> torch.Tensor:
     return torch.sign(x) * torch.log(torch.abs(x) + 1.0)
 
 
-def _fourier_encode(coords: torch.Tensor, n_freqs: int, max_period: float) -> torch.Tensor:
+def _fourier_encode(
+    coords: torch.Tensor, n_freqs: int, max_period: float
+) -> torch.Tensor:
     """Fourier-encode a batch of scalar coordinates.
 
     Args:
@@ -50,20 +56,29 @@ def _fourier_encode(coords: torch.Tensor, n_freqs: int, max_period: float) -> to
     Returns:
         (..., 2 * n_freqs) tensor of [sin, cos] features.
     """
-    freqs  = torch.exp(
-        torch.linspace(0.0, -torch.log(torch.tensor(n_freqs, dtype=torch.float32)), n_freqs,
-                       device=coords.device)
+    freqs = torch.exp(
+        torch.linspace(
+            0.0,
+            -torch.log(torch.tensor(n_freqs, dtype=torch.float32)),
+            n_freqs,
+            device=coords.device,
+        )
         * torch.log(torch.tensor(max_period, dtype=torch.float32, device=coords.device))
-    )                                                            # (n_freqs,)
+    )  # (n_freqs,)
     # Alternatively: log-spaced frequencies over [1/max_period, 1]
     # Use a simple implementation: freqs[k] = (2π / max_period) * n_freqs^(k/n_freqs)
     # Standard Fourier position encoding:
-    freqs = 2.0 * torch.pi / max_period * torch.pow(
-        torch.tensor(float(n_freqs), device=coords.device),
-        torch.linspace(0.0, 1.0, n_freqs, device=coords.device)
-    )                                                            # (n_freqs,)
+    freqs = (
+        2.0
+        * torch.pi
+        / max_period
+        * torch.pow(
+            torch.tensor(float(n_freqs), device=coords.device),
+            torch.linspace(0.0, 1.0, n_freqs, device=coords.device),
+        )
+    )  # (n_freqs,)
 
-    args   = coords.unsqueeze(-1) * freqs                       # (..., n_freqs)
+    args = coords.unsqueeze(-1) * freqs  # (..., n_freqs)
     return torch.cat([torch.sin(args), torch.cos(args)], dim=-1)  # (..., 2*n_freqs)
 
 
@@ -75,13 +90,13 @@ class ShipEncoder(nn.Module):
 
     def __init__(self, model_config: ModelConfig, ship_config: ShipConfig) -> None:
         super().__init__()
-        self.n_freqs  = model_config.n_fourier_freqs
+        self.n_freqs = model_config.n_fourier_freqs
         self.world_w, self.world_h = ship_config.world_size
-        self.d_model  = model_config.d_model
+        self.d_model = model_config.d_model
 
-        self.team_embed   = nn.Embedding(2, _TEAM_EMBED_DIM)
-        self.proj         = nn.Linear(_raw_dim(self.n_freqs), model_config.d_model)
-        self.layer_norm   = nn.LayerNorm(model_config.d_model)
+        self.team_embed = nn.Embedding(2, _TEAM_EMBED_DIM)
+        self.proj = nn.Linear(_raw_dim(self.n_freqs), model_config.d_model)
+        self.layer_norm = nn.LayerNorm(model_config.d_model)
 
     def forward(self, obs: dict[str, torch.Tensor]) -> torch.Tensor:
         """Encode observations into ship tokens.
@@ -100,45 +115,54 @@ class ShipEncoder(nn.Module):
         Returns:
             (..., N, d_model) float32 token tensor.
         """
-        pos         = obs["pos"]        # (..., N, 2)
-        vel         = obs["vel"]        # (..., N, 2)
-        att         = obs["att"]        # (..., N, 2)
-        ang_vel     = obs["ang_vel"]    # (..., N, 1)
-        scalars     = obs["scalars"]    # (..., N, 3)
-        team_id     = obs["team_id"].long()  # (..., N)
-        alive       = obs["alive"]      # (..., N)
+        pos = obs["pos"]  # (..., N, 2)
+        vel = obs["vel"]  # (..., N, 2)
+        att = obs["att"]  # (..., N, 2)
+        ang_vel = obs["ang_vel"]  # (..., N, 1)
+        scalars = obs["scalars"]  # (..., N, 3)
+        team_id = obs["team_id"].long()  # (..., N)
+        alive = obs["alive"]  # (..., N)
         prev_action = obs["prev_action"].long()  # (..., N, 3)
 
         # Fourier position encoding — encode x and y separately
         px_enc = _fourier_encode(pos[..., 0], self.n_freqs, 1.0)  # (..., N, 2*n_freqs)
         py_enc = _fourier_encode(pos[..., 1], self.n_freqs, 1.0)  # (..., N, 2*n_freqs)
-        pos_feat = torch.cat([px_enc, py_enc], dim=-1)            # (..., N, 4*n_freqs)
+        pos_feat = torch.cat([px_enc, py_enc], dim=-1)  # (..., N, 4*n_freqs)
 
         # Symlog velocity and angular velocity
-        vel_feat    = _symlog(vel)                                 # (..., N, 2)
-        ang_feat    = _symlog(ang_vel)                             # (..., N, 1)
+        vel_feat = _symlog(vel)  # (..., N, 2)
+        ang_feat = _symlog(ang_vel)  # (..., N, 1)
 
         # Team embedding
-        team_feat   = self.team_embed(team_id)                    # (..., N, 4)
+        team_feat = self.team_embed(team_id)  # (..., N, 4)
 
         # Alive as float
-        alive_feat  = alive.float().unsqueeze(-1)                  # (..., N, 1)
+        alive_feat = alive.float().unsqueeze(-1)  # (..., N, 1)
 
         # Prev-action one-hot — concatenate one-hot for each sub-action
-        pa_power = torch.nn.functional.one_hot(prev_action[..., 0], NUM_POWER_ACTIONS).float()
-        pa_turn  = torch.nn.functional.one_hot(prev_action[..., 1], NUM_TURN_ACTIONS).float()
-        pa_shoot = torch.nn.functional.one_hot(prev_action[..., 2], NUM_SHOOT_ACTIONS).float()
+        pa_power = torch.nn.functional.one_hot(
+            prev_action[..., 0], NUM_POWER_ACTIONS
+        ).float()
+        pa_turn = torch.nn.functional.one_hot(
+            prev_action[..., 1], NUM_TURN_ACTIONS
+        ).float()
+        pa_shoot = torch.nn.functional.one_hot(
+            prev_action[..., 2], NUM_SHOOT_ACTIONS
+        ).float()
         action_feat = torch.cat([pa_power, pa_turn, pa_shoot], dim=-1)  # (..., N, 12)
 
-        raw = torch.cat([
-            pos_feat,     # 4 * n_freqs = 32 (for n_freqs=8)
-            vel_feat,     # 2
-            att,          # 2
-            ang_feat,     # 1
-            scalars,      # 3
-            team_feat,    # 4
-            alive_feat,   # 1
-            action_feat,  # 12
-        ], dim=-1)                                                  # (..., N, 57)
+        raw = torch.cat(
+            [
+                pos_feat,  # 4 * n_freqs = 32 (for n_freqs=8)
+                vel_feat,  # 2
+                att,  # 2
+                ang_feat,  # 1
+                scalars,  # 3
+                team_feat,  # 4
+                alive_feat,  # 1
+                action_feat,  # 12
+            ],
+            dim=-1,
+        )  # (..., N, 57)
 
-        return self.layer_norm(self.proj(raw))                     # (..., N, d_model)
+        return self.layer_norm(self.proj(raw))  # (..., N, d_model)

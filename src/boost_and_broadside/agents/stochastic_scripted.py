@@ -20,7 +20,9 @@ class StochasticScriptedAgent:
         self.ship_config = ship_config
         self.config = agent_config
 
-    def _linear_ramp(self, x: torch.Tensor, low: float, high: float, prob_lo: float, prob_hi: float) -> torch.Tensor:
+    def _linear_ramp(
+        self, x: torch.Tensor, low: float, high: float, prob_lo: float, prob_hi: float
+    ) -> torch.Tensor:
         """
         Maps x linearly from [low, high] to [prob_lo, prob_hi], clamped.
         prob_lo is the output probability when x <= low.
@@ -40,7 +42,9 @@ class StochasticScriptedAgent:
         """Independent AND logic: P(A and B) = P(A) * P(B)"""
         return p_a * p_b
 
-    def _select_targets(self, state: TensorState) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def _select_targets(
+        self, state: TensorState
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Find the nearest alive enemy for each ship.
 
         Returns:
@@ -67,13 +71,17 @@ class StochasticScriptedAgent:
         alive_tgt = state.ship_alive.unsqueeze(1)
         valid_tgt = enemy_mask & alive_tgt
 
-        dist_masked = torch.where(valid_tgt, dist, torch.tensor(float('inf'), device=device))
+        dist_masked = torch.where(
+            valid_tgt, dist, torch.tensor(float("inf"), device=device)
+        )
         closest_dist, target_idx = torch.min(dist_masked, dim=2)
-        has_target = closest_dist < float('inf')
+        has_target = closest_dist < float("inf")
 
         return closest_dist, target_idx, has_target
 
-    def _predict_interception(self, state: TensorState, target_idx: torch.Tensor, closest_dist: torch.Tensor) -> torch.Tensor:
+    def _predict_interception(
+        self, state: TensorState, target_idx: torch.Tensor, closest_dist: torch.Tensor
+    ) -> torch.Tensor:
         """Predict the unit direction vector to the interception point.
 
         Accounts for both target and shooter movement during bullet travel time,
@@ -92,8 +100,12 @@ class StochasticScriptedAgent:
         shooter_future_pos = state.ship_pos + state.ship_vel * t_intercept
 
         diff_pred = pred_pos - shooter_future_pos
-        diff_pred.real = (diff_pred.real + world_width / 2) % world_width - world_width / 2
-        diff_pred.imag = (diff_pred.imag + world_height / 2) % world_height - world_height / 2
+        diff_pred.real = (
+            diff_pred.real + world_width / 2
+        ) % world_width - world_width / 2
+        diff_pred.imag = (
+            diff_pred.imag + world_height / 2
+        ) % world_height - world_height / 2
 
         dist_pred = torch.abs(diff_pred)
         return diff_pred / (dist_pred + 1e-8)
@@ -117,59 +129,103 @@ class StochasticScriptedAgent:
         abs_angle = torch.abs(rel_angle)
 
         # --- 1. Turn Probabilities (7 options) ---
-        p_needs_turn = self._linear_ramp(abs_angle, self.config.turn_angle_ramp[0], self.config.turn_angle_ramp[1], *self.config.turn_angle_prob)
-        p_is_sharp   = self._linear_ramp(abs_angle, self.config.sharp_turn_angle_ramp[0], self.config.sharp_turn_angle_ramp[1], *self.config.sharp_turn_angle_prob)
+        p_needs_turn = self._linear_ramp(
+            abs_angle,
+            self.config.turn_angle_ramp[0],
+            self.config.turn_angle_ramp[1],
+            *self.config.turn_angle_prob,
+        )
+        p_is_sharp = self._linear_ramp(
+            abs_angle,
+            self.config.sharp_turn_angle_ramp[0],
+            self.config.sharp_turn_angle_ramp[1],
+            *self.config.sharp_turn_angle_prob,
+        )
 
-        p_dir_right = torch.where(rel_angle > 0, torch.ones_like(rel_angle), torch.zeros_like(rel_angle))
-        p_dir_left  = torch.where(rel_angle < 0, torch.ones_like(rel_angle), torch.zeros_like(rel_angle))
+        p_dir_right = torch.where(
+            rel_angle > 0, torch.ones_like(rel_angle), torch.zeros_like(rel_angle)
+        )
+        p_dir_left = torch.where(
+            rel_angle < 0, torch.ones_like(rel_angle), torch.zeros_like(rel_angle)
+        )
 
-        p_turn_left_base  = self._prob_and(p_needs_turn, p_dir_left)
+        p_turn_left_base = self._prob_and(p_needs_turn, p_dir_left)
         p_turn_right_base = self._prob_and(p_needs_turn, p_dir_right)
 
-        p_sharp_left  = self._prob_and(p_turn_left_base,  p_is_sharp)
+        p_sharp_left = self._prob_and(p_turn_left_base, p_is_sharp)
         p_sharp_right = self._prob_and(p_turn_right_base, p_is_sharp)
-        p_normal_left  = self._prob_and(p_turn_left_base,  1.0 - p_is_sharp)
+        p_normal_left = self._prob_and(p_turn_left_base, 1.0 - p_is_sharp)
         p_normal_right = self._prob_and(p_turn_right_base, 1.0 - p_is_sharp)
         p_straight = 1.0 - p_needs_turn
 
-        p_air_brake       = torch.zeros_like(p_straight)
+        p_air_brake = torch.zeros_like(p_straight)
         p_sharp_air_brake = torch.zeros_like(p_straight)
 
-        turn_probs = torch.stack([
-            p_straight, p_normal_left, p_normal_right,
-            p_sharp_left, p_sharp_right, p_air_brake, p_sharp_air_brake,
-        ], dim=-1)
+        turn_probs = torch.stack(
+            [
+                p_straight,
+                p_normal_left,
+                p_normal_right,
+                p_sharp_left,
+                p_sharp_right,
+                p_air_brake,
+                p_sharp_air_brake,
+            ],
+            dim=-1,
+        )
         turn_probs = turn_probs / (turn_probs.sum(dim=-1, keepdim=True) + 1e-8)
 
         # --- 2. Power Probabilities (3 options) ---
-        speed       = state.ship_vel.abs()
+        speed = state.ship_vel.abs()
         power_ratio = state.ship_power / self.ship_config.max_power
 
-        p_is_close  = self._linear_ramp(closest_dist, self.config.close_range_ramp[0], self.config.close_range_ramp[1], *self.config.close_range_prob)
-        p_reverse   = p_is_close
+        p_is_close = self._linear_ramp(
+            closest_dist,
+            self.config.close_range_ramp[0],
+            self.config.close_range_ramp[1],
+            *self.config.close_range_prob,
+        )
+        p_reverse = p_is_close
 
-        p_slow = self._linear_ramp(speed, self.config.boost_speed_ramp[0], self.config.boost_speed_ramp[1], *self.config.boost_speed_prob)
+        p_slow = self._linear_ramp(
+            speed,
+            self.config.boost_speed_ramp[0],
+            self.config.boost_speed_ramp[1],
+            *self.config.boost_speed_prob,
+        )
 
         max_shooting_range = self.config.shoot_distance_ramp[1]
         boost_metric = power_ratio - (1.0 - closest_dist / max_shooting_range)
-        p_far_power  = self._linear_ramp(boost_metric, -0.2, 0.2, 0.0, 1.0)
+        p_far_power = self._linear_ramp(boost_metric, -0.2, 0.2, 0.0, 1.0)
 
         p_want_boost = self._prob_or(p_slow, p_far_power)
-        p_boost      = self._prob_and(p_want_boost, 1.0 - p_is_close)
-        p_coast      = (1.0 - self._prob_or(p_want_boost, p_reverse)).clamp(0.0, 1.0)
+        p_boost = self._prob_and(p_want_boost, 1.0 - p_is_close)
+        p_coast = (1.0 - self._prob_or(p_want_boost, p_reverse)).clamp(0.0, 1.0)
 
         power_probs = torch.stack([p_coast, p_boost, p_reverse], dim=-1)
         power_probs = power_probs / (power_probs.sum(dim=-1, keepdim=True) + 1e-8)
 
         # --- 3. Shoot Probabilities (2 options) ---
-        target_angular_size = 2.0 * torch.atan(self.ship_config.collision_radius / (closest_dist + 1e-8))
-        shoot_threshold     = target_angular_size.clamp(np.deg2rad(1.0), np.deg2rad(45.0))
+        target_angular_size = 2.0 * torch.atan(
+            self.ship_config.collision_radius / (closest_dist + 1e-8)
+        )
+        shoot_threshold = target_angular_size.clamp(np.deg2rad(1.0), np.deg2rad(45.0))
 
         angle_ratio = abs_angle / (shoot_threshold + 1e-8)
-        p_aligned   = self._linear_ramp(angle_ratio, self.config.shoot_angle_ramp[0], self.config.shoot_angle_ramp[1], *self.config.shoot_angle_prob)
-        p_in_range  = self._linear_ramp(closest_dist, self.config.shoot_distance_ramp[0], self.config.shoot_distance_ramp[1], *self.config.shoot_distance_prob)
+        p_aligned = self._linear_ramp(
+            angle_ratio,
+            self.config.shoot_angle_ramp[0],
+            self.config.shoot_angle_ramp[1],
+            *self.config.shoot_angle_prob,
+        )
+        p_in_range = self._linear_ramp(
+            closest_dist,
+            self.config.shoot_distance_ramp[0],
+            self.config.shoot_distance_ramp[1],
+            *self.config.shoot_distance_prob,
+        )
 
-        p_shoot    = self._prob_and(p_aligned, p_in_range)
+        p_shoot = self._prob_and(p_aligned, p_in_range)
         p_no_shoot = 1.0 - p_shoot
 
         shoot_probs = torch.stack([p_no_shoot, p_shoot], dim=-1)
@@ -184,12 +240,14 @@ class StochasticScriptedAgent:
             return torch.where(active_expanded, probs, mask_probs)
 
         power_probs = apply_mask(power_probs, 0)
-        turn_probs  = apply_mask(turn_probs,  0)
+        turn_probs = apply_mask(turn_probs, 0)
         shoot_probs = apply_mask(shoot_probs, 0)
 
         return power_probs, turn_probs, shoot_probs
 
-    def get_actions_and_probs(self, state: TensorState) -> tuple[torch.Tensor, torch.Tensor]:
+    def get_actions_and_probs(
+        self, state: TensorState
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Sample actions and return the expert probability distribution as soft labels.
 
         Returns:
@@ -198,10 +256,12 @@ class StochasticScriptedAgent:
                           (B, N, 42) float tensor (joint, if flat_action_sampling=True)
         """
         closest_dist, target_idx, has_target = self._select_targets(state)
-        dir_pred    = self._predict_interception(state, target_idx, closest_dist)
+        dir_pred = self._predict_interception(state, target_idx, closest_dist)
         active_mask = state.ship_alive & has_target
 
-        p_power, p_turn, p_shoot = self._compute_action_probs(state, closest_dist, dir_pred, active_mask)
+        p_power, p_turn, p_shoot = self._compute_action_probs(
+            state, closest_dist, dir_pred, active_mask
+        )
 
         batch_size, num_ships = state.ship_pos.shape
         device = state.device
@@ -212,23 +272,31 @@ class StochasticScriptedAgent:
                 * p_turn.unsqueeze(-2).unsqueeze(-1)
                 * p_shoot.unsqueeze(-2).unsqueeze(-2)
             )
-            joint_probs  = joint_probs.reshape(batch_size, num_ships, 42)
+            joint_probs = joint_probs.reshape(batch_size, num_ships, 42)
             expert_probs = joint_probs
 
-            flat_probs  = joint_probs.view(-1, 42)
-            sampled_flat = torch.multinomial(flat_probs, num_samples=1).view(batch_size, num_ships)
+            flat_probs = joint_probs.view(-1, 42)
+            sampled_flat = torch.multinomial(flat_probs, num_samples=1).view(
+                batch_size, num_ships
+            )
 
             actions_shoot = sampled_flat % 2
-            sampled_flat  = sampled_flat // 2
-            actions_turn  = sampled_flat % 7
+            sampled_flat = sampled_flat // 2
+            actions_turn = sampled_flat % 7
             actions_power = sampled_flat // 7
             actions = torch.stack([actions_power, actions_turn, actions_shoot], dim=-1)
         else:
             expert_probs = torch.cat([p_power, p_turn, p_shoot], dim=-1)  # (B, N, 12)
 
-            a_p = torch.multinomial(p_power.view(-1, 3), num_samples=1).view(batch_size, num_ships)
-            a_t = torch.multinomial(p_turn.view(-1, 7),  num_samples=1).view(batch_size, num_ships)
-            a_s = torch.multinomial(p_shoot.view(-1, 2), num_samples=1).view(batch_size, num_ships)
+            a_p = torch.multinomial(p_power.view(-1, 3), num_samples=1).view(
+                batch_size, num_ships
+            )
+            a_t = torch.multinomial(p_turn.view(-1, 7), num_samples=1).view(
+                batch_size, num_ships
+            )
+            a_s = torch.multinomial(p_shoot.view(-1, 2), num_samples=1).view(
+                batch_size, num_ships
+            )
             actions = torch.stack([a_p, a_t, a_s], dim=-1)
 
         return actions, expert_probs

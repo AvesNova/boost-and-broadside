@@ -12,7 +12,10 @@ from .random_agent import RandomAgent
 from boost_and_broadside.env2.agents.scripted import VectorScriptedAgent
 from boost_and_broadside.env2.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.env2.agents.stochastic_config import StochasticAgentConfig
-from boost_and_broadside.utils.model_finder import find_most_recent_model, find_best_model
+from boost_and_broadside.utils.model_finder import (
+    find_most_recent_model,
+    find_best_model,
+)
 
 log = logging.getLogger(__name__)
 
@@ -56,8 +59,8 @@ def _load_agent_config_from_model(
         # Resolve interpolations on the full config object before extracting the model sub-node
         OmegaConf.resolve(saved_cfg)
         wm_cfg = OmegaConf.to_container(saved_cfg.model, resolve=False)
-        
-        # Ensure _target_ is preserved (to_container might omit it if not careful, 
+
+        # Ensure _target_ is preserved (to_container might omit it if not careful,
         # but usually it keeps it. Let's be explicit if needed).
         if "_target_" not in wm_cfg and "_target_" in saved_cfg.model:
             wm_cfg["_target_"] = saved_cfg.model["_target_"]
@@ -95,28 +98,37 @@ def create_agent(agent_type: str, agent_config: dict) -> nn.Module:
         case "scripted":
             # Bridge to vectorized version for consistency
             from boost_and_broadside.core.config import ShipConfig
+
             # Filter config to only include keys ShipConfig accepts to avoid TypeError
             import inspect
+
             sig = inspect.signature(ShipConfig.__init__)
             valid_params = set(sig.parameters.keys())
-            filtered_config = {k: v for k, v in agent_config.items() if k in valid_params}
+            filtered_config = {
+                k: v for k, v in agent_config.items() if k in valid_params
+            }
             ship_cfg = ShipConfig(**filtered_config)
             return VectorScriptedAgent(ship_cfg)
         case "stochastic_scripted":
             from boost_and_broadside.core.config import ShipConfig
             import inspect
+
             # Extract ship config
             sig_ship = inspect.signature(ShipConfig.__init__)
             valid_ship_params = set(sig_ship.parameters.keys())
-            ship_cfg_dict = {k: v for k, v in agent_config.items() if k in valid_ship_params}
+            ship_cfg_dict = {
+                k: v for k, v in agent_config.items() if k in valid_ship_params
+            }
             ship_cfg = ShipConfig(**ship_cfg_dict)
-            
+
             # Extract stochastic config
             sig_stoch = inspect.signature(StochasticAgentConfig.__init__)
             valid_stoch_params = set(sig_stoch.parameters.keys())
-            stoch_cfg_dict = {k: v for k, v in agent_config.items() if k in valid_stoch_params}
+            stoch_cfg_dict = {
+                k: v for k, v in agent_config.items() if k in valid_stoch_params
+            }
             stoch_cfg = StochasticAgentConfig(**stoch_cfg_dict)
-            
+
             return StochasticScriptedAgent(ship_cfg, stoch_cfg)
         case "replay_agent":
             return ReplayAgent(**agent_config)

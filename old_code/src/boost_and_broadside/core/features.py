@@ -1,6 +1,7 @@
 """
 Centralized feature definitions and normalization strategies for the Boost and Broadside project.
 """
+
 from boost_and_broadside.core.constants import StateFeature, TargetFeature
 
 # Ego State: [HEALTH, POWER, VX, VY, ANG_VEL]

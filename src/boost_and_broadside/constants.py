@@ -27,12 +27,14 @@ class ShootActions(IntEnum):
     SHOOT = 1
 
 
-NUM_POWER_ACTIONS: int = len(PowerActions)   # 3
-NUM_TURN_ACTIONS: int = len(TurnActions)     # 7
-NUM_SHOOT_ACTIONS: int = len(ShootActions)   # 2
+NUM_POWER_ACTIONS: int = len(PowerActions)  # 3
+NUM_TURN_ACTIONS: int = len(TurnActions)  # 7
+NUM_SHOOT_ACTIONS: int = len(ShootActions)  # 2
 
 # Sum of logits for all action heads (used to size the action output layer)
-TOTAL_ACTION_LOGITS: int = NUM_POWER_ACTIONS + NUM_TURN_ACTIONS + NUM_SHOOT_ACTIONS  # 12
+TOTAL_ACTION_LOGITS: int = (
+    NUM_POWER_ACTIONS + NUM_TURN_ACTIONS + NUM_SHOOT_ACTIONS
+)  # 12
 
 # Slices into the flat logit vector
 POWER_SLICE: slice = slice(0, NUM_POWER_ACTIONS)
