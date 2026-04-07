@@ -127,12 +127,34 @@ class RewardConfig:
 
 
 @dataclass(frozen=True)
+class ScaleConfig:
+    """One training scale: an environment config paired with a batch size.
+
+    All scales share the same policy, optimizer, and return scaler.
+    Gradients are accumulated across scales before each optimizer step.
+    scales[0] in TrainConfig is the primary scale and supports scripted /
+    avg-model / league opponents; scales[1:] run pure self-play.
+
+    Args:
+        env_config: Environment config for this scale — num_ships defines N.
+        num_envs:   Parallel environments. Set inversely proportional to N so
+                    total ships-per-update stays constant across scales.
+    """
+    env_config: EnvConfig
+    num_envs:   int
+
+
+@dataclass(frozen=True)
 class TrainConfig:
-    """PPO training hyperparameters. No defaults — all values required."""
-    num_envs: int
+    """PPO training hyperparameters. No defaults — all values required.
+
+    scales[0] is the primary scale (scripted / avg-model / league opponents enabled).
+    scales[1:] are auxiliary scales (pure self-play, gradient accumulation).
+    """
+    scales: tuple[ScaleConfig, ...]  # at least one entry
     num_steps: int          # rollout length per environment
     num_epochs: int         # PPO update epochs per rollout
-    num_minibatches: int    # minibatches per epoch (num_envs must be divisible)
+    num_minibatches: int    # minibatches per epoch (scales[0].num_envs must be divisible)
     learning_rate: float
     gamma: float            # discount factor
     gae_lambda: float       # GAE lambda
@@ -146,8 +168,8 @@ class TrainConfig:
     lr_warmup_steps: int = 0               # linearly ramp LR from 0 over this many global steps; 0 = disabled
     checkpoint_interval: int = 0           # save every N updates; 0 = disabled
     checkpoint_dir: str = "checkpoints"    # directory to write .pt files
-    scripted_frac: float = 0.0             # fraction of envs using scripted opponent for team-1
-    avg_model_frac: float = 0.0            # fraction of envs using avg-model opponent for team-1
+    scripted_frac: float = 0.0             # fraction of primary envs using scripted opponent
+    avg_model_frac: float = 0.0            # fraction of primary envs using avg-model opponent
     avg_model_min_steps: int = 0           # don't start building avg model until this many global steps
     bc_coef: float = 0.0                   # auxiliary BC loss coefficient (0 = disabled)
     bc_hold_steps: int = 0                 # hold bc_coef at full value for this many global steps
@@ -161,20 +183,23 @@ class TrainConfig:
     shaping_schedules: tuple[tuple[str, int, int], ...] = ()
 
     # --- League play + ELO ---
-    league_frac:              float = 0.0          # fraction of envs using a roster-sampled opponent
+    league_frac:              float = 0.0          # fraction of primary envs using a roster-sampled opponent
     league_size:              int   = 20           # max number of checkpoint entries in the roster
     elo_eval_games:           int   = 256          # parallel games per ELO evaluation matchup
     elo_eval_interval:        int   = 10           # run ELO eval every N updates (0 = disabled)
-    elo_milestone_gap:        float = 50.0         # add checkpoint to roster every N normalized ELO points gained (training ELO minus random ELO)
+    elo_milestone_gap:        float = 50.0         # add checkpoint to roster every N normalized ELO points gained
     elo_k_factor:             float = 32.0         # ELO K-factor (score sensitivity per match)
     elo_temperature:          float = 200.0        # ELO bandwidth for proximity-weighted sampling
-    league_uniform_sampling:  bool  = False        # if True, sample league opponents uniformly instead of ELO-proximity weighted
+    league_uniform_sampling:  bool  = False        # if True, sample league opponents uniformly
     scripted_roster_min_steps: int  = 300_000_000  # delay adding scripted to roster until this many steps
 
     def __post_init__(self) -> None:
-        if self.num_envs % self.num_minibatches != 0:
+        if len(self.scales) == 0:
+            raise ValueError("scales must contain at least one ScaleConfig")
+        primary_envs = self.scales[0].num_envs
+        if primary_envs % self.num_minibatches != 0:
             raise ValueError(
-                f"num_envs={self.num_envs} must be divisible by "
+                f"scales[0].num_envs={primary_envs} must be divisible by "
                 f"num_minibatches={self.num_minibatches}"
             )
         if self.scripted_frac + self.avg_model_frac + self.league_frac >= 1.0:

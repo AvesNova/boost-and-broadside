@@ -149,7 +149,6 @@ class PPOTrainer:
         train_config:   TrainConfig,
         model_config:   ModelConfig,
         ship_config:    ShipConfig,
-        env_config:     EnvConfig,
         reward_config:  RewardConfig,
         device:         str | torch.device,
         use_wandb:      bool = False,
@@ -158,18 +157,19 @@ class PPOTrainer:
         self.cfg           = train_config
         self.model_config  = model_config
         self.ship_config   = ship_config
-        self.env_config    = env_config
+        self.env_config    = train_config.scales[0].env_config
         self.reward_config = reward_config
         self.device        = torch.device(device)
         self.use_wandb     = use_wandb
         self.scripted_agent = scripted_agent
 
-        # Env group sizes — contiguous slices of the B envs:
+        # Primary scale — supports scripted / avg-model / league opponents.
+        # Env group sizes are contiguous slices of the B primary envs:
         #   [0, B_self)                          → pure self-play
         #   [B_self, B_self+B_sc)               → scripted opponent (+ BC targets)
         #   [B_self+B_sc, B_self+B_sc+B_avg)   → avg-model opponent
         #   [B_self+B_sc+B_avg, B)              → league roster opponent
-        B = train_config.num_envs
+        B = train_config.scales[0].num_envs
         self.B_sc     = round(train_config.scripted_frac  * B)
         self.B_avg    = round(train_config.avg_model_frac * B)
         self.B_league = round(train_config.league_frac    * B)
@@ -184,9 +184,9 @@ class PPOTrainer:
             pass
 
         self.wrapper = MVPEnvWrapper(
-            num_envs       = train_config.num_envs,
+            num_envs       = train_config.scales[0].num_envs,
             ship_config    = ship_config,
-            env_config     = env_config,
+            env_config     = train_config.scales[0].env_config,
             reward_config  = reward_config,
             device         = device,
             scripted_agent = scripted_agent,
@@ -199,8 +199,10 @@ class PPOTrainer:
 
         # Linear LR warmup: ramp from 0 → learning_rate over lr_warmup_steps global steps.
         # Implemented as a per-update scheduler (steps once per rollout update).
-        steps_per_update = train_config.num_envs * train_config.num_steps
-        warmup_updates   = max(1, train_config.lr_warmup_steps // steps_per_update)
+        # Use total env-steps across all scales for a more accurate warmup duration.
+        total_envs_per_step = sum(sc.num_envs for sc in train_config.scales)
+        steps_per_update    = total_envs_per_step * train_config.num_steps
+        warmup_updates      = max(1, train_config.lr_warmup_steps // steps_per_update)
         if train_config.lr_warmup_steps > 0:
             self.lr_scheduler = optim.lr_scheduler.LinearLR(
                 self.optim,
@@ -211,7 +213,7 @@ class PPOTrainer:
         else:
             self.lr_scheduler = None
 
-        N = env_config.num_ships
+        N = train_config.scales[0].env_config.num_ships
 
         # Build obs shapes for the buffer from a dummy reset
         sample_obs  = self.wrapper.reset()
@@ -223,7 +225,7 @@ class PPOTrainer:
 
         self.buffer = RolloutBuffer(
             num_steps       = train_config.num_steps,
-            num_envs        = train_config.num_envs,
+            num_envs        = train_config.scales[0].num_envs,
             num_ships       = N,
             num_components  = K,
             obs_shapes      = obs_shapes,
@@ -300,12 +302,13 @@ class PPOTrainer:
         # Async logging queue
         self._log_queue: Queue = Queue()
         if use_wandb:
-            self._init_wandb(train_config, model_config, ship_config, env_config, reward_config)
+            self._init_wandb(train_config, model_config, ship_config, self.env_config, reward_config)
             self._log_thread = threading.Thread(target=self._log_worker, daemon=True)
             self._log_thread.start()
 
         self._global_step = 0
-        self._num_updates = train_config.total_timesteps // (train_config.num_envs * train_config.num_steps)
+        total_envs_all    = sum(sc.num_envs for sc in train_config.scales)
+        self._num_updates = train_config.total_timesteps // (total_envs_all * train_config.num_steps)
 
         # Run name used as checkpoint subdirectory (e.g. "checkpoints/good-spaceship-223/")
         if use_wandb:
@@ -317,6 +320,40 @@ class PPOTrainer:
 
         self._shaping_scheduler = self._build_shaping_scheduler()
         self._bc_coef_eff: float = train_config.bc_coef  # updated each step by scheduler
+
+        # --- Auxiliary training scales (multi-scale curriculum) ---
+        # Each scale has its own env + buffer; policy, optimizer, and scaler are shared.
+        # Pure self-play only — no scripted/avg/league opponents on aux scales.
+        self.aux_wrappers: list[MVPEnvWrapper] = []
+        self.aux_buffers:  list[RolloutBuffer]  = []
+
+        for sc in train_config.scales[1:]:
+            aux_w = MVPEnvWrapper(
+                num_envs       = sc.num_envs,
+                ship_config    = ship_config,
+                env_config     = sc.env_config,
+                reward_config  = reward_config,
+                device         = device,
+                scripted_agent = None,
+            )
+            aux_sample_obs = aux_w.reset()
+            aux_obs_shapes = {
+                k: v.shape[1:]
+                for k, v in aux_sample_obs.items()
+                if v.dtype in (torch.float32, torch.int32, torch.int64, torch.bool)
+            }
+            aux_buf = RolloutBuffer(
+                num_steps      = train_config.num_steps,
+                num_envs       = sc.num_envs,
+                num_ships      = sc.env_config.num_ships,
+                num_components = K,
+                obs_shapes     = aux_obs_shapes,
+                gamma          = train_config.gamma,
+                gae_lambda     = train_config.gae_lambda,
+                device         = self.device,
+            )
+            self.aux_wrappers.append(aux_w)
+            self.aux_buffers.append(aux_buf)
 
     # ------------------------------------------------------------------
     # Main training loop
@@ -338,7 +375,7 @@ class PPOTrainer:
 
     def train(self) -> None:
         """Run the full PPO training loop."""
-        B  = self.cfg.num_envs
+        B  = self.cfg.scales[0].num_envs
         N  = self.wrapper.num_ships
         sc_start     = self.B_self
         sc_end       = self.B_self + self.B_sc
@@ -362,11 +399,28 @@ class PPOTrainer:
         # League hidden state — re-initialised each rollout when the entry changes.
         league_hidden: torch.Tensor | None = None
 
+        # Aux-scale obs, hidden states, and last-done flags — live across the whole run.
+        aux_obs: list[dict[str, torch.Tensor]] = []
+        aux_hiddens: list[torch.Tensor] = []
+        aux_last_dones: list[torch.Tensor] = []
+        for sc, aux_w in zip(self.cfg.scales[1:], self.aux_wrappers):
+            aux_obs.append(aux_w.reset())
+            aux_w.env.state.step_count.random_(0, sc.env_config.max_episode_steps)
+            aux_hiddens.append(
+                self.policy.initial_hidden(sc.num_envs, sc.env_config.num_ships, self.device)
+            )
+            aux_last_dones.append(
+                torch.zeros(sc.num_envs, dtype=torch.bool, device=self.device)
+            )
+
         start_time = time.time()
 
         for update in range(1, self._num_updates + 1):
             self.buffer.reset()
             self.buffer.store_initial_hidden(hidden)
+            for aux_buf, aux_h in zip(self.aux_buffers, aux_hiddens):
+                aux_buf.reset()
+                aux_buf.store_initial_hidden(aux_h)
 
             # Accumulate episode stats across the rollout — flushed once per update
             ep_rewards: list[torch.Tensor] = []
@@ -459,7 +513,7 @@ class PPOTrainer:
                             self.B_sc, N, dtype=torch.bool, device=self.device,
                         )
                     expert_probs_step = torch.zeros(
-                        self.cfg.num_envs, self.env_config.num_ships, 12,
+                        self.cfg.scales[0].num_envs, self.env_config.num_ships, 12,
                         device=self.device,
                     )
                     expert_probs_step[sc_start:sc_end] = expert_probs_sc * train_mask_sc.unsqueeze(-1)
@@ -535,6 +589,37 @@ class PPOTrainer:
                 obs = next_obs
                 self._global_step += B
 
+                # Aux-scale rollout steps (pure self-play, no opponent overrides)
+                for i, (sc, aux_w, aux_buf) in enumerate(
+                    zip(self.cfg.scales[1:], self.aux_wrappers, self.aux_buffers)
+                ):
+                    aux_N = sc.env_config.num_ships
+                    with torch.no_grad():
+                        aux_action, aux_logprob, aux_value_norm, aux_hiddens[i] = (
+                            self.policy.get_action_and_value(aux_obs[i], aux_hiddens[i])
+                        )
+                    next_aux_obs, aux_reward, aux_dones, aux_truncated, _ = aux_w.step(aux_action)
+                    aux_buf.add(
+                        obs          = aux_obs[i],
+                        action       = aux_action,
+                        logprob      = aux_logprob,
+                        reward       = aux_reward,
+                        done         = aux_dones.float(),
+                        value        = self.scaler.denormalize(aux_value_norm),
+                        alive        = aux_obs[i]["alive"].bool(),
+                        actor_mask   = torch.ones(
+                            sc.num_envs, aux_N, dtype=torch.bool, device=self.device
+                        ),
+                        expert_probs = None,
+                    )
+                    aux_done_any = aux_dones | aux_truncated
+                    aux_hiddens[i] = self.policy.reset_hidden_for_envs(
+                        aux_hiddens[i], aux_done_any, aux_N
+                    )
+                    aux_last_dones[i] = aux_dones
+                    aux_obs[i]        = next_aux_obs
+                    self._global_step += sc.num_envs
+
             # ----------------------------------------------------------------
             # GAE computation
             # ----------------------------------------------------------------
@@ -543,14 +628,26 @@ class PPOTrainer:
             next_value = self.scaler.denormalize(next_value_norm)  # symlog-reward space
             self.buffer.compute_gae(next_value, dones.float())
 
-            # Update per-component return percentiles from this rollout's returns
+            # Aux-scale GAE
+            for i, (aux_buf, aux_h) in enumerate(zip(self.aux_buffers, aux_hiddens)):
+                with torch.no_grad():
+                    _, _, next_aux_val_norm, _ = self.policy.get_action_and_value(
+                        aux_obs[i], aux_h
+                    )
+                next_aux_val = self.scaler.denormalize(next_aux_val_norm)
+                aux_buf.compute_gae(next_aux_val, aux_last_dones[i].float())
+
+            # Update per-component return percentiles from primary rollout only
             self.scaler.update(self.buffer.returns)
 
             # ----------------------------------------------------------------
             # PPO update epochs
             # ----------------------------------------------------------------
             record_hist = (update % 10 == 0)
-            metrics = self._update_epochs(record_histograms=record_hist)
+            metrics = self._update_epochs(
+                all_buffers       = [self.buffer] + self.aux_buffers,
+                record_histograms = record_hist,
+            )
 
             if self.lr_scheduler is not None:
                 self.lr_scheduler.step()
@@ -645,24 +742,160 @@ class PPOTrainer:
     # PPO update inner loop
     # ------------------------------------------------------------------
 
-    def _update_epochs(self, record_histograms: bool = False) -> dict:
-        """Run num_epochs × num_minibatches of PPO updates.
+    def _compute_minibatch_loss(
+        self,
+        batch:        tuple,
+        comp_weights: torch.Tensor,
+        is_primary:   bool,
+    ) -> tuple[torch.Tensor, dict]:
+        """Compute PPO loss for one minibatch. Does NOT call zero_grad / backward / step.
 
         Args:
-            record_histograms: If True, capture return/logprob distributions from
-                the last minibatch for async histogram logging.
+            batch:        Output of RolloutBuffer.get_minibatch_iterator.
+            comp_weights: (K,) per-component lambda weights for this update step.
+            is_primary:   True for the primary scale — enables BC loss and per-component
+                          critic diagnostics. Aux scales skip these to avoid shape mismatches
+                          (different N) and because BC targets only exist in the primary env.
 
         Returns:
-            Dict of mean metric values over all minibatch updates.
-            Per-component keys use the format ``critic/<metric>/<component_name>``.
-            Histogram entries are raw numpy arrays; the log worker creates
-            ``wandb.Histogram`` objects off the training thread.
+            (loss, diag) where diag is a dict of scalar/tensor diagnostics.
         """
         cfg = self.cfg
         K   = self.buffer.num_components
 
-        # Per-component lambda weights — active components only, may change via decay.
-        comp_weights  = torch.tensor(
+        (mb_obs, mb_actions, mb_old_logprobs, mb_advantages,
+         mb_returns, mb_values, mb_alive, mb_hidden, mb_actor_mask,
+         mb_expert_probs) = batch
+
+        logprob, entropy, new_value, policy_logits = self.policy.evaluate_actions(
+            obs            = mb_obs,
+            actions        = mb_actions.long(),
+            initial_hidden = mb_hidden,
+            alive_mask     = mb_alive,
+        )
+
+        alive_f  = mb_alive.float()            # (T, B_mb, N)
+        alive_k  = alive_f.unsqueeze(-1)       # (T, B_mb, N, 1)
+        mask_sum = alive_f.sum().clamp(min=1.0)
+
+        actor_f   = (mb_actor_mask & mb_alive).float()   # (T, B_mb, N)
+        actor_sum = actor_f.sum().clamp(min=1.0)
+
+        # ---- Lambda aggregation -------------------------------------------
+        team_id   = mb_obs["team_id"][0].long()                   # (B_mb, N)
+        same_team = team_id.unsqueeze(2) == team_id.unsqueeze(1)  # (B_mb, N, N)
+
+        enemy_lam = torch.where(self.enemy_neg_k, -1.0, 0.0)     # (K,)
+        lambda_ij = (same_team.float().unsqueeze(-1)
+                     + (~same_team).float().unsqueeze(-1) * enemy_lam
+                     ) * comp_weights                              # (B_mb, N, N, K)
+
+        adv_agg      = torch.einsum('bijk,tbjk->tbi',  lambda_ij, mb_advantages)  # (T, B_mb, N)
+        ret_agg      = torch.einsum('bijk,tbjk->tbi',  lambda_ij, mb_returns)     # (T, B_mb, N)
+        ret_per_comp = torch.einsum('bijk,tbjk->tbik', lambda_ij, mb_returns)     # (T, B_mb, N, K)
+
+        adv_mean = (adv_agg * actor_f).sum() / actor_sum
+        adv_var  = ((adv_agg - adv_mean).pow(2) * actor_f).sum() / actor_sum
+        adv_norm = (adv_agg - adv_mean) / (adv_var.sqrt() + 1e-8)
+
+        # ---- Policy gradient loss ----------------------------------------
+        log_ratio = logprob - mb_old_logprobs
+        ratio     = log_ratio.exp()
+        pg_loss1  = -adv_norm * ratio
+        pg_loss2  = -adv_norm * ratio.clamp(1 - cfg.clip_coef, 1 + cfg.clip_coef)
+        pg_loss   = (torch.max(pg_loss1, pg_loss2) * actor_f).sum() / actor_sum
+
+        # ---- Value loss --------------------------------------------------
+        target_norm = self.scaler.normalize(mb_returns).detach()  # (T, B_mb, N, K)
+        vf_loss_raw = (new_value - target_norm).pow(2)            # (T, B_mb, N, K)
+        vf_loss     = (vf_loss_raw * alive_k).sum() / (mask_sum * K)
+
+        # ---- Entropy bonus -----------------------------------------------
+        ent_loss = -(entropy * actor_f).sum() / actor_sum
+
+        # ---- Behavioral cloning loss (primary scale only) ----------------
+        bc_loss = torch.tensor(0.0, device=self.device)
+        if is_primary and self._bc_coef_eff > 0.0:
+            bc_valid = (mb_expert_probs.sum(-1) > 0)           # (T, B_mb, N)
+            bc_f     = (bc_valid & mb_actor_mask & mb_alive).float()
+            bc_sum   = bc_f.sum().clamp(min=1.0)
+            ce = (
+                -(mb_expert_probs[..., POWER_SLICE] *
+                  F.log_softmax(policy_logits[..., POWER_SLICE], dim=-1)).sum(-1)
+                -(mb_expert_probs[..., TURN_SLICE] *
+                  F.log_softmax(policy_logits[..., TURN_SLICE],  dim=-1)).sum(-1)
+                -(mb_expert_probs[..., SHOOT_SLICE] *
+                  F.log_softmax(policy_logits[..., SHOOT_SLICE], dim=-1)).sum(-1)
+            )  # (T, B_mb, N)
+            bc_loss = (ce * bc_f).sum() / bc_sum
+
+        loss = pg_loss + cfg.vf_coef * vf_loss + cfg.ent_coef * ent_loss + self._bc_coef_eff * bc_loss
+
+        # ---- Diagnostics (no grad) ---------------------------------------
+        diag: dict = {}
+        with torch.no_grad():
+            diag["loss"]      = loss.item()
+            diag["pg_loss"]   = pg_loss.item()
+            diag["vf_loss"]   = vf_loss.item()
+            diag["ent_loss"]  = ent_loss.item()
+            diag["bc_loss"]   = bc_loss.item()
+            diag["adv_var"]   = adv_var.item()
+            diag["approx_kl"] = (((ratio - 1) - log_ratio) * actor_f).sum().item() / actor_sum.item()
+            diag["clip_frac"] = (
+                ((ratio - 1).abs() > cfg.clip_coef).float() * actor_f
+            ).sum().item() / actor_sum.item()
+
+            ret_agg_mean = (ret_agg * actor_f).sum() / actor_sum
+            ret_agg_var  = ((ret_agg - ret_agg_mean).pow(2) * actor_f).sum() / actor_sum
+            diag["ret_agg_mean"] = ret_agg_mean.item()
+            diag["ret_agg_std"]  = ret_agg_var.sqrt().item()
+
+            # Per-component critic stats — primary scale only (K matches buffer.num_components)
+            if is_primary:
+                actor_k             = actor_f.unsqueeze(-1)                                # (T, B_mb, N, 1)
+                ret_per_comp_mean_k = (ret_per_comp * actor_k).sum((0,1,2)) / actor_sum   # (K,)
+
+                pred_k       = self.scaler.denormalize(new_value.detach())                 # (T, B_mb, N, K)
+                value_loss_k = (vf_loss_raw.detach() * alive_k).sum((0,1,2)) / mask_sum   # (K,)
+                ret_mean_k   = (mb_returns * alive_k).sum((0,1,2)) / mask_sum             # (K,)
+                ret_var_k    = ((mb_returns - ret_mean_k) ** 2 * alive_k).sum((0,1,2)) / mask_sum
+                residuals_k  = mb_returns - pred_k                                         # (T, B_mb, N, K)
+                res_mean_k   = (residuals_k * alive_k).sum((0,1,2)) / mask_sum            # (K,)
+                res_var_k    = ((residuals_k - res_mean_k) ** 2 * alive_k).sum((0,1,2)) / mask_sum
+                ev_k         = 1.0 - res_var_k / (ret_var_k + 1e-8)                       # (K,)
+                # One GPU→CPU transfer: stack → (4, K) → cpu
+                diag["stats_k_cpu"] = torch.stack(
+                    [value_loss_k, ev_k, ret_mean_k, ret_per_comp_mean_k]
+                ).cpu()
+                diag["alive_flat"]   = mb_alive.reshape(-1).bool()
+                diag["mb_returns"]   = mb_returns
+                diag["logprob_flat"] = logprob.detach().reshape(-1)
+
+        return loss, diag
+
+    def _update_epochs(
+        self,
+        all_buffers:       list[RolloutBuffer],
+        record_histograms: bool = False,
+    ) -> dict:
+        """Run num_epochs × num_minibatches of PPO updates across all scales.
+
+        Gradients from every scale are accumulated before each optimizer step so
+        that each parameter update reflects all game sizes simultaneously.
+
+        Args:
+            all_buffers:       Primary buffer first, then aux buffers in order.
+            record_histograms: If True, capture return/logprob distributions from
+                the last primary-scale minibatch for async histogram logging.
+
+        Returns:
+            Dict of mean metric values over all minibatch updates.
+        """
+        cfg      = self.cfg
+        K        = self.buffer.num_components
+        n_scales = len(all_buffers)
+
+        comp_weights = torch.tensor(
             [c.weight for c in self.wrapper._active_components],
             dtype=torch.float32, device=self.device,
         )  # (K,)
@@ -677,174 +910,92 @@ class PPOTrainer:
             "train/clip_fraction":             [],
             "train/gradient_norm":             [],
             "train/advantage_std":             [],
-            "returns/aggregate":               [],  # λ-aggregated return, actor ships, symlog space
+            "returns/aggregate":               [],
             "returns/aggregate_std":           [],
         }
-        # Per-component (K,) CPU tensors accumulated across minibatches
         accum_k: dict[str, list[torch.Tensor]] = {
             "critic/value_loss":        [],
             "critic/explained_variance":[],
             "critic/return_mean":       [],
-            "returns/component":        [],  # λ-weighted per-component return, actor ships
+            "returns/component":        [],
         }
         last_returns_np = None
         last_logprob_np = None
 
         for epoch_idx in range(cfg.num_epochs):
-            for batch in self.buffer.get_minibatch_iterator(cfg.num_minibatches):
-                (mb_obs, mb_actions, mb_old_logprobs, mb_advantages,
-                 mb_returns, mb_values, mb_alive, mb_hidden, mb_actor_mask,
-                 mb_expert_probs) = batch
-
-                # Re-evaluate actions with current policy
-                # new_value: (T, B_mb, N, K) in normalized space
-                # policy_logits: (T, B_mb, N, 12) — needed for BC loss
-                logprob, entropy, new_value, policy_logits = self.policy.evaluate_actions(
-                    obs            = mb_obs,
-                    actions        = mb_actions.long(),
-                    initial_hidden = mb_hidden,
-                    alive_mask     = mb_alive,
-                )
-
-                # Alive mask — used for critic loss (all alive ships, all groups)
-                alive_f  = mb_alive.float()            # (T, B_mb, N)
-                alive_k  = alive_f.unsqueeze(-1)       # (T, B_mb, N, 1) — broadcasts over K
-                mask_sum = alive_f.sum().clamp(min=1.0)
-
-                # Actor mask — subset of alive: only ships controlled by training policy
-                # Used for actor loss, entropy, advantage normalization, and KL/clip diags.
-                actor_f   = (mb_actor_mask & mb_alive).float()   # (T, B_mb, N)
-                actor_sum = actor_f.sum().clamp(min=1.0)
-
-                # ---- Lambda aggregation: per-ship aggregated advantage ----------
-                # Build lambda matrix from team_id (teams are fixed within episode)
-                team_id   = mb_obs["team_id"][0].long()                   # (B_mb, N)
-                same_team = team_id.unsqueeze(2) == team_id.unsqueeze(1)  # (B_mb, N, N)
-
-                # lambda_ij[b,i,j,k]: sign (+1 allied, -1 enemy outcome, 0 enemy shaping)
-                #                    × component weight (from reward config, may decay)
-                enemy_lam = torch.where(self.enemy_neg_k, -1.0, 0.0)     # (K,)
-                lambda_ij = (same_team.float().unsqueeze(-1)
-                             + (~same_team).float().unsqueeze(-1) * enemy_lam
-                             ) * comp_weights                              # (B_mb, N, N, K)
-
-                # Aggregate: A_i = Σ_j Σ_k lambda[b,i,j,k] * adv[t,b,j,k]
-                adv_agg      = torch.einsum('bijk,tbjk->tbi',  lambda_ij, mb_advantages)  # (T, B_mb, N)
-                ret_agg      = torch.einsum('bijk,tbjk->tbi',  lambda_ij, mb_returns)     # (T, B_mb, N)
-                ret_per_comp = torch.einsum('bijk,tbjk->tbik', lambda_ij, mb_returns)     # (T, B_mb, N, K)
-
-                # Normalise over training-controlled ships (actor_f)
-                adv_mean = (adv_agg * actor_f).sum() / actor_sum
-                adv_var  = ((adv_agg - adv_mean).pow(2) * actor_f).sum() / actor_sum
-                adv_norm = (adv_agg - adv_mean) / (adv_var.sqrt() + 1e-8)
-
-                # ---- Policy gradient loss (training ships only) ---------------
-                log_ratio = logprob - mb_old_logprobs
-                ratio     = log_ratio.exp()
-                pg_loss1  = -adv_norm * ratio
-                pg_loss2  = -adv_norm * ratio.clamp(1 - cfg.clip_coef, 1 + cfg.clip_coef)
-                pg_loss   = (torch.max(pg_loss1, pg_loss2) * actor_f).sum() / actor_sum
-
-                # ---- Value loss (MSE in normalized space, all alive ships) ----
-                target_norm = self.scaler.normalize(mb_returns).detach()  # (T, B_mb, N, K)
-                vf_loss_raw = (new_value - target_norm).pow(2)            # (T, B_mb, N, K)
-                vf_loss     = (vf_loss_raw * alive_k).sum() / (mask_sum * K)
-
-                # ---- Entropy bonus (training ships only) ---------------------
-                ent_loss = -(entropy * actor_f).sum() / actor_sum
-
-                # ---- Behavioral cloning loss (scripted-group training ships) -
-                # bc_f: alive, training-policy, scripted-group ships
-                # expert_probs > 0 exactly where scripted agent filled in targets.
-                bc_valid = (mb_expert_probs.sum(-1) > 0)           # (T, B_mb, N)
-                bc_f     = (bc_valid & mb_actor_mask & mb_alive).float()
-                bc_sum   = bc_f.sum().clamp(min=1.0)
-                ce = (
-                    -(mb_expert_probs[..., POWER_SLICE] *
-                      F.log_softmax(policy_logits[..., POWER_SLICE], dim=-1)).sum(-1)
-                    -(mb_expert_probs[..., TURN_SLICE] *
-                      F.log_softmax(policy_logits[..., TURN_SLICE],  dim=-1)).sum(-1)
-                    -(mb_expert_probs[..., SHOOT_SLICE] *
-                      F.log_softmax(policy_logits[..., SHOOT_SLICE], dim=-1)).sum(-1)
-                )  # (T, B_mb, N)
-                bc_loss = (ce * bc_f).sum() / bc_sum
-
-                loss = pg_loss + cfg.vf_coef * vf_loss + cfg.ent_coef * ent_loss + self._bc_coef_eff * bc_loss
-
+            iters = [buf.get_minibatch_iterator(cfg.num_minibatches) for buf in all_buffers]
+            for batches in zip(*iters):
                 self.optim.zero_grad()
-                loss.backward()
+
+                # Accumulate gradients across all scales before stepping.
+                # Each loss is divided by n_scales so the total gradient magnitude
+                # stays comparable to single-scale training.
+                diag_primary: dict = {}
+                scalar_accum_step: dict[str, float] = {
+                    "loss": 0.0, "pg": 0.0, "vf": 0.0, "ent": 0.0,
+                    "bc": 0.0, "kl": 0.0, "clip": 0.0, "adv_var": 0.0,
+                    "ret_agg_mean": 0.0, "ret_agg_std": 0.0,
+                }
+
+                for scale_idx, (buf, batch) in enumerate(zip(all_buffers, batches)):
+                    is_primary = (scale_idx == 0)
+                    loss, diag = self._compute_minibatch_loss(batch, comp_weights, is_primary)
+                    (loss / n_scales).backward()
+
+                    # Accumulate scalar diagnostics (average across scales)
+                    scalar_accum_step["loss"]        += diag["loss"]      / n_scales
+                    scalar_accum_step["pg"]          += diag["pg_loss"]   / n_scales
+                    scalar_accum_step["vf"]          += diag["vf_loss"]   / n_scales
+                    scalar_accum_step["ent"]         += diag["ent_loss"]  / n_scales
+                    scalar_accum_step["bc"]          += diag["bc_loss"]   / n_scales
+                    scalar_accum_step["kl"]          += diag["approx_kl"] / n_scales
+                    scalar_accum_step["clip"]        += diag["clip_frac"] / n_scales
+                    scalar_accum_step["adv_var"]     += diag["adv_var"]   / n_scales
+                    scalar_accum_step["ret_agg_mean"]+= diag["ret_agg_mean"] / n_scales
+                    scalar_accum_step["ret_agg_std"] += diag["ret_agg_std"]  / n_scales
+
+                    if is_primary:
+                        diag_primary = diag
+
                 grad_norm = nn.utils.clip_grad_norm_(self.policy.parameters(), cfg.max_grad_norm)
                 self.optim.step()
 
-                with torch.no_grad():
-                    approx_kl = (((ratio - 1) - log_ratio) * actor_f).sum().item() / actor_sum.item()
-                    clip_frac = (((ratio - 1).abs() > cfg.clip_coef).float() * actor_f).sum().item() / actor_sum.item()
-
-                    # λ-aggregated return stats (symlog-reward space, actor ships only)
-                    ret_agg_mean = (ret_agg * actor_f).sum() / actor_sum
-                    ret_agg_var  = ((ret_agg - ret_agg_mean).pow(2) * actor_f).sum() / actor_sum
-
-                    # Per-component λ-weighted return (same scale as aggregate, actor ships)
-                    actor_k             = actor_f.unsqueeze(-1)                                # (T, B_mb, N, 1)
-                    ret_per_comp_mean_k = (ret_per_comp * actor_k).sum((0,1,2)) / actor_sum   # (K,)
-
-                    # Per-component critic stats — single GPU→CPU transfer for all K dims
-                    pred_k       = self.scaler.denormalize(new_value.detach())                     # (T, B_mb, N, K)
-                    value_loss_k = (vf_loss_raw.detach() * alive_k).sum((0,1,2)) / mask_sum       # (K,)
-                    ret_mean_k   = (mb_returns * alive_k).sum((0,1,2)) / mask_sum                 # (K,)
-                    ret_var_k    = ((mb_returns - ret_mean_k) ** 2 * alive_k).sum((0,1,2)) / mask_sum
-                    # Var(y - ŷ) not MSE: subtract residual mean to avoid penalising bias.
-                    # MSE would give EV < 0 for a biased-constant predictor even though
-                    # its predictive variance is the same as the naive mean predictor.
-                    residuals_k = mb_returns - pred_k                                              # (T, B_mb, N, K)
-                    res_mean_k  = (residuals_k * alive_k).sum((0,1,2)) / mask_sum                 # (K,)
-                    res_var_k   = ((residuals_k - res_mean_k) ** 2 * alive_k).sum((0,1,2)) / mask_sum
-                    ev_k        = 1.0 - res_var_k / (ret_var_k + 1e-8)                            # (K,)
-                    # One transfer: stack → (4, K) → cpu
-                    stats_k_cpu = torch.stack([value_loss_k, ev_k, ret_mean_k, ret_per_comp_mean_k]).cpu()
-
-                accum_scalar["train/loss"]                    .append(loss.item())
-                accum_scalar["train/policy_gradient_loss"]    .append(pg_loss.item())
-                accum_scalar["train/value_loss"]              .append(vf_loss.item())
-                accum_scalar["train/entropy_loss"]            .append(ent_loss.item())
-                accum_scalar["train/behavioral_cloning_loss"] .append(bc_loss.item())
-                accum_scalar["train/approximate_kl"]          .append(approx_kl)
-                accum_scalar["train/clip_fraction"]           .append(clip_frac)
+                accum_scalar["train/loss"]                    .append(scalar_accum_step["loss"])
+                accum_scalar["train/policy_gradient_loss"]    .append(scalar_accum_step["pg"])
+                accum_scalar["train/value_loss"]              .append(scalar_accum_step["vf"])
+                accum_scalar["train/entropy_loss"]            .append(scalar_accum_step["ent"])
+                accum_scalar["train/behavioral_cloning_loss"] .append(scalar_accum_step["bc"])
+                accum_scalar["train/approximate_kl"]          .append(scalar_accum_step["kl"])
+                accum_scalar["train/clip_fraction"]           .append(scalar_accum_step["clip"])
                 accum_scalar["train/gradient_norm"]           .append(grad_norm.item())
-                accum_scalar["train/advantage_std"]           .append(adv_var.sqrt().item())
-                accum_scalar["returns/aggregate"]             .append(ret_agg_mean.item())
-                accum_scalar["returns/aggregate_std"]         .append(ret_agg_var.sqrt().item())
+                accum_scalar["train/advantage_std"]           .append(scalar_accum_step["adv_var"] ** 0.5)
+                accum_scalar["returns/aggregate"]             .append(scalar_accum_step["ret_agg_mean"])
+                accum_scalar["returns/aggregate_std"]         .append(scalar_accum_step["ret_agg_std"])
 
-                accum_k["critic/value_loss"]        .append(stats_k_cpu[0])
-                accum_k["critic/return_mean"]       .append(stats_k_cpu[2])
-                accum_k["returns/component"]        .append(stats_k_cpu[3])
-                # Explained variance from last epoch only — reflects the value head after training,
-                # not the average over all updates (which is dampened by early epochs).
-                if epoch_idx == cfg.num_epochs - 1:
-                    accum_k["critic/explained_variance"].append(stats_k_cpu[1])
+                if "stats_k_cpu" in diag_primary:
+                    stats_k_cpu = diag_primary["stats_k_cpu"]
+                    accum_k["critic/value_loss"]  .append(stats_k_cpu[0])
+                    accum_k["critic/return_mean"] .append(stats_k_cpu[2])
+                    accum_k["returns/component"]  .append(stats_k_cpu[3])
+                    if epoch_idx == cfg.num_epochs - 1:
+                        accum_k["critic/explained_variance"].append(stats_k_cpu[1])
 
-                if record_histograms:
-                    # Capture alive-ship returns/logprobs from last minibatch for histograms.
-                    # .cpu().numpy() here is fine: only runs every hist_interval updates.
-                    alive_flat      = mb_alive.reshape(-1).bool()
-                    last_returns_np = mb_returns.reshape(-1, K)[alive_flat].cpu().numpy()
-                    last_logprob_np = logprob.detach().reshape(-1)[alive_flat].cpu().numpy()
+                if record_histograms and "alive_flat" in diag_primary:
+                    alive_flat      = diag_primary["alive_flat"]
+                    last_returns_np = diag_primary["mb_returns"].reshape(-1, K)[alive_flat].cpu().numpy()
+                    last_logprob_np = diag_primary["logprob_flat"][alive_flat].cpu().numpy()
 
-        # --- Build output metrics dict ---
         metrics: dict = {k: sum(v) / len(v) for k, v in accum_scalar.items() if v}
 
-        # Expand per-component averages into named keys.
-        # "returns/component" uses the section prefix directly so keys become "returns/{name}".
         for key, tensors in accum_k.items():
-            avg = torch.stack(tensors).mean(0)   # (K,) CPU
+            avg    = torch.stack(tensors).mean(0)   # (K,) CPU
             prefix = "returns" if key == "returns/component" else key
             for i, name in enumerate(self._active_names):
                 metrics[f"{prefix}/{name}"] = avg[i].item()
 
-        # Raw numpy arrays — worker thread converts to wandb.Histogram
         if last_returns_np is not None:
-            metrics["hist/returns"] = last_returns_np   # (alive_count, K)
-            metrics["hist/logprob"] = last_logprob_np   # (alive_count,)
+            metrics["hist/returns"] = last_returns_np
+            metrics["hist/logprob"] = last_logprob_np
 
         return metrics
 

@@ -3,7 +3,7 @@
 import torch
 
 from boost_and_broadside.config import (
-    ShipConfig, EnvConfig, ModelConfig, RewardConfig, TrainConfig,
+    ShipConfig, EnvConfig, ModelConfig, RewardConfig, TrainConfig, ScaleConfig,
 )
 from boost_and_broadside.train.rl.ppo import PPOTrainer
 
@@ -11,7 +11,13 @@ from boost_and_broadside.train.rl.ppo import PPOTrainer
 def _make_trainer(n_fourier_freqs: int = 4) -> PPOTrainer:
     return PPOTrainer(
         train_config=TrainConfig(
-            num_envs=4, num_steps=16, num_epochs=1, num_minibatches=2,
+            scales=(
+                ScaleConfig(
+                    env_config=EnvConfig(num_ships=4, max_bullets=8, max_episode_steps=50),
+                    num_envs=4,
+                ),
+            ),
+            num_steps=16, num_epochs=1, num_minibatches=2,
             learning_rate=3e-4, gamma=0.99, gae_lambda=0.95, clip_coef=0.2,
             ent_coef=0.01, vf_coef=0.5, max_grad_norm=0.5, total_timesteps=64,
             return_ema_alpha=0.005, return_min_span=1.0,
@@ -20,7 +26,6 @@ def _make_trainer(n_fourier_freqs: int = 4) -> PPOTrainer:
             d_model=32, n_heads=4, n_fourier_freqs=n_fourier_freqs, n_transformer_blocks=1,
         ),
         ship_config=ShipConfig(),
-        env_config=EnvConfig(num_ships=4, max_bullets=8, max_episode_steps=50),
         reward_config=RewardConfig(
             damage_weight=0.01, death_weight=0.5,
             victory_weight=1.0,
@@ -67,10 +72,16 @@ class TestPPOSmokeTest:
 
 class TestShapingScheduler:
     def _make_trainer_with_schedule(self, **schedule_kwargs):
-        from boost_and_broadside.config import TrainConfig
+        from boost_and_broadside.config import TrainConfig, ScaleConfig, EnvConfig
         return PPOTrainer(
             train_config=TrainConfig(
-                num_envs=4, num_steps=16, num_epochs=1, num_minibatches=2,
+                scales=(
+                    ScaleConfig(
+                        env_config=EnvConfig(num_ships=4, max_bullets=8, max_episode_steps=50),
+                        num_envs=4,
+                    ),
+                ),
+                num_steps=16, num_epochs=1, num_minibatches=2,
                 learning_rate=3e-4, gamma=0.99, gae_lambda=0.95, clip_coef=0.2,
                 ent_coef=0.01, vf_coef=0.5, max_grad_norm=0.5, total_timesteps=64,
                 return_ema_alpha=0.005, return_min_span=1.0,
@@ -78,7 +89,6 @@ class TestShapingScheduler:
             ),
             model_config=ModelConfig(d_model=32, n_heads=4, n_fourier_freqs=4, n_transformer_blocks=1),
             ship_config=ShipConfig(),
-            env_config=EnvConfig(num_ships=4, max_bullets=8, max_episode_steps=50),
             reward_config=RewardConfig(
                 damage_weight=0.01, death_weight=0.5, victory_weight=1.0,
                 enemy_neg_lambda_components=frozenset({"damage", "death", "victory", "exposure"}),
