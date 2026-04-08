@@ -132,7 +132,7 @@ def main() -> None:
 
     render_config = RenderConfig()
 
-    max_tokens = 6144
+    max_tokens = 5760
 
     # ------------------------------------------------------------------
     # Mode dispatch

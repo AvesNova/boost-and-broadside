@@ -226,7 +226,7 @@ class TrainConfig:
     # --- League play + ELO ---
     league_frac: float = 0.0  # fraction of primary envs using a roster-sampled opponent
     league_size: int = 20  # max number of checkpoint entries in the roster
-    elo_eval_games: int = 256  # parallel games per ELO evaluation matchup
+    elo_eval_games: int = 512  # parallel games per ELO evaluation matchup
     elo_eval_interval: int = 10  # run ELO eval every N updates (0 = disabled)
     elo_milestone_gap: float = (
         50.0  # add checkpoint to roster every N normalized ELO points gained

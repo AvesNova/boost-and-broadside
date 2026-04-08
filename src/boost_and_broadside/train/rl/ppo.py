@@ -325,10 +325,6 @@ class PPOTrainer:
         self._best_avg_elo_norm: float = 0.0  # best normalized avg ELO seen so far
         self._last_checkpoint_path: Path | None = None
 
-        # ELO history for multi-line W&B charts: label → [(global_step, elo), ...]
-        # "training" tracks the live policy ELO; one entry per roster label otherwise.
-        self._elo_history: dict[str, list[tuple[int, float]]] = {}
-
         # Current league opponent for the ongoing rollout (rotated each rollout).
         self._current_league_entry: RosterEntry | None = None
         self._current_league_policy: MVPPolicy | None = None
@@ -819,8 +815,7 @@ class PPOTrainer:
 
             # ELO evaluation — runs sync matchups against all roster entries
             if (
-                not pretrain_mode
-                and self.cfg.elo_eval_interval > 0
+                self.cfg.elo_eval_interval > 0
                 and update % self.cfg.elo_eval_interval == 0
             ):
                 elo_metrics = self._run_elo_eval()
@@ -1176,7 +1171,9 @@ class PPOTrainer:
                     scalar_accum_step["ent"] += diag["ent_loss"] / n_scales
                     scalar_accum_step["bc"] += diag["bc_loss"] / n_scales
                     scalar_accum_step["bc_kl"] += diag["bc_kl"] / n_scales
-                    scalar_accum_step["scripted_entropy"] += diag["scripted_entropy"] / n_scales
+                    scalar_accum_step["scripted_entropy"] += (
+                        diag["scripted_entropy"] / n_scales
+                    )
                     scalar_accum_step["kl"] += diag["approx_kl"] / n_scales
                     scalar_accum_step["clip"] += diag["clip_frac"] / n_scales
                     scalar_accum_step["adv_var"] += diag["adv_var"] / n_scales
@@ -1298,141 +1295,166 @@ class PPOTrainer:
         return 0.0  # fallback; random entry should always exist
 
     def _run_elo_eval(self) -> dict[str, float]:
-        """Run sync matchups against every roster entry and update ELO ratings.
+        """Run a single synchronized mixed-batch evaluations against Random and Scripted anchors.
 
-        Also lazily adds the scripted entry once scripted_roster_min_steps is reached.
-
-        Creates a temporary TensorEnv for the matchups, then evicts all loaded
-        checkpoint policies to reclaim memory.  The current league opponent is
-        reloaded at the next rollout start.
-
-        Returns:
-            Dict of ELO metrics suitable for W&B logging.
+        Computes a statistical Maximum Likelihood Estimation of the Universal Elo,
+        then injects this as the new `_training_elo`. This provides an extremely
+        clean signal to the league training system.
         """
-        from boost_and_broadside.modes.collect import _run_matchup
+        from boost_and_broadside.modes.agent_factory import (
+            ResolvedAgent,
+            get_actions,
+            init_hidden,
+            reset_done_envs,
+        )
+        from boost_and_broadside.modes.collect import _obs_from_state
+        from scipy.optimize import root_scalar
 
-        # Lazily add the scripted agent once enough training has happened.
+        # Lazily add the scripted entry to the roster if enough time has passed.
+        # This keeps the training loop's roster access valid, though eval ignores it!
         if (
             self.scripted_agent is not None
             and self._global_step >= self.cfg.scripted_roster_min_steps
             and not any(e.kind == "scripted" for e in self.roster.entries)
         ):
             self.roster.add_special(
-                "scripted",
-                self._global_step,
-                0,
-                initial_elo=400.0,
+                "scripted", self._global_step, 0, initial_elo=1000.0
             )
 
+        # 1. Determine batch routing
         games = self.cfg.elo_eval_games
-        env = TensorEnv(games, self.ship_config, self.env_config, self.device)
+        if self.scripted_agent is not None:
+            ratio = max(0.0, min(1.0, self._training_elo / 1000.0))
+            games_sc = int(ratio * games)
+            games_rand = games - games_sc
+        else:
+            games_sc = 0
+            games_rand = games
+
+        # 2. Setup Env and Agents
+        B = games
+        N = self.env_config.num_ships
+        dev = self.device
+
+        env = TensorEnv(B, self.ship_config, self.env_config, self.device)
         self.policy.eval()
+
+        agent_policy = ResolvedAgent("policy", self.policy)
+        agent_sc = (
+            ResolvedAgent("scripted", self.scripted_agent)
+            if self.scripted_agent
+            else None
+        )
+        agent_rand = ResolvedAgent("random", None)
+
+        finished = torch.zeros(B, dtype=torch.bool, device=dev)
+        is_scripted = torch.zeros(B, dtype=torch.bool, device=dev)
+        if games_sc > 0:
+            is_scripted[:games_sc] = True
+
+        init_hidden(agent_policy, B, N, dev)
+        if games_sc > 0:
+            init_hidden(agent_sc, B, N, dev)
+        if games_rand > 0:
+            init_hidden(agent_rand, B, N, dev)
+
+        env.reset()
+
+        wins_vs_sc = 0.0
+        wins_vs_rand = 0.0
+
         metrics: dict[str, float] = {}
 
         try:
             with torch.no_grad():
-                for entry in list(self.roster.entries):  # copy: entries may grow
-                    if entry.kind == "random":
-                        opponent = None  # random agent
-                    elif entry.kind == "checkpoint":
-                        self.roster.load_policy(
-                            entry,
-                            self.model_config,
-                            self.ship_config,
-                            self.wrapper.num_active_components,
-                            self.device,
-                        )
-                        opponent = entry._policy
-                    elif entry.kind == "avg":
-                        if self._avg_update_count == 0:
-                            continue  # avg not ready yet
-                        opponent = self.avg_policy
-                    else:  # "scripted"
-                        if self.scripted_agent is None:
-                            continue
-                        opponent = self.scripted_agent
+                while not finished.all():
+                    state = env.state
+                    obs = _obs_from_state(state, self.ship_config)
+                    action_a = get_actions(agent_policy, obs, state, B, N, dev)
 
-                    win_rate = _run_matchup(
-                        self.policy,
-                        opponent,
-                        env,
-                        self.ship_config,
-                        self.env_config,
-                        games,
-                        self.device,
+                    # Route opposing actions accurately per batch index
+                    action_b = torch.zeros_like(action_a)
+                    if games_sc > 0:
+                        action_sc = get_actions(agent_sc, obs, state, B, N, dev)
+                        action_b = torch.where(
+                            is_scripted.unsqueeze(1).unsqueeze(2), action_sc, action_b
+                        )
+                    if games_rand > 0:
+                        action_rand = get_actions(agent_rand, obs, state, B, N, dev)
+                        action_b = torch.where(
+                            ~is_scripted.unsqueeze(1).unsqueeze(2),
+                            action_rand,
+                            action_b,
+                        )
+
+                    team_id = state.ship_team_id
+                    action = torch.where(
+                        (team_id == 0).unsqueeze(-1), action_a, action_b
                     )
-                    self._training_elo = self.roster.update_elo(
-                        self._training_elo,
-                        entry,
-                        win_rate,
-                    )
-                    metrics[f"elo/{entry.label}"] = entry.elo
+
+                    dones, truncated = env.step(action)
+                    done_any = dones | truncated
+
+                    new_done = done_any & ~finished
+                    if new_done.any():
+                        alive = env.state.ship_alive
+                        team = env.state.ship_team_id
+                        team0_alive = (alive & (team == 0)).any(dim=1)
+                        team1_alive = (alive & (team == 1)).any(dim=1)
+                        team1_won = new_done & team1_alive & ~team0_alive
+                        team0_won = new_done & team0_alive & ~team1_alive
+                        tied = new_done & ~team0_won & ~team1_won
+
+                        wins_vs_sc += float(
+                            (team0_won & is_scripted).sum()
+                        ) + 0.5 * float((tied & is_scripted).sum())
+                        wins_vs_rand += float(
+                            (team0_won & ~is_scripted).sum()
+                        ) + 0.5 * float((tied & ~is_scripted).sum())
+
+                        finished |= new_done
+
+                    if done_any.any():
+                        env.reset_envs(done_any)
+                        reset_done_envs(agent_policy, done_any, N)
+                        if games_sc > 0:
+                            reset_done_envs(agent_sc, done_any, N)
+                        if games_rand > 0:
+                            reset_done_envs(agent_rand, done_any, N)
+
+                # 3. Solve MLE Universal Elo
+                def compute_eval_elo(w_rand, g_rand, w_sc, g_sc) -> float:
+                    # Mild Laplace smoothing bounds the infinity of 100% win/loss
+                    w_rand += 0.5
+                    g_rand += 1.0
+                    w_sc += 0.5
+                    g_sc += 1.0
+                    total_expected_wins = w_rand + w_sc
+
+                    def score_fn(r):
+                        expected_rand = g_rand / (1 + 10 ** ((0 - r) / 400))
+                        expected_scripted = g_sc / (1 + 10 ** ((1000 - r) / 400))
+                        return total_expected_wins - (expected_rand + expected_scripted)
+
+                    res = root_scalar(score_fn, bracket=[-2000, 3000])
+                    return float(res.root)
+
+                self._training_elo = compute_eval_elo(
+                    wins_vs_rand, games_rand, wins_vs_sc, games_sc
+                )
+
+                metrics["elo/training"] = self._training_elo
+                if games_rand > 0:
+                    metrics["elo/win_rate_vs_random"] = wins_vs_rand / games_rand
+                if games_sc > 0:
+                    metrics["elo/win_rate_vs_scripted"] = wins_vs_sc / games_sc
+
         finally:
             self.policy.train()
+            # Still evict checkpoint policies if any were loaded via the training rollout's league
             self.roster.evict_all_checkpoint_policies()
 
-        metrics["elo/training"] = self._training_elo
-
-        # Update ELO history and build multi-line W&B charts.
-        self._elo_history.setdefault("training", []).append(
-            (self._global_step, self._training_elo)
-        )
-        for entry in self.roster.entries:
-            self._elo_history.setdefault(entry.label, []).append(
-                (self._global_step, entry.elo)
-            )
-
-        if self.use_wandb:
-            metrics.update(self._build_elo_charts())
-
         return metrics
-
-    def _build_elo_charts(self) -> dict:
-        """Build two W&B line_series charts from accumulated ELO history.
-
-        Returns:
-            Dict with two custom W&B chart objects:
-              - ``charts/elo_history``           — raw ELO per label over time.
-              - ``charts/elo_history_normalized`` — ELO minus the random agent's
-                contemporaneous ELO (so random stays near 0 as a baseline).
-        """
-        import wandb
-
-        # Build a step→random-elo lookup for the normalization chart.
-        random_elo_at_step: dict[int, float] = dict(self._elo_history.get("random", []))
-
-        xs: list[list[int]] = []
-        ys_raw: list[list[float]] = []
-        ys_norm: list[list[float]] = []
-        keys: list[str] = []
-
-        for label, history in self._elo_history.items():
-            if not history:
-                continue
-            steps = [h[0] for h in history]
-            elos = [h[1] for h in history]
-            norm = [e - random_elo_at_step.get(s, 0.0) for s, e in history]
-            xs.append(steps)
-            ys_raw.append(elos)
-            ys_norm.append(norm)
-            keys.append(label)
-
-        return {
-            "charts/elo_history": wandb.plot.line_series(
-                xs=xs,
-                ys=ys_raw,
-                keys=keys,
-                title="Roster ELO History",
-                xname="Global Step",
-            ),
-            "charts/elo_history_normalized": wandb.plot.line_series(
-                xs=xs,
-                ys=ys_norm,
-                keys=keys,
-                title="Roster ELO (normalized vs random)",
-                xname="Global Step",
-            ),
-        }
 
     def _save_roster_json(self) -> None:
         """Persist roster metadata alongside the run's checkpoints."""
