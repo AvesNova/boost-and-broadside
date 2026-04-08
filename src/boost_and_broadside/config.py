@@ -207,6 +207,15 @@ class TrainConfig:
     bc_hold_steps: int = 0  # hold bc_coef at full value for this many global steps
     bc_decay_steps: int = 0  # then linearly decay bc_coef to 0 over this many steps
 
+    # --- BC pretraining phase ---
+    # Runs before RL: scripted agent queried on all envs, PG and entropy losses zeroed.
+    # Uses online rollouts (live policy's own hidden states) to avoid distribution shift.
+    pretrain_bc_steps: int = 0  # global steps to run BC pretraining; 0 = disabled
+    pretrain_bc_coef: float = 0.0  # BC coefficient during pretraining
+    pretrain_vf_coef: float = (
+        0.0  # VF coefficient during pretraining; 0.0 = skip value training
+    )
+
     # --- Shaping reward schedules ---
     # Each entry: (component_name, hold_steps, decay_steps)
     # hold_steps:  weight stays at its RewardConfig value for this many global steps.
@@ -243,3 +252,5 @@ class TrainConfig:
                 f"scripted_frac + avg_model_frac + league_frac must be < 1.0, "
                 f"got {self.scripted_frac} + {self.avg_model_frac} + {self.league_frac}"
             )
+        if self.pretrain_bc_steps > 0 and self.pretrain_bc_coef <= 0.0:
+            raise ValueError("pretrain_bc_coef must be > 0 when pretrain_bc_steps > 0")

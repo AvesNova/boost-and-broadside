@@ -192,6 +192,10 @@ class PPOTrainer:
             raise ValueError(
                 "scripted_frac > 0 requires a scripted_agent to be provided."
             )
+        if train_config.pretrain_bc_steps > 0 and scripted_agent is None:
+            raise ValueError(
+                "pretrain_bc_steps > 0 requires a scripted_agent to be provided."
+            )
         if (
             self.B_league > 0
             and scripted_agent is None
@@ -397,6 +401,14 @@ class PPOTrainer:
     # Main training loop
     # ------------------------------------------------------------------
 
+    @property
+    def _in_pretrain(self) -> bool:
+        """True while the BC pretraining phase is active."""
+        return (
+            self.cfg.pretrain_bc_steps > 0
+            and self._global_step < self.cfg.pretrain_bc_steps
+        )
+
     def _update_avg_model(self) -> None:
         """Add the current training policy snapshot to the uniform running average."""
         first_update = self._avg_update_count == 0
@@ -511,122 +523,138 @@ class PPOTrainer:
                     obs, hidden
                 )
 
-                # Whether the avg model is ready (at least one post-warmup snapshot)
-                use_avg = self._avg_update_count > 0 and self.B_avg > 0
-
-                # Avg-model opponent actions (when ready)
-                if use_avg:
-                    with torch.no_grad():
-                        obs_avg = _slice_obs(obs, avg_start, avg_end)
-                        action_avg, _, _, avg_hidden = (
-                            self.avg_policy.get_action_and_value(obs_avg, avg_hidden)
-                        )
-
-                # League opponent actions (when a valid entry is loaded for this rollout)
-                use_league = (
-                    self.B_league > 0 and self._current_league_entry is not None
-                )
-                if use_league:
-                    if self._current_league_policy is not None:
-                        with torch.no_grad():
-                            obs_league = _slice_obs(obs, league_start, league_end)
-                            action_league, _, _, league_hidden = (
-                                self._current_league_policy.get_action_and_value(
-                                    obs_league, league_hidden
-                                )
-                            )
-                    else:  # scripted
-                        state_league = _slice_state(
-                            self.wrapper.env.state, league_start, league_end
-                        )
-                        with torch.no_grad():
-                            action_league = self.scripted_agent.get_actions(
-                                state_league
-                            )
-
                 # Team IDs — used for opponent overrides, actor mask, and BC expert masking
                 team_id = obs["team_id"]  # (B, N) int
 
-                # use_sc_bc:       generate expert probs for BC loss (active whenever B_sc > 0)
-                # use_sc_opponent: also override one team with scripted actions (after min_steps)
-                use_sc_bc = self.B_sc > 0
-                use_sc_opponent = (
-                    use_sc_bc
-                    and self._global_step >= self.cfg.scripted_roster_min_steps
-                )
-
-                expert_probs_step: torch.Tensor | None = None
-                if use_sc_bc:
+                if self._in_pretrain:
+                    # BC pretraining: pure self-play — live policy controls all ships.
+                    # Query scripted agent on all B envs for supervised targets.
+                    # No opponent overrides; actor_mask is all-True.
                     with torch.no_grad():
-                        state_sc = _slice_state(
-                            self.wrapper.env.state, sc_start, sc_end
-                        )
-                        action_scripted, expert_probs_sc = (
-                            self.scripted_agent.get_actions_and_probs(state_sc)
-                        )
-                    if use_sc_opponent:
-                        # One team is the scripted opponent — only supervise training-policy ships.
-                        opp_flag_sc = self._opp_team_flag[: self.B_sc].unsqueeze(
-                            1
-                        )  # (B_sc, 1)
-                        train_mask_sc = (
-                            team_id[sc_start:sc_end] != opp_flag_sc
-                        )  # (B_sc, N)
-                    else:
-                        # Both teams are training-policy — supervise all ships.
-                        train_mask_sc = torch.ones(
-                            self.B_sc,
-                            N,
-                            dtype=torch.bool,
+                        _, expert_probs_step = (
+                            self.scripted_agent.get_actions_and_probs(
+                                self.wrapper.env.state
+                            )
+                        )  # expert_probs_step: (B, N, 12)
+                    actor_mask = torch.ones(B, N, dtype=torch.bool, device=self.device)
+                    use_avg = False
+                    use_league = False
+                else:
+                    # Whether the avg model is ready (at least one post-warmup snapshot)
+                    use_avg = self._avg_update_count > 0 and self.B_avg > 0
+
+                    # Avg-model opponent actions (when ready)
+                    if use_avg:
+                        with torch.no_grad():
+                            obs_avg = _slice_obs(obs, avg_start, avg_end)
+                            action_avg, _, _, avg_hidden = (
+                                self.avg_policy.get_action_and_value(
+                                    obs_avg, avg_hidden
+                                )
+                            )
+
+                    # League opponent actions (when a valid entry is loaded for this rollout)
+                    use_league = (
+                        self.B_league > 0 and self._current_league_entry is not None
+                    )
+                    if use_league:
+                        if self._current_league_policy is not None:
+                            with torch.no_grad():
+                                obs_league = _slice_obs(obs, league_start, league_end)
+                                action_league, _, _, league_hidden = (
+                                    self._current_league_policy.get_action_and_value(
+                                        obs_league, league_hidden
+                                    )
+                                )
+                        else:  # scripted
+                            state_league = _slice_state(
+                                self.wrapper.env.state, league_start, league_end
+                            )
+                            with torch.no_grad():
+                                action_league = self.scripted_agent.get_actions(
+                                    state_league
+                                )
+
+                    # use_sc_bc:       generate expert probs for BC loss (active whenever B_sc > 0)
+                    # use_sc_opponent: also override one team with scripted actions (after min_steps)
+                    use_sc_bc = self.B_sc > 0
+                    use_sc_opponent = (
+                        use_sc_bc
+                        and self._global_step >= self.cfg.scripted_roster_min_steps
+                    )
+
+                    expert_probs_step: torch.Tensor | None = None
+                    if use_sc_bc:
+                        with torch.no_grad():
+                            state_sc = _slice_state(
+                                self.wrapper.env.state, sc_start, sc_end
+                            )
+                            action_scripted, expert_probs_sc = (
+                                self.scripted_agent.get_actions_and_probs(state_sc)
+                            )
+                        if use_sc_opponent:
+                            # One team is the scripted opponent — only supervise training-policy ships.
+                            opp_flag_sc = self._opp_team_flag[: self.B_sc].unsqueeze(
+                                1
+                            )  # (B_sc, 1)
+                            train_mask_sc = (
+                                team_id[sc_start:sc_end] != opp_flag_sc
+                            )  # (B_sc, N)
+                        else:
+                            # Both teams are training-policy — supervise all ships.
+                            train_mask_sc = torch.ones(
+                                self.B_sc,
+                                N,
+                                dtype=torch.bool,
+                                device=self.device,
+                            )
+                        expert_probs_step = torch.zeros(
+                            self.cfg.scales[0].num_envs,
+                            self.env_config.num_ships,
+                            12,
                             device=self.device,
                         )
-                    expert_probs_step = torch.zeros(
-                        self.cfg.scales[0].num_envs,
-                        self.env_config.num_ships,
-                        12,
-                        device=self.device,
-                    )
-                    expert_probs_step[sc_start:sc_end] = (
-                        expert_probs_sc * train_mask_sc.unsqueeze(-1)
-                    )
+                        expert_probs_step[sc_start:sc_end] = (
+                            expert_probs_sc * train_mask_sc.unsqueeze(-1)
+                        )
 
-                # Override opponent team actions; training-policy actions are the base
-                action = action.clone()
-                sc_flags = self._opp_team_flag[: self.B_sc]
-                avg_flags = self._opp_team_flag[self.B_sc : self.B_sc + self.B_avg]
-                lg_flags = self._opp_team_flag[self.B_sc + self.B_avg :]
-                if use_sc_opponent:
-                    _override_opponent(
-                        action, team_id, sc_flags, sc_start, sc_end, action_scripted
-                    )
-                if use_avg:
-                    _override_opponent(
-                        action, team_id, avg_flags, avg_start, avg_end, action_avg
-                    )
-                if use_league:
-                    _override_opponent(
-                        action,
-                        team_id,
-                        lg_flags,
-                        league_start,
-                        league_end,
-                        action_league,
-                    )
+                    # Override opponent team actions; training-policy actions are the base
+                    action = action.clone()
+                    sc_flags = self._opp_team_flag[: self.B_sc]
+                    avg_flags = self._opp_team_flag[self.B_sc : self.B_sc + self.B_avg]
+                    lg_flags = self._opp_team_flag[self.B_sc + self.B_avg :]
+                    if use_sc_opponent:
+                        _override_opponent(
+                            action, team_id, sc_flags, sc_start, sc_end, action_scripted
+                        )
+                    if use_avg:
+                        _override_opponent(
+                            action, team_id, avg_flags, avg_start, avg_end, action_avg
+                        )
+                    if use_league:
+                        _override_opponent(
+                            action,
+                            team_id,
+                            lg_flags,
+                            league_start,
+                            league_end,
+                            action_league,
+                        )
 
-                # Actor mask: True for ships whose actions were chosen by training policy
-                actor_mask = torch.ones(B, N, dtype=torch.bool, device=self.device)
-                if use_sc_opponent:
-                    actor_mask[sc_start:sc_end] = team_id[
-                        sc_start:sc_end
-                    ] != sc_flags.unsqueeze(1)
-                if use_avg:
-                    actor_mask[avg_start:avg_end] = team_id[
-                        avg_start:avg_end
-                    ] != avg_flags.unsqueeze(1)
-                if use_league:
-                    actor_mask[league_start:league_end] = team_id[
-                        league_start:league_end
-                    ] != lg_flags.unsqueeze(1)
+                    # Actor mask: True for ships whose actions were chosen by training policy
+                    actor_mask = torch.ones(B, N, dtype=torch.bool, device=self.device)
+                    if use_sc_opponent:
+                        actor_mask[sc_start:sc_end] = team_id[
+                            sc_start:sc_end
+                        ] != sc_flags.unsqueeze(1)
+                    if use_avg:
+                        actor_mask[avg_start:avg_end] = team_id[
+                            avg_start:avg_end
+                        ] != avg_flags.unsqueeze(1)
+                    if use_league:
+                        actor_mask[league_start:league_end] = team_id[
+                            league_start:league_end
+                        ] != lg_flags.unsqueeze(1)
 
                 next_obs, reward, dones, truncated, info = self.wrapper.step(action)
 
@@ -736,24 +764,27 @@ class PPOTrainer:
             # PPO update epochs
             # ----------------------------------------------------------------
             record_hist = update % 10 == 0
+            pretrain_mode = self._in_pretrain
             metrics = self._update_epochs(
                 all_buffers=[self.buffer] + self.aux_buffers,
                 record_histograms=record_hist,
+                pretrain_mode=pretrain_mode,
             )
 
             if self.lr_scheduler is not None:
                 self.lr_scheduler.step()
 
-            # Update avg model after warmup completes
-            warmup_done = (
-                self.cfg.lr_warmup_steps == 0
-                or self._global_step >= self.cfg.lr_warmup_steps
-            )
-            avg_model_ready = (
-                warmup_done and self._global_step >= self.cfg.avg_model_min_steps
-            )
-            if self.B_avg > 0 and avg_model_ready:
-                self._update_avg_model()
+            if not pretrain_mode:
+                # Update avg model after warmup completes
+                warmup_done = (
+                    self.cfg.lr_warmup_steps == 0
+                    or self._global_step >= self.cfg.lr_warmup_steps
+                )
+                avg_model_ready = (
+                    warmup_done and self._global_step >= self.cfg.avg_model_min_steps
+                )
+                if self.B_avg > 0 and avg_model_ready:
+                    self._update_avg_model()
 
             # Scaler stats — one CPU transfer per component group
             p5_cpu = self.scaler._p5.cpu()
@@ -788,7 +819,8 @@ class PPOTrainer:
 
             # ELO evaluation — runs sync matchups against all roster entries
             if (
-                self.cfg.elo_eval_interval > 0
+                not pretrain_mode
+                and self.cfg.elo_eval_interval > 0
                 and update % self.cfg.elo_eval_interval == 0
             ):
                 elo_metrics = self._run_elo_eval()
@@ -831,9 +863,11 @@ class PPOTrainer:
             ):
                 self._save_checkpoint(update)
                 # Add to roster when normalized training ELO (vs random) crosses the next milestone.
+                # Skip during pretraining — ELO is not evaluated and the policy is imitating, not competing.
                 training_elo_norm = self._training_elo - self._random_elo()
                 if (
-                    self._last_checkpoint_path is not None
+                    not pretrain_mode
+                    and self._last_checkpoint_path is not None
                     and self._last_checkpoint_path.exists()
                     and self.cfg.elo_milestone_gap > 0
                     and training_elo_norm - self._elo_milestone
@@ -859,15 +893,18 @@ class PPOTrainer:
         batch: tuple,
         comp_weights: torch.Tensor,
         is_primary: bool,
+        pretrain_mode: bool = False,
     ) -> tuple[torch.Tensor, dict]:
         """Compute PPO loss for one minibatch. Does NOT call zero_grad / backward / step.
 
         Args:
-            batch:        Output of RolloutBuffer.get_minibatch_iterator.
-            comp_weights: (K,) per-component lambda weights for this update step.
-            is_primary:   True for the primary scale — enables BC loss and per-component
-                          critic diagnostics. Aux scales skip these to avoid shape mismatches
-                          (different N) and because BC targets only exist in the primary env.
+            batch:         Output of RolloutBuffer.get_minibatch_iterator.
+            comp_weights:  (K,) per-component lambda weights for this update step.
+            is_primary:    True for the primary scale — enables BC loss and per-component
+                           critic diagnostics. Aux scales skip these to avoid shape mismatches
+                           (different N) and because BC targets only exist in the primary env.
+            pretrain_mode: If True, zero out PG and entropy losses; use pretrain_bc_coef and
+                           pretrain_vf_coef instead of their RL counterparts.
 
         Returns:
             (loss, diag) where diag is a dict of scalar/tensor diagnostics.
@@ -941,6 +978,7 @@ class PPOTrainer:
 
         # ---- Behavioral cloning loss (primary scale only) ----------------
         bc_loss = torch.tensor(0.0, device=self.device)
+        scripted_entropy = torch.tensor(0.0, device=self.device)
         if is_primary and self._bc_coef_eff > 0.0:
             bc_valid = mb_expert_probs.sum(-1) > 0  # (T, B_mb, N)
             bc_f = (bc_valid & mb_actor_mask & mb_alive).float()
@@ -960,12 +998,33 @@ class PPOTrainer:
                 ).sum(-1)
             )  # (T, B_mb, N)
             bc_loss = (ce * bc_f).sum() / bc_sum
+            # Entropy of the scripted agent's distribution (the BC loss floor).
+            # KL(scripted || policy) = CE - H(scripted); 0 = perfect imitation.
+            with torch.no_grad():
+                p = mb_expert_probs.clamp(min=1e-8)
+                scripted_ent_per_token = (
+                    -(p[..., POWER_SLICE] * p[..., POWER_SLICE].log()).sum(-1)
+                    - (p[..., TURN_SLICE] * p[..., TURN_SLICE].log()).sum(-1)
+                    - (p[..., SHOOT_SLICE] * p[..., SHOOT_SLICE].log()).sum(-1)
+                )  # (T, B_mb, N)
+                scripted_entropy = (scripted_ent_per_token * bc_f).sum() / bc_sum
+
+        if pretrain_mode:
+            pg_scale = 0.0
+            ent_scale = 0.0
+            bc_coef = self.cfg.pretrain_bc_coef
+            vf_coef = self.cfg.pretrain_vf_coef
+        else:
+            pg_scale = 1.0
+            ent_scale = 1.0
+            bc_coef = self._bc_coef_eff
+            vf_coef = cfg.vf_coef
 
         loss = (
-            pg_loss
-            + cfg.vf_coef * vf_loss
-            + cfg.ent_coef * ent_loss
-            + self._bc_coef_eff * bc_loss
+            pg_scale * pg_loss
+            + vf_coef * vf_loss
+            + ent_scale * cfg.ent_coef * ent_loss
+            + bc_coef * bc_loss
         )
 
         # ---- Diagnostics (no grad) ---------------------------------------
@@ -976,6 +1035,8 @@ class PPOTrainer:
             diag["vf_loss"] = vf_loss.item()
             diag["ent_loss"] = ent_loss.item()
             diag["bc_loss"] = bc_loss.item()
+            diag["scripted_entropy"] = scripted_entropy.item()
+            diag["bc_kl"] = bc_loss.item() - scripted_entropy.item()
             diag["adv_var"] = adv_var.item()
             diag["approx_kl"] = (
                 ((ratio - 1) - log_ratio) * actor_f
@@ -1024,6 +1085,7 @@ class PPOTrainer:
         self,
         all_buffers: list[RolloutBuffer],
         record_histograms: bool = False,
+        pretrain_mode: bool = False,
     ) -> dict:
         """Run num_epochs × num_minibatches of PPO updates across all scales.
 
@@ -1034,6 +1096,8 @@ class PPOTrainer:
             all_buffers:       Primary buffer first, then aux buffers in order.
             record_histograms: If True, capture return/logprob distributions from
                 the last primary-scale minibatch for async histogram logging.
+            pretrain_mode:     If True, zero out PG and entropy losses and use
+                pretrain_bc_coef / pretrain_vf_coef instead of their RL counterparts.
 
         Returns:
             Dict of mean metric values over all minibatch updates.
@@ -1054,6 +1118,8 @@ class PPOTrainer:
             "train/value_loss": [],
             "train/entropy_loss": [],
             "train/behavioral_cloning_loss": [],
+            "train/bc_kl": [],
+            "train/scripted_entropy": [],
             "train/approximate_kl": [],
             "train/clip_fraction": [],
             "train/gradient_norm": [],
@@ -1087,6 +1153,8 @@ class PPOTrainer:
                     "vf": 0.0,
                     "ent": 0.0,
                     "bc": 0.0,
+                    "bc_kl": 0.0,
+                    "scripted_entropy": 0.0,
                     "kl": 0.0,
                     "clip": 0.0,
                     "adv_var": 0.0,
@@ -1097,7 +1165,7 @@ class PPOTrainer:
                 for scale_idx, (buf, batch) in enumerate(zip(all_buffers, batches)):
                     is_primary = scale_idx == 0
                     loss, diag = self._compute_minibatch_loss(
-                        batch, comp_weights, is_primary
+                        batch, comp_weights, is_primary, pretrain_mode=pretrain_mode
                     )
                     (loss / n_scales).backward()
 
@@ -1107,6 +1175,8 @@ class PPOTrainer:
                     scalar_accum_step["vf"] += diag["vf_loss"] / n_scales
                     scalar_accum_step["ent"] += diag["ent_loss"] / n_scales
                     scalar_accum_step["bc"] += diag["bc_loss"] / n_scales
+                    scalar_accum_step["bc_kl"] += diag["bc_kl"] / n_scales
+                    scalar_accum_step["scripted_entropy"] += diag["scripted_entropy"] / n_scales
                     scalar_accum_step["kl"] += diag["approx_kl"] / n_scales
                     scalar_accum_step["clip"] += diag["clip_frac"] / n_scales
                     scalar_accum_step["adv_var"] += diag["adv_var"] / n_scales
@@ -1129,6 +1199,10 @@ class PPOTrainer:
                 accum_scalar["train/entropy_loss"].append(scalar_accum_step["ent"])
                 accum_scalar["train/behavioral_cloning_loss"].append(
                     scalar_accum_step["bc"]
+                )
+                accum_scalar["train/bc_kl"].append(scalar_accum_step["bc_kl"])
+                accum_scalar["train/scripted_entropy"].append(
+                    scalar_accum_step["scripted_entropy"]
                 )
                 accum_scalar["train/approximate_kl"].append(scalar_accum_step["kl"])
                 accum_scalar["train/clip_fraction"].append(scalar_accum_step["clip"])

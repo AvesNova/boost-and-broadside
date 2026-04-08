@@ -88,7 +88,7 @@ def main() -> None:
     ship_config = ShipConfig(bullet_energy_cost=2, bullet_min_damage_frac=1.0)
 
     env_config = EnvConfig(
-        num_ships=2,
+        num_ships=4,
         max_bullets=20,
         max_episode_steps=1024,
     )
@@ -146,29 +146,29 @@ def main() -> None:
                 # Multi-scale curriculum: 1v1 primary + 2v2 + 4v4 auxiliary.
                 # Batch sizes are halved/quartered so total ships-per-update stays constant.
                 scales=(
-                    ScaleConfig(
-                        env_config=EnvConfig(
-                            num_ships=2, max_bullets=20, max_episode_steps=1024
-                        ),
-                        num_envs=max_tokens // 3 // 2,
-                    ),
-                    ScaleConfig(
-                        env_config=EnvConfig(
-                            num_ships=4, max_bullets=20, max_episode_steps=1024
-                        ),
-                        num_envs=max_tokens // 3 // 4,
-                    ),
+                    # ScaleConfig(
+                    #     env_config=EnvConfig(
+                    #         num_ships=2, max_bullets=20, max_episode_steps=1024
+                    #     ),
+                    #     num_envs=max_tokens // 3 // 2,
+                    # ),
+                    # ScaleConfig(
+                    #     env_config=EnvConfig(
+                    #         num_ships=4, max_bullets=20, max_episode_steps=1024
+                    #     ),
+                    #     num_envs=max_tokens // 3 // 4,
+                    # ),
                     ScaleConfig(
                         env_config=EnvConfig(
                             num_ships=8, max_bullets=20, max_episode_steps=1024
                         ),
-                        num_envs=max_tokens // 3 // 8,
+                        num_envs=3 * max_tokens // 3 // 8,
                     ),
                 ),
                 num_steps=128,
                 num_epochs=4,
                 num_minibatches=4,
-                learning_rate=8e-4,
+                learning_rate=3e-4,
                 gamma=0.99,
                 gae_lambda=0.95,
                 clip_coef=0.2,
@@ -176,9 +176,12 @@ def main() -> None:
                 vf_coef=0.5,
                 max_grad_norm=1.0,
                 total_timesteps=2_000_000_000,
+                pretrain_bc_steps=200_000_000,
+                pretrain_bc_coef=1.0,
+                pretrain_vf_coef=0.0,
                 return_ema_alpha=0.005,  # ~200-update memory for percentile EMA
                 return_min_span=1.0,  # guard against zero-return disabled components
-                lr_warmup_steps=20_000_000,
+                lr_warmup_steps=10_000_000,
                 checkpoint_interval=10,
                 checkpoint_dir="checkpoints",
                 scripted_frac=0.10,
@@ -237,7 +240,7 @@ def main() -> None:
             )
 
         case "collect_stats":
-            collect_stats_num_envs = 32768
+            collect_stats_num_envs = 1024
             team0 = args.team0 if args.team0 is not None else "scripted"
             team1 = args.team1 if args.team1 is not None else "random"
             run_collect_stats_mode(
@@ -254,7 +257,7 @@ def main() -> None:
         case "elo_stats":
             run_elo_stats_mode(
                 run_spec=args.run,
-                num_envs=32768 * 4,
+                num_envs=1024,
                 ship_config=ship_config,
                 env_config=env_config,
                 model_config=model_config,
