@@ -10,8 +10,7 @@ Responsibilities:
 import torch
 from typing import Any
 
-from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
-from boost_and_broadside.config import ShipConfig, EnvConfig, RewardConfig
+from boost_and_broadside.config import ShipConfig, EnvConfig, PhaseConfig
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.rewards import (
     RewardComponent,
@@ -40,18 +39,17 @@ class MVPEnvWrapper:
         num_envs: int,
         ship_config: ShipConfig,
         env_config: EnvConfig,
-        reward_config: RewardConfig,
+        phase: PhaseConfig,
         device: str | torch.device,
-        scripted_agent: StochasticScriptedAgent | None = None,
     ) -> None:
         self.env = TensorEnv(num_envs, ship_config, env_config, device)
         self.ship_config = ship_config
         self.env_config = env_config
         self.device = torch.device(device)
 
-        # All components (decay scheduler and other callers may need access to inactive ones)
+        # All components (timeline scheduler accesses these to update weights live).
         self._all_components: list[RewardComponent] = build_reward_components(
-            reward_config, ship_config, scripted_agent
+            phase, ship_config
         )
 
         # Active components: weight != 0 and registered in REWARD_COMPONENT_NAMES,

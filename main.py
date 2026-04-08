@@ -29,7 +29,8 @@ from boost_and_broadside.config import (
     ShipConfig,
     EnvConfig,
     ModelConfig,
-    RewardConfig,
+    PhaseConfig,
+    TimelineConfig,
     TrainConfig,
     ScaleConfig,
 )
@@ -100,34 +101,79 @@ def main() -> None:
         n_transformer_blocks=2,
     )
 
-    reward_config = RewardConfig(
-        # --- Objective rewards
-        victory_weight=1.0,
-        death_weight=1.0,
-        damage_weight=1.0,
-        # Lambda=-1 for these components on enemy ships (outcome rewards)
-        enemy_neg_lambda_components=frozenset(
-            {"damage", "death", "victory", "exposure"}
-        ),
-        # --- Shaping rewards
-        positioning_weight=0.0,
-        positioning_radius=400.0,
-        facing_weight=0.01,
-        exposure_weight=0.0,
-        closing_speed_weight=0.001,
-        turn_rate_weight=0.001,
-        proximity_weight=0.0,
-        proximity_radius=400.0,
-        # --- Behavioral regularizers ---
-        power_range_weight=0.0,
-        power_range_lo=0.2,
-        power_range_hi=0.8,
-        speed_range_weight=0.0,
-        speed_range_lo=40.0,
-        speed_range_hi=120.0,
-        shoot_quality_weight=0.0,
-        shoot_quality_radius=200.0,
-        scripted_agent_weight=0.0,
+    timeline = TimelineConfig(
+        phases=(
+            PhaseConfig(
+                step=0,
+                # --- Optimization (pretrain: pg_coef=0 zeroes policy gradient) ---
+                learning_rate=1e-7,
+                pg_coef=0.0,
+                ent_coef=0.0,
+                bc_coef=1.0,
+                vf_coef=0.0,
+                # --- Opponents (pretrain: 100% scripted for BC targets) ---
+                scripted_frac=0.0,
+                avg_model_frac=0.0,
+                league_frac=0.0,
+                allow_avg_model_updates=False,
+                allow_scripted_in_roster=False,
+                # --- League / Checkpointing ---
+                elo_eval_games=256,
+                elo_eval_interval=10,
+                checkpoint_interval=10,
+                # --- Reward Group Scales ---
+                true_reward_scale=1.0,
+                important_scale=1.0,
+                aux_scale=1.0,
+                # --- Reward Individual Weights ---
+                victory_weight=1.0,
+                death_weight=1.0,
+                damage_weight=1.0,
+                facing_weight=0.01,
+                exposure_weight=0.0,
+                closing_speed_weight=0.001,
+                turn_rate_weight=0.001,
+                proximity_weight=0.0,
+                positioning_weight=0.0,
+                power_range_weight=0.0,
+                speed_range_weight=0.0,
+                shoot_quality_weight=0.0,
+                # --- Reward Static Params ---
+                positioning_radius=400.0,
+                proximity_radius=400.0,
+                power_range_lo=0.2,
+                power_range_hi=0.8,
+                speed_range_lo=40.0,
+                speed_range_hi=120.0,
+                shoot_quality_radius=200.0,
+                # --- Set-valued Fields ---
+                enemy_neg_lambda_components=frozenset(
+                    {"damage", "death", "victory", "exposure"}
+                ),
+                disabled_rewards=frozenset(),
+            ),
+            PhaseConfig(
+                step=10_000_000,
+                learning_rate=3e-4,
+            ),
+            PhaseConfig(
+                step=20_000_000,
+            ),
+            PhaseConfig(
+                step=50_000_000,
+                ent_coef=0.02,
+                vf_coef=1.0,
+            ),
+            PhaseConfig(
+                step=100_000_000,
+                pg_coef=1.0,
+                bc_coef=0.0,
+                avg_model_frac=0.30,
+                league_frac=0.20,
+                allow_avg_model_updates=True,
+                allow_scripted_in_roster=True,
+            ),
+        )
     )
 
     render_config = RenderConfig()
@@ -143,8 +189,6 @@ def main() -> None:
                 ship_config, StochasticAgentConfig()
             )
             train_config = TrainConfig(
-                # Multi-scale curriculum: 1v1 primary + 2v2 + 4v4 auxiliary.
-                # Batch sizes are halved/quartered so total ships-per-update stays constant.
                 scales=(
                     # ScaleConfig(
                     #     env_config=EnvConfig(
@@ -165,50 +209,22 @@ def main() -> None:
                         num_envs=3 * max_tokens // 3 // 8,
                     ),
                 ),
+                timeline=timeline,
                 num_steps=128,
                 num_epochs=4,
                 num_minibatches=4,
-                learning_rate=3e-4,
                 gamma=0.99,
                 gae_lambda=0.95,
                 clip_coef=0.2,
-                ent_coef=0.02,
-                vf_coef=0.5,
                 max_grad_norm=1.0,
                 total_timesteps=2_000_000_000,
-                pretrain_bc_steps=200_000_000,
-                pretrain_bc_coef=1.0,
-                pretrain_vf_coef=0.0,
-                return_ema_alpha=0.005,  # ~200-update memory for percentile EMA
-                return_min_span=1.0,  # guard against zero-return disabled components
-                lr_warmup_steps=10_000_000,
-                checkpoint_interval=10,
+                return_ema_alpha=0.005,
+                return_min_span=1.0,
                 checkpoint_dir="checkpoints",
-                scripted_frac=0.10,
-                avg_model_frac=0.30,
                 avg_model_min_steps=200_000_000,
-                bc_coef=0.1,
-                bc_hold_steps=0,
-                bc_decay_steps=0,
-                shaping_schedules=(
-                    # (component_name, hold_steps, decay_steps)
-                    # Hold at full weight for hold_steps, then linearly decay to 0.
-                    # ("facing",          250_000_000, 500_000_000),
-                    # ("exposure",        250_000_000, 500_000_000),
-                    # ("closing_speed",   250_000_000, 500_000_000),
-                    # ("turn_rate",       250_000_000, 500_000_000),
-                    # ("positioning",     250_000_000, 500_000_000),
-                    # ("proximity",       250_000_000, 500_000_000),
-                    # ("power_range",     250_000_000, 500_000_000),
-                    # ("speed_range",     250_000_000, 500_000_000),
-                    # ("shoot_quality",   250_000_000, 500_000_000),
-                ),
-                league_frac=0.10,
                 league_size=20,
                 league_uniform_sampling=False,
-                elo_eval_games=256,
-                elo_eval_interval=10,
-                elo_milestone_gap=40.0,
+                elo_milestone_gap=100.0,
                 elo_k_factor=32.0,
                 elo_temperature=200.0,
                 scripted_roster_min_steps=300_000_000,
@@ -217,7 +233,6 @@ def main() -> None:
                 train_config=train_config,
                 model_config=model_config,
                 ship_config=ship_config,
-                reward_config=reward_config,
                 device=device,
                 use_wandb=True,
                 scripted_agent=scripted_agent,
@@ -232,7 +247,7 @@ def main() -> None:
                 team1_spec=team1,
                 ship_config=ship_config,
                 env_config=env_config,
-                reward_config=reward_config,
+                phase=base_phase,
                 model_config=model_config,
                 render_config=render_config,
                 device=device,

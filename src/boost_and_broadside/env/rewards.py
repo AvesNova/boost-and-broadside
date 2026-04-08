@@ -9,7 +9,7 @@ Adding a new reward
 -------------------
 1. Create a subclass of RewardComponent with a unique `name` class attribute.
 2. Add its name to REWARD_COMPONENT_NAMES (fixes K and value head ordering).
-3. Optionally add a weight field to RewardConfig in config.py and set it in main.py.
+3. Add a weight field to PhaseConfig in config.py and set it in main.py.
 4. Add an instance to the list in build_reward_components().
 """
 
@@ -17,8 +17,7 @@ import torch
 from abc import ABC, abstractmethod
 
 from boost_and_broadside.env.state import TensorState
-from boost_and_broadside.config import RewardConfig, ShipConfig
-from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
+from boost_and_broadside.config import PhaseConfig, ShipConfig
 
 
 class RewardComponent(ABC):
@@ -757,69 +756,8 @@ class ShootQualityReward(RewardComponent):
         return shooting * best_quality * alive.float()
 
 
-class ScriptedAgentReward(RewardComponent):
-    """Reward the RL agent for taking actions the scripted expert recommends.
-
-    Computes log P_scripted(rl_action) = sum of log-probs of each sub-action
-    (power, turn, shoot) under the scripted agent's marginal distributions.
-    A 1% uniform mixture is applied before taking logs to prevent divergence
-    from zero-probability actions (e.g. air brakes, which the scripted agent
-    never uses).
-
-    The scripted distributions are evaluated on prev_state — the same state
-    the RL policy observed when selecting its action.
-
-    Both teams are rewarded for following their own scripted expert. Lambda=0
-    for enemy ships in the PPO aggregation (scripted_agent is not in
-    REWARD_COMPONENT_NAMES and is excluded from the decomposed critic).
-    """
-
-    name = "scripted_agent"
-
-    def __init__(self, weight: float, agent: StochasticScriptedAgent) -> None:
-        self.weight = weight
-        self.agent = agent
-
-    def compute(
-        self,
-        prev_state: TensorState,
-        actions: torch.Tensor,
-        next_state: TensorState,
-        dones: torch.Tensor,
-    ) -> torch.Tensor:
-        closest_dist, target_idx, has_target = self.agent._select_targets(prev_state)
-        dir_pred = self.agent._predict_interception(
-            prev_state, target_idx, closest_dist
-        )
-        active_mask = prev_state.ship_alive & has_target
-
-        p_power, p_turn, p_shoot = self.agent._compute_action_probs(
-            prev_state, closest_dist, dir_pred, active_mask
-        )
-
-        a_pow = actions[..., 0].long()  # (B, N)
-        a_trn = actions[..., 1].long()
-        a_sht = actions[..., 2].long()
-
-        # Mix 1% uniform into each head to prevent log(0) divergence when the
-        # scripted agent assigns zero probability to an action (e.g. air brakes).
-        p_power = 0.99 * p_power + 0.01 / 3
-        p_turn = 0.99 * p_turn + 0.01 / 7
-        p_shoot = 0.99 * p_shoot + 0.01 / 2
-
-        log_p = (
-            p_power.gather(-1, a_pow.unsqueeze(-1)).squeeze(-1).log()
-            + p_turn.gather(-1, a_trn.unsqueeze(-1)).squeeze(-1).log()
-            + p_shoot.gather(-1, a_sht.unsqueeze(-1)).squeeze(-1).log()
-        )
-
-        return self.weight * log_p * prev_state.ship_alive.float()
-
-
 # Fixed ordered tuple of K=12 reward component names.
 # The index of each name determines the corresponding slice in (B, N, K) tensors.
-# ScriptedAgentReward is intentionally excluded — it's an optional auxiliary signal
-# not suitable for per-ship per-component critic decomposition.
 REWARD_COMPONENT_NAMES: tuple[str, ...] = (
     "damage",  # 0 — damage taken (negative)
     "death",  # 1 — death penalty (negative)
@@ -839,80 +777,77 @@ _NAME_TO_K: dict[str, int] = {name: k for k, name in enumerate(REWARD_COMPONENT_
 
 
 def build_reward_components(
-    reward_config: RewardConfig,
+    phase: PhaseConfig,
     ship_config: ShipConfig,
-    scripted_agent: StochasticScriptedAgent | None = None,
 ) -> list[RewardComponent]:
-    """Construct the list of active reward components from config.
+    """Construct the list of active reward components from the base phase config.
+
+    Called once at PPOTrainer init with ``timeline.phases[0]``. Individual
+    component weights are updated live each update by the timeline scheduler.
+    Static params (radii, range bounds) are fixed at construction time.
 
     To add a new reward: create a RewardComponent subclass, add its name to
-    REWARD_COMPONENT_NAMES, then append an instance here.
-    To disable at runtime: add its name to reward_config.disabled_rewards.
+    REWARD_COMPONENT_NAMES, add weight/param fields to PhaseConfig, then
+    append an instance here.
+    To disable at runtime: add its name to phase.disabled_rewards.
 
     Args:
-        reward_config:   Reward weights and radii.
-        ship_config:     Physics config (used for world_size).
-        scripted_agent:  Optional stochastic scripted agent for behavioral cloning.
+        phase:       Base phase (step=0) — provides initial weights and static params.
+        ship_config: Physics config (used for world_size and max_power).
 
     Returns:
         List of RewardComponent instances to apply each step.
     """
     all_components: list[RewardComponent] = [
-        DamageReward(damage_weight=reward_config.damage_weight),
-        DeathReward(death_weight=reward_config.death_weight),
-        VictoryReward(victory_weight=reward_config.victory_weight),
+        DamageReward(damage_weight=phase.damage_weight),  # type: ignore[arg-type]
+        DeathReward(death_weight=phase.death_weight),  # type: ignore[arg-type]
+        VictoryReward(victory_weight=phase.victory_weight),  # type: ignore[arg-type]
         PositioningReward(
-            positioning_weight=reward_config.positioning_weight,
-            positioning_radius=reward_config.positioning_radius,
+            positioning_weight=phase.positioning_weight,  # type: ignore[arg-type]
+            positioning_radius=phase.positioning_radius,  # type: ignore[arg-type]
             world_size=ship_config.world_size,
         ),
         FacingReward(
-            facing_weight=reward_config.facing_weight,
-            radius=reward_config.proximity_radius,
+            facing_weight=phase.facing_weight,  # type: ignore[arg-type]
+            radius=phase.proximity_radius,  # type: ignore[arg-type]
             world_size=ship_config.world_size,
         ),
         ExposureReward(
-            exposure_weight=reward_config.exposure_weight,
-            radius=reward_config.proximity_radius,
+            exposure_weight=phase.exposure_weight,  # type: ignore[arg-type]
+            radius=phase.proximity_radius,  # type: ignore[arg-type]
             world_size=ship_config.world_size,
         ),
         ProximityReward(
-            proximity_weight=reward_config.proximity_weight,
-            proximity_radius=reward_config.proximity_radius,
+            proximity_weight=phase.proximity_weight,  # type: ignore[arg-type]
+            proximity_radius=phase.proximity_radius,  # type: ignore[arg-type]
             world_size=ship_config.world_size,
         ),
         ClosingSpeedReward(
-            closing_speed_weight=reward_config.closing_speed_weight,
+            closing_speed_weight=phase.closing_speed_weight,  # type: ignore[arg-type]
             world_size=ship_config.world_size,
         ),
         TurnRateReward(
-            turn_rate_weight=reward_config.turn_rate_weight,
+            turn_rate_weight=phase.turn_rate_weight,  # type: ignore[arg-type]
             world_size=ship_config.world_size,
         ),
         PowerRangeReward(
-            power_range_weight=reward_config.power_range_weight,
-            power_range_lo=reward_config.power_range_lo,
-            power_range_hi=reward_config.power_range_hi,
+            power_range_weight=phase.power_range_weight,  # type: ignore[arg-type]
+            power_range_lo=phase.power_range_lo,  # type: ignore[arg-type]
+            power_range_hi=phase.power_range_hi,  # type: ignore[arg-type]
             max_power=ship_config.max_power,
         ),
         SpeedRangeReward(
-            speed_range_weight=reward_config.speed_range_weight,
-            speed_range_lo=reward_config.speed_range_lo,
-            speed_range_hi=reward_config.speed_range_hi,
+            speed_range_weight=phase.speed_range_weight,  # type: ignore[arg-type]
+            speed_range_lo=phase.speed_range_lo,  # type: ignore[arg-type]
+            speed_range_hi=phase.speed_range_hi,  # type: ignore[arg-type]
         ),
         ShootQualityReward(
-            shoot_quality_weight=reward_config.shoot_quality_weight,
-            shoot_quality_radius=reward_config.shoot_quality_radius,
+            shoot_quality_weight=phase.shoot_quality_weight,  # type: ignore[arg-type]
+            shoot_quality_radius=phase.shoot_quality_radius,  # type: ignore[arg-type]
             world_size=ship_config.world_size,
         ),
     ]
-    if scripted_agent is not None and reward_config.scripted_agent_weight > 0.0:
-        all_components.append(
-            ScriptedAgentReward(reward_config.scripted_agent_weight, scripted_agent)
-        )
-
-    # Filter out any components listed in disabled_rewards
-    return [c for c in all_components if c.name not in reward_config.disabled_rewards]
+    return [c for c in all_components if c.name not in phase.disabled_rewards]  # type: ignore[operator]
 
 
 def compute_per_component_rewards(
@@ -925,7 +860,7 @@ def compute_per_component_rewards(
     """Compute per-ship per-component rewards without zero-sum transform.
 
     Each component predicts events that happen directly to that ship.
-    Components not in REWARD_COMPONENT_NAMES (e.g. scripted_agent) are ignored.
+    Components not in REWARD_COMPONENT_NAMES are ignored.
     Zero-sum accounting is deferred to the PPO lambda aggregation step.
 
     Args:

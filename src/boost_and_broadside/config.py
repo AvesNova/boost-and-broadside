@@ -5,12 +5,16 @@ that controls behavior must be a field on one of these dataclasses.
 
 Conventions:
   - ShipConfig: physics simulation constants (has defaults — defines the game).
-  - EnvConfig, ModelConfig, TrainConfig, RewardConfig: hyperparameters (NO defaults —
+  - EnvConfig, ModelConfig, TrainConfig: hyperparameters (NO defaults —
     every value must be set explicitly in main.py, so nothing is ever silently wrong).
+  - PhaseConfig / TimelineConfig: scheduling — all training scalars that vary over
+    time live here. Float fields are linearly interpolated between phases; bool, int,
+    and frozenset fields step at phase boundaries. The base phase (step=0) must define
+    every field; subsequent phases carry forward any omitted values.
 """
 
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass, fields as dc_fields
 
 
 @dataclass(frozen=True)
@@ -109,45 +113,116 @@ class ModelConfig:
 
 
 @dataclass(frozen=True)
-class RewardConfig:
-    """Reward shaping weights. No defaults — all values required."""
+class PhaseConfig:
+    """A keyframe on the training timeline.
 
-    damage_weight: float  # weight on damage-taken per ship
-    death_weight: float  # penalty for dying (own ship only)
-    victory_weight: (
-        float  # bonus/penalty for win/loss (per-ship, from own team's perspective)
-    )
-    enemy_neg_lambda_components: frozenset[
-        str
-    ]  # component names where enemy ships get lambda=-1
-    positioning_weight: float  # weight on the positioning formula reward
-    positioning_radius: (
-        float  # R: influence radius for positioning reward (world units)
-    )
-    facing_weight: float  # weight on facing-toward-enemy reward
-    exposure_weight: float  # weight on being-in-enemy-sights penalty
-    proximity_weight: float  # weight on close-to-enemy reward
-    proximity_radius: float  # R: falloff radius for proximity reward (world units)
-    closing_speed_weight: (
-        float  # weight on velocity-toward-enemy (closing speed) reward
-    )
-    turn_rate_weight: float  # weight on angular-velocity-toward-enemy reward
-    power_range_weight: float  # weight on power-in-range reward
-    power_range_lo: float  # lower bound as fraction of max_power (e.g. 0.2)
-    power_range_hi: float  # upper bound as fraction of max_power (e.g. 0.8)
-    speed_range_weight: float  # weight on speed-in-range reward
-    speed_range_lo: float  # lower speed bound (world units/s)
-    speed_range_hi: float  # upper speed bound (world units/s)
-    shoot_quality_weight: float  # weight on shoot-quality reward/penalty
-    shoot_quality_radius: (
-        float  # R: effective range for shot quality evaluation (world units)
-    )
-    scripted_agent_weight: float = (
-        0.0  # weight on scripted-agent log-prob reward (0.0 = disabled)
-    )
-    disabled_rewards: frozenset[str] = (
-        frozenset()
-    )  # component names to exclude entirely
+    All fields except ``step`` default to ``None``; omitted values carry
+    forward from the previous resolved phase.  The base phase (step=0) must
+    define every field — ``TimelineConfig.__post_init__`` enforces this.
+
+    Float fields are linearly interpolated between adjacent keyframes.
+    Bool, int, and frozenset fields use step-function semantics (the value
+    of the earlier phase is kept until the later phase begins).
+    """
+
+    step: int  # global-step at which this keyframe becomes active
+
+    # --- Optimization ---
+    learning_rate: float | None = None
+    pg_coef: float | None = None  # 0.0 = pretrain (no policy gradient); 1.0 = RL
+    ent_coef: float | None = None
+    bc_coef: float | None = None
+    vf_coef: float | None = None
+
+    # --- Opponents ---
+    scripted_frac: float | None = None   # fraction of primary envs w/ scripted opponent
+    avg_model_frac: float | None = None  # fraction of primary envs w/ avg-model opponent
+    league_frac: float | None = None     # fraction of primary envs w/ league opponent
+    allow_avg_model_updates: bool | None = None
+    allow_scripted_in_roster: bool | None = None
+
+    # --- League / Checkpointing ---
+    elo_eval_games: int | None = None      # parallel games per ELO evaluation matchup
+    elo_eval_interval: int | None = None   # run ELO eval every N updates (0 = disabled)
+    checkpoint_interval: int | None = None  # save every N updates (0 = disabled)
+
+    # --- Reward Group Scales ---
+    # Effective weight = group_scale * individual_weight.
+    # Groups: true_reward → victory; important → death, damage; aux → all others.
+    true_reward_scale: float | None = None
+    important_scale: float | None = None
+    aux_scale: float | None = None
+
+    # --- Reward Individual Weights ---
+    victory_weight: float | None = None
+    death_weight: float | None = None
+    damage_weight: float | None = None
+    facing_weight: float | None = None
+    exposure_weight: float | None = None
+    turn_rate_weight: float | None = None
+    closing_speed_weight: float | None = None
+    proximity_weight: float | None = None
+    positioning_weight: float | None = None
+    power_range_weight: float | None = None
+    speed_range_weight: float | None = None
+    shoot_quality_weight: float | None = None
+
+    # --- Reward Static Params (rarely change, but schedulable) ---
+    positioning_radius: float | None = None   # influence radius for positioning (world units)
+    proximity_radius: float | None = None     # falloff radius for proximity (world units)
+    power_range_lo: float | None = None       # lower bound as fraction of max_power
+    power_range_hi: float | None = None       # upper bound as fraction of max_power
+    speed_range_lo: float | None = None       # lower speed bound (world units/s)
+    speed_range_hi: float | None = None       # upper speed bound (world units/s)
+    shoot_quality_radius: float | None = None  # effective range for shot quality (world units)
+
+    # --- Set-valued Fields ---
+    enemy_neg_lambda_components: frozenset[str] | None = None  # lambda=-1 for enemy ships
+    disabled_rewards: frozenset[str] | None = None             # components to exclude entirely
+
+
+@dataclass(frozen=True)
+class TimelineConfig:
+    """Resolves a sequence of PhaseConfig keyframes into a complete training timeline.
+
+    During ``__post_init__`` every ``None`` value in a subsequent phase is
+    filled in from the running resolved state, so ``self.phases`` is always a
+    tuple of fully-specified ``PhaseConfig`` objects after construction.
+    """
+
+    phases: tuple[PhaseConfig, ...]
+
+    def __post_init__(self) -> None:
+        if not self.phases:
+            raise ValueError("TimelineConfig requires at least one PhaseConfig.")
+        first = self.phases[0]
+        if first.step != 0:
+            raise ValueError(
+                f"The first PhaseConfig must have step=0, got step={first.step}."
+            )
+        current: dict[str, object] = {}
+        for f in dc_fields(PhaseConfig):
+            val = getattr(first, f.name)
+            if val is None:
+                raise ValueError(
+                    f"The base PhaseConfig (step=0) must define all fields. Missing: '{f.name}'"
+                )
+            current[f.name] = val
+        resolved: list[PhaseConfig] = [PhaseConfig(**current)]
+        last_step = 0
+        for i, phase in enumerate(self.phases[1:], 1):
+            if phase.step <= last_step:
+                raise ValueError(
+                    f"Phase {i} step ({phase.step}) must be strictly greater than "
+                    f"the previous phase step ({last_step})."
+                )
+            last_step = phase.step
+            for f in dc_fields(PhaseConfig):
+                val = getattr(phase, f.name)
+                if val is not None:
+                    current[f.name] = val
+            resolved.append(PhaseConfig(**current))
+        object.__setattr__(self, "phases", tuple(resolved))
 
 
 @dataclass(frozen=True)
@@ -175,68 +250,34 @@ class TrainConfig:
 
     scales[0] is the primary scale (scripted / avg-model / league opponents enabled).
     scales[1:] are auxiliary scales (pure self-play, gradient accumulation).
+
+    All scalar values that vary over training — learning rate, loss coefficients,
+    opponent fractions, reward weights — live in ``timeline`` rather than here.
+    Fields here are static for the entire run.
     """
 
     scales: tuple[ScaleConfig, ...]  # at least one entry
-    num_steps: int  # rollout length per environment
-    num_epochs: int  # PPO update epochs per rollout
-    num_minibatches: int  # minibatches per epoch (scales[0].num_envs must be divisible)
-    learning_rate: float
-    gamma: float  # discount factor
-    gae_lambda: float  # GAE lambda
-    clip_coef: float  # PPO clip epsilon
-    ent_coef: float  # entropy bonus coefficient
-    vf_coef: float  # value loss coefficient
-    max_grad_norm: float  # gradient clipping norm
-    total_timesteps: int  # total environment steps before stopping
-    return_ema_alpha: float  # EMA decay for per-component return percentile scaler
-    return_min_span: (
-        float  # minimum p95-p5 span (symlog-space) — guards disabled components
-    )
-    lr_warmup_steps: int = (
-        0  # linearly ramp LR from 0 over this many global steps; 0 = disabled
-    )
-    checkpoint_interval: int = 0  # save every N updates; 0 = disabled
-    checkpoint_dir: str = "checkpoints"  # directory to write .pt files
-    scripted_frac: float = 0.0  # fraction of primary envs using scripted opponent
-    avg_model_frac: float = 0.0  # fraction of primary envs using avg-model opponent
-    avg_model_min_steps: int = (
-        0  # don't start building avg model until this many global steps
-    )
-    bc_coef: float = 0.0  # auxiliary BC loss coefficient (0 = disabled)
-    bc_hold_steps: int = 0  # hold bc_coef at full value for this many global steps
-    bc_decay_steps: int = 0  # then linearly decay bc_coef to 0 over this many steps
+    timeline: TimelineConfig         # all time-varying training scalars
+    num_steps: int                   # rollout length per environment
+    num_epochs: int                  # PPO update epochs per rollout
+    num_minibatches: int             # minibatches per epoch (scales[0].num_envs must be divisible)
+    gamma: float                     # discount factor
+    gae_lambda: float                # GAE lambda
+    clip_coef: float                 # PPO clip epsilon
+    max_grad_norm: float             # gradient clipping norm
+    total_timesteps: int             # total environment steps before stopping
+    return_ema_alpha: float          # EMA decay for per-component return percentile scaler
+    return_min_span: float           # minimum p95-p5 span (symlog-space) — guards disabled components
+    checkpoint_dir: str              # directory to write .pt files
+    avg_model_min_steps: int         # don't start building avg model until this many global steps
 
-    # --- BC pretraining phase ---
-    # Runs before RL: scripted agent queried on all envs, PG and entropy losses zeroed.
-    # Uses online rollouts (live policy's own hidden states) to avoid distribution shift.
-    pretrain_bc_steps: int = 0  # global steps to run BC pretraining; 0 = disabled
-    pretrain_bc_coef: float = 0.0  # BC coefficient during pretraining
-    pretrain_vf_coef: float = (
-        0.0  # VF coefficient during pretraining; 0.0 = skip value training
-    )
-
-    # --- Shaping reward schedules ---
-    # Each entry: (component_name, hold_steps, decay_steps)
-    # hold_steps:  weight stays at its RewardConfig value for this many global steps.
-    # decay_steps: then linearly decays to 0 over this many more steps.
-    # Components not listed here are held constant forever (no decay).
-    shaping_schedules: tuple[tuple[str, int, int], ...] = ()
-
-    # --- League play + ELO ---
-    league_frac: float = 0.0  # fraction of primary envs using a roster-sampled opponent
-    league_size: int = 20  # max number of checkpoint entries in the roster
-    elo_eval_games: int = 512  # parallel games per ELO evaluation matchup
-    elo_eval_interval: int = 10  # run ELO eval every N updates (0 = disabled)
-    elo_milestone_gap: float = (
-        50.0  # add checkpoint to roster every N normalized ELO points gained
-    )
-    elo_k_factor: float = 32.0  # ELO K-factor (score sensitivity per match)
-    elo_temperature: float = 200.0  # ELO bandwidth for proximity-weighted sampling
-    league_uniform_sampling: bool = False  # if True, sample league opponents uniformly
-    scripted_roster_min_steps: int = (
-        300_000_000  # delay adding scripted to roster until this many steps
-    )
+    # --- League play + ELO (static tournament parameters) ---
+    league_size: int                    # max number of checkpoint entries in the roster
+    elo_milestone_gap: float            # add checkpoint to roster every N normalized ELO points gained
+    elo_k_factor: float                 # ELO K-factor (score sensitivity per match)
+    elo_temperature: float              # ELO bandwidth for proximity-weighted sampling
+    league_uniform_sampling: bool       # if True, sample league opponents uniformly
+    scripted_roster_min_steps: int      # delay adding scripted to roster until this many steps
 
     def __post_init__(self) -> None:
         if len(self.scales) == 0:
@@ -247,10 +288,3 @@ class TrainConfig:
                 f"scales[0].num_envs={primary_envs} must be divisible by "
                 f"num_minibatches={self.num_minibatches}"
             )
-        if self.scripted_frac + self.avg_model_frac + self.league_frac >= 1.0:
-            raise ValueError(
-                f"scripted_frac + avg_model_frac + league_frac must be < 1.0, "
-                f"got {self.scripted_frac} + {self.avg_model_frac} + {self.league_frac}"
-            )
-        if self.pretrain_bc_steps > 0 and self.pretrain_bc_coef <= 0.0:
-            raise ValueError("pretrain_bc_coef must be > 0 when pretrain_bc_steps > 0")
