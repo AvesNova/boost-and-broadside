@@ -162,15 +162,13 @@ class TestTimelineScheduler:
         state = sched.step(99_000_000)
         assert state.learning_rate == 1e-4
 
-    def test_pg_coef_is_step_function(self):
-        """pg_coef must not interpolate — it steps at the keyframe boundary."""
+    def test_pg_coef_interpolates(self):
+        """pg_coef must interpolate linearly between phases."""
         base = _make_base_phase(pg_coef=0.0)
         rl = PhaseConfig(step=1_000_000, pg_coef=1.0)
         tl = TimelineConfig(phases=(base, rl))
         sched = _TimelineScheduler(tl)
-        # Midpoint should still be 0.0 (step function, not interpolated)
-        assert sched.step(500_000).pg_coef == 0.0
-        # At keyframe, switches to 1.0
+        assert abs(sched.step(500_000).pg_coef - 0.5) < 1e-10
         assert sched.step(1_000_000).pg_coef == 1.0
 
     def test_group_scales_applied_by_trainer(self):

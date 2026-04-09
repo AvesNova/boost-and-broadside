@@ -97,9 +97,7 @@ def _override_opponent(
 # Float fields in PhaseConfig that are linearly interpolated between keyframes.
 # All other fields (bool, int, frozenset) use step-function semantics.
 _FLOAT_FIELDS: frozenset[str] = frozenset({
-    # pg_coef intentionally excluded: it's a mode selector (0=pretrain, 1=RL),
-    # not a continuous hyperparameter. Hard step at keyframe boundary is correct.
-    "learning_rate", "ent_coef", "bc_coef", "vf_coef",
+    "learning_rate", "pg_coef", "ent_coef", "bc_coef", "vf_coef",
     "scripted_frac", "avg_model_frac", "league_frac",
     "true_reward_scale", "important_scale", "aux_scale",
     "victory_weight", "death_weight", "damage_weight",

@@ -160,7 +160,7 @@ def main() -> None:
                 step=20_000_000,
             ),
             PhaseConfig(
-                step=50_000_000,
+                step=40_000_000,
                 ent_coef=0.02,
                 vf_coef=1.0,
             ),
@@ -172,6 +172,17 @@ def main() -> None:
                 league_frac=0.20,
                 allow_avg_model_updates=True,
                 allow_scripted_in_roster=True,
+            ),
+            PhaseConfig(
+                step=150_000_000,
+            ),
+            PhaseConfig(
+                step=200_000_000,
+                aux_scale=0.0,
+            ),
+            PhaseConfig(
+                step=400_000_000,
+                important_scale=0.0,
             ),
         )
     )
