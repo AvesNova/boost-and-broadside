@@ -107,10 +107,10 @@ def main() -> None:
                 step=0,
                 # --- Optimization (pretrain: pg_coef=0 zeroes policy gradient) ---
                 learning_rate=1e-7,
-                pg_coef=0.0,
-                ent_coef=0.0,
+                pg_coef=1.0,
+                ent_coef=0.2,
                 bc_coef=1.0,
-                vf_coef=0.0,
+                vf_coef=1.0,
                 # --- Opponents (pretrain: 100% scripted for BC targets) ---
                 scripted_frac=0.0,
                 avg_model_frac=0.0,
@@ -129,10 +129,10 @@ def main() -> None:
                 victory_weight=1.0,
                 death_weight=1.0,
                 damage_weight=1.0,
-                facing_weight=0.01,
+                facing_weight=0.0,
                 exposure_weight=0.0,
-                closing_speed_weight=0.001,
-                turn_rate_weight=0.001,
+                closing_speed_weight=0.0,
+                turn_rate_weight=0.0,
                 proximity_weight=0.0,
                 positioning_weight=0.0,
                 power_range_weight=0.0,
@@ -157,39 +157,48 @@ def main() -> None:
                 learning_rate=3e-4,
             ),
             PhaseConfig(
-                step=20_000_000,
-            ),
-            PhaseConfig(
-                step=40_000_000,
-                ent_coef=0.02,
-                vf_coef=1.0,
+                step=50_000_000,
             ),
             PhaseConfig(
                 step=100_000_000,
-                pg_coef=1.0,
-                bc_coef=0.0,
-                avg_model_frac=0.30,
-                league_frac=0.20,
-                allow_avg_model_updates=True,
-                allow_scripted_in_roster=True,
-            ),
-            PhaseConfig(
-                step=150_000_000,
+                bc_coef=0.1,
             ),
             PhaseConfig(
                 step=200_000_000,
-                aux_scale=0.0,
+                bc_coef=0.0,
             ),
-            PhaseConfig(
-                step=400_000_000,
-                important_scale=0.0,
-            ),
+            # PhaseConfig(
+            #     step=40_000_000,
+            #     ent_coef=0.02,
+            #     vf_coef=1.0,
+            #     pg_coef=0.1,
+            # ),
+            # PhaseConfig(
+            #     step=100_000_000,
+            #     pg_coef=1.0,
+            #     bc_coef=0.0,
+            #     avg_model_frac=0.30,
+            #     league_frac=0.20,
+            #     allow_avg_model_updates=True,
+            #     allow_scripted_in_roster=True,
+            # ),
+            # PhaseConfig(
+            #     step=150_000_000,
+            # ),
+            # PhaseConfig(
+            #     step=200_000_000,
+            #     aux_scale=0.0,
+            # ),
+            # PhaseConfig(
+            #     step=400_000_000,
+            #     important_scale=0.0,
+            # ),
         )
     )
 
     render_config = RenderConfig()
 
-    max_tokens = 5760
+    max_tokens = 3840
 
     # ------------------------------------------------------------------
     # Mode dispatch

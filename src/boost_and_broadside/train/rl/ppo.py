@@ -555,48 +555,37 @@ class PPOTrainer:
                                     state_league
                                 )
 
-                    # use_sc_bc:       generate expert probs for BC loss (active whenever B_sc > 0)
-                    # use_sc_opponent: also override one team with scripted actions (after min_steps)
+                    # use_sc_opponent: scripted agent plays as opponent (after min_steps)
                     use_sc_bc = self.B_sc > 0
                     use_sc_opponent = (
                         use_sc_bc
                         and self._global_step >= self.cfg.scripted_roster_min_steps
                     )
 
+                    # BC target collection: query scripted agent on ALL envs whenever
+                    # bc_coef is active. This is independent of scripted_frac and pg_coef.
+                    # actor_mask in the loss already excludes opponent ships from the BC
+                    # gradient, so no need to zero them out here.
                     expert_probs_step: torch.Tensor | None = None
-                    if use_sc_bc:
+                    action_scripted = None
+                    if self._bc_coef_eff > 0.0 and self.scripted_agent is not None:
+                        with torch.no_grad():
+                            action_scripted_all, expert_probs_step = (
+                                self.scripted_agent.get_actions_and_probs(
+                                    self.wrapper.env.state
+                                )
+                            )
+                        if use_sc_opponent:
+                            action_scripted = action_scripted_all[sc_start:sc_end]
+                    elif use_sc_bc:
+                        # bc_coef == 0 but scripted opponent is active — need actions only
                         with torch.no_grad():
                             state_sc = _slice_state(
                                 self.wrapper.env.state, sc_start, sc_end
                             )
-                            action_scripted, expert_probs_sc = (
+                            action_scripted, _ = (
                                 self.scripted_agent.get_actions_and_probs(state_sc)
                             )
-                        if use_sc_opponent:
-                            # One team is the scripted opponent — only supervise training-policy ships.
-                            opp_flag_sc = self._opp_team_flag[: self.B_sc].unsqueeze(
-                                1
-                            )  # (B_sc, 1)
-                            train_mask_sc = (
-                                team_id[sc_start:sc_end] != opp_flag_sc
-                            )  # (B_sc, N)
-                        else:
-                            # Both teams are training-policy — supervise all ships.
-                            train_mask_sc = torch.ones(
-                                self.B_sc,
-                                N,
-                                dtype=torch.bool,
-                                device=self.device,
-                            )
-                        expert_probs_step = torch.zeros(
-                            self.cfg.scales[0].num_envs,
-                            self.env_config.num_ships,
-                            12,
-                            device=self.device,
-                        )
-                        expert_probs_step[sc_start:sc_end] = (
-                            expert_probs_sc * train_mask_sc.unsqueeze(-1)
-                        )
 
                     # Override opponent team actions; training-policy actions are the base
                     action = action.clone()
