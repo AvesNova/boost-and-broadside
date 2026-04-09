@@ -96,27 +96,48 @@ def _override_opponent(
 
 # Float fields in PhaseConfig that are linearly interpolated between keyframes.
 # All other fields (bool, int, frozenset) use step-function semantics.
-_FLOAT_FIELDS: frozenset[str] = frozenset({
-    "learning_rate", "pg_coef", "ent_coef", "bc_coef", "vf_coef",
-    "scripted_frac", "avg_model_frac", "league_frac",
-    "true_reward_scale", "important_scale", "aux_scale",
-    "victory_weight", "death_weight", "damage_weight",
-    "facing_weight", "exposure_weight", "turn_rate_weight",
-    "closing_speed_weight", "proximity_weight", "positioning_weight",
-    "power_range_weight", "speed_range_weight", "shoot_quality_weight",
-    "positioning_radius", "proximity_radius",
-    "power_range_lo", "power_range_hi",
-    "speed_range_lo", "speed_range_hi",
-    "shoot_quality_radius",
-})
+_FLOAT_FIELDS: frozenset[str] = frozenset(
+    {
+        "learning_rate",
+        "pg_coef",
+        "ent_coef",
+        "bc_coef",
+        "vf_coef",
+        "scripted_frac",
+        "avg_model_frac",
+        "league_frac",
+        "true_reward_scale",
+        "important_scale",
+        "aux_scale",
+        "victory_weight",
+        "death_weight",
+        "damage_weight",
+        "facing_weight",
+        "exposure_weight",
+        "turn_rate_weight",
+        "closing_speed_weight",
+        "proximity_weight",
+        "positioning_weight",
+        "power_range_weight",
+        "speed_range_weight",
+        "shoot_quality_weight",
+        "positioning_radius",
+        "proximity_radius",
+        "power_range_lo",
+        "power_range_hi",
+        "speed_range_lo",
+        "speed_range_hi",
+        "shoot_quality_radius",
+    }
+)
 
 # Maps reward component name → the PhaseConfig group-scale attribute to apply.
 # Effective weight = group_scale * individual_weight.
 # Groups: true_reward → victory; important → death, damage; aux → all others.
 _GROUP: dict[str, str] = {
     "victory": "true_reward_scale",
-    "death":   "important_scale",
-    "damage":  "important_scale",
+    "death": "important_scale",
+    "damage": "important_scale",
 }
 
 
@@ -750,7 +771,11 @@ class PPOTrainer:
             for comp in self.wrapper._all_components:
                 scale_attr = _GROUP.get(comp.name, "aux_scale")
                 raw: float = getattr(self._phase_state, f"{comp.name}_weight")
-                setattr(comp, f"{comp.name}_weight", raw * getattr(self._phase_state, scale_attr))
+                setattr(
+                    comp,
+                    f"{comp.name}_weight",
+                    raw * getattr(self._phase_state, scale_attr),
+                )
             metrics["schedule/learning_rate"] = self._phase_state.learning_rate  # type: ignore[assignment]
             metrics["schedule/pg_coef"] = self._phase_state.pg_coef  # type: ignore[assignment]
             metrics["schedule/bc_coef"] = self._phase_state.bc_coef  # type: ignore[assignment]
@@ -794,10 +819,7 @@ class PPOTrainer:
 
             # ELO evaluation — runs sync matchups against all roster entries
             elo_eval_interval: int = self._phase_state.elo_eval_interval  # type: ignore[assignment]
-            if (
-                elo_eval_interval > 0
-                and update % elo_eval_interval == 0
-            ):
+            if elo_eval_interval > 0 and update % elo_eval_interval == 0:
                 elo_metrics = self._run_elo_eval()
                 metrics.update(elo_metrics)
                 # Save overwriting best-model checkpoints when normalized ELO improves.
@@ -820,9 +842,7 @@ class PPOTrainer:
 
             if update % 10 == 0:
                 elo_str = (
-                    f"  elo={self._training_elo:.0f}"
-                    if elo_eval_interval > 0
-                    else ""
+                    f"  elo={self._training_elo:.0f}" if elo_eval_interval > 0 else ""
                 )
                 print(
                     f"update={update}/{self._num_updates}  "
@@ -833,10 +853,7 @@ class PPOTrainer:
                 )
 
             checkpoint_interval: int = self._phase_state.checkpoint_interval  # type: ignore[assignment]
-            if (
-                checkpoint_interval > 0
-                and update % checkpoint_interval == 0
-            ):
+            if checkpoint_interval > 0 and update % checkpoint_interval == 0:
                 self._save_checkpoint(update)
                 # Add to roster when normalized training ELO (vs random) crosses the next milestone.
                 # Skip during pretraining — ELO is not evaluated and the policy is imitating, not competing.
@@ -858,7 +875,26 @@ class PPOTrainer:
                     self._elo_milestone = training_elo_norm
                     self._save_roster_json()
 
-        self._log_queue.put(None)  # signal logger thread to exit
+        self._shutdown()
+
+    def _shutdown(self) -> None:
+        """Release GPU memory and cleanly terminate background threads/processes.
+
+        Safe to call more than once.
+        """
+        if getattr(self, "_shutdown_called", False):
+            return
+        self._shutdown_called = True
+        self.roster.evict_all_checkpoint_policies()
+        self._current_league_policy = None
+        if self.use_wandb:
+            self._log_queue.put(None)
+            if hasattr(self, "_log_thread"):
+                self._log_thread.join(timeout=10)
+            import wandb
+
+            wandb.finish()
+        torch.cuda.empty_cache()
 
     # ------------------------------------------------------------------
     # PPO update inner loop

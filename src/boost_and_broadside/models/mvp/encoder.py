@@ -35,7 +35,8 @@ _ACTION_DIM = NUM_POWER_ACTIONS + NUM_TURN_ACTIONS + NUM_SHOOT_ACTIONS  # 12
 def _raw_dim(n_fourier_freqs: int) -> int:
     """Compute raw feature dimension given number of Fourier frequencies."""
     pos_dim = 4 * n_fourier_freqs  # x and y, each (sin+cos) * n_freqs
-    return pos_dim + 2 + 2 + 1 + 3 + _TEAM_EMBED_DIM + 1 + _ACTION_DIM
+    att_dim = 4 * n_fourier_freqs  # nose_att and vel_att, each (sin+cos) * n_freqs
+    return pos_dim + att_dim + 2 + 1 + 3 + _TEAM_EMBED_DIM + 1 + _ACTION_DIM
 
 
 def _symlog(x: torch.Tensor) -> torch.Tensor:
@@ -46,7 +47,7 @@ def _symlog(x: torch.Tensor) -> torch.Tensor:
 def _fourier_encode(
     coords: torch.Tensor, n_freqs: int, max_period: float
 ) -> torch.Tensor:
-    """Fourier-encode a batch of scalar coordinates.
+    """Fourier-encode a batch of scalar coordinates using base-2 power frequencies.
 
     Args:
         coords: (...) float tensor — coordinate values.
@@ -56,29 +57,32 @@ def _fourier_encode(
     Returns:
         (..., 2 * n_freqs) tensor of [sin, cos] features.
     """
-    freqs = torch.exp(
-        torch.linspace(
-            0.0,
-            -torch.log(torch.tensor(n_freqs, dtype=torch.float32)),
-            n_freqs,
-            device=coords.device,
-        )
-        * torch.log(torch.tensor(max_period, dtype=torch.float32, device=coords.device))
-    )  # (n_freqs,)
-    # Alternatively: log-spaced frequencies over [1/max_period, 1]
-    # Use a simple implementation: freqs[k] = (2π / max_period) * n_freqs^(k/n_freqs)
-    # Standard Fourier position encoding:
-    freqs = (
-        2.0
-        * torch.pi
-        / max_period
-        * torch.pow(
-            torch.tensor(float(n_freqs), device=coords.device),
-            torch.linspace(0.0, 1.0, n_freqs, device=coords.device),
-        )
-    )  # (n_freqs,)
+    # Standard NeRF-style positional encoding: 2^0, 2^1, ..., 2^{n_freqs-1}
+    k = torch.arange(n_freqs, device=coords.device, dtype=torch.float32)
+    freqs = (2.0 * torch.pi / max_period) * (2.0**k)  # (n_freqs,)
 
     args = coords.unsqueeze(-1) * freqs  # (..., n_freqs)
+    return torch.cat([torch.sin(args), torch.cos(args)], dim=-1)  # (..., 2*n_freqs)
+
+
+def _fourier_encode_angle(cossin: torch.Tensor, n_freqs: int) -> torch.Tensor:
+    """Fourier-encode a unit direction vector with base-2 integer frequencies to preserve 2π circularity.
+
+    Args:
+        cossin: (..., 2) float tensor of [cos, sin] pairs.
+        n_freqs: Number of frequency bands.
+
+    Returns:
+        (..., 2 * n_freqs) tensor of [sin, cos] features.
+    """
+    angle = torch.atan2(cossin[..., 1], cossin[..., 0])  # (...)
+
+    # Base-2 integer frequencies: 2^0, 2^1, ..., 2^{n_freqs-1}
+    # Since these are all integers, it perfectly wraps at 2pi.
+    k = torch.arange(n_freqs, device=angle.device, dtype=torch.float32)
+    freqs = 2.0**k
+
+    args = angle.unsqueeze(-1) * freqs  # (..., n_freqs)
     return torch.cat([torch.sin(args), torch.cos(args)], dim=-1)  # (..., 2*n_freqs)
 
 
@@ -95,8 +99,13 @@ class ShipEncoder(nn.Module):
         self.d_model = model_config.d_model
 
         self.team_embed = nn.Embedding(2, _TEAM_EMBED_DIM)
-        self.proj = nn.Linear(_raw_dim(self.n_freqs), model_config.d_model)
-        self.layer_norm = nn.LayerNorm(model_config.d_model)
+        self.feature_extractor = nn.Sequential(
+            nn.Linear(_raw_dim(self.n_freqs), 2 * model_config.d_model),
+            nn.RMSNorm(2 * model_config.d_model),
+            nn.GELU(),
+            nn.Linear(2 * model_config.d_model, model_config.d_model),
+            nn.RMSNorm(model_config.d_model),
+        )
 
     def forward(self, obs: dict[str, torch.Tensor]) -> torch.Tensor:
         """Encode observations into ship tokens.
@@ -117,6 +126,11 @@ class ShipEncoder(nn.Module):
         """
         pos = obs["pos"]  # (..., N, 2)
         vel = obs["vel"]  # (..., N, 2)
+
+        speed = torch.norm(vel, dim=-1, keepdim=True)
+        speed_safe = torch.clamp(speed, min=1e-6)
+        vel_dir = vel / speed_safe  # (..., N, 2)
+
         att = obs["att"]  # (..., N, 2)
         ang_vel = obs["ang_vel"]  # (..., N, 1)
         scalars = obs["scalars"]  # (..., N, 3)
@@ -128,6 +142,13 @@ class ShipEncoder(nn.Module):
         px_enc = _fourier_encode(pos[..., 0], self.n_freqs, 1.0)  # (..., N, 2*n_freqs)
         py_enc = _fourier_encode(pos[..., 1], self.n_freqs, 1.0)  # (..., N, 2*n_freqs)
         pos_feat = torch.cat([px_enc, py_enc], dim=-1)  # (..., N, 4*n_freqs)
+
+        # Fourier attitude encoding (circular, uses integer frequencies)
+        nose_att_enc = _fourier_encode_angle(att, self.n_freqs)  # (..., N, 2*n_freqs)
+        vel_att_enc = _fourier_encode_angle(
+            vel_dir, self.n_freqs
+        )  # (..., N, 2*n_freqs)
+        att_feat = torch.cat([nose_att_enc, vel_att_enc], dim=-1)  # (..., N, 4*n_freqs)
 
         # Symlog velocity and angular velocity
         vel_feat = _symlog(vel)  # (..., N, 2)
@@ -153,9 +174,9 @@ class ShipEncoder(nn.Module):
 
         raw = torch.cat(
             [
-                pos_feat,  # 4 * n_freqs = 32 (for n_freqs=8)
+                pos_feat,  # 4 * n_freqs
+                att_feat,  # 4 * n_freqs
                 vel_feat,  # 2
-                att,  # 2
                 ang_feat,  # 1
                 scalars,  # 3
                 team_feat,  # 4
@@ -163,6 +184,6 @@ class ShipEncoder(nn.Module):
                 action_feat,  # 12
             ],
             dim=-1,
-        )  # (..., N, 57)
+        )  # (..., N, 57 + 4*n_freqs - 2)
 
-        return self.layer_norm(self.proj(raw))  # (..., N, d_model)
+        return self.feature_extractor(raw)  # (..., N, d_model)

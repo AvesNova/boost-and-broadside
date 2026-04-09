@@ -100,68 +100,69 @@ def main() -> None:
         n_fourier_freqs=10,
         n_transformer_blocks=2,
     )
-
+    base_phase = PhaseConfig(
+        step=0,
+        # --- Optimization (pretrain: pg_coef=0 zeroes policy gradient) ---
+        learning_rate=1e-7,
+        pg_coef=0.0,
+        ent_coef=0.2,
+        bc_coef=1.0,
+        vf_coef=1.0,
+        # --- Opponents (pretrain: 100% scripted for BC targets) ---
+        scripted_frac=0.0,
+        avg_model_frac=0.0,
+        league_frac=0.0,
+        allow_avg_model_updates=False,
+        allow_scripted_in_roster=False,
+        # --- League / Checkpointing ---
+        elo_eval_games=256,
+        elo_eval_interval=10,
+        checkpoint_interval=10,
+        # --- Reward Group Scales ---
+        true_reward_scale=1.0,
+        important_scale=1.0,
+        aux_scale=1.0,
+        # --- Reward Individual Weights ---
+        victory_weight=1.0,
+        death_weight=1.0,
+        damage_weight=1.0,
+        facing_weight=0.0,
+        exposure_weight=0.0,
+        closing_speed_weight=0.0,
+        turn_rate_weight=0.0,
+        proximity_weight=0.0,
+        positioning_weight=0.0,
+        power_range_weight=0.0,
+        speed_range_weight=0.0,
+        shoot_quality_weight=0.0,
+        # --- Reward Static Params ---
+        positioning_radius=400.0,
+        proximity_radius=400.0,
+        power_range_lo=0.2,
+        power_range_hi=0.8,
+        speed_range_lo=40.0,
+        speed_range_hi=120.0,
+        shoot_quality_radius=200.0,
+        # --- Set-valued Fields ---
+        enemy_neg_lambda_components=frozenset(
+            {"damage", "death", "victory", "exposure"}
+        ),
+        disabled_rewards=frozenset(),
+    )
     timeline = TimelineConfig(
         phases=(
+            base_phase,
             PhaseConfig(
-                step=0,
-                # --- Optimization (pretrain: pg_coef=0 zeroes policy gradient) ---
-                learning_rate=1e-7,
-                pg_coef=1.0,
-                ent_coef=0.2,
-                bc_coef=1.0,
-                vf_coef=1.0,
-                # --- Opponents (pretrain: 100% scripted for BC targets) ---
-                scripted_frac=0.0,
-                avg_model_frac=0.0,
-                league_frac=0.0,
-                allow_avg_model_updates=False,
-                allow_scripted_in_roster=False,
-                # --- League / Checkpointing ---
-                elo_eval_games=256,
-                elo_eval_interval=10,
-                checkpoint_interval=10,
-                # --- Reward Group Scales ---
-                true_reward_scale=1.0,
-                important_scale=1.0,
-                aux_scale=1.0,
-                # --- Reward Individual Weights ---
-                victory_weight=1.0,
-                death_weight=1.0,
-                damage_weight=1.0,
-                facing_weight=0.0,
-                exposure_weight=0.0,
-                closing_speed_weight=0.0,
-                turn_rate_weight=0.0,
-                proximity_weight=0.0,
-                positioning_weight=0.0,
-                power_range_weight=0.0,
-                speed_range_weight=0.0,
-                shoot_quality_weight=0.0,
-                # --- Reward Static Params ---
-                positioning_radius=400.0,
-                proximity_radius=400.0,
-                power_range_lo=0.2,
-                power_range_hi=0.8,
-                speed_range_lo=40.0,
-                speed_range_hi=120.0,
-                shoot_quality_radius=200.0,
-                # --- Set-valued Fields ---
-                enemy_neg_lambda_components=frozenset(
-                    {"damage", "death", "victory", "exposure"}
-                ),
-                disabled_rewards=frozenset(),
-            ),
-            PhaseConfig(
-                step=10_000_000,
+                step=6_000_000,
                 learning_rate=3e-4,
             ),
             PhaseConfig(
                 step=50_000_000,
+                allow_avg_model_updates=True,
             ),
             PhaseConfig(
                 step=100_000_000,
-                bc_coef=0.1,
+                pg_coef=1.0,
             ),
             PhaseConfig(
                 step=200_000_000,
@@ -257,7 +258,11 @@ def main() -> None:
                 use_wandb=True,
                 scripted_agent=scripted_agent,
             )
-            trainer.train()
+            try:
+                trainer.train()
+            except KeyboardInterrupt:
+                print("\nTraining interrupted.")
+                trainer._shutdown()
 
         case "watch":
             team0 = args.team0 if args.team0 is not None else "null"
