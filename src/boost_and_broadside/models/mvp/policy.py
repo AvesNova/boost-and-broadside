@@ -15,6 +15,7 @@ GRU hidden state shape: (1, B*N, D) — ships are treated as independent sequenc
 The wrapper zeros hidden states for ships in reset environments.
 """
 
+import math
 import torch
 import torch.nn as nn
 from torch.distributions import Categorical
@@ -60,14 +61,30 @@ class MVPPolicy(nn.Module):
         )
         self.gru = nn.GRU(D, D, num_layers=1, batch_first=False)
 
-        self.action_head = nn.Linear(D, TOTAL_ACTION_LOGITS)
+        hidden_dim = D * 2
+
+        self.action_head = nn.Sequential(
+            nn.Linear(D, hidden_dim),
+            nn.RMSNorm(hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, TOTAL_ACTION_LOGITS),
+        )
         # K independent scalar heads — one per reward component, in normalized space
-        self.value_head = nn.Linear(D, self._K)
+        self.value_head = nn.Sequential(
+            nn.Linear(D, hidden_dim),
+            nn.RMSNorm(hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, self._K),
+        )
 
         # Orthogonal init — standard PPO practice
-        for layer in [self.action_head, self.value_head]:
-            nn.init.orthogonal_(layer.weight, gain=0.01)
-            nn.init.zeros_(layer.bias)
+        for head in [self.action_head, self.value_head]:
+            # Hidden layer (ReLU/GELU activation) gets sqrt(2) gain
+            nn.init.orthogonal_(head[0].weight, gain=math.sqrt(2))
+            nn.init.zeros_(head[0].bias)
+            # Output layers get 0.01 gain for stable early predictions
+            nn.init.orthogonal_(head[3].weight, gain=0.01)
+            nn.init.zeros_(head[3].bias)
 
     # ------------------------------------------------------------------
     # Hidden state management

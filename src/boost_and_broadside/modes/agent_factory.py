@@ -83,7 +83,7 @@ def resolve_agent_spec(
     from boost_and_broadside.models.mvp.policy import MVPPolicy
 
     ckpt = torch.load(path, map_location=device, weights_only=False)
-    K = ckpt["policy_state_dict"]["value_head.weight"].shape[0]
+    K = ckpt["policy_state_dict"]["value_head.3.weight"].shape[0]
     policy = MVPPolicy(model_config, ship_config, num_value_components=K).to(device)
     policy.load_state_dict(ckpt["policy_state_dict"])
     policy.eval()

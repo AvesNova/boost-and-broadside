@@ -9,7 +9,7 @@ Adding a new reward
 -------------------
 1. Create a subclass of RewardComponent with a unique `name` class attribute.
 2. Add its name to REWARD_COMPONENT_NAMES (fixes K and value head ordering).
-3. Add a weight field to PhaseConfig in config.py and set it in main.py.
+3. Add a weight field to RewardConfig in config/core.py and set it in runs/shared.py.
 4. Add an instance to the list in build_reward_components().
 """
 
@@ -17,7 +17,7 @@ import torch
 from abc import ABC, abstractmethod
 
 from boost_and_broadside.env.state import TensorState
-from boost_and_broadside.config import PhaseConfig, ShipConfig
+from boost_and_broadside.config import RewardConfig, ShipConfig
 
 
 class RewardComponent(ABC):
@@ -130,6 +130,60 @@ class DeathReward(RewardComponent):
         reward = torch.zeros_like(next_state.ship_health)
         reward[just_died] = -1.0
         return reward
+
+
+class TeamDamageReward(RewardComponent):
+    """Penalty for damage taken by any ship on the SAME team."""
+
+    name = "team_damage"
+
+    def __init__(self, team_damage_weight: float) -> None:
+        self.team_damage_weight = team_damage_weight
+
+    @property
+    def weight(self) -> float:
+        return self.team_damage_weight
+
+    def compute(
+        self,
+        prev_state: TensorState,
+        actions: torch.Tensor,
+        next_state: TensorState,
+        dones: torch.Tensor,
+    ) -> torch.Tensor:
+        delta = (prev_state.ship_health - next_state.ship_health).clamp(min=0.0)
+        team_id = next_state.ship_team_id
+        same_team = team_id.unsqueeze(2) == team_id.unsqueeze(1)
+        delta_j = delta.unsqueeze(1)
+        team_damage = (delta_j * same_team.float()).sum(dim=2)
+        return -team_damage * next_state.ship_alive.float()
+
+
+class TeamDeathReward(RewardComponent):
+    """Penalty for any ship dying on the SAME team."""
+
+    name = "team_death"
+
+    def __init__(self, team_death_weight: float) -> None:
+        self.team_death_weight = team_death_weight
+
+    @property
+    def weight(self) -> float:
+        return self.team_death_weight
+
+    def compute(
+        self,
+        prev_state: TensorState,
+        actions: torch.Tensor,
+        next_state: TensorState,
+        dones: torch.Tensor,
+    ) -> torch.Tensor:
+        just_died = prev_state.ship_alive & ~next_state.ship_alive
+        team_id = next_state.ship_team_id
+        same_team = team_id.unsqueeze(2) == team_id.unsqueeze(1)
+        died_j = just_died.unsqueeze(1)
+        team_deaths = (died_j & same_team).sum(dim=2).float()
+        return -team_deaths * prev_state.ship_alive.float()
 
 
 class VictoryReward(RewardComponent):
@@ -771,83 +825,87 @@ REWARD_COMPONENT_NAMES: tuple[str, ...] = (
     "power_range",  # 9 — power in target range (positive)
     "speed_range",  # 10 — speed in target range (positive)
     "shoot_quality",  # 11 — shot quality when firing (positive/negative)
+    "team_damage",  # 12 - team damage taken (negative)
+    "team_death",  # 13 - team members died (negative)
 )
 
 _NAME_TO_K: dict[str, int] = {name: k for k, name in enumerate(REWARD_COMPONENT_NAMES)}
 
 
 def build_reward_components(
-    phase: PhaseConfig,
+    rewards: RewardConfig,
     ship_config: ShipConfig,
 ) -> list[RewardComponent]:
-    """Construct the list of active reward components from the base phase config.
+    """Construct the list of active reward components from the reward config.
 
-    Called once at PPOTrainer init with ``timeline.phases[0]``. Individual
-    component weights are updated live each update by the timeline scheduler.
+    Called once at PPOTrainer init. Individual component weights are updated
+    live each update by the group-scale multipliers in the training schedule.
     Static params (radii, range bounds) are fixed at construction time.
 
     To add a new reward: create a RewardComponent subclass, add its name to
-    REWARD_COMPONENT_NAMES, add weight/param fields to PhaseConfig, then
+    REWARD_COMPONENT_NAMES, add weight/param fields to RewardConfig, then
     append an instance here.
-    To disable at runtime: add its name to phase.disabled_rewards.
+    To disable at runtime: add its name to rewards.disabled_rewards.
 
     Args:
-        phase:       Base phase (step=0) — provides initial weights and static params.
+        rewards:     Reward weights and geometry params.
         ship_config: Physics config (used for world_size and max_power).
 
     Returns:
         List of RewardComponent instances to apply each step.
     """
     all_components: list[RewardComponent] = [
-        DamageReward(damage_weight=phase.damage_weight),  # type: ignore[arg-type]
-        DeathReward(death_weight=phase.death_weight),  # type: ignore[arg-type]
-        VictoryReward(victory_weight=phase.victory_weight),  # type: ignore[arg-type]
+        DamageReward(damage_weight=rewards.damage_weight),
+        DeathReward(death_weight=rewards.death_weight),
+        VictoryReward(victory_weight=rewards.victory_weight),
         PositioningReward(
-            positioning_weight=phase.positioning_weight,  # type: ignore[arg-type]
-            positioning_radius=phase.positioning_radius,  # type: ignore[arg-type]
+            positioning_weight=rewards.positioning_weight,
+            positioning_radius=rewards.positioning_radius,
             world_size=ship_config.world_size,
         ),
         FacingReward(
-            facing_weight=phase.facing_weight,  # type: ignore[arg-type]
-            radius=phase.proximity_radius,  # type: ignore[arg-type]
+            facing_weight=rewards.facing_weight,
+            radius=rewards.proximity_radius,
             world_size=ship_config.world_size,
         ),
         ExposureReward(
-            exposure_weight=phase.exposure_weight,  # type: ignore[arg-type]
-            radius=phase.proximity_radius,  # type: ignore[arg-type]
+            exposure_weight=rewards.exposure_weight,
+            radius=rewards.proximity_radius,
             world_size=ship_config.world_size,
         ),
         ProximityReward(
-            proximity_weight=phase.proximity_weight,  # type: ignore[arg-type]
-            proximity_radius=phase.proximity_radius,  # type: ignore[arg-type]
+            proximity_weight=rewards.proximity_weight,
+            proximity_radius=rewards.proximity_radius,
             world_size=ship_config.world_size,
         ),
         ClosingSpeedReward(
-            closing_speed_weight=phase.closing_speed_weight,  # type: ignore[arg-type]
+            closing_speed_weight=rewards.closing_speed_weight,
             world_size=ship_config.world_size,
         ),
         TurnRateReward(
-            turn_rate_weight=phase.turn_rate_weight,  # type: ignore[arg-type]
+            turn_rate_weight=rewards.turn_rate_weight,
             world_size=ship_config.world_size,
         ),
         PowerRangeReward(
-            power_range_weight=phase.power_range_weight,  # type: ignore[arg-type]
-            power_range_lo=phase.power_range_lo,  # type: ignore[arg-type]
-            power_range_hi=phase.power_range_hi,  # type: ignore[arg-type]
+            power_range_weight=rewards.power_range_weight,
+            power_range_lo=rewards.power_range_lower,
+            power_range_hi=rewards.power_range_upper,
             max_power=ship_config.max_power,
         ),
         SpeedRangeReward(
-            speed_range_weight=phase.speed_range_weight,  # type: ignore[arg-type]
-            speed_range_lo=phase.speed_range_lo,  # type: ignore[arg-type]
-            speed_range_hi=phase.speed_range_hi,  # type: ignore[arg-type]
+            speed_range_weight=rewards.speed_range_weight,
+            speed_range_lo=rewards.speed_range_lower,
+            speed_range_hi=rewards.speed_range_upper,
         ),
         ShootQualityReward(
-            shoot_quality_weight=phase.shoot_quality_weight,  # type: ignore[arg-type]
-            shoot_quality_radius=phase.shoot_quality_radius,  # type: ignore[arg-type]
+            shoot_quality_weight=rewards.shoot_quality_weight,
+            shoot_quality_radius=rewards.shoot_quality_radius,
             world_size=ship_config.world_size,
         ),
+        TeamDamageReward(team_damage_weight=rewards.team_damage_weight),
+        TeamDeathReward(team_death_weight=rewards.team_death_weight),
     ]
-    return [c for c in all_components if c.name not in phase.disabled_rewards]  # type: ignore[operator]
+    return [c for c in all_components if c.name not in rewards.disabled_rewards]
 
 
 def compute_per_component_rewards(

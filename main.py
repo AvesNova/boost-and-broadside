@@ -1,14 +1,16 @@
 """Boost and Broadside — entry point.
 
-All hyperparameters are defined here — no config files.
-Modes are selected via the --mode CLI flag.
+Modes are selected via the --mode CLI flag. All hyperparameters live in runs/.
 
 Run with:
-    uv run --no-sync main.py                                                   # train
-    uv run --no-sync main.py --mode watch                                      # human vs latest checkpoint
-    uv run --no-sync main.py --mode watch --team0 null --team1 scripted        # human vs scripted
-    uv run --no-sync main.py --mode watch --team0 latest --team1 latest        # self-play
-    uv run --no-sync main.py --mode collect_stats                              # scripted vs random
+    uv run --no-sync main.py --mode bc                                             # BC pretraining from scratch
+    uv run --no-sync main.py --mode rl                                             # RL from scratch (no pretrained weights)
+    uv run --no-sync main.py --mode rl --pretrain_from checkpoints/run/best.pt    # RL from pretrained init
+    uv run --no-sync main.py --mode bc_warmstart                                  # pretrain 50M → save → RL (one process)
+    uv run --no-sync main.py --mode watch                                          # human vs latest checkpoint
+    uv run --no-sync main.py --mode watch --team0 null --team1 scripted            # human vs scripted
+    uv run --no-sync main.py --mode watch --team0 latest --team1 latest            # self-play
+    uv run --no-sync main.py --mode collect_stats                                  # scripted vs random
     uv run --no-sync main.py --mode collect_stats --team0 latest --team1 scripted
 
 Agent specs (--team0 / --team1):
@@ -20,25 +22,22 @@ Agent specs (--team0 / --team1):
 """
 
 import argparse
+from pathlib import Path
 
 import torch
 
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
-from boost_and_broadside.config import (
-    ShipConfig,
-    EnvConfig,
-    ModelConfig,
-    PhaseConfig,
-    TimelineConfig,
-    TrainConfig,
-    ScaleConfig,
-)
+from boost_and_broadside.config import EnvConfig
 from boost_and_broadside.modes.collect import run_collect_stats_mode
 from boost_and_broadside.modes.elo_stats import run_elo_stats_mode
 from boost_and_broadside.modes.interactive import run_watch_mode
 from boost_and_broadside.train.rl.ppo import PPOTrainer
 from boost_and_broadside.ui.renderer import RenderConfig
+from runs.bc import BC_TRAIN_CONFIG
+from runs.bc_warmstart import BC_WARMSTART_PRETRAIN_CONFIG, BC_WARMSTART_RL_CONFIG
+from runs.rl import RL_TRAIN_CONFIG
+from runs.shared import MODEL_CONFIG, REWARDS, SHIP_CONFIG
 
 
 def _parse_args() -> argparse.Namespace:
@@ -48,9 +47,23 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--mode",
-        choices=["train", "watch", "collect_stats", "elo_stats"],
-        default="train",
-        help="Operating mode.",
+        choices=["bc", "rl", "bc_warmstart", "watch", "collect_stats", "elo_stats"],
+        default="rl",
+        help=(
+            "Operating mode. "
+            "'bc': BC-only pretraining, no RL gradient. "
+            "'rl': RL run, optionally loading pretrained weights via --pretrain_from. "
+            "'bc_warmstart': pretrain for 50M steps then immediately start RL from those weights."
+        ),
+    )
+    parser.add_argument(
+        "--pretrain_from",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Path to a pretrained checkpoint (.pt) to warm-start the rl run. "
+        "Loads policy + scaler; optimizer is reset (fresh Adam). "
+        "Example: checkpoints/major-serenity-381/best_training.pt",
     )
     parser.add_argument(
         "--run",
@@ -78,191 +91,94 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _run_trainer(trainer: PPOTrainer) -> None:
+    try:
+        trainer.train()
+    except KeyboardInterrupt:
+        print("\nTraining interrupted.")
+        trainer._shutdown()
+
+
 def main() -> None:
     args = _parse_args()
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Device: {device}")
 
-    # ------------------------------------------------------------------
-    # Shared configs (all modes)
-    # ------------------------------------------------------------------
-    ship_config = ShipConfig(bullet_energy_cost=2, bullet_min_damage_frac=1.0)
-
-    env_config = EnvConfig(
-        num_ships=4,
-        max_bullets=20,
-        max_episode_steps=1024,
-    )
-
-    model_config = ModelConfig(
-        d_model=128,
-        n_heads=4,
-        n_fourier_freqs=10,
-        n_transformer_blocks=2,
-    )
-    base_phase = PhaseConfig(
-        step=0,
-        # --- Optimization (pretrain: pg_coef=0 zeroes policy gradient) ---
-        learning_rate=1e-7,
-        pg_coef=0.0,
-        ent_coef=0.2,
-        bc_coef=1.0,
-        vf_coef=1.0,
-        # --- Opponents (pretrain: 100% scripted for BC targets) ---
-        scripted_frac=0.0,
-        avg_model_frac=0.0,
-        league_frac=0.0,
-        allow_avg_model_updates=False,
-        allow_scripted_in_roster=False,
-        # --- League / Checkpointing ---
-        elo_eval_games=256,
-        elo_eval_interval=10,
-        checkpoint_interval=10,
-        # --- Reward Group Scales ---
-        true_reward_scale=1.0,
-        important_scale=1.0,
-        aux_scale=1.0,
-        # --- Reward Individual Weights ---
-        victory_weight=1.0,
-        death_weight=1.0,
-        damage_weight=1.0,
-        facing_weight=0.0,
-        exposure_weight=0.0,
-        closing_speed_weight=0.0,
-        turn_rate_weight=0.0,
-        proximity_weight=0.0,
-        positioning_weight=0.0,
-        power_range_weight=0.0,
-        speed_range_weight=0.0,
-        shoot_quality_weight=0.0,
-        # --- Reward Static Params ---
-        positioning_radius=400.0,
-        proximity_radius=400.0,
-        power_range_lo=0.2,
-        power_range_hi=0.8,
-        speed_range_lo=40.0,
-        speed_range_hi=120.0,
-        shoot_quality_radius=200.0,
-        # --- Set-valued Fields ---
-        enemy_neg_lambda_components=frozenset(
-            {"damage", "death", "victory", "exposure"}
-        ),
-        disabled_rewards=frozenset(),
-    )
-    timeline = TimelineConfig(
-        phases=(
-            base_phase,
-            PhaseConfig(
-                step=6_000_000,
-                learning_rate=3e-4,
-            ),
-            PhaseConfig(
-                step=50_000_000,
-                allow_avg_model_updates=True,
-            ),
-            PhaseConfig(
-                step=100_000_000,
-                pg_coef=1.0,
-            ),
-            PhaseConfig(
-                step=200_000_000,
-                bc_coef=0.0,
-            ),
-            # PhaseConfig(
-            #     step=40_000_000,
-            #     ent_coef=0.02,
-            #     vf_coef=1.0,
-            #     pg_coef=0.1,
-            # ),
-            # PhaseConfig(
-            #     step=100_000_000,
-            #     pg_coef=1.0,
-            #     bc_coef=0.0,
-            #     avg_model_frac=0.30,
-            #     league_frac=0.20,
-            #     allow_avg_model_updates=True,
-            #     allow_scripted_in_roster=True,
-            # ),
-            # PhaseConfig(
-            #     step=150_000_000,
-            # ),
-            # PhaseConfig(
-            #     step=200_000_000,
-            #     aux_scale=0.0,
-            # ),
-            # PhaseConfig(
-            #     step=400_000_000,
-            #     important_scale=0.0,
-            # ),
-        )
-    )
-
-    render_config = RenderConfig()
-
-    max_tokens = 3840
-
-    # ------------------------------------------------------------------
-    # Mode dispatch
-    # ------------------------------------------------------------------
     match args.mode:
-        case "train":
+        case "bc":
             scripted_agent = StochasticScriptedAgent(
-                ship_config, StochasticAgentConfig()
-            )
-            train_config = TrainConfig(
-                scales=(
-                    # ScaleConfig(
-                    #     env_config=EnvConfig(
-                    #         num_ships=2, max_bullets=20, max_episode_steps=1024
-                    #     ),
-                    #     num_envs=max_tokens // 3 // 2,
-                    # ),
-                    # ScaleConfig(
-                    #     env_config=EnvConfig(
-                    #         num_ships=4, max_bullets=20, max_episode_steps=1024
-                    #     ),
-                    #     num_envs=max_tokens // 3 // 4,
-                    # ),
-                    ScaleConfig(
-                        env_config=EnvConfig(
-                            num_ships=8, max_bullets=20, max_episode_steps=1024
-                        ),
-                        num_envs=3 * max_tokens // 3 // 8,
-                    ),
-                ),
-                timeline=timeline,
-                num_steps=128,
-                num_epochs=4,
-                num_minibatches=4,
-                gamma=0.99,
-                gae_lambda=0.95,
-                clip_coef=0.2,
-                max_grad_norm=1.0,
-                total_timesteps=2_000_000_000,
-                return_ema_alpha=0.005,
-                return_min_span=1.0,
-                checkpoint_dir="checkpoints",
-                avg_model_min_steps=200_000_000,
-                league_size=20,
-                league_uniform_sampling=False,
-                elo_milestone_gap=100.0,
-                elo_k_factor=32.0,
-                elo_temperature=200.0,
-                scripted_roster_min_steps=300_000_000,
+                SHIP_CONFIG, StochasticAgentConfig()
             )
             trainer = PPOTrainer(
-                train_config=train_config,
-                model_config=model_config,
-                ship_config=ship_config,
+                train_config=BC_TRAIN_CONFIG,
+                model_config=MODEL_CONFIG,
+                ship_config=SHIP_CONFIG,
                 device=device,
                 use_wandb=True,
                 scripted_agent=scripted_agent,
             )
-            try:
-                trainer.train()
-            except KeyboardInterrupt:
-                print("\nTraining interrupted.")
-                trainer._shutdown()
+            _run_trainer(trainer)
+
+        case "rl":
+            scripted_agent = StochasticScriptedAgent(
+                SHIP_CONFIG, StochasticAgentConfig()
+            )
+            trainer = PPOTrainer(
+                train_config=RL_TRAIN_CONFIG,
+                model_config=MODEL_CONFIG,
+                ship_config=SHIP_CONFIG,
+                device=device,
+                use_wandb=True,
+                scripted_agent=scripted_agent,
+            )
+            if args.pretrain_from is not None:
+                trainer.load_pretrained_weights(args.pretrain_from)
+            _run_trainer(trainer)
+
+        case "bc_warmstart":
+            scripted_agent = StochasticScriptedAgent(
+                SHIP_CONFIG, StochasticAgentConfig()
+            )
+
+            print("=== BC_WARMSTART: starting BC pretraining phase (50M steps) ===")
+            pretrain_trainer = PPOTrainer(
+                train_config=BC_WARMSTART_PRETRAIN_CONFIG,
+                model_config=MODEL_CONFIG,
+                ship_config=SHIP_CONFIG,
+                device=device,
+                use_wandb=True,
+                scripted_agent=scripted_agent,
+            )
+            _run_trainer(pretrain_trainer)
+
+            ckpt_dir = (
+                Path(BC_WARMSTART_PRETRAIN_CONFIG.checkpoint_dir)
+                / pretrain_trainer._run_name
+            )
+            pretrain_path = ckpt_dir / "pretrained_for_rl.pt"
+            torch.save(
+                {
+                    "policy_state_dict": pretrain_trainer.policy.state_dict(),
+                    "scaler_state_dict": pretrain_trainer.scaler.state_dict(),
+                    "update": 0,
+                },
+                pretrain_path,
+            )
+            print(f"=== BC_WARMSTART: pretrained weights saved to {pretrain_path} ===")
+            pretrain_trainer._shutdown()
+            del pretrain_trainer
+
+            print("=== BC_WARMSTART: starting RL phase ===")
+            rl_trainer = PPOTrainer(
+                train_config=BC_WARMSTART_RL_CONFIG,
+                model_config=MODEL_CONFIG,
+                ship_config=SHIP_CONFIG,
+                device=device,
+                use_wandb=True,
+                scripted_agent=scripted_agent,
+            )
+            rl_trainer.load_pretrained_weights(str(pretrain_path))
+            _run_trainer(rl_trainer)
 
         case "watch":
             team0 = args.team0 if args.team0 is not None else "null"
@@ -270,26 +186,29 @@ def main() -> None:
             run_watch_mode(
                 team0_spec=team0,
                 team1_spec=team1,
-                ship_config=ship_config,
-                env_config=env_config,
-                phase=base_phase,
-                model_config=model_config,
-                render_config=render_config,
+                ship_config=SHIP_CONFIG,
+                env_config=EnvConfig(
+                    num_ships=4, max_bullets=20, max_episode_steps=1024
+                ),
+                rewards=REWARDS,
+                model_config=MODEL_CONFIG,
+                render_config=RenderConfig(),
                 device=device,
                 checkpoint_dir="checkpoints",
             )
 
         case "collect_stats":
-            collect_stats_num_envs = 1024
             team0 = args.team0 if args.team0 is not None else "scripted"
             team1 = args.team1 if args.team1 is not None else "random"
             run_collect_stats_mode(
                 team0_spec=team0,
                 team1_spec=team1,
-                num_envs=collect_stats_num_envs,
-                ship_config=ship_config,
-                env_config=env_config,
-                model_config=model_config,
+                num_envs=1024,
+                ship_config=SHIP_CONFIG,
+                env_config=EnvConfig(
+                    num_ships=4, max_bullets=20, max_episode_steps=1024
+                ),
+                model_config=MODEL_CONFIG,
                 device=device,
                 checkpoint_dir="checkpoints",
             )
@@ -298,9 +217,11 @@ def main() -> None:
             run_elo_stats_mode(
                 run_spec=args.run,
                 num_envs=1024,
-                ship_config=ship_config,
-                env_config=env_config,
-                model_config=model_config,
+                ship_config=SHIP_CONFIG,
+                env_config=EnvConfig(
+                    num_ships=4, max_bullets=20, max_episode_steps=1024
+                ),
+                model_config=MODEL_CONFIG,
                 device=device,
                 checkpoint_dir="checkpoints",
                 elo_k_factor=32.0,

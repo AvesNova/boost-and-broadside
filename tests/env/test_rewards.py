@@ -8,7 +8,7 @@ No compute_rewards() — per-ship signals are tested directly; zero-sum accounti
 import pytest
 import torch
 
-from boost_and_broadside.config import ShipConfig, PhaseConfig
+from boost_and_broadside.config import ShipConfig, RewardConfig
 from boost_and_broadside.env.rewards import (
     DamageReward,
     DeathReward,
@@ -33,28 +33,13 @@ def cfg() -> ShipConfig:
 
 
 @pytest.fixture
-def reward_cfg() -> PhaseConfig:
-    return PhaseConfig(
-        step=0,
-        learning_rate=3e-4,
-        pg_coef=1.0,
-        ent_coef=0.01,
-        bc_coef=0.0,
-        vf_coef=0.5,
-        scripted_frac=0.0,
-        avg_model_frac=0.0,
-        league_frac=0.0,
-        allow_avg_model_updates=False,
-        allow_scripted_in_roster=False,
-        elo_eval_games=16,
-        elo_eval_interval=0,
-        checkpoint_interval=0,
-        true_reward_scale=1.0,
-        important_scale=1.0,
-        aux_scale=1.0,
+def reward_cfg() -> RewardConfig:
+    return RewardConfig(
         victory_weight=10.0,
         death_weight=5.0,
         damage_weight=1.0,
+        team_damage_weight=0.4,
+        team_death_weight=0.4,
         facing_weight=1.0,
         exposure_weight=1.0,
         turn_rate_weight=1.0,
@@ -66,12 +51,14 @@ def reward_cfg() -> PhaseConfig:
         shoot_quality_weight=1.0,
         positioning_radius=500.0,
         proximity_radius=500.0,
-        power_range_lo=0.2,
-        power_range_hi=0.8,
-        speed_range_lo=40.0,
-        speed_range_hi=120.0,
+        power_range_lower=0.2,
+        power_range_upper=0.8,
+        speed_range_lower=40.0,
+        speed_range_upper=120.0,
         shoot_quality_radius=200.0,
-        enemy_neg_lambda_components=frozenset({"damage", "death", "victory", "exposure"}),
+        enemy_neg_lambda_components=frozenset(
+            {"damage", "death", "team_damage", "team_death", "victory", "exposure"}
+        ),
         disabled_rewards=frozenset(),
     )
 
@@ -87,8 +74,8 @@ def _make_4ship_state(cfg):
 
 
 class TestRewardComponentNames:
-    def test_k_equals_12(self):
-        assert len(REWARD_COMPONENT_NAMES) == 12
+    def test_k_equals_14(self):
+        assert len(REWARD_COMPONENT_NAMES) == 14
 
     def test_damage_is_index_0(self):
         assert REWARD_COMPONENT_NAMES[0] == "damage"
@@ -625,27 +612,12 @@ class TestTurnRateReward:
 class TestDisabledRewards:
     def test_disabled_component_is_excluded_from_list(self, cfg):
         """build_reward_components must omit any component named in disabled_rewards."""
-        rc = PhaseConfig(
-            step=0,
-            learning_rate=3e-4,
-            pg_coef=1.0,
-            ent_coef=0.01,
-            bc_coef=0.0,
-            vf_coef=0.5,
-            scripted_frac=0.0,
-            avg_model_frac=0.0,
-            league_frac=0.0,
-            allow_avg_model_updates=False,
-            allow_scripted_in_roster=False,
-            elo_eval_games=16,
-            elo_eval_interval=0,
-            checkpoint_interval=0,
-            true_reward_scale=1.0,
-            important_scale=1.0,
-            aux_scale=1.0,
+        rc = RewardConfig(
             victory_weight=1.0,
             death_weight=0.5,
             damage_weight=0.01,
+            team_damage_weight=0.01,
+            team_death_weight=0.01,
             facing_weight=0.01,
             exposure_weight=0.01,
             turn_rate_weight=0.01,
@@ -657,12 +629,14 @@ class TestDisabledRewards:
             shoot_quality_weight=0.01,
             positioning_radius=300.0,
             proximity_radius=300.0,
-            power_range_lo=0.2,
-            power_range_hi=0.8,
-            speed_range_lo=40.0,
-            speed_range_hi=120.0,
+            power_range_lower=0.2,
+            power_range_upper=0.8,
+            speed_range_lower=40.0,
+            speed_range_upper=120.0,
             shoot_quality_radius=200.0,
-            enemy_neg_lambda_components=frozenset({"damage", "death", "victory", "exposure"}),
+            enemy_neg_lambda_components=frozenset(
+                {"damage", "death", "team_damage", "team_death", "victory", "exposure"}
+            ),
             disabled_rewards=frozenset({"facing", "turn_rate"}),
         )
         components = build_reward_components(rc, cfg)

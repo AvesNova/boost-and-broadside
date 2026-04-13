@@ -11,6 +11,7 @@ import time
 import threading
 from pathlib import Path
 from queue import Queue, Empty
+from typing import Callable
 
 import torch
 import torch.nn as nn
@@ -21,10 +22,10 @@ from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAge
 from boost_and_broadside.config import (
     TrainConfig,
     ModelConfig,
-    PhaseConfig,
+    RewardConfig,
     ShipConfig,
     EnvConfig,
-    TimelineConfig,
+    TrainingSchedule,
 )
 from boost_and_broadside.constants import POWER_SLICE, TURN_SLICE, SHOOT_SLICE
 from boost_and_broadside.env.env import TensorEnv
@@ -94,85 +95,77 @@ def _override_opponent(
     )
 
 
-# Float fields in PhaseConfig that are linearly interpolated between keyframes.
-# All other fields (bool, int, frozenset) use step-function semantics.
-_FLOAT_FIELDS: frozenset[str] = frozenset(
-    {
-        "learning_rate",
-        "pg_coef",
-        "ent_coef",
-        "bc_coef",
-        "vf_coef",
-        "scripted_frac",
-        "avg_model_frac",
-        "league_frac",
-        "true_reward_scale",
-        "important_scale",
-        "aux_scale",
-        "victory_weight",
-        "death_weight",
-        "damage_weight",
-        "facing_weight",
-        "exposure_weight",
-        "turn_rate_weight",
-        "closing_speed_weight",
-        "proximity_weight",
-        "positioning_weight",
-        "power_range_weight",
-        "speed_range_weight",
-        "shoot_quality_weight",
-        "positioning_radius",
-        "proximity_radius",
-        "power_range_lo",
-        "power_range_hi",
-        "speed_range_lo",
-        "speed_range_hi",
-        "shoot_quality_radius",
-    }
-)
-
-# Maps reward component name → the PhaseConfig group-scale attribute to apply.
-# Effective weight = group_scale * individual_weight.
-# Groups: true_reward → victory; important → death, damage; aux → all others.
+# Maps reward component name → the TrainingSchedule group-scale field to apply.
+# Effective weight = group_scale * individual_weight (from RewardConfig).
+# Groups: true_reward → victory; important → death, damage, team_*; aux → all others.
 _GROUP: dict[str, str] = {
     "victory": "true_reward_scale",
     "death": "important_scale",
     "damage": "important_scale",
+    "team_damage": "important_scale",
+    "team_death": "important_scale",
 }
 
 
-class _TimelineScheduler:
-    """Resolves the active PhaseConfig state at any global step.
+@dataclasses.dataclass
+class _ResolvedSchedule:
+    """Training schedule evaluated at a single global step.
 
-    Float fields are linearly interpolated between adjacent keyframes.
-    Bool, int, and frozenset fields step at keyframe boundaries (no interpolation).
+    Produced by ``_resolve_schedule``; replaces the old ``PhaseConfig`` snapshot.
+    All fields are plain values — no callables, no Nones.
     """
 
-    def __init__(self, timeline: TimelineConfig) -> None:
-        self._phases = timeline.phases  # fully resolved — no Nones
+    learning_rate: float
+    policy_gradient_coef: float
+    entropy_coef: float
+    behavior_cloning_coef: float
+    value_function_coef: float
+    true_reward_scale: float
+    important_scale: float
+    aux_scale: float
+    scripted_fraction: float
+    avg_model_fraction: float
+    league_fraction: float
+    allow_avg_model_updates: bool
+    allow_scripted_in_roster: bool
+    elo_eval_games: int
+    elo_eval_interval: int
+    checkpoint_interval: int
 
-    def step(self, global_step: int) -> PhaseConfig:
-        """Return the interpolated PhaseConfig state at ``global_step``."""
-        phases = self._phases
-        lo = 0
-        for i, p in enumerate(phases):
-            if p.step <= global_step:
-                lo = i
-            else:
-                break
-        if lo == len(phases) - 1:
-            return phases[lo]  # past (or at) the last keyframe — no interpolation
-        hi = lo + 1
-        p0, p1 = phases[lo], phases[hi]
-        t = (global_step - p0.step) / (p1.step - p0.step)
-        kwargs: dict[str, object] = {"step": global_step}
-        for f in dataclasses.fields(PhaseConfig):
-            if f.name == "step":
-                continue
-            v0 = getattr(p0, f.name)
-            v1 = getattr(p1, f.name)
-            kwargs[f.name] = v0 + (v1 - v0) * t if f.name in _FLOAT_FIELDS else v0  # type: ignore[operator]
-        return PhaseConfig(**kwargs)  # type: ignore[arg-type]
+
+def _resolve_schedule(schedule: TrainingSchedule, step: int) -> _ResolvedSchedule:
+    """Evaluate every schedule field at ``step`` and return a resolved snapshot."""
+    return _ResolvedSchedule(
+        learning_rate=schedule.learning_rate(step),
+        policy_gradient_coef=schedule.policy_gradient_coef(step),
+        entropy_coef=schedule.entropy_coef(step),
+        behavior_cloning_coef=schedule.behavior_cloning_coef(step),
+        value_function_coef=schedule.value_function_coef(step),
+        true_reward_scale=schedule.true_reward_scale(step),
+        important_scale=schedule.important_scale(step),
+        aux_scale=schedule.aux_scale(step),
+        scripted_fraction=schedule.scripted_fraction(step),
+        avg_model_fraction=schedule.avg_model_fraction(step),
+        league_fraction=schedule.league_fraction(step),
+        allow_avg_model_updates=schedule.allow_avg_model_updates(step),
+        allow_scripted_in_roster=schedule.allow_scripted_in_roster(step),
+        elo_eval_games=schedule.elo_eval_games(step),
+        elo_eval_interval=schedule.elo_eval_interval(step),
+        checkpoint_interval=schedule.checkpoint_interval(step),
+    )
+
+
+def _max_schedule_value(
+    schedule_fn: "Callable[[int], float]",
+    total_steps: int,
+    n_samples: int = 1000,
+) -> float:
+    """Sample ``schedule_fn`` at ``n_samples`` evenly-spaced steps and return the max.
+
+    Used to pre-allocate env group slots sized for the peak fraction over the run.
+    """
+    step_size = max(1, total_steps // n_samples)
+    return max(schedule_fn(s) for s in range(0, total_steps + step_size, step_size))
 
 
 class PPOTrainer:
@@ -204,36 +197,47 @@ class PPOTrainer:
         self.use_wandb = use_wandb
         self.scripted_agent = scripted_agent
 
-        base_phase = train_config.timeline.phases[0]
+        base_state = _resolve_schedule(train_config.schedule, 0)
 
         # Primary scale — supports scripted / avg-model / league opponents.
-        # Env group sizes are fixed at init from the base phase fractions and do not
-        # resize dynamically when the timeline schedules different fractions later.
+        # Env groups are sized from the MAXIMUM fraction seen across the entire run
+        # so that slots exist when a later phase activates a higher fraction.
+        # Whether each group is ACTIVE each step is controlled by the current schedule
+        # fraction (> 0 → active, == 0 → those envs run self-play silently).
         # Env groups are contiguous slices of the B primary envs:
-        #   [0, B_self)                          → pure self-play
+        #   [0, B_self)                          → pure self-play (+ overflow from inactive groups)
         #   [B_self, B_self+B_sc)               → scripted opponent (+ BC targets)
         #   [B_self+B_sc, B_self+B_sc+B_avg)   → avg-model opponent
         #   [B_self+B_sc+B_avg, B)              → league roster opponent
         B = train_config.scales[0].num_envs
-        self.B_sc = round(base_phase.scripted_frac * B)  # type: ignore[arg-type]
-        self.B_avg = round(base_phase.avg_model_frac * B)  # type: ignore[arg-type]
-        self.B_league = round(base_phase.league_frac * B)  # type: ignore[arg-type]
+        max_sc_frac = _max_schedule_value(
+            train_config.schedule.scripted_fraction, train_config.total_timesteps
+        )
+        max_avg_frac = _max_schedule_value(
+            train_config.schedule.avg_model_fraction, train_config.total_timesteps
+        )
+        max_league_frac = _max_schedule_value(
+            train_config.schedule.league_fraction, train_config.total_timesteps
+        )
+        self.B_sc = round(max_sc_frac * B)
+        self.B_avg = round(max_avg_frac * B)
+        self.B_league = round(max_league_frac * B)
         self.B_self = B - self.B_sc - self.B_avg - self.B_league
 
         if self.B_sc > 0 and scripted_agent is None:
             raise ValueError(
-                "scripted_frac > 0 in base phase requires a scripted_agent to be provided."
+                "scripted_fraction > 0 in schedule requires a scripted_agent to be provided."
             )
-        if base_phase.pg_coef == 0.0 and scripted_agent is None:
+        if base_state.policy_gradient_coef == 0.0 and scripted_agent is None:
             raise ValueError(
-                "pg_coef=0.0 (pretrain mode) in base phase requires a scripted_agent."
+                "policy_gradient_coef=0.0 (BC mode) requires a scripted_agent."
             )
 
         self.wrapper = MVPEnvWrapper(
             num_envs=train_config.scales[0].num_envs,
             ship_config=ship_config,
             env_config=train_config.scales[0].env_config,
-            phase=base_phase,
+            rewards=train_config.rewards,
             device=device,
         )
         K = self.wrapper.num_active_components
@@ -243,7 +247,7 @@ class PPOTrainer:
             self.device
         )
         self.optim = optim.Adam(
-            self.policy.parameters(), lr=base_phase.learning_rate, eps=1e-5  # type: ignore[arg-type]
+            self.policy.parameters(), lr=base_state.learning_rate, eps=1e-5
         )
 
         N = train_config.scales[0].env_config.num_ships
@@ -268,9 +272,9 @@ class PPOTrainer:
         )
 
         # Pre-compute lambda mask for active components only.
-        # Re-derived each update from _phase_state to handle timeline changes.
+        # Static for the entire run — derived from RewardConfig.
         self.enemy_neg_k = self._make_enemy_neg_k(
-            base_phase.enemy_neg_lambda_components  # type: ignore[arg-type]
+            train_config.rewards.enemy_neg_lambda_components
         )
 
         # Per-component return scaler: EMA of p5/p95 in symlog-reward space
@@ -358,12 +362,11 @@ class PPOTrainer:
 
             self._run_name = datetime.now().strftime("%Y%m%d-%H%M%S")
 
-        # Timeline scheduler — resolves the active PhaseConfig at each global step.
-        # _phase_state is initialized from the base phase and updated each update loop.
-        self._scheduler = _TimelineScheduler(train_config.timeline)
-        self._phase_state: PhaseConfig = base_phase
-        self._pg_coef: float = base_phase.pg_coef  # type: ignore[assignment]
-        self._bc_coef_eff: float = base_phase.bc_coef  # type: ignore[assignment]
+        # Schedule state — evaluated from the schedule functions each update.
+        # Initialized from step=0 and refreshed after every PPO update.
+        self._schedule_state: _ResolvedSchedule = base_state
+        self._policy_gradient_coef: float = base_state.policy_gradient_coef
+        self._behavior_cloning_coef: float = base_state.behavior_cloning_coef
 
         # --- Auxiliary training scales (multi-scale curriculum) ---
         # Each scale has its own env + buffer; policy, optimizer, and scaler are shared.
@@ -376,7 +379,7 @@ class PPOTrainer:
                 num_envs=sc.num_envs,
                 ship_config=ship_config,
                 env_config=sc.env_config,
-                phase=base_phase,
+                rewards=train_config.rewards,
                 device=device,
             )
             aux_sample_obs = aux_w.reset()
@@ -483,8 +486,12 @@ class PPOTrainer:
             ep_components: dict[str, list[torch.Tensor]] = {}
 
             # Sample a league opponent for this rollout (rotated each update).
+            # Only runs when the current phase has league_frac > 0 AND slots are allocated.
             # Evict the previous checkpoint's weights before loading the new one.
-            if self.B_league > 0:
+            league_active = (
+                self.B_league > 0 and self._schedule_state.league_fraction > 0.0
+            )
+            if league_active:
                 self.roster.evict_all_checkpoint_policies()
                 entry = self.roster.sample(self._training_elo)
                 self._current_league_entry = entry
@@ -514,6 +521,11 @@ class PPOTrainer:
                 else:  # "scripted" — no policy forward pass needed
                     self._current_league_policy = None
                     league_hidden = None
+            else:
+                # League inactive this phase — evict any loaded policy and fall back to self-play.
+                self.roster.evict_all_checkpoint_policies()
+                self._current_league_entry = None
+                self._current_league_policy = None
 
             # ----------------------------------------------------------------
             # Rollout collection
@@ -527,7 +539,7 @@ class PPOTrainer:
                 # Team IDs — used for opponent overrides, actor mask, and BC expert masking
                 team_id = obs["team_id"]  # (B, N) int
 
-                if self._pg_coef == 0.0:
+                if self._policy_gradient_coef == 0.0:
                     # BC pretraining: pure self-play — live policy controls all ships.
                     # Query scripted agent on all B envs for supervised targets.
                     # No opponent overrides; actor_mask is all-True.
@@ -541,8 +553,12 @@ class PPOTrainer:
                     use_avg = False
                     use_league = False
                 else:
-                    # Whether the avg model is ready (at least one post-warmup snapshot)
-                    use_avg = self._avg_update_count > 0 and self.B_avg > 0
+                    # avg active when: slots exist, phase wants it, and avg model has been snapshotted
+                    use_avg = (
+                        self._avg_update_count > 0
+                        and self.B_avg > 0
+                        and self._schedule_state.avg_model_fraction > 0.0
+                    )
 
                     # Avg-model opponent actions (when ready)
                     if use_avg:
@@ -556,7 +572,9 @@ class PPOTrainer:
 
                     # League opponent actions (when a valid entry is loaded for this rollout)
                     use_league = (
-                        self.B_league > 0 and self._current_league_entry is not None
+                        self.B_league > 0
+                        and self._current_league_entry is not None
+                        and self._schedule_state.league_fraction > 0.0
                     )
                     if use_league:
                         if self._current_league_policy is not None:
@@ -576,11 +594,11 @@ class PPOTrainer:
                                     state_league
                                 )
 
-                    # use_sc_opponent: scripted agent plays as opponent (after min_steps)
+                    # use_sc_opponent: scripted agent plays as opponent when phase requests it.
+                    # Controlled entirely by scripted_frac > 0 in the current phase.
                     use_sc_bc = self.B_sc > 0
                     use_sc_opponent = (
-                        use_sc_bc
-                        and self._global_step >= self.cfg.scripted_roster_min_steps
+                        use_sc_bc and self._schedule_state.scripted_fraction > 0.0
                     )
 
                     # BC target collection: query scripted agent on ALL envs whenever
@@ -589,7 +607,10 @@ class PPOTrainer:
                     # gradient, so no need to zero them out here.
                     expert_probs_step: torch.Tensor | None = None
                     action_scripted = None
-                    if self._bc_coef_eff > 0.0 and self.scripted_agent is not None:
+                    if (
+                        self._behavior_cloning_coef > 0.0
+                        and self.scripted_agent is not None
+                    ):
                         with torch.no_grad():
                             action_scripted_all, expert_probs_step = (
                                 self.scripted_agent.get_actions_and_probs(
@@ -759,36 +780,39 @@ class PPOTrainer:
                 record_histograms=record_hist,
             )
 
-            # Update timeline state — syncs LR, loss coefficients, and reward weights.
+            # Refresh schedule state — syncs LR, loss coefficients, and reward weights.
             # Runs after the PPO update so changes take effect on the next rollout.
-            self._phase_state = self._scheduler.step(self._global_step)
-            self._pg_coef = self._phase_state.pg_coef  # type: ignore[assignment]
-            self._bc_coef_eff = self._phase_state.bc_coef  # type: ignore[assignment]
-            self.optim.param_groups[0]["lr"] = self._phase_state.learning_rate
-            self.enemy_neg_k = self._make_enemy_neg_k(
-                self._phase_state.enemy_neg_lambda_components  # type: ignore[arg-type]
+            self._schedule_state = _resolve_schedule(
+                self.cfg.schedule, self._global_step
             )
+            self._policy_gradient_coef = self._schedule_state.policy_gradient_coef
+            self._behavior_cloning_coef = self._schedule_state.behavior_cloning_coef
+            self.optim.param_groups[0]["lr"] = self._schedule_state.learning_rate
             for comp in self.wrapper._all_components:
                 scale_attr = _GROUP.get(comp.name, "aux_scale")
-                raw: float = getattr(self._phase_state, f"{comp.name}_weight")
+                raw: float = getattr(self.cfg.rewards, f"{comp.name}_weight")
                 setattr(
                     comp,
                     f"{comp.name}_weight",
-                    raw * getattr(self._phase_state, scale_attr),
+                    raw * getattr(self._schedule_state, scale_attr),
                 )
-            metrics["schedule/learning_rate"] = self._phase_state.learning_rate  # type: ignore[assignment]
-            metrics["schedule/pg_coef"] = self._phase_state.pg_coef  # type: ignore[assignment]
-            metrics["schedule/bc_coef"] = self._phase_state.bc_coef  # type: ignore[assignment]
-            metrics["schedule/true_reward_scale"] = self._phase_state.true_reward_scale  # type: ignore[assignment]
-            metrics["schedule/important_scale"] = self._phase_state.important_scale  # type: ignore[assignment]
-            metrics["schedule/aux_scale"] = self._phase_state.aux_scale  # type: ignore[assignment]
+            metrics["schedule/learning_rate"] = self._schedule_state.learning_rate
+            metrics["schedule/policy_gradient_coef"] = (
+                self._schedule_state.policy_gradient_coef
+            )
+            metrics["schedule/behavior_cloning_coef"] = (
+                self._schedule_state.behavior_cloning_coef
+            )
+            metrics["schedule/true_reward_scale"] = (
+                self._schedule_state.true_reward_scale
+            )
+            metrics["schedule/important_scale"] = self._schedule_state.important_scale
+            metrics["schedule/aux_scale"] = self._schedule_state.aux_scale
 
-            if self._pg_coef > 0.0:
-                # Update avg model when allowed by the current phase and past min_steps.
-                avg_model_ready = (
-                    self._phase_state.allow_avg_model_updates
-                    and self._global_step >= self.cfg.avg_model_min_steps
-                )
+            if self._policy_gradient_coef > 0.0:
+                # Update avg model when allowed by the current phase.
+                # The timeline's allow_avg_model_updates is the sole gate — no min_steps.
+                avg_model_ready = self._schedule_state.allow_avg_model_updates
                 if self.B_avg > 0 and avg_model_ready:
                     self._update_avg_model()
 
@@ -818,7 +842,7 @@ class PPOTrainer:
             metrics["train/sps"] = sps
 
             # ELO evaluation — runs sync matchups against all roster entries
-            elo_eval_interval: int = self._phase_state.elo_eval_interval  # type: ignore[assignment]
+            elo_eval_interval: int = self._schedule_state.elo_eval_interval
             if elo_eval_interval > 0 and update % elo_eval_interval == 0:
                 elo_metrics = self._run_elo_eval()
                 metrics.update(elo_metrics)
@@ -852,14 +876,14 @@ class PPOTrainer:
                     f"{elo_str}"
                 )
 
-            checkpoint_interval: int = self._phase_state.checkpoint_interval  # type: ignore[assignment]
+            checkpoint_interval: int = self._schedule_state.checkpoint_interval
             if checkpoint_interval > 0 and update % checkpoint_interval == 0:
                 self._save_checkpoint(update)
                 # Add to roster when normalized training ELO (vs random) crosses the next milestone.
                 # Skip during pretraining — ELO is not evaluated and the policy is imitating, not competing.
                 training_elo_norm = self._training_elo - self._random_elo()
                 if (
-                    self._pg_coef > 0.0
+                    self._policy_gradient_coef > 0.0
                     and self._last_checkpoint_path is not None
                     and self._last_checkpoint_path.exists()
                     and self.cfg.elo_milestone_gap > 0
@@ -908,9 +932,9 @@ class PPOTrainer:
     ) -> tuple[torch.Tensor, dict]:
         """Compute PPO loss for one minibatch. Does NOT call zero_grad / backward / step.
 
-        Loss coefficients are read from ``self._pg_coef``, ``self._bc_coef_eff``, and
-        ``self._phase_state`` (``vf_coef``, ``ent_coef``) which are updated by the timeline
-        scheduler each update.  Setting ``pg_coef=0.0`` in the base PhaseConfig activates
+        Loss coefficients are read from ``self._policy_gradient_coef``, ``self._behavior_cloning_coef``,
+        and ``self._schedule_state`` (``value_function_coef``, ``entropy_coef``) which are updated
+        each update step.  Setting ``policy_gradient_coef=0.0`` in the base schedule activates
         BC pretraining mode (no policy gradient or entropy loss).
 
         Args:
@@ -971,9 +995,8 @@ class PPOTrainer:
             "bijk,tbjk->tbik", lambda_ij, mb_returns
         )  # (T, B_mb, N, K)
 
-        adv_mean = (adv_agg * actor_f).sum() / actor_sum
-        adv_var = ((adv_agg - adv_mean).pow(2) * actor_f).sum() / actor_sum
-        adv_norm = (adv_agg - adv_mean) / (adv_var.sqrt() + 1e-8)
+        adv_rms = (adv_agg.pow(2) * actor_f).sum() / actor_sum
+        adv_norm = adv_agg / (adv_rms.sqrt().clamp(min=0.1) + 1e-8)
 
         # ---- Policy gradient loss ----------------------------------------
         log_ratio = logprob - mb_old_logprobs
@@ -993,7 +1016,7 @@ class PPOTrainer:
         # ---- Behavioral cloning loss (primary scale only) ----------------
         bc_loss = torch.tensor(0.0, device=self.device)
         scripted_entropy = torch.tensor(0.0, device=self.device)
-        if is_primary and self._bc_coef_eff > 0.0:
+        if is_primary and self._behavior_cloning_coef > 0.0:
             bc_valid = mb_expert_probs.sum(-1) > 0  # (T, B_mb, N)
             bc_f = (bc_valid & mb_actor_mask & mb_alive).float()
             bc_sum = bc_f.sum().clamp(min=1.0)
@@ -1024,10 +1047,10 @@ class PPOTrainer:
                 scripted_entropy = (scripted_ent_per_token * bc_f).sum() / bc_sum
 
         loss = (
-            self._pg_coef * pg_loss
-            + self._phase_state.vf_coef * vf_loss  # type: ignore[operator]
-            + self._phase_state.ent_coef * ent_loss  # type: ignore[operator]
-            + self._bc_coef_eff * bc_loss
+            self._policy_gradient_coef * pg_loss
+            + self._schedule_state.value_function_coef * vf_loss
+            + self._schedule_state.entropy_coef * ent_loss
+            + self._behavior_cloning_coef * bc_loss
         )
 
         # ---- Diagnostics (no grad) ---------------------------------------
@@ -1040,7 +1063,7 @@ class PPOTrainer:
             diag["bc_loss"] = bc_loss.item()
             diag["scripted_entropy"] = scripted_entropy.item()
             diag["bc_kl"] = bc_loss.item() - scripted_entropy.item()
-            diag["adv_var"] = adv_var.item()
+            diag["adv_var"] = adv_rms.item()
             diag["approx_kl"] = (
                 ((ratio - 1) - log_ratio) * actor_f
             ).sum().item() / actor_sum.item()
@@ -1284,7 +1307,7 @@ class PPOTrainer:
         # current phase permits it.
         if (
             self.scripted_agent is not None
-            and self._phase_state.allow_scripted_in_roster
+            and self._schedule_state.allow_scripted_in_roster
             and self._global_step >= self.cfg.scripted_roster_min_steps
             and not any(e.kind == "scripted" for e in self.roster.entries)
         ):
@@ -1293,7 +1316,7 @@ class PPOTrainer:
             )
 
         # 1. Determine batch routing
-        games: int = self._phase_state.elo_eval_games  # type: ignore[assignment]
+        games: int = self._schedule_state.elo_eval_games
         if self.scripted_agent is not None:
             ratio = max(0.0, min(1.0, self._training_elo / 1000.0))
             games_sc = int(ratio * games)
@@ -1450,7 +1473,9 @@ class PPOTrainer:
             "global_step": self._global_step,
             "training_elo": self._training_elo,
             "elo_milestone": self._elo_milestone,
-            "train_config": dataclasses.asdict(self.cfg),
+            "train_config": {
+                k: v for k, v in dataclasses.asdict(self.cfg).items() if k != "schedule"
+            },
             "model_config": dataclasses.asdict(self.model_config),
             "env_config": dataclasses.asdict(self.env_config),
         }
@@ -1490,6 +1515,28 @@ class PPOTrainer:
         path = ckpt_dir / name
         torch.save(self._checkpoint_payload(update=0), path)
         print(f"Best checkpoint saved: {path}")
+
+    def load_pretrained_weights(self, path: str) -> None:
+        """Load policy and scaler from a pretrained checkpoint, discarding optimizer state.
+
+        Use this when starting an RL run from a BC-pretrained policy. The optimizer
+        is left in its freshly-initialised state so Adam calibrates to RL gradients
+        from scratch — avoiding contamination from BC gradient statistics.
+
+        The avg_policy is synced to the loaded weights so that if avg-model opponents
+        are used, they start from the same pretrained base rather than random init.
+
+        Args:
+            path: Path to any .pt checkpoint (step_*.pt or best_*.pt).
+        """
+        ckpt = torch.load(path, map_location=self.device, weights_only=False)
+        self.policy.load_state_dict(ckpt["policy_state_dict"])
+        self.avg_policy.load_state_dict(ckpt["policy_state_dict"])
+        self._avg_param_cumsum = [torch.zeros_like(p) for p in self.policy.parameters()]
+        self._avg_update_count = 0
+        if "scaler_state_dict" in ckpt:
+            self.scaler.load_state_dict(ckpt["scaler_state_dict"])
+        print(f"Pretrained weights loaded from: {path} (optimizer state discarded)")
 
     def load_checkpoint(self, path: str) -> int:
         """Load policy and optimizer weights from a checkpoint file.
@@ -1561,6 +1608,8 @@ class PPOTrainer:
             ("env", env_config),
         ]:
             for k, v in dataclasses.asdict(cfg).items():
+                if k == "schedule":
+                    continue  # TrainingSchedule contains callables — not serializable
                 config[f"{prefix}/{k}"] = _sanitize(v)
 
         wandb.init(project="boost-and-broadside", config=config)

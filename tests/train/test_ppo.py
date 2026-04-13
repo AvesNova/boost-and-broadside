@@ -6,36 +6,24 @@ from boost_and_broadside.config import (
     ShipConfig,
     EnvConfig,
     ModelConfig,
-    PhaseConfig,
-    TimelineConfig,
+    RewardConfig,
+    TrainingSchedule,
     TrainConfig,
     ScaleConfig,
+    constant,
+    stepped,
+    linear,
 )
-from boost_and_broadside.train.rl.ppo import PPOTrainer, _TimelineScheduler
+from boost_and_broadside.train.rl.ppo import PPOTrainer, _GROUP
 
 
-def _make_base_phase(**overrides) -> PhaseConfig:
+def _make_rewards(**overrides) -> RewardConfig:
     defaults = dict(
-        step=0,
-        learning_rate=3e-4,
-        pg_coef=1.0,
-        ent_coef=0.01,
-        bc_coef=0.0,
-        vf_coef=0.5,
-        scripted_frac=0.0,
-        avg_model_frac=0.0,
-        league_frac=0.0,
-        allow_avg_model_updates=False,
-        allow_scripted_in_roster=False,
-        elo_eval_games=16,
-        elo_eval_interval=0,
-        checkpoint_interval=0,
-        true_reward_scale=1.0,
-        important_scale=1.0,
-        aux_scale=1.0,
         victory_weight=1.0,
         death_weight=0.5,
         damage_weight=0.01,
+        team_damage_weight=0.01,
+        team_death_weight=0.01,
         facing_weight=0.01,
         exposure_weight=0.01,
         turn_rate_weight=0.01,
@@ -47,19 +35,44 @@ def _make_base_phase(**overrides) -> PhaseConfig:
         shoot_quality_weight=0.01,
         positioning_radius=400.0,
         proximity_radius=300.0,
-        power_range_lo=0.2,
-        power_range_hi=0.8,
-        speed_range_lo=40.0,
-        speed_range_hi=120.0,
+        power_range_lower=0.2,
+        power_range_upper=0.8,
+        speed_range_lower=40.0,
+        speed_range_upper=120.0,
         shoot_quality_radius=200.0,
-        enemy_neg_lambda_components=frozenset({"damage", "death", "victory", "exposure"}),
+        enemy_neg_lambda_components=frozenset(
+            {"damage", "death", "team_damage", "team_death", "victory", "exposure"}
+        ),
         disabled_rewards=frozenset(),
     )
     defaults.update(overrides)
-    return PhaseConfig(**defaults)
+    return RewardConfig(**defaults)
 
 
-def _make_trainer(n_fourier_freqs: int = 4, **phase_overrides) -> PPOTrainer:
+def _make_schedule(**overrides) -> TrainingSchedule:
+    defaults = dict(
+        learning_rate=constant(3e-4),
+        policy_gradient_coef=constant(1.0),
+        entropy_coef=constant(0.01),
+        behavior_cloning_coef=constant(0.0),
+        value_function_coef=constant(0.5),
+        true_reward_scale=constant(1.0),
+        important_scale=constant(1.0),
+        aux_scale=constant(1.0),
+        scripted_fraction=constant(0.0),
+        avg_model_fraction=constant(0.0),
+        league_fraction=constant(0.0),
+        allow_avg_model_updates=stepped((0, False)),
+        allow_scripted_in_roster=stepped((0, False)),
+        elo_eval_games=stepped((0, 16)),
+        elo_eval_interval=stepped((0, 0)),
+        checkpoint_interval=stepped((0, 0)),
+    )
+    defaults.update(overrides)
+    return TrainingSchedule(**defaults)
+
+
+def _make_trainer(n_fourier_freqs: int = 4, **reward_overrides) -> PPOTrainer:
     return PPOTrainer(
         train_config=TrainConfig(
             scales=(
@@ -70,7 +83,8 @@ def _make_trainer(n_fourier_freqs: int = 4, **phase_overrides) -> PPOTrainer:
                     num_envs=4,
                 ),
             ),
-            timeline=TimelineConfig(phases=(_make_base_phase(**phase_overrides),)),
+            schedule=_make_schedule(),
+            rewards=_make_rewards(**reward_overrides),
             num_steps=16,
             num_epochs=1,
             num_minibatches=2,
@@ -82,7 +96,6 @@ def _make_trainer(n_fourier_freqs: int = 4, **phase_overrides) -> PPOTrainer:
             return_ema_alpha=0.005,
             return_min_span=1.0,
             checkpoint_dir="checkpoints",
-            avg_model_min_steps=0,
             league_size=20,
             league_uniform_sampling=False,
             elo_milestone_gap=50.0,
@@ -127,60 +140,102 @@ class TestPPOSmokeTest:
         assert any_changed, "No parameters changed after training"
 
 
-class TestTimelineScheduler:
-    def _make_two_phase_timeline(self, **phase1_overrides) -> TimelineConfig:
-        base = _make_base_phase()
-        phase1 = PhaseConfig(step=1_000_000, **phase1_overrides)
-        return TimelineConfig(phases=(base, phase1))
+class TestSchedulePrimitives:
+    def test_constant_returns_same_value_at_any_step(self):
+        fn = constant(3e-4)
+        assert fn(0) == 3e-4
+        assert fn(1_000_000) == 3e-4
+        assert fn(999_999_999) == 3e-4
 
-    def test_returns_base_phase_before_first_keyframe(self):
-        """Step 0 must return base phase values exactly."""
-        tl = self._make_two_phase_timeline(learning_rate=1e-4)
-        sched = _TimelineScheduler(tl)
-        state = sched.step(0)
-        assert state.learning_rate == 3e-4
+    def test_linear_warmup_at_start(self):
+        fn = linear((0, 1e-7), (1_000_000, 3e-4))
+        assert fn(0) == 1e-7
 
-    def test_float_field_interpolates_between_phases(self):
-        """learning_rate must be midpoint at the halfway step."""
-        tl = self._make_two_phase_timeline(learning_rate=1e-4)
-        sched = _TimelineScheduler(tl)
-        state = sched.step(500_000)
-        expected = 3e-4 + (1e-4 - 3e-4) * 0.5
-        assert abs(state.learning_rate - expected) < 1e-10
+    def test_linear_reaches_target(self):
+        fn = linear((0, 1e-7), (1_000_000, 3e-4))
+        assert abs(fn(1_000_000) - 3e-4) < 1e-10
 
-    def test_float_field_reaches_target_at_keyframe(self):
-        """learning_rate must equal phase1 value exactly at its step."""
-        tl = self._make_two_phase_timeline(learning_rate=1e-4)
-        sched = _TimelineScheduler(tl)
-        state = sched.step(1_000_000)
-        assert state.learning_rate == 1e-4
+    def test_linear_interpolates_midpoint(self):
+        fn = linear((0, 0.0), (1_000_000, 1.0))
+        assert abs(fn(500_000) - 0.5) < 1e-10
 
-    def test_clamped_at_last_phase_beyond_final_step(self):
-        """Steps past the last keyframe must return the last phase's values."""
-        tl = self._make_two_phase_timeline(learning_rate=1e-4)
-        sched = _TimelineScheduler(tl)
-        state = sched.step(99_000_000)
-        assert state.learning_rate == 1e-4
+    def test_linear_clamps_before_first_keypoint(self):
+        fn = linear((100, 0.0), (200, 1.0))
+        assert fn(0) == 0.0
 
-    def test_pg_coef_interpolates(self):
-        """pg_coef must interpolate linearly between phases."""
-        base = _make_base_phase(pg_coef=0.0)
-        rl = PhaseConfig(step=1_000_000, pg_coef=1.0)
-        tl = TimelineConfig(phases=(base, rl))
-        sched = _TimelineScheduler(tl)
-        assert abs(sched.step(500_000).pg_coef - 0.5) < 1e-10
-        assert sched.step(1_000_000).pg_coef == 1.0
+    def test_linear_clamps_after_last_keypoint(self):
+        fn = linear((0, 0.0), (1_000_000, 1.0))
+        assert fn(99_000_000) == 1.0
+
+    def test_linear_multi_segment(self):
+        fn = linear((0, 0.0), (500_000, 1.0), (1_000_000, 0.0))
+        assert abs(fn(250_000) - 0.5) < 1e-10
+        assert abs(fn(750_000) - 0.5) < 1e-10
+
+    def test_stepped_holds_initial_value(self):
+        fn = stepped((0, 0.5))
+        assert fn(0) == 0.5
+        assert fn(99_999_999) == 0.5
+
+    def test_stepped_changes_at_keypoint(self):
+        fn = stepped((0, 0.5), (1_000_000, 0.3))
+        assert fn(999_999) == 0.5
+        assert fn(1_000_000) == 0.3
+
+    def test_stepped_bool(self):
+        fn = stepped((0, False), (5_000_000, True))
+        assert fn(0) is False
+        assert fn(5_000_000) is True
+
+    def test_stepped_beyond_last_keypoint(self):
+        fn = stepped((0, 0.5), (1_000_000, 0.1))
+        assert fn(99_000_000) == 0.1
 
     def test_group_scales_applied_by_trainer(self):
-        """After training, effective component weight = group_scale * individual."""
-        trainer = _make_trainer(aux_scale=0.5, closing_speed_weight=0.01)
+        """After training, effective component weight = group_scale * individual weight."""
+        trainer = PPOTrainer(
+            train_config=TrainConfig(
+                scales=(
+                    ScaleConfig(
+                        env_config=EnvConfig(
+                            num_ships=4, max_bullets=8, max_episode_steps=50
+                        ),
+                        num_envs=4,
+                    ),
+                ),
+                schedule=_make_schedule(aux_scale=constant(0.5)),
+                rewards=_make_rewards(closing_speed_weight=0.01),
+                num_steps=16,
+                num_epochs=1,
+                num_minibatches=2,
+                gamma=0.99,
+                gae_lambda=0.95,
+                clip_coef=0.2,
+                max_grad_norm=0.5,
+                total_timesteps=64,
+                return_ema_alpha=0.005,
+                return_min_span=1.0,
+                checkpoint_dir="checkpoints",
+                league_size=20,
+                league_uniform_sampling=False,
+                elo_milestone_gap=50.0,
+                elo_k_factor=32.0,
+                elo_temperature=200.0,
+                scripted_roster_min_steps=0,
+            ),
+            model_config=ModelConfig(
+                d_model=32, n_heads=4, n_fourier_freqs=4, n_transformer_blocks=1
+            ),
+            ship_config=ShipConfig(),
+            device="cpu",
+            use_wandb=False,
+        )
         trainer.train()
-        from boost_and_broadside.train.rl.ppo import _GROUP
-        state = trainer._phase_state
         for comp in trainer.wrapper._all_components:
             if comp.name == "closing_speed":
-                scale_attr = _GROUP.get(comp.name, "aux_scale")
-                raw = getattr(state, f"{comp.name}_weight")
-                expected = raw * getattr(state, scale_attr)
-                actual = getattr(comp, f"{comp.name}_weight")
+                scale_name = _GROUP.get(comp.name, "aux_scale")
+                individual_weight = getattr(trainer.cfg.rewards, f"{comp.name}_weight")
+                group_scale = getattr(trainer._schedule_state, scale_name)
+                expected = individual_weight * group_scale
+                actual = comp.weight
                 assert abs(actual - expected) < 1e-9

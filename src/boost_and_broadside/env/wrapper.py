@@ -10,7 +10,7 @@ Responsibilities:
 import torch
 from typing import Any
 
-from boost_and_broadside.config import ShipConfig, EnvConfig, PhaseConfig
+from boost_and_broadside.config import ShipConfig, EnvConfig, RewardConfig
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.rewards import (
     RewardComponent,
@@ -39,7 +39,7 @@ class MVPEnvWrapper:
         num_envs: int,
         ship_config: ShipConfig,
         env_config: EnvConfig,
-        phase: PhaseConfig,
+        rewards: RewardConfig,
         device: str | torch.device,
     ) -> None:
         self.env = TensorEnv(num_envs, ship_config, env_config, device)
@@ -47,9 +47,9 @@ class MVPEnvWrapper:
         self.env_config = env_config
         self.device = torch.device(device)
 
-        # All components (timeline scheduler accesses these to update weights live).
+        # All components (group-scale multipliers update individual weights each training step).
         self._all_components: list[RewardComponent] = build_reward_components(
-            phase, ship_config
+            rewards, ship_config
         )
 
         # Active components: weight != 0 and registered in REWARD_COMPONENT_NAMES,

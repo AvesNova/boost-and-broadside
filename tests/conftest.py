@@ -3,7 +3,7 @@
 import torch
 import pytest
 
-from boost_and_broadside.config import ShipConfig, EnvConfig, ModelConfig, PhaseConfig
+from boost_and_broadside.config import ShipConfig, EnvConfig, ModelConfig, RewardConfig
 from boost_and_broadside.env.state import TensorState
 
 
@@ -24,25 +24,8 @@ def model_config() -> ModelConfig:
 
 
 @pytest.fixture
-def base_phase() -> PhaseConfig:
-    return PhaseConfig(
-        step=0,
-        learning_rate=3e-4,
-        pg_coef=1.0,
-        ent_coef=0.01,
-        bc_coef=0.0,
-        vf_coef=0.5,
-        scripted_frac=0.0,
-        avg_model_frac=0.0,
-        league_frac=0.0,
-        allow_avg_model_updates=False,
-        allow_scripted_in_roster=False,
-        elo_eval_games=16,
-        elo_eval_interval=0,
-        checkpoint_interval=0,
-        true_reward_scale=1.0,
-        important_scale=1.0,
-        aux_scale=1.0,
+def base_rewards() -> RewardConfig:
+    return RewardConfig(
         victory_weight=1.0,
         death_weight=0.5,
         damage_weight=0.01,
@@ -57,12 +40,14 @@ def base_phase() -> PhaseConfig:
         shoot_quality_weight=0.01,
         positioning_radius=300.0,
         proximity_radius=300.0,
-        power_range_lo=0.2,
-        power_range_hi=0.8,
-        speed_range_lo=40.0,
-        speed_range_hi=120.0,
+        power_range_lower=0.2,
+        power_range_upper=0.8,
+        speed_range_lower=40.0,
+        speed_range_upper=120.0,
         shoot_quality_radius=200.0,
-        enemy_neg_lambda_components=frozenset({"damage", "death", "victory", "exposure"}),
+        enemy_neg_lambda_components=frozenset(
+            {"damage", "death", "victory", "exposure"}
+        ),
         disabled_rewards=frozenset(),
     )
 

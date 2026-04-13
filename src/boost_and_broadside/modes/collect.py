@@ -22,6 +22,7 @@ from boost_and_broadside.modes.agent_factory import (
 
 # _run_matchup was removed since it is no longer required centrally.
 
+
 def _obs_from_state(
     state: TensorState, ship_config: ShipConfig
 ) -> dict[str, torch.Tensor]:

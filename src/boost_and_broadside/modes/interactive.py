@@ -13,7 +13,7 @@ Supported agent specs (--team0 / --team1):
 
 import torch
 
-from boost_and_broadside.config import ShipConfig, EnvConfig, ModelConfig, PhaseConfig
+from boost_and_broadside.config import ShipConfig, EnvConfig, ModelConfig, RewardConfig
 from boost_and_broadside.constants import PowerActions, TurnActions, ShootActions
 from boost_and_broadside.env.wrapper import MVPEnvWrapper
 from boost_and_broadside.modes.agent_factory import (
@@ -31,7 +31,7 @@ def run_watch_mode(
     team1_spec: str,
     ship_config: ShipConfig,
     env_config: EnvConfig,
-    phase: PhaseConfig,
+    rewards: RewardConfig,
     model_config: ModelConfig,
     render_config: RenderConfig,
     device: str,
@@ -44,7 +44,7 @@ def run_watch_mode(
         team1_spec:     Agent spec for team 1.
         ship_config:    Physics constants.
         env_config:     Environment sizing.
-        phase:          Base phase config (used to build the env wrapper).
+        rewards:        Reward weights (used to build the env wrapper).
         model_config:   Policy architecture (needed if either spec is a checkpoint).
         render_config:  Display settings.
         device:         Torch device string.
@@ -61,7 +61,7 @@ def run_watch_mode(
         num_envs=1,
         ship_config=ship_config,
         env_config=env_config,
-        phase=phase,
+        rewards=rewards,
         device=device,
     )
     renderer = GameRenderer(ship_config, render_config)
