@@ -5,6 +5,7 @@ Architecture (per timestep):
          → N × TransformerBlock    → (B, N, D)      [ships attend to each other]
          → per-ship GRU             → (B, N, D)      [temporal memory per ship]
          → ActionHead               → (B, N, 12)     [logits: power|turn|shoot]
+         → TeamPMA                  → (B, N, D)      [pool per team, broadcast back]
          → ValueHead                → (B, N, K)      [MSE critic: K components in normalized space]
 
 K = num_value_components (one head per reward component).
@@ -34,6 +35,53 @@ from boost_and_broadside.models.mvp.encoder import ShipEncoder
 from boost_and_broadside.models.mvp.attention import TransformerBlock
 
 
+class TeamPMA(nn.Module):
+    """Pooling by Multi-head Attention over per-team ship embeddings.
+
+    For each team t ∈ {0, 1}, a learned seed attends over the GRU outputs of
+    alive ships on that team. Dead ships and ships from the opposite team are
+    masked out as keys. The two team embeddings are broadcast back so every
+    ship holds its team's pooled embedding — preserving the (B, N, D) shape
+    expected by the value head.
+
+    Args:
+        d_model: Token embedding dimension D.
+        n_heads:  Attention heads (must divide d_model evenly).
+    """
+
+    def __init__(self, d_model: int, n_heads: int) -> None:
+        super().__init__()
+        self.seeds = nn.Parameter(torch.zeros(2, d_model))
+        self.attn = nn.MultiheadAttention(
+            d_model, n_heads, batch_first=True, bias=False
+        )
+        self.norm = nn.RMSNorm(d_model)
+
+    def forward(
+        self,
+        x: torch.Tensor,  # (B, N, D)
+        team_id: torch.Tensor,  # (B, N) int
+        alive: torch.Tensor,  # (B, N) bool
+    ) -> torch.Tensor:  # (B, N, D)
+        B, N, D = x.shape
+        team_pool = x.new_zeros(B, 2, D)
+
+        for t in range(2):
+            mask = (team_id == t) & alive  # (B, N) — alive ships on team t
+            has_ship = mask.any(dim=1)  # (B,) bool
+
+            seed = self.seeds[t].view(1, 1, D).expand(B, 1, D)  # (B, 1, D)
+            # key_padding_mask: True = ignore that key position
+            out, _ = self.attn(seed, x, x, key_padding_mask=~mask, need_weights=False)
+            out = out.squeeze(1).nan_to_num(0.0)  # (B, D) — guard: all-dead → NaN → 0
+            out = out * has_ship.unsqueeze(1).float()  # zero dead-team envs before norm
+            team_pool[:, t] = self.norm(out)  # (B, D)
+
+        # Each ship gets its team's pooled embedding
+        idx = team_id.clamp(0, 1).long().unsqueeze(-1).expand(B, N, D)
+        return team_pool.gather(1, idx)  # (B, N, D)
+
+
 class MVPPolicy(nn.Module):
     """Actor-critic policy with shared trunk: Encoder → Attention → GRU.
 
@@ -60,6 +108,7 @@ class MVPPolicy(nn.Module):
             ]
         )
         self.gru = nn.GRU(D, D, num_layers=1, batch_first=False)
+        self.team_pma = TeamPMA(d_model=D, n_heads=model_config.n_heads)
 
         hidden_dim = D * 2
 
@@ -85,6 +134,11 @@ class MVPPolicy(nn.Module):
             # Output layers get 0.01 gain for stable early predictions
             nn.init.orthogonal_(head[3].weight, gain=0.01)
             nn.init.zeros_(head[3].bias)
+
+        # TeamPMA init — seeds are small and asymmetric; projections use orthogonal
+        nn.init.normal_(self.team_pma.seeds, mean=0.0, std=0.02)
+        nn.init.orthogonal_(self.team_pma.attn.in_proj_weight, gain=math.sqrt(2))
+        nn.init.orthogonal_(self.team_pma.attn.out_proj.weight, gain=1.0)
 
     # ------------------------------------------------------------------
     # Hidden state management
@@ -159,7 +213,10 @@ class MVPPolicy(nn.Module):
         gru_out = gru_out.squeeze(0).reshape(B, N, D)  # (B, N, D)
 
         logits = self.action_head(gru_out)  # (B, N, 12)
-        value = self.value_head(gru_out)  # (B, N, K) — normalized space
+        team_emb = self.team_pma(gru_out, obs["team_id"].long(), obs["alive"].bool())
+        value = self.value_head(
+            team_emb
+        )  # (B, N, K) — normalized space, broadcast per team
 
         action, logprob = _sample_action(logits)
 
@@ -210,7 +267,15 @@ class MVPPolicy(nn.Module):
         gru_out = gru_out.reshape(T, B, N, D)  # (T, B, N, D)
 
         logits = self.action_head(gru_out)  # (T, B, N, 12)
-        new_value = self.value_head(gru_out)  # (T, B, N, K) — normalized space
+        # PMA uses the flat (T*B) batch — flat_obs already built above
+        gru_out_flat = gru_out.reshape(T * B, N, D)
+        team_emb_flat = self.team_pma(
+            gru_out_flat,
+            flat_obs["team_id"].long(),  # (T*B, N) — buffer stores obs as float32
+            flat_obs["alive"].bool(),  # (T*B, N)
+        )
+        team_emb = team_emb_flat.reshape(T, B, N, D)
+        new_value = self.value_head(team_emb)  # (T, B, N, K) — normalized space
 
         logprob, entropy = _evaluate_action(logits, actions)
 

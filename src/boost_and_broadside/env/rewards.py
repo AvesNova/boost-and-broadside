@@ -1,9 +1,14 @@
-"""Modular reward components for the decomposed per-ship per-component critic.
+"""Modular reward components for the 9-component decomposed critic.
 
 All computations are GPU-vectorized. No Python loops over ships or envs.
 Each component returns the reward from the perspective of that specific ship —
 no zero-sum pre-inversion. Zero-sum accounting is handled at PPO update time
-via the lambda aggregation matrix (allied ships: +1, enemy ships: component-dependent).
+via the lambda aggregation matrix.
+
+The 9 components split outcomes into ally/enemy pairs so the critic can
+distinguish symmetric from asymmetric situations (e.g. mutual damage vs no
+damage, standoff vs close fight). Shaping rewards provide dense feedback to
+prevent passive collapse during early RL.
 
 Adding a new reward
 -------------------
@@ -24,11 +29,10 @@ class RewardComponent(ABC):
     """Base class for a single reward signal.
 
     Subclasses must define:
-        name: str — unique key used as W&B metric label (e.g. "damage", "victory").
+        name: str — unique key used as W&B metric label.
 
     Optionally override log_keys / log_breakdown to split a component into
-    sub-metrics for logging (e.g. "damage_given" + "damage_taken") without
-    changing the training signal — the sub-tensors must sum to the total reward.
+    sub-metrics for logging without changing the training signal.
     """
 
     name: str
@@ -59,12 +63,10 @@ class RewardComponent(ABC):
         return [self.name]
 
     def log_breakdown(self, r: torch.Tensor) -> dict[str, torch.Tensor]:
-        """Split the (already zero-sum-transformed) reward tensor into sub-metrics.
-
-        The values must sum to r for every ship. Default: single key = self.name.
+        """Split the reward tensor into sub-metrics for logging.
 
         Args:
-            r: (B, N) zero-sum-transformed reward for this component.
+            r: (B, N) reward for this component.
 
         Returns:
             Dict mapping log key → (B, N) tensor.
@@ -72,22 +74,23 @@ class RewardComponent(ABC):
         return {self.name: r}
 
 
-class DamageReward(RewardComponent):
-    """Penalty for damage taken by this ship.
+# ---------------------------------------------------------------------------
+# Outcome reward components — split into ally/enemy pairs
+# ---------------------------------------------------------------------------
 
-    Each ship predicts its own future damage taken. No kill/damage-dealt bonus —
-    that would require bullet tracking and risks double-counting with DeathReward.
-    Zero-sum accounting is deferred to the PPO lambda aggregation (enemy ships: lambda=-1).
-    """
 
-    name = "damage"
+class AllyDamageReward(RewardComponent):
+    """Damage taken by this ship. Lambda=0 for enemies so only ally damage
+    aggregates into the advantage. Critic learns expected ally damage taken."""
 
-    def __init__(self, damage_weight: float) -> None:
-        self.damage_weight = damage_weight
+    name = "ally_damage"
+
+    def __init__(self, weight: float) -> None:
+        self._weight = weight
 
     @property
     def weight(self) -> float:
-        return self.damage_weight
+        return self._weight
 
     def compute(
         self,
@@ -96,28 +99,50 @@ class DamageReward(RewardComponent):
         next_state: TensorState,
         dones: torch.Tensor,
     ) -> torch.Tensor:
-        # delta > 0 when health decreased (damage taken)
         delta = (prev_state.ship_health - next_state.ship_health).clamp(
             min=0.0
         )  # (B, N)
         return -delta * next_state.ship_alive.float()
 
 
-class DeathReward(RewardComponent):
-    """Penalty for the ship that dies.
+class EnemyDamageReward(RewardComponent):
+    """Same compute as AllyDamageReward. Lambda=-1 for enemies inverts sign so allies
+    benefit when enemies take damage. Critic learns expected enemy damage taken."""
 
-    Each ship predicts its own probability of dying this step. No kill bonus —
-    the kill incentive is captured by the enemy ships' DeathReward with lambda=-1.
-    """
+    name = "enemy_damage"
 
-    name = "death"
-
-    def __init__(self, death_weight: float) -> None:
-        self.death_weight = death_weight
+    def __init__(self, weight: float) -> None:
+        self._weight = weight
 
     @property
     def weight(self) -> float:
-        return self.death_weight
+        return self._weight
+
+    def compute(
+        self,
+        prev_state: TensorState,
+        actions: torch.Tensor,
+        next_state: TensorState,
+        dones: torch.Tensor,
+    ) -> torch.Tensor:
+        delta = (prev_state.ship_health - next_state.ship_health).clamp(
+            min=0.0
+        )  # (B, N)
+        return -delta * next_state.ship_alive.float()
+
+
+class AllyDeathReward(RewardComponent):
+    """Death penalty (-1) for this ship. Lambda=0 for enemies so only ally deaths
+    aggregate. Critic learns expected ally death count (negative)."""
+
+    name = "ally_death"
+
+    def __init__(self, weight: float) -> None:
+        self._weight = weight
+
+    @property
+    def weight(self) -> float:
+        return self._weight
 
     def compute(
         self,
@@ -132,17 +157,18 @@ class DeathReward(RewardComponent):
         return reward
 
 
-class TeamDamageReward(RewardComponent):
-    """Penalty for damage taken by any ship on the SAME team."""
+class EnemyDeathReward(RewardComponent):
+    """Same compute as AllyDeathReward. Lambda=-1 for enemies so allies benefit when
+    enemies die. Critic learns expected enemy death count (positive for allies)."""
 
-    name = "team_damage"
+    name = "enemy_death"
 
-    def __init__(self, team_damage_weight: float) -> None:
-        self.team_damage_weight = team_damage_weight
+    def __init__(self, weight: float) -> None:
+        self._weight = weight
 
     @property
     def weight(self) -> float:
-        return self.team_damage_weight
+        return self._weight
 
     def compute(
         self,
@@ -151,59 +177,25 @@ class TeamDamageReward(RewardComponent):
         next_state: TensorState,
         dones: torch.Tensor,
     ) -> torch.Tensor:
-        delta = (prev_state.ship_health - next_state.ship_health).clamp(min=0.0)
-        team_id = next_state.ship_team_id
-        same_team = team_id.unsqueeze(2) == team_id.unsqueeze(1)
-        delta_j = delta.unsqueeze(1)
-        team_damage = (delta_j * same_team.float()).sum(dim=2)
-        return -team_damage * next_state.ship_alive.float()
+        just_died = prev_state.ship_alive & ~next_state.ship_alive  # (B, N)
+        reward = torch.zeros_like(next_state.ship_health)
+        reward[just_died] = -1.0
+        return reward
 
 
-class TeamDeathReward(RewardComponent):
-    """Penalty for any ship dying on the SAME team."""
+class AllyWinReward(RewardComponent):
+    """+1 to ships whose team wins at game end; 0 to losers and draws. Lambda=0 for
+    enemies. Critic learns P(ally wins), which distinguishes standoff (≈0) from
+    close fight (≈0.5) — unlike a single win/loss component where both look like 0."""
 
-    name = "team_death"
+    name = "ally_win"
 
-    def __init__(self, team_death_weight: float) -> None:
-        self.team_death_weight = team_death_weight
-
-    @property
-    def weight(self) -> float:
-        return self.team_death_weight
-
-    def compute(
-        self,
-        prev_state: TensorState,
-        actions: torch.Tensor,
-        next_state: TensorState,
-        dones: torch.Tensor,
-    ) -> torch.Tensor:
-        just_died = prev_state.ship_alive & ~next_state.ship_alive
-        team_id = next_state.ship_team_id
-        same_team = team_id.unsqueeze(2) == team_id.unsqueeze(1)
-        died_j = just_died.unsqueeze(1)
-        team_deaths = (died_j & same_team).sum(dim=2).float()
-        return -team_deaths * prev_state.ship_alive.float()
-
-
-class VictoryReward(RewardComponent):
-    """Terminal reward: win, lose, or draw."""
-
-    name = "victory"
-
-    @property
-    def log_keys(self) -> list[str]:
-        return ["win", "loss"]
-
-    def log_breakdown(self, r: torch.Tensor) -> dict[str, torch.Tensor]:
-        return {"win": r.clamp(min=0.0), "loss": r.clamp(max=0.0)}
-
-    def __init__(self, victory_weight: float) -> None:
-        self.victory_weight = victory_weight
+    def __init__(self, weight: float) -> None:
+        self._weight = weight
 
     @property
     def weight(self) -> float:
-        return self.victory_weight
+        return self._weight
 
     def compute(
         self,
@@ -213,60 +205,32 @@ class VictoryReward(RewardComponent):
         dones: torch.Tensor,
     ) -> torch.Tensor:
         reward = torch.zeros_like(next_state.ship_health)
-
         if not dones.any():
             return reward
-
         team0 = next_state.ship_team_id == 0  # (B, N)
         team1 = next_state.ship_team_id == 1  # (B, N)
-
-        t0_alive = (team0 & next_state.ship_alive).sum(dim=1)
-        t1_alive = (team1 & next_state.ship_alive).sum(dim=1)
-
+        t0_alive = (team0 & next_state.ship_alive).sum(dim=1)  # (B,)
+        t1_alive = (team1 & next_state.ship_alive).sum(dim=1)  # (B,)
         t0_wins = ((t0_alive > 0) & (t1_alive == 0) & dones).unsqueeze(1)  # (B, 1)
-        t0_loses = ((t0_alive == 0) & (t1_alive > 0) & dones).unsqueeze(1)
-
-        # Each ship gets ±1 from its OWN team's perspective — no pre-inversion.
-        # Lambda aggregation applies victory_weight and handles zero-sum (enemy lambda=-1).
+        t1_wins = ((t1_alive > 0) & (t0_alive == 0) & dones).unsqueeze(1)  # (B, 1)
         reward[team0 & t0_wins.expand_as(team0)] = +1.0
-        reward[team0 & t0_loses.expand_as(team0)] = -1.0
-        reward[team1 & t0_loses.expand_as(team1)] = +1.0  # team1 wins
-        reward[team1 & t0_wins.expand_as(team1)] = -1.0  # team1 loses
-
+        reward[team1 & t1_wins.expand_as(team1)] = +1.0
         return reward
 
 
-class PositioningReward(RewardComponent):
-    """Offensive / defensive positioning reward.
+class EnemyWinReward(RewardComponent):
+    """Same compute as AllyWinReward (+1 to winning-team ships). Lambda=-1 for
+    enemies: ally advantage = -1 when enemies win, 0 otherwise. Critic learns
+    -P(enemy wins), completing the ally_win/enemy_win pair."""
 
-    Formula (per ship s):
-        r_s = [ w(r_target) * alpha_max  -  sum_i( w(r_i) * beta_i ) ] / (1 + N_enemies)
+    name = "enemy_win"
 
-    Where:
-        w(r)      = max(0, (1 - r/R)^2)    proximity weight
-        r_target  = distance to nearest enemy
-        alpha_max = max over enemies of dot(my_attitude, dir_to_enemy)  — offensive alignment
-        r_i       = distance from enemy i to me
-        beta_i    = dot(enemy_i_attitude, dir_from_enemy_to_me)        — defensive exposure
-        N_enemies = number of enemies within radius R
-        R         = config.positioning_radius
-    """
-
-    name = "positioning"
-
-    def __init__(
-        self,
-        positioning_weight: float,
-        positioning_radius: float,
-        world_size: tuple[float, float],
-    ) -> None:
-        self.positioning_weight = positioning_weight
-        self.positioning_radius = positioning_radius
-        self.world_size = world_size
+    def __init__(self, weight: float) -> None:
+        self._weight = weight
 
     @property
     def weight(self) -> float:
-        return self.positioning_weight
+        return self._weight
 
     def compute(
         self,
@@ -275,49 +239,23 @@ class PositioningReward(RewardComponent):
         next_state: TensorState,
         dones: torch.Tensor,
     ) -> torch.Tensor:
-        # GPU kernel: kept together for performance
-        pos = next_state.ship_pos  # (B, N) complex64
-        att = next_state.ship_attitude  # (B, N) complex64
-        alive = next_state.ship_alive  # (B, N) bool
-        teams = next_state.ship_team_id  # (B, N) int32
-
-        B, N = pos.shape
-        R = self.positioning_radius
-        W, H = self.world_size
-
-        d = pos.unsqueeze(2) - pos.unsqueeze(1)  # (B, N_i, N_j)
-        d.real = (d.real + W / 2) % W - W / 2
-        d.imag = (d.imag + H / 2) % H - H / 2
-        dist = d.abs()
-
-        w = (1.0 - dist / R).clamp(min=0.0) ** 2
-        safe_dist = dist.clamp(min=1e-6)
-        dir_j_to_i = d / safe_dist
-
-        att_i = att.unsqueeze(2)
-        alpha = (att_i * torch.conj(-dir_j_to_i)).real
-
-        att_j = att.unsqueeze(1)
-        beta = (att_j * torch.conj(dir_j_to_i)).real
-
-        is_enemy = teams.unsqueeze(2) != teams.unsqueeze(1)
-        alive_j = alive.unsqueeze(1).expand(B, N, N)
-        alive_i = alive.unsqueeze(2).expand(B, N, N)
-        valid = (
-            is_enemy
-            & alive_j
-            & alive_i
-            & ~torch.eye(N, device=pos.device, dtype=torch.bool).unsqueeze(0)
-        )
-
-        alpha_masked = torch.where(valid, alpha, torch.full_like(alpha, -1.0))
-        alpha_max, _ = (w * alpha_masked * valid.float()).max(dim=2)
-
-        beta_sum = (w * beta * valid.float()).sum(dim=2)
-        n_enemies = (valid & (dist < R)).sum(dim=2).float()
-
-        reward = (alpha_max - beta_sum) / (1.0 + n_enemies) * alive.float()
+        reward = torch.zeros_like(next_state.ship_health)
+        if not dones.any():
+            return reward
+        team0 = next_state.ship_team_id == 0  # (B, N)
+        team1 = next_state.ship_team_id == 1  # (B, N)
+        t0_alive = (team0 & next_state.ship_alive).sum(dim=1)  # (B,)
+        t1_alive = (team1 & next_state.ship_alive).sum(dim=1)  # (B,)
+        t0_wins = ((t0_alive > 0) & (t1_alive == 0) & dones).unsqueeze(1)  # (B, 1)
+        t1_wins = ((t1_alive > 0) & (t0_alive == 0) & dones).unsqueeze(1)  # (B, 1)
+        reward[team0 & t0_wins.expand_as(team0)] = +1.0
+        reward[team1 & t1_wins.expand_as(team1)] = +1.0
         return reward
+
+
+# ---------------------------------------------------------------------------
+# Shaping reward components — dense signals to prevent passive collapse
+# ---------------------------------------------------------------------------
 
 
 class FacingReward(RewardComponent):
@@ -330,8 +268,7 @@ class FacingReward(RewardComponent):
     where w(dist) = (1 - dist/R).clamp(0)  — linear falloff to zero at radius R.
 
     Both teams receive a positive signal for facing their enemies directly from
-    compute(). Zero-sum accounting is handled by lambda aggregation in the PPO
-    trainer (lambda=0 for enemy ships on this shaping component).
+    compute(). Lambda=0 for enemy ships in the PPO aggregation (self-shaping only).
     """
 
     name = "facing"
@@ -386,136 +323,6 @@ class FacingReward(RewardComponent):
         best_score = best_score * valid.any(dim=2).float()
 
         return best_score * alive.float()
-
-
-class ExposureReward(RewardComponent):
-    """Penalty for being in nearby enemies' crosshairs.
-
-    Proximity-weighted: a close enemy aiming at you is more dangerous than a distant one.
-    Takes the sum over all threatening enemies — multiple ships can target you at once.
-
-    Score = sum over enemies of w(dist) * dot(enemy_attitude, dir_from_enemy_to_me).clamp(0)
-    where w(dist) = (1 - dist/R).clamp(0)  — applied as a negative reward.
-
-    Both teams receive a negative signal for being in crosshairs directly from
-    compute(). Zero-sum accounting is handled by lambda aggregation in the PPO
-    trainer (lambda=-1 for enemy ships on this outcome component).
-    """
-
-    name = "exposure"
-
-    def __init__(
-        self, exposure_weight: float, radius: float, world_size: tuple[float, float]
-    ) -> None:
-        self.exposure_weight = exposure_weight
-        self.radius = radius
-        self.world_size = world_size
-
-    @property
-    def weight(self) -> float:
-        return self.exposure_weight
-
-    def compute(
-        self,
-        prev_state: TensorState,
-        actions: torch.Tensor,
-        next_state: TensorState,
-        dones: torch.Tensor,
-    ) -> torch.Tensor:
-        pos = next_state.ship_pos  # (B, N) complex64
-        att = next_state.ship_attitude  # (B, N) complex64
-        alive = next_state.ship_alive  # (B, N) bool
-        teams = next_state.ship_team_id  # (B, N) int32
-
-        B, N = pos.shape
-        W, H = self.world_size
-        R = self.radius
-
-        d = pos.unsqueeze(2) - pos.unsqueeze(1)  # pos_i - pos_j  (B, N, N)
-        d.real = (d.real + W / 2) % W - W / 2
-        d.imag = (d.imag + H / 2) % H - H / 2
-        dist = d.abs()
-
-        dir_j_to_i = d / dist.clamp(min=1e-6)  # unit vector from j to i
-
-        # beta[b, i, j] = how much enemy j is aimed at ship i
-        att_j = att.unsqueeze(1)  # (B, 1, N)
-        beta = (att_j * torch.conj(dir_j_to_i)).real  # (B, N, N)
-
-        prox = (1.0 - dist / R).clamp(min=0.0)  # (B, N, N)
-        score = prox * beta.clamp(min=0.0)  # (B, N, N)
-
-        is_enemy = teams.unsqueeze(2) != teams.unsqueeze(1)
-        alive_j = alive.unsqueeze(1).expand(B, N, N)
-        alive_i = alive.unsqueeze(2).expand(B, N, N)
-        valid = is_enemy & alive_j & alive_i
-
-        score_masked = score.masked_fill(~valid, 0.0)
-        total_exposure = score_masked.sum(
-            dim=2
-        )  # (B, N) — sum over threatening enemies
-
-        return -total_exposure * alive.float()
-
-
-class ProximityReward(RewardComponent):
-    """Reward for being close to any alive enemy.
-
-    Score = max over enemies of (1 - dist/R).clamp(0) — linear falloff
-    from 1.0 at distance 0 to 0.0 at distance R.
-
-    Both teams receive a positive proximity signal directly from compute().
-    Zero-sum accounting is handled by lambda aggregation in the PPO trainer
-    (lambda=0 for enemy ships on this shaping component — proximity is a
-    cooperative incentive that encourages both sides to close the gap).
-    """
-
-    name = "proximity"
-
-    def __init__(
-        self,
-        proximity_weight: float,
-        proximity_radius: float,
-        world_size: tuple[float, float],
-    ) -> None:
-        self.proximity_weight = proximity_weight
-        self.proximity_radius = proximity_radius
-        self.world_size = world_size
-
-    @property
-    def weight(self) -> float:
-        return self.proximity_weight
-
-    def compute(
-        self,
-        prev_state: TensorState,
-        actions: torch.Tensor,
-        next_state: TensorState,
-        dones: torch.Tensor,
-    ) -> torch.Tensor:
-        pos = next_state.ship_pos  # (B, N) complex64
-        alive = next_state.ship_alive  # (B, N) bool
-        teams = next_state.ship_team_id  # (B, N) int32
-
-        B, N = pos.shape
-        W, H = self.world_size
-        R = self.proximity_radius
-
-        d = pos.unsqueeze(2) - pos.unsqueeze(1)
-        d.real = (d.real + W / 2) % W - W / 2
-        d.imag = (d.imag + H / 2) % H - H / 2
-        dist = d.abs()  # (B, N, N)
-
-        is_enemy = teams.unsqueeze(2) != teams.unsqueeze(1)
-        alive_j = alive.unsqueeze(1).expand(B, N, N)
-        alive_i = alive.unsqueeze(2).expand(B, N, N)
-        valid = is_enemy & alive_j & alive_i
-
-        prox = (1.0 - dist / R).clamp(min=0.0)  # (B, N, N)
-        prox_masked = prox.masked_fill(~valid, 0.0)
-        best_prox = prox_masked.max(dim=2).values  # (B, N)
-
-        return best_prox * alive.float()
 
 
 class ClosingSpeedReward(RewardComponent):
@@ -578,159 +385,6 @@ class ClosingSpeedReward(RewardComponent):
         return best_approach * alive.float()
 
 
-class TurnRateReward(RewardComponent):
-    """Reward for angular velocity directed toward the nearest alive enemy.
-
-    Score = ang_vel_i * sin(angle from heading to nearest enemy direction).
-    Positive when rotating toward the nearest enemy, negative when rotating away.
-    This gives a direct rate-of-change signal rather than rewarding the absolute
-    facing angle.
-    """
-
-    name = "turn_rate"
-
-    def __init__(
-        self, turn_rate_weight: float, world_size: tuple[float, float]
-    ) -> None:
-        self.turn_rate_weight = turn_rate_weight
-        self.world_size = world_size
-
-    @property
-    def weight(self) -> float:
-        return self.turn_rate_weight
-
-    def compute(
-        self,
-        prev_state: TensorState,
-        actions: torch.Tensor,
-        next_state: TensorState,
-        dones: torch.Tensor,
-    ) -> torch.Tensor:
-        pos = next_state.ship_pos  # (B, N) complex64
-        att = next_state.ship_attitude  # (B, N) complex64, unit vector
-        ang_vel = next_state.ship_ang_vel  # (B, N) float32, + = counterclockwise
-        alive = next_state.ship_alive  # (B, N) bool
-        teams = next_state.ship_team_id  # (B, N) int32
-
-        B, N = pos.shape
-        W, H = self.world_size
-
-        # Wrap-around displacement from j to i
-        d = pos.unsqueeze(2) - pos.unsqueeze(1)  # (B, N, N) complex64
-        d.real = (d.real + W / 2) % W - W / 2
-        d.imag = (d.imag + H / 2) % H - H / 2
-        dist = d.abs()
-
-        # Unit vector from i toward j (negate d which is i-j)
-        dir_i_to_j = (-d) / dist.clamp(min=1e-6)  # (B, N, N) complex64
-
-        is_enemy = teams.unsqueeze(2) != teams.unsqueeze(1)
-        alive_j = alive.unsqueeze(1).expand(B, N, N)
-        alive_i = alive.unsqueeze(2).expand(B, N, N)
-        valid = is_enemy & alive_j & alive_i
-
-        # Find nearest enemy for each ship
-        dist_masked = dist.masked_fill(~valid, float("inf"))
-        nearest_idx = dist_masked.argmin(dim=2, keepdim=True)  # (B, N, 1)
-
-        # sin(angle from heading to nearest-enemy direction)
-        # Im(conj(att_i) * dir_i_to_j) > 0 means enemy is counterclockwise from heading
-        att_i = att.unsqueeze(2)  # (B, N, 1)
-        cross = (torch.conj(att_i) * dir_i_to_j).imag  # (B, N, N)
-        nearest_cross = cross.gather(2, nearest_idx).squeeze(2)  # (B, N)
-
-        # Reward = ang_vel * cross: positive when turning toward enemy
-        has_enemy = valid.any(dim=2).float()
-        score = ang_vel * nearest_cross * has_enemy  # (B, N)
-
-        return score * alive.float()
-
-
-class PowerRangeReward(RewardComponent):
-    """Reward for keeping power in the target fraction range [lo, hi] of max_power.
-
-    Uses a smooth trapezoidal function: 1.0 inside the range, linearly
-    decaying to 0.0 outside. Both teams receive a positive signal directly
-    from compute(). Lambda=0 for enemy ships in the PPO aggregation.
-    """
-
-    name = "power_range"
-
-    def __init__(
-        self,
-        power_range_weight: float,
-        power_range_lo: float,
-        power_range_hi: float,
-        max_power: float,
-    ) -> None:
-        self.power_range_weight = power_range_weight
-        self.power_range_lo = power_range_lo
-        self.power_range_hi = power_range_hi
-        self.max_power = max_power
-
-    @property
-    def weight(self) -> float:
-        return self.power_range_weight
-
-    def compute(
-        self,
-        prev_state: TensorState,
-        actions: torch.Tensor,
-        next_state: TensorState,
-        dones: torch.Tensor,
-    ) -> torch.Tensor:
-        power_norm = next_state.ship_power / self.max_power  # (B, N) in [0, 1]
-        alive = next_state.ship_alive
-
-        below = (self.power_range_lo - power_norm).clamp(min=0.0)
-        above = (power_norm - self.power_range_hi).clamp(min=0.0)
-        reward = 1.0 - (below + above).clamp(max=1.0)
-
-        return reward * alive.float()
-
-
-class SpeedRangeReward(RewardComponent):
-    """Reward for keeping speed in the target range [lo, hi] (world units/s).
-
-    Uses a smooth trapezoidal function: 1.0 inside the range, linearly
-    decaying to 0.0 outside. Speed is normalised by hi for the outer clamp.
-    Both teams receive a positive signal directly from compute(). Lambda=0
-    for enemy ships in the PPO aggregation.
-    """
-
-    name = "speed_range"
-
-    def __init__(
-        self, speed_range_weight: float, speed_range_lo: float, speed_range_hi: float
-    ) -> None:
-        self.speed_range_weight = speed_range_weight
-        self.speed_range_lo = speed_range_lo
-        self.speed_range_hi = speed_range_hi
-
-    @property
-    def weight(self) -> float:
-        return self.speed_range_weight
-
-    def compute(
-        self,
-        prev_state: TensorState,
-        actions: torch.Tensor,
-        next_state: TensorState,
-        dones: torch.Tensor,
-    ) -> torch.Tensor:
-        speed = next_state.ship_vel.abs()  # (B, N) float32
-        alive = next_state.ship_alive
-
-        below = (self.speed_range_lo - speed).clamp(min=0.0)
-        above = (speed - self.speed_range_hi).clamp(min=0.0)
-        # Normalise deviation by the range width so reward decays over a
-        # sensible distance rather than requiring exact pixel values.
-        span = max(self.speed_range_hi - self.speed_range_lo, 1.0)
-        reward = 1.0 - ((below + above) / span).clamp(max=1.0)
-
-        return reward * alive.float()
-
-
 class ShootQualityReward(RewardComponent):
     """Penalise shooting when far away or poorly aimed; reward shooting when close and aimed.
 
@@ -744,7 +398,7 @@ class ShootQualityReward(RewardComponent):
       - Only shots that are both aimed AND close yield quality > 0 (reward).
 
     The best quality over all valid enemies is used so the ship is judged
-    against its best available target.  Not shooting always gives 0.
+    against its best available target. Not shooting always gives 0.
     """
 
     name = "shoot_quality"
@@ -810,23 +464,20 @@ class ShootQualityReward(RewardComponent):
         return shooting * best_quality * alive.float()
 
 
-# Fixed ordered tuple of K=12 reward component names.
-# The index of each name determines the corresponding slice in (B, N, K) tensors.
+# ---------------------------------------------------------------------------
+# Component registry
+# ---------------------------------------------------------------------------
+
 REWARD_COMPONENT_NAMES: tuple[str, ...] = (
-    "damage",  # 0 — damage taken (negative)
-    "death",  # 1 — death penalty (negative)
-    "victory",  # 2 — team win/loss (positive/negative)
-    "exposure",  # 3 — being in crosshairs (negative)
-    "facing",  # 4 — facing enemies (positive)
-    "turn_rate",  # 5 — turning toward enemies (positive)
-    "proximity",  # 6 — being close to enemies (positive)
-    "closing_speed",  # 7 — approaching enemies (positive)
-    "positioning",  # 8 — positioning formula (positive)
-    "power_range",  # 9 — power in target range (positive)
-    "speed_range",  # 10 — speed in target range (positive)
-    "shoot_quality",  # 11 — shot quality when firing (positive/negative)
-    "team_damage",  # 12 - team damage taken (negative)
-    "team_death",  # 13 - team members died (negative)
+    "ally_damage",  # 0 — damage taken by allies (negative)
+    "enemy_damage",  # 1 — damage taken by enemies (positive for allies via lambda)
+    "ally_death",  # 2 — ally ship deaths (negative)
+    "enemy_death",  # 3 — enemy ship deaths (positive for allies via lambda)
+    "ally_win",  # 4 — ally team wins (positive)
+    "enemy_win",  # 5 — enemy team wins (negative for allies via lambda)
+    "facing",  # 6 — pointing at nearest enemy (shaping, self only)
+    "closing_speed",  # 7 — velocity toward nearest enemy (shaping, self only)
+    "shoot_quality",  # 8 — shot quality when firing (shaping, self only)
 )
 
 _NAME_TO_K: dict[str, int] = {name: k for k, name in enumerate(REWARD_COMPONENT_NAMES)}
@@ -836,76 +487,40 @@ def build_reward_components(
     rewards: RewardConfig,
     ship_config: ShipConfig,
 ) -> list[RewardComponent]:
-    """Construct the list of active reward components from the reward config.
+    """Construct the 9 reward components from config.
 
     Called once at PPOTrainer init. Individual component weights are updated
     live each update by the group-scale multipliers in the training schedule.
-    Static params (radii, range bounds) are fixed at construction time.
-
-    To add a new reward: create a RewardComponent subclass, add its name to
-    REWARD_COMPONENT_NAMES, add weight/param fields to RewardConfig, then
-    append an instance here.
-    To disable at runtime: add its name to rewards.disabled_rewards.
 
     Args:
         rewards:     Reward weights and geometry params.
-        ship_config: Physics config (used for world_size and max_power).
+        ship_config: Physics config (provides world_size).
 
     Returns:
-        List of RewardComponent instances to apply each step.
+        List of all 9 RewardComponent instances.
     """
-    all_components: list[RewardComponent] = [
-        DamageReward(damage_weight=rewards.damage_weight),
-        DeathReward(death_weight=rewards.death_weight),
-        VictoryReward(victory_weight=rewards.victory_weight),
-        PositioningReward(
-            positioning_weight=rewards.positioning_weight,
-            positioning_radius=rewards.positioning_radius,
-            world_size=ship_config.world_size,
-        ),
+    return [
+        AllyDamageReward(weight=rewards.ally_damage_weight),
+        EnemyDamageReward(weight=rewards.enemy_damage_weight),
+        AllyDeathReward(weight=rewards.ally_death_weight),
+        EnemyDeathReward(weight=rewards.enemy_death_weight),
+        AllyWinReward(weight=rewards.ally_win_weight),
+        EnemyWinReward(weight=rewards.enemy_win_weight),
         FacingReward(
             facing_weight=rewards.facing_weight,
             radius=rewards.proximity_radius,
-            world_size=ship_config.world_size,
-        ),
-        ExposureReward(
-            exposure_weight=rewards.exposure_weight,
-            radius=rewards.proximity_radius,
-            world_size=ship_config.world_size,
-        ),
-        ProximityReward(
-            proximity_weight=rewards.proximity_weight,
-            proximity_radius=rewards.proximity_radius,
             world_size=ship_config.world_size,
         ),
         ClosingSpeedReward(
             closing_speed_weight=rewards.closing_speed_weight,
             world_size=ship_config.world_size,
         ),
-        TurnRateReward(
-            turn_rate_weight=rewards.turn_rate_weight,
-            world_size=ship_config.world_size,
-        ),
-        PowerRangeReward(
-            power_range_weight=rewards.power_range_weight,
-            power_range_lo=rewards.power_range_lower,
-            power_range_hi=rewards.power_range_upper,
-            max_power=ship_config.max_power,
-        ),
-        SpeedRangeReward(
-            speed_range_weight=rewards.speed_range_weight,
-            speed_range_lo=rewards.speed_range_lower,
-            speed_range_hi=rewards.speed_range_upper,
-        ),
         ShootQualityReward(
             shoot_quality_weight=rewards.shoot_quality_weight,
             shoot_quality_radius=rewards.shoot_quality_radius,
             world_size=ship_config.world_size,
         ),
-        TeamDamageReward(team_damage_weight=rewards.team_damage_weight),
-        TeamDeathReward(team_death_weight=rewards.team_death_weight),
     ]
-    return [c for c in all_components if c.name not in rewards.disabled_rewards]
 
 
 def compute_per_component_rewards(
@@ -918,7 +533,6 @@ def compute_per_component_rewards(
     """Compute per-ship per-component rewards without zero-sum transform.
 
     Each component predicts events that happen directly to that ship.
-    Components not in REWARD_COMPONENT_NAMES are ignored.
     Zero-sum accounting is deferred to the PPO lambda aggregation step.
 
     Args:
@@ -929,8 +543,7 @@ def compute_per_component_rewards(
         dones:      (B,) game-over flags.
 
     Returns:
-        (B, N, K) float32 — per-component per-ship rewards.
-        K = len(REWARD_COMPONENT_NAMES), components in REWARD_COMPONENT_NAMES order.
+        (B, N, K) float32 — per-component per-ship rewards in REWARD_COMPONENT_NAMES order.
     """
     B, N = next_state.ship_health.shape
     K = len(REWARD_COMPONENT_NAMES)

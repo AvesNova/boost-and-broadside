@@ -105,49 +105,40 @@ class ModelConfig:
 
 @dataclass(frozen=True)
 class RewardConfig:
-    """Static reward weights and geometry parameters.
+    """Reward weights and geometry parameters for the 9-component critic.
 
-    All weights default to 0.0 — only set the components you want active.
+    No default values — all fields must be set explicitly at the call site.
     Reward group scales (true_reward_scale, important_scale, aux_scale) live in
-    TrainingSchedule since they may vary over the course of a run.
+    TrainingSchedule since they vary over the course of a run.
 
     Groups (for the group-scale multiplier):
-        true_reward  → victory
-        important    → death, damage, team_damage, team_death
-        aux          → all others
+        true_reward  → ally_win, enemy_win
+        important    → ally_damage, enemy_damage, ally_death, enemy_death,
+                       facing, closing_speed, shoot_quality
 
-    Static geometry params (radii, range bounds) are set once and never change.
-    Set-valued fields (enemy_neg_lambda_components, disabled_rewards) are also
-    fixed for the run — schedule them if future experiments require it.
+    Lambda matrix configuration:
+        enemy_neg_lambda_components: enemy ships get lambda=-1 (zero-sum accounting).
+        ally_zero_components:        same-team ships get lambda=0 (enemy-perspective only).
+        Components in ally_zero_components should also be in enemy_neg_lambda_components.
     """
 
-    # --- Individual reward weights ---
-    victory_weight: float = 0.0
-    death_weight: float = 0.0
-    damage_weight: float = 0.0
-    team_damage_weight: float = 0.0
-    team_death_weight: float = 0.0
-    facing_weight: float = 0.0
-    exposure_weight: float = 0.0
-    turn_rate_weight: float = 0.0
-    closing_speed_weight: float = 0.0
-    proximity_weight: float = 0.0
-    positioning_weight: float = 0.0
-    power_range_weight: float = 0.0
-    speed_range_weight: float = 0.0
-    shoot_quality_weight: float = 0.0
+    # --- Outcome reward weights ---
+    ally_damage_weight: float
+    enemy_damage_weight: float
+    ally_death_weight: float
+    enemy_death_weight: float
+    ally_win_weight: float
+    enemy_win_weight: float
 
-    # --- Geometry / threshold params ---
-    positioning_radius: float = 400.0
-    proximity_radius: float = 400.0
-    power_range_lower: float = 0.2  # lower bound as fraction of max_power
-    power_range_upper: float = 0.8  # upper bound as fraction of max_power
-    speed_range_lower: float = 40.0  # lower speed bound (world units/s)
-    speed_range_upper: float = 120.0  # upper speed bound (world units/s)
-    shoot_quality_radius: float = 200.0
+    # --- Shaping reward weights ---
+    facing_weight: float
+    closing_speed_weight: float
+    shoot_quality_weight: float
 
-    # --- Set-valued fields ---
-    enemy_neg_lambda_components: frozenset[str] = frozenset(
-        {"damage", "death", "team_damage", "team_death", "victory", "exposure"}
-    )
-    disabled_rewards: frozenset[str] = frozenset()
+    # --- Geometry params (required, no defaults) ---
+    proximity_radius: float  # used by FacingReward
+    shoot_quality_radius: float  # used by ShootQualityReward
+
+    # --- Lambda configuration ---
+    enemy_neg_lambda_components: frozenset[str]
+    ally_zero_components: frozenset[str]

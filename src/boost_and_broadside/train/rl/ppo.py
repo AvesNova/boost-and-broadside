@@ -97,13 +97,17 @@ def _override_opponent(
 
 # Maps reward component name → the TrainingSchedule group-scale field to apply.
 # Effective weight = group_scale * individual_weight (from RewardConfig).
-# Groups: true_reward → victory; important → death, damage, team_*; aux → all others.
+# Groups: true_reward → win components; important → damage, death, shaping; aux → (unused).
 _GROUP: dict[str, str] = {
-    "victory": "true_reward_scale",
-    "death": "important_scale",
-    "damage": "important_scale",
-    "team_damage": "important_scale",
-    "team_death": "important_scale",
+    "ally_win": "true_reward_scale",
+    "enemy_win": "true_reward_scale",
+    "ally_damage": "important_scale",
+    "enemy_damage": "important_scale",
+    "ally_death": "important_scale",
+    "enemy_death": "important_scale",
+    "facing": "important_scale",
+    "closing_speed": "important_scale",
+    "shoot_quality": "important_scale",
 }
 
 
@@ -271,10 +275,13 @@ class PPOTrainer:
             device=self.device,
         )
 
-        # Pre-compute lambda mask for active components only.
+        # Pre-compute lambda masks for active components only.
         # Static for the entire run — derived from RewardConfig.
         self.enemy_neg_k = self._make_enemy_neg_k(
             train_config.rewards.enemy_neg_lambda_components
+        )
+        self.ally_zero_k = self._make_ally_zero_k(
+            train_config.rewards.ally_zero_components
         )
 
         # Per-component return scaler: EMA of p5/p95 in symlog-reward space
@@ -409,6 +416,18 @@ class PPOTrainer:
         """Build the (K,) bool tensor marking components with lambda=-1 for enemy ships."""
         return torch.tensor(
             [name in enemy_neg_set for name in self._active_names],
+            dtype=torch.bool,
+            device=self.device,
+        )
+
+    def _make_ally_zero_k(self, ally_zero_set: frozenset[str]) -> torch.Tensor:
+        """Build the (K,) bool tensor marking components where same-team lambda=0.
+
+        Used for enemy-perspective components (enemy_damage, enemy_death, enemy_win)
+        where allies should not contribute their own signal to the aggregated advantage.
+        """
+        return torch.tensor(
+            [name in ally_zero_set for name in self._active_names],
             dtype=torch.bool,
             device=self.device,
         )
@@ -981,9 +1000,14 @@ class PPOTrainer:
         team_id = mb_obs["team_id"][0].long()  # (B_mb, N)
         same_team = team_id.unsqueeze(2) == team_id.unsqueeze(1)  # (B_mb, N, N)
 
-        enemy_lam = torch.where(self.enemy_neg_k, -1.0, 0.0)  # (K,)
+        ally_lam = torch.where(
+            self.ally_zero_k, 0.0, 1.0
+        )  # (K,) — 0 for enemy-only components
+        enemy_lam = torch.where(
+            self.enemy_neg_k, -1.0, 0.0
+        )  # (K,) — -1 for zero-sum components
         lambda_ij = (
-            same_team.float().unsqueeze(-1)
+            same_team.float().unsqueeze(-1) * ally_lam
             + (~same_team).float().unsqueeze(-1) * enemy_lam
         ) * comp_weights  # (B_mb, N, N, K)
 
