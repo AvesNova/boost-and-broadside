@@ -328,17 +328,23 @@ class FacingReward(RewardComponent):
 class ClosingSpeedReward(RewardComponent):
     """Reward for velocity aligned toward the nearest alive enemy.
 
-    Score = dot(my_velocity, dir_from_me_to_nearest_enemy), clamped to [0, inf).
-    Encourages actively closing the gap, not just being close.
+    Score = dot(my_velocity, dir_from_me_to_nearest_enemy) / max_speed,
+    clamped to [0, 1]. Dividing by max_speed puts the output in the same
+    [0, 1] range as FacingReward and ShootQualityReward so that comp_weights
+    reflect true relative importance rather than physics unit differences.
     """
 
     name = "closing_speed"
 
     def __init__(
-        self, closing_speed_weight: float, world_size: tuple[float, float]
+        self,
+        closing_speed_weight: float,
+        world_size: tuple[float, float],
+        max_speed: float,
     ) -> None:
         self.closing_speed_weight = closing_speed_weight
         self.world_size = world_size
+        self.max_speed = max_speed
 
     @property
     def weight(self) -> float:
@@ -382,7 +388,7 @@ class ClosingSpeedReward(RewardComponent):
         best_approach = best_approach.clamp(min=0.0)
         best_approach = best_approach * valid.any(dim=2).float()
 
-        return best_approach * alive.float()
+        return (best_approach / self.max_speed) * alive.float()
 
 
 class ShootQualityReward(RewardComponent):
@@ -514,6 +520,7 @@ def build_reward_components(
         ClosingSpeedReward(
             closing_speed_weight=rewards.closing_speed_weight,
             world_size=ship_config.world_size,
+            max_speed=ship_config.max_speed,
         ),
         ShootQualityReward(
             shoot_quality_weight=rewards.shoot_quality_weight,

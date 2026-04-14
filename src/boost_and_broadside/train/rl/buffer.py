@@ -128,6 +128,77 @@ class ReturnScaler:
         )  # assume initialized if loading old ckpt
 
 
+class AdvantageScaler:
+    """Per-component EMA of advantage RMS for policy gradient normalization.
+
+    The actor-side counterpart to ReturnScaler. While ReturnScaler normalizes
+    value targets so MSE loss is comparable across components, AdvantageScaler
+    normalizes advantages before lambda aggregation so each component contributes
+    equally to the policy gradient regardless of raw reward magnitude or density.
+
+    Follows Dreamer v3's approach: running scale statistics make the system
+    invariant to reward magnitude across all K components. Uses RMS rather than
+    p5/p95 because advantages are already approximately zero-mean from GAE's
+    baseline subtraction.
+
+    Args:
+        num_components: K — number of value components.
+        device:         Torch device.
+        ema_alpha:      EMA decay per rollout (default 0.005 ≈ 200-rollout memory,
+                        matching ReturnScaler).
+        min_rms:        Minimum RMS clamp — guards sparse components (e.g. ally_win
+                        early in training before any wins occur).
+    """
+
+    def __init__(
+        self,
+        num_components: int,
+        device: torch.device,
+        ema_alpha: float = 0.005,
+        min_rms: float = 0.1,
+    ) -> None:
+        self.alpha = ema_alpha
+        self.min_rms = min_rms
+        self._initialized = False
+        self._rms = torch.ones(num_components, device=device)
+
+    @torch.no_grad()
+    def update(self, advantages: torch.Tensor, alive_mask: torch.Tensor) -> None:
+        """Update EMA RMS from this rollout's per-component advantages.
+
+        Args:
+            advantages: (T, B, N, K) float32 — GAE advantages in symlog-reward space.
+            alive_mask: (T, B, N) bool — which ships were alive each step.
+        """
+        alive_k = alive_mask.float().unsqueeze(-1)  # (T, B, N, 1)
+        mask_sum = alive_mask.float().sum().clamp(min=1.0)
+        rms_k = (advantages.pow(2) * alive_k).sum((0, 1, 2)) / mask_sum  # (K,)
+        rms_k = rms_k.sqrt().clamp(min=self.min_rms)
+        if not self._initialized:
+            self._rms = rms_k
+            self._initialized = True
+        else:
+            self._rms = (1.0 - self.alpha) * self._rms + self.alpha * rms_k
+
+    def normalize(self, advantages: torch.Tensor) -> torch.Tensor:
+        """Divide advantages by per-component EMA RMS → approximately unit RMS per component.
+
+        Args:
+            advantages: (..., K) float — advantages in symlog-reward space.
+
+        Returns:
+            (..., K) float — normalized advantages.
+        """
+        return advantages / (self._rms.clamp(min=self.min_rms) + 1e-8)
+
+    def state_dict(self) -> dict:
+        return {"rms": self._rms.cpu(), "initialized": self._initialized}
+
+    def load_state_dict(self, d: dict) -> None:
+        self._rms = d["rms"].to(self._rms.device)
+        self._initialized = d.get("initialized", True)
+
+
 class RolloutBuffer:
     """Pre-allocated GPU rollout buffer for one PPO rollout.
 

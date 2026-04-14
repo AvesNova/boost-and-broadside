@@ -156,14 +156,7 @@ def main() -> None:
                 / pretrain_trainer._run_name
             )
             pretrain_path = ckpt_dir / "pretrained_for_rl.pt"
-            torch.save(
-                {
-                    "policy_state_dict": pretrain_trainer.policy.state_dict(),
-                    "scaler_state_dict": pretrain_trainer.scaler.state_dict(),
-                    "update": 0,
-                },
-                pretrain_path,
-            )
+            torch.save(pretrain_trainer._checkpoint_payload(update=0), pretrain_path)
             print(f"=== BC_WARMSTART: pretrained weights saved to {pretrain_path} ===")
             pretrain_trainer._shutdown()
             del pretrain_trainer

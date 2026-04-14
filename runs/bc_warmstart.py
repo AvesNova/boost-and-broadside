@@ -17,7 +17,7 @@ from runs.shared import REWARDS
 BC_WARMSTART_PRETRAIN_CONFIG = TrainConfig(
     scales=(
         ScaleConfig(
-            env_config=EnvConfig(num_ships=2, max_bullets=20, max_episode_steps=1024),
+            env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=1024),
             num_envs=3 * _MAX_TOKENS // 3 // 8,
         ),
     ),
@@ -30,7 +30,7 @@ BC_WARMSTART_PRETRAIN_CONFIG = TrainConfig(
     gae_lambda=0.95,
     clip_coef=0.2,
     max_grad_norm=1.0,
-    total_timesteps=50_000_000,  # short: just enough for a good policy initialisation
+    total_timesteps=20_000_000,  # short: just enough for a good policy initialisation
     return_ema_alpha=0.005,
     return_min_span=1.0,
     checkpoint_dir="checkpoints",

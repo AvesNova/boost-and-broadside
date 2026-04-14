@@ -28,34 +28,34 @@ _MAX_TOKENS = 3840
 
 RL_SCHEDULE = TrainingSchedule(
     # Warmup from 1e-7 to 3e-4 over 5M steps, then hold.
-    learning_rate             = linear((0, 1e-7), (5_000_000, 3e-4)),
-    policy_gradient_coef      = constant(1.0),
-    entropy_coef              = constant(0.01),
-    behavior_cloning_coef     = constant(0.0),
-    value_function_coef       = constant(1.0),
+    learning_rate=linear((0, 1e-7), (5_000_000, 3e-4)),
+    policy_gradient_coef=constant(1.0),
+    entropy_coef=constant(0.01),
+    behavior_cloning_coef=constant(0.0),
+    value_function_coef=constant(1.0),
     # aux shaping off — value function is assumed pretrained and already knows the game.
-    true_reward_scale         = constant(1.0),
-    important_scale           = constant(1.0),
-    aux_scale                 = constant(0.0),
+    true_reward_scale=constant(1.0),
+    important_scale=constant(1.0),
+    aux_scale=constant(0.0),
     # Scripted at 50% from step 0 — stable, strong signal from the start.
     # At step 25M avg-model is ready; reduce scripted to make room.
-    scripted_fraction         = stepped((0, 0.5), (25_000_000, 0.3)),
+    scripted_fraction=stepped((0, 0.5), (25_000_000, 0.3)),
     # avg-model not used as opponent until step 25M (needs time to diverge from init).
-    avg_model_fraction        = stepped((0, 0.0), (25_000_000, 0.2)),
+    avg_model_fraction=stepped((0, 0.0), (25_000_000, 0.2)),
     # League activates at step 50M once the policy has meaningful ELO.
-    league_fraction           = stepped((0, 0.0), (50_000_000, 0.2)),
+    league_fraction=stepped((0, 0.0), (50_000_000, 0.2)),
     # Accumulate avg-model immediately so it is ready at step 25M.
-    allow_avg_model_updates   = stepped((0, True)),
-    allow_scripted_in_roster  = stepped((0, True)),
-    elo_eval_games            = stepped((0, 256)),
-    elo_eval_interval         = stepped((0, 10)),
-    checkpoint_interval       = stepped((0, 10)),
+    allow_avg_model_updates=stepped((0, True)),
+    allow_scripted_in_roster=stepped((0, True)),
+    elo_eval_games=stepped((0, 256)),
+    elo_eval_interval=stepped((0, 10)),
+    checkpoint_interval=stepped((0, 10)),
 )
 
 RL_TRAIN_CONFIG = TrainConfig(
     scales=(
         ScaleConfig(
-            env_config=EnvConfig(num_ships=2, max_bullets=20, max_episode_steps=1024),
+            env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=1024),
             num_envs=3 * _MAX_TOKENS // 3 // 8,
         ),
     ),

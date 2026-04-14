@@ -22,16 +22,16 @@ REWARDS = RewardConfig(
     # Outcome rewards — ally/enemy split so the critic distinguishes symmetric
     # from asymmetric outcomes (e.g. mutual damage vs no damage, standoff vs
     # close fight).
-    ally_damage_weight=1.0,
-    enemy_damage_weight=1.0,
-    ally_death_weight=1.0,
-    enemy_death_weight=1.0,
+    ally_damage_weight=0.1,
+    enemy_damage_weight=0.1,
+    ally_death_weight=0.5,
+    enemy_death_weight=0.5,
     ally_win_weight=1.0,
     enemy_win_weight=1.0,
     # Dense shaping rewards — prevent passive collapse during early RL.
-    facing_weight=1.0,
-    closing_speed_weight=1.0,
-    shoot_quality_weight=1.0,
+    facing_weight=0.000001,
+    closing_speed_weight=0.000001,
+    shoot_quality_weight=0.000001,
     # Geometry params
     proximity_radius=400.0,
     shoot_quality_radius=200.0,

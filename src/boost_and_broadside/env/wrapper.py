@@ -71,6 +71,13 @@ class MVPEnvWrapper:
         self._ep_reward_components: dict[str, torch.Tensor] = {
             name: torch.zeros((B, N), device=self.device) for name in self._active_names
         }
+        # Scaled rewards: raw compute output × (individual_weight × group_scale).
+        # comp.weight is mutated each update step by ppo.py to include the group scale.
+        self._ep_scaled_reward_components: dict[str, torch.Tensor] = {
+            name: torch.zeros((B, N), device=self.device) for name in self._active_names
+        }
+        # Win flag: +1 for alive ships on the surviving team, 0 otherwise (draws = 0).
+        self._ep_wins = torch.zeros((B, N), device=self.device)
 
     # ------------------------------------------------------------------
     # Reset
@@ -87,6 +94,9 @@ class MVPEnvWrapper:
         self._ep_length.zero_()
         for t in self._ep_reward_components.values():
             t.zero_()
+        for t in self._ep_scaled_reward_components.values():
+            t.zero_()
+        self._ep_wins.zero_()
         return self._get_obs()
 
     # ------------------------------------------------------------------
@@ -134,17 +144,36 @@ class MVPEnvWrapper:
         self._ep_length += 1
         for k, name in enumerate(self._active_names):
             self._ep_reward_components[name] += comp_rewards[:, :, k]
+            self._ep_scaled_reward_components[name] += (
+                comp_rewards[:, :, k] * self._active_components[k].weight
+            )
 
         # Collect episode info for done envs before resetting
         done_mask = dones | truncated
         info: dict = {}
         if done_mask.any():
+            # Win tracking — +1 for alive ships on the surviving team, 0 otherwise.
+            s = self.env.state
+            team0 = s.ship_team_id == 0  # (B, N)
+            team1 = s.ship_team_id == 1  # (B, N)
+            t0_alive = (team0 & s.ship_alive).sum(dim=1)  # (B,)
+            t1_alive = (team1 & s.ship_alive).sum(dim=1)  # (B,)
+            t0_wins = ((t0_alive > 0) & (t1_alive == 0) & done_mask).unsqueeze(1)
+            t1_wins = ((t1_alive > 0) & (t0_alive == 0) & done_mask).unsqueeze(1)
+            self._ep_wins[team0 & t0_wins.expand_as(team0)] += 1.0
+            self._ep_wins[team1 & t1_wins.expand_as(team1)] += 1.0
+
             info["ep_reward"] = self._ep_reward[done_mask].detach().cpu()
             info["ep_length"] = self._ep_length[done_mask].detach().cpu()
             info["ep_reward_components"] = {
                 name: t[done_mask].detach().cpu()
                 for name, t in self._ep_reward_components.items()
             }
+            info["ep_scaled_reward_components"] = {
+                name: t[done_mask].detach().cpu()
+                for name, t in self._ep_scaled_reward_components.items()
+            }
+            info["ep_wins"] = self._ep_wins[done_mask].detach().cpu()  # (done_envs, N)
 
         # Reset done environments (state mutated in-place)
         if done_mask.any():
@@ -153,6 +182,9 @@ class MVPEnvWrapper:
             self._ep_length[done_mask] = 0
             for t in self._ep_reward_components.values():
                 t[done_mask] = 0.0
+            for t in self._ep_scaled_reward_components.values():
+                t[done_mask] = 0.0
+            self._ep_wins[done_mask] = 0.0
 
         return self._get_obs(), comp_rewards, dones, truncated, info
 

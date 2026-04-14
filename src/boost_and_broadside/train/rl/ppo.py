@@ -17,6 +17,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from torch.distributions import Categorical
 
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import (
@@ -33,7 +34,7 @@ from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
 from boost_and_broadside.env.state import TensorState
 from boost_and_broadside.env.wrapper import MVPEnvWrapper
 from boost_and_broadside.models.mvp.policy import MVPPolicy
-from boost_and_broadside.train.rl.buffer import RolloutBuffer, ReturnScaler, symlog
+from boost_and_broadside.train.rl.buffer import RolloutBuffer, ReturnScaler, AdvantageScaler, symlog
 from boost_and_broadside.train.rl.roster import EloRoster, RosterEntry
 
 
@@ -284,12 +285,17 @@ class PPOTrainer:
             train_config.rewards.ally_zero_components
         )
 
-        # Per-component return scaler: EMA of p5/p95 in symlog-reward space
+        # Per-component return scaler: EMA of p5/p95 in symlog-reward space (critic)
         self.scaler = ReturnScaler(
             num_components=K,
             device=self.device,
             ema_alpha=train_config.return_ema_alpha,
             min_span=train_config.return_min_span,
+        )
+        # Per-component advantage scaler: EMA of RMS in symlog-reward space (actor)
+        self.adv_scaler = AdvantageScaler(
+            num_components=K,
+            device=self.device,
         )
 
         # --- Avg-model opponent (uniform mean of all post-warmup policy snapshots) ---
@@ -503,6 +509,8 @@ class PPOTrainer:
             ep_rewards: list[torch.Tensor] = []
             ep_lengths: list[torch.Tensor] = []
             ep_components: dict[str, list[torch.Tensor]] = {}
+            ep_scaled_components: dict[str, list[torch.Tensor]] = {}
+            ep_wins: list[torch.Tensor] = []
 
             # Sample a league opponent for this rollout (rotated each update).
             # Only runs when the current phase has league_frac > 0 AND slots are allocated.
@@ -693,6 +701,9 @@ class PPOTrainer:
                     ep_lengths.append(info["ep_length"].float())
                     for name, t in info["ep_reward_components"].items():
                         ep_components.setdefault(name, []).append(t)
+                    for name, t in info["ep_scaled_reward_components"].items():
+                        ep_scaled_components.setdefault(name, []).append(t)
+                    ep_wins.append(info["ep_wins"])
 
                 done_any = dones | truncated
                 self.buffer.add(
@@ -787,17 +798,31 @@ class PPOTrainer:
                 next_aux_val = self.scaler.denormalize(next_aux_val_norm)
                 aux_buf.compute_gae(next_aux_val, aux_last_dones[i].float())
 
-            # Update per-component return percentiles from primary rollout only
+            # Update per-component return percentiles and advantage RMS from primary rollout only
             self.scaler.update(self.buffer.returns)
+            self.adv_scaler.update(self.buffer.advantages, self.buffer.alive_mask)
 
             # ----------------------------------------------------------------
             # PPO update epochs
             # ----------------------------------------------------------------
             record_hist = update % 10 == 0
+            record_trace = update % 10 == 0
             metrics = self._update_epochs(
                 all_buffers=[self.buffer] + self.aux_buffers,
                 record_histograms=record_hist,
             )
+
+            # Rollout trace — buffer is still populated after update epochs
+            if record_trace:
+                trace_alive = self.buffer.alive_mask[:, 0, 0]  # (T,) bool
+                if trace_alive.float().mean() > 0.5:
+                    metrics["trace/rollout"] = {
+                        "reward":    self.buffer.rewards[:, 0, 0, :].cpu().numpy(),    # (T, K)
+                        "value":     self.buffer.values[:, 0, 0, :].cpu().numpy(),     # (T, K)
+                        "return":    self.buffer.returns[:, 0, 0, :].cpu().numpy(),    # (T, K)
+                        "advantage": self.buffer.advantages[:, 0, 0, :].cpu().numpy(),# (T, K)
+                        "alive":     trace_alive.cpu().numpy(),                        # (T,)
+                    }
 
             # Refresh schedule state — syncs LR, loss coefficients, and reward weights.
             # Runs after the PPO update so changes take effect on the next rollout.
@@ -839,10 +864,15 @@ class PPOTrainer:
             p5_cpu = self.scaler._p5.cpu()
             p95_cpu = self.scaler._p95.cpu()
             span_cpu = p95_cpu - p5_cpu
+            adv_rms_cpu = self.adv_scaler._rms.cpu()
             for i, name in enumerate(self._active_names):
                 metrics[f"scaler/p5/{name}"] = p5_cpu[i].item()
                 metrics[f"scaler/p95/{name}"] = p95_cpu[i].item()
                 metrics[f"scaler/span/{name}"] = span_cpu[i].item()
+                metrics[f"scaler/adv_rms/{name}"] = adv_rms_cpu[i].item()
+
+            # Scaler span minimum — flags components where normalization may be degenerate
+            metrics["scaler/span_min"] = span_cpu.min().item()
 
             # Merge episode stats collected during rollout into the metrics dict
             if ep_rewards:
@@ -854,6 +884,10 @@ class PPOTrainer:
                 metrics["ep/length_mean"] = all_lengths.mean().item()
                 for name, tensors in ep_components.items():
                     metrics[f"ep/reward_{name}"] = torch.cat(tensors).mean().item()
+                for name, tensors in ep_scaled_components.items():
+                    metrics[f"ep/scaled_{name}"] = torch.cat(tensors).mean().item()
+                if ep_wins:
+                    metrics["ep/win_rate"] = torch.cat(ep_wins).mean().item()
 
             sps = int(self._global_step / (time.time() - start_time))
             metrics["train/lr"] = self.optim.param_groups[0]["lr"]
@@ -1011,8 +1045,9 @@ class PPOTrainer:
             + (~same_team).float().unsqueeze(-1) * enemy_lam
         ) * comp_weights  # (B_mb, N, N, K)
 
+        mb_advantages_normed = self.adv_scaler.normalize(mb_advantages)  # (T, B_mb, N, K)
         adv_agg = torch.einsum(
-            "bijk,tbjk->tbi", lambda_ij, mb_advantages
+            "bijk,tbjk->tbi", lambda_ij, mb_advantages_normed
         )  # (T, B_mb, N)
         ret_agg = torch.einsum("bijk,tbjk->tbi", lambda_ij, mb_returns)  # (T, B_mb, N)
         ret_per_comp = torch.einsum(
@@ -1094,6 +1129,18 @@ class PPOTrainer:
             diag["clip_frac"] = (
                 ((ratio - 1).abs() > cfg.clip_coef).float() * actor_f
             ).sum().item() / actor_sum.item()
+            diag["alive_frac"] = alive_f.mean().item()
+            diag["ratio_mean"] = (ratio * actor_f).sum().item() / actor_sum.item()
+            actor_bool = actor_f.bool()
+            diag["ratio_max"] = ratio[actor_bool].max().item() if actor_bool.any() else 1.0
+
+            # Per-head entropy — recomputed from policy_logits (already returned by evaluate_actions)
+            power_ent = Categorical(logits=policy_logits[..., POWER_SLICE]).entropy()
+            turn_ent = Categorical(logits=policy_logits[..., TURN_SLICE]).entropy()
+            shoot_ent = Categorical(logits=policy_logits[..., SHOOT_SLICE]).entropy()
+            diag["entropy_power"] = (power_ent * actor_f).sum().item() / actor_sum.item()
+            diag["entropy_turn"] = (turn_ent * actor_f).sum().item() / actor_sum.item()
+            diag["entropy_shoot"] = (shoot_ent * actor_f).sum().item() / actor_sum.item()
 
             ret_agg_mean = (ret_agg * actor_f).sum() / actor_sum
             ret_agg_var = ((ret_agg - ret_agg_mean).pow(2) * actor_f).sum() / actor_sum
@@ -1121,10 +1168,14 @@ class PPOTrainer:
                     (0, 1, 2)
                 ) / mask_sum
                 ev_k = 1.0 - res_var_k / (ret_var_k + 1e-8)  # (K,)
-                # One GPU→CPU transfer: stack → (4, K) → cpu
+                pred_mean_k = (pred_k * alive_k).sum((0, 1, 2)) / mask_sum  # (K,)
+                # One GPU→CPU transfer: stack → (5, K) → cpu
                 diag["stats_k_cpu"] = torch.stack(
-                    [value_loss_k, ev_k, ret_mean_k, ret_per_comp_mean_k]
+                    [value_loss_k, ev_k, ret_mean_k, ret_per_comp_mean_k, pred_mean_k]
                 ).cpu()
+                # Per-component advantage std — raw, unweighted, un-aggregated
+                adv_var_k = (mb_advantages.pow(2) * alive_k).sum((0, 1, 2)) / mask_sum
+                diag["adv_std_k"] = adv_var_k.sqrt().cpu()  # (K,)
                 diag["alive_flat"] = mb_alive.reshape(-1).bool()
                 diag["mb_returns"] = mb_returns
                 diag["logprob_flat"] = logprob.detach().reshape(-1)
@@ -1171,6 +1222,12 @@ class PPOTrainer:
             "train/clip_fraction": [],
             "train/gradient_norm": [],
             "train/advantage_std": [],
+            "train/alive_fraction": [],
+            "train/ratio_mean": [],
+            "train/ratio_max": [],
+            "train/entropy_power": [],
+            "train/entropy_turn": [],
+            "train/entropy_shoot": [],
             "returns/aggregate": [],
             "returns/aggregate_std": [],
         }
@@ -1178,7 +1235,9 @@ class PPOTrainer:
             "critic/value_loss": [],
             "critic/explained_variance": [],
             "critic/return_mean": [],
+            "critic/value_pred_mean": [],
             "returns/component": [],
+            "train/advantage_std_k": [],
         }
         last_returns_np = None
         last_logprob_np = None
@@ -1207,6 +1266,12 @@ class PPOTrainer:
                     "adv_var": 0.0,
                     "ret_agg_mean": 0.0,
                     "ret_agg_std": 0.0,
+                    "alive_frac": 0.0,
+                    "ratio_mean": 0.0,
+                    "ratio_max": 0.0,
+                    "entropy_power": 0.0,
+                    "entropy_turn": 0.0,
+                    "entropy_shoot": 0.0,
                 }
 
                 for scale_idx, (buf, batch) in enumerate(zip(all_buffers, batches)):
@@ -1231,6 +1296,12 @@ class PPOTrainer:
                     scalar_accum_step["adv_var"] += diag["adv_var"] / n_scales
                     scalar_accum_step["ret_agg_mean"] += diag["ret_agg_mean"] / n_scales
                     scalar_accum_step["ret_agg_std"] += diag["ret_agg_std"] / n_scales
+                    scalar_accum_step["alive_frac"] += diag["alive_frac"] / n_scales
+                    scalar_accum_step["ratio_mean"] += diag["ratio_mean"] / n_scales
+                    scalar_accum_step["ratio_max"] += diag["ratio_max"] / n_scales
+                    scalar_accum_step["entropy_power"] += diag["entropy_power"] / n_scales
+                    scalar_accum_step["entropy_turn"] += diag["entropy_turn"] / n_scales
+                    scalar_accum_step["entropy_shoot"] += diag["entropy_shoot"] / n_scales
 
                     if is_primary:
                         diag_primary = diag
@@ -1259,6 +1330,12 @@ class PPOTrainer:
                 accum_scalar["train/advantage_std"].append(
                     scalar_accum_step["adv_var"] ** 0.5
                 )
+                accum_scalar["train/alive_fraction"].append(scalar_accum_step["alive_frac"])
+                accum_scalar["train/ratio_mean"].append(scalar_accum_step["ratio_mean"])
+                accum_scalar["train/ratio_max"].append(scalar_accum_step["ratio_max"])
+                accum_scalar["train/entropy_power"].append(scalar_accum_step["entropy_power"])
+                accum_scalar["train/entropy_turn"].append(scalar_accum_step["entropy_turn"])
+                accum_scalar["train/entropy_shoot"].append(scalar_accum_step["entropy_shoot"])
                 accum_scalar["returns/aggregate"].append(
                     scalar_accum_step["ret_agg_mean"]
                 )
@@ -1271,8 +1348,12 @@ class PPOTrainer:
                     accum_k["critic/value_loss"].append(stats_k_cpu[0])
                     accum_k["critic/return_mean"].append(stats_k_cpu[2])
                     accum_k["returns/component"].append(stats_k_cpu[3])
+                    accum_k["critic/value_pred_mean"].append(stats_k_cpu[4])
                     if epoch_idx == cfg.num_epochs - 1:
                         accum_k["critic/explained_variance"].append(stats_k_cpu[1])
+
+                if "adv_std_k" in diag_primary:
+                    accum_k["train/advantage_std_k"].append(diag_primary["adv_std_k"])
 
                 if record_histograms and "alive_flat" in diag_primary:
                     alive_flat = diag_primary["alive_flat"]
@@ -1289,6 +1370,8 @@ class PPOTrainer:
         metrics: dict = {k: sum(v) / len(v) for k, v in accum_scalar.items() if v}
 
         for key, tensors in accum_k.items():
+            if not tensors:
+                continue
             avg = torch.stack(tensors).mean(0)  # (K,) CPU
             prefix = "returns" if key == "returns/component" else key
             for i, name in enumerate(self._active_names):
@@ -1490,6 +1573,7 @@ class PPOTrainer:
             "policy_state_dict": self.policy.state_dict(),
             "optimizer_state_dict": self.optim.state_dict(),
             "scaler_state_dict": self.scaler.state_dict(),
+            "adv_scaler_state_dict": self.adv_scaler.state_dict(),
             "avg_policy_state_dict": self.avg_policy.state_dict(),
             "avg_param_cumsum": [c.cpu() for c in self._avg_param_cumsum],
             "avg_update_count": self._avg_update_count,
@@ -1560,6 +1644,8 @@ class PPOTrainer:
         self._avg_update_count = 0
         if "scaler_state_dict" in ckpt:
             self.scaler.load_state_dict(ckpt["scaler_state_dict"])
+        if "adv_scaler_state_dict" in ckpt:
+            self.adv_scaler.load_state_dict(ckpt["adv_scaler_state_dict"])
         print(f"Pretrained weights loaded from: {path} (optimizer state discarded)")
 
     def load_checkpoint(self, path: str) -> int:
@@ -1576,6 +1662,8 @@ class PPOTrainer:
         self.optim.load_state_dict(ckpt["optimizer_state_dict"])
         if "scaler_state_dict" in ckpt:
             self.scaler.load_state_dict(ckpt["scaler_state_dict"])
+        if "adv_scaler_state_dict" in ckpt:
+            self.adv_scaler.load_state_dict(ckpt["adv_scaler_state_dict"])
         if "avg_policy_state_dict" in ckpt:
             self.avg_policy.load_state_dict(ckpt["avg_policy_state_dict"])
             self._avg_param_cumsum = [
@@ -1671,6 +1759,20 @@ class PPOTrainer:
                             processed[f"hist/returns/{name}"] = wandb.Histogram(v[:, i])
                     else:
                         processed[k] = wandb.Histogram(v)
+                elif k == "trace/rollout":
+                    # v is a dict: keys reward/value/return/advantage → (T, K) arrays, alive → (T,)
+                    alive = v["alive"]
+                    t_vals = [t for t in range(len(alive)) if alive[t]]
+                    for field in ("reward", "value", "return", "advantage"):
+                        arr = v[field]  # (T, K)
+                        for ki, comp_name in enumerate(self._active_names):
+                            table = wandb.Table(
+                                columns=["t", field],
+                                data=[[t, float(arr[t, ki])] for t in t_vals],
+                            )
+                            processed[f"trace/{field}/{comp_name}"] = wandb.plot.line(
+                                table, "t", field, title=f"{field}/{comp_name}"
+                            )
                 else:
                     processed[k] = v
             wandb.log(processed, step=step)
