@@ -1031,8 +1031,10 @@ class PPOTrainer:
         actor_sum = actor_f.sum().clamp(min=1.0)
 
         # ---- Lambda aggregation -------------------------------------------
-        team_id = mb_obs["team_id"][0].long()  # (B_mb, N)
-        same_team = team_id.unsqueeze(2) == team_id.unsqueeze(1)  # (B_mb, N, N)
+        # Per-timestep team IDs: correctly tracks re-assignments after mid-rollout resets.
+        # Buffer stores obs as float32; cast to long for comparison.
+        team_id_t = mb_obs["team_id"].long()                            # (T, B_mb, N)
+        same_team_t = team_id_t.unsqueeze(3) == team_id_t.unsqueeze(2)  # (T, B_mb, N_i, N_j)
 
         ally_lam = torch.where(
             self.ally_zero_k, 0.0, 1.0
@@ -1040,18 +1042,22 @@ class PPOTrainer:
         enemy_lam = torch.where(
             self.enemy_neg_k, -1.0, 0.0
         )  # (K,) — -1 for zero-sum components
-        lambda_ij = (
-            same_team.float().unsqueeze(-1) * ally_lam
-            + (~same_team).float().unsqueeze(-1) * enemy_lam
-        ) * comp_weights  # (B_mb, N, N, K)
+
+        # Zero out dead contributing ships (j): dead ships have untrained critic values
+        # and must not contaminate surviving ships' aggregated advantages.
+        alive_j = mb_alive.float().unsqueeze(2).unsqueeze(-1)  # (T, B_mb, 1, N_j, 1)
+        lambda_ij_t = (
+            same_team_t.float().unsqueeze(-1) * ally_lam
+            + (~same_team_t).float().unsqueeze(-1) * enemy_lam
+        ) * comp_weights * alive_j  # (T, B_mb, N_i, N_j, K)
 
         mb_advantages_normed = self.adv_scaler.normalize(mb_advantages)  # (T, B_mb, N, K)
         adv_agg = torch.einsum(
-            "bijk,tbjk->tbi", lambda_ij, mb_advantages_normed
+            "tbijk,tbjk->tbi", lambda_ij_t, mb_advantages_normed
         )  # (T, B_mb, N)
-        ret_agg = torch.einsum("bijk,tbjk->tbi", lambda_ij, mb_returns)  # (T, B_mb, N)
+        ret_agg = torch.einsum("tbijk,tbjk->tbi", lambda_ij_t, mb_returns)  # (T, B_mb, N)
         ret_per_comp = torch.einsum(
-            "bijk,tbjk->tbik", lambda_ij, mb_returns
+            "tbijk,tbjk->tbik", lambda_ij_t, mb_returns
         )  # (T, B_mb, N, K)
 
         adv_rms = (adv_agg.pow(2) * actor_f).sum() / actor_sum

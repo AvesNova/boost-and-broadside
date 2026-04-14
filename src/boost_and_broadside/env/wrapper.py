@@ -139,6 +139,13 @@ class MVPEnvWrapper:
                 prev_state, actions, self.env.state, dones
             )
 
+        # Normalize non-win/loss rewards by total ship count so reward scale is
+        # invariant to game size across 1v1, 2v2, 4v4, etc.
+        _n_ships = self.env_config.num_ships
+        for k, name in enumerate(self._active_names):
+            if name not in ("ally_win", "enemy_win"):
+                comp_rewards[:, :, k] /= _n_ships
+
         # Accumulate episode stats (active components only)
         self._ep_reward += comp_rewards.sum(dim=-1)
         self._ep_length += 1
