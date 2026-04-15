@@ -25,8 +25,8 @@ REWARDS = RewardConfig(
     enemy_damage_weight=0.1,
     ally_death_weight=0.1,
     enemy_death_weight=0.1,
-    ally_win_weight=1.0,
-    enemy_win_weight=1.0,
+    ally_win_weight=2.0,
+    enemy_win_weight=2.0,
     # Dense shaping rewards — prevent passive collapse during early RL.
     facing_weight=0.1,
     closing_speed_weight=0.1,

@@ -22,16 +22,17 @@ from boost_and_broadside.config import (
     linear,
     stepped,
 )
+from boost_and_broadside.config.schedule import exponential
 from runs.shared import REWARDS
 
-_MAX_TOKENS = 3840
+_MAX_TOKENS = 3840 * 10
 
 RL_SCHEDULE = TrainingSchedule(
     # Warmup from 1e-7 to 3e-4 over 5M steps, then hold.
     learning_rate=linear((0, 1e-7), (5_000_000, 3e-4)),
     policy_gradient_coef=constant(1.0),
     entropy_coef=constant(0.01),
-    behavior_cloning_coef=constant(0.0),
+    behavior_cloning_coef=exponential((0, 1.0), (10_000_000, 0.1)),
     value_function_coef=constant(1.0),
     true_reward_scale=constant(1.0),
     global_scale=constant(1.0),
@@ -55,14 +56,14 @@ RL_TRAIN_CONFIG = TrainConfig(
     scales=(
         ScaleConfig(
             env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=1024),
-            num_envs=3 * _MAX_TOKENS // 3 // 8,
+            num_envs=_MAX_TOKENS // 8,
         ),
     ),
     schedule=RL_SCHEDULE,
     rewards=REWARDS,
     num_steps=128,
     num_epochs=4,
-    num_minibatches=4,
+    num_minibatches=32,
     gamma=0.99,
     gae_lambda=0.95,
     clip_coef=0.2,
