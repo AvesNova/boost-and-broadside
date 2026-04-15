@@ -226,6 +226,7 @@ class PPOTrainer:
         device: str | torch.device,
         use_wandb: bool = False,
         scripted_agent: StochasticScriptedAgent | None = None,
+        compile_mode: str | None = "reduce-overhead",
     ) -> None:
         self.cfg = train_config
         self.model_config = model_config
@@ -281,11 +282,17 @@ class PPOTrainer:
         K = self.wrapper.num_active_components
         self._active_names = self.wrapper.active_names  # stable ref used throughout
 
-        self.policy = MVPPolicy(model_config, ship_config, num_value_components=K).to(
-            self.device
+        self._compile_mode = compile_mode
+        self._policy_module = MVPPolicy(
+            model_config, ship_config, num_value_components=K
+        ).to(self.device)
+        self.policy = (
+            torch.compile(self._policy_module, mode=compile_mode)
+            if compile_mode is not None
+            else self._policy_module
         )
         self.optim = optim.Adam(
-            self.policy.parameters(), lr=base_state.learning_rate, eps=1e-5
+            self._policy_module.parameters(), lr=base_state.learning_rate, eps=1e-5
         )
 
         N = train_config.scales[0].env_config.num_ships
@@ -335,14 +342,19 @@ class PPOTrainer:
         # --- Avg-model opponent (uniform mean of all post-warmup policy snapshots) ---
         # Weights initialized as a copy of the training policy.
         # Only updated when allow_avg_model_updates is True in the current phase.
-        self.avg_policy = MVPPolicy(
+        self._avg_policy_module = MVPPolicy(
             model_config, ship_config, num_value_components=K
         ).to(self.device)
-        self.avg_policy.load_state_dict(self.policy.state_dict())
-        for p in self.avg_policy.parameters():
+        self.avg_policy = (
+            torch.compile(self._avg_policy_module, mode=compile_mode)
+            if compile_mode is not None
+            else self._avg_policy_module
+        )
+        self._avg_policy_module.load_state_dict(self._policy_module.state_dict())
+        for p in self._avg_policy_module.parameters():
             p.requires_grad_(False)
         self._avg_param_cumsum: list[torch.Tensor] = [
-            torch.zeros_like(p) for p in self.policy.parameters()
+            torch.zeros_like(p) for p in self._policy_module.parameters()
         ]
         self._avg_update_count: int = 0
 
@@ -488,9 +500,11 @@ class PPOTrainer:
         """Add the current training policy snapshot to the uniform running average."""
         first_update = self._avg_update_count == 0
         self._avg_update_count += 1
-        for cum, p in zip(self._avg_param_cumsum, self.policy.parameters()):
+        for cum, p in zip(self._avg_param_cumsum, self._policy_module.parameters()):
             cum.add_(p.detach())
-        for avg_p, cum in zip(self.avg_policy.parameters(), self._avg_param_cumsum):
+        for avg_p, cum in zip(
+            self._avg_policy_module.parameters(), self._avg_param_cumsum
+        ):
             avg_p.data.copy_(cum / self._avg_update_count)
         # Register the avg model as a roster entry the first time it's ready,
         # seeded at current training ELO (it's a recent snapshot, so it's a
@@ -565,7 +579,6 @@ class PPOTrainer:
                 self.B_league > 0 and self._schedule_state.league_fraction > 0.0
             )
             if league_active:
-                self.roster.evict_all_checkpoint_policies()
                 entry = self.roster.sample(self._training_elo)
                 self._current_league_entry = entry
                 if entry is None or (
@@ -581,6 +594,7 @@ class PPOTrainer:
                         self.ship_config,
                         self.wrapper.num_active_components,
                         self.device,
+                        self._compile_mode,
                     )
                     self._current_league_policy = entry._policy
                     league_hidden = self._current_league_policy.initial_hidden(
@@ -852,29 +866,10 @@ class PPOTrainer:
             # PPO update epochs
             # ----------------------------------------------------------------
             record_hist = update % 10 == 0
-            record_trace = update % 10 == 0
             metrics = self._update_epochs(
                 all_buffers=[self.buffer] + self.aux_buffers,
                 record_histograms=record_hist,
             )
-
-            # Rollout trace — buffer is still populated after update epochs
-            if record_trace:
-                trace_alive = self.buffer.alive_mask[:, 0, 0]  # (T,) bool
-                if trace_alive.float().mean() > 0.5:
-                    metrics["trace/rollout"] = {
-                        "reward": self.buffer.rewards[:, 0, 0, :]
-                        .cpu()
-                        .numpy(),  # (T, K)
-                        "value": self.buffer.values[:, 0, 0, :].cpu().numpy(),  # (T, K)
-                        "return": self.buffer.returns[:, 0, 0, :]
-                        .cpu()
-                        .numpy(),  # (T, K)
-                        "advantage": self.buffer.advantages[:, 0, 0, :]
-                        .cpu()
-                        .numpy(),  # (T, K)
-                        "alive": trace_alive.cpu().numpy(),  # (T,)
-                    }
 
             # Refresh schedule state — syncs LR, loss coefficients, and reward weights.
             # Runs after the PPO update so changes take effect on the next rollout.
@@ -1406,7 +1401,7 @@ class PPOTrainer:
                         diag_primary = diag
 
                 grad_norm = nn.utils.clip_grad_norm_(
-                    self.policy.parameters(), cfg.max_grad_norm
+                    self._policy_module.parameters(), cfg.max_grad_norm
                 )
                 self.optim.step()
 
@@ -1702,8 +1697,10 @@ class PPOTrainer:
                             team0_alive = (alive & (team == 0)).any(dim=1)
                             team1_alive = (alive & (team == 1)).any(dim=1)
                             team0_won = new_done & team0_alive & ~team1_alive
-                            tied = new_done & ~team0_won & ~(
-                                new_done & team1_alive & ~team0_alive
+                            tied = (
+                                new_done
+                                & ~team0_won
+                                & ~(new_done & team1_alive & ~team0_alive)
                             )
                             avg_wins_vs_sc += float(
                                 (team0_won & is_scripted).sum()
@@ -1747,11 +1744,11 @@ class PPOTrainer:
     def _checkpoint_payload(self, update: int) -> dict:
         """Build the data dict shared by all checkpoint saves."""
         return {
-            "policy_state_dict": self.policy.state_dict(),
+            "policy_state_dict": self._policy_module.state_dict(),
             "optimizer_state_dict": self.optim.state_dict(),
             "scaler_state_dict": self.scaler.state_dict(),
             "adv_scaler_state_dict": self.adv_scaler.state_dict(),
-            "avg_policy_state_dict": self.avg_policy.state_dict(),
+            "avg_policy_state_dict": self._avg_policy_module.state_dict(),
             "avg_param_cumsum": [c.cpu() for c in self._avg_param_cumsum],
             "avg_update_count": self._avg_update_count,
             "update": update,
@@ -1802,7 +1799,7 @@ class PPOTrainer:
         in elo_stats.py, which reads ``ckpt["policy_state_dict"]``.
         """
         payload = self._checkpoint_payload(update)
-        payload["policy_state_dict"] = self.avg_policy.state_dict()
+        payload["policy_state_dict"] = self._avg_policy_module.state_dict()
         return payload
 
     def _save_best_checkpoint(self, name: str, payload: dict | None = None) -> None:
@@ -1835,9 +1832,11 @@ class PPOTrainer:
             path: Path to any .pt checkpoint (step_*.pt or best_*.pt).
         """
         ckpt = torch.load(path, map_location=self.device, weights_only=False)
-        self.policy.load_state_dict(ckpt["policy_state_dict"])
-        self.avg_policy.load_state_dict(ckpt["policy_state_dict"])
-        self._avg_param_cumsum = [torch.zeros_like(p) for p in self.policy.parameters()]
+        self._policy_module.load_state_dict(ckpt["policy_state_dict"])
+        self._avg_policy_module.load_state_dict(ckpt["policy_state_dict"])
+        self._avg_param_cumsum = [
+            torch.zeros_like(p) for p in self._policy_module.parameters()
+        ]
         self._avg_update_count = 0
         if "scaler_state_dict" in ckpt:
             self.scaler.load_state_dict(ckpt["scaler_state_dict"])
@@ -1855,14 +1854,14 @@ class PPOTrainer:
             The update index stored in the checkpoint.
         """
         ckpt = torch.load(path, map_location=self.device)
-        self.policy.load_state_dict(ckpt["policy_state_dict"])
+        self._policy_module.load_state_dict(ckpt["policy_state_dict"])
         self.optim.load_state_dict(ckpt["optimizer_state_dict"])
         if "scaler_state_dict" in ckpt:
             self.scaler.load_state_dict(ckpt["scaler_state_dict"])
         if "adv_scaler_state_dict" in ckpt:
             self.adv_scaler.load_state_dict(ckpt["adv_scaler_state_dict"])
         if "avg_policy_state_dict" in ckpt:
-            self.avg_policy.load_state_dict(ckpt["avg_policy_state_dict"])
+            self._avg_policy_module.load_state_dict(ckpt["avg_policy_state_dict"])
             self._avg_param_cumsum = [
                 c.to(self.device) for c in ckpt["avg_param_cumsum"]
             ]
@@ -1956,20 +1955,6 @@ class PPOTrainer:
                             processed[f"hist/returns/{name}"] = wandb.Histogram(v[:, i])
                     else:
                         processed[k] = wandb.Histogram(v)
-                elif k == "trace/rollout":
-                    # v is a dict: keys reward/value/return/advantage → (T, K) arrays, alive → (T,)
-                    alive = v["alive"]
-                    t_vals = [t for t in range(len(alive)) if alive[t]]
-                    for field in ("reward", "value", "return", "advantage"):
-                        arr = v[field]  # (T, K)
-                        for ki, comp_name in enumerate(self._active_names):
-                            table = wandb.Table(
-                                columns=["t", field],
-                                data=[[t, float(arr[t, ki])] for t in t_vals],
-                            )
-                            processed[f"trace/{field}/{comp_name}"] = wandb.plot.line(
-                                table, "t", field, title=f"{field}/{comp_name}"
-                            )
                 else:
                     processed[k] = v
             wandb.log(processed, step=step)

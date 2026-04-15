@@ -232,6 +232,7 @@ class EloRoster:
         ship_config,
         num_value_components: int,
         device,
+        compile_mode: str | None = None,
     ) -> None:
         """Load checkpoint weights into entry._policy (no-op if already loaded)."""
         if entry._policy is not None or entry.kind != "checkpoint":
@@ -245,7 +246,11 @@ class EloRoster:
         policy.load_state_dict(ckpt["policy_state_dict"])
         policy.eval()
         policy.to(device)
-        entry._policy = policy
+        entry._policy = (
+            torch.compile(policy, mode=compile_mode)
+            if compile_mode is not None
+            else policy
+        )
 
     def evict_all_checkpoint_policies(self) -> None:
         """Free loaded weights from all checkpoint entries to reclaim GPU memory."""

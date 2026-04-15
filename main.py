@@ -73,6 +73,15 @@ def _parse_args() -> argparse.Namespace:
         help="Run name for elo_stats mode (e.g. 'bright-cloud-219') or 'latest'.",
     )
     parser.add_argument(
+        "--compile",
+        dest="compile_mode",
+        choices=["none", "reduce-overhead", "default", "max-autotune"],
+        default="reduce-overhead",
+        metavar="MODE",
+        help="torch.compile mode: none (eager), reduce-overhead (default, fast startup), "
+        "default, or max-autotune.",
+    )
+    parser.add_argument(
         "--team0",
         type=str,
         default=None,
@@ -116,6 +125,7 @@ def main() -> None:
                 device=device,
                 use_wandb=True,
                 scripted_agent=scripted_agent,
+                compile_mode=None if args.compile_mode == "none" else args.compile_mode,
             )
             _run_trainer(trainer)
 
@@ -130,6 +140,7 @@ def main() -> None:
                 device=device,
                 use_wandb=True,
                 scripted_agent=scripted_agent,
+                compile_mode=None if args.compile_mode == "none" else args.compile_mode,
             )
             if args.pretrain_from is not None:
                 trainer.load_pretrained_weights(args.pretrain_from)
@@ -148,6 +159,7 @@ def main() -> None:
                 device=device,
                 use_wandb=True,
                 scripted_agent=scripted_agent,
+                compile_mode=None if args.compile_mode == "none" else args.compile_mode,
             )
             _run_trainer(pretrain_trainer)
 
@@ -169,6 +181,7 @@ def main() -> None:
                 device=device,
                 use_wandb=True,
                 scripted_agent=scripted_agent,
+                compile_mode=None if args.compile_mode == "none" else args.compile_mode,
             )
             rl_trainer.load_pretrained_weights(str(pretrain_path))
             _run_trainer(rl_trainer)
