@@ -5,6 +5,7 @@ import torch
 
 from boost_and_broadside.config import ShipConfig, EnvConfig, RewardConfig
 from boost_and_broadside.env.env import TensorEnv
+from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
 from boost_and_broadside.env.wrapper import MVPEnvWrapper
 
 
@@ -21,31 +22,27 @@ def env_cfg() -> EnvConfig:
 @pytest.fixture
 def reward_cfg() -> RewardConfig:
     return RewardConfig(
-        victory_weight=1.0,
-        death_weight=0.5,
-        damage_weight=0.01,
-        team_damage_weight=0.01,
-        team_death_weight=0.01,
+        ally_damage_weight=0.01,
+        enemy_damage_weight=0.01,
+        ally_death_weight=0.5,
+        enemy_death_weight=0.5,
+        ally_win_weight=1.0,
+        enemy_win_weight=1.0,
         facing_weight=0.01,
-        exposure_weight=0.01,
-        turn_rate_weight=0.01,
         closing_speed_weight=0.01,
-        proximity_weight=0.01,
-        positioning_weight=0.05,
-        power_range_weight=0.01,
-        speed_range_weight=0.01,
         shoot_quality_weight=0.01,
-        positioning_radius=300.0,
+        kill_shot_weight=0.5,
+        kill_assist_weight=0.5,
+        damage_taken_weight=0.1,
+        damage_dealt_enemy_weight=0.1,
+        damage_dealt_ally_weight=0.1,
+        death_weight=0.5,
         proximity_radius=300.0,
-        power_range_lower=0.2,
-        power_range_upper=0.8,
-        speed_range_lower=40.0,
-        speed_range_upper=120.0,
         shoot_quality_radius=200.0,
         enemy_neg_lambda_components=frozenset(
-            {"damage", "death", "victory", "exposure"}
+            {"enemy_damage", "enemy_death", "enemy_win"}
         ),
-        disabled_rewards=frozenset(),
+        ally_zero_components=frozenset({"enemy_damage", "enemy_death", "enemy_win"}),
     )
 
 
@@ -233,7 +230,7 @@ class TestMVPEnvWrapper:
         actions = torch.zeros((B, N, 3), dtype=torch.long)
         obs, rewards, dones, truncated, info = wrapper.step(actions)
 
-        K = 14  # num_value_components
+        K = len(REWARD_COMPONENT_NAMES)
         assert rewards.shape == (B, N, K)
         assert dones.shape == (B,)
         assert truncated.shape == (B,)

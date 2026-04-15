@@ -139,12 +139,12 @@ class MVPEnvWrapper:
                 prev_state, actions, self.env.state, dones
             )
 
-        # Normalize non-win/loss rewards by total ship count so reward scale is
-        # invariant to game size across 1v1, 2v2, 4v4, etc.
+        # Normalize all rewards by total ship count so reward scale is invariant
+        # to game size across 1v1, 2v2, 4v4, etc. Win rewards are included: in 2v2
+        # both allies each contribute +1, so without normalization the win signal
+        # would be 2× stronger than in 1v1 after lambda aggregation.
         _n_ships = self.env_config.num_ships
-        for k, name in enumerate(self._active_names):
-            if name not in ("ally_win", "enemy_win"):
-                comp_rewards[:, :, k] /= _n_ships
+        comp_rewards /= _n_ships
 
         # Accumulate episode stats (active components only)
         self._ep_reward += comp_rewards.sum(dim=-1)
@@ -296,4 +296,6 @@ def _make_prev_state_proxy(
         bullet_time=state.bullet_time,
         bullet_active=state.bullet_active,
         bullet_cursor=state.bullet_cursor,
+        damage_matrix=state.damage_matrix,
+        cumulative_damage_matrix=state.cumulative_damage_matrix,
     )

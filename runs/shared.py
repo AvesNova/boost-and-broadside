@@ -16,22 +16,33 @@ MODEL_CONFIG = ModelConfig(
 )
 
 # Reward weights shared by all training profiles.
-# True/important/aux group scales live in each profile's TrainingSchedule
-# since they differ between BC (aux_scale=1.0) and RL (aux_scale=0.0).
+# true_reward_scale/global_scale/local_scale live in each profile's TrainingSchedule.
 REWARDS = RewardConfig(
     # Outcome rewards — ally/enemy split so the critic distinguishes symmetric
     # from asymmetric outcomes (e.g. mutual damage vs no damage, standoff vs
     # close fight).
     ally_damage_weight=0.1,
     enemy_damage_weight=0.1,
-    ally_death_weight=0.5,
-    enemy_death_weight=0.5,
+    ally_death_weight=0.1,
+    enemy_death_weight=0.1,
     ally_win_weight=1.0,
     enemy_win_weight=1.0,
     # Dense shaping rewards — prevent passive collapse during early RL.
-    facing_weight=0.000001,
-    closing_speed_weight=0.000001,
-    shoot_quality_weight=0.000001,
+    facing_weight=0.1,
+    closing_speed_weight=0.1,
+    shoot_quality_weight=0.1,
+    # Per-ship kill credit — self-only (lambda=0 for all other ships).
+    # kill_shot: winner-take-all to the top-damage dealer in the fatal step.
+    # kill_assist: proportional share based on cumulative episode damage dealt.
+    kill_shot_weight=1.0,
+    kill_assist_weight=1.0,
+    # Per-ship local combat credit — self-only (lambda=0 for all other ships).
+    # damage_taken: negative reward proportional to health lost this step.
+    # damage_dealt: positive reward proportional to enemy health removed this step.
+    damage_taken_weight=1.0,
+    damage_dealt_enemy_weight=1.0,
+    damage_dealt_ally_weight=1.0,
+    death_weight=1.0,
     # Geometry params
     proximity_radius=400.0,
     shoot_quality_radius=200.0,

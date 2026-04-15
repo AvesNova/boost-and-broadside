@@ -177,7 +177,7 @@ class TrainingSchedule:
     exponential, join) to construct each field.
 
     Static reward weights live in RewardConfig. Only the group scales
-    (true_reward_scale, important_scale, aux_scale) are here because they
+    (true_reward_scale, global_scale, local_scale) are here because they
     realistically vary between BC and RL phases.
     """
 
@@ -189,9 +189,13 @@ class TrainingSchedule:
     value_function_coef: Callable[[int], float]
 
     # --- Reward group scales ---
-    true_reward_scale: Callable[[int], float]  # multiplier for: victory
-    important_scale: Callable[[int], float]  # multiplier for: death, damage, team_*
-    aux_scale: Callable[[int], float]  # multiplier for: all aux shaping rewards
+    true_reward_scale: Callable[[int], float]  # multiplier for: ally_win, enemy_win
+    global_scale: Callable[
+        [int], float
+    ]  # multiplier for: global outcome + shaping (ally/enemy damage, death, facing, closing_speed, shoot_quality)
+    local_scale: Callable[
+        [int], float
+    ]  # multiplier for: self-only per-ship rewards (kill_shot, kill_assist, damage_taken, damage_dealt, death)
 
     # --- Opponents ---
     scripted_fraction: Callable[[int], float]

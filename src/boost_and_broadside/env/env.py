@@ -88,6 +88,10 @@ class TensorEnv:
             bullet_time=torch.zeros((B, N, K), dtype=torch.float32, device=dev),
             bullet_active=torch.zeros((B, N, K), dtype=torch.bool, device=dev),
             bullet_cursor=torch.zeros((B, N), dtype=torch.long, device=dev),
+            damage_matrix=torch.zeros((B, N, N), dtype=torch.float32, device=dev),
+            cumulative_damage_matrix=torch.zeros(
+                (B, N, N), dtype=torch.float32, device=dev
+            ),
         )
 
     def reset_envs(
@@ -166,6 +170,9 @@ class TensorEnv:
         self.state.bullet_active[idx] = False
         self.state.bullet_time[idx] = 0.0
         self.state.bullet_cursor[idx] = 0
+
+        # Clear damage attribution
+        self.state.cumulative_damage_matrix[mask] = 0.0
 
         # Clear previous action
         self.state.prev_action[mask] = 0.0

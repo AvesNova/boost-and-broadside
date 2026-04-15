@@ -213,10 +213,7 @@ class MVPPolicy(nn.Module):
         gru_out = gru_out.squeeze(0).reshape(B, N, D)  # (B, N, D)
 
         logits = self.action_head(gru_out)  # (B, N, 12)
-        team_emb = self.team_pma(gru_out, obs["team_id"].long(), obs["alive"].bool())
-        value = self.value_head(
-            team_emb
-        )  # (B, N, K) — normalized space, broadcast per team
+        value = self.value_head(gru_out)  # (B, N, K) — per-ship, normalized space
 
         action, logprob = _sample_action(logits)
 
@@ -267,15 +264,9 @@ class MVPPolicy(nn.Module):
         gru_out = gru_out.reshape(T, B, N, D)  # (T, B, N, D)
 
         logits = self.action_head(gru_out)  # (T, B, N, 12)
-        # PMA uses the flat (T*B) batch — flat_obs already built above
-        gru_out_flat = gru_out.reshape(T * B, N, D)
-        team_emb_flat = self.team_pma(
-            gru_out_flat,
-            flat_obs["team_id"].long(),  # (T*B, N) — buffer stores obs as float32
-            flat_obs["alive"].bool(),  # (T*B, N)
-        )
-        team_emb = team_emb_flat.reshape(T, B, N, D)
-        new_value = self.value_head(team_emb)  # (T, B, N, K) — normalized space
+        new_value = self.value_head(
+            gru_out
+        )  # (T, B, N, K) — per-ship, normalized space
 
         logprob, entropy = _evaluate_action(logits, actions)
 

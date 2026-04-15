@@ -10,16 +10,20 @@ import torch
 
 from boost_and_broadside.config import ShipConfig, RewardConfig
 from boost_and_broadside.env.rewards import (
-    DamageReward,
-    DeathReward,
-    VictoryReward,
-    PositioningReward,
+    AllyDamageReward,
+    EnemyDamageReward,
+    AllyDeathReward,
+    EnemyDeathReward,
+    AllyWinReward,
+    EnemyWinReward,
     FacingReward,
-    ExposureReward,
-    SpeedRangeReward,
-    PowerRangeReward,
     ClosingSpeedReward,
-    TurnRateReward,
+    KillShotReward,
+    KillAssistReward,
+    LocalDamageTakenReward,
+    LocalDamageDealtEnemyReward,
+    LocalDamageDealtAllyReward,
+    LocalDeathReward,
     REWARD_COMPONENT_NAMES,
     compute_per_component_rewards,
     build_reward_components,
@@ -35,31 +39,27 @@ def cfg() -> ShipConfig:
 @pytest.fixture
 def reward_cfg() -> RewardConfig:
     return RewardConfig(
-        victory_weight=10.0,
-        death_weight=5.0,
-        damage_weight=1.0,
-        team_damage_weight=0.4,
-        team_death_weight=0.4,
+        ally_damage_weight=0.1,
+        enemy_damage_weight=0.1,
+        ally_death_weight=0.5,
+        enemy_death_weight=0.5,
+        ally_win_weight=1.0,
+        enemy_win_weight=1.0,
         facing_weight=1.0,
-        exposure_weight=1.0,
-        turn_rate_weight=1.0,
         closing_speed_weight=1.0,
-        proximity_weight=1.0,
-        positioning_weight=1.0,
-        power_range_weight=1.0,
-        speed_range_weight=1.0,
         shoot_quality_weight=1.0,
-        positioning_radius=500.0,
+        kill_shot_weight=1.0,
+        kill_assist_weight=1.0,
+        damage_taken_weight=1.0,
+        damage_dealt_enemy_weight=1.0,
+        damage_dealt_ally_weight=1.0,
+        death_weight=1.0,
         proximity_radius=500.0,
-        power_range_lower=0.2,
-        power_range_upper=0.8,
-        speed_range_lower=40.0,
-        speed_range_upper=120.0,
         shoot_quality_radius=200.0,
         enemy_neg_lambda_components=frozenset(
-            {"damage", "death", "team_damage", "team_death", "victory", "exposure"}
+            {"enemy_damage", "enemy_death", "enemy_win"}
         ),
-        disabled_rewards=frozenset(),
+        ally_zero_components=frozenset({"enemy_damage", "enemy_death", "enemy_win"}),
     )
 
 
@@ -73,18 +73,38 @@ def _make_4ship_state(cfg):
     return state
 
 
+# ---------------------------------------------------------------------------
+# Component registry
+# ---------------------------------------------------------------------------
+
+
 class TestRewardComponentNames:
-    def test_k_equals_14(self):
-        assert len(REWARD_COMPONENT_NAMES) == 14
+    def test_k_equals_15(self):
+        assert len(REWARD_COMPONENT_NAMES) == 15
 
-    def test_damage_is_index_0(self):
-        assert REWARD_COMPONENT_NAMES[0] == "damage"
+    def test_ally_damage_is_index_0(self):
+        assert REWARD_COMPONENT_NAMES[0] == "ally_damage"
 
-    def test_death_is_index_1(self):
-        assert REWARD_COMPONENT_NAMES[1] == "death"
+    def test_enemy_damage_is_index_1(self):
+        assert REWARD_COMPONENT_NAMES[1] == "enemy_damage"
 
-    def test_victory_is_index_2(self):
-        assert REWARD_COMPONENT_NAMES[2] == "victory"
+    def test_kill_shot_is_index_9(self):
+        assert REWARD_COMPONENT_NAMES[9] == "kill_shot"
+
+    def test_kill_assist_is_index_10(self):
+        assert REWARD_COMPONENT_NAMES[10] == "kill_assist"
+
+    def test_damage_taken_is_index_11(self):
+        assert REWARD_COMPONENT_NAMES[11] == "damage_taken"
+
+    def test_damage_dealt_enemy_is_index_12(self):
+        assert REWARD_COMPONENT_NAMES[12] == "damage_dealt_enemy"
+
+    def test_damage_dealt_ally_is_index_13(self):
+        assert REWARD_COMPONENT_NAMES[13] == "damage_dealt_ally"
+
+    def test_death_is_index_14(self):
+        assert REWARD_COMPONENT_NAMES[14] == "death"
 
     def test_no_duplicates(self):
         assert len(set(REWARD_COMPONENT_NAMES)) == len(REWARD_COMPONENT_NAMES)
@@ -104,31 +124,19 @@ class TestComputePerComponentRewards:
         B, N, K = 2, 4, len(REWARD_COMPONENT_NAMES)
         assert result.shape == (B, N, K)
 
-    def test_damage_component_correct_index(self, cfg):
-        """Damage taken populates slot k=0 (damage index) in the output."""
-        prev = _make_4ship_state(cfg)
-        next_ = _make_4ship_state(cfg)
-        next_.ship_health[0, 0] = prev.ship_health[0, 0] - 10.0
-        components = [DamageReward(damage_weight=1.0)]
-        result = compute_per_component_rewards(
-            components,
-            prev,
-            torch.zeros(2, 4, 3),
-            next_,
-            torch.zeros(2, dtype=torch.bool),
-        )
-        damage_k = REWARD_COMPONENT_NAMES.index("damage")
-        assert result[0, 0, damage_k].item() < 0
+
+# ---------------------------------------------------------------------------
+# Damage rewards (ally/enemy split)
+# ---------------------------------------------------------------------------
 
 
-class TestDamageReward:
+class TestAllyDamageReward:
     def test_damaged_ship_gets_negative_reward(self, cfg):
-        """The ship that takes damage gets a negative reward."""
         prev = _make_4ship_state(cfg)
         next_ = _make_4ship_state(cfg)
         next_.ship_health[0, 0] = prev.ship_health[0, 0] - 10.0
 
-        r = DamageReward(damage_weight=1.0)
+        r = AllyDamageReward(weight=1.0)
         reward = r.compute(
             prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
         )
@@ -136,78 +144,84 @@ class TestDamageReward:
         assert reward[0, 0].item() < 0
 
     def test_undamaged_ships_get_zero_reward(self, cfg):
-        """Ships that did not take damage get zero reward (including enemies)."""
         prev = _make_4ship_state(cfg)
         next_ = _make_4ship_state(cfg)
         next_.ship_health[0, 0] = prev.ship_health[0, 0] - 10.0
 
-        r = DamageReward(damage_weight=1.0)
+        r = AllyDamageReward(weight=1.0)
         reward = r.compute(
             prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
         )
 
-        # Ships 1, 2, 3 did not take damage — zero reward each
         assert reward[0, 1].item() == pytest.approx(0.0)
         assert reward[0, 2].item() == pytest.approx(0.0)
         assert reward[0, 3].item() == pytest.approx(0.0)
 
-    def test_enemy_taking_damage_gives_enemy_negative_reward(self, cfg):
-        """When an enemy ship takes damage, only that ship gets a negative reward."""
-        prev = _make_4ship_state(cfg)
-        next_ = _make_4ship_state(cfg)
-        next_.ship_health[0, 2] = (
-            prev.ship_health[0, 2] - 20.0
-        )  # ship 2 (enemy) took damage
-
-        r = DamageReward(damage_weight=1.0)
-        reward = r.compute(
-            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
-        )
-
-        assert reward[0, 2].item() < 0  # ship 2 itself gets penalised
-        assert reward[0, 0].item() == pytest.approx(0.0)  # allied ships unaffected
-
     def test_zero_damage_gives_zero_reward(self, cfg):
-        """No damage → zero reward from damage component."""
-        prev = _make_4ship_state(cfg)
-        next_ = _make_4ship_state(cfg)
+        state = _make_4ship_state(cfg)
 
-        r = DamageReward(damage_weight=1.0)
+        r = AllyDamageReward(weight=1.0)
         reward = r.compute(
-            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
+            state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
         )
 
         assert reward.abs().max().item() == 0.0
 
-    def test_damage_weight_exposed_via_property(self, cfg):
-        """damage_weight is accessible via the weight property (used by lambda aggregation)."""
-        r1 = DamageReward(damage_weight=1.0)
-        r2 = DamageReward(damage_weight=2.0)
-        assert r1.weight == pytest.approx(1.0)
-        assert r2.weight == pytest.approx(2.0)
 
-
-class TestDeathReward:
-    def test_dying_ship_gets_penalty(self, cfg):
-        """A ship that just died should receive a negative reward."""
+class TestEnemyDamageReward:
+    def test_damaged_ship_gets_negative_reward(self, cfg):
+        """EnemyDamageReward also returns negative for the damaged ship.
+        Zero-sum inversion (lambda=-1) happens at PPO aggregation time."""
         prev = _make_4ship_state(cfg)
         next_ = _make_4ship_state(cfg)
-        next_.ship_alive[0, 0] = False  # ship 0 died
+        next_.ship_health[0, 2] = prev.ship_health[0, 2] - 15.0
 
-        r = DeathReward(death_weight=5.0)
+        r = EnemyDamageReward(weight=1.0)
+        reward = r.compute(
+            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
+        )
+
+        assert reward[0, 2].item() < 0
+
+    def test_other_ships_unaffected(self, cfg):
+        prev = _make_4ship_state(cfg)
+        next_ = _make_4ship_state(cfg)
+        next_.ship_health[0, 2] = prev.ship_health[0, 2] - 15.0
+
+        r = EnemyDamageReward(weight=1.0)
+        reward = r.compute(
+            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
+        )
+
+        assert reward[0, 0].item() == pytest.approx(0.0)
+        assert reward[0, 1].item() == pytest.approx(0.0)
+        assert reward[0, 3].item() == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# Death rewards (ally/enemy split)
+# ---------------------------------------------------------------------------
+
+
+class TestAllyDeathReward:
+    def test_dying_ship_gets_penalty(self, cfg):
+        prev = _make_4ship_state(cfg)
+        next_ = _make_4ship_state(cfg)
+        next_.ship_alive[0, 0] = False
+
+        r = AllyDeathReward(weight=5.0)
         reward = r.compute(
             prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
         )
 
         assert reward[0, 0].item() == pytest.approx(-1.0, rel=1e-5)
 
-    def test_surviving_ships_get_zero_death_reward(self, cfg):
-        """When ship 0 dies, surviving ships (including enemies) get zero death reward."""
+    def test_surviving_ships_get_zero(self, cfg):
         prev = _make_4ship_state(cfg)
         next_ = _make_4ship_state(cfg)
         next_.ship_alive[0, 0] = False
 
-        r = DeathReward(death_weight=5.0)
+        r = AllyDeathReward(weight=5.0)
         reward = r.compute(
             prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
         )
@@ -216,131 +230,125 @@ class TestDeathReward:
         assert reward[0, 2].item() == pytest.approx(0.0)
         assert reward[0, 3].item() == pytest.approx(0.0)
 
-    def test_enemy_dying_gets_penalty(self, cfg):
-        """An enemy ship that dies receives its own death penalty (no kill bonus for allies)."""
-        prev = _make_4ship_state(cfg)
-        next_ = _make_4ship_state(cfg)
-        next_.ship_alive[0, 2] = False  # ship 2 (team 1) died
-
-        r = DeathReward(death_weight=5.0)
-        reward = r.compute(
-            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
-        )
-
-        assert reward[0, 2].item() == pytest.approx(-1.0, rel=1e-5)
-        assert reward[0, 0].item() == pytest.approx(0.0)  # no kill bonus for allies
-
     def test_no_death_gives_zero_reward(self, cfg):
-        """No ships died → zero death reward."""
-        prev = _make_4ship_state(cfg)
-        next_ = _make_4ship_state(cfg)
+        state = _make_4ship_state(cfg)
 
-        r = DeathReward(death_weight=5.0)
+        r = AllyDeathReward(weight=5.0)
         reward = r.compute(
-            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
+            state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
         )
 
         assert reward.abs().max().item() == 0.0
 
 
-class TestVictoryReward:
+class TestEnemyDeathReward:
+    def test_dying_enemy_gets_negative_own_reward(self, cfg):
+        """EnemyDeathReward returns -1 for the dying ship itself.
+        Lambda=-1 at PPO time inverts this to +1 benefit for enemies."""
+        prev = _make_4ship_state(cfg)
+        next_ = _make_4ship_state(cfg)
+        next_.ship_alive[0, 2] = False
+
+        r = EnemyDeathReward(weight=5.0)
+        reward = r.compute(
+            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
+        )
+
+        assert reward[0, 2].item() == pytest.approx(-1.0, rel=1e-5)
+
+    def test_other_ships_get_zero(self, cfg):
+        prev = _make_4ship_state(cfg)
+        next_ = _make_4ship_state(cfg)
+        next_.ship_alive[0, 2] = False
+
+        r = EnemyDeathReward(weight=5.0)
+        reward = r.compute(
+            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
+        )
+
+        assert reward[0, 0].item() == pytest.approx(0.0)
+        assert reward[0, 1].item() == pytest.approx(0.0)
+        assert reward[0, 3].item() == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# Win rewards (ally/enemy split)
+# ---------------------------------------------------------------------------
+
+
+class TestAllyWinReward:
     def test_winning_team_gets_positive_reward(self, cfg):
-        """When team 1 is eliminated, team-0 ships get +victory_weight."""
+        """AllyWinReward gives +1 to each ship on the team that won."""
         prev = _make_4ship_state(cfg)
         next_ = _make_4ship_state(cfg)
         next_.ship_alive[0, 2] = False
         next_.ship_alive[0, 3] = False  # team 1 eliminated
         dones = torch.tensor([True, False], dtype=torch.bool)
 
-        r = VictoryReward(victory_weight=10.0)
+        r = AllyWinReward(weight=1.0)
         reward = r.compute(prev, torch.zeros(2, 4, 3), next_, dones)
 
         assert reward[0, 0].item() == pytest.approx(1.0, rel=1e-5)
         assert reward[0, 1].item() == pytest.approx(1.0, rel=1e-5)
 
-    def test_losing_team_gets_negative_reward(self, cfg):
-        """Losing team ships get -victory_weight from their own perspective."""
+    def test_losing_team_gets_zero(self, cfg):
+        """AllyWinReward gives 0 (not -1) to the losing team; lambda handles sign."""
         prev = _make_4ship_state(cfg)
         next_ = _make_4ship_state(cfg)
         next_.ship_alive[0, 2] = False
         next_.ship_alive[0, 3] = False
         dones = torch.tensor([True, False], dtype=torch.bool)
 
-        r = VictoryReward(victory_weight=10.0)
+        r = AllyWinReward(weight=1.0)
         reward = r.compute(prev, torch.zeros(2, 4, 3), next_, dones)
 
-        assert reward[0, 2].item() == pytest.approx(-1.0, rel=1e-5)
-        assert reward[0, 3].item() == pytest.approx(-1.0, rel=1e-5)
+        assert reward[0, 2].item() == pytest.approx(0.0)
+        assert reward[0, 3].item() == pytest.approx(0.0)
 
     def test_non_terminal_gives_zero_reward(self, cfg):
-        """No victory reward when done=False."""
         prev = _make_4ship_state(cfg)
         next_ = _make_4ship_state(cfg)
         dones = torch.zeros(2, dtype=torch.bool)
 
-        r = VictoryReward(victory_weight=10.0)
+        r = AllyWinReward(weight=1.0)
         reward = r.compute(prev, torch.zeros(2, 4, 3), next_, dones)
 
         assert reward.abs().max().item() == 0.0
 
 
-class TestPositioningReward:
-    def test_pointing_at_enemy_gives_positive_reward(self, cfg):
-        """A ship pointing directly at an enemy within range should get positive reward."""
-        state = make_state(num_envs=1, max_ships=2, ship_config=cfg)
-        state.ship_team_id[0, 0] = 0
-        state.ship_team_id[0, 1] = 1
+class TestEnemyWinReward:
+    def test_winning_team_gets_positive_reward(self, cfg):
+        """EnemyWinReward also gives +1 to winning-team ships.
+        Lambda=-1 at PPO time means allies benefit when enemies get 0 here."""
+        prev = _make_4ship_state(cfg)
+        next_ = _make_4ship_state(cfg)
+        next_.ship_alive[0, 2] = False
+        next_.ship_alive[0, 3] = False
+        dones = torch.tensor([True, False], dtype=torch.bool)
 
-        state.ship_pos[0, 0] = 0.0 + 0j
-        state.ship_pos[0, 1] = 100.0 + 0j
-        state.ship_attitude[0, 0] = 1.0 + 0j  # pointing East = toward ship 1
+        r = EnemyWinReward(weight=1.0)
+        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, dones)
 
-        r = PositioningReward(
-            positioning_weight=1.0, positioning_radius=500.0, world_size=cfg.world_size
-        )
-        reward = r.compute(
-            state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool)
-        )
+        assert reward[0, 0].item() == pytest.approx(1.0, rel=1e-5)
+        assert reward[0, 1].item() == pytest.approx(1.0, rel=1e-5)
 
-        assert reward[0, 0].item() > 0
+    def test_losing_team_gets_zero(self, cfg):
+        prev = _make_4ship_state(cfg)
+        next_ = _make_4ship_state(cfg)
+        next_.ship_alive[0, 2] = False
+        next_.ship_alive[0, 3] = False
+        dones = torch.tensor([True, False], dtype=torch.bool)
 
-    def test_ships_outside_radius_get_zero_reward(self, cfg):
-        """Ships far beyond positioning_radius should get zero reward."""
-        state = make_state(num_envs=1, max_ships=2, ship_config=cfg)
-        state.ship_team_id[0, 0] = 0
-        state.ship_team_id[0, 1] = 1
+        r = EnemyWinReward(weight=1.0)
+        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, dones)
 
-        state.ship_pos[0, 0] = 0.0 + 0j
-        state.ship_pos[0, 1] = 200.0 + 0j
+        assert reward[0, 2].item() == pytest.approx(0.0)
+        assert reward[0, 3].item() == pytest.approx(0.0)
 
-        r = PositioningReward(
-            positioning_weight=1.0, positioning_radius=100.0, world_size=cfg.world_size
-        )
-        reward = r.compute(
-            state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool)
-        )
 
-        assert abs(reward[0, 0].item()) < 1e-6
-
-    def test_dead_ships_get_zero_positioning_reward(self, cfg):
-        """Dead ships must receive zero positioning reward."""
-        state = make_state(num_envs=1, max_ships=2, ship_config=cfg)
-        state.ship_team_id[0, 0] = 0
-        state.ship_team_id[0, 1] = 1
-        state.ship_alive[0, 0] = False
-
-        state.ship_pos[0, 0] = 0.0 + 0j
-        state.ship_pos[0, 1] = 100.0 + 0j
-        state.ship_attitude[0, 0] = 1.0 + 0j
-
-        r = PositioningReward(
-            positioning_weight=1.0, positioning_radius=500.0, world_size=cfg.world_size
-        )
-        reward = r.compute(
-            state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool)
-        )
-
-        assert reward[0, 0].item() == 0.0
+# ---------------------------------------------------------------------------
+# Shaping rewards
+# ---------------------------------------------------------------------------
 
 
 def _facing_state(cfg):
@@ -356,20 +364,17 @@ def _facing_state(cfg):
 
 
 class TestFacingReward:
-    """FacingReward must incentivise every ship to face its enemies."""
-
     def test_both_ships_get_positive_facing_reward(self, cfg):
-        """Both ships pointing at each other should get positive facing reward directly."""
         state = _facing_state(cfg)
         comp = FacingReward(facing_weight=1.0, radius=500.0, world_size=cfg.world_size)
         reward = comp.compute(
             state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool)
         )
+
         assert reward[0, 0].item() > 0, "team-0 should get positive facing reward"
         assert reward[0, 1].item() > 0, "team-1 should get positive facing reward"
 
     def test_ship_not_facing_enemy_gets_lower_reward(self, cfg):
-        """Ship pointing away from enemy gets less (or zero) reward than one facing it."""
         state = make_state(num_envs=1, max_ships=2, ship_config=cfg)
         state.ship_team_id[0, 0] = 0
         state.ship_team_id[0, 1] = 1
@@ -378,12 +383,12 @@ class TestFacingReward:
 
         comp = FacingReward(facing_weight=1.0, radius=500.0, world_size=cfg.world_size)
 
-        state.ship_attitude[0, 0] = 1.0 + 0j  # facing enemy
+        state.ship_attitude[0, 0] = 1.0 + 0j
         r_facing = comp.compute(
             state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool)
         )
 
-        state.ship_attitude[0, 0] = -1.0 + 0j  # facing away
+        state.ship_attitude[0, 0] = -1.0 + 0j
         r_away = comp.compute(
             state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool)
         )
@@ -391,130 +396,18 @@ class TestFacingReward:
         assert r_facing[0, 0].item() > r_away[0, 0].item()
 
 
-class TestExposureReward:
-    """ExposureReward must penalise each ship for being in enemies' crosshairs."""
-
-    def test_both_ships_get_negative_exposure_reward(self, cfg):
-        """Both ships facing each other = both exposed; both get negative reward."""
-        state = _facing_state(cfg)
-        comp = ExposureReward(
-            exposure_weight=1.0, radius=500.0, world_size=cfg.world_size
-        )
-        reward = comp.compute(
-            state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool)
-        )
-        assert reward[0, 0].item() < 0, "team-0 should be penalised for being exposed"
-        assert reward[0, 1].item() < 0, "team-1 should be penalised for being exposed"
-
-    def test_ship_not_in_crosshairs_gets_less_penalty(self, cfg):
-        """Ship not aimed at gets less exposure penalty than one in direct crosshairs."""
-        state = make_state(num_envs=1, max_ships=2, ship_config=cfg)
-        state.ship_team_id[0, 0] = 0
-        state.ship_team_id[0, 1] = 1
-        # Ship 0 at origin, ship 1 at (100, 0). Ship 0 is to the WEST of ship 1.
-        state.ship_pos[0, 0] = 0.0 + 0j
-        state.ship_pos[0, 1] = 100.0 + 0j
-
-        comp = ExposureReward(
-            exposure_weight=1.0, radius=500.0, world_size=cfg.world_size
-        )
-
-        state.ship_attitude[0, 1] = 1.0 + 0j  # ship 1 pointing east = away from ship 0
-        r_safe = comp.compute(
-            state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool)
-        )
-
-        state.ship_attitude[0, 1] = -1.0 + 0j  # ship 1 pointing west = toward ship 0
-        r_exposed = comp.compute(
-            state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool)
-        )
-
-        assert r_safe[0, 0].item() >= r_exposed[0, 0].item()
-
-
-class TestSpeedRangeReward:
-    """SpeedRangeReward must reward each ship for staying in the target range."""
-
-    def test_both_ships_positive_when_in_range(self, cfg):
-        state = make_state(num_envs=1, max_ships=2, ship_config=cfg)
-        state.ship_team_id[0, 0] = 0
-        state.ship_team_id[0, 1] = 1
-        state.ship_vel[0, 0] = 80.0 + 0j
-        state.ship_vel[0, 1] = 80.0 + 0j
-
-        comp = SpeedRangeReward(
-            speed_range_weight=1.0, speed_range_lo=40.0, speed_range_hi=120.0
-        )
-        reward = comp.compute(
-            state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool)
-        )
-        assert reward[0, 0].item() > 0, "team-0 should be rewarded for in-range speed"
-        assert reward[0, 1].item() > 0, "team-1 should be rewarded for in-range speed"
-
-    def test_out_of_range_gives_less_reward_than_in_range(self, cfg):
-        """The trapezoidal function gives less reward when speed is outside [lo, hi]."""
-        comp = SpeedRangeReward(
-            speed_range_weight=1.0, speed_range_lo=40.0, speed_range_hi=120.0
-        )
-
-        in_state = make_state(num_envs=1, max_ships=2, ship_config=cfg)
-        in_state.ship_team_id[0, 0] = 0
-        in_state.ship_team_id[0, 1] = 1
-        in_state.ship_vel[0, 0] = 80.0 + 0j
-        in_state.ship_vel[0, 1] = 80.0 + 0j
-
-        out_state = make_state(num_envs=1, max_ships=2, ship_config=cfg)
-        out_state.ship_team_id[0, 0] = 0
-        out_state.ship_team_id[0, 1] = 1
-        out_state.ship_vel[0, 0] = 0.0 + 0j
-        out_state.ship_vel[0, 1] = 0.0 + 0j
-
-        r_in = comp.compute(
-            in_state, torch.zeros(1, 2, 3), in_state, torch.zeros(1, dtype=torch.bool)
-        )
-        r_out = comp.compute(
-            out_state, torch.zeros(1, 2, 3), out_state, torch.zeros(1, dtype=torch.bool)
-        )
-
-        assert r_in[0, 0].item() > r_out[0, 0].item()
-        assert r_in[0, 1].item() > r_out[0, 1].item()
-
-
-class TestPowerRangeReward:
-    """PowerRangeReward must reward each ship for keeping power in range."""
-
-    def test_both_ships_positive_when_in_range(self, cfg):
-        state = make_state(num_envs=1, max_ships=2, ship_config=cfg)
-        state.ship_team_id[0, 0] = 0
-        state.ship_team_id[0, 1] = 1
-        state.ship_power[0, 0] = 50.0
-        state.ship_power[0, 1] = 50.0
-
-        comp = PowerRangeReward(
-            power_range_weight=1.0,
-            power_range_lo=0.2,
-            power_range_hi=0.8,
-            max_power=cfg.max_power,
-        )
-        reward = comp.compute(
-            state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool)
-        )
-        assert reward[0, 0].item() > 0, "team-0 should be rewarded for in-range power"
-        assert reward[0, 1].item() > 0, "team-1 should be rewarded for in-range power"
-
-
 class TestClosingSpeedReward:
     def test_moving_toward_enemy_gives_positive_reward(self, cfg):
-        """Ship moving directly toward enemy should get positive closing speed reward."""
         state = make_state(num_envs=1, max_ships=2, ship_config=cfg)
         state.ship_team_id[0, 0] = 0
         state.ship_team_id[0, 1] = 1
         state.ship_pos[0, 0] = 0.0 + 0j
         state.ship_pos[0, 1] = 100.0 + 0j
-        state.ship_vel[0, 0] = 50.0 + 0j  # moving east
-        state.ship_vel[0, 1] = 0.0 + 0j
+        state.ship_vel[0, 0] = 50.0 + 0j  # moving east toward enemy
 
-        comp = ClosingSpeedReward(closing_speed_weight=1.0, world_size=cfg.world_size)
+        comp = ClosingSpeedReward(
+            closing_speed_weight=1.0, world_size=cfg.world_size, max_speed=cfg.max_speed
+        )
         reward = comp.compute(
             state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool)
         )
@@ -522,7 +415,6 @@ class TestClosingSpeedReward:
         assert reward[0, 0].item() > 0
 
     def test_moving_away_from_enemy_gives_zero_reward(self, cfg):
-        """Ship moving away from enemy gets zero (clamped) reward."""
         state = make_state(num_envs=1, max_ships=2, ship_config=cfg)
         state.ship_team_id[0, 0] = 0
         state.ship_team_id[0, 1] = 1
@@ -530,7 +422,9 @@ class TestClosingSpeedReward:
         state.ship_pos[0, 1] = 100.0 + 0j
         state.ship_vel[0, 0] = -50.0 + 0j  # moving away
 
-        comp = ClosingSpeedReward(closing_speed_weight=1.0, world_size=cfg.world_size)
+        comp = ClosingSpeedReward(
+            closing_speed_weight=1.0, world_size=cfg.world_size, max_speed=cfg.max_speed
+        )
         reward = comp.compute(
             state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool)
         )
@@ -538,7 +432,6 @@ class TestClosingSpeedReward:
         assert reward[0, 0].item() == 0.0
 
     def test_dead_ship_gets_zero_reward(self, cfg):
-        """Dead ships must receive zero closing speed reward."""
         state = make_state(num_envs=1, max_ships=2, ship_config=cfg)
         state.ship_team_id[0, 0] = 0
         state.ship_team_id[0, 1] = 1
@@ -547,7 +440,9 @@ class TestClosingSpeedReward:
         state.ship_pos[0, 1] = 100.0 + 0j
         state.ship_vel[0, 0] = 50.0 + 0j
 
-        comp = ClosingSpeedReward(closing_speed_weight=1.0, world_size=cfg.world_size)
+        comp = ClosingSpeedReward(
+            closing_speed_weight=1.0, world_size=cfg.world_size, max_speed=cfg.max_speed
+        )
         reward = comp.compute(
             state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool)
         )
@@ -555,93 +450,376 @@ class TestClosingSpeedReward:
         assert reward[0, 0].item() == 0.0
 
 
-class TestTurnRateReward:
-    def test_turning_toward_enemy_gives_positive_reward(self, cfg):
-        """Ship rotating counterclockwise with enemy to the left gets positive reward."""
-        state = make_state(num_envs=1, max_ships=2, ship_config=cfg)
-        state.ship_team_id[0, 0] = 0
-        state.ship_team_id[0, 1] = 1
-        state.ship_pos[0, 0] = 0.0 + 0j
-        state.ship_pos[0, 1] = 0.0 + 100j  # enemy is directly north
-        state.ship_attitude[0, 0] = 1.0 + 0j  # heading east
-        state.ship_ang_vel[0, 0] = 1.0  # counterclockwise = toward enemy
+# ---------------------------------------------------------------------------
+# Kill rewards
+# ---------------------------------------------------------------------------
 
-        comp = TurnRateReward(turn_rate_weight=1.0, world_size=cfg.world_size)
-        reward = comp.compute(
-            state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool)
+
+def _kill_state(cfg):
+    """2v2 (ships 0,1 vs ships 2,3). All alive, all at max health."""
+    state = make_state(num_envs=1, max_ships=4, ship_config=cfg)
+    state.ship_team_id[0, 0] = 0
+    state.ship_team_id[0, 1] = 0
+    state.ship_team_id[0, 2] = 1
+    state.ship_team_id[0, 3] = 1
+    return state
+
+
+class TestKillShotReward:
+    def test_sole_damage_dealer_gets_full_credit(self, cfg):
+        """Ship 0 deals all step damage to dying ship 2; ship 0 gets full kill credit."""
+        prev = _kill_state(cfg)
+        next_ = _kill_state(cfg)
+        next_.ship_alive[0, 2] = False
+        next_.damage_matrix[0, 0, 2] = 30.0  # ship 0 dealt 30 to ship 2
+
+        r = KillShotReward(weight=1.0)
+        reward = r.compute(
+            prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool)
         )
 
-        assert reward[0, 0].item() > 0
+        assert reward[0, 0].item() == pytest.approx(1.0)
+        assert reward[0, 1].item() == pytest.approx(0.0)
+        assert reward[0, 2].item() == pytest.approx(0.0)
+        assert reward[0, 3].item() == pytest.approx(0.0)
 
-    def test_turning_away_from_enemy_gives_negative_reward(self, cfg):
-        """Ship rotating clockwise with enemy to the left gets negative reward."""
-        state = make_state(num_envs=1, max_ships=2, ship_config=cfg)
-        state.ship_team_id[0, 0] = 0
-        state.ship_team_id[0, 1] = 1
-        state.ship_pos[0, 0] = 0.0 + 0j
-        state.ship_pos[0, 1] = 0.0 + 100j
-        state.ship_attitude[0, 0] = 1.0 + 0j
-        state.ship_ang_vel[0, 0] = -1.0  # clockwise = away from enemy
+    def test_proportional_split_between_two_shooters(self, cfg):
+        """Ships 0 and 1 both hit dying ship 2 this step; credit splits proportionally."""
+        prev = _kill_state(cfg)
+        next_ = _kill_state(cfg)
+        next_.ship_alive[0, 2] = False
+        next_.damage_matrix[0, 0, 2] = 10.0
+        next_.damage_matrix[0, 1, 2] = 30.0  # ship 1 dealt 3× more
 
-        comp = TurnRateReward(turn_rate_weight=1.0, world_size=cfg.world_size)
-        reward = comp.compute(
-            state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool)
+        r = KillShotReward(weight=1.0)
+        reward = r.compute(
+            prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool)
         )
 
-        assert reward[0, 0].item() < 0
+        assert reward[0, 0].item() == pytest.approx(0.25, rel=1e-5)
+        assert reward[0, 1].item() == pytest.approx(0.75, rel=1e-5)
 
-    def test_dead_ship_gets_zero_reward(self, cfg):
-        """Dead ships must receive zero turn rate reward."""
-        state = make_state(num_envs=1, max_ships=2, ship_config=cfg)
-        state.ship_team_id[0, 0] = 0
-        state.ship_team_id[0, 1] = 1
+    def test_equal_damage_splits_evenly(self, cfg):
+        """Ships 0 and 1 dealt equal damage to dying ship 2; each gets 0.5."""
+        prev = _kill_state(cfg)
+        next_ = _kill_state(cfg)
+        next_.ship_alive[0, 2] = False
+        next_.damage_matrix[0, 0, 2] = 20.0
+        next_.damage_matrix[0, 1, 2] = 20.0
+
+        r = KillShotReward(weight=1.0)
+        reward = r.compute(
+            prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool)
+        )
+
+        assert reward[0, 0].item() == pytest.approx(0.5, rel=1e-5)
+        assert reward[0, 1].item() == pytest.approx(0.5, rel=1e-5)
+
+    def test_no_death_gives_zero_reward(self, cfg):
+        state = _kill_state(cfg)
+
+        r = KillShotReward(weight=1.0)
+        reward = r.compute(
+            state, torch.zeros(1, 4, 3), state, torch.zeros(1, dtype=torch.bool)
+        )
+
+        assert reward.abs().max().item() == 0.0
+
+    def test_friendly_fire_gives_penalty(self, cfg):
+        """Ship 0 dealt all damage to dying teammate ship 1; ship 0 gets -1 penalty."""
+        prev = _kill_state(cfg)
+        next_ = _kill_state(cfg)
+        next_.ship_alive[0, 1] = False  # teammate of ship 0 died
+        next_.damage_matrix[0, 0, 1] = 40.0  # ship 0 caused the death
+
+        r = KillShotReward(weight=1.0)
+        reward = r.compute(
+            prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool)
+        )
+
+        assert reward[0, 0].item() == pytest.approx(-1.0)  # friendly fire penalty
+        assert reward[0, 1].item() == pytest.approx(0.0)
+        assert reward[0, 2].item() == pytest.approx(0.0)
+        assert reward[0, 3].item() == pytest.approx(0.0)
+
+
+class TestKillAssistReward:
+    def test_sole_damage_dealer_gets_full_credit(self, cfg):
+        """Ship 0 is the only one that damaged dying ship 2; gets 1.0 assist credit."""
+        prev = _kill_state(cfg)
+        next_ = _kill_state(cfg)
+        next_.ship_alive[0, 2] = False
+        next_.cumulative_damage_matrix[0, 0, 2] = 50.0
+
+        r = KillAssistReward(weight=1.0)
+        reward = r.compute(
+            prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool)
+        )
+
+        assert reward[0, 0].item() == pytest.approx(1.0)
+        assert reward[0, 1].item() == pytest.approx(0.0)
+
+    def test_proportional_split_between_two_damage_dealers(self, cfg):
+        """Ships 0 and 1 both damaged dying ship 2; credit splits 25%/75%."""
+        prev = _kill_state(cfg)
+        next_ = _kill_state(cfg)
+        next_.ship_alive[0, 2] = False
+        next_.cumulative_damage_matrix[0, 0, 2] = 25.0
+        next_.cumulative_damage_matrix[0, 1, 2] = 75.0
+
+        r = KillAssistReward(weight=1.0)
+        reward = r.compute(
+            prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool)
+        )
+
+        assert reward[0, 0].item() == pytest.approx(0.25, rel=1e-5)
+        assert reward[0, 1].item() == pytest.approx(0.75, rel=1e-5)
+
+    def test_no_death_gives_zero_reward(self, cfg):
+        state = _kill_state(cfg)
+
+        r = KillAssistReward(weight=1.0)
+        reward = r.compute(
+            state, torch.zeros(1, 4, 3), state, torch.zeros(1, dtype=torch.bool)
+        )
+
+        assert reward.abs().max().item() == 0.0
+
+    def test_multiple_kills_accumulate_per_ship(self, cfg):
+        """If two enemies die, a ship that damaged both accumulates credit for each."""
+        prev = _kill_state(cfg)
+        next_ = _kill_state(cfg)
+        next_.ship_alive[0, 2] = False
+        next_.ship_alive[0, 3] = False
+        # Ship 0 was the sole damage dealer for both kills
+        next_.cumulative_damage_matrix[0, 0, 2] = 40.0
+        next_.cumulative_damage_matrix[0, 0, 3] = 60.0
+
+        r = KillAssistReward(weight=1.0)
+        reward = r.compute(
+            prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool)
+        )
+
+        assert reward[0, 0].item() == pytest.approx(2.0)  # 1.0 per kill
+
+
+# ---------------------------------------------------------------------------
+# Local damage rewards
+# ---------------------------------------------------------------------------
+
+
+class TestLocalDamageTakenReward:
+    def test_damaged_ship_gets_negative_reward(self, cfg):
+        prev = _make_4ship_state(cfg)
+        next_ = _make_4ship_state(cfg)
+        next_.ship_health[0, 0] = prev.ship_health[0, 0] - 10.0
+
+        r = LocalDamageTakenReward(weight=1.0)
+        reward = r.compute(
+            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
+        )
+
+        assert reward[0, 0].item() == pytest.approx(-10.0)
+
+    def test_undamaged_ships_get_zero(self, cfg):
+        prev = _make_4ship_state(cfg)
+        next_ = _make_4ship_state(cfg)
+        next_.ship_health[0, 0] = prev.ship_health[0, 0] - 10.0
+
+        r = LocalDamageTakenReward(weight=1.0)
+        reward = r.compute(
+            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
+        )
+
+        assert reward[0, 1].item() == pytest.approx(0.0)
+        assert reward[0, 2].item() == pytest.approx(0.0)
+        assert reward[0, 3].item() == pytest.approx(0.0)
+
+    def test_dead_ship_gets_zero(self, cfg):
+        """Dead ships receive no reward even if health dropped this step."""
+        prev = _make_4ship_state(cfg)
+        next_ = _make_4ship_state(cfg)
+        next_.ship_health[0, 0] = 0.0
+        next_.ship_alive[0, 0] = False
+
+        r = LocalDamageTakenReward(weight=1.0)
+        reward = r.compute(
+            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
+        )
+
+        assert reward[0, 0].item() == pytest.approx(0.0)
+
+    def test_zero_damage_gives_zero_reward(self, cfg):
+        state = _make_4ship_state(cfg)
+
+        r = LocalDamageTakenReward(weight=1.0)
+        reward = r.compute(
+            state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
+        )
+
+        assert reward.abs().max().item() == 0.0
+
+
+class TestLocalDamageDealtEnemyReward:
+    def test_ship_that_dealt_enemy_damage_gets_positive_reward(self, cfg):
+        """Ship 0 dealt 20 damage to enemy ship 2; ship 0 gets +20."""
+        state = _make_4ship_state(cfg)
+        state.damage_matrix[0, 0, 2] = 20.0
+
+        r = LocalDamageDealtEnemyReward(weight=1.0)
+        reward = r.compute(
+            state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
+        )
+
+        assert reward[0, 0].item() == pytest.approx(20.0)
+
+    def test_ships_that_dealt_no_damage_get_zero(self, cfg):
+        state = _make_4ship_state(cfg)
+        state.damage_matrix[0, 0, 2] = 20.0
+
+        r = LocalDamageDealtEnemyReward(weight=1.0)
+        reward = r.compute(
+            state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
+        )
+
+        assert reward[0, 1].item() == pytest.approx(0.0)
+        assert reward[0, 2].item() == pytest.approx(0.0)
+        assert reward[0, 3].item() == pytest.approx(0.0)
+
+    def test_damage_to_multiple_enemies_accumulates(self, cfg):
+        """Ship 0 dealt damage to both enemy ships; rewards sum."""
+        state = _make_4ship_state(cfg)
+        state.damage_matrix[0, 0, 2] = 15.0
+        state.damage_matrix[0, 0, 3] = 10.0
+
+        r = LocalDamageDealtEnemyReward(weight=1.0)
+        reward = r.compute(
+            state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
+        )
+
+        assert reward[0, 0].item() == pytest.approx(25.0)
+
+    def test_friendly_fire_ignored(self, cfg):
+        """Damage dealt to a teammate must not contribute to enemy damage reward."""
+        state = _make_4ship_state(cfg)
+        state.damage_matrix[0, 0, 1] = 30.0  # ship 0 hit ally ship 1
+
+        r = LocalDamageDealtEnemyReward(weight=1.0)
+        reward = r.compute(
+            state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
+        )
+
+        assert reward[0, 0].item() == pytest.approx(0.0)
+
+    def test_dead_ship_gets_zero(self, cfg):
+        state = _make_4ship_state(cfg)
+        state.damage_matrix[0, 0, 2] = 20.0
         state.ship_alive[0, 0] = False
-        state.ship_pos[0, 0] = 0.0 + 0j
-        state.ship_pos[0, 1] = 0.0 + 100j
-        state.ship_attitude[0, 0] = 1.0 + 0j
-        state.ship_ang_vel[0, 0] = 1.0
 
-        comp = TurnRateReward(turn_rate_weight=1.0, world_size=cfg.world_size)
-        reward = comp.compute(
-            state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool)
+        r = LocalDamageDealtEnemyReward(weight=1.0)
+        reward = r.compute(
+            state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
         )
 
-        assert reward[0, 0].item() == 0.0
+        assert reward[0, 0].item() == pytest.approx(0.0)
 
 
-class TestDisabledRewards:
-    def test_disabled_component_is_excluded_from_list(self, cfg):
-        """build_reward_components must omit any component named in disabled_rewards."""
-        rc = RewardConfig(
-            victory_weight=1.0,
-            death_weight=0.5,
-            damage_weight=0.01,
-            team_damage_weight=0.01,
-            team_death_weight=0.01,
-            facing_weight=0.01,
-            exposure_weight=0.01,
-            turn_rate_weight=0.01,
-            closing_speed_weight=0.01,
-            proximity_weight=0.01,
-            positioning_weight=0.05,
-            power_range_weight=0.01,
-            speed_range_weight=0.01,
-            shoot_quality_weight=0.01,
-            positioning_radius=300.0,
-            proximity_radius=300.0,
-            power_range_lower=0.2,
-            power_range_upper=0.8,
-            speed_range_lower=40.0,
-            speed_range_upper=120.0,
-            shoot_quality_radius=200.0,
-            enemy_neg_lambda_components=frozenset(
-                {"damage", "death", "team_damage", "team_death", "victory", "exposure"}
-            ),
-            disabled_rewards=frozenset({"facing", "turn_rate"}),
+class TestLocalDamageDealtAllyReward:
+    def test_friendly_fire_gives_negative_reward(self, cfg):
+        """Ship 0 dealt 30 damage to ally ship 1; ship 0 gets -30."""
+        state = _make_4ship_state(cfg)
+        state.damage_matrix[0, 0, 1] = 30.0
+
+        r = LocalDamageDealtAllyReward(weight=1.0)
+        reward = r.compute(
+            state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
         )
-        components = build_reward_components(rc, cfg)
-        names = {c.name for c in components}
 
-        assert "facing" not in names
-        assert "turn_rate" not in names
-        assert "closing_speed" in names  # not disabled
+        assert reward[0, 0].item() == pytest.approx(-30.0)
+
+    def test_enemy_damage_ignored(self, cfg):
+        """Damage to enemies must not contribute to the friendly-fire penalty."""
+        state = _make_4ship_state(cfg)
+        state.damage_matrix[0, 0, 2] = 20.0  # ship 0 hit enemy ship 2
+
+        r = LocalDamageDealtAllyReward(weight=1.0)
+        reward = r.compute(
+            state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
+        )
+
+        assert reward[0, 0].item() == pytest.approx(0.0)
+
+    def test_no_friendly_fire_gives_zero(self, cfg):
+        state = _make_4ship_state(cfg)
+
+        r = LocalDamageDealtAllyReward(weight=1.0)
+        reward = r.compute(
+            state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
+        )
+
+        assert reward.abs().max().item() == 0.0
+
+    def test_dead_ship_gets_zero(self, cfg):
+        state = _make_4ship_state(cfg)
+        state.damage_matrix[0, 0, 1] = 30.0
+        state.ship_alive[0, 0] = False
+
+        r = LocalDamageDealtAllyReward(weight=1.0)
+        reward = r.compute(
+            state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
+        )
+
+        assert reward[0, 0].item() == pytest.approx(0.0)
+
+
+class TestLocalDeathReward:
+    def test_dying_ship_gets_minus_one(self, cfg):
+        """Fires on the exact step of death using just_died, not next_state.ship_alive."""
+        prev = _make_4ship_state(cfg)
+        next_ = _make_4ship_state(cfg)
+        next_.ship_alive[0, 0] = False
+
+        r = LocalDeathReward(weight=1.0)
+        reward = r.compute(
+            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
+        )
+
+        assert reward[0, 0].item() == pytest.approx(-1.0)
+
+    def test_surviving_ships_get_zero(self, cfg):
+        prev = _make_4ship_state(cfg)
+        next_ = _make_4ship_state(cfg)
+        next_.ship_alive[0, 0] = False
+
+        r = LocalDeathReward(weight=1.0)
+        reward = r.compute(
+            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
+        )
+
+        assert reward[0, 1].item() == pytest.approx(0.0)
+        assert reward[0, 2].item() == pytest.approx(0.0)
+        assert reward[0, 3].item() == pytest.approx(0.0)
+
+    def test_already_dead_ship_does_not_fire_again(self, cfg):
+        """A ship dead in both prev and next (subsequent steps) must not re-trigger."""
+        prev = _make_4ship_state(cfg)
+        next_ = _make_4ship_state(cfg)
+        prev.ship_alive[0, 0] = False  # already dead last step
+        next_.ship_alive[0, 0] = False  # still dead
+
+        r = LocalDeathReward(weight=1.0)
+        reward = r.compute(
+            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
+        )
+
+        assert reward[0, 0].item() == pytest.approx(0.0)
+
+    def test_no_deaths_gives_zero_reward(self, cfg):
+        state = _make_4ship_state(cfg)
+
+        r = LocalDeathReward(weight=1.0)
+        reward = r.compute(
+            state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
+        )
+
+        assert reward.abs().max().item() == 0.0

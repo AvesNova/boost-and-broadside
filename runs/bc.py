@@ -26,10 +26,11 @@ BC_SCHEDULE = TrainingSchedule(
     entropy_coef=constant(0.01),
     behavior_cloning_coef=constant(1.0),
     value_function_coef=constant(1.0),
-    # Group scales — aux shaping is on during BC (helps value function learn the game).
+    # Group scales — all components active during BC so the value function learns
+    # the full reward signal before RL begins.
     true_reward_scale=constant(1.0),
-    important_scale=constant(1.0),
-    aux_scale=constant(1.0),
+    global_scale=constant(1.0),
+    local_scale=constant(1.0),
     # No opponents during BC — scripted agent only supplies supervised targets.
     scripted_fraction=constant(0.0),
     avg_model_fraction=constant(0.0),

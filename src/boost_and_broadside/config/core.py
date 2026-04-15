@@ -105,40 +105,71 @@ class ModelConfig:
 
 @dataclass(frozen=True)
 class RewardConfig:
-    """Reward weights and geometry parameters for the 9-component critic.
+    """Reward weights and geometry parameters for the 11-component critic.
 
     No default values — all fields must be set explicitly at the call site.
-    Reward group scales (true_reward_scale, important_scale, aux_scale) live in
+    Reward group scales (true_reward_scale, global_scale, local_scale) live in
     TrainingSchedule since they vary over the course of a run.
 
-    Groups (for the group-scale multiplier):
-        true_reward  → ally_win, enemy_win
-        important    → ally_damage, enemy_damage, ally_death, enemy_death,
-                       facing, closing_speed, shoot_quality
+    Global rewards flow through the lambda aggregation matrix at PPO update time,
+    so a ship's signal can affect its teammates' and enemies' advantages:
+        ally_*   → each ship reports its own outcome; allies see it via lambda=1,
+                   enemies see it via lambda=-1 (zero-sum) if listed in
+                   enemy_neg_lambda_components.
+        enemy_*  → same signal, opposite team's perspective; combined with
+                   ally_zero_components to avoid double-counting on the ally side.
 
-    Lambda matrix configuration:
-        enemy_neg_lambda_components: enemy ships get lambda=-1 (zero-sum accounting).
-        ally_zero_components:        same-team ships get lambda=0 (enemy-perspective only).
-        Components in ally_zero_components should also be in enemy_neg_lambda_components.
+    Local rewards are self-only: lambda=0 for every other ship (diagonal lambda
+    matrix), so the signal never propagates. Each ship is the sole recipient of
+    its own reward.
+
+    Group scales (applied as a multiplier on top of individual weights):
+        true_reward  → ally_win, enemy_win
+        global       → global outcome rewards + shaping (ally/enemy damage, death, facing, closing_speed, shoot_quality)
+        local        → self-only per-ship rewards (kill_shot, kill_assist, damage_taken, damage_dealt, death)
     """
 
-    # --- Outcome reward weights ---
-    ally_damage_weight: float
-    enemy_damage_weight: float
-    ally_death_weight: float
-    enemy_death_weight: float
-    ally_win_weight: float
-    enemy_win_weight: float
+    # --- Global outcome rewards (lambda-aggregated across ships) ---
+    ally_damage_weight: (
+        float  # damage taken by this ship (negative; enemies zero-sum via lambda)
+    )
+    enemy_damage_weight: (
+        float  # same signal, enemy-team perspective (pair with ally_damage)
+    )
+    ally_death_weight: float  # -1 on death of this ship
+    enemy_death_weight: (
+        float  # same signal, enemy-team perspective (pair with ally_death)
+    )
+    ally_win_weight: float  # +1 when this ship's team wins
+    enemy_win_weight: float  # same signal, enemy-team perspective (pair with ally_win)
 
-    # --- Shaping reward weights ---
-    facing_weight: float
-    closing_speed_weight: float
-    shoot_quality_weight: float
+    # --- Local per-ship rewards (self-only, lambda=0 for all other ships) ---
+    facing_weight: float  # pointing nose toward nearest enemy (shaping)
+    closing_speed_weight: float  # velocity component toward nearest enemy (shaping)
+    shoot_quality_weight: float  # shot quality when firing (shaping)
+    kill_shot_weight: (
+        float  # proportional share of +1.0 per kill, weighted by step damage
+    )
+    kill_assist_weight: (
+        float  # proportional share of +1.0 per kill, weighted by episode damage
+    )
+    damage_taken_weight: (
+        float  # damage received by this ship this step (negative reward)
+    )
+    damage_dealt_enemy_weight: (
+        float  # damage dealt to enemies this step (positive reward)
+    )
+    damage_dealt_ally_weight: (
+        float  # damage dealt to allies this step (friendly-fire penalty)
+    )
+    death_weight: (
+        float  # -1 on the step this ship dies; fires via just_died, not alive mask
+    )
 
     # --- Geometry params (required, no defaults) ---
-    proximity_radius: float  # used by FacingReward
-    shoot_quality_radius: float  # used by ShootQualityReward
+    proximity_radius: float  # falloff radius used by FacingReward
+    shoot_quality_radius: float  # engagement radius used by ShootQualityReward
 
     # --- Lambda configuration ---
-    enemy_neg_lambda_components: frozenset[str]
-    ally_zero_components: frozenset[str]
+    enemy_neg_lambda_components: frozenset[str]  # enemies get lambda=-1 (zero-sum)
+    ally_zero_components: frozenset[str]  # allies get lambda=0 (enemy-perspective only)

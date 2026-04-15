@@ -318,11 +318,16 @@ def _apply_combat_damage(state: TensorState, config: ShipConfig) -> TensorState:
     """Vectorized bullet-ship hit detection and damage application.
 
     GPU kernel: kept together for performance.
+    Also fills state.damage_matrix (B, N_shooter, N_target) for this step and
+    accumulates into state.cumulative_damage_matrix for episode-level attribution.
     """
     batch_size, num_ships = state.ship_pos.shape
     num_bullets = state.max_bullets
     device = state.device
     world_w, world_h = config.world_size
+
+    # Reset per-step attribution; cumulative is carried forward across steps.
+    state.damage_matrix.zero_()
 
     # Flatten bullet arrays over the ship dimension for broadcasting
     flat_bullet_pos = state.bullet_pos.view(
@@ -371,6 +376,18 @@ def _apply_combat_damage(state: TensorState, config: ShipConfig) -> TensorState:
     )
     damage_per_hit = damage_scale * valid_hit.float() * config.bullet_damage
     total_damage = damage_per_hit.sum(dim=2)  # (B, N)
+
+    # Build per-shooter attribution before summing.
+    # damage_per_hit: (B, N_target, N_shooter*K) — bullets laid out as
+    # [ship_0_slot_0, ..., ship_0_slot_K-1, ship_1_slot_0, ...], so reshaping
+    # to (B, N_target, N_shooter, K) groups slots by shooter.
+    dm = (
+        damage_per_hit.view(batch_size, num_ships, num_ships, num_bullets)
+        .sum(dim=3)  # (B, N_target, N_shooter)
+        .permute(0, 2, 1)  # (B, N_shooter, N_target)
+    )
+    state.damage_matrix.copy_(dm)
+    state.cumulative_damage_matrix.add_(dm)
 
     state.ship_health = state.ship_health - total_damage
     state.ship_alive = state.ship_health > 0

@@ -22,7 +22,7 @@ RL_HPC_TRAIN_CONFIG = TrainConfig(
             num_envs=_HPC_NUM_ENVS,
         ),
     ),
-    schedule=RL_SCHEDULE,   # identical schedule — only scale differs
+    schedule=RL_SCHEDULE,  # identical schedule — only scale differs
     rewards=REWARDS,
     num_steps=128,
     num_epochs=4,

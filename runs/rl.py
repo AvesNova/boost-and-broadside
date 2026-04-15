@@ -6,7 +6,7 @@ but also runnable from scratch.
 Phase structure:
   Step 0 → 5M:   LR warmup 1e-7 → 3e-4. 50% envs vs scripted opponent.
                   avg_model starts accumulating immediately (allow_avg_model_updates=True).
-                  aux_scale=0.0 — value function is assumed pretrained; shaping off.
+                  All reward group scales active (pretrained value function handles this).
   Step 5M:        LR at cruise.
   Step 25M:       avg-model is ready — activate as opponent (20% envs).
                   Reduce scripted to 30% to make room.
@@ -33,10 +33,9 @@ RL_SCHEDULE = TrainingSchedule(
     entropy_coef=constant(0.01),
     behavior_cloning_coef=constant(0.0),
     value_function_coef=constant(1.0),
-    # aux shaping off — value function is assumed pretrained and already knows the game.
     true_reward_scale=constant(1.0),
-    important_scale=constant(1.0),
-    aux_scale=constant(0.0),
+    global_scale=constant(1.0),
+    local_scale=constant(1.0),
     # Scripted at 50% from step 0 — stable, strong signal from the start.
     # At step 25M avg-model is ready; reduce scripted to make room.
     scripted_fraction=stepped((0, 0.5), (25_000_000, 0.3)),

@@ -34,7 +34,12 @@ from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
 from boost_and_broadside.env.state import TensorState
 from boost_and_broadside.env.wrapper import MVPEnvWrapper
 from boost_and_broadside.models.mvp.policy import MVPPolicy
-from boost_and_broadside.train.rl.buffer import RolloutBuffer, ReturnScaler, AdvantageScaler, symlog
+from boost_and_broadside.train.rl.buffer import (
+    RolloutBuffer,
+    ReturnScaler,
+    AdvantageScaler,
+    symlog,
+)
 from boost_and_broadside.train.rl.roster import EloRoster, RosterEntry
 
 
@@ -70,6 +75,8 @@ def _slice_state(state: TensorState, start: int, end: int) -> TensorState:
         bullet_time=state.bullet_time[start:end],
         bullet_active=state.bullet_active[start:end],
         bullet_cursor=state.bullet_cursor[start:end],
+        damage_matrix=state.damage_matrix[start:end],
+        cumulative_damage_matrix=state.cumulative_damage_matrix[start:end],
     )
 
 
@@ -98,18 +105,44 @@ def _override_opponent(
 
 # Maps reward component name → the TrainingSchedule group-scale field to apply.
 # Effective weight = group_scale * individual_weight (from RewardConfig).
-# Groups: true_reward → win components; important → damage, death, shaping; aux → (unused).
+# Groups:
+#   true_reward → win components (ally_win, enemy_win)
+#   global      → global outcome rewards + shaping (team-aggregated via lambda)
+#   local       → self-only per-ship rewards (diagonal lambda, no teammate propagation)
 _GROUP: dict[str, str] = {
     "ally_win": "true_reward_scale",
     "enemy_win": "true_reward_scale",
-    "ally_damage": "important_scale",
-    "enemy_damage": "important_scale",
-    "ally_death": "important_scale",
-    "enemy_death": "important_scale",
-    "facing": "important_scale",
-    "closing_speed": "important_scale",
-    "shoot_quality": "important_scale",
+    "ally_damage": "global_scale",
+    "enemy_damage": "global_scale",
+    "ally_death": "global_scale",
+    "enemy_death": "global_scale",
+    "facing": "local_scale",
+    "closing_speed": "local_scale",
+    "shoot_quality": "local_scale",
+    "kill_shot": "local_scale",
+    "kill_assist": "local_scale",
+    "damage_taken": "local_scale",
+    "damage_dealt_enemy": "local_scale",
+    "damage_dealt_ally": "local_scale",
+    "death": "local_scale",
 }
+
+# Components that use diagonal lambda (self-only: i==j). These must match the
+# "local_scale" entries above. Any component NOT in _LOCAL_COMPONENTS uses the
+# standard team-based lambda aggregation.
+_LOCAL_COMPONENTS: frozenset[str] = frozenset(
+    {
+        "facing",
+        "closing_speed",
+        "shoot_quality",
+        "kill_shot",
+        "kill_assist",
+        "damage_taken",
+        "damage_dealt_enemy",
+        "damage_dealt_ally",
+        "death",
+    }
+)
 
 
 @dataclasses.dataclass
@@ -126,8 +159,8 @@ class _ResolvedSchedule:
     behavior_cloning_coef: float
     value_function_coef: float
     true_reward_scale: float
-    important_scale: float
-    aux_scale: float
+    global_scale: float
+    local_scale: float
     scripted_fraction: float
     avg_model_fraction: float
     league_fraction: float
@@ -147,8 +180,8 @@ def _resolve_schedule(schedule: TrainingSchedule, step: int) -> _ResolvedSchedul
         behavior_cloning_coef=schedule.behavior_cloning_coef(step),
         value_function_coef=schedule.value_function_coef(step),
         true_reward_scale=schedule.true_reward_scale(step),
-        important_scale=schedule.important_scale(step),
-        aux_scale=schedule.aux_scale(step),
+        global_scale=schedule.global_scale(step),
+        local_scale=schedule.local_scale(step),
         scripted_fraction=schedule.scripted_fraction(step),
         avg_model_fraction=schedule.avg_model_fraction(step),
         league_fraction=schedule.league_fraction(step),
@@ -284,6 +317,7 @@ class PPOTrainer:
         self.ally_zero_k = self._make_ally_zero_k(
             train_config.rewards.ally_zero_components
         )
+        self.local_k = self._make_local_k()
 
         # Per-component return scaler: EMA of p5/p95 in symlog-reward space (critic)
         self.scaler = ReturnScaler(
@@ -434,6 +468,18 @@ class PPOTrainer:
         """
         return torch.tensor(
             [name in ally_zero_set for name in self._active_names],
+            dtype=torch.bool,
+            device=self.device,
+        )
+
+    def _make_local_k(self) -> torch.Tensor:
+        """Build the (K,) bool tensor marking self-only (local) reward components.
+
+        Local components use a diagonal lambda matrix (lambda_ij = 1 if i==j, else 0)
+        so each ship's reward signal never propagates to teammates or enemies.
+        """
+        return torch.tensor(
+            [name in _LOCAL_COMPONENTS for name in self._active_names],
             dtype=torch.bool,
             device=self.device,
         )
@@ -817,11 +863,17 @@ class PPOTrainer:
                 trace_alive = self.buffer.alive_mask[:, 0, 0]  # (T,) bool
                 if trace_alive.float().mean() > 0.5:
                     metrics["trace/rollout"] = {
-                        "reward":    self.buffer.rewards[:, 0, 0, :].cpu().numpy(),    # (T, K)
-                        "value":     self.buffer.values[:, 0, 0, :].cpu().numpy(),     # (T, K)
-                        "return":    self.buffer.returns[:, 0, 0, :].cpu().numpy(),    # (T, K)
-                        "advantage": self.buffer.advantages[:, 0, 0, :].cpu().numpy(),# (T, K)
-                        "alive":     trace_alive.cpu().numpy(),                        # (T,)
+                        "reward": self.buffer.rewards[:, 0, 0, :]
+                        .cpu()
+                        .numpy(),  # (T, K)
+                        "value": self.buffer.values[:, 0, 0, :].cpu().numpy(),  # (T, K)
+                        "return": self.buffer.returns[:, 0, 0, :]
+                        .cpu()
+                        .numpy(),  # (T, K)
+                        "advantage": self.buffer.advantages[:, 0, 0, :]
+                        .cpu()
+                        .numpy(),  # (T, K)
+                        "alive": trace_alive.cpu().numpy(),  # (T,)
                     }
 
             # Refresh schedule state — syncs LR, loss coefficients, and reward weights.
@@ -833,7 +885,7 @@ class PPOTrainer:
             self._behavior_cloning_coef = self._schedule_state.behavior_cloning_coef
             self.optim.param_groups[0]["lr"] = self._schedule_state.learning_rate
             for comp in self.wrapper._all_components:
-                scale_attr = _GROUP.get(comp.name, "aux_scale")
+                scale_attr = _GROUP[comp.name]
                 raw: float = getattr(self.cfg.rewards, f"{comp.name}_weight")
                 setattr(
                     comp,
@@ -850,8 +902,8 @@ class PPOTrainer:
             metrics["schedule/true_reward_scale"] = (
                 self._schedule_state.true_reward_scale
             )
-            metrics["schedule/important_scale"] = self._schedule_state.important_scale
-            metrics["schedule/aux_scale"] = self._schedule_state.aux_scale
+            metrics["schedule/global_scale"] = self._schedule_state.global_scale
+            metrics["schedule/local_scale"] = self._schedule_state.local_scale
 
             if self._policy_gradient_coef > 0.0:
                 # Update avg model when allowed by the current phase.
@@ -1033,8 +1085,11 @@ class PPOTrainer:
         # ---- Lambda aggregation -------------------------------------------
         # Per-timestep team IDs: correctly tracks re-assignments after mid-rollout resets.
         # Buffer stores obs as float32; cast to long for comparison.
-        team_id_t = mb_obs["team_id"].long()                            # (T, B_mb, N)
-        same_team_t = team_id_t.unsqueeze(3) == team_id_t.unsqueeze(2)  # (T, B_mb, N_i, N_j)
+        team_id_t = mb_obs["team_id"].long()  # (T, B_mb, N)
+        same_team_t = team_id_t.unsqueeze(3) == team_id_t.unsqueeze(
+            2
+        )  # (T, B_mb, N_i, N_j)
+        N = team_id_t.shape[-1]
 
         ally_lam = torch.where(
             self.ally_zero_k, 0.0, 1.0
@@ -1046,16 +1101,33 @@ class PPOTrainer:
         # Zero out dead contributing ships (j): dead ships have untrained critic values
         # and must not contaminate surviving ships' aggregated advantages.
         alive_j = mb_alive.float().unsqueeze(2).unsqueeze(-1)  # (T, B_mb, 1, N_j, 1)
-        lambda_ij_t = (
+
+        # Global lambda (team-based): allies share signals, enemies are zero-sum.
+        global_lambda = (
             same_team_t.float().unsqueeze(-1) * ally_lam
             + (~same_team_t).float().unsqueeze(-1) * enemy_lam
-        ) * comp_weights * alive_j  # (T, B_mb, N_i, N_j, K)
+        )  # (T, B_mb, N_i, N_j, K)
 
-        mb_advantages_normed = self.adv_scaler.normalize(mb_advantages)  # (T, B_mb, N, K)
+        # Local lambda (diagonal): ship i only receives its own signal (i==j).
+        # Shape (1, 1, N, N, 1) broadcasts across T, B_mb, and K dims.
+        identity = torch.eye(N, dtype=torch.float32, device=self.device)
+        local_lambda = identity[None, None, :, :, None]  # (1, 1, N, N, 1)
+
+        lambda_ij_t = (
+            torch.where(self.local_k, local_lambda, global_lambda)
+            * comp_weights
+            * alive_j
+        )  # (T, B_mb, N_i, N_j, K)
+
+        mb_advantages_normed = self.adv_scaler.normalize(
+            mb_advantages
+        )  # (T, B_mb, N, K)
         adv_agg = torch.einsum(
             "tbijk,tbjk->tbi", lambda_ij_t, mb_advantages_normed
         )  # (T, B_mb, N)
-        ret_agg = torch.einsum("tbijk,tbjk->tbi", lambda_ij_t, mb_returns)  # (T, B_mb, N)
+        ret_agg = torch.einsum(
+            "tbijk,tbjk->tbi", lambda_ij_t, mb_returns
+        )  # (T, B_mb, N)
         ret_per_comp = torch.einsum(
             "tbijk,tbjk->tbik", lambda_ij_t, mb_returns
         )  # (T, B_mb, N, K)
@@ -1138,15 +1210,21 @@ class PPOTrainer:
             diag["alive_frac"] = alive_f.mean().item()
             diag["ratio_mean"] = (ratio * actor_f).sum().item() / actor_sum.item()
             actor_bool = actor_f.bool()
-            diag["ratio_max"] = ratio[actor_bool].max().item() if actor_bool.any() else 1.0
+            diag["ratio_max"] = (
+                ratio[actor_bool].max().item() if actor_bool.any() else 1.0
+            )
 
             # Per-head entropy — recomputed from policy_logits (already returned by evaluate_actions)
             power_ent = Categorical(logits=policy_logits[..., POWER_SLICE]).entropy()
             turn_ent = Categorical(logits=policy_logits[..., TURN_SLICE]).entropy()
             shoot_ent = Categorical(logits=policy_logits[..., SHOOT_SLICE]).entropy()
-            diag["entropy_power"] = (power_ent * actor_f).sum().item() / actor_sum.item()
+            diag["entropy_power"] = (
+                power_ent * actor_f
+            ).sum().item() / actor_sum.item()
             diag["entropy_turn"] = (turn_ent * actor_f).sum().item() / actor_sum.item()
-            diag["entropy_shoot"] = (shoot_ent * actor_f).sum().item() / actor_sum.item()
+            diag["entropy_shoot"] = (
+                shoot_ent * actor_f
+            ).sum().item() / actor_sum.item()
 
             ret_agg_mean = (ret_agg * actor_f).sum() / actor_sum
             ret_agg_var = ((ret_agg - ret_agg_mean).pow(2) * actor_f).sum() / actor_sum
@@ -1305,9 +1383,13 @@ class PPOTrainer:
                     scalar_accum_step["alive_frac"] += diag["alive_frac"] / n_scales
                     scalar_accum_step["ratio_mean"] += diag["ratio_mean"] / n_scales
                     scalar_accum_step["ratio_max"] += diag["ratio_max"] / n_scales
-                    scalar_accum_step["entropy_power"] += diag["entropy_power"] / n_scales
+                    scalar_accum_step["entropy_power"] += (
+                        diag["entropy_power"] / n_scales
+                    )
                     scalar_accum_step["entropy_turn"] += diag["entropy_turn"] / n_scales
-                    scalar_accum_step["entropy_shoot"] += diag["entropy_shoot"] / n_scales
+                    scalar_accum_step["entropy_shoot"] += (
+                        diag["entropy_shoot"] / n_scales
+                    )
 
                     if is_primary:
                         diag_primary = diag
@@ -1336,12 +1418,20 @@ class PPOTrainer:
                 accum_scalar["train/advantage_std"].append(
                     scalar_accum_step["adv_var"] ** 0.5
                 )
-                accum_scalar["train/alive_fraction"].append(scalar_accum_step["alive_frac"])
+                accum_scalar["train/alive_fraction"].append(
+                    scalar_accum_step["alive_frac"]
+                )
                 accum_scalar["train/ratio_mean"].append(scalar_accum_step["ratio_mean"])
                 accum_scalar["train/ratio_max"].append(scalar_accum_step["ratio_max"])
-                accum_scalar["train/entropy_power"].append(scalar_accum_step["entropy_power"])
-                accum_scalar["train/entropy_turn"].append(scalar_accum_step["entropy_turn"])
-                accum_scalar["train/entropy_shoot"].append(scalar_accum_step["entropy_shoot"])
+                accum_scalar["train/entropy_power"].append(
+                    scalar_accum_step["entropy_power"]
+                )
+                accum_scalar["train/entropy_turn"].append(
+                    scalar_accum_step["entropy_turn"]
+                )
+                accum_scalar["train/entropy_shoot"].append(
+                    scalar_accum_step["entropy_shoot"]
+                )
                 accum_scalar["returns/aggregate"].append(
                     scalar_accum_step["ret_agg_mean"]
                 )

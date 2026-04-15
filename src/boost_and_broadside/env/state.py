@@ -45,6 +45,14 @@ class TensorState:
     # Ring-buffer write cursor
     bullet_cursor: torch.Tensor  # (B, N) int64
 
+    # Per-step and per-episode damage attribution (shooter × target)
+    damage_matrix: (
+        torch.Tensor
+    )  # (B, N, N) float32  — damage dealt this step; zeroed each step
+    cumulative_damage_matrix: (
+        torch.Tensor
+    )  # (B, N, N) float32  — accumulated this episode; zeroed on reset
+
     # ------------------------------------------------------------------
     # Convenience properties
     # ------------------------------------------------------------------
@@ -85,4 +93,6 @@ class TensorState:
             bullet_time=self.bullet_time.clone(),
             bullet_active=self.bullet_active.clone(),
             bullet_cursor=self.bullet_cursor.clone(),
+            damage_matrix=self.damage_matrix.clone(),
+            cumulative_damage_matrix=self.cumulative_damage_matrix.clone(),
         )

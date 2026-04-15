@@ -2,6 +2,8 @@
 
 import torch
 
+from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
+from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import (
     ShipConfig,
     EnvConfig,
@@ -19,31 +21,27 @@ from boost_and_broadside.train.rl.ppo import PPOTrainer, _GROUP
 
 def _make_rewards(**overrides) -> RewardConfig:
     defaults = dict(
-        victory_weight=1.0,
-        death_weight=0.5,
-        damage_weight=0.01,
-        team_damage_weight=0.01,
-        team_death_weight=0.01,
+        ally_damage_weight=0.01,
+        enemy_damage_weight=0.01,
+        ally_death_weight=0.5,
+        enemy_death_weight=0.5,
+        ally_win_weight=1.0,
+        enemy_win_weight=1.0,
         facing_weight=0.01,
-        exposure_weight=0.01,
-        turn_rate_weight=0.01,
         closing_speed_weight=0.01,
-        proximity_weight=0.01,
-        positioning_weight=0.05,
-        power_range_weight=0.01,
-        speed_range_weight=0.01,
         shoot_quality_weight=0.01,
-        positioning_radius=400.0,
+        kill_shot_weight=0.5,
+        kill_assist_weight=0.5,
+        damage_taken_weight=0.1,
+        damage_dealt_enemy_weight=0.1,
+        damage_dealt_ally_weight=0.1,
+        death_weight=0.5,
         proximity_radius=300.0,
-        power_range_lower=0.2,
-        power_range_upper=0.8,
-        speed_range_lower=40.0,
-        speed_range_upper=120.0,
         shoot_quality_radius=200.0,
         enemy_neg_lambda_components=frozenset(
-            {"damage", "death", "team_damage", "team_death", "victory", "exposure"}
+            {"enemy_damage", "enemy_death", "enemy_win"}
         ),
-        disabled_rewards=frozenset(),
+        ally_zero_components=frozenset({"enemy_damage", "enemy_death", "enemy_win"}),
     )
     defaults.update(overrides)
     return RewardConfig(**defaults)
@@ -57,8 +55,8 @@ def _make_schedule(**overrides) -> TrainingSchedule:
         behavior_cloning_coef=constant(0.0),
         value_function_coef=constant(0.5),
         true_reward_scale=constant(1.0),
-        important_scale=constant(1.0),
-        aux_scale=constant(1.0),
+        global_scale=constant(1.0),
+        local_scale=constant(1.0),
         scripted_fraction=constant(0.0),
         avg_model_fraction=constant(0.0),
         league_fraction=constant(0.0),
@@ -203,7 +201,7 @@ class TestSchedulePrimitives:
                         num_envs=4,
                     ),
                 ),
-                schedule=_make_schedule(aux_scale=constant(0.5)),
+                schedule=_make_schedule(local_scale=constant(0.5)),
                 rewards=_make_rewards(closing_speed_weight=0.01),
                 num_steps=16,
                 num_epochs=1,
@@ -233,9 +231,79 @@ class TestSchedulePrimitives:
         trainer.train()
         for comp in trainer.wrapper._all_components:
             if comp.name == "closing_speed":
-                scale_name = _GROUP.get(comp.name, "aux_scale")
+                scale_name = _GROUP[comp.name]
                 individual_weight = getattr(trainer.cfg.rewards, f"{comp.name}_weight")
                 group_scale = getattr(trainer._schedule_state, scale_name)
                 expected = individual_weight * group_scale
                 actual = comp.weight
                 assert abs(actual - expected) < 1e-9
+
+
+class TestRLSmokeTest:
+    """Full RL smoke test using the real runs/shared.py config.
+
+    Exercises the complete training stack with the production reward config
+    (including kill_shot and kill_assist) for a small number of updates.
+    Uses a scripted opponent to ensure combat happens and kill rewards fire.
+    """
+
+    def test_rl_run_with_production_config(self):
+        from runs.shared import MODEL_CONFIG, REWARDS, SHIP_CONFIG
+
+        schedule = TrainingSchedule(
+            learning_rate=constant(3e-4),
+            policy_gradient_coef=constant(1.0),
+            entropy_coef=constant(0.01),
+            behavior_cloning_coef=constant(0.0),
+            value_function_coef=constant(1.0),
+            true_reward_scale=constant(1.0),
+            global_scale=constant(1.0),
+            local_scale=constant(1.0),
+            scripted_fraction=constant(0.5),
+            avg_model_fraction=constant(0.0),
+            league_fraction=constant(0.0),
+            allow_avg_model_updates=constant(False),
+            allow_scripted_in_roster=constant(True),
+            elo_eval_games=constant(0),
+            elo_eval_interval=constant(9999),
+            checkpoint_interval=constant(9999),
+        )
+        cfg = TrainConfig(
+            scales=(
+                ScaleConfig(
+                    env_config=EnvConfig(
+                        num_ships=4, max_bullets=20, max_episode_steps=64
+                    ),
+                    num_envs=16,
+                ),
+            ),
+            schedule=schedule,
+            rewards=REWARDS,
+            num_steps=32,
+            num_epochs=1,
+            num_minibatches=2,
+            gamma=0.99,
+            gae_lambda=0.95,
+            clip_coef=0.2,
+            max_grad_norm=1.0,
+            total_timesteps=16 * 32 * 3,  # 3 updates
+            return_ema_alpha=0.005,
+            return_min_span=1.0,
+            checkpoint_dir="checkpoints",
+            league_size=5,
+            elo_milestone_gap=100.0,
+            elo_k_factor=32.0,
+            elo_temperature=200.0,
+            league_uniform_sampling=False,
+            scripted_roster_min_steps=0,
+        )
+        scripted = StochasticScriptedAgent(SHIP_CONFIG, StochasticAgentConfig())
+        trainer = PPOTrainer(
+            cfg,
+            MODEL_CONFIG,
+            SHIP_CONFIG,
+            device="cpu",
+            use_wandb=False,
+            scripted_agent=scripted,
+        )
+        trainer.train()

@@ -106,4 +106,10 @@ def make_state(
             (num_envs, max_ships, max_bullets), dtype=torch.bool, device=dev
         ),
         bullet_cursor=torch.zeros((num_envs, max_ships), dtype=torch.long, device=dev),
+        damage_matrix=torch.zeros(
+            (num_envs, max_ships, max_ships), dtype=torch.float32, device=dev
+        ),
+        cumulative_damage_matrix=torch.zeros(
+            (num_envs, max_ships, max_ships), dtype=torch.float32, device=dev
+        ),
     )
