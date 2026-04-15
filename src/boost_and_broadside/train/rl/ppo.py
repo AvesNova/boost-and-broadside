@@ -964,7 +964,9 @@ class PPOTrainer:
                     avg_elo_norm = avg_entry.elo - random_elo
                     if avg_elo_norm > self._best_avg_elo_norm:
                         self._best_avg_elo_norm = avg_elo_norm
-                        self._save_best_checkpoint("best_avg.pt")
+                        self._save_best_checkpoint(
+                            "best_avg.pt", self._avg_checkpoint_payload(update=0)
+                        )
 
             # Single log call per update — all metrics at the same step
             self._enqueue_log(metrics, step=self._global_step)
@@ -1118,6 +1120,15 @@ class PPOTrainer:
             * comp_weights
             * alive_j
         )  # (T, B_mb, N_i, N_j, K)
+
+        # Normalize each ship i's lambda weights by the sum of absolute contributions
+        # across alive ships j. This makes the aggregated signal a weighted mean rather
+        # than a sum, so the policy gradient magnitude is consistent regardless of how
+        # many ships are alive at each timestep and comparable across game sizes (N).
+        # Local components (diagonal lambda) always sum to 1.0 so are unaffected.
+        # clamp(min=1.0) handles the degenerate case where all contributing ships are dead.
+        lambda_norm = lambda_ij_t.abs().sum(dim=3, keepdim=True).clamp(min=1.0)
+        lambda_ij_t = lambda_ij_t / lambda_norm  # (T, B_mb, N_i, N_j, K)
 
         mb_advantages_normed = self.adv_scaler.normalize(
             mb_advantages
@@ -1646,6 +1657,76 @@ class PPOTrainer:
                 if games_sc > 0:
                     metrics["elo/win_rate_vs_scripted"] = wins_vs_sc / games_sc
 
+                # Evaluate avg model ELO if it has been initialized.
+                if self._avg_update_count > 0:
+                    avg_wins_vs_sc = 0.0
+                    avg_wins_vs_rand = 0.0
+                    avg_finished = torch.zeros(B, dtype=torch.bool, device=dev)
+                    agent_avg = ResolvedAgent("policy", self.avg_policy)
+                    init_hidden(agent_avg, B, N, dev)
+                    env.reset()
+
+                    while not avg_finished.all():
+                        state = env.state
+                        obs = _obs_from_state(state, self.ship_config)
+                        action_a = get_actions(agent_avg, obs, state, B, N, dev)
+
+                        action_b = torch.zeros_like(action_a)
+                        if games_sc > 0:
+                            action_sc = get_actions(agent_sc, obs, state, B, N, dev)
+                            action_b = torch.where(
+                                is_scripted.unsqueeze(1).unsqueeze(2),
+                                action_sc,
+                                action_b,
+                            )
+                        if games_rand > 0:
+                            action_rand = get_actions(agent_rand, obs, state, B, N, dev)
+                            action_b = torch.where(
+                                ~is_scripted.unsqueeze(1).unsqueeze(2),
+                                action_rand,
+                                action_b,
+                            )
+
+                        team_id = state.ship_team_id
+                        action = torch.where(
+                            (team_id == 0).unsqueeze(-1), action_a, action_b
+                        )
+
+                        dones, truncated = env.step(action)
+                        done_any = dones | truncated
+
+                        new_done = done_any & ~avg_finished
+                        if new_done.any():
+                            alive = env.state.ship_alive
+                            team = env.state.ship_team_id
+                            team0_alive = (alive & (team == 0)).any(dim=1)
+                            team1_alive = (alive & (team == 1)).any(dim=1)
+                            team0_won = new_done & team0_alive & ~team1_alive
+                            tied = new_done & ~team0_won & ~(
+                                new_done & team1_alive & ~team0_alive
+                            )
+                            avg_wins_vs_sc += float(
+                                (team0_won & is_scripted).sum()
+                            ) + 0.5 * float((tied & is_scripted).sum())
+                            avg_wins_vs_rand += float(
+                                (team0_won & ~is_scripted).sum()
+                            ) + 0.5 * float((tied & ~is_scripted).sum())
+                            avg_finished |= new_done
+
+                        if done_any.any():
+                            env.reset_envs(done_any)
+                            reset_done_envs(agent_avg, done_any, N)
+
+                    avg_elo = compute_eval_elo(
+                        avg_wins_vs_rand, games_rand, avg_wins_vs_sc, games_sc
+                    )
+                    avg_entry = next(
+                        (e for e in self.roster.entries if e.kind == "avg"), None
+                    )
+                    if avg_entry is not None:
+                        avg_entry.elo = avg_elo
+                    metrics["elo/avg"] = avg_elo
+
         finally:
             self.policy.train()
             # Still evict checkpoint policies if any were loaded via the training rollout's league
@@ -1700,6 +1781,12 @@ class PPOTrainer:
         self._last_checkpoint_path = path
         print(f"Checkpoint saved: {path}")
 
+        # Save most-recent avg model checkpoint when available.
+        if self._avg_update_count > 0:
+            avg_path = ckpt_dir / "recent_avg.pt"
+            torch.save(self._avg_checkpoint_payload(update), avg_path)
+            print(f"Recent avg checkpoint saved: {avg_path}")
+
         # Prune: keep only the latest checkpoint + all roster-referenced files.
         # best_*.pt files are not touched (they don't match the step_*.pt glob).
         kept = self.roster.kept_paths()
@@ -1708,16 +1795,30 @@ class PPOTrainer:
             if str(old_path) not in kept:
                 old_path.unlink(missing_ok=True)
 
-    def _save_best_checkpoint(self, name: str) -> None:
+    def _avg_checkpoint_payload(self, update: int) -> dict:
+        """Build checkpoint payload with avg_policy as the primary policy_state_dict.
+
+        Allows best_avg.pt / recent_avg.pt to be loaded by _load_checkpoint_agent
+        in elo_stats.py, which reads ``ckpt["policy_state_dict"]``.
+        """
+        payload = self._checkpoint_payload(update)
+        payload["policy_state_dict"] = self.avg_policy.state_dict()
+        return payload
+
+    def _save_best_checkpoint(self, name: str, payload: dict | None = None) -> None:
         """Save a named best-model checkpoint, overwriting any previous version.
 
         Args:
-            name: Filename, e.g. "best_training.pt" or "best_avg.pt".
+            name:    Filename, e.g. "best_training.pt" or "best_avg.pt".
+            payload: Custom payload dict; defaults to _checkpoint_payload(update=0).
         """
         ckpt_dir = Path(self.cfg.checkpoint_dir) / self._run_name
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         path = ckpt_dir / name
-        torch.save(self._checkpoint_payload(update=0), path)
+        torch.save(
+            payload if payload is not None else self._checkpoint_payload(update=0),
+            path,
+        )
         print(f"Best checkpoint saved: {path}")
 
     def load_pretrained_weights(self, path: str) -> None:

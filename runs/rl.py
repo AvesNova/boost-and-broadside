@@ -32,19 +32,24 @@ RL_SCHEDULE = TrainingSchedule(
     learning_rate=linear((0, 1e-7), (5_000_000, 3e-4)),
     policy_gradient_coef=constant(1.0),
     entropy_coef=constant(0.01),
-    behavior_cloning_coef=exponential((0, 1.0), (10_000_000, 0.1)),
+    behavior_cloning_coef=linear(
+        (0, 1.0),
+        (20_000_000, 1.0),
+        (30_000_000, 0.1),
+        (40_000_000, 0.0),
+    ),
     value_function_coef=constant(1.0),
     true_reward_scale=constant(1.0),
     global_scale=constant(1.0),
     local_scale=constant(1.0),
     # Scripted at 50% from step 0 — stable, strong signal from the start.
-    # At step 25M avg-model is ready; reduce scripted to make room.
-    scripted_fraction=stepped((0, 0.5), (25_000_000, 0.3)),
-    # avg-model not used as opponent until step 25M (needs time to diverge from init).
-    avg_model_fraction=stepped((0, 0.0), (25_000_000, 0.2)),
+    # At step 50M avg-model is ready; reduce scripted to make room.
+    scripted_fraction=stepped((0, 0.5), (50_000_000, 0.3)),
+    # avg-model not used as opponent until step 50M (needs time to diverge from init).
+    avg_model_fraction=stepped((0, 0.0), (50_000_000, 0.2)),
     # League activates at step 50M once the policy has meaningful ELO.
     league_fraction=stepped((0, 0.0), (50_000_000, 0.2)),
-    # Accumulate avg-model immediately so it is ready at step 25M.
+    # Accumulate avg-model immediately so it is ready at step 50M.
     allow_avg_model_updates=stepped((0, True)),
     allow_scripted_in_roster=stepped((0, True)),
     elo_eval_games=stepped((0, 256)),
@@ -55,8 +60,12 @@ RL_SCHEDULE = TrainingSchedule(
 RL_TRAIN_CONFIG = TrainConfig(
     scales=(
         ScaleConfig(
+            env_config=EnvConfig(num_ships=2, max_bullets=20, max_episode_steps=1024),
+            num_envs=_MAX_TOKENS // 4 // 2,
+        ),
+        ScaleConfig(
             env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=1024),
-            num_envs=_MAX_TOKENS // 8,
+            num_envs=_MAX_TOKENS // 8 // 2,
         ),
     ),
     schedule=RL_SCHEDULE,
