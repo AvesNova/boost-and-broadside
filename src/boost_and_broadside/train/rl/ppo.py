@@ -43,6 +43,19 @@ from boost_and_broadside.train.rl.buffer import (
 from boost_and_broadside.train.rl.roster import EloRoster, RosterEntry
 
 
+def _cast_norms_bf16(module: nn.Module) -> None:
+    """Cast all RMSNorm weights to bf16 so the fused kernel can run end-to-end.
+
+    Without this, autocast leaves norm weights in fp32 while activations are bf16,
+    forcing a fallback to the slower unfused implementation.  Norm scale vectors are
+    tiny (D=128) so bf16 Adam precision is entirely acceptable.  Only applied on
+    CUDA — on CPU (e.g. tests) inputs stay fp32 so we leave weights fp32 too.
+    """
+    for m in module.modules():
+        if isinstance(m, nn.RMSNorm) and m.weight.is_cuda:
+            m.weight.data = m.weight.data.bfloat16()
+
+
 # ------------------------------------------------------------------
 # Opponent-management helpers (module-level, no class coupling)
 # ------------------------------------------------------------------
@@ -286,6 +299,7 @@ class PPOTrainer:
         self._policy_module = MVPPolicy(
             model_config, ship_config, num_value_components=K
         ).to(self.device)
+        _cast_norms_bf16(self._policy_module)
         self.policy = (
             torch.compile(self._policy_module, mode=compile_mode)
             if compile_mode is not None
@@ -351,6 +365,7 @@ class PPOTrainer:
             else self._avg_policy_module
         )
         self._avg_policy_module.load_state_dict(self._policy_module.state_dict())
+        _cast_norms_bf16(self._avg_policy_module)
         for p in self._avg_policy_module.parameters():
             p.requires_grad_(False)
         self._avg_param_cumsum: list[torch.Tensor] = [
@@ -619,9 +634,10 @@ class PPOTrainer:
             # ----------------------------------------------------------------
             for _ in range(self.cfg.num_steps):
                 # Training policy: all envs, all ships
-                action, logprob, value_norm, hidden = self.policy.get_action_and_value(
-                    obs, hidden
-                )
+                with torch.autocast("cuda", dtype=torch.bfloat16):
+                    action, logprob, value_norm, hidden = (
+                        self.policy.get_action_and_value(obs, hidden)
+                    )
 
                 # Team IDs — used for opponent overrides, actor mask, and BC expert masking
                 team_id = obs["team_id"]  # (B, N) int
@@ -649,7 +665,10 @@ class PPOTrainer:
 
                     # Avg-model opponent actions (when ready)
                     if use_avg:
-                        with torch.no_grad():
+                        with (
+                            torch.no_grad(),
+                            torch.autocast("cuda", dtype=torch.bfloat16),
+                        ):
                             obs_avg = _slice_obs(obs, avg_start, avg_end)
                             action_avg, _, _, avg_hidden = (
                                 self.avg_policy.get_action_and_value(
@@ -665,7 +684,10 @@ class PPOTrainer:
                     )
                     if use_league:
                         if self._current_league_policy is not None:
-                            with torch.no_grad():
+                            with (
+                                torch.no_grad(),
+                                torch.autocast("cuda", dtype=torch.bfloat16),
+                            ):
                                 obs_league = _slice_obs(obs, league_start, league_end)
                                 action_league, _, _, league_hidden = (
                                     self._current_league_policy.get_action_and_value(
@@ -813,7 +835,7 @@ class PPOTrainer:
                     zip(self.cfg.scales[1:], self.aux_wrappers, self.aux_buffers)
                 ):
                     aux_N = sc.env_config.num_ships
-                    with torch.no_grad():
+                    with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
                         aux_action, aux_logprob, aux_value_norm, aux_hiddens[i] = (
                             self.policy.get_action_and_value(aux_obs[i], aux_hiddens[i])
                         )
@@ -844,14 +866,14 @@ class PPOTrainer:
             # ----------------------------------------------------------------
             # GAE computation
             # ----------------------------------------------------------------
-            with torch.no_grad():
+            with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
                 _, _, next_value_norm, _ = self.policy.get_action_and_value(obs, hidden)
             next_value = self.scaler.denormalize(next_value_norm)  # symlog-reward space
             self.buffer.compute_gae(next_value, dones.float())
 
             # Aux-scale GAE
             for i, (aux_buf, aux_h) in enumerate(zip(self.aux_buffers, aux_hiddens)):
-                with torch.no_grad():
+                with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
                     _, _, next_aux_val_norm, _ = self.policy.get_action_and_value(
                         aux_obs[i], aux_h
                     )
@@ -1065,12 +1087,13 @@ class PPOTrainer:
             mb_expert_probs,
         ) = batch
 
-        logprob, entropy, new_value, policy_logits = self.policy.evaluate_actions(
-            obs=mb_obs,
-            actions=mb_actions.long(),
-            initial_hidden=mb_hidden,
-            alive_mask=mb_alive,
-        )
+        with torch.autocast("cuda", dtype=torch.bfloat16):
+            logprob, entropy, new_value, policy_logits = self.policy.evaluate_actions(
+                obs=mb_obs,
+                actions=mb_actions.long(),
+                initial_hidden=mb_hidden,
+                alive_mask=mb_alive,
+            )
 
         alive_f = mb_alive.float()  # (T, B_mb, N)
         alive_k = alive_f.unsqueeze(-1)  # (T, B_mb, N, 1)
@@ -1196,46 +1219,37 @@ class PPOTrainer:
             + self._behavior_cloning_coef * bc_loss
         )
 
-        # ---- Diagnostics (no grad) ---------------------------------------
+        # ---- Diagnostics (no grad) — kept as GPU tensors, .item() deferred to logging ----
         diag: dict = {}
         with torch.no_grad():
-            diag["loss"] = loss.item()
-            diag["pg_loss"] = pg_loss.item()
-            diag["vf_loss"] = vf_loss.item()
-            diag["ent_loss"] = ent_loss.item()
-            diag["bc_loss"] = bc_loss.item()
-            diag["scripted_entropy"] = scripted_entropy.item()
-            diag["bc_kl"] = bc_loss.item() - scripted_entropy.item()
-            diag["adv_var"] = adv_rms.item()
-            diag["approx_kl"] = (
-                ((ratio - 1) - log_ratio) * actor_f
-            ).sum().item() / actor_sum.item()
+            diag["loss"] = loss.detach()
+            diag["pg_loss"] = pg_loss.detach()
+            diag["vf_loss"] = vf_loss.detach()
+            diag["ent_loss"] = ent_loss.detach()
+            diag["bc_loss"] = bc_loss.detach()
+            diag["scripted_entropy"] = scripted_entropy.detach()
+            diag["bc_kl"] = bc_loss.detach() - scripted_entropy.detach()
+            diag["adv_var"] = adv_rms
+            diag["approx_kl"] = (((ratio - 1) - log_ratio) * actor_f).sum() / actor_sum
             diag["clip_frac"] = (
                 ((ratio - 1).abs() > cfg.clip_coef).float() * actor_f
-            ).sum().item() / actor_sum.item()
-            diag["alive_frac"] = alive_f.mean().item()
-            diag["ratio_mean"] = (ratio * actor_f).sum().item() / actor_sum.item()
-            actor_bool = actor_f.bool()
-            diag["ratio_max"] = (
-                ratio[actor_bool].max().item() if actor_bool.any() else 1.0
-            )
+            ).sum() / actor_sum
+            diag["alive_frac"] = alive_f.mean()
+            diag["ratio_mean"] = (ratio * actor_f).sum() / actor_sum
+            diag["ratio_max"] = ratio.max()
 
             # Per-head entropy — recomputed from policy_logits (already returned by evaluate_actions)
             power_ent = Categorical(logits=policy_logits[..., POWER_SLICE]).entropy()
             turn_ent = Categorical(logits=policy_logits[..., TURN_SLICE]).entropy()
             shoot_ent = Categorical(logits=policy_logits[..., SHOOT_SLICE]).entropy()
-            diag["entropy_power"] = (
-                power_ent * actor_f
-            ).sum().item() / actor_sum.item()
-            diag["entropy_turn"] = (turn_ent * actor_f).sum().item() / actor_sum.item()
-            diag["entropy_shoot"] = (
-                shoot_ent * actor_f
-            ).sum().item() / actor_sum.item()
+            diag["entropy_power"] = (power_ent * actor_f).sum() / actor_sum
+            diag["entropy_turn"] = (turn_ent * actor_f).sum() / actor_sum
+            diag["entropy_shoot"] = (shoot_ent * actor_f).sum() / actor_sum
 
             ret_agg_mean = (ret_agg * actor_f).sum() / actor_sum
             ret_agg_var = ((ret_agg - ret_agg_mean).pow(2) * actor_f).sum() / actor_sum
-            diag["ret_agg_mean"] = ret_agg_mean.item()
-            diag["ret_agg_std"] = ret_agg_var.sqrt().item()
+            diag["ret_agg_mean"] = ret_agg_mean
+            diag["ret_agg_std"] = ret_agg_var.sqrt()
 
             # Per-component critic stats — primary scale only (K matches buffer.num_components)
             if is_primary:
@@ -1268,7 +1282,7 @@ class PPOTrainer:
                 diag["adv_std_k"] = adv_var_k.sqrt().cpu()  # (K,)
                 diag["alive_flat"] = mb_alive.reshape(-1).bool()
                 diag["mb_returns"] = mb_returns
-                diag["logprob_flat"] = logprob.detach().reshape(-1)
+                diag["logprob_flat"] = logprob.detach().float().reshape(-1)
 
         return loss, diag
 
@@ -1300,7 +1314,7 @@ class PPOTrainer:
             device=self.device,
         )  # (K,)
 
-        accum_scalar: dict[str, list[float]] = {
+        accum_scalar: dict[str, list[torch.Tensor]] = {
             "train/loss": [],
             "train/policy_gradient_loss": [],
             "train/value_loss": [],
@@ -1343,25 +1357,26 @@ class PPOTrainer:
                 # Each loss is divided by n_scales so the total gradient magnitude
                 # stays comparable to single-scale training.
                 diag_primary: dict = {}
-                scalar_accum_step: dict[str, float] = {
-                    "loss": 0.0,
-                    "pg": 0.0,
-                    "vf": 0.0,
-                    "ent": 0.0,
-                    "bc": 0.0,
-                    "bc_kl": 0.0,
-                    "scripted_entropy": 0.0,
-                    "kl": 0.0,
-                    "clip": 0.0,
-                    "adv_var": 0.0,
-                    "ret_agg_mean": 0.0,
-                    "ret_agg_std": 0.0,
-                    "alive_frac": 0.0,
-                    "ratio_mean": 0.0,
-                    "ratio_max": 0.0,
-                    "entropy_power": 0.0,
-                    "entropy_turn": 0.0,
-                    "entropy_shoot": 0.0,
+                _z = torch.zeros((), device=self.device)
+                scalar_accum_step: dict[str, torch.Tensor] = {
+                    "loss": _z.clone(),
+                    "pg": _z.clone(),
+                    "vf": _z.clone(),
+                    "ent": _z.clone(),
+                    "bc": _z.clone(),
+                    "bc_kl": _z.clone(),
+                    "scripted_entropy": _z.clone(),
+                    "kl": _z.clone(),
+                    "clip": _z.clone(),
+                    "adv_var": _z.clone(),
+                    "ret_agg_mean": _z.clone(),
+                    "ret_agg_std": _z.clone(),
+                    "alive_frac": _z.clone(),
+                    "ratio_mean": _z.clone(),
+                    "ratio_max": _z.clone(),
+                    "entropy_power": _z.clone(),
+                    "entropy_turn": _z.clone(),
+                    "entropy_shoot": _z.clone(),
                 }
 
                 for scale_idx, (buf, batch) in enumerate(zip(all_buffers, batches)):
@@ -1420,7 +1435,7 @@ class PPOTrainer:
                 )
                 accum_scalar["train/approximate_kl"].append(scalar_accum_step["kl"])
                 accum_scalar["train/clip_fraction"].append(scalar_accum_step["clip"])
-                accum_scalar["train/gradient_norm"].append(grad_norm.item())
+                accum_scalar["train/gradient_norm"].append(grad_norm.detach())
                 accum_scalar["train/advantage_std"].append(
                     scalar_accum_step["adv_var"] ** 0.5
                 )
@@ -1469,7 +1484,9 @@ class PPOTrainer:
                         diag_primary["logprob_flat"][alive_flat].cpu().numpy()
                     )
 
-        metrics: dict = {k: sum(v) / len(v) for k, v in accum_scalar.items() if v}
+        metrics: dict = {
+            k: torch.stack(v).mean().item() for k, v in accum_scalar.items() if v
+        }
 
         for key, tensors in accum_k.items():
             if not tensors:
@@ -1569,7 +1586,7 @@ class PPOTrainer:
         metrics: dict[str, float] = {}
 
         try:
-            with torch.no_grad():
+            with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
                 while not finished.all():
                     state = env.state
                     obs = _obs_from_state(state, self.ship_config)
@@ -1834,6 +1851,8 @@ class PPOTrainer:
         ckpt = torch.load(path, map_location=self.device, weights_only=False)
         self._policy_module.load_state_dict(ckpt["policy_state_dict"])
         self._avg_policy_module.load_state_dict(ckpt["policy_state_dict"])
+        _cast_norms_bf16(self._policy_module)
+        _cast_norms_bf16(self._avg_policy_module)
         self._avg_param_cumsum = [
             torch.zeros_like(p) for p in self._policy_module.parameters()
         ]
@@ -1855,6 +1874,7 @@ class PPOTrainer:
         """
         ckpt = torch.load(path, map_location=self.device)
         self._policy_module.load_state_dict(ckpt["policy_state_dict"])
+        _cast_norms_bf16(self._policy_module)
         self.optim.load_state_dict(ckpt["optimizer_state_dict"])
         if "scaler_state_dict" in ckpt:
             self.scaler.load_state_dict(ckpt["scaler_state_dict"])
@@ -1862,6 +1882,7 @@ class PPOTrainer:
             self.adv_scaler.load_state_dict(ckpt["adv_scaler_state_dict"])
         if "avg_policy_state_dict" in ckpt:
             self._avg_policy_module.load_state_dict(ckpt["avg_policy_state_dict"])
+            _cast_norms_bf16(self._avg_policy_module)
             self._avg_param_cumsum = [
                 c.to(self.device) for c in ckpt["avg_param_cumsum"]
             ]

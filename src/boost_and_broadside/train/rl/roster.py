@@ -239,6 +239,8 @@ class EloRoster:
             return
         from boost_and_broadside.models.mvp.policy import MVPPolicy
 
+        import torch.nn as nn
+
         ckpt = torch.load(entry.path, map_location=device, weights_only=False)
         policy = MVPPolicy(
             model_config, ship_config, num_value_components=num_value_components
@@ -246,6 +248,9 @@ class EloRoster:
         policy.load_state_dict(ckpt["policy_state_dict"])
         policy.eval()
         policy.to(device)
+        for m in policy.modules():
+            if isinstance(m, nn.RMSNorm) and m.weight.is_cuda:
+                m.weight.data = m.weight.data.bfloat16()
         entry._policy = (
             torch.compile(policy, mode=compile_mode)
             if compile_mode is not None
