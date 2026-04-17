@@ -50,7 +50,7 @@ RL_SCHEDULE = TrainingSchedule(
     # League activates at step 50M once the policy has meaningful ELO.
     league_fraction=stepped((0, 0.0), (50_000_000, 0.2)),
     # Accumulate avg-model immediately so it is ready at step 50M.
-    allow_avg_model_updates=stepped((0, True), (40_000_000, True)),
+    allow_avg_model_updates=stepped((0, False), (40_000_000, True)),
     allow_scripted_in_roster=stepped((0, True)),
     elo_eval_games=stepped((0, 256)),
     elo_eval_interval=stepped((0, 10)),
