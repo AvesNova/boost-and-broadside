@@ -90,10 +90,11 @@ def _slice_state(state: TensorState, start: int, end: int) -> TensorState:
         bullet_cursor=state.bullet_cursor[start:end],
         damage_matrix=state.damage_matrix[start:end],
         cumulative_damage_matrix=state.cumulative_damage_matrix[start:end],
-        obs_pos=state.obs_pos[start:end],
-        obs_vel=state.obs_vel[start:end],
-        obs_radius=state.obs_radius[start:end],
-        obs_gravity_center=state.obs_gravity_center[start:end],
+        obstacle_pos=state.obstacle_pos[start:end],
+        obstacle_vel=state.obstacle_vel[start:end],
+        obstacle_radius=state.obstacle_radius[start:end],
+        obstacle_gravity_center=state.obstacle_gravity_center[start:end],
+        obstacle_hit=state.obstacle_hit[start:end],
     )
 
 

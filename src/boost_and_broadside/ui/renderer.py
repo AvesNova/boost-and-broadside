@@ -30,7 +30,8 @@ class RenderConfig:
         (255, 120, 80),  # team 1: red
     )
     bullet_color: tuple[int, int, int] = (255, 255, 100)
-    obstacle_color: tuple[int, int, int] = (180, 140, 60)  # sandy gold
+    obstacle_color: tuple[int, int, int] = (255, 255, 255)  # white
+    obstacle_hit_color: tuple[int, int, int] = (255, 60, 60)  # red when colliding
     background_color: tuple[int, int, int] = (10, 10, 20)
     ship_size: int = 10  # pixels from center to tip
     health_bar_height: int = 4
@@ -136,13 +137,15 @@ class GameRenderer:
             )
 
     def _draw_obstacles(self, state: TensorState, surf: pygame.Surface) -> None:
-        """Draw all obstacles in env 0 as filled circles."""
-        obs_pos = state.obs_pos[0].cpu()  # (M,) complex64
-        obs_radius = state.obs_radius[0].cpu()  # (M,) float32
-        color = self._render_config.obstacle_color
-        for m in range(obs_pos.shape[0]):
-            p = complex(obs_pos[m].item())
-            r = max(1, int(obs_radius[m].item() * self._scale))
+        """Draw all obstacles in env 0 as filled circles; red when colliding."""
+        cfg = self._render_config
+        obstacle_pos = state.obstacle_pos[0].cpu()    # (M,) complex64
+        obstacle_radius = state.obstacle_radius[0].cpu()  # (M,) float32
+        obstacle_hit = state.obstacle_hit[0].cpu()    # (M,) bool
+        for m in range(obstacle_pos.shape[0]):
+            color = cfg.obstacle_hit_color if obstacle_hit[m].item() else cfg.obstacle_color
+            p = complex(obstacle_pos[m].item())
+            r = max(1, int(obstacle_radius[m].item() * self._scale))
             sx, sy = self._world_to_screen(p)
             pygame.draw.circle(surf, color, (sx, sy), r)
 

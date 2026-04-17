@@ -54,10 +54,11 @@ class TensorState:
     )  # (B, N, N) float32  — accumulated this episode; zeroed on reset
 
     # Obstacle state (M = num_obstacles per env)
-    obs_pos: torch.Tensor  # (B, M) complex64  — world position
-    obs_vel: torch.Tensor  # (B, M) complex64  — velocity
-    obs_radius: torch.Tensor  # (B, M) float32   — collision radius (independent per obstacle)
-    obs_gravity_center: torch.Tensor  # (B, M) complex64  — gravity target (default: world center)
+    obstacle_pos: torch.Tensor  # (B, M) complex64  — world position
+    obstacle_vel: torch.Tensor  # (B, M) complex64  — velocity
+    obstacle_radius: torch.Tensor  # (B, M) float32   — collision radius (independent per obstacle)
+    obstacle_gravity_center: torch.Tensor  # (B, M) complex64  — gravity target (default: world center)
+    obstacle_hit: torch.Tensor  # (B, M) bool       — True if colliding with another obstacle or a ship this step
 
     # ------------------------------------------------------------------
     # Convenience properties
@@ -77,7 +78,7 @@ class TensorState:
 
     @property
     def num_obstacles(self) -> int:
-        return self.obs_pos.shape[1]
+        return self.obstacle_pos.shape[1]
 
     @property
     def device(self) -> torch.device:
@@ -105,8 +106,9 @@ class TensorState:
             bullet_cursor=self.bullet_cursor.clone(),
             damage_matrix=self.damage_matrix.clone(),
             cumulative_damage_matrix=self.cumulative_damage_matrix.clone(),
-            obs_pos=self.obs_pos.clone(),
-            obs_vel=self.obs_vel.clone(),
-            obs_radius=self.obs_radius.clone(),
-            obs_gravity_center=self.obs_gravity_center.clone(),
+            obstacle_pos=self.obstacle_pos.clone(),
+            obstacle_vel=self.obstacle_vel.clone(),
+            obstacle_radius=self.obstacle_radius.clone(),
+            obstacle_gravity_center=self.obstacle_gravity_center.clone(),
+            obstacle_hit=self.obstacle_hit.clone(),
         )

@@ -298,8 +298,9 @@ def _make_prev_state_proxy(
         bullet_cursor=state.bullet_cursor,
         damage_matrix=state.damage_matrix,
         cumulative_damage_matrix=state.cumulative_damage_matrix,
-        obs_pos=state.obs_pos,
-        obs_vel=state.obs_vel,
-        obs_radius=state.obs_radius,
-        obs_gravity_center=state.obs_gravity_center,
+        obstacle_pos=state.obstacle_pos,
+        obstacle_vel=state.obstacle_vel,
+        obstacle_radius=state.obstacle_radius,
+        obstacle_gravity_center=state.obstacle_gravity_center,
+        obstacle_hit=state.obstacle_hit,
     )

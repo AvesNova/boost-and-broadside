@@ -32,6 +32,7 @@ from boost_and_broadside.config import EnvConfig
 from boost_and_broadside.modes.collect import run_collect_stats_mode
 from boost_and_broadside.modes.elo_stats import run_elo_stats_mode
 from boost_and_broadside.modes.interactive import run_watch_mode
+from boost_and_broadside.modes.obstacle_stats import run_obstacle_stats_mode
 from boost_and_broadside.train.rl.ppo import PPOTrainer
 from boost_and_broadside.ui.renderer import RenderConfig
 from runs.bc import BC_TRAIN_CONFIG
@@ -47,7 +48,15 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--mode",
-        choices=["bc", "rl", "bc_warmstart", "watch", "collect_stats", "elo_stats"],
+        choices=[
+            "bc",
+            "rl",
+            "bc_warmstart",
+            "watch",
+            "collect_stats",
+            "elo_stats",
+            "obstacle_stats",
+        ],
         default="rl",
         help=(
             "Operating mode. "
@@ -231,6 +240,15 @@ def main() -> None:
                 device=device,
                 checkpoint_dir="checkpoints",
                 elo_k_factor=32.0,
+            )
+
+        case "obstacle_stats":
+            run_obstacle_stats_mode(
+                num_envs=1024,
+                num_obstacles=8,
+                max_steps=10000,
+                ship_config=SHIP_CONFIG,
+                device=device,
             )
 
 

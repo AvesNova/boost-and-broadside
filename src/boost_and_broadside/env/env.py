@@ -14,8 +14,168 @@ from boost_and_broadside.env.physics import (
     update_ships,
     update_bullets,
     update_obstacles,
+    step_obstacle_physics,
     resolve_collisions,
+    _gravity_harmonic,
+    _gravity_keplerian,
+    _delta_pe_harmonic,
+    _delta_pe_keplerian,
 )
+
+
+# ------------------------------------------------------------------
+# Obstacle init strategies — four combinations of (init, physics).
+# All share the same signature and return (obstacle_pos, obstacle_vel) complex64 (R, M).
+# Selected once at TensorEnv.__init__ time via _OBSTACLE_INIT_FNS.
+# ------------------------------------------------------------------
+
+
+def _init_harmonic_energy(
+    G: float,
+    R_max: float,
+    num_reset: int,
+    M: int,
+    center_x: torch.Tensor,
+    center_y: torch.Tensor,
+    world_w: float,
+    world_h: float,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Energy-based init for harmonic physics. Samples E ∈ [0, ½G·R_max²]."""
+    E_max = 0.5 * G * R_max**2
+    energy = torch.rand((num_reset, M), device=device) * E_max
+    r_max = torch.sqrt(2.0 * energy / G)
+    r = torch.rand((num_reset, M), device=device) * r_max
+    KE = energy - 0.5 * G * r**2
+    speed = torch.sqrt(KE.clamp(min=0.0) * 2.0)
+    theta_pos = torch.rand((num_reset, M), device=device) * (2.0 * np.pi)
+    theta_vel = torch.rand((num_reset, M), device=device) * (2.0 * np.pi)
+    obstacle_x = (center_x + r * torch.cos(theta_pos)) % world_w
+    obstacle_y = (center_y + r * torch.sin(theta_pos)) % world_h
+    return torch.complex(obstacle_x, obstacle_y), torch.polar(speed, theta_vel)
+
+
+def _init_keplerian_energy(
+    G: float,
+    R_max: float,
+    num_reset: int,
+    M: int,
+    center_x: torch.Tensor,
+    center_y: torch.Tensor,
+    world_w: float,
+    world_h: float,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Energy-based init for Keplerian physics.
+
+    Places each obstacle AT its apoapsis r_a with tangential speed f·v_circ(r_a).
+    Starting at the apoapsis guarantees the orbit never exceeds r_a ≤ R_max.
+    """
+    r_a = torch.rand((num_reset, M), device=device) * R_max
+    f = torch.rand((num_reset, M), device=device)
+    v_circ = torch.sqrt(G / r_a.clamp(min=1.0))
+    v = f * v_circ
+    alpha = torch.rand((num_reset, M), device=device) * (2.0 * np.pi)
+    # Tangential direction: i·e^(iα) = (−sin α, cos α); CW or CCW randomly.
+    sign = (torch.rand((num_reset, M), device=device) > 0.5).float() * 2.0 - 1.0
+    obstacle_x = (center_x + r_a * torch.cos(alpha)) % world_w
+    obstacle_y = (center_y + r_a * torch.sin(alpha)) % world_h
+    v_x = sign * (-torch.sin(alpha)) * v
+    v_y = sign * torch.cos(alpha) * v
+    return torch.complex(obstacle_x, obstacle_y), torch.complex(v_x, v_y)
+
+
+def _init_harmonic_orbital(
+    G: float,
+    R_max: float,
+    num_reset: int,
+    M: int,
+    center_x: torch.Tensor,
+    center_y: torch.Tensor,
+    world_w: float,
+    world_h: float,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Orbital init for harmonic physics.
+
+    Centered ellipse with semi-axes a=r_a, b=β·r_a and angular frequency ω=√G.
+    θ=0 is the apoapsis, so the orbit orientation φ = α directly.
+    """
+    r_a = torch.rand((num_reset, M), device=device) * R_max
+    beta = torch.rand((num_reset, M), device=device)
+    theta = torch.rand((num_reset, M), device=device) * (2.0 * np.pi)
+    alpha = torch.rand((num_reset, M), device=device) * (2.0 * np.pi)
+    a = r_a
+    b = beta * r_a
+    omega = float(np.sqrt(G))
+    r_lx = a * torch.cos(theta)
+    r_ly = b * torch.sin(theta)
+    v_lx = -a * omega * torch.sin(theta)
+    v_ly = b * omega * torch.cos(theta)
+    cos_a = torch.cos(alpha)
+    sin_a = torch.sin(alpha)
+    obstacle_x = (center_x + cos_a * r_lx - sin_a * r_ly) % world_w
+    obstacle_y = (center_y + sin_a * r_lx + cos_a * r_ly) % world_h
+    v_x = cos_a * v_lx - sin_a * v_ly
+    v_y = sin_a * v_lx + cos_a * v_ly
+    sign = (torch.rand((num_reset, M), device=device) > 0.5).float() * 2.0 - 1.0
+    return torch.complex(obstacle_x, obstacle_y), torch.complex(v_x * sign, v_y * sign)
+
+
+def _init_keplerian_orbital(
+    G: float,
+    R_max: float,
+    num_reset: int,
+    M: int,
+    center_x: torch.Tensor,
+    center_y: torch.Tensor,
+    world_w: float,
+    world_h: float,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Orbital init for Keplerian physics using the perifocal frame formulas.
+
+    r_a is the apoapsis. β=0 → radial plunge, β=1 → circular orbit.
+    Rotation φ = α−π places the apoapsis at angle α in the global frame
+    (perifocal convention: θ=0 is periapsis, apoapsis at θ=π).
+    """
+    r_a = torch.rand((num_reset, M), device=device) * R_max
+    beta = torch.rand((num_reset, M), device=device)
+    theta = torch.rand((num_reset, M), device=device) * (2.0 * np.pi)
+    alpha = torch.rand((num_reset, M), device=device) * (2.0 * np.pi)
+    e = 1.0 - beta**2
+    p = (r_a * beta**2).clamp(min=1e-6)
+    V0 = torch.sqrt(G / p)
+    r = p / (1.0 + e * torch.cos(theta))
+    r_lx = r * torch.cos(theta)
+    r_ly = r * torch.sin(theta)
+    v_lx = -V0 * torch.sin(theta)
+    v_ly = V0 * (torch.cos(theta) + e)
+    phi = alpha - np.pi  # apoapsis at θ=π → rotate by α−π to align with α
+    cos_p = torch.cos(phi)
+    sin_p = torch.sin(phi)
+    obstacle_x = (center_x + cos_p * r_lx - sin_p * r_ly) % world_w
+    obstacle_y = (center_y + sin_p * r_lx + cos_p * r_ly) % world_h
+    v_x = cos_p * v_lx - sin_p * v_ly
+    v_y = sin_p * v_lx + cos_p * v_ly
+    sign = (torch.rand((num_reset, M), device=device) > 0.5).float() * 2.0 - 1.0
+    return torch.complex(obstacle_x, obstacle_y), torch.complex(v_x * sign, v_y * sign)
+
+
+_OBSTACLE_GRAVITY_FNS = {
+    "harmonic": _gravity_harmonic,
+    "keplerian": _gravity_keplerian,
+}
+_OBSTACLE_DELTA_PE_FNS = {
+    "harmonic": _delta_pe_harmonic,
+    "keplerian": _delta_pe_keplerian,
+}
+_OBSTACLE_INIT_FNS = {
+    ("energy", "harmonic"): _init_harmonic_energy,
+    ("energy", "keplerian"): _init_keplerian_energy,
+    ("orbital", "harmonic"): _init_harmonic_orbital,
+    ("orbital", "keplerian"): _init_keplerian_orbital,
+}
 
 
 class TensorEnv:
@@ -41,6 +201,11 @@ class TensorEnv:
         self.env_config = env_config
         self.device = torch.device(device)
         self.state: TensorState | None = None
+
+        # Resolve obstacle strategy callables once — no branching in the hot loop.
+        self._obstacle_gravity_fn = _OBSTACLE_GRAVITY_FNS[ship_config.obstacle_physics]
+        self._obstacle_delta_pe_fn = _OBSTACLE_DELTA_PE_FNS[ship_config.obstacle_physics]
+        self._obstacle_init_fn = _OBSTACLE_INIT_FNS[(ship_config.obstacle_init, ship_config.obstacle_physics)]
 
     # ------------------------------------------------------------------
     # Reset
@@ -94,10 +259,11 @@ class TensorEnv:
             cumulative_damage_matrix=torch.zeros(
                 (B, N, N), dtype=torch.float32, device=dev
             ),
-            obs_pos=torch.zeros((B, M), dtype=torch.complex64, device=dev),
-            obs_vel=torch.zeros((B, M), dtype=torch.complex64, device=dev),
-            obs_radius=torch.zeros((B, M), dtype=torch.float32, device=dev),
-            obs_gravity_center=torch.zeros((B, M), dtype=torch.complex64, device=dev),
+            obstacle_pos=torch.zeros((B, M), dtype=torch.complex64, device=dev),
+            obstacle_vel=torch.zeros((B, M), dtype=torch.complex64, device=dev),
+            obstacle_radius=torch.zeros((B, M), dtype=torch.float32, device=dev),
+            obstacle_gravity_center=torch.zeros((B, M), dtype=torch.complex64, device=dev),
+            obstacle_hit=torch.zeros((B, M), dtype=torch.bool, device=dev),
         )
 
     def reset_envs(
@@ -183,41 +349,73 @@ class TensorEnv:
         # Clear previous action
         self.state.prev_action[mask] = 0.0
 
-        # Obstacles — energy-based initialization for bounded orbits.
-        # Each obstacle is given a total mechanical energy E sampled from
-        # [0, E_max] where E_max = ½G·R_max² (PE at the orbit boundary).
-        # Position radius r and speed are derived so that KE + PE = E exactly,
-        # guaranteeing the orbit never exceeds R_max from initialization alone.
+        # Obstacles — init strategy and physics type resolved at __init__ time.
         M = self.env_config.num_obstacles
+        self.state.obstacle_hit[mask] = False
         if M > 0:
             R_max = min(world_w, world_h) / 2.0
-            G = self.ship_config.obs_gravity
-            E_max = 0.5 * G * R_max**2
+            G = self.ship_config.obstacle_gravity
 
-            energy = torch.rand((num_reset, M), device=self.device) * E_max  # (R, M)
+            if self.ship_config.obstacle_random_gravity_centers:
+                center_x = torch.rand((num_reset, M), device=self.device) * world_w
+                center_y = torch.rand((num_reset, M), device=self.device) * world_h
+            else:
+                center_x = torch.full((num_reset, M), world_w / 2, device=self.device)
+                center_y = torch.full((num_reset, M), world_h / 2, device=self.device)
+            self.state.obstacle_gravity_center[idx] = torch.complex(center_x, center_y)
 
-            # Max orbital radius for this energy: r_max = sqrt(2E/G)
-            r_max = torch.sqrt(2.0 * energy / G)  # (R, M)
-            r = torch.rand((num_reset, M), device=self.device) * r_max  # (R, M)
+            obstacle_pos, obstacle_vel = self._obstacle_init_fn(
+                G, R_max, num_reset, M, center_x, center_y, world_w, world_h, self.device
+            )
+            self.state.obstacle_pos[idx] = obstacle_pos
+            self.state.obstacle_vel[idx] = obstacle_vel
 
-            # Position: world center + r in a random direction, then wrap
-            theta_pos = torch.rand((num_reset, M), device=self.device) * (2.0 * np.pi)
-            obs_x = (world_w / 2 + r * torch.cos(theta_pos)) % world_w
-            obs_y = (world_h / 2 + r * torch.sin(theta_pos)) % world_h
-            self.state.obs_pos[idx] = torch.complex(obs_x, obs_y)
-
-            # Velocity: remaining KE = E − PE, speed = sqrt(2·KE), random direction
-            KE = energy - 0.5 * G * r**2  # (R, M) — always ≥ 0 since r ≤ r_max
-            speed = torch.sqrt(KE.clamp(min=0.0) * 2.0)  # (R, M)
-            theta_vel = torch.rand((num_reset, M), device=self.device) * (2.0 * np.pi)
-            self.state.obs_vel[idx] = torch.polar(speed, theta_vel)
-
-            radii = self.ship_config.obs_radius_min + torch.rand(
+            radii = self.ship_config.obstacle_radius_min + torch.rand(
                 (num_reset, M), device=self.device
-            ) * (self.ship_config.obs_radius_max - self.ship_config.obs_radius_min)
-            self.state.obs_radius[idx] = radii
+            ) * (self.ship_config.obstacle_radius_max - self.ship_config.obstacle_radius_min)
+            self.state.obstacle_radius[idx] = radii
 
-            self.state.obs_gravity_center[idx] = complex(world_w / 2, world_h / 2)
+            # Warmup: run obstacle-only physics N steps before ships spawn so
+            # obstacles reach a settled configuration.
+            warmup_steps = self.ship_config.obstacle_warmup_steps
+            if warmup_steps > 0:
+                obstacle_pos = self.state.obstacle_pos[idx]
+                obstacle_vel = self.state.obstacle_vel[idx]
+                obstacle_radius_t = self.state.obstacle_radius[idx]
+                obstacle_gravity_center = self.state.obstacle_gravity_center[idx]
+                for _ in range(warmup_steps):
+                    obstacle_pos, obstacle_vel, _ = step_obstacle_physics(
+                        obstacle_pos, obstacle_vel, obstacle_radius_t, obstacle_gravity_center,
+                        self.ship_config, self._obstacle_gravity_fn, self._obstacle_delta_pe_fn,
+                    )
+                self.state.obstacle_pos[idx] = obstacle_pos
+                self.state.obstacle_vel[idx] = obstacle_vel
+
+            # Ship placement PBD — push ships away from settled obstacles so
+            # they don't die on the first frame. 10 iterations, position-only.
+            for _ in range(10):
+                ship_pos = self.state.ship_pos[idx]   # (R, N) complex
+                obstacle_pos_r = self.state.obstacle_pos[idx]   # (R, M) complex
+                obs_rad_r = self.state.obstacle_radius[idx]  # (R, M) float
+
+                # Shortest-path vector from each obstacle to each ship: (R, N, M)
+                diff = ship_pos.unsqueeze(2) - obstacle_pos_r.unsqueeze(1)
+                diff = torch.complex(
+                    (diff.real + world_w / 2) % world_w - world_w / 2,
+                    (diff.imag + world_h / 2) % world_h - world_h / 2,
+                )
+                dist = torch.sqrt(diff.real ** 2 + diff.imag ** 2)  # (R, N, M)
+                hit_r = self.ship_config.obstacle_collision_radius + obs_rad_r.unsqueeze(1)
+                overlap = hit_r - dist  # (R, N, M) — positive when overlapping
+
+                valid = overlap > 0
+                dir_norm = diff / dist.clamp(min=1e-6)
+                scale = torch.where(valid, overlap, torch.zeros_like(overlap))
+                displacement = (scale * dir_norm).sum(dim=2)  # (R, N) complex
+
+                new_x = (ship_pos.real + displacement.real) % world_w
+                new_y = (ship_pos.imag + displacement.imag) % world_h
+                self.state.ship_pos[idx] = torch.complex(new_x, new_y)
 
     # ------------------------------------------------------------------
     # Step
@@ -240,7 +438,9 @@ class TensorEnv:
 
         self.state = update_ships(self.state, actions, self.ship_config)
         self.state = update_bullets(self.state, self.ship_config)
-        self.state = update_obstacles(self.state, self.ship_config)
+        self.state = update_obstacles(
+            self.state, self.ship_config, self._obstacle_gravity_fn, self._obstacle_delta_pe_fn
+        )
         self.state, dones = resolve_collisions(self.state, self.ship_config)
 
         self.state.step_count += 1

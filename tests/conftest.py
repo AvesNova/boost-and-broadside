@@ -112,8 +112,9 @@ def make_state(
         cumulative_damage_matrix=torch.zeros(
             (num_envs, max_ships, max_ships), dtype=torch.float32, device=dev
         ),
-        obs_pos=torch.zeros((num_envs, 0), dtype=torch.complex64, device=dev),
-        obs_vel=torch.zeros((num_envs, 0), dtype=torch.complex64, device=dev),
-        obs_radius=torch.zeros((num_envs, 0), dtype=torch.float32, device=dev),
-        obs_gravity_center=torch.zeros((num_envs, 0), dtype=torch.complex64, device=dev),
+        obstacle_pos=torch.zeros((num_envs, 0), dtype=torch.complex64, device=dev),
+        obstacle_vel=torch.zeros((num_envs, 0), dtype=torch.complex64, device=dev),
+        obstacle_radius=torch.zeros((num_envs, 0), dtype=torch.float32, device=dev),
+        obstacle_gravity_center=torch.zeros((num_envs, 0), dtype=torch.complex64, device=dev),
+        obstacle_hit=torch.zeros((num_envs, 0), dtype=torch.bool, device=dev),
     )

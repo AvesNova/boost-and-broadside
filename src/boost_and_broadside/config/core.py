@@ -64,9 +64,31 @@ class ShipConfig:
     firing_cooldown: float = 0.1  # seconds
 
     # Obstacle physics
-    obs_gravity: float = 5.0  # gravity strength G toward each obstacle's target
-    obs_radius_min: float = 15.0  # minimum obstacle radius (sampled per slot)
-    obs_radius_max: float = 30.0  # maximum obstacle radius
+    obstacle_gravity_harmonic: float = 5.0  # spring constant G  (harmonic: F = G·r)
+    obstacle_gravity_keplerian: float = 1_000_000.0  # gravitational μ (Keplerian: F = μ/r²)
+    obstacle_radius_min: float = 15.0  # minimum obstacle radius (sampled per slot)
+    obstacle_radius_max: float = 30.0  # maximum obstacle radius
+    obstacle_collision_radius: float = (
+        3.0  # ship hitbox radius for obstacle contacts (vs bullet: collision_radius)
+    )
+    obstacle_warmup_steps: int = (
+        0  # obstacle-only steps to run before ships spawn each episode
+    )
+    obstacle_random_gravity_centers: bool = (
+        False  # True: random map positions; False: world center
+    )
+    obstacle_physics: str = "harmonic"  # "harmonic" (spring F=G·r) | "keplerian" (F=G/r²)
+    obstacle_init: str = "orbital"  # "energy" (random E) | "orbital" (r_a, β, θ, α)
+    obstacle_gravity_eps: float = 1.0  # ε added to Keplerian denominator (pixels)
+
+    @property
+    def obstacle_gravity(self) -> float:
+        """Active gravitational constant for the selected obstacle_physics mode."""
+        return (
+            self.obstacle_gravity_keplerian
+            if self.obstacle_physics == "keplerian"
+            else self.obstacle_gravity_harmonic
+        )
 
     # World
     world_size: tuple[float, float] = (1024.0, 1024.0)
