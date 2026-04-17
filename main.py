@@ -244,9 +244,9 @@ def main() -> None:
 
         case "obstacle_stats":
             run_obstacle_stats_mode(
-                num_envs=1024,
+                num_envs=10000,
                 num_obstacles=8,
-                max_steps=10000,
+                max_steps=2048,
                 ship_config=SHIP_CONFIG,
                 device=device,
             )

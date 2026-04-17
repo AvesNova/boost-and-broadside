@@ -65,7 +65,7 @@ def run_obstacle_stats_mode(
 
     # Period threshold: one harmonic orbital period T = 2pi / sqrt(G_harmonic).
     # Used as the required collision-free streak length for both physics modes.
-    period_steps = max(1, round(2.0 * math.pi / math.sqrt(ship_config.obstacle_gravity_harmonic) / ship_config.dt))
+    period_steps = max(1, round(2.0 * 2.0 * math.pi / math.sqrt(ship_config.obstacle_gravity_harmonic) / ship_config.dt))
 
     # --- Gravity centers ---
     if ship_config.obstacle_random_gravity_centers:
@@ -103,7 +103,7 @@ def run_obstacle_stats_mode(
     )
     print(
         f"  period_steps={period_steps}  ({period_steps / sim_fps:.2f}s sim)  "
-        f"[harmonic T = 2pi/sqrt({ship_config.obstacle_gravity_harmonic})]"
+        f"[2 x harmonic T = 2 x 2pi/sqrt({ship_config.obstacle_gravity_harmonic})]"
     )
     t0 = time.perf_counter()
 
