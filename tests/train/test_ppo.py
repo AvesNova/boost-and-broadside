@@ -76,7 +76,10 @@ def _make_trainer(n_fourier_freqs: int = 4, **reward_overrides) -> PPOTrainer:
             scales=(
                 ScaleConfig(
                     env_config=EnvConfig(
-                        num_ships=4, max_bullets=8, max_episode_steps=50
+                        num_ships=8,
+                        max_bullets=8,
+                        max_episode_steps=50,
+                        num_obstacles=0,
                     ),
                     num_envs=4,
                 ),
@@ -196,7 +199,10 @@ class TestSchedulePrimitives:
                 scales=(
                     ScaleConfig(
                         env_config=EnvConfig(
-                            num_ships=4, max_bullets=8, max_episode_steps=50
+                            num_ships=8,
+                            max_bullets=8,
+                            max_episode_steps=50,
+                            num_obstacles=0,
                         ),
                         num_envs=4,
                     ),
@@ -272,7 +278,10 @@ class TestRLSmokeTest:
             scales=(
                 ScaleConfig(
                     env_config=EnvConfig(
-                        num_ships=4, max_bullets=20, max_episode_steps=64
+                        num_ships=8,
+                        max_bullets=20,
+                        max_episode_steps=64,
+                        num_obstacles=0,
                     ),
                     num_envs=16,
                 ),

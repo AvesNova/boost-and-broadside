@@ -30,6 +30,7 @@ class RenderConfig:
         (255, 120, 80),  # team 1: red
     )
     bullet_color: tuple[int, int, int] = (255, 255, 100)
+    obstacle_color: tuple[int, int, int] = (180, 140, 60)  # sandy gold
     background_color: tuple[int, int, int] = (10, 10, 20)
     ship_size: int = 10  # pixels from center to tip
     health_bar_height: int = 4
@@ -72,6 +73,7 @@ class GameRenderer:
 
         surf = self._screen
         surf.fill(self._render_config.background_color)
+        self._draw_obstacles(state, surf)
         self._draw_bullets(state, surf)
         self._draw_ships(state, surf)
         pygame.display.flip()
@@ -132,6 +134,17 @@ class GameRenderer:
                 (0, 200, 0),
                 (bar_x, bar_y, int(bar_w * hp_frac), cfg.health_bar_height),
             )
+
+    def _draw_obstacles(self, state: TensorState, surf: pygame.Surface) -> None:
+        """Draw all obstacles in env 0 as filled circles."""
+        obs_pos = state.obs_pos[0].cpu()  # (M,) complex64
+        obs_radius = state.obs_radius[0].cpu()  # (M,) float32
+        color = self._render_config.obstacle_color
+        for m in range(obs_pos.shape[0]):
+            p = complex(obs_pos[m].item())
+            r = max(1, int(obs_radius[m].item() * self._scale))
+            sx, sy = self._world_to_screen(p)
+            pygame.draw.circle(surf, color, (sx, sy), r)
 
     def _draw_bullets(self, state: TensorState, surf: pygame.Surface) -> None:
         """Draw all active bullets in env 0 as small rectangles."""

@@ -53,6 +53,12 @@ class TensorState:
         torch.Tensor
     )  # (B, N, N) float32  — accumulated this episode; zeroed on reset
 
+    # Obstacle state (M = num_obstacles per env)
+    obs_pos: torch.Tensor  # (B, M) complex64  — world position
+    obs_vel: torch.Tensor  # (B, M) complex64  — velocity
+    obs_radius: torch.Tensor  # (B, M) float32   — collision radius (independent per obstacle)
+    obs_gravity_center: torch.Tensor  # (B, M) complex64  — gravity target (default: world center)
+
     # ------------------------------------------------------------------
     # Convenience properties
     # ------------------------------------------------------------------
@@ -68,6 +74,10 @@ class TensorState:
     @property
     def max_bullets(self) -> int:
         return self.bullet_pos.shape[2]
+
+    @property
+    def num_obstacles(self) -> int:
+        return self.obs_pos.shape[1]
 
     @property
     def device(self) -> torch.device:
@@ -95,4 +105,8 @@ class TensorState:
             bullet_cursor=self.bullet_cursor.clone(),
             damage_matrix=self.damage_matrix.clone(),
             cumulative_damage_matrix=self.cumulative_damage_matrix.clone(),
+            obs_pos=self.obs_pos.clone(),
+            obs_vel=self.obs_vel.clone(),
+            obs_radius=self.obs_radius.clone(),
+            obs_gravity_center=self.obs_gravity_center.clone(),
         )

@@ -16,7 +16,7 @@ def ship_cfg() -> ShipConfig:
 
 @pytest.fixture
 def env_cfg() -> EnvConfig:
-    return EnvConfig(num_ships=8, max_bullets=20, max_episode_steps=100)
+    return EnvConfig(num_ships=8, max_bullets=20, max_episode_steps=100, num_obstacles=0)
 
 
 @pytest.fixture
@@ -148,7 +148,7 @@ class TestTensorEnvStep:
 
     def test_truncated_fires_at_max_episode_steps(self, ship_cfg):
         """truncated must become True exactly when step_count hits max_episode_steps."""
-        env_cfg = EnvConfig(num_ships=2, max_bullets=5, max_episode_steps=3)
+        env_cfg = EnvConfig(num_ships=2, max_bullets=5, max_episode_steps=3, num_obstacles=0)
         env = TensorEnv(
             num_envs=1, ship_config=ship_cfg, env_config=env_cfg, device="cpu"
         )
@@ -251,7 +251,7 @@ class TestMVPEnvWrapper:
 
     def test_episode_info_returned_on_done(self, ship_cfg, reward_cfg):
         """info dict must contain ep_reward and ep_length when an episode ends."""
-        env_cfg = EnvConfig(num_ships=2, max_bullets=5, max_episode_steps=2)
+        env_cfg = EnvConfig(num_ships=2, max_bullets=5, max_episode_steps=2, num_obstacles=0)
         wrapper = MVPEnvWrapper(
             num_envs=1,
             ship_config=ship_cfg,

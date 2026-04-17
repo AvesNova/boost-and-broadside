@@ -63,6 +63,11 @@ class ShipConfig:
     bullet_spread: float = 12.0  # pixels/s of noise added to velocity
     firing_cooldown: float = 0.1  # seconds
 
+    # Obstacle physics
+    obs_gravity: float = 5.0  # gravity strength G toward each obstacle's target
+    obs_radius_min: float = 15.0  # minimum obstacle radius (sampled per slot)
+    obs_radius_max: float = 30.0  # maximum obstacle radius
+
     # World
     world_size: tuple[float, float] = (1024.0, 1024.0)
 
@@ -77,6 +82,7 @@ class EnvConfig:
     num_ships: int  # total ships per env (both teams combined)
     max_bullets: int  # bullet ring-buffer size per ship
     max_episode_steps: int  # truncation horizon
+    num_obstacles: int  # M — number of obstacles per environment
 
 
 @dataclass(frozen=True)

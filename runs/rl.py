@@ -64,7 +64,9 @@ RL_TRAIN_CONFIG = TrainConfig(
         #     num_envs=_MAX_TOKENS // 4 // 2,
         # ),
         ScaleConfig(
-            env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=1024),
+            env_config=EnvConfig(
+                num_ships=8, max_bullets=20, max_episode_steps=1024, num_obstacles=5
+            ),
             num_envs=_MAX_TOKENS // 8,
         ),
     ),

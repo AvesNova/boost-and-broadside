@@ -13,6 +13,7 @@ from boost_and_broadside.env.state import TensorState
 from boost_and_broadside.env.physics import (
     update_ships,
     update_bullets,
+    update_obstacles,
     resolve_collisions,
 )
 
@@ -68,6 +69,7 @@ class TensorEnv:
         B = self.num_envs
         N = self.env_config.num_ships
         K = self.env_config.max_bullets
+        M = self.env_config.num_obstacles
         dev = self.device
 
         self.state = TensorState(
@@ -92,6 +94,10 @@ class TensorEnv:
             cumulative_damage_matrix=torch.zeros(
                 (B, N, N), dtype=torch.float32, device=dev
             ),
+            obs_pos=torch.zeros((B, M), dtype=torch.complex64, device=dev),
+            obs_vel=torch.zeros((B, M), dtype=torch.complex64, device=dev),
+            obs_radius=torch.zeros((B, M), dtype=torch.float32, device=dev),
+            obs_gravity_center=torch.zeros((B, M), dtype=torch.complex64, device=dev),
         )
 
     def reset_envs(
@@ -177,6 +183,42 @@ class TensorEnv:
         # Clear previous action
         self.state.prev_action[mask] = 0.0
 
+        # Obstacles — energy-based initialization for bounded orbits.
+        # Each obstacle is given a total mechanical energy E sampled from
+        # [0, E_max] where E_max = ½G·R_max² (PE at the orbit boundary).
+        # Position radius r and speed are derived so that KE + PE = E exactly,
+        # guaranteeing the orbit never exceeds R_max from initialization alone.
+        M = self.env_config.num_obstacles
+        if M > 0:
+            R_max = min(world_w, world_h) / 2.0
+            G = self.ship_config.obs_gravity
+            E_max = 0.5 * G * R_max**2
+
+            energy = torch.rand((num_reset, M), device=self.device) * E_max  # (R, M)
+
+            # Max orbital radius for this energy: r_max = sqrt(2E/G)
+            r_max = torch.sqrt(2.0 * energy / G)  # (R, M)
+            r = torch.rand((num_reset, M), device=self.device) * r_max  # (R, M)
+
+            # Position: world center + r in a random direction, then wrap
+            theta_pos = torch.rand((num_reset, M), device=self.device) * (2.0 * np.pi)
+            obs_x = (world_w / 2 + r * torch.cos(theta_pos)) % world_w
+            obs_y = (world_h / 2 + r * torch.sin(theta_pos)) % world_h
+            self.state.obs_pos[idx] = torch.complex(obs_x, obs_y)
+
+            # Velocity: remaining KE = E − PE, speed = sqrt(2·KE), random direction
+            KE = energy - 0.5 * G * r**2  # (R, M) — always ≥ 0 since r ≤ r_max
+            speed = torch.sqrt(KE.clamp(min=0.0) * 2.0)  # (R, M)
+            theta_vel = torch.rand((num_reset, M), device=self.device) * (2.0 * np.pi)
+            self.state.obs_vel[idx] = torch.polar(speed, theta_vel)
+
+            radii = self.ship_config.obs_radius_min + torch.rand(
+                (num_reset, M), device=self.device
+            ) * (self.ship_config.obs_radius_max - self.ship_config.obs_radius_min)
+            self.state.obs_radius[idx] = radii
+
+            self.state.obs_gravity_center[idx] = complex(world_w / 2, world_h / 2)
+
     # ------------------------------------------------------------------
     # Step
     # ------------------------------------------------------------------
@@ -198,6 +240,7 @@ class TensorEnv:
 
         self.state = update_ships(self.state, actions, self.ship_config)
         self.state = update_bullets(self.state, self.ship_config)
+        self.state = update_obstacles(self.state, self.ship_config)
         self.state, dones = resolve_collisions(self.state, self.ship_config)
 
         self.state.step_count += 1

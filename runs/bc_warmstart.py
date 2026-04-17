@@ -17,7 +17,9 @@ from runs.shared import REWARDS
 BC_WARMSTART_PRETRAIN_CONFIG = TrainConfig(
     scales=(
         ScaleConfig(
-            env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=1024),
+            env_config=EnvConfig(
+                num_ships=8, max_bullets=20, max_episode_steps=1024, num_obstacles=0
+            ),
             num_envs=3 * _MAX_TOKENS // 3 // 8,
         ),
     ),

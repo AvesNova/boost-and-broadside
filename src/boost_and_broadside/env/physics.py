@@ -297,10 +297,89 @@ def update_bullets(state: TensorState, config: ShipConfig) -> TensorState:
     return state
 
 
+def update_obstacles(state: TensorState, config: ShipConfig) -> TensorState:
+    """Advance obstacle physics: gravity, kinematics, PBD overlap resolution, and wrap.
+
+    Uses semi-implicit Euler for gravity + kinematics. One pass of Position-Based
+    Dynamics separates overlapping obstacles. Velocity magnitudes are then adjusted
+    to conserve each obstacle's mechanical energy (KE + PE = ½Gv² + ½Gr²) through
+    the PBD step, preventing collisions from inflating orbital radii over time.
+    Velocity direction is preserved; only speed is rescaled.
+
+    GPU kernel: kept together for performance.
+
+    Args:
+        state: Current state (mutated in-place).
+        config: Physics configuration.
+
+    Returns:
+        The mutated state.
+    """
+    M = state.num_obstacles
+    if M == 0:
+        return state
+
+    device = state.device
+    world_w, world_h = config.world_size
+
+    # --- Gravity: semi-implicit Euler ---
+    diff = state.obs_gravity_center - state.obs_pos  # (B, M) complex — new tensor
+    diff.real = (diff.real + world_w / 2) % world_w - world_w / 2
+    diff.imag = (diff.imag + world_h / 2) % world_h - world_h / 2
+    state.obs_vel = state.obs_vel + diff * config.obs_gravity * config.dt
+
+    # --- Kinematics ---
+    state.obs_pos = state.obs_pos + state.obs_vel * config.dt
+
+    # --- PBD: separate overlapping obstacles ---
+    # Snapshot squared distance to gravity center before correction — needed below
+    # because PBD shifts positions and changes PE without touching velocity.
+    pre = state.obs_pos - state.obs_gravity_center  # (B, M) complex — new tensor
+    pre.real = (pre.real + world_w / 2) % world_w - world_w / 2
+    pre.imag = (pre.imag + world_h / 2) % world_h - world_h / 2
+    r_sq_pre = pre.real**2 + pre.imag**2  # (B, M)
+
+    # pbd_diff[b, i, j] = wrapped vector from obstacle j to obstacle i
+    pbd_diff = state.obs_pos.unsqueeze(2) - state.obs_pos.unsqueeze(1)  # (B, M, M) complex
+    pbd_diff.real = (pbd_diff.real + world_w / 2) % world_w - world_w / 2
+    pbd_diff.imag = (pbd_diff.imag + world_h / 2) % world_h - world_h / 2
+
+    dist = torch.sqrt(pbd_diff.real**2 + pbd_diff.imag**2)  # (B, M, M)
+    min_dist = state.obs_radius.unsqueeze(2) + state.obs_radius.unsqueeze(1)  # (B, M, M)
+    overlap = min_dist - dist  # (B, M, M)
+
+    eye = torch.eye(M, dtype=torch.bool, device=device).unsqueeze(0)  # (1, M, M)
+    valid = (overlap > 0) & ~eye  # (B, M, M)
+    scale_pbd = torch.where(valid, 0.5 * overlap, torch.zeros_like(overlap))  # (B, M, M)
+    displacement = scale_pbd * (pbd_diff / torch.clamp(dist, min=1e-6))  # (B, M, M) complex
+    state.obs_pos = state.obs_pos + displacement.sum(dim=2)  # (B, M)
+
+    # --- Energy conservation: rescale speed to compensate for PBD-induced ΔPE ---
+    # PE = ½Gr², so ΔPE = ½G(r_after² − r_before²).
+    # new KE = old KE − ΔPE; clamp to 0 if PBD pushed past total energy.
+    # Only speed magnitude changes; velocity direction is preserved.
+    post = state.obs_pos - state.obs_gravity_center  # (B, M) complex — new tensor
+    post.real = (post.real + world_w / 2) % world_w - world_w / 2
+    post.imag = (post.imag + world_h / 2) % world_h - world_h / 2
+    r_sq_post = post.real**2 + post.imag**2  # (B, M)
+
+    delta_pe = 0.5 * config.obs_gravity * (r_sq_post - r_sq_pre)  # (B, M)
+    speed_sq = state.obs_vel.real**2 + state.obs_vel.imag**2  # (B, M)
+    new_speed_sq = torch.clamp(speed_sq - 2.0 * delta_pe, min=0.0)  # (B, M)
+    vel_scale = torch.sqrt(new_speed_sq / torch.clamp(speed_sq, min=1e-12))  # (B, M)
+    state.obs_vel = state.obs_vel * vel_scale  # (B, M) complex × float
+
+    # --- Toroidal wrap ---
+    state.obs_pos.real = state.obs_pos.real % world_w
+    state.obs_pos.imag = state.obs_pos.imag % world_h
+
+    return state
+
+
 def resolve_collisions(
     state: TensorState, config: ShipConfig
 ) -> Tuple[TensorState, torch.Tensor]:
-    """Detect bullet-ship collisions, apply damage, and check game-over.
+    """Detect bullet-ship and obstacle-ship collisions, apply damage, and check game-over.
 
     Args:
         state: Current state (mutated in-place).
@@ -310,6 +389,8 @@ def resolve_collisions(
         (state, dones) where dones is a (B,) bool tensor.
     """
     state = _apply_combat_damage(state, config)
+    if state.num_obstacles > 0:
+        state = _apply_obstacle_damage(state, config)
     dones = _check_game_over(state)
     return state, dones
 
@@ -396,6 +477,38 @@ def _apply_combat_damage(state: TensorState, config: ShipConfig) -> TensorState:
     # Deactivate bullets that connected
     hit_any_ship = valid_hit.any(dim=1)  # (B, N*K)
     state.bullet_active.view(batch_size, -1)[hit_any_ship] = False
+
+    return state
+
+
+def _apply_obstacle_damage(state: TensorState, config: ShipConfig) -> TensorState:
+    """Instantly kill any alive ship whose center is within (ship_radius + obs_radius) of an obstacle.
+
+    Args:
+        state: Current state (mutated in-place).
+        config: Physics configuration.
+
+    Returns:
+        The mutated state.
+    """
+    world_w, world_h = config.world_size
+
+    # Wrapped vectors from each ship to each obstacle: (B, N, M) complex
+    diff = state.ship_pos.unsqueeze(2) - state.obs_pos.unsqueeze(1)
+    diff = diff.clone()
+    diff.real = (diff.real + world_w / 2) % world_w - world_w / 2
+    diff.imag = (diff.imag + world_h / 2) % world_h - world_h / 2
+
+    dist_sq = diff.real**2 + diff.imag**2  # (B, N, M) float
+    hit_radius = config.collision_radius + state.obs_radius.unsqueeze(1)  # (B, N, M) float
+
+    # A ship is hit if it overlaps any obstacle and was alive before this check
+    hit_mask = (
+        (dist_sq < hit_radius**2) & state.ship_alive.unsqueeze(2)
+    ).any(dim=2)  # (B, N) bool
+
+    state.ship_health = torch.where(hit_mask, torch.zeros_like(state.ship_health), state.ship_health)
+    state.ship_alive = state.ship_alive & ~hit_mask
 
     return state
 

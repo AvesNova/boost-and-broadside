@@ -15,7 +15,7 @@ def ship_config() -> ShipConfig:
 
 @pytest.fixture
 def env_config() -> EnvConfig:
-    return EnvConfig(num_ships=8, max_bullets=20, max_episode_steps=500)
+    return EnvConfig(num_ships=8, max_bullets=20, max_episode_steps=500, num_obstacles=0)
 
 
 @pytest.fixture
@@ -112,4 +112,8 @@ def make_state(
         cumulative_damage_matrix=torch.zeros(
             (num_envs, max_ships, max_ships), dtype=torch.float32, device=dev
         ),
+        obs_pos=torch.zeros((num_envs, 0), dtype=torch.complex64, device=dev),
+        obs_vel=torch.zeros((num_envs, 0), dtype=torch.complex64, device=dev),
+        obs_radius=torch.zeros((num_envs, 0), dtype=torch.float32, device=dev),
+        obs_gravity_center=torch.zeros((num_envs, 0), dtype=torch.complex64, device=dev),
     )

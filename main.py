@@ -194,7 +194,7 @@ def main() -> None:
                 team1_spec=team1,
                 ship_config=SHIP_CONFIG,
                 env_config=EnvConfig(
-                    num_ships=4, max_bullets=20, max_episode_steps=1024
+                    num_ships=8, max_bullets=20, max_episode_steps=1024, num_obstacles=8
                 ),
                 rewards=REWARDS,
                 model_config=MODEL_CONFIG,
@@ -212,7 +212,7 @@ def main() -> None:
                 num_envs=1024,
                 ship_config=SHIP_CONFIG,
                 env_config=EnvConfig(
-                    num_ships=4, max_bullets=20, max_episode_steps=1024
+                    num_ships=8, max_bullets=20, max_episode_steps=1024, num_obstacles=0
                 ),
                 model_config=MODEL_CONFIG,
                 device=device,
@@ -225,7 +225,7 @@ def main() -> None:
                 num_envs=1024,
                 ship_config=SHIP_CONFIG,
                 env_config=EnvConfig(
-                    num_ships=4, max_bullets=20, max_episode_steps=1024
+                    num_ships=8, max_bullets=20, max_episode_steps=1024, num_obstacles=0
                 ),
                 model_config=MODEL_CONFIG,
                 device=device,
