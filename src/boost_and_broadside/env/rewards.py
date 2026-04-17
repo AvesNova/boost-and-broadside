@@ -462,6 +462,51 @@ class LocalObstacleDeathReward(RewardComponent):
         return reward
 
 
+class ObstacleProximityReward(RewardComponent):
+    """Negative reward proportional to proximity to the nearest obstacle edge.
+
+    Reward = -1 / (dist_to_nearest_edge + 1), applied every step to alive ships.
+    Approaches -1 as a ship touches the obstacle edge, approaches 0 far away.
+    Self-only: lambda=0 for all other ships.
+    """
+
+    name = "obstacle_proximity"
+
+    def __init__(self, weight: float, world_size: tuple[float, float]) -> None:
+        self._weight = weight
+        self._world_w, self._world_h = world_size
+
+    @property
+    def weight(self) -> float:
+        return self._weight
+
+    def compute(
+        self,
+        prev_state: TensorState,
+        actions: torch.Tensor,
+        next_state: TensorState,
+        dones: torch.Tensor,
+    ) -> torch.Tensor:
+        M = next_state.obstacle_pos.shape[1]
+        if M == 0:
+            return torch.zeros_like(next_state.ship_health)
+
+        world_w, world_h = self._world_w, self._world_h
+
+        # Toroidal vector from each ship to each obstacle center
+        dx = next_state.obstacle_pos.real.unsqueeze(1) - next_state.ship_pos.real.unsqueeze(2)
+        dy = next_state.obstacle_pos.imag.unsqueeze(1) - next_state.ship_pos.imag.unsqueeze(2)
+        dx = (dx + world_w / 2) % world_w - world_w / 2
+        dy = (dy + world_h / 2) % world_h - world_h / 2
+
+        dist_to_center = torch.sqrt(dx**2 + dy**2)  # (B, N, M)
+        dist_to_edge, _ = (dist_to_center - next_state.obstacle_radius.unsqueeze(1)).min(dim=2)
+        dist_to_edge = dist_to_edge.clamp(min=0.0)  # (B, N)
+
+        reward = -1.0 / (dist_to_edge + 1.0)  # (B, N), range (-1, 0]
+        return reward * next_state.ship_alive.float()
+
+
 class LocalDamageTakenReward(RewardComponent):
     """Damage received by this ship this step.
 
@@ -794,8 +839,9 @@ REWARD_COMPONENT_NAMES: tuple[str, ...] = (
     "damage_dealt_enemy",  # 12 — damage dealt to enemies this step (self only)
     "damage_dealt_ally",  # 13 — damage dealt to allies this step — friendly-fire penalty (self only)
     "death",  # 14 — -1 on the step this ship dies (self only)
-    "bullet_death",   # 15 — -1 on the step this ship is killed by a bullet (self only)
-    "obstacle_death", # 16 — -1 on the step this ship is killed by an obstacle (self only)
+    "bullet_death",        # 15 — -1 on the step this ship is killed by a bullet (self only)
+    "obstacle_death",      # 16 — -1 on the step this ship is killed by an obstacle (self only)
+    "obstacle_proximity",  # 17 — -1/(dist_to_edge+1) each step, alive ships only (self only)
 )
 
 _NAME_TO_K: dict[str, int] = {name: k for k, name in enumerate(REWARD_COMPONENT_NAMES)}
@@ -847,6 +893,10 @@ def build_reward_components(
         LocalDeathReward(weight=rewards.death_weight),
         LocalBulletDeathReward(weight=rewards.bullet_death_weight),
         LocalObstacleDeathReward(weight=rewards.obstacle_death_weight),
+        ObstacleProximityReward(
+            weight=rewards.obstacle_proximity_weight,
+            world_size=ship_config.world_size,
+        ),
     ]
 
 

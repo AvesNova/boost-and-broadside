@@ -50,6 +50,7 @@ def base_rewards() -> RewardConfig:
         ),
         bullet_death_weight=0.0,
         obstacle_death_weight=0.0,
+        obstacle_proximity_weight=0.0,
         disabled_rewards=frozenset(),
     )
 

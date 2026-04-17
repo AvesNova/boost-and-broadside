@@ -216,6 +216,7 @@ class RewardConfig:
     )
     bullet_death_weight: float  # -1 on the step this ship dies to a bullet
     obstacle_death_weight: float  # -1 on the step this ship dies to an obstacle
+    obstacle_proximity_weight: float  # -1/(dist_to_edge+1) each step, alive ships only
 
     # --- Geometry params (required, no defaults) ---
     proximity_radius: float  # falloff radius used by FacingReward

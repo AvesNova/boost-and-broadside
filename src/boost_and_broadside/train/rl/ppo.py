@@ -146,6 +146,7 @@ _GROUP: dict[str, str] = {
     "death": "local_scale",
     "bullet_death": "local_scale",
     "obstacle_death": "local_scale",
+    "obstacle_proximity": "local_scale",
 }
 
 # Components that use diagonal lambda (self-only: i==j). These must match the
@@ -164,6 +165,7 @@ _LOCAL_COMPONENTS: frozenset[str] = frozenset(
         "death",
         "bullet_death",
         "obstacle_death",
+        "obstacle_proximity",
     }
 )
 
