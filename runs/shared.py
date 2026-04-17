@@ -43,6 +43,8 @@ REWARDS = RewardConfig(
     damage_dealt_enemy_weight=1.0,
     damage_dealt_ally_weight=1.0,
     death_weight=1.0,
+    bullet_death_weight=0.0,
+    obstacle_death_weight=0.0,
     # Geometry params
     proximity_radius=400.0,
     shoot_quality_radius=200.0,

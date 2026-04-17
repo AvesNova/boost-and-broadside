@@ -22,7 +22,7 @@ def model_cfg() -> ModelConfig:
 NUM_VALUE_COMPONENTS = 12  # fixed K for encoder/policy unit tests
 
 
-def _make_obs(B: int, N: int) -> dict[str, torch.Tensor]:
+def _make_obs(B: int, N: int, M: int = 0) -> dict[str, torch.Tensor]:
     """Build a minimal random obs dict matching MVPEnvWrapper output."""
     return {
         "pos": torch.rand(B, N, 2),
@@ -33,6 +33,11 @@ def _make_obs(B: int, N: int) -> dict[str, torch.Tensor]:
         "team_id": torch.randint(0, 2, (B, N)),
         "alive": torch.ones(B, N, dtype=torch.bool),
         "prev_action": torch.zeros(B, N, 3, dtype=torch.long),
+        "obstacle_pos": torch.rand(B, M, 2),
+        "obstacle_vel": torch.randn(B, M, 2),
+        "obstacle_radius": torch.rand(B, M, 1),
+        "obstacle_gravity_center": torch.rand(B, M, 2),
+        "obstacle_hit": torch.zeros(B, M, 1),
     }
 
 

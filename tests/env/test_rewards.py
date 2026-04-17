@@ -54,6 +54,8 @@ def reward_cfg() -> RewardConfig:
         damage_dealt_enemy_weight=1.0,
         damage_dealt_ally_weight=1.0,
         death_weight=1.0,
+        bullet_death_weight=0.0,
+        obstacle_death_weight=0.0,
         proximity_radius=500.0,
         shoot_quality_radius=200.0,
         enemy_neg_lambda_components=frozenset(
@@ -79,8 +81,8 @@ def _make_4ship_state(cfg):
 
 
 class TestRewardComponentNames:
-    def test_k_equals_15(self):
-        assert len(REWARD_COMPONENT_NAMES) == 15
+    def test_k_equals_17(self):
+        assert len(REWARD_COMPONENT_NAMES) == 17
 
     def test_ally_damage_is_index_0(self):
         assert REWARD_COMPONENT_NAMES[0] == "ally_damage"

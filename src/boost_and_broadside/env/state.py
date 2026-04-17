@@ -60,6 +60,9 @@ class TensorState:
     obstacle_gravity_center: torch.Tensor  # (B, M) complex64  — gravity target (default: world center)
     obstacle_hit: torch.Tensor  # (B, M) bool       — True if colliding with another obstacle or a ship this step
 
+    # Per-step obstacle damage to ships (zeroed at start of each step)
+    ship_obstacle_damage: torch.Tensor  # (B, N) float32  — obstacle damage taken this step
+
     # ------------------------------------------------------------------
     # Convenience properties
     # ------------------------------------------------------------------
@@ -111,4 +114,5 @@ class TensorState:
             obstacle_radius=self.obstacle_radius.clone(),
             obstacle_gravity_center=self.obstacle_gravity_center.clone(),
             obstacle_hit=self.obstacle_hit.clone(),
+            ship_obstacle_damage=self.ship_obstacle_damage.clone(),
         )

@@ -95,6 +95,7 @@ def _slice_state(state: TensorState, start: int, end: int) -> TensorState:
         obstacle_radius=state.obstacle_radius[start:end],
         obstacle_gravity_center=state.obstacle_gravity_center[start:end],
         obstacle_hit=state.obstacle_hit[start:end],
+        ship_obstacle_damage=state.ship_obstacle_damage[start:end],
     )
 
 
@@ -143,6 +144,8 @@ _GROUP: dict[str, str] = {
     "damage_dealt_enemy": "local_scale",
     "damage_dealt_ally": "local_scale",
     "death": "local_scale",
+    "bullet_death": "local_scale",
+    "obstacle_death": "local_scale",
 }
 
 # Components that use diagonal lambda (self-only: i==j). These must match the
@@ -159,6 +162,8 @@ _LOCAL_COMPONENTS: frozenset[str] = frozenset(
         "damage_dealt_enemy",
         "damage_dealt_ally",
         "death",
+        "bullet_death",
+        "obstacle_death",
     }
 )
 

@@ -36,6 +36,8 @@ def _make_rewards(**overrides) -> RewardConfig:
         damage_dealt_enemy_weight=0.1,
         damage_dealt_ally_weight=0.1,
         death_weight=0.5,
+        bullet_death_weight=0.0,
+        obstacle_death_weight=0.0,
         proximity_radius=300.0,
         shoot_quality_radius=200.0,
         enemy_neg_lambda_components=frozenset(

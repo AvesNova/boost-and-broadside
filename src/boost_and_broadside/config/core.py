@@ -64,10 +64,12 @@ class ShipConfig:
     firing_cooldown: float = 0.1  # seconds
 
     # Obstacle physics
-    obstacle_gravity_harmonic: float = 5.0  # spring constant G  (harmonic: F = G·r)
-    obstacle_gravity_keplerian: float = 1_000_000.0  # gravitational μ (Keplerian: F = μ/r²)
-    obstacle_radius_min: float = 15.0  # minimum obstacle radius (sampled per slot)
-    obstacle_radius_max: float = 30.0  # maximum obstacle radius
+    obstacle_gravity_harmonic: float = 0.5  # spring constant G  (harmonic: F = G·r)
+    obstacle_gravity_keplerian: float = (
+        1_000_000.0  # gravitational μ (Keplerian: F = μ/r²)
+    )
+    obstacle_radius_min: float = 5.0  # minimum obstacle radius (sampled per slot)
+    obstacle_radius_max: float = 40.0  # maximum obstacle radius
     obstacle_collision_radius: float = (
         3.0  # ship hitbox radius for obstacle contacts (vs bullet: collision_radius)
     )
@@ -75,11 +77,16 @@ class ShipConfig:
         0  # obstacle-only steps to run before ships spawn each episode
     )
     obstacle_random_gravity_centers: bool = (
-        False  # True: random map positions; False: world center
+        True  # True: random map positions; False: world center
     )
-    obstacle_physics: str = "harmonic"  # "harmonic" (spring F=G·r) | "keplerian" (F=G/r²)
+    obstacle_physics: str = (
+        "harmonic"  # "harmonic" (spring F=G·r) | "keplerian" (F=G/r²)
+    )
     obstacle_init: str = "orbital"  # "energy" (random E) | "orbital" (r_a, β, θ, α)
     obstacle_gravity_eps: float = 1.0  # ε added to Keplerian denominator (pixels)
+
+    # Ship spawn safety
+    ship_spawn_safety_k: int = 3  # velocity lookahead steps for rejection border
 
     @property
     def obstacle_gravity(self) -> float:
@@ -105,6 +112,20 @@ class EnvConfig:
     max_bullets: int  # bullet ring-buffer size per ship
     max_episode_steps: int  # truncation horizon
     num_obstacles: int  # M — number of obstacles per environment
+
+
+@dataclass(frozen=True)
+class ObstacleCacheConfig:
+    """Operational settings for the pre-converged obstacle map cache.
+
+    Not a hyperparameter — these control how the cache is built and loaded,
+    not the physics or learning dynamics.
+    """
+
+    path: str | None = None  # None = don't use cache; path = load from file
+    num_snapshots: int = 2000  # S — number of converged configs to store
+    sim_envs: int = 4096  # parallel envs used while building the cache
+    max_steps: int = 10000  # max sim steps per build run
 
 
 @dataclass(frozen=True)
@@ -193,6 +214,8 @@ class RewardConfig:
     death_weight: (
         float  # -1 on the step this ship dies; fires via just_died, not alive mask
     )
+    bullet_death_weight: float  # -1 on the step this ship dies to a bullet
+    obstacle_death_weight: float  # -1 on the step this ship dies to an obstacle
 
     # --- Geometry params (required, no defaults) ---
     proximity_radius: float  # falloff radius used by FacingReward

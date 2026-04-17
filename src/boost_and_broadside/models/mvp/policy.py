@@ -31,7 +31,7 @@ from boost_and_broadside.constants import (
     TURN_SLICE,
     SHOOT_SLICE,
 )
-from boost_and_broadside.models.mvp.encoder import ShipEncoder
+from boost_and_broadside.models.mvp.encoder import ShipEncoder, ObstacleEncoder
 from boost_and_broadside.models.mvp.attention import TransformerBlock
 
 
@@ -101,6 +101,7 @@ class MVPPolicy(nn.Module):
         self._K = num_value_components
 
         self.encoder = ShipEncoder(model_config, ship_config)
+        self.obstacle_encoder = ObstacleEncoder(model_config)
         self.transformer_blocks = nn.ModuleList(
             [
                 TransformerBlock(model_config)
@@ -203,11 +204,19 @@ class MVPPolicy(nn.Module):
             new_hidden: (1, B*N, D) updated GRU state.
         """
         alive = obs["alive"]  # (B, N) bool
-        x = self.encoder(obs)  # (B, N, D)
+        ship_tokens = self.encoder(obs)  # (B, N, D)
+        B, N, D = ship_tokens.shape
+        M = obs["obstacle_pos"].shape[1]
+        if M > 0:
+            obs_tokens = self.obstacle_encoder(obs)  # (B, M, D)
+            tokens = torch.cat([ship_tokens, obs_tokens], dim=1)  # (B, N+M, D)
+            obs_alive = torch.ones(B, M, dtype=torch.bool, device=alive.device)
+            mask = torch.cat([alive, obs_alive], dim=1)  # (B, N+M)
+        else:
+            tokens, mask = ship_tokens, alive
         for block in self.transformer_blocks:
-            x = block(x, alive)  # (B, N, D)
-
-        B, N, D = x.shape
+            tokens = block(tokens, mask)
+        x = tokens[:, :N, :]  # (B, N, D) — obstacle tokens discarded here
         x_step = x.reshape(B * N, D).unsqueeze(0)  # (1, B*N, D)
         gru_out, new_hidden = self.gru(x_step, hidden)  # (1, B*N, D)
         gru_out = gru_out.squeeze(0).reshape(B, N, D)  # (B, N, D)
@@ -254,9 +263,19 @@ class MVPPolicy(nn.Module):
         flat_obs = {k: v.reshape(T * B, *v.shape[2:]) for k, v in obs.items()}
         flat_alive = alive_mask.reshape(T * B, N)
 
-        x = self.encoder(flat_obs)  # (T*B, N, D)
+        ship_tokens = self.encoder(flat_obs)  # (T*B, N, D)
+        TB, _N, D = ship_tokens.shape
+        M = flat_obs["obstacle_pos"].shape[1]
+        if M > 0:
+            obs_tokens = self.obstacle_encoder(flat_obs)  # (T*B, M, D)
+            tokens = torch.cat([ship_tokens, obs_tokens], dim=1)  # (T*B, N+M, D)
+            obs_alive = torch.ones(TB, M, dtype=torch.bool, device=flat_alive.device)
+            flat_mask = torch.cat([flat_alive, obs_alive], dim=1)  # (T*B, N+M)
+        else:
+            tokens, flat_mask = ship_tokens, flat_alive
         for block in self.transformer_blocks:
-            x = block(x, flat_alive)  # (T*B, N, D)
+            tokens = block(tokens, flat_mask)
+        x = tokens[:, :N, :]  # (T*B, N, D) — obstacle tokens discarded here
 
         # GRU over time — reshape to (T, B*N, D) for sequential processing
         x_seq = x.reshape(T, B, N, D).reshape(T, B * N, D)  # (T, B*N, D)

@@ -1,4 +1,4 @@
-"""Ship token encoder for the MVP policy.
+"""Ship and obstacle token encoders for the MVP policy.
 
 Encodes each ship's raw state into a d_model-dimensional token suitable
 for the relational self-attention layer.
@@ -187,3 +187,84 @@ class ShipEncoder(nn.Module):
         )  # (..., N, 57 + 4*n_freqs - 2)
 
         return self.feature_extractor(raw)  # (..., N, d_model)
+
+
+def _obstacle_raw_dim(n_fourier_freqs: int) -> int:
+    """Raw obstacle feature dimension.
+
+    obstacle_pos Fourier:            4 * n_fourier_freqs
+    obstacle_gravity_center Fourier: 4 * n_fourier_freqs
+    obstacle_vel symlog:             2
+    obstacle_radius scalar:          1
+    obstacle_hit scalar:             1
+    """
+    return 8 * n_fourier_freqs + 4
+
+
+class ObstacleEncoder(nn.Module):
+    """Encodes each obstacle's raw observations into a d_model-dim token.
+
+    Shares the same Fourier encoding and MLP structure as ShipEncoder so that
+    position features are on the same scale. Obstacle tokens are then concatenated
+    with ship tokens and processed by the shared transformer blocks.
+
+    Input features (per obstacle):
+        obstacle_pos Fourier (x, y):         4 * n_freqs dims
+        obstacle_gravity_center Fourier:     4 * n_freqs dims
+        obstacle_vel symlog (vx, vy):        2 dims
+        obstacle_radius (normalized scalar): 1 dim
+        obstacle_hit (collision flag):       1 dim
+        ───────────────────────────────────────
+        Total:                               8 * n_freqs + 4 dims
+    """
+
+    def __init__(self, model_config: ModelConfig) -> None:
+        super().__init__()
+        self.n_freqs = model_config.n_fourier_freqs
+        d = model_config.d_model
+        in_dim = _obstacle_raw_dim(self.n_freqs)
+        self.feature_extractor = nn.Sequential(
+            nn.Linear(in_dim, 2 * d),
+            nn.RMSNorm(2 * d),
+            nn.GELU(),
+            nn.Linear(2 * d, d),
+            nn.RMSNorm(d),
+        )
+
+    def forward(self, obs: dict[str, torch.Tensor]) -> torch.Tensor:
+        """Encode obstacle observations into obstacle tokens.
+
+        Args:
+            obs: Dict containing obstacle keys from MVPEnvWrapper._get_obs():
+                "obstacle_pos":            (..., M, 2) float32 — normalized [0,1]
+                "obstacle_vel":            (..., M, 2) float32 — raw velocities
+                "obstacle_radius":         (..., M, 1) float32 — normalised radius
+                "obstacle_gravity_center": (..., M, 2) float32 — normalized [0,1]
+                "obstacle_hit":            (..., M, 1) float32 — collision flag
+
+        Returns:
+            (..., M, d_model) float32 token tensor.
+        """
+        obs_pos = obs["obstacle_pos"]               # (..., M, 2)
+        obs_vel = obs["obstacle_vel"]               # (..., M, 2)
+        obs_radius = obs["obstacle_radius"]         # (..., M, 1)
+        obs_gcenter = obs["obstacle_gravity_center"]  # (..., M, 2)
+        obs_hit = obs["obstacle_hit"]               # (..., M, 1)
+
+        # Fourier-encode position (coords already in [0, 1])
+        px_enc = _fourier_encode(obs_pos[..., 0], self.n_freqs, 1.0)   # (..., M, 2*n_freqs)
+        py_enc = _fourier_encode(obs_pos[..., 1], self.n_freqs, 1.0)
+        pos_feat = torch.cat([px_enc, py_enc], dim=-1)                  # (..., M, 4*n_freqs)
+
+        # Fourier-encode gravity centre
+        gx_enc = _fourier_encode(obs_gcenter[..., 0], self.n_freqs, 1.0)
+        gy_enc = _fourier_encode(obs_gcenter[..., 1], self.n_freqs, 1.0)
+        gc_feat = torch.cat([gx_enc, gy_enc], dim=-1)                   # (..., M, 4*n_freqs)
+
+        vel_feat = _symlog(obs_vel)                                      # (..., M, 2)
+
+        raw = torch.cat(
+            [pos_feat, gc_feat, vel_feat, obs_radius, obs_hit], dim=-1
+        )  # (..., M, 8*n_freqs + 4)
+
+        return self.feature_extractor(raw)  # (..., M, d_model)

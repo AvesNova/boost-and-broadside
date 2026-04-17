@@ -74,6 +74,14 @@ class StochasticAgentConfig:
     shoot_distance_ramp: Tuple[float, float] = (200, 500)
     shoot_distance_prob: Tuple[float, float] = (0.95, 0.05)
 
+    # Obstacle avoidance — distances are to obstacle EDGE (center dist - radius)
+    obs_avoid_dist_ramp: Tuple[float, float] = (80.0, 250.0)
+    obs_avoid_turn_prob: Tuple[float, float] = (0.92, 0.0)
+    obs_sharp_dist_ramp: Tuple[float, float] = (30.0, 90.0)
+    obs_sharp_turn_prob: Tuple[float, float] = (0.90, 0.0)
+    obs_reverse_dist_ramp: Tuple[float, float] = (30.0, 90.0)
+    obs_reverse_prob: Tuple[float, float] = (0.75, 0.0)
+
     # ---------------------------------------------------------------------------
     # Flat-vector interface for hyperparameter search
     # ---------------------------------------------------------------------------

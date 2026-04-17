@@ -488,6 +488,7 @@ def _apply_combat_damage(state: TensorState, config: ShipConfig) -> TensorState:
 
     # Reset per-step attribution; cumulative is carried forward across steps.
     state.damage_matrix.zero_()
+    state.ship_obstacle_damage.zero_()
 
     # Flatten bullet arrays over the ship dimension for broadcasting
     flat_bullet_pos = state.bullet_pos.view(
@@ -620,6 +621,10 @@ def _apply_obstacle_damage(state: TensorState, config: ShipConfig) -> TensorStat
     hit_mask = touches.any(dim=2)  # (B, N) — ships touching any obstacle
     state.obstacle_hit = state.obstacle_hit | touches.any(dim=1)  # (B, M) — obstacles touching any ship
 
+    # Record obstacle damage for reward attribution (max_health = instant kill).
+    state.ship_obstacle_damage = torch.where(
+        hit_mask, torch.full_like(state.ship_health, config.max_health), state.ship_obstacle_damage
+    )
     state.ship_health = torch.where(hit_mask, torch.zeros_like(state.ship_health), state.ship_health)
     state.ship_alive = state.ship_alive & ~hit_mask
 
