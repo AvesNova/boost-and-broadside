@@ -134,7 +134,7 @@ class TestMVPPolicy:
         assert action.shape == (B, N, 3)
         assert logprob.shape == (B, N)
         assert value.shape == (B, N, K)
-        assert new_hidden.shape == (1, B * N, model_cfg.d_model)
+        assert new_hidden.shape == (model_cfg.n_transformer_blocks, B * N, model_cfg.d_model)
 
     def test_action_indices_in_valid_range(self, model_cfg, ship_cfg):
         """Sampled actions must be valid indices for each action head."""
@@ -191,7 +191,7 @@ class TestMVPPolicy:
         policy = MVPPolicy(
             model_cfg, ship_cfg, num_value_components=NUM_VALUE_COMPONENTS
         )
-        hidden = torch.ones(1, B * N, model_cfg.d_model)
+        hidden = torch.ones(model_cfg.n_transformer_blocks, B * N, model_cfg.d_model)
         done = torch.tensor([True, False, True])
 
         new_hidden = policy.reset_hidden_for_envs(hidden, done, N)

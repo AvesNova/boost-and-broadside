@@ -31,7 +31,7 @@ RL_SCHEDULE = TrainingSchedule(
     # Warmup from 1e-7 to 3e-4 over 5M steps, then hold.
     learning_rate=linear((0, 1e-7), (5_000_000, 3e-4)),
     policy_gradient_coef=constant(1.0),
-    entropy_coef=constant(0.01),
+    entropy_coef=constant(0.001),
     behavior_cloning_coef=linear(
         (0, 1.0),
         (20_000_000, 1.0),

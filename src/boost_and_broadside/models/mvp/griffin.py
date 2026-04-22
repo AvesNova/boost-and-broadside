@@ -1,0 +1,204 @@
+"""Griffin temporal block and Yemong combined block for the MVP policy backbone.
+
+YemongBlock = SpatialTransformerBlock (MHA + GatedMLP) + GriffinTemporalBlock (RG-LRU + GatedMLP).
+
+The RG-LRU (Real-Gated Linear Recurrent Unit) provides per-ship temporal memory
+with learnable decay rates, replacing the GRU in the original backbone.
+
+Hidden state shape: (n_layers, B*N, D) — one RG-LRU state per Yemong layer.
+"""
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+from boost_and_broadside.config import ModelConfig
+from boost_and_broadside.models.mvp.attention import GatedMLP, TransformerBlock
+
+
+class RGLRU(nn.Module):
+    """Real-Gated Linear Recurrent Unit from the Griffin paper.
+
+    Per-element decay rates aₜ = σ(Λ)^(c·rₜ) are controlled by learnable
+    log-eigenvalues Λ and an input-dependent recurrence gate rₜ. An input
+    gate iₜ scales the new information before mixing with the hidden state.
+
+        rₜ = σ(Wₐxₜ + bₐ)
+        iₜ = σ(Wₓxₜ + bₓ)
+        aₜ = σ(Λ)^(c·rₜ)            c=8
+        hₜ = aₜ⊙hₜ₋₁ + √(1−aₜ²)⊙(iₜ⊙xₜ)
+
+    Args:
+        d_model: State and input dimension D.
+        c:       Exponent scaling constant (default 8, as in Griffin paper).
+    """
+
+    def __init__(self, d_model: int, c: float = 8.0) -> None:
+        super().__init__()
+        self.c = c
+        # σ(log_lambda) ∈ (0,1) gives per-element decay rates.
+        # linspace(0, 4, D) → σ values from ~0.5 (fast) to ~0.98 (slow).
+        self.log_lambda = nn.Parameter(torch.linspace(0.0, 4.0, d_model))
+        self.linear_a = nn.Linear(d_model, d_model, bias=True)  # r gate
+        self.linear_x = nn.Linear(d_model, d_model, bias=True)  # i gate
+
+    def _step(self, x: torch.Tensor, h: torch.Tensor) -> torch.Tensor:
+        """One RG-LRU step.
+
+        Args:
+            x: (B_seq, D) input at current timestep.
+            h: (B_seq, D) previous hidden state.
+
+        Returns:
+            new_h: (B_seq, D) updated hidden state (also the output).
+        """
+        r = torch.sigmoid(self.linear_a(x))                      # (B_seq, D)
+        i = torch.sigmoid(self.linear_x(x))                      # (B_seq, D)
+        a = torch.sigmoid(self.log_lambda) ** (self.c * r)       # (B_seq, D)
+        new_h = a * h + torch.sqrt(torch.clamp(1.0 - a ** 2, min=0.0)) * (i * x)
+        return new_h
+
+    def forward_sequence(
+        self, x_seq: torch.Tensor, h0: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Process a full sequence sequentially (fused by torch.compile).
+
+        Args:
+            x_seq: (B_seq, T, D) input sequence.
+            h0:    (B_seq, D) initial hidden state.
+
+        Returns:
+            outputs: (B_seq, T, D) per-step hidden states.
+            h:       (B_seq, D) final hidden state.
+        """
+        T = x_seq.shape[1]
+        h = h0
+        outputs = []
+        for t in range(T):
+            h = self._step(x_seq[:, t], h)
+            outputs.append(h)
+        return torch.stack(outputs, dim=1), h
+
+
+class GriffinTemporalBlock(nn.Module):
+    """Griffin temporal block applied independently per ship across time.
+
+    Matches the diagram:
+        norm → (linear₁ → causal_conv → RG-LRU) × GeLU(linear₂) → linear_out
+             → 1st residual → GatedMLP(norm) → 2nd residual
+
+    Args:
+        d_model:     Embedding dimension D.
+        conv_kernel: Causal depthwise conv kernel size (default 4).
+    """
+
+    def __init__(self, d_model: int, conv_kernel: int = 4) -> None:
+        super().__init__()
+        self.conv_kernel = conv_kernel
+        self.norm1 = nn.RMSNorm(d_model)
+        self.linear1 = nn.Linear(d_model, d_model, bias=False)     # branch1 input
+        self.conv = nn.Conv1d(                                       # depthwise causal
+            d_model, d_model, kernel_size=conv_kernel, groups=d_model, bias=True
+        )
+        self.rg_lru = RGLRU(d_model)
+        self.linear2 = nn.Linear(d_model, d_model, bias=False)     # branch2 (gate) input
+        self.linear_out = nn.Linear(d_model, d_model, bias=False)  # combine branches
+        self.norm2 = nn.RMSNorm(d_model)
+        self.gated_mlp = GatedMLP(d_model)
+
+    def _causal_conv(self, x: torch.Tensor, T: int) -> torch.Tensor:
+        """Depthwise causal conv over the time axis (left-zero-padded).
+
+        Args:
+            x: (B_seq, T, D).
+
+        Returns:
+            (B_seq, T, D) convolved output.
+        """
+        x_t = x.transpose(1, 2)                              # (B_seq, D, T)
+        x_t = F.pad(x_t, (self.conv_kernel - 1, 0))         # left-pad for causality
+        return self.conv(x_t)[:, :, :T].transpose(1, 2)     # (B_seq, T, D)
+
+    def forward_sequence(
+        self, x_seq: torch.Tensor, h0: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Apply temporal block over a sequence.
+
+        Args:
+            x_seq: (B_seq, T, D) input (ships as batch, time as sequence).
+            h0:    (B_seq, D) initial RG-LRU hidden state.
+
+        Returns:
+            output: (B_seq, T, D).
+            h:      (B_seq, D) final hidden state.
+        """
+        T = x_seq.shape[1]
+        normed = self.norm1(x_seq)
+
+        b1 = self.linear1(normed)                             # (B_seq, T, D)
+        b1 = self._causal_conv(b1, T)                        # (B_seq, T, D)
+        b1, h = self.rg_lru.forward_sequence(b1, h0)         # (B_seq, T, D)
+
+        b2 = F.gelu(self.linear2(normed))                    # (B_seq, T, D)
+        recurrent_out = self.linear_out(b1 * b2)             # (B_seq, T, D)
+
+        x1 = x_seq + recurrent_out                           # 1st residual
+        x2 = x1 + self.gated_mlp(self.norm2(x1))            # 2nd residual
+        return x2, h
+
+
+class YemongBlock(nn.Module):
+    """Yemong layer: SpatialTransformerBlock followed by GriffinTemporalBlock.
+
+    Ships attend to each other in the spatial block (cross-ship, within timestep).
+    Each ship's embedding then evolves through the temporal block (per-ship, across time).
+
+    Args:
+        model_config: Supplies d_model, n_heads.
+    """
+
+    def __init__(self, model_config: ModelConfig) -> None:
+        super().__init__()
+        self.spatial = TransformerBlock(model_config)
+        self.temporal = GriffinTemporalBlock(model_config.d_model)
+
+    def step(
+        self,
+        x: torch.Tensor,      # (B, N, D)
+        alive: torch.Tensor,  # (B, N) bool
+        h: torch.Tensor,      # (B*N, D)
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Single-step forward for rollout inference.
+
+        Returns:
+            x:     (B, N, D) updated embeddings.
+            new_h: (B*N, D) updated RG-LRU hidden state.
+        """
+        B, N, D = x.shape
+        x = self.spatial(x, alive)                                 # (B, N, D)
+        x_flat = x.reshape(B * N, 1, D)                           # (B*N, 1, D)
+        out, new_h = self.temporal.forward_sequence(x_flat, h)    # (B*N, 1, D)
+        return out.squeeze(1).reshape(B, N, D), new_h
+
+    def sequence(
+        self,
+        x: torch.Tensor,           # (T, B, N, D)
+        alive_mask: torch.Tensor,  # (T, B, N) bool
+        h0: torch.Tensor,          # (B*N, D)
+    ) -> torch.Tensor:
+        """Full-sequence forward for PPO re-evaluation.
+
+        Returns:
+            (T, B, N, D) updated embeddings.
+        """
+        T, B, N, D = x.shape
+
+        # Spatial: fold T into batch for efficient parallel cross-ship attention
+        x = self.spatial(
+            x.reshape(T * B, N, D), alive_mask.reshape(T * B, N)
+        ).reshape(T, B, N, D)
+
+        # Temporal: fold B*N into batch, sequence over T per ship
+        x_seq = x.permute(1, 2, 0, 3).reshape(B * N, T, D)       # (B*N, T, D)
+        out, _ = self.temporal.forward_sequence(x_seq, h0)         # (B*N, T, D)
+        return out.reshape(B, N, T, D).permute(2, 0, 1, 3)        # (T, B, N, D)

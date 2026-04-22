@@ -2,7 +2,7 @@
 
 Implements a single pre-norm transformer block:
     RMSNorm → Multi-Head Self-Attention → Residual
-    RMSNorm → FFN (4x expand, GELU) → Residual
+    RMSNorm → GatedMLP (SwiGLU, 4x expand) → Residual
 
 Pre-norm placement follows modern best practices (GPT-style / LLaMA-style):
 it stabilizes training by ensuring gradients flow cleanly through residuals.
@@ -16,6 +16,25 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from boost_and_broadside.config import ModelConfig
+
+
+class GatedMLP(nn.Module):
+    """SwiGLU-style gated FFN: down_proj(gelu(gate_proj(x)) * up_proj(x)).
+
+    Args:
+        d_model: Input and output dimension D.
+        expand:  Hidden expansion factor (default 4×).
+    """
+
+    def __init__(self, d_model: int, expand: int = 4) -> None:
+        super().__init__()
+        hidden = expand * d_model
+        self.gate_proj = nn.Linear(d_model, hidden, bias=False)
+        self.up_proj = nn.Linear(d_model, hidden, bias=False)
+        self.down_proj = nn.Linear(hidden, d_model, bias=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.down_proj(F.gelu(self.gate_proj(x)) * self.up_proj(x))
 
 
 class TransformerBlock(nn.Module):
@@ -42,11 +61,7 @@ class TransformerBlock(nn.Module):
         self.out_proj = nn.Linear(D, D, bias=False)
 
         self.norm2 = nn.RMSNorm(D)
-        self.ffn = nn.Sequential(
-            nn.Linear(D, 4 * D, bias=False),
-            nn.GELU(),
-            nn.Linear(4 * D, D, bias=False),
-        )
+        self.ffn = GatedMLP(D)
 
     def forward(
         self,

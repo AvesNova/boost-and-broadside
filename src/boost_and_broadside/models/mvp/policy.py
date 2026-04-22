@@ -2,17 +2,16 @@
 
 Architecture (per timestep):
     obs → ShipEncoder → (B, N, D)
-         → N × TransformerBlock    → (B, N, D)      [ships attend to each other]
-         → per-ship GRU             → (B, N, D)      [temporal memory per ship]
-         → ActionHead               → (B, N, 12)     [logits: power|turn|shoot]
-         → TeamPMA                  → (B, N, D)      [pool per team, broadcast back]
-         → ValueHead                → (B, N, K)      [MSE critic: K components in normalized space]
+         → N × YemongBlock              → (B, N, D)      [spatial + temporal per layer]
+         → ActionHead                   → (B, N, 12)     [logits: power|turn|shoot]
+         → TeamPMA                      → (B, N, D)      [pool per team, broadcast back]
+         → ValueHead                    → (B, N, K)      [MSE critic: K components in normalized space]
 
 K = num_value_components (one head per reward component).
 Value head outputs in normalized space. The ReturnScaler in PPOTrainer maps
 between symlog-reward space (GAE) and normalized space (value head I/O).
 
-GRU hidden state shape: (1, B*N, D) — ships are treated as independent sequences.
+YemongBlock hidden state shape: (n_layers, B*N, D) — one RG-LRU state per layer.
 The wrapper zeros hidden states for ships in reset environments.
 """
 
@@ -32,7 +31,7 @@ from boost_and_broadside.constants import (
     SHOOT_SLICE,
 )
 from boost_and_broadside.models.mvp.encoder import ShipEncoder
-from boost_and_broadside.models.mvp.attention import TransformerBlock
+from boost_and_broadside.models.mvp.griffin import YemongBlock
 
 
 class TeamPMA(nn.Module):
@@ -83,7 +82,7 @@ class TeamPMA(nn.Module):
 
 
 class MVPPolicy(nn.Module):
-    """Actor-critic policy with shared trunk: Encoder → Attention → GRU.
+    """Actor-critic policy with shared trunk: Encoder → N × YemongBlock.
 
     Args:
         model_config: Architecture hyperparameters.
@@ -98,16 +97,13 @@ class MVPPolicy(nn.Module):
     ) -> None:
         super().__init__()
         D = model_config.d_model
+        self._d_model = D
         self._K = num_value_components
 
         self.encoder = ShipEncoder(model_config, ship_config)
-        self.transformer_blocks = nn.ModuleList(
-            [
-                TransformerBlock(model_config)
-                for _ in range(model_config.n_transformer_blocks)
-            ]
+        self.yemong_layers = nn.ModuleList(
+            [YemongBlock(model_config) for _ in range(model_config.n_transformer_blocks)]
         )
-        self.gru = nn.GRU(D, D, num_layers=1, batch_first=False)
         self.team_pma = TeamPMA(d_model=D, n_heads=model_config.n_heads)
 
         hidden_dim = D * 2
@@ -147,13 +143,13 @@ class MVPPolicy(nn.Module):
     def initial_hidden(
         self, num_envs: int, num_ships: int, device: torch.device
     ) -> torch.Tensor:
-        """Return a zeroed GRU hidden state.
+        """Return zeroed RG-LRU hidden states for all Yemong layers.
 
         Returns:
-            (1, B*N, D) float32 — ready to pass to forward().
+            (n_layers, B*N, D) float32 — ready to pass to forward().
         """
-        D = self.gru.hidden_size
-        return torch.zeros(1, num_envs * num_ships, D, device=device)
+        n_layers = len(self.yemong_layers)
+        return torch.zeros(n_layers, num_envs * num_ships, self._d_model, device=device)
 
     def reset_hidden_for_envs(
         self,
@@ -164,7 +160,7 @@ class MVPPolicy(nn.Module):
         """Zero hidden states for all ships in done environments.
 
         Args:
-            hidden:    (1, B*N, D) current hidden state.
+            hidden:    (n_layers, B*N, D) current hidden state.
             done_mask: (B,) bool — True for envs that finished.
             num_ships: N.
 
@@ -176,7 +172,7 @@ class MVPPolicy(nn.Module):
         # done_mask (B,) → expand to (B*N,)
         ship_done = done_mask.repeat_interleave(num_ships)  # (B*N,)
         hidden = hidden.clone()
-        hidden[0, ship_done, :] = 0.0
+        hidden[:, ship_done, :] = 0.0
         return hidden
 
     # ------------------------------------------------------------------
@@ -193,27 +189,27 @@ class MVPPolicy(nn.Module):
 
         Args:
             obs:    Dict with (B, N, ...) tensors.
-            hidden: (1, B*N, D) GRU hidden state.
+            hidden: (n_layers, B*N, D) RG-LRU hidden state.
 
         Returns:
             action:     (B, N, 3) int — sampled [power, turn, shoot].
             logprob:    (B, N) float — sum of log probs for each sub-action.
             value:      (B, N, K) float — per-component value in normalized space.
                         Caller must denormalize via ReturnScaler before using for GAE.
-            new_hidden: (1, B*N, D) updated GRU state.
+            new_hidden: (n_layers, B*N, D) updated hidden state.
         """
         alive = obs["alive"]  # (B, N) bool
         x = self.encoder(obs)  # (B, N, D)
-        for block in self.transformer_blocks:
-            x = block(x, alive)  # (B, N, D)
 
         B, N, D = x.shape
-        x_step = x.reshape(B * N, D).unsqueeze(0)  # (1, B*N, D)
-        gru_out, new_hidden = self.gru(x_step, hidden)  # (1, B*N, D)
-        gru_out = gru_out.squeeze(0).reshape(B, N, D)  # (B, N, D)
+        new_hs = []
+        for i, layer in enumerate(self.yemong_layers):
+            x, new_h = layer.step(x, alive, hidden[i])  # (B, N, D), (B*N, D)
+            new_hs.append(new_h)
+        new_hidden = torch.stack(new_hs, dim=0)  # (n_layers, B*N, D)
 
-        logits = self.action_head(gru_out)  # (B, N, 12)
-        value = self.value_head(gru_out)  # (B, N, K) — per-ship, normalized space
+        logits = self.action_head(x)  # (B, N, 12)
+        value = self.value_head(x)    # (B, N, K) — per-ship, normalized space
 
         action, logprob = _sample_action(logits)
 
@@ -232,14 +228,14 @@ class MVPPolicy(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Re-evaluate actions over a full rollout for PPO update.
 
-        The encoder and attention run over all (T*B) tokens in parallel
-        (no temporal dependency there). The GRU runs sequentially over T
-        from initial_hidden, preserving recurrent correctness.
+        The encoder runs over all (T*B) tokens in parallel. Each YemongBlock
+        runs its spatial attention over (T*B, N, D) in parallel, then its
+        temporal RG-LRU sequentially over T from the layer's initial hidden.
 
         Args:
             obs:            Dict with (T, B, N, ...) tensors.
             actions:        (T, B, N, 3) int actions taken during rollout.
-            initial_hidden: (1, B*N, D) hidden state at rollout start.
+            initial_hidden: (n_layers, B*N, D) hidden state at rollout start.
             alive_mask:     (T, B, N) bool — alive ships per timestep.
 
         Returns:
@@ -248,25 +244,18 @@ class MVPPolicy(nn.Module):
             new_value: (T, B, N, K) float — per-component value in normalized space.
         """
         T, B, N = actions.shape[:3]
-        D = self.gru.hidden_size
 
-        # Flatten T into B for encoder and attention
+        # Flatten T into B for encoder
         flat_obs = {k: v.reshape(T * B, *v.shape[2:]) for k, v in obs.items()}
-        flat_alive = alive_mask.reshape(T * B, N)
 
-        x = self.encoder(flat_obs)  # (T*B, N, D)
-        for block in self.transformer_blocks:
-            x = block(x, flat_alive)  # (T*B, N, D)
+        x = self.encoder(flat_obs)   # (T*B, N, D)
+        x = x.reshape(T, B, N, self._d_model)  # (T, B, N, D)
 
-        # GRU over time — reshape to (T, B*N, D) for sequential processing
-        x_seq = x.reshape(T, B, N, D).reshape(T, B * N, D)  # (T, B*N, D)
-        gru_out, _ = self.gru(x_seq, initial_hidden)  # (T, B*N, D)
-        gru_out = gru_out.reshape(T, B, N, D)  # (T, B, N, D)
+        for i, layer in enumerate(self.yemong_layers):
+            x = layer.sequence(x, alive_mask, initial_hidden[i])  # (T, B, N, D)
 
-        logits = self.action_head(gru_out)  # (T, B, N, 12)
-        new_value = self.value_head(
-            gru_out
-        )  # (T, B, N, K) — per-ship, normalized space
+        logits = self.action_head(x)     # (T, B, N, 12)
+        new_value = self.value_head(x)   # (T, B, N, K) — per-ship, normalized space
 
         logprob, entropy = _evaluate_action(logits, actions)
 

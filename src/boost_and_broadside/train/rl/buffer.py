@@ -408,12 +408,13 @@ class RolloutBuffer:
 
             mb_obs = {key: val[:, idx] for key, val in self.obs.items()}
 
-            # Reconstruct initial hidden for this minibatch: (1, B_mb*N, D)
+            # Reconstruct initial hidden for this minibatch: (n_layers, B_mb*N, D)
+            n_layers = self.initial_hidden.shape[0]
             hidden_full = self.initial_hidden.reshape(
-                1, self.num_envs, self.num_ships, D
+                n_layers, self.num_envs, self.num_ships, D
             )
             mb_hidden = hidden_full[:, idx, :, :].reshape(
-                1, len(idx) * self.num_ships, D
+                n_layers, len(idx) * self.num_ships, D
             )
 
             yield (
