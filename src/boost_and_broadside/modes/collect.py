@@ -32,6 +32,7 @@ def _obs_from_state(
     observations here as they do during training.
     """
     world_w, world_h = ship_config.world_size
+    max_dim = float(max(world_w, world_h))
     return {
         "pos": torch.stack(
             [state.ship_pos.real / world_w, state.ship_pos.imag / world_h], dim=-1
@@ -52,6 +53,22 @@ def _obs_from_state(
         "team_id": state.ship_team_id,
         "alive": state.ship_alive,
         "prev_action": state.prev_action.long(),
+        "obstacle_pos": torch.stack(
+            [state.obstacle_pos.real / world_w, state.obstacle_pos.imag / world_h],
+            dim=-1,
+        ),
+        "obstacle_vel": torch.stack(
+            [state.obstacle_vel.real, state.obstacle_vel.imag], dim=-1
+        ),
+        "obstacle_radius": (state.obstacle_radius / max_dim).unsqueeze(-1),
+        "obstacle_gravity_center": torch.stack(
+            [
+                state.obstacle_gravity_center.real / world_w,
+                state.obstacle_gravity_center.imag / world_h,
+            ],
+            dim=-1,
+        ),
+        "obstacle_hit": state.obstacle_hit.float().unsqueeze(-1),
     }
 
 

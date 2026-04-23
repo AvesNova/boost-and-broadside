@@ -4,6 +4,7 @@ from boost_and_broadside.config.core import (
     ShipConfig,
     EnvConfig,
     ModelConfig,
+    ObstacleCacheConfig,
     RewardConfig,
 )
 from boost_and_broadside.config.schedule import (
@@ -24,6 +25,7 @@ __all__ = [
     "ShipConfig",
     "EnvConfig",
     "ModelConfig",
+    "ObstacleCacheConfig",
     "RewardConfig",
     "Schedule",
     "TrainingSchedule",

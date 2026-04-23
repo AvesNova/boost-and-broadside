@@ -25,7 +25,7 @@ from boost_and_broadside.config import (
 from boost_and_broadside.config.schedule import exponential
 from runs.shared import REWARDS
 
-_MAX_TOKENS = 3840 * 10
+_MAX_TOKENS = 3840 * 6
 
 RL_SCHEDULE = TrainingSchedule(
     # Warmup from 1e-7 to 3e-4 over 5M steps, then hold.
@@ -65,8 +65,10 @@ RL_TRAIN_CONFIG = TrainConfig(
         #     num_envs=_MAX_TOKENS // 4 // 2,
         # ),
         ScaleConfig(
-            env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=1024),
-            num_envs=_MAX_TOKENS // 8,
+            env_config=EnvConfig(
+                num_ships=8, max_bullets=20, max_episode_steps=1024, num_obstacles=5
+            ),
+            num_envs=_MAX_TOKENS // (8 + 5),  # token budget covers N+M=13
         ),
     ),
     schedule=RL_SCHEDULE,

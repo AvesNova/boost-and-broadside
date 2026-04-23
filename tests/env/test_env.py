@@ -5,7 +5,6 @@ import torch
 
 from boost_and_broadside.config import ShipConfig, EnvConfig, RewardConfig
 from boost_and_broadside.env.env import TensorEnv
-from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
 from boost_and_broadside.env.wrapper import MVPEnvWrapper
 
 
@@ -16,7 +15,7 @@ def ship_cfg() -> ShipConfig:
 
 @pytest.fixture
 def env_cfg() -> EnvConfig:
-    return EnvConfig(num_ships=8, max_bullets=20, max_episode_steps=100)
+    return EnvConfig(num_ships=8, max_bullets=20, max_episode_steps=100, num_obstacles=0)
 
 
 @pytest.fixture
@@ -37,6 +36,9 @@ def reward_cfg() -> RewardConfig:
         damage_dealt_enemy_weight=0.1,
         damage_dealt_ally_weight=0.1,
         death_weight=0.5,
+        bullet_death_weight=0.0,
+        obstacle_death_weight=0.0,
+        obstacle_proximity_weight=0.0,
         proximity_radius=300.0,
         shoot_quality_radius=200.0,
         enemy_neg_lambda_components=frozenset(
@@ -148,7 +150,7 @@ class TestTensorEnvStep:
 
     def test_truncated_fires_at_max_episode_steps(self, ship_cfg):
         """truncated must become True exactly when step_count hits max_episode_steps."""
-        env_cfg = EnvConfig(num_ships=2, max_bullets=5, max_episode_steps=3)
+        env_cfg = EnvConfig(num_ships=2, max_bullets=5, max_episode_steps=3, num_obstacles=0)
         env = TensorEnv(
             num_envs=1, ship_config=ship_cfg, env_config=env_cfg, device="cpu"
         )
@@ -230,7 +232,7 @@ class TestMVPEnvWrapper:
         actions = torch.zeros((B, N, 3), dtype=torch.long)
         obs, rewards, dones, truncated, info = wrapper.step(actions)
 
-        K = len(REWARD_COMPONENT_NAMES)
+        K = wrapper.num_active_components
         assert rewards.shape == (B, N, K)
         assert dones.shape == (B,)
         assert truncated.shape == (B,)
@@ -251,7 +253,7 @@ class TestMVPEnvWrapper:
 
     def test_episode_info_returned_on_done(self, ship_cfg, reward_cfg):
         """info dict must contain ep_reward and ep_length when an episode ends."""
-        env_cfg = EnvConfig(num_ships=2, max_bullets=5, max_episode_steps=2)
+        env_cfg = EnvConfig(num_ships=2, max_bullets=5, max_episode_steps=2, num_obstacles=0)
         wrapper = MVPEnvWrapper(
             num_envs=1,
             ship_config=ship_cfg,

@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(uv run:*)",
-      "Bash(xargs grep:*)"
+      "Bash(xargs grep:*)",
+      "Bash(git checkout *)"
     ]
   }
 }

@@ -1,19 +1,26 @@
 """MVPPolicy: the full per-ship actor-critic policy.
 
 Architecture (per timestep):
-    obs → ShipEncoder → (B, N, D)
-         → N × YemongBlock              → (B, N, D)      [spatial + temporal per layer]
-         → ActionHead                   → (B, N, 12)     [logits: power|turn|shoot]
-         → TeamPMA                      → (B, N, D)      [pool per team, broadcast back]
-         → ValueHead                    → (B, N, K)      [MSE critic: K components in normalized space]
+    obs → UnifiedEncoder.encode_ships()   → (B, N, D)   ship tokens
+          UnifiedEncoder.encode_obstacles() → (B, M, D)   obstacle tokens
+         → concat → (B, N+M, D)
+         → N × YemongBlock                → (B, N+M, D)  [spatial + temporal per layer]
+         → extract ships → (B, N, D)
+         → ActionHead                     → (B, N, 12)   [logits: power|turn|shoot]
+         → TeamPMA                        → (B, N, D)    [pool per team, broadcast back]
+         → ValueHead                      → (B, N, K)    [MSE critic: K components]
+
+Obstacles flow through the full Yemong backbone (same encoder, spatial, temporal,
+memory) but are discarded before the action/value heads.
 
 K = num_value_components (one head per reward component).
 Value head outputs in normalized space. The ReturnScaler in PPOTrainer maps
 between symlog-reward space (GAE) and normalized space (value head I/O).
 
-Hidden state shape: (n_layers, B*N, CONV_KERNEL * D), packed as:
+Hidden state shape: (n_layers, B*(N+M), CONV_KERNEL * D), packed as:
   hidden[:, :, :D]   — RG-LRU recurrent state
   hidden[:, :, D:]   — causal conv buffer (CONV_KERNEL-1 past linear1 outputs, flattened)
+Callers pass tokens_per_env = N + M to initial_hidden and reset_hidden_for_envs.
 """
 
 import math
@@ -31,14 +38,14 @@ from boost_and_broadside.constants import (
     TURN_SLICE,
     SHOOT_SLICE,
 )
-from boost_and_broadside.models.mvp.encoder import ShipEncoder
+from boost_and_broadside.models.mvp.encoder import UnifiedEncoder
 from boost_and_broadside.models.mvp.griffin import CONV_KERNEL, YemongBlock
 
 
 class TeamPMA(nn.Module):
     """Pooling by Multi-head Attention over per-team ship embeddings.
 
-    For each team t ∈ {0, 1}, a learned seed attends over the GRU outputs of
+    For each team t ∈ {0, 1}, a learned seed attends over the Yemong outputs of
     alive ships on that team. Dead ships and ships from the opposite team are
     masked out as keys. The two team embeddings are broadcast back so every
     ship holds its team's pooled embedding — preserving the (B, N, D) shape
@@ -83,11 +90,11 @@ class TeamPMA(nn.Module):
 
 
 class MVPPolicy(nn.Module):
-    """Actor-critic policy with shared trunk: Encoder → N × YemongBlock.
+    """Actor-critic policy: UnifiedEncoder → N × YemongBlock → heads (ships only).
 
     Args:
         model_config: Architecture hyperparameters.
-        ship_config: Physics constants (used by encoder for world_size).
+        ship_config: Physics constants (used by encoder for world_size / collision_radius).
     """
 
     def __init__(
@@ -101,7 +108,7 @@ class MVPPolicy(nn.Module):
         self._d_model = D
         self._K = num_value_components
 
-        self.encoder = ShipEncoder(model_config, ship_config)
+        self.encoder = UnifiedEncoder(model_config, ship_config)
         self.yemong_layers = nn.ModuleList(
             [YemongBlock(model_config) for _ in range(model_config.n_transformer_blocks)]
         )
@@ -125,14 +132,12 @@ class MVPPolicy(nn.Module):
 
         # Orthogonal init — standard PPO practice
         for head in [self.action_head, self.value_head]:
-            # Hidden layer (ReLU/GELU activation) gets sqrt(2) gain
             nn.init.orthogonal_(head[0].weight, gain=math.sqrt(2))
             nn.init.zeros_(head[0].bias)
-            # Output layers get 0.01 gain for stable early predictions
             nn.init.orthogonal_(head[3].weight, gain=0.01)
             nn.init.zeros_(head[3].bias)
 
-        # TeamPMA init — seeds are small and asymmetric; projections use orthogonal
+        # TeamPMA init
         nn.init.normal_(self.team_pma.seeds, mean=0.0, std=0.02)
         nn.init.orthogonal_(self.team_pma.attn.in_proj_weight, gain=math.sqrt(2))
         nn.init.orthogonal_(self.team_pma.attn.out_proj.weight, gain=1.0)
@@ -146,8 +151,11 @@ class MVPPolicy(nn.Module):
     ) -> torch.Tensor:
         """Return zeroed hidden states for all Yemong layers.
 
+        Args:
+            num_ships: tokens per env — pass N+M when obstacles are present.
+
         Returns:
-            (n_layers, B*N, CONV_KERNEL*D) float32 — packed RG-LRU state + conv buffer.
+            (n_layers, num_envs*num_ships, CONV_KERNEL*D) float32.
         """
         n_layers = len(self.yemong_layers)
         return torch.zeros(
@@ -160,20 +168,16 @@ class MVPPolicy(nn.Module):
         done_mask: torch.Tensor,
         num_ships: int,
     ) -> torch.Tensor:
-        """Zero hidden states for all ships in done environments.
+        """Zero hidden states for all tokens in done environments.
 
         Args:
-            hidden:    (n_layers, B*N, D) current hidden state.
+            hidden:    (n_layers, B*tokens_per_env, D) current hidden state.
             done_mask: (B,) bool — True for envs that finished.
-            num_ships: N.
-
-        Returns:
-            Updated hidden state with done envs zeroed.
+            num_ships: tokens per env — pass N+M when obstacles are present.
         """
         if not done_mask.any():
             return hidden
-        # done_mask (B,) → expand to (B*N,)
-        ship_done = done_mask.repeat_interleave(num_ships)  # (B*N,)
+        ship_done = done_mask.repeat_interleave(num_ships)  # (B*tokens_per_env,)
         hidden = hidden.clone()
         hidden[:, ship_done, :] = 0.0
         return hidden
@@ -191,37 +195,47 @@ class MVPPolicy(nn.Module):
         """Sample an action and estimate value for one environment step.
 
         Args:
-            obs:    Dict with (B, N, ...) tensors.
-            hidden: (n_layers, B*N, D) RG-LRU hidden state.
+            obs:    Dict with (B, N, ...) ship tensors and (B, M, ...) obstacle tensors.
+            hidden: (n_layers, B*(N+M), CONV_KERNEL*D) RG-LRU hidden state.
 
         Returns:
-            action:     (B, N, 3) int — sampled [power, turn, shoot].
-            logprob:    (B, N) float — sum of log probs for each sub-action.
-            value:      (B, N, K) float — per-component value in normalized space.
-                        Caller must denormalize via ReturnScaler before using for GAE.
-            new_hidden: (n_layers, B*N, D) updated hidden state.
+            action:     (B, N, 3) int.
+            logprob:    (B, N) float.
+            value:      (B, N, K) float — normalized space.
+            new_hidden: (n_layers, B*(N+M), CONV_KERNEL*D) updated.
         """
-        alive = obs["alive"]  # (B, N) bool
-        x = self.encoder(obs)  # (B, N, D)
+        alive = obs["alive"]                             # (B, N) bool
+        ship_tokens = self.encoder.encode_ships(obs)     # (B, N, D)
+        B, N, D = ship_tokens.shape
+        M = obs["obstacle_pos"].shape[1]
 
-        B, N, D = x.shape
-        BN = B * N
+        if M > 0:
+            obs_tokens = self.encoder.encode_obstacles(obs)  # (B, M, D)
+            tokens = torch.cat([ship_tokens, obs_tokens], dim=1)  # (B, N+M, D)
+            obs_alive = torch.ones(B, M, dtype=torch.bool, device=alive.device)
+            mask = torch.cat([alive, obs_alive], dim=1)  # (B, N+M)
+        else:
+            tokens = ship_tokens
+            mask = alive
+
+        BNM = B * (N + M)
         n_layers = len(self.yemong_layers)
-        rglru_states = hidden[:, :, :D]                                    # (n_layers, B*N, D)
-        conv_bufs = hidden[:, :, D:].reshape(n_layers, BN, CONV_KERNEL - 1, D)
+        rglru_states = hidden[:, :, :D]                                       # (n_layers, B*(N+M), D)
+        conv_bufs = hidden[:, :, D:].reshape(n_layers, BNM, CONV_KERNEL - 1, D)
 
         new_rglru, new_cbs = [], []
         for i, layer in enumerate(self.yemong_layers):
-            x, new_h, new_cb = layer.step(x, alive, rglru_states[i], conv_bufs[i])
+            tokens, new_h, new_cb = layer.step(tokens, mask, rglru_states[i], conv_bufs[i])
             new_rglru.append(new_h)
             new_cbs.append(new_cb)
 
-        new_rglru_t = torch.stack(new_rglru, dim=0)                        # (n_layers, B*N, D)
-        new_cbs_t = torch.stack(new_cbs, dim=0).reshape(n_layers, BN, -1) # (n_layers, B*N, (K-1)*D)
-        new_hidden = torch.cat([new_rglru_t, new_cbs_t], dim=-1)           # (n_layers, B*N, K*D)
+        new_rglru_t = torch.stack(new_rglru, dim=0)                           # (n_layers, B*(N+M), D)
+        new_cbs_t = torch.stack(new_cbs, dim=0).reshape(n_layers, BNM, -1)   # (n_layers, B*(N+M), (K-1)*D)
+        new_hidden = torch.cat([new_rglru_t, new_cbs_t], dim=-1)              # (n_layers, B*(N+M), K*D)
 
+        x = tokens[:, :N, :]          # (B, N, D) — ship tokens only
         logits = self.action_head(x)  # (B, N, 12)
-        value = self.value_head(x)    # (B, N, K) — per-ship, normalized space
+        value = self.value_head(x)    # (B, N, K)
 
         action, logprob = _sample_action(logits)
 
@@ -237,43 +251,52 @@ class MVPPolicy(nn.Module):
         actions: torch.Tensor,
         initial_hidden: torch.Tensor,
         alive_mask: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Re-evaluate actions over a full rollout for PPO update.
 
-        The encoder runs over all (T*B) tokens in parallel. Each YemongBlock
-        runs its spatial attention over (T*B, N, D) in parallel, then its
-        temporal RG-LRU sequentially over T from the layer's initial hidden.
-
         Args:
-            obs:            Dict with (T, B, N, ...) tensors.
-            actions:        (T, B, N, 3) int actions taken during rollout.
-            initial_hidden: (n_layers, B*N, D) hidden state at rollout start.
+            obs:            Dict with (T, B, N, ...) ship tensors and (T, B, M, ...) obstacle tensors.
+            actions:        (T, B, N, 3) int.
+            initial_hidden: (n_layers, B*(N+M), CONV_KERNEL*D) hidden state at rollout start.
             alive_mask:     (T, B, N) bool — alive ships per timestep.
 
         Returns:
             logprob:   (T, B, N) float.
             entropy:   (T, B, N) float.
-            new_value: (T, B, N, K) float — per-component value in normalized space.
+            new_value: (T, B, N, K) float.
+            logits:    (T, B, N, 12) float.
         """
         T, B, N = actions.shape[:3]
         D = self._d_model
         n_layers = len(self.yemong_layers)
-        BN = initial_hidden.shape[1]
+        BNM = initial_hidden.shape[1]
 
-        rglru_states = initial_hidden[:, :, :D]                                      # (n_layers, B*N, D)
-        conv_bufs = initial_hidden[:, :, D:].reshape(n_layers, BN, CONV_KERNEL - 1, D)
+        rglru_states = initial_hidden[:, :, :D]
+        conv_bufs = initial_hidden[:, :, D:].reshape(n_layers, BNM, CONV_KERNEL - 1, D)
 
-        # Flatten T into B for encoder
         flat_obs = {k: v.reshape(T * B, *v.shape[2:]) for k, v in obs.items()}
+        ship_tokens = self.encoder.encode_ships(flat_obs)   # (T*B, N, D)
+        M = flat_obs["obstacle_pos"].shape[1]
 
-        x = self.encoder(flat_obs)              # (T*B, N, D)
-        x = x.reshape(T, B, N, D)              # (T, B, N, D)
+        if M > 0:
+            obs_tokens = self.encoder.encode_obstacles(flat_obs)   # (T*B, M, D)
+            tokens = torch.cat([ship_tokens, obs_tokens], dim=1)   # (T*B, N+M, D)
+            obs_alive = torch.ones(T * B, M, dtype=torch.bool, device=alive_mask.device)
+            flat_alive = flat_obs["alive"]                         # (T*B, N)
+            full_mask = torch.cat([flat_alive, obs_alive], dim=1)  # (T*B, N+M)
+        else:
+            tokens = ship_tokens                                    # (T*B, N, D)
+            full_mask = flat_obs["alive"]                          # (T*B, N)
+
+        tokens = tokens.reshape(T, B, N + M, D)
+        full_mask = full_mask.reshape(T, B, N + M)
 
         for i, layer in enumerate(self.yemong_layers):
-            x, _, _ = layer.sequence(x, alive_mask, rglru_states[i], conv_bufs[i])
+            tokens, _, _ = layer.sequence(tokens, full_mask, rglru_states[i], conv_bufs[i])
 
-        logits = self.action_head(x)     # (T, B, N, 12)
-        new_value = self.value_head(x)   # (T, B, N, K) — per-ship, normalized space
+        x = tokens[:, :, :N, :]       # (T, B, N, D) — ship tokens only
+        logits = self.action_head(x)  # (T, B, N, 12)
+        new_value = self.value_head(x)  # (T, B, N, K)
 
         logprob, entropy = _evaluate_action(logits, actions)
 
@@ -288,29 +311,20 @@ class MVPPolicy(nn.Module):
 def _sample_action(
     logits: torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Sample one action per ship from factored categorical distributions.
-
-    Args:
-        logits: (..., TOTAL_ACTION_LOGITS) — [power | turn | shoot] logit slices.
-
-    Returns:
-        action:  (..., 3) int — sampled indices.
-        logprob: (...) float — sum of log-probs across sub-actions.
-    """
     power_dist = Categorical(logits=logits[..., POWER_SLICE])
     turn_dist = Categorical(logits=logits[..., TURN_SLICE])
     shoot_dist = Categorical(logits=logits[..., SHOOT_SLICE])
 
-    power_a = power_dist.sample()  # (...,)
+    power_a = power_dist.sample()
     turn_a = turn_dist.sample()
     shoot_a = shoot_dist.sample()
 
-    action = torch.stack([power_a, turn_a, shoot_a], dim=-1)  # (..., 3)
+    action = torch.stack([power_a, turn_a, shoot_a], dim=-1)
     logprob = (
         power_dist.log_prob(power_a)
         + turn_dist.log_prob(turn_a)
         + shoot_dist.log_prob(shoot_a)
-    )  # (...)
+    )
     return action, logprob
 
 
@@ -318,16 +332,6 @@ def _evaluate_action(
     logits: torch.Tensor,
     actions: torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Compute log-probs and entropy for given actions under the policy.
-
-    Args:
-        logits:  (..., TOTAL_ACTION_LOGITS).
-        actions: (..., 3) int.
-
-    Returns:
-        logprob: (...) float.
-        entropy: (...) float.
-    """
     power_dist = Categorical(logits=logits[..., POWER_SLICE])
     turn_dist = Categorical(logits=logits[..., TURN_SLICE])
     shoot_dist = Categorical(logits=logits[..., SHOOT_SLICE])

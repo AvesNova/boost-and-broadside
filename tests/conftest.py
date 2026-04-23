@@ -15,7 +15,7 @@ def ship_config() -> ShipConfig:
 
 @pytest.fixture
 def env_config() -> EnvConfig:
-    return EnvConfig(num_ships=8, max_bullets=20, max_episode_steps=500)
+    return EnvConfig(num_ships=8, max_bullets=20, max_episode_steps=500, num_obstacles=0)
 
 
 @pytest.fixture
@@ -48,6 +48,9 @@ def base_rewards() -> RewardConfig:
         enemy_neg_lambda_components=frozenset(
             {"damage", "death", "victory", "exposure"}
         ),
+        bullet_death_weight=0.0,
+        obstacle_death_weight=0.0,
+        obstacle_proximity_weight=0.0,
         disabled_rewards=frozenset(),
     )
 
@@ -112,4 +115,10 @@ def make_state(
         cumulative_damage_matrix=torch.zeros(
             (num_envs, max_ships, max_ships), dtype=torch.float32, device=dev
         ),
+        obstacle_pos=torch.zeros((num_envs, 0), dtype=torch.complex64, device=dev),
+        obstacle_vel=torch.zeros((num_envs, 0), dtype=torch.complex64, device=dev),
+        obstacle_radius=torch.zeros((num_envs, 0), dtype=torch.float32, device=dev),
+        obstacle_gravity_center=torch.zeros((num_envs, 0), dtype=torch.complex64, device=dev),
+        obstacle_hit=torch.zeros((num_envs, 0), dtype=torch.bool, device=dev),
+        ship_obstacle_damage=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
     )

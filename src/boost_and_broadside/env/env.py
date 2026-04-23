@@ -4,17 +4,246 @@ This class owns the physics simulation only. Observation construction, reward
 computation, and episode tracking are handled by MVPEnvWrapper (env/wrapper.py).
 """
 
+from __future__ import annotations
+
 import numpy as np
 import torch
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from boost_and_broadside.config import ShipConfig, EnvConfig
 from boost_and_broadside.env.state import TensorState
+
+if TYPE_CHECKING:
+    from boost_and_broadside.env.obstacle_cache import ObstacleCache
 from boost_and_broadside.env.physics import (
     update_ships,
     update_bullets,
+    update_obstacles,
+    step_obstacle_physics,
     resolve_collisions,
+    _gravity_harmonic,
+    _gravity_keplerian,
+    _delta_pe_harmonic,
+    _delta_pe_keplerian,
 )
+
+
+# ------------------------------------------------------------------
+# Obstacle init strategies — four combinations of (init, physics).
+# All share the same signature and return (obstacle_pos, obstacle_vel) complex64 (R, M).
+# Selected once at TensorEnv.__init__ time via _OBSTACLE_INIT_FNS.
+# ------------------------------------------------------------------
+
+
+def _init_harmonic_energy(
+    G: float,
+    R_max: float,
+    num_reset: int,
+    M: int,
+    center_x: torch.Tensor,
+    center_y: torch.Tensor,
+    world_w: float,
+    world_h: float,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Energy-based init for harmonic physics. Samples E ∈ [0, ½G·R_max²]."""
+    E_max = 0.5 * G * R_max**2
+    energy = torch.rand((num_reset, M), device=device) * E_max
+    r_max = torch.sqrt(2.0 * energy / G)
+    r = torch.rand((num_reset, M), device=device) * r_max
+    KE = energy - 0.5 * G * r**2
+    speed = torch.sqrt(KE.clamp(min=0.0) * 2.0)
+    theta_pos = torch.rand((num_reset, M), device=device) * (2.0 * np.pi)
+    theta_vel = torch.rand((num_reset, M), device=device) * (2.0 * np.pi)
+    obstacle_x = (center_x + r * torch.cos(theta_pos)) % world_w
+    obstacle_y = (center_y + r * torch.sin(theta_pos)) % world_h
+    return torch.complex(obstacle_x, obstacle_y), torch.polar(speed, theta_vel)
+
+
+def _init_keplerian_energy(
+    G: float,
+    R_max: float,
+    num_reset: int,
+    M: int,
+    center_x: torch.Tensor,
+    center_y: torch.Tensor,
+    world_w: float,
+    world_h: float,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Energy-based init for Keplerian physics.
+
+    Places each obstacle AT its apoapsis r_a with tangential speed f·v_circ(r_a).
+    Starting at the apoapsis guarantees the orbit never exceeds r_a ≤ R_max.
+    """
+    r_a = torch.rand((num_reset, M), device=device) * R_max
+    f = torch.rand((num_reset, M), device=device)
+    v_circ = torch.sqrt(G / r_a.clamp(min=1.0))
+    v = f * v_circ
+    alpha = torch.rand((num_reset, M), device=device) * (2.0 * np.pi)
+    # Tangential direction: i·e^(iα) = (−sin α, cos α); CW or CCW randomly.
+    sign = (torch.rand((num_reset, M), device=device) > 0.5).float() * 2.0 - 1.0
+    obstacle_x = (center_x + r_a * torch.cos(alpha)) % world_w
+    obstacle_y = (center_y + r_a * torch.sin(alpha)) % world_h
+    v_x = sign * (-torch.sin(alpha)) * v
+    v_y = sign * torch.cos(alpha) * v
+    return torch.complex(obstacle_x, obstacle_y), torch.complex(v_x, v_y)
+
+
+def _init_harmonic_orbital(
+    G: float,
+    R_max: float,
+    num_reset: int,
+    M: int,
+    center_x: torch.Tensor,
+    center_y: torch.Tensor,
+    world_w: float,
+    world_h: float,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Orbital init for harmonic physics.
+
+    Centered ellipse with semi-axes a=r_a, b=β·r_a and angular frequency ω=√G.
+    θ=0 is the apoapsis, so the orbit orientation φ = α directly.
+    """
+    r_a = torch.rand((num_reset, M), device=device) * R_max
+    beta = torch.rand((num_reset, M), device=device)
+    theta = torch.rand((num_reset, M), device=device) * (2.0 * np.pi)
+    alpha = torch.rand((num_reset, M), device=device) * (2.0 * np.pi)
+    a = r_a
+    b = beta * r_a
+    omega = float(np.sqrt(G))
+    r_lx = a * torch.cos(theta)
+    r_ly = b * torch.sin(theta)
+    v_lx = -a * omega * torch.sin(theta)
+    v_ly = b * omega * torch.cos(theta)
+    cos_a = torch.cos(alpha)
+    sin_a = torch.sin(alpha)
+    obstacle_x = (center_x + cos_a * r_lx - sin_a * r_ly) % world_w
+    obstacle_y = (center_y + sin_a * r_lx + cos_a * r_ly) % world_h
+    v_x = cos_a * v_lx - sin_a * v_ly
+    v_y = sin_a * v_lx + cos_a * v_ly
+    sign = (torch.rand((num_reset, M), device=device) > 0.5).float() * 2.0 - 1.0
+    return torch.complex(obstacle_x, obstacle_y), torch.complex(v_x * sign, v_y * sign)
+
+
+def _init_keplerian_orbital(
+    G: float,
+    R_max: float,
+    num_reset: int,
+    M: int,
+    center_x: torch.Tensor,
+    center_y: torch.Tensor,
+    world_w: float,
+    world_h: float,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Orbital init for Keplerian physics using the perifocal frame formulas.
+
+    r_a is the apoapsis. β=0 → radial plunge, β=1 → circular orbit.
+    Rotation φ = α−π places the apoapsis at angle α in the global frame
+    (perifocal convention: θ=0 is periapsis, apoapsis at θ=π).
+    """
+    r_a = torch.rand((num_reset, M), device=device) * R_max
+    beta = torch.rand((num_reset, M), device=device)
+    theta = torch.rand((num_reset, M), device=device) * (2.0 * np.pi)
+    alpha = torch.rand((num_reset, M), device=device) * (2.0 * np.pi)
+    e = 1.0 - beta**2
+    p = (r_a * beta**2).clamp(min=1e-6)
+    V0 = torch.sqrt(G / p)
+    r = p / (1.0 + e * torch.cos(theta))
+    r_lx = r * torch.cos(theta)
+    r_ly = r * torch.sin(theta)
+    v_lx = -V0 * torch.sin(theta)
+    v_ly = V0 * (torch.cos(theta) + e)
+    phi = alpha - np.pi  # apoapsis at θ=π → rotate by α−π to align with α
+    cos_p = torch.cos(phi)
+    sin_p = torch.sin(phi)
+    obstacle_x = (center_x + cos_p * r_lx - sin_p * r_ly) % world_w
+    obstacle_y = (center_y + sin_p * r_lx + cos_p * r_ly) % world_h
+    v_x = cos_p * v_lx - sin_p * v_ly
+    v_y = sin_p * v_lx + cos_p * v_ly
+    sign = (torch.rand((num_reset, M), device=device) > 0.5).float() * 2.0 - 1.0
+    return torch.complex(obstacle_x, obstacle_y), torch.complex(v_x * sign, v_y * sign)
+
+
+def _spawn_ships_rejection(
+    num_reset: int,
+    N: int,
+    M: int,
+    obstacle_pos: torch.Tensor,
+    obstacle_radius: torch.Tensor,
+    config: ShipConfig,
+    device: torch.device,
+) -> torch.Tensor:
+    """Place ships using rejection sampling to keep them clear of all obstacles.
+
+    Each candidate position is accepted only if it is at least safe_dist away
+    from every obstacle edge. safe_dist accounts for the ship's collision hitbox
+    plus a velocity lookahead buffer so ships don't immediately fly into obstacles.
+
+    Args:
+        num_reset:      R — number of environments being reset.
+        N:              Ships per environment.
+        M:              Obstacles per environment.
+        obstacle_pos:   (R, M) complex64 — obstacle centres.
+        obstacle_radius:(R, M) float32   — per-obstacle radii.
+        config:         ShipConfig providing world_size, collision params, speed, dt.
+        device:         Torch device.
+
+    Returns:
+        (R, N) complex64 ship positions.
+    """
+    world_w, world_h = config.world_size
+    # Safety margin: obstacle radius + ship hitbox + velocity buffer
+    buffer = (
+        config.obstacle_collision_radius
+        + config.default_speed * config.dt * config.ship_spawn_safety_k
+    )
+
+    placed_pos = torch.zeros(num_reset, N, dtype=torch.complex64, device=device)
+    placed = torch.zeros(num_reset, N, dtype=torch.bool, device=device)
+
+    while not placed.all():
+        cand_x = torch.rand(num_reset, N, device=device) * world_w
+        cand_y = torch.rand(num_reset, N, device=device) * world_h
+        cand = torch.complex(cand_x, cand_y)  # (R, N)
+
+        if M > 0:
+            # diff: (R, N, M) — toroidal vector from each obstacle to each candidate
+            diff = cand.unsqueeze(2) - obstacle_pos.unsqueeze(1)
+            diff = torch.complex(
+                (diff.real + world_w / 2) % world_w - world_w / 2,
+                (diff.imag + world_h / 2) % world_h - world_h / 2,
+            )
+            dist = torch.sqrt(diff.real**2 + diff.imag**2)  # (R, N, M)
+            # safe_dist per (env, obstacle): obstacle_radius + buffer  →  (R, 1, M)
+            safe_dist = obstacle_radius.unsqueeze(1) + buffer
+            safe = (dist >= safe_dist).all(dim=2)  # (R, N)
+        else:
+            safe = torch.ones(num_reset, N, dtype=torch.bool, device=device)
+
+        newly = safe & ~placed
+        placed_pos[newly] = cand[newly]
+        placed |= newly
+
+    return placed_pos
+
+
+_OBSTACLE_GRAVITY_FNS = {
+    "harmonic": _gravity_harmonic,
+    "keplerian": _gravity_keplerian,
+}
+_OBSTACLE_DELTA_PE_FNS = {
+    "harmonic": _delta_pe_harmonic,
+    "keplerian": _delta_pe_keplerian,
+}
+_OBSTACLE_INIT_FNS = {
+    ("energy", "harmonic"): _init_harmonic_energy,
+    ("energy", "keplerian"): _init_keplerian_energy,
+    ("orbital", "harmonic"): _init_harmonic_orbital,
+    ("orbital", "keplerian"): _init_keplerian_orbital,
+}
 
 
 class TensorEnv:
@@ -34,12 +263,19 @@ class TensorEnv:
         ship_config: ShipConfig,
         env_config: EnvConfig,
         device: str | torch.device,
+        obstacle_cache: ObstacleCache | None = None,
     ) -> None:
         self.num_envs = num_envs
         self.ship_config = ship_config
         self.env_config = env_config
         self.device = torch.device(device)
         self.state: TensorState | None = None
+        self._obstacle_cache = obstacle_cache
+
+        # Resolve obstacle strategy callables once — no branching in the hot loop.
+        self._obstacle_gravity_fn = _OBSTACLE_GRAVITY_FNS[ship_config.obstacle_physics]
+        self._obstacle_delta_pe_fn = _OBSTACLE_DELTA_PE_FNS[ship_config.obstacle_physics]
+        self._obstacle_init_fn = _OBSTACLE_INIT_FNS[(ship_config.obstacle_init, ship_config.obstacle_physics)]
 
     # ------------------------------------------------------------------
     # Reset
@@ -68,6 +304,7 @@ class TensorEnv:
         B = self.num_envs
         N = self.env_config.num_ships
         K = self.env_config.max_bullets
+        M = self.env_config.num_obstacles
         dev = self.device
 
         self.state = TensorState(
@@ -92,6 +329,12 @@ class TensorEnv:
             cumulative_damage_matrix=torch.zeros(
                 (B, N, N), dtype=torch.float32, device=dev
             ),
+            obstacle_pos=torch.zeros((B, M), dtype=torch.complex64, device=dev),
+            obstacle_vel=torch.zeros((B, M), dtype=torch.complex64, device=dev),
+            obstacle_radius=torch.zeros((B, M), dtype=torch.float32, device=dev),
+            obstacle_gravity_center=torch.zeros((B, M), dtype=torch.complex64, device=dev),
+            obstacle_hit=torch.zeros((B, M), dtype=torch.bool, device=dev),
+            ship_obstacle_damage=torch.zeros((B, N), dtype=torch.float32, device=dev),
         )
 
     def reset_envs(
@@ -121,10 +364,7 @@ class TensorEnv:
 
         self.state.step_count[mask] = 0
 
-        # Positions — uniformly random in world
-        rand_x = torch.rand((num_reset, N), device=self.device) * world_w
-        rand_y = torch.rand((num_reset, N), device=self.device) * world_h
-        self.state.ship_pos[idx] = torch.complex(rand_x, rand_y)
+        # Ship positions are set after obstacles (rejection sampling below).
 
         # Attitude — random unit vectors
         rand_angle = torch.rand((num_reset, N), device=self.device) * 2 * np.pi
@@ -174,8 +414,72 @@ class TensorEnv:
         # Clear damage attribution
         self.state.cumulative_damage_matrix[mask] = 0.0
 
-        # Clear previous action
+        # Clear previous action and per-step damage
         self.state.prev_action[mask] = 0.0
+        self.state.ship_obstacle_damage[mask] = 0.0
+
+        # Obstacles — init strategy and physics type resolved at __init__ time.
+        M = self.env_config.num_obstacles
+        self.state.obstacle_hit[mask] = False
+        if M > 0:
+            R_max = min(world_w, world_h) * 0.45
+            G = self.ship_config.obstacle_gravity
+
+            if self._obstacle_cache is not None:
+                # Sample from pre-converged library with random rotation+translation.
+                obs_pos, obs_vel, obs_radius, obs_gcenter = self._obstacle_cache.sample(
+                    num_reset, world_w, world_h, self.device
+                )
+                self.state.obstacle_pos[idx] = obs_pos
+                self.state.obstacle_vel[idx] = obs_vel
+                self.state.obstacle_radius[idx] = obs_radius
+                self.state.obstacle_gravity_center[idx] = obs_gcenter
+            else:
+                # Fresh random init via selected strategy.
+                if self.ship_config.obstacle_random_gravity_centers:
+                    center_x = torch.rand((num_reset, M), device=self.device) * world_w
+                    center_y = torch.rand((num_reset, M), device=self.device) * world_h
+                else:
+                    center_x = torch.full((num_reset, M), world_w / 2, device=self.device)
+                    center_y = torch.full((num_reset, M), world_h / 2, device=self.device)
+                self.state.obstacle_gravity_center[idx] = torch.complex(center_x, center_y)
+
+                obstacle_pos, obstacle_vel = self._obstacle_init_fn(
+                    G, R_max, num_reset, M, center_x, center_y, world_w, world_h, self.device
+                )
+                self.state.obstacle_pos[idx] = obstacle_pos
+                self.state.obstacle_vel[idx] = obstacle_vel
+
+                radii = self.ship_config.obstacle_radius_min + torch.rand(
+                    (num_reset, M), device=self.device
+                ) * (self.ship_config.obstacle_radius_max - self.ship_config.obstacle_radius_min)
+                self.state.obstacle_radius[idx] = radii
+
+                # Warmup: run obstacle-only physics before ships spawn.
+                warmup_steps = self.ship_config.obstacle_warmup_steps
+                if warmup_steps > 0:
+                    w_pos = self.state.obstacle_pos[idx]
+                    w_vel = self.state.obstacle_vel[idx]
+                    w_rad = self.state.obstacle_radius[idx]
+                    w_gc = self.state.obstacle_gravity_center[idx]
+                    for _ in range(warmup_steps):
+                        w_pos, w_vel, _ = step_obstacle_physics(
+                            w_pos, w_vel, w_rad, w_gc,
+                            self.ship_config, self._obstacle_gravity_fn, self._obstacle_delta_pe_fn,
+                        )
+                    self.state.obstacle_pos[idx] = w_pos
+                    self.state.obstacle_vel[idx] = w_vel
+
+        # Ship placement — rejection sampling keeps ships clear of all obstacles.
+        # Works correctly for M=0 (accepts every candidate immediately).
+        ship_pos = _spawn_ships_rejection(
+            num_reset, N, M,
+            self.state.obstacle_pos[idx],
+            self.state.obstacle_radius[idx],
+            self.ship_config,
+            self.device,
+        )
+        self.state.ship_pos[idx] = ship_pos
 
     # ------------------------------------------------------------------
     # Step
@@ -198,6 +502,9 @@ class TensorEnv:
 
         self.state = update_ships(self.state, actions, self.ship_config)
         self.state = update_bullets(self.state, self.ship_config)
+        self.state = update_obstacles(
+            self.state, self.ship_config, self._obstacle_gravity_fn, self._obstacle_delta_pe_fn
+        )
         self.state, dones = resolve_collisions(self.state, self.ship_config)
 
         self.state.step_count += 1

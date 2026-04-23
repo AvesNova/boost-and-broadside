@@ -74,9 +74,9 @@ class ReturnScaler:
             returns: (T, B, N, K) float32 — GAE returns in symlog-reward space.
         """
         T, B, N, K = returns.shape
-        flat = returns.reshape(-1, K)  # (T*B*N, K)
-        p5 = torch.quantile(flat.float(), 0.05, dim=0)  # (K,)
-        p95 = torch.quantile(flat.float(), 0.95, dim=0)
+        flat = returns.reshape(-1, K).float().cpu()  # CPU: avoid large GPU temp alloc
+        p5 = torch.quantile(flat, 0.05, dim=0).to(returns.device)  # (K,)
+        p95 = torch.quantile(flat, 0.95, dim=0).to(returns.device)
         if not self._initialized:
             self._p5 = p5
             self._p95 = p95
@@ -226,10 +226,12 @@ class RolloutBuffer:
         gamma: float,
         gae_lambda: float,
         device: torch.device,
+        num_obstacles: int = 0,
     ) -> None:
         self.num_steps = num_steps
         self.num_envs = num_envs
         self.num_ships = num_ships
+        self.num_obstacles = num_obstacles
         self.num_components = num_components
         self.gamma = gamma
         self.gae_lambda = gae_lambda
@@ -408,13 +410,14 @@ class RolloutBuffer:
 
             mb_obs = {key: val[:, idx] for key, val in self.obs.items()}
 
-            # Reconstruct initial hidden for this minibatch: (n_layers, B_mb*N, D)
+            # Reconstruct initial hidden for this minibatch: (n_layers, B_mb*(N+M), D)
             n_layers = self.initial_hidden.shape[0]
+            tokens_per_env = self.num_ships + self.num_obstacles
             hidden_full = self.initial_hidden.reshape(
-                n_layers, self.num_envs, self.num_ships, D
+                n_layers, self.num_envs, tokens_per_env, D
             )
             mb_hidden = hidden_full[:, idx, :, :].reshape(
-                n_layers, len(idx) * self.num_ships, D
+                n_layers, len(idx) * tokens_per_env, D
             )
 
             yield (

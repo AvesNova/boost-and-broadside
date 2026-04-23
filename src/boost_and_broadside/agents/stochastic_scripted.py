@@ -110,12 +110,61 @@ class StochasticScriptedAgent:
         dist_pred = torch.abs(diff_pred)
         return diff_pred / (dist_pred + 1e-8)
 
+    def _find_nearest_obstacle(
+        self, state: TensorState
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Find nearest obstacle (by edge distance) for each ship.
+
+        Returns:
+            min_dist_to_edge: (B, N) float — distance from ship to nearest obstacle edge
+            nearest_dir: (B, N) complex — unit vector from ship toward nearest obstacle center
+        """
+        B, N = state.ship_pos.shape
+        M = state.obstacle_pos.shape[1]
+        device = state.device
+        world_w, world_h = self.ship_config.world_size
+
+        if M == 0:
+            return (
+                torch.full((B, N), float("inf"), device=device),
+                torch.ones((B, N), dtype=torch.complex64, device=device),
+            )
+
+        # diff (B, N, M): vector from each ship to each obstacle center
+        diff_real = (
+            state.obstacle_pos.real.unsqueeze(1) - state.ship_pos.real.unsqueeze(2)
+        )  # (B, N, M)
+        diff_imag = (
+            state.obstacle_pos.imag.unsqueeze(1) - state.ship_pos.imag.unsqueeze(2)
+        )
+        # Toroidal wrap
+        diff_real = (diff_real + world_w / 2) % world_w - world_w / 2
+        diff_imag = (diff_imag + world_h / 2) % world_h - world_h / 2
+
+        dist_to_center = torch.sqrt(diff_real**2 + diff_imag**2)  # (B, N, M)
+        dist_to_edge = dist_to_center - state.obstacle_radius.unsqueeze(1)  # (B, N, M)
+
+        min_dist, nearest_m = dist_to_edge.min(dim=2)  # (B, N)
+
+        # Direction from ship to nearest obstacle center (using center diff, not edge)
+        idx = nearest_m.unsqueeze(2)  # (B, N, 1)
+        nd_real = diff_real.gather(2, idx).squeeze(2)  # (B, N)
+        nd_imag = diff_imag.gather(2, idx).squeeze(2)
+        nd_center = dist_to_center.gather(2, idx).squeeze(2)
+        nearest_dir = torch.complex(
+            nd_real / (nd_center + 1e-8), nd_imag / (nd_center + 1e-8)
+        )
+
+        return min_dist, nearest_dir
+
     def _compute_action_probs(
         self,
         state: TensorState,
         closest_dist: torch.Tensor,
         dir_pred: torch.Tensor,
         active_mask: torch.Tensor,
+        obs_min_dist: torch.Tensor | None = None,
+        obs_nearest_dir: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Compute marginal probability distributions for Power(3), Turn(7), Shoot(2).
 
@@ -231,6 +280,70 @@ class StochasticScriptedAgent:
         shoot_probs = torch.stack([p_no_shoot, p_shoot], dim=-1)
         shoot_probs = shoot_probs / (shoot_probs.sum(dim=-1, keepdim=True) + 1e-8)
 
+        # Obstacle avoidance blend (when M > 0)
+        if obs_min_dist is not None and obs_nearest_dir is not None:
+            # Away direction: opposite of toward-obstacle
+            away = -obs_nearest_dir  # (B, N) complex
+            # Cross product determines left/right: att × away
+            cross = att.real * away.imag - att.imag * away.real  # (B, N)
+
+            p_obs_turn = self._linear_ramp(
+                obs_min_dist,
+                self.config.obs_avoid_dist_ramp[0],
+                self.config.obs_avoid_dist_ramp[1],
+                *self.config.obs_avoid_turn_prob,
+            )
+            p_obs_sharp = self._linear_ramp(
+                obs_min_dist,
+                self.config.obs_sharp_dist_ramp[0],
+                self.config.obs_sharp_dist_ramp[1],
+                *self.config.obs_sharp_turn_prob,
+            )
+            p_obs_rev = self._linear_ramp(
+                obs_min_dist,
+                self.config.obs_reverse_dist_ramp[0],
+                self.config.obs_reverse_dist_ramp[1],
+                *self.config.obs_reverse_prob,
+            )
+
+            # cross = att.real * away.imag - att.imag * away.real
+            # Matches the target-tracking convention: cross > 0 → away is to the RIGHT
+            p_obs_right = torch.where(cross > 0, p_obs_turn, torch.zeros_like(p_obs_turn))
+            p_obs_left = torch.where(cross <= 0, p_obs_turn, torch.zeros_like(p_obs_turn))
+            p_obs_sharp_right = torch.where(
+                cross > 0, p_obs_sharp, torch.zeros_like(p_obs_sharp)
+            )
+            p_obs_sharp_left = torch.where(
+                cross <= 0, p_obs_sharp, torch.zeros_like(p_obs_sharp)
+            )
+
+            # Add avoidance votes to existing turn probs and renormalize
+            avoid_turn = torch.stack(
+                [
+                    torch.zeros_like(p_obs_turn),  # straight — avoidance adds nothing
+                    p_obs_left,
+                    p_obs_right,
+                    p_obs_sharp_left,
+                    p_obs_sharp_right,
+                    torch.zeros_like(p_obs_turn),
+                    torch.zeros_like(p_obs_turn),
+                ],
+                dim=-1,
+            )
+            turn_probs = turn_probs + avoid_turn
+            turn_probs = turn_probs / (turn_probs.sum(dim=-1, keepdim=True) + 1e-8)
+
+            # Blend reverse: use _prob_or so either signal can trigger it
+            p_reverse_blended = self._prob_or(p_reverse, p_obs_rev)
+            p_boost_blended = self._prob_and(p_want_boost, 1.0 - p_reverse_blended)
+            p_coast_blended = (
+                1.0 - self._prob_or(p_want_boost, p_reverse_blended)
+            ).clamp(0.0, 1.0)
+            power_probs = torch.stack(
+                [p_coast_blended, p_boost_blended, p_reverse_blended], dim=-1
+            )
+            power_probs = power_probs / (power_probs.sum(dim=-1, keepdim=True) + 1e-8)
+
         # Mask inactive ships (dead or no target) → default no-op action
         active_expanded = active_mask.unsqueeze(-1)
 
@@ -259,8 +372,16 @@ class StochasticScriptedAgent:
         dir_pred = self._predict_interception(state, target_idx, closest_dist)
         active_mask = state.ship_alive & has_target
 
+        M = state.obstacle_pos.shape[1]
+        if M > 0:
+            obs_min_dist, obs_nearest_dir = self._find_nearest_obstacle(state)
+        else:
+            obs_min_dist, obs_nearest_dir = None, None
+
         p_power, p_turn, p_shoot = self._compute_action_probs(
-            state, closest_dist, dir_pred, active_mask
+            state, closest_dist, dir_pred, active_mask,
+            obs_min_dist=obs_min_dist,
+            obs_nearest_dir=obs_nearest_dir,
         )
 
         batch_size, num_ships = state.ship_pos.shape

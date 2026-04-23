@@ -90,6 +90,12 @@ def _slice_state(state: TensorState, start: int, end: int) -> TensorState:
         bullet_cursor=state.bullet_cursor[start:end],
         damage_matrix=state.damage_matrix[start:end],
         cumulative_damage_matrix=state.cumulative_damage_matrix[start:end],
+        obstacle_pos=state.obstacle_pos[start:end],
+        obstacle_vel=state.obstacle_vel[start:end],
+        obstacle_radius=state.obstacle_radius[start:end],
+        obstacle_gravity_center=state.obstacle_gravity_center[start:end],
+        obstacle_hit=state.obstacle_hit[start:end],
+        ship_obstacle_damage=state.ship_obstacle_damage[start:end],
     )
 
 
@@ -138,6 +144,9 @@ _GROUP: dict[str, str] = {
     "damage_dealt_enemy": "local_scale",
     "damage_dealt_ally": "local_scale",
     "death": "local_scale",
+    "bullet_death": "local_scale",
+    "obstacle_death": "local_scale",
+    "obstacle_proximity": "local_scale",
 }
 
 # Components that use diagonal lambda (self-only: i==j). These must match the
@@ -154,6 +163,9 @@ _LOCAL_COMPONENTS: frozenset[str] = frozenset(
         "damage_dealt_enemy",
         "damage_dealt_ally",
         "death",
+        "bullet_death",
+        "obstacle_death",
+        "obstacle_proximity",
     }
 )
 
@@ -310,6 +322,7 @@ class PPOTrainer:
         )
 
         N = train_config.scales[0].env_config.num_ships
+        N_obs = train_config.scales[0].env_config.num_obstacles
 
         # Build obs shapes for the buffer from a dummy reset
         sample_obs = self.wrapper.reset()
@@ -328,6 +341,7 @@ class PPOTrainer:
             gamma=train_config.gamma,
             gae_lambda=train_config.gae_lambda,
             device=self.device,
+            num_obstacles=N_obs,
         )
 
         # Pre-compute lambda masks for active components only.
@@ -471,6 +485,7 @@ class PPOTrainer:
                 gamma=train_config.gamma,
                 gae_lambda=train_config.gae_lambda,
                 device=self.device,
+                num_obstacles=sc.env_config.num_obstacles,
             )
             self.aux_wrappers.append(aux_w)
             self.aux_buffers.append(aux_buf)
@@ -533,6 +548,7 @@ class PPOTrainer:
         """Run the full PPO training loop."""
         B = self.cfg.scales[0].num_envs
         N = self.wrapper.num_ships
+        M = self.wrapper.num_obstacles
         sc_start = self.B_self
         sc_end = self.B_self + self.B_sc
         avg_start = sc_end
@@ -545,12 +561,12 @@ class PPOTrainer:
         # Uniformly distributed over [0, max_episode_steps) — after the first wave
         # of truncations they naturally desynchronize on their own.
         self.wrapper.env.state.step_count.random_(0, self.env_config.max_episode_steps)
-        hidden = self.policy.initial_hidden(B, N, self.device)
+        hidden = self.policy.initial_hidden(B, N + M, self.device)
 
         # Avg-model hidden state — lives across the whole training run.
         avg_hidden: torch.Tensor | None = None
         if self.B_avg > 0:
-            avg_hidden = self.avg_policy.initial_hidden(self.B_avg, N, self.device)
+            avg_hidden = self.avg_policy.initial_hidden(self.B_avg, N + M, self.device)
 
         # League hidden state — re-initialised each rollout when the entry changes.
         league_hidden: torch.Tensor | None = None
@@ -564,7 +580,9 @@ class PPOTrainer:
             aux_w.env.state.step_count.random_(0, sc.env_config.max_episode_steps)
             aux_hiddens.append(
                 self.policy.initial_hidden(
-                    sc.num_envs, sc.env_config.num_ships, self.device
+                    sc.num_envs,
+                    sc.env_config.num_ships + sc.env_config.num_obstacles,
+                    self.device,
                 )
             )
             aux_last_dones.append(
@@ -613,12 +631,12 @@ class PPOTrainer:
                     )
                     self._current_league_policy = entry._policy
                     league_hidden = self._current_league_policy.initial_hidden(
-                        self.B_league, N, self.device
+                        self.B_league, N + M, self.device
                     )
                 elif entry.kind == "avg":
                     self._current_league_policy = self.avg_policy
                     league_hidden = self._current_league_policy.initial_hidden(
-                        self.B_league, N, self.device
+                        self.B_league, N + M, self.device
                     )
                 else:  # "scripted" — no policy forward pass needed
                     self._current_league_policy = None
@@ -803,14 +821,14 @@ class PPOTrainer:
                 )
 
                 # Reset hidden states for terminated envs
-                hidden = self.policy.reset_hidden_for_envs(hidden, done_any, N)
+                hidden = self.policy.reset_hidden_for_envs(hidden, done_any, N + M)
                 if use_avg and self.B_avg > 0:
                     avg_hidden = self.avg_policy.reset_hidden_for_envs(
-                        avg_hidden, done_any[avg_start:avg_end], N
+                        avg_hidden, done_any[avg_start:avg_end], N + M
                     )
                 if use_league and self._current_league_policy is not None:
                     league_hidden = self._current_league_policy.reset_hidden_for_envs(
-                        league_hidden, done_any[league_start:league_end], N
+                        league_hidden, done_any[league_start:league_end], N + M
                     )
 
                 # Re-randomise opponent team for envs that just ended an episode
@@ -835,6 +853,7 @@ class PPOTrainer:
                     zip(self.cfg.scales[1:], self.aux_wrappers, self.aux_buffers)
                 ):
                     aux_N = sc.env_config.num_ships
+                    aux_M = sc.env_config.num_obstacles
                     with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
                         aux_action, aux_logprob, aux_value_norm, aux_hiddens[i] = (
                             self.policy.get_action_and_value(aux_obs[i], aux_hiddens[i])
@@ -857,7 +876,7 @@ class PPOTrainer:
                     )
                     aux_done_any = aux_dones | aux_truncated
                     aux_hiddens[i] = self.policy.reset_hidden_for_envs(
-                        aux_hiddens[i], aux_done_any, aux_N
+                        aux_hiddens[i], aux_done_any, aux_N + aux_M
                     )
                     aux_last_dones[i] = aux_dones
                     aux_obs[i] = next_aux_obs

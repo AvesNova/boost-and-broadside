@@ -229,6 +229,24 @@ class MVPEnvWrapper:
             dim=-1,
         )  # (B, N, 3)
 
+        # Obstacle observations (M = num_obstacles; all tensors are (B, 0, *) when M=0)
+        obs_pos = torch.stack(
+            [s.obstacle_pos.real / world_w, s.obstacle_pos.imag / world_h], dim=-1
+        )  # (B, M, 2)
+        obs_vel = torch.stack(
+            [s.obstacle_vel.real, s.obstacle_vel.imag], dim=-1
+        )  # (B, M, 2)
+        max_dim = float(max(world_w, world_h))
+        obs_radius = (s.obstacle_radius / max_dim).unsqueeze(-1)  # (B, M, 1)
+        obs_gcenter = torch.stack(
+            [
+                s.obstacle_gravity_center.real / world_w,
+                s.obstacle_gravity_center.imag / world_h,
+            ],
+            dim=-1,
+        )  # (B, M, 2)
+        obs_hit = s.obstacle_hit.float().unsqueeze(-1)  # (B, M, 1)
+
         return {
             "pos": pos_norm,
             "vel": vel,
@@ -238,6 +256,11 @@ class MVPEnvWrapper:
             "team_id": s.ship_team_id,
             "alive": s.ship_alive,
             "prev_action": s.prev_action.long(),
+            "obstacle_pos": obs_pos,
+            "obstacle_vel": obs_vel,
+            "obstacle_radius": obs_radius,
+            "obstacle_gravity_center": obs_gcenter,
+            "obstacle_hit": obs_hit,
         }
 
     # ------------------------------------------------------------------
@@ -266,6 +289,10 @@ class MVPEnvWrapper:
     @property
     def num_ships(self) -> int:
         return self.env_config.num_ships
+
+    @property
+    def num_obstacles(self) -> int:
+        return self.env_config.num_obstacles
 
 
 def _make_prev_state_proxy(
@@ -298,4 +325,10 @@ def _make_prev_state_proxy(
         bullet_cursor=state.bullet_cursor,
         damage_matrix=state.damage_matrix,
         cumulative_damage_matrix=state.cumulative_damage_matrix,
+        obstacle_pos=state.obstacle_pos,
+        obstacle_vel=state.obstacle_vel,
+        obstacle_radius=state.obstacle_radius,
+        obstacle_gravity_center=state.obstacle_gravity_center,
+        obstacle_hit=state.obstacle_hit,
+        ship_obstacle_damage=state.ship_obstacle_damage,
     )
