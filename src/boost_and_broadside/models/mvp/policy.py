@@ -237,7 +237,8 @@ class MVPPolicy(nn.Module):
         actions: torch.Tensor,
         initial_hidden: torch.Tensor,
         alive_mask: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        return_encoder_output: bool = False,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None]:
         """Re-evaluate actions over a full rollout for PPO update.
 
         The encoder runs over all (T*B) tokens in parallel. Each YemongBlock
@@ -245,17 +246,21 @@ class MVPPolicy(nn.Module):
         temporal RG-LRU sequentially over T from the layer's initial hidden.
 
         Args:
-            obs:            Dict with (T, B, N, ...) tensors.
-            actions:        (T, B, N, 3) int actions taken during rollout.
-            initial_hidden: (n_layers, B*N, D) hidden state at rollout start.
-            alive_mask:     (T, B, N) bool — alive ships per timestep.
+            obs:                  Dict with (T, B, N, ...) tensors.
+            actions:              (T, B, N, 3) int actions taken during rollout.
+            initial_hidden:       (n_layers, B*N, D) hidden state at rollout start.
+            alive_mask:           (T, B, N) bool — alive ships per timestep.
+            return_encoder_output: If True, return raw encoder embeddings as 5th value.
+                                   Pass False (default) when sigreg_coef=0 to avoid
+                                   keeping the encoder output tensor alive in RAM.
 
         Returns:
             logprob:   (T, B, N) float.
             entropy:   (T, B, N) float.
             new_value: (T, B, N, K) float — per-component value in normalized space.
             logits:    (T, B, N, TOTAL_ACTION_LOGITS) float — raw action logits.
-            z:         (T, B, N, D) float — raw encoder embeddings before Yemong layers.
+            z:         (T, B, N, D) float — raw encoder embeddings before Yemong layers,
+                       or None if return_encoder_output=False.
         """
         T, B, N = actions.shape[:3]
         D = self._d_model
@@ -270,7 +275,7 @@ class MVPPolicy(nn.Module):
 
         x = self.encoder(flat_obs)              # (T*B, N, D)
         x = x.reshape(T, B, N, D)              # (T, B, N, D)
-        z = x                                   # raw encoder output — returned for SIGReg
+        z = x if return_encoder_output else None
 
         for i, layer in enumerate(self.yemong_layers):
             x, _, _ = layer.sequence(x, alive_mask, rglru_states[i], conv_bufs[i])

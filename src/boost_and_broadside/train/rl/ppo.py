@@ -303,7 +303,7 @@ class PPOTrainer:
             model_config, ship_config, num_value_components=K
         ).to(self.device)
         _cast_norms_bf16(self._policy_module)
-        self.sigreg = SIGReg(d_model=model_config.d_model).to(self.device)
+        self.sigreg = SIGReg(d_model=model_config.d_model, num_proj=64).to(self.device)
         self.policy = (
             torch.compile(self._policy_module, mode=compile_mode)
             if compile_mode is not None
@@ -1091,12 +1091,14 @@ class PPOTrainer:
             mb_expert_probs,
         ) = batch
 
+        need_sigreg = self._schedule_state.sigreg_coef > 0.0
         with torch.autocast("cuda", dtype=torch.bfloat16):
             logprob, entropy, new_value, policy_logits, z = self.policy.evaluate_actions(
                 obs=mb_obs,
                 actions=mb_actions.long(),
                 initial_hidden=mb_hidden,
                 alive_mask=mb_alive,
+                return_encoder_output=need_sigreg,
             )
 
         alive_f = mb_alive.float()  # (T, B_mb, N)
@@ -1218,9 +1220,9 @@ class PPOTrainer:
 
         # ---- SIGReg encoder regularization ----------------------------------
         sigreg_loss = torch.tensor(0.0, device=self.device)
-        if self._schedule_state.sigreg_coef > 0.0:
+        if need_sigreg:
             T_mb, B_mb, N_mb, D_mb = z.shape
-            z_flat = z.float().reshape(T_mb, B_mb * N_mb, D_mb)  # (T, B*N, D)
+            z_flat = z.reshape(T_mb, B_mb * N_mb, D_mb)  # (T, B*N, D)
             sigreg_loss = self.sigreg(z_flat)
 
         loss = (
