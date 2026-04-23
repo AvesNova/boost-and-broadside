@@ -40,6 +40,7 @@ from boost_and_broadside.train.rl.buffer import (
     AdvantageScaler,
     symlog,
 )
+from boost_and_broadside.train.rl.sigreg import SIGReg
 from boost_and_broadside.train.rl.roster import EloRoster, RosterEntry
 
 
@@ -171,6 +172,7 @@ class _ResolvedSchedule:
     entropy_coef: float
     behavior_cloning_coef: float
     value_function_coef: float
+    sigreg_coef: float
     true_reward_scale: float
     global_scale: float
     local_scale: float
@@ -192,6 +194,7 @@ def _resolve_schedule(schedule: TrainingSchedule, step: int) -> _ResolvedSchedul
         entropy_coef=schedule.entropy_coef(step),
         behavior_cloning_coef=schedule.behavior_cloning_coef(step),
         value_function_coef=schedule.value_function_coef(step),
+        sigreg_coef=schedule.sigreg_coef(step),
         true_reward_scale=schedule.true_reward_scale(step),
         global_scale=schedule.global_scale(step),
         local_scale=schedule.local_scale(step),
@@ -300,6 +303,7 @@ class PPOTrainer:
             model_config, ship_config, num_value_components=K
         ).to(self.device)
         _cast_norms_bf16(self._policy_module)
+        self.sigreg = SIGReg(d_model=model_config.d_model).to(self.device)
         self.policy = (
             torch.compile(self._policy_module, mode=compile_mode)
             if compile_mode is not None
@@ -1088,7 +1092,7 @@ class PPOTrainer:
         ) = batch
 
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            logprob, entropy, new_value, policy_logits = self.policy.evaluate_actions(
+            logprob, entropy, new_value, policy_logits, z = self.policy.evaluate_actions(
                 obs=mb_obs,
                 actions=mb_actions.long(),
                 initial_hidden=mb_hidden,
@@ -1212,11 +1216,19 @@ class PPOTrainer:
                 )  # (T, B_mb, N)
                 scripted_entropy = (scripted_ent_per_token * bc_f).sum() / bc_sum
 
+        # ---- SIGReg encoder regularization ----------------------------------
+        sigreg_loss = torch.tensor(0.0, device=self.device)
+        if self._schedule_state.sigreg_coef > 0.0:
+            T_mb, B_mb, N_mb, D_mb = z.shape
+            z_flat = z.float().reshape(T_mb, B_mb * N_mb, D_mb)  # (T, B*N, D)
+            sigreg_loss = self.sigreg(z_flat)
+
         loss = (
             self._policy_gradient_coef * pg_loss
             + self._schedule_state.value_function_coef * vf_loss
             + self._schedule_state.entropy_coef * ent_loss
             + self._behavior_cloning_coef * bc_loss
+            + self._schedule_state.sigreg_coef * sigreg_loss
         )
 
         # ---- Diagnostics (no grad) — kept as GPU tensors, .item() deferred to logging ----
@@ -1227,6 +1239,7 @@ class PPOTrainer:
             diag["vf_loss"] = vf_loss.detach()
             diag["ent_loss"] = ent_loss.detach()
             diag["bc_loss"] = bc_loss.detach()
+            diag["sigreg_loss"] = sigreg_loss.detach()
             diag["scripted_entropy"] = scripted_entropy.detach()
             diag["bc_kl"] = bc_loss.detach() - scripted_entropy.detach()
             diag["adv_var"] = adv_rms
@@ -1320,6 +1333,7 @@ class PPOTrainer:
             "train/value_loss": [],
             "train/entropy_loss": [],
             "train/behavioral_cloning_loss": [],
+            "train/sigreg_loss": [],
             "train/bc_kl": [],
             "train/scripted_entropy": [],
             "train/approximate_kl": [],
@@ -1364,6 +1378,7 @@ class PPOTrainer:
                     "vf": _z.clone(),
                     "ent": _z.clone(),
                     "bc": _z.clone(),
+                    "sigreg": _z.clone(),
                     "bc_kl": _z.clone(),
                     "scripted_entropy": _z.clone(),
                     "kl": _z.clone(),
@@ -1392,6 +1407,7 @@ class PPOTrainer:
                     scalar_accum_step["vf"] += diag["vf_loss"] / n_scales
                     scalar_accum_step["ent"] += diag["ent_loss"] / n_scales
                     scalar_accum_step["bc"] += diag["bc_loss"] / n_scales
+                    scalar_accum_step["sigreg"] += diag["sigreg_loss"] / n_scales
                     scalar_accum_step["bc_kl"] += diag["bc_kl"] / n_scales
                     scalar_accum_step["scripted_entropy"] += (
                         diag["scripted_entropy"] / n_scales
@@ -1429,6 +1445,7 @@ class PPOTrainer:
                 accum_scalar["train/behavioral_cloning_loss"].append(
                     scalar_accum_step["bc"]
                 )
+                accum_scalar["train/sigreg_loss"].append(scalar_accum_step["sigreg"])
                 accum_scalar["train/bc_kl"].append(scalar_accum_step["bc_kl"])
                 accum_scalar["train/scripted_entropy"].append(
                     scalar_accum_step["scripted_entropy"]

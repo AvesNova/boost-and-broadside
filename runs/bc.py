@@ -26,6 +26,7 @@ BC_SCHEDULE = TrainingSchedule(
     entropy_coef=constant(0.01),
     behavior_cloning_coef=constant(1.0),
     value_function_coef=constant(1.0),
+    sigreg_coef=constant(0.0),
     # Group scales — all components active during BC so the value function learns
     # the full reward signal before RL begins.
     true_reward_scale=constant(1.0),

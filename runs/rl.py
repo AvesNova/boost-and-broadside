@@ -40,6 +40,7 @@ RL_SCHEDULE = TrainingSchedule(
         (40_000_000, 0.0),
     ),
     value_function_coef=constant(1.0),
+    sigreg_coef=constant(0.1),
     true_reward_scale=constant(1.0),
     global_scale=constant(1.0),
     local_scale=constant(1.0),

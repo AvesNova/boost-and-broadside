@@ -237,7 +237,7 @@ class MVPPolicy(nn.Module):
         actions: torch.Tensor,
         initial_hidden: torch.Tensor,
         alive_mask: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Re-evaluate actions over a full rollout for PPO update.
 
         The encoder runs over all (T*B) tokens in parallel. Each YemongBlock
@@ -254,6 +254,8 @@ class MVPPolicy(nn.Module):
             logprob:   (T, B, N) float.
             entropy:   (T, B, N) float.
             new_value: (T, B, N, K) float — per-component value in normalized space.
+            logits:    (T, B, N, TOTAL_ACTION_LOGITS) float — raw action logits.
+            z:         (T, B, N, D) float — raw encoder embeddings before Yemong layers.
         """
         T, B, N = actions.shape[:3]
         D = self._d_model
@@ -268,6 +270,7 @@ class MVPPolicy(nn.Module):
 
         x = self.encoder(flat_obs)              # (T*B, N, D)
         x = x.reshape(T, B, N, D)              # (T, B, N, D)
+        z = x                                   # raw encoder output — returned for SIGReg
 
         for i, layer in enumerate(self.yemong_layers):
             x, _, _ = layer.sequence(x, alive_mask, rglru_states[i], conv_bufs[i])
@@ -277,7 +280,7 @@ class MVPPolicy(nn.Module):
 
         logprob, entropy = _evaluate_action(logits, actions)
 
-        return logprob, entropy, new_value, logits
+        return logprob, entropy, new_value, logits, z
 
 
 # ---------------------------------------------------------------------------

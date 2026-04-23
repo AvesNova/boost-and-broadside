@@ -187,6 +187,7 @@ class TrainingSchedule:
     entropy_coef: Callable[[int], float]
     behavior_cloning_coef: Callable[[int], float]
     value_function_coef: Callable[[int], float]
+    sigreg_coef: Callable[[int], float]  # weight for SIGReg encoder regularization loss
 
     # --- Reward group scales ---
     true_reward_scale: Callable[[int], float]  # multiplier for: ally_win, enemy_win
