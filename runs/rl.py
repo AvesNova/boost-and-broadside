@@ -31,9 +31,10 @@ RL_SCHEDULE = TrainingSchedule(
     # Warmup from 1e-7 to 3e-4 over 5M steps, then hold.
     learning_rate=linear((0, 1e-7), (5_000_000, 3e-4)),
     policy_gradient_coef=constant(1.0),
-    entropy_coef=constant(0.001),
+    entropy_coef=constant(0.005),
     behavior_cloning_coef=linear(
-        (0, 1.0),
+        (0, 2.0),
+        (10_000_000, 2.0),
         (20_000_000, 1.0),
         (30_000_000, 0.1),
         (40_000_000, 0.0),
@@ -50,7 +51,7 @@ RL_SCHEDULE = TrainingSchedule(
     # League activates at step 50M once the policy has meaningful ELO.
     league_fraction=stepped((0, 0.0), (50_000_000, 0.2)),
     # Accumulate avg-model immediately so it is ready at step 50M.
-    allow_avg_model_updates=stepped((0, True)),
+    allow_avg_model_updates=stepped((0, False), (40_000_000, True)),
     allow_scripted_in_roster=stepped((0, True)),
     elo_eval_games=stepped((0, 256)),
     elo_eval_interval=stepped((0, 10)),

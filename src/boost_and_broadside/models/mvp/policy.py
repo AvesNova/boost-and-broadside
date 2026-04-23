@@ -11,8 +11,9 @@ K = num_value_components (one head per reward component).
 Value head outputs in normalized space. The ReturnScaler in PPOTrainer maps
 between symlog-reward space (GAE) and normalized space (value head I/O).
 
-YemongBlock hidden state shape: (n_layers, B*N, D) — one RG-LRU state per layer.
-The wrapper zeros hidden states for ships in reset environments.
+Hidden state shape: (n_layers, B*N, CONV_KERNEL * D), packed as:
+  hidden[:, :, :D]   — RG-LRU recurrent state
+  hidden[:, :, D:]   — causal conv buffer (CONV_KERNEL-1 past linear1 outputs, flattened)
 """
 
 import math
@@ -31,7 +32,7 @@ from boost_and_broadside.constants import (
     SHOOT_SLICE,
 )
 from boost_and_broadside.models.mvp.encoder import ShipEncoder
-from boost_and_broadside.models.mvp.griffin import YemongBlock
+from boost_and_broadside.models.mvp.griffin import CONV_KERNEL, YemongBlock
 
 
 class TeamPMA(nn.Module):
@@ -143,13 +144,15 @@ class MVPPolicy(nn.Module):
     def initial_hidden(
         self, num_envs: int, num_ships: int, device: torch.device
     ) -> torch.Tensor:
-        """Return zeroed RG-LRU hidden states for all Yemong layers.
+        """Return zeroed hidden states for all Yemong layers.
 
         Returns:
-            (n_layers, B*N, D) float32 — ready to pass to forward().
+            (n_layers, B*N, CONV_KERNEL*D) float32 — packed RG-LRU state + conv buffer.
         """
         n_layers = len(self.yemong_layers)
-        return torch.zeros(n_layers, num_envs * num_ships, self._d_model, device=device)
+        return torch.zeros(
+            n_layers, num_envs * num_ships, CONV_KERNEL * self._d_model, device=device
+        )
 
     def reset_hidden_for_envs(
         self,
@@ -202,11 +205,20 @@ class MVPPolicy(nn.Module):
         x = self.encoder(obs)  # (B, N, D)
 
         B, N, D = x.shape
-        new_hs = []
+        BN = B * N
+        n_layers = len(self.yemong_layers)
+        rglru_states = hidden[:, :, :D]                                    # (n_layers, B*N, D)
+        conv_bufs = hidden[:, :, D:].reshape(n_layers, BN, CONV_KERNEL - 1, D)
+
+        new_rglru, new_cbs = [], []
         for i, layer in enumerate(self.yemong_layers):
-            x, new_h = layer.step(x, alive, hidden[i])  # (B, N, D), (B*N, D)
-            new_hs.append(new_h)
-        new_hidden = torch.stack(new_hs, dim=0)  # (n_layers, B*N, D)
+            x, new_h, new_cb = layer.step(x, alive, rglru_states[i], conv_bufs[i])
+            new_rglru.append(new_h)
+            new_cbs.append(new_cb)
+
+        new_rglru_t = torch.stack(new_rglru, dim=0)                        # (n_layers, B*N, D)
+        new_cbs_t = torch.stack(new_cbs, dim=0).reshape(n_layers, BN, -1) # (n_layers, B*N, (K-1)*D)
+        new_hidden = torch.cat([new_rglru_t, new_cbs_t], dim=-1)           # (n_layers, B*N, K*D)
 
         logits = self.action_head(x)  # (B, N, 12)
         value = self.value_head(x)    # (B, N, K) — per-ship, normalized space
@@ -244,15 +256,21 @@ class MVPPolicy(nn.Module):
             new_value: (T, B, N, K) float — per-component value in normalized space.
         """
         T, B, N = actions.shape[:3]
+        D = self._d_model
+        n_layers = len(self.yemong_layers)
+        BN = initial_hidden.shape[1]
+
+        rglru_states = initial_hidden[:, :, :D]                                      # (n_layers, B*N, D)
+        conv_bufs = initial_hidden[:, :, D:].reshape(n_layers, BN, CONV_KERNEL - 1, D)
 
         # Flatten T into B for encoder
         flat_obs = {k: v.reshape(T * B, *v.shape[2:]) for k, v in obs.items()}
 
-        x = self.encoder(flat_obs)   # (T*B, N, D)
-        x = x.reshape(T, B, N, self._d_model)  # (T, B, N, D)
+        x = self.encoder(flat_obs)              # (T*B, N, D)
+        x = x.reshape(T, B, N, D)              # (T, B, N, D)
 
         for i, layer in enumerate(self.yemong_layers):
-            x = layer.sequence(x, alive_mask, initial_hidden[i])  # (T, B, N, D)
+            x, _, _ = layer.sequence(x, alive_mask, rglru_states[i], conv_bufs[i])
 
         logits = self.action_head(x)     # (T, B, N, 12)
         new_value = self.value_head(x)   # (T, B, N, K) — per-ship, normalized space

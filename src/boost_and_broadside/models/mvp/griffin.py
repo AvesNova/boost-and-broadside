@@ -5,7 +5,11 @@ YemongBlock = SpatialTransformerBlock (MHA + GatedMLP) + GriffinTemporalBlock (R
 The RG-LRU (Real-Gated Linear Recurrent Unit) provides per-ship temporal memory
 with learnable decay rates, replacing the GRU in the original backbone.
 
-Hidden state shape: (n_layers, B*N, D) — one RG-LRU state per Yemong layer.
+Hidden state shape: (n_layers, B*N, CONV_KERNEL * D) packed as:
+  hidden[:, :, :D]   — RG-LRU recurrent state per layer
+  hidden[:, :, D:]   — causal conv buffer flattened as (CONV_KERNEL-1) * D
+The conv buffer stores the last (kernel-1) inputs to linear1, so that rollout
+(T=1) and PPO re-evaluation (T=128) use identical causal context.
 """
 
 import torch
@@ -14,6 +18,8 @@ import torch.nn.functional as F
 
 from boost_and_broadside.config import ModelConfig
 from boost_and_broadside.models.mvp.attention import GatedMLP, TransformerBlock
+
+CONV_KERNEL: int = 4  # causal depthwise conv kernel size
 
 
 class RGLRU(nn.Module):
@@ -52,10 +58,13 @@ class RGLRU(nn.Module):
         Returns:
             new_h: (B_seq, D) updated hidden state (also the output).
         """
-        r = torch.sigmoid(self.linear_a(x))                      # (B_seq, D)
-        i = torch.sigmoid(self.linear_x(x))                      # (B_seq, D)
-        a = torch.sigmoid(self.log_lambda) ** (self.c * r)       # (B_seq, D)
-        new_h = a * h + torch.sqrt(torch.clamp(1.0 - a ** 2, min=0.0)) * (i * x)
+        r = torch.sigmoid(self.linear_a(x))                 # (B_seq, D)
+        i = torch.sigmoid(self.linear_x(x))                 # (B_seq, D)
+        a = torch.sigmoid(self.log_lambda) ** (self.c * r)  # (B_seq, D)
+        # Factor (1-a)(1+a) avoids catastrophic cancellation in bfloat16 when a→1.
+        # Epsilon prevents sqrt gradient explosion at the boundary.
+        gate = torch.sqrt(torch.clamp((1.0 - a) * (1.0 + a), min=1e-6))
+        new_h = a * h + gate * (i * x)
         return new_h
 
     def forward_sequence(
@@ -87,18 +96,19 @@ class GriffinTemporalBlock(nn.Module):
         norm → (linear₁ → causal_conv → RG-LRU) × GeLU(linear₂) → linear_out
              → 1st residual → GatedMLP(norm) → 2nd residual
 
+    The causal conv uses a stored buffer (the last kernel-1 linear₁ outputs)
+    as left-padding, making rollout (T=1) and training (T=128) identical.
+
     Args:
-        d_model:     Embedding dimension D.
-        conv_kernel: Causal depthwise conv kernel size (default 4).
+        d_model: Embedding dimension D.
     """
 
-    def __init__(self, d_model: int, conv_kernel: int = 4) -> None:
+    def __init__(self, d_model: int) -> None:
         super().__init__()
-        self.conv_kernel = conv_kernel
         self.norm1 = nn.RMSNorm(d_model)
         self.linear1 = nn.Linear(d_model, d_model, bias=False)     # branch1 input
-        self.conv = nn.Conv1d(                                       # depthwise causal
-            d_model, d_model, kernel_size=conv_kernel, groups=d_model, bias=True
+        self.conv = nn.Conv1d(                                       # depthwise, no padding
+            d_model, d_model, kernel_size=CONV_KERNEL, groups=d_model, bias=True
         )
         self.rg_lru = RGLRU(d_model)
         self.linear2 = nn.Linear(d_model, d_model, bias=False)     # branch2 (gate) input
@@ -106,45 +116,44 @@ class GriffinTemporalBlock(nn.Module):
         self.norm2 = nn.RMSNorm(d_model)
         self.gated_mlp = GatedMLP(d_model)
 
-    def _causal_conv(self, x: torch.Tensor, T: int) -> torch.Tensor:
-        """Depthwise causal conv over the time axis (left-zero-padded).
-
-        Args:
-            x: (B_seq, T, D).
-
-        Returns:
-            (B_seq, T, D) convolved output.
-        """
-        x_t = x.transpose(1, 2)                              # (B_seq, D, T)
-        x_t = F.pad(x_t, (self.conv_kernel - 1, 0))         # left-pad for causality
-        return self.conv(x_t)[:, :, :T].transpose(1, 2)     # (B_seq, T, D)
-
     def forward_sequence(
-        self, x_seq: torch.Tensor, h0: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+        self,
+        x_seq: torch.Tensor,    # (B_seq, T, D)
+        h0: torch.Tensor,       # (B_seq, D)
+        conv_buf: torch.Tensor, # (B_seq, CONV_KERNEL-1, D)
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Apply temporal block over a sequence.
 
         Args:
-            x_seq: (B_seq, T, D) input (ships as batch, time as sequence).
-            h0:    (B_seq, D) initial RG-LRU hidden state.
+            x_seq:    (B_seq, T, D) input (ships as batch, time as sequence).
+            h0:       (B_seq, D) initial RG-LRU hidden state.
+            conv_buf: (B_seq, CONV_KERNEL-1, D) stored linear1 outputs from
+                      the end of the previous sequence — used as causal left-padding.
 
         Returns:
-            output: (B_seq, T, D).
-            h:      (B_seq, D) final hidden state.
+            output:       (B_seq, T, D).
+            new_h:        (B_seq, D) final RG-LRU hidden state.
+            new_conv_buf: (B_seq, CONV_KERNEL-1, D) updated conv buffer.
         """
         T = x_seq.shape[1]
         normed = self.norm1(x_seq)
 
-        b1 = self.linear1(normed)                             # (B_seq, T, D)
-        b1 = self._causal_conv(b1, T)                        # (B_seq, T, D)
-        b1, h = self.rg_lru.forward_sequence(b1, h0)         # (B_seq, T, D)
+        b1 = self.linear1(normed)                                  # (B_seq, T, D)
 
-        b2 = F.gelu(self.linear2(normed))                    # (B_seq, T, D)
-        recurrent_out = self.linear_out(b1 * b2)             # (B_seq, T, D)
+        # Causal conv: prepend stored buffer instead of zeros.
+        # padded: (B_seq, T+CONV_KERNEL-1, D) → conv (no padding) → (B_seq, T, D)
+        padded = torch.cat([conv_buf, b1], dim=1)
+        b1_conv = self.conv(padded.transpose(1, 2)).transpose(1, 2)  # (B_seq, T, D)
+        new_conv_buf = padded[:, -(CONV_KERNEL - 1):, :]             # (B_seq, K-1, D)
 
-        x1 = x_seq + recurrent_out                           # 1st residual
-        x2 = x1 + self.gated_mlp(self.norm2(x1))            # 2nd residual
-        return x2, h
+        b1_out, new_h = self.rg_lru.forward_sequence(b1_conv, h0)   # (B_seq, T, D)
+
+        b2 = F.gelu(self.linear2(normed))                           # (B_seq, T, D)
+        recurrent_out = self.linear_out(b1_out * b2)                # (B_seq, T, D)
+
+        x1 = x_seq + recurrent_out                                  # 1st residual
+        x2 = x1 + self.gated_mlp(self.norm2(x1))                   # 2nd residual
+        return x2, new_h, new_conv_buf
 
 
 class YemongBlock(nn.Module):
@@ -164,41 +173,45 @@ class YemongBlock(nn.Module):
 
     def step(
         self,
-        x: torch.Tensor,      # (B, N, D)
-        alive: torch.Tensor,  # (B, N) bool
-        h: torch.Tensor,      # (B*N, D)
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+        x: torch.Tensor,        # (B, N, D)
+        alive: torch.Tensor,    # (B, N) bool
+        h: torch.Tensor,        # (B*N, D)
+        conv_buf: torch.Tensor, # (B*N, CONV_KERNEL-1, D)
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Single-step forward for rollout inference.
 
         Returns:
-            x:     (B, N, D) updated embeddings.
-            new_h: (B*N, D) updated RG-LRU hidden state.
+            x:           (B, N, D) updated embeddings.
+            new_h:       (B*N, D) updated RG-LRU hidden state.
+            new_conv_buf:(B*N, CONV_KERNEL-1, D) updated conv buffer.
         """
         B, N, D = x.shape
-        x = self.spatial(x, alive)                                 # (B, N, D)
-        x_flat = x.reshape(B * N, 1, D)                           # (B*N, 1, D)
-        out, new_h = self.temporal.forward_sequence(x_flat, h)    # (B*N, 1, D)
-        return out.squeeze(1).reshape(B, N, D), new_h
+        x = self.spatial(x, alive)                                     # (B, N, D)
+        x_flat = x.reshape(B * N, 1, D)                               # (B*N, 1, D)
+        out, new_h, new_cb = self.temporal.forward_sequence(x_flat, h, conv_buf)
+        return out.squeeze(1).reshape(B, N, D), new_h, new_cb
 
     def sequence(
         self,
         x: torch.Tensor,           # (T, B, N, D)
         alive_mask: torch.Tensor,  # (T, B, N) bool
         h0: torch.Tensor,          # (B*N, D)
-    ) -> torch.Tensor:
+        conv_buf0: torch.Tensor,   # (B*N, CONV_KERNEL-1, D)
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Full-sequence forward for PPO re-evaluation.
 
         Returns:
-            (T, B, N, D) updated embeddings.
+            (T, B, N, D) updated embeddings, final RG-LRU h, final conv buf.
         """
         T, B, N, D = x.shape
 
-        # Spatial: fold T into batch for efficient parallel cross-ship attention
+        # Spatial: fold T into batch for parallel cross-ship attention
         x = self.spatial(
             x.reshape(T * B, N, D), alive_mask.reshape(T * B, N)
         ).reshape(T, B, N, D)
 
         # Temporal: fold B*N into batch, sequence over T per ship
-        x_seq = x.permute(1, 2, 0, 3).reshape(B * N, T, D)       # (B*N, T, D)
-        out, _ = self.temporal.forward_sequence(x_seq, h0)         # (B*N, T, D)
-        return out.reshape(B, N, T, D).permute(2, 0, 1, 3)        # (T, B, N, D)
+        x_seq = x.permute(1, 2, 0, 3).reshape(B * N, T, D)           # (B*N, T, D)
+        out, new_h, new_cb = self.temporal.forward_sequence(x_seq, h0, conv_buf0)
+        x = out.reshape(B, N, T, D).permute(2, 0, 1, 3)              # (T, B, N, D)
+        return x, new_h, new_cb
