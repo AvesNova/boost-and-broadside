@@ -14,7 +14,10 @@ from boost_and_broadside.env.physics import (
     update_ships,
     update_bullets,
     resolve_collisions,
+    resolve_obstacle_collisions,
 )
+from boost_and_broadside.env.obstacle_physics import step_obstacles_harmonic
+from boost_and_broadside.env.obstacle_cache import ObstacleCache
 
 
 class TensorEnv:
@@ -34,11 +37,13 @@ class TensorEnv:
         ship_config: ShipConfig,
         env_config: EnvConfig,
         device: str | torch.device,
+        obstacle_cache: ObstacleCache | None = None,
     ) -> None:
         self.num_envs = num_envs
         self.ship_config = ship_config
         self.env_config = env_config
         self.device = torch.device(device)
+        self.obstacle_cache = obstacle_cache
         self.state: TensorState | None = None
 
     # ------------------------------------------------------------------
@@ -68,6 +73,7 @@ class TensorEnv:
         B = self.num_envs
         N = self.env_config.num_ships
         K = self.env_config.max_bullets
+        M = self.env_config.num_obstacles
         dev = self.device
 
         self.state = TensorState(
@@ -92,6 +98,11 @@ class TensorEnv:
             cumulative_damage_matrix=torch.zeros(
                 (B, N, N), dtype=torch.float32, device=dev
             ),
+            obstacle_pos=torch.zeros((B, M), dtype=torch.complex64, device=dev),
+            obstacle_vel=torch.zeros((B, M), dtype=torch.complex64, device=dev),
+            obstacle_radius=torch.zeros((B, M), dtype=torch.float32, device=dev),
+            obstacle_gcenter=torch.zeros((B,), dtype=torch.complex64, device=dev),
+            ship_hit_obstacle=torch.zeros((B, N), dtype=torch.bool, device=dev),
         )
 
     def reset_envs(
@@ -177,6 +188,19 @@ class TensorEnv:
         # Clear previous action
         self.state.prev_action[mask] = 0.0
 
+        # Inject obstacle snapshot from cache (rotation + translation applied inside)
+        if self.obstacle_cache is not None:
+            obs_pos, obs_vel, obs_radius, obs_gcenter = self.obstacle_cache.sample(
+                num_reset, self.ship_config.world_size, self.device
+            )
+            self.state.obstacle_pos[idx] = obs_pos
+            self.state.obstacle_vel[idx] = obs_vel
+            self.state.obstacle_radius[idx] = obs_radius
+            self.state.obstacle_gcenter[idx] = obs_gcenter
+
+        # Clear obstacle death flag
+        self.state.ship_hit_obstacle[mask] = False
+
     # ------------------------------------------------------------------
     # Step
     # ------------------------------------------------------------------
@@ -195,9 +219,12 @@ class TensorEnv:
             (dones, truncated) — each is a (B,) bool tensor.
         """
         self.state.prev_action = actions.float()
+        self.state.ship_hit_obstacle.zero_()
 
         self.state = update_ships(self.state, actions, self.ship_config)
         self.state = update_bullets(self.state, self.ship_config)
+        self.state = step_obstacles_harmonic(self.state, self.ship_config, enable_pbd=False)
+        self.state = resolve_obstacle_collisions(self.state, self.ship_config)
         self.state, dones = resolve_collisions(self.state, self.ship_config)
 
         self.state.step_count += 1

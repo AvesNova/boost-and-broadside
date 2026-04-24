@@ -1,19 +1,23 @@
 """MVPPolicy: the full per-ship actor-critic policy.
 
 Architecture (per timestep):
-    obs → ShipEncoder → (B, N, D)
-         → N × YemongBlock              → (B, N, D)      [spatial + temporal per layer]
-         → ActionHead                   → (B, N, 12)     [logits: power|turn|shoot]
-         → TeamPMA                      → (B, N, D)      [pool per team, broadcast back]
-         → ValueHead                    → (B, N, K)      [MSE critic: K components in normalized space]
+    obs → EntityEncoder → (B, N+M, D)     [ships N then obstacles M]
+         → N+M x YemongBlock → (B, N+M, D)   [spatial + temporal over all tokens]
+         → slice [:N]                    → (B, N, D)    [ship tokens only]
+         → ActionHead                   → (B, N, 12)   [logits: power|turn|shoot]
+         → TeamPMA                      → (B, N, D)    [pool per team, broadcast back]
+         → ValueHead                    → (B, N, K)    [MSE critic: K components]
+
+Obstacle tokens (team_id=2) participate in attention and carry temporal hidden
+state, but receive no action or value heads.
 
 K = num_value_components (one head per reward component).
 Value head outputs in normalized space. The ReturnScaler in PPOTrainer maps
 between symlog-reward space (GAE) and normalized space (value head I/O).
 
-Hidden state shape: (n_layers, B*N, CONV_KERNEL * D), packed as:
-  hidden[:, :, :D]   — RG-LRU recurrent state
-  hidden[:, :, D:]   — causal conv buffer (CONV_KERNEL-1 past linear1 outputs, flattened)
+Hidden state shape: (n_layers, B*(N+M), CONV_KERNEL * D), packed as:
+  hidden[:, :, :D]   -- RG-LRU recurrent state
+  hidden[:, :, D:]   -- causal conv buffer (CONV_KERNEL-1 past linear1 outputs, flattened)
 """
 
 import math
@@ -95,11 +99,13 @@ class MVPPolicy(nn.Module):
         model_config: ModelConfig,
         ship_config: ShipConfig,
         num_value_components: int,
+        num_ships: int,
     ) -> None:
         super().__init__()
         D = model_config.d_model
         self._d_model = D
         self._K = num_value_components
+        self._num_ships = num_ships  # N — first N tokens are ships; rest are obstacles
 
         self.encoder = ShipEncoder(model_config, ship_config)
         self.yemong_layers = nn.ModuleList(
@@ -142,40 +148,42 @@ class MVPPolicy(nn.Module):
     # ------------------------------------------------------------------
 
     def initial_hidden(
-        self, num_envs: int, num_ships: int, device: torch.device
+        self, num_envs: int, num_tokens: int, device: torch.device
     ) -> torch.Tensor:
         """Return zeroed hidden states for all Yemong layers.
 
+        Args:
+            num_tokens: N+M (ships + obstacles) — all entity tokens carry hidden state.
+
         Returns:
-            (n_layers, B*N, CONV_KERNEL*D) float32 — packed RG-LRU state + conv buffer.
+            (n_layers, B*(N+M), CONV_KERNEL*D) float32 — packed RG-LRU state + conv buffer.
         """
         n_layers = len(self.yemong_layers)
         return torch.zeros(
-            n_layers, num_envs * num_ships, CONV_KERNEL * self._d_model, device=device
+            n_layers, num_envs * num_tokens, CONV_KERNEL * self._d_model, device=device
         )
 
     def reset_hidden_for_envs(
         self,
         hidden: torch.Tensor,
         done_mask: torch.Tensor,
-        num_ships: int,
+        num_tokens: int,
     ) -> torch.Tensor:
-        """Zero hidden states for all ships in done environments.
+        """Zero hidden states for all tokens in done environments.
 
         Args:
-            hidden:    (n_layers, B*N, D) current hidden state.
-            done_mask: (B,) bool — True for envs that finished.
-            num_ships: N.
+            hidden:     (n_layers, B*(N+M), D) current hidden state.
+            done_mask:  (B,) bool — True for envs that finished.
+            num_tokens: N+M.
 
         Returns:
             Updated hidden state with done envs zeroed.
         """
         if not done_mask.any():
             return hidden
-        # done_mask (B,) → expand to (B*N,)
-        ship_done = done_mask.repeat_interleave(num_ships)  # (B*N,)
+        token_done = done_mask.repeat_interleave(num_tokens)  # (B*(N+M),)
         hidden = hidden.clone()
-        hidden[:, ship_done, :] = 0.0
+        hidden[:, token_done, :] = 0.0
         return hidden
 
     # ------------------------------------------------------------------
@@ -201,14 +209,14 @@ class MVPPolicy(nn.Module):
                         Caller must denormalize via ReturnScaler before using for GAE.
             new_hidden: (n_layers, B*N, D) updated hidden state.
         """
-        alive = obs["alive"]  # (B, N) bool
-        x = self.encoder(obs)  # (B, N, D)
+        alive = obs["alive"]  # (B, N+M) bool — ships then obstacles
+        x = self.encoder(obs)  # (B, N+M, D)
 
-        B, N, D = x.shape
-        BN = B * N
+        B, NM, D = x.shape
+        BNM = B * NM
         n_layers = len(self.yemong_layers)
-        rglru_states = hidden[:, :, :D]                                    # (n_layers, B*N, D)
-        conv_bufs = hidden[:, :, D:].reshape(n_layers, BN, CONV_KERNEL - 1, D)
+        rglru_states = hidden[:, :, :D]                                      # (n_layers, B*(N+M), D)
+        conv_bufs = hidden[:, :, D:].reshape(n_layers, BNM, CONV_KERNEL - 1, D)
 
         new_rglru, new_cbs = [], []
         for i, layer in enumerate(self.yemong_layers):
@@ -216,12 +224,19 @@ class MVPPolicy(nn.Module):
             new_rglru.append(new_h)
             new_cbs.append(new_cb)
 
-        new_rglru_t = torch.stack(new_rglru, dim=0)                        # (n_layers, B*N, D)
-        new_cbs_t = torch.stack(new_cbs, dim=0).reshape(n_layers, BN, -1) # (n_layers, B*N, (K-1)*D)
-        new_hidden = torch.cat([new_rglru_t, new_cbs_t], dim=-1)           # (n_layers, B*N, K*D)
+        new_rglru_t = torch.stack(new_rglru, dim=0)                          # (n_layers, B*(N+M), D)
+        new_cbs_t = torch.stack(new_cbs, dim=0).reshape(n_layers, BNM, -1)  # (n_layers, B*(N+M), (K-1)*D)
+        new_hidden = torch.cat([new_rglru_t, new_cbs_t], dim=-1)             # (n_layers, B*(N+M), K*D)
 
-        logits = self.action_head(x)  # (B, N, 12)
-        value = self.value_head(x)    # (B, N, K) — per-ship, normalized space
+        # Slice ship tokens only for action and value heads
+        N = self._num_ships
+        x_ships = x[:, :N, :]                    # (B, N, D)
+        alive_ships = alive[:, :N]               # (B, N)
+        team_id_ships = obs["team_id"][:, :N]    # (B, N) — obstacles (team_id=2) excluded by TeamPMA
+
+        logits = self.action_head(x_ships)                                   # (B, N, 12)
+        x_value = self.team_pma(x_ships, team_id_ships, alive_ships)        # (B, N, D)
+        value = self.value_head(x_value)                                     # (B, N, K)
 
         action, logprob = _sample_action(logits)
 
@@ -241,15 +256,16 @@ class MVPPolicy(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None]:
         """Re-evaluate actions over a full rollout for PPO update.
 
-        The encoder runs over all (T*B) tokens in parallel. Each YemongBlock
-        runs its spatial attention over (T*B, N, D) in parallel, then its
+        The encoder runs over all T*B*(N+M) tokens in parallel. Each YemongBlock
+        runs its spatial attention over (T*B, N+M, D) in parallel, then its
         temporal RG-LRU sequentially over T from the layer's initial hidden.
+        Action and value heads are applied only to the first N ship tokens.
 
         Args:
-            obs:                  Dict with (T, B, N, ...) tensors.
+            obs:                  Dict with (T, B, N+M, ...) tensors.
             actions:              (T, B, N, 3) int actions taken during rollout.
-            initial_hidden:       (n_layers, B*N, D) hidden state at rollout start.
-            alive_mask:           (T, B, N) bool — alive ships per timestep.
+            initial_hidden:       (n_layers, B*(N+M), D) hidden state at rollout start.
+            alive_mask:           (T, B, N+M) bool — alive entities per timestep.
             return_encoder_output: If True, return raw encoder embeddings as 5th value.
                                    Pass False (default) when sigreg_coef=0 to avoid
                                    keeping the encoder output tensor alive in RAM.
@@ -259,29 +275,43 @@ class MVPPolicy(nn.Module):
             entropy:   (T, B, N) float.
             new_value: (T, B, N, K) float — per-component value in normalized space.
             logits:    (T, B, N, TOTAL_ACTION_LOGITS) float — raw action logits.
-            z:         (T, B, N, D) float — raw encoder embeddings before Yemong layers,
+            z:         (T, B, N+M, D) float — raw encoder embeddings before Yemong layers,
                        or None if return_encoder_output=False.
         """
-        T, B, N = actions.shape[:3]
+        T, B, N = actions.shape[:3]  # N = num_ships (actions only for ships)
         D = self._d_model
         n_layers = len(self.yemong_layers)
-        BN = initial_hidden.shape[1]
+        BNM = initial_hidden.shape[1]  # B*(N+M)
 
-        rglru_states = initial_hidden[:, :, :D]                                      # (n_layers, B*N, D)
-        conv_bufs = initial_hidden[:, :, D:].reshape(n_layers, BN, CONV_KERNEL - 1, D)
+        rglru_states = initial_hidden[:, :, :D]                                        # (n_layers, B*(N+M), D)
+        conv_bufs = initial_hidden[:, :, D:].reshape(n_layers, BNM, CONV_KERNEL - 1, D)
 
-        # Flatten T into B for encoder
+        # obs has (T, B, N+M, ...) — flatten T into B for encoder
+        NM = obs["pos"].shape[2]  # N+M total tokens
         flat_obs = {k: v.reshape(T * B, *v.shape[2:]) for k, v in obs.items()}
 
-        x = self.encoder(flat_obs)              # (T*B, N, D)
-        x = x.reshape(T, B, N, D)              # (T, B, N, D)
+        x = self.encoder(flat_obs)              # (T*B, N+M, D)
+        x = x.reshape(T, B, NM, D)             # (T, B, N+M, D)
         z = x if return_encoder_output else None
 
         for i, layer in enumerate(self.yemong_layers):
             x, _, _ = layer.sequence(x, alive_mask, rglru_states[i], conv_bufs[i])
 
-        logits = self.action_head(x)     # (T, B, N, 12)
-        new_value = self.value_head(x)   # (T, B, N, K) — per-ship, normalized space
+        # Slice ship tokens for heads
+        x_ships = x[:, :, :N, :]                      # (T, B, N, D)
+        alive_ships = alive_mask[:, :, :N]             # (T, B, N)
+        team_id_ships = obs["team_id"][:, :, :N]       # (T, B, N)
+
+        logits = self.action_head(x_ships)             # (T, B, N, 12)
+
+        # TeamPMA over ship tokens: fold T into B, run PMA, unfold
+        x_s_flat = x_ships.reshape(T * B, N, D)
+        alive_s_flat = alive_ships.reshape(T * B, N)
+        tid_s_flat = team_id_ships.reshape(T * B, N)
+        xv_flat = self.team_pma(x_s_flat, tid_s_flat, alive_s_flat)  # (T*B, N, D)
+        xv = xv_flat.reshape(T, B, N, D)
+
+        new_value = self.value_head(xv)                # (T, B, N, K)
 
         logprob, entropy = _evaluate_action(logits, actions)
 

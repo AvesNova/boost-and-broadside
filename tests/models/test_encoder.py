@@ -33,6 +33,7 @@ def _make_obs(B: int, N: int) -> dict[str, torch.Tensor]:
         "team_id": torch.randint(0, 2, (B, N)),
         "alive": torch.ones(B, N, dtype=torch.bool),
         "prev_action": torch.zeros(B, N, 3, dtype=torch.long),
+        "radius": torch.rand(B, N, 1),
     }
 
 
@@ -123,7 +124,7 @@ class TestMVPPolicy:
         """get_action_and_value must return correct tensor shapes."""
         B, N = 2, 8
         policy = MVPPolicy(
-            model_cfg, ship_cfg, num_value_components=NUM_VALUE_COMPONENTS
+            model_cfg, ship_cfg, num_value_components=NUM_VALUE_COMPONENTS, num_ships=N
         )
         obs = _make_obs(B, N)
         hidden = policy.initial_hidden(B, N, torch.device("cpu"))
@@ -147,7 +148,7 @@ class TestMVPPolicy:
 
         B, N = 2, 4
         policy = MVPPolicy(
-            model_cfg, ship_cfg, num_value_components=NUM_VALUE_COMPONENTS
+            model_cfg, ship_cfg, num_value_components=NUM_VALUE_COMPONENTS, num_ships=N
         )
         obs = _make_obs(B, N)
         hidden = policy.initial_hidden(B, N, torch.device("cpu"))
@@ -166,7 +167,7 @@ class TestMVPPolicy:
         """evaluate_actions must return (T, B, N) for logprob/entropy and (T, B, N, K) for new_value."""
         T, B, N = 4, 2, 8
         policy = MVPPolicy(
-            model_cfg, ship_cfg, num_value_components=NUM_VALUE_COMPONENTS
+            model_cfg, ship_cfg, num_value_components=NUM_VALUE_COMPONENTS, num_ships=N
         )
         K = NUM_VALUE_COMPONENTS
 
@@ -177,7 +178,7 @@ class TestMVPPolicy:
         hidden = policy.initial_hidden(B, N, torch.device("cpu"))
         alive_mask = torch.ones(T, B, N, dtype=torch.bool)
 
-        logprob, entropy, new_value, logits = policy.evaluate_actions(
+        logprob, entropy, new_value, logits, _ = policy.evaluate_actions(
             obs, actions, hidden, alive_mask
         )
 
@@ -190,7 +191,7 @@ class TestMVPPolicy:
         """reset_hidden_for_envs must zero hidden states for done environments."""
         B, N = 3, 4
         policy = MVPPolicy(
-            model_cfg, ship_cfg, num_value_components=NUM_VALUE_COMPONENTS
+            model_cfg, ship_cfg, num_value_components=NUM_VALUE_COMPONENTS, num_ships=N
         )
         from boost_and_broadside.models.mvp.griffin import CONV_KERNEL
         hidden = torch.ones(model_cfg.n_transformer_blocks, B * N, CONV_KERNEL * model_cfg.d_model)

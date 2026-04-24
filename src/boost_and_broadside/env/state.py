@@ -53,6 +53,15 @@ class TensorState:
         torch.Tensor
     )  # (B, N, N) float32  — accumulated this episode; zeroed on reset
 
+    # Obstacle state (M = num_obstacles per env)
+    obstacle_pos: torch.Tensor  # (B, M) complex64  — world position
+    obstacle_vel: torch.Tensor  # (B, M) complex64  — velocity
+    obstacle_radius: torch.Tensor  # (B, M) float32    — circle radius
+    obstacle_gcenter: torch.Tensor  # (B,) complex64   — harmonic gravity center (one per env)
+
+    # Per-step flag: True for ships that were killed by an obstacle this step
+    ship_hit_obstacle: torch.Tensor  # (B, N) bool
+
     # ------------------------------------------------------------------
     # Convenience properties
     # ------------------------------------------------------------------
@@ -68,6 +77,10 @@ class TensorState:
     @property
     def max_bullets(self) -> int:
         return self.bullet_pos.shape[2]
+
+    @property
+    def num_obstacles(self) -> int:
+        return self.obstacle_pos.shape[1]
 
     @property
     def device(self) -> torch.device:
@@ -95,4 +108,9 @@ class TensorState:
             bullet_cursor=self.bullet_cursor.clone(),
             damage_matrix=self.damage_matrix.clone(),
             cumulative_damage_matrix=self.cumulative_damage_matrix.clone(),
+            obstacle_pos=self.obstacle_pos.clone(),
+            obstacle_vel=self.obstacle_vel.clone(),
+            obstacle_radius=self.obstacle_radius.clone(),
+            obstacle_gcenter=self.obstacle_gcenter.clone(),
+            ship_hit_obstacle=self.ship_hit_obstacle.clone(),
         )

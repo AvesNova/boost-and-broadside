@@ -79,8 +79,8 @@ def _make_4ship_state(cfg):
 
 
 class TestRewardComponentNames:
-    def test_k_equals_15(self):
-        assert len(REWARD_COMPONENT_NAMES) == 15
+    def test_k_equals_19(self):
+        assert len(REWARD_COMPONENT_NAMES) == 19
 
     def test_ally_damage_is_index_0(self):
         assert REWARD_COMPONENT_NAMES[0] == "ally_damage"

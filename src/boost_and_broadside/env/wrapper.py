@@ -2,6 +2,7 @@
 
 Responsibilities:
   - Convert TensorState into the float obs dict consumed by MVPPolicy.
+  - Concatenate ship and obstacle tokens into a single (B, N+M, ...) obs dict.
   - Compute zero-sum rewards via the reward components.
   - Reset done / truncated environments and zero GRU hidden states.
   - Track per-ship episode statistics for logging.
@@ -12,6 +13,7 @@ from typing import Any
 
 from boost_and_broadside.config import ShipConfig, EnvConfig, RewardConfig
 from boost_and_broadside.env.env import TensorEnv
+from boost_and_broadside.env.obstacle_cache import ObstacleCache
 from boost_and_broadside.env.rewards import (
     RewardComponent,
     REWARD_COMPONENT_NAMES,
@@ -23,15 +25,18 @@ from boost_and_broadside.env.state import TensorState
 class MVPEnvWrapper:
     """Wraps TensorEnv to produce policy-ready observations and zero-sum rewards.
 
-    Obs dict keys and shapes (B = num_envs, N = num_ships):
-        "pos"         (B, N, 2)  — x, y in [0, 1] (normalized by world_size)
-        "vel"         (B, N, 2)  — vx, vy (raw)
-        "att"         (B, N, 2)  — cos/sin of heading (unit vector components)
-        "ang_vel"     (B, N, 1)  — angular velocity
-        "scalars"     (B, N, 3)  — [health_norm, power_norm, cooldown_norm]
-        "team_id"     (B, N)     — int32 team identifier
-        "alive"       (B, N)     — bool
-        "prev_action" (B, N, 3)  — int [power, turn, shoot] from last step
+    Obs dict keys and shapes (B = num_envs, N = num_ships, M = num_obstacles):
+        "pos"         (B, N+M, 2)  — x, y in [0, 1] (normalized by world_size)
+        "vel"         (B, N+M, 2)  — vx, vy (raw; zeroed for obstacles)
+        "att"         (B, N+M, 2)  — cos/sin of heading (zeroed for obstacles)
+        "ang_vel"     (B, N+M, 1)  — angular velocity (zeroed for obstacles)
+        "scalars"     (B, N+M, 3)  — [health, power, cooldown] normed (zeroed for obstacles)
+        "team_id"     (B, N+M)     — int32; 0/1 for ships, 2 for obstacles
+        "alive"       (B, N+M)     — bool; obstacles are always True
+        "prev_action" (B, N+M, 3)  — int [power, turn, shoot] (zeroed for obstacles)
+        "radius"      (B, N+M, 1)  — normalized radius (collision_radius for ships, actual for obstacles)
+
+    All reward computations remain (B, N) — obstacle tokens are never in the reward signal.
     """
 
     def __init__(
@@ -41,8 +46,9 @@ class MVPEnvWrapper:
         env_config: EnvConfig,
         rewards: RewardConfig,
         device: str | torch.device,
+        obstacle_cache: ObstacleCache | None = None,
     ) -> None:
-        self.env = TensorEnv(num_envs, ship_config, env_config, device)
+        self.env = TensorEnv(num_envs, ship_config, env_config, device, obstacle_cache)
         self.ship_config = ship_config
         self.env_config = env_config
         self.device = torch.device(device)
@@ -200,27 +206,21 @@ class MVPEnvWrapper:
     # ------------------------------------------------------------------
 
     def _get_obs(self) -> dict[str, torch.Tensor]:
-        """Build the float observation dict from the current TensorState."""
+        """Build the combined (ship + obstacle) float observation dict."""
         s = self.env.state
         world_w, world_h = self.ship_config.world_size
+        B = s.num_envs
+        M = s.num_obstacles
+        radius_max = self.ship_config.obstacle_radius_max
 
-        pos_norm = torch.stack(
-            [
-                s.ship_pos.real / world_w,
-                s.ship_pos.imag / world_h,
-            ],
-            dim=-1,
+        # --- Ship features ---
+        ship_pos = torch.stack(
+            [s.ship_pos.real / world_w, s.ship_pos.imag / world_h], dim=-1
         )  # (B, N, 2)
-
-        vel = torch.stack([s.ship_vel.real, s.ship_vel.imag], dim=-1)  # (B, N, 2)
-
-        att = torch.stack(
-            [s.ship_attitude.real, s.ship_attitude.imag], dim=-1
-        )  # (B, N, 2)
-
-        ang_vel = s.ship_ang_vel.unsqueeze(-1)  # (B, N, 1)
-
-        scalars = torch.stack(
+        ship_vel = torch.stack([s.ship_vel.real, s.ship_vel.imag], dim=-1)  # (B, N, 2)
+        ship_att = torch.stack([s.ship_attitude.real, s.ship_attitude.imag], dim=-1)  # (B, N, 2)
+        ship_ang = s.ship_ang_vel.unsqueeze(-1)  # (B, N, 1)
+        ship_scalars = torch.stack(
             [
                 s.ship_health / self.ship_config.max_health,
                 s.ship_power / self.ship_config.max_power,
@@ -228,16 +228,50 @@ class MVPEnvWrapper:
             ],
             dim=-1,
         )  # (B, N, 3)
+        ship_radius = torch.full(
+            (B, s.max_ships, 1),
+            self.ship_config.collision_radius / radius_max,
+            device=self.device,
+            dtype=torch.float32,
+        )  # (B, N, 1)
+
+        # --- Obstacle features (ship-specific fields zeroed) ---
+        if M > 0:
+            obs_pos = torch.stack(
+                [s.obstacle_pos.real / world_w, s.obstacle_pos.imag / world_h], dim=-1
+            )  # (B, M, 2)
+            obs_zeros_2 = torch.zeros(B, M, 2, device=self.device)
+            obs_zeros_1 = torch.zeros(B, M, 1, device=self.device)
+            obs_zeros_3 = torch.zeros(B, M, 3, device=self.device)
+            obs_team_id = torch.full(
+                (B, M), 2, device=self.device, dtype=torch.int32
+            )  # 2 = obstacle marker
+            obs_alive = torch.ones(B, M, device=self.device, dtype=torch.bool)
+            obs_action = torch.zeros(B, M, 3, device=self.device, dtype=torch.long)
+            obs_radius = (s.obstacle_radius / radius_max).unsqueeze(-1)  # (B, M, 1)
+
+            return {
+                "pos":         torch.cat([ship_pos, obs_pos], dim=1),           # (B, N+M, 2)
+                "vel":         torch.cat([ship_vel, obs_zeros_2], dim=1),
+                "att":         torch.cat([ship_att, obs_zeros_2], dim=1),
+                "ang_vel":     torch.cat([ship_ang, obs_zeros_1], dim=1),
+                "scalars":     torch.cat([ship_scalars, obs_zeros_3], dim=1),
+                "team_id":     torch.cat([s.ship_team_id, obs_team_id], dim=1),
+                "alive":       torch.cat([s.ship_alive, obs_alive], dim=1),
+                "prev_action": torch.cat([s.prev_action.long(), obs_action], dim=1),
+                "radius":      torch.cat([ship_radius, obs_radius], dim=1),     # (B, N+M, 1)
+            }
 
         return {
-            "pos": pos_norm,
-            "vel": vel,
-            "att": att,
-            "ang_vel": ang_vel,
-            "scalars": scalars,
-            "team_id": s.ship_team_id,
-            "alive": s.ship_alive,
+            "pos":         ship_pos,
+            "vel":         ship_vel,
+            "att":         ship_att,
+            "ang_vel":     ship_ang,
+            "scalars":     ship_scalars,
+            "team_id":     s.ship_team_id,
+            "alive":       s.ship_alive,
             "prev_action": s.prev_action.long(),
+            "radius":      ship_radius,
         }
 
     # ------------------------------------------------------------------
@@ -298,4 +332,9 @@ def _make_prev_state_proxy(
         bullet_cursor=state.bullet_cursor,
         damage_matrix=state.damage_matrix,
         cumulative_damage_matrix=state.cumulative_damage_matrix,
+        obstacle_pos=state.obstacle_pos,
+        obstacle_vel=state.obstacle_vel,
+        obstacle_radius=state.obstacle_radius,
+        obstacle_gcenter=state.obstacle_gcenter,
+        ship_hit_obstacle=state.ship_hit_obstacle,
     )

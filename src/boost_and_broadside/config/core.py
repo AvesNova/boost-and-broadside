@@ -38,6 +38,13 @@ class ShipConfig:
     gravity_factor: float = 0.0  # 5.0
     gravity_eps: float = 10000.0
 
+    # Obstacle physics
+    obstacle_gravity_harmonic: float = 0.5  # spring constant G
+    obstacle_radius_min: float = 5.0
+    obstacle_radius_max: float = 40.0
+    obstacle_collision_radius: float = 3.0  # ship-to-obstacle hitbox
+    bullet_collision_radius: float = 10.0  # bullet-to-obstacle hitbox (matches collision_radius)
+
     # Power regeneration / consumption rates (per second)
     base_power_gain: float = 10.0
     boost_power_gain: float = -40.0
@@ -72,11 +79,12 @@ class ShipConfig:
 
 @dataclass(frozen=True)
 class EnvConfig:
-    """Environment sizing. No defaults — all values required."""
+    """Environment sizing."""
 
     num_ships: int  # total ships per env (both teams combined)
     max_bullets: int  # bullet ring-buffer size per ship
     max_episode_steps: int  # truncation horizon
+    num_obstacles: int = 0  # dynamic obstacle circles per env (0 = no obstacles)
 
 
 @dataclass(frozen=True)
@@ -166,10 +174,18 @@ class RewardConfig:
         float  # -1 on the step this ship dies; fires via just_died, not alive mask
     )
 
-    # --- Geometry params (required, no defaults) ---
+    # --- Geometry params ---
     proximity_radius: float  # falloff radius used by FacingReward
     shoot_quality_radius: float  # engagement radius used by ShootQualityReward
 
     # --- Lambda configuration ---
     enemy_neg_lambda_components: frozenset[str]  # enemies get lambda=-1 (zero-sum)
     ally_zero_components: frozenset[str]  # allies get lambda=0 (enemy-perspective only)
+
+    # --- Obstacle rewards (local, self-only; 0.0 = disabled) ---
+    obstacle_death_weight: float = 0.0
+    obstacle_proximity_weight: float = 0.0
+    obstacle_closing_speed_weight: float = 0.0
+    obstacle_tti_weight: float = 0.0
+    obstacle_proximity_radius: float = 80.0
+    obstacle_tti_max: float = 3.0

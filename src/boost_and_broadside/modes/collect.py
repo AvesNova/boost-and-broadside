@@ -29,29 +29,68 @@ def _obs_from_state(
     """Build a policy-ready obs dict from TensorState.
 
     Mirrors MVPEnvWrapper._get_obs() exactly so policy agents see the same
-    observations here as they do during training.
+    observations here as they do during training. Includes obstacle tokens
+    (team_id=2) when num_obstacles > 0.
     """
     world_w, world_h = ship_config.world_size
+    B = state.num_envs
+    M = state.num_obstacles
+    radius_max = ship_config.obstacle_radius_max
+
+    ship_pos = torch.stack(
+        [state.ship_pos.real / world_w, state.ship_pos.imag / world_h], dim=-1
+    )
+    ship_vel = torch.stack([state.ship_vel.real, state.ship_vel.imag], dim=-1)
+    ship_att = torch.stack([state.ship_attitude.real, state.ship_attitude.imag], dim=-1)
+    ship_ang = state.ship_ang_vel.unsqueeze(-1)
+    ship_scalars = torch.stack(
+        [
+            state.ship_health / ship_config.max_health,
+            state.ship_power / ship_config.max_power,
+            (state.ship_cooldown / ship_config.firing_cooldown).clamp(0.0, 1.0),
+        ],
+        dim=-1,
+    )
+    ship_radius = torch.full(
+        (B, state.max_ships, 1),
+        ship_config.collision_radius / radius_max,
+        device=state.ship_pos.device,
+        dtype=torch.float32,
+    )
+
+    if M > 0:
+        obs_pos = torch.stack(
+            [state.obstacle_pos.real / world_w, state.obstacle_pos.imag / world_h], dim=-1
+        )
+        obs_zeros_2 = torch.zeros(B, M, 2, device=state.ship_pos.device)
+        obs_zeros_1 = torch.zeros(B, M, 1, device=state.ship_pos.device)
+        obs_zeros_3 = torch.zeros(B, M, 3, device=state.ship_pos.device)
+        obs_team_id = torch.full((B, M), 2, device=state.ship_pos.device, dtype=torch.int32)
+        obs_alive = torch.ones(B, M, device=state.ship_pos.device, dtype=torch.bool)
+        obs_action = torch.zeros(B, M, 3, device=state.ship_pos.device, dtype=torch.long)
+        obs_radius = (state.obstacle_radius / radius_max).unsqueeze(-1)
+        return {
+            "pos":         torch.cat([ship_pos, obs_pos], dim=1),
+            "vel":         torch.cat([ship_vel, obs_zeros_2], dim=1),
+            "att":         torch.cat([ship_att, obs_zeros_2], dim=1),
+            "ang_vel":     torch.cat([ship_ang, obs_zeros_1], dim=1),
+            "scalars":     torch.cat([ship_scalars, obs_zeros_3], dim=1),
+            "team_id":     torch.cat([state.ship_team_id, obs_team_id], dim=1),
+            "alive":       torch.cat([state.ship_alive, obs_alive], dim=1),
+            "prev_action": torch.cat([state.prev_action.long(), obs_action], dim=1),
+            "radius":      torch.cat([ship_radius, obs_radius], dim=1),
+        }
+
     return {
-        "pos": torch.stack(
-            [state.ship_pos.real / world_w, state.ship_pos.imag / world_h], dim=-1
-        ),
-        "vel": torch.stack([state.ship_vel.real, state.ship_vel.imag], dim=-1),
-        "att": torch.stack(
-            [state.ship_attitude.real, state.ship_attitude.imag], dim=-1
-        ),
-        "ang_vel": state.ship_ang_vel.unsqueeze(-1),
-        "scalars": torch.stack(
-            [
-                state.ship_health / ship_config.max_health,
-                state.ship_power / ship_config.max_power,
-                (state.ship_cooldown / ship_config.firing_cooldown).clamp(0.0, 1.0),
-            ],
-            dim=-1,
-        ),
-        "team_id": state.ship_team_id,
-        "alive": state.ship_alive,
+        "pos":         ship_pos,
+        "vel":         ship_vel,
+        "att":         ship_att,
+        "ang_vel":     ship_ang,
+        "scalars":     ship_scalars,
+        "team_id":     state.ship_team_id,
+        "alive":       state.ship_alive,
         "prev_action": state.prev_action.long(),
+        "radius":      ship_radius,
     }
 
 
@@ -82,13 +121,15 @@ def run_collect_stats_mode(
 
     B = num_envs
     N = env_config.num_ships
+    M = env_config.num_obstacles
+    num_tokens = N + M
     dev = torch.device(device)
 
     agent0 = resolve_agent_spec(
-        team0_spec, ship_config, model_config, device, checkpoint_dir
+        team0_spec, ship_config, model_config, device, checkpoint_dir, num_ships=N
     )
     agent1 = resolve_agent_spec(
-        team1_spec, ship_config, model_config, device, checkpoint_dir
+        team1_spec, ship_config, model_config, device, checkpoint_dir, num_ships=N
     )
 
     env = TensorEnv(B, ship_config, env_config, device)
@@ -98,8 +139,8 @@ def run_collect_stats_mode(
     ep_lengths = torch.zeros(B, dtype=torch.int64, device=dev)
     finished = torch.zeros(B, dtype=torch.bool, device=dev)
 
-    init_hidden(agent0, B, N, dev)
-    init_hidden(agent1, B, N, dev)
+    init_hidden(agent0, B, num_tokens, dev)
+    init_hidden(agent1, B, num_tokens, dev)
 
     env.reset()
     total_steps = 0
@@ -141,8 +182,8 @@ def run_collect_stats_mode(
 
         if done_any.any():
             env.reset_envs(done_any)
-            reset_done_envs(agent0, done_any, N)
-            reset_done_envs(agent1, done_any, N)
+            reset_done_envs(agent0, done_any, num_tokens)
+            reset_done_envs(agent1, done_any, num_tokens)
 
     elapsed = time.perf_counter() - t0
 

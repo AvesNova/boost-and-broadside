@@ -51,4 +51,11 @@ REWARDS = RewardConfig(
     #   ally_zero_components        → ally ships get lambda=0 (enemy-perspective only)
     enemy_neg_lambda_components=frozenset({"enemy_damage", "enemy_death", "enemy_win"}),
     ally_zero_components=frozenset({"enemy_damage", "enemy_death", "enemy_win"}),
+    # Obstacle rewards
+    obstacle_death_weight=1.0,
+    obstacle_proximity_weight=0.1,
+    obstacle_closing_speed_weight=0.1,
+    obstacle_tti_weight=0.1,
+    obstacle_proximity_radius=80.0,
+    obstacle_tti_max=3.0,
 )

@@ -70,16 +70,53 @@ class GameRenderer:
             if event.type == pygame.QUIT:
                 return False
 
-        surf = self._screen
-        surf.fill(self._render_config.background_color)
-        self._draw_bullets(state, surf)
-        self._draw_ships(state, surf)
+        self._draw_frame(state)
+        pygame.display.flip()
+        return True
+
+    def render_with_label(
+        self,
+        state: TensorState,
+        text: str,
+        color: tuple[int, int, int] = (220, 220, 220),
+    ) -> bool:
+        """Draw one frame then overlay a centered text label before flipping.
+
+        Returns:
+            True to keep running, False if the user closed the window.
+        """
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return False
+
+        self._draw_frame(state)
+        self._blit_label(text, color)
         pygame.display.flip()
         return True
 
     def tick(self) -> None:
         """Cap frame rate to render_config.fps."""
         self._clock.tick(self._render_config.fps)
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _draw_frame(self, state: TensorState) -> None:
+        surf = self._screen
+        surf.fill(self._render_config.background_color)
+        self._draw_obstacles(state, surf)
+        self._draw_bullets(state, surf)
+        self._draw_ships(state, surf)
+
+    def _blit_label(self, text: str, color: tuple[int, int, int]) -> None:
+        if not hasattr(self, "_font"):
+            self._font = pygame.font.SysFont("monospace", 24, bold=True)
+        surf = self._screen
+        label = self._font.render(text, True, color)
+        x = (surf.get_width() - label.get_width()) // 2
+        y = surf.get_height() - label.get_height() - 16
+        surf.blit(label, (x, y))
 
     def close(self) -> None:
         """Tear down the pygame window."""
@@ -132,6 +169,17 @@ class GameRenderer:
                 (0, 200, 0),
                 (bar_x, bar_y, int(bar_w * hp_frac), cfg.health_bar_height),
             )
+
+    def _draw_obstacles(self, state: TensorState, surf: pygame.Surface) -> None:
+        """Draw all obstacles in env 0 as filled white circles."""
+        if state.num_obstacles == 0:
+            return
+        obs_pos = state.obstacle_pos[0].cpu()     # (M,) complex64
+        obs_rad = state.obstacle_radius[0].cpu()  # (M,) float32
+        for m in range(obs_pos.shape[0]):
+            cx, cy = self._world_to_screen(complex(obs_pos[m].item()))
+            r = max(1, int(obs_rad[m].item() * self._scale))
+            pygame.draw.circle(surf, (255, 255, 255), (cx, cy), r)
 
     def _draw_bullets(self, state: TensorState, surf: pygame.Surface) -> None:
         """Draw all active bullets in env 0 as small rectangles."""

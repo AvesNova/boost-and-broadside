@@ -405,3 +405,56 @@ def _check_game_over(state: TensorState) -> torch.Tensor:
     team0_alive = ((state.ship_team_id == 0) & state.ship_alive).sum(dim=1)  # (B,)
     team1_alive = ((state.ship_team_id == 1) & state.ship_alive).sum(dim=1)  # (B,)
     return (team0_alive == 0) | (team1_alive == 0)
+
+
+def resolve_obstacle_collisions(state: TensorState, config: ShipConfig) -> TensorState:
+    """Detect ship-obstacle and bullet-obstacle collisions.
+
+    Ship-obstacle: instant kill (health → 0, alive → False, ship_hit_obstacle → True).
+    Bullet-obstacle: bullet deactivated on contact.
+
+    GPU kernel: no Python loops over ships, bullets, or obstacles.
+    """
+    batch_size, num_ships = state.ship_pos.shape
+    num_obstacles = state.num_obstacles
+    world_w, world_h = config.world_size
+
+    if num_obstacles == 0:
+        return state
+
+    # ----- Ship-obstacle collision -----
+    # Toroidal wrapped differences: (B, N, M)
+    diff_r = state.ship_pos.real.unsqueeze(2) - state.obstacle_pos.real.unsqueeze(1)
+    diff_i = state.ship_pos.imag.unsqueeze(2) - state.obstacle_pos.imag.unsqueeze(1)
+    diff_r = (diff_r + world_w / 2) % world_w - world_w / 2
+    diff_i = (diff_i + world_h / 2) % world_h - world_h / 2
+    dist_sq = diff_r**2 + diff_i**2  # (B, N, M)
+
+    # Combined hitbox: ship_collision_radius + obstacle_radius[m]
+    hit_r = config.obstacle_collision_radius + state.obstacle_radius  # (B, M)
+    hit = dist_sq < hit_r.unsqueeze(1) ** 2  # (B, N, M)
+    hit = hit & state.ship_alive.unsqueeze(2)  # only alive ships
+    any_hit = hit.any(dim=2)  # (B, N)
+
+    state.ship_hit_obstacle = any_hit
+    state.ship_health = torch.where(any_hit, torch.zeros_like(state.ship_health), state.ship_health)
+    state.ship_alive = state.ship_health > 0
+
+    # ----- Bullet-obstacle collision -----
+    num_bullets = state.max_bullets
+    flat_bullet_pos = state.bullet_pos.view(batch_size, num_ships * num_bullets)   # (B, N*K)
+    flat_bullet_active = state.bullet_active.view(batch_size, num_ships * num_bullets)  # (B, N*K)
+
+    # (B, N*K, M)
+    bdiff_r = flat_bullet_pos.real.unsqueeze(2) - state.obstacle_pos.real.unsqueeze(1)
+    bdiff_i = flat_bullet_pos.imag.unsqueeze(2) - state.obstacle_pos.imag.unsqueeze(1)
+    bdiff_r = (bdiff_r + world_w / 2) % world_w - world_w / 2
+    bdiff_i = (bdiff_i + world_h / 2) % world_h - world_h / 2
+    bdist_sq = bdiff_r**2 + bdiff_i**2  # (B, N*K, M)
+
+    bullet_hit_r = config.bullet_collision_radius + state.obstacle_radius  # (B, M)
+    bullet_hit_obs = (bdist_sq < bullet_hit_r.unsqueeze(1) ** 2) & flat_bullet_active.unsqueeze(2)
+    bullet_hit_any = bullet_hit_obs.any(dim=2)  # (B, N*K)
+    state.bullet_active.view(batch_size, -1)[bullet_hit_any] = False
+
+    return state

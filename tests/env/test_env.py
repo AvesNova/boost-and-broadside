@@ -230,8 +230,7 @@ class TestMVPEnvWrapper:
         actions = torch.zeros((B, N, 3), dtype=torch.long)
         obs, rewards, dones, truncated, info = wrapper.step(actions)
 
-        K = len(REWARD_COMPONENT_NAMES)
-        assert rewards.shape == (B, N, K)
+        assert rewards.shape == (B, N, wrapper.num_active_components)
         assert dones.shape == (B,)
         assert truncated.shape == (B,)
 

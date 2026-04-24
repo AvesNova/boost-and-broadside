@@ -30,6 +30,7 @@ from boost_and_broadside.config import (
 )
 from boost_and_broadside.constants import POWER_SLICE, TURN_SLICE, SHOOT_SLICE
 from boost_and_broadside.env.env import TensorEnv
+from boost_and_broadside.env.obstacle_cache import ObstacleCache
 from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
 from boost_and_broadside.env.state import TensorState
 from boost_and_broadside.env.wrapper import MVPEnvWrapper
@@ -91,6 +92,11 @@ def _slice_state(state: TensorState, start: int, end: int) -> TensorState:
         bullet_cursor=state.bullet_cursor[start:end],
         damage_matrix=state.damage_matrix[start:end],
         cumulative_damage_matrix=state.cumulative_damage_matrix[start:end],
+        obstacle_pos=state.obstacle_pos[start:end],
+        obstacle_vel=state.obstacle_vel[start:end],
+        obstacle_radius=state.obstacle_radius[start:end],
+        obstacle_gcenter=state.obstacle_gcenter[start:end],
+        ship_hit_obstacle=state.ship_hit_obstacle[start:end],
     )
 
 
@@ -139,6 +145,10 @@ _GROUP: dict[str, str] = {
     "damage_dealt_enemy": "local_scale",
     "damage_dealt_ally": "local_scale",
     "death": "local_scale",
+    "obstacle_death": "local_scale",
+    "obstacle_proximity": "local_scale",
+    "obstacle_closing_speed": "local_scale",
+    "obstacle_tti": "local_scale",
 }
 
 # Components that use diagonal lambda (self-only: i==j). These must match the
@@ -155,6 +165,10 @@ _LOCAL_COMPONENTS: frozenset[str] = frozenset(
         "damage_dealt_enemy",
         "damage_dealt_ally",
         "death",
+        "obstacle_death",
+        "obstacle_proximity",
+        "obstacle_closing_speed",
+        "obstacle_tti",
     }
 )
 
@@ -288,19 +302,41 @@ class PPOTrainer:
                 "policy_gradient_coef=0.0 (BC mode) requires a scripted_agent."
             )
 
+        # Generate converged obstacle maps before training begins.
+        # The cache is shared across all wrappers (primary + aux scales).
+        M = train_config.scales[0].env_config.num_obstacles
+        if M > 0 and train_config.obstacle_cache is not None:
+            cache_cfg = train_config.obstacle_cache
+            print(
+                f"[PPOTrainer] Generating obstacle cache "
+                f"({cache_cfg.num_cache_envs} envs, "
+                f"target {cache_cfg.cache_size} maps)..."
+            )
+            self._obstacle_cache = ObstacleCache.generate(
+                ship_config,
+                train_config.scales[0].env_config,
+                cache_cfg,
+                self.device,
+            )
+            print(f"[PPOTrainer] Obstacle cache ready: {len(self._obstacle_cache)} maps")
+        else:
+            self._obstacle_cache = None
+
         self.wrapper = MVPEnvWrapper(
             num_envs=train_config.scales[0].num_envs,
             ship_config=ship_config,
             env_config=train_config.scales[0].env_config,
             rewards=train_config.rewards,
             device=device,
+            obstacle_cache=self._obstacle_cache,
         )
         K = self.wrapper.num_active_components
         self._active_names = self.wrapper.active_names  # stable ref used throughout
 
+        N = train_config.scales[0].env_config.num_ships
         self._compile_mode = compile_mode
         self._policy_module = MVPPolicy(
-            model_config, ship_config, num_value_components=K
+            model_config, ship_config, num_value_components=K, num_ships=N
         ).to(self.device)
         _cast_norms_bf16(self._policy_module)
         self.sigreg = SIGReg(d_model=model_config.d_model, num_proj=64).to(self.device)
@@ -312,8 +348,6 @@ class PPOTrainer:
         self.optim = optim.Adam(
             self._policy_module.parameters(), lr=base_state.learning_rate, eps=1e-5
         )
-
-        N = train_config.scales[0].env_config.num_ships
 
         # Build obs shapes for the buffer from a dummy reset
         sample_obs = self.wrapper.reset()
@@ -361,7 +395,7 @@ class PPOTrainer:
         # Weights initialized as a copy of the training policy.
         # Only updated when allow_avg_model_updates is True in the current phase.
         self._avg_policy_module = MVPPolicy(
-            model_config, ship_config, num_value_components=K
+            model_config, ship_config, num_value_components=K, num_ships=N
         ).to(self.device)
         self.avg_policy = (
             torch.compile(self._avg_policy_module, mode=compile_mode)
@@ -459,6 +493,7 @@ class PPOTrainer:
                 env_config=sc.env_config,
                 rewards=train_config.rewards,
                 device=device,
+                obstacle_cache=self._obstacle_cache,
             )
             aux_sample_obs = aux_w.reset()
             aux_obs_shapes = {
@@ -537,6 +572,8 @@ class PPOTrainer:
         """Run the full PPO training loop."""
         B = self.cfg.scales[0].num_envs
         N = self.wrapper.num_ships
+        M = self.env_config.num_obstacles
+        num_tokens = N + M  # ships + obstacles; hidden state covers all entity tokens
         sc_start = self.B_self
         sc_end = self.B_self + self.B_sc
         avg_start = sc_end
@@ -549,12 +586,12 @@ class PPOTrainer:
         # Uniformly distributed over [0, max_episode_steps) — after the first wave
         # of truncations they naturally desynchronize on their own.
         self.wrapper.env.state.step_count.random_(0, self.env_config.max_episode_steps)
-        hidden = self.policy.initial_hidden(B, N, self.device)
+        hidden = self.policy.initial_hidden(B, num_tokens, self.device)
 
         # Avg-model hidden state — lives across the whole training run.
         avg_hidden: torch.Tensor | None = None
         if self.B_avg > 0:
-            avg_hidden = self.avg_policy.initial_hidden(self.B_avg, N, self.device)
+            avg_hidden = self.avg_policy.initial_hidden(self.B_avg, num_tokens, self.device)
 
         # League hidden state — re-initialised each rollout when the entry changes.
         league_hidden: torch.Tensor | None = None
@@ -566,9 +603,10 @@ class PPOTrainer:
         for sc, aux_w in zip(self.cfg.scales[1:], self.aux_wrappers):
             aux_obs.append(aux_w.reset())
             aux_w.env.state.step_count.random_(0, sc.env_config.max_episode_steps)
+            aux_num_tokens = sc.env_config.num_ships + sc.env_config.num_obstacles
             aux_hiddens.append(
                 self.policy.initial_hidden(
-                    sc.num_envs, sc.env_config.num_ships, self.device
+                    sc.num_envs, aux_num_tokens, self.device
                 )
             )
             aux_last_dones.append(
@@ -612,17 +650,18 @@ class PPOTrainer:
                         self.model_config,
                         self.ship_config,
                         self.wrapper.num_active_components,
+                        self.wrapper.num_ships,
                         self.device,
                         self._compile_mode,
                     )
                     self._current_league_policy = entry._policy
                     league_hidden = self._current_league_policy.initial_hidden(
-                        self.B_league, N, self.device
+                        self.B_league, num_tokens, self.device
                     )
                 elif entry.kind == "avg":
                     self._current_league_policy = self.avg_policy
                     league_hidden = self._current_league_policy.initial_hidden(
-                        self.B_league, N, self.device
+                        self.B_league, num_tokens, self.device
                     )
                 else:  # "scripted" — no policy forward pass needed
                     self._current_league_policy = None
@@ -807,14 +846,14 @@ class PPOTrainer:
                 )
 
                 # Reset hidden states for terminated envs
-                hidden = self.policy.reset_hidden_for_envs(hidden, done_any, N)
+                hidden = self.policy.reset_hidden_for_envs(hidden, done_any, num_tokens)
                 if use_avg and self.B_avg > 0:
                     avg_hidden = self.avg_policy.reset_hidden_for_envs(
-                        avg_hidden, done_any[avg_start:avg_end], N
+                        avg_hidden, done_any[avg_start:avg_end], num_tokens
                     )
                 if use_league and self._current_league_policy is not None:
                     league_hidden = self._current_league_policy.reset_hidden_for_envs(
-                        league_hidden, done_any[league_start:league_end], N
+                        league_hidden, done_any[league_start:league_end], num_tokens
                     )
 
                 # Re-randomise opponent team for envs that just ended an episode
@@ -839,6 +878,7 @@ class PPOTrainer:
                     zip(self.cfg.scales[1:], self.aux_wrappers, self.aux_buffers)
                 ):
                     aux_N = sc.env_config.num_ships
+                    aux_num_tokens = aux_N + sc.env_config.num_obstacles
                     with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
                         aux_action, aux_logprob, aux_value_norm, aux_hiddens[i] = (
                             self.policy.get_action_and_value(aux_obs[i], aux_hiddens[i])
@@ -861,7 +901,7 @@ class PPOTrainer:
                     )
                     aux_done_any = aux_dones | aux_truncated
                     aux_hiddens[i] = self.policy.reset_hidden_for_envs(
-                        aux_hiddens[i], aux_done_any, aux_N
+                        aux_hiddens[i], aux_done_any, aux_num_tokens
                     )
                     aux_last_dones[i] = aux_dones
                     aux_obs[i] = next_aux_obs
@@ -1573,9 +1613,11 @@ class PPOTrainer:
         # 2. Setup Env and Agents
         B = games
         N = self.env_config.num_ships
+        M = self.env_config.num_obstacles
+        num_tokens = N + M
         dev = self.device
 
-        env = TensorEnv(B, self.ship_config, self.env_config, self.device)
+        env = TensorEnv(B, self.ship_config, self.env_config, self.device, self._obstacle_cache)
         self.policy.eval()
 
         agent_policy = ResolvedAgent("policy", self.policy)
@@ -1591,11 +1633,11 @@ class PPOTrainer:
         if games_sc > 0:
             is_scripted[:games_sc] = True
 
-        init_hidden(agent_policy, B, N, dev)
+        init_hidden(agent_policy, B, num_tokens, dev)
         if games_sc > 0:
-            init_hidden(agent_sc, B, N, dev)
+            init_hidden(agent_sc, B, num_tokens, dev)
         if games_rand > 0:
-            init_hidden(agent_rand, B, N, dev)
+            init_hidden(agent_rand, B, num_tokens, dev)
 
         env.reset()
 
@@ -1655,11 +1697,11 @@ class PPOTrainer:
 
                     if done_any.any():
                         env.reset_envs(done_any)
-                        reset_done_envs(agent_policy, done_any, N)
+                        reset_done_envs(agent_policy, done_any, num_tokens)
                         if games_sc > 0:
-                            reset_done_envs(agent_sc, done_any, N)
+                            reset_done_envs(agent_sc, done_any, num_tokens)
                         if games_rand > 0:
-                            reset_done_envs(agent_rand, done_any, N)
+                            reset_done_envs(agent_rand, done_any, num_tokens)
 
                 # 3. Solve MLE Universal Elo
                 def compute_eval_elo(w_rand, g_rand, w_sc, g_sc) -> float:
@@ -1694,7 +1736,7 @@ class PPOTrainer:
                     avg_wins_vs_rand = 0.0
                     avg_finished = torch.zeros(B, dtype=torch.bool, device=dev)
                     agent_avg = ResolvedAgent("policy", self.avg_policy)
-                    init_hidden(agent_avg, B, N, dev)
+                    init_hidden(agent_avg, B, num_tokens, dev)
                     env.reset()
 
                     while not avg_finished.all():
@@ -1748,7 +1790,7 @@ class PPOTrainer:
 
                         if done_any.any():
                             env.reset_envs(done_any)
-                            reset_done_envs(agent_avg, done_any, N)
+                            reset_done_envs(agent_avg, done_any, num_tokens)
 
                     avg_elo = compute_eval_elo(
                         avg_wins_vs_rand, games_rand, avg_wins_vs_sc, games_sc

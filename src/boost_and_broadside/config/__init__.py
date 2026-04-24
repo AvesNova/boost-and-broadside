@@ -16,6 +16,7 @@ from boost_and_broadside.config.schedule import (
     join,
 )
 from boost_and_broadside.config.training import (
+    ObstacleCacheConfig,
     ScaleConfig,
     TrainConfig,
 )
@@ -32,6 +33,7 @@ __all__ = [
     "stepped",
     "exponential",
     "join",
+    "ObstacleCacheConfig",
     "ScaleConfig",
     "TrainConfig",
 ]

@@ -64,14 +64,14 @@ def find_run_dir(run_spec: str, checkpoint_dir: str) -> Path:
 
 
 def _load_checkpoint_agent(
-    path: Path, model_config: ModelConfig, ship_config: ShipConfig, device: str
+    path: Path, model_config: ModelConfig, ship_config: ShipConfig, num_ships: int, device: str
 ) -> ResolvedAgent:
     """Load a .pt checkpoint and return a ResolvedAgent."""
     from boost_and_broadside.models.mvp.policy import MVPPolicy
 
     ckpt = torch.load(str(path), map_location=device, weights_only=False)
     K = ckpt["policy_state_dict"]["value_head.weight"].shape[0]
-    policy = MVPPolicy(model_config, ship_config, num_value_components=K).to(device)
+    policy = MVPPolicy(model_config, ship_config, num_value_components=K, num_ships=num_ships).to(device)
     result = policy.load_state_dict(ckpt["policy_state_dict"], strict=False)
     if result.missing_keys:
         print(f"    [warn] missing keys in {path.name}: {result.missing_keys}")
@@ -103,6 +103,7 @@ def run_elo_stats_mode(
     """
     B = num_envs
     N = env_config.num_ships
+    num_tokens = N + env_config.num_obstacles
     dev = torch.device(device)
 
     # ------------------------------------------------------------------ #
@@ -121,14 +122,14 @@ def run_elo_stats_mode(
             sys.exit(f"Error: no .pt checkpoints found in '{run_dir}'.")
         print(f"Loading {len(ckpt_paths)} checkpoint(s)...")
         for path in ckpt_paths:
-            agents.append(_load_checkpoint_agent(path, model_config, ship_config, device))
+            agents.append(_load_checkpoint_agent(path, model_config, ship_config, N, device))
             labels.append(path.stem)
             print(f"  {path.stem}")
         num_checkpoints = len(ckpt_paths)
 
     # All scripted agents — "scripted" (stochastic) is always index num_checkpoints
     for spec in SCRIPTED_SPECS:
-        agents.append(resolve_agent_spec(spec, ship_config, model_config, device))
+        agents.append(resolve_agent_spec(spec, ship_config, model_config, device, num_ships=N))
         labels.append(spec)
     scripted_idx = num_checkpoints  # index of the stochastic scripted agent
 
@@ -182,7 +183,7 @@ def run_elo_stats_mode(
     for a_idx, agent in enumerate(agents):
         if agent.kind == "policy":
             B_a = active_envs[a_idx].shape[0]
-            agent.hidden = agent.agent.initial_hidden(B_a, N, dev)
+            agent.hidden = agent.agent.initial_hidden(B_a, num_tokens, dev)
 
     env = TensorEnv(B, ship_config, env_config, dev)
     env.reset()
@@ -278,7 +279,7 @@ def run_elo_stats_mode(
                         agent.hidden = agent.agent.reset_hidden_for_envs(
                             agent.hidden,
                             active_done,
-                            N,
+                            num_tokens,
                         )
 
     elapsed = time.perf_counter() - t0

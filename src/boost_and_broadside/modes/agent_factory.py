@@ -58,6 +58,7 @@ def resolve_agent_spec(
     model_config: ModelConfig,
     device: str,
     checkpoint_dir: str = "checkpoints",
+    num_ships: int = 4,
 ) -> ResolvedAgent:
     """Resolve a spec string to a ResolvedAgent.
 
@@ -67,6 +68,7 @@ def resolve_agent_spec(
         model_config:   Policy architecture (needed for checkpoint agents).
         device:         Torch device string.
         checkpoint_dir: Root directory searched when spec is "latest".
+        num_ships:      Number of ships (N) — required to size the policy's action/value heads.
     """
     if spec == "null":
         return ResolvedAgent("null", None)
@@ -122,7 +124,7 @@ def resolve_agent_spec(
 
     ckpt = torch.load(path, map_location=device, weights_only=False)
     K = ckpt["policy_state_dict"]["value_head.3.weight"].shape[0]
-    policy = MVPPolicy(model_config, ship_config, num_value_components=K).to(device)
+    policy = MVPPolicy(model_config, ship_config, num_value_components=K, num_ships=num_ships).to(device)
     policy.load_state_dict(ckpt["policy_state_dict"])
     policy.eval()
 
@@ -133,10 +135,10 @@ def resolve_agent_spec(
     return ResolvedAgent("policy", policy)
 
 
-def init_hidden(agent: ResolvedAgent, num_envs: int, num_ships: int, device) -> None:
+def init_hidden(agent: ResolvedAgent, num_envs: int, num_tokens: int, device) -> None:
     """Allocate initial GRU hidden state for policy agents; no-op for all others."""
     if agent.kind == "policy":
-        agent.hidden = agent.agent.initial_hidden(num_envs, num_ships, device)
+        agent.hidden = agent.agent.initial_hidden(num_envs, num_tokens, device)
 
 
 def get_actions(
@@ -181,10 +183,10 @@ def get_actions(
 
 
 def reset_done_envs(
-    agent: ResolvedAgent, done_mask: torch.Tensor, num_ships: int
+    agent: ResolvedAgent, done_mask: torch.Tensor, num_tokens: int
 ) -> None:
     """Reset GRU hidden state for completed envs; no-op for non-policy agents."""
     if agent.kind == "policy" and agent.hidden is not None:
         agent.hidden = agent.agent.reset_hidden_for_envs(
-            agent.hidden, done_mask, num_ships
+            agent.hidden, done_mask, num_tokens
         )

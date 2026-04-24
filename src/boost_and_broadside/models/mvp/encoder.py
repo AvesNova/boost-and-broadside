@@ -1,20 +1,23 @@
-"""Ship token encoder for the MVP policy.
+"""Entity token encoder for ships and obstacles.
 
-Encodes each ship's raw state into a d_model-dimensional token suitable
-for the relational self-attention layer.
+Encodes each entity (ship or obstacle) into a d_model-dimensional token.
+Ships and obstacles share this encoder. Obstacle tokens have ship-specific
+features zeroed out by the wrapper; only pos, radius, alive, and team_id=2
+carry meaningful values for obstacles.
 
-Feature breakdown (per ship):
-    Fourier position: 8 freq × 2 (sin+cos) × 2 (x, y) = 32 dims
+Feature breakdown (per entity, n_freqs=8 example):
+    Fourier position: n_freqs x 2 (sin+cos) x 2 (x, y) = 4*n_freqs dims
+    Fourier attitude: n_freqs x 2 (sin+cos) x 2 (nose, vel_dir) = 4*n_freqs dims
     Symlog velocity:  (vx, vy)                          =  2 dims
-    Attitude:         (cos, sin)                         =  2 dims
     Symlog ang_vel:   scalar                             =  1 dim
     Scalars:          (health, power, cooldown) normed   =  3 dims
-    Team embedding:   nn.Embedding(2, 4)                 =  4 dims
+    Team embedding:   nn.Embedding(3, 4) (2=obstacle)   =  4 dims
     Alive:            scalar                             =  1 dim
     Prev-action one-hot: 3 + 7 + 2                      = 12 dims
-    ─────────────────────────────────────────────────────────────
-    Total raw dim                                        = 57 dims
-    → Linear(57, d_model)
+    Radius:           normalized scalar                  =  1 dim
+    ---
+    Total raw dim (n_freqs=8)                            = 88 dims
+    -> Linear(raw_dim, d_model)
 """
 
 import torch
@@ -36,7 +39,7 @@ def _raw_dim(n_fourier_freqs: int) -> int:
     """Compute raw feature dimension given number of Fourier frequencies."""
     pos_dim = 4 * n_fourier_freqs  # x and y, each (sin+cos) * n_freqs
     att_dim = 4 * n_fourier_freqs  # nose_att and vel_att, each (sin+cos) * n_freqs
-    return pos_dim + att_dim + 2 + 1 + 3 + _TEAM_EMBED_DIM + 1 + _ACTION_DIM
+    return pos_dim + att_dim + 2 + 1 + 3 + _TEAM_EMBED_DIM + 1 + _ACTION_DIM + 1  # +1 radius
 
 
 def _symlog(x: torch.Tensor) -> torch.Tensor:
@@ -98,7 +101,7 @@ class ShipEncoder(nn.Module):
         self.world_w, self.world_h = ship_config.world_size
         self.d_model = model_config.d_model
 
-        self.team_embed = nn.Embedding(2, _TEAM_EMBED_DIM)
+        self.team_embed = nn.Embedding(3, _TEAM_EMBED_DIM)  # 0/1=ship teams, 2=obstacle
         self.feature_extractor = nn.Sequential(
             nn.Linear(_raw_dim(self.n_freqs), 2 * model_config.d_model),
             nn.RMSNorm(2 * model_config.d_model),
@@ -108,7 +111,10 @@ class ShipEncoder(nn.Module):
         )
 
     def forward(self, obs: dict[str, torch.Tensor]) -> torch.Tensor:
-        """Encode observations into ship tokens.
+        """Encode entity observations into tokens.
+
+        Works on combined (ship + obstacle) token sequences. Obstacle tokens
+        have vel/att/ang_vel/scalars/prev_action zeroed by the wrapper.
 
         Args:
             obs: Dict with keys matching MVPEnvWrapper._get_obs():
@@ -117,9 +123,10 @@ class ShipEncoder(nn.Module):
                 "att"         (..., N, 2) float32
                 "ang_vel"     (..., N, 1) float32
                 "scalars"     (..., N, 3) float32
-                "team_id"     (..., N)   int32
+                "team_id"     (..., N)   int32  (2 for obstacles)
                 "alive"       (..., N)   bool
                 "prev_action" (..., N, 3) int64
+                "radius"      (..., N, 1) float32 — normalized by obstacle_radius_max
 
         Returns:
             (..., N, d_model) float32 token tensor.
@@ -172,18 +179,21 @@ class ShipEncoder(nn.Module):
         ).float()
         action_feat = torch.cat([pa_power, pa_turn, pa_shoot], dim=-1)  # (..., N, 12)
 
+        radius = obs["radius"]  # (..., N, 1) normalized
+
         raw = torch.cat(
             [
-                pos_feat,  # 4 * n_freqs
-                att_feat,  # 4 * n_freqs
-                vel_feat,  # 2
-                ang_feat,  # 1
-                scalars,  # 3
+                pos_feat,   # 4 * n_freqs
+                att_feat,   # 4 * n_freqs
+                vel_feat,   # 2
+                ang_feat,   # 1
+                scalars,    # 3
                 team_feat,  # 4
                 alive_feat,  # 1
                 action_feat,  # 12
+                radius,     # 1
             ],
             dim=-1,
-        )  # (..., N, 57 + 4*n_freqs - 2)
+        )  # (..., N, 24 + 8*n_freqs)
 
         return self.feature_extractor(raw)  # (..., N, d_model)

@@ -7,6 +7,25 @@ from boost_and_broadside.config.schedule import TrainingSchedule
 
 
 @dataclass(frozen=True)
+class ObstacleCacheConfig:
+    """Config for pre-training obstacle map generation.
+
+    A large batch of environments is simulated with harmonic gravity + PBD until
+    obstacles converge to stable orbits. Converged snapshots are stored and
+    replayed (with random rotation + translation) throughout training.
+
+    Args:
+        num_cache_envs: Parallel envs to simulate during generation.
+        cache_size:     Desired number of stored converged snapshots.
+        max_steps:      Max simulation steps before giving up on stragglers.
+    """
+
+    num_cache_envs: int
+    cache_size: int
+    max_steps: int
+
+
+@dataclass(frozen=True)
 class ScaleConfig:
     """One training scale: an environment config paired with a batch size.
 
@@ -73,6 +92,9 @@ class TrainConfig:
     scripted_roster_min_steps: (
         int  # delay adding scripted to roster until this many steps
     )
+
+    # --- Obstacle cache (None when num_obstacles=0) ---
+    obstacle_cache: ObstacleCacheConfig | None = None
 
     def __post_init__(self) -> None:
         if len(self.scales) == 0:

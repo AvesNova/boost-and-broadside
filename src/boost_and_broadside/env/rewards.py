@@ -713,6 +713,237 @@ class ShootQualityReward(RewardComponent):
 
 
 # ---------------------------------------------------------------------------
+# Obstacle reward components (local, self-only)
+# ---------------------------------------------------------------------------
+
+
+class ObstacleDeathReward(RewardComponent):
+    """-1 on the step a ship is killed by an obstacle collision."""
+
+    name = "obstacle_death"
+
+    def __init__(self, weight: float) -> None:
+        self._weight = weight
+
+    @property
+    def weight(self) -> float:
+        return self._weight
+
+    def compute(
+        self,
+        prev_state: TensorState,
+        actions: torch.Tensor,
+        next_state: TensorState,
+        dones: torch.Tensor,
+    ) -> torch.Tensor:
+        just_died_from_obs = (
+            prev_state.ship_alive & ~next_state.ship_alive & next_state.ship_hit_obstacle
+        )  # (B, N)
+        return -just_died_from_obs.float()
+
+
+class ObstacleProximityReward(RewardComponent):
+    """Penalty proportional to nearness to the closest obstacle.
+
+    Penalty = -(1 - dist_to_nearest / obstacle_proximity_radius).clamp(0, 1)
+    Zero penalty when the nearest obstacle is farther than proximity_radius.
+    """
+
+    name = "obstacle_proximity"
+
+    def __init__(
+        self,
+        weight: float,
+        proximity_radius: float,
+        world_size: tuple[float, float],
+    ) -> None:
+        self._weight = weight
+        self.proximity_radius = proximity_radius
+        self.world_size = world_size
+
+    @property
+    def weight(self) -> float:
+        return self._weight
+
+    def compute(
+        self,
+        prev_state: TensorState,
+        actions: torch.Tensor,
+        next_state: TensorState,
+        dones: torch.Tensor,
+    ) -> torch.Tensor:
+        if next_state.num_obstacles == 0:
+            return torch.zeros_like(next_state.ship_health)
+
+        W, H = self.world_size
+        pos = next_state.ship_pos      # (B, N) complex64
+        obs = next_state.obstacle_pos  # (B, M) complex64
+        alive = next_state.ship_alive  # (B, N) bool
+
+        # (B, N, M) toroidal distances
+        diff_r = pos.real.unsqueeze(2) - obs.real.unsqueeze(1)
+        diff_i = pos.imag.unsqueeze(2) - obs.imag.unsqueeze(1)
+        diff_r = (diff_r + W / 2) % W - W / 2
+        diff_i = (diff_i + H / 2) % H - H / 2
+        dist = torch.sqrt(diff_r**2 + diff_i**2)  # (B, N, M)
+
+        # Account for obstacle radii: effective distance is surface-to-surface
+        dist = (dist - next_state.obstacle_radius.unsqueeze(1)).clamp(min=0.0)
+
+        min_dist = dist.min(dim=2).values  # (B, N) nearest obstacle surface
+        penalty = (1.0 - (min_dist / self.proximity_radius).clamp(0.0, 1.0))
+
+        return -penalty * alive.float()
+
+
+class ObstacleClosingSpeedReward(RewardComponent):
+    """Penalty for velocity component directed toward the nearest obstacle."""
+
+    name = "obstacle_closing_speed"
+
+    def __init__(
+        self,
+        weight: float,
+        max_speed: float,
+        world_size: tuple[float, float],
+    ) -> None:
+        self._weight = weight
+        self.max_speed = max_speed
+        self.world_size = world_size
+
+    @property
+    def weight(self) -> float:
+        return self._weight
+
+    def compute(
+        self,
+        prev_state: TensorState,
+        actions: torch.Tensor,
+        next_state: TensorState,
+        dones: torch.Tensor,
+    ) -> torch.Tensor:
+        if next_state.num_obstacles == 0:
+            return torch.zeros_like(next_state.ship_health)
+
+        W, H = self.world_size
+        pos = next_state.ship_pos      # (B, N) complex64
+        vel = next_state.ship_vel      # (B, N) complex64
+        obs = next_state.obstacle_pos  # (B, M) complex64
+        alive = next_state.ship_alive  # (B, N) bool
+
+        # Toroidal diff from ship to obstacle: (B, N, M)
+        diff_r = obs.real.unsqueeze(1) - pos.real.unsqueeze(2)
+        diff_i = obs.imag.unsqueeze(1) - pos.imag.unsqueeze(2)
+        diff_r = (diff_r + W / 2) % W - W / 2
+        diff_i = (diff_i + H / 2) % H - H / 2
+        dist = torch.sqrt(diff_r**2 + diff_i**2).clamp(min=1e-6)  # (B, N, M)
+
+        # Unit direction ship → obstacle
+        dir_r = diff_r / dist
+        dir_i = diff_i / dist
+
+        # Closing speed = vel · direction (positive = heading toward obstacle)
+        closing = vel.real.unsqueeze(2) * dir_r + vel.imag.unsqueeze(2) * dir_i  # (B, N, M)
+
+        # Find nearest obstacle for each ship
+        nearest_idx = dist.argmin(dim=2, keepdim=True)  # (B, N, 1)
+        best_closing = closing.gather(2, nearest_idx).squeeze(2)  # (B, N)
+
+        penalty = best_closing.clamp(min=0.0) / self.max_speed
+
+        return -penalty * alive.float()
+
+
+class ObstacleTTIReward(RewardComponent):
+    """Penalty based on time-to-intersection (TTI) with the nearest obstacle.
+
+    TTI = estimated time until the ship's current trajectory intersects an
+    obstacle, treating both as moving linearly. Solved as a quadratic:
+        a*t^2 + b*t + c = 0
+        a = |v_rel|^2
+        b = 2 * (d . v_rel)
+        c = |d|^2 - (r_obs + r_ship)^2
+
+    Penalty = (1 - TTI/tti_max).clamp(0,1). Zero when min TTI > tti_max.
+    """
+
+    name = "obstacle_tti"
+
+    def __init__(
+        self,
+        weight: float,
+        tti_max: float,
+        ship_collision_radius: float,
+        world_size: tuple[float, float],
+    ) -> None:
+        self._weight = weight
+        self.tti_max = tti_max
+        self.ship_collision_radius = ship_collision_radius
+        self.world_size = world_size
+
+    @property
+    def weight(self) -> float:
+        return self._weight
+
+    def compute(
+        self,
+        prev_state: TensorState,
+        actions: torch.Tensor,
+        next_state: TensorState,
+        dones: torch.Tensor,
+    ) -> torch.Tensor:
+        if next_state.num_obstacles == 0:
+            return torch.zeros_like(next_state.ship_health)
+
+        W, H = self.world_size
+        pos = next_state.ship_pos      # (B, N) complex64
+        vel = next_state.ship_vel      # (B, N) complex64
+        obs_pos = next_state.obstacle_pos   # (B, M) complex64
+        obs_vel = next_state.obstacle_vel   # (B, M) complex64
+        obs_r = next_state.obstacle_radius  # (B, M) float32
+        alive = next_state.ship_alive       # (B, N) bool
+
+        # Relative position d = ship - obs, wrapped: (B, N, M)
+        d_r = pos.real.unsqueeze(2) - obs_pos.real.unsqueeze(1)
+        d_i = pos.imag.unsqueeze(2) - obs_pos.imag.unsqueeze(1)
+        d_r = (d_r + W / 2) % W - W / 2
+        d_i = (d_i + H / 2) % H - H / 2
+
+        # Relative velocity v_rel = ship_vel - obs_vel: (B, N, M)
+        vr_r = vel.real.unsqueeze(2) - obs_vel.real.unsqueeze(1)
+        vr_i = vel.imag.unsqueeze(2) - obs_vel.imag.unsqueeze(1)
+
+        # Combined hitbox radius: (B, N, M)
+        hit_r = obs_r.unsqueeze(1) + self.ship_collision_radius  # (B, 1, M) → broadcast
+
+        # Quadratic coefficients
+        a = vr_r**2 + vr_i**2                         # (B, N, M)
+        b = 2.0 * (d_r * vr_r + d_i * vr_i)          # (B, N, M)
+        c = d_r**2 + d_i**2 - hit_r**2                # (B, N, M)
+
+        disc = b**2 - 4.0 * a * c                     # (B, N, M)
+
+        # TTI: smallest positive root of quadratic; inf if no real positive root
+        safe_a = a.clamp(min=1e-12)
+        sqrt_disc = torch.sqrt(disc.clamp(min=0.0))
+        t1 = (-b - sqrt_disc) / (2.0 * safe_a)
+        t2 = (-b + sqrt_disc) / (2.0 * safe_a)
+
+        # Take smallest positive root; fallback to tti_max when no collision
+        t_min = torch.where(t1 > 0, t1, t2)
+        tti = torch.where(
+            (disc >= 0) & (t_min > 0),
+            t_min.clamp(max=self.tti_max),
+            torch.full_like(t_min, self.tti_max),
+        )
+
+        min_tti = tti.min(dim=2).values  # (B, N)
+        penalty = (1.0 - (min_tti / self.tti_max).clamp(0.0, 1.0))
+
+        return -penalty * alive.float()
+
+
+# ---------------------------------------------------------------------------
 # Component registry
 # ---------------------------------------------------------------------------
 
@@ -732,6 +963,10 @@ REWARD_COMPONENT_NAMES: tuple[str, ...] = (
     "damage_dealt_enemy",  # 12 — damage dealt to enemies this step (self only)
     "damage_dealt_ally",  # 13 — damage dealt to allies this step — friendly-fire penalty (self only)
     "death",  # 14 — -1 on the step this ship dies (self only)
+    "obstacle_death",  # 15 — -1 on the step this ship is killed by an obstacle (self only)
+    "obstacle_proximity",  # 16 — penalty proportional to nearness to closest obstacle (self only)
+    "obstacle_closing_speed",  # 17 — penalty for velocity toward nearest obstacle (self only)
+    "obstacle_tti",  # 18 — penalty based on time-to-intersection with nearest obstacle (self only)
 )
 
 _NAME_TO_K: dict[str, int] = {name: k for k, name in enumerate(REWARD_COMPONENT_NAMES)}
@@ -781,6 +1016,23 @@ def build_reward_components(
         LocalDamageDealtEnemyReward(weight=rewards.damage_dealt_enemy_weight),
         LocalDamageDealtAllyReward(weight=rewards.damage_dealt_ally_weight),
         LocalDeathReward(weight=rewards.death_weight),
+        ObstacleDeathReward(weight=rewards.obstacle_death_weight),
+        ObstacleProximityReward(
+            weight=rewards.obstacle_proximity_weight,
+            proximity_radius=rewards.obstacle_proximity_radius,
+            world_size=ship_config.world_size,
+        ),
+        ObstacleClosingSpeedReward(
+            weight=rewards.obstacle_closing_speed_weight,
+            max_speed=ship_config.max_speed,
+            world_size=ship_config.world_size,
+        ),
+        ObstacleTTIReward(
+            weight=rewards.obstacle_tti_weight,
+            tti_max=rewards.obstacle_tti_max,
+            ship_collision_radius=ship_config.obstacle_collision_radius,
+            world_size=ship_config.world_size,
+        ),
     ]
 
 
