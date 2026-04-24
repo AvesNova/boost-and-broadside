@@ -11,8 +11,6 @@ from pathlib import Path
 
 import torch
 
-from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
-from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.constants import (
     NUM_POWER_ACTIONS,
@@ -20,8 +18,23 @@ from boost_and_broadside.constants import (
     NUM_TURN_ACTIONS,
 )
 from boost_and_broadside.env.env import TensorEnv
-from boost_and_broadside.modes.agent_factory import ResolvedAgent
+from boost_and_broadside.modes.agent_factory import ResolvedAgent, resolve_agent_spec
 from boost_and_broadside.modes.collect import _obs_from_state
+
+# All scripted agents, in display order. "scripted" (stochastic) is kept first
+# so scripted_idx == num_checkpoints regardless of list length.
+SCRIPTED_SPECS = [
+    "scripted",
+    "scripted_team",
+    "jouster",
+    "team_jouster",
+    "reverse_turret",
+    "boom_zoom",
+    "abreast",
+    "run_away",
+    "spiral_evader",
+    "jinking",
+]
 
 
 def find_run_dir(run_spec: str, checkpoint_dir: str) -> Path:
@@ -95,34 +108,39 @@ def run_elo_stats_mode(
     # ------------------------------------------------------------------ #
     # Step 1 — Discover and load agents                                   #
     # ------------------------------------------------------------------ #
-    run_dir = find_run_dir(run_spec, checkpoint_dir)
-    print(f"Run directory: {run_dir}")
-
-    ckpt_paths = sorted(run_dir.glob("*.pt"), key=lambda p: p.name)
-    if not ckpt_paths:
-        sys.exit(f"Error: no .pt checkpoints found in '{run_dir}'.")
-
     agents: list[ResolvedAgent] = []
     labels: list[str] = []
+    num_checkpoints = 0
+    run_dir: Path | None = None
 
-    print(f"Loading {len(ckpt_paths)} checkpoint(s)...")
-    for path in ckpt_paths:
-        agents.append(_load_checkpoint_agent(path, model_config, ship_config, device))
-        labels.append(path.stem)  # e.g. "step_000001966080"
-        print(f"  {path.stem}")
+    if run_spec != "none":
+        run_dir = find_run_dir(run_spec, checkpoint_dir)
+        print(f"Run directory: {run_dir}")
+        ckpt_paths = sorted(run_dir.glob("*.pt"), key=lambda p: p.name)
+        if not ckpt_paths:
+            sys.exit(f"Error: no .pt checkpoints found in '{run_dir}'.")
+        print(f"Loading {len(ckpt_paths)} checkpoint(s)...")
+        for path in ckpt_paths:
+            agents.append(_load_checkpoint_agent(path, model_config, ship_config, device))
+            labels.append(path.stem)
+            print(f"  {path.stem}")
+        num_checkpoints = len(ckpt_paths)
 
-    # Scripted and random come last — indices used below for win-rate queries
-    scripted_agent = StochasticScriptedAgent(ship_config, StochasticAgentConfig())
-    agents.append(ResolvedAgent("scripted", scripted_agent))
-    labels.append("scripted")
-    scripted_idx = len(agents) - 1
+    # All scripted agents — "scripted" (stochastic) is always index num_checkpoints
+    for spec in SCRIPTED_SPECS:
+        agents.append(resolve_agent_spec(spec, ship_config, model_config, device))
+        labels.append(spec)
+    scripted_idx = num_checkpoints  # index of the stochastic scripted agent
 
     agents.append(ResolvedAgent("random", None))
     labels.append("random")
     random_idx = len(agents) - 1
 
     K = len(agents)
-    print(f"Total agents: {K}  (checkpoints={K - 2}, scripted=1, random=1)")
+    print(
+        f"Total agents: {K}  "
+        f"(checkpoints={num_checkpoints}, scripted={len(SCRIPTED_SPECS)}, random=1)"
+    )
 
     # ------------------------------------------------------------------ #
     # Step 2 — Matchup setup                                              #
@@ -361,8 +379,9 @@ def run_elo_stats_mode(
     w_total = max(72, row_w)
     sep = "─" * w_total
 
+    title = run_dir.name if run_dir is not None else "scripted-only"
     print(f"\n{sep}")
-    print(f"  ELO Stats: {run_dir.name}")
+    print(f"  ELO Stats: {title}")
     print(
         f"  {K} agents  |  {B:,} total envs  |  {M} directed matchups  |  ~{B // M} envs/matchup"
     )

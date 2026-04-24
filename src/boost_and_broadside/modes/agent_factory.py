@@ -15,6 +15,14 @@ import torch
 
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
+from boost_and_broadside.agents.run_away import RunAwayAgent
+from boost_and_broadside.agents.boom_zoom import BoomZoomAgent
+from boost_and_broadside.agents.abreast import AbreastAgent
+from boost_and_broadside.agents.reverse_turret import ReverseTurretAgent
+from boost_and_broadside.agents.spiral_evader import SpiralEvaderAgent
+from boost_and_broadside.agents.jouster import JousterAgent
+from boost_and_broadside.agents.jinking import JinkingAgent
+from boost_and_broadside.agents.team_jouster import TeamJousterAgent
 from boost_and_broadside.config import ModelConfig, ShipConfig
 from boost_and_broadside.constants import (
     NUM_POWER_ACTIONS,
@@ -69,6 +77,36 @@ def resolve_agent_spec(
     if spec == "scripted":
         agent = StochasticScriptedAgent(ship_config, StochasticAgentConfig())
         return ResolvedAgent("scripted", agent)
+
+    if spec == "scripted_team":
+        agent = StochasticScriptedAgent(
+            ship_config, StochasticAgentConfig(team_target_distance_prob=(0.0, 1.0))
+        )
+        return ResolvedAgent("scripted", agent)
+
+    if spec == "run_away":
+        return ResolvedAgent("scripted", RunAwayAgent(ship_config))
+
+    if spec == "boom_zoom":
+        return ResolvedAgent("scripted", BoomZoomAgent(ship_config))
+
+    if spec == "abreast":
+        return ResolvedAgent("scripted", AbreastAgent(ship_config))
+
+    if spec == "reverse_turret":
+        return ResolvedAgent("scripted", ReverseTurretAgent(ship_config))
+
+    if spec == "spiral_evader":
+        return ResolvedAgent("scripted", SpiralEvaderAgent(ship_config))
+
+    if spec == "jouster":
+        return ResolvedAgent("scripted", JousterAgent(ship_config))
+
+    if spec == "jinking":
+        return ResolvedAgent("scripted", JinkingAgent(ship_config))
+
+    if spec == "team_jouster":
+        return ResolvedAgent("scripted", TeamJousterAgent(ship_config))
 
     # Checkpoint: "latest" or an explicit path
     if spec == "latest":

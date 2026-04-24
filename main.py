@@ -12,6 +12,8 @@ Run with:
     uv run --no-sync main.py --mode watch --team0 latest --team1 latest            # self-play
     uv run --no-sync main.py --mode collect_stats                                  # scripted vs random
     uv run --no-sync main.py --mode collect_stats --team0 latest --team1 scripted
+    uv run --no-sync main.py --mode elo_stats                                     # all scripted agents
+    uv run --no-sync main.py --mode elo_stats --run latest                        # scripted + latest run checkpoints
 
 Agent specs (--team0 / --team1):
     null        human keyboard (watch only)
@@ -68,9 +70,10 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--run",
         type=str,
-        default="latest",
+        default="none",
         metavar="RUN",
-        help="Run name for elo_stats mode (e.g. 'bright-cloud-219') or 'latest'.",
+        help="Run name for elo_stats mode (e.g. 'bright-cloud-219'), 'latest', or 'none' "
+        "(scripted agents only, no checkpoints).",
     )
     parser.add_argument(
         "--compile",
@@ -222,7 +225,7 @@ def main() -> None:
         case "elo_stats":
             run_elo_stats_mode(
                 run_spec=args.run,
-                num_envs=1024,
+                num_envs=110000,
                 ship_config=SHIP_CONFIG,
                 env_config=EnvConfig(
                     num_ships=4, max_bullets=20, max_episode_steps=1024

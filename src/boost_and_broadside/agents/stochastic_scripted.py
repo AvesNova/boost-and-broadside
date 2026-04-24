@@ -4,6 +4,11 @@ from boost_and_broadside.env.state import TensorState
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.constants import PowerActions, TurnActions, ShootActions
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
+from boost_and_broadside.agents.scripted_utils import (
+    select_targets,
+    predict_interception,
+    compute_team_target_bearings,
+)
 
 
 class StochasticScriptedAgent:
@@ -42,82 +47,18 @@ class StochasticScriptedAgent:
         """Independent AND logic: P(A and B) = P(A) * P(B)"""
         return p_a * p_b
 
-    def _select_targets(
-        self, state: TensorState
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Find the nearest alive enemy for each ship.
-
-        Returns:
-            closest_dist: (B, N) float — distance to nearest enemy
-            target_idx:   (B, N) long — index of nearest enemy
-            has_target:   (B, N) bool — whether a valid enemy exists
-        """
-        batch_size, num_ships = state.ship_pos.shape
-        world_width, world_height = self.ship_config.world_size
-        device = state.device
-
-        pos_targets = state.ship_pos.unsqueeze(1)
-        pos_sources = state.ship_pos.unsqueeze(2)
-
-        diff = pos_targets - pos_sources
-        diff.real = (diff.real + world_width / 2) % world_width - world_width / 2
-        diff.imag = (diff.imag + world_height / 2) % world_height - world_height / 2
-
-        dist = torch.abs(diff)
-
-        team_src = state.ship_team_id.unsqueeze(2)
-        team_tgt = state.ship_team_id.unsqueeze(1)
-        enemy_mask = team_src != team_tgt
-        alive_tgt = state.ship_alive.unsqueeze(1)
-        valid_tgt = enemy_mask & alive_tgt
-
-        dist_masked = torch.where(
-            valid_tgt, dist, torch.tensor(float("inf"), device=device)
-        )
-        closest_dist, target_idx = torch.min(dist_masked, dim=2)
-        has_target = closest_dist < float("inf")
-
-        return closest_dist, target_idx, has_target
-
-    def _predict_interception(
-        self, state: TensorState, target_idx: torch.Tensor, closest_dist: torch.Tensor
-    ) -> torch.Tensor:
-        """Predict the unit direction vector to the interception point.
-
-        Accounts for both target and shooter movement during bullet travel time,
-        since bullet velocity = shooter_vel + bullet_speed * aim_dir.
-        Uses relative velocity (v_target - v_shooter) for the lead correction.
-        """
-        world_width, world_height = self.ship_config.world_size
-        target_pos = torch.gather(state.ship_pos, 1, target_idx)
-        target_vel = torch.gather(state.ship_vel, 1, target_idx)
-
-        # First-order time estimate using current distance
-        t_intercept = closest_dist / self.ship_config.bullet_speed
-
-        # Project both target and shooter forward by t_intercept.
-        pred_pos = target_pos + target_vel * t_intercept
-        shooter_future_pos = state.ship_pos + state.ship_vel * t_intercept
-
-        diff_pred = pred_pos - shooter_future_pos
-        diff_pred.real = (
-            diff_pred.real + world_width / 2
-        ) % world_width - world_width / 2
-        diff_pred.imag = (
-            diff_pred.imag + world_height / 2
-        ) % world_height - world_height / 2
-
-        dist_pred = torch.abs(diff_pred)
-        return diff_pred / (dist_pred + 1e-8)
-
     def _compute_action_probs(
         self,
         state: TensorState,
         closest_dist: torch.Tensor,
-        dir_pred: torch.Tensor,
+        dir_turn: torch.Tensor,
+        dir_shoot: torch.Tensor,
         active_mask: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Compute marginal probability distributions for Power(3), Turn(7), Shoot(2).
+
+        dir_turn:  direction used for turn decisions (may be team-target-blended).
+        dir_shoot: direction used for shoot alignment (always personal intercept).
 
         Returns unmasked distributions of shape (B, N, C).
         """
@@ -125,7 +66,7 @@ class StochasticScriptedAgent:
         device = state.device
 
         att = state.ship_attitude
-        rel_angle = torch.angle(dir_pred * torch.conj(att))  # range (-pi, pi)
+        rel_angle = torch.angle(dir_turn * torch.conj(att))  # range (-pi, pi)
         abs_angle = torch.abs(rel_angle)
 
         # --- 1. Turn Probabilities (7 options) ---
@@ -211,7 +152,8 @@ class StochasticScriptedAgent:
         )
         shoot_threshold = target_angular_size.clamp(np.deg2rad(1.0), np.deg2rad(45.0))
 
-        angle_ratio = abs_angle / (shoot_threshold + 1e-8)
+        shoot_rel_angle = torch.angle(dir_shoot * torch.conj(att))
+        angle_ratio = shoot_rel_angle.abs() / (shoot_threshold + 1e-8)
         p_aligned = self._linear_ramp(
             angle_ratio,
             self.config.shoot_angle_ramp[0],
@@ -255,12 +197,23 @@ class StochasticScriptedAgent:
             expert_probs: (B, N, 12) float tensor (independent marginals) or
                           (B, N, 42) float tensor (joint, if flat_action_sampling=True)
         """
-        closest_dist, target_idx, has_target = self._select_targets(state)
-        dir_pred = self._predict_interception(state, target_idx, closest_dist)
+        closest_dist, target_idx, has_target, _ = select_targets(state, self.ship_config)
+        dir_pred = predict_interception(state, self.ship_config, target_idx, closest_dist)
         active_mask = state.ship_alive & has_target
 
+        # Blend turn direction: personal intercept at close range, team target at far range
+        team_bearing, _, _, team_has_target = compute_team_target_bearings(state, self.ship_config)
+        p_team = self._linear_ramp(
+            closest_dist,
+            self.config.team_target_distance_ramp[0],
+            self.config.team_target_distance_ramp[1],
+            *self.config.team_target_distance_prob,
+        ) * team_has_target.float()
+        dir_turn = (1.0 - p_team) * dir_pred + p_team * team_bearing
+        dir_turn = dir_turn / (torch.abs(dir_turn) + 1e-8)
+
         p_power, p_turn, p_shoot = self._compute_action_probs(
-            state, closest_dist, dir_pred, active_mask
+            state, closest_dist, dir_turn, dir_pred, active_mask
         )
 
         batch_size, num_ships = state.ship_pos.shape

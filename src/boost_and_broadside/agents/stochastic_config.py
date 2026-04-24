@@ -74,6 +74,13 @@ class StochasticAgentConfig:
     shoot_distance_ramp: Tuple[float, float] = (200, 500)
     shoot_distance_prob: Tuple[float, float] = (0.95, 0.05)
 
+    # Team Target Ramps
+    # Distance to personal target that controls blending toward the team's shared target.
+    # At close range (< ramp[0]): use personal targeting exclusively.
+    # At far range  (> ramp[1]): defer fully to the team's closest-to-CoM target.
+    team_target_distance_ramp: Tuple[float, float] = (60.0, 100.0)
+    team_target_distance_prob: Tuple[float, float] = (0.0, 0.0)  # disabled by default; use scripted_team spec to enable
+
     # ---------------------------------------------------------------------------
     # Flat-vector interface for hyperparameter search
     # ---------------------------------------------------------------------------
@@ -90,10 +97,12 @@ class StochasticAgentConfig:
         (0.0, 1.0),  # sharp_turn_angle_prob   — probability
         (0.0, 3.0),  # shoot_angle_ramp        — ratio
         (0.0, 1.0),  # shoot_angle_prob        — probability
-        (0.0, _MAX_WORLD_DIST),  # shoot_distance_ramp     — world units
-        (0.0, 1.0),  # shoot_distance_prob     — probability
+        (0.0, _MAX_WORLD_DIST),  # shoot_distance_ramp          — world units
+        (0.0, 1.0),              # shoot_distance_prob          — probability
+        (0.0, _MAX_WORLD_DIST),  # team_target_distance_ramp   — world units
+        (0.0, 1.0),              # team_target_distance_prob   — probability
     ]
-    # Vector length = 2 * len(PARAM_BOUNDS) = 24
+    # Vector length = 2 * len(PARAM_BOUNDS) = 28
 
     @classmethod
     def from_vector(
@@ -129,6 +138,8 @@ class StochasticAgentConfig:
             shoot_angle_prob=pair(9, 18),
             shoot_distance_ramp=pair(10, 20),
             shoot_distance_prob=pair(11, 22),
+            team_target_distance_ramp=pair(12, 24),
+            team_target_distance_prob=pair(13, 26),
         )
 
     @classmethod
@@ -148,6 +159,8 @@ class StochasticAgentConfig:
             *cfg.shoot_angle_prob,
             *cfg.shoot_distance_ramp,
             *cfg.shoot_distance_prob,
+            *cfg.team_target_distance_ramp,
+            *cfg.team_target_distance_prob,
         ]
         expanded_bounds = [b for b in cls.PARAM_BOUNDS for _ in range(2)]
         return [(r - lo) / (hi - lo) for r, (lo, hi) in zip(raw, expanded_bounds)]
