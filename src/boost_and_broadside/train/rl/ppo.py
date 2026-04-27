@@ -366,6 +366,7 @@ class PPOTrainer:
             gamma=train_config.gamma,
             gae_lambda=train_config.gae_lambda,
             device=self.device,
+            num_tokens=N + M,
         )
 
         # Pre-compute lambda masks for active components only.
@@ -410,6 +411,18 @@ class PPOTrainer:
             torch.zeros_like(p) for p in self._policy_module.parameters()
         ]
         self._avg_update_count: int = 0
+
+        # Warmup: force torch.compile to trace both policies under autocast so
+        # the BF16 norm weights always see BF16 inputs during compilation.
+        # Without this, the internal fake-tensor trace runs in fp32 and emits a
+        # dtype-mismatch warning (and misses the fused RMSNorm kernel).
+        if compile_mode is not None and self.device.type == "cuda":
+            _nt = N + M
+            with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
+                _h = self._policy_module.initial_hidden(B, _nt, self.device)
+                self.policy.get_action_and_value(sample_obs, _h)
+                _h_avg = self._avg_policy_module.initial_hidden(B, _nt, self.device)
+                self.avg_policy.get_action_and_value(sample_obs, _h_avg)
 
         # Per-env flag: which team_id is the opponent in scripted/avg/league groups.
         # Randomised at init and re-randomised each episode reset.
@@ -510,6 +523,7 @@ class PPOTrainer:
                 gamma=train_config.gamma,
                 gae_lambda=train_config.gae_lambda,
                 device=self.device,
+                num_tokens=sc.env_config.num_ships + sc.env_config.num_obstacles,
             )
             self.aux_wrappers.append(aux_w)
             self.aux_buffers.append(aux_buf)
@@ -683,7 +697,7 @@ class PPOTrainer:
                     )
 
                 # Team IDs — used for opponent overrides, actor mask, and BC expert masking
-                team_id = obs["team_id"]  # (B, N) int
+                team_id = obs["team_id"][:, :N]  # (B, N) int — ship tokens only
 
                 if self._policy_gradient_coef == 0.0:
                     # BC pretraining: pure self-play — live policy controls all ships.
@@ -840,7 +854,7 @@ class PPOTrainer:
                     value=self.scaler.denormalize(
                         value_norm
                     ),  # symlog-reward space for GAE
-                    alive=obs["alive"].bool(),
+                    alive=obs["alive"][:, :N].bool(),
                     actor_mask=actor_mask,
                     expert_probs=expert_probs_step,
                 )
@@ -893,7 +907,7 @@ class PPOTrainer:
                         reward=aux_reward,
                         done=aux_dones.float(),
                         value=self.scaler.denormalize(aux_value_norm),
-                        alive=aux_obs[i]["alive"].bool(),
+                        alive=aux_obs[i]["alive"][:, :aux_N].bool(),
                         actor_mask=torch.ones(
                             sc.num_envs, aux_N, dtype=torch.bool, device=self.device
                         ),
@@ -1132,12 +1146,15 @@ class PPOTrainer:
         ) = batch
 
         need_sigreg = self._schedule_state.sigreg_coef > 0.0
+        # evaluate_actions needs the full (T, B, N+M) alive mask so Yemong layers
+        # can attend to obstacle tokens; mb_alive is ships-only and used for loss masking.
+        alive_mask_full = mb_obs["alive"].bool()  # (T, B_mb, N+M)
         with torch.autocast("cuda", dtype=torch.bfloat16):
             logprob, entropy, new_value, policy_logits, z = self.policy.evaluate_actions(
                 obs=mb_obs,
                 actions=mb_actions.long(),
                 initial_hidden=mb_hidden,
-                alive_mask=mb_alive,
+                alive_mask=alive_mask_full,
                 return_encoder_output=need_sigreg,
             )
 
@@ -1151,7 +1168,9 @@ class PPOTrainer:
         # ---- Lambda aggregation -------------------------------------------
         # Per-timestep team IDs: correctly tracks re-assignments after mid-rollout resets.
         # Buffer stores obs as float32; cast to long for comparison.
-        team_id_t = mb_obs["team_id"].long()  # (T, B_mb, N)
+        # Slice to ship tokens only — obstacle tokens (team_id=2) have no rewards/actions.
+        N_ships = mb_alive.shape[-1]
+        team_id_t = mb_obs["team_id"][:, :, :N_ships].long()  # (T, B_mb, N)
         same_team_t = team_id_t.unsqueeze(3) == team_id_t.unsqueeze(
             2
         )  # (T, B_mb, N_i, N_j)

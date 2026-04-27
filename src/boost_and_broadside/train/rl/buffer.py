@@ -226,10 +226,12 @@ class RolloutBuffer:
         gamma: float,
         gae_lambda: float,
         device: torch.device,
+        num_tokens: int | None = None,
     ) -> None:
         self.num_steps = num_steps
         self.num_envs = num_envs
         self.num_ships = num_ships
+        self.num_tokens = num_tokens if num_tokens is not None else num_ships
         self.num_components = num_components
         self.gamma = gamma
         self.gae_lambda = gae_lambda
@@ -408,13 +410,13 @@ class RolloutBuffer:
 
             mb_obs = {key: val[:, idx] for key, val in self.obs.items()}
 
-            # Reconstruct initial hidden for this minibatch: (n_layers, B_mb*N, D)
+            # Reconstruct initial hidden for this minibatch: (n_layers, B_mb*num_tokens, D)
             n_layers = self.initial_hidden.shape[0]
             hidden_full = self.initial_hidden.reshape(
-                n_layers, self.num_envs, self.num_ships, D
+                n_layers, self.num_envs, self.num_tokens, D
             )
             mb_hidden = hidden_full[:, idx, :, :].reshape(
-                n_layers, len(idx) * self.num_ships, D
+                n_layers, len(idx) * self.num_tokens, D
             )
 
             yield (
