@@ -7,7 +7,7 @@ snapshot and apply a random rotation + toroidal translation so no two
 episodes see the exact same map layout.
 """
 
-import math
+import math  # needed for math.ceil in generate()
 
 import torch
 
@@ -173,36 +173,25 @@ class ObstacleCache:
         C = len(self)
 
         idx = torch.randint(0, C, (B,), device=device)
-        pos = self._pos[idx].to(device)       # (B, M)
-        vel = self._vel[idx].to(device)       # (B, M)
+        pos = self._pos[idx].to(device)        # (B, M)
+        vel = self._vel[idx].to(device)        # (B, M)
         radius = self._radius[idx].to(device)  # (B, M)
         gcenter = self._gcenter[idx].to(device)  # (B,)
 
-        world_center = torch.complex(
-            torch.tensor(world_w / 2.0, device=device),
-            torch.tensor(world_h / 2.0, device=device),
-        )
-
-        # Random rotation around world center
-        theta = torch.rand(B, device=device) * 2.0 * math.pi
-        rot = torch.polar(torch.ones(B, device=device), theta)  # (B,) complex
-
-        pos_c = (pos - world_center) * rot.unsqueeze(1) + world_center      # (B, M)
-        vel = vel * rot.unsqueeze(1)                                          # (B, M)
-        gc_c = (gcenter - world_center) * rot + world_center                 # (B,)
-
-        # Random toroidal translation
+        # Toroidal translation only — shifts the entire configuration by a random
+        # offset mod (world_w, world_h).  Every pairwise toroidal distance is
+        # preserved exactly, so a collision-free snapshot stays collision-free.
         off_x = torch.rand(B, device=device) * world_w
         off_y = torch.rand(B, device=device) * world_h
-        offset = torch.complex(off_x, off_y)  # (B,)
 
-        pos_x = (pos_c.real + offset.real.unsqueeze(1)) % world_w
-        pos_y = (pos_c.imag + offset.imag.unsqueeze(1)) % world_h
-        pos = torch.complex(pos_x, pos_y)
-
-        gc_x = (gc_c.real + offset.real) % world_w
-        gc_y = (gc_c.imag + offset.imag) % world_h
-        gcenter = torch.complex(gc_x, gc_y)
+        pos = torch.complex(
+            (pos.real + off_x.unsqueeze(1)) % world_w,
+            (pos.imag + off_y.unsqueeze(1)) % world_h,
+        )
+        gcenter = torch.complex(
+            (gcenter.real + off_x) % world_w,
+            (gcenter.imag + off_y) % world_h,
+        )
 
         return pos, vel, radius, gcenter
 
