@@ -57,7 +57,7 @@ class TensorState:
     obstacle_pos: torch.Tensor  # (B, M) complex64  — world position
     obstacle_vel: torch.Tensor  # (B, M) complex64  — velocity
     obstacle_radius: torch.Tensor  # (B, M) float32    — circle radius
-    obstacle_gcenter: torch.Tensor  # (B,) complex64   — harmonic gravity center (one per env)
+    obstacle_gcenter: torch.Tensor  # (B, M) complex64  — per-obstacle harmonic gravity center
 
     # Per-step flag: True for ships that were killed by an obstacle this step
     ship_hit_obstacle: torch.Tensor  # (B, N) bool

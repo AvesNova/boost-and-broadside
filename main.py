@@ -39,6 +39,7 @@ from boost_and_broadside.ui.renderer import RenderConfig
 from runs.bc import BC_TRAIN_CONFIG
 from runs.bc_warmstart import BC_WARMSTART_PRETRAIN_CONFIG, BC_WARMSTART_RL_CONFIG
 from runs.rl import RL_TRAIN_CONFIG
+from runs.rl_obstacles import RL_OBSTACLES_TRAIN_CONFIG
 from runs.shared import MODEL_CONFIG, REWARDS, SHIP_CONFIG
 
 
@@ -49,7 +50,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--mode",
-        choices=["bc", "rl", "bc_warmstart", "watch", "collect_stats", "elo_stats"],
+        choices=["bc", "rl", "rl_obstacles", "bc_warmstart", "watch", "collect_stats", "elo_stats"],
         default="rl",
         help=(
             "Operating mode. "
@@ -143,6 +144,20 @@ def main() -> None:
                 device=device,
                 use_wandb=True,
                 scripted_agent=scripted_agent,
+                compile_mode=None if args.compile_mode == "none" else args.compile_mode,
+            )
+            if args.pretrain_from is not None:
+                trainer.load_pretrained_weights(args.pretrain_from)
+            _run_trainer(trainer)
+
+        case "rl_obstacles":
+            trainer = PPOTrainer(
+                train_config=RL_OBSTACLES_TRAIN_CONFIG,
+                model_config=MODEL_CONFIG,
+                ship_config=SHIP_CONFIG,
+                device=device,
+                use_wandb=True,
+                scripted_agent=None,
                 compile_mode=None if args.compile_mode == "none" else args.compile_mode,
             )
             if args.pretrain_from is not None:

@@ -943,6 +943,56 @@ class ObstacleTTIReward(RewardComponent):
         return -penalty * alive.float()
 
 
+class ShootingPenaltyReward(RewardComponent):
+    """Negative reward on every step this ship fires."""
+
+    name = "shooting_penalty"
+
+    def __init__(self, weight: float) -> None:
+        self._weight = weight
+
+    @property
+    def weight(self) -> float:
+        return self._weight
+
+    def compute(
+        self,
+        prev_state: TensorState,
+        actions: torch.Tensor,
+        next_state: TensorState,
+        dones: torch.Tensor,
+    ) -> torch.Tensor:
+        return -next_state.ship_is_shooting.float() * next_state.ship_alive.float()
+
+
+class SpeedReward(RewardComponent):
+    """Penalty proportional to how far below min_speed the ship is traveling.
+
+    Returns 0 at speed >= min_speed, -1 at speed = 0, linear between.
+    """
+
+    name = "speed"
+
+    def __init__(self, weight: float, min_speed: float) -> None:
+        self._weight = weight
+        self.min_speed = min_speed
+
+    @property
+    def weight(self) -> float:
+        return self._weight
+
+    def compute(
+        self,
+        prev_state: TensorState,
+        actions: torch.Tensor,
+        next_state: TensorState,
+        dones: torch.Tensor,
+    ) -> torch.Tensor:
+        speed = next_state.ship_vel.abs()  # (B, N)
+        penalty = ((speed - self.min_speed) / self.min_speed).clamp(min=-1.0, max=0.0)
+        return penalty * next_state.ship_alive.float()
+
+
 # ---------------------------------------------------------------------------
 # Component registry
 # ---------------------------------------------------------------------------
@@ -967,6 +1017,8 @@ REWARD_COMPONENT_NAMES: tuple[str, ...] = (
     "obstacle_proximity",  # 16 — penalty proportional to nearness to closest obstacle (self only)
     "obstacle_closing_speed",  # 17 — penalty for velocity toward nearest obstacle (self only)
     "obstacle_tti",  # 18 — penalty based on time-to-intersection with nearest obstacle (self only)
+    "shooting_penalty",  # 19 — negative reward on every step this ship fires (self only)
+    "speed",  # 20 — penalty when speed < min_speed (self only)
 )
 
 _NAME_TO_K: dict[str, int] = {name: k for k, name in enumerate(REWARD_COMPONENT_NAMES)}
@@ -1033,6 +1085,8 @@ def build_reward_components(
             ship_collision_radius=ship_config.obstacle_collision_radius,
             world_size=ship_config.world_size,
         ),
+        ShootingPenaltyReward(weight=rewards.shooting_penalty_weight),
+        SpeedReward(weight=rewards.speed_weight, min_speed=rewards.speed_penalty_min),
     ]
 
 

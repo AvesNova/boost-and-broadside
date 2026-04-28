@@ -189,3 +189,8 @@ class RewardConfig:
     obstacle_tti_weight: float = 0.0
     obstacle_proximity_radius: float = 80.0
     obstacle_tti_max: float = 3.0
+
+    # --- Behaviour shaping (local, self-only; 0.0 = disabled) ---
+    shooting_penalty_weight: float = 0.0  # negative reward each step this ship fires
+    speed_weight: float = 0.0  # penalty when speed < speed_penalty_min
+    speed_penalty_min: float = 40.0  # speed threshold below which penalty is applied

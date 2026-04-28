@@ -58,4 +58,8 @@ REWARDS = RewardConfig(
     obstacle_tti_weight=0.1,
     obstacle_proximity_radius=80.0,
     obstacle_tti_max=3.0,
+    # Behaviour shaping — off by default in combat mode
+    shooting_penalty_weight=0.0,
+    speed_weight=0.0,
+    speed_penalty_min=40.0,
 )

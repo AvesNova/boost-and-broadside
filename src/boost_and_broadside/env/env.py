@@ -101,7 +101,7 @@ class TensorEnv:
             obstacle_pos=torch.zeros((B, M), dtype=torch.complex64, device=dev),
             obstacle_vel=torch.zeros((B, M), dtype=torch.complex64, device=dev),
             obstacle_radius=torch.zeros((B, M), dtype=torch.float32, device=dev),
-            obstacle_gcenter=torch.zeros((B,), dtype=torch.complex64, device=dev),
+            obstacle_gcenter=torch.zeros((B, M), dtype=torch.complex64, device=dev),
             ship_hit_obstacle=torch.zeros((B, N), dtype=torch.bool, device=dev),
         )
 

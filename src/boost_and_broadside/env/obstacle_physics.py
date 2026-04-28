@@ -56,16 +56,16 @@ def init_obstacles_orbital(
         pos:     (B, M) complex64 — initial positions (toroidally wrapped).
         vel:     (B, M) complex64 — initial velocities.
         radius:  (B, M) float32  — obstacle radii in [radius_min, radius_max].
-        gcenter: (B,) complex64  — per-env gravity center.
+        gcenter: (B, M) complex64 — per-obstacle gravity center.
     """
     world_w, world_h = config.world_size
     G = config.obstacle_gravity_harmonic
     omega = math.sqrt(G)
 
-    # Gravity centers — random positions in world
-    gcx = torch.rand(B, device=device) * world_w
-    gcy = torch.rand(B, device=device) * world_h
-    gcenter = torch.complex(gcx, gcy)  # (B,)
+    # Independent gravity center per obstacle
+    gcx = torch.rand(B, M, device=device) * world_w
+    gcy = torch.rand(B, M, device=device) * world_h
+    gcenter = torch.complex(gcx, gcy)  # (B, M)
 
     # Radii
     radius = (
@@ -75,7 +75,7 @@ def init_obstacles_orbital(
 
     # Orbital parameters — broadcasted over (B, M)
     R_max = min(world_w, world_h) * 0.35  # keep orbits within world
-    r_a = torch.rand(B, M, device=device) * R_max           # semi-major axis a
+    r_a = torch.sqrt(torch.rand(B, M, device=device)) * R_max  # semi-major axis a — triangle dist (PDF ∝ x)
     beta = torch.rand(B, M, device=device)                   # axis ratio b/a
     r_b = beta * r_a                                         # semi-minor axis b
     theta = torch.rand(B, M, device=device) * 2.0 * math.pi  # initial phase
@@ -99,8 +99,8 @@ def init_obstacles_orbital(
     vy = (vx_local * sin_alpha + vy_local * cos_alpha) * sign
 
     # Absolute position = local + gcenter
-    pos_x = rx + gcenter.real.unsqueeze(1)  # (B, M)
-    pos_y = ry + gcenter.imag.unsqueeze(1)
+    pos_x = rx + gcenter.real  # (B, M)
+    pos_y = ry + gcenter.imag
     pos_x = pos_x % world_w
     pos_y = pos_y % world_h
 
@@ -135,12 +135,12 @@ def step_obstacles_harmonic(
 
     pos = state.obstacle_pos    # (B, M) complex64
     vel = state.obstacle_vel    # (B, M) complex64
-    gc = state.obstacle_gcenter  # (B,) complex64
+    gc = state.obstacle_gcenter  # (B, M) complex64
 
-    # Toroidal wrapped displacement from obstacle to gravity center
+    # Toroidal wrapped displacement from obstacle to its gravity center
     diff_r, diff_i = _wrap_diff(
-        gc.real.unsqueeze(1) - pos.real,
-        gc.imag.unsqueeze(1) - pos.imag,
+        gc.real - pos.real,
+        gc.imag - pos.imag,
         world_w, world_h,
     )  # (B, M) each
 
@@ -166,7 +166,7 @@ def _pbd_separation(
     pos: torch.Tensor,   # (B, M) complex64
     vel: torch.Tensor,   # (B, M) complex64
     radius: torch.Tensor,  # (B, M) float32
-    gcenter: torch.Tensor,  # (B,) complex64
+    gcenter: torch.Tensor,  # (B, M) complex64
     config: ShipConfig,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """PBD positional correction + per-obstacle energy-conserving speed rescale.
@@ -204,8 +204,8 @@ def _pbd_separation(
     # --- Positional correction ---
     # Move i away from each j by half the overlap: disp_i = sum_j(0.5 * overlap * n[i,j])
     # Record wrapped dist-to-gcenter before moving (for energy conservation).
-    gc_r = gcenter.real.unsqueeze(1)  # (B, 1)
-    gc_i = gcenter.imag.unsqueeze(1)
+    gc_r = gcenter.real  # (B, M)
+    gc_i = gcenter.imag
     to_gc_r_pre, to_gc_i_pre = _wrap_diff(pos.real - gc_r, pos.imag - gc_i, world_w, world_h)
     r_sq_pre = to_gc_r_pre**2 + to_gc_i_pre**2  # (B, M)
 

@@ -30,7 +30,7 @@ class ObstacleCache:
         pos:     (C, M) complex64 — converged obstacle positions.
         vel:     (C, M) complex64 — converged obstacle velocities.
         radius:  (C, M) float32  — obstacle radii.
-        gcenter: (C,) complex64  — per-snapshot gravity center.
+        gcenter: (C, M) complex64 — per-obstacle gravity centers.
     """
 
     def __init__(
@@ -84,7 +84,7 @@ class ObstacleCache:
         cache_pos = torch.empty(target, M, dtype=torch.complex64, device=device)
         cache_vel = torch.empty(target, M, dtype=torch.complex64, device=device)
         cache_radius = torch.empty(target, M, dtype=torch.float32, device=device)
-        cache_gcenter = torch.empty(target, dtype=torch.complex64, device=device)
+        cache_gcenter = torch.empty(target, M, dtype=torch.complex64, device=device)
         collected = 0
 
         # Minimal TensorState proxy for obstacle physics functions
@@ -143,7 +143,7 @@ class ObstacleCache:
             cache_pos = cache_pos[:collected].repeat(reps, 1)[:target]
             cache_vel = cache_vel[:collected].repeat(reps, 1)[:target]
             cache_radius = cache_radius[:collected].repeat(reps, 1)[:target]
-            cache_gcenter = cache_gcenter[:collected].repeat(reps)[:target]
+            cache_gcenter = cache_gcenter[:collected].repeat(reps, 1)[:target]
 
         return ObstacleCache(cache_pos, cache_vel, cache_radius, cache_gcenter)
 
@@ -167,7 +167,7 @@ class ObstacleCache:
             pos:     (B, M) complex64
             vel:     (B, M) complex64
             radius:  (B, M) float32
-            gcenter: (B,) complex64
+            gcenter: (B, M) complex64
         """
         world_w, world_h = world_size
         C = len(self)
@@ -176,7 +176,7 @@ class ObstacleCache:
         pos = self._pos[idx].to(device)        # (B, M)
         vel = self._vel[idx].to(device)        # (B, M)
         radius = self._radius[idx].to(device)  # (B, M)
-        gcenter = self._gcenter[idx].to(device)  # (B,)
+        gcenter = self._gcenter[idx].to(device)  # (B, M)
 
         # Toroidal translation only — shifts the entire configuration by a random
         # offset mod (world_w, world_h).  Every pairwise toroidal distance is
@@ -189,8 +189,8 @@ class ObstacleCache:
             (pos.imag + off_y.unsqueeze(1)) % world_h,
         )
         gcenter = torch.complex(
-            (gcenter.real + off_x) % world_w,
-            (gcenter.imag + off_y) % world_h,
+            (gcenter.real + off_x.unsqueeze(1)) % world_w,
+            (gcenter.imag + off_y.unsqueeze(1)) % world_h,
         )
 
         return pos, vel, radius, gcenter
