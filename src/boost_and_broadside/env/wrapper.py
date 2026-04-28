@@ -70,6 +70,24 @@ class MVPEnvWrapper:
             _comp_by_name[name] for name in self._active_names
         ]
 
+        # Pre-allocate static obstacle padding tensors (reused every _get_obs call)
+        M = env_config.num_obstacles
+        N = env_config.num_ships
+        if M > 0:
+            self._obs_zeros_2 = torch.zeros(num_envs, M, 2, device=self.device)
+            self._obs_zeros_1 = torch.zeros(num_envs, M, 1, device=self.device)
+            self._obs_zeros_3 = torch.zeros(num_envs, M, 3, device=self.device)
+            self._obs_team_id = torch.full((num_envs, M), 2, device=self.device, dtype=torch.int32)
+            self._obs_alive   = torch.ones(num_envs, M, device=self.device, dtype=torch.bool)
+            self._obs_action  = torch.zeros(num_envs, M, 3, device=self.device, dtype=torch.long)
+            self._obs_radius  = torch.zeros(num_envs, M, 1, device=self.device)
+        self._ship_radius = torch.full(
+            (num_envs, N, 1),
+            ship_config.collision_radius / ship_config.obstacle_radius_max,
+            device=self.device,
+            dtype=torch.float32,
+        )
+
         # Episode stat accumulators — active components only
         B, N = num_envs, env_config.num_ships
         self._ep_reward = torch.zeros((B, N), device=self.device)
@@ -96,6 +114,7 @@ class MVPEnvWrapper:
     ) -> dict[str, torch.Tensor]:
         """Reset all environments and return initial observations."""
         self.env.reset(options=options, seed=seed)
+        self._refresh_obs_radius_all()
         self._ep_reward.zero_()
         self._ep_length.zero_()
         for t in self._ep_reward_components.values():
@@ -191,6 +210,7 @@ class MVPEnvWrapper:
         # Reset done environments (state mutated in-place)
         if done_mask.any():
             self.env.reset_envs(done_mask)
+            self._refresh_obs_radius(done_mask)
             self._ep_reward[done_mask] = 0.0
             self._ep_length[done_mask] = 0
             for t in self._ep_reward_components.values():
@@ -209,9 +229,7 @@ class MVPEnvWrapper:
         """Build the combined (ship + obstacle) float observation dict."""
         s = self.env.state
         world_w, world_h = self.ship_config.world_size
-        B = s.num_envs
         M = s.num_obstacles
-        radius_max = self.ship_config.obstacle_radius_max
 
         # --- Ship features ---
         ship_pos = torch.stack(
@@ -228,38 +246,22 @@ class MVPEnvWrapper:
             ],
             dim=-1,
         )  # (B, N, 3)
-        ship_radius = torch.full(
-            (B, s.max_ships, 1),
-            self.ship_config.collision_radius / radius_max,
-            device=self.device,
-            dtype=torch.float32,
-        )  # (B, N, 1)
 
-        # --- Obstacle features (ship-specific fields zeroed) ---
+        # --- Obstacle features (ship-specific fields use pre-allocated zero/const tensors) ---
         if M > 0:
             obs_pos = torch.stack(
                 [s.obstacle_pos.real / world_w, s.obstacle_pos.imag / world_h], dim=-1
             )  # (B, M, 2)
-            obs_zeros_2 = torch.zeros(B, M, 2, device=self.device)
-            obs_zeros_1 = torch.zeros(B, M, 1, device=self.device)
-            obs_zeros_3 = torch.zeros(B, M, 3, device=self.device)
-            obs_team_id = torch.full(
-                (B, M), 2, device=self.device, dtype=torch.int32
-            )  # 2 = obstacle marker
-            obs_alive = torch.ones(B, M, device=self.device, dtype=torch.bool)
-            obs_action = torch.zeros(B, M, 3, device=self.device, dtype=torch.long)
-            obs_radius = (s.obstacle_radius / radius_max).unsqueeze(-1)  # (B, M, 1)
-
             return {
-                "pos":         torch.cat([ship_pos, obs_pos], dim=1),           # (B, N+M, 2)
-                "vel":         torch.cat([ship_vel, obs_zeros_2], dim=1),
-                "att":         torch.cat([ship_att, obs_zeros_2], dim=1),
-                "ang_vel":     torch.cat([ship_ang, obs_zeros_1], dim=1),
-                "scalars":     torch.cat([ship_scalars, obs_zeros_3], dim=1),
-                "team_id":     torch.cat([s.ship_team_id, obs_team_id], dim=1),
-                "alive":       torch.cat([s.ship_alive, obs_alive], dim=1),
-                "prev_action": torch.cat([s.prev_action.long(), obs_action], dim=1),
-                "radius":      torch.cat([ship_radius, obs_radius], dim=1),     # (B, N+M, 1)
+                "pos":         torch.cat([ship_pos, obs_pos], dim=1),                    # (B, N+M, 2)
+                "vel":         torch.cat([ship_vel, self._obs_zeros_2], dim=1),
+                "att":         torch.cat([ship_att, self._obs_zeros_2], dim=1),
+                "ang_vel":     torch.cat([ship_ang, self._obs_zeros_1], dim=1),
+                "scalars":     torch.cat([ship_scalars, self._obs_zeros_3], dim=1),
+                "team_id":     torch.cat([s.ship_team_id, self._obs_team_id], dim=1),
+                "alive":       torch.cat([s.ship_alive, self._obs_alive], dim=1),
+                "prev_action": torch.cat([s.prev_action.long(), self._obs_action], dim=1),
+                "radius":      torch.cat([self._ship_radius, self._obs_radius], dim=1),  # (B, N+M, 1)
             }
 
         return {
@@ -271,12 +273,24 @@ class MVPEnvWrapper:
             "team_id":     s.ship_team_id,
             "alive":       s.ship_alive,
             "prev_action": s.prev_action.long(),
-            "radius":      ship_radius,
+            "radius":      self._ship_radius,
         }
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def _refresh_obs_radius_all(self) -> None:
+        if self.env_config.num_obstacles > 0:
+            self._obs_radius.copy_(
+                (self.env.state.obstacle_radius / self.ship_config.obstacle_radius_max).unsqueeze(-1)
+            )
+
+    def _refresh_obs_radius(self, mask: torch.Tensor) -> None:
+        if self.env_config.num_obstacles > 0:
+            self._obs_radius[mask] = (
+                self.env.state.obstacle_radius[mask] / self.ship_config.obstacle_radius_max
+            ).unsqueeze(-1)
 
     @property
     def state(self) -> TensorState:

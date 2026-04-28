@@ -52,7 +52,7 @@ REWARDS = RewardConfig(
     enemy_neg_lambda_components=frozenset({"enemy_damage", "enemy_death", "enemy_win"}),
     ally_zero_components=frozenset({"enemy_damage", "enemy_death", "enemy_win"}),
     # Obstacle rewards
-    obstacle_death_weight=1.0,
+    obstacle_death_weight=2.0,
     obstacle_proximity_weight=0.1,
     obstacle_closing_speed_weight=0.1,
     obstacle_tti_weight=0.1,
