@@ -102,6 +102,8 @@ class MVPEnvWrapper:
         }
         # Win flag: +1 for alive ships on the surviving team, 0 otherwise (draws = 0).
         self._ep_wins = torch.zeros((B, N), device=self.device)
+        # Steps each ship has been alive this episode (stops at death, resets on episode end).
+        self._ship_age = torch.zeros((B, N), device=self.device, dtype=torch.int32)
 
     # ------------------------------------------------------------------
     # Reset
@@ -122,6 +124,7 @@ class MVPEnvWrapper:
         for t in self._ep_scaled_reward_components.values():
             t.zero_()
         self._ep_wins.zero_()
+        self._ship_age.zero_()
         return self._get_obs()
 
     # ------------------------------------------------------------------
@@ -174,6 +177,7 @@ class MVPEnvWrapper:
         # Accumulate episode stats (active components only)
         self._ep_reward += comp_rewards.sum(dim=-1)
         self._ep_length += 1
+        self._ship_age += prev_alive.int()  # freeze at death step
         for k, name in enumerate(self._active_names):
             self._ep_reward_components[name] += comp_rewards[:, :, k]
             self._ep_scaled_reward_components[name] += (
@@ -206,6 +210,7 @@ class MVPEnvWrapper:
                 for name, t in self._ep_scaled_reward_components.items()
             }
             info["ep_wins"] = self._ep_wins[done_mask].detach().cpu()  # (done_envs, N)
+            info["ep_lifespan"] = self._ship_age[done_mask].float().detach().cpu()  # (done_envs, N)
 
         # Reset done environments (state mutated in-place)
         if done_mask.any():
@@ -218,6 +223,7 @@ class MVPEnvWrapper:
             for t in self._ep_scaled_reward_components.values():
                 t[done_mask] = 0.0
             self._ep_wins[done_mask] = 0.0
+            self._ship_age[done_mask] = 0
 
         return self._get_obs(), comp_rewards, dones, truncated, info
 

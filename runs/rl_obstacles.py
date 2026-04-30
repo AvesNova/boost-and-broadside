@@ -19,7 +19,7 @@ from boost_and_broadside.config import (
 )
 
 _MAX_TOKENS = 3840 * 8
-_NUM_SHIPS = 4  # 1 per team — minimum viable for the env's team-based game-over check
+_NUM_SHIPS = 8
 _NUM_OBSTACLES = 8
 
 OBSTACLES_REWARDS = RewardConfig(
@@ -53,7 +53,7 @@ OBSTACLES_REWARDS = RewardConfig(
     obstacle_proximity_radius=80.0,
     obstacle_tti_max=3.0,
     # Behaviour shaping
-    shooting_penalty_weight=0.1,
+    shooting_penalty_weight=0.0,  # no bullets, never fires
     speed_weight=0.5,
     speed_penalty_min=40.0,
 )
@@ -74,8 +74,8 @@ RL_OBSTACLES_SCHEDULE = TrainingSchedule(
     league_fraction=stepped((0, 0.0)),
     allow_avg_model_updates=stepped((0, False)),
     allow_scripted_in_roster=stepped((0, False)),
-    elo_eval_games=stepped((0, 256)),
-    elo_eval_interval=stepped((0, 10)),
+    elo_eval_games=stepped((0, 0)),
+    elo_eval_interval=stepped((0, 0)),
     checkpoint_interval=stepped((0, 10)),
 )
 
@@ -85,10 +85,11 @@ RL_OBSTACLES_TRAIN_CONFIG = TrainConfig(
             env_config=EnvConfig(
                 num_ships=_NUM_SHIPS,
                 num_obstacles=_NUM_OBSTACLES,
-                max_bullets=20,
+                max_bullets=0,
                 max_episode_steps=1024,
+                single_team=True,
             ),
-            num_envs=_MAX_TOKENS // (_NUM_SHIPS * 2 + _NUM_OBSTACLES),
+            num_envs=_MAX_TOKENS // (_NUM_SHIPS + _NUM_OBSTACLES),
         ),
     ),
     schedule=RL_OBSTACLES_SCHEDULE,

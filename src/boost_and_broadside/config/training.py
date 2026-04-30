@@ -96,6 +96,9 @@ class TrainConfig:
     # --- Obstacle cache (None when num_obstacles=0) ---
     obstacle_cache: ObstacleCacheConfig | None = None
 
+    # --- Logging ---
+    log_interval: int = 10  # print to terminal every N updates
+
     def __post_init__(self) -> None:
         if len(self.scales) == 0:
             raise ValueError("scales must contain at least one ScaleConfig")

@@ -24,6 +24,7 @@ Agent specs (--team0 / --team1):
 """
 
 import argparse
+from dataclasses import replace
 from pathlib import Path
 
 import torch
@@ -86,6 +87,12 @@ def _parse_args() -> argparse.Namespace:
         "default, or max-autotune.",
     )
     parser.add_argument(
+        "--smoke",
+        action="store_true",
+        default=False,
+        help="Smoke-test mode: tiny batch (4 envs), no W&B, no compile, exits after a few updates.",
+    )
+    parser.add_argument(
         "--team0",
         type=str,
         default=None,
@@ -104,6 +111,26 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _apply_smoke(config):
+    """Shrink a TrainConfig to the smallest viable size for crash-testing."""
+    from boost_and_broadside.config.schedule import stepped
+    # num_envs must be divisible by num_minibatches, so use 1 minibatch with 4 envs.
+    scales = tuple(replace(s, num_envs=4) for s in config.scales)
+    obstacle_cache = config.obstacle_cache
+    if obstacle_cache is not None:
+        obstacle_cache = replace(obstacle_cache, num_cache_envs=128, cache_size=4, max_steps=6000)
+    schedule = replace(config.schedule, checkpoint_interval=stepped((0, 1)))
+    return replace(
+        config,
+        scales=scales,
+        schedule=schedule,
+        obstacle_cache=obstacle_cache,
+        num_minibatches=1,
+        total_timesteps=5_000,
+        log_interval=1,
+    )
+
+
 def _run_trainer(trainer: PPOTrainer) -> None:
     try:
         trainer.train()
@@ -117,19 +144,23 @@ def main() -> None:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Device: {device}")
 
+    use_wandb = not args.smoke
+    compile_mode = None if (args.smoke or args.compile_mode == "none") else args.compile_mode
+
     match args.mode:
         case "bc":
             scripted_agent = StochasticScriptedAgent(
                 SHIP_CONFIG, StochasticAgentConfig()
             )
+            train_config = _apply_smoke(BC_TRAIN_CONFIG) if args.smoke else BC_TRAIN_CONFIG
             trainer = PPOTrainer(
-                train_config=BC_TRAIN_CONFIG,
+                train_config=train_config,
                 model_config=MODEL_CONFIG,
                 ship_config=SHIP_CONFIG,
                 device=device,
-                use_wandb=True,
+                use_wandb=use_wandb,
                 scripted_agent=scripted_agent,
-                compile_mode=None if args.compile_mode == "none" else args.compile_mode,
+                compile_mode=compile_mode,
             )
             _run_trainer(trainer)
 
@@ -137,28 +168,30 @@ def main() -> None:
             scripted_agent = StochasticScriptedAgent(
                 SHIP_CONFIG, StochasticAgentConfig()
             )
+            train_config = _apply_smoke(RL_TRAIN_CONFIG) if args.smoke else RL_TRAIN_CONFIG
             trainer = PPOTrainer(
-                train_config=RL_TRAIN_CONFIG,
+                train_config=train_config,
                 model_config=MODEL_CONFIG,
                 ship_config=SHIP_CONFIG,
                 device=device,
-                use_wandb=True,
+                use_wandb=use_wandb,
                 scripted_agent=scripted_agent,
-                compile_mode=None if args.compile_mode == "none" else args.compile_mode,
+                compile_mode=compile_mode,
             )
             if args.pretrain_from is not None:
                 trainer.load_pretrained_weights(args.pretrain_from)
             _run_trainer(trainer)
 
         case "rl_obstacles":
+            train_config = _apply_smoke(RL_OBSTACLES_TRAIN_CONFIG) if args.smoke else RL_OBSTACLES_TRAIN_CONFIG
             trainer = PPOTrainer(
-                train_config=RL_OBSTACLES_TRAIN_CONFIG,
+                train_config=train_config,
                 model_config=MODEL_CONFIG,
                 ship_config=SHIP_CONFIG,
                 device=device,
-                use_wandb=True,
+                use_wandb=use_wandb,
                 scripted_agent=None,
-                compile_mode=None if args.compile_mode == "none" else args.compile_mode,
+                compile_mode=compile_mode,
             )
             if args.pretrain_from is not None:
                 trainer.load_pretrained_weights(args.pretrain_from)

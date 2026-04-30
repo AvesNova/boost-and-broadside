@@ -82,9 +82,10 @@ class EnvConfig:
     """Environment sizing."""
 
     num_ships: int  # total ships per env (both teams combined)
-    max_bullets: int  # bullet ring-buffer size per ship
+    max_bullets: int  # bullet ring-buffer size per ship (0 = no bullets, skips all bullet physics)
     max_episode_steps: int  # truncation horizon
     num_obstacles: int = 0  # dynamic obstacle circles per env (0 = no obstacles)
+    single_team: bool = False  # all ships share one randomly-chosen team id (no opponents)
 
 
 @dataclass(frozen=True)

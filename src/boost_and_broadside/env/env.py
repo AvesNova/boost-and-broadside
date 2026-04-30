@@ -159,23 +159,28 @@ class TensorEnv:
         self.state.ship_cooldown[idx] = 0.0
         self.state.ship_ang_vel[idx] = 0.0
 
-        # Team assignment: randomly shuffle which N slots belong to team 0 vs team 1.
-        # A full shuffle (C(N, n_team0) possible assignments) prevents the policy
-        # from exploiting any fixed slot-to-team mapping, unlike a simple whole-team flip.
-        new_alive = torch.zeros((num_reset, N), dtype=torch.bool, device=self.device)
-        new_alive[:, : n_team0 + n_team1] = True
+        if self.env_config.single_team:
+            # All ships share one randomly chosen team id (0 or 1) per env.
+            # Random team prevents the policy overfitting to always seeing itself as team 0.
+            team_id = torch.randint(0, 2, (num_reset,), device=self.device, dtype=torch.int32)
+            self.state.ship_team_id[idx] = team_id.unsqueeze(1).expand(num_reset, N).clone()
+            self.state.ship_alive[idx] = True
+        else:
+            # Two-team setup: randomly shuffle ship slots across both teams.
+            new_alive = torch.zeros((num_reset, N), dtype=torch.bool, device=self.device)
+            new_alive[:, : n_team0 + n_team1] = True
 
-        base_team_ids = torch.zeros(
-            (num_reset, N), dtype=torch.int32, device=self.device
-        )
-        base_team_ids[:, n_team0 : n_team0 + n_team1] = 1  # last n_team1 slots = team 1
+            base_team_ids = torch.zeros(
+                (num_reset, N), dtype=torch.int32, device=self.device
+            )
+            base_team_ids[:, n_team0 : n_team0 + n_team1] = 1  # last n_team1 slots = team 1
 
-        # Independent random permutation per env → any slot can be any team.
-        perm = torch.rand((num_reset, N), device=self.device).argsort(dim=1)
-        new_team_ids = base_team_ids.gather(1, perm)
+            # Independent random permutation per env → any slot can be any team.
+            perm = torch.rand((num_reset, N), device=self.device).argsort(dim=1)
+            new_team_ids = base_team_ids.gather(1, perm)
 
-        self.state.ship_team_id[idx] = new_team_ids
-        self.state.ship_alive[idx] = new_alive
+            self.state.ship_team_id[idx] = new_team_ids
+            self.state.ship_alive[idx] = new_alive
 
         # Clear bullets
         self.state.bullet_active[idx] = False
@@ -222,7 +227,8 @@ class TensorEnv:
         self.state.ship_hit_obstacle.zero_()
 
         self.state = update_ships(self.state, actions, self.ship_config)
-        self.state = update_bullets(self.state, self.ship_config)
+        if self.env_config.max_bullets > 0:
+            self.state = update_bullets(self.state, self.ship_config)
         self.state = step_obstacles_harmonic(self.state, self.ship_config, enable_pbd=False)
         self.state = resolve_obstacle_collisions(self.state, self.ship_config)
         self.state, dones = resolve_collisions(self.state, self.ship_config)

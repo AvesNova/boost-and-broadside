@@ -646,6 +646,7 @@ class PPOTrainer:
             ep_components: dict[str, list[torch.Tensor]] = {}
             ep_scaled_components: dict[str, list[torch.Tensor]] = {}
             ep_wins: list[torch.Tensor] = []
+            ep_lifespans: list[torch.Tensor] = []
 
             # Sample a league opponent for this rollout (rotated each update).
             # Only runs when the current phase has league_frac > 0 AND slots are allocated.
@@ -847,6 +848,8 @@ class PPOTrainer:
                     for name, t in info["ep_scaled_reward_components"].items():
                         ep_scaled_components.setdefault(name, []).append(t)
                     ep_wins.append(info["ep_wins"])
+                    if "ep_lifespan" in info:
+                        ep_lifespans.append(info["ep_lifespan"])
 
                 done_any = dones | truncated
                 self.buffer.add(
@@ -1019,6 +1022,8 @@ class PPOTrainer:
                     metrics[f"ep/scaled_{name}"] = torch.cat(tensors).mean().item()
                 if ep_wins:
                     metrics["ep/win_rate"] = torch.cat(ep_wins).mean().item()
+                if ep_lifespans:
+                    metrics["ep/lifespan_mean"] = torch.cat(ep_lifespans).mean().item()
 
             sps = int(self._global_step / (time.time() - start_time))
             metrics["train/lr"] = self.optim.param_groups[0]["lr"]
@@ -1050,9 +1055,13 @@ class PPOTrainer:
             # Single log call per update — all metrics at the same step
             self._enqueue_log(metrics, step=self._global_step)
 
-            if update % 10 == 0:
+            if update % self.cfg.log_interval == 0:
                 elo_str = (
                     f"  elo={self._training_elo:.0f}" if elo_eval_interval > 0 else ""
+                )
+                lifespan_str = (
+                    f"  lifespan={metrics['ep/lifespan_mean']:.1f}"
+                    if "ep/lifespan_mean" in metrics else ""
                 )
                 print(
                     f"update={update}/{self._num_updates}  "
@@ -1060,6 +1069,7 @@ class PPOTrainer:
                     f"sps={sps:,}  "
                     f"loss={metrics.get('train/loss', 0.0):.4f}"
                     f"{elo_str}"
+                    f"{lifespan_str}"
                 )
 
             checkpoint_interval: int = self._schedule_state.checkpoint_interval

@@ -146,36 +146,39 @@ def _update_kinematics(
     _, num_ships = state.ship_pos.shape
     world_w, world_h = config.world_size
 
-    # (B, N_i, N_j) complex — wrapped difference i→j
-    diff = state.ship_pos.unsqueeze(1) - state.ship_pos.unsqueeze(2)
-    diff.real = (diff.real + world_w / 2) % world_w - world_w / 2
-    diff.imag = (diff.imag + world_h / 2) % world_h - world_h / 2
+    if config.gravity_factor == 0.0:
+        gravity = torch.zeros_like(thrust_force)
+    else:
+        # (B, N_i, N_j) complex — wrapped difference i→j
+        diff = state.ship_pos.unsqueeze(1) - state.ship_pos.unsqueeze(2)
+        diff.real = (diff.real + world_w / 2) % world_w - world_w / 2
+        diff.imag = (diff.imag + world_h / 2) % world_h - world_h / 2
 
-    dist_sq = diff.real**2 + diff.imag**2  # (B, N, N)
-    dist = torch.sqrt(dist_sq)
+        dist_sq = diff.real**2 + diff.imag**2  # (B, N, N)
+        dist = torch.sqrt(dist_sq)
 
-    def _symlog(x: torch.Tensor) -> torch.Tensor:
-        return torch.sign(x) * torch.log(torch.abs(x) + 1.0)
+        def _symlog(x: torch.Tensor) -> torch.Tensor:
+            return torch.sign(x) * torch.log(torch.abs(x) + 1.0)
 
-    speed_i = speed.unsqueeze(2)  # (B, N, 1)
-    speed_j = speed.unsqueeze(1)  # (B, 1, N)
-    force_mag = (
-        config.gravity_factor
-        * config.gravity_eps
-        * _symlog(speed_i * speed_j)
-        / (dist_sq + config.gravity_eps)
-    )  # (B, N, N)
-    force_dir = diff / torch.clamp(dist, min=1e-6)  # (B, N, N)
-    force_vec = force_mag * force_dir  # (B, N, N) complex
+        speed_i = speed.unsqueeze(2)  # (B, N, 1)
+        speed_j = speed.unsqueeze(1)  # (B, 1, N)
+        force_mag = (
+            config.gravity_factor
+            * config.gravity_eps
+            * _symlog(speed_i * speed_j)
+            / (dist_sq + config.gravity_eps)
+        )  # (B, N, N)
+        force_dir = diff / torch.clamp(dist, min=1e-6)  # (B, N, N)
+        force_vec = force_mag * force_dir  # (B, N, N) complex
 
-    alive_mask = state.ship_alive.unsqueeze(2) & state.ship_alive.unsqueeze(
-        1
-    )  # (B, N, N)
-    self_mask = torch.eye(num_ships, device=device, dtype=torch.bool).unsqueeze(0)
-    force_vec = torch.where(
-        alive_mask & ~self_mask, force_vec, torch.zeros_like(force_vec)
-    )
-    gravity = force_vec.sum(dim=2)  # (B, N) complex
+        alive_mask = state.ship_alive.unsqueeze(2) & state.ship_alive.unsqueeze(
+            1
+        )  # (B, N, N)
+        self_mask = torch.eye(num_ships, device=device, dtype=torch.bool).unsqueeze(0)
+        force_vec = torch.where(
+            alive_mask & ~self_mask, force_vec, torch.zeros_like(force_vec)
+        )
+        gravity = force_vec.sum(dim=2)  # (B, N) complex
 
     # Integrate
     total_force = thrust_force + drag_force + lift_force + gravity
@@ -206,6 +209,10 @@ def _handle_shooting(
     state: TensorState, shoot_action: torch.Tensor, config: ShipConfig
 ) -> TensorState:
     """Manage cooldowns and spawn bullets for ships that fire."""
+    if state.max_bullets == 0:
+        state.ship_is_shooting = torch.zeros_like(state.ship_is_shooting)
+        return state
+
     device = state.device
 
     state.ship_cooldown = state.ship_cooldown - config.dt
@@ -401,10 +408,12 @@ def _apply_combat_damage(state: TensorState, config: ShipConfig) -> TensorState:
 
 
 def _check_game_over(state: TensorState) -> torch.Tensor:
-    """Return (B,) done mask — True when either team is fully eliminated."""
+    """Return (B,) done mask — True when a team that exists is fully eliminated."""
     team0_alive = ((state.ship_team_id == 0) & state.ship_alive).sum(dim=1)  # (B,)
     team1_alive = ((state.ship_team_id == 1) & state.ship_alive).sum(dim=1)  # (B,)
-    return (team0_alive == 0) | (team1_alive == 0)
+    team0_exists = (state.ship_team_id == 0).any(dim=1)  # (B,)
+    team1_exists = (state.ship_team_id == 1).any(dim=1)  # (B,)
+    return (team0_exists & (team0_alive == 0)) | (team1_exists & (team1_alive == 0))
 
 
 def resolve_obstacle_collisions(state: TensorState, config: ShipConfig) -> TensorState:
@@ -441,6 +450,9 @@ def resolve_obstacle_collisions(state: TensorState, config: ShipConfig) -> Tenso
     state.ship_alive = state.ship_health > 0
 
     # ----- Bullet-obstacle collision -----
+    if state.max_bullets == 0:
+        return state
+
     num_bullets = state.max_bullets
     flat_bullet_pos = state.bullet_pos.view(batch_size, num_ships * num_bullets)   # (B, N*K)
     flat_bullet_active = state.bullet_active.view(batch_size, num_ships * num_bullets)  # (B, N*K)
