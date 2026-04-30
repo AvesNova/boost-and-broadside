@@ -8,6 +8,7 @@ from boost_and_broadside.agents.scripted_utils import (
     select_targets,
     predict_interception,
     compute_team_target_bearings,
+    compute_obstacle_repulsion,
 )
 
 
@@ -54,6 +55,7 @@ class StochasticScriptedAgent:
         dir_turn: torch.Tensor,
         dir_shoot: torch.Tensor,
         active_mask: torch.Tensor,
+        obstacle_danger: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Compute marginal probability distributions for Power(3), Turn(7), Shoot(2).
 
@@ -143,6 +145,11 @@ class StochasticScriptedAgent:
         p_boost = self._prob_and(p_want_boost, 1.0 - p_is_close)
         p_coast = (1.0 - self._prob_or(p_want_boost, p_reverse)).clamp(0.0, 1.0)
 
+        # Redirect boost to coast under obstacle danger (don't rush into an obstacle)
+        p_boost_redir = p_boost * (obstacle_danger * self.config.obstacle_boost_suppress)
+        p_boost = p_boost - p_boost_redir
+        p_coast = (p_coast + p_boost_redir).clamp(0.0, 1.0)
+
         power_probs = torch.stack([p_coast, p_boost, p_reverse], dim=-1)
         power_probs = power_probs / (power_probs.sum(dim=-1, keepdim=True) + 1e-8)
 
@@ -199,7 +206,18 @@ class StochasticScriptedAgent:
         """
         closest_dist, target_idx, has_target, _ = select_targets(state, self.ship_config)
         dir_pred = predict_interception(state, self.ship_config, target_idx, closest_dist)
-        active_mask = state.ship_alive & has_target
+
+        # Guard against NaN in dir_pred when there is no target (closest_dist = inf)
+        dir_pred = torch.where(has_target, dir_pred, torch.zeros_like(dir_pred))
+
+        # Obstacle repulsion via potential field
+        repulsion, min_tti = compute_obstacle_repulsion(
+            state, self.ship_config, self.config.obstacle_tti_max
+        )
+        has_obstacle_threat = min_tti < self.config.obstacle_tti_max
+        obstacle_danger = (1.0 - min_tti / self.config.obstacle_tti_max).clamp(0.0, 1.0)
+
+        active_mask = state.ship_alive & (has_target | has_obstacle_threat)
 
         # Blend turn direction: personal intercept at close range, team target at far range
         team_bearing, _, _, team_has_target = compute_team_target_bearings(state, self.ship_config)
@@ -212,8 +230,19 @@ class StochasticScriptedAgent:
         dir_turn = (1.0 - p_team) * dir_pred + p_team * team_bearing
         dir_turn = dir_turn / (torch.abs(dir_turn) + 1e-8)
 
+        # Composite direction: add obstacle repulsion to combat heading
+        # When no enemy, dir_turn == 0 so repulsion drives the direction entirely.
+        composite = dir_turn + repulsion * self.config.obstacle_repulsion_scale
+        composite_dir = composite / (composite.abs() + 1e-8)
+
+        # Suppress enemy-proximity reversal when there is no actual target
+        # (closest_dist = inf gives p_is_close ≈ 1 which would force spurious reversal)
+        effective_combat_dist = torch.where(
+            has_target, closest_dist, torch.zeros_like(closest_dist)
+        )
+
         p_power, p_turn, p_shoot = self._compute_action_probs(
-            state, closest_dist, dir_turn, dir_pred, active_mask
+            state, effective_combat_dist, composite_dir, dir_pred, active_mask, obstacle_danger
         )
 
         batch_size, num_ships = state.ship_pos.shape

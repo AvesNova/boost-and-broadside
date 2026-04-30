@@ -62,7 +62,12 @@ RL_OBSTACLES_SCHEDULE = TrainingSchedule(
     learning_rate=linear((0, 1e-7), (5_000_000, 3e-4)),
     policy_gradient_coef=constant(1.0),
     entropy_coef=constant(0.005),
-    behavior_cloning_coef=constant(0.0),  # no scripted opponent to clone against
+    behavior_cloning_coef=linear(
+        (0, 2.0),
+        (10_000_000, 2.0),
+        (20_000_000, 1.0),
+        (30_000_000, 0.0),
+    ),
     value_function_coef=constant(1.0),
     sigreg_coef=constant(0.00),
     true_reward_scale=constant(1.0),

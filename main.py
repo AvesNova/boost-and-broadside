@@ -108,6 +108,13 @@ def _parse_args() -> argparse.Namespace:
         help="Agent for team 1: null, random, scripted, latest, or path/to/checkpoint.pt. "
         "Defaults: watch→latest, collect_stats→random.",
     )
+    parser.add_argument(
+        "--fast-cache",
+        action="store_true",
+        default=False,
+        help="(watch mode) Generate obstacle cache headlessly in the background instead of "
+        "rendering the convergence animation. Much faster; shows a loading screen instead.",
+    )
     return parser.parse_args()
 
 
@@ -184,13 +191,14 @@ def main() -> None:
 
         case "rl_obstacles":
             train_config = _apply_smoke(RL_OBSTACLES_TRAIN_CONFIG) if args.smoke else RL_OBSTACLES_TRAIN_CONFIG
+            scripted_agent = StochasticScriptedAgent(SHIP_CONFIG, StochasticAgentConfig())
             trainer = PPOTrainer(
                 train_config=train_config,
                 model_config=MODEL_CONFIG,
                 ship_config=SHIP_CONFIG,
                 device=device,
                 use_wandb=use_wandb,
-                scripted_agent=None,
+                scripted_agent=scripted_agent,
                 compile_mode=compile_mode,
             )
             if args.pretrain_from is not None:
@@ -245,13 +253,14 @@ def main() -> None:
                 team1_spec=team1,
                 ship_config=SHIP_CONFIG,
                 env_config=EnvConfig(
-                    num_ships=4, max_bullets=20, max_episode_steps=1024, num_obstacles=8,
+                    num_ships=16, max_bullets=20, max_episode_steps=1024, num_obstacles=16,
                 ),
                 rewards=REWARDS,
                 model_config=MODEL_CONFIG,
                 render_config=RenderConfig(),
                 device=device,
                 checkpoint_dir="checkpoints",
+                fast_cache=args.fast_cache,
             )
 
         case "collect_stats":

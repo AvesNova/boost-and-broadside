@@ -6,6 +6,83 @@ from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.env.state import TensorState
 
 
+def compute_obstacle_repulsion(
+    state: TensorState,
+    ship_config: ShipConfig,
+    tti_max: float,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Compute potential-field repulsion vectors from all obstacles.
+
+    For each ship, computes the TTI to every obstacle via the quadratic
+    constant-velocity approximation, then sums weighted unit vectors pointing
+    away from each obstacle.  Weight = (1 - TTI/tti_max)^2, so repulsion grows
+    sharply as a collision becomes imminent.
+
+    Returns:
+        repulsion: (B, N) complex64 — summed repulsion vectors (unnormalized magnitude)
+        min_tti:   (B, N) float32  — TTI to nearest obstacle (inf = no threat)
+    """
+    B, N = state.ship_pos.shape
+    M = state.num_obstacles
+    device = state.device
+    W, H = ship_config.world_size
+
+    if M == 0:
+        return (
+            torch.zeros(B, N, dtype=state.ship_pos.dtype, device=device),
+            torch.full((B, N), float("inf"), device=device),
+        )
+
+    # Relative position ship − obstacle, toroidal wrapped  (B, N, M)
+    rel_r = state.ship_pos.real.unsqueeze(2) - state.obstacle_pos.real.unsqueeze(1)
+    rel_i = state.ship_pos.imag.unsqueeze(2) - state.obstacle_pos.imag.unsqueeze(1)
+    rel_r = (rel_r + W / 2) % W - W / 2
+    rel_i = (rel_i + H / 2) % H - H / 2
+
+    # Relative velocity  (B, N, M)
+    vel_r = state.ship_vel.real.unsqueeze(2) - state.obstacle_vel.real.unsqueeze(1)
+    vel_i = state.ship_vel.imag.unsqueeze(2) - state.obstacle_vel.imag.unsqueeze(1)
+
+    # Combined hitbox radius per obstacle  (B, 1, M)
+    hit_r = (ship_config.obstacle_collision_radius + state.obstacle_radius).unsqueeze(1)
+
+    # Quadratic TTI: |vel|²t² + 2·dot(rel,vel)·t + |rel|² − r² = 0
+    a = vel_r * vel_r + vel_i * vel_i                       # (B, N, M)
+    b = rel_r * vel_r + rel_i * vel_i
+    c = rel_r * rel_r + rel_i * rel_i - hit_r * hit_r
+
+    disc = b * b - a * c
+    sqrt_disc = disc.clamp(min=0.0).sqrt()
+    tti_raw = (-b - sqrt_disc) / (a + 1e-8)
+    tti_raw = tti_raw.clamp(min=0.0)
+
+    already_inside = c < 0
+    no_future_collision = (disc < 0) | (a < 1e-8)
+
+    tti = torch.where(already_inside, torch.zeros_like(tti_raw), tti_raw)
+    tti = torch.where(
+        no_future_collision & ~already_inside,
+        torch.full_like(tti, float("inf")),
+        tti,
+    )
+
+    # Repulsion weight: (1 − TTI/tti_max)²
+    weight = (1.0 - tti / tti_max).clamp(0.0, 1.0) ** 2   # (B, N, M)
+
+    # Repulsion direction: unit vector from obstacle toward ship
+    dist = (rel_r * rel_r + rel_i * rel_i).sqrt() + 1e-8
+    dir_r = rel_r / dist
+    dir_i = rel_i / dist
+
+    # Weighted sum across obstacles
+    rep_r = (weight * dir_r).sum(dim=2)                     # (B, N)
+    rep_i = (weight * dir_i).sum(dim=2)
+    repulsion = torch.complex(rep_r, rep_i)
+
+    min_tti = tti.min(dim=2).values                         # (B, N)
+    return repulsion, min_tti
+
+
 def predict_interception(
     state: TensorState,
     ship_config: ShipConfig,

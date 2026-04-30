@@ -76,11 +76,13 @@ class GameRenderer:
 
     def render_with_label(
         self,
-        state: TensorState,
+        state: TensorState | None,
         text: str,
         color: tuple[int, int, int] = (220, 220, 220),
     ) -> bool:
         """Draw one frame then overlay a centered text label before flipping.
+
+        Pass state=None to show a blank background (e.g. during loading screens).
 
         Returns:
             True to keep running, False if the user closed the window.
@@ -89,7 +91,10 @@ class GameRenderer:
             if event.type == pygame.QUIT:
                 return False
 
-        self._draw_frame(state)
+        if state is not None:
+            self._draw_frame(state)
+        else:
+            self._screen.fill(self._render_config.background_color)
         self._blit_label(text, color)
         pygame.display.flip()
         return True

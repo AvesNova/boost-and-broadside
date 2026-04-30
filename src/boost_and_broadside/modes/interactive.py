@@ -11,9 +11,10 @@ Supported agent specs (--team0 / --team1):
     <path.pt>   — specific checkpoint file
 """
 
+import threading
 import torch
 
-from boost_and_broadside.config import ShipConfig, EnvConfig, ModelConfig, RewardConfig
+from boost_and_broadside.config import ShipConfig, EnvConfig, ModelConfig, RewardConfig, ObstacleCacheConfig
 from boost_and_broadside.constants import PowerActions, TurnActions, ShootActions
 from boost_and_broadside.env.obstacle_cache import ObstacleCache, _make_obstacle_state
 from boost_and_broadside.env.obstacle_physics import (
@@ -43,6 +44,7 @@ def run_watch_mode(
     render_config: RenderConfig,
     device: str,
     checkpoint_dir: str = "checkpoints",
+    fast_cache: bool = False,
 ) -> None:
     """Render live gameplay between two agents at 60fps.
 
@@ -70,9 +72,14 @@ def run_watch_mode(
 
     obstacle_cache = None
     if env_config.num_obstacles > 0:
-        obstacle_cache = _run_convergence_phase(
-            ship_config, env_config, renderer, torch.device(device)
-        )
+        if fast_cache:
+            obstacle_cache = _run_convergence_background(
+                ship_config, env_config, renderer, torch.device(device)
+            )
+        else:
+            obstacle_cache = _run_convergence_phase(
+                ship_config, env_config, renderer, torch.device(device)
+            )
         if obstacle_cache is None:
             renderer.close()
             return
@@ -90,6 +97,49 @@ def run_watch_mode(
         _run_interactive_loop(wrapper, agent0, agent1, renderer, torch.device(device))
     finally:
         renderer.close()
+
+
+def _run_convergence_background(
+    ship_config: ShipConfig,
+    env_config: EnvConfig,
+    renderer: GameRenderer,
+    device: torch.device,
+) -> ObstacleCache | None:
+    """Generate obstacle cache headlessly in a background thread.
+
+    The main thread keeps the pygame window alive with a loading label while
+    ObstacleCache.generate() runs on the GPU. Returns None if the window is closed.
+    """
+    result: list[ObstacleCache] = []
+    error: list[Exception] = []
+
+    def _worker() -> None:
+        try:
+            cfg = ObstacleCacheConfig(num_cache_envs=512, cache_size=1, max_steps=6000)
+            result.append(ObstacleCache.generate(ship_config, env_config, cfg, device))
+        except Exception as e:
+            error.append(e)
+
+    thread = threading.Thread(target=_worker, daemon=True)
+    thread.start()
+
+    dots = 0
+    tick = 0
+    while thread.is_alive():
+        tick += 1
+        if tick % 20 == 0:
+            dots = (dots + 1) % 4
+        label = "Generating obstacles" + "." * dots
+        if not renderer.render_with_label(None, label):
+            return None
+        renderer.tick()
+
+    thread.join()
+
+    if error:
+        raise error[0]
+
+    return result[0] if result else None
 
 
 def _run_convergence_phase(
