@@ -19,19 +19,14 @@ from boost_and_broadside.constants import ShootActions
 
 def _get_lookup_tables(
     config: ShipConfig, device: torch.device
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Build per-action physics lookup tensors from config.
 
     Returns:
-        (thrust, power_gain, turn_offset, drag_coeff, lift_coeff) — all float32.
+        (thrust, turn_offset, drag_coeff, lift_coeff) — all float32.
     """
     thrust_table = torch.tensor(
         [config.base_thrust, config.boost_thrust, config.reverse_thrust],
-        device=device,
-        dtype=torch.float32,
-    )
-    power_gain_table = torch.tensor(
-        [config.base_power_gain, config.boost_power_gain, config.reverse_power_gain],
         device=device,
         dtype=torch.float32,
     )
@@ -76,7 +71,6 @@ def _get_lookup_tables(
     )
     return (
         thrust_table,
-        power_gain_table,
         turn_offset_table,
         drag_coeff_table,
         lift_coeff_table,
@@ -102,7 +96,6 @@ def _update_kinematics(
     device = state.device
     (
         thrust_table,
-        power_gain_table,
         turn_offset_table,
         drag_coeff_table,
         lift_coeff_table,
@@ -112,20 +105,23 @@ def _update_kinematics(
     turn_action = actions[..., 1].long()  # (B, N)
 
     thrust_mag = thrust_table[power_action]  # (B, N)
-    power_gain = power_gain_table[power_action]  # (B, N)
     turn_offset = turn_offset_table[turn_action]  # (B, N)
     drag_coeff = drag_coeff_table[turn_action]  # (B, N)
     lift_coeff = lift_coeff_table[turn_action]  # (B, N)
 
-    # Power update — clamp to [0, max]
-    state.ship_power = torch.clamp(
-        state.ship_power + power_gain * config.dt, 0.0, config.max_power
-    )
+    # Speed from current velocity — used for power drain and forces below
+    speed = state.ship_vel.abs()  # (B, N)
+
     # Ships with no power can't thrust
     thrust_mag = thrust_mag * (state.ship_power > 0).float()
 
+    # Power drains proportional to |thrust| * speed — preserves TE = ½v² + C_p * power
+    power_drain = (thrust_mag.abs() / config.power_speed_constant) * speed * config.dt
+    state.ship_power = torch.clamp(
+        state.ship_power - power_drain, 0.0, config.max_power
+    )
+
     # Attitude — align with velocity direction then apply turn rotation
-    speed = state.ship_vel.abs()  # (B, N)
     speed_safe = torch.clamp(speed, min=1e-6)
     vel_dir = state.ship_vel / speed_safe
     stopped = speed < 1e-6

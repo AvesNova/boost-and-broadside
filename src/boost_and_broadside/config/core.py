@@ -45,10 +45,10 @@ class ShipConfig:
     obstacle_collision_radius: float = 3.0  # ship-to-obstacle hitbox
     bullet_collision_radius: float = 10.0  # bullet-to-obstacle hitbox (matches collision_radius)
 
-    # Power regeneration / consumption rates (per second)
-    base_power_gain: float = 10.0
-    boost_power_gain: float = -40.0
-    reverse_power_gain: float = 20.0
+    # Power drain: TE = ½|vel|² + power_speed_constant * power is conserved (ignoring drag).
+    # Power drains at rate (|thrust| / power_speed_constant) * speed per second.
+    # Calibrated so boost at cruise speed (~100 px/s) drains ~40 power/s.
+    power_speed_constant: float = 200.0
 
     # Drag and lift coefficients
     no_turn_drag_coeff: float = 8e-4

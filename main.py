@@ -253,7 +253,7 @@ def main() -> None:
                 team1_spec=team1,
                 ship_config=SHIP_CONFIG,
                 env_config=EnvConfig(
-                    num_ships=16, max_bullets=20, max_episode_steps=1024, num_obstacles=16,
+                    num_ships=2, max_bullets=20, max_episode_steps=1024, num_obstacles=0,
                 ),
                 rewards=REWARDS,
                 model_config=MODEL_CONFIG,
