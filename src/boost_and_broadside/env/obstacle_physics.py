@@ -16,6 +16,8 @@ import math
 import torch
 
 from boost_and_broadside.config import ShipConfig
+
+_EPS = 1e-6  # division safety guard for direction normalization
 from boost_and_broadside.env.state import TensorState
 
 
@@ -189,7 +191,7 @@ def _pbd_separation(
         pos.imag.unsqueeze(2) - pos.imag.unsqueeze(1),
         world_w, world_h,
     )
-    dist = (diff_r**2 + diff_i**2).sqrt().clamp(min=1e-6)  # (B, M, M)
+    dist = (diff_r**2 + diff_i**2).sqrt().clamp(min=_EPS)  # (B, M, M)
 
     r_sum = radius.unsqueeze(2) + radius.unsqueeze(1)       # (B, M, M)
     overlap = (r_sum - dist).clamp(min=0.0)                 # (B, M, M)

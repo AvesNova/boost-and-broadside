@@ -32,7 +32,7 @@ class ShipConfig:
     # Thrust
     base_thrust: float = 8.0
     boost_thrust: float = 80.0
-    reverse_thrust: float = -10.0
+    reverse_thrust: float = -80.0
 
     # Gravity (attraction between fast-moving ships)
     gravity_factor: float = 0.0  # 5.0
@@ -45,10 +45,13 @@ class ShipConfig:
     obstacle_collision_radius: float = 3.0  # ship-to-obstacle hitbox
     bullet_collision_radius: float = 10.0  # bullet-to-obstacle hitbox (matches collision_radius)
 
-    # Power drain: TE = ½|vel|² + power_speed_constant * power is conserved (ignoring drag).
-    # Power drains at rate (|thrust| / power_speed_constant) * speed per second.
+    # Power exchange: TE = ½|vel|² + power_speed_constant * power is conserved (ignoring drag).
+    # Forward thrust drains power at (thrust / power_speed_constant) * speed per second.
+    # Reverse thrust gains power at the same rate (equal and opposite).
     # Calibrated so boost at cruise speed (~100 px/s) drains ~40 power/s.
     power_speed_constant: float = 200.0
+    # Passive power regen added every step regardless of action (like a slow engine recharge).
+    passive_power_gain: float = 10.0
 
     # Drag and lift coefficients
     no_turn_drag_coeff: float = 8e-4

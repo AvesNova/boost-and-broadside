@@ -33,6 +33,7 @@ class RenderConfig:
     background_color: tuple[int, int, int] = (10, 10, 20)
     ship_size: int = 10  # pixels from center to tip
     health_bar_height: int = 4
+    power_bar_height: int = 4
 
 
 class GameRenderer:
@@ -143,6 +144,7 @@ class GameRenderer:
         pos = state.ship_pos[0].cpu()  # (N,) complex64
         att = state.ship_attitude[0].cpu()  # (N,) complex64
         health = state.ship_health[0].cpu()  # (N,) float32
+        power = state.ship_power[0].cpu()  # (N,) float32
         alive = state.ship_alive[0].cpu()  # (N,) bool
         team_id = state.ship_team_id[0].cpu()  # (N,) int32
 
@@ -173,6 +175,18 @@ class GameRenderer:
                 surf,
                 (0, 200, 0),
                 (bar_x, bar_y, int(bar_w * hp_frac), cfg.health_bar_height),
+            )
+
+            # Power bar above health bar
+            pw_frac = float(power[n].item()) / sc.max_power
+            pw_bar_y = bar_y - cfg.power_bar_height - 2
+            pygame.draw.rect(
+                surf, (0, 0, 60), (bar_x, pw_bar_y, bar_w, cfg.power_bar_height)
+            )
+            pygame.draw.rect(
+                surf,
+                (30, 100, 255),
+                (bar_x, pw_bar_y, int(bar_w * pw_frac), cfg.power_bar_height),
             )
 
     def _draw_obstacles(self, state: TensorState, surf: pygame.Surface) -> None:

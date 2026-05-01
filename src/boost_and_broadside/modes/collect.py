@@ -8,6 +8,8 @@ import time
 
 import torch
 
+_EPS = 1e-6  # division safety guard for direction normalization
+
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.state import TensorState
@@ -64,7 +66,7 @@ def _obs_from_state(
             [state.obstacle_pos.real / world_w, state.obstacle_pos.imag / world_h], dim=-1
         )
         obs_vel = torch.stack([state.obstacle_vel.real, state.obstacle_vel.imag], dim=-1)
-        obs_speed = torch.norm(obs_vel, dim=-1, keepdim=True).clamp(min=1e-6)
+        obs_speed = torch.norm(obs_vel, dim=-1, keepdim=True).clamp(min=_EPS)
         obs_att = obs_vel / obs_speed  # unit heading = velocity direction
         obs_zeros_1 = torch.zeros(B, M, 1, device=dev)
         obs_scalars = torch.zeros(B, M, 3, device=dev)

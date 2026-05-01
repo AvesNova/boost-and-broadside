@@ -36,6 +36,7 @@ from boost_and_broadside.constants import (
 )
 
 
+_EPS = 1e-6  # division safety guard for direction normalization
 _TEAM_DIM = 3  # one-hot over {0=team0, 1=team1, 2=obstacle}
 _ACTION_DIM = NUM_POWER_ACTIONS + NUM_TURN_ACTIONS + NUM_SHOOT_ACTIONS  # 12
 
@@ -139,7 +140,7 @@ class ShipEncoder(nn.Module):
         vel = obs["vel"]  # (..., N, 2)
 
         speed = torch.norm(vel, dim=-1, keepdim=True)  # (..., N, 1)
-        vel_dir = vel / speed.clamp(min=1e-6)  # (..., N, 2)
+        vel_dir = vel / speed.clamp(min=_EPS)  # (..., N, 2)
 
         att = obs["att"]  # (..., N, 2)
         ang_vel = obs["ang_vel"]  # (..., N, 1)

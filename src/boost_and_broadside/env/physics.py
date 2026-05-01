@@ -8,8 +8,10 @@ import torch
 from typing import Tuple
 
 from boost_and_broadside.env.state import TensorState
+
+_EPS = 1e-6  # division safety guard for direction normalization
 from boost_and_broadside.config import ShipConfig
-from boost_and_broadside.constants import ShootActions
+from boost_and_broadside.constants import PowerActions, ShootActions
 
 
 # ---------------------------------------------------------------------------
@@ -112,19 +114,29 @@ def _update_kinematics(
     # Speed from current velocity — used for power drain and forces below
     speed = state.ship_vel.abs()  # (B, N)
 
+    # Stall: below min_speed, lose turning authority and reverse thrust
+    stalled = speed < config.min_speed
+    turn_offset = torch.where(stalled, torch.zeros_like(turn_offset), turn_offset)
+    lift_coeff  = torch.where(stalled, torch.zeros_like(lift_coeff),  lift_coeff)
+    thrust_mag  = torch.where(stalled & (power_action == PowerActions.REVERSE), torch.zeros_like(thrust_mag), thrust_mag)
+
     # Ships with no power can't thrust
     thrust_mag = thrust_mag * (state.ship_power > 0).float()
 
-    # Power drains proportional to |thrust| * speed — preserves TE = ½v² + C_p * power
-    power_drain = (thrust_mag.abs() / config.power_speed_constant) * speed * config.dt
+    # Power exchange: forward thrust drains, reverse thrust gains (equal and opposite).
+    # Passive regen added on top regardless of action.
+    power_delta = (
+        -(thrust_mag / config.power_speed_constant) * speed
+        + config.passive_power_gain
+    ) * config.dt
     state.ship_power = torch.clamp(
-        state.ship_power - power_drain, 0.0, config.max_power
+        state.ship_power + power_delta, 0.0, config.max_power
     )
 
     # Attitude — align with velocity direction then apply turn rotation
-    speed_safe = torch.clamp(speed, min=1e-6)
+    speed_safe = torch.clamp(speed, min=_EPS)
     vel_dir = state.ship_vel / speed_safe
-    stopped = speed < 1e-6
+    stopped = speed < _EPS
     base_att = torch.where(stopped, state.ship_attitude, vel_dir)
 
     rotation = torch.polar(torch.ones_like(turn_offset), turn_offset)  # (B, N)
@@ -164,7 +176,7 @@ def _update_kinematics(
             * _symlog(speed_i * speed_j)
             / (dist_sq + config.gravity_eps)
         )  # (B, N, N)
-        force_dir = diff / torch.clamp(dist, min=1e-6)  # (B, N, N)
+        force_dir = diff / torch.clamp(dist, min=_EPS)  # (B, N, N)
         force_vec = force_mag * force_dir  # (B, N, N) complex
 
         alive_mask = state.ship_alive.unsqueeze(2) & state.ship_alive.unsqueeze(
@@ -187,9 +199,9 @@ def _update_kinematics(
 
     # Prevent exactly-zero velocity (would break direction computations)
     new_speed = state.ship_vel.abs()
-    too_slow = new_speed < 1e-6
+    too_slow = new_speed < _EPS
     min_vel = (
-        torch.tensor(1e-6, device=device, dtype=torch.complex64) * state.ship_attitude
+        torch.tensor(_EPS, device=device, dtype=torch.complex64) * state.ship_attitude
     )
     state.ship_vel = torch.where(too_slow, min_vel, state.ship_vel)
 
