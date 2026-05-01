@@ -53,8 +53,8 @@ OBSTACLES_REWARDS = RewardConfig(
     obstacle_proximity_radius=80.0,
     obstacle_tti_max=3.0,
     # Behaviour shaping
-    shooting_penalty_weight=0.0,  # no bullets, never fires
-    speed_weight=0.5,
+    shooting_penalty_weight=0.1,  # no bullets, never fires
+    speed_weight=1.0,
     speed_penalty_min=40.0,
 )
 
@@ -62,12 +62,7 @@ RL_OBSTACLES_SCHEDULE = TrainingSchedule(
     learning_rate=linear((0, 1e-7), (5_000_000, 3e-4)),
     policy_gradient_coef=constant(1.0),
     entropy_coef=constant(0.005),
-    behavior_cloning_coef=linear(
-        (0, 2.0),
-        (10_000_000, 2.0),
-        (20_000_000, 1.0),
-        (30_000_000, 0.0),
-    ),
+    behavior_cloning_coef=constant(0.0),
     value_function_coef=constant(1.0),
     sigreg_coef=constant(0.00),
     true_reward_scale=constant(1.0),
@@ -81,7 +76,7 @@ RL_OBSTACLES_SCHEDULE = TrainingSchedule(
     allow_scripted_in_roster=stepped((0, False)),
     elo_eval_games=stepped((0, 0)),
     elo_eval_interval=stepped((0, 0)),
-    checkpoint_interval=stepped((0, 10)),
+    checkpoint_interval=stepped((0, 1), (3, 10)),
 )
 
 RL_OBSTACLES_TRAIN_CONFIG = TrainConfig(

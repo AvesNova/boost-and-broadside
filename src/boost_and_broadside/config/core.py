@@ -39,7 +39,7 @@ class ShipConfig:
     gravity_eps: float = 10000.0
 
     # Obstacle physics
-    obstacle_gravity_harmonic: float = 0.5  # spring constant G
+    obstacle_gravity_harmonic: float = 0.2  # spring constant G
     obstacle_radius_min: float = 5.0
     obstacle_radius_max: float = 40.0
     obstacle_collision_radius: float = 3.0  # ship-to-obstacle hitbox

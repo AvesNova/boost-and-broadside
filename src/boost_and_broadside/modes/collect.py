@@ -59,22 +59,26 @@ def _obs_from_state(
     )
 
     if M > 0:
+        dev = state.ship_pos.device
         obs_pos = torch.stack(
             [state.obstacle_pos.real / world_w, state.obstacle_pos.imag / world_h], dim=-1
         )
-        obs_zeros_2 = torch.zeros(B, M, 2, device=state.ship_pos.device)
-        obs_zeros_1 = torch.zeros(B, M, 1, device=state.ship_pos.device)
-        obs_zeros_3 = torch.zeros(B, M, 3, device=state.ship_pos.device)
-        obs_team_id = torch.full((B, M), 2, device=state.ship_pos.device, dtype=torch.int32)
-        obs_alive = torch.ones(B, M, device=state.ship_pos.device, dtype=torch.bool)
-        obs_action = torch.zeros(B, M, 3, device=state.ship_pos.device, dtype=torch.long)
+        obs_vel = torch.stack([state.obstacle_vel.real, state.obstacle_vel.imag], dim=-1)
+        obs_speed = torch.norm(obs_vel, dim=-1, keepdim=True).clamp(min=1e-6)
+        obs_att = obs_vel / obs_speed  # unit heading = velocity direction
+        obs_zeros_1 = torch.zeros(B, M, 1, device=dev)
+        obs_scalars = torch.zeros(B, M, 3, device=dev)
+        obs_scalars[:, :, 0] = 1.0  # health = 1 for obstacles
+        obs_team_id = torch.full((B, M), 2, device=dev, dtype=torch.int32)
+        obs_alive = torch.ones(B, M, device=dev, dtype=torch.bool)
+        obs_action = torch.zeros(B, M, 3, device=dev, dtype=torch.long)
         obs_radius = (state.obstacle_radius / radius_max).unsqueeze(-1)
         return {
             "pos":         torch.cat([ship_pos, obs_pos], dim=1),
-            "vel":         torch.cat([ship_vel, obs_zeros_2], dim=1),
-            "att":         torch.cat([ship_att, obs_zeros_2], dim=1),
+            "vel":         torch.cat([ship_vel, obs_vel], dim=1),
+            "att":         torch.cat([ship_att, obs_att], dim=1),
             "ang_vel":     torch.cat([ship_ang, obs_zeros_1], dim=1),
-            "scalars":     torch.cat([ship_scalars, obs_zeros_3], dim=1),
+            "scalars":     torch.cat([ship_scalars, obs_scalars], dim=1),
             "team_id":     torch.cat([state.ship_team_id, obs_team_id], dim=1),
             "alive":       torch.cat([state.ship_alive, obs_alive], dim=1),
             "prev_action": torch.cat([state.prev_action.long(), obs_action], dim=1),

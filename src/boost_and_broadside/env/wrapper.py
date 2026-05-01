@@ -27,10 +27,10 @@ class MVPEnvWrapper:
 
     Obs dict keys and shapes (B = num_envs, N = num_ships, M = num_obstacles):
         "pos"         (B, N+M, 2)  — x, y in [0, 1] (normalized by world_size)
-        "vel"         (B, N+M, 2)  — vx, vy (raw; zeroed for obstacles)
-        "att"         (B, N+M, 2)  — cos/sin of heading (zeroed for obstacles)
+        "vel"         (B, N+M, 2)  — vx, vy (raw; actual obstacle velocity for obstacles)
+        "att"         (B, N+M, 2)  — cos/sin of heading (= vel_dir for obstacles)
         "ang_vel"     (B, N+M, 1)  — angular velocity (zeroed for obstacles)
-        "scalars"     (B, N+M, 3)  — [health, power, cooldown] normed (zeroed for obstacles)
+        "scalars"     (B, N+M, 3)  — [health, power, cooldown] normed; obstacles have health=1, rest=0
         "team_id"     (B, N+M)     — int32; 0/1 for ships, 2 for obstacles
         "alive"       (B, N+M)     — bool; obstacles are always True
         "prev_action" (B, N+M, 3)  — int [power, turn, shoot] (zeroed for obstacles)
@@ -74,9 +74,9 @@ class MVPEnvWrapper:
         M = env_config.num_obstacles
         N = env_config.num_ships
         if M > 0:
-            self._obs_zeros_2 = torch.zeros(num_envs, M, 2, device=self.device)
             self._obs_zeros_1 = torch.zeros(num_envs, M, 1, device=self.device)
-            self._obs_zeros_3 = torch.zeros(num_envs, M, 3, device=self.device)
+            self._obs_scalars = torch.zeros(num_envs, M, 3, device=self.device)
+            self._obs_scalars[:, :, 0] = 1.0  # health = 1 for obstacles
             self._obs_team_id = torch.full((num_envs, M), 2, device=self.device, dtype=torch.int32)
             self._obs_alive   = torch.ones(num_envs, M, device=self.device, dtype=torch.bool)
             self._obs_action  = torch.zeros(num_envs, M, 3, device=self.device, dtype=torch.long)
@@ -253,17 +253,20 @@ class MVPEnvWrapper:
             dim=-1,
         )  # (B, N, 3)
 
-        # --- Obstacle features (ship-specific fields use pre-allocated zero/const tensors) ---
+        # --- Obstacle features ---
         if M > 0:
             obs_pos = torch.stack(
                 [s.obstacle_pos.real / world_w, s.obstacle_pos.imag / world_h], dim=-1
             )  # (B, M, 2)
+            obs_vel = torch.stack([s.obstacle_vel.real, s.obstacle_vel.imag], dim=-1)  # (B, M, 2)
+            obs_speed = torch.norm(obs_vel, dim=-1, keepdim=True).clamp(min=1e-6)
+            obs_att = obs_vel / obs_speed  # (B, M, 2) — unit heading = velocity direction
             return {
                 "pos":         torch.cat([ship_pos, obs_pos], dim=1),                    # (B, N+M, 2)
-                "vel":         torch.cat([ship_vel, self._obs_zeros_2], dim=1),
-                "att":         torch.cat([ship_att, self._obs_zeros_2], dim=1),
+                "vel":         torch.cat([ship_vel, obs_vel], dim=1),
+                "att":         torch.cat([ship_att, obs_att], dim=1),
                 "ang_vel":     torch.cat([ship_ang, self._obs_zeros_1], dim=1),
-                "scalars":     torch.cat([ship_scalars, self._obs_zeros_3], dim=1),
+                "scalars":     torch.cat([ship_scalars, self._obs_scalars], dim=1),
                 "team_id":     torch.cat([s.ship_team_id, self._obs_team_id], dim=1),
                 "alive":       torch.cat([s.ship_alive, self._obs_alive], dim=1),
                 "prev_action": torch.cat([s.prev_action.long(), self._obs_action], dim=1),

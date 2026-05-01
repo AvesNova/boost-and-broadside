@@ -1,22 +1,27 @@
 """Entity token encoder for ships and obstacles.
 
 Encodes each entity (ship or obstacle) into a d_model-dimensional token.
-Ships and obstacles share this encoder. Obstacle tokens have ship-specific
-features zeroed out by the wrapper; only pos, radius, alive, and team_id=2
-carry meaningful values for obstacles.
+Ships and obstacles share this encoder.
+
+Obstacle tokens from the wrapper have:
+  - vel: actual obstacle velocity (not zeroed)
+  - att: velocity direction unit vector (= vel_dir; att == vel_dir for obstacles)
+  - ang_vel, prev_action: zeroed
+  - scalars: [1, 0, 0] (health=1, power=0, cooldown=0)
+  - team_id: 2
 
 Feature breakdown (per entity, n_freqs=8 example):
-    Fourier position: n_freqs x 2 (sin+cos) x 2 (x, y) = 4*n_freqs dims
-    Fourier attitude: n_freqs x 2 (sin+cos) x 2 (nose, vel_dir) = 4*n_freqs dims
-    Symlog velocity:  (vx, vy)                          =  2 dims
-    Symlog ang_vel:   scalar                             =  1 dim
-    Scalars:          (health, power, cooldown) normed   =  3 dims
-    Team embedding:   nn.Embedding(3, 4) (2=obstacle)   =  4 dims
-    Alive:            scalar                             =  1 dim
-    Prev-action one-hot: 3 + 7 + 2                      = 12 dims
-    Radius:           normalized scalar                  =  1 dim
+    Fourier position:    n_freqs x 2 (sin+cos) x 2 (x, y)         = 4*n_freqs dims
+    Fourier attitude:    n_freqs x 2 (sin+cos) x 2 (nose, vel_dir) = 4*n_freqs dims
+    Symlog speed:        scalar                                      =  1 dim
+    Symlog ang_vel:      scalar                                      =  1 dim
+    Scalars:             (health, power, cooldown) normed            =  3 dims
+    Team one-hot:        3 classes (0, 1, obstacle=2)               =  3 dims
+    Alive:               scalar                                      =  1 dim
+    Prev-action one-hot: 3 + 7 + 2                                  = 12 dims
+    Radius:              normalized scalar                           =  1 dim
     ---
-    Total raw dim (n_freqs=8)                            = 88 dims
+    Total raw dim (n_freqs=8)                                        = 86 dims
     -> Linear(raw_dim, d_model)
 """
 
@@ -31,7 +36,7 @@ from boost_and_broadside.constants import (
 )
 
 
-_TEAM_EMBED_DIM = 4
+_TEAM_DIM = 3  # one-hot over {0=team0, 1=team1, 2=obstacle}
 _ACTION_DIM = NUM_POWER_ACTIONS + NUM_TURN_ACTIONS + NUM_SHOOT_ACTIONS  # 12
 
 
@@ -39,7 +44,7 @@ def _raw_dim(n_fourier_freqs: int) -> int:
     """Compute raw feature dimension given number of Fourier frequencies."""
     pos_dim = 4 * n_fourier_freqs  # x and y, each (sin+cos) * n_freqs
     att_dim = 4 * n_fourier_freqs  # nose_att and vel_att, each (sin+cos) * n_freqs
-    return pos_dim + att_dim + 2 + 1 + 3 + _TEAM_EMBED_DIM + 1 + _ACTION_DIM + 1  # +1 radius
+    return pos_dim + att_dim + 1 + 1 + 3 + _TEAM_DIM + 1 + _ACTION_DIM + 1  # speed=1, team=3
 
 
 def _symlog(x: torch.Tensor) -> torch.Tensor:
@@ -101,7 +106,6 @@ class ShipEncoder(nn.Module):
         self.world_w, self.world_h = ship_config.world_size
         self.d_model = model_config.d_model
 
-        self.team_embed = nn.Embedding(3, _TEAM_EMBED_DIM)  # 0/1=ship teams, 2=obstacle
         self.feature_extractor = nn.Sequential(
             nn.Linear(_raw_dim(self.n_freqs), 2 * model_config.d_model),
             nn.RMSNorm(2 * model_config.d_model),
@@ -113,8 +117,8 @@ class ShipEncoder(nn.Module):
     def forward(self, obs: dict[str, torch.Tensor]) -> torch.Tensor:
         """Encode entity observations into tokens.
 
-        Works on combined (ship + obstacle) token sequences. Obstacle tokens
-        have vel/att/ang_vel/scalars/prev_action zeroed by the wrapper.
+        Works on combined (ship + obstacle) token sequences. See module docstring
+        for how the wrapper populates obstacle token fields.
 
         Args:
             obs: Dict with keys matching MVPEnvWrapper._get_obs():
@@ -134,9 +138,8 @@ class ShipEncoder(nn.Module):
         pos = obs["pos"]  # (..., N, 2)
         vel = obs["vel"]  # (..., N, 2)
 
-        speed = torch.norm(vel, dim=-1, keepdim=True)
-        speed_safe = torch.clamp(speed, min=1e-6)
-        vel_dir = vel / speed_safe  # (..., N, 2)
+        speed = torch.norm(vel, dim=-1, keepdim=True)  # (..., N, 1)
+        vel_dir = vel / speed.clamp(min=1e-6)  # (..., N, 2)
 
         att = obs["att"]  # (..., N, 2)
         ang_vel = obs["ang_vel"]  # (..., N, 1)
@@ -157,12 +160,12 @@ class ShipEncoder(nn.Module):
         )  # (..., N, 2*n_freqs)
         att_feat = torch.cat([nose_att_enc, vel_att_enc], dim=-1)  # (..., N, 4*n_freqs)
 
-        # Symlog velocity and angular velocity
-        vel_feat = _symlog(vel)  # (..., N, 2)
+        # Symlog speed and angular velocity
+        vel_feat = _symlog(speed)  # (..., N, 1) — direction already in att/vel_dir Fourier features
         ang_feat = _symlog(ang_vel)  # (..., N, 1)
 
-        # Team embedding
-        team_feat = self.team_embed(team_id)  # (..., N, 4)
+        # Team one-hot: 3 classes (0=team0, 1=team1, 2=obstacle)
+        team_feat = torch.nn.functional.one_hot(team_id, _TEAM_DIM).float()  # (..., N, 3)
 
         # Alive as float
         alive_feat = alive.float().unsqueeze(-1)  # (..., N, 1)
@@ -185,15 +188,15 @@ class ShipEncoder(nn.Module):
             [
                 pos_feat,   # 4 * n_freqs
                 att_feat,   # 4 * n_freqs
-                vel_feat,   # 2
+                vel_feat,   # 1
                 ang_feat,   # 1
                 scalars,    # 3
-                team_feat,  # 4
+                team_feat,  # 3
                 alive_feat,  # 1
                 action_feat,  # 12
                 radius,     # 1
             ],
             dim=-1,
-        )  # (..., N, 24 + 8*n_freqs)
+        )  # (..., N, 22 + 8*n_freqs)
 
         return self.feature_extractor(raw)  # (..., N, d_model)
