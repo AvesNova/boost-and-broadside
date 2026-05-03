@@ -24,11 +24,12 @@ from boost_and_broadside.config import (
     stepped,
 )
 from boost_and_broadside.config.schedule import exponential
-from runs.shared import REWARDS
+from runs.shared import REWARDS, OBS_CONFIG
 
-_MAX_TOKENS = 3840 * 10
-_NUM_SHIPS_PER_TEAM = 4
-_NUM_OBSTACLES = 8
+_MAX_TOKENS = 20000
+_NUM_SHIPS = 4
+_NUM_OBSTACLES = 0
+_NUM_MINIBATCHES = 32
 
 RL_SCHEDULE = TrainingSchedule(
     # Warmup from 1e-7 to 3e-4 over 5M steps, then hold.
@@ -69,15 +70,15 @@ RL_TRAIN_CONFIG = TrainConfig(
         #     num_envs=_MAX_TOKENS // 4 // 2,
         # ),
         ScaleConfig(
-            env_config=EnvConfig(num_ships=4, num_obstacles=0, max_bullets=20, max_episode_steps=1024,),
-            num_envs=_MAX_TOKENS // 16,
+            env_config=EnvConfig(num_ships=_NUM_SHIPS, num_obstacles=_NUM_OBSTACLES, max_bullets=20, max_episode_steps=1024,),
+            num_envs=_MAX_TOKENS // (_NUM_SHIPS + _NUM_OBSTACLES) // _NUM_MINIBATCHES * _NUM_MINIBATCHES,
         ),
     ),
     schedule=RL_SCHEDULE,
     rewards=REWARDS,
     num_steps=128,
     num_epochs=4,
-    num_minibatches=32,
+    num_minibatches=_NUM_MINIBATCHES,
     gamma=0.99,
     gae_lambda=0.95,
     clip_coef=0.2,

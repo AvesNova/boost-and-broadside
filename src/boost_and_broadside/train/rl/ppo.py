@@ -28,6 +28,7 @@ from boost_and_broadside.config import (
     EnvConfig,
     TrainingSchedule,
 )
+from boost_and_broadside.config.obs_spec import ObsConfig
 from boost_and_broadside.constants import POWER_SLICE, TURN_SLICE, SHOOT_SLICE
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.obstacle_cache import ObstacleCache
@@ -257,6 +258,7 @@ class PPOTrainer:
         train_config: TrainConfig,
         model_config: ModelConfig,
         ship_config: ShipConfig,
+        obs_config: "ObsConfig",
         device: str | torch.device,
         use_wandb: bool = False,
         scripted_agent: StochasticScriptedAgent | None = None,
@@ -265,6 +267,7 @@ class PPOTrainer:
         self.cfg = train_config
         self.model_config = model_config
         self.ship_config = ship_config
+        self.obs_config = obs_config
         self.env_config = train_config.scales[0].env_config
         self.device = torch.device(device)
         self.use_wandb = use_wandb
@@ -331,6 +334,7 @@ class PPOTrainer:
             ship_config=ship_config,
             env_config=train_config.scales[0].env_config,
             rewards=train_config.rewards,
+            obs_config=obs_config,
             device=device,
             obstacle_cache=self._obstacle_cache,
         )
@@ -340,7 +344,7 @@ class PPOTrainer:
         N = train_config.scales[0].env_config.num_ships
         self._compile_mode = compile_mode
         self._policy_module = MVPPolicy(
-            model_config, ship_config, num_value_components=K, num_ships=N
+            model_config, obs_config, num_value_components=K, num_ships=N
         ).to(self.device)
         _cast_norms_bf16(self._policy_module)
         self.sigreg = SIGReg(d_model=model_config.d_model, num_proj=64).to(self.device)
@@ -400,7 +404,7 @@ class PPOTrainer:
         # Weights initialized as a copy of the training policy.
         # Only updated when allow_avg_model_updates is True in the current phase.
         self._avg_policy_module = MVPPolicy(
-            model_config, ship_config, num_value_components=K, num_ships=N
+            model_config, obs_config, num_value_components=K, num_ships=N
         ).to(self.device)
         self.avg_policy = (
             torch.compile(self._avg_policy_module, mode=compile_mode)
@@ -471,7 +475,7 @@ class PPOTrainer:
         # Async logging queue
         self._log_queue: Queue = Queue()
         if use_wandb:
-            self._init_wandb(train_config, model_config, ship_config, self.env_config)
+            self._init_wandb(train_config, model_config, ship_config, obs_config, self.env_config)
             self._log_thread = threading.Thread(target=self._log_worker, daemon=True)
             self._log_thread.start()
 
@@ -509,6 +513,7 @@ class PPOTrainer:
                 ship_config=ship_config,
                 env_config=sc.env_config,
                 rewards=train_config.rewards,
+                obs_config=obs_config,
                 device=device,
                 obstacle_cache=self._obstacle_cache,
             )
@@ -667,7 +672,7 @@ class PPOTrainer:
                     self.roster.load_policy(
                         entry,
                         self.model_config,
-                        self.ship_config,
+                        self.obs_config,
                         self.wrapper.num_active_components,
                         self.wrapper.num_ships,
                         self.device,
@@ -1870,6 +1875,7 @@ class PPOTrainer:
                 k: v for k, v in dataclasses.asdict(self.cfg).items() if k != "schedule"
             },
             "model_config": dataclasses.asdict(self.model_config),
+            "obs_config": self.obs_config.to_dict(),
             "env_config": dataclasses.asdict(self.env_config),
         }
 
@@ -2001,16 +2007,10 @@ class PPOTrainer:
         train_config: TrainConfig,
         model_config: ModelConfig,
         ship_config: ShipConfig,
+        obs_config: "ObsConfig",
         env_config: EnvConfig,
     ) -> None:
-        """Initialize W&B run with all configs serialized as the run config.
-
-        Args:
-            train_config: PPO hyperparameters and timeline.
-            model_config: Policy architecture.
-            ship_config:  Physics constants.
-            env_config:   Environment sizing.
-        """
+        """Initialize W&B run with all configs serialized as the run config."""
         import wandb
 
         def _sanitize(obj: object) -> object:
@@ -2034,6 +2034,7 @@ class PPOTrainer:
                 if k == "schedule":
                     continue  # TrainingSchedule contains callables — not serializable
                 config[f"{prefix}/{k}"] = _sanitize(v)
+        config["obs"] = _sanitize(obs_config.to_dict())
 
         wandb.init(project="boost-and-broadside", config=config)
 

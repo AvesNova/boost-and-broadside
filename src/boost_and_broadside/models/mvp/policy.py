@@ -26,6 +26,7 @@ import torch.nn as nn
 from torch.distributions import Categorical
 
 from boost_and_broadside.config import ModelConfig, ShipConfig
+from boost_and_broadside.config.obs_spec import ObsConfig
 from boost_and_broadside.constants import (
     TOTAL_ACTION_LOGITS,
     NUM_POWER_ACTIONS,
@@ -91,13 +92,13 @@ class MVPPolicy(nn.Module):
 
     Args:
         model_config: Architecture hyperparameters.
-        ship_config: Physics constants (used by encoder for world_size).
+        obs_config: Observation feature pipeline; drives encoder input dimension.
     """
 
     def __init__(
         self,
         model_config: ModelConfig,
-        ship_config: ShipConfig,
+        obs_config: ObsConfig,
         num_value_components: int,
         num_ships: int,
     ) -> None:
@@ -107,7 +108,7 @@ class MVPPolicy(nn.Module):
         self._K = num_value_components
         self._num_ships = num_ships  # N — first N tokens are ships; rest are obstacles
 
-        self.encoder = ShipEncoder(model_config, ship_config)
+        self.encoder = ShipEncoder(model_config, obs_config)
         self.yemong_layers = nn.ModuleList(
             [YemongBlock(model_config) for _ in range(model_config.n_transformer_blocks)]
         )

@@ -1,26 +1,40 @@
 """Boost and Broadside — entry point.
 
-Modes are selected via the --mode CLI flag. All hyperparameters live in runs/.
+Select a mode with --mode. All hyperparameters live in runs/.
 
-Run with:
-    uv run --no-sync main.py --mode bc                                             # BC pretraining from scratch
-    uv run --no-sync main.py --mode rl                                             # RL from scratch (no pretrained weights)
-    uv run --no-sync main.py --mode rl --pretrain_from checkpoints/run/best.pt    # RL from pretrained init
-    uv run --no-sync main.py --mode bc_warmstart                                  # pretrain 50M → save → RL (one process)
-    uv run --no-sync main.py --mode watch                                          # human vs latest checkpoint
-    uv run --no-sync main.py --mode watch --team0 null --team1 scripted            # human vs scripted
-    uv run --no-sync main.py --mode watch --team0 latest --team1 latest            # self-play
-    uv run --no-sync main.py --mode collect_stats                                  # scripted vs random
-    uv run --no-sync main.py --mode collect_stats --team0 latest --team1 scripted
-    uv run --no-sync main.py --mode elo_stats                                     # all scripted agents
-    uv run --no-sync main.py --mode elo_stats --run latest                        # scripted + latest run checkpoints
+Training:
+    uv run main.py --mode rl                                              # RL from scratch
+    uv run main.py --mode rl --compile max-autotune                       # RL with max-autotune
+    uv run main.py --mode rl --pretrain_from checkpoints/run/best.pt      # RL from pretrained weights
+    uv run main.py --mode rl_obstacles                                    # RL with dynamic obstacles
+    uv run main.py --mode bc                                              # BC pretraining from scratch
+    uv run main.py --mode bc_warmstart                                    # BC 50M steps → RL (one process)
+    uv run main.py --mode rl --smoke                                      # crash-test (tiny batch, no W&B)
+
+Watch / play:
+    uv run main.py --mode watch                                           # human vs latest checkpoint
+    uv run main.py --mode watch --team0 null --team1 scripted             # human vs scripted
+    uv run main.py --mode watch --team0 latest --team1 latest             # self-play
+    uv run main.py --mode watch --fast-cache                              # skip convergence animation
+
+Evaluation:
+    uv run main.py --mode collect_stats                                   # scripted vs random
+    uv run main.py --mode collect_stats --team0 latest --team1 scripted
+    uv run main.py --mode elo_stats                                       # ELO across all scripted agents
+    uv run main.py --mode elo_stats --run latest                          # scripted + latest checkpoints
 
 Agent specs (--team0 / --team1):
     null        human keyboard (watch only)
     random      uniform random actions
     scripted    stochastic scripted agent
-    latest      most recently modified checkpoint
+    latest      most recently modified checkpoint in checkpoints/
     <path.pt>   specific checkpoint file
+
+Compile profiles (--compile):
+    reduce-overhead    default; fast startup, good throughput
+    default            slower startup, slightly higher throughput
+    max-autotune       slowest startup, best throughput
+    none               eager mode (useful for debugging)
 """
 
 import argparse
@@ -41,7 +55,7 @@ from runs.bc import BC_TRAIN_CONFIG
 from runs.bc_warmstart import BC_WARMSTART_PRETRAIN_CONFIG, BC_WARMSTART_RL_CONFIG
 from runs.rl import RL_TRAIN_CONFIG
 from runs.rl_obstacles import RL_OBSTACLES_TRAIN_CONFIG
-from runs.shared import MODEL_CONFIG, REWARDS, SHIP_CONFIG
+from runs.shared import MODEL_CONFIG, OBS_CONFIG, OBS_CONFIG_MINIMAL, REWARDS, SHIP_CONFIG
 
 
 def _parse_args() -> argparse.Namespace:
@@ -164,6 +178,7 @@ def main() -> None:
                 train_config=train_config,
                 model_config=MODEL_CONFIG,
                 ship_config=SHIP_CONFIG,
+                obs_config=OBS_CONFIG_MINIMAL,
                 device=device,
                 use_wandb=use_wandb,
                 scripted_agent=scripted_agent,
@@ -180,6 +195,7 @@ def main() -> None:
                 train_config=train_config,
                 model_config=MODEL_CONFIG,
                 ship_config=SHIP_CONFIG,
+                obs_config=OBS_CONFIG_MINIMAL,
                 device=device,
                 use_wandb=use_wandb,
                 scripted_agent=scripted_agent,
@@ -196,6 +212,7 @@ def main() -> None:
                 train_config=train_config,
                 model_config=MODEL_CONFIG,
                 ship_config=SHIP_CONFIG,
+                obs_config=OBS_CONFIG_MINIMAL,
                 device=device,
                 use_wandb=use_wandb,
                 scripted_agent=scripted_agent,
@@ -215,6 +232,7 @@ def main() -> None:
                 train_config=BC_WARMSTART_PRETRAIN_CONFIG,
                 model_config=MODEL_CONFIG,
                 ship_config=SHIP_CONFIG,
+                obs_config=OBS_CONFIG_MINIMAL,
                 device=device,
                 use_wandb=True,
                 scripted_agent=scripted_agent,
@@ -237,6 +255,7 @@ def main() -> None:
                 train_config=BC_WARMSTART_RL_CONFIG,
                 model_config=MODEL_CONFIG,
                 ship_config=SHIP_CONFIG,
+                obs_config=OBS_CONFIG_MINIMAL,
                 device=device,
                 use_wandb=True,
                 scripted_agent=scripted_agent,
@@ -253,10 +272,11 @@ def main() -> None:
                 team1_spec=team1,
                 ship_config=SHIP_CONFIG,
                 env_config=EnvConfig(
-                    num_ships=8, max_bullets=20, max_episode_steps=1024, num_obstacles=8,
+                    num_ships=8, max_bullets=20, max_episode_steps=1024, num_obstacles=0,
                 ),
                 rewards=REWARDS,
                 model_config=MODEL_CONFIG,
+                obs_config=OBS_CONFIG_MINIMAL,
                 render_config=RenderConfig(),
                 device=device,
                 checkpoint_dir="checkpoints",

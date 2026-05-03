@@ -121,10 +121,14 @@ def resolve_agent_spec(
 
     # Deferred import to avoid circular dependency
     from boost_and_broadside.models.mvp.policy import MVPPolicy
+    from boost_and_broadside.config.obs_spec import obs_config_from_dict
 
     ckpt = torch.load(path, map_location=device, weights_only=False)
+    if "obs_config" not in ckpt:
+        raise KeyError(f"Checkpoint {path!r} has no 'obs_config' key — retrain from scratch or provide obs_config manually.")
+    obs_config = obs_config_from_dict(ckpt["obs_config"])
     K = ckpt["policy_state_dict"]["value_head.3.weight"].shape[0]
-    policy = MVPPolicy(model_config, ship_config, num_value_components=K, num_ships=num_ships).to(device)
+    policy = MVPPolicy(model_config, obs_config, num_value_components=K, num_ships=num_ships).to(device)
     policy.load_state_dict(ckpt["policy_state_dict"])
     policy.eval()
 

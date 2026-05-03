@@ -30,73 +30,75 @@ def _obs_from_state(
 ) -> dict[str, torch.Tensor]:
     """Build a policy-ready obs dict from TensorState.
 
-    Mirrors MVPEnvWrapper._get_obs() exactly so policy agents see the same
-    observations here as they do during training. Includes obstacle tokens
-    (team_id=2) when num_obstacles > 0.
+    Mirrors MVPEnvWrapper._get_obs() exactly — all values are RAW (no
+    normalization). Includes obstacle tokens (team_id=2) when num_obstacles > 0.
     """
-    world_w, world_h = ship_config.world_size
     B = state.num_envs
     M = state.num_obstacles
-    radius_max = ship_config.obstacle_radius_max
+    dev = state.ship_pos.device
 
-    ship_pos = torch.stack(
-        [state.ship_pos.real / world_w, state.ship_pos.imag / world_h], dim=-1
-    )
+    ship_pos = torch.stack([state.ship_pos.real, state.ship_pos.imag], dim=-1)
     ship_vel = torch.stack([state.ship_vel.real, state.ship_vel.imag], dim=-1)
     ship_att = torch.stack([state.ship_attitude.real, state.ship_attitude.imag], dim=-1)
     ship_ang = state.ship_ang_vel.unsqueeze(-1)
-    ship_scalars = torch.stack(
-        [
-            state.ship_health / ship_config.max_health,
-            state.ship_power / ship_config.max_power,
-            (state.ship_cooldown / ship_config.firing_cooldown).clamp(0.0, 1.0),
-        ],
-        dim=-1,
-    )
+    ship_health   = state.ship_health.unsqueeze(-1)
+    ship_power    = state.ship_power.unsqueeze(-1)
+    ship_cooldown = state.ship_cooldown.unsqueeze(-1)
+    ship_prev_power = state.prev_action[..., 0].long()
+    ship_prev_turn  = state.prev_action[..., 1].long()
+    ship_prev_shoot = state.prev_action[..., 2].long()
     ship_radius = torch.full(
         (B, state.max_ships, 1),
-        ship_config.collision_radius / radius_max,
-        device=state.ship_pos.device,
+        ship_config.collision_radius,
+        device=dev,
         dtype=torch.float32,
     )
 
     if M > 0:
-        dev = state.ship_pos.device
         obs_pos = torch.stack(
-            [state.obstacle_pos.real / world_w, state.obstacle_pos.imag / world_h], dim=-1
+            [state.obstacle_pos.real, state.obstacle_pos.imag], dim=-1
         )
         obs_vel = torch.stack([state.obstacle_vel.real, state.obstacle_vel.imag], dim=-1)
         obs_speed = torch.norm(obs_vel, dim=-1, keepdim=True).clamp(min=_EPS)
-        obs_att = obs_vel / obs_speed  # unit heading = velocity direction
-        obs_zeros_1 = torch.zeros(B, M, 1, device=dev)
-        obs_scalars = torch.zeros(B, M, 3, device=dev)
-        obs_scalars[:, :, 0] = 1.0  # health = 1 for obstacles
-        obs_team_id = torch.full((B, M), 2, device=dev, dtype=torch.int32)
-        obs_alive = torch.ones(B, M, device=dev, dtype=torch.bool)
-        obs_action = torch.zeros(B, M, 3, device=dev, dtype=torch.long)
-        obs_radius = (state.obstacle_radius / radius_max).unsqueeze(-1)
+        obs_att = obs_vel / obs_speed
+        obs_ang_vel  = torch.zeros(B, M, 1, device=dev)
+        obs_health   = torch.full((B, M, 1), ship_config.max_health, device=dev)
+        obs_power    = torch.zeros(B, M, 1, device=dev)
+        obs_cooldown = torch.zeros(B, M, 1, device=dev)
+        obs_team_id  = torch.full((B, M), 2, device=dev, dtype=torch.int32)
+        obs_alive    = torch.ones(B, M, device=dev, dtype=torch.bool)
+        obs_prev_zero = torch.zeros(B, M, device=dev, dtype=torch.long)
+        obs_radius   = state.obstacle_radius.unsqueeze(-1)
         return {
-            "pos":         torch.cat([ship_pos, obs_pos], dim=1),
-            "vel":         torch.cat([ship_vel, obs_vel], dim=1),
-            "att":         torch.cat([ship_att, obs_att], dim=1),
-            "ang_vel":     torch.cat([ship_ang, obs_zeros_1], dim=1),
-            "scalars":     torch.cat([ship_scalars, obs_scalars], dim=1),
-            "team_id":     torch.cat([state.ship_team_id, obs_team_id], dim=1),
-            "alive":       torch.cat([state.ship_alive, obs_alive], dim=1),
-            "prev_action": torch.cat([state.prev_action.long(), obs_action], dim=1),
-            "radius":      torch.cat([ship_radius, obs_radius], dim=1),
+            "pos":        torch.cat([ship_pos,          obs_pos],       dim=1),
+            "vel":        torch.cat([ship_vel,          obs_vel],       dim=1),
+            "att":        torch.cat([ship_att,          obs_att],       dim=1),
+            "ang_vel":    torch.cat([ship_ang,          obs_ang_vel],   dim=1),
+            "health":     torch.cat([ship_health,       obs_health],    dim=1),
+            "power":      torch.cat([ship_power,        obs_power],     dim=1),
+            "cooldown":   torch.cat([ship_cooldown,     obs_cooldown],  dim=1),
+            "team_id":    torch.cat([state.ship_team_id, obs_team_id],  dim=1),
+            "alive":      torch.cat([state.ship_alive,  obs_alive],     dim=1),
+            "prev_power": torch.cat([ship_prev_power,   obs_prev_zero], dim=1),
+            "prev_turn":  torch.cat([ship_prev_turn,    obs_prev_zero], dim=1),
+            "prev_shoot": torch.cat([ship_prev_shoot,   obs_prev_zero], dim=1),
+            "radius":     torch.cat([ship_radius,       obs_radius],    dim=1),
         }
 
     return {
-        "pos":         ship_pos,
-        "vel":         ship_vel,
-        "att":         ship_att,
-        "ang_vel":     ship_ang,
-        "scalars":     ship_scalars,
-        "team_id":     state.ship_team_id,
-        "alive":       state.ship_alive,
-        "prev_action": state.prev_action.long(),
-        "radius":      ship_radius,
+        "pos":        ship_pos,
+        "vel":        ship_vel,
+        "att":        ship_att,
+        "ang_vel":    ship_ang,
+        "health":     ship_health,
+        "power":      ship_power,
+        "cooldown":   ship_cooldown,
+        "team_id":    state.ship_team_id,
+        "alive":      state.ship_alive,
+        "prev_power": ship_prev_power,
+        "prev_turn":  ship_prev_turn,
+        "prev_shoot": ship_prev_shoot,
+        "radius":     ship_radius,
     }
 
 

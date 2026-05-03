@@ -20,6 +20,21 @@ from boost_and_broadside.config.training import (
     ScaleConfig,
     TrainConfig,
 )
+from boost_and_broadside.config.obs_spec import (
+    ObsConfig,
+    FeatureSpec,
+    Normalize,
+    Symlog,
+    Clamp,
+    AsFloat,
+    Bucketize,
+    Fourier,
+    OneHot,
+    VecMag,
+    SymlogVec,
+    FourierAngle,
+    obs_config_from_dict,
+)
 
 __all__ = [
     "ShipConfig",
@@ -36,4 +51,17 @@ __all__ = [
     "ObstacleCacheConfig",
     "ScaleConfig",
     "TrainConfig",
+    "ObsConfig",
+    "FeatureSpec",
+    "Normalize",
+    "Symlog",
+    "Clamp",
+    "AsFloat",
+    "Bucketize",
+    "Fourier",
+    "OneHot",
+    "VecMag",
+    "SymlogVec",
+    "FourierAngle",
+    "obs_config_from_dict",
 ]

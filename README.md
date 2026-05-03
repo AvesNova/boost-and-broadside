@@ -1,142 +1,155 @@
 # Boost and Broadside
 
-A GPU-accelerated multi-agent RL environment where teams of ships compete in 2D naval dogfights. The current focus is an **MVP RL pipeline** training a shared recurrent policy via self-play PPO.
-
-**Game Details**: See [docs/game_design.md](docs/game_design.md) for rules, physics, and action space.
+GPU-accelerated multi-agent RL environment. Teams of ships compete in 2D dogfights. Trained via PPO with ELO-rated league play, a decomposed distributional critic, and a composable observation pipeline.
 
 ## Quick Start
 
 ```bash
-# Install dependencies
 uv sync
 
-# Train with W&B logging and checkpointing
-uv run --no-sync main.py
+# RL training from scratch (W&B + checkpoints)
+uv run main.py --mode rl
 
-# Play against a fresh AI (WASD + Shift for sharp turns, Space to shoot)
-uv run --no-sync main.py --mode play
+# Watch: human (WASD + Shift + Space) vs latest checkpoint
+uv run main.py --mode watch
 
-# Watch a checkpointed agent play itself
-uv run --no-sync main.py --mode watch --checkpoint checkpoints/checkpoint_000500.pt
+# Crash-test a config change without W&B
+uv run main.py --mode rl --smoke
 ```
 
 ## Modes
 
-| Flag | Description |
+| Mode | Description |
 |---|---|
-| `--mode train` (default) | PPO self-play training with async W&B logging and periodic checkpoints |
-| `--mode play` | Human controls ship 0; AI (fresh policy) controls ships 1–7 |
-| `--mode watch --checkpoint <path>` | Load a checkpoint and watch self-play at 60fps |
+| `rl` | PPO RL training. Optional `--pretrain_from <path.pt>` to warm-start. |
+| `rl_obstacles` | RL with dynamic orbiting obstacles. |
+| `bc` | Behavior cloning pretraining from the scripted agent. |
+| `bc_warmstart` | BC for 50M steps, then immediately switch to RL. |
+| `watch` | Render live gameplay at 60fps. `--fast-cache` skips obstacle convergence animation. |
+| `collect_stats` | Run a matchup and print win-rate statistics. |
+| `elo_stats` | ELO tournament across scripted agents and/or checkpoints. |
+
+All modes accept `--smoke` for a tiny crash-test run (4 envs, no W&B, exits after a few updates).
+
+Agent specs for `--team0` / `--team1`: `null` (human), `random`, `scripted`, `latest`, or a path to a `.pt` checkpoint.
 
 ## Project Structure
 
 ```
+runs/                       # Hyperparameter profiles (one file per experiment)
+  shared.py                 # MODEL_CONFIG, OBS_CONFIG, REWARDS, SHIP_CONFIG
+  rl.py                     # Primary RL run
+  rl_obstacles.py           # RL with obstacles
+  bc.py / bc_warmstart.py   # Pretraining profiles
+  rl_hpc.py                 # High-core-count server profile
+
 src/boost_and_broadside/
-├── config.py          # Frozen dataclass configs (ShipConfig, EnvConfig, ModelConfig, ...)
-├── constants.py       # Action space constants and slices
-├── env/
-│   ├── state.py       # TensorState — mutable GPU state for B parallel envs
-│   ├── physics.py     # Pure physics functions (kinematics, shooting, collisions)
-│   ├── env.py         # TensorEnv — vectorized physics engine, no rewards
-│   ├── rewards.py     # Modular reward components, REWARD_COMPONENT_NAMES, compute_per_component_rewards
-│   └── wrapper.py     # MVPEnvWrapper — obs construction, reward orchestration, auto-reset
-├── models/mvp/
-│   ├── encoder.py     # ShipEncoder — Fourier position + symlog vel + team embed
-│   ├── attention.py   # RelationalSelfAttention — MHSA with alive masking
-│   └── policy.py      # MVPPolicy — encoder → attention → per-ship GRU → action/distributional-value heads
-├── modes/
-│   └── interactive.py # run_play_mode, run_watch_mode — shared render loop + keyboard input
-├── train/rl/
-│   ├── buffer.py      # RolloutBuffer — pre-allocated GAE buffer, (T,B,N,K) shapes, symlog/twohot utilities
-│   └── ppo.py         # PPOTrainer — rollout collection, GAE, PPO epochs, async W&B, checkpointing
-└── ui/
-    └── renderer.py    # GameRenderer — pygame renderer reading TensorState directly
+  config/
+    core.py                 # Frozen dataclasses: ShipConfig, EnvConfig, ModelConfig, RewardConfig
+    training.py             # TrainConfig, ScaleConfig, ObstacleCacheConfig
+    schedule.py             # Schedule primitives: constant, linear, stepped, exponential, join
+    obs_spec.py             # ObsConfig + transform blocks (Fourier, Symlog, OneHot, ...)
+  env/
+    state.py                # TensorState — mutable GPU state for B parallel envs
+    physics.py              # Pure physics (kinematics, shooting, collisions)
+    env.py                  # TensorEnv — vectorized physics, no rewards
+    rewards.py              # Decomposed reward components (19 components, K=19 critic heads)
+    wrapper.py              # MVPEnvWrapper — obs, rewards, auto-reset
+    obstacle_physics.py     # Harmonic gravity + PBD obstacle dynamics
+    obstacle_cache.py       # Pre-converged obstacle map cache
+  models/mvp/
+    encoder.py              # ShipEncoder — generic obs pipeline driven by ObsConfig
+    attention.py            # TransformerBlock (MHSA + GatedMLP) with alive masking
+    griffin.py              # YemongBlock: TransformerBlock + Griffin RG-LRU temporal block
+    policy.py               # MVPPolicy — encoder → YemongBlocks → action/value heads
+  agents/                   # Scripted agents (stochastic_scripted, jouster, boom_zoom, ...)
+  modes/
+    agent_factory.py        # Resolve agent specs (null/random/scripted/latest/path.pt)
+    interactive.py          # run_watch_mode + keyboard input
+    collect.py              # run_collect_stats_mode
+    elo_stats.py            # run_elo_stats_mode
+  train/rl/
+    buffer.py               # RolloutBuffer — pre-allocated GAE buffer, twohot utilities
+    ppo.py                  # PPOTrainer — rollout, GAE, PPO epochs, W&B, checkpointing
+    roster.py               # EloRoster — ELO-rated league pool with proximity-weighted sampling
+    sigreg.py               # Sigma regularization loss
+  ui/
+    renderer.py             # GameRenderer — pygame renderer reading TensorState directly
 
-tests/
-├── env/               # physics, rewards, env + wrapper tests
-├── models/            # encoder, attention, policy tests
-└── train/             # buffer, GAE, minibatch iterator tests
-
-old_code/              # Archived prior codebase (world model / Hydra era)
+tests/                      # 140 tests across env, models, and train
 ```
 
 ## Architecture
 
-### Environment
-
-- **`TensorEnv`**: Pure physics, no rewards. `step()` returns `(dones, truncated)` only.
-- **`MVPEnvWrapper`**: Owns observation construction, reward computation, and auto-reset. Snapshots pre-step state to compute per-ship rewards.
-- **Ships per environment** set by `EnvConfig.num_ships`; all run the same shared policy (self-play).
-
-### Observations (per ship)
-
-| Feature | Encoding | Dims |
-|---|---|---|
-| Position (x, y) | Fourier (log-spaced freqs) | `4 * n_fourier_freqs` |
-| Velocity (vx, vy) | Symlog | 2 |
-| Attitude (cos, sin) | Raw | 2 |
-| Angular velocity | Symlog | 1 |
-| Health, power, cooldown | Normalized scalars | 3 |
-| Team | Learned embedding | 4 |
-| Alive flag | Float | 1 |
-| Previous action | One-hot (power\|turn\|shoot) | 12 |
-
 ### Policy (`MVPPolicy`)
 
 ```
-obs dict → ShipEncoder → RelationalSelfAttention (alive masking) → per-ship GRU → action/value heads
+obs dict → ShipEncoder → N+M YemongBlocks → [:N] ships only → ActionHead + TeamPMA + ValueHead
 ```
 
-- **Action space**: Factored categorical — 3 power × 7 turn × 2 shoot (joint log-prob = sum of three).
-- **GRU hidden state**: `(1, B*N, D)`, `batch_first=False`.
-- **Value**: K=12 distributional heads per ship (one per reward component); 255 categorical bins in double-symlog space `[-20, 20]`, trained with cross-entropy on twohot targets (DreamerV3-style).
+- **ShipEncoder**: Generic pipeline driven by `ObsConfig` — iterates feature specs, applies transform chains, concatenates, projects to `d_model`.
+- **YemongBlock**: Spatial TransformerBlock (MHSA + GatedMLP) followed by a temporal Griffin RG-LRU block (RG-LRU + GatedMLP). Obstacle tokens participate in attention and carry hidden state but receive no action/value heads.
+- **ActionHead**: Factored categorical — 3 power × 7 turn × 2 shoot actions (joint log-prob = sum of three).
+- **TeamPMA**: Pooling by Multi-head Attention per team, broadcast back to each ship for the value head.
+- **ValueHead**: K=19 distributional heads (one per reward component). 255 categorical bins in double-symlog space `[-20, 20]`, trained with cross-entropy on twohot targets (DreamerV3-style). `ReturnScaler` normalizes between symlog-reward space (GAE) and the value head's input/output range.
 
-### Rewards (decomposed critic + lambda aggregation)
+Hidden state: `(n_layers, B*(N+M), CONV_KERNEL * D)` — RG-LRU state + causal conv buffer packed together so rollout (T=1) and PPO re-evaluation (T=128) use identical causal context.
 
-Each ship has K=12 independent value heads, each predicting only events that happen **to that ship**. Zero-sum accounting is deferred to advantage aggregation.
+### Observations (`ObsConfig`)
 
-| Component | Allied λ | Enemy λ | Signal |
-|---|---|---|---|
-| damage | +1 | −1 | damage taken this step |
-| death | +1 | −1 | ship destroyed |
-| victory | +1 | −1 | game outcome |
-| exposure | +1 | −1 | in enemy crosshairs |
-| facing | +1 | 0 | turning toward nearest enemy |
-| turn_rate | +1 | 0 | angular velocity reward |
-| proximity | +1 | 0 | closing distance to enemy |
-| closing_speed | +1 | 0 | radial closing speed |
-| positioning | +1 | 0 | offensive alignment |
-| power_range | +1 | 0 | power in useful range |
-| speed_range | +1 | 0 | speed in useful range |
-| shoot_quality | +1 | 0 | shot quality |
+Features are specified as `(source, transform_chain)` pairs. Each transform block is a frozen dataclass:
 
-**Advantage aggregation**: For ship _i_, `A_i = Σ_j Σ_k λ(same_team[i,j], k) · A_j^(k)` where lambdas are relative to the querying ship's team. Allied component advantages add; outcome component advantages subtract for enemies. This replaces explicit team-1 reward negation.
+| Block | Type | Output dims |
+|---|---|---|
+| `Fourier(n, period)` | S→V | 2n |
+| `FourierAngle(n)` | V→V | 2n |
+| `SymlogVec()` | V→V | 2 |
+| `VecMag()` | V→S | 1 |
+| `Symlog()` | S→S | 1 |
+| `Normalize(scale)` | S→S | 1 |
+| `Clamp(lo, hi)` | S→S | 1 |
+| `Bucketize(n)` | S→S | 1 (int) |
+| `OneHot(n)` | S→V | n |
+| `AsFloat()` | S→S | 1 |
+
+Default config (`OBS_CONFIG`, raw_dim=92): Fourier position (10 freqs, period=world size), FourierAngle velocity direction (10 freqs), symlog velocity speed, symlog angular velocity, one-hot health (11 classes), normalized power, clamped cooldown, team one-hot, alive flag, previous action one-hots (power/turn/shoot), normalized radius. The Fourier period matches the map boundary exactly so toroidal position wraps correctly.
+
+### Rewards (decomposed critic)
+
+19 independent reward components, each with its own value head. Zero-sum accounting is handled at PPO update time via a lambda aggregation matrix — no explicit reward negation for enemies.
+
+**Global (lambda-aggregated across ships):** `ally_damage`, `enemy_damage`, `ally_death`, `enemy_death`, `ally_win`, `enemy_win`, `facing`, `closing_speed`, `shoot_quality`
+
+**Local (self-only, lambda=0 for all others):** `kill_shot`, `kill_assist`, `damage_taken`, `damage_dealt_enemy`, `damage_dealt_ally`, `death`, `obstacle_death`, `obstacle_proximity`, `obstacle_closing_speed`, `obstacle_tti`
+
+### League Play
+
+`EloRoster` maintains a pool of rated agents (past checkpoints, avg-policy, scripted). Opponents are sampled by ELO proximity (`exp(-|elo_i - training_elo| / temperature)`). New checkpoints are added at ELO milestones; weakest are pruned when the roster exceeds capacity. ELO ratings are zero-sum and updated after each eval batch.
 
 ## Configuration
 
-All hyperparameters live in [main.py](main.py) as frozen dataclasses — no config files. To experiment, edit `main.py` directly.
+All hyperparameters live in `runs/`. The shared constants (`MODEL_CONFIG`, `OBS_CONFIG`, `REWARDS`, `SHIP_CONFIG`) are in `runs/shared.py`. Each run profile imports from shared and overrides only what differs.
+
+Time-varying parameters (learning rate, loss coefficients, opponent fractions) are expressed as schedules using primitives in `config/schedule.py`:
 
 ```python
-ship_config   = ShipConfig()                    # physics defaults
-env_config    = EnvConfig(num_ships=8, ...)
-model_config  = ModelConfig(d_model=128, n_heads=4, n_fourier_freqs=8, num_value_components=12, num_bins=255, bin_lo=-20.0, bin_hi=20.0)
-reward_config = RewardConfig(damage_weight=0.01, ...)
-train_config  = TrainConfig(num_envs=128, num_steps=512, checkpoint_interval=500, ...)
+learning_rate = linear((0, 1e-7), (5_000_000, 3e-4))   # warmup
+scripted_fraction = stepped((0, 0.5), (50_000_000, 0.3)) # step at 50M
 ```
+
+## Checkpoints
+
+Saved to `checkpoints/<run-name>/step_<N>.pt` on a configurable interval. Each file contains policy weights, optimizer state, ELO roster, return scaler, and the serialized `ObsConfig` (so the correct observation pipeline is always reconstructed on load).
 
 ## Logging
 
-Training logs metrics to W&B asynchronously (background thread) to avoid GPU sync on the hot path. Run `wandb login` before training. All configs are serialized into the W&B run config for reproducibility.
-
-## Checkpointing
-
-Checkpoints are saved to `checkpoints/checkpoint_{update:06d}.pt` every `checkpoint_interval` updates. Each file contains policy weights, optimizer state, update index, and global step count.
+W&B logging runs asynchronously in a background thread. All configs (model, obs, rewards, schedule snapshots) are serialized into the W&B run config. Disable with `--smoke`.
 
 ## Development
 
-- **Style Guide**: [STYLE_GUIDE.md](STYLE_GUIDE.md)
-- **Tests**: 74 tests across env, models, and train modules.
-
 ```bash
-uv run pytest
+uv run pytest          # 140 tests
+uv run pytest -x -q    # stop on first failure
 ```
+
+See [STYLE_GUIDE.md](STYLE_GUIDE.md) for code conventions.

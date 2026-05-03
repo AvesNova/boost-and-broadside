@@ -68,10 +68,14 @@ def _load_checkpoint_agent(
 ) -> ResolvedAgent:
     """Load a .pt checkpoint and return a ResolvedAgent."""
     from boost_and_broadside.models.mvp.policy import MVPPolicy
+    from boost_and_broadside.config.obs_spec import obs_config_from_dict
 
     ckpt = torch.load(str(path), map_location=device, weights_only=False)
+    if "obs_config" not in ckpt:
+        raise KeyError(f"Checkpoint {path!r} has no 'obs_config' key — retrain from scratch.")
+    obs_config = obs_config_from_dict(ckpt["obs_config"])
     K = ckpt["policy_state_dict"]["value_head.weight"].shape[0]
-    policy = MVPPolicy(model_config, ship_config, num_value_components=K, num_ships=num_ships).to(device)
+    policy = MVPPolicy(model_config, obs_config, num_value_components=K, num_ships=num_ships).to(device)
     result = policy.load_state_dict(ckpt["policy_state_dict"], strict=False)
     if result.missing_keys:
         print(f"    [warn] missing keys in {path.name}: {result.missing_keys}")
