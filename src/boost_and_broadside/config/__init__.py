@@ -13,6 +13,7 @@ from boost_and_broadside.config.schedule import (
     linear,
     stepped,
     exponential,
+    cosine_anneal,
     join,
 )
 from boost_and_broadside.config.training import (
@@ -47,6 +48,7 @@ __all__ = [
     "linear",
     "stepped",
     "exponential",
+    "cosine_anneal",
     "join",
     "ObstacleCacheConfig",
     "ScaleConfig",

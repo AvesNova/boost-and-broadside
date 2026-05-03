@@ -32,8 +32,7 @@ _NUM_OBSTACLES = 0
 _NUM_MINIBATCHES = 32
 
 RL_SCHEDULE = TrainingSchedule(
-    # Warmup from 1e-7 to 3e-4 over 5M steps, then hold.
-    learning_rate=linear((0, 1e-7), (5_000_000, 3e-4)),
+    learning_rate=linear((0, 1e-7), (5_000_000, 3e-4), (30_000_000, 1e-4)),
     policy_gradient_coef=constant(1.0),
     entropy_coef=constant(0.005),
     behavior_cloning_coef=linear(
@@ -60,7 +59,9 @@ RL_SCHEDULE = TrainingSchedule(
     allow_scripted_in_roster=stepped((0, True)),
     elo_eval_games=stepped((0, 256)),
     elo_eval_interval=stepped((0, 10)),
-    checkpoint_interval=stepped((0, 10)),
+    checkpoint_interval=stepped((0, 1), (2_000_000, 10)),
+    num_epochs=stepped((0, 8), (10_000_000, 4)),
+    target_kl=stepped((0, 0.1), (10_000_000, 0.02)),
 )
 
 RL_TRAIN_CONFIG = TrainConfig(
@@ -77,7 +78,6 @@ RL_TRAIN_CONFIG = TrainConfig(
     schedule=RL_SCHEDULE,
     rewards=REWARDS,
     num_steps=128,
-    num_epochs=4,
     num_minibatches=_NUM_MINIBATCHES,
     gamma=0.99,
     gae_lambda=0.95,

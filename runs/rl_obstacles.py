@@ -77,6 +77,8 @@ RL_OBSTACLES_SCHEDULE = TrainingSchedule(
     elo_eval_games=stepped((0, 0)),
     elo_eval_interval=stepped((0, 0)),
     checkpoint_interval=stepped((0, 1), (3, 10)),
+    num_epochs=constant(4),
+    target_kl=constant(None),
 )
 
 RL_OBSTACLES_TRAIN_CONFIG = TrainConfig(
@@ -95,7 +97,6 @@ RL_OBSTACLES_TRAIN_CONFIG = TrainConfig(
     schedule=RL_OBSTACLES_SCHEDULE,
     rewards=OBSTACLES_REWARDS,
     num_steps=128,
-    num_epochs=4,
     num_minibatches=32,
     gamma=0.99,
     gae_lambda=0.95,

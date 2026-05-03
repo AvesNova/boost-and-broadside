@@ -203,6 +203,8 @@ class _ResolvedSchedule:
     elo_eval_games: int
     elo_eval_interval: int
     checkpoint_interval: int
+    num_epochs: int
+    target_kl: float | None
 
 
 def _resolve_schedule(schedule: TrainingSchedule, step: int) -> _ResolvedSchedule:
@@ -225,6 +227,8 @@ def _resolve_schedule(schedule: TrainingSchedule, step: int) -> _ResolvedSchedul
         elo_eval_games=schedule.elo_eval_games(step),
         elo_eval_interval=schedule.elo_eval_interval(step),
         checkpoint_interval=schedule.checkpoint_interval(step),
+        num_epochs=schedule.num_epochs(step),
+        target_kl=schedule.target_kl(step),
     )
 
 
@@ -1440,7 +1444,11 @@ class PPOTrainer:
         last_returns_np = None
         last_logprob_np = None
 
-        for epoch_idx in range(cfg.num_epochs):
+        num_epochs = self._schedule_state.num_epochs
+        target_kl = self._schedule_state.target_kl
+
+        for epoch_idx in range(num_epochs):
+            kl_start = len(accum_scalar["train/approximate_kl"])
             iters = [
                 buf.get_minibatch_iterator(cfg.num_minibatches) for buf in all_buffers
             ]
@@ -1563,7 +1571,7 @@ class PPOTrainer:
                     accum_k["critic/return_mean"].append(stats_k_cpu[2])
                     accum_k["returns/component"].append(stats_k_cpu[3])
                     accum_k["critic/value_pred_mean"].append(stats_k_cpu[4])
-                    if epoch_idx == cfg.num_epochs - 1:
+                    if epoch_idx == num_epochs - 1:
                         accum_k["critic/explained_variance"].append(stats_k_cpu[1])
 
                 if "adv_std_k" in diag_primary:
@@ -1581,9 +1589,15 @@ class PPOTrainer:
                         diag_primary["logprob_flat"][alive_flat].cpu().numpy()
                     )
 
+            if target_kl is not None:
+                epoch_kls = accum_scalar["train/approximate_kl"][kl_start:]
+                if epoch_kls and torch.stack(epoch_kls).mean().item() > target_kl:
+                    break
+
         metrics: dict = {
             k: torch.stack(v).mean().item() for k, v in accum_scalar.items() if v
         }
+        metrics["train/epochs_completed"] = float(epoch_idx + 1)
 
         for key, tensors in accum_k.items():
             if not tensors:

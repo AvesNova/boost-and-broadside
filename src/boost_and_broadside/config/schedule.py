@@ -23,6 +23,11 @@ exponential(*keypoints)
     All values must be strictly positive. Clamps at both ends.
     Requires ≥ 2 keypoints.
 
+cosine_anneal(*keypoints)
+    Half-cosine interpolation between (step, value) keypoints.
+    Produces a smooth S-curve from each value to the next (slow start, fast middle,
+    slow end). Clamps at both ends. Requires ≥ 2 keypoints.
+
 join(*segments)
     Compose multiple schedules. Each segment is (activation_step, schedule_fn).
     At any step, the last segment whose activation_step ≤ step is used.
@@ -135,6 +140,35 @@ def exponential(*keypoints: tuple[int, float]) -> Schedule:
     return _schedule
 
 
+def cosine_anneal(*keypoints: tuple[int, float]) -> Schedule:
+    """Half-cosine interpolation between (step, value) keypoints.
+
+    Between each consecutive pair of keypoints, applies a half-cosine curve
+    that produces a smooth S-curve: slow at both ends, fast in the middle.
+    Clamps to the first value before the first keypoint and to the last
+    value after the last keypoint. Requires ≥ 2 keypoints.
+    """
+    if len(keypoints) < 2:
+        raise ValueError(
+            f"cosine_anneal() requires at least 2 keypoints, got {len(keypoints)}"
+        )
+    steps = [kp[0] for kp in keypoints]
+    values = [kp[1] for kp in keypoints]
+
+    def _schedule(step: int) -> float:
+        if step <= steps[0]:
+            return values[0]
+        if step >= steps[-1]:
+            return values[-1]
+        for i in range(len(steps) - 1):
+            if steps[i] <= step <= steps[i + 1]:
+                t = (step - steps[i]) / (steps[i + 1] - steps[i])
+                return values[i] + (values[i + 1] - values[i]) * (1 - math.cos(math.pi * t)) / 2
+        return values[-1]  # unreachable
+
+    return _schedule
+
+
 def join(*segments: tuple[int, Schedule]) -> Schedule:
     """Compose multiple schedules, each active from a given step.
 
@@ -209,3 +243,7 @@ class TrainingSchedule:
     elo_eval_games: Callable[[int], int]
     elo_eval_interval: Callable[[int], int]  # 0 = disabled
     checkpoint_interval: Callable[[int], int]  # 0 = disabled
+
+    # --- PPO epoch control ---
+    num_epochs: Callable[[int], int]  # PPO update epochs per rollout
+    target_kl: Callable[[int], float | None]  # exit epoch loop early if mean approx KL exceeds this; None = disabled

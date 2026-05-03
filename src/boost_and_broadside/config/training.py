@@ -70,7 +70,6 @@ class TrainConfig:
 
     # --- PPO hyperparameters ---
     num_steps: int  # rollout length per environment
-    num_epochs: int  # PPO update epochs per rollout
     num_minibatches: int  # minibatches per epoch (scales[0].num_envs must be divisible)
     gamma: float  # discount factor
     gae_lambda: float  # GAE lambda
@@ -98,6 +97,7 @@ class TrainConfig:
 
     # --- Logging ---
     log_interval: int = 10  # print to terminal every N updates
+
 
     def __post_init__(self) -> None:
         if len(self.scales) == 0:

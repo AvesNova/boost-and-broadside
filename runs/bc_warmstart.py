@@ -24,7 +24,6 @@ BC_WARMSTART_PRETRAIN_CONFIG = TrainConfig(
     schedule=BC_SCHEDULE,
     rewards=REWARDS,
     num_steps=128,
-    num_epochs=4,
     num_minibatches=4,
     gamma=0.99,
     gae_lambda=0.95,
