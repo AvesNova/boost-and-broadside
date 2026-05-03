@@ -55,8 +55,8 @@ class StochasticAgentConfig:
     boost_speed_ramp: Tuple[float, float] = (16, 32)
     boost_speed_prob: Tuple[float, float] = (0.68, 0.04)
 
-    close_range_ramp: Tuple[float, float] = (300, 500)
-    close_range_prob: Tuple[float, float] = (0.067, 0.95)
+    close_range_ramp: Tuple[float, float] = (10, 50)
+    close_range_prob: Tuple[float, float] = (0.5, 0.05)
 
     # Turn Ramps
     turn_angle_ramp: Tuple[float, float] = (0.03, 0.12)

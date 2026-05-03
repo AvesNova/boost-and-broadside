@@ -136,7 +136,7 @@ def _update_kinematics(
     # Attitude — align with velocity direction then apply turn rotation
     speed_safe = torch.clamp(speed, min=_EPS)
     vel_dir = state.ship_vel / speed_safe
-    stopped = speed < _EPS
+    stopped = speed < config.min_speed
     base_att = torch.where(stopped, state.ship_attitude, vel_dir)
 
     rotation = torch.polar(torch.ones_like(turn_offset), turn_offset)  # (B, N)
