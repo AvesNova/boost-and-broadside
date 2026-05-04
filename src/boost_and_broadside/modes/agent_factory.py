@@ -177,7 +177,7 @@ def get_actions(
 
     if agent.kind == "policy":
         with torch.no_grad():
-            action, _, _, agent.hidden = agent.agent.get_action_and_value(
+            action, _, _, _, agent.hidden = agent.agent.get_action_and_value(
                 obs, agent.hidden
             )
         return action

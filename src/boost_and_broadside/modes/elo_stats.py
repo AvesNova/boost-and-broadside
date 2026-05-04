@@ -235,7 +235,7 @@ def run_elo_stats_mode(
             else:  # policy
                 obs_a = {k: v[active] for k, v in obs.items()}
                 with torch.no_grad():
-                    acts_a, _, _, agent.hidden = agent.agent.get_action_and_value(
+                    acts_a, _, _, _, agent.hidden = agent.agent.get_action_and_value(
                         obs_a, agent.hidden
                     )
                 all_acts[a_idx, active] = acts_a.int()

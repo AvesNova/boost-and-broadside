@@ -95,6 +95,9 @@ class TrainConfig:
     # --- Obstacle cache (None when num_obstacles=0) ---
     obstacle_cache: ObstacleCacheConfig | None = None
 
+    # --- Next-state prediction loss ---
+    next_state_coef: float = 0.05  # weight for next-state prediction loss; 0 to disable
+
     # --- Logging ---
     log_interval: int = 10  # print to terminal every N updates
 

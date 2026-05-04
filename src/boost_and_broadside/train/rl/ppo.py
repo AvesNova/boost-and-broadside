@@ -35,7 +35,7 @@ from boost_and_broadside.env.obstacle_cache import ObstacleCache
 from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
 from boost_and_broadside.env.state import TensorState
 from boost_and_broadside.env.wrapper import MVPEnvWrapper
-from boost_and_broadside.models.mvp.policy import MVPPolicy
+from boost_and_broadside.models.mvp.policy import MVPPolicy, AUX_CONT_DIM, AUX_DIM
 from boost_and_broadside.train.rl.buffer import (
     RolloutBuffer,
     ReturnScaler,
@@ -99,6 +99,43 @@ def _slice_state(state: TensorState, start: int, end: int) -> TensorState:
         obstacle_gcenter=state.obstacle_gcenter[start:end],
         ship_hit_obstacle=state.ship_hit_obstacle[start:end],
     )
+
+
+def _extract_aux_targets(
+    obs: dict[str, torch.Tensor],
+    num_ships: int,
+    ship_config: "ShipConfig",
+) -> torch.Tensor:
+    """Extract and normalize dynamic ship features from an obs dict for aux loss targets.
+
+    Features (AUX_DIM=11):
+        pos(2)  / world_size[0]        → ≈[0, 1]
+        vel(2)  / max_speed            → ≈[-1, 1]
+        att(2)  — unit vector, raw
+        ang_vel(1) via symlog          → ≈[-2, 2]
+        health(1) / max_health         → [0, 1]
+        power(1)  / max_power          → [0, 1]
+        cooldown(1) / firing_cooldown  → [0, 1]
+        alive(1)  cast to float        → 0 or 1 (BCE target, not MSE)
+
+    Args:
+        obs:        Raw obs dict with (B, N+M, ...) tensors.
+        num_ships:  N — number of ship tokens (first N entries of each obs key).
+        ship_config: Used for normalization scales.
+
+    Returns:
+        (B, N, AUX_DIM) float32.
+    """
+    N = num_ships
+    pos      = obs["pos"][:, :N].float()      / ship_config.world_size[0]   # (B, N, 2)
+    vel      = obs["vel"][:, :N].float()      / ship_config.max_speed       # (B, N, 2)
+    att      = obs["att"][:, :N].float()                                     # (B, N, 2)
+    ang_vel  = symlog(obs["ang_vel"][:, :N].float())                        # (B, N, 1)
+    health   = obs["health"][:, :N].float()   / ship_config.max_health      # (B, N, 1)
+    power    = obs["power"][:, :N].float()    / ship_config.max_power       # (B, N, 1)
+    cooldown = obs["cooldown"][:, :N].float() / ship_config.firing_cooldown # (B, N, 1)
+    alive    = obs["alive"][:, :N].float().unsqueeze(-1)                    # (B, N, 1)
+    return torch.cat([pos, vel, att, ang_vel, health, power, cooldown, alive], dim=-1)
 
 
 def _override_opponent(
@@ -379,6 +416,7 @@ class PPOTrainer:
             gae_lambda=train_config.gae_lambda,
             device=self.device,
             num_tokens=N + M,
+            aux_dim=AUX_DIM,
         )
 
         # Pre-compute lambda masks for active components only.
@@ -623,9 +661,15 @@ class PPOTrainer:
         # League hidden state — re-initialised each rollout when the entry changes.
         league_hidden: torch.Tensor | None = None
 
-        # Aux-scale obs, hidden states, and last-done flags — live across the whole run.
+        # Action buffer: the most-recently-decided combined action, applied by env.step
+        # next iteration (1-step delay). Initialized to zero-action (coast/straight/no-shoot).
+        # Maintained between rollouts like hidden state.
+        action_buffer = torch.zeros(B, N, 3, dtype=torch.int32, device=self.device)
+
+        # Aux-scale obs, hidden states, action buffers, and last-done flags — live across the whole run.
         aux_obs: list[dict[str, torch.Tensor]] = []
         aux_hiddens: list[torch.Tensor] = []
+        aux_action_buffers: list[torch.Tensor] = []
         aux_last_dones: list[torch.Tensor] = []
         for sc, aux_w in zip(self.cfg.scales[1:], self.aux_wrappers):
             aux_obs.append(aux_w.reset())
@@ -636,9 +680,21 @@ class PPOTrainer:
                     sc.num_envs, aux_num_tokens, self.device
                 )
             )
+            aux_action_buffers.append(
+                torch.zeros(sc.num_envs, sc.env_config.num_ships, 3, dtype=torch.int32, device=self.device)
+            )
             aux_last_dones.append(
                 torch.zeros(sc.num_envs, dtype=torch.bool, device=self.device)
             )
+
+        # CUDA streams for overlapping env physics with network forward passes.
+        # env_stream: runs wrapper.step (physics + obs extraction)
+        # net_stream: runs all policy forward passes
+        env_stream = torch.cuda.Stream() if self.device.type == "cuda" else None
+        net_stream = torch.cuda.Stream() if self.device.type == "cuda" else None
+
+        # Shortcut to ship config for aux target normalization
+        _ship_cfg = self.ship_config
 
         start_time = time.time()
 
@@ -701,92 +757,55 @@ class PPOTrainer:
                 self._current_league_policy = None
 
             # ----------------------------------------------------------------
-            # Rollout collection
+            # Rollout collection  (1-step action delay + parallel env/net streams)
+            #
+            # Semantics: at step t, obs(t) = {state(t), prev_action(t-1)}.
+            # action_buffer holds action(t-1) — applied to the env this step.
+            # The policy computes action(t) in parallel; it is stored in action_buffer
+            # and injected into obs(t+1).prev_action so the next policy call sees
+            # what it just decided.
             # ----------------------------------------------------------------
             for _ in range(self.cfg.num_steps):
-                # Training policy: all envs, all ships
-                with torch.autocast("cuda", dtype=torch.bfloat16):
-                    action, logprob, value_norm, hidden = (
-                        self.policy.get_action_and_value(obs, hidden)
-                    )
+                team_id = obs["team_id"][:, :N]  # (B, N) — stable within a step
 
-                # Team IDs — used for opponent overrides, actor mask, and BC expert masking
-                team_id = obs["team_id"][:, :N]  # (B, N) int — ship tokens only
-
+                # -- Phase 1: scripted computations on CURRENT state (before env stream) --
+                # Scripted agent reads env.state directly; must run before stream launch
+                # to avoid data hazard with the physics kernels.
                 if self._policy_gradient_coef == 0.0:
-                    # BC pretraining: pure self-play — live policy controls all ships.
-                    # Query scripted agent on all B envs for supervised targets.
-                    # No opponent overrides; actor_mask is all-True.
+                    # BC pretraining: scripted BC targets only, no opponent overrides
                     with torch.no_grad():
                         _, expert_probs_step = (
                             self.scripted_agent.get_actions_and_probs(
                                 self.wrapper.env.state
                             )
-                        )  # expert_probs_step: (B, N, 12)
-                    actor_mask = torch.ones(B, N, dtype=torch.bool, device=self.device)
+                        )
                     use_avg = False
                     use_league = False
+                    use_sc_bc = False
+                    use_sc_opponent = False
+                    action_scripted = None
+                    action_league_scripted = None
                 else:
-                    # avg active when: slots exist, phase wants it, and avg model has been snapshotted
                     use_avg = (
                         self._avg_update_count > 0
                         and self.B_avg > 0
                         and self._schedule_state.avg_model_fraction > 0.0
                     )
-
-                    # Avg-model opponent actions (when ready)
-                    if use_avg:
-                        with (
-                            torch.no_grad(),
-                            torch.autocast("cuda", dtype=torch.bfloat16),
-                        ):
-                            obs_avg = _slice_obs(obs, avg_start, avg_end)
-                            action_avg, _, _, avg_hidden = (
-                                self.avg_policy.get_action_and_value(
-                                    obs_avg, avg_hidden
-                                )
-                            )
-
-                    # League opponent actions (when a valid entry is loaded for this rollout)
                     use_league = (
                         self.B_league > 0
                         and self._current_league_entry is not None
                         and self._schedule_state.league_fraction > 0.0
                     )
-                    if use_league:
-                        if self._current_league_policy is not None:
-                            with (
-                                torch.no_grad(),
-                                torch.autocast("cuda", dtype=torch.bfloat16),
-                            ):
-                                obs_league = _slice_obs(obs, league_start, league_end)
-                                action_league, _, _, league_hidden = (
-                                    self._current_league_policy.get_action_and_value(
-                                        obs_league, league_hidden
-                                    )
-                                )
-                        else:  # scripted
-                            state_league = _slice_state(
-                                self.wrapper.env.state, league_start, league_end
-                            )
-                            with torch.no_grad():
-                                action_league = self.scripted_agent.get_actions(
-                                    state_league
-                                )
-
-                    # use_sc_opponent: scripted agent plays as opponent when phase requests it.
-                    # Controlled entirely by scripted_frac > 0 in the current phase.
                     use_sc_bc = self.B_sc > 0
                     use_sc_opponent = (
                         use_sc_bc and self._schedule_state.scripted_fraction > 0.0
                     )
 
-                    # BC target collection: query scripted agent on ALL envs whenever
-                    # bc_coef is active. This is independent of scripted_frac and pg_coef.
-                    # actor_mask in the loss already excludes opponent ships from the BC
-                    # gradient, so no need to zero them out here.
                     expert_probs_step: torch.Tensor | None = None
                     action_scripted = None
+                    action_league_scripted = None
+
+                    # BC targets + scripted opponent actions (both read env.state)
                     if (
                         self._behavior_cloning_coef > 0.0
                         and self.scripted_agent is not None
@@ -800,7 +819,6 @@ class PPOTrainer:
                         if use_sc_opponent:
                             action_scripted = action_scripted_all[sc_start:sc_end]
                     elif use_sc_bc:
-                        # bc_coef == 0 but scripted opponent is active — need actions only
                         with torch.no_grad():
                             state_sc = _slice_state(
                                 self.wrapper.env.state, sc_start, sc_end
@@ -809,11 +827,92 @@ class PPOTrainer:
                                 self.scripted_agent.get_actions_and_probs(state_sc)
                             )
 
-                    # Override opponent team actions; training-policy actions are the base
-                    action = action.clone()
+                    # Scripted league opponent also reads env.state before the env stream
+                    if use_league and self._current_league_policy is None:
+                        with torch.no_grad():
+                            state_league = _slice_state(
+                                self.wrapper.env.state, league_start, league_end
+                            )
+                            action_league_scripted = self.scripted_agent.get_actions(
+                                state_league
+                            )
+
+                # -- Phase 2: parallel env step + all network forwards --
+                # env_stream: apply action_buffer (previous step's decision) to physics
+                # net_stream: compute new actions and values for all policies
+                if env_stream is not None:
+                    env_stream.wait_stream(torch.cuda.current_stream())
+                    net_stream.wait_stream(torch.cuda.current_stream())
+
+                    with torch.cuda.stream(env_stream):
+                        next_obs, reward, dones, truncated, info = self.wrapper.step(
+                            action_buffer
+                        )
+
+                    with torch.cuda.stream(net_stream):
+                        with torch.autocast("cuda", dtype=torch.bfloat16):
+                            action, logprob, value_norm, pred_next, hidden = (
+                                self.policy.get_action_and_value(obs, hidden)
+                            )
+                        if use_avg:
+                            with torch.autocast("cuda", dtype=torch.bfloat16):
+                                obs_avg = _slice_obs(obs, avg_start, avg_end)
+                                action_avg, _, _, _, avg_hidden = (
+                                    self.avg_policy.get_action_and_value(
+                                        obs_avg, avg_hidden
+                                    )
+                                )
+                        if use_league and self._current_league_policy is not None:
+                            with torch.autocast("cuda", dtype=torch.bfloat16):
+                                obs_league = _slice_obs(obs, league_start, league_end)
+                                action_league_net, _, _, _, league_hidden = (
+                                    self._current_league_policy.get_action_and_value(
+                                        obs_league, league_hidden
+                                    )
+                                )
+                        else:
+                            action_league_net = None
+
+                    torch.cuda.synchronize()
+                else:
+                    # CPU fallback (no streams)
+                    next_obs, reward, dones, truncated, info = self.wrapper.step(
+                        action_buffer
+                    )
+                    with torch.autocast("cuda", dtype=torch.bfloat16):
+                        action, logprob, value_norm, pred_next, hidden = (
+                            self.policy.get_action_and_value(obs, hidden)
+                        )
+                    if use_avg:
+                        with torch.autocast("cuda", dtype=torch.bfloat16):
+                            obs_avg = _slice_obs(obs, avg_start, avg_end)
+                            action_avg, _, _, _, avg_hidden = (
+                                self.avg_policy.get_action_and_value(obs_avg, avg_hidden)
+                            )
+                    if use_league and self._current_league_policy is not None:
+                        with torch.autocast("cuda", dtype=torch.bfloat16):
+                            obs_league = _slice_obs(obs, league_start, league_end)
+                            action_league_net, _, _, _, league_hidden = (
+                                self._current_league_policy.get_action_and_value(
+                                    obs_league, league_hidden
+                                )
+                            )
+                    else:
+                        action_league_net = None
+
+                # -- Phase 3: combine actions and compute actor mask --
+                if self._policy_gradient_coef == 0.0:
+                    actor_mask = torch.ones(B, N, dtype=torch.bool, device=self.device)
+                else:
+                    action_league = (
+                        action_league_scripted
+                        if action_league_scripted is not None
+                        else action_league_net
+                    )
                     sc_flags = self._opp_team_flag[: self.B_sc]
                     avg_flags = self._opp_team_flag[self.B_sc : self.B_sc + self.B_avg]
                     lg_flags = self._opp_team_flag[self.B_sc + self.B_avg :]
+                    action = action.clone()
                     if use_sc_opponent:
                         _override_opponent(
                             action, team_id, sc_flags, sc_start, sc_end, action_scripted
@@ -824,15 +923,9 @@ class PPOTrainer:
                         )
                     if use_league:
                         _override_opponent(
-                            action,
-                            team_id,
-                            lg_flags,
-                            league_start,
-                            league_end,
+                            action, team_id, lg_flags, league_start, league_end,
                             action_league,
                         )
-
-                    # Actor mask: True for ships whose actions were chosen by training policy
                     actor_mask = torch.ones(B, N, dtype=torch.bool, device=self.device)
                     if use_sc_opponent:
                         actor_mask[sc_start:sc_end] = team_id[
@@ -847,7 +940,15 @@ class PPOTrainer:
                             league_start:league_end
                         ] != lg_flags.unsqueeze(1)
 
-                next_obs, reward, dones, truncated, info = self.wrapper.step(action)
+                # -- Phase 4: inject decided action into next obs as prev_action --
+                # obs(t+1).prev_action = action(t) — what the policy just decided,
+                # will be executed by env.step next iteration.
+                next_obs["prev_power"][:, :N] = action[..., 0]
+                next_obs["prev_turn"][:, :N]  = action[..., 1]
+                next_obs["prev_shoot"][:, :N] = action[..., 2]
+
+                # Extract normalized next-state features for the aux loss target
+                true_next = _extract_aux_targets(next_obs, N, _ship_cfg)
 
                 if info.get("ep_reward") is not None:
                     ep_rewards.append(info["ep_reward"])
@@ -873,10 +974,17 @@ class PPOTrainer:
                     alive=obs["alive"][:, :N].bool(),
                     actor_mask=actor_mask,
                     expert_probs=expert_probs_step,
+                    true_next_state=true_next,
+                    terminated=done_any,
                 )
 
-                # Reset hidden states for terminated envs
+                # Update action buffer: action(t) will be applied by env.step next step
+                action_buffer = action.detach()
+
+                # Reset hidden states and action buffer for terminated envs
                 hidden = self.policy.reset_hidden_for_envs(hidden, done_any, num_tokens)
+                action_buffer = action_buffer.clone()
+                action_buffer[done_any] = 0
                 if use_avg and self.B_avg > 0:
                     avg_hidden = self.avg_policy.reset_hidden_for_envs(
                         avg_hidden, done_any[avg_start:avg_end], num_tokens
@@ -903,19 +1011,24 @@ class PPOTrainer:
                 obs = next_obs
                 self._global_step += B
 
-                # Aux-scale rollout steps (pure self-play, no opponent overrides)
+                # Aux-scale rollout steps (pure self-play, 1-step delay)
                 for i, (sc, aux_w, aux_buf) in enumerate(
                     zip(self.cfg.scales[1:], self.aux_wrappers, self.aux_buffers)
                 ):
                     aux_N = sc.env_config.num_ships
                     aux_num_tokens = aux_N + sc.env_config.num_obstacles
                     with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
-                        aux_action, aux_logprob, aux_value_norm, aux_hiddens[i] = (
+                        aux_action, aux_logprob, aux_value_norm, _, aux_hiddens[i] = (
                             self.policy.get_action_and_value(aux_obs[i], aux_hiddens[i])
                         )
                     next_aux_obs, aux_reward, aux_dones, aux_truncated, _ = aux_w.step(
-                        aux_action
+                        aux_action_buffers[i]
                     )
+                    # Inject aux decided action into next obs prev_action
+                    next_aux_obs["prev_power"][:, :aux_N] = aux_action[..., 0]
+                    next_aux_obs["prev_turn"][:, :aux_N]  = aux_action[..., 1]
+                    next_aux_obs["prev_shoot"][:, :aux_N] = aux_action[..., 2]
+                    aux_done_any = aux_dones | aux_truncated
                     aux_buf.add(
                         obs=aux_obs[i],
                         action=aux_action,
@@ -928,11 +1041,13 @@ class PPOTrainer:
                             sc.num_envs, aux_N, dtype=torch.bool, device=self.device
                         ),
                         expert_probs=None,
+                        terminated=aux_done_any,
                     )
-                    aux_done_any = aux_dones | aux_truncated
                     aux_hiddens[i] = self.policy.reset_hidden_for_envs(
                         aux_hiddens[i], aux_done_any, aux_num_tokens
                     )
+                    aux_action_buffers[i] = aux_action.detach().clone()
+                    aux_action_buffers[i][aux_done_any] = 0
                     aux_last_dones[i] = aux_dones
                     aux_obs[i] = next_aux_obs
                     self._global_step += sc.num_envs
@@ -941,14 +1056,14 @@ class PPOTrainer:
             # GAE computation
             # ----------------------------------------------------------------
             with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
-                _, _, next_value_norm, _ = self.policy.get_action_and_value(obs, hidden)
+                _, _, next_value_norm, _, _ = self.policy.get_action_and_value(obs, hidden)
             next_value = self.scaler.denormalize(next_value_norm)  # symlog-reward space
             self.buffer.compute_gae(next_value, dones.float())
 
             # Aux-scale GAE
             for i, (aux_buf, aux_h) in enumerate(zip(self.aux_buffers, aux_hiddens)):
                 with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
-                    _, _, next_aux_val_norm, _ = self.policy.get_action_and_value(
+                    _, _, next_aux_val_norm, _, _ = self.policy.get_action_and_value(
                         aux_obs[i], aux_h
                     )
                 next_aux_val = self.scaler.denormalize(next_aux_val_norm)
@@ -1166,6 +1281,8 @@ class PPOTrainer:
             mb_hidden,
             mb_actor_mask,
             mb_expert_probs,
+            mb_true_next,
+            mb_terminated,
         ) = batch
 
         need_sigreg = self._schedule_state.sigreg_coef > 0.0
@@ -1173,7 +1290,7 @@ class PPOTrainer:
         # can attend to obstacle tokens; mb_alive is ships-only and used for loss masking.
         alive_mask_full = mb_obs["alive"].bool()  # (T, B_mb, N+M)
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            logprob, entropy, new_value, policy_logits, z = self.policy.evaluate_actions(
+            logprob, entropy, new_value, policy_logits, z, pred_next = self.policy.evaluate_actions(
                 obs=mb_obs,
                 actions=mb_actions.long(),
                 initial_hidden=mb_hidden,
@@ -1307,12 +1424,44 @@ class PPOTrainer:
             z_flat = z.reshape(T_mb, B_mb * N_mb, D_mb)  # (T, B*N, D)
             sigreg_loss = self.sigreg(z_flat)
 
+        # ---- Next-state prediction loss (primary scale only) ----------------
+        next_state_loss = torch.tensor(0.0, device=self.device)
+        next_state_cont_loss = torch.tensor(0.0, device=self.device)
+        next_state_alive_loss = torch.tensor(0.0, device=self.device)
+        next_state_per_feat: torch.Tensor | None = None  # (11,) cpu, for logging
+        if is_primary and mb_true_next is not None and self.cfg.next_state_coef > 0.0:
+            non_terminal = ~mb_terminated.unsqueeze(-1)  # (T, B_mb, 1)
+            ns_mask = mb_alive & non_terminal             # (T, B_mb, N)
+            ns_mask_f = ns_mask.float()
+            ns_sum = ns_mask_f.sum().clamp(min=1.0)
+
+            cont_pred = pred_next[..., :AUX_CONT_DIM].float()   # (T, B_mb, N, 10)
+            cont_true = mb_true_next[..., :AUX_CONT_DIM]        # (T, B_mb, N, 10)
+            sq_err = (cont_pred - cont_true).pow(2)              # (T, B_mb, N, 10)
+            next_state_cont_loss = (
+                sq_err * ns_mask_f.unsqueeze(-1)
+            ).sum() / (ns_sum * AUX_CONT_DIM)
+
+            alive_logit = pred_next[..., AUX_CONT_DIM].float()  # (T, B_mb, N)
+            alive_true = mb_true_next[..., AUX_CONT_DIM]        # (T, B_mb, N)
+            bce_per = F.binary_cross_entropy_with_logits(
+                alive_logit, alive_true, reduction="none"
+            )
+            next_state_alive_loss = (bce_per * ns_mask_f).sum() / ns_sum
+            next_state_loss = next_state_cont_loss + next_state_alive_loss
+
+            with torch.no_grad():
+                per_feat_cont = (sq_err * ns_mask_f.unsqueeze(-1)).sum((0, 1, 2)) / ns_sum  # (10,)
+                per_feat_alive = ((bce_per * ns_mask_f).sum((0, 1, 2)) / ns_sum).unsqueeze(0)  # (1,)
+                next_state_per_feat = torch.cat([per_feat_cont, per_feat_alive], dim=0).cpu()  # (11,)
+
         loss = (
             self._policy_gradient_coef * pg_loss
             + self._schedule_state.value_function_coef * vf_loss
             + self._schedule_state.entropy_coef * ent_loss
             + self._behavior_cloning_coef * bc_loss
             + self._schedule_state.sigreg_coef * sigreg_loss
+            + self.cfg.next_state_coef * next_state_loss
         )
 
         # ---- Diagnostics (no grad) — kept as GPU tensors, .item() deferred to logging ----
@@ -1324,6 +1473,10 @@ class PPOTrainer:
             diag["ent_loss"] = ent_loss.detach()
             diag["bc_loss"] = bc_loss.detach()
             diag["sigreg_loss"] = sigreg_loss.detach()
+            diag["next_state_loss"] = next_state_loss.detach()
+            diag["next_state_cont_loss"] = next_state_cont_loss.detach()
+            diag["next_state_alive_loss"] = next_state_alive_loss.detach()
+            diag["next_state_per_feat"] = next_state_per_feat  # (11,) cpu or None
             diag["scripted_entropy"] = scripted_entropy.detach()
             diag["bc_kl"] = bc_loss.detach() - scripted_entropy.detach()
             diag["adv_var"] = adv_rms
@@ -1418,6 +1571,9 @@ class PPOTrainer:
             "train/entropy_loss": [],
             "train/behavioral_cloning_loss": [],
             "train/sigreg_loss": [],
+            "next_state/loss": [],
+            "next_state/cont_loss": [],
+            "next_state/alive_loss": [],
             "train/bc_kl": [],
             "train/scripted_entropy": [],
             "train/approximate_kl": [],
@@ -1441,6 +1597,11 @@ class PPOTrainer:
             "returns/component": [],
             "train/advantage_std_k": [],
         }
+        _NS_FEAT_NAMES = (
+            "pos_x", "pos_y", "vel_x", "vel_y", "att_x", "att_y",
+            "ang_vel", "health", "power", "cooldown", "alive",
+        )
+        ns_per_feat_accum: list[torch.Tensor] = []
         last_returns_np = None
         last_logprob_np = None
 
@@ -1467,6 +1628,9 @@ class PPOTrainer:
                     "ent": _z.clone(),
                     "bc": _z.clone(),
                     "sigreg": _z.clone(),
+                    "ns_loss": _z.clone(),
+                    "ns_cont": _z.clone(),
+                    "ns_alive": _z.clone(),
                     "bc_kl": _z.clone(),
                     "scripted_entropy": _z.clone(),
                     "kl": _z.clone(),
@@ -1496,6 +1660,9 @@ class PPOTrainer:
                     scalar_accum_step["ent"] += diag["ent_loss"] / n_scales
                     scalar_accum_step["bc"] += diag["bc_loss"] / n_scales
                     scalar_accum_step["sigreg"] += diag["sigreg_loss"] / n_scales
+                    scalar_accum_step["ns_loss"] += diag["next_state_loss"] / n_scales
+                    scalar_accum_step["ns_cont"] += diag["next_state_cont_loss"] / n_scales
+                    scalar_accum_step["ns_alive"] += diag["next_state_alive_loss"] / n_scales
                     scalar_accum_step["bc_kl"] += diag["bc_kl"] / n_scales
                     scalar_accum_step["scripted_entropy"] += (
                         diag["scripted_entropy"] / n_scales
@@ -1534,6 +1701,9 @@ class PPOTrainer:
                     scalar_accum_step["bc"]
                 )
                 accum_scalar["train/sigreg_loss"].append(scalar_accum_step["sigreg"])
+                accum_scalar["next_state/loss"].append(scalar_accum_step["ns_loss"])
+                accum_scalar["next_state/cont_loss"].append(scalar_accum_step["ns_cont"])
+                accum_scalar["next_state/alive_loss"].append(scalar_accum_step["ns_alive"])
                 accum_scalar["train/bc_kl"].append(scalar_accum_step["bc_kl"])
                 accum_scalar["train/scripted_entropy"].append(
                     scalar_accum_step["scripted_entropy"]
@@ -1577,6 +1747,9 @@ class PPOTrainer:
                 if "adv_std_k" in diag_primary:
                     accum_k["train/advantage_std_k"].append(diag_primary["adv_std_k"])
 
+                if diag_primary.get("next_state_per_feat") is not None:
+                    ns_per_feat_accum.append(diag_primary["next_state_per_feat"])
+
                 if record_histograms and "alive_flat" in diag_primary:
                     alive_flat = diag_primary["alive_flat"]
                     last_returns_np = (
@@ -1606,6 +1779,11 @@ class PPOTrainer:
             prefix = "returns" if key == "returns/component" else key
             for i, name in enumerate(self._active_names):
                 metrics[f"{prefix}/{name}"] = avg[i].item()
+
+        if ns_per_feat_accum:
+            avg_per_feat = torch.stack(ns_per_feat_accum).mean(0)  # (11,) cpu
+            for i, name in enumerate(_NS_FEAT_NAMES):
+                metrics[f"next_state/{name}"] = avg_per_feat[i].item()
 
         if last_returns_np is not None:
             metrics["hist/returns"] = last_returns_np

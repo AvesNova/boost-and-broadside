@@ -227,6 +227,7 @@ class RolloutBuffer:
         gae_lambda: float,
         device: torch.device,
         num_tokens: int | None = None,
+        aux_dim: int = 0,
     ) -> None:
         self.num_steps = num_steps
         self.num_envs = num_envs
@@ -236,6 +237,7 @@ class RolloutBuffer:
         self.gamma = gamma
         self.gae_lambda = gae_lambda
         self.device = device
+        self.aux_dim = aux_dim
 
         T, B, N, K = num_steps, num_envs, num_ships, num_components
 
@@ -259,6 +261,16 @@ class RolloutBuffer:
             (T, B, N, 12), device=device, dtype=torch.float32
         )
 
+        # Aux next-state prediction targets (only allocated when aux_dim > 0)
+        if aux_dim > 0:
+            self.true_next_states = torch.zeros(
+                (T, B, N, aux_dim), device=device, dtype=torch.float32
+            )
+        else:
+            self.true_next_states = None
+        # Episode termination mask: done | truncated — used to exclude resets from aux loss
+        self.terminated = torch.zeros((T, B), device=device, dtype=torch.bool)
+
         # Initial GRU hidden state at the start of this rollout
         self.initial_hidden: torch.Tensor | None = None
 
@@ -273,6 +285,7 @@ class RolloutBuffer:
         self.ptr = 0
         self.initial_hidden = None
         self.expert_probs.zero_()  # only filled for scripted-group envs; rest must be zero
+        self.terminated.zero_()
 
     def store_initial_hidden(self, hidden: torch.Tensor) -> None:
         """Store the GRU hidden state at rollout start.
@@ -293,22 +306,28 @@ class RolloutBuffer:
         alive: torch.Tensor,
         actor_mask: torch.Tensor | None = None,
         expert_probs: torch.Tensor | None = None,
+        true_next_state: torch.Tensor | None = None,
+        terminated: torch.Tensor | None = None,
     ) -> None:
         """Store one step.
 
         Args:
-            obs:          Dict with (B, N, ...) tensors — float32.
-            action:       (B, N, 3) int.
-            logprob:      (B, N) float.
-            reward:       (B, N, K) float — raw per-component per-ship rewards.
-            done:         (B,) float (0.0 or 1.0).
-            value:        (B, N, K) float — critic expected values (symlog-reward space).
-            alive:        (B, N) bool.
-            actor_mask:   (B, N) bool — True for ships whose actions came from the training
-                          policy and should contribute to the actor/entropy loss. Defaults to
-                          all-True (pure self-play: all ships are training ships).
-            expert_probs: (B, N, 12) float — scripted-agent marginal probs [power|turn|shoot]
-                          for BC loss. Zero for envs without a scripted opponent.
+            obs:             Dict with (B, N, ...) tensors — float32.
+            action:          (B, N, 3) int.
+            logprob:         (B, N) float.
+            reward:          (B, N, K) float — raw per-component per-ship rewards.
+            done:            (B,) float (0.0 or 1.0).
+            value:           (B, N, K) float — critic expected values (symlog-reward space).
+            alive:           (B, N) bool.
+            actor_mask:      (B, N) bool — True for ships whose actions came from the training
+                             policy and should contribute to the actor/entropy loss. Defaults to
+                             all-True (pure self-play: all ships are training ships).
+            expert_probs:    (B, N, 12) float — scripted-agent marginal probs [power|turn|shoot]
+                             for BC loss. Zero for envs without a scripted opponent.
+            true_next_state: (B, N, AUX_DIM) float — normalized next-state features for aux loss.
+                             Only stored when aux_dim > 0.
+            terminated:      (B,) bool — True when episode ended (done | truncated). Used to
+                             mask aux loss at terminal transitions.
         """
         if self.ptr >= self.num_steps:
             raise IndexError("Buffer is full — call reset() before reuse.")
@@ -329,6 +348,10 @@ class RolloutBuffer:
         )
         if expert_probs is not None:
             self.expert_probs[t] = expert_probs
+        if true_next_state is not None and self.true_next_states is not None:
+            self.true_next_states[t] = true_next_state
+        if terminated is not None:
+            self.terminated[t] = terminated
 
         self.ptr += 1
 
@@ -385,16 +408,18 @@ class RolloutBuffer:
 
         Yields:
             Tuple of:
-                mb_obs:           dict[str, (T, B_mb, N, ...)] float32
-                mb_actions:       (T, B_mb, N, 3) int32
-                mb_logprobs:      (T, B_mb, N) float32
-                mb_advantages:    (T, B_mb, N, K) float32
-                mb_returns:       (T, B_mb, N, K) float32
-                mb_values:        (T, B_mb, N, K) float32
-                mb_alive:         (T, B_mb, N) bool
-                mb_hidden:        (1, B_mb*N, D) float32
-                mb_actor_mask:    (T, B_mb, N) bool
-                mb_expert_probs:  (T, B_mb, N, 12) float32
+                mb_obs:            dict[str, (T, B_mb, N, ...)] float32
+                mb_actions:        (T, B_mb, N, 3) int32
+                mb_logprobs:       (T, B_mb, N) float32
+                mb_advantages:     (T, B_mb, N, K) float32
+                mb_returns:        (T, B_mb, N, K) float32
+                mb_values:         (T, B_mb, N, K) float32
+                mb_alive:          (T, B_mb, N) bool
+                mb_hidden:         (n_layers, B_mb*N, D) float32
+                mb_actor_mask:     (T, B_mb, N) bool
+                mb_expert_probs:   (T, B_mb, N, 12) float32
+                mb_true_next:      (T, B_mb, N, AUX_DIM) float32 or None
+                mb_terminated:     (T, B_mb) bool
         """
         assert self.initial_hidden is not None, (
             "Call store_initial_hidden() before iterating."
@@ -419,6 +444,10 @@ class RolloutBuffer:
                 n_layers, len(idx) * self.num_tokens, D
             )
 
+            mb_true_next = (
+                self.true_next_states[:, idx] if self.true_next_states is not None else None
+            )
+
             yield (
                 mb_obs,
                 self.actions[:, idx],
@@ -430,4 +459,6 @@ class RolloutBuffer:
                 mb_hidden.contiguous(),
                 self.actor_masks[:, idx],
                 self.expert_probs[:, idx],
+                mb_true_next,
+                self.terminated[:, idx],
             )
