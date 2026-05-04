@@ -80,13 +80,13 @@ REWARDS = RewardConfig(
     # kill_assist: proportional share based on cumulative episode damage dealt.
     kill_shot_weight=1.0,
     kill_assist_weight=1.0,
+    death_weight=1.0,
     # Per-ship local combat credit — self-only (lambda=0 for all other ships).
     # damage_taken: negative reward proportional to health lost this step.
     # damage_dealt: positive reward proportional to enemy health removed this step.
     damage_taken_weight=0.5,
     damage_dealt_enemy_weight=0.5,
     damage_dealt_ally_weight=0.5,
-    death_weight=1.0,
     # Geometry params
     proximity_radius=400.0,
     shoot_quality_radius=200.0,
