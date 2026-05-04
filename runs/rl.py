@@ -79,6 +79,7 @@ RL_TRAIN_CONFIG = TrainConfig(
     rewards=REWARDS,
     num_steps=128,
     num_minibatches=_NUM_MINIBATCHES,
+    next_state_coef=1.0,
     gamma=0.990,
     gae_lambda=0.95,
     clip_coef=0.2,

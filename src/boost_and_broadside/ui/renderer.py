@@ -58,11 +58,22 @@ class GameRenderer:
         pygame.display.set_caption("Boost and Broadside")
         self._clock = pygame.time.Clock()
 
-    def render(self, state: TensorState) -> bool:
+        # UI state
+        self.paused = False
+        self.target_fps = render_config.fps
+        self.slider_dragging = False
+
+        W = s
+        H = s
+        self._pause_rect = pygame.Rect(W - 200, H - 40, 60, 30)
+        self._slider_track_rect = pygame.Rect(W - 120, H - 30, 100, 10)
+
+    def render(self, state: TensorState, pred_next: torch.Tensor | None = None) -> bool:
         """Draw one frame from env 0 of state.
 
         Args:
             state: Live TensorState — only env index 0 is read.
+            pred_next: Optional tensor (B, N, AUX_DIM) of predicted next state features.
 
         Returns:
             True to keep running, False if the user closed the window.
@@ -70,8 +81,21 @@ class GameRenderer:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:
+                    if self._pause_rect.collidepoint(event.pos):
+                        self.paused = not self.paused
+                    elif self._slider_track_rect.inflate(10, 20).collidepoint(event.pos):
+                        self.slider_dragging = True
+                        self._update_slider(event.pos[0])
+            elif event.type == pygame.MOUSEBUTTONUP:
+                if event.button == 1:
+                    self.slider_dragging = False
+            elif event.type == pygame.MOUSEMOTION:
+                if self.slider_dragging:
+                    self._update_slider(event.pos[0])
 
-        self._draw_frame(state)
+        self._draw_frame(state, pred_next)
         pygame.display.flip()
         return True
 
@@ -101,28 +125,60 @@ class GameRenderer:
         return True
 
     def tick(self) -> None:
-        """Cap frame rate to render_config.fps."""
-        self._clock.tick(self._render_config.fps)
+        """Cap frame rate to target_fps."""
+        self._clock.tick(self.target_fps)
+
+    def _update_slider(self, mouse_x: int) -> None:
+        rel_x = mouse_x - self._slider_track_rect.x
+        frac = max(0.0, min(1.0, rel_x / self._slider_track_rect.width))
+        # Map frac to FPS (e.g. 1 to 120)
+        self.target_fps = int(1 + frac * 119)
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _draw_frame(self, state: TensorState) -> None:
+    def _draw_frame(self, state: TensorState, pred_next: torch.Tensor | None = None) -> None:
         surf = self._screen
         surf.fill(self._render_config.background_color)
         self._draw_obstacles(state, surf)
         self._draw_bullets(state, surf)
+        if pred_next is not None:
+            self._draw_ghost_ships(state, pred_next, surf)
         self._draw_ships(state, surf)
+        self._draw_ui(surf)
 
     def _blit_label(self, text: str, color: tuple[int, int, int]) -> None:
-        if not hasattr(self, "_font"):
-            self._font = pygame.font.SysFont("monospace", 24, bold=True)
+        if not hasattr(self, "_font_large"):
+            self._font_large = pygame.font.SysFont("monospace", 24, bold=True)
         surf = self._screen
-        label = self._font.render(text, True, color)
+        label = self._font_large.render(text, True, color)
         x = (surf.get_width() - label.get_width()) // 2
         y = surf.get_height() - label.get_height() - 16
         surf.blit(label, (x, y))
+
+    def _draw_ui(self, surf: pygame.Surface) -> None:
+        if not hasattr(self, "_font"):
+            self._font = pygame.font.SysFont("monospace", 16, bold=True)
+            
+        # Draw pause button
+        color = (150, 150, 150) if not self.paused else (255, 100, 100)
+        pygame.draw.rect(surf, color, self._pause_rect)
+        label = self._font.render("Play" if self.paused else "Pause", True, (0, 0, 0))
+        surf.blit(label, (self._pause_rect.centerx - label.get_width() // 2, self._pause_rect.centery - label.get_height() // 2))
+
+        # Draw FPS slider track
+        pygame.draw.rect(surf, (100, 100, 100), self._slider_track_rect)
+        
+        # Draw slider handle
+        frac = (self.target_fps - 1) / 119.0
+        handle_x = self._slider_track_rect.x + int(frac * self._slider_track_rect.width)
+        handle_rect = pygame.Rect(handle_x - 5, self._slider_track_rect.y - 5, 10, 20)
+        pygame.draw.rect(surf, (200, 200, 200), handle_rect)
+        
+        # Draw FPS text
+        fps_label = self._font.render(f"{self.target_fps} FPS", True, (200, 200, 200))
+        surf.blit(fps_label, (self._slider_track_rect.x, self._slider_track_rect.y - 20))
 
     def close(self) -> None:
         """Tear down the pygame window."""
@@ -135,6 +191,55 @@ class GameRenderer:
     def _world_to_screen(self, c: complex) -> tuple[int, int]:
         """Convert a world-space complex position to screen pixel coords."""
         return (int(c.real * self._scale), int(c.imag * self._scale))
+
+    def _draw_ghost_ships(self, state: TensorState, pred_next: torch.Tensor, surf: pygame.Surface) -> None:
+        """Draw predicted next positions as hollow triangles."""
+        cfg = self._render_config
+
+        pn = pred_next[0].cpu()  # (N, AUX_DIM)
+        alive = state.ship_alive[0].cpu()  # (N,) bool
+        team_id = state.ship_team_id[0].cpu()  # (N,) int32
+
+        sz = cfg.ship_size
+        world_w, world_h = self._world_w, self._world_h
+
+        for n in range(pn.shape[0]):
+            if not alive[n].item():
+                continue
+
+            # Skip if pred_next is all zeros (e.g. from null/scripted agent)
+            if pn[n].abs().sum().item() == 0:
+                continue
+
+            px = pn[n, 0].item() * world_w
+            py = pn[n, 1].item() * world_h
+            p = complex(px, py)
+
+            ax = pn[n, 2].item()
+            ay = pn[n, 3].item()
+            mag = (ax**2 + ay**2)**0.5
+            if mag > 1e-6:
+                ax /= mag
+                ay /= mag
+            else:
+                ax, ay = 1.0, 0.0
+            a = complex(ax, ay)
+
+            color = cfg.team_colors[int(team_id[n].item()) % 2]
+            # Dim the color for ghost ships to be less distracting
+            dim_color = (max(0, color[0] - 50), max(0, color[1] - 50), max(0, color[2] - 50))
+
+            tip = p + a * sz
+            left = p + a * (-sz * 0.6) + a * 1j * (sz * 0.6)
+            right = p + a * (-sz * 0.6) - a * 1j * (sz * 0.6)
+            verts = [self._world_to_screen(v) for v in (tip, left, right)]
+            pygame.draw.polygon(surf, dim_color, verts, width=1)
+            
+            # Draw thin line from real ship to predicted position
+            real_pos = complex(state.ship_pos[0].cpu()[n].item())
+            sx_real, sy_real = self._world_to_screen(real_pos)
+            sx_pred, sy_pred = self._world_to_screen(p)
+            pygame.draw.line(surf, dim_color, (sx_real, sy_real), (sx_pred, sy_pred), 1)
 
     def _draw_ships(self, state: TensorState, surf: pygame.Surface) -> None:
         """Draw all alive ships in env 0 as colored triangles with health bars."""

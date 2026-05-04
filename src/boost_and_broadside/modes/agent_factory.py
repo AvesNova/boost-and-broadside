@@ -152,17 +152,21 @@ def get_actions(
     num_envs: int,
     num_ships: int,
     device,
-) -> torch.Tensor:
+    return_pred_next: bool = False,
+) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor | None]:
     """Return (B, N, 3) int actions for every ship in the batch.
 
     Policy and scripted agents produce actions for all ships; the caller selects
     the relevant team's actions via a team-id mask.  For the null agent the
     returned tensor is all-zeros — the caller must apply keyboard overrides.
+    
+    If return_pred_next is True, also returns the predicted next state (B, N, AUX_DIM) 
+    from the policy, or None if the agent doesn't predict it.
     """
     B, N = num_envs, num_ships
 
     if agent.kind == "random":
-        return torch.stack(
+        action = torch.stack(
             [
                 torch.randint(0, NUM_POWER_ACTIONS, (B, N), device=device),
                 torch.randint(0, NUM_TURN_ACTIONS, (B, N), device=device),
@@ -170,20 +174,23 @@ def get_actions(
             ],
             dim=-1,
         ).int()
+        return (action, None) if return_pred_next else action
 
     if agent.kind == "scripted":
         with torch.no_grad():
-            return agent.agent.get_actions(state)
+            action = agent.agent.get_actions(state)
+        return (action, None) if return_pred_next else action
 
     if agent.kind == "policy":
         with torch.no_grad():
-            action, _, _, _, agent.hidden = agent.agent.get_action_and_value(
+            action, _, _, pred_next, agent.hidden = agent.agent.get_action_and_value(
                 obs, agent.hidden
             )
-        return action
+        return (action, pred_next) if return_pred_next else action
 
     # null — zero placeholder; caller must override with keyboard input
-    return torch.zeros(B, N, 3, dtype=torch.int32, device=device)
+    action = torch.zeros(B, N, 3, dtype=torch.int32, device=device)
+    return (action, None) if return_pred_next else action
 
 
 def reset_done_envs(

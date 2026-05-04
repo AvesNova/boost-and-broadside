@@ -221,6 +221,7 @@ def _run_interactive_loop(
         obs = wrapper.reset()
         init_hidden(agent0, 1, num_tokens, device)
         init_hidden(agent1, 1, num_tokens, device)
+        pred_next = None
 
         # Show "Match starting!" for half a second on the first episode so the
         # user can see the reloaded snapshot before agents begin moving.
@@ -234,33 +235,42 @@ def _run_interactive_loop(
                 renderer.tick()
 
         while True:
-            state = wrapper.state
+            if not renderer.paused:
+                state = wrapper.state
 
-            action0 = get_actions(agent0, obs, state, 1, N, device)
-            action1 = get_actions(agent1, obs, state, 1, N, device)
+                action0, pred_next0 = get_actions(agent0, obs, state, 1, N, device, return_pred_next=True)
+                action1, pred_next1 = get_actions(agent1, obs, state, 1, N, device, return_pred_next=True)
 
-            # Select each agent's actions for their respective team (ship tokens only)
-            team_id = obs["team_id"][:, :N]  # (1, N) — exclude obstacle tokens
-            action = torch.where((team_id == 0).unsqueeze(-1), action0, action1)
+                # Select each agent's actions for their respective team (ship tokens only)
+                team_id = obs["team_id"][:, :N]  # (1, N) — exclude obstacle tokens
+                action = torch.where((team_id == 0).unsqueeze(-1), action0, action1)
+                
+                # Combine predicted next states
+                pred_next = None
+                if pred_next0 is not None or pred_next1 is not None:
+                    pn0 = pred_next0 if pred_next0 is not None else torch.zeros_like(pred_next1)
+                    pn1 = pred_next1 if pred_next1 is not None else torch.zeros_like(pred_next0)
+                    pred_next = torch.where((team_id == 0).unsqueeze(-1), pn0, pn1)
 
-            # Human keyboard overrides for null agents
-            if agent0.kind == "null" or agent1.kind == "null":
-                keyboard = _decode_keyboard().to(device)
-                for ship_idx in range(N):
-                    t = int(team_id[0, ship_idx].item())
-                    if (t == 0 and agent0.kind == "null") or (
-                        t == 1 and agent1.kind == "null"
-                    ):
-                        action[0, ship_idx] = keyboard
+                # Human keyboard overrides for null agents
+                if agent0.kind == "null" or agent1.kind == "null":
+                    keyboard = _decode_keyboard().to(device)
+                    for ship_idx in range(N):
+                        t = int(team_id[0, ship_idx].item())
+                        if (t == 0 and agent0.kind == "null") or (
+                            t == 1 and agent1.kind == "null"
+                        ):
+                            action[0, ship_idx] = keyboard
 
-            obs, _, dones, truncated, _ = wrapper.step(action)
+                obs, _, dones, truncated, _ = wrapper.step(action)
 
-            if (dones | truncated).any():
-                reset_done_envs(agent0, dones | truncated, num_tokens)
-                reset_done_envs(agent1, dones | truncated, num_tokens)
-                obs = wrapper.reset()
+                if (dones | truncated).any():
+                    reset_done_envs(agent0, dones | truncated, num_tokens)
+                    reset_done_envs(agent1, dones | truncated, num_tokens)
+                    obs = wrapper.reset()
+                    pred_next = None
 
-            running = renderer.render(wrapper.state)
+            running = renderer.render(wrapper.state, pred_next=pred_next)
             if not running:
                 return
             renderer.tick()
