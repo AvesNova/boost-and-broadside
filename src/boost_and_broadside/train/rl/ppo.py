@@ -35,7 +35,12 @@ from boost_and_broadside.env.obstacle_cache import ObstacleCache
 from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
 from boost_and_broadside.env.state import TensorState
 from boost_and_broadside.env.wrapper import MVPEnvWrapper
-from boost_and_broadside.models.mvp.policy import MVPPolicy, AUX_CONT_DIM, AUX_DIM
+from boost_and_broadside.models.mvp.policy import (
+    MVPPolicy,
+    AUX_TARGET_CONT_DIM, AUX_TARGET_DIM,
+    AUX_PRED_CONT_DIM, AUX_PRED_DIM,
+    AUX_CONT_DIM, AUX_DIM,  # aliases: CONT_DIM=TARGET_CONT_DIM, DIM=TARGET_DIM
+)
 from boost_and_broadside.train.rl.buffer import (
     RolloutBuffer,
     ReturnScaler,
@@ -108,15 +113,15 @@ def _extract_aux_targets(
 ) -> torch.Tensor:
     """Extract and normalize dynamic ship features from an obs dict for aux loss targets.
 
-    Features (AUX_DIM=11):
-        pos(2)  / world_size[0]        → ≈[0, 1]
-        vel(2)  / max_speed            → ≈[-1, 1]
-        att(2)  — unit vector, raw
-        ang_vel(1) via symlog          → ≈[-2, 2]
-        health(1) / max_health         → [0, 1]
-        power(1)  / max_power          → [0, 1]
-        cooldown(1) / firing_cooldown  → [0, 1]
-        alive(1)  cast to float        → 0 or 1 (BCE target, not MSE)
+    Features (AUX_TARGET_DIM=16):
+        pos(4)     — toroidal: (sin_x, cos_x, sin_y, cos_y) in [-1, 1]
+        vel(2)     / max_speed                  → ≈[-1, 1]
+        att(2)     — unit vector, raw
+        ang_vel(1) via symlog                   → ≈[-2, 2]
+        health(2)  — quarter-wave: (sin(π/2·h), cos(π/2·h))  h in [0, 1]
+        power(2)   — quarter-wave: (sin(π/2·p), cos(π/2·p))  p in [0, 1]
+        cooldown(2) — quarter-wave: (sin(π/2·c), cos(π/2·c)) c in [0, 1]
+        alive(1)   — cast to float → 0 or 1 (BCE target, not MSE)
 
     Args:
         obs:        Raw obs dict with (B, N+M, ...) tensors.
@@ -124,18 +129,68 @@ def _extract_aux_targets(
         ship_config: Used for normalization scales.
 
     Returns:
-        (B, N, AUX_DIM) float32.
+        (B, N, AUX_TARGET_DIM) float32.
     """
+    import math
     N = num_ships
-    pos      = obs["pos"][:, :N].float()      / ship_config.world_size[0]   # (B, N, 2)
+    _2pi = 2.0 * math.pi
+    _hpi = math.pi / 2.0
+
+    pos_norm = obs["pos"][:, :N].float() / ship_config.world_size[0]        # (B, N, 2) in [0,1]
+    pos_sin = torch.sin(_2pi * pos_norm)                                     # (B, N, 2)
+    pos_cos = torch.cos(_2pi * pos_norm)                                     # (B, N, 2)
+    pos = torch.stack([pos_sin[..., 0], pos_cos[..., 0],
+                       pos_sin[..., 1], pos_cos[..., 1]], dim=-1)            # (B, N, 4)
+
     vel      = obs["vel"][:, :N].float()      / ship_config.max_speed       # (B, N, 2)
     att      = obs["att"][:, :N].float()                                     # (B, N, 2)
     ang_vel  = symlog(obs["ang_vel"][:, :N].float())                        # (B, N, 1)
-    health   = obs["health"][:, :N].float()   / ship_config.max_health      # (B, N, 1)
-    power    = obs["power"][:, :N].float()    / ship_config.max_power       # (B, N, 1)
-    cooldown = obs["cooldown"][:, :N].float() / ship_config.firing_cooldown # (B, N, 1)
+
+    # obs scalars are (B, N, 1) — squeeze before trig so stack gives (B, N, 2) not (B, N, 1, 2)
+    health_n   = (obs["health"][:, :N].float().squeeze(-1)   / ship_config.max_health).clamp(0.0, 1.0)
+    power_n    = (obs["power"][:, :N].float().squeeze(-1)    / ship_config.max_power).clamp(0.0, 1.0)
+    cooldown_n = (obs["cooldown"][:, :N].float().squeeze(-1) / ship_config.firing_cooldown).clamp(0.0, 1.0)
+
+    health   = torch.stack([torch.sin(_hpi * health_n),   torch.cos(_hpi * health_n)],   dim=-1)  # (B, N, 2)
+    power    = torch.stack([torch.sin(_hpi * power_n),    torch.cos(_hpi * power_n)],    dim=-1)  # (B, N, 2)
+    cooldown = torch.stack([torch.sin(_hpi * cooldown_n), torch.cos(_hpi * cooldown_n)], dim=-1)  # (B, N, 2)
+
     alive    = obs["alive"][:, :N].float().unsqueeze(-1)                    # (B, N, 1)
-    return torch.cat([pos, vel, att, ang_vel, health, power, cooldown, alive], dim=-1)
+    return torch.cat([pos, vel, att, ang_vel, health, power, cooldown, alive], dim=-1)  # (B, N, 16)
+
+
+def _apply_aux_deltas(curr: torch.Tensor, delta: torch.Tensor) -> torch.Tensor:
+    """Apply predicted deltas/phase shifts to current absolute state features.
+
+    For Fourier features (pos, att, health, power, cooldown) applies a rotation
+    matrix so the predicted (sin, cos) pair lies exactly on the unit circle.
+    For non-Fourier features (vel, ang_vel) adds the delta directly.
+
+    Args:
+        curr:  (*, AUX_TARGET_CONT_DIM=15) — current absolute continuous features.
+               Layout: pos_x(2) pos_y(2) vel(2) att(2) ang_vel(1) health(2) power(2) cooldown(2)
+        delta: (*, AUX_PRED_CONT_DIM=9)   — predicted deltas and phase shifts.
+               Layout: Δφ_x(1) Δφ_y(1) Δvel(2) Δφ_att(1) Δang_vel(1) Δφ_h(1) Δφ_p(1) Δφ_c(1)
+
+    Returns:
+        (*, AUX_TARGET_CONT_DIM=15) — predicted next absolute continuous features.
+    """
+    def _phase_shift(sc: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
+        """Rotate (sin, cos) pair by scalar phase shift d: guarantees sin²+cos²=1."""
+        s, c = sc[..., 0], sc[..., 1]
+        cd, sd = d.cos(), d.sin()
+        return torch.stack([s * cd + c * sd, c * cd - s * sd], dim=-1)
+
+    return torch.cat([
+        _phase_shift(curr[..., 0:2],  delta[..., 0:1].squeeze(-1)),   # pos_x
+        _phase_shift(curr[..., 2:4],  delta[..., 1:2].squeeze(-1)),   # pos_y
+        curr[..., 4:6] + delta[..., 2:4],                             # vel (additive)
+        _phase_shift(curr[..., 6:8],  delta[..., 4:5].squeeze(-1)),   # att
+        curr[..., 8:9] + delta[..., 5:6],                             # ang_vel (additive)
+        _phase_shift(curr[..., 9:11], delta[..., 6:7].squeeze(-1)),   # health
+        _phase_shift(curr[..., 11:13],delta[..., 7:8].squeeze(-1)),   # power
+        _phase_shift(curr[..., 13:15],delta[..., 8:9].squeeze(-1)),   # cooldown
+    ], dim=-1)
 
 
 def _override_opponent(
@@ -1428,22 +1483,33 @@ class PPOTrainer:
         next_state_loss = torch.tensor(0.0, device=self.device)
         next_state_cont_loss = torch.tensor(0.0, device=self.device)
         next_state_alive_loss = torch.tensor(0.0, device=self.device)
-        next_state_per_feat: torch.Tensor | None = None  # (11,) cpu, for logging
+        next_state_per_feat: torch.Tensor | None = None  # (16,) cpu, for logging
         if is_primary and mb_true_next is not None and self.cfg.next_state_coef > 0.0:
             non_terminal = ~mb_terminated.unsqueeze(-1)  # (T, B_mb, 1)
             ns_mask = mb_alive & non_terminal             # (T, B_mb, N)
             ns_mask_f = ns_mask.float()
             ns_sum = ns_mask_f.sum().clamp(min=1.0)
 
-            cont_pred = pred_next[..., :AUX_CONT_DIM].float()   # (T, B_mb, N, 10)
-            cont_true = mb_true_next[..., :AUX_CONT_DIM]        # (T, B_mb, N, 10)
-            sq_err = (cont_pred - cont_true).pow(2)              # (T, B_mb, N, 10)
+            # Extract current-state absolute features so we can apply deltas.
+            N_ships = mb_alive.shape[-1]
+            T_flat, B_flat = mb_obs["pos"].shape[:2]
+            flat_obs = {k: v.reshape(T_flat * B_flat, *v.shape[2:]) for k, v in mb_obs.items()}
+            mb_curr = _extract_aux_targets(flat_obs, N_ships, self.ship_config)
+            mb_curr = mb_curr.reshape(T_flat, B_flat, N_ships, AUX_TARGET_DIM)  # (T, B, N, 16)
+
+            # Apply predicted phase shifts / deltas to get absolute predicted next state.
+            curr_cont = mb_curr[..., :AUX_TARGET_CONT_DIM]                      # (T, B, N, 15)
+            pred_cont = pred_next[..., :AUX_PRED_CONT_DIM].float()              # (T, B, N, 9)
+            pred_next_abs = _apply_aux_deltas(curr_cont, pred_cont)              # (T, B, N, 15)
+
+            cont_true = mb_true_next[..., :AUX_TARGET_CONT_DIM]                 # (T, B_mb, N, 15)
+            sq_err = (pred_next_abs - cont_true).pow(2)                         # (T, B_mb, N, 15)
             next_state_cont_loss = (
                 sq_err * ns_mask_f.unsqueeze(-1)
-            ).sum() / (ns_sum * AUX_CONT_DIM)
+            ).sum() / (ns_sum * AUX_TARGET_CONT_DIM)
 
-            alive_logit = pred_next[..., AUX_CONT_DIM].float()  # (T, B_mb, N)
-            alive_true = mb_true_next[..., AUX_CONT_DIM]        # (T, B_mb, N)
+            alive_logit = pred_next[..., AUX_PRED_CONT_DIM].float()             # (T, B_mb, N) — index 9
+            alive_true = mb_true_next[..., AUX_TARGET_CONT_DIM]                 # (T, B_mb, N) — index 15
             bce_per = F.binary_cross_entropy_with_logits(
                 alive_logit, alive_true, reduction="none"
             )
@@ -1451,9 +1517,9 @@ class PPOTrainer:
             next_state_loss = next_state_cont_loss + next_state_alive_loss
 
             with torch.no_grad():
-                per_feat_cont = (sq_err * ns_mask_f.unsqueeze(-1)).sum((0, 1, 2)) / ns_sum  # (10,)
+                per_feat_cont = (sq_err * ns_mask_f.unsqueeze(-1)).sum((0, 1, 2)) / ns_sum  # (15,)
                 per_feat_alive = ((bce_per * ns_mask_f).sum((0, 1, 2)) / ns_sum).unsqueeze(0)  # (1,)
-                next_state_per_feat = torch.cat([per_feat_cont, per_feat_alive], dim=0).cpu()  # (11,)
+                next_state_per_feat = torch.cat([per_feat_cont, per_feat_alive], dim=0).cpu()  # (16,)
 
         loss = (
             self._policy_gradient_coef * pg_loss
@@ -1598,9 +1664,14 @@ class PPOTrainer:
             "train/advantage_std_k": [],
         }
         _NS_FEAT_NAMES = (
-            "pos_x", "pos_y", "vel_x", "vel_y", "att_x", "att_y",
-            "ang_vel", "health", "power", "cooldown", "alive",
-        )
+            "pos_sin_x", "pos_cos_x", "pos_sin_y", "pos_cos_y",
+            "vel_x", "vel_y", "att_sin", "att_cos",
+            "ang_vel",
+            "health_sin", "health_cos",
+            "power_sin", "power_cos",
+            "cooldown_sin", "cooldown_cos",
+            "alive",
+        )  # 16 total: 15 cont + 1 alive
         ns_per_feat_accum: list[torch.Tensor] = []
         last_returns_np = None
         last_logprob_np = None
@@ -1781,7 +1852,7 @@ class PPOTrainer:
                 metrics[f"{prefix}/{name}"] = avg[i].item()
 
         if ns_per_feat_accum:
-            avg_per_feat = torch.stack(ns_per_feat_accum).mean(0)  # (11,) cpu
+            avg_per_feat = torch.stack(ns_per_feat_accum).mean(0)  # (16,) cpu
             for i, name in enumerate(_NS_FEAT_NAMES):
                 metrics[f"next_state/{name}"] = avg_per_feat[i].item()
 

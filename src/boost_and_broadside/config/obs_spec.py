@@ -223,10 +223,30 @@ class FourierAngle:
         return fourier_encode_angle(x, self.n)
 
 
+@dataclass(frozen=True)
+class QuarterWaveFourier:
+    """Quarter-wave sin/cos encoding for [0, 1] inputs. S→V (2 dims).
+
+    Maps x → [sin(π/2 · x), cos(π/2 · x)].
+    At x=0: [0, 1]. At x=1: [1, 0].
+    Guarantees sin² + cos² = 1 for any x.
+    """
+
+    @property
+    def out_dim(self) -> int:
+        return 2
+
+    def __call__(self, x: torch.Tensor) -> torch.Tensor:
+        if x.shape[-1] == 1:
+            x = x.squeeze(-1)
+        angle = (math.pi / 2) * x
+        return torch.stack([torch.sin(angle), torch.cos(angle)], dim=-1)
+
+
 # Union type for type annotations
 Transform = Union[
     Normalize, Symlog, Clamp, AsFloat, Bucketize,
-    Fourier, OneHot, VecMag, SymlogVec, FourierAngle,
+    Fourier, OneHot, VecMag, SymlogVec, FourierAngle, QuarterWaveFourier,
 ]
 
 
@@ -309,6 +329,7 @@ _TRANSFORM_REGISTRY: dict[str, type] = {
     "VecMag": VecMag,
     "SymlogVec": SymlogVec,
     "FourierAngle": FourierAngle,
+    "QuarterWaveFourier": QuarterWaveFourier,
 }
 
 

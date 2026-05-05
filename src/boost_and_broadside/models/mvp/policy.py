@@ -5,7 +5,7 @@ Architecture (per timestep):
          → N+M x YemongBlock → (B, N+M, D)   [spatial + temporal over all tokens]
          → slice [:N]                    → (B, N, D)    [ship tokens only]
          → ActionHead                   → (B, N, 12)   [logits: power|turn|shoot]
-         → NextStateHead                → (B, N, 11)   [aux: pred next state features]
+         → NextStateHead                → (B, N, 10)   [aux: pred next state deltas]
          → TeamPMA                      → (B, N, D)    [pool per team, broadcast back]
          → ValueHead                    → (B, N, K)    [MSE critic: K components]
 
@@ -16,8 +16,15 @@ K = num_value_components (one head per reward component).
 Value head outputs in normalized space. The ReturnScaler in PPOTrainer maps
 between symlog-reward space (GAE) and normalized space (value head I/O).
 
-AUX_DIM = 11: pos(2) vel(2) att(2) ang_vel(1) health(1) power(1) cooldown(1) alive(1).
-The last feature (alive) is a logit for BCE; the first 10 are raw continuous predictions.
+Next-state prediction uses delta/phase-shift encoding:
+  AUX_TARGET_DIM = 16: absolute next-state features stored in the replay buffer.
+    pos(4) vel(2) att(2) ang_vel(1) health(2) power(2) cooldown(2) alive(1)
+    health/power/cooldown use quarter-wave Fourier: [sin(π/2·x), cos(π/2·x)]
+  AUX_PRED_DIM = 10: what the network outputs (deltas and phase shifts).
+    pos_phase(2) vel_delta(2) att_phase(1) ang_vel_delta(1) health_phase(1)
+    power_phase(1) cooldown_phase(1) alive_logit(1)
+  Fourier features (pos, att, health, power, cooldown) use a rotation matrix to
+  apply the predicted phase shift, guaranteeing sin²+cos²=1 on the result.
 
 Hidden state shape: (n_layers, B*(N+M), CONV_KERNEL * D), packed as:
   hidden[:, :, :D]   -- RG-LRU recurrent state
@@ -43,25 +50,39 @@ from boost_and_broadside.constants import (
 from boost_and_broadside.models.mvp.encoder import ShipEncoder
 from boost_and_broadside.models.mvp.griffin import CONV_KERNEL, YemongBlock
 
-# Aux next-state prediction head dimensions.
-# Continuous features: pos(2) + vel(2) + att(2) + ang_vel(1) + health(1) + power(1) + cooldown(1)
-AUX_CONT_DIM = 10
+# Buffer/target layout: absolute next-state features extracted from the obs dict.
+# pos(4) + vel(2) + att(2) + ang_vel(1) + health(2) + power(2) + cooldown(2) = 15 cont + alive(1) = 16
+# health/power/cooldown use quarter-wave Fourier: [sin(π/2·x), cos(π/2·x)].
+AUX_TARGET_CONT_DIM = 15
 AUX_ALIVE_DIM = 1
-AUX_DIM = AUX_CONT_DIM + AUX_ALIVE_DIM  # 11 total; last dim is alive logit (BCE)
+AUX_TARGET_DIM = AUX_TARGET_CONT_DIM + AUX_ALIVE_DIM  # 16
+
+# Network prediction layout: deltas and phase shifts output by NextStateHead.
+# pos_phase(2) + vel_delta(2) + att_phase(1) + ang_vel_delta(1) + health_phase(1)
+# + power_phase(1) + cooldown_phase(1) = 9 cont + alive_logit(1) = 10
+AUX_PRED_CONT_DIM = 9
+AUX_PRED_DIM = AUX_PRED_CONT_DIM + AUX_ALIVE_DIM  # 10
+
+# Aliases kept for buffer backward-compat (buffer uses AUX_DIM for storage).
+AUX_CONT_DIM = AUX_TARGET_CONT_DIM
+AUX_DIM = AUX_TARGET_DIM
 
 
 class NextStateHead(nn.Module):
-    """Predicts normalized dynamic features of the next state for each ship.
+    """Predicts deltas and phase shifts for the next state of each ship.
 
-    Output layout (AUX_DIM=11):
-        [:2]  pos   — normalized position (divided by world_size)
-        [2:4] vel   — normalized velocity (divided by max_speed)
-        [4:6] att   — heading unit vector (raw, no normalization)
-        [6]   ang_vel — symlog angular velocity
-        [7]   health — normalized health (divided by max_health)
-        [8]   power  — normalized power (divided by max_power)
-        [9]   cooldown — normalized cooldown (divided by firing_cooldown)
-        [10]  alive  — logit for alive probability (BCE loss, not MSE)
+    Output layout (AUX_PRED_DIM=10):
+        [0:2] pos_phase   — (Δφ_x, Δφ_y): phase shifts for x/y position
+        [2:4] vel_delta   — (Δvel_x, Δvel_y): additive velocity delta
+        [4]   att_phase   — Δφ_att: phase shift for heading angle
+        [5]   ang_vel_delta — additive delta for symlog angular velocity
+        [6]   health_phase — Δφ_h: phase shift for health quarter-wave encoding
+        [7]   power_phase  — Δφ_p: phase shift for power quarter-wave encoding
+        [8]   cooldown_phase — Δφ_c: phase shift for cooldown quarter-wave encoding
+        [9]   alive       — logit for alive probability (BCE loss)
+
+    Phase shifts are applied via rotation: (sin(φ+Δφ), cos(φ+Δφ)), guaranteeing
+    sin²+cos²=1 on the predicted Fourier features.
     """
 
     def __init__(self, d_model: int) -> None:
@@ -70,7 +91,7 @@ class NextStateHead(nn.Module):
             nn.Linear(d_model, d_model * 2),
             nn.RMSNorm(d_model * 2),
             nn.GELU(),
-            nn.Linear(d_model * 2, AUX_DIM),
+            nn.Linear(d_model * 2, AUX_PRED_DIM),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -251,7 +272,7 @@ class MVPPolicy(nn.Module):
             logprob:    (B, N) float — sum of log probs for each sub-action.
             value:      (B, N, K) float — per-component value in normalized space.
                         Caller must denormalize via ReturnScaler before using for GAE.
-            pred_next:  (B, N, AUX_DIM) float — predicted next state features.
+            pred_next:  (B, N, AUX_PRED_DIM) float — predicted next-state deltas/phase shifts.
             new_hidden: (n_layers, B*N, D) updated hidden state.
         """
         alive = obs["alive"]  # (B, N+M) bool — ships then obstacles
@@ -280,7 +301,7 @@ class MVPPolicy(nn.Module):
         team_id_ships = obs["team_id"][:, :N]    # (B, N) — obstacles (team_id=2) excluded by TeamPMA
 
         logits = self.action_head(x_ships)                                   # (B, N, 12)
-        pred_next = self.next_state_head(x_ships)                            # (B, N, AUX_DIM)
+        pred_next = self.next_state_head(x_ships)                            # (B, N, AUX_PRED_DIM)
         x_value = self.team_pma(x_ships, team_id_ships, alive_ships)        # (B, N, D)
         value = self.value_head(x_value)                                     # (B, N, K)
 
@@ -330,7 +351,7 @@ class MVPPolicy(nn.Module):
             logits:     (T, B, N, TOTAL_ACTION_LOGITS) float — raw action logits.
             z:          (T, B, N+M, D) float — raw encoder embeddings before Yemong layers,
                         or None if return_encoder_output=False.
-            pred_next:  (T, B, N, AUX_DIM) float — predicted next state features (with grad).
+            pred_next:  (T, B, N, AUX_PRED_DIM) float — predicted next-state deltas/phase shifts (with grad).
         """
         T, B, N = actions.shape[:3]  # N = num_ships (actions only for ships)
         D = self._d_model
@@ -357,7 +378,7 @@ class MVPPolicy(nn.Module):
         team_id_ships = obs["team_id"][:, :, :N]       # (T, B, N)
 
         logits = self.action_head(x_ships)             # (T, B, N, 12)
-        pred_next = self.next_state_head(x_ships)      # (T, B, N, AUX_DIM)
+        pred_next = self.next_state_head(x_ships)      # (T, B, N, AUX_PRED_DIM)
 
         # TeamPMA over ship tokens: fold T into B, run PMA, unfold
         x_s_flat = x_ships.reshape(T * B, N, D)

@@ -193,15 +193,26 @@ class GameRenderer:
         return (int(c.real * self._scale), int(c.imag * self._scale))
 
     def _draw_ghost_ships(self, state: TensorState, pred_next: torch.Tensor, surf: pygame.Surface) -> None:
-        """Draw predicted next positions as hollow triangles."""
+        """Draw predicted next positions as hollow triangles.
+
+        pred_next contains phase shifts / deltas (AUX_PRED_DIM=10):
+          [0] Δφ_x — position x phase shift
+          [1] Δφ_y — position y phase shift
+          [2:4]    — velocity delta (unused for rendering)
+          [4] Δφ_att — attitude phase shift
+        """
+        import math
         cfg = self._render_config
 
-        pn = pred_next[0].cpu()  # (N, AUX_DIM)
+        pn = pred_next[0].cpu()  # (N, AUX_PRED_DIM=10)
         alive = state.ship_alive[0].cpu()  # (N,) bool
         team_id = state.ship_team_id[0].cpu()  # (N,) int32
+        curr_pos = state.ship_pos[0].cpu()      # (N,) complex64
+        curr_att = state.ship_attitude[0].cpu() # (N,) complex64
 
         sz = cfg.ship_size
         world_w, world_h = self._world_w, self._world_h
+        _2pi = 2.0 * math.pi
 
         for n in range(pn.shape[0]):
             if not alive[n].item():
@@ -211,18 +222,24 @@ class GameRenderer:
             if pn[n].abs().sum().item() == 0:
                 continue
 
-            px = pn[n, 0].item() * world_w
-            py = pn[n, 1].item() * world_h
+            # Decode predicted position by applying phase shifts to current position.
+            phi_x = _2pi * curr_pos[n].real.item() / world_w
+            phi_y = _2pi * curr_pos[n].imag.item() / world_h
+            theta_x = phi_x + pn[n, 0].item()
+            theta_y = phi_y + pn[n, 1].item()
+
+            # Normalize to [0, 2π) and convert back to world coordinates.
+            theta_x = theta_x % _2pi
+            theta_y = theta_y % _2pi
+            px = (theta_x / _2pi) * world_w
+            py = (theta_y / _2pi) * world_h
             p = complex(px, py)
 
-            ax = pn[n, 2].item()
-            ay = pn[n, 3].item()
-            mag = (ax**2 + ay**2)**0.5
-            if mag > 1e-6:
-                ax /= mag
-                ay /= mag
-            else:
-                ax, ay = 1.0, 0.0
+            # Decode predicted attitude by applying phase shift to current heading.
+            att_angle = math.atan2(curr_att[n].imag.item(), curr_att[n].real.item())
+            att_angle += pn[n, 4].item()
+            ax = math.cos(att_angle)
+            ay = math.sin(att_angle)
             a = complex(ax, ay)
 
             color = cfg.team_colors[int(team_id[n].item()) % 2]
@@ -235,11 +252,37 @@ class GameRenderer:
             verts = [self._world_to_screen(v) for v in (tip, left, right)]
             pygame.draw.polygon(surf, dim_color, verts, width=1)
             
-            # Draw thin line from real ship to predicted position
+            # Draw thin line from real ship to predicted position (toroidal shortest path)
             real_pos = complex(state.ship_pos[0].cpu()[n].item())
+            
+            dx = p.real - real_pos.real
+            dy = p.imag - real_pos.imag
+            
+            wrapped = False
+            if dx > world_w / 2:
+                dx -= world_w
+                wrapped = True
+            elif dx < -world_w / 2:
+                dx += world_w
+                wrapped = True
+                
+            if dy > world_h / 2:
+                dy -= world_h
+                wrapped = True
+            elif dy < -world_h / 2:
+                dy += world_h
+                wrapped = True
+
             sx_real, sy_real = self._world_to_screen(real_pos)
-            sx_pred, sy_pred = self._world_to_screen(p)
-            pygame.draw.line(surf, dim_color, (sx_real, sy_real), (sx_pred, sy_pred), 1)
+            target_p = complex(real_pos.real + dx, real_pos.imag + dy)
+            sx_target, sy_target = self._world_to_screen(target_p)
+            pygame.draw.line(surf, dim_color, (sx_real, sy_real), (sx_target, sy_target), 1)
+
+            if wrapped:
+                source_p = complex(p.real - dx, p.imag - dy)
+                sx_source, sy_source = self._world_to_screen(source_p)
+                sx_pred, sy_pred = self._world_to_screen(p)
+                pygame.draw.line(surf, dim_color, (sx_source, sy_source), (sx_pred, sy_pred), 1)
 
     def _draw_ships(self, state: TensorState, surf: pygame.Surface) -> None:
         """Draw all alive ships in env 0 as colored triangles with health bars."""

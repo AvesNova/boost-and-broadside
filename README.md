@@ -83,17 +83,23 @@ tests/                      # 140 tests across env, models, and train
 
 ### Policy (`MVPPolicy`)
 
-```
-obs dict → ShipEncoder → N+M YemongBlocks → [:N] ships only → ActionHead + TeamPMA + ValueHead
+The actor-critic policy uses a shared trunk to process both ships and obstacles, using a spatial-temporal architecture based on YemongBlocks.
+
+```text
+obs dict → ShipEncoder → N+M YemongBlocks → slice [:N] ships → ActionHead + NextStateHead + TeamPMA + ValueHead
 ```
 
-- **ShipEncoder**: Generic pipeline driven by `ObsConfig` — iterates feature specs, applies transform chains, concatenates, projects to `d_model`.
-- **YemongBlock**: Spatial TransformerBlock (MHSA + GatedMLP) followed by a temporal Griffin RG-LRU block (RG-LRU + GatedMLP). Obstacle tokens participate in attention and carry hidden state but receive no action/value heads.
-- **ActionHead**: Factored categorical — 3 power × 7 turn × 2 shoot actions (joint log-prob = sum of three).
-- **TeamPMA**: Pooling by Multi-head Attention per team, broadcast back to each ship for the value head.
-- **ValueHead**: K=19 distributional heads (one per reward component). 255 categorical bins in double-symlog space `[-20, 20]`, trained with cross-entropy on twohot targets (DreamerV3-style). `ReturnScaler` normalizes between symlog-reward space (GAE) and the value head's input/output range.
+- **ShipEncoder**: Encodes each entity (ship or obstacle) into a `d_model`-dimensional token. It acts as a generic pipeline driven by `ObsConfig` — it iterates over feature specs, applies transform chains, concatenates the resulting features, and passes them through a 2-layer MLP (with RMSNorm and GELU) to project to `d_model`.
+- **YemongBlock**: The core backbone, which combines spatial and temporal processing:
+  - **Spatial Block (`TransformerBlock`)**: A standard Multi-Head Self-Attention (MHSA) layer followed by a GatedMLP. Ships and obstacles attend to each other within the same timestep (cross-entity attention), with dead entities dynamically masked out.
+  - **Temporal Block (`GriffinTemporalBlock`)**: Applied independently per entity across time. It uses a Real-Gated Linear Recurrent Unit (RG-LRU) with learnable decay rates, replacing traditional GRUs. The architecture follows the Griffin paper: `norm → (linear₁ → causal_conv → RG-LRU) × GeLU(linear₂) → linear_out → 1st residual → GatedMLP(norm) → 2nd residual`. The causal depthwise convolution uses a stored buffer of the last `kernel-1` inputs so that step-by-step rollout (T=1) and PPO re-evaluation (T=128) use an identical causal context.
+  - *Note*: Obstacle tokens participate in spatial attention and carry temporal hidden state, but they are sliced out before the policy heads (they receive no action, value, or auxiliary heads).
+- **ActionHead**: A 2-layer MLP producing factored categorical logits for 3 power × 7 turn × 2 shoot actions. The joint log-prob is the sum of the three sub-actions.
+- **NextStateHead**: An auxiliary 2-layer MLP that predicts normalized dynamic features of the next state (position, velocity, heading, angular velocity, health, power, cooldown, and an alive logit) for each ship. This provides a dense dynamics-learning signal.
+- **TeamPMA**: Pooling by Multi-head Attention. For each team, a learned seed attends over the embeddings of all alive ships on that team. The pooled team embedding is then broadcast back to each ship on that team, ensuring the value head has a global team context.
+- **ValueHead**: A 2-layer MLP producing K=19 distributional heads (one per reward component). It uses 255 categorical bins in double-symlog space `[-20, 20]`, trained with cross-entropy on twohot targets (DreamerV3-style). A `ReturnScaler` normalizes between symlog-reward space (GAE) and the value head's input/output range.
 
-Hidden state: `(n_layers, B*(N+M), CONV_KERNEL * D)` — RG-LRU state + causal conv buffer packed together so rollout (T=1) and PPO re-evaluation (T=128) use identical causal context.
+**Hidden state**: `(n_layers, B*(N+M), CONV_KERNEL * D)` — The RG-LRU recurrent state and the causal convolution buffer are packed together.
 
 ### Observations (`ObsConfig`)
 

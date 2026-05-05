@@ -7,8 +7,8 @@ Override in a profile only when the run genuinely needs a different value.
 from boost_and_broadside.config import ModelConfig, RewardConfig, ShipConfig
 from boost_and_broadside.config.obs_spec import (
     ObsConfig, FeatureSpec,
-    Normalize, Symlog, Clamp, AsFloat, Bucketize,
-    Fourier, OneHot, VecMag, SymlogVec, FourierAngle,
+    Normalize, Symlog, Clamp, AsFloat,
+    Fourier, OneHot, VecMag, SymlogVec, FourierAngle, QuarterWaveFourier,
 )
 
 SHIP_CONFIG = ShipConfig(bullet_energy_cost=2, bullet_min_damage_frac=1.0)
@@ -30,9 +30,9 @@ OBS_CONFIG = ObsConfig(features=(
     FeatureSpec("vel_dir",   "vel",        (FourierAngle(10),)),
     FeatureSpec("vel_speed", "vel",        (VecMag(), Symlog())),
     FeatureSpec("ang_vel",   "ang_vel",    (Symlog(),)),
-    FeatureSpec("health",    "health",     (Normalize(100.0), Bucketize(11), OneHot(11))),
-    FeatureSpec("power",     "power",      (Normalize(100.0),)),
-    FeatureSpec("cooldown",  "cooldown",   (Normalize(0.1), Clamp(0.0, 1.0))),
+    FeatureSpec("health",    "health",     (Normalize(100.0), QuarterWaveFourier())),
+    FeatureSpec("power",     "power",      (Normalize(100.0), QuarterWaveFourier())),
+    FeatureSpec("cooldown",  "cooldown",   (Normalize(0.1), Clamp(0.0, 1.0), QuarterWaveFourier())),
     FeatureSpec("team",      "team_id",    (OneHot(3),)),
     FeatureSpec("alive",     "alive",      (AsFloat(),)),
     FeatureSpec("act_power", "prev_power", (OneHot(3),)),
@@ -40,7 +40,7 @@ OBS_CONFIG = ObsConfig(features=(
     FeatureSpec("act_shoot", "prev_shoot", (OneHot(2),)),
     FeatureSpec("radius",    "radius",     (Normalize(40.0),)),
 ))
-# raw_dim = 20+20 + 20+20+1 + 1 + 11 + 1 + 1 + 3 + 1 + 3+7+2 + 1 = 112
+# raw_dim = 20+20 + 20+20+1 + 1 + 2 + 2 + 2 + 3 + 1 + 3+7+2 + 1 = 105
 
 # Minimal ablation: 1-freq pos, raw symlog vel, drop att/ang_vel/radius.
 OBS_CONFIG_MINIMAL = ObsConfig(features=(
@@ -48,16 +48,16 @@ OBS_CONFIG_MINIMAL = ObsConfig(features=(
     FeatureSpec("pos_y",     ("pos", 1),   (Fourier(4, _H),)),
     FeatureSpec("att",       "att",        (FourierAngle(4),)),
     FeatureSpec("vel",       "vel",        (SymlogVec(),)),
-    FeatureSpec("health",    "health",     (Normalize(100.0),)),
-    FeatureSpec("power",     "power",      (Normalize(100.0),)),
-    FeatureSpec("cooldown",  "cooldown",   (Normalize(0.1), Clamp(0.0, 1.0))),
+    FeatureSpec("health",    "health",     (Normalize(100.0), QuarterWaveFourier())),
+    FeatureSpec("power",     "power",      (Normalize(100.0), QuarterWaveFourier())),
+    FeatureSpec("cooldown",  "cooldown",   (Normalize(0.1), Clamp(0.0, 1.0), QuarterWaveFourier())),
     FeatureSpec("team",      "team_id",    (OneHot(3),)),
     FeatureSpec("alive",     "alive",      (AsFloat(),)),
     FeatureSpec("act_power", "prev_power", (OneHot(3),)),
     FeatureSpec("act_turn",  "prev_turn",  (OneHot(7),)),
     FeatureSpec("act_shoot", "prev_shoot", (OneHot(2),)),
 ))
-# raw_dim = 2+2 + 2 + 11 + 1 + 1 + 3 + 1 + 3+7+2 = 35
+# raw_dim = 8+8 + 8 + 2 + 2 + 2 + 2 + 3 + 1 + 3+7+2 = 48
 
 # Reward weights shared by all training profiles.
 # true_reward_scale/global_scale/local_scale live in each profile's TrainingSchedule.

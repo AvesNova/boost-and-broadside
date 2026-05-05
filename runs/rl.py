@@ -26,7 +26,7 @@ from boost_and_broadside.config import (
 from boost_and_broadside.config.schedule import exponential
 from runs.shared import REWARDS, OBS_CONFIG
 
-_MAX_TOKENS = 20000
+_MAX_TOKENS = 15000
 _NUM_SHIPS = 4
 _NUM_OBSTACLES = 0
 _NUM_MINIBATCHES = 32
