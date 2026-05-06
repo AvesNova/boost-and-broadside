@@ -175,21 +175,33 @@ def _apply_aux_deltas(curr: torch.Tensor, delta: torch.Tensor) -> torch.Tensor:
     Returns:
         (*, AUX_TARGET_CONT_DIM=15) — predicted next absolute continuous features.
     """
-    def _phase_shift(sc: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
-        """Rotate (sin, cos) pair by scalar phase shift d: guarantees sin²+cos²=1."""
-        s, c = sc[..., 0], sc[..., 1]
+    def _phase_shift(sc: torch.Tensor, d: torch.Tensor, cos_first: bool = False) -> torch.Tensor:
+        """Rotate a unit-circle pair by scalar phase shift d: guarantees sin²+cos²=1.
+
+        cos_first=False (default): sc is (sin θ, cos θ) → (sin(θ+d), cos(θ+d))
+        cos_first=True:            sc is (cos θ, sin θ) → (cos(θ+d), sin(θ+d))
+
+        Use cos_first=True for direction vectors stored as natural (x, y) = (cos θ, sin θ),
+        e.g. attitude, obstacle heading. Use the default for Fourier features where
+        (sin φ, cos φ) order was chosen by convention, e.g. position, health, power, cooldown.
+        """
         cd, sd = d.cos(), d.sin()
-        return torch.stack([s * cd + c * sd, c * cd - s * sd], dim=-1)
+        if cos_first:
+            c, s = sc[..., 0], sc[..., 1]
+            return torch.stack([c * cd - s * sd, s * cd + c * sd], dim=-1)
+        else:
+            s, c = sc[..., 0], sc[..., 1]
+            return torch.stack([s * cd + c * sd, c * cd - s * sd], dim=-1)
 
     return torch.cat([
-        _phase_shift(curr[..., 0:2],  delta[..., 0:1].squeeze(-1)),   # pos_x
-        _phase_shift(curr[..., 2:4],  delta[..., 1:2].squeeze(-1)),   # pos_y
-        curr[..., 4:6] + delta[..., 2:4],                             # vel (additive)
-        _phase_shift(curr[..., 6:8],  delta[..., 4:5].squeeze(-1)),   # att
-        curr[..., 8:9] + delta[..., 5:6],                             # ang_vel (additive)
-        _phase_shift(curr[..., 9:11], delta[..., 6:7].squeeze(-1)),   # health
-        _phase_shift(curr[..., 11:13],delta[..., 7:8].squeeze(-1)),   # power
-        _phase_shift(curr[..., 13:15],delta[..., 8:9].squeeze(-1)),   # cooldown
+        _phase_shift(curr[..., 0:2],  delta[..., 0:1].squeeze(-1)),                # pos_x  (sin, cos)
+        _phase_shift(curr[..., 2:4],  delta[..., 1:2].squeeze(-1)),                # pos_y  (sin, cos)
+        curr[..., 4:6] + delta[..., 2:4],                                          # vel    (additive)
+        _phase_shift(curr[..., 6:8],  delta[..., 4:5].squeeze(-1), cos_first=True),# att    (cos, sin)
+        curr[..., 8:9] + delta[..., 5:6],                                          # ang_vel (additive)
+        _phase_shift(curr[..., 9:11], delta[..., 6:7].squeeze(-1)),                # health (sin, cos)
+        _phase_shift(curr[..., 11:13],delta[..., 7:8].squeeze(-1)),                # power  (sin, cos)
+        _phase_shift(curr[..., 13:15],delta[..., 8:9].squeeze(-1)),                # cooldown (sin, cos)
     ], dim=-1)
 
 

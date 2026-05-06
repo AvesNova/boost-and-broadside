@@ -281,11 +281,8 @@ class GameRenderer:
                 ghost_y = ((phi_y + pn[n, 1].item()) % _2pi) / _2pi * world_h
                 ghost_p = complex(ghost_x, ghost_y)
 
-                # Decode ghost attitude. The training loss applies _phase_shift to the
-                # (cos,sin) attitude pair as though it were (sin,cos), which rotates by
-                # -d instead of +d. The model compensates by predicting negated deltas,
-                # so we subtract here to recover the correct angle.
-                att_angle = prev_att_angle - pn[n, 4].item()
+                # Decode ghost attitude: phase shift applied to prev attitude.
+                att_angle = prev_att_angle + pn[n, 4].item()
                 ghost_a = complex(math.cos(att_angle), math.sin(att_angle))
 
                 tip   = ghost_p + ghost_a * sz
