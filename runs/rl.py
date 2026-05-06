@@ -33,7 +33,7 @@ _NUM_STEPS = 256
 _NUM_MINIBATCHES = 32
 
 RL_SCHEDULE = TrainingSchedule(
-    learning_rate=linear((0, 1e-7), (5_000_000, 3e-4), (30_000_000, 1e-4)),
+    learning_rate=linear((0, 1e-7), (5_000_000, 3e-4)),
     policy_gradient_coef=constant(1.0),
     entropy_coef=constant(0.005),
     behavior_cloning_coef=constant(2.0),
@@ -52,11 +52,11 @@ RL_SCHEDULE = TrainingSchedule(
     # Accumulate avg-model immediately so it is ready at step 50M.
     allow_avg_model_updates=stepped((0, False), (40_000_000, True)),
     allow_scripted_in_roster=stepped((0, True)),
-    elo_eval_games=stepped((0, 256)),
-    elo_eval_interval=stepped((0, 1), (5_000_000, 2), (20_000_000, 10)),
-    checkpoint_interval=stepped((0, 1), (2_000_000, 10)),
-    num_epochs=stepped((0, 8), (10_000_000, 4)),
-    target_kl=stepped((0, 0.1), (10_000_000, 0.02)),
+    elo_eval_games=stepped((0, 512)),
+    elo_eval_interval=stepped((0, 1), (1_000_000, 10)),
+    checkpoint_interval=stepped((0, 1), (1_000_000, 10)),
+    num_epochs=stepped((0, 4)),
+    target_kl=stepped((0, 0.1)),
 )
 
 RL_TRAIN_CONFIG = TrainConfig(
@@ -74,10 +74,10 @@ RL_TRAIN_CONFIG = TrainConfig(
     rewards=REWARDS,
     num_steps=_NUM_STEPS,
     num_minibatches=_NUM_MINIBATCHES,
-    next_state_coef=1.0,
+    next_state_coef=0.2,
     gamma=0.990,
     gae_lambda=0.95,
-    clip_coef=0.2,
+    clip_coef=0.15,
     max_grad_norm=1.0,
     total_timesteps=2_000_000_000,
     return_ema_alpha=0.005,

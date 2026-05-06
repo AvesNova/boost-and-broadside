@@ -628,10 +628,9 @@ class PPOTrainer:
         self._policy_gradient_coef: float = base_state.policy_gradient_coef
         self._behavior_cloning_coef: float = base_state.behavior_cloning_coef
 
-        # ELO-based BC EMA: tracks a [0, 1] factor that scales behavior_cloning_coef.
-        # Starts at 1.0 (full BC) and decays toward max(0, 1 - elo_norm/1000).
-        self._bc_ema: float = 1.0
-        self._bc_ema_last_step: int = 0
+        # BC decay: None until ELO first reaches 1000, then records that step.
+        # Factor = 1.0 before milestone, 0.1**(steps_since/10M) for next 20M steps, then 0.
+        self._bc_1000_elo_step: int | None = None
 
         # --- Auxiliary training scales (multi-scale curriculum) ---
         # Each scale has its own env + buffer; policy, optimizer, and scaler are shared.
@@ -1178,15 +1177,19 @@ class PPOTrainer:
                 self.cfg.schedule, self._global_step
             )
             self._policy_gradient_coef = self._schedule_state.policy_gradient_coef
-            # ELO-based BC EMA: decay toward target factor derived from current ELO.
-            delta_steps = self._global_step - self._bc_ema_last_step
-            decay = 0.5 ** (delta_steps / self.cfg.bc_ema_halflife_steps)
+            # BC decay: full until ELO reaches 1000, then exponential decay to zero.
             elo_norm = self._training_elo - self._random_elo()
-            target_factor = max(0.0, 1.0 - elo_norm / 1000.0)
-            self._bc_ema = decay * self._bc_ema + (1.0 - decay) * target_factor
-            self._bc_ema_last_step = self._global_step
-            bc_ema_effective = 0.0 if self._bc_ema < self.cfg.bc_ema_cutoff else self._bc_ema
-            self._behavior_cloning_coef = self._schedule_state.behavior_cloning_coef * bc_ema_effective
+            if self._bc_1000_elo_step is None and elo_norm >= 900.0:
+                self._bc_1000_elo_step = self._global_step
+            if self._bc_1000_elo_step is None:
+                bc_factor = 1.0
+            else:
+                steps_since = self._global_step - self._bc_1000_elo_step
+                if steps_since >= 20_000_000:
+                    bc_factor = 0.0
+                else:
+                    bc_factor = 0.1 ** (steps_since / 10_000_000)
+            self._behavior_cloning_coef = self._schedule_state.behavior_cloning_coef * bc_factor
             self.optim.param_groups[0]["lr"] = self._schedule_state.learning_rate
             for comp in self.wrapper._all_components:
                 scale_attr = _GROUP[comp.name]
@@ -1201,7 +1204,8 @@ class PPOTrainer:
                 self._schedule_state.policy_gradient_coef
             )
             metrics["schedule/behavior_cloning_coef"] = self._behavior_cloning_coef
-            metrics["schedule/bc_ema_factor"] = self._bc_ema
+            metrics["schedule/bc_decay_factor"] = bc_factor
+            metrics["schedule/target_kl"] = 0.02 if self._bc_1000_elo_step is not None else self._schedule_state.target_kl
             metrics["schedule/true_reward_scale"] = (
                 self._schedule_state.true_reward_scale
             )
@@ -1750,7 +1754,7 @@ class PPOTrainer:
         last_logprob_np = None
 
         num_epochs = self._schedule_state.num_epochs
-        target_kl = self._schedule_state.target_kl
+        target_kl = 0.02 if self._bc_1000_elo_step is not None else self._schedule_state.target_kl
 
         for epoch_idx in range(num_epochs):
             kl_start = len(accum_scalar["policy/kl"])
@@ -2221,8 +2225,7 @@ class PPOTrainer:
             "global_step": self._global_step,
             "training_elo": self._training_elo,
             "elo_milestone": self._elo_milestone,
-            "bc_ema": self._bc_ema,
-            "bc_ema_last_step": self._bc_ema_last_step,
+            "bc_1000_elo_step": self._bc_1000_elo_step,
             "train_config": {
                 k: v for k, v in dataclasses.asdict(self.cfg).items() if k != "schedule"
             },
@@ -2342,9 +2345,8 @@ class PPOTrainer:
         if "training_elo" in ckpt:
             self._training_elo = ckpt["training_elo"]
             self._elo_milestone = ckpt.get("elo_milestone", 0.0)
-        if "bc_ema" in ckpt:
-            self._bc_ema = ckpt["bc_ema"]
-            self._bc_ema_last_step = ckpt.get("bc_ema_last_step", ckpt.get("global_step", 0))
+        if "bc_1000_elo_step" in ckpt:
+            self._bc_1000_elo_step = ckpt["bc_1000_elo_step"]
 
         # Restore roster if its JSON exists alongside the checkpoint
         roster_path = Path(path).parent / "roster.json"
