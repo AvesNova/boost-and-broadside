@@ -201,3 +201,159 @@ def reset_done_envs(
         agent.hidden = agent.agent.reset_hidden_for_envs(
             agent.hidden, done_mask, num_tokens
         )
+
+
+# ---------------------------------------------------------------------------
+# Autoregressive imagination for watch-mode visualization
+# ---------------------------------------------------------------------------
+
+def _extract_aux_cont(obs: dict, N: int, ship_config) -> torch.Tensor:
+    """Encode raw obs into AUX continuous state (B, N, 15).
+
+    Matches the layout used by _apply_aux_deltas:
+      pos_x(sin,cos) pos_y(sin,cos) vel(2) att(2) ang_vel(1) health(2) power(2) cooldown(2)
+    """
+    import math
+    _2pi = 2.0 * math.pi
+    _hpi = math.pi / 2.0
+    W = ship_config.world_size[0]
+
+    pos_norm = obs["pos"][:, :N].float() / W                              # (B, N, 2) in [0,1]
+    pos_sin = torch.sin(_2pi * pos_norm)
+    pos_cos = torch.cos(_2pi * pos_norm)
+    pos = torch.stack([pos_sin[..., 0], pos_cos[..., 0],
+                       pos_sin[..., 1], pos_cos[..., 1]], dim=-1)         # (B, N, 4)
+
+    vel = obs["vel"][:, :N].float() / ship_config.max_speed               # (B, N, 2)
+    att = obs["att"][:, :N].float()                                        # (B, N, 2)
+
+    av_raw = obs["ang_vel"][:, :N].float()
+    ang_vel = torch.sign(av_raw) * torch.log1p(av_raw.abs())              # symlog, (B, N, 1)
+
+    health_n = (obs["health"][:, :N].float().squeeze(-1) / ship_config.max_health).clamp(0.0, 1.0)
+    power_n  = (obs["power"][:, :N].float().squeeze(-1)  / ship_config.max_power).clamp(0.0, 1.0)
+    cd_n     = (obs["cooldown"][:, :N].float().squeeze(-1) / ship_config.firing_cooldown).clamp(0.0, 1.0)
+
+    health   = torch.stack([torch.sin(_hpi * health_n), torch.cos(_hpi * health_n)], dim=-1)
+    power    = torch.stack([torch.sin(_hpi * power_n),  torch.cos(_hpi * power_n)],  dim=-1)
+    cooldown = torch.stack([torch.sin(_hpi * cd_n),     torch.cos(_hpi * cd_n)],     dim=-1)
+
+    return torch.cat([pos, vel, att, ang_vel, health, power, cooldown], dim=-1)  # (B, N, 15)
+
+
+def _apply_aux_deltas_local(curr: torch.Tensor, delta: torch.Tensor) -> torch.Tensor:
+    """Apply predicted deltas/phase shifts to AUX continuous state.
+
+    curr:  (B, N, 15)  layout: pos_x(2) pos_y(2) vel(2) att(2) ang_vel(1) health(2) power(2) cooldown(2)
+    delta: (B, N, 9)   layout: Δφ_x(1) Δφ_y(1) Δvel(2) Δφ_att(1) Δang_vel(1) Δφ_h(1) Δφ_p(1) Δφ_c(1)
+    Returns: (B, N, 15)
+    """
+    def _phase_shift(sc: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
+        s, c = sc[..., 0], sc[..., 1]
+        cd, sd = d.cos(), d.sin()
+        return torch.stack([s * cd + c * sd, c * cd - s * sd], dim=-1)
+
+    return torch.cat([
+        _phase_shift(curr[..., 0:2],   delta[..., 0:1].squeeze(-1)),   # pos_x
+        _phase_shift(curr[..., 2:4],   delta[..., 1:2].squeeze(-1)),   # pos_y
+        curr[..., 4:6] + delta[..., 2:4],                              # vel (additive)
+        _phase_shift(curr[..., 6:8],   delta[..., 4:5].squeeze(-1)),   # att
+        curr[..., 8:9] + delta[..., 5:6],                              # ang_vel (additive)
+        _phase_shift(curr[..., 9:11],  delta[..., 6:7].squeeze(-1)),   # health
+        _phase_shift(curr[..., 11:13], delta[..., 7:8].squeeze(-1)),   # power
+        _phase_shift(curr[..., 13:15], delta[..., 8:9].squeeze(-1)),   # cooldown
+    ], dim=-1)
+
+
+def _imagined_obs_from_aux(
+    aux_next: torch.Tensor,
+    alive_logit: torch.Tensor,
+    prev_obs: dict,
+    action: torch.Tensor,
+    N: int,
+    ship_config,
+) -> dict:
+    """Reconstruct raw obs dict ship fields from predicted AUX continuous state.
+
+    aux_next:    (B, N, 15) continuous AUX after applying deltas
+    alive_logit: (B, N)     raw alive logit from pred_next[..., 9]
+    prev_obs:    previous obs dict — obstacle tokens (N:) copied unchanged
+    action:      (B, N, 3) int — imagined action used as prev_power/turn/shoot
+    """
+    import math
+    _2pi = 2.0 * math.pi
+    _hpi = math.pi / 2.0
+    W = ship_config.world_size[0]
+
+    pos_x = (torch.atan2(aux_next[..., 0], aux_next[..., 1]) % _2pi) * W / _2pi
+    pos_y = (torch.atan2(aux_next[..., 2], aux_next[..., 3]) % _2pi) * W / _2pi
+    pos = torch.stack([pos_x, pos_y], dim=-1)                             # (B, N, 2)
+
+    vel = aux_next[..., 4:6] * ship_config.max_speed                      # (B, N, 2)
+    att = aux_next[..., 6:8]                                               # (B, N, 2) unit vec
+
+    sym = aux_next[..., 8:9]
+    ang_vel = torch.sign(sym) * (torch.exp(sym.abs()) - 1)                # inv_symlog, (B, N, 1)
+
+    health_n = (torch.atan2(aux_next[..., 9],  aux_next[..., 10]) / _hpi).clamp(0.0, 1.0)
+    power_n  = (torch.atan2(aux_next[..., 11], aux_next[..., 12]) / _hpi).clamp(0.0, 1.0)
+    cd_n     = (torch.atan2(aux_next[..., 13], aux_next[..., 14]) / _hpi).clamp(0.0, 1.0)
+    health   = (health_n * ship_config.max_health).unsqueeze(-1)          # (B, N, 1)
+    power    = (power_n  * ship_config.max_power).unsqueeze(-1)
+    cooldown = (cd_n     * ship_config.firing_cooldown).unsqueeze(-1)
+
+    alive = alive_logit.sigmoid() > 0.5                                    # (B, N) bool
+
+    new_obs = {k: v.clone() for k, v in prev_obs.items()}
+    new_obs["pos"]        = torch.cat([pos,     prev_obs["pos"][:, N:]],      dim=1)
+    new_obs["vel"]        = torch.cat([vel,     prev_obs["vel"][:, N:]],      dim=1)
+    new_obs["att"]        = torch.cat([att,     prev_obs["att"][:, N:]],      dim=1)
+    new_obs["ang_vel"]    = torch.cat([ang_vel, prev_obs["ang_vel"][:, N:]],  dim=1)
+    new_obs["health"]     = torch.cat([health,  prev_obs["health"][:, N:]],   dim=1)
+    new_obs["power"]      = torch.cat([power,   prev_obs["power"][:, N:]],    dim=1)
+    new_obs["cooldown"]   = torch.cat([cooldown,prev_obs["cooldown"][:, N:]], dim=1)
+    new_obs["alive"]      = torch.cat([alive,   prev_obs["alive"][:, N:]],    dim=1)
+    new_obs["prev_power"] = torch.cat([action[..., 0], prev_obs["prev_power"][:, N:]], dim=1)
+    new_obs["prev_turn"]  = torch.cat([action[..., 1], prev_obs["prev_turn"][:, N:]],  dim=1)
+    new_obs["prev_shoot"] = torch.cat([action[..., 2], prev_obs["prev_shoot"][:, N:]], dim=1)
+    return new_obs
+
+
+def imagine_trajectory(
+    agent: ResolvedAgent,
+    obs: dict,
+    n_steps: int,
+    num_ships: int,
+    device,
+    ship_config,
+) -> list:
+    """Autoregressive imagined rollout for watch-mode visualization.
+
+    Clones the policy's hidden state and runs n_steps forward passes,
+    feeding each predicted state back as the next observation.  The real
+    agent.hidden is never modified.
+
+    Returns:
+        List of n_steps (B, N, AUX_PRED_DIM=10) tensors, or [] for non-policy agents.
+    """
+    if agent.kind != "policy" or agent.hidden is None or n_steps <= 0:
+        return []
+
+    imag_hidden = agent.hidden.clone()
+    imag_obs = {k: v.clone() for k, v in obs.items()}
+    curr_aux = _extract_aux_cont(imag_obs, num_ships, ship_config)        # (B, N, 15)
+
+    pred_nexts = []
+    with torch.no_grad():
+        for _ in range(n_steps):
+            action, _, _, pred_next, imag_hidden = agent.agent.get_action_and_value(
+                imag_obs, imag_hidden
+            )
+            pred_nexts.append(pred_next)
+            next_aux = _apply_aux_deltas_local(curr_aux, pred_next[..., :9])
+            imag_obs = _imagined_obs_from_aux(
+                next_aux, pred_next[..., 9], imag_obs, action, num_ships, ship_config
+            )
+            curr_aux = next_aux
+
+    return pred_nexts

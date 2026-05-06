@@ -28,6 +28,7 @@ from boost_and_broadside.env.wrapper import MVPEnvWrapper
 from boost_and_broadside.modes.agent_factory import (
     ResolvedAgent,
     get_actions,
+    imagine_trajectory,
     init_hidden,
     reset_done_envs,
     resolve_agent_spec,
@@ -212,6 +213,8 @@ def _run_interactive_loop(
         renderer: Pygame renderer.
         device:   Torch device.
     """
+    N_IMAGINE_STEPS = 12
+
     N = wrapper.num_ships
     M = wrapper.env_config.num_obstacles
     num_tokens = N + M
@@ -221,7 +224,7 @@ def _run_interactive_loop(
         obs = wrapper.reset()
         init_hidden(agent0, 1, num_tokens, device)
         init_hidden(agent1, 1, num_tokens, device)
-        pred_next = None
+        pred_nexts = None
 
         # Show "Match starting!" for half a second on the first episode so the
         # user can see the reloaded snapshot before agents begin moving.
@@ -238,19 +241,28 @@ def _run_interactive_loop(
             if not renderer.paused:
                 state = wrapper.state
 
-                action0, pred_next0 = get_actions(agent0, obs, state, 1, N, device, return_pred_next=True)
-                action1, pred_next1 = get_actions(agent1, obs, state, 1, N, device, return_pred_next=True)
+                # Imagined trajectories use the hidden state BEFORE the real forward pass.
+                imag_nexts0 = imagine_trajectory(agent0, obs, N_IMAGINE_STEPS, N, device, wrapper.ship_config)
+                imag_nexts1 = imagine_trajectory(agent1, obs, N_IMAGINE_STEPS, N, device, wrapper.ship_config)
+
+                action0, _ = get_actions(agent0, obs, state, 1, N, device, return_pred_next=True)
+                action1, _ = get_actions(agent1, obs, state, 1, N, device, return_pred_next=True)
 
                 # Select each agent's actions for their respective team (ship tokens only)
                 team_id = obs["team_id"][:, :N]  # (1, N) — exclude obstacle tokens
                 action = torch.where((team_id == 0).unsqueeze(-1), action0, action1)
-                
-                # Combine predicted next states
-                pred_next = None
-                if pred_next0 is not None or pred_next1 is not None:
-                    pn0 = pred_next0 if pred_next0 is not None else torch.zeros_like(pred_next1)
-                    pn1 = pred_next1 if pred_next1 is not None else torch.zeros_like(pred_next0)
-                    pred_next = torch.where((team_id == 0).unsqueeze(-1), pn0, pn1)
+
+                # Merge imagined trajectories by team into a single list of per-step tensors.
+                pred_nexts = None
+                if imag_nexts0 or imag_nexts1:
+                    n_steps = max(len(imag_nexts0), len(imag_nexts1))
+                    mask = (team_id == 0).unsqueeze(-1)  # (1, N, 1)
+                    merged = []
+                    for k in range(n_steps):
+                        pn0 = imag_nexts0[k] if k < len(imag_nexts0) else torch.zeros_like(imag_nexts1[k])
+                        pn1 = imag_nexts1[k] if k < len(imag_nexts1) else torch.zeros_like(imag_nexts0[k])
+                        merged.append(torch.where(mask, pn0, pn1))
+                    pred_nexts = merged
 
                 # Human keyboard overrides for null agents
                 if agent0.kind == "null" or agent1.kind == "null":
@@ -268,9 +280,9 @@ def _run_interactive_loop(
                     reset_done_envs(agent0, dones | truncated, num_tokens)
                     reset_done_envs(agent1, dones | truncated, num_tokens)
                     obs = wrapper.reset()
-                    pred_next = None
+                    pred_nexts = None
 
-            running = renderer.render(wrapper.state, pred_next=pred_next)
+            running = renderer.render(wrapper.state, pred_nexts=pred_nexts)
             if not running:
                 return
             renderer.tick()
