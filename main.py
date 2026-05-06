@@ -20,6 +20,7 @@ Watch / play:
 Evaluation:
     uv run main.py --mode collect_stats                                   # scripted vs random
     uv run main.py --mode collect_stats --team0 latest --team1 scripted
+    uv run main.py --mode feature_stats                                   # compute feature deltas
     uv run main.py --mode elo_stats                                       # ELO across all scripted agents
     uv run main.py --mode elo_stats --run latest                          # scripted + latest checkpoints
 
@@ -48,6 +49,7 @@ from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAge
 from boost_and_broadside.config import EnvConfig
 from boost_and_broadside.modes.collect import run_collect_stats_mode
 from boost_and_broadside.modes.elo_stats import run_elo_stats_mode
+from boost_and_broadside.modes.feature_stats import run_feature_stats_mode
 from boost_and_broadside.modes.interactive import run_watch_mode
 from boost_and_broadside.train.rl.ppo import PPOTrainer
 from boost_and_broadside.ui.renderer import RenderConfig
@@ -65,7 +67,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--mode",
-        choices=["bc", "rl", "rl_obstacles", "bc_warmstart", "watch", "collect_stats", "elo_stats"],
+        choices=["bc", "rl", "rl_obstacles", "bc_warmstart", "watch", "collect_stats", "feature_stats", "elo_stats"],
         default="rl",
         help=(
             "Operating mode. "
@@ -290,6 +292,23 @@ def main() -> None:
                 team0_spec=team0,
                 team1_spec=team1,
                 num_envs=1024,
+                ship_config=SHIP_CONFIG,
+                env_config=EnvConfig(
+                    num_ships=4, max_bullets=20, max_episode_steps=1024
+                ),
+                model_config=MODEL_CONFIG,
+                device=device,
+                checkpoint_dir="checkpoints",
+            )
+
+        case "feature_stats":
+            team0 = args.team0 if args.team0 is not None else "scripted"
+            team1 = args.team1 if args.team1 is not None else "scripted"
+            run_feature_stats_mode(
+                team0_spec=team0,
+                team1_spec=team1,
+                num_envs=128,
+                num_steps=1024,
                 ship_config=SHIP_CONFIG,
                 env_config=EnvConfig(
                     num_ships=4, max_bullets=20, max_episode_steps=1024
