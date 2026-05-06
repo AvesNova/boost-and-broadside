@@ -138,7 +138,7 @@ class TeamPMA(nn.Module):
             # key_padding_mask: True = ignore that key position
             out, _ = self.attn(seed, x, x, key_padding_mask=~mask, need_weights=False)
             out = out.squeeze(1).nan_to_num(0.0)  # (B, D) — guard: all-dead → NaN → 0
-            out = out * has_ship.unsqueeze(1).float()  # zero dead-team envs before norm
+            out = out * has_ship.unsqueeze(1).to(out.dtype)  # zero dead-team envs before norm
             team_pool[:, t] = self.norm(out)  # (B, D)
 
         # Each ship gets its team's pooled embedding

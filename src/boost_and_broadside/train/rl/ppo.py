@@ -542,7 +542,8 @@ class PPOTrainer:
         for p in self._avg_policy_module.parameters():
             p.requires_grad_(False)
         self._avg_param_cumsum: list[torch.Tensor] = [
-            torch.zeros_like(p) for p in self._policy_module.parameters()
+            torch.zeros(p.shape, dtype=torch.float32, device=p.device)
+            for p in self._policy_module.parameters()
         ]
         self._avg_update_count: int = 0
 
@@ -704,7 +705,7 @@ class PPOTrainer:
         first_update = self._avg_update_count == 0
         self._avg_update_count += 1
         for cum, p in zip(self._avg_param_cumsum, self._policy_module.parameters()):
-            cum.add_(p.detach())
+            cum.add_(p.detach().float())
         for avg_p, cum in zip(
             self._avg_policy_module.parameters(), self._avg_param_cumsum
         ):
