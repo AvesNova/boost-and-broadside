@@ -1221,21 +1221,20 @@ class PPOTrainer:
             if ep_rewards:
                 all_rewards = torch.cat(ep_rewards)  # (num_finished_eps * N,)
                 all_lengths = torch.cat(ep_lengths)
-                metrics["ep/reward_mean"] = all_rewards.mean().item()
-                metrics["ep/reward_min"] = all_rewards.min().item()
-                metrics["ep/reward_max"] = all_rewards.max().item()
-                metrics["ep/length_mean"] = all_lengths.mean().item()
+                metrics["episode/reward_mean"] = all_rewards.mean().item()
+                metrics["episode/reward_min"] = all_rewards.min().item()
+                metrics["episode/reward_max"] = all_rewards.max().item()
+                metrics["episode/length_mean"] = all_lengths.mean().item()
                 for name, tensors in ep_components.items():
-                    metrics[f"ep/reward_{name}"] = torch.cat(tensors).mean().item()
+                    metrics[f"episode/reward_{name}"] = torch.cat(tensors).mean().item()
                 for name, tensors in ep_scaled_components.items():
-                    metrics[f"ep/scaled_{name}"] = torch.cat(tensors).mean().item()
+                    metrics[f"episode/scaled_{name}"] = torch.cat(tensors).mean().item()
                 if ep_wins:
-                    metrics["ep/win_rate"] = torch.cat(ep_wins).mean().item()
+                    metrics["episode/win_rate"] = torch.cat(ep_wins).mean().item()
                 if ep_lifespans:
-                    metrics["ep/lifespan_mean"] = torch.cat(ep_lifespans).mean().item()
+                    metrics["episode/lifespan_mean"] = torch.cat(ep_lifespans).mean().item()
 
             sps = int(self._global_step / (time.time() - start_time))
-            metrics["train/lr"] = self.optim.param_groups[0]["lr"]
             metrics["train/global_step"] = self._global_step
             metrics["train/sps"] = sps
 
@@ -1261,6 +1260,27 @@ class PPOTrainer:
                             "best_avg.pt", self._avg_checkpoint_payload(update=0)
                         )
 
+            # Overview — redundant copies of the most important global metrics
+            for src, dst in [
+                ("elo/training",                   "overview/elo"),
+                ("elo/win_rate_vs_scripted",        "overview/win_rate_vs_scripted"),
+                ("elo/win_rate_vs_random",          "overview/win_rate_vs_random"),
+                ("loss/total",                      "overview/loss_total"),
+                ("loss_proxy/policy_gradient",      "overview/loss_proxy_pg"),
+                ("loss_proxy/behavioral_cloning",   "overview/loss_proxy_bc"),
+                ("policy/kl",                       "overview/kl"),
+                ("policy/clip_fraction",            "overview/clip_fraction"),
+                ("episode/win_rate",                "overview/win_rate"),
+                ("episode/reward_mean",             "overview/reward_mean"),
+                ("train/gradient_norm",             "overview/gradient_norm"),
+                ("schedule/behavior_cloning_coef",  "overview/bc_coef"),
+            ]:
+                if src in metrics:
+                    metrics[dst] = metrics[src]
+            ev_vals = [v for k, v in metrics.items() if k.startswith("critic/explained_variance/")]
+            if ev_vals:
+                metrics["overview/explained_variance"] = sum(ev_vals) / len(ev_vals)
+
             # Single log call per update — all metrics at the same step
             self._enqueue_log(metrics, step=self._global_step)
 
@@ -1269,14 +1289,14 @@ class PPOTrainer:
                     f"  elo={self._training_elo:.0f}" if elo_eval_interval > 0 else ""
                 )
                 lifespan_str = (
-                    f"  lifespan={metrics['ep/lifespan_mean']:.1f}"
-                    if "ep/lifespan_mean" in metrics else ""
+                    f"  lifespan={metrics['episode/lifespan_mean']:.1f}"
+                    if "episode/lifespan_mean" in metrics else ""
                 )
                 print(
                     f"update={update}/{self._num_updates}  "
                     f"step={self._global_step:,}  "
                     f"sps={sps:,}  "
-                    f"loss={metrics.get('train/loss', 0.0):.4f}"
+                    f"loss={metrics.get('loss/total', 0.0):.4f}"
                     f"{elo_str}"
                     f"{lifespan_str}"
                 )
@@ -1665,29 +1685,35 @@ class PPOTrainer:
         )  # (K,)
 
         accum_scalar: dict[str, list[torch.Tensor]] = {
-            "train/loss": [],
-            "train/policy_gradient_loss": [],
-            "train/value_loss": [],
-            "train/entropy_loss": [],
-            "train/behavioral_cloning_loss": [],
-            "train/sigreg_loss": [],
-            "next_state/loss": [],
-            "next_state/cont_loss": [],
-            "next_state/alive_loss": [],
-            "train/bc_kl": [],
-            "train/scripted_entropy": [],
-            "train/approximate_kl": [],
-            "train/clip_fraction": [],
-            "train/gradient_norm": [],
-            "train/advantage_std": [],
-            "train/alive_fraction": [],
-            "train/ratio_mean": [],
-            "train/ratio_max": [],
-            "train/entropy_power": [],
-            "train/entropy_turn": [],
-            "train/entropy_shoot": [],
+            "loss/total": [],
+            "loss/policy_gradient": [],
+            "loss/value": [],
+            "loss/entropy": [],
+            "loss/behavioral_cloning": [],
+            "loss/behavioral_cloning_kl": [],
+            "loss/scripted_entropy": [],
+            "loss/sigreg": [],
+            "loss/next_state": [],
+            "loss/next_state_cont": [],
+            "loss/next_state_alive": [],
+            "loss_proxy/policy_gradient": [],
+            "loss_proxy/value": [],
+            "loss_proxy/entropy": [],
+            "loss_proxy/behavioral_cloning": [],
+            "loss_proxy/sigreg": [],
+            "loss_proxy/next_state": [],
+            "policy/kl": [],
+            "policy/clip_fraction": [],
+            "policy/ratio_mean": [],
+            "policy/ratio_max": [],
+            "policy/entropy_power": [],
+            "policy/entropy_turn": [],
+            "policy/entropy_shoot": [],
             "returns/aggregate": [],
             "returns/aggregate_std": [],
+            "returns/advantage_std": [],
+            "episode/alive_fraction": [],
+            "train/gradient_norm": [],
         }
         accum_k: dict[str, list[torch.Tensor]] = {
             "critic/value_loss": [],
@@ -1695,7 +1721,7 @@ class PPOTrainer:
             "critic/return_mean": [],
             "critic/value_pred_mean": [],
             "returns/component": [],
-            "train/advantage_std_k": [],
+            "returns/advantage_std": [],
         }
         _NS_FEAT_NAMES = (
             "pos_sin_x", "pos_cos_x", "pos_sin_y", "pos_cos_y",
@@ -1714,7 +1740,7 @@ class PPOTrainer:
         target_kl = self._schedule_state.target_kl
 
         for epoch_idx in range(num_epochs):
-            kl_start = len(accum_scalar["train/approximate_kl"])
+            kl_start = len(accum_scalar["policy/kl"])
             iters = [
                 buf.get_minibatch_iterator(cfg.num_minibatches) for buf in all_buffers
             ]
@@ -1796,41 +1822,48 @@ class PPOTrainer:
                 )
                 self.optim.step()
 
-                accum_scalar["train/loss"].append(scalar_accum_step["loss"])
-                accum_scalar["train/policy_gradient_loss"].append(
-                    scalar_accum_step["pg"]
-                )
-                accum_scalar["train/value_loss"].append(scalar_accum_step["vf"])
-                accum_scalar["train/entropy_loss"].append(scalar_accum_step["ent"])
-                accum_scalar["train/behavioral_cloning_loss"].append(
-                    scalar_accum_step["bc"]
-                )
-                accum_scalar["train/sigreg_loss"].append(scalar_accum_step["sigreg"])
-                accum_scalar["next_state/loss"].append(scalar_accum_step["ns_loss"])
-                accum_scalar["next_state/cont_loss"].append(scalar_accum_step["ns_cont"])
-                accum_scalar["next_state/alive_loss"].append(scalar_accum_step["ns_alive"])
-                accum_scalar["train/bc_kl"].append(scalar_accum_step["bc_kl"])
-                accum_scalar["train/scripted_entropy"].append(
+                accum_scalar["loss/total"].append(scalar_accum_step["loss"])
+                accum_scalar["loss/policy_gradient"].append(scalar_accum_step["pg"])
+                accum_scalar["loss/value"].append(scalar_accum_step["vf"])
+                accum_scalar["loss/entropy"].append(scalar_accum_step["ent"])
+                accum_scalar["loss/behavioral_cloning"].append(scalar_accum_step["bc"])
+                accum_scalar["loss/behavioral_cloning_kl"].append(scalar_accum_step["bc_kl"])
+                accum_scalar["loss/scripted_entropy"].append(
                     scalar_accum_step["scripted_entropy"]
                 )
-                accum_scalar["train/approximate_kl"].append(scalar_accum_step["kl"])
-                accum_scalar["train/clip_fraction"].append(scalar_accum_step["clip"])
-                accum_scalar["train/gradient_norm"].append(grad_norm.detach())
-                accum_scalar["train/advantage_std"].append(
-                    scalar_accum_step["adv_var"] ** 0.5
+                accum_scalar["loss/sigreg"].append(scalar_accum_step["sigreg"])
+                accum_scalar["loss/next_state"].append(scalar_accum_step["ns_loss"])
+                accum_scalar["loss/next_state_cont"].append(scalar_accum_step["ns_cont"])
+                accum_scalar["loss/next_state_alive"].append(scalar_accum_step["ns_alive"])
+                accum_scalar["loss_proxy/policy_gradient"].append(
+                    self._policy_gradient_coef * scalar_accum_step["pg"]
                 )
-                accum_scalar["train/alive_fraction"].append(
-                    scalar_accum_step["alive_frac"]
+                accum_scalar["loss_proxy/value"].append(
+                    self._schedule_state.value_function_coef * scalar_accum_step["vf"]
                 )
-                accum_scalar["train/ratio_mean"].append(scalar_accum_step["ratio_mean"])
-                accum_scalar["train/ratio_max"].append(scalar_accum_step["ratio_max"])
-                accum_scalar["train/entropy_power"].append(
+                accum_scalar["loss_proxy/entropy"].append(
+                    self._schedule_state.entropy_coef * scalar_accum_step["ent"]
+                )
+                accum_scalar["loss_proxy/behavioral_cloning"].append(
+                    self._behavior_cloning_coef * scalar_accum_step["bc"]
+                )
+                accum_scalar["loss_proxy/sigreg"].append(
+                    self._schedule_state.sigreg_coef * scalar_accum_step["sigreg"]
+                )
+                accum_scalar["loss_proxy/next_state"].append(
+                    self.cfg.next_state_coef * scalar_accum_step["ns_loss"]
+                )
+                accum_scalar["policy/kl"].append(scalar_accum_step["kl"])
+                accum_scalar["policy/clip_fraction"].append(scalar_accum_step["clip"])
+                accum_scalar["policy/ratio_mean"].append(scalar_accum_step["ratio_mean"])
+                accum_scalar["policy/ratio_max"].append(scalar_accum_step["ratio_max"])
+                accum_scalar["policy/entropy_power"].append(
                     scalar_accum_step["entropy_power"]
                 )
-                accum_scalar["train/entropy_turn"].append(
+                accum_scalar["policy/entropy_turn"].append(
                     scalar_accum_step["entropy_turn"]
                 )
-                accum_scalar["train/entropy_shoot"].append(
+                accum_scalar["policy/entropy_shoot"].append(
                     scalar_accum_step["entropy_shoot"]
                 )
                 accum_scalar["returns/aggregate"].append(
@@ -1839,6 +1872,13 @@ class PPOTrainer:
                 accum_scalar["returns/aggregate_std"].append(
                     scalar_accum_step["ret_agg_std"]
                 )
+                accum_scalar["returns/advantage_std"].append(
+                    scalar_accum_step["adv_var"] ** 0.5
+                )
+                accum_scalar["episode/alive_fraction"].append(
+                    scalar_accum_step["alive_frac"]
+                )
+                accum_scalar["train/gradient_norm"].append(grad_norm.detach())
 
                 if "stats_k_cpu" in diag_primary:
                     stats_k_cpu = diag_primary["stats_k_cpu"]
@@ -1850,7 +1890,7 @@ class PPOTrainer:
                         accum_k["critic/explained_variance"].append(stats_k_cpu[1])
 
                 if "adv_std_k" in diag_primary:
-                    accum_k["train/advantage_std_k"].append(diag_primary["adv_std_k"])
+                    accum_k["returns/advantage_std"].append(diag_primary["adv_std_k"])
 
                 if diag_primary.get("next_state_per_feat") is not None:
                     ns_per_feat_accum.append(diag_primary["next_state_per_feat"])
@@ -1868,7 +1908,7 @@ class PPOTrainer:
                     )
 
             if target_kl is not None:
-                epoch_kls = accum_scalar["train/approximate_kl"][kl_start:]
+                epoch_kls = accum_scalar["policy/kl"][kl_start:]
                 if epoch_kls and torch.stack(epoch_kls).mean().item() > target_kl:
                     break
 
