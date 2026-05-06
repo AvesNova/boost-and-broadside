@@ -26,22 +26,17 @@ from boost_and_broadside.config import (
 from boost_and_broadside.config.schedule import exponential
 from runs.shared import REWARDS, OBS_CONFIG
 
-_MAX_TOKENS = 15000
+_MAX_TOKENS = 2_000_000
 _NUM_SHIPS = 4
 _NUM_OBSTACLES = 0
+_NUM_STEPS = 256
 _NUM_MINIBATCHES = 32
 
 RL_SCHEDULE = TrainingSchedule(
     learning_rate=linear((0, 1e-7), (5_000_000, 3e-4), (30_000_000, 1e-4)),
     policy_gradient_coef=constant(1.0),
     entropy_coef=constant(0.005),
-    behavior_cloning_coef=linear(
-        (0, 2.0),
-        (10_000_000, 2.0),
-        (20_000_000, 1.0),
-        (30_000_000, 0.1),
-        (40_000_000, 0.0),
-    ),
+    behavior_cloning_coef=constant(2.0),
     value_function_coef=constant(1.0),
     sigreg_coef=constant(0.00),
     true_reward_scale=constant(1.0),
@@ -72,12 +67,12 @@ RL_TRAIN_CONFIG = TrainConfig(
         # ),
         ScaleConfig(
             env_config=EnvConfig(num_ships=_NUM_SHIPS, num_obstacles=_NUM_OBSTACLES, max_bullets=20, max_episode_steps=1024,),
-            num_envs=_MAX_TOKENS // (_NUM_SHIPS + _NUM_OBSTACLES) // _NUM_MINIBATCHES * _NUM_MINIBATCHES,
+            num_envs=_MAX_TOKENS // (_NUM_SHIPS + _NUM_OBSTACLES) // _NUM_STEPS // _NUM_MINIBATCHES * _NUM_MINIBATCHES,
         ),
     ),
     schedule=RL_SCHEDULE,
     rewards=REWARDS,
-    num_steps=128,
+    num_steps=_NUM_STEPS,
     num_minibatches=_NUM_MINIBATCHES,
     next_state_coef=1.0,
     gamma=0.990,

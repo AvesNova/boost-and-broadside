@@ -22,6 +22,48 @@ from boost_and_broadside.models.mvp.attention import GatedMLP, TransformerBlock
 CONV_KERNEL: int = 4  # causal depthwise conv kernel size
 
 
+def _parallel_scan(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    h0: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Hillis-Steele inclusive parallel scan for h_t = a_t·h_{t-1} + b_t.
+
+    Associative operator: (a2,b2)∘(a1,b1) = (a2·a1, a2·b1+b2).
+    After log2(T) rounds, position t holds the cumulative prefix product
+    from 0..t, giving h_t = A_t·h0 + B_t for all t simultaneously.
+
+    Args:
+        a:   (B, T, D) per-timestep decay coefficients, values in (0, 1).
+        b:   (B, T, D) per-timestep input contributions.
+        h0:  (B, D) initial hidden state.
+
+    Returns:
+        outputs: (B, T, D) all hidden states h_0 … h_{T-1}.
+        final_h: (B, D) final hidden state h_{T-1}.
+    """
+    B, T_real, D = a.shape
+
+    # Pad T to the next power of two — identity elements (a=1, b=0) leave state unchanged.
+    T_pad = 1 << (T_real - 1).bit_length()  # next power of two >= T_real
+    if T_pad > T_real:
+        pad = T_pad - T_real
+        a = F.pad(a, (0, 0, 0, pad), value=1.0)
+        b = F.pad(b, (0, 0, 0, pad), value=0.0)
+
+    # Hillis-Steele inclusive scan: log2(T_pad) rounds.
+    # b must be updated before a because b uses the pre-round value of a.
+    for step in range(T_pad.bit_length() - 1):
+        stride = 1 << step
+        a_lag = F.pad(a[:, :T_pad - stride], (0, 0, stride, 0), value=1.0)
+        b_lag = F.pad(b[:, :T_pad - stride], (0, 0, stride, 0), value=0.0)
+        b = a * b_lag + b
+        a = a * a_lag
+
+    outputs = (a * h0.unsqueeze(1) + b)[:, :T_real]
+    return outputs, outputs[:, -1]
+
+
 class RGLRU(nn.Module):
     """Real-Gated Linear Recurrent Unit from the Griffin paper.
 
@@ -49,7 +91,7 @@ class RGLRU(nn.Module):
         self.linear_x = nn.Linear(d_model, d_model, bias=True)  # i gate
 
     def _step(self, x: torch.Tensor, h: torch.Tensor) -> torch.Tensor:
-        """One RG-LRU step.
+        """One RG-LRU step. Sequential reference; kept for testing.
 
         Args:
             x: (B_seq, D) input at current timestep.
@@ -68,25 +110,35 @@ class RGLRU(nn.Module):
         return new_h
 
     def forward_sequence(
-        self, x_seq: torch.Tensor, h0: torch.Tensor
+        self, x_seq: torch.Tensor, h0: torch.Tensor,
+        done_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Process a full sequence sequentially (fused by torch.compile).
+        """Process a full sequence via parallel scan.
 
         Args:
-            x_seq: (B_seq, T, D) input sequence.
-            h0:    (B_seq, D) initial hidden state.
+            x_seq:     (B_seq, T, D) input sequence.
+            h0:        (B_seq, D) initial hidden state.
+            done_mask: (B_seq, T) bool — True at step t means the episode ended
+                       at t, so step t+1 starts a fresh episode (a[t+1] is zeroed).
 
         Returns:
             outputs: (B_seq, T, D) per-step hidden states.
             h:       (B_seq, D) final hidden state.
         """
-        T = x_seq.shape[1]
-        h = h0
-        outputs = []
-        for t in range(T):
-            h = self._step(x_seq[:, t], h)
-            outputs.append(h)
-        return torch.stack(outputs, dim=1), h
+        B, T, D = x_seq.shape
+        x_flat = x_seq.reshape(B * T, D)
+        r = torch.sigmoid(self.linear_a(x_flat)).reshape(B, T, D)
+        i = torch.sigmoid(self.linear_x(x_flat)).reshape(B, T, D)
+        a = torch.sigmoid(self.log_lambda) ** (self.c * r)
+        gate = torch.sqrt(torch.clamp((1.0 - a) * (1.0 + a), min=1e-6))
+        b = gate * (i * x_seq)
+        if done_mask is not None:
+            # Episode ended at t → step t+1 must not inherit h[t].
+            # Shift the mask right by one so a[t+1] is zeroed.
+            reset_a = done_mask.roll(1, dims=1)
+            reset_a[:, 0] = False
+            a = a.masked_fill(reset_a.unsqueeze(-1), 0.0)
+        return _parallel_scan(a, b, h0)
 
 
 class GriffinTemporalBlock(nn.Module):
@@ -118,9 +170,10 @@ class GriffinTemporalBlock(nn.Module):
 
     def forward_sequence(
         self,
-        x_seq: torch.Tensor,    # (B_seq, T, D)
-        h0: torch.Tensor,       # (B_seq, D)
-        conv_buf: torch.Tensor, # (B_seq, CONV_KERNEL-1, D)
+        x_seq: torch.Tensor,                    # (B_seq, T, D)
+        h0: torch.Tensor,                       # (B_seq, D)
+        conv_buf: torch.Tensor,                 # (B_seq, CONV_KERNEL-1, D)
+        done_mask: torch.Tensor | None = None,  # (B_seq, T) bool
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Apply temporal block over a sequence.
 
@@ -146,7 +199,7 @@ class GriffinTemporalBlock(nn.Module):
         b1_conv = self.conv(padded.transpose(1, 2)).transpose(1, 2)  # (B_seq, T, D)
         new_conv_buf = padded[:, -(CONV_KERNEL - 1):, :]             # (B_seq, K-1, D)
 
-        b1_out, new_h = self.rg_lru.forward_sequence(b1_conv, h0)   # (B_seq, T, D)
+        b1_out, new_h = self.rg_lru.forward_sequence(b1_conv, h0, done_mask)  # (B_seq, T, D)
 
         b2 = F.gelu(self.linear2(normed))                           # (B_seq, T, D)
         recurrent_out = self.linear_out(b1_out * b2)                # (B_seq, T, D)
@@ -193,10 +246,11 @@ class YemongBlock(nn.Module):
 
     def sequence(
         self,
-        x: torch.Tensor,           # (T, B, N, D)
-        alive_mask: torch.Tensor,  # (T, B, N) bool
-        h0: torch.Tensor,          # (B*N, D)
-        conv_buf0: torch.Tensor,   # (B*N, CONV_KERNEL-1, D)
+        x: torch.Tensor,                        # (T, B, N, D)
+        alive_mask: torch.Tensor,               # (T, B, N) bool
+        h0: torch.Tensor,                       # (B*N, D)
+        conv_buf0: torch.Tensor,                # (B*N, CONV_KERNEL-1, D)
+        done_mask: torch.Tensor | None = None,  # (T, B) bool
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Full-sequence forward for PPO re-evaluation.
 
@@ -212,6 +266,10 @@ class YemongBlock(nn.Module):
 
         # Temporal: fold B*N into batch, sequence over T per ship
         x_seq = x.permute(1, 2, 0, 3).reshape(B * N, T, D)           # (B*N, T, D)
-        out, new_h, new_cb = self.temporal.forward_sequence(x_seq, h0, conv_buf0)
+        done_mask_bn = (
+            done_mask.permute(1, 0).repeat_interleave(N, dim=0)       # (B*N, T)
+            if done_mask is not None else None
+        )
+        out, new_h, new_cb = self.temporal.forward_sequence(x_seq, h0, conv_buf0, done_mask_bn)
         x = out.reshape(B, N, T, D).permute(2, 0, 1, 3)              # (T, B, N, D)
         return x, new_h, new_cb

@@ -92,6 +92,10 @@ class TrainConfig:
         int  # delay adding scripted to roster until this many steps
     )
 
+    # --- ELO-based BC coefficient EMA ---
+    bc_ema_halflife_steps: int = 5_000_000  # steps for BC EMA to decay to 50% toward target
+    bc_ema_cutoff: float = 0.02  # zero out BC once EMA factor drops below this
+
     # --- Next-state prediction loss ---
     next_state_coef: float = 1.0  # weight for next-state prediction loss; 0 to disable
 

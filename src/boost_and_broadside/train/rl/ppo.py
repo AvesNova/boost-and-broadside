@@ -628,6 +628,11 @@ class PPOTrainer:
         self._policy_gradient_coef: float = base_state.policy_gradient_coef
         self._behavior_cloning_coef: float = base_state.behavior_cloning_coef
 
+        # ELO-based BC EMA: tracks a [0, 1] factor that scales behavior_cloning_coef.
+        # Starts at 1.0 (full BC) and decays toward max(0, 1 - elo_norm/1000).
+        self._bc_ema: float = 1.0
+        self._bc_ema_last_step: int = 0
+
         # --- Auxiliary training scales (multi-scale curriculum) ---
         # Each scale has its own env + buffer; policy, optimizer, and scaler are shared.
         # Pure self-play only — no scripted/avg/league opponents on aux scales.
@@ -1173,7 +1178,15 @@ class PPOTrainer:
                 self.cfg.schedule, self._global_step
             )
             self._policy_gradient_coef = self._schedule_state.policy_gradient_coef
-            self._behavior_cloning_coef = self._schedule_state.behavior_cloning_coef
+            # ELO-based BC EMA: decay toward target factor derived from current ELO.
+            delta_steps = self._global_step - self._bc_ema_last_step
+            decay = 0.5 ** (delta_steps / self.cfg.bc_ema_halflife_steps)
+            elo_norm = self._training_elo - self._random_elo()
+            target_factor = max(0.0, 1.0 - elo_norm / 1000.0)
+            self._bc_ema = decay * self._bc_ema + (1.0 - decay) * target_factor
+            self._bc_ema_last_step = self._global_step
+            bc_ema_effective = 0.0 if self._bc_ema < self.cfg.bc_ema_cutoff else self._bc_ema
+            self._behavior_cloning_coef = self._schedule_state.behavior_cloning_coef * bc_ema_effective
             self.optim.param_groups[0]["lr"] = self._schedule_state.learning_rate
             for comp in self.wrapper._all_components:
                 scale_attr = _GROUP[comp.name]
@@ -1187,9 +1200,8 @@ class PPOTrainer:
             metrics["schedule/policy_gradient_coef"] = (
                 self._schedule_state.policy_gradient_coef
             )
-            metrics["schedule/behavior_cloning_coef"] = (
-                self._schedule_state.behavior_cloning_coef
-            )
+            metrics["schedule/behavior_cloning_coef"] = self._behavior_cloning_coef
+            metrics["schedule/bc_ema_factor"] = self._bc_ema
             metrics["schedule/true_reward_scale"] = (
                 self._schedule_state.true_reward_scale
             )
@@ -1400,6 +1412,7 @@ class PPOTrainer:
                 actions=mb_actions.long(),
                 initial_hidden=mb_hidden,
                 alive_mask=alive_mask_full,
+                done_mask=mb_terminated,
                 return_encoder_output=need_sigreg,
             )
 
@@ -2208,6 +2221,8 @@ class PPOTrainer:
             "global_step": self._global_step,
             "training_elo": self._training_elo,
             "elo_milestone": self._elo_milestone,
+            "bc_ema": self._bc_ema,
+            "bc_ema_last_step": self._bc_ema_last_step,
             "train_config": {
                 k: v for k, v in dataclasses.asdict(self.cfg).items() if k != "schedule"
             },
@@ -2327,6 +2342,9 @@ class PPOTrainer:
         if "training_elo" in ckpt:
             self._training_elo = ckpt["training_elo"]
             self._elo_milestone = ckpt.get("elo_milestone", 0.0)
+        if "bc_ema" in ckpt:
+            self._bc_ema = ckpt["bc_ema"]
+            self._bc_ema_last_step = ckpt.get("bc_ema_last_step", ckpt.get("global_step", 0))
 
         # Restore roster if its JSON exists alongside the checkpoint
         roster_path = Path(path).parent / "roster.json"

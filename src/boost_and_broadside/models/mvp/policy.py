@@ -319,6 +319,7 @@ class MVPPolicy(nn.Module):
         actions: torch.Tensor,
         initial_hidden: torch.Tensor,
         alive_mask: torch.Tensor,
+        done_mask: torch.Tensor | None = None,
         return_encoder_output: bool = False,
     ) -> tuple[
         torch.Tensor,
@@ -332,7 +333,7 @@ class MVPPolicy(nn.Module):
 
         The encoder runs over all T*B*(N+M) tokens in parallel. Each YemongBlock
         runs its spatial attention over (T*B, N+M, D) in parallel, then its
-        temporal RG-LRU sequentially over T from the layer's initial hidden.
+        temporal RG-LRU via parallel scan over T from the layer's initial hidden.
         Action and value heads are applied only to the first N ship tokens.
 
         Args:
@@ -340,6 +341,8 @@ class MVPPolicy(nn.Module):
             actions:              (T, B, N, 3) int actions taken during rollout.
             initial_hidden:       (n_layers, B*(N+M), D) hidden state at rollout start.
             alive_mask:           (T, B, N+M) bool — alive entities per timestep.
+            done_mask:            (T, B) bool — True at step t means the episode ended
+                                  at t; the RG-LRU resets hidden state for step t+1.
             return_encoder_output: If True, return raw encoder embeddings as 5th value.
                                    Pass False (default) when sigreg_coef=0 to avoid
                                    keeping the encoder output tensor alive in RAM.
@@ -370,7 +373,7 @@ class MVPPolicy(nn.Module):
         z = x if return_encoder_output else None
 
         for i, layer in enumerate(self.yemong_layers):
-            x, _, _ = layer.sequence(x, alive_mask, rglru_states[i], conv_bufs[i])
+            x, _, _ = layer.sequence(x, alive_mask, rglru_states[i], conv_bufs[i], done_mask)
 
         # Slice ship tokens for heads
         x_ships = x[:, :, :N, :]                      # (T, B, N, D)

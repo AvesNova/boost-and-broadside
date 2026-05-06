@@ -119,6 +119,96 @@ class TestTransformerBlock:
         assert not torch.isnan(out).any()
 
 
+class TestRGLRU:
+    """Verify forward_sequence (parallel scan) matches the sequential _step reference."""
+
+    def _make_rglru(self, d_model: int = 32):
+        from boost_and_broadside.models.mvp.griffin import RGLRU
+        torch.manual_seed(0)
+        return RGLRU(d_model).eval()
+
+    def _sequential_reference(self, rglru, x_seq, h0):
+        T = x_seq.shape[1]
+        h = h0.clone()
+        outputs = []
+        with torch.no_grad():
+            for t in range(T):
+                h = rglru._step(x_seq[:, t], h)
+                outputs.append(h)
+        return torch.stack(outputs, dim=1), h
+
+    def test_matches_sequential_T128(self):
+        B, T, D = 4, 128, 32
+        rglru = self._make_rglru(D)
+        torch.manual_seed(1)
+        x_seq = torch.randn(B, T, D)
+        h0 = torch.randn(B, D)
+        ref_out, ref_h = self._sequential_reference(rglru, x_seq, h0)
+        with torch.no_grad():
+            scan_out, scan_h = rglru.forward_sequence(x_seq, h0)
+        assert scan_out.shape == (B, T, D)
+        assert torch.allclose(scan_out, ref_out, atol=1e-4), \
+            f"max diff: {(scan_out - ref_out).abs().max().item()}"
+        assert torch.allclose(scan_h, ref_h, atol=1e-4)
+
+    def test_matches_sequential_T1(self):
+        """T=1 path used during rollout via YemongBlock.step."""
+        B, T, D = 8, 1, 32
+        rglru = self._make_rglru(D)
+        torch.manual_seed(2)
+        x_seq = torch.randn(B, T, D)
+        h0 = torch.randn(B, D)
+        ref_out, ref_h = self._sequential_reference(rglru, x_seq, h0)
+        with torch.no_grad():
+            scan_out, scan_h = rglru.forward_sequence(x_seq, h0)
+        assert scan_out.shape == (B, 1, D)
+        assert torch.allclose(scan_out, ref_out, atol=1e-5)
+        assert torch.allclose(scan_h, ref_h, atol=1e-5)
+
+    def test_done_mask_resets_hidden(self):
+        """done_mask=True at step t must zero h[t+1]'s dependence on prior state."""
+        B, T, D = 2, 8, 32
+        rglru = self._make_rglru(D)
+        torch.manual_seed(4)
+        x_seq = torch.randn(B, T, D)
+        h0 = torch.randn(B, D)
+
+        # Place a done at step 3 for env 0 only.
+        done_mask = torch.zeros(B, T, dtype=torch.bool)
+        done_mask[0, 3] = True
+
+        with torch.no_grad():
+            out_with_done, _ = rglru.forward_sequence(x_seq, h0, done_mask)
+            out_no_done, _ = rglru.forward_sequence(x_seq, h0)
+
+        # Steps 0-3 for env 0: done is at step 3, resets affect step 4+.
+        # Steps 0-3 should be identical between the two runs.
+        assert torch.allclose(out_with_done[0, :4], out_no_done[0, :4], atol=1e-6)
+
+        # Step 4+ for env 0 must differ (h0 influence is cut).
+        assert not torch.allclose(out_with_done[0, 4:], out_no_done[0, 4:], atol=1e-6)
+
+        # Env 1 (no done) must be completely unaffected.
+        assert torch.allclose(out_with_done[1], out_no_done[1], atol=1e-6)
+
+        # Verify the reset is real: rerun from step 4 with h=0 and it must match.
+        h_zero = torch.zeros(B, D)
+        out_fresh, _ = rglru.forward_sequence(x_seq[:, 4:], h_zero)
+        assert torch.allclose(out_with_done[0, 4:], out_fresh[0], atol=1e-5)
+
+    def test_bfloat16_outputs_finite(self):
+        """Outputs must be finite under the training dtype."""
+        B, T, D = 4, 128, 32
+        rglru = self._make_rglru(D).bfloat16()
+        torch.manual_seed(3)
+        x_seq = torch.randn(B, T, D, dtype=torch.bfloat16)
+        h0 = torch.randn(B, D, dtype=torch.bfloat16)
+        with torch.no_grad():
+            scan_out, scan_h = rglru.forward_sequence(x_seq, h0)
+        assert torch.isfinite(scan_out).all()
+        assert torch.isfinite(scan_h).all()
+
+
 class TestMVPPolicy:
     def test_get_action_and_value_shapes(self, model_cfg, ship_cfg):
         """get_action_and_value must return correct tensor shapes."""
