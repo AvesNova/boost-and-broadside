@@ -270,6 +270,19 @@ _LOCAL_COMPONENTS: frozenset[str] = frozenset(
 )
 
 
+# Scaling factors for NextStateHead continuous features (Inverse of the null guess MSE).
+# Empirically calculated against a late-stage trained checkpoint.
+_STATIC_AUX_WEIGHTS = (
+    40301.0, 40301.0, 40301.0, 40301.0,  # pos_sin_x, pos_cos_x, pos_sin_y, pos_cos_y
+    4860.0, 4860.0,                      # vel_x, vel_y
+    174.0, 174.0,                        # att_sin, att_cos
+    1.0,                                 # ang_vel
+    12615.0, 9749.0,                     # health_sin, health_cos
+    10937.0, 17052.0,                    # power_sin, power_cos
+    16.0, 16.0                           # cooldown_sin, cooldown_cos
+)
+
+
 @dataclasses.dataclass
 class _ResolvedSchedule:
     """Training schedule evaluated at a single global step.
@@ -483,6 +496,10 @@ class PPOTrainer:
             train_config.rewards.ally_zero_components
         )
         self.local_k = self._make_local_k()
+
+        self.aux_weights = torch.tensor(
+            _STATIC_AUX_WEIGHTS, dtype=torch.float32, device=self.device
+        )
 
         # Per-component return scaler: EMA of p5/p95 in symlog-reward space (critic)
         self.scaler = ReturnScaler(
@@ -1504,6 +1521,10 @@ class PPOTrainer:
 
             cont_true = mb_true_next[..., :AUX_TARGET_CONT_DIM]                 # (T, B_mb, N, 15)
             sq_err = (pred_next_abs - cont_true).pow(2)                         # (T, B_mb, N, 15)
+            
+            # Scale each feature's squared error by its empirical static weight
+            sq_err = sq_err * self.aux_weights
+            
             next_state_cont_loss = (
                 sq_err * ns_mask_f.unsqueeze(-1)
             ).sum() / (ns_sum * AUX_TARGET_CONT_DIM)
