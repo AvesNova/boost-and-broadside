@@ -51,6 +51,7 @@ from boost_and_broadside.modes.collect import run_collect_stats_mode
 from boost_and_broadside.modes.elo_stats import run_elo_stats_mode
 from boost_and_broadside.modes.feature_stats import run_feature_stats_mode
 from boost_and_broadside.modes.interactive import run_watch_mode
+from boost_and_broadside.modes.ar_report import run_ar_report_mode
 from boost_and_broadside.train.rl.ppo import PPOTrainer
 from boost_and_broadside.ui.renderer import RenderConfig
 from runs.bc import BC_TRAIN_CONFIG
@@ -67,7 +68,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--mode",
-        choices=["bc", "rl", "rl_obstacles", "bc_warmstart", "watch", "collect_stats", "feature_stats", "elo_stats"],
+        choices=["bc", "rl", "rl_obstacles", "bc_warmstart", "watch", "collect_stats", "feature_stats", "elo_stats", "ar_report"],
         default="rl",
         help=(
             "Operating mode. "
@@ -330,6 +331,48 @@ def main() -> None:
                 device=device,
                 checkpoint_dir="checkpoints",
                 elo_k_factor=32.0,
+            )
+
+        case "ar_report":
+            team0 = args.team0 if args.team0 is not None else "latest"
+            team1 = args.team1 if args.team1 is not None else "latest"
+            
+            print("\n" + "="*40)
+            print("--- Running 2v2 Scenario ---")
+            print("="*40)
+            run_ar_report_mode(
+                team0_spec=team0,
+                team1_spec=team1,
+                num_steps=512,
+                ship_config=SHIP_CONFIG,
+                env_config=EnvConfig(
+                    num_ships=4, max_bullets=20, max_episode_steps=512
+                ),
+                rewards=REWARDS,
+                obs_config=OBS_CONFIG_MINIMAL,
+                model_config=MODEL_CONFIG,
+                device=device,
+                checkpoint_dir="checkpoints",
+                out_dir="docs/ar_report/2v2",
+            )
+
+            print("\n" + "="*40)
+            print("--- Running 1v1 Scenario ---")
+            print("="*40)
+            run_ar_report_mode(
+                team0_spec=team0,
+                team1_spec=team1,
+                num_steps=512,
+                ship_config=SHIP_CONFIG,
+                env_config=EnvConfig(
+                    num_ships=2, max_bullets=20, max_episode_steps=512
+                ),
+                rewards=REWARDS,
+                obs_config=OBS_CONFIG_MINIMAL,
+                model_config=MODEL_CONFIG,
+                device=device,
+                checkpoint_dir="checkpoints",
+                out_dir="docs/ar_report/1v1",
             )
 
 
