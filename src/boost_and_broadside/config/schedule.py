@@ -225,12 +225,9 @@ class TrainingSchedule:
 
     # --- Reward group scales ---
     true_reward_scale: Callable[[int], float]  # multiplier for: ally_win, enemy_win
-    global_scale: Callable[
-        [int], float
-    ]  # multiplier for: global outcome + shaping (ally/enemy damage, death, facing, closing_speed, shoot_quality)
-    local_scale: Callable[
-        [int], float
-    ]  # multiplier for: self-only per-ship rewards (kill_shot, kill_assist, damage_taken, damage_dealt, death)
+    global_scale: Callable[[int], float]  # multiplier for: team outcome rewards (ally/enemy damage, ally/enemy death)
+    local_scale: Callable[[int], float]  # multiplier for: causal per-ship rewards (kill_shot, kill_assist, damage_taken, damage_dealt, death)
+    shaping_scale: Callable[[int], float]  # multiplier for: dense shaping signals (facing, closing_speed, shoot_quality, speed, shooting_penalty, obstacle_proximity, obstacle_closing_speed, obstacle_tti) — ELO-triggered decay applied on top
 
     # --- Opponents ---
     scripted_fraction: Callable[[int], float]

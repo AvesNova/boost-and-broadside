@@ -254,8 +254,9 @@ def _override_opponent(
 # Effective weight = group_scale * individual_weight (from RewardConfig).
 # Groups:
 #   true_reward → win components (ally_win, enemy_win)
-#   global      → global outcome rewards + shaping (team-aggregated via lambda)
-#   local       → self-only per-ship rewards (diagonal lambda, no teammate propagation)
+#   global      → team outcome rewards (ally/enemy damage, death — team-aggregated via lambda)
+#   local       → causal per-ship rewards (kill/damage/death — diagonal lambda, no teammate propagation)
+#   shaping     → dense stylistic signals (facing, closing_speed, etc. — ELO-triggered decay applied on top)
 _GROUP: dict[str, str] = {
     "ally_win": "true_reward_scale",
     "enemy_win": "true_reward_scale",
@@ -263,9 +264,6 @@ _GROUP: dict[str, str] = {
     "enemy_damage": "global_scale",
     "ally_death": "global_scale",
     "enemy_death": "global_scale",
-    "facing": "local_scale",
-    "closing_speed": "local_scale",
-    "shoot_quality": "local_scale",
     "kill_shot": "local_scale",
     "kill_assist": "local_scale",
     "damage_taken": "local_scale",
@@ -273,11 +271,14 @@ _GROUP: dict[str, str] = {
     "damage_dealt_ally": "local_scale",
     "death": "local_scale",
     "obstacle_death": "local_scale",
-    "obstacle_proximity": "local_scale",
-    "obstacle_closing_speed": "local_scale",
-    "obstacle_tti": "local_scale",
-    "shooting_penalty": "local_scale",
-    "speed": "local_scale",
+    "facing": "shaping_scale",
+    "closing_speed": "shaping_scale",
+    "shoot_quality": "shaping_scale",
+    "speed": "shaping_scale",
+    "shooting_penalty": "shaping_scale",
+    "obstacle_proximity": "shaping_scale",
+    "obstacle_closing_speed": "shaping_scale",
+    "obstacle_tti": "shaping_scale",
 }
 
 # Components that use diagonal lambda (self-only: i==j). These must match the
@@ -334,6 +335,7 @@ class _ResolvedSchedule:
     true_reward_scale: float
     global_scale: float
     local_scale: float
+    shaping_scale: float
     scripted_fraction: float
     avg_model_fraction: float
     league_fraction: float
@@ -358,6 +360,7 @@ def _resolve_schedule(schedule: TrainingSchedule, step: int) -> _ResolvedSchedul
         true_reward_scale=schedule.true_reward_scale(step),
         global_scale=schedule.global_scale(step),
         local_scale=schedule.local_scale(step),
+        shaping_scale=schedule.shaping_scale(step),
         scripted_fraction=schedule.scripted_fraction(step),
         avg_model_fraction=schedule.avg_model_fraction(step),
         league_fraction=schedule.league_fraction(step),
@@ -1221,14 +1224,20 @@ class PPOTrainer:
                     bc_factor = 0.1 ** (steps_since / 10_000_000)
             self._behavior_cloning_coef = self._schedule_state.behavior_cloning_coef * bc_factor
             self.optim.param_groups[0]["lr"] = self._schedule_state.learning_rate
+            if self._bc_1000_elo_step is None:
+                shaping_factor = 1.0
+            else:
+                steps_since = self._global_step - self._bc_1000_elo_step
+                shaping_factor = 0.5 ** (steps_since / 10_000_000)
+            _eff = {
+                "true_reward_scale": self._schedule_state.true_reward_scale,
+                "global_scale":      self._schedule_state.global_scale,
+                "local_scale":       self._schedule_state.local_scale,
+                "shaping_scale":     self._schedule_state.shaping_scale * shaping_factor,
+            }
             for comp in self.wrapper._all_components:
-                scale_attr = _GROUP[comp.name]
                 raw: float = getattr(self.cfg.rewards, f"{comp.name}_weight")
-                setattr(
-                    comp,
-                    f"{comp.name}_weight",
-                    raw * getattr(self._schedule_state, scale_attr),
-                )
+                setattr(comp, f"{comp.name}_weight", raw * _eff[_GROUP[comp.name]])
             metrics["schedule/learning_rate"] = self._schedule_state.learning_rate
             metrics["schedule/policy_gradient_coef"] = (
                 self._schedule_state.policy_gradient_coef
@@ -1241,6 +1250,8 @@ class PPOTrainer:
             )
             metrics["schedule/global_scale"] = self._schedule_state.global_scale
             metrics["schedule/local_scale"] = self._schedule_state.local_scale
+            metrics["schedule/shaping_scale"] = self._schedule_state.shaping_scale
+            metrics["schedule/shaping_decay_factor"] = shaping_factor
 
             if self._policy_gradient_coef > 0.0:
                 # Update avg model when allowed by the current phase.

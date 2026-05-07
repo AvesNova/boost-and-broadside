@@ -58,6 +58,7 @@ def _make_schedule(**overrides) -> TrainingSchedule:
         true_reward_scale=constant(1.0),
         global_scale=constant(1.0),
         local_scale=constant(1.0),
+        shaping_scale=constant(1.0),
         scripted_fraction=constant(0.0),
         avg_model_fraction=constant(0.0),
         league_fraction=constant(0.0),
@@ -66,6 +67,8 @@ def _make_schedule(**overrides) -> TrainingSchedule:
         elo_eval_games=stepped((0, 16)),
         elo_eval_interval=stepped((0, 0)),
         checkpoint_interval=stepped((0, 0)),
+        num_epochs=constant(1),
+        target_kl=constant(None),
     )
     defaults.update(overrides)
     return TrainingSchedule(**defaults)
@@ -85,7 +88,6 @@ def _make_trainer(n_fourier_freqs: int = 4, **reward_overrides) -> PPOTrainer:
             schedule=_make_schedule(),
             rewards=_make_rewards(**reward_overrides),
             num_steps=16,
-            num_epochs=1,
             num_minibatches=2,
             gamma=0.99,
             gae_lambda=0.95,
