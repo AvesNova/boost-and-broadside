@@ -4,7 +4,8 @@
       "Bash(uv run:*)",
       "Bash(xargs grep:*)",
       "Bash(grep -E \"\\\\.py$|src|games\")",
-      "Bash(git stash *)"
+      "Bash(git stash *)",
+      "Bash(nvidia-smi)"
     ]
   }
 }

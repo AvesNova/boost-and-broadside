@@ -159,7 +159,10 @@ def run_collect_stats_mode(
         obs = _obs_from_state(state, ship_config)
 
         action0 = get_actions(agent0, obs, state, B, N, dev)
-        action1 = get_actions(agent1, obs, state, B, N, dev)
+        # Team 1 agent sees itself as team 0 (flipped team IDs)
+        obs_t1 = {**obs, "team_id": obs["team_id"].clone()}
+        obs_t1["team_id"][..., :N] = 1 - obs_t1["team_id"][..., :N]
+        action1 = get_actions(agent1, obs_t1, state, B, N, dev)
 
         # Each agent generates actions for all ships; select by team ownership
         team_id = state.ship_team_id  # (B, N)
