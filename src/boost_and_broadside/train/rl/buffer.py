@@ -223,8 +223,8 @@ class RolloutBuffer:
         num_ships: int,
         num_components: int,
         obs_shapes: dict[str, tuple],
-        gamma: float,
-        gae_lambda: float,
+        gamma: torch.Tensor,
+        gae_lambda: torch.Tensor,
         device: torch.device,
         num_tokens: int | None = None,
         aux_dim: int = 0,
@@ -234,8 +234,8 @@ class RolloutBuffer:
         self.num_ships = num_ships
         self.num_tokens = num_tokens if num_tokens is not None else num_ships
         self.num_components = num_components
-        self.gamma = gamma
-        self.gae_lambda = gae_lambda
+        self.gamma = gamma.to(device=device)      # (K,)
+        self.gae_lambda = gae_lambda.to(device=device)  # (K,)
         self.device = device
         self.aux_dim = aux_dim
 
@@ -372,6 +372,8 @@ class RolloutBuffer:
         """
         with torch.no_grad():
             lastgaelam = torch.zeros_like(next_value)  # (B, N, K)
+            gamma = self.gamma.view(1, 1, -1)      # (1, 1, K) — broadcasts over (B, N, K)
+            lam   = self.gae_lambda.view(1, 1, -1)  # (1, 1, K)
 
             for t in reversed(range(self.num_steps)):
                 if t == self.num_steps - 1:
@@ -383,11 +385,11 @@ class RolloutBuffer:
 
                 delta = (
                     self.rewards[t]
-                    + self.gamma * next_val * non_terminal
+                    + gamma * next_val * non_terminal
                     - self.values[t]
                 )
                 lastgaelam = (
-                    delta + self.gamma * self.gae_lambda * non_terminal * lastgaelam
+                    delta + gamma * lam * non_terminal * lastgaelam
                 )
                 self.advantages[t] = lastgaelam
 

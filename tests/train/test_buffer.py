@@ -30,8 +30,8 @@ def _make_buffer(
         num_ships=N,
         num_components=num_components,
         obs_shapes=obs_shapes,
-        gamma=0.99,
-        gae_lambda=0.95,
+        gamma=torch.full((num_components,), 0.99),
+        gae_lambda=torch.full((num_components,), 0.95),
         device=torch.device("cpu"),
     )
     return buf, T, B, N, D
@@ -204,6 +204,44 @@ class TestGAEComputation:
 
         assert torch.allclose(buf.advantages, torch.zeros(T, B, N, Kc), atol=1e-6)
 
+    def test_per_component_gamma(self):
+        """Components with different gammas should produce different advantage decay."""
+        T, B, N = 5, 1, 1
+        Kc = 2  # component 0: γ=1.0, component 1: γ=0.5
+        buf = RolloutBuffer(
+            num_steps=T,
+            num_envs=B,
+            num_ships=N,
+            num_components=Kc,
+            obs_shapes={"pos": (N, 2)},
+            gamma=torch.tensor([1.0, 0.5]),
+            gae_lambda=torch.tensor([1.0, 1.0]),  # λ=1 isolates gamma effect
+            device=torch.device("cpu"),
+        )
+        # Only the last step has a reward
+        for t in range(T):
+            reward = torch.zeros(B, N, Kc)
+            if t == T - 1:
+                reward[..., :] = 1.0
+            buf.add(
+                {"pos": torch.zeros(B, N, 2)},
+                torch.zeros(B, N, 3, dtype=torch.int32),
+                torch.zeros(B, N),
+                reward,
+                torch.zeros(B),
+                torch.zeros(B, N, Kc),  # value = 0
+                torch.ones(B, N, dtype=torch.bool),
+            )
+        buf.compute_gae(next_value=torch.zeros(B, N, Kc), next_done=torch.zeros(B))
+        # With λ=1 and zero values, A_t ≈ γ^(T-1-t) * r_{T-1} (symlog(1)=log(2))
+        r = math.log(2)
+        adv0 = buf.advantages[:, 0, 0, 0].tolist()  # γ=1.0: all steps get same credit
+        adv1 = buf.advantages[:, 0, 0, 1].tolist()  # γ=0.5: decays as 0.5^(T-1-t)
+        for t in range(T):
+            steps_back = T - 1 - t
+            assert abs(adv0[t] - r) < 1e-4, f"γ=1 step {t}: {adv0[t]} != {r}"
+            assert abs(adv1[t] - r * (0.5 ** steps_back)) < 1e-4, f"γ=0.5 step {t}"
+
     def test_done_envs_mask_future_rewards(self):
         """When done=1, bootstrap from next_value should be blocked."""
         T, B, N, Kc = 3, 1, 2, 1
@@ -213,8 +251,8 @@ class TestGAEComputation:
             num_ships=N,
             num_components=Kc,
             obs_shapes={"pos": (N, 2)},
-            gamma=1.0,
-            gae_lambda=1.0,
+            gamma=torch.full((Kc,), 1.0),
+            gae_lambda=torch.full((Kc,), 1.0),
             device=torch.device("cpu"),
         )
         for t in range(T):
@@ -295,7 +333,7 @@ class TestMinibatchIterator:
         buf.store_initial_hidden(torch.zeros(1, B * N, D))
         buf.compute_gae(torch.zeros(B, N, Kc), torch.zeros(B))
 
-        *_, mb_hidden, mb_actor_mask, mb_expert_probs = next(
+        (_, _, _, _, _, _, _, mb_hidden, mb_actor_mask, mb_expert_probs, *_) = next(
             iter(buf.get_minibatch_iterator(num_minibatches=2))
         )
         B_mb = B // 2

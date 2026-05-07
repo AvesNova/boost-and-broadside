@@ -65,6 +65,28 @@ def _cast_norms_bf16(module: nn.Module) -> None:
 
 
 # ------------------------------------------------------------------
+# Per-component gamma / lambda tensor builder
+# ------------------------------------------------------------------
+
+
+def _build_component_tensor(
+    global_val: float,
+    overrides: dict[str, float],
+    names: tuple[str, ...],
+    device: torch.device,
+) -> torch.Tensor:
+    """Build a (K,) tensor of per-component values.
+
+    Each component uses overrides[name] if present, else global_val.
+    """
+    return torch.tensor(
+        [overrides.get(n, global_val) for n in names],
+        dtype=torch.float32,
+        device=device,
+    )
+
+
+# ------------------------------------------------------------------
 # Opponent-management helpers (module-level, no class coupling)
 # ------------------------------------------------------------------
 
@@ -462,6 +484,14 @@ class PPOTrainer:
         K = self.wrapper.num_active_components
         self._active_names = self.wrapper.active_names  # stable ref used throughout
 
+        # Build per-component (K,) discount tensors — used by all RolloutBuffers.
+        self._gamma_t = _build_component_tensor(
+            train_config.gamma, train_config.component_gammas, self._active_names, device
+        )
+        self._lambda_t = _build_component_tensor(
+            train_config.gae_lambda, train_config.component_lambdas, self._active_names, device
+        )
+
         N = train_config.scales[0].env_config.num_ships
         self._compile_mode = compile_mode
         self._policy_module = MVPPolicy(
@@ -492,8 +522,8 @@ class PPOTrainer:
             num_ships=N,
             num_components=K,
             obs_shapes=obs_shapes,
-            gamma=train_config.gamma,
-            gae_lambda=train_config.gae_lambda,
+            gamma=self._gamma_t,
+            gae_lambda=self._lambda_t,
             device=self.device,
             num_tokens=N + M,
             aux_dim=AUX_DIM,
@@ -660,8 +690,8 @@ class PPOTrainer:
                 num_ships=sc.env_config.num_ships,
                 num_components=K,
                 obs_shapes=aux_obs_shapes,
-                gamma=train_config.gamma,
-                gae_lambda=train_config.gae_lambda,
+                gamma=self._gamma_t,
+                gae_lambda=self._lambda_t,
                 device=self.device,
                 num_tokens=sc.env_config.num_ships + sc.env_config.num_obstacles,
             )

@@ -1,5 +1,6 @@
 """Training configuration: scale, PPO hyperparameters, and run assembly."""
 
+import dataclasses
 from dataclasses import dataclass
 
 from boost_and_broadside.config.core import EnvConfig, RewardConfig
@@ -101,6 +102,10 @@ class TrainConfig:
     # --- Logging ---
     log_interval: int = 10  # print to terminal every N updates
 
+    # --- Per-component GAE discounts (override global gamma/gae_lambda by name) ---
+    # Missing keys fall back to the global gamma / gae_lambda values.
+    component_gammas: dict[str, float] = dataclasses.field(default_factory=dict)
+    component_lambdas: dict[str, float] = dataclasses.field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if len(self.scales) == 0:

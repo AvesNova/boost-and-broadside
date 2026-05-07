@@ -24,7 +24,7 @@ from boost_and_broadside.config import (
     stepped,
 )
 from boost_and_broadside.config.schedule import exponential
-from runs.shared import REWARDS, OBS_CONFIG
+from runs.shared import REWARDS, OBS_CONFIG, COMPONENT_GAMMAS, COMPONENT_LAMBDAS
 
 _MAX_TOKENS = 2_000_000
 _NUM_SHIPS = 4
@@ -77,6 +77,8 @@ RL_TRAIN_CONFIG = TrainConfig(
     next_state_coef=0.2,
     gamma=0.990,
     gae_lambda=0.95,
+    component_gammas=COMPONENT_GAMMAS,
+    component_lambdas=COMPONENT_LAMBDAS,
     clip_coef=0.15,
     max_grad_norm=1.0,
     total_timesteps=2_000_000_000,

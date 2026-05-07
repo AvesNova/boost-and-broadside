@@ -17,6 +17,7 @@ from boost_and_broadside.config import (
     linear,
     stepped,
 )
+from runs.shared import COMPONENT_GAMMAS, COMPONENT_LAMBDAS
 
 _MAX_TOKENS = 3840 * 8
 _NUM_SHIPS = 8
@@ -100,6 +101,8 @@ RL_OBSTACLES_TRAIN_CONFIG = TrainConfig(
     num_minibatches=32,
     gamma=0.99,
     gae_lambda=0.95,
+    component_gammas=COMPONENT_GAMMAS,
+    component_lambdas=COMPONENT_LAMBDAS,
     clip_coef=0.2,
     max_grad_norm=1.0,
     total_timesteps=2_000_000_000,

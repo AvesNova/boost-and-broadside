@@ -9,7 +9,7 @@ Total ships per update = num_envs * num_ships * num_steps.
 
 from boost_and_broadside.config import EnvConfig, ScaleConfig, TrainConfig
 from runs.rl import RL_SCHEDULE
-from runs.shared import REWARDS
+from runs.shared import REWARDS, COMPONENT_GAMMAS, COMPONENT_LAMBDAS
 
 # 4× the default batch. Adjust to fit your cluster.
 # Must be divisible by num_minibatches=4.
@@ -29,6 +29,8 @@ RL_HPC_TRAIN_CONFIG = TrainConfig(
     num_minibatches=4,
     gamma=0.99,
     gae_lambda=0.95,
+    component_gammas=COMPONENT_GAMMAS,
+    component_lambdas=COMPONENT_LAMBDAS,
     clip_coef=0.2,
     max_grad_norm=1.0,
     total_timesteps=2_000_000_000,
