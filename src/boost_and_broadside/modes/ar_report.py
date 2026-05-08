@@ -12,19 +12,20 @@ from boost_and_broadside.modes.agent_factory import (
     get_actions,
     _extract_aux_cont,
     _apply_aux_deltas_local,
+    ALIVE_HEALTH_EPS,
 )
 
 
 def _imagined_obs_sampled(
     aux_next: torch.Tensor,
-    alive_logit: torch.Tensor,
     prev_obs: dict,
     action: torch.Tensor,
     N: int,
     ship_config: ShipConfig,
 ) -> dict:
     """Reconstruct raw obs dict ship fields from predicted AUX continuous state.
-    Samples from alive_logit instead of thresholding.
+
+    aux_next: (B, N, 16) pos_x(2) pos_y(2) vel_dir(2) symlog_spd(1) att(2) ang_vel(1) health(2) power(2) cooldown(2)
     """
     _2pi = 2.0 * math.pi
     _hpi = math.pi / 2.0
@@ -34,38 +35,40 @@ def _imagined_obs_sampled(
     pos_y = (torch.atan2(aux_next[..., 2], aux_next[..., 3]) % _2pi) * W / _2pi
     pos = torch.stack([pos_x, pos_y], dim=-1)
 
-    vel = aux_next[..., 4:6] * ship_config.max_speed
-    att = aux_next[..., 6:8]
+    vel_dir = aux_next[..., 4:6]                                          # (B, N, 2) unit vec (cos, sin)
+    sym_spd = aux_next[..., 6:7]
+    speed   = torch.sign(sym_spd) * (torch.exp(sym_spd.abs()) - 1)       # inv_symlog
+    vel     = vel_dir * speed                                              # (B, N, 2)
 
-    sym = aux_next[..., 8:9]
+    att = aux_next[..., 7:9]
+
+    sym = aux_next[..., 9:10]
     ang_vel = torch.sign(sym) * (torch.exp(sym.abs()) - 1)
 
-    health_n = (torch.atan2(aux_next[..., 9], aux_next[..., 10]) / _hpi).clamp(0.0, 1.0)
-    power_n = (torch.atan2(aux_next[..., 11], aux_next[..., 12]) / _hpi).clamp(0.0, 1.0)
-    cd_n = (torch.atan2(aux_next[..., 13], aux_next[..., 14]) / _hpi).clamp(0.0, 1.0)
-    
-    health = (health_n * ship_config.max_health).unsqueeze(-1)
-    power = (power_n * ship_config.max_power).unsqueeze(-1)
-    cooldown = (cd_n * ship_config.firing_cooldown).unsqueeze(-1)
+    health_n = torch.atan2(aux_next[..., 10], aux_next[..., 11]) / _hpi
+    power_n  = torch.atan2(aux_next[..., 12], aux_next[..., 13]) / _hpi
+    cd_n     = torch.atan2(aux_next[..., 14], aux_next[..., 15]) / _hpi
 
-    # Sample alive!
-    alive_prob = alive_logit.sigmoid()
-    alive = torch.bernoulli(alive_prob).bool()
+    health   = (health_n * ship_config.max_health).unsqueeze(-1)
+    power    = (power_n  * ship_config.max_power).unsqueeze(-1)
+    cooldown = (cd_n     * ship_config.firing_cooldown).unsqueeze(-1)
+
+    alive = health.squeeze(-1) > ALIVE_HEALTH_EPS                         # (B, N) bool
 
     new_obs = {k: v.clone() for k, v in prev_obs.items()}
-    new_obs["pos"] = torch.cat([pos, prev_obs["pos"][:, N:]], dim=1)
-    new_obs["vel"] = torch.cat([vel, prev_obs["vel"][:, N:]], dim=1)
-    new_obs["att"] = torch.cat([att, prev_obs["att"][:, N:]], dim=1)
-    new_obs["ang_vel"] = torch.cat([ang_vel, prev_obs["ang_vel"][:, N:]], dim=1)
-    new_obs["health"] = torch.cat([health, prev_obs["health"][:, N:]], dim=1)
-    new_obs["power"] = torch.cat([power, prev_obs["power"][:, N:]], dim=1)
-    new_obs["cooldown"] = torch.cat([cooldown, prev_obs["cooldown"][:, N:]], dim=1)
-    new_obs["alive"] = torch.cat([alive, prev_obs["alive"][:, N:]], dim=1)
-    
+    new_obs["pos"]      = torch.cat([pos,     prev_obs["pos"][:, N:]],      dim=1)
+    new_obs["vel"]      = torch.cat([vel,     prev_obs["vel"][:, N:]],      dim=1)
+    new_obs["att"]      = torch.cat([att,     prev_obs["att"][:, N:]],      dim=1)
+    new_obs["ang_vel"]  = torch.cat([ang_vel, prev_obs["ang_vel"][:, N:]],  dim=1)
+    new_obs["health"]   = torch.cat([health,  prev_obs["health"][:, N:]],   dim=1)
+    new_obs["power"]    = torch.cat([power,   prev_obs["power"][:, N:]],    dim=1)
+    new_obs["cooldown"] = torch.cat([cooldown,prev_obs["cooldown"][:, N:]], dim=1)
+    new_obs["alive"]    = torch.cat([alive,   prev_obs["alive"][:, N:]],    dim=1)
+
     new_obs["prev_power"] = torch.cat([action[..., 0], prev_obs["prev_power"][:, N:]], dim=1)
-    new_obs["prev_turn"] = torch.cat([action[..., 1], prev_obs["prev_turn"][:, N:]], dim=1)
+    new_obs["prev_turn"]  = torch.cat([action[..., 1], prev_obs["prev_turn"][:, N:]],  dim=1)
     new_obs["prev_shoot"] = torch.cat([action[..., 2], prev_obs["prev_shoot"][:, N:]], dim=1)
-    
+
     return new_obs
 
 
@@ -198,14 +201,12 @@ def _run_ar(
             "power": obs["power"][:, :N].clone(),
             "cooldown": obs["cooldown"][:, :N].clone(),
             "alive": obs["alive"][:, :N].clone(),
-            "alive_prob": pred_next[..., 9].sigmoid().clone() if pred_next is not None else torch.zeros_like(obs["alive"][:, :N]).float()
+            "alive_prob": obs["alive"][:, :N].float().clone(),
         })
 
         if pred_next is not None:
-            next_aux = _apply_aux_deltas_local(curr_aux, pred_next[..., :9])
-            obs = _imagined_obs_sampled(
-                next_aux, pred_next[..., 9], obs, action_to_apply, N, ship_config
-            )
+            next_aux = _apply_aux_deltas_local(curr_aux, pred_next)
+            obs = _imagined_obs_sampled(next_aux, obs, action_to_apply, N, ship_config)
             curr_aux = next_aux
         else:
             # If agents don't predict next state (e.g. random), AR does not work.

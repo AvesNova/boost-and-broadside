@@ -1,20 +1,50 @@
-"""feature_stats mode: run parallel games to collect feature delta distributions."""
+"""feature_stats mode: collect encoded AUX feature null-model MSE for weight calibration.
+
+For each consecutive obs pair (excluding episode boundaries and dead ships), computes the
+squared error a null model (predicting zero delta for everything) would make per AUX target
+feature. The inverse of the mean squared error is the calibrated static weight.
+
+Feature layout (AUX_TARGET, 16 dims):
+  [0:4]   pos_x(sin,cos), pos_y(sin,cos)   — toroidal phase
+  [4:6]   vel_dir(cos,sin)                  — velocity direction unit vec
+  [6]     symlog_speed                       — symlog |v|
+  [7:9]   att(cos,sin)                      — heading unit vec
+  [9]     ang_vel                            — symlog ω  (absolute target)
+  [10:12] health(sin,cos)                   — quarter-wave
+  [12:14] power(sin,cos)                    — quarter-wave
+  [14:16] cooldown(sin,cos)                 — quarter-wave
+
+Null-model squared error per feature:
+  All delta features [0:9, 10:16]: (next - curr)^2  (null predicts no change)
+  Absolute feature  [9]:           next^2            (null predicts 0)
+"""
 
 import time
-from pathlib import Path
-import matplotlib.pyplot as plt
-import numpy as np
 import torch
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.modes.agent_factory import (
+    _extract_aux_cont,
     get_actions,
     init_hidden,
     reset_done_envs,
     resolve_agent_spec,
 )
 from boost_and_broadside.modes.collect import _obs_from_state
+
+_FEAT_NAMES = (
+    "pos_sin_x", "pos_cos_x", "pos_sin_y", "pos_cos_y",
+    "vel_dir_cos", "vel_dir_sin",
+    "symlog_speed",
+    "att_cos", "att_sin",
+    "ang_vel_abs",
+    "health_sin", "health_cos",
+    "power_sin", "power_cos",
+    "cooldown_sin", "cooldown_cos",
+)
+_ANG_VEL_IDX = 9  # absolute feature — null MSE = E[target^2], not E[delta^2]
+
 
 def run_feature_stats_mode(
     team0_spec: str,
@@ -28,7 +58,6 @@ def run_feature_stats_mode(
     checkpoint_dir: str = "checkpoints",
     output_dir: str = "/home/vizia/.gemini/antigravity/artifacts",
 ) -> None:
-    """Run parallel games and calculate theoretical and empirical delta state distributions."""
     B = num_envs
     N = env_config.num_ships
     num_tokens = N + env_config.num_obstacles
@@ -42,21 +71,16 @@ def run_feature_stats_mode(
     init_hidden(agent1, B, num_tokens, dev)
     env.reset()
 
-    delta_pos = []
-    delta_vel = []
-    delta_angle = []
-    delta_health = []
-    delta_power = []
+    n_feat = len(_FEAT_NAMES)
+    sq_err_sum = torch.zeros(n_feat, device=dev)
+    count = torch.zeros(1, device=dev)
 
-    prev_pos = env.state.ship_pos.clone()
-    prev_vel = env.state.ship_vel.clone()
-    prev_att = env.state.ship_attitude.clone()
-    prev_health = env.state.ship_health.clone()
-    prev_power = env.state.ship_power.clone()
-    prev_alive = env.state.ship_alive.clone()
+    obs = _obs_from_state(env.state, ship_config)
+    prev_aux   = _extract_aux_cont(obs, N, ship_config)   # (B, N, 16)
+    prev_alive = env.state.ship_alive.clone()             # (B, N)
 
     t0 = time.perf_counter()
-    print(f"Collecting features for {num_steps} steps in {B} envs...")
+    print(f"Collecting AUX null-model MSE for {num_steps} steps across {B} envs...")
 
     for step in range(num_steps):
         obs = _obs_from_state(env.state, ship_config)
@@ -66,115 +90,64 @@ def run_feature_stats_mode(
         action = torch.where((team_id == 0).unsqueeze(-1), action0, action1)
 
         dones, truncated = env.step(action)
-        
-        valid = prev_alive & env.state.ship_alive & ~(dones | truncated).unsqueeze(-1)
-        if valid.any():
-            w, h = ship_config.world_size
-            d_pos = env.state.ship_pos[valid] - prev_pos[valid]
-            d_pos.real = (d_pos.real + w/2) % w - w/2
-            d_pos.imag = (d_pos.imag + h/2) % h - h/2
-            delta_pos.append(d_pos.abs().cpu().numpy())
-            
-            d_vel = env.state.ship_vel[valid] - prev_vel[valid]
-            delta_vel.append(d_vel.abs().cpu().numpy())
-            
-            d_att = env.state.ship_attitude[valid] * torch.conj(prev_att[valid])
-            delta_angle.append(torch.angle(d_att).abs().cpu().numpy())
-            
-            delta_health.append((env.state.ship_health[valid] - prev_health[valid]).cpu().numpy())
-            delta_power.append((env.state.ship_power[valid] - prev_power[valid]).cpu().numpy())
 
-        prev_pos = env.state.ship_pos.clone()
-        prev_vel = env.state.ship_vel.clone()
-        prev_att = env.state.ship_attitude.clone()
-        prev_health = env.state.ship_health.clone()
-        prev_power = env.state.ship_power.clone()
-        prev_alive = env.state.ship_alive.clone()
-        
+        next_obs   = _obs_from_state(env.state, ship_config)
+        next_aux   = _extract_aux_cont(next_obs, N, ship_config)   # (B, N, 16)
+        next_alive = env.state.ship_alive.clone()                  # (B, N)
+
+        # Valid: both ships alive this step and no episode boundary
+        episode_end = (dones | truncated).unsqueeze(-1)            # (B, 1)
+        valid = prev_alive & next_alive & ~episode_end             # (B, N)
+
+        if valid.any():
+            v_curr = prev_aux[valid]   # (K, 16)
+            v_next = next_aux[valid]   # (K, 16)
+
+            # Null-model squared error per feature
+            null_sq = (v_next - v_curr).pow(2)                    # (K, 16)  delta features
+            null_sq[:, _ANG_VEL_IDX] = v_next[:, _ANG_VEL_IDX].pow(2)  # absolute feature
+
+            sq_err_sum += null_sq.sum(0)
+            count       += valid.sum().float()
+
+        # Handle episode resets
         done_any = dones | truncated
         if done_any.any():
             env.reset_envs(done_any)
             reset_done_envs(agent0, done_any, num_tokens)
             reset_done_envs(agent1, done_any, num_tokens)
-            prev_pos[done_any] = env.state.ship_pos[done_any]
-            prev_vel[done_any] = env.state.ship_vel[done_any]
-            prev_att[done_any] = env.state.ship_attitude[done_any]
-            prev_health[done_any] = env.state.ship_health[done_any]
-            prev_power[done_any] = env.state.ship_power[done_any]
-            prev_alive[done_any] = env.state.ship_alive[done_any]
+
+        next_obs_after_reset = _obs_from_state(env.state, ship_config)
+        prev_aux             = _extract_aux_cont(next_obs_after_reset, N, ship_config)
+        prev_alive           = env.state.ship_alive.clone()
+
+        if (step + 1) % 500 == 0:
+            print(f"  step {step+1}/{num_steps}  valid samples so far: {int(count.item()) * N}")
 
     elapsed = time.perf_counter() - t0
-    print(f"Collection done in {elapsed:.2f}s.")
+    n = count.item()
+    print(f"\nDone in {elapsed:.1f}s — {int(n * N):,} valid (ship, step) pairs collected.\n")
 
-    all_d_pos = np.concatenate(delta_pos)
-    all_d_vel = np.concatenate(delta_vel)
-    all_d_angle = np.concatenate(delta_angle)
-    all_d_health = np.concatenate(delta_health)
-    all_d_power = np.concatenate(delta_power)
+    mean_sq = (sq_err_sum / max(n, 1.0)).cpu()
+    weights  = 1.0 / mean_sq.clamp(min=1e-9)
 
-    # Calculate theoretical maxes
-    dt = ship_config.dt
-    max_speed = np.sqrt(ship_config.boost_thrust / ship_config.no_turn_drag_coeff)
-    max_d_pos = max_speed * dt
-    max_lift_force = ship_config.sharp_turn_lift_coeff * (max_speed**2)
-    max_d_vel = (ship_config.boost_thrust + max_lift_force) * dt
-    max_d_angle = ship_config.sharp_turn_angle
-    max_d_power = ((ship_config.boost_thrust / ship_config.power_speed_constant) * max_speed) * dt
+    print("=" * 60)
+    print("Per-feature null-model MSE and calibrated weights:")
+    print(f"{'Feature':<20}  {'Mean sq err':>14}  {'Weight (1/MSE)':>16}")
+    print("-" * 60)
+    for i, name in enumerate(_FEAT_NAMES):
+        print(f"{name:<20}  {mean_sq[i].item():>14.6f}  {weights[i].item():>16.1f}")
+    print("=" * 60)
 
-    out_dir = Path(output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    
-    features = {
-        "Delta Position (px per step)": (all_d_pos, max_d_pos),
-        "Delta Velocity (px per step)": (all_d_vel, max_d_vel),
-        "Delta Angle (rad per step)": (all_d_angle, max_d_angle),
-        "Delta Health per step": (all_d_health, None),
-        "Delta Power per step": (all_d_power, max_d_power),
-    }
-
-    md_content = ["# Feature Delta Distributions & Theoretical Maxes\n"]
-    md_content.append("This document analyzes the per-step changes (deltas) in the environment's state features.")
-    md_content.append("It includes both empirical distributions from simulated gameplay and theoretical maximum values based on the physics engine.\n")
-    
-    md_content.append("## Theoretical Max Deltas\n")
-    md_content.append(f"- **Max Speed (Terminal Velocity):** `{max_speed:.2f}` px/s")
-    md_content.append(f"- **Max $\\Delta$ Position:** `{max_d_pos:.4f}` px/step")
-    md_content.append(f"- **Max $\\Delta$ Velocity (thrust + lift at max speed):** `{max_d_vel:.4f}` px/step")
-    md_content.append(f"- **Max $\\Delta$ Angle:** `{max_d_angle:.4f}` rad/step")
-    md_content.append(f"- **Max $\\Delta$ Power Drain:** `{max_d_power:.4f}` power/step\n")
-    
-    md_content.append("## Empirical Distributions\n")
-    md_content.append("| Feature | Mean $\\Delta$ | MSE (Variance) | Empirical Max | Theoretical Max |")
-    md_content.append("|---------|---------------|----------------|---------------|-----------------|")
-
-    for name, (data, max_val) in features.items():
-        plt.figure(figsize=(8, 4))
-        plt.hist(data, bins=100, alpha=0.7, color='blue', edgecolor='black')
-        if max_val is not None:
-            plt.axvline(max_val, color='red', linestyle='dashed', linewidth=2, label=f'Theoretical Max: {max_val:.2f}')
-        plt.axvline(np.max(data), color='green', linestyle='dashed', linewidth=2, label=f'Empirical Max: {np.max(data):.2f}')
-        plt.title(f"Distribution of {name}")
-        plt.xlabel(name)
-        plt.ylabel("Frequency")
-        plt.yscale('log')
-        plt.legend()
-        
-        filename = f"{name.split(' ')[1].lower()}_dist.png"
-        filepath = out_dir / filename
-        plt.savefig(filepath, bbox_inches='tight')
-        plt.close()
-
-        mean_val = np.mean(data)
-        variance = np.var(data)  # This is the MSE of predicting the mean
-        emp_max = np.max(data)
-        
-        max_str = f"{max_val:.4f}" if max_val is not None else "N/A"
-        md_content.append(f"| {name} | {mean_val:.4f} | {variance:.4f} | {emp_max:.4f} | {max_str} |")
-        
-        md_content.append(f"\n### {name}\n")
-        md_content.append(f"![{name}](file://{filepath.resolve()})\n")
-
-    md_path = out_dir / "feature_distributions.md"
-    with open(md_path, "w") as f:
-        f.write("\n".join(md_content))
-    print(f"Done! Report generated at {md_path}")
+    print("\nPaste into _STATIC_AUX_WEIGHTS in ppo.py:\n")
+    vals = [f"{weights[i].item():.1f}" for i in range(n_feat)]
+    print("_STATIC_AUX_WEIGHTS = (")
+    print(f"    {vals[0]}, {vals[1]}, {vals[2]}, {vals[3]},  # pos_sin_x, pos_cos_x, pos_sin_y, pos_cos_y")
+    print(f"    {vals[4]}, {vals[5]},  # vel_dir_cos, vel_dir_sin")
+    print(f"    {vals[6]},  # symlog_speed")
+    print(f"    {vals[7]}, {vals[8]},  # att_cos, att_sin")
+    print(f"    {vals[9]},  # ang_vel_abs")
+    print(f"    {vals[10]}, {vals[11]},  # health_sin, health_cos")
+    print(f"    {vals[12]}, {vals[13]},  # power_sin, power_cos")
+    print(f"    {vals[14]}, {vals[15]},  # cooldown_sin, cooldown_cos")
+    print(")")

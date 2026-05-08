@@ -16,15 +16,18 @@ K = num_value_components (one head per reward component).
 Value head outputs in normalized space. The ReturnScaler in PPOTrainer maps
 between symlog-reward space (GAE) and normalized space (value head I/O).
 
-Next-state prediction uses delta/phase-shift encoding:
+Next-state prediction:
   AUX_TARGET_DIM = 16: absolute next-state features stored in the replay buffer.
-    pos(4) vel(2) att(2) ang_vel(1) health(2) power(2) cooldown(2) alive(1)
-    health/power/cooldown use quarter-wave Fourier: [sin(π/2·x), cos(π/2·x)]
-  AUX_PRED_DIM = 10: what the network outputs (deltas and phase shifts).
-    pos_phase(2) vel_delta(2) att_phase(1) ang_vel_delta(1) health_phase(1)
-    power_phase(1) cooldown_phase(1) alive_logit(1)
-  Fourier features (pos, att, health, power, cooldown) use a rotation matrix to
-  apply the predicted phase shift, guaranteeing sin²+cos²=1 on the result.
+    pos_x(2) pos_y(2) vel_dir(2) symlog_speed(1) att(2) ang_vel(1) health(2) power(2) cooldown(2)
+    vel_dir uses (cos θ_v, sin θ_v) — same convention as att.
+    health/power/cooldown use quarter-wave Fourier: [sin(π/2·x), cos(π/2·x)].
+    No separate alive — alive is derived from health > ε at rollout time.
+  AUX_PRED_DIM = 12: what the network outputs (deltas and absolutes).
+    pos_phase(2) vel_dir_phase(1) symlog_speed_delta(1) att_phase(1)
+    ang_vel_abs(1) health_abs(2) power_abs(2) cooldown_abs(2)
+  Delta features (pos, vel_dir, att, speed) use rotation/addition.
+  Absolute features (ang_vel, health, power, cooldown) replace current state directly;
+  (sin,cos) pairs are L2-normalised in AR rollouts.
 
 Hidden state shape: (n_layers, B*(N+M), CONV_KERNEL * D), packed as:
   hidden[:, :, :D]   -- RG-LRU recurrent state
@@ -51,17 +54,17 @@ from boost_and_broadside.models.mvp.encoder import ShipEncoder
 from boost_and_broadside.models.mvp.griffin import CONV_KERNEL, YemongBlock
 
 # Buffer/target layout: absolute next-state features extracted from the obs dict.
-# pos(4) + vel(2) + att(2) + ang_vel(1) + health(2) + power(2) + cooldown(2) = 15 cont + alive(1) = 16
-# health/power/cooldown use quarter-wave Fourier: [sin(π/2·x), cos(π/2·x)].
-AUX_TARGET_CONT_DIM = 15
-AUX_ALIVE_DIM = 1
-AUX_TARGET_DIM = AUX_TARGET_CONT_DIM + AUX_ALIVE_DIM  # 16
+# pos_x(2) pos_y(2) vel_dir(2) symlog_speed(1) att(2) ang_vel(1) health(2) power(2) cooldown(2) = 16
+# vel_dir: (cos θ_v, sin θ_v). health/power/cooldown: quarter-wave [sin(π/2·x), cos(π/2·x)].
+# No separate alive — derived from health > ε at rollout time.
+AUX_TARGET_CONT_DIM = 16
+AUX_TARGET_DIM = AUX_TARGET_CONT_DIM  # 16
 
-# Network prediction layout: deltas and phase shifts output by NextStateHead.
-# pos_phase(2) + vel_delta(2) + att_phase(1) + ang_vel_delta(1) + health_phase(1)
-# + power_phase(1) + cooldown_phase(1) = 9 cont + alive_logit(1) = 10
+# Network prediction layout: deltas and absolutes output by NextStateHead.
+# pos_phase(2) vel_dir_phase(1) symlog_speed_delta(1) att_phase(1)
+# ang_vel_abs(1) health_phase(1) power_phase(1) cooldown_phase(1) = 9
 AUX_PRED_CONT_DIM = 9
-AUX_PRED_DIM = AUX_PRED_CONT_DIM + AUX_ALIVE_DIM  # 10
+AUX_PRED_DIM = AUX_PRED_CONT_DIM  # 9
 
 # Aliases kept for buffer backward-compat (buffer uses AUX_DIM for storage).
 AUX_CONT_DIM = AUX_TARGET_CONT_DIM
@@ -69,20 +72,20 @@ AUX_DIM = AUX_TARGET_DIM
 
 
 class NextStateHead(nn.Module):
-    """Predicts deltas and phase shifts for the next state of each ship.
+    """Predicts next-state deltas (phase/additive) and absolutes for each ship.
 
-    Output layout (AUX_PRED_DIM=10):
-        [0:2] pos_phase   — (Δφ_x, Δφ_y): phase shifts for x/y position
-        [2:4] vel_delta   — (Δvel_x, Δvel_y): additive velocity delta
-        [4]   att_phase   — Δφ_att: phase shift for heading angle
-        [5]   ang_vel_delta — additive delta for symlog angular velocity
-        [6]   health_phase — Δφ_h: phase shift for health quarter-wave encoding
-        [7]   power_phase  — Δφ_p: phase shift for power quarter-wave encoding
-        [8]   cooldown_phase — Δφ_c: phase shift for cooldown quarter-wave encoding
-        [9]   alive       — logit for alive probability (BCE loss)
+    Output layout (AUX_PRED_DIM=9):
+        [0]    Δφ_x         — phase shift for x position (delta)
+        [1]    Δφ_y         — phase shift for y position (delta)
+        [2]    Δφ_vel_dir   — phase shift for velocity direction (delta)
+        [3]    Δsymlog_spd  — additive delta for symlog speed (delta)
+        [4]    Δφ_att       — phase shift for heading angle (delta)
+        [5]    ang_vel_abs  — absolute symlog angular velocity
+        [6]    Δφ_health    — phase shift for health (delta)
+        [7]    Δφ_power     — phase shift for power (delta)
+        [8]    Δφ_cooldown  — phase shift for cooldown (delta)
 
-    Phase shifts are applied via rotation: (sin(φ+Δφ), cos(φ+Δφ)), guaranteeing
-    sin²+cos²=1 on the predicted Fourier features.
+    Delta features use rotation/addition; ang_vel is predicted absolute.
     """
 
     def __init__(self, d_model: int) -> None:

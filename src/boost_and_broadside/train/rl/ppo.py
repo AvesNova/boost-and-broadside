@@ -136,14 +136,14 @@ def _extract_aux_targets(
     """Extract and normalize dynamic ship features from an obs dict for aux loss targets.
 
     Features (AUX_TARGET_DIM=16):
-        pos(4)     — toroidal: (sin_x, cos_x, sin_y, cos_y) in [-1, 1]
-        vel(2)     / max_speed                  → ≈[-1, 1]
-        att(2)     — unit vector, raw
-        ang_vel(1) via symlog                   → ≈[-2, 2]
-        health(2)  — quarter-wave: (sin(π/2·h), cos(π/2·h))  h in [0, 1]
-        power(2)   — quarter-wave: (sin(π/2·p), cos(π/2·p))  p in [0, 1]
-        cooldown(2) — quarter-wave: (sin(π/2·c), cos(π/2·c)) c in [0, 1]
-        alive(1)   — cast to float → 0 or 1 (BCE target, not MSE)
+        pos(4)        — toroidal: (sin_x, cos_x, sin_y, cos_y) in [-1, 1]
+        vel_dir(2)    — velocity direction unit vec: (cos θ_v, sin θ_v)
+        symlog_spd(1) — symlog(|vel|)
+        att(2)        — unit vector, raw: (cos θ, sin θ)
+        ang_vel(1)    — symlog(ω)
+        health(2)     — quarter-wave: (sin(π/2·h), cos(π/2·h))  h in [0, 1]
+        power(2)      — quarter-wave: (sin(π/2·p), cos(π/2·p))  p in [0, 1]
+        cooldown(2)   — quarter-wave: (sin(π/2·c), cos(π/2·c))  c in [0, 1]
 
     Args:
         obs:        Raw obs dict with (B, N+M, ...) tensors.
@@ -164,7 +164,11 @@ def _extract_aux_targets(
     pos = torch.stack([pos_sin[..., 0], pos_cos[..., 0],
                        pos_sin[..., 1], pos_cos[..., 1]], dim=-1)            # (B, N, 4)
 
-    vel      = obs["vel"][:, :N].float()      / ship_config.max_speed       # (B, N, 2)
+    vel_raw  = obs["vel"][:, :N].float()                                     # (B, N, 2)
+    speed    = vel_raw.norm(dim=-1, keepdim=True).clamp(min=1e-6)           # (B, N, 1)
+    vel_dir  = vel_raw / speed                                               # (B, N, 2) unit vec (cos, sin)
+    symlog_spd = symlog(speed)                                               # (B, N, 1)
+
     att      = obs["att"][:, :N].float()                                     # (B, N, 2)
     ang_vel  = symlog(obs["ang_vel"][:, :N].float())                        # (B, N, 1)
 
@@ -177,35 +181,29 @@ def _extract_aux_targets(
     power    = torch.stack([torch.sin(_hpi * power_n),    torch.cos(_hpi * power_n)],    dim=-1)  # (B, N, 2)
     cooldown = torch.stack([torch.sin(_hpi * cooldown_n), torch.cos(_hpi * cooldown_n)], dim=-1)  # (B, N, 2)
 
-    alive    = obs["alive"][:, :N].float().unsqueeze(-1)                    # (B, N, 1)
-    return torch.cat([pos, vel, att, ang_vel, health, power, cooldown, alive], dim=-1)  # (B, N, 16)
+    return torch.cat([pos, vel_dir, symlog_spd, att, ang_vel, health, power, cooldown], dim=-1)  # (B, N, 16)
 
 
 def _apply_aux_deltas(curr: torch.Tensor, delta: torch.Tensor) -> torch.Tensor:
-    """Apply predicted deltas/phase shifts to current absolute state features.
+    """Apply predicted deltas/absolutes to current absolute state features.
 
-    For Fourier features (pos, att, health, power, cooldown) applies a rotation
-    matrix so the predicted (sin, cos) pair lies exactly on the unit circle.
-    For non-Fourier features (vel, ang_vel) adds the delta directly.
+    Delta features (pos, vel_dir, att, symlog_spd, health, power, cooldown) use rotation/addition.
+    ang_vel is predicted as an absolute value (replaces current state directly).
 
     Args:
-        curr:  (*, AUX_TARGET_CONT_DIM=15) — current absolute continuous features.
-               Layout: pos_x(2) pos_y(2) vel(2) att(2) ang_vel(1) health(2) power(2) cooldown(2)
-        delta: (*, AUX_PRED_CONT_DIM=9)   — predicted deltas and phase shifts.
-               Layout: Δφ_x(1) Δφ_y(1) Δvel(2) Δφ_att(1) Δang_vel(1) Δφ_h(1) Δφ_p(1) Δφ_c(1)
+        curr:  (*, AUX_TARGET_CONT_DIM=16) — current absolute continuous features.
+               Layout: pos_x(2) pos_y(2) vel_dir(2) symlog_spd(1) att(2) ang_vel(1) health(2) power(2) cooldown(2)
+        delta: (*, AUX_PRED_CONT_DIM=9)    — predicted deltas and absolutes.
+               Layout: Δφ_x(1) Δφ_y(1) Δφ_vel(1) Δspd(1) Δφ_att(1) ang_vel_abs(1) Δφ_h(1) Δφ_p(1) Δφ_c(1)
 
     Returns:
-        (*, AUX_TARGET_CONT_DIM=15) — predicted next absolute continuous features.
+        (*, AUX_TARGET_CONT_DIM=16) — predicted next absolute continuous features.
     """
     def _phase_shift(sc: torch.Tensor, d: torch.Tensor, cos_first: bool = False) -> torch.Tensor:
         """Rotate a unit-circle pair by scalar phase shift d: guarantees sin²+cos²=1.
 
         cos_first=False (default): sc is (sin θ, cos θ) → (sin(θ+d), cos(θ+d))
         cos_first=True:            sc is (cos θ, sin θ) → (cos(θ+d), sin(θ+d))
-
-        Use cos_first=True for direction vectors stored as natural (x, y) = (cos θ, sin θ),
-        e.g. attitude, obstacle heading. Use the default for Fourier features where
-        (sin φ, cos φ) order was chosen by convention, e.g. position, health, power, cooldown.
         """
         cd, sd = d.cos(), d.sin()
         if cos_first:
@@ -216,14 +214,15 @@ def _apply_aux_deltas(curr: torch.Tensor, delta: torch.Tensor) -> torch.Tensor:
             return torch.stack([s * cd + c * sd, c * cd - s * sd], dim=-1)
 
     return torch.cat([
-        _phase_shift(curr[..., 0:2],  delta[..., 0:1].squeeze(-1)),                # pos_x  (sin, cos)
-        _phase_shift(curr[..., 2:4],  delta[..., 1:2].squeeze(-1)),                # pos_y  (sin, cos)
-        curr[..., 4:6] + delta[..., 2:4],                                          # vel    (additive)
-        _phase_shift(curr[..., 6:8],  delta[..., 4:5].squeeze(-1), cos_first=True),# att    (cos, sin)
-        curr[..., 8:9] + delta[..., 5:6],                                          # ang_vel (additive)
-        _phase_shift(curr[..., 9:11], delta[..., 6:7].squeeze(-1)),                # health (sin, cos)
-        _phase_shift(curr[..., 11:13],delta[..., 7:8].squeeze(-1)),                # power  (sin, cos)
-        _phase_shift(curr[..., 13:15],delta[..., 8:9].squeeze(-1)),                # cooldown (sin, cos)
+        _phase_shift(curr[..., 0:2],   delta[..., 0:1].squeeze(-1)),                 # pos_x  (sin, cos)
+        _phase_shift(curr[..., 2:4],   delta[..., 1:2].squeeze(-1)),                 # pos_y  (sin, cos)
+        _phase_shift(curr[..., 4:6],   delta[..., 2:3].squeeze(-1), cos_first=True), # vel_dir (cos, sin)
+        curr[..., 6:7] + delta[..., 3:4],                                            # symlog_speed (additive)
+        _phase_shift(curr[..., 7:9],   delta[..., 4:5].squeeze(-1), cos_first=True), # att    (cos, sin)
+        delta[..., 5:6],                                                              # ang_vel absolute
+        _phase_shift(curr[..., 10:12], delta[..., 6:7].squeeze(-1)),                 # health (sin, cos)
+        _phase_shift(curr[..., 12:14], delta[..., 7:8].squeeze(-1)),                 # power  (sin, cos)
+        _phase_shift(curr[..., 14:16], delta[..., 8:9].squeeze(-1)),                 # cooldown (sin, cos)
     ], dim=-1)
 
 
@@ -316,15 +315,16 @@ _LOCAL_COMPONENTS: frozenset[str] = frozenset(
 
 
 # Scaling factors for NextStateHead continuous features (Inverse of the null guess MSE).
-# Empirically calculated against a late-stage trained checkpoint.
+# pos/att values empirically calculated; vel_dir/symlog_spd/ang_vel_abs marked TODO: recalibrate.
 _STATIC_AUX_WEIGHTS = (
-    40301.0, 40301.0, 40301.0, 40301.0,  # pos_sin_x, pos_cos_x, pos_sin_y, pos_cos_y
-    4860.0, 4860.0,                      # vel_x, vel_y
-    174.0, 174.0,                        # att_sin, att_cos
-    1.0,                                 # ang_vel
-    12615.0, 9749.0,                     # health_sin, health_cos
-    10937.0, 17052.0,                    # power_sin, power_cos
-    16.0, 16.0                           # cooldown_sin, cooldown_cos
+    31485.6, 31485.6, 31485.6, 31485.6,  # pos_sin_x, pos_cos_x, pos_sin_y, pos_cos_y
+    1794.5, 1794.5,                       # vel_dir_cos, vel_dir_sin
+    13011.6,                              # symlog_speed
+    219.7, 219.7,                         # att_cos, att_sin
+    0.2,                                  # ang_vel_abs
+    3162.4, 2150.1,                       # health_sin, health_cos
+    21044.4, 12478.6,                     # power_sin, power_cos
+    11.3, 11.3,                           # cooldown_sin, cooldown_cos
 )
 
 
@@ -1599,7 +1599,6 @@ class PPOTrainer:
         # ---- Next-state prediction loss (primary scale only) ----------------
         next_state_loss = torch.tensor(0.0, device=self.device)
         next_state_cont_loss = torch.tensor(0.0, device=self.device)
-        next_state_alive_loss = torch.tensor(0.0, device=self.device)
         next_state_per_feat: torch.Tensor | None = None  # (16,) cpu, for logging
         if is_primary and mb_true_next is not None and self.cfg.next_state_coef > 0.0:
             non_terminal = ~mb_terminated.unsqueeze(-1)  # (T, B_mb, 1)
@@ -1614,33 +1613,25 @@ class PPOTrainer:
             mb_curr = _extract_aux_targets(flat_obs, N_ships, self.ship_config)
             mb_curr = mb_curr.reshape(T_flat, B_flat, N_ships, AUX_TARGET_DIM)  # (T, B, N, 16)
 
-            # Apply predicted phase shifts / deltas to get absolute predicted next state.
-            curr_cont = mb_curr[..., :AUX_TARGET_CONT_DIM]                      # (T, B, N, 15)
-            pred_cont = pred_next[..., :AUX_PRED_CONT_DIM].float()              # (T, B, N, 9)
-            pred_next_abs = _apply_aux_deltas(curr_cont, pred_cont)              # (T, B, N, 15)
+            # Apply predicted deltas/absolutes to get absolute predicted next state.
+            curr_cont = mb_curr[..., :AUX_TARGET_CONT_DIM]                      # (T, B, N, 16)
+            pred_cont = pred_next[..., :AUX_PRED_CONT_DIM].float()              # (T, B, N, 12)
+            pred_next_abs = _apply_aux_deltas(curr_cont, pred_cont)              # (T, B, N, 16)
 
-            cont_true = mb_true_next[..., :AUX_TARGET_CONT_DIM]                 # (T, B_mb, N, 15)
-            sq_err = (pred_next_abs - cont_true).pow(2)                         # (T, B_mb, N, 15)
-            
+            cont_true = mb_true_next[..., :AUX_TARGET_CONT_DIM]                 # (T, B_mb, N, 16)
+            sq_err = (pred_next_abs - cont_true).pow(2)                         # (T, B_mb, N, 16)
+
             # Scale each feature's squared error by its empirical static weight
             sq_err = sq_err * self.aux_weights
-            
+
             next_state_cont_loss = (
                 sq_err * ns_mask_f.unsqueeze(-1)
             ).sum() / (ns_sum * AUX_TARGET_CONT_DIM)
-
-            alive_logit = pred_next[..., AUX_PRED_CONT_DIM].float()             # (T, B_mb, N) — index 9
-            alive_true = mb_true_next[..., AUX_TARGET_CONT_DIM]                 # (T, B_mb, N) — index 15
-            bce_per = F.binary_cross_entropy_with_logits(
-                alive_logit, alive_true, reduction="none"
-            )
-            next_state_alive_loss = (bce_per * ns_mask_f).sum() / ns_sum
-            next_state_loss = next_state_cont_loss + next_state_alive_loss
+            next_state_loss = next_state_cont_loss
 
             with torch.no_grad():
-                per_feat_cont = (sq_err * ns_mask_f.unsqueeze(-1)).sum((0, 1, 2)) / ns_sum  # (15,)
-                per_feat_alive = ((bce_per * ns_mask_f).sum((0, 1, 2)) / ns_sum).unsqueeze(0)  # (1,)
-                next_state_per_feat = torch.cat([per_feat_cont, per_feat_alive], dim=0).cpu()  # (16,)
+                per_feat_cont = (sq_err * ns_mask_f.unsqueeze(-1)).sum((0, 1, 2)) / ns_sum  # (16,)
+                next_state_per_feat = per_feat_cont.cpu()  # (16,)
 
         loss = (
             self._policy_gradient_coef * pg_loss
@@ -1662,8 +1653,7 @@ class PPOTrainer:
             diag["sigreg_loss"] = sigreg_loss.detach()
             diag["next_state_loss"] = next_state_loss.detach()
             diag["next_state_cont_loss"] = next_state_cont_loss.detach()
-            diag["next_state_alive_loss"] = next_state_alive_loss.detach()
-            diag["next_state_per_feat"] = next_state_per_feat  # (11,) cpu or None
+            diag["next_state_per_feat"] = next_state_per_feat  # (16,) cpu or None
             diag["scripted_entropy"] = scripted_entropy.detach()
             diag["bc_kl"] = bc_loss.detach() - scripted_entropy.detach()
             diag["adv_var"] = adv_rms
@@ -1762,7 +1752,6 @@ class PPOTrainer:
             "loss/sigreg": [],
             "loss/next_state": [],
             "loss/next_state_cont": [],
-            "loss/next_state_alive": [],
             "loss_proxy/policy_gradient": [],
             "loss_proxy/value": [],
             "loss_proxy/entropy": [],
@@ -1792,13 +1781,13 @@ class PPOTrainer:
         }
         _NS_FEAT_NAMES = (
             "pos_sin_x", "pos_cos_x", "pos_sin_y", "pos_cos_y",
-            "vel_x", "vel_y", "att_sin", "att_cos",
-            "ang_vel",
+            "vel_dir_cos", "vel_dir_sin", "symlog_speed",
+            "att_cos", "att_sin",
+            "ang_vel_abs",
             "health_sin", "health_cos",
             "power_sin", "power_cos",
             "cooldown_sin", "cooldown_cos",
-            "alive",
-        )  # 16 total: 15 cont + 1 alive
+        )  # 16 total
         ns_per_feat_accum: list[torch.Tensor] = []
         last_returns_np = None
         last_logprob_np = None
@@ -1828,7 +1817,6 @@ class PPOTrainer:
                     "sigreg": _z.clone(),
                     "ns_loss": _z.clone(),
                     "ns_cont": _z.clone(),
-                    "ns_alive": _z.clone(),
                     "bc_kl": _z.clone(),
                     "scripted_entropy": _z.clone(),
                     "kl": _z.clone(),
@@ -1860,7 +1848,6 @@ class PPOTrainer:
                     scalar_accum_step["sigreg"] += diag["sigreg_loss"] / n_scales
                     scalar_accum_step["ns_loss"] += diag["next_state_loss"] / n_scales
                     scalar_accum_step["ns_cont"] += diag["next_state_cont_loss"] / n_scales
-                    scalar_accum_step["ns_alive"] += diag["next_state_alive_loss"] / n_scales
                     scalar_accum_step["bc_kl"] += diag["bc_kl"] / n_scales
                     scalar_accum_step["scripted_entropy"] += (
                         diag["scripted_entropy"] / n_scales
@@ -1901,7 +1888,6 @@ class PPOTrainer:
                 accum_scalar["loss/sigreg"].append(scalar_accum_step["sigreg"])
                 accum_scalar["loss/next_state"].append(scalar_accum_step["ns_loss"])
                 accum_scalar["loss/next_state_cont"].append(scalar_accum_step["ns_cont"])
-                accum_scalar["loss/next_state_alive"].append(scalar_accum_step["ns_alive"])
                 accum_scalar["loss_proxy/policy_gradient"].append(
                     self._policy_gradient_coef * scalar_accum_step["pg"]
                 )
