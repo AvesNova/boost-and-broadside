@@ -223,7 +223,7 @@ def _handle_shooting(
 
     device = state.device
 
-    state.ship_cooldown = state.ship_cooldown - config.dt
+    state.ship_cooldown = (state.ship_cooldown - config.dt).clamp(min=0.0)
 
     can_shoot = (
         (shoot_action == ShootActions.SHOOT)
