@@ -69,7 +69,6 @@ RL_OBSTACLES_SCHEDULE = TrainingSchedule(
     true_reward_scale=constant(1.0),
     global_scale=constant(1.0),
     local_scale=constant(1.0),
-    shaping_scale=constant(1.0),
     # No opponents — pure self-navigation, obstacle avoidance only.
     scripted_fraction=stepped((0, 0.0)),
     avg_model_fraction=stepped((0, 0.0)),

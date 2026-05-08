@@ -32,7 +32,6 @@ BC_SCHEDULE = TrainingSchedule(
     true_reward_scale=constant(1.0),
     global_scale=constant(1.0),
     local_scale=constant(1.0),
-    shaping_scale=constant(1.0),
     # No opponents during BC — scripted agent only supplies supervised targets.
     scripted_fraction=constant(0.0),
     avg_model_fraction=constant(0.0),

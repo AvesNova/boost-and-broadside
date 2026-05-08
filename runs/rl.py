@@ -42,7 +42,6 @@ RL_SCHEDULE = TrainingSchedule(
     true_reward_scale=constant(1.0),
     global_scale=constant(1.0),
     local_scale=constant(1.0),
-    shaping_scale=constant(1.0),
     # Scripted at 50% from step 0 — stable, strong signal from the start.
     # At step 50M avg-model is ready; reduce scripted to make room.
     scripted_fraction=stepped((0, 0.5), (50_000_000, 0.3)),
