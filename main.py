@@ -52,6 +52,7 @@ from boost_and_broadside.modes.elo_stats import run_elo_stats_mode
 from boost_and_broadside.modes.feature_stats import run_feature_stats_mode
 from boost_and_broadside.modes.interactive import run_watch_mode
 from boost_and_broadside.modes.ar_report import run_ar_report_mode
+from boost_and_broadside.modes.noise_calibration import run_noise_calibration_mode
 from boost_and_broadside.train.rl.ppo import PPOTrainer
 from boost_and_broadside.ui.renderer import RenderConfig
 from runs.bc import BC_TRAIN_CONFIG
@@ -68,7 +69,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--mode",
-        choices=["bc", "rl", "rl_obstacles", "bc_warmstart", "watch", "collect_stats", "feature_stats", "elo_stats", "ar_report"],
+        choices=["bc", "rl", "rl_obstacles", "bc_warmstart", "watch", "collect_stats", "feature_stats", "elo_stats", "ar_report", "noise_calibration"],
         default="rl",
         help=(
             "Operating mode. "
@@ -373,6 +374,24 @@ def main() -> None:
                 device=device,
                 checkpoint_dir="checkpoints",
                 out_dir="docs/ar_report/1v1",
+            )
+
+        case "noise_calibration":
+            team0 = args.team0 if args.team0 is not None else "checkpoints/dulcet-dragon-570/recent_avg.pt"
+            team1 = args.team1 if args.team1 is not None else "checkpoints/dulcet-dragon-570/recent_avg.pt"
+            run_noise_calibration_mode(
+                team0_spec=team0,
+                team1_spec=team1,
+                num_envs=512,
+                num_steps=512,
+                num_ar_envs=256,
+                num_ar_windows=20,
+                ship_config=SHIP_CONFIG,
+                env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=1024),
+                model_config=MODEL_CONFIG,
+                device=device,
+                checkpoint_dir="checkpoints",
+                output_dir="docs/noise_calibration",
             )
 
 
