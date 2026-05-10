@@ -15,6 +15,8 @@ import numpy as np
 import torch
 from typing import Generator
 
+from boost_and_broadside.env.observation import MVPObservation
+
 
 def symlog(x: torch.Tensor) -> torch.Tensor:
     """Symmetric log transform: sign(x) * log(1 + |x|).
@@ -204,16 +206,18 @@ class RolloutBuffer:
 
     Supports per-ship per-component rewards and values for the decomposed critic.
     Stores one initial GRU hidden state per rollout for recurrent re-evaluation.
+    Stores T+1 observations (one extra for aux loss label computation at update time).
 
     Args:
         num_steps:       Rollout horizon T.
         num_envs:        Parallel environments B.
         num_ships:       Ships per environment N.
         num_components:  Value components K (len(REWARD_COMPONENT_NAMES)).
-        obs_shapes:      Dict mapping obs key → trailing shape, e.g. {"pos": (N, 2)}.
+        obs_sample:      Sample MVPObservation (B, N+M, ...) — used to infer shapes/dtypes.
         gamma:           Discount factor.
         gae_lambda:      GAE lambda.
         device:          GPU device for all storage.
+        num_tokens:      N+M total entity tokens (ships + obstacles).
     """
 
     def __init__(
@@ -222,12 +226,11 @@ class RolloutBuffer:
         num_envs: int,
         num_ships: int,
         num_components: int,
-        obs_shapes: dict[str, tuple],
+        obs_sample: MVPObservation,
         gamma: torch.Tensor,
         gae_lambda: torch.Tensor,
         device: torch.device,
         num_tokens: int | None = None,
-        aux_dim: int = 0,
     ) -> None:
         self.num_steps = num_steps
         self.num_envs = num_envs
@@ -237,14 +240,14 @@ class RolloutBuffer:
         self.gamma = gamma.to(device=device)      # (K,)
         self.gae_lambda = gae_lambda.to(device=device)  # (K,)
         self.device = device
-        self.aux_dim = aux_dim
 
         T, B, N, K = num_steps, num_envs, num_ships, num_components
 
-        # Observations — one entry per obs key
-        self.obs: dict[str, torch.Tensor] = {
-            key: torch.zeros((T, B, *shape), device=device, dtype=torch.float32)
-            for key, shape in obs_shapes.items()
+        # Observations — T+1 slots per key: obs[t] = obs at time t, obs[T] = final obs
+        # Preserves original dtypes from the environment observation.
+        self.obs: dict = {
+            key: torch.zeros((T + 1, B, *val.shape[1:]), device=device, dtype=val.dtype)
+            for key, val in obs_sample.items()
         }
 
         self.actions = torch.zeros((T, B, N, 3), device=device, dtype=torch.int32)
@@ -261,14 +264,8 @@ class RolloutBuffer:
             (T, B, N, 12), device=device, dtype=torch.float32
         )
 
-        # Aux next-state prediction targets (only allocated when aux_dim > 0)
-        if aux_dim > 0:
-            self.true_next_states = torch.zeros(
-                (T, B, N, aux_dim), device=device, dtype=torch.float32
-            )
-        else:
-            self.true_next_states = None
-        # Episode termination mask: done | truncated — used to exclude resets from aux loss
+        # Episode termination mask: done | truncated — used to exclude terminal transitions
+        # from the aux next-state prediction loss.
         self.terminated = torch.zeros((T, B), device=device, dtype=torch.bool)
 
         # Initial GRU hidden state at the start of this rollout
@@ -286,6 +283,7 @@ class RolloutBuffer:
         self.initial_hidden = None
         self.expert_probs.zero_()  # only filled for scripted-group envs; rest must be zero
         self.terminated.zero_()
+        # obs[T] slot is overwritten by store_final_obs() — no need to zero it
 
     def store_initial_hidden(self, hidden: torch.Tensor) -> None:
         """Store the GRU hidden state at rollout start.
@@ -297,7 +295,7 @@ class RolloutBuffer:
 
     def add(
         self,
-        obs: dict[str, torch.Tensor],
+        obs: MVPObservation,
         action: torch.Tensor,
         logprob: torch.Tensor,
         reward: torch.Tensor,
@@ -306,36 +304,31 @@ class RolloutBuffer:
         alive: torch.Tensor,
         actor_mask: torch.Tensor | None = None,
         expert_probs: torch.Tensor | None = None,
-        true_next_state: torch.Tensor | None = None,
         terminated: torch.Tensor | None = None,
     ) -> None:
         """Store one step.
 
         Args:
-            obs:             Dict with (B, N, ...) tensors — float32.
-            action:          (B, N, 3) int.
-            logprob:         (B, N) float.
-            reward:          (B, N, K) float — raw per-component per-ship rewards.
-            done:            (B,) float (0.0 or 1.0).
-            value:           (B, N, K) float — critic expected values (symlog-reward space).
-            alive:           (B, N) bool.
-            actor_mask:      (B, N) bool — True for ships whose actions came from the training
-                             policy and should contribute to the actor/entropy loss. Defaults to
-                             all-True (pure self-play: all ships are training ships).
-            expert_probs:    (B, N, 12) float — scripted-agent marginal probs [power|turn|shoot]
-                             for BC loss. Zero for envs without a scripted opponent.
-            true_next_state: (B, N, AUX_DIM) float — normalized next-state features for aux loss.
-                             Only stored when aux_dim > 0.
-            terminated:      (B,) bool — True when episode ended (done | truncated). Used to
-                             mask aux loss at terminal transitions.
+            obs:          MVPObservation with (B, N+M, ...) tensors.
+            action:       (B, N, 3) int.
+            logprob:      (B, N) float.
+            reward:       (B, N, K) float — raw per-component per-ship rewards.
+            done:         (B,) float (0.0 or 1.0).
+            value:        (B, N, K) float — critic expected values (symlog-reward space).
+            alive:        (B, N) bool.
+            actor_mask:   (B, N) bool — True for ships that should contribute to actor loss.
+                          Defaults to all-True (pure self-play).
+            expert_probs: (B, N, 12) float — scripted-agent marginal probs for BC loss.
+                          Zero for envs without a scripted opponent.
+            terminated:   (B,) bool — True when episode ended (done | truncated). Used to
+                          mask aux loss at terminal transitions.
         """
         if self.ptr >= self.num_steps:
             raise IndexError("Buffer is full — call reset() before reuse.")
 
         t = self.ptr
         for key, val in obs.items():
-            if key in self.obs:
-                self.obs[key][t] = val.float()
+            self.obs[key][t].copy_(val)
 
         self.actions[t] = action.int()
         self.logprobs[t] = logprob
@@ -348,12 +341,21 @@ class RolloutBuffer:
         )
         if expert_probs is not None:
             self.expert_probs[t] = expert_probs
-        if true_next_state is not None and self.true_next_states is not None:
-            self.true_next_states[t] = true_next_state
         if terminated is not None:
             self.terminated[t] = terminated
 
         self.ptr += 1
+
+    def store_final_obs(self, obs: MVPObservation) -> None:
+        """Store the observation at the end of the rollout (the T+1-th obs slot).
+
+        Called once after the rollout loop completes. This final obs enables
+        computing aux next-state prediction labels at update time without a
+        separate pre-computed target buffer.
+        """
+        T = self.num_steps
+        for key, val in obs.items():
+            self.obs[key][T].copy_(val)
 
     # ------------------------------------------------------------------
     # GAE computation
@@ -405,23 +407,25 @@ class RolloutBuffer:
         """Yield minibatches of environments for PPO update epochs.
 
         Shuffles environments and slices them into num_minibatches chunks.
-        Each chunk yields the full T-length sequence for those environments,
-        enabling recurrent re-evaluation from the stored initial hidden state.
+        Each chunk yields the full (T+1)-step observation sequence plus T-step
+        non-observation data for those environments.
+
+        The extra T+1-th obs step enables computing aux next-state prediction
+        labels at update time: coordinator.compute_labels(target(obs[t]), target(obs[t+1])).
 
         Yields:
             Tuple of:
-                mb_obs:            dict[str, (T, B_mb, N, ...)] float32
-                mb_actions:        (T, B_mb, N, 3) int32
-                mb_logprobs:       (T, B_mb, N) float32
-                mb_advantages:     (T, B_mb, N, K) float32
-                mb_returns:        (T, B_mb, N, K) float32
-                mb_values:         (T, B_mb, N, K) float32
-                mb_alive:          (T, B_mb, N) bool
-                mb_hidden:         (n_layers, B_mb*N, D) float32
-                mb_actor_mask:     (T, B_mb, N) bool
-                mb_expert_probs:   (T, B_mb, N, 12) float32
-                mb_true_next:      (T, B_mb, N, AUX_DIM) float32 or None
-                mb_terminated:     (T, B_mb) bool
+                mb_obs:          MVPObservation (T+1, B_mb, N+M, ...)
+                mb_actions:      (T, B_mb, N, 3) int32
+                mb_logprobs:     (T, B_mb, N) float32
+                mb_advantages:   (T, B_mb, N, K) float32
+                mb_returns:      (T, B_mb, N, K) float32
+                mb_values:       (T, B_mb, N, K) float32
+                mb_alive:        (T, B_mb, N) bool
+                mb_hidden:       (n_layers, B_mb*num_tokens, D) float32
+                mb_actor_mask:   (T, B_mb, N) bool
+                mb_expert_probs: (T, B_mb, N, 12) float32
+                mb_terminated:   (T, B_mb) bool
         """
         assert self.initial_hidden is not None, (
             "Call store_initial_hidden() before iterating."
@@ -435,7 +439,8 @@ class RolloutBuffer:
             end = start + envs_per_batch
             idx = env_order[start:end]  # (B_mb,)
 
-            mb_obs = {key: val[:, idx] for key, val in self.obs.items()}
+            # T+1 obs for this minibatch
+            mb_obs = MVPObservation(data={k: v[:, idx] for k, v in self.obs.items()})
 
             # Reconstruct initial hidden for this minibatch: (n_layers, B_mb*num_tokens, D)
             n_layers = self.initial_hidden.shape[0]
@@ -444,10 +449,6 @@ class RolloutBuffer:
             )
             mb_hidden = hidden_full[:, idx, :, :].reshape(
                 n_layers, len(idx) * self.num_tokens, D
-            )
-
-            mb_true_next = (
-                self.true_next_states[:, idx] if self.true_next_states is not None else None
             )
 
             yield (
@@ -461,6 +462,5 @@ class RolloutBuffer:
                 mb_hidden.contiguous(),
                 self.actor_masks[:, idx],
                 self.expert_probs[:, idx],
-                mb_true_next,
                 self.terminated[:, idx],
             )

@@ -229,7 +229,7 @@ class EloRoster:
         self,
         entry: RosterEntry,
         model_config,
-        obs_config,
+        coordinator,
         num_value_components: int,
         num_ships: int,
         device,
@@ -244,7 +244,7 @@ class EloRoster:
 
         ckpt = torch.load(entry.path, map_location=device, weights_only=False)
         policy = MVPPolicy(
-            model_config, obs_config, num_value_components=num_value_components, num_ships=num_ships
+            model_config, coordinator, num_value_components=num_value_components, num_ships=num_ships
         )
         policy.load_state_dict(ckpt["policy_state_dict"])
         policy.eval()

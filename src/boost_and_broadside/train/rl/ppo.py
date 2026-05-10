@@ -28,25 +28,21 @@ from boost_and_broadside.config import (
     EnvConfig,
     TrainingSchedule,
 )
-from boost_and_broadside.config.obs_spec import ObsConfig
 from boost_and_broadside.constants import POWER_SLICE, TURN_SLICE, SHOOT_SLICE
 from boost_and_broadside.env.env import TensorEnv
+from boost_and_broadside.env.observation import MVPObservation, ObsKey
 from boost_and_broadside.env.obstacle_cache import ObstacleCache
 from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
 from boost_and_broadside.env.state import TensorState
 from boost_and_broadside.env.wrapper import MVPEnvWrapper
-from boost_and_broadside.models.mvp.policy import (
-    MVPPolicy,
-    AUX_TARGET_CONT_DIM, AUX_TARGET_DIM,
-    AUX_PRED_CONT_DIM, AUX_PRED_DIM,
-    AUX_CONT_DIM, AUX_DIM,  # aliases: CONT_DIM=TARGET_CONT_DIM, DIM=TARGET_DIM
-)
+from boost_and_broadside.models.mvp.policy import MVPPolicy
 from boost_and_broadside.train.rl.buffer import (
     RolloutBuffer,
     ReturnScaler,
     AdvantageScaler,
     symlog,
 )
+from boost_and_broadside.train.rl.features import build_standard_coordinator, FeatureCoordinator
 from boost_and_broadside.train.rl.sigreg import SIGReg
 from boost_and_broadside.train.rl.roster import EloRoster, RosterEntry
 
@@ -91,11 +87,9 @@ def _build_component_tensor(
 # ------------------------------------------------------------------
 
 
-def _slice_obs(
-    obs: dict[str, torch.Tensor], start: int, end: int
-) -> dict[str, torch.Tensor]:
+def _slice_obs(obs: MVPObservation, start: int, end: int) -> MVPObservation:
     """Return a view of obs tensors for envs [start, end)."""
-    return {k: v[start:end] for k, v in obs.items()}
+    return obs.slice_envs(slice(start, end))
 
 
 def _slice_state(state: TensorState, start: int, end: int) -> TensorState:
@@ -128,113 +122,12 @@ def _slice_state(state: TensorState, start: int, end: int) -> TensorState:
     )
 
 
-def _extract_aux_targets(
-    obs: dict[str, torch.Tensor],
-    num_ships: int,
-    ship_config: "ShipConfig",
-) -> torch.Tensor:
-    """Extract and normalize dynamic ship features from an obs dict for aux loss targets.
-
-    Features (AUX_TARGET_DIM=16):
-        pos(4)        — toroidal: (sin_x, cos_x, sin_y, cos_y) in [-1, 1]
-        vel_dir(2)    — velocity direction unit vec: (cos θ_v, sin θ_v)
-        symlog_spd(1) — symlog(|vel|)
-        att(2)        — unit vector, raw: (cos θ, sin θ)
-        ang_vel(1)    — symlog(ω)
-        health(2)     — quarter-wave: (sin(π/2·h), cos(π/2·h))  h in [0, 1]
-        power(2)      — quarter-wave: (sin(π/2·p), cos(π/2·p))  p in [0, 1]
-        cooldown(2)   — quarter-wave: (sin(π/2·c), cos(π/2·c))  c in [0, 1]
-
-    Args:
-        obs:        Raw obs dict with (B, N+M, ...) tensors.
-        num_ships:  N — number of ship tokens (first N entries of each obs key).
-        ship_config: Used for normalization scales.
-
-    Returns:
-        (B, N, AUX_TARGET_DIM) float32.
-    """
-    import math
-    N = num_ships
-    _2pi = 2.0 * math.pi
-    _hpi = math.pi / 2.0
-
-    pos_norm = obs["pos"][:, :N].float() / ship_config.world_size[0]        # (B, N, 2) in [0,1]
-    pos_sin = torch.sin(_2pi * pos_norm)                                     # (B, N, 2)
-    pos_cos = torch.cos(_2pi * pos_norm)                                     # (B, N, 2)
-    pos = torch.stack([pos_sin[..., 0], pos_cos[..., 0],
-                       pos_sin[..., 1], pos_cos[..., 1]], dim=-1)            # (B, N, 4)
-
-    vel_raw  = obs["vel"][:, :N].float()                                     # (B, N, 2)
-    speed    = vel_raw.norm(dim=-1, keepdim=True).clamp(min=1e-6)           # (B, N, 1)
-    vel_dir  = vel_raw / speed                                               # (B, N, 2) unit vec (cos, sin)
-    symlog_spd = symlog(speed)                                               # (B, N, 1)
-
-    att      = obs["att"][:, :N].float()                                     # (B, N, 2)
-    ang_vel  = symlog(obs["ang_vel"][:, :N].float())                        # (B, N, 1)
-
-    # obs scalars are (B, N, 1) — squeeze before trig so stack gives (B, N, 2) not (B, N, 1, 2)
-    health_n   = (obs["health"][:, :N].float().squeeze(-1)   / ship_config.max_health).clamp(0.0, 1.0)
-    power_n    = (obs["power"][:, :N].float().squeeze(-1)    / ship_config.max_power).clamp(0.0, 1.0)
-    cooldown_n = (obs["cooldown"][:, :N].float().squeeze(-1) / ship_config.firing_cooldown).clamp(0.0, 1.0)
-
-    health   = torch.stack([torch.sin(_hpi * health_n),   torch.cos(_hpi * health_n)],   dim=-1)  # (B, N, 2)
-    power    = torch.stack([torch.sin(_hpi * power_n),    torch.cos(_hpi * power_n)],    dim=-1)  # (B, N, 2)
-    cooldown = torch.stack([torch.sin(_hpi * cooldown_n), torch.cos(_hpi * cooldown_n)], dim=-1)  # (B, N, 2)
-
-    return torch.cat([pos, vel_dir, symlog_spd, att, ang_vel, health, power, cooldown], dim=-1)  # (B, N, 16)
-
-
-def _apply_aux_deltas(curr: torch.Tensor, delta: torch.Tensor) -> torch.Tensor:
-    """Apply predicted deltas/absolutes to current absolute state features.
-
-    Delta features (pos, vel_dir, att, symlog_spd, health, power, cooldown) use rotation/addition.
-    ang_vel is predicted as an absolute value (replaces current state directly).
-
-    Args:
-        curr:  (*, AUX_TARGET_CONT_DIM=16) — current absolute continuous features.
-               Layout: pos_x(2) pos_y(2) vel_dir(2) symlog_spd(1) att(2) ang_vel(1) health(2) power(2) cooldown(2)
-        delta: (*, AUX_PRED_CONT_DIM=9)    — predicted deltas and absolutes.
-               Layout: Δφ_x(1) Δφ_y(1) Δφ_vel(1) Δspd(1) Δφ_att(1) ang_vel_abs(1) Δφ_h(1) Δφ_p(1) Δφ_c(1)
-
-    Returns:
-        (*, AUX_TARGET_CONT_DIM=16) — predicted next absolute continuous features.
-    """
-    def _phase_shift(sc: torch.Tensor, d: torch.Tensor, cos_first: bool = False) -> torch.Tensor:
-        """Rotate a unit-circle pair by scalar phase shift d: guarantees sin²+cos²=1.
-
-        cos_first=False (default): sc is (sin θ, cos θ) → (sin(θ+d), cos(θ+d))
-        cos_first=True:            sc is (cos θ, sin θ) → (cos(θ+d), sin(θ+d))
-        """
-        cd, sd = d.cos(), d.sin()
-        if cos_first:
-            c, s = sc[..., 0], sc[..., 1]
-            return torch.stack([c * cd - s * sd, s * cd + c * sd], dim=-1)
-        else:
-            s, c = sc[..., 0], sc[..., 1]
-            return torch.stack([s * cd + c * sd, c * cd - s * sd], dim=-1)
-
-    return torch.cat([
-        _phase_shift(curr[..., 0:2],   delta[..., 0:1].squeeze(-1)),                 # pos_x  (sin, cos)
-        _phase_shift(curr[..., 2:4],   delta[..., 1:2].squeeze(-1)),                 # pos_y  (sin, cos)
-        _phase_shift(curr[..., 4:6],   delta[..., 2:3].squeeze(-1), cos_first=True), # vel_dir (cos, sin)
-        curr[..., 6:7] + delta[..., 3:4],                                            # symlog_speed (additive)
-        _phase_shift(curr[..., 7:9],   delta[..., 4:5].squeeze(-1), cos_first=True), # att    (cos, sin)
-        delta[..., 5:6],                                                              # ang_vel absolute
-        _phase_shift(curr[..., 10:12], delta[..., 6:7].squeeze(-1)),                 # health (sin, cos)
-        _phase_shift(curr[..., 12:14], delta[..., 7:8].squeeze(-1)),                 # power  (sin, cos)
-        _phase_shift(curr[..., 14:16], delta[..., 8:9].squeeze(-1)),                 # cooldown (sin, cos)
-    ], dim=-1)
-
-
-def _flip_team_obs(obs: dict, N: int) -> dict:
-    """Return a shallow copy of obs with ship team IDs flipped (0↔1).
+def _flip_team_obs(obs: MVPObservation, N: int) -> MVPObservation:
+    """Return a copy of obs with ship team IDs flipped (0↔1).
 
     Obstacles occupy positions ≥N and always have team_id=2 — they are unchanged.
-    Works for both rollout shape (..., N+M) and training shape (T, B, N+M).
     """
-    team_id = obs["team_id"].clone()
-    team_id[..., :N] = 1 - team_id[..., :N]
-    return {**obs, "team_id": team_id}
+    return obs.flip_team(N)
 
 
 def _override_opponent(
@@ -311,20 +204,6 @@ _LOCAL_COMPONENTS: frozenset[str] = frozenset(
         "shooting_penalty",
         "speed",
     }
-)
-
-
-# Scaling factors for NextStateHead continuous features (Inverse of the null guess MSE).
-# pos/att values empirically calculated; vel_dir/symlog_spd/ang_vel_abs marked TODO: recalibrate.
-_STATIC_AUX_WEIGHTS = (
-    31485.6, 31485.6, 31485.6, 31485.6,  # pos_sin_x, pos_cos_x, pos_sin_y, pos_cos_y
-    1794.5, 1794.5,                       # vel_dir_cos, vel_dir_sin
-    13011.6,                              # symlog_speed
-    219.7, 219.7,                         # att_cos, att_sin
-    0.2,                                  # ang_vel_abs
-    3162.4, 2150.1,                       # health_sin, health_cos
-    21044.4, 12478.6,                     # power_sin, power_cos
-    11.3, 11.3,                           # cooldown_sin, cooldown_cos
 )
 
 
@@ -412,16 +291,16 @@ class PPOTrainer:
         train_config: TrainConfig,
         model_config: ModelConfig,
         ship_config: ShipConfig,
-        obs_config: "ObsConfig",
         device: str | torch.device,
         use_wandb: bool = False,
         scripted_agent: StochasticScriptedAgent | None = None,
         compile_mode: str | None = "reduce-overhead",
+        obs_config=None,  # deprecated, ignored
     ) -> None:
         self.cfg = train_config
         self.model_config = model_config
         self.ship_config = ship_config
-        self.obs_config = obs_config
+        self.coordinator: FeatureCoordinator = build_standard_coordinator(ship_config)
         self.env_config = train_config.scales[0].env_config
         self.device = torch.device(device)
         self.use_wandb = use_wandb
@@ -488,7 +367,6 @@ class PPOTrainer:
             ship_config=ship_config,
             env_config=train_config.scales[0].env_config,
             rewards=train_config.rewards,
-            obs_config=obs_config,
             device=device,
             obstacle_cache=self._obstacle_cache,
         )
@@ -506,7 +384,7 @@ class PPOTrainer:
         N = train_config.scales[0].env_config.num_ships
         self._compile_mode = compile_mode
         self._policy_module = MVPPolicy(
-            model_config, obs_config, num_value_components=K, num_ships=N
+            model_config, self.coordinator, num_value_components=K, num_ships=N
         ).to(self.device)
         _cast_norms_bf16(self._policy_module)
         self.sigreg = SIGReg(d_model=model_config.d_model, num_proj=64).to(self.device)
@@ -519,25 +397,19 @@ class PPOTrainer:
             self._policy_module.parameters(), lr=base_state.learning_rate, eps=1e-5
         )
 
-        # Build obs shapes for the buffer from a dummy reset
+        # Build the buffer using a sample observation to infer shapes and dtypes
         sample_obs = self.wrapper.reset()
-        obs_shapes = {
-            k: v.shape[1:]  # strip batch dim → (N, ...) or (N,)
-            for k, v in sample_obs.items()
-            if v.dtype in (torch.float32, torch.int32, torch.int64, torch.bool)
-        }
 
         self.buffer = RolloutBuffer(
             num_steps=train_config.num_steps,
             num_envs=train_config.scales[0].num_envs,
             num_ships=N,
             num_components=K,
-            obs_shapes=obs_shapes,
+            obs_sample=sample_obs,
             gamma=self._gamma_t,
             gae_lambda=self._lambda_t,
             device=self.device,
             num_tokens=N + M,
-            aux_dim=AUX_DIM,
         )
 
         # Pre-compute lambda masks for active components only.
@@ -550,9 +422,7 @@ class PPOTrainer:
         )
         self.local_k = self._make_local_k()
 
-        self.aux_weights = torch.tensor(
-            _STATIC_AUX_WEIGHTS, dtype=torch.float32, device=self.device
-        )
+        self.aux_weights = self.coordinator.get_loss_weights(self.device)
 
         # Per-component return scaler: EMA of p5/p95 in symlog-reward space (critic)
         self.scaler = ReturnScaler(
@@ -571,7 +441,7 @@ class PPOTrainer:
         # Weights initialized as a copy of the training policy.
         # Only updated when allow_avg_model_updates is True in the current phase.
         self._avg_policy_module = MVPPolicy(
-            model_config, obs_config, num_value_components=K, num_ships=N
+            model_config, self.coordinator, num_value_components=K, num_ships=N
         ).to(self.device)
         self.avg_policy = (
             torch.compile(self._avg_policy_module, mode=compile_mode)
@@ -643,7 +513,7 @@ class PPOTrainer:
         # Async logging queue
         self._log_queue: Queue = Queue()
         if use_wandb:
-            self._init_wandb(train_config, model_config, ship_config, obs_config, self.env_config)
+            self._init_wandb(train_config, model_config, ship_config, self.env_config)
             self._log_thread = threading.Thread(target=self._log_worker, daemon=True)
             self._log_thread.start()
 
@@ -685,22 +555,16 @@ class PPOTrainer:
                 ship_config=ship_config,
                 env_config=sc.env_config,
                 rewards=train_config.rewards,
-                obs_config=obs_config,
                 device=device,
                 obstacle_cache=self._obstacle_cache,
             )
             aux_sample_obs = aux_w.reset()
-            aux_obs_shapes = {
-                k: v.shape[1:]
-                for k, v in aux_sample_obs.items()
-                if v.dtype in (torch.float32, torch.int32, torch.int64, torch.bool)
-            }
             aux_buf = RolloutBuffer(
                 num_steps=train_config.num_steps,
                 num_envs=sc.num_envs,
                 num_ships=sc.env_config.num_ships,
                 num_components=K,
-                obs_shapes=aux_obs_shapes,
+                obs_sample=aux_sample_obs,
                 gamma=self._gamma_t,
                 gae_lambda=self._lambda_t,
                 device=self.device,
@@ -830,9 +694,6 @@ class PPOTrainer:
         env_stream = torch.cuda.Stream() if self.device.type == "cuda" else None
         net_stream = torch.cuda.Stream() if self.device.type == "cuda" else None
 
-        # Shortcut to ship config for aux target normalization
-        _ship_cfg = self.ship_config
-
         start_time = time.time()
 
         for update in range(1, self._num_updates + 1):
@@ -869,7 +730,7 @@ class PPOTrainer:
                     self.roster.load_policy(
                         entry,
                         self.model_config,
-                        self.obs_config,
+                        self.coordinator,
                         self.wrapper.num_active_components,
                         self.wrapper.num_ships,
                         self.device,
@@ -1084,14 +945,9 @@ class PPOTrainer:
                 actor_mask = team0_mask
 
                 # -- Phase 4: inject decided action into next obs as prev_action --
-                # obs(t+1).prev_action = action(t) — what the policy just decided,
+                # obs(t+1).previous_action = action(t) — what the policy just decided,
                 # will be executed by env.step next iteration.
-                next_obs["prev_power"][:, :N] = action[..., 0]
-                next_obs["prev_turn"][:, :N]  = action[..., 1]
-                next_obs["prev_shoot"][:, :N] = action[..., 2]
-
-                # Extract normalized next-state features for the aux loss target
-                true_next = _extract_aux_targets(next_obs, N, _ship_cfg)
+                next_obs[ObsKey.PREVIOUS_ACTION][:, :N] = action
 
                 if info.get("ep_reward") is not None:
                     ep_rewards.append(info["ep_reward"])
@@ -1111,13 +967,10 @@ class PPOTrainer:
                     logprob=logprob,
                     reward=reward,
                     done=dones.float(),  # only true termination cuts GAE bootstrap
-                    value=self.scaler.denormalize(
-                        value_norm
-                    ),  # symlog-reward space for GAE
+                    value=self.scaler.denormalize(value_norm),  # symlog-reward space for GAE
                     alive=obs["alive"][:, :N].bool(),
                     actor_mask=actor_mask,
                     expert_probs=expert_probs_step,
-                    true_next_state=true_next,
                     terminated=done_any,
                 )
 
@@ -1162,10 +1015,8 @@ class PPOTrainer:
                     next_aux_obs, aux_reward, aux_dones, aux_truncated, _ = aux_w.step(
                         aux_action_buffers[i]
                     )
-                    # Inject aux decided action into next obs prev_action
-                    next_aux_obs["prev_power"][:, :aux_N] = aux_action[..., 0]
-                    next_aux_obs["prev_turn"][:, :aux_N]  = aux_action[..., 1]
-                    next_aux_obs["prev_shoot"][:, :aux_N] = aux_action[..., 2]
+                    # Inject aux decided action into next obs previous_action
+                    next_aux_obs[ObsKey.PREVIOUS_ACTION][:, :aux_N] = aux_action
                     aux_done_any = aux_dones | aux_truncated
                     aux_buf.add(
                         obs=aux_obs[i],
@@ -1190,6 +1041,11 @@ class PPOTrainer:
                     aux_last_dones[i] = aux_dones
                     aux_obs[i] = next_aux_obs
                     self._global_step += sc.num_envs
+
+            # Store final obs for T+1 aux loss label computation
+            self.buffer.store_final_obs(obs)
+            for i, aux_buf in enumerate(self.aux_buffers):
+                aux_buf.store_final_obs(aux_obs[i])
 
             # ----------------------------------------------------------------
             # GAE computation
@@ -1452,17 +1308,20 @@ class PPOTrainer:
             mb_hidden,
             mb_actor_mask,
             mb_expert_probs,
-            mb_true_next,
             mb_terminated,
         ) = batch
+
+        # mb_obs has T+1 steps; first T for encode/evaluate, last T for next-state aux loss.
+        T = mb_alive.shape[0]
+        curr_mb_obs = mb_obs.slice_time(0, T)
 
         need_sigreg = self._schedule_state.sigreg_coef > 0.0
         # evaluate_actions needs the full (T, B, N+M) alive mask so Yemong layers
         # can attend to obstacle tokens; mb_alive is ships-only and used for loss masking.
-        alive_mask_full = mb_obs["alive"].bool()  # (T, B_mb, N+M)
+        alive_mask_full = curr_mb_obs["alive"].bool()  # (T, B_mb, N+M)
         with torch.autocast("cuda", dtype=torch.bfloat16):
             logprob, entropy, new_value, policy_logits, z, pred_next = self.policy.evaluate_actions(
-                obs=mb_obs,
+                obs=curr_mb_obs,
                 actions=mb_actions.long(),
                 initial_hidden=mb_hidden,
                 alive_mask=alive_mask_full,
@@ -1482,7 +1341,7 @@ class PPOTrainer:
         # Buffer stores obs as float32; cast to long for comparison.
         # Slice to ship tokens only — obstacle tokens (team_id=2) have no rewards/actions.
         N_ships = mb_alive.shape[-1]
-        team_id_t = mb_obs["team_id"][:, :, :N_ships].long()  # (T, B_mb, N)
+        team_id_t = curr_mb_obs["team_id"][:, :, :N_ships].long()  # (T, B_mb, N)
         same_team_t = team_id_t.unsqueeze(3) == team_id_t.unsqueeze(
             2
         )  # (T, B_mb, N_i, N_j)
@@ -1599,39 +1458,49 @@ class PPOTrainer:
         # ---- Next-state prediction loss (primary scale only) ----------------
         next_state_loss = torch.tensor(0.0, device=self.device)
         next_state_cont_loss = torch.tensor(0.0, device=self.device)
-        next_state_per_feat: torch.Tensor | None = None  # (16,) cpu, for logging
-        if is_primary and mb_true_next is not None and self.cfg.next_state_coef > 0.0:
+        next_state_per_feat: torch.Tensor | None = None  # (pred_dim,) cpu, for logging
+        if is_primary and self.cfg.next_state_coef > 0.0:
             non_terminal = ~mb_terminated.unsqueeze(-1)  # (T, B_mb, 1)
             ns_mask = mb_alive & non_terminal             # (T, B_mb, N)
             ns_mask_f = ns_mask.float()
             ns_sum = ns_mask_f.sum().clamp(min=1.0)
 
-            # Extract current-state absolute features so we can apply deltas.
-            N_ships = mb_alive.shape[-1]
-            T_flat, B_flat = mb_obs["pos"].shape[:2]
-            flat_obs = {k: v.reshape(T_flat * B_flat, *v.shape[2:]) for k, v in mb_obs.items()}
-            mb_curr = _extract_aux_targets(flat_obs, N_ships, self.ship_config)
-            mb_curr = mb_curr.reshape(T_flat, B_flat, N_ships, AUX_TARGET_DIM)  # (T, B, N, 16)
+            # Compute aux labels from T+1 observation storage.
+            # obs[0:T] = current, obs[1:T+1] = next — same layout as the stored buffer.
+            T_flat = mb_alive.shape[0]
+            B_flat = mb_alive.shape[1]
+            N_ships_aux = mb_alive.shape[-1]
+            next_mb_obs = mb_obs.slice_time(1, T_flat + 1)  # (T, B_mb, N+M, ...)
 
-            # Apply predicted deltas/absolutes to get absolute predicted next state.
-            curr_cont = mb_curr[..., :AUX_TARGET_CONT_DIM]                      # (T, B, N, 16)
-            pred_cont = pred_next[..., :AUX_PRED_CONT_DIM].float()              # (T, B, N, 12)
-            pred_next_abs = _apply_aux_deltas(curr_cont, pred_cont)              # (T, B, N, 16)
+            # Flatten T and B for batch processing through the coordinator.
+            def _flat_ship(o: MVPObservation) -> MVPObservation:
+                return MVPObservation(data={
+                    k: (v[:, :, :N_ships_aux].reshape(T_flat * B_flat, N_ships_aux, *v.shape[3:])
+                        if v.dim() > 3
+                        else v[:, :, :N_ships_aux].reshape(T_flat * B_flat, N_ships_aux))
+                    for k, v in o.items()
+                })
 
-            cont_true = mb_true_next[..., :AUX_TARGET_CONT_DIM]                 # (T, B_mb, N, 16)
-            sq_err = (pred_next_abs - cont_true).pow(2)                         # (T, B_mb, N, 16)
+            curr_flat = _flat_ship(curr_mb_obs)  # (T*B, N, ...)
+            next_flat = _flat_ship(next_mb_obs)  # (T*B, N, ...)
 
-            # Scale each feature's squared error by its empirical static weight
-            sq_err = sq_err * self.aux_weights
+            curr_targets = self.coordinator.get_target_vector(curr_flat)  # (T*B, N, target_dim)
+            next_targets = self.coordinator.get_target_vector(next_flat)  # (T*B, N, target_dim)
+            labels = self.coordinator.compute_labels(curr_targets, next_targets)  # (T*B, N, pred_dim)
+            labels = labels.reshape(T_flat, B_flat, N_ships_aux, -1)  # (T, B, N, pred_dim)
+
+            P = self.coordinator.total_prediction_dimension
+            sq_err = (pred_next.float() - labels.detach()).pow(2)  # (T, B, N, pred_dim)
+            sq_err = sq_err * self.aux_weights  # per-prediction weight
 
             next_state_cont_loss = (
                 sq_err * ns_mask_f.unsqueeze(-1)
-            ).sum() / (ns_sum * AUX_TARGET_CONT_DIM)
+            ).sum() / (ns_sum * P)
             next_state_loss = next_state_cont_loss
 
             with torch.no_grad():
-                per_feat_cont = (sq_err * ns_mask_f.unsqueeze(-1)).sum((0, 1, 2)) / ns_sum  # (16,)
-                next_state_per_feat = per_feat_cont.cpu()  # (16,)
+                per_feat_cont = (sq_err * ns_mask_f.unsqueeze(-1)).sum((0, 1, 2)) / ns_sum  # (pred_dim,)
+                next_state_per_feat = per_feat_cont.cpu()
 
         loss = (
             self._policy_gradient_coef * pg_loss
@@ -1780,14 +1649,15 @@ class PPOTrainer:
             "returns/advantage_std": [],
         }
         _NS_FEAT_NAMES = (
-            "pos_sin_x", "pos_cos_x", "pos_sin_y", "pos_cos_y",
-            "vel_dir_cos", "vel_dir_sin", "symlog_speed",
-            "att_cos", "att_sin",
+            "pos_x_dphase",
+            "pos_y_dphase",
+            "vel_dphase", "vel_dspeed",
+            "att_dphase",
             "ang_vel_abs",
-            "health_sin", "health_cos",
-            "power_sin", "power_cos",
-            "cooldown_sin", "cooldown_cos",
-        )  # 16 total
+            "health_d_sin", "health_d_cos",
+            "power_d_sin", "power_d_cos",
+            "cooldown_d_sin", "cooldown_d_cos",
+        )  # 12 total — matches coordinator.total_prediction_dimension
         ns_per_feat_accum: list[torch.Tensor] = []
         last_returns_np = None
         last_logprob_np = None
@@ -2266,7 +2136,6 @@ class PPOTrainer:
                 k: v for k, v in dataclasses.asdict(self.cfg).items() if k != "schedule"
             },
             "model_config": dataclasses.asdict(self.model_config),
-            "obs_config": self.obs_config.to_dict(),
             "env_config": dataclasses.asdict(self.env_config),
         }
 
@@ -2400,7 +2269,6 @@ class PPOTrainer:
         train_config: TrainConfig,
         model_config: ModelConfig,
         ship_config: ShipConfig,
-        obs_config: "ObsConfig",
         env_config: EnvConfig,
     ) -> None:
         """Initialize W&B run with all configs serialized as the run config."""
@@ -2427,7 +2295,6 @@ class PPOTrainer:
                 if k == "schedule":
                     continue  # TrainingSchedule contains callables — not serializable
                 config[f"{prefix}/{k}"] = _sanitize(v)
-        config["obs"] = _sanitize(obs_config.to_dict())
 
         wandb.init(project="boost-and-broadside", config=config)
 

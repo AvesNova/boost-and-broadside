@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from boost_and_broadside.config import ShipConfig, EnvConfig, ModelConfig, RewardConfig
-from boost_and_broadside.config.obs_spec import ObsConfig
+from boost_and_broadside.env.observation import MVPObservation, ObsKey
 from boost_and_broadside.env.wrapper import MVPEnvWrapper
 from boost_and_broadside.modes.agent_factory import (
     resolve_agent_spec,
@@ -18,12 +18,12 @@ from boost_and_broadside.modes.agent_factory import (
 
 def _imagined_obs_sampled(
     aux_next: torch.Tensor,
-    prev_obs: dict,
+    prev_obs: MVPObservation,
     action: torch.Tensor,
     N: int,
     ship_config: ShipConfig,
-) -> dict:
-    """Reconstruct raw obs dict ship fields from predicted AUX continuous state.
+) -> MVPObservation:
+    """Reconstruct MVPObservation ship fields from predicted AUX continuous state.
 
     aux_next: (B, N, 16) pos_x(2) pos_y(2) vel_dir(2) symlog_spd(1) att(2) ang_vel(1) health(2) power(2) cooldown(2)
     """
@@ -55,21 +55,17 @@ def _imagined_obs_sampled(
 
     alive = health.squeeze(-1) > ALIVE_HEALTH_EPS                         # (B, N) bool
 
-    new_obs = {k: v.clone() for k, v in prev_obs.items()}
-    new_obs["pos"]      = torch.cat([pos,     prev_obs["pos"][:, N:]],      dim=1)
-    new_obs["vel"]      = torch.cat([vel,     prev_obs["vel"][:, N:]],      dim=1)
-    new_obs["att"]      = torch.cat([att,     prev_obs["att"][:, N:]],      dim=1)
-    new_obs["ang_vel"]  = torch.cat([ang_vel, prev_obs["ang_vel"][:, N:]],  dim=1)
-    new_obs["health"]   = torch.cat([health,  prev_obs["health"][:, N:]],   dim=1)
-    new_obs["power"]    = torch.cat([power,   prev_obs["power"][:, N:]],    dim=1)
-    new_obs["cooldown"] = torch.cat([cooldown,prev_obs["cooldown"][:, N:]], dim=1)
-    new_obs["alive"]    = torch.cat([alive,   prev_obs["alive"][:, N:]],    dim=1)
-
-    new_obs["prev_power"] = torch.cat([action[..., 0], prev_obs["prev_power"][:, N:]], dim=1)
-    new_obs["prev_turn"]  = torch.cat([action[..., 1], prev_obs["prev_turn"][:, N:]],  dim=1)
-    new_obs["prev_shoot"] = torch.cat([action[..., 2], prev_obs["prev_shoot"][:, N:]], dim=1)
-
-    return new_obs
+    new_data = {k: v.clone() for k, v in prev_obs.items()}
+    new_data[ObsKey.POS]             = torch.cat([pos,     prev_obs[ObsKey.POS][:, N:]],           dim=1)
+    new_data[ObsKey.VEL]             = torch.cat([vel,     prev_obs[ObsKey.VEL][:, N:]],           dim=1)
+    new_data[ObsKey.ATT]             = torch.cat([att,     prev_obs[ObsKey.ATT][:, N:]],           dim=1)
+    new_data[ObsKey.ANG_VEL]         = torch.cat([ang_vel, prev_obs[ObsKey.ANG_VEL][:, N:]],      dim=1)
+    new_data[ObsKey.HEALTH]          = torch.cat([health,  prev_obs[ObsKey.HEALTH][:, N:]],        dim=1)
+    new_data[ObsKey.POWER]           = torch.cat([power,   prev_obs[ObsKey.POWER][:, N:]],         dim=1)
+    new_data[ObsKey.COOLDOWN]        = torch.cat([cooldown,prev_obs[ObsKey.COOLDOWN][:, N:]],      dim=1)
+    new_data[ObsKey.ALIVE]           = torch.cat([alive,   prev_obs[ObsKey.ALIVE][:, N:]],         dim=1)
+    new_data[ObsKey.PREVIOUS_ACTION] = torch.cat([action,  prev_obs[ObsKey.PREVIOUS_ACTION][:, N:]], dim=1)
+    return MVPObservation(data=new_data)
 
 
 def run_ar_report_mode(
@@ -79,7 +75,6 @@ def run_ar_report_mode(
     ship_config: ShipConfig,
     env_config: EnvConfig,
     rewards: RewardConfig,
-    obs_config: ObsConfig,
     model_config: ModelConfig,
     device: str,
     checkpoint_dir: str = "checkpoints",
@@ -94,7 +89,6 @@ def run_ar_report_mode(
         ship_config=ship_config,
         env_config=env_config,
         rewards=rewards,
-        obs_config=obs_config,
         device=device,
         obstacle_cache=None,
     )
@@ -108,7 +102,7 @@ def run_ar_report_mode(
     init_hidden(agent1, 1, num_tokens, device)
 
     # Save initial state for AR
-    init_obs = {k: v.clone() for k, v in obs.items()}
+    init_obs = MVPObservation(data={k: v.clone() for k, v in obs.items()})
     init_hidden0 = agent0.hidden.clone() if agent0.hidden is not None else None
     init_hidden1 = agent1.hidden.clone() if agent1.hidden is not None else None
 
@@ -162,7 +156,7 @@ def run_ar_report_mode(
 def _run_ar(
     agent0, agent1, init_obs, init_hidden0, init_hidden1, num_steps, N, ship_config, forced_actions, is_closed_loop
 ):
-    obs = {k: v.clone() for k, v in init_obs.items()}
+    obs = MVPObservation(data={k: v.clone() for k, v in init_obs.items()})
     if agent0.hidden is not None:
         agent0.hidden = init_hidden0.clone()
     if agent1.hidden is not None:

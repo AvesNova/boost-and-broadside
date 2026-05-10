@@ -15,7 +15,6 @@ import threading
 import torch
 
 from boost_and_broadside.config import ShipConfig, EnvConfig, ModelConfig, RewardConfig, ObstacleCacheConfig
-from boost_and_broadside.config.obs_spec import ObsConfig
 from boost_and_broadside.constants import PowerActions, TurnActions, ShootActions
 from boost_and_broadside.env.obstacle_cache import ObstacleCache, _make_obstacle_state
 from boost_and_broadside.env.obstacle_physics import (
@@ -43,7 +42,6 @@ def run_watch_mode(
     env_config: EnvConfig,
     rewards: RewardConfig,
     model_config: ModelConfig,
-    obs_config: "ObsConfig",
     render_config: RenderConfig,
     device: str,
     checkpoint_dir: str = "checkpoints",
@@ -58,7 +56,6 @@ def run_watch_mode(
         env_config:     Environment sizing.
         rewards:        Reward weights (used to build the env wrapper).
         model_config:   Policy architecture (needed if either spec is a checkpoint).
-        obs_config:     Observation feature pipeline.
         render_config:  Display settings.
         device:         Torch device string.
         checkpoint_dir: Root directory searched when a spec is "latest".
@@ -93,7 +90,6 @@ def run_watch_mode(
         ship_config=ship_config,
         env_config=env_config,
         rewards=rewards,
-        obs_config=obs_config,
         device=device,
         obstacle_cache=obstacle_cache,
     )

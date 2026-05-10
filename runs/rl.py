@@ -24,7 +24,7 @@ from boost_and_broadside.config import (
     stepped,
 )
 from boost_and_broadside.config.schedule import exponential
-from runs.shared import REWARDS, OBS_CONFIG, COMPONENT_GAMMAS, COMPONENT_LAMBDAS
+from runs.shared import REWARDS, COMPONENT_GAMMAS, COMPONENT_LAMBDAS
 
 _MAX_TOKENS = 2_000_000
 _NUM_SHIPS = 4

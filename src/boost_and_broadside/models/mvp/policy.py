@@ -5,7 +5,7 @@ Architecture (per timestep):
          → N+M x YemongBlock → (B, N+M, D)   [spatial + temporal over all tokens]
          → slice [:N]                    → (B, N, D)    [ship tokens only]
          → ActionHead                   → (B, N, 12)   [logits: power|turn|shoot]
-         → NextStateHead                → (B, N, 10)   [aux: pred next state deltas]
+         → NextStateHead                → (B, N, P)    [aux: pred next state deltas; P from coordinator]
          → TeamPMA                      → (B, N, D)    [pool per team, broadcast back]
          → ValueHead                    → (B, N, K)    [MSE critic: K components]
 
@@ -15,19 +15,6 @@ state, but receive no action or value heads.
 K = num_value_components (one head per reward component).
 Value head outputs in normalized space. The ReturnScaler in PPOTrainer maps
 between symlog-reward space (GAE) and normalized space (value head I/O).
-
-Next-state prediction:
-  AUX_TARGET_DIM = 16: absolute next-state features stored in the replay buffer.
-    pos_x(2) pos_y(2) vel_dir(2) symlog_speed(1) att(2) ang_vel(1) health(2) power(2) cooldown(2)
-    vel_dir uses (cos θ_v, sin θ_v) — same convention as att.
-    health/power/cooldown use quarter-wave Fourier: [sin(π/2·x), cos(π/2·x)].
-    No separate alive — alive is derived from health > ε at rollout time.
-  AUX_PRED_DIM = 12: what the network outputs (deltas and absolutes).
-    pos_phase(2) vel_dir_phase(1) symlog_speed_delta(1) att_phase(1)
-    ang_vel_abs(1) health_abs(2) power_abs(2) cooldown_abs(2)
-  Delta features (pos, vel_dir, att, speed) use rotation/addition.
-  Absolute features (ang_vel, health, power, cooldown) replace current state directly;
-  (sin,cos) pairs are L2-normalised in AR rollouts.
 
 Hidden state shape: (n_layers, B*(N+M), CONV_KERNEL * D), packed as:
   hidden[:, :, :D]   -- RG-LRU recurrent state
@@ -39,66 +26,37 @@ import torch
 import torch.nn as nn
 from torch.distributions import Categorical
 
-from boost_and_broadside.config import ModelConfig, ShipConfig
-from boost_and_broadside.config.obs_spec import ObsConfig
+from boost_and_broadside.config import ModelConfig
 from boost_and_broadside.constants import (
     TOTAL_ACTION_LOGITS,
-    NUM_POWER_ACTIONS,
-    NUM_TURN_ACTIONS,
-    NUM_SHOOT_ACTIONS,
     POWER_SLICE,
     TURN_SLICE,
     SHOOT_SLICE,
 )
+from boost_and_broadside.env.observation import MVPObservation
 from boost_and_broadside.models.mvp.encoder import ShipEncoder
 from boost_and_broadside.models.mvp.griffin import CONV_KERNEL, YemongBlock
-
-# Buffer/target layout: absolute next-state features extracted from the obs dict.
-# pos_x(2) pos_y(2) vel_dir(2) symlog_speed(1) att(2) ang_vel(1) health(2) power(2) cooldown(2) = 16
-# vel_dir: (cos θ_v, sin θ_v). health/power/cooldown: quarter-wave [sin(π/2·x), cos(π/2·x)].
-# No separate alive — derived from health > ε at rollout time.
-AUX_TARGET_CONT_DIM = 16
-AUX_TARGET_DIM = AUX_TARGET_CONT_DIM  # 16
-
-# Network prediction layout: deltas and absolutes output by NextStateHead.
-# pos_phase(2) vel_dir_phase(1) symlog_speed_delta(1) att_phase(1)
-# ang_vel_abs(1) health_phase(1) power_phase(1) cooldown_phase(1) = 9
-AUX_PRED_CONT_DIM = 9
-AUX_PRED_DIM = AUX_PRED_CONT_DIM  # 9
-
-# Aliases kept for buffer backward-compat (buffer uses AUX_DIM for storage).
-AUX_CONT_DIM = AUX_TARGET_CONT_DIM
-AUX_DIM = AUX_TARGET_DIM
+from boost_and_broadside.train.rl.features import FeatureCoordinator
 
 
 class NextStateHead(nn.Module):
-    """Predicts next-state deltas (phase/additive) and absolutes for each ship.
+    """Predicts next-state deltas and absolutes for each ship.
 
-    Output layout (AUX_PRED_DIM=9):
-        [0]    Δφ_x         — phase shift for x position (delta)
-        [1]    Δφ_y         — phase shift for y position (delta)
-        [2]    Δφ_vel_dir   — phase shift for velocity direction (delta)
-        [3]    Δsymlog_spd  — additive delta for symlog speed (delta)
-        [4]    Δφ_att       — phase shift for heading angle (delta)
-        [5]    ang_vel_abs  — absolute symlog angular velocity
-        [6]    Δφ_health    — phase shift for health (delta)
-        [7]    Δφ_power     — phase shift for power (delta)
-        [8]    Δφ_cooldown  — phase shift for cooldown (delta)
-
-    Delta features use rotation/addition; ang_vel is predicted absolute.
+    Output dimension is determined by the FeatureCoordinator's total_prediction_dimension.
     """
 
-    def __init__(self, d_model: int) -> None:
+    def __init__(self, d_model: int, pred_dim: int) -> None:
         super().__init__()
+        self.pred_dim = pred_dim
         self.net = nn.Sequential(
             nn.Linear(d_model, d_model * 2),
             nn.RMSNorm(d_model * 2),
             nn.GELU(),
-            nn.Linear(d_model * 2, AUX_PRED_DIM),
+            nn.Linear(d_model * 2, pred_dim),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Args: x (..., D). Returns: (..., AUX_DIM)."""
+        """Args: x (..., D). Returns: (..., pred_dim)."""
         return self.net(x)
 
 
@@ -153,14 +111,16 @@ class MVPPolicy(nn.Module):
     """Actor-critic policy with shared trunk: Encoder → N × YemongBlock.
 
     Args:
-        model_config: Architecture hyperparameters.
-        obs_config: Observation feature pipeline; drives encoder input dimension.
+        model_config:  Architecture hyperparameters.
+        coordinator:   Feature pipeline; drives encoder input dim and aux pred dim.
+        num_value_components: K — one value head output per reward component.
+        num_ships:     N — first N tokens are ships; rest are obstacles.
     """
 
     def __init__(
         self,
         model_config: ModelConfig,
-        obs_config: ObsConfig,
+        coordinator: FeatureCoordinator,
         num_value_components: int,
         num_ships: int,
     ) -> None:
@@ -169,8 +129,9 @@ class MVPPolicy(nn.Module):
         self._d_model = D
         self._K = num_value_components
         self._num_ships = num_ships  # N — first N tokens are ships; rest are obstacles
+        self.coordinator = coordinator
 
-        self.encoder = ShipEncoder(model_config, obs_config)
+        self.encoder = ShipEncoder(model_config, coordinator)
         self.yemong_layers = nn.ModuleList(
             [YemongBlock(model_config) for _ in range(model_config.n_transformer_blocks)]
         )
@@ -191,7 +152,7 @@ class MVPPolicy(nn.Module):
             nn.GELU(),
             nn.Linear(hidden_dim, self._K),
         )
-        self.next_state_head = NextStateHead(D)
+        self.next_state_head = NextStateHead(D, pred_dim=coordinator.total_prediction_dimension)
 
         # Orthogonal init — standard PPO practice
         for head in [self.action_head, self.value_head]:
@@ -261,22 +222,22 @@ class MVPPolicy(nn.Module):
     @torch.no_grad()
     def get_action_and_value(
         self,
-        obs: dict[str, torch.Tensor],
+        obs: MVPObservation,
         hidden: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Sample an action and estimate value for one environment step.
 
         Args:
-            obs:    Dict with (B, N, ...) tensors.
-            hidden: (n_layers, B*N, D) RG-LRU hidden state.
+            obs:    MVPObservation with (B, N+M, ...) tensors.
+            hidden: (n_layers, B*(N+M), D) RG-LRU hidden state.
 
         Returns:
             action:     (B, N, 3) int — sampled [power, turn, shoot].
             logprob:    (B, N) float — sum of log probs for each sub-action.
             value:      (B, N, K) float — per-component value in normalized space.
                         Caller must denormalize via ReturnScaler before using for GAE.
-            pred_next:  (B, N, AUX_PRED_DIM) float — predicted next-state deltas/phase shifts.
-            new_hidden: (n_layers, B*N, D) updated hidden state.
+            pred_next:  (B, N, pred_dim) float — predicted next-state deltas/phase shifts.
+            new_hidden: (n_layers, B*(N+M), D) updated hidden state.
         """
         alive = obs["alive"]  # (B, N+M) bool — ships then obstacles
         x = self.encoder(obs)  # (B, N+M, D)
@@ -318,7 +279,7 @@ class MVPPolicy(nn.Module):
 
     def evaluate_actions(
         self,
-        obs: dict[str, torch.Tensor],
+        obs: MVPObservation,
         actions: torch.Tensor,
         initial_hidden: torch.Tensor,
         alive_mask: torch.Tensor,
@@ -340,7 +301,7 @@ class MVPPolicy(nn.Module):
         Action and value heads are applied only to the first N ship tokens.
 
         Args:
-            obs:                  Dict with (T, B, N+M, ...) tensors.
+            obs:                  MVPObservation with (T, B, N+M, ...) tensors.
             actions:              (T, B, N, 3) int actions taken during rollout.
             initial_hidden:       (n_layers, B*(N+M), D) hidden state at rollout start.
             alive_mask:           (T, B, N+M) bool — alive entities per timestep.
@@ -357,7 +318,7 @@ class MVPPolicy(nn.Module):
             logits:     (T, B, N, TOTAL_ACTION_LOGITS) float — raw action logits.
             z:          (T, B, N+M, D) float — raw encoder embeddings before Yemong layers,
                         or None if return_encoder_output=False.
-            pred_next:  (T, B, N, AUX_PRED_DIM) float — predicted next-state deltas/phase shifts (with grad).
+            pred_next:  (T, B, N, pred_dim) float — predicted next-state predictions (with grad).
         """
         T, B, N = actions.shape[:3]  # N = num_ships (actions only for ships)
         D = self._d_model
@@ -369,7 +330,7 @@ class MVPPolicy(nn.Module):
 
         # obs has (T, B, N+M, ...) — flatten T into B for encoder
         NM = obs["pos"].shape[2]  # N+M total tokens
-        flat_obs = {k: v.reshape(T * B, *v.shape[2:]) for k, v in obs.items()}
+        flat_obs = MVPObservation(data={k: v.reshape(T * B, *v.shape[2:]) for k, v in obs.items()})
 
         x = self.encoder(flat_obs)              # (T*B, N+M, D)
         x = x.reshape(T, B, NM, D)             # (T, B, N+M, D)

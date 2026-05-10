@@ -59,7 +59,7 @@ from runs.bc import BC_TRAIN_CONFIG
 from runs.bc_warmstart import BC_WARMSTART_PRETRAIN_CONFIG, BC_WARMSTART_RL_CONFIG
 from runs.rl import RL_TRAIN_CONFIG
 from runs.rl_obstacles import RL_OBSTACLES_TRAIN_CONFIG
-from runs.shared import MODEL_CONFIG, OBS_CONFIG, OBS_CONFIG_MINIMAL, REWARDS, SHIP_CONFIG
+from runs.shared import MODEL_CONFIG, REWARDS, SHIP_CONFIG
 
 
 def _parse_args() -> argparse.Namespace:
@@ -181,9 +181,7 @@ def main() -> None:
             trainer = PPOTrainer(
                 train_config=train_config,
                 model_config=MODEL_CONFIG,
-                ship_config=SHIP_CONFIG,
-                obs_config=OBS_CONFIG_MINIMAL,
-                device=device,
+                ship_config=SHIP_CONFIG,                device=device,
                 use_wandb=use_wandb,
                 scripted_agent=scripted_agent,
                 compile_mode=compile_mode,
@@ -198,9 +196,7 @@ def main() -> None:
             trainer = PPOTrainer(
                 train_config=train_config,
                 model_config=MODEL_CONFIG,
-                ship_config=SHIP_CONFIG,
-                obs_config=OBS_CONFIG_MINIMAL,
-                device=device,
+                ship_config=SHIP_CONFIG,                device=device,
                 use_wandb=use_wandb,
                 scripted_agent=scripted_agent,
                 compile_mode=compile_mode,
@@ -215,9 +211,7 @@ def main() -> None:
             trainer = PPOTrainer(
                 train_config=train_config,
                 model_config=MODEL_CONFIG,
-                ship_config=SHIP_CONFIG,
-                obs_config=OBS_CONFIG_MINIMAL,
-                device=device,
+                ship_config=SHIP_CONFIG,                device=device,
                 use_wandb=use_wandb,
                 scripted_agent=scripted_agent,
                 compile_mode=compile_mode,
@@ -235,9 +229,7 @@ def main() -> None:
             pretrain_trainer = PPOTrainer(
                 train_config=BC_WARMSTART_PRETRAIN_CONFIG,
                 model_config=MODEL_CONFIG,
-                ship_config=SHIP_CONFIG,
-                obs_config=OBS_CONFIG_MINIMAL,
-                device=device,
+                ship_config=SHIP_CONFIG,                device=device,
                 use_wandb=True,
                 scripted_agent=scripted_agent,
                 compile_mode=None if args.compile_mode == "none" else args.compile_mode,
@@ -258,9 +250,7 @@ def main() -> None:
             rl_trainer = PPOTrainer(
                 train_config=BC_WARMSTART_RL_CONFIG,
                 model_config=MODEL_CONFIG,
-                ship_config=SHIP_CONFIG,
-                obs_config=OBS_CONFIG_MINIMAL,
-                device=device,
+                ship_config=SHIP_CONFIG,                device=device,
                 use_wandb=True,
                 scripted_agent=scripted_agent,
                 compile_mode=None if args.compile_mode == "none" else args.compile_mode,
@@ -279,9 +269,7 @@ def main() -> None:
                     num_ships=8, max_bullets=20, max_episode_steps=1024, num_obstacles=0,
                 ),
                 rewards=REWARDS,
-                model_config=MODEL_CONFIG,
-                obs_config=OBS_CONFIG_MINIMAL,
-                render_config=RenderConfig(),
+                model_config=MODEL_CONFIG,                render_config=RenderConfig(),
                 device=device,
                 checkpoint_dir="checkpoints",
                 fast_cache=args.fast_cache,
@@ -349,9 +337,7 @@ def main() -> None:
                 env_config=EnvConfig(
                     num_ships=4, max_bullets=20, max_episode_steps=512
                 ),
-                rewards=REWARDS,
-                obs_config=OBS_CONFIG_MINIMAL,
-                model_config=MODEL_CONFIG,
+                rewards=REWARDS,                model_config=MODEL_CONFIG,
                 device=device,
                 checkpoint_dir="checkpoints",
                 out_dir="docs/ar_report/2v2",
@@ -368,9 +354,7 @@ def main() -> None:
                 env_config=EnvConfig(
                     num_ships=2, max_bullets=20, max_episode_steps=512
                 ),
-                rewards=REWARDS,
-                obs_config=OBS_CONFIG_MINIMAL,
-                model_config=MODEL_CONFIG,
+                rewards=REWARDS,                model_config=MODEL_CONFIG,
                 device=device,
                 checkpoint_dir="checkpoints",
                 out_dir="docs/ar_report/1v1",

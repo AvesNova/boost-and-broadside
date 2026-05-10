@@ -29,6 +29,7 @@ from boost_and_broadside.constants import (
     NUM_SHOOT_ACTIONS,
     NUM_TURN_ACTIONS,
 )
+from boost_and_broadside.env.observation import MVPObservation, ObsKey
 from boost_and_broadside.env.state import TensorState
 
 
@@ -121,14 +122,12 @@ def resolve_agent_spec(
 
     # Deferred import to avoid circular dependency
     from boost_and_broadside.models.mvp.policy import MVPPolicy
-    from boost_and_broadside.config.obs_spec import obs_config_from_dict
+    from boost_and_broadside.train.rl.features import build_standard_coordinator
 
     ckpt = torch.load(path, map_location=device, weights_only=False)
-    if "obs_config" not in ckpt:
-        raise KeyError(f"Checkpoint {path!r} has no 'obs_config' key — retrain from scratch or provide obs_config manually.")
-    obs_config = obs_config_from_dict(ckpt["obs_config"])
+    coordinator = build_standard_coordinator(ship_config)
     K = ckpt["policy_state_dict"]["value_head.3.weight"].shape[0]
-    policy = MVPPolicy(model_config, obs_config, num_value_components=K, num_ships=num_ships).to(device)
+    policy = MVPPolicy(model_config, coordinator, num_value_components=K, num_ships=num_ships).to(device)
     policy.load_state_dict(ckpt["policy_state_dict"])
     policy.eval()
 
@@ -147,7 +146,7 @@ def init_hidden(agent: ResolvedAgent, num_envs: int, num_tokens: int, device) ->
 
 def get_actions(
     agent: ResolvedAgent,
-    obs: dict[str, torch.Tensor] | None,
+    obs: MVPObservation | None,
     state: TensorState,
     num_envs: int,
     num_ships: int,
@@ -280,16 +279,16 @@ ALIVE_HEALTH_EPS = 1.0  # ship is dead when decoded health ≤ this value
 
 def _imagined_obs_from_aux(
     aux_next: torch.Tensor,
-    prev_obs: dict,
+    prev_obs: MVPObservation,
     action: torch.Tensor,
     N: int,
     ship_config,
-) -> dict:
-    """Reconstruct raw obs dict ship fields from predicted AUX continuous state.
+) -> MVPObservation:
+    """Reconstruct MVPObservation ship fields from predicted AUX continuous state.
 
     aux_next:  (B, N, 16) pos_x(2) pos_y(2) vel_dir(2) symlog_spd(1) att(2) ang_vel(1) health(2) power(2) cooldown(2)
-    prev_obs:  previous obs dict — obstacle tokens (N:) copied unchanged
-    action:    (B, N, 3) int — imagined action used as prev_power/turn/shoot
+    prev_obs:  previous MVPObservation — obstacle tokens (N:) copied unchanged
+    action:    (B, N, 3) int — imagined action stored as PREVIOUS_ACTION
     """
     import math
     _2pi = 2.0 * math.pi
@@ -319,24 +318,22 @@ def _imagined_obs_from_aux(
 
     alive = health.squeeze(-1) > ALIVE_HEALTH_EPS                         # (B, N) bool
 
-    new_obs = {k: v.clone() for k, v in prev_obs.items()}
-    new_obs["pos"]        = torch.cat([pos,     prev_obs["pos"][:, N:]],      dim=1)
-    new_obs["vel"]        = torch.cat([vel,     prev_obs["vel"][:, N:]],      dim=1)
-    new_obs["att"]        = torch.cat([att,     prev_obs["att"][:, N:]],      dim=1)
-    new_obs["ang_vel"]    = torch.cat([ang_vel, prev_obs["ang_vel"][:, N:]],  dim=1)
-    new_obs["health"]     = torch.cat([health,  prev_obs["health"][:, N:]],   dim=1)
-    new_obs["power"]      = torch.cat([power,   prev_obs["power"][:, N:]],    dim=1)
-    new_obs["cooldown"]   = torch.cat([cooldown,prev_obs["cooldown"][:, N:]], dim=1)
-    new_obs["alive"]      = torch.cat([alive,   prev_obs["alive"][:, N:]],    dim=1)
-    new_obs["prev_power"] = torch.cat([action[..., 0], prev_obs["prev_power"][:, N:]], dim=1)
-    new_obs["prev_turn"]  = torch.cat([action[..., 1], prev_obs["prev_turn"][:, N:]],  dim=1)
-    new_obs["prev_shoot"] = torch.cat([action[..., 2], prev_obs["prev_shoot"][:, N:]], dim=1)
-    return new_obs
+    new_data = {k: v.clone() for k, v in prev_obs.items()}
+    new_data[ObsKey.POS]             = torch.cat([pos,     prev_obs[ObsKey.POS][:, N:]],           dim=1)
+    new_data[ObsKey.VEL]             = torch.cat([vel,     prev_obs[ObsKey.VEL][:, N:]],           dim=1)
+    new_data[ObsKey.ATT]             = torch.cat([att,     prev_obs[ObsKey.ATT][:, N:]],           dim=1)
+    new_data[ObsKey.ANG_VEL]         = torch.cat([ang_vel, prev_obs[ObsKey.ANG_VEL][:, N:]],      dim=1)
+    new_data[ObsKey.HEALTH]          = torch.cat([health,  prev_obs[ObsKey.HEALTH][:, N:]],        dim=1)
+    new_data[ObsKey.POWER]           = torch.cat([power,   prev_obs[ObsKey.POWER][:, N:]],         dim=1)
+    new_data[ObsKey.COOLDOWN]        = torch.cat([cooldown,prev_obs[ObsKey.COOLDOWN][:, N:]],      dim=1)
+    new_data[ObsKey.ALIVE]           = torch.cat([alive,   prev_obs[ObsKey.ALIVE][:, N:]],         dim=1)
+    new_data[ObsKey.PREVIOUS_ACTION] = torch.cat([action,  prev_obs[ObsKey.PREVIOUS_ACTION][:, N:]], dim=1)
+    return MVPObservation(data=new_data)
 
 
 def imagine_trajectory(
     agent: ResolvedAgent,
-    obs: dict,
+    obs: MVPObservation,
     n_steps: int,
     num_ships: int,
     device,
@@ -349,13 +346,13 @@ def imagine_trajectory(
     agent.hidden is never modified.
 
     Returns:
-        List of n_steps (B, N, AUX_PRED_DIM=12) tensors, or [] for non-policy agents.
+        List of n_steps (B, N, pred_dim) tensors, or [] for non-policy agents.
     """
     if agent.kind != "policy" or agent.hidden is None or n_steps <= 0:
         return []
 
     imag_hidden = agent.hidden.clone()
-    imag_obs = {k: v.clone() for k, v in obs.items()}
+    imag_obs = MVPObservation(data={k: v.clone() for k, v in obs.items()})
     curr_aux = _extract_aux_cont(imag_obs, num_ships, ship_config)        # (B, N, 16)
 
     pred_nexts = []

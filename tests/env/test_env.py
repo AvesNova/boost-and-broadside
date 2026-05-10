@@ -5,6 +5,7 @@ import torch
 
 from boost_and_broadside.config import ShipConfig, EnvConfig, RewardConfig
 from boost_and_broadside.env.env import TensorEnv
+from boost_and_broadside.env.observation import ObsKey
 from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
 from boost_and_broadside.env.wrapper import MVPEnvWrapper
 
@@ -192,10 +193,12 @@ class TestMVPEnvWrapper:
         assert "vel" in obs
         assert "att" in obs
         assert "ang_vel" in obs
-        assert "scalars" in obs
+        assert "health" in obs
+        assert "power" in obs
+        assert "cooldown" in obs
         assert "team_id" in obs
         assert "alive" in obs
-        assert "prev_action" in obs
+        assert "previous_action" in obs
 
     def test_obs_shapes_correct(self, ship_cfg, env_cfg, reward_cfg):
         B, N = 2, env_cfg.num_ships
@@ -212,9 +215,12 @@ class TestMVPEnvWrapper:
         assert obs["vel"].shape == (B, N, 2)
         assert obs["att"].shape == (B, N, 2)
         assert obs["ang_vel"].shape == (B, N, 1)
-        assert obs["scalars"].shape == (B, N, 3)
+        assert obs["health"].shape == (B, N, 1)
+        assert obs["power"].shape == (B, N, 1)
+        assert obs["cooldown"].shape == (B, N, 1)
         assert obs["team_id"].shape == (B, N)
         assert obs["alive"].shape == (B, N)
+        assert obs["previous_action"].shape == (B, N, 3)
 
     def test_step_returns_correct_shapes(self, ship_cfg, env_cfg, reward_cfg):
         B, N = 2, env_cfg.num_ships
@@ -234,8 +240,8 @@ class TestMVPEnvWrapper:
         assert dones.shape == (B,)
         assert truncated.shape == (B,)
 
-    def test_pos_normalized_to_unit_range(self, ship_cfg, env_cfg, reward_cfg):
-        """Normalized position must be in [0, 1] after reset."""
+    def test_pos_within_world_bounds(self, ship_cfg, env_cfg, reward_cfg):
+        """Raw positions must be within [0, world_w] x [0, world_h] after reset."""
         wrapper = MVPEnvWrapper(
             num_envs=2,
             ship_config=ship_cfg,
@@ -244,9 +250,12 @@ class TestMVPEnvWrapper:
             device="cpu",
         )
         obs = wrapper.reset(options={"team_sizes": (4, 4)})
+        world_w, world_h = ship_cfg.world_size
 
-        assert obs["pos"].min().item() >= 0.0
-        assert obs["pos"].max().item() <= 1.0
+        assert obs["pos"][..., 0].min().item() >= 0.0
+        assert obs["pos"][..., 0].max().item() <= world_w
+        assert obs["pos"][..., 1].min().item() >= 0.0
+        assert obs["pos"][..., 1].max().item() <= world_h
 
     def test_episode_info_returned_on_done(self, ship_cfg, reward_cfg):
         """info dict must contain ep_reward and ep_length when an episode ends."""
