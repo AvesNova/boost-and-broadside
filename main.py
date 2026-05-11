@@ -6,6 +6,8 @@ Training:
     uv run main.py --mode rl                                              # RL from scratch
     uv run main.py --mode rl --compile max-autotune                       # RL with max-autotune
     uv run main.py --mode rl --pretrain_from checkpoints/run/best.pt      # RL from pretrained weights
+    uv run main.py --mode rl --resume                                     # resume latest checkpoint
+    uv run main.py --mode rl --resume checkpoints/run/step_000001000.pt   # resume specific checkpoint
     uv run main.py --mode rl_obstacles                                    # RL with dynamic obstacles
     uv run main.py --mode bc                                              # BC pretraining from scratch
     uv run main.py --mode bc_warmstart                                    # BC 50M steps → RL (one process)
@@ -88,6 +90,17 @@ def _parse_args() -> argparse.Namespace:
         "Example: checkpoints/major-serenity-381/best_training.pt",
     )
     parser.add_argument(
+        "--resume",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="PATH",
+        help="Resume training from a checkpoint. "
+        "No PATH → finds the latest step_*.pt across all runs in checkpoints/. "
+        "PATH can be a .pt file or a run directory (latest step_*.pt in dir is used). "
+        "Restores optimizer, scheduler state, ELO, and W&B graph.",
+    )
+    parser.add_argument(
         "--run",
         type=str,
         default="none",
@@ -134,6 +147,32 @@ def _parse_args() -> argparse.Namespace:
         "rendering the convergence animation. Much faster; shows a loading screen instead.",
     )
     return parser.parse_args()
+
+
+def _find_resume_checkpoint(path_hint: str, checkpoint_dir: str = "checkpoints") -> tuple[str, str | None]:
+    """Resolve a resume hint to (checkpoint_path, wandb_run_id_or_None).
+
+    path_hint == ""       → find latest step_*.pt across all subdirs of checkpoint_dir
+    path_hint ends .pt    → use directly
+    path_hint is a dir    → find latest step_*.pt inside it
+    """
+    hint = Path(path_hint) if path_hint else None
+
+    if hint is None or (hint.exists() and hint.is_dir()):
+        search_root = hint if hint is not None else Path(checkpoint_dir)
+        candidates = sorted(search_root.glob("*/step_*.pt" if hint is None else "step_*.pt"),
+                            key=lambda p: p.stat().st_mtime)
+        if not candidates:
+            raise FileNotFoundError(f"No step_*.pt checkpoints found under {search_root}")
+        ckpt_path = candidates[-1]
+    else:
+        ckpt_path = hint
+        if not ckpt_path.exists():
+            raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
+
+    run_id_file = ckpt_path.parent / "wandb_run_id.txt"
+    wandb_run_id = run_id_file.read_text().strip() if run_id_file.exists() else None
+    return str(ckpt_path), wandb_run_id
 
 
 def _apply_smoke(config):
@@ -193,6 +232,9 @@ def main() -> None:
                 SHIP_CONFIG, StochasticAgentConfig()
             )
             train_config = _apply_smoke(RL_TRAIN_CONFIG) if args.smoke else RL_TRAIN_CONFIG
+            resume_ckpt, resume_wandb_id = (
+                _find_resume_checkpoint(args.resume) if args.resume is not None else (None, None)
+            )
             trainer = PPOTrainer(
                 train_config=train_config,
                 model_config=MODEL_CONFIG,
@@ -200,14 +242,20 @@ def main() -> None:
                 use_wandb=use_wandb,
                 scripted_agent=scripted_agent,
                 compile_mode=compile_mode,
+                resume_wandb_run_id=resume_wandb_id,
             )
-            if args.pretrain_from is not None:
+            if resume_ckpt is not None:
+                trainer.load_checkpoint(resume_ckpt)
+            elif args.pretrain_from is not None:
                 trainer.load_pretrained_weights(args.pretrain_from)
             _run_trainer(trainer)
 
         case "rl_obstacles":
             train_config = _apply_smoke(RL_OBSTACLES_TRAIN_CONFIG) if args.smoke else RL_OBSTACLES_TRAIN_CONFIG
             scripted_agent = StochasticScriptedAgent(SHIP_CONFIG, StochasticAgentConfig())
+            resume_ckpt, resume_wandb_id = (
+                _find_resume_checkpoint(args.resume) if args.resume is not None else (None, None)
+            )
             trainer = PPOTrainer(
                 train_config=train_config,
                 model_config=MODEL_CONFIG,
@@ -215,8 +263,11 @@ def main() -> None:
                 use_wandb=use_wandb,
                 scripted_agent=scripted_agent,
                 compile_mode=compile_mode,
+                resume_wandb_run_id=resume_wandb_id,
             )
-            if args.pretrain_from is not None:
+            if resume_ckpt is not None:
+                trainer.load_checkpoint(resume_ckpt)
+            elif args.pretrain_from is not None:
                 trainer.load_pretrained_weights(args.pretrain_from)
             _run_trainer(trainer)
 

@@ -295,6 +295,7 @@ def imagine_trajectory(
         return []
 
     coordinator = agent.agent.coordinator
+    label_scale = coordinator._label_scale_vector(device)
     imag_hidden = agent.hidden.clone()
     imag_obs = MVPObservation(data={k: v.clone() for k, v in obs.items()})
     curr_ship_targets = coordinator.get_target_vector(imag_obs)[:, :num_ships]
@@ -305,7 +306,9 @@ def imagine_trajectory(
             action, _, _, pred_next_scaled, imag_hidden = agent.agent.get_action_and_value(
                 imag_obs, imag_hidden
             )
-            pred_nexts.append(pred_next_scaled)
+            # Unscale before storing: the renderer expects raw phase deltas, not
+            # the scaled values the network predicts (scaled by 1/std for O(1) outputs).
+            pred_nexts.append(pred_next_scaled / label_scale)
             next_ship_targets = coordinator.apply_scaled_predictions(
                 curr_ship_targets, pred_next_scaled
             )

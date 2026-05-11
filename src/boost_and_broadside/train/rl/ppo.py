@@ -296,6 +296,7 @@ class PPOTrainer:
         scripted_agent: StochasticScriptedAgent | None = None,
         compile_mode: str | None = "reduce-overhead",
         obs_config=None,  # deprecated, ignored
+        resume_wandb_run_id: str | None = None,
     ) -> None:
         self.cfg = train_config
         self.model_config = model_config
@@ -513,11 +514,12 @@ class PPOTrainer:
         # Async logging queue
         self._log_queue: Queue = Queue()
         if use_wandb:
-            self._init_wandb(train_config, model_config, ship_config, self.env_config)
+            self._init_wandb(train_config, model_config, ship_config, self.env_config, resume_wandb_run_id)
             self._log_thread = threading.Thread(target=self._log_worker, daemon=True)
             self._log_thread.start()
 
         self._global_step = 0
+        self._start_update = 1
         total_envs_all = sum(sc.num_envs for sc in train_config.scales)
         self._num_updates = train_config.total_timesteps // (
             total_envs_all * train_config.num_steps
@@ -528,6 +530,9 @@ class PPOTrainer:
             import wandb as _wandb
 
             self._run_name: str = _wandb.run.name
+            run_id_path = Path(train_config.checkpoint_dir) / self._run_name / "wandb_run_id.txt"
+            run_id_path.parent.mkdir(parents=True, exist_ok=True)
+            run_id_path.write_text(_wandb.run.id)
         else:
             from datetime import datetime
 
@@ -696,7 +701,7 @@ class PPOTrainer:
 
         start_time = time.time()
 
-        for update in range(1, self._num_updates + 1):
+        for update in range(self._start_update, self._num_updates + 1):
             self.buffer.reset()
             self.buffer.store_initial_hidden(hidden)
             for aux_buf, aux_h in zip(self.aux_buffers, aux_hiddens):
@@ -2251,7 +2256,7 @@ class PPOTrainer:
         Returns:
             The update index stored in the checkpoint.
         """
-        ckpt = torch.load(path, map_location=self.device)
+        ckpt = torch.load(path, map_location=self.device, weights_only=False)
         self._policy_module.load_state_dict(ckpt["policy_state_dict"])
         _cast_norms_bf16(self._policy_module)
         self.optim.load_state_dict(ckpt["optimizer_state_dict"])
@@ -2271,12 +2276,16 @@ class PPOTrainer:
             self._elo_milestone = ckpt.get("elo_milestone", 0.0)
         if "bc_1000_elo_step" in ckpt:
             self._bc_1000_elo_step = ckpt["bc_1000_elo_step"]
+        if "global_step" in ckpt:
+            self._global_step = ckpt["global_step"]
+            self._start_update = ckpt["update"] + 1
 
         # Restore roster if its JSON exists alongside the checkpoint
         roster_path = Path(path).parent / "roster.json"
         if roster_path.exists():
             self.roster.load_json(roster_path)
 
+        print(f"Checkpoint loaded from: {path} (resuming from update {self._start_update}, step {self._global_step:,})")
         return ckpt["update"]
 
     # ------------------------------------------------------------------
@@ -2289,6 +2298,7 @@ class PPOTrainer:
         model_config: ModelConfig,
         ship_config: ShipConfig,
         env_config: EnvConfig,
+        resume_run_id: str | None = None,
     ) -> None:
         """Initialize W&B run with all configs serialized as the run config."""
         import wandb
@@ -2315,7 +2325,10 @@ class PPOTrainer:
                     continue  # TrainingSchedule contains callables — not serializable
                 config[f"{prefix}/{k}"] = _sanitize(v)
 
-        wandb.init(project="boost-and-broadside", config=config)
+        if resume_run_id is not None:
+            wandb.init(project="boost-and-broadside", config=config, id=resume_run_id, resume="must")
+        else:
+            wandb.init(project="boost-and-broadside", config=config)
 
     def _enqueue_log(self, metrics: dict, step: int) -> None:
         """Put metrics onto the async log queue (non-blocking)."""
