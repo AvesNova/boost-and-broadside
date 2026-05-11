@@ -1,22 +1,12 @@
-"""feature_stats mode: collect encoded AUX feature null-model MSE for weight calibration.
+"""feature_stats mode: collect label null-model MSE to validate/calibrate label_scale values.
 
-For each consecutive obs pair (excluding episode boundaries and dead ships), computes the
-squared error a null model (predicting zero delta for everything) would make per AUX target
-feature. The inverse of the mean squared error is the calibrated static weight.
+For each consecutive obs pair (excluding episode boundaries and dead ships), computes
+coordinator.compute_labels() then squares it. Since labels are pre-scaled by label_scale,
+the null-model MSE in scaled space should be ~1.0 if label_scale is well calibrated
+(label_scale = 1/std(raw_label) → scaled_label has std ≈ 1 → null MSE ≈ 1).
 
-Feature layout (AUX_TARGET, 16 dims):
-  [0:4]   pos_x(sin,cos), pos_y(sin,cos)   — toroidal phase
-  [4:6]   vel_dir(cos,sin)                  — velocity direction unit vec
-  [6]     symlog_speed                       — symlog |v|
-  [7:9]   att(cos,sin)                      — heading unit vec
-  [9]     ang_vel                            — symlog ω  (absolute target)
-  [10:12] health(sin,cos)                   — quarter-wave
-  [12:14] power(sin,cos)                    — quarter-wave
-  [14:16] cooldown(sin,cos)                 — quarter-wave
-
-Null-model squared error per feature:
-  All delta features [0:9, 10:16]: (next - curr)^2  (null predicts no change)
-  Absolute feature  [9]:           next^2            (null predicts 0)
+Reports per-prediction-dim stats and suggested label_scale corrections:
+  suggested_scale = current_scale / sqrt(mean_sq)
 """
 
 import time
@@ -25,25 +15,13 @@ import torch
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.modes.agent_factory import (
-    _extract_aux_cont,
     get_actions,
     init_hidden,
     reset_done_envs,
     resolve_agent_spec,
 )
 from boost_and_broadside.modes.collect import _obs_from_state
-
-_FEAT_NAMES = (
-    "pos_sin_x", "pos_cos_x", "pos_sin_y", "pos_cos_y",
-    "vel_dir_cos", "vel_dir_sin",
-    "symlog_speed",
-    "att_cos", "att_sin",
-    "ang_vel_abs",
-    "health_sin", "health_cos",
-    "power_sin", "power_cos",
-    "cooldown_sin", "cooldown_cos",
-)
-_ANG_VEL_IDX = 9  # absolute feature — null MSE = E[target^2], not E[delta^2]
+from boost_and_broadside.train.rl.features import build_standard_coordinator
 
 
 def run_feature_stats_mode(
@@ -63,6 +41,11 @@ def run_feature_stats_mode(
     num_tokens = N + env_config.num_obstacles
     dev = torch.device(device)
 
+    coordinator = build_standard_coordinator(ship_config)
+    feat_names = coordinator.get_feature_names()
+    P = coordinator.total_prediction_dimension
+    curr_scale = coordinator._label_scale_vector(dev)
+
     agent0 = resolve_agent_spec(team0_spec, ship_config, model_config, device, checkpoint_dir, num_ships=N)
     agent1 = resolve_agent_spec(team1_spec, ship_config, model_config, device, checkpoint_dir, num_ships=N)
 
@@ -71,16 +54,15 @@ def run_feature_stats_mode(
     init_hidden(agent1, B, num_tokens, dev)
     env.reset()
 
-    n_feat = len(_FEAT_NAMES)
-    sq_err_sum = torch.zeros(n_feat, device=dev)
+    sq_err_sum = torch.zeros(P, device=dev)
     count = torch.zeros(1, device=dev)
 
     obs = _obs_from_state(env.state, ship_config)
-    prev_aux   = _extract_aux_cont(obs, N, ship_config)   # (B, N, 16)
-    prev_alive = env.state.ship_alive.clone()             # (B, N)
+    prev_targets = coordinator.get_target_vector(obs)[:, :N]  # (B, N, target_dim)
+    prev_alive = env.state.ship_alive.clone()
 
     t0 = time.perf_counter()
-    print(f"Collecting AUX null-model MSE for {num_steps} steps across {B} envs...")
+    print(f"Collecting label null-model MSE for {num_steps} steps across {B} envs...")
 
     for step in range(num_steps):
         obs = _obs_from_state(env.state, ship_config)
@@ -91,26 +73,21 @@ def run_feature_stats_mode(
 
         dones, truncated = env.step(action)
 
-        next_obs   = _obs_from_state(env.state, ship_config)
-        next_aux   = _extract_aux_cont(next_obs, N, ship_config)   # (B, N, 16)
-        next_alive = env.state.ship_alive.clone()                  # (B, N)
+        next_obs = _obs_from_state(env.state, ship_config)
+        next_targets = coordinator.get_target_vector(next_obs)[:, :N]
+        next_alive = env.state.ship_alive.clone()
 
         # Valid: both ships alive this step and no episode boundary
-        episode_end = (dones | truncated).unsqueeze(-1)            # (B, 1)
-        valid = prev_alive & next_alive & ~episode_end             # (B, N)
+        episode_end = (dones | truncated).unsqueeze(-1)  # (B, 1)
+        valid = prev_alive & next_alive & ~episode_end   # (B, N)
 
         if valid.any():
-            v_curr = prev_aux[valid]   # (K, 16)
-            v_next = next_aux[valid]   # (K, 16)
+            v_curr = prev_targets[valid]   # (K, target_dim)
+            v_next = next_targets[valid]   # (K, target_dim)
+            labels = coordinator.compute_labels(v_curr, v_next)  # (K, P) scaled
+            sq_err_sum += labels.pow(2).sum(0)
+            count += valid.sum().float()
 
-            # Null-model squared error per feature
-            null_sq = (v_next - v_curr).pow(2)                    # (K, 16)  delta features
-            null_sq[:, _ANG_VEL_IDX] = v_next[:, _ANG_VEL_IDX].pow(2)  # absolute feature
-
-            sq_err_sum += null_sq.sum(0)
-            count       += valid.sum().float()
-
-        # Handle episode resets
         done_any = dones | truncated
         if done_any.any():
             env.reset_envs(done_any)
@@ -118,36 +95,28 @@ def run_feature_stats_mode(
             reset_done_envs(agent1, done_any, num_tokens)
 
         next_obs_after_reset = _obs_from_state(env.state, ship_config)
-        prev_aux             = _extract_aux_cont(next_obs_after_reset, N, ship_config)
-        prev_alive           = env.state.ship_alive.clone()
+        prev_targets = coordinator.get_target_vector(next_obs_after_reset)[:, :N]
+        prev_alive = env.state.ship_alive.clone()
 
         if (step + 1) % 500 == 0:
-            print(f"  step {step+1}/{num_steps}  valid samples so far: {int(count.item()) * N}")
+            print(f"  step {step+1}/{num_steps}  valid samples: {int(count.item()) * N:,}")
 
     elapsed = time.perf_counter() - t0
     n = count.item()
-    print(f"\nDone in {elapsed:.1f}s — {int(n * N):,} valid (ship, step) pairs collected.\n")
+    print(f"\nDone in {elapsed:.1f}s — {int(n * N):,} valid (ship, step) pairs.\n")
 
     mean_sq = (sq_err_sum / max(n, 1.0)).cpu()
-    weights  = 1.0 / mean_sq.clamp(min=1e-9)
+    curr_scale_cpu = curr_scale.cpu()
+    suggested = curr_scale_cpu / mean_sq.sqrt().clamp(min=1e-9)
 
-    print("=" * 60)
-    print("Per-feature null-model MSE and calibrated weights:")
-    print(f"{'Feature':<20}  {'Mean sq err':>14}  {'Weight (1/MSE)':>16}")
-    print("-" * 60)
-    for i, name in enumerate(_FEAT_NAMES):
-        print(f"{name:<20}  {mean_sq[i].item():>14.6f}  {weights[i].item():>16.1f}")
-    print("=" * 60)
+    print("=" * 72)
+    print("Null-model MSE in scaled label space (target ≈ 1.0 if well-calibrated)")
+    print(f"{'Feature':<24}  {'Mean sq (scaled)':>18}  {'Current scale':>14}  {'Suggested scale':>16}")
+    print("-" * 72)
+    for i, name in enumerate(feat_names):
+        print(f"{name:<24}  {mean_sq[i].item():>18.4f}  {curr_scale_cpu[i].item():>14.2f}  {suggested[i].item():>16.2f}")
+    print("=" * 72)
 
-    print("\nPaste into _STATIC_AUX_WEIGHTS in ppo.py:\n")
-    vals = [f"{weights[i].item():.1f}" for i in range(n_feat)]
-    print("_STATIC_AUX_WEIGHTS = (")
-    print(f"    {vals[0]}, {vals[1]}, {vals[2]}, {vals[3]},  # pos_sin_x, pos_cos_x, pos_sin_y, pos_cos_y")
-    print(f"    {vals[4]}, {vals[5]},  # vel_dir_cos, vel_dir_sin")
-    print(f"    {vals[6]},  # symlog_speed")
-    print(f"    {vals[7]}, {vals[8]},  # att_cos, att_sin")
-    print(f"    {vals[9]},  # ang_vel_abs")
-    print(f"    {vals[10]}, {vals[11]},  # health_sin, health_cos")
-    print(f"    {vals[12]}, {vals[13]},  # power_sin, power_cos")
-    print(f"    {vals[14]}, {vals[15]},  # cooldown_sin, cooldown_cos")
-    print(")")
+    print("\nSuggested label_scale values for build_standard_coordinator:")
+    for i, name in enumerate(feat_names):
+        print(f"  {name}: {suggested[i].item():.1f}")

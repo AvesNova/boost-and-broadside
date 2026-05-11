@@ -6,12 +6,14 @@ Runs two phases:
   Phase 2 — 256 envs × 20 windows, running short closed-loop AR rollouts (teacher-
              forced with real sim actions) to measure how RMSE grows with rollout depth.
 
-AUX continuous state layout (16 dims):
-  [0:2]  pos_x (sin, cos)     [2:4]  pos_y (sin, cos)
-  [4:6]  vel_dir (cos, sin)   [6]    symlog_speed
-  [7:9]  att (cos, sin)       [9]    ang_vel (symlog, absolute)
-  [10:12] health (sin, cos)   [12:14] power (sin, cos)
-  [14:16] cooldown (sin, cos)
+Target vector layout (15 dims from coordinator):
+  [0:2]  pos_x (sin, cos)       [2:4]  pos_y (sin, cos)
+  [4:6]  vel (vx_norm, vy_norm) [6:8]  att (cos, sin)
+  [8]    ang_vel (symlog)
+  [9:11] health (sin, cos)      [11:13] power (sin, cos)
+  [13:15] cooldown (sin, cos)
+
+Errors are measured in target space (predicted target vs true target).
 
 Outputs written to docs/noise_calibration/:
   noise_params.json, error_distributions.png, autocorrelation.png,
@@ -29,43 +31,42 @@ import torch
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
+from boost_and_broadside.env.observation import MVPObservation
 from boost_and_broadside.modes.agent_factory import (
     ALIVE_HEALTH_EPS,
     ResolvedAgent,
-    _apply_aux_deltas_local,
-    _extract_aux_cont,
-    _imagined_obs_from_aux,
+    _decode_targets_to_obs,
     get_actions,
     init_hidden,
     reset_done_envs,
     resolve_agent_spec,
 )
 from boost_and_broadside.modes.collect import _obs_from_state
+from boost_and_broadside.train.rl.features import build_standard_coordinator
 
-_N_AUX = 16
+_N_AUX = 15  # coordinator target_dim
 _AR_WINDOW = 20
 _WARMUP_STEPS = 50
 _TEAM_SYMMETRY_REL_TOL = 0.15
 
-# Maps logical feature name → AUX dim indices
+# Maps logical feature name → target vector dim indices
 _FEAT_GROUPS: dict[str, tuple[list[int], str]] = {
-    "pos_x":       ([0, 1],    "toroidal phase x"),
-    "pos_y":       ([2, 3],    "toroidal phase y"),
-    "vel_dir":     ([4, 5],    "velocity direction"),
-    "symlog_speed":([6],       "symlog speed"),
-    "att":         ([7, 8],    "heading angle"),
-    "ang_vel":     ([9],       "angular velocity"),
-    "health":      ([10, 11],  "health quarter-wave"),
-    "power":       ([12, 13],  "power quarter-wave"),
-    "cooldown":    ([14, 15],  "cooldown quarter-wave"),
+    "pos_x":    ([0, 1],    "pos_x (sin, cos)"),
+    "pos_y":    ([2, 3],    "pos_y (sin, cos)"),
+    "velocity": ([4, 5],    "velocity (vx_norm, vy_norm)"),
+    "att":      ([6, 7],    "attitude (cos, sin)"),
+    "ang_vel":  ([8],       "angular velocity (symlog)"),
+    "health":   ([9, 10],   "health (sin, cos)"),
+    "power":    ([11, 12],  "power (sin, cos)"),
+    "cooldown": ([13, 14],  "cooldown (sin, cos)"),
 }
 
 _DIM_NAMES = (
-    "pos_sin_x", "pos_cos_x", "pos_sin_y", "pos_cos_y",
-    "vel_dir_cos", "vel_dir_sin",
-    "symlog_speed",
+    "pos_sin_x", "pos_cos_x",
+    "pos_sin_y", "pos_cos_y",
+    "vel_vx_norm", "vel_vy_norm",
     "att_cos", "att_sin",
-    "ang_vel_abs",
+    "ang_vel_symlog",
     "health_sin", "health_cos",
     "power_sin", "power_cos",
     "cooldown_sin", "cooldown_cos",
@@ -104,6 +105,7 @@ def run_noise_calibration_mode(
             f"Pass a .pt path via --team0."
         )
 
+    coordinator = build_standard_coordinator(ship_config)
     scripted_for_warmup = resolve_agent_spec("scripted", ship_config, model_config, device, num_ships=N)
 
     print(f"\n{'='*60}")
@@ -111,14 +113,14 @@ def run_noise_calibration_mode(
     print(f"  {num_envs} envs × {num_steps} steps")
     print(f"{'='*60}")
     phase1 = _run_phase1(agent0, agent1, num_envs, N, num_tokens, num_steps,
-                         ship_config, env_config, dev)
+                         ship_config, env_config, dev, coordinator)
 
     print(f"\n{'='*60}")
     print(f"Phase 2: short closed-loop AR rollouts")
     print(f"  {num_ar_envs} envs × {num_ar_windows} windows × {_AR_WINDOW}-step chains")
     print(f"{'='*60}")
     phase2 = _run_phase2(agent0, scripted_for_warmup, num_ar_envs, N, num_tokens,
-                         num_ar_windows, ship_config, env_config, dev)
+                         num_ar_windows, ship_config, env_config, dev, coordinator)
 
     print("\nBuilding output...")
     output = _build_output(phase1, phase2, team0_spec, num_envs, num_steps,
@@ -143,6 +145,7 @@ def _run_phase1(
     ship_config: ShipConfig,
     env_config: EnvConfig,
     dev: torch.device,
+    coordinator,
 ) -> dict:
     env = TensorEnv(B, ship_config, env_config, dev)
     init_hidden(agent0, B, num_tokens, dev)
@@ -169,17 +172,17 @@ def _run_phase1(
     for step in range(num_steps):
         obs = _obs_from_state(env.state, ship_config)
 
-        # Capture combat flag before step (prev_action is the action that produced current state)
+        # Capture combat flag before step
         combat = (env.state.prev_action[:, :N, 2] > 0.5).any(dim=1)  # (B,)
 
-        action0, pred_next = get_actions(agent0, obs, env.state, B, N, dev, return_pred_next=True)
+        action0, pred_next_scaled = get_actions(agent0, obs, env.state, B, N, dev, return_pred_next=True)
         action1 = get_actions(agent1, obs, env.state, B, N, dev)
 
         team_id = env.state.ship_team_id  # (B, N) int32
         action = torch.where((team_id == 0).unsqueeze(-1), action0, action1)
 
         curr_alive = obs["alive"][:, :N].clone()  # (B, N) bool, before step
-        curr_aux = _extract_aux_cont(obs, N, ship_config)  # (B, N, 16)
+        curr_targets = coordinator.get_target_vector(obs)[:, :N]  # (B, N, 15)
 
         dones, truncated = env.step(action)
         done_any = dones | truncated  # (B,)
@@ -187,26 +190,26 @@ def _run_phase1(
         next_obs = _obs_from_state(env.state, ship_config)
         next_alive = env.state.ship_alive  # (B, N) bool, after step
 
-        if pred_next is not None:
-            pred_aux = _apply_aux_deltas_local(curr_aux, pred_next)          # (B, N, 16)
-            true_aux = _extract_aux_cont(next_obs, N, ship_config)           # (B, N, 16)
-            err = pred_aux - true_aux                                         # (B, N, 16)
+        if pred_next_scaled is not None:
+            pred_targets = coordinator.apply_scaled_predictions(curr_targets, pred_next_scaled)
+            true_targets = coordinator.get_target_vector(next_obs)[:, :N]
+            err = pred_targets - true_targets  # (B, N, 15)
 
             # valid: alive at both ends, no episode boundary
-            episode_end = done_any.unsqueeze(-1)                              # (B, 1)
-            valid = curr_alive & next_alive & ~episode_end                    # (B, N)
+            episode_end = done_any.unsqueeze(-1)  # (B, 1)
+            valid = curr_alive & next_alive & ~episode_end  # (B, N)
 
             if valid.any():
-                v_err = err[valid]                                            # (K, 16)
+                v_err = err[valid]  # (K, 15)
                 err_sum    += v_err.sum(0)
                 err_sq_sum += v_err.pow(2).sum(0)
                 err_count  += valid.sum().float()
 
                 # Lag-1 autocorrelation
-                lag_valid = valid & prev_valid                                # (B, N)
+                lag_valid = valid & prev_valid  # (B, N)
                 if lag_valid.any():
-                    lv_curr = err[lag_valid]                                  # (M, 16)
-                    lv_prev = prev_err[lag_valid]                             # (M, 16)
+                    lv_curr = err[lag_valid]   # (M, 15)
+                    lv_prev = prev_err[lag_valid]
                     lag1_cross_sum += (lv_prev * lv_curr).sum(0)
                     lag1_sq_sum    += lv_prev.pow(2).sum(0)
                     lag1_count     += lag_valid.sum().float()
@@ -220,14 +223,13 @@ def _run_phase1(
                         team_count[t]      += tm.sum().float()
 
                 # Combat-stratified
-                c_expand = combat.unsqueeze(-1).expand_as(valid)              # (B, N)
+                c_expand = combat.unsqueeze(-1).expand_as(valid)  # (B, N)
                 for c_idx, c_cond in enumerate([~c_expand, c_expand]):
                     m = valid & c_cond
                     if m.any():
                         combat_err_sq_sum[c_idx] += err[m].pow(2).sum(0)
                         combat_count[c_idx]      += m.sum().float()
 
-            # Lag-1 buffer update (valid already masks done envs via ~episode_end)
             prev_valid = valid.clone()
             prev_err   = err.detach().clone()
 
@@ -273,6 +275,7 @@ def _run_phase2(
     ship_config: ShipConfig,
     env_config: EnvConfig,
     dev: torch.device,
+    coordinator,
 ) -> dict:
     env = TensorEnv(B, ship_config, env_config, dev)
     init_hidden(agent0, B, num_tokens, dev)
@@ -300,15 +303,15 @@ def _run_phase2(
                 reset_done_envs(warmup_agent1, done_any, num_tokens)
 
         # --- Snapshot after warmup ---
-        ar_start_obs    = {k: v.clone() for k, v in _obs_from_state(env.state, ship_config).items()}
+        ar_start_obs    = _obs_from_state(env.state, ship_config)
         ar_start_hidden = agent0.hidden.clone()
-        ar_start_aux    = _extract_aux_cont(ar_start_obs, N, ship_config)  # (B, N, 16)
+        ar_start_targets = coordinator.get_target_vector(ar_start_obs)[:, :N]  # (B, N, 15)
 
         # --- Real-sim recording ---
-        stored_actions  = []  # list of (B, N, 3) int tensors
-        stored_true_aux = []  # list of (B, N, 16) float tensors
-        stored_alive    = []  # list of (B, N) bool tensors
-        window_valid    = torch.ones(B, dtype=torch.bool, device=dev)
+        stored_actions      = []  # list of (B, N, 3) int tensors
+        stored_true_targets = []  # list of (B, N, 15) float tensors
+        stored_alive        = []  # list of (B, N) bool tensors
+        window_valid        = torch.ones(B, dtype=torch.bool, device=dev)
 
         for k in range(_AR_WINDOW):
             obs = _obs_from_state(env.state, ship_config)
@@ -323,7 +326,7 @@ def _run_phase2(
             window_valid &= ~done_any
 
             next_obs = _obs_from_state(env.state, ship_config)
-            stored_true_aux.append(_extract_aux_cont(next_obs, N, ship_config).clone())
+            stored_true_targets.append(coordinator.get_target_vector(next_obs)[:, :N].clone())
             stored_alive.append(env.state.ship_alive.clone())
 
             if done_any.any():
@@ -332,33 +335,33 @@ def _run_phase2(
                 reset_done_envs(warmup_agent1, done_any, num_tokens)
 
         # --- AR replay from snapshot ---
-        curr_obs    = {k: v.clone() for k, v in ar_start_obs.items()}
-        curr_hidden = ar_start_hidden.clone()
-        curr_aux    = ar_start_aux.clone()
+        curr_obs     = MVPObservation(data={k: v.clone() for k, v in ar_start_obs.items()})
+        curr_hidden  = ar_start_hidden.clone()
+        curr_targets = ar_start_targets.clone()
 
         with torch.no_grad():
             for k in range(_AR_WINDOW):
-                _, _, _, pred_next, curr_hidden = agent0.agent.get_action_and_value(
+                action_k, _, _, pred_next_scaled, curr_hidden = agent0.agent.get_action_and_value(
                     curr_obs, curr_hidden
                 )
-                if pred_next is None:
+                if pred_next_scaled is None:
                     break
 
-                next_aux_ar = _apply_aux_deltas_local(curr_aux, pred_next)       # (B, N, 16)
-                err_k = (next_aux_ar - stored_true_aux[k]).pow(2)                # (B, N, 16)
+                next_targets_ar = coordinator.apply_scaled_predictions(curr_targets, pred_next_scaled)
+                err_k = (next_targets_ar - stored_true_targets[k]).pow(2)  # (B, N, 15)
 
                 # valid: window not terminated + ship alive in ground truth
-                valid_k = window_valid.unsqueeze(-1) & stored_alive[k]           # (B, N)
+                valid_k = window_valid.unsqueeze(-1) & stored_alive[k]  # (B, N)
 
                 if valid_k.any():
-                    mask = valid_k.unsqueeze(-1).float()                          # (B, N, 1)
+                    mask = valid_k.unsqueeze(-1).float()  # (B, N, 1)
                     ar_sq_sum[k] += (err_k * mask).sum(dim=(0, 1))
                     ar_count[k]  += valid_k.sum().float()
 
-                curr_obs = _imagined_obs_from_aux(
-                    next_aux_ar, curr_obs, stored_actions[k], N, ship_config
+                curr_obs = _decode_targets_to_obs(
+                    next_targets_ar, curr_obs, stored_actions[k], N, ship_config
                 )
-                curr_aux = next_aux_ar
+                curr_targets = coordinator.get_target_vector(curr_obs)[:, :N]
 
         elapsed = time.perf_counter() - t0
         if (window + 1) % 5 == 0 or window == 0:
@@ -369,7 +372,7 @@ def _run_phase2(
     print(f"Phase 2 done in {elapsed:.1f}s.")
 
     return {
-        "ar_sq_sum": ar_sq_sum.cpu().numpy(),   # (20, 16)
+        "ar_sq_sum": ar_sq_sum.cpu().numpy(),   # (20, 15)
         "ar_count":  ar_count.cpu().numpy(),    # (20,)
     }
 
@@ -474,8 +477,8 @@ def _write_outputs(data: dict, output_dir: str) -> None:
     feats      = data["features"]
     feat_names = list(_FEAT_GROUPS.keys())
 
-    # --- error_distributions.png: sigma bar chart per AUX dim with bias overlay ---
-    fig, axes = plt.subplots(4, 4, figsize=(14, 10))
+    # --- error_distributions.png: sigma bar chart per target dim with bias overlay ---
+    fig, axes = plt.subplots(3, 5, figsize=(14, 9))
     fig.suptitle("Per-dim sigma (bar) and bias (line marker)", fontsize=11)
 
     # Rebuild per-dim sigma and bias from feature groups
@@ -486,13 +489,16 @@ def _write_outputs(data: dict, output_dir: str) -> None:
         bias_arr[dims]  = feats[name]["bias"]
 
     for i, ax in enumerate(axes.flat):
-        ax.bar([0], [sigma_arr[i]], color="steelblue", alpha=0.8, label="sigma")
-        ax.axhline(bias_arr[i], color="red", linewidth=1.5, linestyle="--", label="bias")
-        ax.set_title(_DIM_NAMES[i], fontsize=8)
-        ax.set_xticks([])
-        ax.set_ylim(0, max(sigma_arr[i] * 1.5, 1e-6))
-        if i == 0:
-            ax.legend(fontsize=7)
+        if i < _N_AUX:
+            ax.bar([0], [sigma_arr[i]], color="steelblue", alpha=0.8, label="sigma")
+            ax.axhline(bias_arr[i], color="red", linewidth=1.5, linestyle="--", label="bias")
+            ax.set_title(_DIM_NAMES[i], fontsize=8)
+            ax.set_xticks([])
+            ax.set_ylim(0, max(sigma_arr[i] * 1.5, 1e-6))
+            if i == 0:
+                ax.legend(fontsize=7)
+        else:
+            ax.set_visible(False)
 
     fig.tight_layout()
     fig.savefig(os.path.join(output_dir, "error_distributions.png"), dpi=120)

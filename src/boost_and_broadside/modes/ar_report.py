@@ -10,62 +10,9 @@ from boost_and_broadside.modes.agent_factory import (
     resolve_agent_spec,
     init_hidden,
     get_actions,
-    _extract_aux_cont,
-    _apply_aux_deltas_local,
+    _decode_targets_to_obs,
     ALIVE_HEALTH_EPS,
 )
-
-
-def _imagined_obs_sampled(
-    aux_next: torch.Tensor,
-    prev_obs: MVPObservation,
-    action: torch.Tensor,
-    N: int,
-    ship_config: ShipConfig,
-) -> MVPObservation:
-    """Reconstruct MVPObservation ship fields from predicted AUX continuous state.
-
-    aux_next: (B, N, 16) pos_x(2) pos_y(2) vel_dir(2) symlog_spd(1) att(2) ang_vel(1) health(2) power(2) cooldown(2)
-    """
-    _2pi = 2.0 * math.pi
-    _hpi = math.pi / 2.0
-    W = ship_config.world_size[0]
-
-    pos_x = (torch.atan2(aux_next[..., 0], aux_next[..., 1]) % _2pi) * W / _2pi
-    pos_y = (torch.atan2(aux_next[..., 2], aux_next[..., 3]) % _2pi) * W / _2pi
-    pos = torch.stack([pos_x, pos_y], dim=-1)
-
-    vel_dir = aux_next[..., 4:6]                                          # (B, N, 2) unit vec (cos, sin)
-    sym_spd = aux_next[..., 6:7]
-    speed   = torch.sign(sym_spd) * (torch.exp(sym_spd.abs()) - 1)       # inv_symlog
-    vel     = vel_dir * speed                                              # (B, N, 2)
-
-    att = aux_next[..., 7:9]
-
-    sym = aux_next[..., 9:10]
-    ang_vel = torch.sign(sym) * (torch.exp(sym.abs()) - 1)
-
-    health_n = torch.atan2(aux_next[..., 10], aux_next[..., 11]) / _hpi
-    power_n  = torch.atan2(aux_next[..., 12], aux_next[..., 13]) / _hpi
-    cd_n     = torch.atan2(aux_next[..., 14], aux_next[..., 15]) / _hpi
-
-    health   = (health_n * ship_config.max_health).unsqueeze(-1)
-    power    = (power_n  * ship_config.max_power).unsqueeze(-1)
-    cooldown = (cd_n     * ship_config.firing_cooldown).unsqueeze(-1)
-
-    alive = health.squeeze(-1) > ALIVE_HEALTH_EPS                         # (B, N) bool
-
-    new_data = {k: v.clone() for k, v in prev_obs.items()}
-    new_data[ObsKey.POS]             = torch.cat([pos,     prev_obs[ObsKey.POS][:, N:]],           dim=1)
-    new_data[ObsKey.VEL]             = torch.cat([vel,     prev_obs[ObsKey.VEL][:, N:]],           dim=1)
-    new_data[ObsKey.ATT]             = torch.cat([att,     prev_obs[ObsKey.ATT][:, N:]],           dim=1)
-    new_data[ObsKey.ANG_VEL]         = torch.cat([ang_vel, prev_obs[ObsKey.ANG_VEL][:, N:]],      dim=1)
-    new_data[ObsKey.HEALTH]          = torch.cat([health,  prev_obs[ObsKey.HEALTH][:, N:]],        dim=1)
-    new_data[ObsKey.POWER]           = torch.cat([power,   prev_obs[ObsKey.POWER][:, N:]],         dim=1)
-    new_data[ObsKey.COOLDOWN]        = torch.cat([cooldown,prev_obs[ObsKey.COOLDOWN][:, N:]],      dim=1)
-    new_data[ObsKey.ALIVE]           = torch.cat([alive,   prev_obs[ObsKey.ALIVE][:, N:]],         dim=1)
-    new_data[ObsKey.PREVIOUS_ACTION] = torch.cat([action,  prev_obs[ObsKey.PREVIOUS_ACTION][:, N:]], dim=1)
-    return MVPObservation(data=new_data)
 
 
 def run_ar_report_mode(
@@ -162,8 +109,15 @@ def _run_ar(
     if agent1.hidden is not None:
         agent1.hidden = init_hidden1.clone()
 
+    # Get coordinator from whichever agent is a policy (prefer agent0)
+    coordinator = None
+    if agent0.kind == "policy":
+        coordinator = agent0.agent.coordinator
+    elif agent1.kind == "policy":
+        coordinator = agent1.agent.coordinator
+
     history = []
-    curr_aux = _extract_aux_cont(obs, N, ship_config)
+    curr_ship_targets = coordinator.get_target_vector(obs)[:, :N] if coordinator else None
 
     for step in range(num_steps):
         action0, pred_next0 = get_actions(agent0, obs, None, 1, N, obs["pos"].device, return_pred_next=True)
@@ -198,13 +152,10 @@ def _run_ar(
             "alive_prob": obs["alive"][:, :N].float().clone(),
         })
 
-        if pred_next is not None:
-            next_aux = _apply_aux_deltas_local(curr_aux, pred_next)
-            obs = _imagined_obs_sampled(next_aux, obs, action_to_apply, N, ship_config)
-            curr_aux = next_aux
-        else:
-            # If agents don't predict next state (e.g. random), AR does not work.
-            pass
+        if pred_next is not None and coordinator is not None:
+            next_ship_targets = coordinator.apply_scaled_predictions(curr_ship_targets, pred_next)
+            obs = _decode_targets_to_obs(next_ship_targets, obs, action_to_apply, N, ship_config)
+            curr_ship_targets = coordinator.get_target_vector(obs)[:, :N]
 
     return history
 

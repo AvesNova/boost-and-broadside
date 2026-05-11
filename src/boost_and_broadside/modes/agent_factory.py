@@ -206,127 +206,70 @@ def reset_done_envs(
 # Autoregressive imagination for watch-mode visualization
 # ---------------------------------------------------------------------------
 
-def _extract_aux_cont(obs: dict, N: int, ship_config) -> torch.Tensor:
-    """Encode raw obs into AUX continuous state (B, N, 16).
-
-    Matches the layout used by _apply_aux_deltas_local:
-      pos_x(sin,cos) pos_y(sin,cos) vel_dir(cos,sin) symlog_speed(1) att(cos,sin) ang_vel(1)
-      health(sin,cos) power(sin,cos) cooldown(sin,cos)
-    """
-    import math
-    _2pi = 2.0 * math.pi
-    _hpi = math.pi / 2.0
-    W = ship_config.world_size[0]
-
-    pos_norm = obs["pos"][:, :N].float() / W                              # (B, N, 2) in [0,1]
-    pos_sin = torch.sin(_2pi * pos_norm)
-    pos_cos = torch.cos(_2pi * pos_norm)
-    pos = torch.stack([pos_sin[..., 0], pos_cos[..., 0],
-                       pos_sin[..., 1], pos_cos[..., 1]], dim=-1)         # (B, N, 4)
-
-    vel_raw = obs["vel"][:, :N].float()                                    # (B, N, 2)
-    speed   = vel_raw.norm(dim=-1, keepdim=True).clamp(min=1e-6)          # (B, N, 1)
-    vel_dir = vel_raw / speed                                              # (B, N, 2) unit vec (cos, sin)
-    symlog_spd = torch.sign(speed) * torch.log1p(speed.abs())             # (B, N, 1)
-
-    att = obs["att"][:, :N].float()                                        # (B, N, 2)
-
-    av_raw = obs["ang_vel"][:, :N].float()
-    ang_vel = torch.sign(av_raw) * torch.log1p(av_raw.abs())              # symlog, (B, N, 1)
-
-    health_n = (obs["health"][:, :N].float().squeeze(-1) / ship_config.max_health).clamp(0.0, 1.0)
-    power_n  = (obs["power"][:, :N].float().squeeze(-1)  / ship_config.max_power).clamp(0.0, 1.0)
-    cd_n     = (obs["cooldown"][:, :N].float().squeeze(-1) / ship_config.firing_cooldown).clamp(0.0, 1.0)
-
-    health   = torch.stack([torch.sin(_hpi * health_n), torch.cos(_hpi * health_n)], dim=-1)
-    power    = torch.stack([torch.sin(_hpi * power_n),  torch.cos(_hpi * power_n)],  dim=-1)
-    cooldown = torch.stack([torch.sin(_hpi * cd_n),     torch.cos(_hpi * cd_n)],     dim=-1)
-
-    return torch.cat([pos, vel_dir, symlog_spd, att, ang_vel, health, power, cooldown], dim=-1)  # (B, N, 16)
-
-
-def _apply_aux_deltas_local(curr: torch.Tensor, delta: torch.Tensor) -> torch.Tensor:
-    """Apply predicted deltas/absolutes to AUX continuous state.
-
-    curr:  (*, 16)  pos_x(2) pos_y(2) vel_dir(2) symlog_spd(1) att(2) ang_vel(1) health(2) power(2) cooldown(2)
-    delta: (*, 9)   Δφ_x(1) Δφ_y(1) Δφ_vel(1) Δspd(1) Δφ_att(1) ang_vel_abs(1) Δφ_h(1) Δφ_p(1) Δφ_c(1)
-    Returns: (*, 16)
-    """
-    def _phase_shift(sc: torch.Tensor, d: torch.Tensor, cos_first: bool = False) -> torch.Tensor:
-        cd, sd = d.cos(), d.sin()
-        if cos_first:
-            c, s = sc[..., 0], sc[..., 1]
-            return torch.stack([c * cd - s * sd, s * cd + c * sd], dim=-1)
-        else:
-            s, c = sc[..., 0], sc[..., 1]
-            return torch.stack([s * cd + c * sd, c * cd - s * sd], dim=-1)
-
-    return torch.cat([
-        _phase_shift(curr[..., 0:2],   delta[..., 0:1].squeeze(-1)),                 # pos_x  (sin, cos)
-        _phase_shift(curr[..., 2:4],   delta[..., 1:2].squeeze(-1)),                 # pos_y  (sin, cos)
-        _phase_shift(curr[..., 4:6],   delta[..., 2:3].squeeze(-1), cos_first=True), # vel_dir (cos, sin)
-        curr[..., 6:7] + delta[..., 3:4],                                            # symlog_speed
-        _phase_shift(curr[..., 7:9],   delta[..., 4:5].squeeze(-1), cos_first=True), # att    (cos, sin)
-        delta[..., 5:6],                                                              # ang_vel absolute
-        _phase_shift(curr[..., 10:12], delta[..., 6:7].squeeze(-1)),                 # health (sin, cos)
-        _phase_shift(curr[..., 12:14], delta[..., 7:8].squeeze(-1)),                 # power  (sin, cos)
-        _phase_shift(curr[..., 14:16], delta[..., 8:9].squeeze(-1)),                 # cooldown (sin, cos)
-    ], dim=-1)
-
-
 ALIVE_HEALTH_EPS = 1.0  # ship is dead when decoded health ≤ this value
 
 
-def _imagined_obs_from_aux(
-    aux_next: torch.Tensor,
+def _decode_targets_to_obs(
+    targets: torch.Tensor,
     prev_obs: MVPObservation,
     action: torch.Tensor,
     N: int,
     ship_config,
 ) -> MVPObservation:
-    """Reconstruct MVPObservation ship fields from predicted AUX continuous state.
+    """Decode a coordinator target vector back to a raw MVPObservation.
 
-    aux_next:  (B, N, 16) pos_x(2) pos_y(2) vel_dir(2) symlog_spd(1) att(2) ang_vel(1) health(2) power(2) cooldown(2)
-    prev_obs:  previous MVPObservation — obstacle tokens (N:) copied unchanged
-    action:    (B, N, 3) int — imagined action stored as PREVIOUS_ACTION
+    targets: (B, N, 15)
+      pos_x(sin,cos)[0:2]  pos_y(sin,cos)[2:4]  vel(vx_norm,vy_norm)[4:6]
+      att(cos,sin)[6:8]    ang_vel(symlog)[8:9]
+      health(sin,cos)[9:11]  power(sin,cos)[11:13]  cooldown(sin,cos)[13:15]
+    prev_obs: previous MVPObservation — obstacle tokens (N:) are copied unchanged
+    action:   (B, N, 3) int — stored as PREVIOUS_ACTION for next step
     """
     import math
     _2pi = 2.0 * math.pi
     _hpi = math.pi / 2.0
     W = ship_config.world_size[0]
 
-    pos_x = (torch.atan2(aux_next[..., 0], aux_next[..., 1]) % _2pi) * W / _2pi
-    pos_y = (torch.atan2(aux_next[..., 2], aux_next[..., 3]) % _2pi) * W / _2pi
-    pos = torch.stack([pos_x, pos_y], dim=-1)                             # (B, N, 2)
+    # Position: Fourier(1, W) encodes as (sin(2πx/W), cos(2πx/W))
+    pos_x = (torch.atan2(targets[..., 0], targets[..., 1]) % _2pi) * W / _2pi
+    pos_y = (torch.atan2(targets[..., 2], targets[..., 3]) % _2pi) * W / _2pi
+    pos = torch.stack([pos_x, pos_y], dim=-1)
 
-    vel_dir = aux_next[..., 4:6]                                          # (B, N, 2) unit vec (cos, sin)
-    sym_spd = aux_next[..., 6:7]
-    speed   = torch.sign(sym_spd) * (torch.exp(sym_spd.abs()) - 1)       # inv_symlog
-    vel     = vel_dir * speed                                              # (B, N, 2)
+    # Velocity: SymlogVelocity encodes as direction * symlog(speed)
+    vel_enc = targets[..., 4:6]
+    speed_enc = torch.norm(vel_enc, dim=-1, keepdim=True)
+    direction = vel_enc / speed_enc.clamp(min=1e-8)
+    speed = torch.expm1(speed_enc.clamp(min=0.0))
+    vel = direction * speed
 
-    att = aux_next[..., 7:9]                                              # (B, N, 2) unit vec
+    # Attitude: Identity transform stores raw (cos, sin)
+    att = targets[..., 6:8]
 
-    sym = aux_next[..., 9:10]
-    ang_vel = torch.sign(sym) * (torch.exp(sym.abs()) - 1)               # inv_symlog, (B, N, 1)
+    # Angular velocity: Symlog encodes as symlog(ω)
+    sym = targets[..., 8:9]
+    ang_vel = torch.sign(sym) * torch.expm1(sym.abs())
 
-    health_n = torch.atan2(aux_next[..., 10], aux_next[..., 11]) / _hpi
-    power_n  = torch.atan2(aux_next[..., 12], aux_next[..., 13]) / _hpi
-    cd_n     = torch.atan2(aux_next[..., 14], aux_next[..., 15]) / _hpi
-    health   = (health_n * ship_config.max_health).unsqueeze(-1)          # (B, N, 1)
-    power    = (power_n  * ship_config.max_power).unsqueeze(-1)
-    cooldown = (cd_n     * ship_config.firing_cooldown).unsqueeze(-1)
+    # Health/power/cooldown: UnitCircle encodes as (sin(angle), cos(angle))
+    health_angle = torch.atan2(targets[..., 9], targets[..., 10]).clamp(0.0, _hpi)
+    health = (health_angle / _hpi * ship_config.max_health).unsqueeze(-1)
 
-    alive = health.squeeze(-1) > ALIVE_HEALTH_EPS                         # (B, N) bool
+    power_angle = torch.atan2(targets[..., 11], targets[..., 12]).clamp(0.0, _hpi)
+    power = (power_angle / _hpi * ship_config.max_power).unsqueeze(-1)
+
+    cd_angle = torch.atan2(targets[..., 13], targets[..., 14]).clamp(0.0, _hpi)
+    cooldown = (cd_angle / _hpi * ship_config.firing_cooldown).unsqueeze(-1)
+
+    alive = health.squeeze(-1) > ALIVE_HEALTH_EPS
 
     new_data = {k: v.clone() for k, v in prev_obs.items()}
-    new_data[ObsKey.POS]             = torch.cat([pos,     prev_obs[ObsKey.POS][:, N:]],           dim=1)
-    new_data[ObsKey.VEL]             = torch.cat([vel,     prev_obs[ObsKey.VEL][:, N:]],           dim=1)
-    new_data[ObsKey.ATT]             = torch.cat([att,     prev_obs[ObsKey.ATT][:, N:]],           dim=1)
-    new_data[ObsKey.ANG_VEL]         = torch.cat([ang_vel, prev_obs[ObsKey.ANG_VEL][:, N:]],      dim=1)
-    new_data[ObsKey.HEALTH]          = torch.cat([health,  prev_obs[ObsKey.HEALTH][:, N:]],        dim=1)
-    new_data[ObsKey.POWER]           = torch.cat([power,   prev_obs[ObsKey.POWER][:, N:]],         dim=1)
-    new_data[ObsKey.COOLDOWN]        = torch.cat([cooldown,prev_obs[ObsKey.COOLDOWN][:, N:]],      dim=1)
-    new_data[ObsKey.ALIVE]           = torch.cat([alive,   prev_obs[ObsKey.ALIVE][:, N:]],         dim=1)
+    new_data[ObsKey.POS]             = torch.cat([pos,     prev_obs[ObsKey.POS][:, N:]],            dim=1)
+    new_data[ObsKey.VEL]             = torch.cat([vel,     prev_obs[ObsKey.VEL][:, N:]],            dim=1)
+    new_data[ObsKey.ATT]             = torch.cat([att,     prev_obs[ObsKey.ATT][:, N:]],            dim=1)
+    new_data[ObsKey.ANG_VEL]         = torch.cat([ang_vel, prev_obs[ObsKey.ANG_VEL][:, N:]],       dim=1)
+    new_data[ObsKey.HEALTH]          = torch.cat([health,  prev_obs[ObsKey.HEALTH][:, N:]],         dim=1)
+    new_data[ObsKey.POWER]           = torch.cat([power,   prev_obs[ObsKey.POWER][:, N:]],          dim=1)
+    new_data[ObsKey.COOLDOWN]        = torch.cat([cooldown,prev_obs[ObsKey.COOLDOWN][:, N:]],       dim=1)
+    new_data[ObsKey.ALIVE]           = torch.cat([alive,   prev_obs[ObsKey.ALIVE][:, N:]],          dim=1)
     new_data[ObsKey.PREVIOUS_ACTION] = torch.cat([action,  prev_obs[ObsKey.PREVIOUS_ACTION][:, N:]], dim=1)
     return MVPObservation(data=new_data)
 
@@ -351,21 +294,24 @@ def imagine_trajectory(
     if agent.kind != "policy" or agent.hidden is None or n_steps <= 0:
         return []
 
+    coordinator = agent.agent.coordinator
     imag_hidden = agent.hidden.clone()
     imag_obs = MVPObservation(data={k: v.clone() for k, v in obs.items()})
-    curr_aux = _extract_aux_cont(imag_obs, num_ships, ship_config)        # (B, N, 16)
+    curr_ship_targets = coordinator.get_target_vector(imag_obs)[:, :num_ships]
 
     pred_nexts = []
     with torch.no_grad():
         for _ in range(n_steps):
-            action, _, _, pred_next, imag_hidden = agent.agent.get_action_and_value(
+            action, _, _, pred_next_scaled, imag_hidden = agent.agent.get_action_and_value(
                 imag_obs, imag_hidden
             )
-            pred_nexts.append(pred_next)
-            next_aux = _apply_aux_deltas_local(curr_aux, pred_next)
-            imag_obs = _imagined_obs_from_aux(
-                next_aux, imag_obs, action, num_ships, ship_config
+            pred_nexts.append(pred_next_scaled)
+            next_ship_targets = coordinator.apply_scaled_predictions(
+                curr_ship_targets, pred_next_scaled
             )
-            curr_aux = next_aux
+            imag_obs = _decode_targets_to_obs(
+                next_ship_targets, imag_obs, action, num_ships, ship_config
+            )
+            curr_ship_targets = coordinator.get_target_vector(imag_obs)[:, :num_ships]
 
     return pred_nexts

@@ -193,6 +193,25 @@ class Directional(Transform):
         return torch.cat([direction, symlog_speed], dim=-1)
 
 
+class SymlogVelocity(Transform):
+    """Map 2D velocity to (vx_norm, vy_norm) where ‖output‖ = symlog(speed).
+
+    Avoids direction discontinuity at zero speed by encoding direction and
+    magnitude together. At zero speed, output is (0, 0). Smoothly handles
+    direction reversal since the entire vector passes through zero continuously.
+    """
+
+    def out_dim(self, in_dim: int) -> int:
+        return 2
+
+    def __call__(self, x: torch.Tensor) -> torch.Tensor:
+        x = x.float()
+        speed = torch.norm(x, dim=-1, keepdim=True).clamp(min=1e-8)
+        direction = x / speed
+        symlog_speed = symmetric_logarithm(speed)
+        return direction * symlog_speed
+
+
 # ---------------------------------------------------------------------------
 # Predictors (define label computation and prediction application)
 # ---------------------------------------------------------------------------
@@ -336,6 +355,7 @@ class Feature:
         target_encoder: Transform,
         predictor: Predictor | None = None,
         weight: float | tuple[float, ...] = 1.0,
+        label_scale: float | tuple[float, ...] = 1.0,
     ):
         self.name = name
         self.accessor = accessor
@@ -343,6 +363,7 @@ class Feature:
         self.target_encoder = target_encoder
         self.predictor = predictor
         self.weight = weight
+        self.label_scale = label_scale
 
     def get_input(self, obs: MVPObservation) -> torch.Tensor:
         return self.input_encoder(self.accessor.get(obs))
@@ -413,14 +434,29 @@ class FeatureCoordinator:
     # Aux loss label computation
     # ------------------------------------------------------------------
 
+    def _label_scale_vector(self, device: torch.device) -> torch.Tensor:
+        """Per-prediction-dim scale factors (1/std of raw labels)."""
+        scales = []
+        dummy = self._dummy_obs()
+        for f in self.features:
+            if not f.predictor:
+                continue
+            t_dim = f.get_target(dummy).shape[-1]
+            p_dim = f.predictor.prediction_dim(t_dim)
+            if isinstance(f.label_scale, (list, tuple)):
+                scales.extend(f.label_scale)
+            else:
+                scales.extend([f.label_scale] * p_dim)
+        return torch.tensor(scales, device=device, dtype=torch.float32)
+
     def compute_labels(
         self, curr_targets: torch.Tensor, next_targets: torch.Tensor
     ) -> torch.Tensor:
-        """Compute prediction labels from curr/next target vectors.
+        """Compute prediction labels from curr/next target vectors, scaled to O(1).
 
         Both curr_targets and next_targets come from get_target_vector() and
         have the same per-feature layout: t_dim channels per feature.
-        Bug fix: both offsets advance by t_dim (not p_dim for next).
+        Labels are multiplied by label_scale so the network predicts O(1) values.
         """
         results = []
         curr_offset = 0
@@ -431,7 +467,6 @@ class FeatureCoordinator:
             if not f.predictor:
                 continue
             t_dim = f.get_target(dummy).shape[-1]
-            p_dim = f.predictor.prediction_dim(t_dim)
 
             curr_slice = curr_targets[..., curr_offset: curr_offset + t_dim]
             next_slice = next_targets[..., next_offset: next_offset + t_dim]
@@ -439,9 +474,10 @@ class FeatureCoordinator:
             results.append(f.predictor.compute_labels(curr_slice, next_slice))
 
             curr_offset += t_dim
-            next_offset += t_dim  # Fix: both advance by t_dim, not p_dim
+            next_offset += t_dim
 
-        return torch.cat(results, dim=-1)
+        labels = torch.cat(results, dim=-1)
+        return labels * self._label_scale_vector(labels.device)
 
     def apply_all_predictions(
         self, curr_targets: torch.Tensor, predictions: torch.Tensor
@@ -467,27 +503,29 @@ class FeatureCoordinator:
 
         return torch.cat(results, dim=-1)
 
+    def apply_scaled_predictions(
+        self, curr_targets: torch.Tensor, scaled_predictions: torch.Tensor
+    ) -> torch.Tensor:
+        """Unscale network outputs then apply to curr_targets.
+
+        The network predicts in scaled space (labels * label_scale). Dividing by
+        label_scale recovers the raw delta/absolute before calling apply_all_predictions.
+        """
+        scale = self._label_scale_vector(scaled_predictions.device)
+        predictions = scaled_predictions / scale
+        return self.apply_all_predictions(curr_targets, predictions)
+
     # ------------------------------------------------------------------
     # Loss weights and feature names
     # ------------------------------------------------------------------
 
     def get_loss_weights(self, device: torch.device) -> torch.Tensor:
-        weights = []
-        dummy = self._dummy_obs()
-        for f in self.features:
-            if not f.predictor:
-                continue
-            t_dim = f.get_target(dummy).shape[-1]
-            p_dim = f.predictor.prediction_dim(t_dim)
-            if isinstance(f.weight, (list, tuple)):
-                if len(f.weight) != p_dim:
-                    raise ValueError(
-                        f"Feature {f.name}: weight length {len(f.weight)} != prediction_dim {p_dim}"
-                    )
-                weights.extend(f.weight)
-            else:
-                weights.extend([f.weight] * p_dim)
-        return torch.tensor(weights, device=device, dtype=torch.float32)
+        """Return uniform per-prediction weights (all 1.0).
+
+        Importance weighting is deferred; relative scaling is handled by label_scale
+        in compute_labels so that all predictions are already O(1).
+        """
+        return torch.ones(self.total_prediction_dimension, device=device, dtype=torch.float32)
 
     def get_feature_names(self) -> list[str]:
         names = []
@@ -507,7 +545,17 @@ class FeatureCoordinator:
 
 
 def build_standard_coordinator(ship_config) -> FeatureCoordinator:
-    """Standard feature pipeline matching the current game's physics."""
+    """Standard feature pipeline matching the current game's physics.
+
+    Prediction layout (9 dims total):
+      pos_x phase delta (1) | pos_y phase delta (1) | vel Δ(vx_norm, vy_norm) (2)
+      att phase delta (1)   | ang_vel absolute (1)
+      health phase delta (1) | power phase delta (1) | cooldown phase delta (1)
+
+    label_scale values are 1/std(raw label) estimates so all scaled labels are O(1).
+    These are rough estimates derived from old calibration weights and will tighten
+    with dedicated measurement after training.
+    """
     world_w, world_h = ship_config.world_size
 
     features = [
@@ -518,7 +566,7 @@ def build_standard_coordinator(ship_config) -> FeatureCoordinator:
             input_encoder=Fourier(n_freqs=4, periods=world_w),
             target_encoder=Fourier(n_freqs=1, periods=world_w),
             predictor=UnitCirclePredictor(cosine_first=False),  # Fourier gives (sin, cos)
-            weight=31485.6,
+            label_scale=177.4,
         ),
         Feature(
             name="position_y",
@@ -526,16 +574,18 @@ def build_standard_coordinator(ship_config) -> FeatureCoordinator:
             input_encoder=Fourier(n_freqs=4, periods=world_h),
             target_encoder=Fourier(n_freqs=1, periods=world_h),
             predictor=UnitCirclePredictor(cosine_first=False),
-            weight=31485.6,
+            label_scale=177.4,
         ),
-        # Velocity: (cos θ, sin θ, symlog_speed) — phase + speed delta
+        # Velocity: SymlogVelocity encodes (vx, vy) → direction * symlog(speed).
+        # AdditivePredictor on this 2D space avoids the angle discontinuity near
+        # zero speed that plagued the old (Δphase, Δsymlog_speed) decomposition.
         Feature(
             name="velocity",
             accessor=Accessor(ObsKey.VEL),
-            input_encoder=Directional(),
-            target_encoder=Directional(),
-            predictor=VelocityPredictor(),
-            weight=(1794.5, 13011.6),
+            input_encoder=SymlogVelocity(),
+            target_encoder=SymlogVelocity(),
+            predictor=AdditivePredictor(),
+            label_scale=(20.0, 20.0),
         ),
         # Attitude: Fourier input, raw (cos,sin) target — phase prediction
         # wrapper produces (cos θ, sin θ) — cosine_first=True
@@ -545,7 +595,7 @@ def build_standard_coordinator(ship_config) -> FeatureCoordinator:
             input_encoder=Fourier(n_freqs=4, periods=2.0 * math.pi),
             target_encoder=Identity(),
             predictor=UnitCirclePredictor(cosine_first=True),
-            weight=219.7,
+            label_scale=14.82,
         ),
         # Angular velocity: symlog scalar, absolute prediction
         Feature(
@@ -554,32 +604,34 @@ def build_standard_coordinator(ship_config) -> FeatureCoordinator:
             input_encoder=Symlog(),
             target_encoder=Symlog(),
             predictor=AbsolutePredictor(),
-            weight=0.2,
+            label_scale=0.447,
         ),
-        # Resources: quarter-wave (sin,cos), additive delta in that space
+        # Resources: quarter-wave (sin,cos) target + phase-delta prediction.
+        # UnitCirclePredictor is geometrically correct for circular quantities
+        # (1D phase delta vs 2D Cartesian delta for a 1 DoF variable).
         Feature(
             name="health",
             accessor=Accessor(ObsKey.HEALTH),
             input_encoder=UnitCircle(scales=ship_config.max_health),
             target_encoder=UnitCircle(scales=ship_config.max_health),
-            predictor=AdditivePredictor(),
-            weight=(3162.4, 2150.1),
+            predictor=UnitCirclePredictor(cosine_first=False),
+            label_scale=36.0,
         ),
         Feature(
             name="power",
             accessor=Accessor(ObsKey.POWER),
             input_encoder=UnitCircle(scales=ship_config.max_power),
             target_encoder=UnitCircle(scales=ship_config.max_power),
-            predictor=AdditivePredictor(),
-            weight=(21044.4, 12478.6),
+            predictor=UnitCirclePredictor(cosine_first=False),
+            label_scale=93.0,
         ),
         Feature(
             name="cooldown",
             accessor=Accessor(ObsKey.COOLDOWN),
             input_encoder=UnitCircle(scales=ship_config.firing_cooldown),
             target_encoder=UnitCircle(scales=ship_config.firing_cooldown),
-            predictor=AdditivePredictor(),
-            weight=(11.3, 11.3),
+            predictor=UnitCirclePredictor(cosine_first=False),
+            label_scale=2.1,
         ),
         # Categoricals and static (no predictor)
         Feature("team_id",  Accessor(ObsKey.TEAM_ID),  OneHot(3),   Identity()),

@@ -1651,13 +1651,13 @@ class PPOTrainer:
         _NS_FEAT_NAMES = (
             "pos_x_dphase",
             "pos_y_dphase",
-            "vel_dphase", "vel_dspeed",
+            "vel_dvx_norm", "vel_dvy_norm",
             "att_dphase",
             "ang_vel_abs",
-            "health_d_sin", "health_d_cos",
-            "power_d_sin", "power_d_cos",
-            "cooldown_d_sin", "cooldown_d_cos",
-        )  # 12 total — matches coordinator.total_prediction_dimension
+            "health_dphase",
+            "power_dphase",
+            "cooldown_dphase",
+        )  # 9 total — matches coordinator.total_prediction_dimension
         ns_per_feat_accum: list[torch.Tensor] = []
         last_returns_np = None
         last_logprob_np = None
