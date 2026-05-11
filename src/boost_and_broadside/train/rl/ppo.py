@@ -1458,8 +1458,12 @@ class PPOTrainer:
         # ---- Next-state prediction loss (primary scale only) ----------------
         next_state_loss = torch.tensor(0.0, device=self.device)
         next_state_cont_loss = torch.tensor(0.0, device=self.device)
+        windowed_ns_loss = torch.tensor(0.0, device=self.device)
         next_state_per_feat: torch.Tensor | None = None  # (pred_dim,) cpu, for logging
-        if is_primary and self.cfg.next_state_coef > 0.0:
+        _need_aux = is_primary and (
+            self.cfg.next_state_coef > 0.0 or self.cfg.windowed_loss_coef > 0.0
+        )
+        if _need_aux:
             non_terminal = ~mb_terminated.unsqueeze(-1)  # (T, B_mb, 1)
             ns_mask = mb_alive & non_terminal             # (T, B_mb, N)
             ns_mask_f = ns_mask.float()
@@ -1493,10 +1497,19 @@ class PPOTrainer:
             sq_err = (pred_next.float() - labels.detach()).pow(2)  # (T, B, N, pred_dim)
             sq_err = sq_err * self.aux_weights  # per-prediction weight
 
-            next_state_cont_loss = (
-                sq_err * ns_mask_f.unsqueeze(-1)
-            ).sum() / (ns_sum * P)
-            next_state_loss = next_state_cont_loss
+            if self.cfg.next_state_coef > 0.0:
+                next_state_cont_loss = (
+                    sq_err * ns_mask_f.unsqueeze(-1)
+                ).sum() / (ns_sum * P)
+                next_state_loss = next_state_cont_loss
+
+            if self.cfg.windowed_loss_coef > 0.0:
+                windowed_ns_loss = self.coordinator.compute_windowed_loss(
+                    pred_next.float(),
+                    labels.detach(),
+                    ns_mask,
+                    mb_terminated,
+                )
 
             with torch.no_grad():
                 per_feat_cont = (sq_err * ns_mask_f.unsqueeze(-1)).sum((0, 1, 2)) / ns_sum  # (pred_dim,)
@@ -1509,6 +1522,7 @@ class PPOTrainer:
             + self._behavior_cloning_coef * bc_loss
             + self._schedule_state.sigreg_coef * sigreg_loss
             + self.cfg.next_state_coef * next_state_loss
+            + self.cfg.windowed_loss_coef * windowed_ns_loss
         )
 
         # ---- Diagnostics (no grad) — kept as GPU tensors, .item() deferred to logging ----
@@ -1522,6 +1536,7 @@ class PPOTrainer:
             diag["sigreg_loss"] = sigreg_loss.detach()
             diag["next_state_loss"] = next_state_loss.detach()
             diag["next_state_cont_loss"] = next_state_cont_loss.detach()
+            diag["windowed_ns_loss"] = windowed_ns_loss.detach()
             diag["next_state_per_feat"] = next_state_per_feat  # (16,) cpu or None
             diag["scripted_entropy"] = scripted_entropy.detach()
             diag["bc_kl"] = bc_loss.detach() - scripted_entropy.detach()
@@ -1621,6 +1636,7 @@ class PPOTrainer:
             "loss/sigreg": [],
             "loss/next_state": [],
             "loss/next_state_cont": [],
+            "loss/windowed_ns": [],
             "loss_proxy/policy_gradient": [],
             "loss_proxy/value": [],
             "loss_proxy/entropy": [],
@@ -1687,6 +1703,7 @@ class PPOTrainer:
                     "sigreg": _z.clone(),
                     "ns_loss": _z.clone(),
                     "ns_cont": _z.clone(),
+                    "windowed_ns": _z.clone(),
                     "bc_kl": _z.clone(),
                     "scripted_entropy": _z.clone(),
                     "kl": _z.clone(),
@@ -1718,6 +1735,7 @@ class PPOTrainer:
                     scalar_accum_step["sigreg"] += diag["sigreg_loss"] / n_scales
                     scalar_accum_step["ns_loss"] += diag["next_state_loss"] / n_scales
                     scalar_accum_step["ns_cont"] += diag["next_state_cont_loss"] / n_scales
+                    scalar_accum_step["windowed_ns"] += diag["windowed_ns_loss"] / n_scales
                     scalar_accum_step["bc_kl"] += diag["bc_kl"] / n_scales
                     scalar_accum_step["scripted_entropy"] += (
                         diag["scripted_entropy"] / n_scales
@@ -1758,6 +1776,7 @@ class PPOTrainer:
                 accum_scalar["loss/sigreg"].append(scalar_accum_step["sigreg"])
                 accum_scalar["loss/next_state"].append(scalar_accum_step["ns_loss"])
                 accum_scalar["loss/next_state_cont"].append(scalar_accum_step["ns_cont"])
+                accum_scalar["loss/windowed_ns"].append(scalar_accum_step["windowed_ns"])
                 accum_scalar["loss_proxy/policy_gradient"].append(
                     self._policy_gradient_coef * scalar_accum_step["pg"]
                 )
