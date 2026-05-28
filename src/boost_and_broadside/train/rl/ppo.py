@@ -304,6 +304,7 @@ class PPOTrainer:
         self.coordinator: FeatureCoordinator = build_standard_coordinator(ship_config)
         self.env_config = train_config.scales[0].env_config
         self.device = torch.device(device)
+        self._zero_tensor = torch.zeros((), device=self.device)
         self.use_wandb = use_wandb
         self.scripted_agent = scripted_agent
 
@@ -1421,8 +1422,8 @@ class PPOTrainer:
         ent_loss = -(entropy * actor_f).sum() / actor_sum
 
         # ---- Behavioral cloning loss (primary scale only) ----------------
-        bc_loss = torch.tensor(0.0, device=self.device)
-        scripted_entropy = torch.tensor(0.0, device=self.device)
+        bc_loss = self._zero_tensor
+        scripted_entropy = self._zero_tensor
         if is_primary and self._behavior_cloning_coef > 0.0:
             bc_valid = mb_expert_probs.sum(-1) > 0  # (T, B_mb, N)
             bc_f = (bc_valid & mb_actor_mask & mb_alive).float()
@@ -1454,16 +1455,16 @@ class PPOTrainer:
                 scripted_entropy = (scripted_ent_per_token * bc_f).sum() / bc_sum
 
         # ---- SIGReg encoder regularization ----------------------------------
-        sigreg_loss = torch.tensor(0.0, device=self.device)
+        sigreg_loss = self._zero_tensor
         if need_sigreg:
             T_mb, B_mb, N_mb, D_mb = z.shape
             z_flat = z.reshape(T_mb, B_mb * N_mb, D_mb)  # (T, B*N, D)
             sigreg_loss = self.sigreg(z_flat)
 
         # ---- Next-state prediction loss (primary scale only) ----------------
-        next_state_loss = torch.tensor(0.0, device=self.device)
-        next_state_cont_loss = torch.tensor(0.0, device=self.device)
-        windowed_ns_loss = torch.tensor(0.0, device=self.device)
+        next_state_loss = self._zero_tensor
+        next_state_cont_loss = self._zero_tensor
+        windowed_ns_loss = self._zero_tensor
         next_state_per_feat: torch.Tensor | None = None  # (pred_dim,) cpu, for logging
         _need_aux = is_primary and (
             self.cfg.next_state_coef > 0.0 or self.cfg.windowed_loss_coef > 0.0

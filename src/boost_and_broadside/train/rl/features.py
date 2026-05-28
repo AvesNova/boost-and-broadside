@@ -117,14 +117,16 @@ class Normalize(Transform):
 
     def __init__(self, scales: float | list[float]):
         self.scales = scales
+        self._s_tensor = None
 
     def out_dim(self, in_dim: int) -> int:
         return in_dim
 
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
         if isinstance(self.scales, list):
-            s = torch.tensor(self.scales, device=x.device, dtype=x.dtype)
-            return x.float() / s
+            if self._s_tensor is None or self._s_tensor.device != x.device or self._s_tensor.dtype != x.dtype:
+                self._s_tensor = torch.tensor(self.scales, device=x.device, dtype=x.dtype)
+            return x.float() / self._s_tensor
         return x.float() / self.scales
 
 
