@@ -19,17 +19,18 @@ K = 4  # num_components used across tests (smaller than prod K=12 for speed)
 def _make_buffer(
     T=4, B=2, N=4, D=16, num_components=K
 ) -> tuple[RolloutBuffer, int, int, int, int]:
-    obs_shapes = {
-        "pos": (N, 2),
-        "vel": (N, 2),
-        "alive": (N,),
-    }
+    from boost_and_broadside.env.observation import MVPObservation
+    obs_sample = MVPObservation(data={
+        "pos": torch.zeros((B, N, 2)),
+        "vel": torch.zeros((B, N, 2)),
+        "alive": torch.zeros((B, N), dtype=torch.bool),
+    })
     buf = RolloutBuffer(
         num_steps=T,
         num_envs=B,
         num_ships=N,
         num_components=num_components,
-        obs_shapes=obs_shapes,
+        obs_sample=obs_sample,
         gamma=torch.full((num_components,), 0.99),
         gae_lambda=torch.full((num_components,), 0.95),
         device=torch.device("cpu"),
@@ -208,12 +209,14 @@ class TestGAEComputation:
         """Components with different gammas should produce different advantage decay."""
         T, B, N = 5, 1, 1
         Kc = 2  # component 0: γ=1.0, component 1: γ=0.5
+        from boost_and_broadside.env.observation import MVPObservation
+        obs_sample = MVPObservation(data={"pos": torch.zeros((B, N, 2))})
         buf = RolloutBuffer(
             num_steps=T,
             num_envs=B,
             num_ships=N,
             num_components=Kc,
-            obs_shapes={"pos": (N, 2)},
+            obs_sample=obs_sample,
             gamma=torch.tensor([1.0, 0.5]),
             gae_lambda=torch.tensor([1.0, 1.0]),  # λ=1 isolates gamma effect
             device=torch.device("cpu"),
@@ -245,12 +248,14 @@ class TestGAEComputation:
     def test_done_envs_mask_future_rewards(self):
         """When done=1, bootstrap from next_value should be blocked."""
         T, B, N, Kc = 3, 1, 2, 1
+        from boost_and_broadside.env.observation import MVPObservation
+        obs_sample = MVPObservation(data={"pos": torch.zeros((B, N, 2))})
         buf = RolloutBuffer(
             num_steps=T,
             num_envs=B,
             num_ships=N,
             num_components=Kc,
-            obs_shapes={"pos": (N, 2)},
+            obs_sample=obs_sample,
             gamma=torch.full((Kc,), 1.0),
             gae_lambda=torch.full((Kc,), 1.0),
             device=torch.device("cpu"),
@@ -304,7 +309,7 @@ class TestMinibatchIterator:
         )
 
         B_mb = B // 2
-        assert mb_obs["pos"].shape == (T, B_mb, N, 2)
+        assert mb_obs["pos"].shape == (T + 1, B_mb, N, 2)
         assert mb_actions.shape == (T, B_mb, N, 3)
 
     def test_minibatch_advantage_shape(self):

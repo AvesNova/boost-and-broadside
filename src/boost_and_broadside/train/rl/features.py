@@ -107,7 +107,7 @@ class OneHot(Transform):
 
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
         x = x.long()
-        if x.shape[-1] == 1:
+        if x.dim() > 2 and x.shape[-1] == 1:
             x = x.squeeze(-1)
         return F.one_hot(x, self.n).float()
 

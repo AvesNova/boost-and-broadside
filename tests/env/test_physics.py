@@ -178,7 +178,7 @@ class TestShooting:
         # Power: clamp(max_power + regen*dt, 0, max_power) → max_power (already at cap)
         #        then deduct bullet_energy_cost
         power_after_regen = min(
-            cfg.max_power + cfg.base_power_gain * cfg.dt, cfg.max_power
+            cfg.max_power + cfg.passive_power_gain * cfg.dt, cfg.max_power
         )
         expected = power_after_regen - cfg.bullet_energy_cost
         assert abs(state.ship_power[0, 0].item() - expected) < 1e-3

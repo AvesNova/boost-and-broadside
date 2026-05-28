@@ -118,7 +118,7 @@ def _update_kinematics(
     stalled = speed < config.min_speed
     turn_offset = torch.where(stalled, torch.zeros_like(turn_offset), turn_offset)
     lift_coeff  = torch.where(stalled, torch.zeros_like(lift_coeff),  lift_coeff)
-    thrust_mag  = torch.where(stalled & (power_action == PowerActions.REVERSE), torch.zeros_like(thrust_mag), thrust_mag)
+
 
     # Ships with no power can't thrust
     thrust_mag = thrust_mag * (state.ship_power > 0).float()
@@ -465,16 +465,30 @@ def resolve_obstacle_collisions(state: TensorState, config: ShipConfig) -> Tenso
     flat_bullet_pos = state.bullet_pos.view(batch_size, num_ships * num_bullets)   # (B, N*K)
     flat_bullet_active = state.bullet_active.view(batch_size, num_ships * num_bullets)  # (B, N*K)
 
-    # (B, N*K, M)
-    bdiff_r = flat_bullet_pos.real.unsqueeze(2) - state.obstacle_pos.real.unsqueeze(1)
-    bdiff_i = flat_bullet_pos.imag.unsqueeze(2) - state.obstacle_pos.imag.unsqueeze(1)
-    bdiff_r = (bdiff_r + world_w / 2) % world_w - world_w / 2
-    bdiff_i = (bdiff_i + world_h / 2) % world_h - world_h / 2
-    bdist_sq = bdiff_r**2 + bdiff_i**2  # (B, N*K, M)
-
-    bullet_hit_r = config.bullet_collision_radius + state.obstacle_radius  # (B, M)
-    bullet_hit_obs = (bdist_sq < bullet_hit_r.unsqueeze(1) ** 2) & flat_bullet_active.unsqueeze(2)
-    bullet_hit_any = bullet_hit_obs.any(dim=2)  # (B, N*K)
-    state.bullet_active.view(batch_size, -1)[bullet_hit_any] = False
+    active_mask = flat_bullet_active
+    if active_mask.any():
+        active_indices = torch.nonzero(active_mask, as_tuple=True)
+        env_idx, flat_b_idx = active_indices
+        
+        act_pos = flat_bullet_pos[active_mask]  # (num_active,)
+        act_obs_pos = state.obstacle_pos[env_idx]  # (num_active, M)
+        act_obs_radius = state.obstacle_radius[env_idx]  # (num_active, M)
+        
+        bdiff_r = act_pos.real.unsqueeze(1) - act_obs_pos.real
+        bdiff_i = act_pos.imag.unsqueeze(1) - act_obs_pos.imag
+        bdiff_r = (bdiff_r + world_w / 2) % world_w - world_w / 2
+        bdiff_i = (bdiff_i + world_h / 2) % world_h - world_h / 2
+        bdist_sq = bdiff_r**2 + bdiff_i**2  # (num_active, M)
+        
+        bullet_hit_r = config.bullet_collision_radius + act_obs_radius  # (num_active, M)
+        bullet_hit_obs = bdist_sq < bullet_hit_r ** 2  # (num_active, M)
+        bullet_hit_any = bullet_hit_obs.any(dim=1)  # (num_active,)
+        
+        if bullet_hit_any.any():
+            hitting_env_idx = env_idx[bullet_hit_any]
+            hitting_flat_b_idx = flat_b_idx[bullet_hit_any]
+            flat_bullet_active[hitting_env_idx, hitting_flat_b_idx] = False
 
     return state
+
+

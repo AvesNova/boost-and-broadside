@@ -7,6 +7,8 @@ from boost_and_broadside.config import ShipConfig, ModelConfig, EnvConfig
 from boost_and_broadside.models.mvp.encoder import ShipEncoder
 from boost_and_broadside.models.mvp.attention import TransformerBlock
 from boost_and_broadside.models.mvp.policy import MVPPolicy
+from boost_and_broadside.env.observation import MVPObservation, ObsKey
+from boost_and_broadside.train.rl.features import FeatureCoordinator, build_standard_coordinator
 
 
 @pytest.fixture
@@ -16,52 +18,60 @@ def ship_cfg() -> ShipConfig:
 
 @pytest.fixture
 def model_cfg() -> ModelConfig:
-    return ModelConfig(d_model=64, n_heads=4, n_fourier_freqs=8, n_transformer_blocks=2)
+    return ModelConfig(d_model=64, n_heads=4, n_transformer_blocks=2)
+
+
+@pytest.fixture
+def coordinator(ship_cfg) -> FeatureCoordinator:
+    return build_standard_coordinator(ship_cfg)
 
 
 NUM_VALUE_COMPONENTS = 12  # fixed K for encoder/policy unit tests
 
 
-def _make_obs(B: int, N: int) -> dict[str, torch.Tensor]:
+def _make_obs(B: int, N: int) -> MVPObservation:
     """Build a minimal random obs dict matching MVPEnvWrapper output."""
-    return {
-        "pos": torch.rand(B, N, 2),
-        "vel": torch.randn(B, N, 2) * 100,
-        "att": torch.randn(B, N, 2),
-        "ang_vel": torch.randn(B, N, 1),
-        "scalars": torch.rand(B, N, 3),
-        "team_id": torch.randint(0, 2, (B, N)),
-        "alive": torch.ones(B, N, dtype=torch.bool),
-        "prev_action": torch.zeros(B, N, 3, dtype=torch.long),
-        "radius": torch.rand(B, N, 1),
-    }
+
+    return MVPObservation(data={
+        ObsKey.POS: torch.rand(B, N, 2),
+        ObsKey.VEL: torch.randn(B, N, 2) * 100,
+        ObsKey.ATT: torch.randn(B, N, 2),
+        ObsKey.ANG_VEL: torch.randn(B, N, 1),
+        ObsKey.HEALTH: torch.rand(B, N, 1),
+        ObsKey.POWER: torch.rand(B, N, 1),
+        ObsKey.COOLDOWN: torch.rand(B, N, 1),
+        ObsKey.TEAM_ID: torch.randint(0, 2, (B, N)),
+        ObsKey.ALIVE: torch.ones(B, N, dtype=torch.bool),
+        ObsKey.PREVIOUS_ACTION: torch.zeros(B, N, 3, dtype=torch.long),
+        ObsKey.RADIUS: torch.rand(B, N, 1),
+    })
 
 
 class TestShipEncoder:
-    def test_output_shape(self, ship_cfg, model_cfg):
+    def test_output_shape(self, coordinator, model_cfg):
         """Encoder must output (B, N, d_model) from standard obs."""
         B, N = 4, 8
-        encoder = ShipEncoder(model_cfg, ship_cfg)
+        encoder = ShipEncoder(model_cfg, coordinator)
         obs = _make_obs(B, N)
 
         out = encoder(obs)
 
         assert out.shape == (B, N, model_cfg.d_model)
 
-    def test_output_is_finite(self, ship_cfg, model_cfg):
+    def test_output_is_finite(self, coordinator, model_cfg):
         """No NaN or Inf in encoder output."""
         B, N = 2, 4
-        encoder = ShipEncoder(model_cfg, ship_cfg)
+        encoder = ShipEncoder(model_cfg, coordinator)
         obs = _make_obs(B, N)
 
         out = encoder(obs)
 
         assert torch.isfinite(out).all()
 
-    def test_dead_ships_produce_different_token(self, ship_cfg, model_cfg):
+    def test_dead_ships_produce_different_token(self, coordinator, model_cfg):
         """alive=False should affect the token (alive is a feature)."""
         B, N = 1, 2
-        encoder = ShipEncoder(model_cfg, ship_cfg)
+        encoder = ShipEncoder(model_cfg, coordinator)
 
         obs_alive = _make_obs(B, N)
         obs_dead = {k: v.clone() for k, v in obs_alive.items()}
@@ -74,9 +84,9 @@ class TestShipEncoder:
         assert not torch.allclose(out_alive[0, 0], out_dead[0, 0])
         assert torch.allclose(out_alive[0, 1], out_dead[0, 1])
 
-    def test_handles_batch_of_one(self, ship_cfg, model_cfg):
+    def test_handles_batch_of_one(self, coordinator, model_cfg):
         """Encoder must work with B=1, N=1."""
-        encoder = ShipEncoder(model_cfg, ship_cfg)
+        encoder = ShipEncoder(model_cfg, coordinator)
         obs = _make_obs(1, 1)
         out = encoder(obs)
         assert out.shape == (1, 1, model_cfg.d_model)
@@ -210,16 +220,16 @@ class TestRGLRU:
 
 
 class TestMVPPolicy:
-    def test_get_action_and_value_shapes(self, model_cfg, ship_cfg):
+    def test_get_action_and_value_shapes(self, model_cfg, coordinator):
         """get_action_and_value must return correct tensor shapes."""
         B, N = 2, 8
         policy = MVPPolicy(
-            model_cfg, ship_cfg, num_value_components=NUM_VALUE_COMPONENTS, num_ships=N
+            model_cfg, coordinator, num_value_components=NUM_VALUE_COMPONENTS, num_ships=N
         )
         obs = _make_obs(B, N)
         hidden = policy.initial_hidden(B, N, torch.device("cpu"))
 
-        action, logprob, value, new_hidden = policy.get_action_and_value(obs, hidden)
+        action, logprob, value, pred_next, new_hidden = policy.get_action_and_value(obs, hidden)
 
         K = NUM_VALUE_COMPONENTS
         assert action.shape == (B, N, 3)
@@ -228,7 +238,7 @@ class TestMVPPolicy:
         from boost_and_broadside.models.mvp.griffin import CONV_KERNEL
         assert new_hidden.shape == (model_cfg.n_transformer_blocks, B * N, CONV_KERNEL * model_cfg.d_model)
 
-    def test_action_indices_in_valid_range(self, model_cfg, ship_cfg):
+    def test_action_indices_in_valid_range(self, model_cfg, coordinator):
         """Sampled actions must be valid indices for each action head."""
         from boost_and_broadside.constants import (
             NUM_POWER_ACTIONS,
@@ -238,12 +248,12 @@ class TestMVPPolicy:
 
         B, N = 2, 4
         policy = MVPPolicy(
-            model_cfg, ship_cfg, num_value_components=NUM_VALUE_COMPONENTS, num_ships=N
+            model_cfg, coordinator, num_value_components=NUM_VALUE_COMPONENTS, num_ships=N
         )
         obs = _make_obs(B, N)
         hidden = policy.initial_hidden(B, N, torch.device("cpu"))
 
-        action, _, _, _ = policy.get_action_and_value(obs, hidden)
+        action, _, _, _, _ = policy.get_action_and_value(obs, hidden)
 
         assert (action[..., 0] >= 0).all() and (
             action[..., 0] < NUM_POWER_ACTIONS
@@ -253,22 +263,23 @@ class TestMVPPolicy:
             action[..., 2] < NUM_SHOOT_ACTIONS
         ).all()
 
-    def test_evaluate_actions_shapes(self, model_cfg, ship_cfg):
+    def test_evaluate_actions_shapes(self, model_cfg, coordinator):
         """evaluate_actions must return (T, B, N) for logprob/entropy and (T, B, N, K) for new_value."""
         T, B, N = 4, 2, 8
         policy = MVPPolicy(
-            model_cfg, ship_cfg, num_value_components=NUM_VALUE_COMPONENTS, num_ships=N
+            model_cfg, coordinator, num_value_components=NUM_VALUE_COMPONENTS, num_ships=N
         )
         K = NUM_VALUE_COMPONENTS
 
-        obs = {
+        obs_dict = {
             k: v.unsqueeze(0).expand(T, *v.shape) for k, v in _make_obs(B, N).items()
         }
+        obs = MVPObservation(data=obs_dict)
         actions = torch.zeros(T, B, N, 3, dtype=torch.long)
         hidden = policy.initial_hidden(B, N, torch.device("cpu"))
         alive_mask = torch.ones(T, B, N, dtype=torch.bool)
 
-        logprob, entropy, new_value, logits, _ = policy.evaluate_actions(
+        logprob, entropy, new_value, logits, _, _ = policy.evaluate_actions(
             obs, actions, hidden, alive_mask
         )
 
@@ -277,11 +288,11 @@ class TestMVPPolicy:
         assert new_value.shape == (T, B, N, K)
         assert logits.shape == (T, B, N, 12)
 
-    def test_hidden_reset_zeros_done_envs(self, model_cfg, ship_cfg):
+    def test_hidden_reset_zeros_done_envs(self, model_cfg, coordinator):
         """reset_hidden_for_envs must zero hidden states for done environments."""
         B, N = 3, 4
         policy = MVPPolicy(
-            model_cfg, ship_cfg, num_value_components=NUM_VALUE_COMPONENTS, num_ships=N
+            model_cfg, coordinator, num_value_components=NUM_VALUE_COMPONENTS, num_ships=N
         )
         from boost_and_broadside.models.mvp.griffin import CONV_KERNEL
         hidden = torch.ones(model_cfg.n_transformer_blocks, B * N, CONV_KERNEL * model_cfg.d_model)

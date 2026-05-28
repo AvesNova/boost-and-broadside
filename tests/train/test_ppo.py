@@ -66,12 +66,14 @@ def _make_schedule(**overrides) -> TrainingSchedule:
         elo_eval_games=stepped((0, 16)),
         elo_eval_interval=stepped((0, 0)),
         checkpoint_interval=stepped((0, 0)),
+        num_epochs=constant(1),
+        target_kl=constant(None),
     )
     defaults.update(overrides)
     return TrainingSchedule(**defaults)
 
 
-def _make_trainer(n_fourier_freqs: int = 4, **reward_overrides) -> PPOTrainer:
+def _make_trainer(**reward_overrides) -> PPOTrainer:
     return PPOTrainer(
         train_config=TrainConfig(
             scales=(
@@ -85,7 +87,6 @@ def _make_trainer(n_fourier_freqs: int = 4, **reward_overrides) -> PPOTrainer:
             schedule=_make_schedule(),
             rewards=_make_rewards(**reward_overrides),
             num_steps=16,
-            num_epochs=1,
             num_minibatches=2,
             gamma=0.99,
             gae_lambda=0.95,
@@ -105,7 +106,6 @@ def _make_trainer(n_fourier_freqs: int = 4, **reward_overrides) -> PPOTrainer:
         model_config=ModelConfig(
             d_model=32,
             n_heads=4,
-            n_fourier_freqs=n_fourier_freqs,
             n_transformer_blocks=1,
         ),
         ship_config=ShipConfig(),
@@ -120,10 +120,7 @@ class TestPPOSmokeTest:
         trainer = _make_trainer()
         trainer.train()
 
-    def test_encoder_works_with_non_default_n_fourier_freqs(self):
-        """Encoder raw dim must adjust when n_fourier_freqs != 8."""
-        trainer = _make_trainer(n_fourier_freqs=6)
-        trainer.train()
+    # test_encoder_works_with_non_default_n_fourier_freqs is removed because n_fourier_freqs is no longer in ModelConfig.
 
     def test_policy_parameters_change_after_update(self):
         """At least one policy parameter must change after one PPO update."""
@@ -205,7 +202,6 @@ class TestSchedulePrimitives:
                 schedule=_make_schedule(local_scale=constant(0.5)),
                 rewards=_make_rewards(closing_speed_weight=0.01),
                 num_steps=16,
-                num_epochs=1,
                 num_minibatches=2,
                 gamma=0.99,
                 gae_lambda=0.95,
@@ -223,7 +219,7 @@ class TestSchedulePrimitives:
                 scripted_roster_min_steps=0,
             ),
             model_config=ModelConfig(
-                d_model=32, n_heads=4, n_fourier_freqs=4, n_transformer_blocks=1
+                d_model=32, n_heads=4, n_transformer_blocks=1
             ),
             ship_config=ShipConfig(),
             device="cpu",
@@ -269,6 +265,8 @@ class TestRLSmokeTest:
             elo_eval_games=constant(0),
             elo_eval_interval=constant(9999),
             checkpoint_interval=constant(9999),
+            num_epochs=constant(1),
+            target_kl=constant(None),
         )
         cfg = TrainConfig(
             scales=(
@@ -282,7 +280,6 @@ class TestRLSmokeTest:
             schedule=schedule,
             rewards=REWARDS,
             num_steps=32,
-            num_epochs=1,
             num_minibatches=2,
             gamma=0.99,
             gae_lambda=0.95,
