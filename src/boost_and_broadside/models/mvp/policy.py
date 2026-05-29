@@ -208,12 +208,8 @@ class MVPPolicy(nn.Module):
         Returns:
             Updated hidden state with done envs zeroed.
         """
-        if not done_mask.any():
-            return hidden
-        token_done = done_mask.repeat_interleave(num_tokens)  # (B*(N+M),)
-        hidden = hidden.clone()
-        hidden[:, token_done, :] = 0.0
-        return hidden
+        token_keep = (~done_mask.repeat_interleave(num_tokens)).to(hidden.dtype)
+        return hidden * token_keep[None, :, None]
 
     # ------------------------------------------------------------------
     # Rollout-time forward (single step)

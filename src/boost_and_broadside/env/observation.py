@@ -136,6 +136,12 @@ class MVPObservation:
     def slice_time(self, start: int, end: int) -> "MVPObservation":
         return MVPObservation(data={k: v[start:end] for k, v in self.data.items()})
 
+    def concat_batch(self, other: "MVPObservation") -> "MVPObservation":
+        """Concatenate two observations along the batch (env) dimension (dim 0)."""
+        return MVPObservation(data={
+            k: torch.cat([v, other.data[k]], dim=0) for k, v in self.data.items()
+        })
+
     # ------------------------------------------------------------------
     # Construction from legacy dict
     # ------------------------------------------------------------------

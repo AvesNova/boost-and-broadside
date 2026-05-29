@@ -505,6 +505,11 @@ class PPOTrainer:
             with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
                 _h = self._policy_module.initial_hidden(B, _nt, self.device)
                 self.policy.get_action_and_value(sample_obs, _h)
+                # Warm up the 2B batch used by the combined team-0/team-1 rollout pass.
+                _obs_t1 = sample_obs.flip_team(N)
+                _obs_2B = sample_obs.concat_batch(_obs_t1)
+                _h_2B = torch.cat([_h, _h], dim=1)
+                self.policy.get_action_and_value(_obs_2B, _h_2B)
                 _h_avg = self._avg_policy_module.initial_hidden(B, _nt, self.device)
                 self.avg_policy.get_action_and_value(sample_obs, _h_avg)
 
@@ -843,7 +848,7 @@ class PPOTrainer:
             # and injected into obs(t+1).prev_action so the next policy call sees
             # what it just decided.
             # ----------------------------------------------------------------
-            for _ in range(self.cfg.num_steps):
+            for _step in range(self.cfg.num_steps):
                 team_id = obs["team_id"][:, :N]  # (B, N) — stable within a step
 
                 # -- Phase 1: scripted computations on CURRENT state (before env stream) --
@@ -929,16 +934,21 @@ class PPOTrainer:
 
                     with torch.cuda.stream(net_stream):
                         with torch.autocast("cuda", dtype=torch.bfloat16):
-                            # Pass 1: team 0 perspective — training pass (logprob/value stored)
-                            action_t0, logprob, value_norm, pred_next, hidden = (
-                                self.policy.get_action_and_value(obs, hidden)
+                            # Single batched pass for both team perspectives (2B envs).
+                            # get_action_and_value is @no_grad, so no gradient concerns.
+                            obs_t1 = _flip_team_obs(obs, N)
+                            obs_both = obs.concat_batch(obs_t1)
+                            hidden_both = torch.cat([hidden, hidden_t1], dim=1)
+                            action_both, logprob_both, value_both, pred_next_both, hidden_out = (
+                                self.policy.get_action_and_value(obs_both, hidden_both)
                             )
-                            # Pass 2: team 1 perspective — action generation only
-                            with torch.no_grad():
-                                obs_t1 = _flip_team_obs(obs, N)
-                                action_t1, _, _, _, hidden_t1 = (
-                                    self.policy.get_action_and_value(obs_t1, hidden_t1)
-                                )
+                            action_t0  = action_both[:B]
+                            action_t1  = action_both[B:]
+                            logprob    = logprob_both[:B]
+                            value_norm = value_both[:B]
+                            pred_next  = pred_next_both[:B]
+                            hidden     = hidden_out[:, :B * num_tokens, :]
+                            hidden_t1  = hidden_out[:, B * num_tokens:, :]
                         if use_avg:
                             with torch.autocast("cuda", dtype=torch.bfloat16):
                                 obs_avg = _flip_team_obs(_slice_obs(obs, avg_start, avg_end), N)
@@ -958,23 +968,27 @@ class PPOTrainer:
                         else:
                             action_league_net = None
 
-                    torch.cuda.synchronize()
+                    torch.cuda.current_stream().wait_stream(env_stream)
+                    torch.cuda.current_stream().wait_stream(net_stream)
                 else:
                     # CPU fallback (no streams)
                     next_obs, reward, dones, truncated, info = self.wrapper.step(
                         action_buffer
                     )
                     with torch.autocast("cuda", dtype=torch.bfloat16):
-                        # Pass 1: team 0 perspective — training pass
-                        action_t0, logprob, value_norm, pred_next, hidden = (
-                            self.policy.get_action_and_value(obs, hidden)
+                        obs_t1 = _flip_team_obs(obs, N)
+                        obs_both = obs.concat_batch(obs_t1)
+                        hidden_both = torch.cat([hidden, hidden_t1], dim=1)
+                        action_both, logprob_both, value_both, pred_next_both, hidden_out = (
+                            self.policy.get_action_and_value(obs_both, hidden_both)
                         )
-                        # Pass 2: team 1 perspective — action generation only
-                        with torch.no_grad():
-                            obs_t1 = _flip_team_obs(obs, N)
-                            action_t1, _, _, _, hidden_t1 = (
-                                self.policy.get_action_and_value(obs_t1, hidden_t1)
-                            )
+                        action_t0  = action_both[:B]
+                        action_t1  = action_both[B:]
+                        logprob    = logprob_both[:B]
+                        value_norm = value_both[:B]
+                        pred_next  = pred_next_both[:B]
+                        hidden     = hidden_out[:, :B * num_tokens, :]
+                        hidden_t1  = hidden_out[:, B * num_tokens:, :]
                     if use_avg:
                         with torch.autocast("cuda", dtype=torch.bfloat16):
                             obs_avg = _flip_team_obs(_slice_obs(obs, avg_start, avg_end), N)
@@ -1122,70 +1136,65 @@ class PPOTrainer:
                     aux_obs[i] = next_aux_obs
                     self._global_step += sc.num_envs
 
-                # -- Continuous Live ELO Evaluation --
-                with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
-                    eval_state = eval_env.state
-                    eval_obs_obj = _obs_from_state(eval_state, self.ship_config)
-                    eval_action_policy = get_actions(agent_policy, eval_obs_obj, eval_state, B_eval, N, self.device)
-                    
-                    if agent_sc is not None:
-                        eval_action_scripted = get_actions(agent_sc, eval_obs_obj, eval_state, B_eval, N, self.device)
-                    else:
-                        eval_action_scripted = torch.zeros_like(eval_action_policy)
-                        
-                    eval_action_random = get_actions(agent_rand, eval_obs_obj, eval_state, B_eval, N, self.device)
-                    
-                    eval_action_opp = torch.where(
-                        eval_is_scripted.unsqueeze(-1).unsqueeze(-1),
-                        eval_action_scripted,
-                        eval_action_random
-                    )
-                    
-                    eval_team_id = eval_state.ship_team_id
-                    eval_action = torch.where(
-                        (eval_team_id == 0).unsqueeze(-1),
-                        eval_action_policy,
-                        eval_action_opp
-                    )
-                    
-                    eval_dones, eval_truncated = eval_env.step(eval_action)
-                    eval_done_any = eval_dones | eval_truncated
-                    
+                # -- Continuous Live ELO Evaluation (every 4 steps) --
+                if _step % 4 == 0:
+                    with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
+                        eval_state = eval_env.state
+                        eval_obs_obj = _obs_from_state(eval_state, self.ship_config)
+                        eval_action_policy = get_actions(agent_policy, eval_obs_obj, eval_state, B_eval, N, self.device)
+
+                        if agent_sc is not None:
+                            eval_action_scripted = get_actions(agent_sc, eval_obs_obj, eval_state, B_eval, N, self.device)
+                        else:
+                            eval_action_scripted = torch.zeros_like(eval_action_policy)
+
+                        eval_action_random = get_actions(agent_rand, eval_obs_obj, eval_state, B_eval, N, self.device)
+
+                        eval_action_opp = torch.where(
+                            eval_is_scripted.unsqueeze(-1).unsqueeze(-1),
+                            eval_action_scripted,
+                            eval_action_random,
+                        )
+
+                        eval_team_id = eval_state.ship_team_id
+                        eval_action = torch.where(
+                            (eval_team_id == 0).unsqueeze(-1),
+                            eval_action_policy,
+                            eval_action_opp,
+                        )
+
+                        eval_dones, eval_truncated = eval_env.step(eval_action)
+                        eval_done_any = eval_dones | eval_truncated
+
                     if eval_done_any.any():
                         eval_alive = eval_env.state.ship_alive
-                        eval_team = eval_env.state.ship_team_id
+                        eval_team  = eval_env.state.ship_team_id
                         eval_team0_alive = (eval_alive & (eval_team == 0)).any(dim=1)
                         eval_team1_alive = (eval_alive & (eval_team == 1)).any(dim=1)
-                        
-                        eval_team1_won = eval_done_any & eval_team1_alive & ~eval_team0_alive
                         eval_team0_won = eval_done_any & eval_team0_alive & ~eval_team1_alive
-                        eval_tied = eval_done_any & ~eval_team0_won & ~eval_team1_won
-                        
-                        finished_indices = torch.where(eval_done_any)[0].cpu().tolist()
-                        for idx in finished_indices:
-                            opp_is_scripted = eval_is_scripted[idx].item()
-                            opp_elo = 1000.0 if opp_is_scripted else 0.0
-                            
-                            if eval_team0_won[idx]:
-                                score = 1.0
-                            elif eval_tied[idx]:
-                                score = 0.5
-                            else:
-                                score = 0.0
-                                
-                            expected = 1.0 / (1.0 + 10.0 ** ((opp_elo - self._training_elo) / 400.0))
-                            delta = K_eval * (score - expected)
-                            self._training_elo += delta
-                            
-                            # Dynamic Information-Proportional Re-routing
-                            f_star = _compute_optimal_eval_ratio(self._training_elo)
-                            eval_is_scripted[idx] = (torch.rand(1).item() > f_star)
-                            
-                            if opp_is_scripted:
-                                self._eval_window_sc.append(score)
-                            else:
-                                self._eval_window_rand.append(score)
-                                
+                        eval_team1_won = eval_done_any & eval_team1_alive & ~eval_team0_alive
+                        eval_tied      = eval_done_any & ~eval_team0_won & ~eval_team1_won
+
+                        # Vectorised ELO update — O(1) .item() calls instead of O(n_done).
+                        opp_was_scripted = eval_is_scripted[eval_done_any]          # save before re-routing
+                        opp_elo  = opp_was_scripted.float() * 1000.0
+                        score    = (eval_team0_won[eval_done_any].float()
+                                    + 0.5 * eval_tied[eval_done_any].float())
+                        expected = 1.0 / (1.0 + 10.0 ** ((opp_elo - self._training_elo) / 400.0))
+                        self._training_elo += (K_eval * (score - expected)).sum().item()
+
+                        # Dynamic Information-Proportional Re-routing (vectorised).
+                        f_star = _compute_optimal_eval_ratio(self._training_elo)
+                        n_done = eval_done_any.sum().item()
+                        eval_is_scripted[eval_done_any] = (
+                            torch.rand(n_done, device=self.device) > f_star
+                        )
+
+                        sc_mask    = opp_was_scripted.cpu()
+                        scores_cpu = score.cpu()
+                        self._eval_window_sc.extend(  scores_cpu[sc_mask].tolist())
+                        self._eval_window_rand.extend(scores_cpu[~sc_mask].tolist())
+
                         eval_env.reset_envs(eval_done_any)
                         reset_done_envs(agent_policy, eval_done_any, num_tokens)
                         if agent_sc is not None:
