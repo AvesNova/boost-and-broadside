@@ -596,9 +596,6 @@ class PPOTrainer:
         self._policy_gradient_coef: float = base_state.policy_gradient_coef
         self._behavior_cloning_coef: float = base_state.behavior_cloning_coef
 
-        # BC decay: None until ELO first reaches 1000, then records that step.
-        # Factor = 1.0 before milestone, 0.1**(steps_since/10M) for next 20M steps, then 0.
-        self._bc_1000_elo_step: int | None = None
 
         # --- Auxiliary training scales (multi-scale curriculum) ---
         # Each scale has its own env + buffer; policy, optimizer, and scaler are shared.
@@ -1251,18 +1248,11 @@ class PPOTrainer:
                 self.cfg.schedule, self._global_step
             )
             self._policy_gradient_coef = self._schedule_state.policy_gradient_coef
-            # BC decay: full until ELO reaches 1000, then exponential decay to zero.
+            # BC weight: P(bc_target_beats_current), remapped to [0, 1].
+            # Goes to 0 naturally when elo_norm reaches 1000 (the BC target ELO).
             elo_norm = self._training_elo - self._random_elo()
-            if self._bc_1000_elo_step is None and elo_norm >= 900.0:
-                self._bc_1000_elo_step = self._global_step
-            if self._bc_1000_elo_step is None:
-                bc_factor = 1.0
-            else:
-                steps_since = self._global_step - self._bc_1000_elo_step
-                if steps_since >= 20_000_000:
-                    bc_factor = 0.0
-                else:
-                    bc_factor = 0.1 ** (steps_since / 10_000_000)
+            p_bc_wins = 1.0 / (1.0 + 10.0 ** ((elo_norm - 1000.0) / 400.0))
+            bc_factor = max(0.0, 2.0 * (p_bc_wins - 0.5))
             self._behavior_cloning_coef = self._schedule_state.behavior_cloning_coef * bc_factor
             self.optim.param_groups[0]["lr"] = self._schedule_state.learning_rate
             for comp in self.wrapper._all_components:
@@ -1279,7 +1269,7 @@ class PPOTrainer:
             )
             metrics["schedule/behavior_cloning_coef"] = self._behavior_cloning_coef
             metrics["schedule/bc_decay_factor"] = bc_factor
-            metrics["schedule/target_kl"] = 0.02 if self._bc_1000_elo_step is not None else self._schedule_state.target_kl
+            metrics["schedule/target_kl"] = 0.02 if (self._training_elo - self._random_elo()) >= 900.0 else self._schedule_state.target_kl
             metrics["schedule/true_reward_scale"] = (
                 self._schedule_state.true_reward_scale
             )
@@ -1837,7 +1827,7 @@ class PPOTrainer:
         last_logprob_np = None
 
         num_epochs = self._schedule_state.num_epochs
-        target_kl = 0.02 if self._bc_1000_elo_step is not None else self._schedule_state.target_kl
+        target_kl = 0.02 if (self._training_elo - self._random_elo()) >= 900.0 else self._schedule_state.target_kl
 
         for epoch_idx in range(num_epochs):
             kl_start = len(accum_scalar["policy/kl"])
@@ -2074,7 +2064,6 @@ class PPOTrainer:
             "eval_window_rand": list(self._eval_window_rand),
             "eval_window_sc": list(self._eval_window_sc),
             "elo_milestone": self._elo_milestone,
-            "bc_1000_elo_step": self._bc_1000_elo_step,
             "train_config": {
                 k: v for k, v in dataclasses.asdict(self.cfg).items() if k != "schedule"
             },
@@ -2153,7 +2142,6 @@ class PPOTrainer:
             "eval_window_rand": list(self._eval_window_rand),
             "eval_window_sc": list(self._eval_window_sc),
             "elo_milestone": self._elo_milestone,
-            "bc_1000_elo_step": self._bc_1000_elo_step,
             "team_pma_k": self._win_k,
             "train_config": {
                 k: v for k, v in dataclasses.asdict(self.cfg).items() if k != "schedule"
@@ -2248,8 +2236,6 @@ class PPOTrainer:
             self._eval_window_rand = deque(ckpt["eval_window_rand"], maxlen=100)
         if "eval_window_sc" in ckpt:
             self._eval_window_sc = deque(ckpt["eval_window_sc"], maxlen=100)
-        if "bc_1000_elo_step" in ckpt:
-            self._bc_1000_elo_step = ckpt["bc_1000_elo_step"]
         if "global_step" in ckpt:
             self._global_step = ckpt["global_step"]
             self._start_update = ckpt["update"] + 1
