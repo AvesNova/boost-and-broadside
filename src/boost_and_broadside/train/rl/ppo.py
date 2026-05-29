@@ -189,6 +189,7 @@ _GROUP: dict[str, str] = {
 # standard team-based lambda aggregation.
 _LOCAL_COMPONENTS: frozenset[str] = frozenset(
     {
+        "ally_win",
         "facing",
         "closing_speed",
         "shoot_quality",

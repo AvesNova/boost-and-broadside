@@ -27,7 +27,7 @@ from boost_and_broadside.config.schedule import exponential
 from runs.shared import REWARDS, COMPONENT_GAMMAS, COMPONENT_LAMBDAS
 
 _MAX_TOKENS = 2_000_000
-_NUM_SHIPS = 4
+_NUM_SHIPS = 8
 _NUM_OBSTACLES = 0
 _NUM_STEPS = 256
 _NUM_MINIBATCHES = 32
