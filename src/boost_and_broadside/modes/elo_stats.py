@@ -72,8 +72,12 @@ def _load_checkpoint_agent(
 
     ckpt = torch.load(str(path), map_location=device, weights_only=False)
     coordinator = build_standard_coordinator(ship_config)
-    K = ckpt["policy_state_dict"]["value_head.3.weight"].shape[0]
-    policy = MVPPolicy(model_config, coordinator, num_value_components=K, num_ships=num_ships).to(device)
+    K = ckpt["policy_state_dict"]["value_head_local.3.weight"].shape[0]
+    team_pma_k = tuple(ckpt.get("team_pma_k", ()))
+    policy = MVPPolicy(
+        model_config, coordinator, num_value_components=K, num_ships=num_ships,
+        team_pma_k=team_pma_k,
+    ).to(device)
     result = policy.load_state_dict(ckpt["policy_state_dict"], strict=False)
     if result.missing_keys:
         print(f"    [warn] missing keys in {path.name}: {result.missing_keys}")

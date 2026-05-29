@@ -123,19 +123,21 @@ class MVPPolicy(nn.Module):
         coordinator: FeatureCoordinator,
         num_value_components: int,
         num_ships: int,
+        team_pma_k: tuple[int, ...] = (),
     ) -> None:
         super().__init__()
         D = model_config.d_model
         self._d_model = D
         self._K = num_value_components
         self._num_ships = num_ships  # N — first N tokens are ships; rest are obstacles
+        self._team_pma_k = team_pma_k  # K indices that use TeamPMA path for value
+        self._team_pma_k_set = set(team_pma_k)
         self.coordinator = coordinator
 
         self.encoder = ShipEncoder(model_config, coordinator)
         self.yemong_layers = nn.ModuleList(
             [YemongBlock(model_config) for _ in range(model_config.n_transformer_blocks)]
         )
-        self.team_pma = TeamPMA(d_model=D, n_heads=model_config.n_heads)
 
         hidden_dim = D * 2
 
@@ -145,32 +147,44 @@ class MVPPolicy(nn.Module):
             nn.GELU(),
             nn.Linear(hidden_dim, TOTAL_ACTION_LOGITS),
         )
-        # K independent scalar heads — one per reward component, in normalized space
-        self.value_head = nn.Sequential(
+        # Local value head: per-ship embedding → all K components.
+        # For indices in team_pma_k, outputs are overridden by value_head_win.
+        self.value_head_local = nn.Sequential(
             nn.Linear(D, hidden_dim),
             nn.RMSNorm(hidden_dim),
             nn.GELU(),
             nn.Linear(hidden_dim, self._K),
         )
+        # TeamPMA + win/loss head: explicit team-pool → win/loss components only.
+        # Only instantiated when team_pma_k is non-empty.
+        if team_pma_k:
+            self.team_pma = TeamPMA(d_model=D, n_heads=model_config.n_heads)
+            self.value_head_win = nn.Sequential(
+                nn.Linear(D, hidden_dim),
+                nn.RMSNorm(hidden_dim),
+                nn.GELU(),
+                nn.Linear(hidden_dim, len(team_pma_k)),
+            )
         self.next_state_head = NextStateHead(D, pred_dim=coordinator.total_prediction_dimension)
 
         # Orthogonal init — standard PPO practice
-        for head in [self.action_head, self.value_head]:
-            # Hidden layer (ReLU/GELU activation) gets sqrt(2) gain
+        for head in [self.action_head, self.value_head_local]:
             nn.init.orthogonal_(head[0].weight, gain=math.sqrt(2))
             nn.init.zeros_(head[0].bias)
-            # Output layers get 0.01 gain for stable early predictions
             nn.init.orthogonal_(head[3].weight, gain=0.01)
             nn.init.zeros_(head[3].bias)
         nn.init.orthogonal_(self.next_state_head.net[0].weight, gain=math.sqrt(2))
         nn.init.zeros_(self.next_state_head.net[0].bias)
         nn.init.orthogonal_(self.next_state_head.net[3].weight, gain=0.01)
         nn.init.zeros_(self.next_state_head.net[3].bias)
-
-        # TeamPMA init — seeds are small and asymmetric; projections use orthogonal
-        nn.init.normal_(self.team_pma.seeds, mean=0.0, std=0.02)
-        nn.init.orthogonal_(self.team_pma.attn.in_proj_weight, gain=math.sqrt(2))
-        nn.init.orthogonal_(self.team_pma.attn.out_proj.weight, gain=1.0)
+        if team_pma_k:
+            nn.init.orthogonal_(self.value_head_win[0].weight, gain=math.sqrt(2))
+            nn.init.zeros_(self.value_head_win[0].bias)
+            nn.init.orthogonal_(self.value_head_win[3].weight, gain=0.01)
+            nn.init.zeros_(self.value_head_win[3].bias)
+            nn.init.normal_(self.team_pma.seeds, mean=0.0, std=0.02)
+            nn.init.orthogonal_(self.team_pma.attn.in_proj_weight, gain=math.sqrt(2))
+            nn.init.orthogonal_(self.team_pma.attn.out_proj.weight, gain=1.0)
 
     # ------------------------------------------------------------------
     # Hidden state management
@@ -262,8 +276,12 @@ class MVPPolicy(nn.Module):
 
         logits = self.action_head(x_ships)                                   # (B, N, 12)
         pred_next = self.next_state_head(x_ships)                            # (B, N, AUX_PRED_DIM)
-        x_value = self.team_pma(x_ships, team_id_ships, alive_ships)        # (B, N, D)
-        value = self.value_head(x_value)                                     # (B, N, K)
+        value = self.value_head_local(x_ships)                               # (B, N, K)
+        if self._team_pma_k:
+            x_team = self.team_pma(x_ships, team_id_ships, alive_ships)     # (B, N, D)
+            win_val = self.value_head_win(x_team)                           # (B, N, K_win)
+            for i, k in enumerate(self._team_pma_k):
+                value[:, :, k] = win_val[:, :, i]
 
         action, logprob = _sample_action(logits)
 
@@ -343,14 +361,31 @@ class MVPPolicy(nn.Module):
         logits = self.action_head(x_ships)             # (T, B, N, 12)
         pred_next = self.next_state_head(x_ships)      # (T, B, N, AUX_PRED_DIM)
 
-        # TeamPMA over ship tokens: fold T into B, run PMA, unfold
-        x_s_flat = x_ships.reshape(T * B, N, D)
-        alive_s_flat = alive_ships.reshape(T * B, N)
-        tid_s_flat = team_id_ships.reshape(T * B, N)
-        xv_flat = self.team_pma(x_s_flat, tid_s_flat, alive_s_flat)  # (T*B, N, D)
-        xv = xv_flat.reshape(T, B, N, D)
+        # Local value path: per-ship embedding, no team pooling.
+        local_value = self.value_head_local(x_ships)   # (T, B, N, K)
 
-        new_value = self.value_head(xv)                # (T, B, N, K)
+        if self._team_pma_k:
+            # Win/loss path: TeamPMA over ship tokens, then fold T into B.
+            x_s_flat = x_ships.reshape(T * B, N, D)
+            alive_s_flat = alive_ships.reshape(T * B, N)
+            tid_s_flat = team_id_ships.reshape(T * B, N)
+            xv_flat = self.team_pma(x_s_flat, tid_s_flat, alive_s_flat)  # (T*B, N, D)
+            xv = xv_flat.reshape(T, B, N, D)
+            win_val = self.value_head_win(xv)          # (T, B, N, K_win)
+
+            # Merge: cat approach preserves gradients through both paths.
+            K = local_value.shape[-1]
+            pieces = []
+            win_i = 0
+            for k in range(K):
+                if k in self._team_pma_k_set:
+                    pieces.append(win_val[..., win_i : win_i + 1])
+                    win_i += 1
+                else:
+                    pieces.append(local_value[..., k : k + 1])
+            new_value = torch.cat(pieces, dim=-1)      # (T, B, N, K)
+        else:
+            new_value = local_value
 
         logprob, entropy = _evaluate_action(logits, actions)
 

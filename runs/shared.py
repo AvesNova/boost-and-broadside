@@ -25,7 +25,7 @@ REWARDS = RewardConfig(
     ally_death_weight=0.0,
     enemy_death_weight=0.0,
     ally_win_weight=4.0,
-    enemy_win_weight=0.0,
+    enemy_win_weight=4.0,
     # Dense shaping rewards — prevent passive collapse during early RL.
     facing_weight=0.1,
     closing_speed_weight=0.1,
@@ -48,8 +48,8 @@ REWARDS = RewardConfig(
     # Lambda configuration:
     #   enemy_neg_lambda_components → enemy ships get lambda=-1
     #   ally_zero_components        → ally ships get lambda=0 (enemy-perspective only)
-    enemy_neg_lambda_components=frozenset({"enemy_damage", "enemy_death", "enemy_win"}),
-    ally_zero_components=frozenset({"enemy_damage", "enemy_death", "enemy_win"}),
+    enemy_neg_lambda_components=frozenset({"enemy_damage", "enemy_death"}),
+    ally_zero_components=frozenset({"enemy_damage", "enemy_death"}),
     # Obstacle rewards
     obstacle_death_weight=0.0,
     obstacle_proximity_weight=0.0,
@@ -70,7 +70,7 @@ REWARDS = RewardConfig(
 #   Damage    γ=0.991 → γ^110≈0.36 — local to the combat exchange
 #   Shaping   γ=0.975 → γ^40≈0.36  — immediate behaviour; λ low since dense rewards → TD is accurate
 COMPONENT_GAMMAS: dict[str, float] = {
-    # Terminal
+    # Terminal — ally_win (+1 win) and enemy_win (-1 loss) both need full-episode horizon
     "ally_win": 0.999, "enemy_win": 0.999,
     # Kill/death
     "ally_death": 0.995, "enemy_death": 0.995, "death": 0.995,
@@ -85,11 +85,13 @@ COMPONENT_GAMMAS: dict[str, float] = {
 }
 
 COMPONENT_LAMBDAS: dict[str, float] = {
-    # Terminal — high λ: eligibility trace must carry sparse signal back through the episode
+    # Terminal — high λ: sparse signal must be traced back through the full episode
     "ally_win": 0.97, "enemy_win": 0.97,
-    # Kill/death — same λ as global default; sparse enough to need a long trace
+    # Kill/death
     "ally_death": 0.95, "enemy_death": 0.95, "death": 0.95,
-    "kill_shot": 0.95, "kill_assist": 0.95, "obstacle_death": 0.95,
+    # kill_shot: winner-take-all is noisy; shorter trace reduces variance
+    # kill_assist: episode-level cumulative credit needs a longer trace
+    "kill_shot": 0.87, "kill_assist": 0.97, "obstacle_death": 0.95,
     # Damage — slightly lower; semi-dense rewards make TD errors more informative
     "ally_damage": 0.90, "enemy_damage": 0.90,
     "damage_taken": 0.90, "damage_dealt_enemy": 0.90, "damage_dealt_ally": 0.90,

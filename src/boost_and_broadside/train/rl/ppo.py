@@ -190,6 +190,7 @@ _GROUP: dict[str, str] = {
 _LOCAL_COMPONENTS: frozenset[str] = frozenset(
     {
         "ally_win",
+        "enemy_win",
         "facing",
         "closing_speed",
         "shoot_quality",
@@ -410,6 +411,11 @@ class PPOTrainer:
         )
         K = self.wrapper.num_active_components
         self._active_names = self.wrapper.active_names  # stable ref used throughout
+        # Indices of win/loss components in the active set — these use the TeamPMA
+        # value path; all other components use the local (per-ship) path.
+        self._win_k: tuple[int, ...] = tuple(
+            i for i, n in enumerate(self._active_names) if n in {"ally_win", "enemy_win"}
+        )
 
         # Build per-component (K,) discount tensors — used by all RolloutBuffers.
         self._gamma_t = _build_component_tensor(
@@ -422,7 +428,8 @@ class PPOTrainer:
         N = train_config.scales[0].env_config.num_ships
         self._compile_mode = compile_mode
         self._policy_module = MVPPolicy(
-            model_config, self.coordinator, num_value_components=K, num_ships=N
+            model_config, self.coordinator, num_value_components=K, num_ships=N,
+            team_pma_k=self._win_k,
         ).to(self.device)
         _cast_norms_bf16(self._policy_module)
         self.sigreg = SIGReg(d_model=model_config.d_model, num_proj=64).to(self.device)
@@ -479,7 +486,8 @@ class PPOTrainer:
         # Weights initialized as a copy of the training policy.
         # Only updated when allow_avg_model_updates is True in the current phase.
         self._avg_policy_module = MVPPolicy(
-            model_config, self.coordinator, num_value_components=K, num_ships=N
+            model_config, self.coordinator, num_value_components=K, num_ships=N,
+            team_pma_k=self._win_k,
         ).to(self.device)
         self.avg_policy = (
             torch.compile(self._avg_policy_module, mode=compile_mode)
@@ -687,7 +695,7 @@ class PPOTrainer:
         num_tokens = N + M  # ships + obstacles; hidden state covers all entity tokens
         
         # -- ELO Evaluation Env & State Initialization (Parallel Vectorized Slots) --
-        B_eval = 128
+        B_eval = 512
         eval_env = TensorEnv(
             B_eval,
             self.ship_config,
@@ -820,6 +828,7 @@ class PPOTrainer:
                         self.wrapper.num_ships,
                         self.device,
                         self._compile_mode,
+                        team_pma_k=self._win_k,
                     )
                     self._current_league_policy = entry._policy
                     league_hidden = self._current_league_policy.initial_hidden(
@@ -2145,6 +2154,7 @@ class PPOTrainer:
             "eval_window_sc": list(self._eval_window_sc),
             "elo_milestone": self._elo_milestone,
             "bc_1000_elo_step": self._bc_1000_elo_step,
+            "team_pma_k": self._win_k,
             "train_config": {
                 k: v for k, v in dataclasses.asdict(self.cfg).items() if k != "schedule"
             },

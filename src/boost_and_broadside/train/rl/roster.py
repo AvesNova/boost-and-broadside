@@ -234,6 +234,7 @@ class EloRoster:
         num_ships: int,
         device,
         compile_mode: str | None = None,
+        team_pma_k: tuple[int, ...] = (),
     ) -> None:
         """Load checkpoint weights into entry._policy (no-op if already loaded)."""
         if entry._policy is not None or entry.kind != "checkpoint":
@@ -243,8 +244,10 @@ class EloRoster:
         import torch.nn as nn
 
         ckpt = torch.load(entry.path, map_location=device, weights_only=False)
+        ckpt_team_pma_k = tuple(ckpt.get("team_pma_k", team_pma_k))
         policy = MVPPolicy(
-            model_config, coordinator, num_value_components=num_value_components, num_ships=num_ships
+            model_config, coordinator, num_value_components=num_value_components,
+            num_ships=num_ships, team_pma_k=ckpt_team_pma_k,
         )
         policy.load_state_dict(ckpt["policy_state_dict"])
         policy.eval()
