@@ -76,7 +76,6 @@ RL_OBSTACLES_SCHEDULE = TrainingSchedule(
     allow_avg_model_updates=stepped((0, False)),
     allow_scripted_in_roster=stepped((0, False)),
     elo_eval_games=stepped((0, 0)),
-    elo_eval_interval=stepped((0, 0)),
     checkpoint_interval=stepped((0, 1), (3, 10)),
     num_epochs=constant(4),
     target_kl=constant(None),

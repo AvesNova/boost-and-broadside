@@ -40,7 +40,6 @@ BC_SCHEDULE = TrainingSchedule(
     allow_scripted_in_roster=stepped((0, True)),
     # ELO evaluation disabled during BC pretraining.
     elo_eval_games=stepped((0, 0)),
-    elo_eval_interval=stepped((0, 0)),
     checkpoint_interval=stepped((0, 10)),
     num_epochs=constant(4),
     target_kl=constant(None),

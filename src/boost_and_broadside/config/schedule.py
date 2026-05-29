@@ -241,7 +241,6 @@ class TrainingSchedule:
 
     # --- Checkpointing / eval ---
     elo_eval_games: Callable[[int], int]
-    elo_eval_interval: Callable[[int], int]  # 0 = disabled
     checkpoint_interval: Callable[[int], int]  # 0 = disabled
 
     # --- PPO epoch control ---

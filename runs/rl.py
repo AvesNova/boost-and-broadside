@@ -53,8 +53,7 @@ RL_SCHEDULE = TrainingSchedule(
     allow_avg_model_updates=stepped((0, False), (40_000_000, True)),
     allow_scripted_in_roster=stepped((0, True)),
     elo_eval_games=stepped((0, 512)),
-    elo_eval_interval=stepped((0, 1), (1_000_000, 10)),
-    checkpoint_interval=stepped((0, 1), (1_000_000, 10)),
+    checkpoint_interval=constant(50),
     num_epochs=stepped((0, 4)),
     target_kl=stepped((0, 0.1)),
 )

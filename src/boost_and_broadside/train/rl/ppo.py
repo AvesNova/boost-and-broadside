@@ -12,7 +12,7 @@ import threading
 from collections import deque
 from pathlib import Path
 from queue import Queue, Empty
-from typing import Callable
+from typing import Any, Callable
 
 import torch
 import torch.nn as nn
@@ -232,7 +232,6 @@ class _ResolvedSchedule:
     allow_avg_model_updates: bool
     allow_scripted_in_roster: bool
     elo_eval_games: int
-    elo_eval_interval: int
     checkpoint_interval: int
     num_epochs: int
     target_kl: float | None
@@ -256,7 +255,6 @@ def _resolve_schedule(schedule: TrainingSchedule, step: int) -> _ResolvedSchedul
         allow_avg_model_updates=schedule.allow_avg_model_updates(step),
         allow_scripted_in_roster=schedule.allow_scripted_in_roster(step),
         elo_eval_games=schedule.elo_eval_games(step),
-        elo_eval_interval=schedule.elo_eval_interval(step),
         checkpoint_interval=schedule.checkpoint_interval(step),
         num_epochs=schedule.num_epochs(step),
         target_kl=schedule.target_kl(step),
@@ -294,6 +292,22 @@ def _compute_optimal_eval_ratio(training_elo: float) -> float:
     return v_rand / total_val
 
 
+
+
+def _clone_to_cpu(obj: Any) -> Any:
+    """Recursively copy all tensors to CPU and clone them with non_blocking=True."""
+    if isinstance(obj, torch.Tensor):
+        return obj.to("cpu", non_blocking=True).clone()
+    elif isinstance(obj, dict):
+        return {k: _clone_to_cpu(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_clone_to_cpu(x) for x in obj]
+    elif isinstance(obj, tuple):
+        return tuple(_clone_to_cpu(x) for x in obj)
+    elif isinstance(obj, (set, frozenset)):
+        return type(obj)(_clone_to_cpu(x) for x in obj)
+    else:
+        return obj
 
 
 class PPOTrainer:
@@ -602,6 +616,9 @@ class PPOTrainer:
             )
             self.aux_wrappers.append(aux_w)
             self.aux_buffers.append(aux_buf)
+
+        self._active_save_thread = None
+        self._active_best_thread = None
 
     # ------------------------------------------------------------------
     # Main training loop
@@ -2031,7 +2048,7 @@ class PPOTrainer:
             "scaler_state_dict": self.scaler.state_dict(),
             "adv_scaler_state_dict": self.adv_scaler.state_dict(),
             "avg_policy_state_dict": self._avg_policy_module.state_dict(),
-            "avg_param_cumsum": [c.cpu() for c in self._avg_param_cumsum],
+            "avg_param_cumsum": [c.to("cpu", non_blocking=True) for c in self._avg_param_cumsum],
             "avg_update_count": self._avg_update_count,
             "update": update,
             "global_step": self._global_step,
@@ -2048,7 +2065,7 @@ class PPOTrainer:
         }
 
     def _save_checkpoint(self, update: int) -> None:
-        """Save policy and optimizer state to a .pt file.
+        """Save policy and optimizer state to a .pt file asynchronously.
 
         Written to cfg.checkpoint_dir/checkpoint_{update:06d}.pt.
         Directory is created if it does not exist.
@@ -2056,26 +2073,45 @@ class PPOTrainer:
         Args:
             update: Current update index (used as filename suffix).
         """
+        # Check if the previous standard saving thread is still running
+        if hasattr(self, "_active_save_thread") and self._active_save_thread is not None and self._active_save_thread.is_alive():
+            print("[PPOTrainer] Warning: Previous standard checkpoint saving is still in progress. Skipping this save to prevent disk/GIL congestion.")
+            return
+
         ckpt_dir = Path(self.cfg.checkpoint_dir) / self._run_name
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         path = ckpt_dir / f"step_{self._global_step:012d}.pt"
-        torch.save(self._checkpoint_payload(update), path)
-        self._last_checkpoint_path = path
-        print(f"Checkpoint saved: {path}")
-
-        # Save most-recent avg model checkpoint when available.
+        
+        # Build and copy checkpoints to CPU synchronously on the main thread (very fast, ~5-10ms)
+        cpu_payload = _clone_to_cpu(self._checkpoint_payload(update))
+        
+        avg_path = None
+        avg_cpu_payload = None
         if self._avg_update_count > 0:
             avg_path = ckpt_dir / "recent_avg.pt"
-            torch.save(self._avg_checkpoint_payload(update), avg_path)
-            print(f"Recent avg checkpoint saved: {avg_path}")
+            avg_cpu_payload = _clone_to_cpu(self._avg_checkpoint_payload(update))
+            
+        self._last_checkpoint_path = path
 
-        # Prune: keep only the latest checkpoint + all roster-referenced files.
-        # best_*.pt files are not touched (they don't match the step_*.pt glob).
-        kept = self.roster.kept_paths()
-        kept.add(str(path))
-        for old_path in ckpt_dir.glob("step_*.pt"):
-            if str(old_path) not in kept:
-                old_path.unlink(missing_ok=True)
+        def _async_save():
+            # Run heavy disk I/O / serialization in background thread
+            torch.save(cpu_payload, path)
+            print(f"Checkpoint saved asynchronously: {path}")
+
+            if avg_cpu_payload is not None and avg_path is not None:
+                torch.save(avg_cpu_payload, avg_path)
+                print(f"Recent avg checkpoint saved asynchronously: {avg_path}")
+
+            # Prune: keep only the latest checkpoint + all roster-referenced files.
+            # best_*.pt files are not touched (they don't match the step_*.pt glob).
+            kept = self.roster.kept_paths()
+            kept.add(str(path))
+            for old_path in ckpt_dir.glob("step_*.pt"):
+                if str(old_path) not in kept:
+                    old_path.unlink(missing_ok=True)
+
+        self._active_save_thread = threading.Thread(target=_async_save, daemon=True)
+        self._active_save_thread.start()
 
     def _avg_checkpoint_payload(self, update: int) -> dict:
         """Build checkpoint payload with avg_policy as the primary policy_state_dict.
@@ -2087,21 +2123,52 @@ class PPOTrainer:
         payload["policy_state_dict"] = self._avg_policy_module.state_dict()
         return payload
 
+    def _checkpoint_payload_lightweight(self, update: int) -> dict:
+        """Build a lightweight data dict for best-model saves, omitting heavy optimizer and avg states."""
+        return {
+            "policy_state_dict": self._policy_module.state_dict(),
+            "scaler_state_dict": self.scaler.state_dict(),
+            "adv_scaler_state_dict": self.adv_scaler.state_dict(),
+            "update": update,
+            "global_step": self._global_step,
+            "training_elo": self._training_elo,
+            "eval_window_rand": list(self._eval_window_rand),
+            "eval_window_sc": list(self._eval_window_sc),
+            "elo_milestone": self._elo_milestone,
+            "bc_1000_elo_step": self._bc_1000_elo_step,
+            "train_config": {
+                k: v for k, v in dataclasses.asdict(self.cfg).items() if k != "schedule"
+            },
+            "model_config": dataclasses.asdict(self.model_config),
+            "env_config": dataclasses.asdict(self.env_config),
+        }
+
     def _save_best_checkpoint(self, name: str, payload: dict | None = None) -> None:
-        """Save a named best-model checkpoint, overwriting any previous version.
+        """Save a named best-model checkpoint asynchronously, overwriting any previous version.
 
         Args:
             name:    Filename, e.g. "best_training.pt" or "best_avg.pt".
-            payload: Custom payload dict; defaults to _checkpoint_payload(update=0).
+            payload: Custom payload dict; defaults to _checkpoint_payload_lightweight(update=0).
         """
+        # Check if the previous best saving thread is still running
+        if hasattr(self, "_active_best_thread") and self._active_best_thread is not None and self._active_best_thread.is_alive():
+            print(f"[PPOTrainer] Warning: Previous best checkpoint saving for '{name}' is still in progress. Skipping this save to prevent disk/GIL congestion.")
+            return
+
         ckpt_dir = Path(self.cfg.checkpoint_dir) / self._run_name
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         path = ckpt_dir / name
-        torch.save(
-            payload if payload is not None else self._checkpoint_payload(update=0),
-            path,
-        )
-        print(f"Best checkpoint saved: {path}")
+        
+        # Build and copy payload synchronously on the main thread (extremely lightweight, ~1-3ms)
+        raw_payload = payload if payload is not None else self._checkpoint_payload_lightweight(update=0)
+        cpu_payload = _clone_to_cpu(raw_payload)
+        
+        def _async_save():
+            torch.save(cpu_payload, path)
+            print(f"Best checkpoint saved asynchronously: {path}")
+
+        self._active_best_thread = threading.Thread(target=_async_save, daemon=True)
+        self._active_best_thread.start()
 
     def load_pretrained_weights(self, path: str) -> None:
         """Load policy and scaler from a pretrained checkpoint, discarding optimizer state.
