@@ -9,6 +9,7 @@ Logging is async (CPU-side via wandb) to avoid GPU sync on the hot path.
 import dataclasses
 import time
 import threading
+from collections import deque
 from pathlib import Path
 from queue import Queue, Empty
 from typing import Callable
@@ -274,6 +275,26 @@ def _max_schedule_value(
     return max(schedule_fn(s) for s in range(0, total_steps + step_size, step_size))
 
 
+def _compute_optimal_eval_ratio(training_elo: float) -> float:
+    """Compute optimal ratio (fraction of matches against Random) using Information-Proportional Allocation."""
+    # expected win rate against Random (r = 0)
+    p_rand = 1.0 / (1.0 + 10.0 ** ((0.0 - training_elo) / 400.0))
+    # expected win rate against Scripted (r = 1000)
+    p_sc = 1.0 / (1.0 + 10.0 ** ((1000.0 - training_elo) / 400.0))
+    
+    # Bernoulli variances (Fisher Information contribution)
+    v_rand = p_rand * (1.0 - p_rand)
+    v_sc = p_sc * (1.0 - p_sc)
+    
+    # Information-Proportional Allocation: fraction of games to route to Random
+    total_val = v_rand + v_sc
+    if total_val <= 1e-8:
+        return 0.5  # fallback if variance is zero
+    return v_rand / total_val
+
+
+
+
 class PPOTrainer:
     """Proximal Policy Optimization for the MVP multi-agent policy.
 
@@ -499,6 +520,8 @@ class PPOTrainer:
         # Training ELO starts at 0 — all ratings begin
         # at the same point and diverge as eval matchups accumulate.
         self._training_elo: float = 0.0
+        self._eval_window_rand = deque(maxlen=100)
+        self._eval_window_sc = deque(maxlen=100)
         self._elo_milestone: float = (
             0.0  # normalized training ELO (vs random) at last milestone
         )
@@ -639,6 +662,39 @@ class PPOTrainer:
         N = self.wrapper.num_ships
         M = self.env_config.num_obstacles
         num_tokens = N + M  # ships + obstacles; hidden state covers all entity tokens
+        
+        # -- ELO Evaluation Env & State Initialization (Parallel Vectorized Slots) --
+        B_eval = 128
+        eval_env = TensorEnv(
+            B_eval,
+            self.ship_config,
+            self.env_config,
+            self.device,
+            self._obstacle_cache,
+        )
+        eval_obs = eval_env.reset()
+        eval_env.state.step_count.random_(0, self.env_config.max_episode_steps)
+        
+        # Load and resolve agents for ELO evaluation
+        from boost_and_broadside.modes.agent_factory import ResolvedAgent, get_actions, init_hidden, reset_done_envs
+        from boost_and_broadside.modes.collect import _obs_from_state
+        
+        agent_policy = ResolvedAgent("policy", self.policy)
+        agent_sc = ResolvedAgent("scripted", self.scripted_agent) if self.scripted_agent else None
+        agent_rand = ResolvedAgent("random", None)
+        
+        init_hidden(agent_policy, B_eval, num_tokens, self.device)
+        if agent_sc is not None:
+            init_hidden(agent_sc, B_eval, num_tokens, self.device)
+        init_hidden(agent_rand, B_eval, num_tokens, self.device)
+        
+        # Optimal information-proportional routing variables
+        K_eval = 4.0
+        f_star = _compute_optimal_eval_ratio(self._training_elo)
+        eval_is_scripted = (torch.rand(B_eval, device=self.device) > f_star)
+        
+
+
         sc_start = self.B_self
         sc_end = self.B_self + self.B_sc
         avg_start = sc_end
@@ -1048,6 +1104,76 @@ class PPOTrainer:
                     aux_obs[i] = next_aux_obs
                     self._global_step += sc.num_envs
 
+                # -- Continuous Live ELO Evaluation --
+                with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
+                    eval_state = eval_env.state
+                    eval_obs_obj = _obs_from_state(eval_state, self.ship_config)
+                    eval_action_policy = get_actions(agent_policy, eval_obs_obj, eval_state, B_eval, N, self.device)
+                    
+                    if agent_sc is not None:
+                        eval_action_scripted = get_actions(agent_sc, eval_obs_obj, eval_state, B_eval, N, self.device)
+                    else:
+                        eval_action_scripted = torch.zeros_like(eval_action_policy)
+                        
+                    eval_action_random = get_actions(agent_rand, eval_obs_obj, eval_state, B_eval, N, self.device)
+                    
+                    eval_action_opp = torch.where(
+                        eval_is_scripted.unsqueeze(-1).unsqueeze(-1),
+                        eval_action_scripted,
+                        eval_action_random
+                    )
+                    
+                    eval_team_id = eval_state.ship_team_id
+                    eval_action = torch.where(
+                        (eval_team_id == 0).unsqueeze(-1),
+                        eval_action_policy,
+                        eval_action_opp
+                    )
+                    
+                    eval_dones, eval_truncated = eval_env.step(eval_action)
+                    eval_done_any = eval_dones | eval_truncated
+                    
+                    if eval_done_any.any():
+                        eval_alive = eval_env.state.ship_alive
+                        eval_team = eval_env.state.ship_team_id
+                        eval_team0_alive = (eval_alive & (eval_team == 0)).any(dim=1)
+                        eval_team1_alive = (eval_alive & (eval_team == 1)).any(dim=1)
+                        
+                        eval_team1_won = eval_done_any & eval_team1_alive & ~eval_team0_alive
+                        eval_team0_won = eval_done_any & eval_team0_alive & ~eval_team1_alive
+                        eval_tied = eval_done_any & ~eval_team0_won & ~eval_team1_won
+                        
+                        finished_indices = torch.where(eval_done_any)[0].cpu().tolist()
+                        for idx in finished_indices:
+                            opp_is_scripted = eval_is_scripted[idx].item()
+                            opp_elo = 1000.0 if opp_is_scripted else 0.0
+                            
+                            if eval_team0_won[idx]:
+                                score = 1.0
+                            elif eval_tied[idx]:
+                                score = 0.5
+                            else:
+                                score = 0.0
+                                
+                            expected = 1.0 / (1.0 + 10.0 ** ((opp_elo - self._training_elo) / 400.0))
+                            delta = K_eval * (score - expected)
+                            self._training_elo += delta
+                            
+                            # Dynamic Information-Proportional Re-routing
+                            f_star = _compute_optimal_eval_ratio(self._training_elo)
+                            eval_is_scripted[idx] = (torch.rand(1).item() > f_star)
+                            
+                            if opp_is_scripted:
+                                self._eval_window_sc.append(score)
+                            else:
+                                self._eval_window_rand.append(score)
+                                
+                        eval_env.reset_envs(eval_done_any)
+                        reset_done_envs(agent_policy, eval_done_any, num_tokens)
+                        if agent_sc is not None:
+                            reset_done_envs(agent_sc, eval_done_any, num_tokens)
+                        reset_done_envs(agent_rand, eval_done_any, num_tokens)
+
             # Store final obs for T+1 aux loss label computation
             self.buffer.store_final_obs(obs)
             for i, aux_buf in enumerate(self.aux_buffers):
@@ -1166,27 +1292,19 @@ class PPOTrainer:
             metrics["train/global_step"] = self._global_step
             metrics["train/sps"] = sps
 
-            # ELO evaluation — runs sync matchups against all roster entries
-            elo_eval_interval: int = self._schedule_state.elo_eval_interval
-            if elo_eval_interval > 0 and update % elo_eval_interval == 0:
-                elo_metrics = self._run_elo_eval()
-                metrics.update(elo_metrics)
-                # Save overwriting best-model checkpoints when normalized ELO improves.
-                random_elo = self._random_elo()
-                training_elo_norm = self._training_elo - random_elo
-                if training_elo_norm > self._best_training_elo_norm:
-                    self._best_training_elo_norm = training_elo_norm
-                    self._save_best_checkpoint("best_training.pt")
-                avg_entry = next(
-                    (e for e in self.roster.entries if e.kind == "avg"), None
-                )
-                if avg_entry is not None:
-                    avg_elo_norm = avg_entry.elo - random_elo
-                    if avg_elo_norm > self._best_avg_elo_norm:
-                        self._best_avg_elo_norm = avg_elo_norm
-                        self._save_best_checkpoint(
-                            "best_avg.pt", self._avg_checkpoint_payload(update=0)
-                        )
+            # ELO evaluation — continuous live statistics from parallel slots
+            metrics["elo/training"] = self._training_elo
+            if self._eval_window_rand:
+                metrics["elo/win_rate_vs_random"] = sum(self._eval_window_rand) / len(self._eval_window_rand)
+            if self._eval_window_sc:
+                metrics["elo/win_rate_vs_scripted"] = sum(self._eval_window_sc) / len(self._eval_window_sc)
+
+            # Save overwriting best-model checkpoints when normalized ELO improves.
+            random_elo = self._random_elo()
+            training_elo_norm = self._training_elo - random_elo
+            if training_elo_norm > self._best_training_elo_norm:
+                self._best_training_elo_norm = training_elo_norm
+                self._save_best_checkpoint("best_training.pt")
 
             # Overview — redundant copies of the most important global metrics
             for src, dst in [
@@ -1213,9 +1331,7 @@ class PPOTrainer:
             self._enqueue_log(metrics, step=self._global_step)
 
             if update % self.cfg.log_interval == 0:
-                elo_str = (
-                    f"  elo={self._training_elo:.0f}" if elo_eval_interval > 0 else ""
-                )
+                elo_str = f"  elo={self._training_elo:.0f}"
                 lifespan_str = (
                     f"  lifespan={metrics['episode/lifespan_mean']:.1f}"
                     if "episode/lifespan_mean" in metrics else ""
@@ -1895,242 +2011,6 @@ class PPOTrainer:
                 return e.elo
         return 0.0  # fallback; random entry should always exist
 
-    def _run_elo_eval(self) -> dict[str, float]:
-        """Run a single synchronized mixed-batch evaluations against Random and Scripted anchors.
-
-        Computes a statistical Maximum Likelihood Estimation of the Universal Elo,
-        then injects this as the new `_training_elo`. This provides an extremely
-        clean signal to the league training system.
-        """
-        from boost_and_broadside.modes.agent_factory import (
-            ResolvedAgent,
-            get_actions,
-            init_hidden,
-            reset_done_envs,
-        )
-        from boost_and_broadside.modes.collect import _obs_from_state
-        from scipy.optimize import root_scalar
-
-        # Lazily add the scripted entry to the roster if enough time has passed and the
-        # current phase permits it.
-        if (
-            self.scripted_agent is not None
-            and self._schedule_state.allow_scripted_in_roster
-            and self._global_step >= self.cfg.scripted_roster_min_steps
-            and not any(e.kind == "scripted" for e in self.roster.entries)
-        ):
-            self.roster.add_special(
-                "scripted", self._global_step, 0, initial_elo=1000.0
-            )
-
-        # 1. Determine batch routing
-        games: int = self._schedule_state.elo_eval_games
-        if self.scripted_agent is not None:
-            ratio = max(0.0, min(1.0, self._training_elo / 1000.0))
-            games_sc = int(ratio * games)
-            games_rand = games - games_sc
-        else:
-            games_sc = 0
-            games_rand = games
-
-        # 2. Setup Env and Agents
-        B = games
-        N = self.env_config.num_ships
-        M = self.env_config.num_obstacles
-        num_tokens = N + M
-        dev = self.device
-
-        env = TensorEnv(B, self.ship_config, self.env_config, self.device, self._obstacle_cache)
-        self.policy.eval()
-
-        agent_policy = ResolvedAgent("policy", self.policy)
-        agent_sc = (
-            ResolvedAgent("scripted", self.scripted_agent)
-            if self.scripted_agent
-            else None
-        )
-        agent_rand = ResolvedAgent("random", None)
-
-        finished = torch.zeros(B, dtype=torch.bool, device=dev)
-        is_scripted = torch.zeros(B, dtype=torch.bool, device=dev)
-        if games_sc > 0:
-            is_scripted[:games_sc] = True
-
-        init_hidden(agent_policy, B, num_tokens, dev)
-        if games_sc > 0:
-            init_hidden(agent_sc, B, num_tokens, dev)
-        if games_rand > 0:
-            init_hidden(agent_rand, B, num_tokens, dev)
-
-        env.reset()
-
-        wins_vs_sc = 0.0
-        wins_vs_rand = 0.0
-
-        metrics: dict[str, float] = {}
-
-        try:
-            with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
-                while not finished.all():
-                    state = env.state
-                    obs = _obs_from_state(state, self.ship_config)
-                    action_a = get_actions(agent_policy, obs, state, B, N, dev)
-
-                    # Route opposing actions accurately per batch index
-                    action_b = torch.zeros_like(action_a)
-                    if games_sc > 0:
-                        action_sc = get_actions(agent_sc, obs, state, B, N, dev)
-                        action_b = torch.where(
-                            is_scripted.unsqueeze(1).unsqueeze(2), action_sc, action_b
-                        )
-                    if games_rand > 0:
-                        action_rand = get_actions(agent_rand, obs, state, B, N, dev)
-                        action_b = torch.where(
-                            ~is_scripted.unsqueeze(1).unsqueeze(2),
-                            action_rand,
-                            action_b,
-                        )
-
-                    team_id = state.ship_team_id
-                    action = torch.where(
-                        (team_id == 0).unsqueeze(-1), action_a, action_b
-                    )
-
-                    dones, truncated = env.step(action)
-                    done_any = dones | truncated
-
-                    new_done = done_any & ~finished
-                    if new_done.any():
-                        alive = env.state.ship_alive
-                        team = env.state.ship_team_id
-                        team0_alive = (alive & (team == 0)).any(dim=1)
-                        team1_alive = (alive & (team == 1)).any(dim=1)
-                        team1_won = new_done & team1_alive & ~team0_alive
-                        team0_won = new_done & team0_alive & ~team1_alive
-                        tied = new_done & ~team0_won & ~team1_won
-
-                        wins_vs_sc += float(
-                            (team0_won & is_scripted).sum()
-                        ) + 0.5 * float((tied & is_scripted).sum())
-                        wins_vs_rand += float(
-                            (team0_won & ~is_scripted).sum()
-                        ) + 0.5 * float((tied & ~is_scripted).sum())
-
-                        finished |= new_done
-
-                    if done_any.any():
-                        env.reset_envs(done_any)
-                        reset_done_envs(agent_policy, done_any, num_tokens)
-                        if games_sc > 0:
-                            reset_done_envs(agent_sc, done_any, num_tokens)
-                        if games_rand > 0:
-                            reset_done_envs(agent_rand, done_any, num_tokens)
-
-                # 3. Solve MLE Universal Elo
-                def compute_eval_elo(w_rand, g_rand, w_sc, g_sc) -> float:
-                    # Mild Laplace smoothing bounds the infinity of 100% win/loss
-                    w_rand += 0.5
-                    g_rand += 1.0
-                    w_sc += 0.5
-                    g_sc += 1.0
-                    total_expected_wins = w_rand + w_sc
-
-                    def score_fn(r):
-                        expected_rand = g_rand / (1 + 10 ** ((0 - r) / 400))
-                        expected_scripted = g_sc / (1 + 10 ** ((1000 - r) / 400))
-                        return total_expected_wins - (expected_rand + expected_scripted)
-
-                    res = root_scalar(score_fn, bracket=[-2000, 3000])
-                    return float(res.root)
-
-                self._training_elo = compute_eval_elo(
-                    wins_vs_rand, games_rand, wins_vs_sc, games_sc
-                )
-
-                metrics["elo/training"] = self._training_elo
-                if games_rand > 0:
-                    metrics["elo/win_rate_vs_random"] = wins_vs_rand / games_rand
-                if games_sc > 0:
-                    metrics["elo/win_rate_vs_scripted"] = wins_vs_sc / games_sc
-
-                # Evaluate avg model ELO if it has been initialized.
-                if self._avg_update_count > 0:
-                    avg_wins_vs_sc = 0.0
-                    avg_wins_vs_rand = 0.0
-                    avg_finished = torch.zeros(B, dtype=torch.bool, device=dev)
-                    agent_avg = ResolvedAgent("policy", self.avg_policy)
-                    init_hidden(agent_avg, B, num_tokens, dev)
-                    env.reset()
-
-                    while not avg_finished.all():
-                        state = env.state
-                        obs = _obs_from_state(state, self.ship_config)
-                        action_a = get_actions(agent_avg, obs, state, B, N, dev)
-
-                        action_b = torch.zeros_like(action_a)
-                        if games_sc > 0:
-                            action_sc = get_actions(agent_sc, obs, state, B, N, dev)
-                            action_b = torch.where(
-                                is_scripted.unsqueeze(1).unsqueeze(2),
-                                action_sc,
-                                action_b,
-                            )
-                        if games_rand > 0:
-                            action_rand = get_actions(agent_rand, obs, state, B, N, dev)
-                            action_b = torch.where(
-                                ~is_scripted.unsqueeze(1).unsqueeze(2),
-                                action_rand,
-                                action_b,
-                            )
-
-                        team_id = state.ship_team_id
-                        action = torch.where(
-                            (team_id == 0).unsqueeze(-1), action_a, action_b
-                        )
-
-                        dones, truncated = env.step(action)
-                        done_any = dones | truncated
-
-                        new_done = done_any & ~avg_finished
-                        if new_done.any():
-                            alive = env.state.ship_alive
-                            team = env.state.ship_team_id
-                            team0_alive = (alive & (team == 0)).any(dim=1)
-                            team1_alive = (alive & (team == 1)).any(dim=1)
-                            team0_won = new_done & team0_alive & ~team1_alive
-                            tied = (
-                                new_done
-                                & ~team0_won
-                                & ~(new_done & team1_alive & ~team0_alive)
-                            )
-                            avg_wins_vs_sc += float(
-                                (team0_won & is_scripted).sum()
-                            ) + 0.5 * float((tied & is_scripted).sum())
-                            avg_wins_vs_rand += float(
-                                (team0_won & ~is_scripted).sum()
-                            ) + 0.5 * float((tied & ~is_scripted).sum())
-                            avg_finished |= new_done
-
-                        if done_any.any():
-                            env.reset_envs(done_any)
-                            reset_done_envs(agent_avg, done_any, num_tokens)
-
-                    avg_elo = compute_eval_elo(
-                        avg_wins_vs_rand, games_rand, avg_wins_vs_sc, games_sc
-                    )
-                    avg_entry = next(
-                        (e for e in self.roster.entries if e.kind == "avg"), None
-                    )
-                    if avg_entry is not None:
-                        avg_entry.elo = avg_elo
-                    metrics["elo/avg"] = avg_elo
-
-        finally:
-            self.policy.train()
-            # Still evict checkpoint policies if any were loaded via the training rollout's league
-            self.roster.evict_all_checkpoint_policies()
-
-        return metrics
 
     def _save_roster_json(self) -> None:
         """Persist roster metadata alongside the run's checkpoints."""
@@ -2155,6 +2035,8 @@ class PPOTrainer:
             "update": update,
             "global_step": self._global_step,
             "training_elo": self._training_elo,
+            "eval_window_rand": list(self._eval_window_rand),
+            "eval_window_sc": list(self._eval_window_sc),
             "elo_milestone": self._elo_milestone,
             "bc_1000_elo_step": self._bc_1000_elo_step,
             "train_config": {
@@ -2275,6 +2157,10 @@ class PPOTrainer:
         if "training_elo" in ckpt:
             self._training_elo = ckpt["training_elo"]
             self._elo_milestone = ckpt.get("elo_milestone", 0.0)
+        if "eval_window_rand" in ckpt:
+            self._eval_window_rand = deque(ckpt["eval_window_rand"], maxlen=100)
+        if "eval_window_sc" in ckpt:
+            self._eval_window_sc = deque(ckpt["eval_window_sc"], maxlen=100)
         if "bc_1000_elo_step" in ckpt:
             self._bc_1000_elo_step = ckpt["bc_1000_elo_step"]
         if "global_step" in ckpt:
