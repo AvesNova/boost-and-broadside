@@ -1249,9 +1249,9 @@ class PPOTrainer:
             )
             self._policy_gradient_coef = self._schedule_state.policy_gradient_coef
             # BC weight: P(bc_target_beats_current), remapped to [0, 1].
-            # Goes to 0 naturally when elo_norm reaches 1000 (the BC target ELO).
+            # Scale=200 gives a steeper sigmoid; target=950 zeroes out BC before 1000.
             elo_norm = self._training_elo - self._random_elo()
-            p_bc_wins = 1.0 / (1.0 + 10.0 ** ((elo_norm - 1000.0) / 400.0))
+            p_bc_wins = 1.0 / (1.0 + 10.0 ** ((elo_norm - 950.0) / 200.0))
             bc_factor = max(0.0, 2.0 * (p_bc_wins - 0.5))
             self._behavior_cloning_coef = self._schedule_state.behavior_cloning_coef * bc_factor
             self.optim.param_groups[0]["lr"] = self._schedule_state.learning_rate
