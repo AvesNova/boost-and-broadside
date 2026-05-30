@@ -2101,12 +2101,17 @@ class PPOTrainer:
         self._last_checkpoint_path = path
 
         def _async_save():
-            # Run heavy disk I/O / serialization in background thread
-            torch.save(cpu_payload, path)
+            # Write to a temp file then rename atomically so .exists() only
+            # returns True once the file is complete (avoids partial-read crashes).
+            tmp = path.with_suffix(".tmp")
+            torch.save(cpu_payload, tmp)
+            tmp.rename(path)
             print(f"Checkpoint saved asynchronously: {path}")
 
             if avg_cpu_payload is not None and avg_path is not None:
-                torch.save(avg_cpu_payload, avg_path)
+                tmp_avg = avg_path.with_suffix(".tmp")
+                torch.save(avg_cpu_payload, tmp_avg)
+                tmp_avg.rename(avg_path)
                 print(f"Recent avg checkpoint saved asynchronously: {avg_path}")
 
             # Prune: keep only the latest checkpoint + all roster-referenced files.
@@ -2171,7 +2176,9 @@ class PPOTrainer:
         cpu_payload = _clone_to_cpu(raw_payload)
         
         def _async_save():
-            torch.save(cpu_payload, path)
+            tmp = path.with_suffix(".tmp")
+            torch.save(cpu_payload, tmp)
+            tmp.rename(path)
             print(f"Best checkpoint saved asynchronously: {path}")
 
         self._active_best_thread = threading.Thread(target=_async_save, daemon=True)
