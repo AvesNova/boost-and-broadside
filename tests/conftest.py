@@ -15,7 +15,7 @@ def ship_config() -> ShipConfig:
 
 @pytest.fixture
 def env_config() -> EnvConfig:
-    return EnvConfig(num_ships=8, max_bullets=20, max_episode_steps=500)
+    return EnvConfig(ally_ship_count=4, enemy_ship_count=4, max_bullets=20, max_episode_steps=500)
 
 
 @pytest.fixture

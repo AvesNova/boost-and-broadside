@@ -1,31 +1,34 @@
 """RL training profile for high-performance compute clusters.
 
 Identical schedule to rl.py — only the batch size scales up.
-Tune _HPC_NUM_ENVS for your target cluster's VRAM / CPU budget.
+Tune _HPC_MAX_TOKENS for your target cluster's VRAM / CPU budget.
 
-Rule of thumb: keep num_envs divisible by num_minibatches (currently 4).
-Total ships per update = num_envs * num_ships * num_steps.
+Rule of thumb: max_tokens ≈ num_envs * num_ships * num_steps.
 """
 
 from boost_and_broadside.config import EnvConfig, ScaleConfig, TrainConfig
+from boost_and_broadside.config import stepped
 from runs.rl import RL_SCHEDULE
 from runs.shared import REWARDS, COMPONENT_GAMMAS, COMPONENT_LAMBDAS
 
 # 4× the default batch. Adjust to fit your cluster.
-# Must be divisible by num_minibatches=4.
-_HPC_NUM_ENVS = 1920
+# Equivalent to num_envs ≈ 1920 with num_ships=2, num_steps=128, num_minibatches=4.
+_HPC_MAX_TOKENS = 491_520
 
 RL_HPC_TRAIN_CONFIG = TrainConfig(
+    max_tokens=_HPC_MAX_TOKENS,
     scales=(
         ScaleConfig(
-            env_config=EnvConfig(num_ships=2, max_bullets=20, max_episode_steps=1024),
-            num_envs=_HPC_NUM_ENVS,
+            env_config=EnvConfig(ally_ship_count=1, enemy_ship_count=1, max_bullets=20, max_episode_steps=1024),
+            token_fraction=1.0,
+            scripted_fraction=stepped((0, 0.5), (50_000_000, 0.3)),
+            avg_model_fraction=stepped((0, 0.0), (50_000_000, 0.2)),
+            league_fraction=stepped((0, 0.0), (50_000_000, 0.2)),
         ),
     ),
     schedule=RL_SCHEDULE,  # identical schedule — only scale differs
     rewards=REWARDS,
     num_steps=128,
-    num_epochs=4,
     num_minibatches=4,
     gamma=0.99,
     gae_lambda=0.95,

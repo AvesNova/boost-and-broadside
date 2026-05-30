@@ -17,7 +17,8 @@ from boost_and_broadside.config import (
 )
 from runs.shared import REWARDS
 
-_MAX_TOKENS = 3840
+# max_tokens = num_envs * num_ships * num_steps = 480 * 2 * 128 = 122_880
+_MAX_TOKENS = 122_880
 
 BC_SCHEDULE = TrainingSchedule(
     # Warmup from 1e-7 to 3e-4 over 6M steps, then hold.
@@ -32,10 +33,6 @@ BC_SCHEDULE = TrainingSchedule(
     true_reward_scale=constant(1.0),
     global_scale=constant(1.0),
     local_scale=constant(1.0),
-    # No opponents during BC — scripted agent only supplies supervised targets.
-    scripted_fraction=constant(0.0),
-    avg_model_fraction=constant(0.0),
-    league_fraction=constant(0.0),
     allow_avg_model_updates=stepped((0, False)),
     allow_scripted_in_roster=stepped((0, True)),
     # ELO evaluation disabled during BC pretraining.
@@ -46,10 +43,15 @@ BC_SCHEDULE = TrainingSchedule(
 )
 
 BC_TRAIN_CONFIG = TrainConfig(
+    max_tokens=_MAX_TOKENS,
     scales=(
         ScaleConfig(
-            env_config=EnvConfig(num_ships=2, max_bullets=20, max_episode_steps=1024),
-            num_envs=3 * _MAX_TOKENS // 3 // 8,
+            env_config=EnvConfig(ally_ship_count=1, enemy_ship_count=1, max_bullets=20, max_episode_steps=1024),
+            token_fraction=1.0,
+            # No opponents during BC — scripted agent only supplies supervised targets.
+            scripted_fraction=constant(0.0),
+            avg_model_fraction=constant(0.0),
+            league_fraction=constant(0.0),
         ),
     ),
     schedule=BC_SCHEDULE,

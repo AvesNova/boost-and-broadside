@@ -19,9 +19,13 @@ from boost_and_broadside.config import (
 )
 from runs.shared import COMPONENT_GAMMAS, COMPONENT_LAMBDAS
 
-_MAX_TOKENS = 3840 * 8
 _NUM_SHIPS = 8
 _NUM_OBSTACLES = 8
+_NUM_STEPS = 128
+_NUM_MINIBATCHES = 32
+
+# max_tokens = num_envs * total_tokens * num_steps = 1920 * 16 * 128 = 3_932_160
+_MAX_TOKENS = 3_932_160
 
 OBSTACLES_REWARDS = RewardConfig(
     # All combat rewards zeroed — no enemy interaction in this mode.
@@ -69,10 +73,6 @@ RL_OBSTACLES_SCHEDULE = TrainingSchedule(
     true_reward_scale=constant(1.0),
     global_scale=constant(1.0),
     local_scale=constant(1.0),
-    # No opponents — pure self-navigation, obstacle avoidance only.
-    scripted_fraction=stepped((0, 0.0)),
-    avg_model_fraction=stepped((0, 0.0)),
-    league_fraction=stepped((0, 0.0)),
     allow_avg_model_updates=stepped((0, False)),
     allow_scripted_in_roster=stepped((0, False)),
     elo_eval_games=stepped((0, 0)),
@@ -82,22 +82,28 @@ RL_OBSTACLES_SCHEDULE = TrainingSchedule(
 )
 
 RL_OBSTACLES_TRAIN_CONFIG = TrainConfig(
+    max_tokens=_MAX_TOKENS,
     scales=(
         ScaleConfig(
             env_config=EnvConfig(
-                num_ships=_NUM_SHIPS,
+                ally_ship_count=_NUM_SHIPS // 2,
+                enemy_ship_count=_NUM_SHIPS // 2,
                 num_obstacles=_NUM_OBSTACLES,
                 max_bullets=0,
                 max_episode_steps=1024,
                 single_team=True,
             ),
-            num_envs=_MAX_TOKENS // (_NUM_SHIPS + _NUM_OBSTACLES),
+            token_fraction=1.0,
+            # No opponents — pure self-navigation, obstacle avoidance only.
+            scripted_fraction=stepped((0, 0.0)),
+            avg_model_fraction=stepped((0, 0.0)),
+            league_fraction=stepped((0, 0.0)),
         ),
     ),
     schedule=RL_OBSTACLES_SCHEDULE,
     rewards=OBSTACLES_REWARDS,
-    num_steps=128,
-    num_minibatches=32,
+    num_steps=_NUM_STEPS,
+    num_minibatches=_NUM_MINIBATCHES,
     gamma=0.99,
     gae_lambda=0.95,
     component_gammas=COMPONENT_GAMMAS,

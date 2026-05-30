@@ -2,6 +2,7 @@
 
 import dataclasses
 from dataclasses import dataclass
+from typing import Callable
 
 from boost_and_broadside.config.core import EnvConfig, RewardConfig
 from boost_and_broadside.config.schedule import TrainingSchedule
@@ -28,21 +29,28 @@ class ObstacleCacheConfig:
 
 @dataclass(frozen=True)
 class ScaleConfig:
-    """One training scale: an environment config paired with a batch size.
+    """One training scale: environment config, token budget fraction, and opponent mix.
 
-    All scales share the same policy, optimizer, and return scaler.
-    Gradients are accumulated across scales before each optimizer step.
-    scales[0] in TrainConfig is the primary scale and supports scripted /
-    avg-model / league opponents; scales[1:] run pure self-play.
+    All scales are first-class citizens — they share the same policy, optimizer,
+    and return scaler, with gradients weighted by ship-token contribution so every
+    token has equal gradient impact.
 
     Args:
-        env_config: Environment config for this scale — num_ships defines N.
-        num_envs:   Parallel environments. Set inversely proportional to N so
-                    total ships-per-update stays constant across scales.
+        env_config:         Environment config for this scale.
+        token_fraction:     Fraction of TrainConfig.max_tokens allocated to this scale.
+                            num_envs is computed as
+                            int(max_tokens * fraction / total_tokens / num_steps / num_minibatches)
+                            * num_minibatches, where total_tokens = num_ships + num_obstacles.
+        scripted_fraction:  Schedule: fraction of this scale's envs that play a scripted opponent.
+        avg_model_fraction: Schedule: fraction that play the running-average model opponent.
+        league_fraction:    Schedule: fraction that play a league checkpoint opponent.
     """
 
     env_config: EnvConfig
-    num_envs: int
+    token_fraction: float
+    scripted_fraction: Callable[[int], float]
+    avg_model_fraction: Callable[[int], float]
+    league_fraction: Callable[[int], float]
 
 
 @dataclass(frozen=True)
@@ -50,15 +58,19 @@ class TrainConfig:
     """Complete PPO training configuration. No defaults — all values required.
 
     Sections:
-        scales    — environment scale(s); scales[0] is primary.
-        schedule  — all time-varying parameters (LR, loss coefficients, fractions).
+        scales    — environment scale(s); all are first-class (no primary/aux).
+        schedule  — time-varying parameters (LR, loss coefficients, roster management).
         rewards   — static reward weights and geometry params.
         ppo       — static PPO hyperparameters.
         league    — league play and ELO tournament parameters.
 
     All scalar values that vary over training live in ``schedule``.
+    Per-scale opponent fractions live in each ``ScaleConfig``.
     Everything here is fixed for the entire run.
     """
+
+    # --- Token budget ---
+    max_tokens: int  # target total entity tokens per rollout across all scales
 
     # --- Scales ---
     scales: tuple[ScaleConfig, ...]  # at least one entry
@@ -71,7 +83,7 @@ class TrainConfig:
 
     # --- PPO hyperparameters ---
     num_steps: int  # rollout length per environment
-    num_minibatches: int  # minibatches per epoch (scales[0].num_envs must be divisible)
+    num_minibatches: int  # minibatches per epoch
     gamma: float  # discount factor
     gae_lambda: float  # GAE lambda
     clip_coef: float  # PPO clip epsilon
@@ -108,12 +120,35 @@ class TrainConfig:
     component_gammas: dict[str, float] = dataclasses.field(default_factory=dict)
     component_lambdas: dict[str, float] = dataclasses.field(default_factory=dict)
 
+    def scale_num_envs(self, sc: ScaleConfig) -> int:
+        """Compute num_envs for a scale from its token_fraction and this config's budget.
+
+        Uses integer division to match the original formula and guarantee divisibility:
+            num_envs = (max_tokens * fraction // total_tokens // num_steps // num_minibatches)
+                       * num_minibatches
+        """
+        total_tokens = sc.env_config.num_ships + sc.env_config.num_obstacles
+        effective = int(self.max_tokens * sc.token_fraction)
+        raw = effective // total_tokens // self.num_steps // self.num_minibatches
+        return raw * self.num_minibatches
+
     def __post_init__(self) -> None:
         if len(self.scales) == 0:
             raise ValueError("scales must contain at least one ScaleConfig")
-        primary_envs = self.scales[0].num_envs
-        if primary_envs % self.num_minibatches != 0:
+        total_frac = sum(sc.token_fraction for sc in self.scales)
+        if total_frac > 1.0 + 1e-9:
             raise ValueError(
-                f"scales[0].num_envs={primary_envs} must be divisible by "
-                f"num_minibatches={self.num_minibatches}"
+                f"sum of token_fractions={total_frac:.4f} exceeds 1.0"
             )
+        for i, sc in enumerate(self.scales):
+            ne = self.scale_num_envs(sc)
+            if ne == 0:
+                raise ValueError(
+                    f"scales[{i}] computes to num_envs=0 "
+                    f"(token_fraction={sc.token_fraction}, max_tokens={self.max_tokens})"
+                )
+            if ne % self.num_minibatches != 0:
+                raise ValueError(
+                    f"scales[{i}] num_envs={ne} must be divisible by "
+                    f"num_minibatches={self.num_minibatches}"
+                )

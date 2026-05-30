@@ -82,13 +82,27 @@ class ShipConfig:
 
 @dataclass(frozen=True)
 class EnvConfig:
-    """Environment sizing."""
+    """Environment sizing.
 
-    num_ships: int  # total ships per env (both teams combined)
-    max_bullets: int  # bullet ring-buffer size per ship (0 = no bullets, skips all bullet physics)
-    max_episode_steps: int  # truncation horizon
-    num_obstacles: int = 0  # dynamic obstacle circles per env (0 = no obstacles)
-    single_team: bool = False  # all ships share one randomly-chosen team id (no opponents)
+    Ships are split into two teams: ally (team 0) and enemy (team 1).
+    num_ships (property) = ally_ship_count + enemy_ship_count — used throughout the
+    codebase as the total ship-slot count.
+
+    For future nav-only or solo modes set enemy_ship_count=0; current env code
+    requires enemy_ship_count > 0 for opponent-based play.
+    """
+
+    ally_ship_count: int   # ships on team 0
+    enemy_ship_count: int  # ships on team 1; 0 = no enemies (nav-only, not yet supported)
+    max_bullets: int       # bullet ring-buffer size per ship (0 = no bullets)
+    max_episode_steps: int # truncation horizon
+    num_obstacles: int = 0      # dynamic obstacle circles per env
+    single_team: bool = False   # all ships share one team id (no opponents)
+
+    @property
+    def num_ships(self) -> int:
+        """Total ships per env (both teams combined)."""
+        return self.ally_ship_count + self.enemy_ship_count
 
 
 @dataclass(frozen=True)

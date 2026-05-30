@@ -178,15 +178,15 @@ def _find_resume_checkpoint(path_hint: str, checkpoint_dir: str = "checkpoints")
 def _apply_smoke(config):
     """Shrink a TrainConfig to the smallest viable size for crash-testing."""
     from boost_and_broadside.config.schedule import stepped
-    # num_envs must be divisible by num_minibatches, so use 1 minibatch with 4 envs.
-    scales = tuple(replace(s, num_envs=4) for s in config.scales)
+    # Use a tiny max_tokens so each scale gets a small num_envs. With num_minibatches=1
+    # any positive num_envs is valid. At max_tokens=4096: 8-ship env → 4 envs, 2-ship → 16.
     obstacle_cache = config.obstacle_cache
     if obstacle_cache is not None:
         obstacle_cache = replace(obstacle_cache, num_cache_envs=128, cache_size=4, max_steps=6000)
     schedule = replace(config.schedule, checkpoint_interval=stepped((0, 1)))
     return replace(
         config,
-        scales=scales,
+        max_tokens=4096,
         schedule=schedule,
         obstacle_cache=obstacle_cache,
         num_minibatches=1,
@@ -317,7 +317,7 @@ def main() -> None:
                 team1_spec=team1,
                 ship_config=SHIP_CONFIG,
                 env_config=EnvConfig(
-                    num_ships=8, max_bullets=20, max_episode_steps=1024, num_obstacles=0,
+                    ally_ship_count=4, enemy_ship_count=4, max_bullets=20, max_episode_steps=1024, num_obstacles=0,
                 ),
                 rewards=REWARDS,
                 model_config=MODEL_CONFIG,                render_config=RenderConfig(),
@@ -335,7 +335,7 @@ def main() -> None:
                 num_envs=1024,
                 ship_config=SHIP_CONFIG,
                 env_config=EnvConfig(
-                    num_ships=4, max_bullets=20, max_episode_steps=1024
+                    ally_ship_count=2, enemy_ship_count=2, max_bullets=20, max_episode_steps=1024
                 ),
                 model_config=MODEL_CONFIG,
                 device=device,
@@ -352,7 +352,7 @@ def main() -> None:
                 num_steps=1024,
                 ship_config=SHIP_CONFIG,
                 env_config=EnvConfig(
-                    num_ships=4, max_bullets=20, max_episode_steps=1024
+                    ally_ship_count=2, enemy_ship_count=2, max_bullets=20, max_episode_steps=1024
                 ),
                 model_config=MODEL_CONFIG,
                 device=device,
@@ -365,7 +365,7 @@ def main() -> None:
                 num_envs=110000,
                 ship_config=SHIP_CONFIG,
                 env_config=EnvConfig(
-                    num_ships=4, max_bullets=20, max_episode_steps=1024
+                    ally_ship_count=2, enemy_ship_count=2, max_bullets=20, max_episode_steps=1024
                 ),
                 model_config=MODEL_CONFIG,
                 device=device,
@@ -386,7 +386,7 @@ def main() -> None:
                 num_steps=512,
                 ship_config=SHIP_CONFIG,
                 env_config=EnvConfig(
-                    num_ships=4, max_bullets=20, max_episode_steps=512
+                    ally_ship_count=2, enemy_ship_count=2, max_bullets=20, max_episode_steps=512
                 ),
                 rewards=REWARDS,                model_config=MODEL_CONFIG,
                 device=device,
@@ -403,7 +403,7 @@ def main() -> None:
                 num_steps=512,
                 ship_config=SHIP_CONFIG,
                 env_config=EnvConfig(
-                    num_ships=2, max_bullets=20, max_episode_steps=512
+                    ally_ship_count=1, enemy_ship_count=1, max_bullets=20, max_episode_steps=512
                 ),
                 rewards=REWARDS,                model_config=MODEL_CONFIG,
                 device=device,
@@ -422,7 +422,7 @@ def main() -> None:
                 num_ar_envs=256,
                 num_ar_windows=20,
                 ship_config=SHIP_CONFIG,
-                env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=1024),
+                env_config=EnvConfig(ally_ship_count=2, enemy_ship_count=2, max_bullets=20, max_episode_steps=1024),
                 model_config=MODEL_CONFIG,
                 device=device,
                 checkpoint_dir="checkpoints",

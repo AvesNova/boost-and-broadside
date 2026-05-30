@@ -18,6 +18,11 @@ from boost_and_broadside.config import (
 )
 from boost_and_broadside.train.rl.ppo import PPOTrainer, _GROUP
 
+# max_tokens for tests: chosen so that
+#   num_ships=4, num_steps=16, num_minibatches=2, token_fraction=1.0  → num_envs=4
+# Formula: int(256 * 1.0 / 4 / 16 / 2) * 2 = int(2) * 2 = 4  ✓
+_TEST_MAX_TOKENS = 256
+
 
 def _make_rewards(**overrides) -> RewardConfig:
     defaults = dict(
@@ -58,9 +63,6 @@ def _make_schedule(**overrides) -> TrainingSchedule:
         true_reward_scale=constant(1.0),
         global_scale=constant(1.0),
         local_scale=constant(1.0),
-        scripted_fraction=constant(0.0),
-        avg_model_fraction=constant(0.0),
-        league_fraction=constant(0.0),
         allow_avg_model_updates=stepped((0, False)),
         allow_scripted_in_roster=stepped((0, False)),
         elo_eval_games=stepped((0, 16)),
@@ -72,17 +74,23 @@ def _make_schedule(**overrides) -> TrainingSchedule:
     return TrainingSchedule(**defaults)
 
 
+def _make_scale(**overrides) -> ScaleConfig:
+    defaults = dict(
+        env_config=EnvConfig(ally_ship_count=2, enemy_ship_count=2, max_bullets=8, max_episode_steps=50),
+        token_fraction=1.0,
+        scripted_fraction=constant(0.0),
+        avg_model_fraction=constant(0.0),
+        league_fraction=constant(0.0),
+    )
+    defaults.update(overrides)
+    return ScaleConfig(**defaults)
+
+
 def _make_trainer(**reward_overrides) -> PPOTrainer:
     return PPOTrainer(
         train_config=TrainConfig(
-            scales=(
-                ScaleConfig(
-                    env_config=EnvConfig(
-                        num_ships=4, max_bullets=8, max_episode_steps=50
-                    ),
-                    num_envs=4,
-                ),
-            ),
+            max_tokens=_TEST_MAX_TOKENS,
+            scales=(_make_scale(),),
             schedule=_make_schedule(),
             rewards=_make_rewards(**reward_overrides),
             num_steps=16,
@@ -190,14 +198,8 @@ class TestSchedulePrimitives:
         """After training, effective component weight = group_scale * individual weight."""
         trainer = PPOTrainer(
             train_config=TrainConfig(
-                scales=(
-                    ScaleConfig(
-                        env_config=EnvConfig(
-                            num_ships=4, max_bullets=8, max_episode_steps=50
-                        ),
-                        num_envs=4,
-                    ),
-                ),
+                max_tokens=_TEST_MAX_TOKENS,
+                scales=(_make_scale(),),
                 schedule=_make_schedule(local_scale=constant(0.5)),
                 rewards=_make_rewards(closing_speed_weight=0.01),
                 num_steps=16,
@@ -246,6 +248,7 @@ class TestRLSmokeTest:
     def test_rl_run_with_production_config(self):
         from runs.shared import MODEL_CONFIG, REWARDS, SHIP_CONFIG
 
+        # max_tokens = num_envs * num_ships * num_steps = 16 * 4 * 32 = 2048
         schedule = TrainingSchedule(
             learning_rate=constant(3e-4),
             policy_gradient_coef=constant(1.0),
@@ -256,9 +259,6 @@ class TestRLSmokeTest:
             true_reward_scale=constant(1.0),
             global_scale=constant(1.0),
             local_scale=constant(1.0),
-            scripted_fraction=constant(0.5),
-            avg_model_fraction=constant(0.0),
-            league_fraction=constant(0.0),
             allow_avg_model_updates=constant(False),
             allow_scripted_in_roster=constant(True),
             elo_eval_games=constant(0),
@@ -267,12 +267,16 @@ class TestRLSmokeTest:
             target_kl=constant(None),
         )
         cfg = TrainConfig(
+            max_tokens=2048,
             scales=(
                 ScaleConfig(
                     env_config=EnvConfig(
-                        num_ships=4, max_bullets=20, max_episode_steps=64
+                        ally_ship_count=2, enemy_ship_count=2, max_bullets=20, max_episode_steps=64
                     ),
-                    num_envs=16,
+                    token_fraction=1.0,
+                    scripted_fraction=constant(0.5),
+                    avg_model_fraction=constant(0.0),
+                    league_fraction=constant(0.0),
                 ),
             ),
             schedule=schedule,

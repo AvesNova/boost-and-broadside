@@ -42,13 +42,6 @@ RL_SCHEDULE = TrainingSchedule(
     true_reward_scale=constant(1.0),
     global_scale=constant(1.0),
     local_scale=constant(1.0),
-    # Scripted at 50% from step 0 — stable, strong signal from the start.
-    # At step 50M avg-model is ready; reduce scripted to make room.
-    scripted_fraction=stepped((0, 0.5), (50_000_000, 0.3)),
-    # avg-model not used as opponent until step 50M (needs time to diverge from init).
-    avg_model_fraction=stepped((0, 0.0), (50_000_000, 0.2)),
-    # League activates at step 50M once the policy has meaningful ELO.
-    league_fraction=stepped((0, 0.0), (50_000_000, 0.2)),
     # Accumulate avg-model immediately so it is ready at step 50M.
     allow_avg_model_updates=stepped((0, False), (40_000_000, True)),
     allow_scripted_in_roster=stepped((0, True)),
@@ -59,14 +52,18 @@ RL_SCHEDULE = TrainingSchedule(
 )
 
 RL_TRAIN_CONFIG = TrainConfig(
+    max_tokens=_MAX_TOKENS,
     scales=(
-        # ScaleConfig(
-        #     env_config=EnvConfig(num_ships=2, num_obstacles=4, max_bullets=20, max_episode_steps=1024),
-        #     num_envs=_MAX_TOKENS // 4 // 2,
-        # ),
         ScaleConfig(
-            env_config=EnvConfig(num_ships=_NUM_SHIPS, num_obstacles=_NUM_OBSTACLES, max_bullets=20, max_episode_steps=1024,),
-            num_envs=_MAX_TOKENS // (_NUM_SHIPS + _NUM_OBSTACLES) // _NUM_STEPS // _NUM_MINIBATCHES * _NUM_MINIBATCHES,
+            env_config=EnvConfig(ally_ship_count=_NUM_SHIPS // 2, enemy_ship_count=_NUM_SHIPS // 2, num_obstacles=_NUM_OBSTACLES, max_bullets=20, max_episode_steps=1024,),
+            token_fraction=1.0,
+            # Scripted at 50% from step 0 — stable, strong signal from the start.
+            # At step 50M avg-model is ready; reduce scripted to make room.
+            scripted_fraction=stepped((0, 0.5), (50_000_000, 0.3)),
+            # avg-model not used as opponent until step 50M (needs time to diverge from init).
+            avg_model_fraction=stepped((0, 0.0), (50_000_000, 0.2)),
+            # League activates at step 50M once the policy has meaningful ELO.
+            league_fraction=stepped((0, 0.0), (50_000_000, 0.2)),
         ),
     ),
     schedule=RL_SCHEDULE,

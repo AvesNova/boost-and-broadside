@@ -232,10 +232,7 @@ class TrainingSchedule:
         [int], float
     ]  # multiplier for: self-only per-ship rewards (kill_shot, kill_assist, damage_taken, damage_dealt, death)
 
-    # --- Opponents ---
-    scripted_fraction: Callable[[int], float]
-    avg_model_fraction: Callable[[int], float]
-    league_fraction: Callable[[int], float]
+    # --- Opponents (global roster management — per-scale fractions live in ScaleConfig) ---
     allow_avg_model_updates: Callable[[int], bool]
     allow_scripted_in_roster: Callable[[int], bool]
 

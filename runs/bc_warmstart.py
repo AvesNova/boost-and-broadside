@@ -10,15 +10,23 @@ before RL takes over.
 """
 
 from boost_and_broadside.config import EnvConfig, ScaleConfig, TrainConfig
-from runs.bc import BC_SCHEDULE, _MAX_TOKENS
+from boost_and_broadside.config import constant, stepped
+from runs.bc import BC_SCHEDULE
 from runs.rl import RL_TRAIN_CONFIG
 from runs.shared import REWARDS
 
+# max_tokens = num_envs * num_ships * num_steps = 480 * 4 * 128 = 245_760
+_MAX_TOKENS = 245_760
+
 BC_WARMSTART_PRETRAIN_CONFIG = TrainConfig(
+    max_tokens=_MAX_TOKENS,
     scales=(
         ScaleConfig(
-            env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=1024),
-            num_envs=3 * _MAX_TOKENS // 3 // 8,
+            env_config=EnvConfig(ally_ship_count=2, enemy_ship_count=2, max_bullets=20, max_episode_steps=1024),
+            token_fraction=1.0,
+            scripted_fraction=constant(0.0),
+            avg_model_fraction=constant(0.0),
+            league_fraction=constant(0.0),
         ),
     ),
     schedule=BC_SCHEDULE,

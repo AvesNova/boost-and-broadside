@@ -6,6 +6,7 @@ Zero Mamba, zero auxiliary losses. One clean loop:
 Logging is async (CPU-side via wandb) to avoid GPU sync on the hot path.
 """
 
+import contextlib
 import dataclasses
 import time
 import threading
@@ -216,6 +217,8 @@ class _ResolvedSchedule:
 
     Produced by ``_resolve_schedule``; replaces the old ``PhaseConfig`` snapshot.
     All fields are plain values — no callables, no Nones.
+    Per-scale opponent fractions are NOT here; they live on each ScaleConfig and
+    are evaluated inline via _resolve_scale_fracs().
     """
 
     learning_rate: float
@@ -227,9 +230,6 @@ class _ResolvedSchedule:
     true_reward_scale: float
     global_scale: float
     local_scale: float
-    scripted_fraction: float
-    avg_model_fraction: float
-    league_fraction: float
     allow_avg_model_updates: bool
     allow_scripted_in_roster: bool
     elo_eval_games: int
@@ -250,15 +250,24 @@ def _resolve_schedule(schedule: TrainingSchedule, step: int) -> _ResolvedSchedul
         true_reward_scale=schedule.true_reward_scale(step),
         global_scale=schedule.global_scale(step),
         local_scale=schedule.local_scale(step),
-        scripted_fraction=schedule.scripted_fraction(step),
-        avg_model_fraction=schedule.avg_model_fraction(step),
-        league_fraction=schedule.league_fraction(step),
         allow_avg_model_updates=schedule.allow_avg_model_updates(step),
         allow_scripted_in_roster=schedule.allow_scripted_in_roster(step),
         elo_eval_games=schedule.elo_eval_games(step),
         checkpoint_interval=schedule.checkpoint_interval(step),
         num_epochs=schedule.num_epochs(step),
         target_kl=schedule.target_kl(step),
+    )
+
+
+def _resolve_scale_fracs(sc: Any, step: int) -> tuple[float, float, float]:
+    """Evaluate a ScaleConfig's three opponent fractions at ``step``.
+
+    Returns (scripted_fraction, avg_model_fraction, league_fraction).
+    """
+    return (
+        sc.scripted_fraction(step),
+        sc.avg_model_fraction(step),
+        sc.league_fraction(step),
     )
 
 
@@ -347,25 +356,31 @@ class PPOTrainer:
 
         base_state = _resolve_schedule(train_config.schedule, 0)
 
+        # Compute num_envs for each scale from token_fraction.
+        # Store as a list parallel to train_config.scales.
+        self._scale_num_envs: list[int] = [
+            train_config.scale_num_envs(sc) for sc in train_config.scales
+        ]
+
         # Primary scale — supports scripted / avg-model / league opponents.
         # Env groups are sized from the MAXIMUM fraction seen across the entire run
         # so that slots exist when a later phase activates a higher fraction.
-        # Whether each group is ACTIVE each step is controlled by the current schedule
+        # Whether each group is ACTIVE each step is controlled by the current per-scale
         # fraction (> 0 → active, == 0 → those envs run self-play silently).
         # Env groups are contiguous slices of the B primary envs:
         #   [0, B_self)                          → pure self-play (+ overflow from inactive groups)
         #   [B_self, B_self+B_sc)               → scripted opponent (+ BC targets)
         #   [B_self+B_sc, B_self+B_sc+B_avg)   → avg-model opponent
         #   [B_self+B_sc+B_avg, B)              → league roster opponent
-        B = train_config.scales[0].num_envs
+        B = self._scale_num_envs[0]
         max_sc_frac = _max_schedule_value(
-            train_config.schedule.scripted_fraction, train_config.total_timesteps
+            train_config.scales[0].scripted_fraction, train_config.total_timesteps
         )
         max_avg_frac = _max_schedule_value(
-            train_config.schedule.avg_model_fraction, train_config.total_timesteps
+            train_config.scales[0].avg_model_fraction, train_config.total_timesteps
         )
         max_league_frac = _max_schedule_value(
-            train_config.schedule.league_fraction, train_config.total_timesteps
+            train_config.scales[0].league_fraction, train_config.total_timesteps
         )
         self.B_sc = round(max_sc_frac * B)
         self.B_avg = round(max_avg_frac * B)
@@ -402,7 +417,7 @@ class PPOTrainer:
             self._obstacle_cache = None
 
         self.wrapper = MVPEnvWrapper(
-            num_envs=train_config.scales[0].num_envs,
+            num_envs=self._scale_num_envs[0],
             ship_config=ship_config,
             env_config=train_config.scales[0].env_config,
             rewards=train_config.rewards,
@@ -447,7 +462,7 @@ class PPOTrainer:
 
         self.buffer = RolloutBuffer(
             num_steps=train_config.num_steps,
-            num_envs=train_config.scales[0].num_envs,
+            num_envs=self._scale_num_envs[0],
             num_ships=N,
             num_components=K,
             obs_sample=sample_obs,
@@ -572,7 +587,7 @@ class PPOTrainer:
 
         self._global_step = 0
         self._start_update = 1
-        total_envs_all = sum(sc.num_envs for sc in train_config.scales)
+        total_envs_all = sum(self._scale_num_envs)
         self._num_updates = train_config.total_timesteps // (
             total_envs_all * train_config.num_steps
         )
@@ -596,16 +611,23 @@ class PPOTrainer:
         self._policy_gradient_coef: float = base_state.policy_gradient_coef
         self._behavior_cloning_coef: float = base_state.behavior_cloning_coef
 
+        # Per-scale opponent fractions for scale 0, cached alongside _schedule_state.
+        # scales[1:] are still pure self-play (Phase 2 will flatten this).
+        sc0 = train_config.scales[0]
+        self._sc_frac: float = sc0.scripted_fraction(0)
+        self._avg_frac: float = sc0.avg_model_fraction(0)
+        self._league_frac: float = sc0.league_fraction(0)
 
         # --- Auxiliary training scales (multi-scale curriculum) ---
         # Each scale has its own env + buffer; policy, optimizer, and scaler are shared.
-        # Pure self-play only — no scripted/avg/league opponents on aux scales.
+        # Pure self-play only — no scripted/avg/league opponents on aux scales (Phase 2).
         self.aux_wrappers: list[MVPEnvWrapper] = []
         self.aux_buffers: list[RolloutBuffer] = []
 
-        for sc in train_config.scales[1:]:
+        for i, sc in enumerate(train_config.scales[1:], start=1):
+            ne = self._scale_num_envs[i]
             aux_w = MVPEnvWrapper(
-                num_envs=sc.num_envs,
+                num_envs=ne,
                 ship_config=ship_config,
                 env_config=sc.env_config,
                 rewards=train_config.rewards,
@@ -615,7 +637,7 @@ class PPOTrainer:
             aux_sample_obs = aux_w.reset()
             aux_buf = RolloutBuffer(
                 num_steps=train_config.num_steps,
-                num_envs=sc.num_envs,
+                num_envs=ne,
                 num_ships=sc.env_config.num_ships,
                 num_components=K,
                 obs_sample=aux_sample_obs,
@@ -626,6 +648,45 @@ class PPOTrainer:
             )
             self.aux_wrappers.append(aux_w)
             self.aux_buffers.append(aux_buf)
+
+        # Gradient weights: scale each scale's loss by its fraction of total ship-tokens
+        # so every ship-token has equal gradient impact regardless of scale size.
+        _ship_tokens = [
+            self._scale_num_envs[i] * sc.env_config.num_ships
+            for i, sc in enumerate(train_config.scales)
+        ]
+        _total_ship_tokens = sum(_ship_tokens)
+        self._grad_weights: list[float] = [
+            t / _total_ship_tokens for t in _ship_tokens
+        ]
+
+        # Per-aux-scale opponent slot allocations (computed once; used in train()).
+        # Each entry corresponds to scales[1:] / aux_wrappers[j].
+        self._aux_B_sc: list[int] = []
+        self._aux_B_avg: list[int] = []
+        self._aux_B_league: list[int] = []
+        self._aux_B_self: list[int] = []
+        self._aux_opp_team_flag: list[torch.Tensor] = []
+        for j, sc in enumerate(train_config.scales[1:]):
+            ne = self._scale_num_envs[j + 1]
+            aux_max_sc = _max_schedule_value(sc.scripted_fraction, train_config.total_timesteps)
+            aux_max_avg = _max_schedule_value(sc.avg_model_fraction, train_config.total_timesteps)
+            aux_max_league = _max_schedule_value(sc.league_fraction, train_config.total_timesteps)
+            b_sc = round(aux_max_sc * ne)
+            b_avg = round(aux_max_avg * ne)
+            b_league = round(aux_max_league * ne)
+            b_self = ne - b_sc - b_avg - b_league
+            n_opp = b_sc + b_avg + b_league
+            opp_tf = (
+                torch.randint(0, 2, (n_opp,), device=self.device, dtype=torch.int32)
+                if n_opp > 0
+                else torch.empty(0, device=self.device, dtype=torch.int32)
+            )
+            self._aux_B_sc.append(b_sc)
+            self._aux_B_avg.append(b_avg)
+            self._aux_B_league.append(b_league)
+            self._aux_B_self.append(b_self)
+            self._aux_opp_team_flag.append(opp_tf)
 
         self._active_save_thread = None
         self._active_best_thread = None
@@ -686,7 +747,7 @@ class PPOTrainer:
 
     def train(self) -> None:
         """Run the full PPO training loop."""
-        B = self.cfg.scales[0].num_envs
+        B = self._scale_num_envs[0]
         N = self.wrapper.num_ships
         M = self.env_config.num_obstacles
         num_tokens = N + M  # ships + obstacles; hidden state covers all entity tokens
@@ -757,32 +818,46 @@ class PPOTrainer:
         aux_hidden_t1s: list[torch.Tensor] = []
         aux_action_buffers: list[torch.Tensor] = []
         aux_last_dones: list[torch.Tensor] = []
-        for sc, aux_w in zip(self.cfg.scales[1:], self.aux_wrappers):
+        aux_hiddens_avg: list[torch.Tensor | None] = []
+        for (sc, aux_w), ne, aux_b_avg in zip(
+            zip(self.cfg.scales[1:], self.aux_wrappers),
+            self._scale_num_envs[1:],
+            self._aux_B_avg,
+        ):
             aux_obs.append(aux_w.reset())
             aux_w.env.state.step_count.random_(0, sc.env_config.max_episode_steps)
             aux_num_tokens = sc.env_config.num_ships + sc.env_config.num_obstacles
             aux_hiddens.append(
-                self.policy.initial_hidden(
-                    sc.num_envs, aux_num_tokens, self.device
-                )
+                self.policy.initial_hidden(ne, aux_num_tokens, self.device)
             )
             aux_hidden_t1s.append(
-                self.policy.initial_hidden(
-                    sc.num_envs, aux_num_tokens, self.device
-                )
+                self.policy.initial_hidden(ne, aux_num_tokens, self.device)
             )
             aux_action_buffers.append(
-                torch.zeros(sc.num_envs, sc.env_config.num_ships, 3, dtype=torch.int32, device=self.device)
+                torch.zeros(ne, sc.env_config.num_ships, 3, dtype=torch.int32, device=self.device)
             )
             aux_last_dones.append(
-                torch.zeros(sc.num_envs, dtype=torch.bool, device=self.device)
+                torch.zeros(ne, dtype=torch.bool, device=self.device)
             )
+            if aux_b_avg > 0:
+                aux_hiddens_avg.append(
+                    self.avg_policy.initial_hidden(aux_b_avg, aux_num_tokens, self.device)
+                )
+            else:
+                aux_hiddens_avg.append(None)
 
-        # CUDA streams for overlapping env physics with network forward passes.
-        # env_stream: runs wrapper.step (physics + obs extraction)
-        # net_stream: runs all policy forward passes
-        env_stream = torch.cuda.Stream() if self.device.type == "cuda" else None
-        net_stream = torch.cuda.Stream() if self.device.type == "cuda" else None
+        # One CUDA stream per scale — scales run in parallel (inter-scale overlap).
+        # Within a single scale the env step and policy forward are sequential on that stream.
+        # After all scales step, all streams sync to the current stream before the next step.
+        _is_cuda = self.device.type == "cuda"
+        scale_streams: list[torch.cuda.Stream | None] = [
+            torch.cuda.Stream() if _is_cuda else None
+            for _ in self.cfg.scales
+        ]
+        # Kept for backwards-compatibility with the primary-scale if/else blocks below;
+        # will be unified in a future cleanup.
+        env_stream = scale_streams[0]
+        net_stream = scale_streams[0]
 
         start_time = time.time()
 
@@ -805,7 +880,7 @@ class PPOTrainer:
             # Only runs when the current phase has league_frac > 0 AND slots are allocated.
             # Evict the previous checkpoint's weights before loading the new one.
             league_active = (
-                self.B_league > 0 and self._schedule_state.league_fraction > 0.0
+                self.B_league > 0 and self._league_frac > 0.0
             )
             if league_active:
                 entry = self.roster.sample(self._training_elo)
@@ -878,16 +953,16 @@ class PPOTrainer:
                     use_avg = (
                         self._avg_update_count > 0
                         and self.B_avg > 0
-                        and self._schedule_state.avg_model_fraction > 0.0
+                        and self._avg_frac > 0.0
                     )
                     use_league = (
                         self.B_league > 0
                         and self._current_league_entry is not None
-                        and self._schedule_state.league_fraction > 0.0
+                        and self._league_frac > 0.0
                     )
                     use_sc_bc = self.B_sc > 0
                     use_sc_opponent = (
-                        use_sc_bc and self._schedule_state.scripted_fraction > 0.0
+                        use_sc_bc and self._sc_frac > 0.0
                     )
 
                     expert_probs_step: torch.Tensor | None = None
@@ -977,7 +1052,7 @@ class PPOTrainer:
                     torch.cuda.current_stream().wait_stream(env_stream)
                     torch.cuda.current_stream().wait_stream(net_stream)
                 else:
-                    # CPU fallback (no streams)
+                    # CPU / no-stream fallback
                     next_obs, reward, dones, truncated, info = self.wrapper.step(
                         action_buffer
                     )
@@ -1094,12 +1169,54 @@ class PPOTrainer:
                 obs = next_obs
                 self._global_step += B
 
-                # Aux-scale rollout steps (pure self-play, 1-step delay)
+                # Aux-scale rollout steps — each scale runs its own opponent mix.
+                # Each scale is launched on its own CUDA stream so multiple aux scales
+                # overlap their GPU work with each other (inter-scale parallelism).
                 for i, (sc, aux_w, aux_buf) in enumerate(
                     zip(self.cfg.scales[1:], self.aux_wrappers, self.aux_buffers)
                 ):
+                  with (torch.cuda.stream(scale_streams[i + 1])
+                        if scale_streams[i + 1] is not None else contextlib.nullcontext()):
                     aux_N = sc.env_config.num_ships
                     aux_num_tokens = aux_N + sc.env_config.num_obstacles
+                    aux_ne = self._scale_num_envs[i + 1]
+                    aux_sc_frac, aux_avg_frac, _ = _resolve_scale_fracs(sc, self._global_step)
+                    aux_B_sc = self._aux_B_sc[i]
+                    aux_B_avg = self._aux_B_avg[i]
+                    aux_B_self = self._aux_B_self[i]
+                    aux_sc_start = aux_B_self
+                    aux_sc_end = aux_sc_start + aux_B_sc
+                    aux_avg_start = aux_sc_end
+                    aux_avg_end = aux_avg_start + aux_B_avg
+
+                    # Scripted computations for this aux scale (before forward pass)
+                    aux_use_sc_bc = aux_B_sc > 0
+                    aux_use_sc_opp = aux_use_sc_bc and aux_sc_frac > 0.0
+                    aux_use_avg = (
+                        self._avg_update_count > 0
+                        and aux_B_avg > 0
+                        and aux_avg_frac > 0.0
+                    )
+                    aux_action_scripted_i = None
+                    aux_expert_probs_i = None
+                    if (
+                        aux_use_sc_bc
+                        and self._behavior_cloning_coef > 0.0
+                        and self.scripted_agent is not None
+                    ):
+                        with torch.no_grad():
+                            aux_sc_all, aux_expert_probs_i = (
+                                self.scripted_agent.get_actions_and_probs(aux_w.env.state)
+                            )
+                        if aux_use_sc_opp:
+                            aux_action_scripted_i = aux_sc_all[aux_sc_start:aux_sc_end]
+                    elif aux_use_sc_bc and self.scripted_agent is not None:
+                        with torch.no_grad():
+                            state_sc_i = _slice_state(aux_w.env.state, aux_sc_start, aux_sc_end)
+                            aux_action_scripted_i, _ = (
+                                self.scripted_agent.get_actions_and_probs(state_sc_i)
+                            )
+
                     with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
                         # Pass 1: team 0 perspective — training pass
                         aux_action_t0, aux_logprob, aux_value_norm, _, aux_hiddens[i] = (
@@ -1110,8 +1227,36 @@ class PPOTrainer:
                         aux_action_t1, _, _, _, aux_hidden_t1s[i] = (
                             self.policy.get_action_and_value(aux_obs_t1, aux_hidden_t1s[i])
                         )
+                        # Avg-model forward pass for opponent envs
+                        if aux_use_avg:
+                            aux_obs_avg = _flip_team_obs(
+                                _slice_obs(aux_obs[i], aux_avg_start, aux_avg_end), aux_N
+                            )
+                            aux_action_avg_i, _, _, _, aux_hiddens_avg[i] = (
+                                self.avg_policy.get_action_and_value(
+                                    aux_obs_avg, aux_hiddens_avg[i]
+                                )
+                            )
+
                     aux_team0 = (aux_obs[i]["team_id"][:, :aux_N] == 0)
                     aux_action = torch.where(aux_team0.unsqueeze(-1), aux_action_t0, aux_action_t1)
+
+                    # Override team-1 opponent actions for scripted envs
+                    if aux_use_sc_opp:
+                        opp_mask = aux_obs[i]["team_id"][aux_sc_start:aux_sc_end, :aux_N] == 1
+                        aux_action[aux_sc_start:aux_sc_end] = torch.where(
+                            opp_mask.unsqueeze(-1),
+                            aux_action_scripted_i,
+                            aux_action[aux_sc_start:aux_sc_end],
+                        )
+                    if aux_use_avg:
+                        opp_mask = aux_obs[i]["team_id"][aux_avg_start:aux_avg_end, :aux_N] == 1
+                        aux_action[aux_avg_start:aux_avg_end] = torch.where(
+                            opp_mask.unsqueeze(-1),
+                            aux_action_avg_i,
+                            aux_action[aux_avg_start:aux_avg_end],
+                        )
+
                     next_aux_obs, aux_reward, aux_dones, aux_truncated, _ = aux_w.step(
                         aux_action_buffers[i]
                     )
@@ -1127,7 +1272,7 @@ class PPOTrainer:
                         value=self.scaler.denormalize(aux_value_norm),
                         alive=aux_obs[i]["alive"][:, :aux_N].bool(),
                         actor_mask=(aux_obs[i]["team_id"][:, :aux_N] == 0),
-                        expert_probs=None,
+                        expert_probs=aux_expert_probs_i,
                         terminated=aux_done_any,
                     )
                     aux_hiddens[i] = self.policy.reset_hidden_for_envs(
@@ -1136,11 +1281,26 @@ class PPOTrainer:
                     aux_hidden_t1s[i] = self.policy.reset_hidden_for_envs(
                         aux_hidden_t1s[i], aux_done_any, aux_num_tokens
                     )
+                    if aux_use_avg and aux_B_avg > 0:
+                        aux_hiddens_avg[i] = self.avg_policy.reset_hidden_for_envs(
+                            aux_hiddens_avg[i], aux_done_any[aux_avg_start:aux_avg_end], aux_num_tokens
+                        )
+                    # Re-randomise opponent team assignment for any reset env
+                    if (aux_B_sc + aux_B_avg) > 0 and aux_done_any[aux_sc_start:].any():
+                        opp_done = aux_done_any[aux_sc_start:aux_sc_start + aux_B_sc + aux_B_avg]
+                        self._aux_opp_team_flag[i][opp_done] = torch.randint(
+                            0, 2, (opp_done.sum().item(),), device=self.device, dtype=torch.int32
+                        )
                     aux_action_buffers[i] = aux_action.detach().clone()
                     aux_action_buffers[i][aux_done_any] = 0
                     aux_last_dones[i] = aux_dones
                     aux_obs[i] = next_aux_obs
-                    self._global_step += sc.num_envs
+                    self._global_step += self._scale_num_envs[i + 1]
+
+                # Sync all aux-scale streams to current_stream so next step's reads are safe.
+                if _is_cuda:
+                    for _ss in scale_streams[1:]:
+                        torch.cuda.current_stream().wait_stream(_ss)
 
                 # -- Continuous Live ELO Evaluation (every 4 steps) --
                 if _step % 4 == 0:
@@ -1207,6 +1367,11 @@ class PPOTrainer:
                             reset_done_envs(agent_sc, eval_done_any, num_tokens)
                         reset_done_envs(agent_rand, eval_done_any, num_tokens)
 
+            # Full sync before GAE — ensure all scale streams are done.
+            if _is_cuda:
+                for _ss in scale_streams:
+                    torch.cuda.current_stream().wait_stream(_ss)
+
             # Store final obs for T+1 aux loss label computation
             self.buffer.store_final_obs(obs)
             for i, aux_buf in enumerate(self.aux_buffers):
@@ -1229,9 +1394,15 @@ class PPOTrainer:
                 next_aux_val = self.scaler.denormalize(next_aux_val_norm)
                 aux_buf.compute_gae(next_aux_val, aux_last_dones[i].float())
 
-            # Update per-component return percentiles and advantage RMS from primary rollout only
-            self.scaler.update(self.buffer.returns)
-            self.adv_scaler.update(self.buffer.advantages, self.buffer.alive_mask)
+            # Update per-component return percentiles and advantage RMS from all scales.
+            all_returns = torch.cat([self.buffer.returns]
+                + [ab.returns for ab in self.aux_buffers], dim=1)
+            all_advantages = torch.cat([self.buffer.advantages]
+                + [ab.advantages for ab in self.aux_buffers], dim=1)
+            all_alive_mask = torch.cat([self.buffer.alive_mask]
+                + [ab.alive_mask for ab in self.aux_buffers], dim=1)
+            self.scaler.update(all_returns)
+            self.adv_scaler.update(all_advantages, all_alive_mask)
 
             # ----------------------------------------------------------------
             # PPO update epochs
@@ -1247,6 +1418,8 @@ class PPOTrainer:
             self._schedule_state = _resolve_schedule(
                 self.cfg.schedule, self._global_step
             )
+            _sc0_fracs = _resolve_scale_fracs(self.cfg.scales[0], self._global_step)
+            self._sc_frac, self._avg_frac, self._league_frac = _sc0_fracs
             self._policy_gradient_coef = self._schedule_state.policy_gradient_coef
             # BC weight: P(bc_target_beats_current), remapped to [0, 1].
             # Scale=200 gives a steeper sigmoid; target=950 zeroes out BC before 1000.
@@ -1255,14 +1428,15 @@ class PPOTrainer:
             bc_factor = max(0.0, 2.0 * (p_bc_wins - 0.5))
             self._behavior_cloning_coef = self._schedule_state.behavior_cloning_coef * bc_factor
             self.optim.param_groups[0]["lr"] = self._schedule_state.learning_rate
-            for comp in self.wrapper._all_components:
-                scale_attr = _GROUP[comp.name]
-                raw: float = getattr(self.cfg.rewards, f"{comp.name}_weight")
-                setattr(
-                    comp,
-                    f"{comp.name}_weight",
-                    raw * getattr(self._schedule_state, scale_attr),
-                )
+            for w in [self.wrapper] + self.aux_wrappers:
+                for comp in w._all_components:
+                    scale_attr = _GROUP[comp.name]
+                    raw: float = getattr(self.cfg.rewards, f"{comp.name}_weight")
+                    setattr(
+                        comp,
+                        f"{comp.name}_weight",
+                        raw * getattr(self._schedule_state, scale_attr),
+                    )
             metrics["schedule/learning_rate"] = self._schedule_state.learning_rate
             metrics["schedule/policy_gradient_coef"] = (
                 self._schedule_state.policy_gradient_coef
@@ -1280,7 +1454,8 @@ class PPOTrainer:
                 # Update avg model when allowed by the current phase.
                 # The timeline's allow_avg_model_updates is the sole gate — no min_steps.
                 avg_model_ready = self._schedule_state.allow_avg_model_updates
-                if self.B_avg > 0 and avg_model_ready:
+                has_avg_slots = self.B_avg > 0 or any(b > 0 for b in self._aux_B_avg)
+                if has_avg_slots and avg_model_ready:
                     self._update_avg_model()
 
             # Scaler stats — one CPU transfer per component group
@@ -1872,37 +2047,33 @@ class PPOTrainer:
                     loss, diag = self._compute_minibatch_loss(
                         batch, comp_weights, is_primary
                     )
-                    (loss / n_scales).backward()
+                    # Weight gradients by ship-token fraction: every token gets equal impact.
+                    gw = self._grad_weights[scale_idx]
+                    (loss * gw).backward()
 
-                    # Accumulate scalar diagnostics (average across scales)
-                    scalar_accum_step["loss"] += diag["loss"] / n_scales
-                    scalar_accum_step["pg"] += diag["pg_loss"] / n_scales
-                    scalar_accum_step["vf"] += diag["vf_loss"] / n_scales
-                    scalar_accum_step["ent"] += diag["ent_loss"] / n_scales
-                    scalar_accum_step["bc"] += diag["bc_loss"] / n_scales
-                    scalar_accum_step["sigreg"] += diag["sigreg_loss"] / n_scales
-                    scalar_accum_step["ns_loss"] += diag["next_state_loss"] / n_scales
-                    scalar_accum_step["ns_cont"] += diag["next_state_cont_loss"] / n_scales
-                    scalar_accum_step["windowed_ns"] += diag["windowed_ns_loss"] / n_scales
-                    scalar_accum_step["bc_kl"] += diag["bc_kl"] / n_scales
-                    scalar_accum_step["scripted_entropy"] += (
-                        diag["scripted_entropy"] / n_scales
-                    )
-                    scalar_accum_step["kl"] += diag["approx_kl"] / n_scales
-                    scalar_accum_step["clip"] += diag["clip_frac"] / n_scales
-                    scalar_accum_step["adv_var"] += diag["adv_var"] / n_scales
-                    scalar_accum_step["ret_agg_mean"] += diag["ret_agg_mean"] / n_scales
-                    scalar_accum_step["ret_agg_std"] += diag["ret_agg_std"] / n_scales
-                    scalar_accum_step["alive_frac"] += diag["alive_frac"] / n_scales
-                    scalar_accum_step["ratio_mean"] += diag["ratio_mean"] / n_scales
-                    scalar_accum_step["ratio_max"] += diag["ratio_max"] / n_scales
-                    scalar_accum_step["entropy_power"] += (
-                        diag["entropy_power"] / n_scales
-                    )
-                    scalar_accum_step["entropy_turn"] += diag["entropy_turn"] / n_scales
-                    scalar_accum_step["entropy_shoot"] += (
-                        diag["entropy_shoot"] / n_scales
-                    )
+                    # Accumulate scalar diagnostics (token-weighted average across scales)
+                    scalar_accum_step["loss"] += diag["loss"] * gw
+                    scalar_accum_step["pg"] += diag["pg_loss"] * gw
+                    scalar_accum_step["vf"] += diag["vf_loss"] * gw
+                    scalar_accum_step["ent"] += diag["ent_loss"] * gw
+                    scalar_accum_step["bc"] += diag["bc_loss"] * gw
+                    scalar_accum_step["sigreg"] += diag["sigreg_loss"] * gw
+                    scalar_accum_step["ns_loss"] += diag["next_state_loss"] * gw
+                    scalar_accum_step["ns_cont"] += diag["next_state_cont_loss"] * gw
+                    scalar_accum_step["windowed_ns"] += diag["windowed_ns_loss"] * gw
+                    scalar_accum_step["bc_kl"] += diag["bc_kl"] * gw
+                    scalar_accum_step["scripted_entropy"] += diag["scripted_entropy"] * gw
+                    scalar_accum_step["kl"] += diag["approx_kl"] * gw
+                    scalar_accum_step["clip"] += diag["clip_frac"] * gw
+                    scalar_accum_step["adv_var"] += diag["adv_var"] * gw
+                    scalar_accum_step["ret_agg_mean"] += diag["ret_agg_mean"] * gw
+                    scalar_accum_step["ret_agg_std"] += diag["ret_agg_std"] * gw
+                    scalar_accum_step["alive_frac"] += diag["alive_frac"] * gw
+                    scalar_accum_step["ratio_mean"] += diag["ratio_mean"] * gw
+                    scalar_accum_step["ratio_max"] += diag["ratio_max"] * gw
+                    scalar_accum_step["entropy_power"] += diag["entropy_power"] * gw
+                    scalar_accum_step["entropy_turn"] += diag["entropy_turn"] * gw
+                    scalar_accum_step["entropy_shoot"] += diag["entropy_shoot"] * gw
 
                     if is_primary:
                         diag_primary = diag
