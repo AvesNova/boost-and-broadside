@@ -330,15 +330,14 @@ class AllyWinReward(RewardComponent):
 
 
 class EnemyWinReward(RewardComponent):
-    """-1 to each ship on the LOSING team at game end; 0 otherwise.
+    """+1 to each ship on the WINNING team at game end; 0 to losers and draws.
 
-    Paired with AllyWinReward so the critic distinguishes three outcomes:
+    Mirrors AllyWinReward but is consumed from the enemy perspective: PPO applies
+    lambda=-1 so allies see -1 when enemies win and 0 when enemies lose, letting
+    the critic distinguish three outcomes:
       win  → ally_win=+1, enemy_win= 0
       draw → ally_win= 0, enemy_win= 0
-      loss → ally_win= 0, enemy_win=-1
-
-    Used with diagonal (local) lambda: each ship independently observes its
-    own loss signal without aggregation across teammates."""
+      loss → ally_win= 0, enemy_win=+1 (enemy sees +1; ally sees lambda*+1=-1)"""
 
     name = "enemy_win"
 
@@ -363,11 +362,10 @@ class EnemyWinReward(RewardComponent):
         team1 = next_state.ship_team_id == 1  # (B, N)
         t0_alive = (team0 & next_state.ship_alive).sum(dim=1)  # (B,)
         t1_alive = (team1 & next_state.ship_alive).sum(dim=1)  # (B,)
-        # team0 loses when team1 has survivors and team0 is wiped out
-        t0_loses = ((t1_alive > 0) & (t0_alive == 0) & dones).unsqueeze(1)
-        t1_loses = ((t0_alive > 0) & (t1_alive == 0) & dones).unsqueeze(1)
-        reward[team0 & t0_loses.expand_as(team0)] = -1.0
-        reward[team1 & t1_loses.expand_as(team1)] = -1.0
+        t0_wins = ((t0_alive > 0) & (t1_alive == 0) & dones).unsqueeze(1)  # (B, 1)
+        t1_wins = ((t1_alive > 0) & (t0_alive == 0) & dones).unsqueeze(1)  # (B, 1)
+        reward[team0 & t0_wins.expand_as(team0)] = +1.0
+        reward[team1 & t1_wins.expand_as(team1)] = +1.0
         return reward
 
 
