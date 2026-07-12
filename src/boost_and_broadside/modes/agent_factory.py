@@ -33,6 +33,40 @@ from boost_and_broadside.env.observation import MVPObservation, ObsKey
 from boost_and_broadside.env.state import TensorState
 
 
+def _infer_team_pma_k(ckpt: dict) -> tuple[int, ...]:
+    """Return the win/loss value-component indices for a checkpoint.
+
+    Newer checkpoints store this directly under "team_pma_k". Older ones
+    (e.g. avg-model saves from before the key was added) only carry the
+    team_pma weights in the state_dict, so reconstruct the active-component
+    ordering from the stored reward weights — the same filter the reward
+    wrapper applies at training time.
+    """
+    if "team_pma_k" in ckpt:
+        return tuple(ckpt["team_pma_k"])
+    if "team_pma.seeds" not in ckpt["policy_state_dict"]:
+        return ()
+
+    from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
+
+    reward_weights = ckpt["train_config"]["rewards"]
+    active = [
+        name
+        for name in REWARD_COMPONENT_NAMES
+        if reward_weights.get(f"{name}_weight", 0.0) != 0.0
+    ]
+    win_k = tuple(
+        i for i, name in enumerate(active) if name in ("ally_win", "enemy_win")
+    )
+    n_win = ckpt["policy_state_dict"]["value_head_win.3.weight"].shape[0]
+    if len(win_k) != n_win:
+        sys.exit(
+            f"Error: inferred {len(win_k)} win components from checkpoint "
+            f"train_config but value_head_win outputs {n_win}."
+        )
+    return win_k
+
+
 class ResolvedAgent:
     """An agent resolved from a spec string, with mutable hidden state for policy agents."""
 
@@ -127,7 +161,7 @@ def resolve_agent_spec(
     ckpt = torch.load(path, map_location=device, weights_only=False)
     coordinator = build_standard_coordinator(ship_config)
     K = ckpt["policy_state_dict"]["value_head_local.3.weight"].shape[0]
-    team_pma_k = tuple(ckpt.get("team_pma_k", ()))
+    team_pma_k = _infer_team_pma_k(ckpt)
     policy = MVPPolicy(
         model_config, coordinator, num_value_components=K, num_ships=num_ships,
         team_pma_k=team_pma_k,

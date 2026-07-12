@@ -8,6 +8,7 @@ simultaneously, and reports per-agent ELO, win rates, and episode lengths.
 import sys
 import time
 from pathlib import Path
+from dataclasses import replace
 
 import torch
 
@@ -18,7 +19,11 @@ from boost_and_broadside.constants import (
     NUM_TURN_ACTIONS,
 )
 from boost_and_broadside.env.env import TensorEnv
-from boost_and_broadside.modes.agent_factory import ResolvedAgent, resolve_agent_spec
+from boost_and_broadside.modes.agent_factory import (
+    ResolvedAgent,
+    _infer_team_pma_k,
+    resolve_agent_spec,
+)
 from boost_and_broadside.modes.collect import _obs_from_state
 
 # All scripted agents, in display order. "scripted" (stochastic) is kept first
@@ -38,19 +43,13 @@ SCRIPTED_SPECS = [
 
 
 def find_run_dir(run_spec: str, checkpoint_dir: str) -> Path:
-    """Return the checkpoint subdirectory for a run spec.
-
-    Args:
-        run_spec:       "latest" or a specific run name like "bright-cloud-219".
-        checkpoint_dir: Root checkpoint directory.
-    """
+    """Return the checkpoint subdirectory for a run spec."""
     root = Path(checkpoint_dir)
     if run_spec == "latest":
         subdirs = [p for p in root.iterdir() if p.is_dir()]
         if not subdirs:
             sys.exit(f"Error: no run directories found under '{checkpoint_dir}'.")
 
-        # Pick the subdir whose newest .pt file is most recent
         def newest_pt_mtime(d: Path) -> float:
             pts = list(d.glob("*.pt"))
             return max(p.stat().st_mtime for p in pts) if pts else 0.0
@@ -73,7 +72,7 @@ def _load_checkpoint_agent(
     ckpt = torch.load(str(path), map_location=device, weights_only=False)
     coordinator = build_standard_coordinator(ship_config)
     K = ckpt["policy_state_dict"]["value_head_local.3.weight"].shape[0]
-    team_pma_k = tuple(ckpt.get("team_pma_k", ()))
+    team_pma_k = _infer_team_pma_k(ckpt)
     policy = MVPPolicy(
         model_config, coordinator, num_value_components=K, num_ships=num_ships,
         team_pma_k=team_pma_k,
@@ -94,349 +93,374 @@ def run_elo_stats_mode(
     device: str,
     checkpoint_dir: str = "checkpoints",
     elo_k_factor: float = 32.0,
+    matchups: list[str] | None = None,
+    custom_agents: list[str] | None = None,
 ) -> None:
-    """Run all-vs-all parallel matchups and report ELO ratings.
+    """Run all-vs-all parallel matchups and report ELO ratings."""
+    
+    if not matchups:
+        matchups = ["2v2"]
 
-    Args:
-        run_spec:       "latest" or a specific run directory name.
-        num_envs:       Total parallel environments (split across matchups).
-        ship_config:    Physics constants.
-        env_config:     Environment sizing.
-        model_config:   Policy architecture.
-        device:         Torch device string.
-        checkpoint_dir: Root directory containing run subdirectories.
-        elo_k_factor:   ELO K-factor (same as training default).
-    """
-    B = num_envs
-    N = env_config.num_ships
-    num_tokens = N + env_config.num_obstacles
-    dev = torch.device(device)
+    for matchup in matchups:
+        parts = matchup.split('v')
+        if len(parts) != 2:
+            print(f"Skipping invalid matchup: {matchup}")
+            continue
+        n0, n1 = int(parts[0]), int(parts[1])
+        N = n0 + n1
+        curr_env_config = replace(env_config, num_ships=N)
+        num_tokens = N + curr_env_config.num_obstacles
+        dev = torch.device(device)
+        B = num_envs
+        
+        print(f"\n{'='*60}")
+        print(f"=== ELO Matchup: {matchup} (Team0: {n0}, Team1: {n1}) ===")
+        print(f"{'='*60}")
 
-    # ------------------------------------------------------------------ #
-    # Step 1 — Discover and load agents                                   #
-    # ------------------------------------------------------------------ #
-    agents: list[ResolvedAgent] = []
-    labels: list[str] = []
-    num_checkpoints = 0
-    run_dir: Path | None = None
+        # ------------------------------------------------------------------ #
+        # Step 1 — Discover and load agents                                   #
+        # ------------------------------------------------------------------ #
+        agents: list[ResolvedAgent] = []
+        labels: list[str] = []
+        num_checkpoints = 0
+        run_dir: Path | None = None
 
-    if run_spec != "none":
-        run_dir = find_run_dir(run_spec, checkpoint_dir)
-        print(f"Run directory: {run_dir}")
-        ckpt_paths = sorted(run_dir.glob("*.pt"), key=lambda p: p.name)
-        if not ckpt_paths:
-            sys.exit(f"Error: no .pt checkpoints found in '{run_dir}'.")
-        print(f"Loading {len(ckpt_paths)} checkpoint(s)...")
-        for path in ckpt_paths:
-            agents.append(_load_checkpoint_agent(path, model_config, ship_config, N, device))
-            labels.append(path.stem)
-            print(f"  {path.stem}")
-        num_checkpoints = len(ckpt_paths)
+        if custom_agents:
+            print(f"Loading custom agents: {custom_agents}")
+            for spec in custom_agents:
+                agents.append(resolve_agent_spec(spec, ship_config, model_config, device, checkpoint_dir, num_ships=N))
+                labels.append(Path(spec).stem if '.pt' in spec else spec)
+            
+            scripted_idx = labels.index("scripted") if "scripted" in labels else -1
+            random_idx = labels.index("random") if "random" in labels else -1
+        else:
+            if run_spec != "none":
+                run_dir = find_run_dir(run_spec, checkpoint_dir)
+                print(f"Run directory: {run_dir}")
+                ckpt_paths = sorted(run_dir.glob("*.pt"), key=lambda p: p.name)
+                if not ckpt_paths:
+                    sys.exit(f"Error: no .pt checkpoints found in '{run_dir}'.")
+                print(f"Loading {len(ckpt_paths)} checkpoint(s)...")
+                for path in ckpt_paths:
+                    agents.append(_load_checkpoint_agent(path, model_config, ship_config, N, device))
+                    labels.append(path.stem)
+                    print(f"  {path.stem}")
+                num_checkpoints = len(ckpt_paths)
 
-    # All scripted agents — "scripted" (stochastic) is always index num_checkpoints
-    for spec in SCRIPTED_SPECS:
-        agents.append(resolve_agent_spec(spec, ship_config, model_config, device, num_ships=N))
-        labels.append(spec)
-    scripted_idx = num_checkpoints  # index of the stochastic scripted agent
+            # All scripted agents — "scripted" (stochastic) is always index num_checkpoints
+            for spec in SCRIPTED_SPECS:
+                agents.append(resolve_agent_spec(spec, ship_config, model_config, device, num_ships=N))
+                labels.append(spec)
+            scripted_idx = num_checkpoints  # index of the stochastic scripted agent
 
-    agents.append(ResolvedAgent("random", None))
-    labels.append("random")
-    random_idx = len(agents) - 1
+            agents.append(ResolvedAgent("random", None))
+            labels.append("random")
+            random_idx = len(agents) - 1
 
-    K = len(agents)
-    print(
-        f"Total agents: {K}  "
-        f"(checkpoints={num_checkpoints}, scripted={len(SCRIPTED_SPECS)}, random=1)"
-    )
-
-    # ------------------------------------------------------------------ #
-    # Step 2 — Matchup setup                                              #
-    # ------------------------------------------------------------------ #
-    # Directed pairs: agent i as team-0, agent j as team-1, for all i≠j
-    matchups = [(i, j) for i in range(K) for j in range(K) if i != j]
-    M = len(matchups)  # K*(K-1)
-    print(f"Directed matchups: {M}  ({K}×{K - 1})")
-
-    if B < M:
-        sys.exit(f"Error: num_envs ({B}) < num_matchups ({M}). Increase --num_envs.")
-
-    # Distribute envs evenly; first (B % M) matchups get one extra env
-    base, rem = divmod(B, M)
-    matchup_sizes = [base + (1 if m < rem else 0) for m in range(M)]
-
-    # Build (B,) tensors: which agent controls team-0/team-1 in each env
-    env_agent0_idx = torch.empty(B, dtype=torch.long, device=dev)
-    env_agent1_idx = torch.empty(B, dtype=torch.long, device=dev)
-    env_matchup_idx = torch.empty(B, dtype=torch.long, device=dev)
-
-    offset = 0
-    for m_idx, (i, j) in enumerate(matchups):
-        sz = matchup_sizes[m_idx]
-        env_agent0_idx[offset : offset + sz] = i
-        env_agent1_idx[offset : offset + sz] = j
-        env_matchup_idx[offset : offset + sz] = m_idx
-        offset += sz
-
-    # Per-agent sorted env indices (for sliced forward passes and hidden state)
-    active_envs: list[torch.Tensor] = []
-    for a_idx in range(K):
-        mask = (env_agent0_idx == a_idx) | (env_agent1_idx == a_idx)
-        active_envs.append(mask.nonzero(as_tuple=True)[0])
-
-    # ------------------------------------------------------------------ #
-    # Step 3 — Initialize hidden states and environment                   #
-    # ------------------------------------------------------------------ #
-    for a_idx, agent in enumerate(agents):
-        if agent.kind == "policy":
-            B_a = active_envs[a_idx].shape[0]
-            agent.hidden = agent.agent.initial_hidden(B_a, num_tokens, dev)
-
-    env = TensorEnv(B, ship_config, env_config, dev)
-    env.reset()
-
-    finished = torch.zeros(B, dtype=torch.bool, device=dev)
-    ep_lengths = torch.zeros(B, dtype=torch.int64, device=dev)
-    matchup_a_wins = torch.zeros(M, dtype=torch.float32, device=dev)
-    matchup_b_wins = torch.zeros(M, dtype=torch.float32, device=dev)
-    matchup_ties = torch.zeros(M, dtype=torch.float32, device=dev)
-
-    # Preallocate reusable tensors
-    all_acts = torch.zeros(K, B, N, 3, dtype=torch.int32, device=dev)
-    arange_B = torch.arange(B, device=dev)
-
-    total_steps = 0
-    t0 = time.perf_counter()
-
-    # ------------------------------------------------------------------ #
-    # Step 4 — Main simulation loop                                       #
-    # ------------------------------------------------------------------ #
-    while not finished.all():
-        state = env.state
-        obs = _obs_from_state(state, ship_config)
-
-        # Compute each agent's actions for its active envs
-        for a_idx, agent in enumerate(agents):
-            active = active_envs[a_idx]
-            B_a = active.shape[0]
-
-            if agent.kind == "random":
-                all_acts[a_idx, active] = torch.stack(
-                    [
-                        torch.randint(0, NUM_POWER_ACTIONS, (B_a, N), device=dev),
-                        torch.randint(0, NUM_TURN_ACTIONS, (B_a, N), device=dev),
-                        torch.randint(0, NUM_SHOOT_ACTIONS, (B_a, N), device=dev),
-                    ],
-                    dim=-1,
-                ).int()
-
-            elif agent.kind == "scripted":
-                # Scripted is a cheap vectorized op — run on full state, fill all B
-                with torch.no_grad():
-                    all_acts[a_idx] = agent.agent.get_actions(state)
-
-            else:  # policy
-                obs_a = {k: v[active] for k, v in obs.items()}
-                with torch.no_grad():
-                    acts_a, _, _, _, agent.hidden = agent.agent.get_action_and_value(
-                        obs_a, agent.hidden
-                    )
-                all_acts[a_idx, active] = acts_a.int()
-
-        # Assemble: team-0 ships get env_agent0's actions, team-1 ships get env_agent1's
-        team0_acts = all_acts[env_agent0_idx, arange_B]  # (B, N, 3)
-        team1_acts = all_acts[env_agent1_idx, arange_B]  # (B, N, 3)
-        action = torch.where(
-            (state.ship_team_id == 0).unsqueeze(-1),
-            team0_acts,
-            team1_acts,
+        K = len(agents)
+        print(
+            f"Total agents: {K}  "
+            f"(checkpoints={num_checkpoints}, scripted={len(SCRIPTED_SPECS) if not custom_agents else 0}, random={1 if not custom_agents else 0})"
         )
 
-        dones, truncated = env.step(action)
-        done_any = dones | truncated
-        total_steps += B
+        # ------------------------------------------------------------------ #
+        # Step 2 — Matchup setup                                              #
+        # ------------------------------------------------------------------ #
+        # Directed pairs: agent i as team-0, agent j as team-1, for all i≠j
+        matchups_pairs = [(i, j) for i in range(K) for j in range(K) if i != j]
+        M = len(matchups_pairs)  # K*(K-1)
+        print(f"Directed matchups: {M}  ({K}×{K - 1})")
 
-        new_done = done_any & ~finished
-        if new_done.any():
-            ep_lengths[new_done] = env.state.step_count[new_done].long()
+        if B < M:
+            sys.exit(f"Error: num_envs ({B}) < num_matchups ({M}). Increase --num_envs.")
 
-            alive = env.state.ship_alive
-            team = env.state.ship_team_id
-            team0_alive = (alive & (team == 0)).any(dim=1)
-            team1_alive = (alive & (team == 1)).any(dim=1)
-            team0_won = new_done & team0_alive & ~team1_alive
-            team1_won = new_done & team1_alive & ~team0_alive
-            tied = new_done & ~team0_won & ~team1_won
+        # Distribute envs evenly; first (B % M) matchups get one extra env
+        base, rem = divmod(B, M)
+        matchup_sizes = [base + (1 if m < rem else 0) for m in range(M)]
 
-            # Scatter outcomes into per-matchup accumulators
-            nd_idx = env_matchup_idx[new_done]
-            matchup_a_wins.scatter_add_(0, nd_idx, team0_won[new_done].float())
-            matchup_b_wins.scatter_add_(0, nd_idx, team1_won[new_done].float())
-            matchup_ties.scatter_add_(0, nd_idx, tied[new_done].float())
+        # Build (B,) tensors: which agent controls team-0/team-1 in each env
+        env_agent0_idx = torch.empty(B, dtype=torch.long, device=dev)
+        env_agent1_idx = torch.empty(B, dtype=torch.long, device=dev)
+        env_matchup_idx = torch.empty(B, dtype=torch.long, device=dev)
 
-            finished |= new_done
+        offset = 0
+        for m_idx, (i, j) in enumerate(matchups_pairs):
+            sz = matchup_sizes[m_idx]
+            env_agent0_idx[offset : offset + sz] = i
+            env_agent1_idx[offset : offset + sz] = j
+            env_matchup_idx[offset : offset + sz] = m_idx
+            offset += sz
 
-        if done_any.any():
-            env.reset_envs(done_any)
+        # Per-agent sorted env indices (for sliced forward passes and hidden state)
+        active_envs: list[torch.Tensor] = []
+        for a_idx in range(K):
+            mask = (env_agent0_idx == a_idx) | (env_agent1_idx == a_idx)
+            active_envs.append(mask.nonzero(as_tuple=True)[0])
+
+        # ------------------------------------------------------------------ #
+        # Step 3 — Initialize hidden states and environment                   #
+        # ------------------------------------------------------------------ #
+        for a_idx, agent in enumerate(agents):
+            if agent.kind == "policy":
+                B_a = active_envs[a_idx].shape[0]
+                agent.hidden = agent.agent.initial_hidden(B_a, num_tokens, dev)
+
+        env = TensorEnv(B, ship_config, curr_env_config, dev)
+        env.reset(options={"team_sizes": (n0, n1)})
+
+        finished = torch.zeros(B, dtype=torch.bool, device=dev)
+        ep_lengths = torch.zeros(B, dtype=torch.int64, device=dev)
+        matchup_a_wins = torch.zeros(M, dtype=torch.float32, device=dev)
+        matchup_b_wins = torch.zeros(M, dtype=torch.float32, device=dev)
+        matchup_ties = torch.zeros(M, dtype=torch.float32, device=dev)
+
+        # Preallocate reusable tensors
+        all_acts = torch.zeros(K, B, N, 3, dtype=torch.int32, device=dev)
+        arange_B = torch.arange(B, device=dev)
+
+        total_steps = 0
+        t0 = time.perf_counter()
+
+        # ------------------------------------------------------------------ #
+        # Step 4 — Main simulation loop                                       #
+        # ------------------------------------------------------------------ #
+        while not finished.all():
+            state = env.state
+            obs = _obs_from_state(state, ship_config)
+
+            # Compute each agent's actions for its active envs
             for a_idx, agent in enumerate(agents):
-                if agent.kind == "policy":
-                    active = active_envs[a_idx]
-                    active_done = done_any[active]
-                    if active_done.any():
-                        agent.hidden = agent.agent.reset_hidden_for_envs(
-                            agent.hidden,
-                            active_done,
-                            num_tokens,
+                active = active_envs[a_idx]
+                B_a = active.shape[0]
+
+                if agent.kind == "random":
+                    all_acts[a_idx, active] = torch.stack(
+                        [
+                            torch.randint(0, NUM_POWER_ACTIONS, (B_a, N), device=dev),
+                            torch.randint(0, NUM_TURN_ACTIONS, (B_a, N), device=dev),
+                            torch.randint(0, NUM_SHOOT_ACTIONS, (B_a, N), device=dev),
+                        ],
+                        dim=-1,
+                    ).int()
+
+                elif agent.kind == "scripted":
+                    # Scripted is a cheap vectorized op — run on full state, fill all B
+                    with torch.no_grad():
+                        all_acts[a_idx] = agent.agent.get_actions(state)
+
+                else:  # policy
+                    obs_a = {k: v[active] for k, v in obs.items()}
+                    with torch.no_grad():
+                        acts_a, _, _, _, agent.hidden = agent.agent.get_action_and_value(
+                            obs_a, agent.hidden
                         )
+                    all_acts[a_idx, active] = acts_a.int()
 
-    elapsed = time.perf_counter() - t0
+            # Assemble: team-0 ships get env_agent0's actions, team-1 ships get env_agent1's
+            team0_acts = all_acts[env_agent0_idx, arange_B]  # (B, N, 3)
+            team1_acts = all_acts[env_agent1_idx, arange_B]  # (B, N, 3)
+            action = torch.where(
+                (state.ship_team_id == 0).unsqueeze(-1),
+                team0_acts,
+                team1_acts,
+            )
 
-    # ------------------------------------------------------------------ #
-    # Step 5 — ELO computation (iterative convergence)                   #
-    # ------------------------------------------------------------------ #
-    elo = [0.0] * K
-    a_wins_cpu = matchup_a_wins.cpu().tolist()
-    b_wins_cpu = matchup_b_wins.cpu().tolist()
-    ties_cpu = matchup_ties.cpu().tolist()
+            dones, truncated = env.step(action)
+            done_any = dones | truncated
+            total_steps += B
 
-    # Precompute lookup: (i, j) -> matchup index
-    matchup_lookup: dict[tuple[int, int], int] = {
-        pair: m for m, pair in enumerate(matchups)
-    }
+            new_done = done_any & ~finished
+            if new_done.any():
+                ep_lengths[new_done] = env.state.step_count[new_done].long()
 
-    def _score_as_team0(i: int, j: int) -> float:
-        """Win rate of i playing as team-0 against j (team-1)."""
-        m = matchup_lookup[(i, j)]
-        n = matchup_sizes[m]
-        return (a_wins_cpu[m] + 0.5 * ties_cpu[m]) / n if n > 0 else 0.5
+                alive = env.state.ship_alive
+                team = env.state.ship_team_id
+                team0_alive = (alive & (team == 0)).any(dim=1)
+                team1_alive = (alive & (team == 1)).any(dim=1)
+                team0_won = new_done & team0_alive & ~team1_alive
+                team1_won = new_done & team1_alive & ~team0_alive
+                tied = new_done & ~team0_won & ~team1_won
 
-    def _win_rate_vs(a_idx: int, opp_idx: int) -> float | None:
-        """Win rate of a_idx vs opp_idx, averaged over both role directions."""
-        if a_idx == opp_idx or (a_idx, opp_idx) not in matchup_lookup:
-            return None
-        # Direction 1: a as team-0
-        r0 = _score_as_team0(a_idx, opp_idx)
-        # Direction 2: a as team-1 (opp as team-0); a's score = b_wins + 0.5*ties
-        m2 = matchup_lookup[(opp_idx, a_idx)]
-        n2 = matchup_sizes[m2]
-        r1 = (b_wins_cpu[m2] + 0.5 * ties_cpu[m2]) / n2 if n2 > 0 else 0.5
-        return (r0 + r1) / 2.0
+                # Scatter outcomes into per-matchup accumulators
+                nd_idx = env_matchup_idx[new_done]
+                matchup_a_wins.scatter_add_(0, nd_idx, team0_won[new_done].float())
+                matchup_b_wins.scatter_add_(0, nd_idx, team1_won[new_done].float())
+                matchup_ties.scatter_add_(0, nd_idx, tied[new_done].float())
 
-    for _ in range(200):
-        for m_idx, (i, j) in enumerate(matchups):
-            n_games = matchup_sizes[m_idx]
-            win_rate_i = (a_wins_cpu[m_idx] + 0.5 * ties_cpu[m_idx]) / n_games
-            expected_i = 1.0 / (1.0 + 10.0 ** ((elo[j] - elo[i]) / 400.0))
-            delta = elo_k_factor * (win_rate_i - expected_i)
-            elo[i] += delta
-            elo[j] -= delta
+                finished |= new_done
 
-    # ------------------------------------------------------------------ #
-    # Step 6 — Per-agent stats                                            #
-    # ------------------------------------------------------------------ #
+            if done_any.any():
+                env.reset_envs(done_any, options={"team_sizes": (n0, n1)})
+                for a_idx, agent in enumerate(agents):
+                    if agent.kind == "policy":
+                        active = active_envs[a_idx]
+                        active_done = done_any[active]
+                        if active_done.any():
+                            agent.hidden = agent.agent.reset_hidden_for_envs(
+                                agent.hidden,
+                                active_done,
+                                num_tokens,
+                            )
 
-    # Identify special agents by label
-    avg_idx = next((a for a, lb in enumerate(labels) if lb == "best_avg"), None)
+        elapsed = time.perf_counter() - t0
 
-    # Per-agent average episode length across all their active envs
-    ep_lengths_cpu = ep_lengths.cpu()
-    agent_ep_len = [
-        float(ep_lengths_cpu[active_envs[a].cpu()].float().mean()) for a in range(K)
-    ]
+        # ------------------------------------------------------------------ #
+        # Step 5 — ELO computation (iterative convergence)                   #
+        # ------------------------------------------------------------------ #
+        elo = [0.0] * K
+        a_wins_cpu = matchup_a_wins.cpu().tolist()
+        b_wins_cpu = matchup_b_wins.cpu().tolist()
+        ties_cpu = matchup_ties.cpu().tolist()
 
-    # Role delta: avg win rate as team-0 minus avg win rate as team-1
-    # (positive = better when controlling team-0 ships)
-    def _role_delta(a_idx: int) -> float:
-        as_t0 = [_score_as_team0(a_idx, j) for j in range(K) if j != a_idx]
-        as_t1 = []
-        for i in range(K):
-            if i == a_idx:
-                continue
-            m = matchup_lookup[(i, a_idx)]
+        # Precompute lookup: (i, j) -> matchup index
+        matchup_lookup: dict[tuple[int, int], int] = {
+            pair: m for m, pair in enumerate(matchups_pairs)
+        }
+
+        def _score_as_team0(i: int, j: int) -> float:
+            """Win rate of i playing as team-0 against j (team-1)."""
+            m = matchup_lookup[(i, j)]
             n = matchup_sizes[m]
-            as_t1.append((b_wins_cpu[m] + 0.5 * ties_cpu[m]) / n if n > 0 else 0.5)
-        return (sum(as_t0) / len(as_t0)) - (sum(as_t1) / len(as_t1))
+            return (a_wins_cpu[m] + 0.5 * ties_cpu[m]) / n if n > 0 else 0.5
 
-    # ------------------------------------------------------------------ #
-    # Step 7 — Print report                                               #
-    # ------------------------------------------------------------------ #
-    sim_fps = 1.0 / ship_config.dt
-    sps = total_steps / elapsed
+        def _win_rate_vs(a_idx: int, opp_idx: int) -> float | None:
+            """Win rate of a_idx vs opp_idx, averaged over both role directions."""
+            if opp_idx < 0 or a_idx == opp_idx or (a_idx, opp_idx) not in matchup_lookup:
+                return None
+            # Direction 1: a as team-0
+            r0 = _score_as_team0(a_idx, opp_idx)
+            # Direction 2: a as team-1 (opp as team-0); a's score = b_wins + 0.5*ties
+            m2 = matchup_lookup[(opp_idx, a_idx)]
+            n2 = matchup_sizes[m2]
+            r1 = (b_wins_cpu[m2] + 0.5 * ties_cpu[m2]) / n2 if n2 > 0 else 0.5
+            return (r0 + r1) / 2.0
 
-    # Sort agents by ELO descending for display
-    order = sorted(range(K), key=lambda a: elo[a], reverse=True)
+        for _ in range(200):
+            for m_idx, (i, j) in enumerate(matchups_pairs):
+                n_games = matchup_sizes[m_idx]
+                win_rate_i = (a_wins_cpu[m_idx] + 0.5 * ties_cpu[m_idx]) / n_games
+                expected_i = 1.0 / (1.0 + 10.0 ** ((elo[j] - elo[i]) / 400.0))
+                delta = elo_k_factor * (win_rate_i - expected_i)
+                elo[i] += delta
+                elo[j] -= delta
 
-    label_w = max(len(lb) for lb in labels)
-    has_avg = avg_idx is not None
+        # ------------------------------------------------------------------ #
+        # Step 6 — Per-agent stats                                            #
+        # ------------------------------------------------------------------ #
 
-    # Build header columns
-    cols = [
-        ("ELO", 6),
-        ("vs random", 10),
-        ("vs scripted", 12),
-    ]
-    if has_avg:
-        cols.append(("vs avg", 8))
-    cols += [
-        ("role Δ", 8),
-        ("avg ep len", 10),
-    ]
+        # Identify special agents by label
+        avg_idx = next((a for a, lb in enumerate(labels) if lb == "best_avg"), None)
 
-    hdr_parts = "  ".join(f"{name:>{w}}" for name, w in cols)
-    row_w = label_w + 4 + sum(w + 2 for _, w in cols)
-    w_total = max(72, row_w)
-    sep = "─" * w_total
+        # Per-agent average episode length across all their active envs
+        ep_lengths_cpu = ep_lengths.cpu()
+        agent_ep_len = [
+            float(ep_lengths_cpu[active_envs[a].cpu()].float().mean()) for a in range(K)
+        ]
 
-    title = run_dir.name if run_dir is not None else "scripted-only"
-    print(f"\n{sep}")
-    print(f"  ELO Stats: {title}")
-    print(
-        f"  {K} agents  |  {B:,} total envs  |  {M} directed matchups  |  ~{B // M} envs/matchup"
-    )
-    print(f"{sep}")
-    print(f"  {'Agent':<{label_w}}  {hdr_parts}")
-    print(f"  {'─' * (w_total - 4)}")
+        # Role delta: avg win rate as team-0 minus avg win rate as team-1
+        # (positive = better when controlling team-0 ships)
+        def _role_delta(a_idx: int) -> float:
+            as_t0 = [_score_as_team0(a_idx, j) for j in range(K) if j != a_idx]
+            as_t1 = []
+            for i in range(K):
+                if i == a_idx:
+                    continue
+                m = matchup_lookup[(i, a_idx)]
+                n = matchup_sizes[m]
+                as_t1.append((b_wins_cpu[m] + 0.5 * ties_cpu[m]) / n if n > 0 else 0.5)
+            if not as_t0 or not as_t1:
+                return 0.0
+            return (sum(as_t0) / len(as_t0)) - (sum(as_t1) / len(as_t1))
 
-    def _pct(v: float | None) -> str:
-        return f"{100 * v:.1f}%" if v is not None else "—"
+        # ------------------------------------------------------------------ #
+        # Step 7 — Print report                                               #
+        # ------------------------------------------------------------------ #
+        sim_fps = 1.0 / ship_config.dt
+        sps = total_steps / elapsed
 
-    for a_idx in order:
-        lb = labels[a_idx]
-        vr = _win_rate_vs(a_idx, random_idx)
-        vs = _win_rate_vs(a_idx, scripted_idx)
-        va = _win_rate_vs(a_idx, avg_idx) if has_avg else None
-        delta = _role_delta(a_idx)
-        el = agent_ep_len[a_idx]
+        # Sort agents by ELO descending for display
+        order = sorted(range(K), key=lambda a: elo[a], reverse=True)
 
-        row = f"  {lb:<{label_w}}  {elo[a_idx]:>6.0f}  {_pct(vr):>10}  {_pct(vs):>12}"
+        label_w = max(len(lb) for lb in labels)
+        has_avg = avg_idx is not None
+
+        # Build header columns
+        cols = [
+            ("ELO", 6),
+        ]
+        if random_idx >= 0:
+            cols.append(("vs random", 10))
+        if scripted_idx >= 0:
+            cols.append(("vs scripted", 12))
+        
         if has_avg:
-            row += f"  {_pct(va):>8}"
-        delta_sign = "+" if delta >= 0 else ""
-        row += f"  {delta_sign}{100 * delta:.1f}%{'':<4}  {el:>10.1f}"
-        print(row)
+            cols.append(("vs avg", 8))
+        cols += [
+            ("role Δ", 8),
+            ("avg ep len", 10),
+        ]
 
-    print(f"{sep}")
-    print(
-        f"  Wall time: {elapsed:.2f}s   |   {sps:,.0f} steps/s  ({sps / sim_fps:,.0f} sim-steps/s)"
-    )
-    print(f"{sep}")
+        hdr_parts = "  ".join(f"{name:>{w}}" for name, w in cols)
+        row_w = label_w + 4 + sum(w + 2 for _, w in cols)
+        w_total = max(72, row_w)
+        sep = "─" * w_total
 
-    # ------------------------------------------------------------------ #
-    # Step 8 — Win-rate heatmap (tab-separated, copyable as CSV)         #
-    # ------------------------------------------------------------------ #
-    # Rows = team-0 agent, columns = team-1 agent, cell = team-0 win rate
-    print(f"\n  Win-rate heatmap (row=team-0, col=team-1)  —  tab-separated")
-    print(f"  Copy into a spreadsheet for colour formatting\n")
+        title = run_dir.name if run_dir is not None else "custom agents" if custom_agents else "scripted-only"
+        print(f"\n{sep}")
+        print(f"  ELO Stats: {title}")
+        print(
+            f"  {K} agents  |  {B:,} total envs  |  {M} directed matchups  |  ~{B // M if M > 0 else B} envs/matchup"
+        )
+        print(f"{sep}")
+        print(f"  {'Agent':<{label_w}}  {hdr_parts}")
+        print(f"  {'─' * (w_total - 4)}")
 
-    short = [lb[:16] for lb in labels]  # truncate for readability
+        def _pct(v: float | None) -> str:
+            return f"{100 * v:.1f}%" if v is not None else "—"
 
-    # Header row
-    print("\t" + "\t".join(short[j] for j in order))
-    for i in order:
-        cells = []
-        for j in order:
-            if i == j:
-                cells.append("—")
-            else:
-                cells.append(f"{100 * _score_as_team0(i, j):.1f}%")
-        print(short[i] + "\t" + "\t".join(cells))
-    print()
+        for a_idx in order:
+            lb = labels[a_idx]
+            vr = _win_rate_vs(a_idx, random_idx) if random_idx >= 0 else None
+            vs = _win_rate_vs(a_idx, scripted_idx) if scripted_idx >= 0 else None
+            va = _win_rate_vs(a_idx, avg_idx) if has_avg else None
+            delta = _role_delta(a_idx)
+            el = agent_ep_len[a_idx]
+
+            row = f"  {lb:<{label_w}}  {elo[a_idx]:>6.0f}"
+            if random_idx >= 0:
+                row += f"  {_pct(vr):>10}"
+            if scripted_idx >= 0:
+                row += f"  {_pct(vs):>12}"
+
+            if has_avg:
+                row += f"  {_pct(va):>8}"
+            delta_sign = "+" if delta >= 0 else ""
+            row += f"  {delta_sign}{100 * delta:.1f}%{'':<4}  {el:>10.1f}"
+            print(row)
+
+        print(f"{sep}")
+        print(
+            f"  Wall time: {elapsed:.2f}s   |   {sps:,.0f} steps/s  ({sps / sim_fps:,.0f} sim-steps/s)"
+        )
+        print(f"{sep}")
+
+        # ------------------------------------------------------------------ #
+        # Step 8 — Win-rate heatmap (tab-separated, copyable as CSV)         #
+        # ------------------------------------------------------------------ #
+        # Rows = team-0 agent, columns = team-1 agent, cell = team-0 win rate
+        print(f"\n  Win-rate heatmap (row=team-0, col=team-1)  —  tab-separated")
+        print(f"  Copy into a spreadsheet for colour formatting\n")
+
+        short = [lb[:16] for lb in labels]  # truncate for readability
+
+        # Header row
+        print("\t" + "\t".join(short[j] for j in order))
+        for i in order:
+            cells = []
+            for j in order:
+                if i == j:
+                    cells.append("—")
+                else:
+                    cells.append(f"{100 * _score_as_team0(i, j):.1f}%")
+            print(short[i] + "\t" + "\t".join(cells))
+        print()

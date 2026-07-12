@@ -146,6 +146,18 @@ def _parse_args() -> argparse.Namespace:
         help="(watch mode) Generate obstacle cache headlessly in the background instead of "
         "rendering the convergence animation. Much faster; shows a loading screen instead.",
     )
+    parser.add_argument(
+        "--matchups",
+        nargs="+",
+        default=["2v2"],
+        help="List of matchups to evaluate sequentially (e.g. 1v1 2v2 3v4 32v32). Defaults to 2v2.",
+    )
+    parser.add_argument(
+        "--agents",
+        nargs="+",
+        default=None,
+        help="List of specific agents to evaluate. Overrides default agent discovery in elo_stats.",
+    )
     return parser.parse_args()
 
 
@@ -340,6 +352,7 @@ def main() -> None:
                 model_config=MODEL_CONFIG,
                 device=device,
                 checkpoint_dir="checkpoints",
+                matchups=args.matchups,
             )
 
         case "feature_stats":
@@ -362,7 +375,7 @@ def main() -> None:
         case "elo_stats":
             run_elo_stats_mode(
                 run_spec=args.run,
-                num_envs=110000,
+                num_envs=1024*4,
                 ship_config=SHIP_CONFIG,
                 env_config=EnvConfig(
                     num_ships=4, max_bullets=20, max_episode_steps=1024
@@ -371,6 +384,8 @@ def main() -> None:
                 device=device,
                 checkpoint_dir="checkpoints",
                 elo_k_factor=32.0,
+                matchups=args.matchups,
+                custom_agents=args.agents,
             )
 
         case "ar_report":
