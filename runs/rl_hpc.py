@@ -16,6 +16,7 @@ from runs.shared import REWARDS, COMPONENT_GAMMAS, COMPONENT_LAMBDAS
 _HPC_NUM_ENVS = 1920
 
 RL_HPC_TRAIN_CONFIG = TrainConfig(
+    paradigm="ego_pass",
     scales=(
         ScaleConfig(
             env_config=EnvConfig(num_ships=2, max_bullets=20, max_episode_steps=1024),
@@ -25,7 +26,6 @@ RL_HPC_TRAIN_CONFIG = TrainConfig(
     schedule=RL_SCHEDULE,  # identical schedule — only scale differs
     rewards=REWARDS,
     num_steps=128,
-    num_epochs=4,
     num_minibatches=4,
     gamma=0.99,
     gae_lambda=0.95,

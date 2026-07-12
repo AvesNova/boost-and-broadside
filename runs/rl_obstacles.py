@@ -82,6 +82,7 @@ RL_OBSTACLES_SCHEDULE = TrainingSchedule(
 )
 
 RL_OBSTACLES_TRAIN_CONFIG = TrainConfig(
+    paradigm="ego_pass",
     scales=(
         ScaleConfig(
             env_config=EnvConfig(

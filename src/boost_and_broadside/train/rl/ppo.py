@@ -131,29 +131,6 @@ def _flip_team_obs(obs: MVPObservation, N: int) -> MVPObservation:
     return obs.flip_team(N)
 
 
-def _override_opponent(
-    action: torch.Tensor,
-    team_id: torch.Tensor,
-    opp_team_flag: torch.Tensor,
-    start: int,
-    end: int,
-    opp_action: torch.Tensor,
-) -> None:
-    """Replace team-opp_team_flag actions in envs [start, end) with opp_action in-place.
-
-    Args:
-        action:        (B, N, 3) combined action tensor — modified in-place.
-        team_id:       (B, N) int — team assignment per ship.
-        opp_team_flag: (end-start,) int — which team_id is the opponent per env.
-        start, end:    slice of envs to update.
-        opp_action:    (end-start, N, 3) — opponent agent's actions.
-    """
-    opp_mask = team_id[start:end] == opp_team_flag.unsqueeze(1)  # (slice, N)
-    action[start:end] = torch.where(
-        opp_mask.unsqueeze(-1), opp_action, action[start:end]
-    )
-
-
 # Maps reward component name → the TrainingSchedule group-scale field to apply.
 # Effective weight = group_scale * individual_weight (from RewardConfig).
 # Groups:
@@ -338,6 +315,9 @@ class PPOTrainer:
         self.cfg = train_config
         self.model_config = model_config
         self.ship_config = ship_config
+        # Paradigm: "ego_pass" (dual-perspective pass, team 0 trains) vs
+        # "shared_pass" (single pass, both teams train). See TrainConfig docstring.
+        self._ego_pass = train_config.paradigm == "ego_pass"
         self.coordinator: FeatureCoordinator = build_standard_coordinator(ship_config)
         self.env_config = train_config.scales[0].env_config
         self.device = torch.device(device)
@@ -513,15 +493,17 @@ class PPOTrainer:
             with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
                 _h = self._policy_module.initial_hidden(B, _nt, self.device)
                 self.policy.get_action_and_value(sample_obs, _h)
-                # Warm up the 2B batch used by the combined team-0/team-1 rollout pass.
-                _obs_t1 = sample_obs.flip_team(N)
-                _obs_2B = sample_obs.concat_batch(_obs_t1)
-                _h_2B = torch.cat([_h, _h], dim=1)
-                self.policy.get_action_and_value(_obs_2B, _h_2B)
+                if self._ego_pass:
+                    # Warm up the 2B batch used by the combined team-0/team-1 rollout pass.
+                    _obs_t1 = sample_obs.flip_team(N)
+                    _obs_2B = sample_obs.concat_batch(_obs_t1)
+                    _h_2B = torch.cat([_h, _h], dim=1)
+                    self.policy.get_action_and_value(_obs_2B, _h_2B)
                 _h_avg = self._avg_policy_module.initial_hidden(B, _nt, self.device)
                 self.avg_policy.get_action_and_value(sample_obs, _h_avg)
 
-        # Per-env flag: which team_id is the opponent in scripted/avg/league groups.
+        # Per-env flag (shared_pass only): which team_id is the opponent in
+        # scripted/avg/league groups. In ego_pass opponents always play team 1.
         # Randomised at init and re-randomised each episode reset.
         # Shape: (B_sc + B_avg + B_league,) — indexed relative to the non-self-play slice.
         #   [:B_sc]                → scripted group
@@ -684,6 +666,137 @@ class PPOTrainer:
                 "avg", self._global_step, 0, initial_elo=self._training_elo
             )
 
+    def _rollout_policy_pass(
+        self,
+        obs: MVPObservation,
+        hidden: torch.Tensor,
+        hidden_t1: torch.Tensor | None,
+        num_ships: int,
+        num_tokens: int,
+    ) -> tuple[
+        torch.Tensor,
+        torch.Tensor | None,
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor | None,
+    ]:
+        """Run the training policy's rollout forward pass(es) for one step.
+
+        ego_pass: one batched 2B pass over both team perspectives. Team 1 ships
+        act from the flipped-obs half (action_t1); logprob/value/pred_next are
+        stored from the raw-obs half only.
+        shared_pass: one B pass on raw obs — every ship acts from it.
+
+        Args:
+            obs:        MVPObservation with (B, N+M, ...) tensors (raw team IDs).
+            hidden:     (n_layers, B*(N+M), D) raw-perspective hidden state.
+            hidden_t1:  Flipped-perspective hidden state; None in shared_pass.
+            num_ships:  N — ship token count for team flipping.
+            num_tokens: N+M — used to split the 2B hidden state.
+
+        Returns:
+            action_t0:  (B, N, 3) raw-perspective actions.
+            action_t1:  (B, N, 3) flipped-perspective actions; None in shared_pass.
+            logprob:    (B, N) raw-perspective log probs.
+            value_norm: (B, N, K) raw-perspective values (normalized space).
+            pred_next:  (B, N, pred_dim) raw-perspective next-state predictions.
+            hidden:     Updated raw-perspective hidden state.
+            hidden_t1:  Updated flipped-perspective hidden state; None in shared_pass.
+        """
+        if not self._ego_pass:
+            action, logprob, value_norm, pred_next, hidden = (
+                self.policy.get_action_and_value(obs, hidden)
+            )
+            return action, None, logprob, value_norm, pred_next, hidden, None
+
+        batch = hidden.shape[1] // num_tokens
+        obs_t1 = _flip_team_obs(obs, num_ships)
+        obs_both = obs.concat_batch(obs_t1)
+        hidden_both = torch.cat([hidden, hidden_t1], dim=1)  # (n_layers, 2B*(N+M), K*D)
+        action_both, logprob_both, value_both, pred_next_both, hidden_out = (
+            self.policy.get_action_and_value(obs_both, hidden_both)
+        )
+        return (
+            action_both[:batch],                        # (B, N, 3)
+            action_both[batch:],                        # (B, N, 3)
+            logprob_both[:batch],                       # (B, N)
+            value_both[:batch],                         # (B, N, K)
+            pred_next_both[:batch],                     # (B, N, pred_dim)
+            hidden_out[:, : batch * num_tokens, :],     # (n_layers, B*(N+M), K*D)
+            hidden_out[:, batch * num_tokens :, :],     # (n_layers, B*(N+M), K*D)
+        )
+
+    def _opponent_obs(self, obs_slice: MVPObservation, num_ships: int) -> MVPObservation:
+        """Return the observation perspective policy opponents act from.
+
+        ego_pass: opponents always play team 1 but must see themselves as
+        team 0, so ship team IDs are flipped. shared_pass: opponents act on
+        raw obs and play whichever team ``_opp_team_flag`` assigns.
+        """
+        return _flip_team_obs(obs_slice, num_ships) if self._ego_pass else obs_slice
+
+    def _combine_actions(
+        self,
+        action_t0: torch.Tensor,
+        action_t1: torch.Tensor | None,
+        team_id: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Merge per-perspective policy actions and build the actor-loss mask.
+
+        ego_pass: team 0 ships act from the raw-obs pass and are the only ships
+        that train; team 1 ships act from the flipped-obs pass.
+        shared_pass: every ship acts from the single raw-obs pass and trains.
+
+        Args:
+            action_t0: (B, N, 3) raw-perspective actions.
+            action_t1: (B, N, 3) flipped-perspective actions; None in shared_pass.
+            team_id:   (B, N) int team assignment per ship.
+
+        Returns:
+            action:     (B, N, 3) executed actions — a fresh tensor, safe for
+                        in-place opponent overrides.
+            actor_mask: (B, N) bool — ships contributing to actor/BC losses.
+        """
+        if self._ego_pass:
+            team0_mask = team_id == 0  # (B, N)
+            action = torch.where(team0_mask.unsqueeze(-1), action_t0, action_t1)  # (B, N, 3)
+            return action, team0_mask
+        return action_t0.clone(), torch.ones_like(team_id, dtype=torch.bool)
+
+    def _apply_opponent_override(
+        self,
+        action: torch.Tensor,
+        actor_mask: torch.Tensor,
+        team_id: torch.Tensor,
+        start: int,
+        end: int,
+        opp_action: torch.Tensor,
+    ) -> None:
+        """Replace opponent-team ship actions in envs [start, end) in-place.
+
+        ego_pass: the opponent always controls team 1 (already excluded from
+        actor_mask). shared_pass: the opponent controls the per-episode random
+        ``_opp_team_flag`` team, which is removed from the actor-loss mask here.
+
+        Args:
+            action:     (B, N, 3) combined action tensor — modified in-place.
+            actor_mask: (B, N) bool actor-loss mask — modified in-place.
+            team_id:    (B, N) int team assignment per ship.
+            start, end: env slice controlled by this opponent group.
+            opp_action: (end-start, N, 3) opponent agent's actions.
+        """
+        if self._ego_pass:
+            opp_mask = team_id[start:end] == 1  # (end-start, N)
+        else:
+            flags = self._opp_team_flag[start - self.B_self : end - self.B_self]
+            opp_mask = team_id[start:end] == flags.unsqueeze(1)  # (end-start, N)
+        action[start:end] = torch.where(
+            opp_mask.unsqueeze(-1), opp_action, action[start:end]
+        )
+        actor_mask[start:end] &= ~opp_mask
+
     def train(self) -> None:
         """Run the full PPO training loop."""
         B = self.cfg.scales[0].num_envs
@@ -735,8 +848,13 @@ class PPOTrainer:
         # Uniformly distributed over [0, max_episode_steps) — after the first wave
         # of truncations they naturally desynchronize on their own.
         self.wrapper.env.state.step_count.random_(0, self.env_config.max_episode_steps)
-        hidden    = self.policy.initial_hidden(B, num_tokens, self.device)
-        hidden_t1 = self.policy.initial_hidden(B, num_tokens, self.device)
+        hidden = self.policy.initial_hidden(B, num_tokens, self.device)
+        # Flipped-perspective hidden state — ego_pass only.
+        hidden_t1 = (
+            self.policy.initial_hidden(B, num_tokens, self.device)
+            if self._ego_pass
+            else None
+        )
 
         # Avg-model hidden state — lives across the whole training run.
         avg_hidden: torch.Tensor | None = None
@@ -754,7 +872,7 @@ class PPOTrainer:
         # Aux-scale obs, hidden states, action buffers, and last-done flags — live across the whole run.
         aux_obs: list[dict[str, torch.Tensor]] = []
         aux_hiddens: list[torch.Tensor] = []
-        aux_hidden_t1s: list[torch.Tensor] = []
+        aux_hidden_t1s: list[torch.Tensor | None] = []
         aux_action_buffers: list[torch.Tensor] = []
         aux_last_dones: list[torch.Tensor] = []
         for sc, aux_w in zip(self.cfg.scales[1:], self.aux_wrappers):
@@ -767,9 +885,9 @@ class PPOTrainer:
                 )
             )
             aux_hidden_t1s.append(
-                self.policy.initial_hidden(
-                    sc.num_envs, aux_num_tokens, self.device
-                )
+                self.policy.initial_hidden(sc.num_envs, aux_num_tokens, self.device)
+                if self._ego_pass
+                else None
             )
             aux_action_buffers.append(
                 torch.zeros(sc.num_envs, sc.env_config.num_ships, 3, dtype=torch.int32, device=self.device)
@@ -940,24 +1058,19 @@ class PPOTrainer:
 
                     with torch.cuda.stream(net_stream):
                         with torch.autocast("cuda", dtype=torch.bfloat16):
-                            # Single batched pass for both team perspectives (2B envs).
                             # get_action_and_value is @no_grad, so no gradient concerns.
-                            obs_t1 = _flip_team_obs(obs, N)
-                            obs_both = obs.concat_batch(obs_t1)
-                            hidden_both = torch.cat([hidden, hidden_t1], dim=1)
-                            action_both, logprob_both, value_both, pred_next_both, hidden_out = (
-                                self.policy.get_action_and_value(obs_both, hidden_both)
-                            )
-                            action_t0  = action_both[:B]
-                            action_t1  = action_both[B:]
-                            logprob    = logprob_both[:B]
-                            value_norm = value_both[:B]
-                            pred_next  = pred_next_both[:B]
-                            hidden     = hidden_out[:, :B * num_tokens, :]
-                            hidden_t1  = hidden_out[:, B * num_tokens:, :]
+                            (
+                                action_t0,
+                                action_t1,
+                                logprob,
+                                value_norm,
+                                pred_next,
+                                hidden,
+                                hidden_t1,
+                            ) = self._rollout_policy_pass(obs, hidden, hidden_t1, N, num_tokens)
                         if use_avg:
                             with torch.autocast("cuda", dtype=torch.bfloat16):
-                                obs_avg = _flip_team_obs(_slice_obs(obs, avg_start, avg_end), N)
+                                obs_avg = self._opponent_obs(_slice_obs(obs, avg_start, avg_end), N)
                                 action_avg, _, _, _, avg_hidden = (
                                     self.avg_policy.get_action_and_value(
                                         obs_avg, avg_hidden
@@ -965,7 +1078,9 @@ class PPOTrainer:
                                 )
                         if use_league and self._current_league_policy is not None:
                             with torch.autocast("cuda", dtype=torch.bfloat16):
-                                obs_league = _flip_team_obs(_slice_obs(obs, league_start, league_end), N)
+                                obs_league = self._opponent_obs(
+                                    _slice_obs(obs, league_start, league_end), N
+                                )
                                 action_league_net, _, _, _, league_hidden = (
                                     self._current_league_policy.get_action_and_value(
                                         obs_league, league_hidden
@@ -982,28 +1097,20 @@ class PPOTrainer:
                         action_buffer
                     )
                     with torch.autocast("cuda", dtype=torch.bfloat16):
-                        obs_t1 = _flip_team_obs(obs, N)
-                        obs_both = obs.concat_batch(obs_t1)
-                        hidden_both = torch.cat([hidden, hidden_t1], dim=1)
-                        action_both, logprob_both, value_both, pred_next_both, hidden_out = (
-                            self.policy.get_action_and_value(obs_both, hidden_both)
+                        action_t0, action_t1, logprob, value_norm, pred_next, hidden, hidden_t1 = (
+                            self._rollout_policy_pass(obs, hidden, hidden_t1, N, num_tokens)
                         )
-                        action_t0  = action_both[:B]
-                        action_t1  = action_both[B:]
-                        logprob    = logprob_both[:B]
-                        value_norm = value_both[:B]
-                        pred_next  = pred_next_both[:B]
-                        hidden     = hidden_out[:, :B * num_tokens, :]
-                        hidden_t1  = hidden_out[:, B * num_tokens:, :]
                     if use_avg:
                         with torch.autocast("cuda", dtype=torch.bfloat16):
-                            obs_avg = _flip_team_obs(_slice_obs(obs, avg_start, avg_end), N)
+                            obs_avg = self._opponent_obs(_slice_obs(obs, avg_start, avg_end), N)
                             action_avg, _, _, _, avg_hidden = (
                                 self.avg_policy.get_action_and_value(obs_avg, avg_hidden)
                             )
                     if use_league and self._current_league_policy is not None:
                         with torch.autocast("cuda", dtype=torch.bfloat16):
-                            obs_league = _flip_team_obs(_slice_obs(obs, league_start, league_end), N)
+                            obs_league = self._opponent_obs(
+                                _slice_obs(obs, league_start, league_end), N
+                            )
                             action_league_net, _, _, _, league_hidden = (
                                 self._current_league_policy.get_action_and_value(
                                     obs_league, league_hidden
@@ -1013,12 +1120,9 @@ class PPOTrainer:
                         action_league_net = None
 
                 # -- Phase 3: combine actions and compute actor mask --
-                # team 0 ships always use Pass 1 (training pass); team 1 always use Pass 2.
-                team0_mask = (team_id == 0)  # (B, N)
-                action = torch.where(team0_mask.unsqueeze(-1), action_t0, action_t1)
+                action, actor_mask = self._combine_actions(action_t0, action_t1, team_id)
 
-                # Override team 1 ships in opponent envs with actual opponent actions.
-                # Opponents always play team 1 in the new paradigm.
+                # Override opponent-controlled ships with actual opponent actions.
                 if self._policy_gradient_coef != 0.0:
                     action_league = (
                         action_league_scripted
@@ -1026,23 +1130,17 @@ class PPOTrainer:
                         else action_league_net
                     )
                     if use_sc_opponent:
-                        opp_mask = team_id[sc_start:sc_end] == 1
-                        action[sc_start:sc_end] = torch.where(
-                            opp_mask.unsqueeze(-1), action_scripted, action[sc_start:sc_end]
+                        self._apply_opponent_override(
+                            action, actor_mask, team_id, sc_start, sc_end, action_scripted
                         )
                     if use_avg:
-                        opp_mask = team_id[avg_start:avg_end] == 1
-                        action[avg_start:avg_end] = torch.where(
-                            opp_mask.unsqueeze(-1), action_avg, action[avg_start:avg_end]
+                        self._apply_opponent_override(
+                            action, actor_mask, team_id, avg_start, avg_end, action_avg
                         )
                     if use_league:
-                        opp_mask = team_id[league_start:league_end] == 1
-                        action[league_start:league_end] = torch.where(
-                            opp_mask.unsqueeze(-1), action_league, action[league_start:league_end]
+                        self._apply_opponent_override(
+                            action, actor_mask, team_id, league_start, league_end, action_league
                         )
-
-                # Actor mask: only team 0 ships train (Pass 1 = training pass).
-                actor_mask = team0_mask
 
                 # -- Phase 4: inject decided action into next obs as prev_action --
                 # obs(t+1).previous_action = action(t) — what the policy just decided,
@@ -1078,8 +1176,11 @@ class PPOTrainer:
                 action_buffer = action.detach()
 
                 # Reset hidden states and action buffer for terminated envs
-                hidden    = self.policy.reset_hidden_for_envs(hidden,    done_any, num_tokens)
-                hidden_t1 = self.policy.reset_hidden_for_envs(hidden_t1, done_any, num_tokens)
+                hidden = self.policy.reset_hidden_for_envs(hidden, done_any, num_tokens)
+                if self._ego_pass:
+                    hidden_t1 = self.policy.reset_hidden_for_envs(
+                        hidden_t1, done_any, num_tokens
+                    )
                 action_buffer = action_buffer.clone()
                 action_buffer[done_any] = 0
                 if use_avg and self.B_avg > 0:
@@ -1089,6 +1190,22 @@ class PPOTrainer:
                 if use_league and self._current_league_policy is not None:
                     league_hidden = self._current_league_policy.reset_hidden_for_envs(
                         league_hidden, done_any[league_start:league_end], num_tokens
+                    )
+
+                # Re-randomise which team the opponent controls for envs that just
+                # ended an episode (shared_pass only; ego_pass opponents are fixed
+                # to team 1).
+                if not self._ego_pass and self._opp_team_flag.numel() > 0:
+                    done_non_self = done_any[self.B_self :]
+                    new_flags = torch.randint(
+                        0,
+                        2,
+                        self._opp_team_flag.shape,
+                        device=self.device,
+                        dtype=torch.int32,
+                    )
+                    self._opp_team_flag = torch.where(
+                        done_non_self, new_flags, self._opp_team_flag
                     )
 
                 obs = next_obs
@@ -1101,17 +1218,21 @@ class PPOTrainer:
                     aux_N = sc.env_config.num_ships
                     aux_num_tokens = aux_N + sc.env_config.num_obstacles
                     with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
-                        # Pass 1: team 0 perspective — training pass
-                        aux_action_t0, aux_logprob, aux_value_norm, _, aux_hiddens[i] = (
-                            self.policy.get_action_and_value(aux_obs[i], aux_hiddens[i])
+                        (
+                            aux_action_t0,
+                            aux_action_t1,
+                            aux_logprob,
+                            aux_value_norm,
+                            _,
+                            aux_hiddens[i],
+                            aux_hidden_t1s[i],
+                        ) = self._rollout_policy_pass(
+                            aux_obs[i], aux_hiddens[i], aux_hidden_t1s[i], aux_N, aux_num_tokens
                         )
-                        # Pass 2: team 1 perspective — action generation only
-                        aux_obs_t1 = _flip_team_obs(aux_obs[i], aux_N)
-                        aux_action_t1, _, _, _, aux_hidden_t1s[i] = (
-                            self.policy.get_action_and_value(aux_obs_t1, aux_hidden_t1s[i])
-                        )
-                    aux_team0 = (aux_obs[i]["team_id"][:, :aux_N] == 0)
-                    aux_action = torch.where(aux_team0.unsqueeze(-1), aux_action_t0, aux_action_t1)
+                    aux_team_id = aux_obs[i]["team_id"][:, :aux_N]  # (B_aux, N_aux)
+                    aux_action, aux_actor_mask = self._combine_actions(
+                        aux_action_t0, aux_action_t1, aux_team_id
+                    )
                     next_aux_obs, aux_reward, aux_dones, aux_truncated, _ = aux_w.step(
                         aux_action_buffers[i]
                     )
@@ -1126,16 +1247,17 @@ class PPOTrainer:
                         done=aux_dones.float(),
                         value=self.scaler.denormalize(aux_value_norm),
                         alive=aux_obs[i]["alive"][:, :aux_N].bool(),
-                        actor_mask=(aux_obs[i]["team_id"][:, :aux_N] == 0),
+                        actor_mask=aux_actor_mask,
                         expert_probs=None,
                         terminated=aux_done_any,
                     )
                     aux_hiddens[i] = self.policy.reset_hidden_for_envs(
                         aux_hiddens[i], aux_done_any, aux_num_tokens
                     )
-                    aux_hidden_t1s[i] = self.policy.reset_hidden_for_envs(
-                        aux_hidden_t1s[i], aux_done_any, aux_num_tokens
-                    )
+                    if self._ego_pass:
+                        aux_hidden_t1s[i] = self.policy.reset_hidden_for_envs(
+                            aux_hidden_t1s[i], aux_done_any, aux_num_tokens
+                        )
                     aux_action_buffers[i] = aux_action.detach().clone()
                     aux_action_buffers[i][aux_done_any] = 0
                     aux_last_dones[i] = aux_dones
@@ -2220,8 +2342,20 @@ class PPOTrainer:
 
         Returns:
             The update index stored in the checkpoint.
+
+        Raises:
+            ValueError: If the checkpoint was trained under a different paradigm —
+                a policy trained in one paradigm misbehaves when resumed in the
+                other (ego_pass policies only ever act as team 0).
         """
         ckpt = torch.load(path, map_location=self.device, weights_only=False)
+        ckpt_paradigm = ckpt.get("train_config", {}).get("paradigm")
+        if ckpt_paradigm is not None and ckpt_paradigm != self.cfg.paradigm:
+            raise ValueError(
+                f"Checkpoint was trained with paradigm={ckpt_paradigm!r} but this "
+                f"run uses paradigm={self.cfg.paradigm!r}. Resuming across "
+                f"paradigms is not supported."
+            )
         self._policy_module.load_state_dict(ckpt["policy_state_dict"])
         _cast_norms_bf16(self._policy_module)
         self.optim.load_state_dict(ckpt["optimizer_state_dict"])

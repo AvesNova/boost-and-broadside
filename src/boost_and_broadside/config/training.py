@@ -51,6 +51,7 @@ class TrainConfig:
 
     Sections:
         scales    — environment scale(s); scales[0] is primary.
+        paradigm  — how rollout actions are generated and which ships train.
         schedule  — all time-varying parameters (LR, loss coefficients, fractions).
         rewards   — static reward weights and geometry params.
         ppo       — static PPO hyperparameters.
@@ -58,10 +59,23 @@ class TrainConfig:
 
     All scalar values that vary over training live in ``schedule``.
     Everything here is fixed for the entire run.
+
+    Paradigms:
+        "ego_pass"    — two batched policy passes per step (raw obs + team-flipped
+                        obs) so every ship acts from a perspective where its own
+                        team is labelled 0. Only team 0 ships contribute to the
+                        actor/BC losses; opponents always play team 1.
+        "shared_pass" — one policy pass per step on raw obs; the model emits
+                        actions for both teams and all ships contribute to the
+                        actor/BC losses. In opponent envs a per-episode random
+                        flag picks which team the opponent controls.
     """
 
     # --- Scales ---
     scales: tuple[ScaleConfig, ...]  # at least one entry
+
+    # --- Training paradigm ---
+    paradigm: str  # "ego_pass" | "shared_pass" — see class docstring
 
     # --- Schedule (time-varying) ---
     schedule: TrainingSchedule
@@ -111,6 +125,10 @@ class TrainConfig:
     def __post_init__(self) -> None:
         if len(self.scales) == 0:
             raise ValueError("scales must contain at least one ScaleConfig")
+        if self.paradigm not in ("ego_pass", "shared_pass"):
+            raise ValueError(
+                f"paradigm must be 'ego_pass' or 'shared_pass', got {self.paradigm!r}"
+            )
         primary_envs = self.scales[0].num_envs
         if primary_envs % self.num_minibatches != 0:
             raise ValueError(

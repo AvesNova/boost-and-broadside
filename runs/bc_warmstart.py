@@ -15,6 +15,7 @@ from runs.rl import RL_TRAIN_CONFIG
 from runs.shared import REWARDS
 
 BC_WARMSTART_PRETRAIN_CONFIG = TrainConfig(
+    paradigm="ego_pass",
     scales=(
         ScaleConfig(
             env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=1024),

@@ -1,5 +1,6 @@
 """End-to-end smoke test for the PPO training loop."""
 
+import pytest
 import torch
 
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
@@ -16,6 +17,7 @@ from boost_and_broadside.config import (
     stepped,
     linear,
 )
+from boost_and_broadside.env.observation import ObsKey
 from boost_and_broadside.train.rl.ppo import PPOTrainer, _GROUP
 
 
@@ -72,58 +74,84 @@ def _make_schedule(**overrides) -> TrainingSchedule:
     return TrainingSchedule(**defaults)
 
 
-def _make_trainer(**reward_overrides) -> PPOTrainer:
-    return PPOTrainer(
-        train_config=TrainConfig(
-            scales=(
-                ScaleConfig(
-                    env_config=EnvConfig(
-                        num_ships=4, max_bullets=8, max_episode_steps=50
-                    ),
-                    num_envs=4,
+def _make_train_config(
+    paradigm: str = "ego_pass",
+    scripted_fraction: float = 0.0,
+    **reward_overrides,
+) -> TrainConfig:
+    return TrainConfig(
+        paradigm=paradigm,
+        scales=(
+            ScaleConfig(
+                env_config=EnvConfig(
+                    num_ships=4, max_bullets=8, max_episode_steps=50
                 ),
+                num_envs=4,
             ),
-            schedule=_make_schedule(),
-            rewards=_make_rewards(**reward_overrides),
-            num_steps=16,
-            num_minibatches=2,
-            gamma=0.99,
-            gae_lambda=0.95,
-            clip_coef=0.2,
-            max_grad_norm=0.5,
-            total_timesteps=64,
-            return_ema_alpha=0.005,
-            return_min_span=1.0,
-            checkpoint_dir="checkpoints",
-            league_size=20,
-            league_uniform_sampling=False,
-            elo_milestone_gap=50.0,
-            elo_k_factor=32.0,
-            elo_temperature=200.0,
-            scripted_roster_min_steps=0,
+        ),
+        schedule=_make_schedule(scripted_fraction=constant(scripted_fraction)),
+        rewards=_make_rewards(**reward_overrides),
+        num_steps=16,
+        num_minibatches=2,
+        gamma=0.99,
+        gae_lambda=0.95,
+        clip_coef=0.2,
+        max_grad_norm=0.5,
+        total_timesteps=64,
+        return_ema_alpha=0.005,
+        return_min_span=1.0,
+        checkpoint_dir="checkpoints",
+        league_size=20,
+        league_uniform_sampling=False,
+        elo_milestone_gap=50.0,
+        elo_k_factor=32.0,
+        elo_temperature=200.0,
+        scripted_roster_min_steps=0,
+    )
+
+
+def _make_trainer(
+    paradigm: str = "ego_pass",
+    scripted_fraction: float = 0.0,
+    **reward_overrides,
+) -> PPOTrainer:
+    ship_config = ShipConfig()
+    scripted_agent = (
+        StochasticScriptedAgent(ship_config, StochasticAgentConfig())
+        if scripted_fraction > 0.0
+        else None
+    )
+    return PPOTrainer(
+        train_config=_make_train_config(
+            paradigm=paradigm,
+            scripted_fraction=scripted_fraction,
+            **reward_overrides,
         ),
         model_config=ModelConfig(
             d_model=32,
             n_heads=4,
             n_transformer_blocks=1,
         ),
-        ship_config=ShipConfig(),
+        ship_config=ship_config,
         device="cpu",
         use_wandb=False,
+        scripted_agent=scripted_agent,
     )
 
 
 class TestPPOSmokeTest:
-    def test_full_training_loop_runs(self):
+    @pytest.mark.parametrize("paradigm", ["ego_pass", "shared_pass"])
+    def test_full_training_loop_runs(self, paradigm):
         """One complete PPO training run (64 total timesteps) must not raise."""
-        trainer = _make_trainer()
+        trainer = _make_trainer(paradigm=paradigm)
         trainer.train()
 
     # test_encoder_works_with_non_default_n_fourier_freqs is removed because n_fourier_freqs is no longer in ModelConfig.
 
-    def test_policy_parameters_change_after_update(self):
+    @pytest.mark.parametrize("paradigm", ["ego_pass", "shared_pass"])
+    def test_policy_parameters_change_after_update(self, paradigm):
         """At least one policy parameter must change after one PPO update."""
-        trainer = _make_trainer()
+        trainer = _make_trainer(paradigm=paradigm)
         params_before = [p.clone() for p in trainer.policy.parameters()]
 
         trainer.train()
@@ -133,6 +161,54 @@ class TestPPOSmokeTest:
             not torch.equal(b, a) for b, a in zip(params_before, params_after)
         )
         assert any_changed, "No parameters changed after training"
+
+
+class TestParadigm:
+    """Paradigm-specific rollout behavior, verified via the stored actor masks."""
+
+    def test_invalid_paradigm_raises(self):
+        with pytest.raises(ValueError, match="paradigm"):
+            _make_train_config(paradigm="both_sides")
+
+    def test_ego_pass_actor_mask_covers_only_team0(self):
+        """ego_pass: exactly the team 0 ships contribute to the actor loss."""
+        trainer = _make_trainer(paradigm="ego_pass")
+        trainer.train()
+
+        T, N = trainer.cfg.num_steps, trainer.wrapper.num_ships
+        team_id = trainer.buffer.obs[ObsKey.TEAM_ID][:T, :, :N].long()  # (T, B, N)
+        assert torch.equal(trainer.buffer.actor_masks, team_id == 0)
+
+    def test_shared_pass_actor_mask_covers_both_teams_in_self_play(self):
+        """shared_pass self-play: every ship contributes to the actor loss."""
+        trainer = _make_trainer(paradigm="shared_pass")
+        trainer.train()
+
+        assert trainer.buffer.actor_masks.all()
+
+    def test_shared_pass_opponent_envs_exclude_one_full_team(self):
+        """shared_pass + scripted opponent: the masked-out ships in each opponent
+        env form exactly one complete team (whichever the random flag assigned)."""
+        trainer = _make_trainer(paradigm="shared_pass", scripted_fraction=0.5)
+        trainer.train()
+
+        T, N = trainer.cfg.num_steps, trainer.wrapper.num_ships
+        sc = slice(trainer.B_self, trainer.B_self + trainer.B_sc)
+        team_id = trainer.buffer.obs[ObsKey.TEAM_ID][:T, sc, :N].long()  # (T, B_sc, N)
+        excluded = ~trainer.buffer.actor_masks[:, sc]  # (T, B_sc, N)
+
+        excluded_is_team0 = (excluded == (team_id == 0)).all(dim=-1)  # (T, B_sc)
+        excluded_is_team1 = (excluded == (team_id == 1)).all(dim=-1)  # (T, B_sc)
+        assert (excluded_is_team0 | excluded_is_team1).all()
+
+    def test_ego_pass_scripted_opponent_always_controls_team1(self):
+        """ego_pass + scripted opponent: only team 0 ships train in opponent envs."""
+        trainer = _make_trainer(paradigm="ego_pass", scripted_fraction=0.5)
+        trainer.train()
+
+        T, N = trainer.cfg.num_steps, trainer.wrapper.num_ships
+        team_id = trainer.buffer.obs[ObsKey.TEAM_ID][:T, :, :N].long()  # (T, B, N)
+        assert torch.equal(trainer.buffer.actor_masks, team_id == 0)
 
 
 class TestSchedulePrimitives:
@@ -190,6 +266,7 @@ class TestSchedulePrimitives:
         """After training, effective component weight = group_scale * individual weight."""
         trainer = PPOTrainer(
             train_config=TrainConfig(
+                paradigm="ego_pass",
                 scales=(
                     ScaleConfig(
                         env_config=EnvConfig(
@@ -243,7 +320,8 @@ class TestRLSmokeTest:
     Uses a scripted opponent to ensure combat happens and kill rewards fire.
     """
 
-    def test_rl_run_with_production_config(self):
+    @pytest.mark.parametrize("paradigm", ["ego_pass", "shared_pass"])
+    def test_rl_run_with_production_config(self, paradigm):
         from runs.shared import MODEL_CONFIG, REWARDS, SHIP_CONFIG
 
         schedule = TrainingSchedule(
@@ -267,6 +345,7 @@ class TestRLSmokeTest:
             target_kl=constant(None),
         )
         cfg = TrainConfig(
+            paradigm=paradigm,
             scales=(
                 ScaleConfig(
                     env_config=EnvConfig(

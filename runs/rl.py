@@ -59,6 +59,7 @@ RL_SCHEDULE = TrainingSchedule(
 )
 
 RL_TRAIN_CONFIG = TrainConfig(
+    paradigm="ego_pass",
     scales=(
         # ScaleConfig(
         #     env_config=EnvConfig(num_ships=2, num_obstacles=4, max_bullets=20, max_episode_steps=1024),
