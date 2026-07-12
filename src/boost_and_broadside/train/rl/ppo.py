@@ -530,8 +530,11 @@ class PPOTrainer:
         # Training ELO starts at 0 — all ratings begin
         # at the same point and diverge as eval matchups accumulate.
         self._training_elo: float = 0.0
+        self._avg_training_elo: float = 0.0
         self._eval_window_rand = deque(maxlen=100)
         self._eval_window_sc = deque(maxlen=100)
+        self._eval_window_avg_vs_anchors = deque(maxlen=100)
+        self._eval_window_live_vs_avg = deque(maxlen=100)
         self._elo_milestone: float = (
             0.0  # normalized training ELO (vs random) at last milestone
         )
@@ -810,7 +813,7 @@ class PPOTrainer:
         num_tokens = N + M  # ships + obstacles; hidden state covers all entity tokens
         
         # -- ELO Evaluation Env & State Initialization (Parallel Vectorized Slots) --
-        B_eval = 512
+        B_eval = 1536
         eval_env = TensorEnv(
             B_eval,
             self.ship_config,
@@ -826,10 +829,12 @@ class PPOTrainer:
         from boost_and_broadside.modes.collect import _obs_from_state
         
         agent_policy = ResolvedAgent("policy", self.policy)
+        agent_avg = ResolvedAgent("avg", self.avg_policy)
         agent_sc = ResolvedAgent("scripted", self.scripted_agent) if self.scripted_agent else None
         agent_rand = ResolvedAgent("random", None)
         
         init_hidden(agent_policy, B_eval, num_tokens, self.device)
+        init_hidden(agent_avg, B_eval, num_tokens, self.device)
         if agent_sc is not None:
             init_hidden(agent_sc, B_eval, num_tokens, self.device)
         init_hidden(agent_rand, B_eval, num_tokens, self.device)
@@ -837,7 +842,14 @@ class PPOTrainer:
         # Optimal information-proportional routing variables
         K_eval = 4.0
         f_star = _compute_optimal_eval_ratio(self._training_elo)
-        eval_is_scripted = (torch.rand(B_eval, device=self.device) > f_star)
+        
+        # Matchup 0: live vs anchors (512)
+        # Matchup 1: avg vs anchors (512)
+        # Matchup 2: live vs avg (512)
+        eval_matchup = torch.zeros(B_eval, device=self.device, dtype=torch.long)
+        eval_matchup[512:1024] = 1
+        eval_matchup[1024:] = 2
+        eval_anchor_is_scripted = (torch.rand(B_eval, device=self.device) > f_star)
         
 
 
@@ -1279,6 +1291,7 @@ class PPOTrainer:
                         eval_state = eval_env.state
                         eval_obs_obj = _obs_from_state(eval_state, self.ship_config)
                         eval_action_policy = get_actions(agent_policy, eval_obs_obj, eval_state, B_eval, N, self.device)
+                        eval_action_avg = get_actions(agent_avg, eval_obs_obj, eval_state, B_eval, N, self.device)
 
                         if agent_sc is not None:
                             eval_action_scripted = get_actions(agent_sc, eval_obs_obj, eval_state, B_eval, N, self.device)
@@ -1287,17 +1300,31 @@ class PPOTrainer:
 
                         eval_action_random = get_actions(agent_rand, eval_obs_obj, eval_state, B_eval, N, self.device)
 
-                        eval_action_opp = torch.where(
-                            eval_is_scripted.unsqueeze(-1).unsqueeze(-1),
+                        eval_action_anchor = torch.where(
+                            eval_anchor_is_scripted.unsqueeze(-1).unsqueeze(-1),
                             eval_action_scripted,
                             eval_action_random,
+                        )
+
+                        # Matchup 0: live vs anchors
+                        # Matchup 1: avg vs anchors
+                        # Matchup 2: live vs avg
+                        eval_action_team0 = torch.where(
+                            (eval_matchup == 1).unsqueeze(-1).unsqueeze(-1),
+                            eval_action_avg,
+                            eval_action_policy, # team 0 is live for matchups 0 and 2
+                        )
+                        eval_action_team1 = torch.where(
+                            (eval_matchup == 2).unsqueeze(-1).unsqueeze(-1),
+                            eval_action_avg,
+                            eval_action_anchor, # team 1 is anchor for matchups 0 and 1
                         )
 
                         eval_team_id = eval_state.ship_team_id
                         eval_action = torch.where(
                             (eval_team_id == 0).unsqueeze(-1),
-                            eval_action_policy,
-                            eval_action_opp,
+                            eval_action_team0,
+                            eval_action_team1,
                         )
 
                         eval_dones, eval_truncated = eval_env.step(eval_action)
@@ -1312,28 +1339,52 @@ class PPOTrainer:
                         eval_team1_won = eval_done_any & eval_team1_alive & ~eval_team0_alive
                         eval_tied      = eval_done_any & ~eval_team0_won & ~eval_team1_won
 
-                        # Vectorised ELO update — O(1) .item() calls instead of O(n_done).
-                        opp_was_scripted = eval_is_scripted[eval_done_any]          # save before re-routing
-                        opp_elo  = opp_was_scripted.float() * 1000.0
-                        score    = (eval_team0_won[eval_done_any].float()
-                                    + 0.5 * eval_tied[eval_done_any].float())
-                        expected = 1.0 / (1.0 + 10.0 ** ((opp_elo - self._training_elo) / 400.0))
-                        self._training_elo += (K_eval * (score - expected)).sum().item()
+                        done_matchup = eval_matchup[eval_done_any]
+                        done_anchor_is_scripted = eval_anchor_is_scripted[eval_done_any]
+                        score = (eval_team0_won[eval_done_any].float() + 0.5 * eval_tied[eval_done_any].float())
 
-                        # Dynamic Information-Proportional Re-routing (vectorised).
+                        # 1. Update live ELO vs anchors (matchup == 0)
+                        mask_live_vs_anchor = (done_matchup == 0)
+                        if mask_live_vs_anchor.any():
+                            opp_is_sc = done_anchor_is_scripted[mask_live_vs_anchor]
+                            opp_elo = opp_is_sc.float() * 1000.0
+                            m_score = score[mask_live_vs_anchor]
+                            expected = 1.0 / (1.0 + 10.0 ** ((opp_elo - self._training_elo) / 400.0))
+                            self._training_elo += (K_eval * (m_score - expected)).sum().item()
+                            
+                            sc_mask = opp_is_sc.cpu()
+                            scores_cpu = m_score.cpu()
+                            if sc_mask.any():
+                                self._eval_window_sc.extend(scores_cpu[sc_mask].tolist())
+                            if (~sc_mask).any():
+                                self._eval_window_rand.extend(scores_cpu[~sc_mask].tolist())
+
+                        # 2. Update avg ELO vs anchors (matchup == 1)
+                        mask_avg_vs_anchor = (done_matchup == 1)
+                        if mask_avg_vs_anchor.any():
+                            opp_is_sc = done_anchor_is_scripted[mask_avg_vs_anchor]
+                            opp_elo = opp_is_sc.float() * 1000.0
+                            m_score = score[mask_avg_vs_anchor]
+                            expected = 1.0 / (1.0 + 10.0 ** ((opp_elo - self._avg_training_elo) / 400.0))
+                            self._avg_training_elo += (K_eval * (m_score - expected)).sum().item()
+                            self._eval_window_avg_vs_anchors.extend(m_score.cpu().tolist())
+
+                        # 3. Track live vs avg (matchup == 2)
+                        mask_live_vs_avg = (done_matchup == 2)
+                        if mask_live_vs_avg.any():
+                            self._eval_window_live_vs_avg.extend(score[mask_live_vs_avg].cpu().tolist())
+
+                        # Dynamic Information-Proportional Re-routing for anchors
+                        # Note: we leave the eval_matchup fixed so the 1536 envs maintain an exact 3-way split.
                         f_star = _compute_optimal_eval_ratio(self._training_elo)
                         n_done = eval_done_any.sum().item()
-                        eval_is_scripted[eval_done_any] = (
+                        eval_anchor_is_scripted[eval_done_any] = (
                             torch.rand(n_done, device=self.device) > f_star
                         )
 
-                        sc_mask    = opp_was_scripted.cpu()
-                        scores_cpu = score.cpu()
-                        self._eval_window_sc.extend(  scores_cpu[sc_mask].tolist())
-                        self._eval_window_rand.extend(scores_cpu[~sc_mask].tolist())
-
                         eval_env.reset_envs(eval_done_any)
                         reset_done_envs(agent_policy, eval_done_any, num_tokens)
+                        reset_done_envs(agent_avg, eval_done_any, num_tokens)
                         if agent_sc is not None:
                             reset_done_envs(agent_sc, eval_done_any, num_tokens)
                         reset_done_envs(agent_rand, eval_done_any, num_tokens)
@@ -1457,10 +1508,15 @@ class PPOTrainer:
 
             # ELO evaluation — continuous live statistics from parallel slots
             metrics["elo/training"] = self._training_elo
+            metrics["elo/avg_model"] = self._avg_training_elo
             if self._eval_window_rand:
                 metrics["elo/win_rate_vs_random"] = sum(self._eval_window_rand) / len(self._eval_window_rand)
             if self._eval_window_sc:
                 metrics["elo/win_rate_vs_scripted"] = sum(self._eval_window_sc) / len(self._eval_window_sc)
+            if self._eval_window_live_vs_avg:
+                metrics["elo/win_rate_vs_avg"] = sum(self._eval_window_live_vs_avg) / len(self._eval_window_live_vs_avg)
+            if self._eval_window_avg_vs_anchors:
+                metrics["elo/avg_win_rate_vs_anchors"] = sum(self._eval_window_avg_vs_anchors) / len(self._eval_window_avg_vs_anchors)
 
             # Save overwriting best-model checkpoints when normalized ELO improves.
             random_elo = self._random_elo()
@@ -1474,6 +1530,7 @@ class PPOTrainer:
                 ("elo/training",                   "overview/elo"),
                 ("elo/win_rate_vs_scripted",        "overview/win_rate_vs_scripted"),
                 ("elo/win_rate_vs_random",          "overview/win_rate_vs_random"),
+                ("elo/win_rate_vs_avg",             "overview/win_rate_vs_avg"),
                 ("loss/total",                      "overview/loss_total"),
                 ("loss_proxy/policy_gradient",      "overview/loss_proxy_pg"),
                 ("loss_proxy/behavioral_cloning",   "overview/loss_proxy_bc"),
@@ -2246,13 +2303,13 @@ class PPOTrainer:
             # returns True once the file is complete (avoids partial-read crashes).
             tmp = path.with_suffix(".tmp")
             torch.save(cpu_payload, tmp)
-            tmp.rename(path)
+            tmp.replace(path)
             print(f"Checkpoint saved asynchronously: {path}")
 
             if avg_cpu_payload is not None and avg_path is not None:
                 tmp_avg = avg_path.with_suffix(".tmp")
                 torch.save(avg_cpu_payload, tmp_avg)
-                tmp_avg.rename(avg_path)
+                tmp_avg.replace(avg_path)
                 print(f"Recent avg checkpoint saved asynchronously: {avg_path}")
 
             # Prune: keep only the latest checkpoint + all roster-referenced files.
@@ -2319,7 +2376,7 @@ class PPOTrainer:
         def _async_save():
             tmp = path.with_suffix(".tmp")
             torch.save(cpu_payload, tmp)
-            tmp.rename(path)
+            tmp.replace(path)
             print(f"Best checkpoint saved asynchronously: {path}")
 
         self._active_best_thread = threading.Thread(target=_async_save, daemon=True)
