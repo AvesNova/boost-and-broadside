@@ -257,8 +257,8 @@ class TestMVPEnvWrapper:
         assert obs["pos"][..., 1].min().item() >= 0.0
         assert obs["pos"][..., 1].max().item() <= world_h
 
-    def test_episode_info_returned_on_done(self, ship_cfg, reward_cfg):
-        """info dict must contain ep_reward and ep_length when an episode ends."""
+    def test_episode_stats_accumulated_on_done(self, ship_cfg, reward_cfg):
+        """pop_episode_stats must report finished episodes, then reset."""
         env_cfg = EnvConfig(num_ships=2, max_bullets=5, max_episode_steps=2)
         wrapper = MVPEnvWrapper(
             num_envs=1,
@@ -270,9 +270,14 @@ class TestMVPEnvWrapper:
         wrapper.reset(options={"team_sizes": (1, 1)})
 
         actions = torch.zeros((1, 2, 3), dtype=torch.long)
-        # Run until truncation
+        # Run until truncation (max_episode_steps=2)
         for _ in range(2):
-            _, _, _, _, info = wrapper.step(actions)
+            wrapper.step(actions)
 
-        # After 2 steps with max_episode_steps=2 the env truncates
-        assert "ep_reward" in info or "ep_length" in info  # at least one present
+        stats = wrapper.pop_episode_stats()
+        assert stats["episodes"].item() == 1
+        assert stats["length_sum"].item() == 2
+
+        # Accumulators must be cleared by the pop
+        stats_after = wrapper.pop_episode_stats()
+        assert stats_after["episodes"].item() == 0

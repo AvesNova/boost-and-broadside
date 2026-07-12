@@ -462,6 +462,10 @@ class PPOTrainer:
             device=self.device,
         )
 
+        # Per-component aggregated-return diagnostic — refreshed once per update
+        # by _precompute_lambda_aggregates (primary scale).
+        self._ret_per_comp_mean_k = torch.zeros(K, device=self.device)
+
         # --- Avg-model opponent (uniform mean of all post-warmup policy snapshots) ---
         # Weights initialized as a copy of the training policy.
         # Only updated when allow_avg_model_updates is True in the current phase.
@@ -932,14 +936,6 @@ class PPOTrainer:
                 aux_buf.reset()
                 aux_buf.store_initial_hidden(aux_h)
 
-            # Accumulate episode stats across the rollout — flushed once per update
-            ep_rewards: list[torch.Tensor] = []
-            ep_lengths: list[torch.Tensor] = []
-            ep_components: dict[str, list[torch.Tensor]] = {}
-            ep_scaled_components: dict[str, list[torch.Tensor]] = {}
-            ep_wins: list[torch.Tensor] = []
-            ep_lifespans: list[torch.Tensor] = []
-
             # Sample a league opponent for this rollout (rotated each update).
             # Only runs when the current phase has league_frac > 0 AND slots are allocated.
             # Evict the previous checkpoint's weights before loading the new one.
@@ -1167,17 +1163,6 @@ class PPOTrainer:
                 # obs(t+1).previous_action = action(t) — what the policy just decided,
                 # will be executed by env.step next iteration.
                 next_obs[ObsKey.PREVIOUS_ACTION][:, :N] = action
-
-                if info.get("ep_reward") is not None:
-                    ep_rewards.append(info["ep_reward"])
-                    ep_lengths.append(info["ep_length"].float())
-                    for name, t in info["ep_reward_components"].items():
-                        ep_components.setdefault(name, []).append(t)
-                    for name, t in info["ep_scaled_reward_components"].items():
-                        ep_scaled_components.setdefault(name, []).append(t)
-                    ep_wins.append(info["ep_wins"])
-                    if "ep_lifespan" in info:
-                        ep_lifespans.append(info["ep_lifespan"])
 
                 done_any = dones | truncated
                 self.buffer.add(
@@ -1445,6 +1430,7 @@ class PPOTrainer:
                     f"{comp.name}_weight",
                     raw * getattr(self._schedule_state, scale_attr),
                 )
+            self.wrapper.refresh_component_weights()
             metrics["schedule/learning_rate"] = self._schedule_state.learning_rate
             metrics["schedule/policy_gradient_coef"] = (
                 self._schedule_state.policy_gradient_coef
@@ -1479,22 +1465,24 @@ class PPOTrainer:
             # Scaler span minimum — flags components where normalization may be degenerate
             metrics["scaler/span_min"] = span_cpu.min().item()
 
-            # Merge episode stats collected during rollout into the metrics dict
-            if ep_rewards:
-                all_rewards = torch.cat(ep_rewards)  # (num_finished_eps * N,)
-                all_lengths = torch.cat(ep_lengths)
-                metrics["episode/reward_mean"] = all_rewards.mean().item()
-                metrics["episode/reward_min"] = all_rewards.min().item()
-                metrics["episode/reward_max"] = all_rewards.max().item()
-                metrics["episode/length_mean"] = all_lengths.mean().item()
-                for name, tensors in ep_components.items():
-                    metrics[f"episode/reward_{name}"] = torch.cat(tensors).mean().item()
-                for name, tensors in ep_scaled_components.items():
-                    metrics[f"episode/scaled_{name}"] = torch.cat(tensors).mean().item()
-                if ep_wins:
-                    metrics["episode/win_rate"] = torch.cat(ep_wins).mean().item()
-                if ep_lifespans:
-                    metrics["episode/lifespan_mean"] = torch.cat(ep_lifespans).mean().item()
+            # Merge episode stats accumulated on-GPU by the wrapper — one sync per update
+            ep_stats = self.wrapper.pop_episode_stats()
+            for aux_w in self.aux_wrappers:
+                aux_w.pop_episode_stats()  # discarded, but keeps accumulators bounded
+            n_eps = ep_stats["episodes"].item()
+            if n_eps > 0:
+                n_ship_eps = n_eps * self.wrapper.num_ships
+                comp_sum = ep_stats["comp_sum"].cpu()
+                comp_scaled_sum = ep_stats["comp_scaled_sum"].cpu()
+                metrics["episode/reward_mean"] = ep_stats["reward_sum"].item() / n_ship_eps
+                metrics["episode/reward_min"] = ep_stats["reward_min"].item()
+                metrics["episode/reward_max"] = ep_stats["reward_max"].item()
+                metrics["episode/length_mean"] = ep_stats["length_sum"].item() / n_eps
+                for i, name in enumerate(self._active_names):
+                    metrics[f"episode/reward_{name}"] = comp_sum[i].item() / n_ship_eps
+                    metrics[f"episode/scaled_{name}"] = comp_scaled_sum[i].item() / n_ship_eps
+                metrics["episode/win_rate"] = ep_stats["wins_sum"].item() / n_ship_eps
+                metrics["episode/lifespan_mean"] = ep_stats["lifespan_sum"].item() / n_ship_eps
 
             self._ship_steps += ship_tokens_per_update
             # Cumulative work / cumulative training time — spans checkpoint
@@ -1617,7 +1605,6 @@ class PPOTrainer:
     def _compute_minibatch_loss(
         self,
         batch: tuple,
-        comp_weights: torch.Tensor,
         is_primary: bool,
     ) -> tuple[torch.Tensor, dict]:
         """Compute PPO loss for one minibatch. Does NOT call zero_grad / backward / step.
@@ -1627,9 +1614,13 @@ class PPOTrainer:
         each update step.  Setting ``policy_gradient_coef=0.0`` in the base schedule activates
         BC pretraining mode (no policy gradient or entropy loss).
 
+        Lambda-aggregated advantages/returns and aux next-state labels arrive
+        precomputed in the batch (see _precompute_lambda_aggregates /
+        _precompute_ns_labels) — they depend only on rollout data, so they are
+        built once per update instead of once per minibatch.
+
         Args:
             batch:        Output of RolloutBuffer.get_minibatch_iterator.
-            comp_weights: (K,) per-component lambda weights for this update step.
             is_primary:   True for the primary scale — enables BC loss and per-component
                           critic diagnostics. Aux scales skip these to avoid shape mismatches
                           (different N) and because BC targets only exist in the primary env.
@@ -1652,6 +1643,9 @@ class PPOTrainer:
             mb_actor_mask,
             mb_expert_probs,
             mb_terminated,
+            mb_adv_agg,
+            mb_ret_agg,
+            mb_ns_labels,
         ) = batch
 
         # mb_obs has T+1 steps; first T for encode/evaluate, last T for next-state aux loss.
@@ -1679,66 +1673,12 @@ class PPOTrainer:
         actor_f = (mb_actor_mask & mb_alive).float()  # (T, B_mb, N)
         actor_sum = actor_f.sum().clamp(min=1.0)
 
-        # ---- Lambda aggregation -------------------------------------------
-        # Per-timestep team IDs: correctly tracks re-assignments after mid-rollout resets.
-        # Buffer stores obs as float32; cast to long for comparison.
-        # Slice to ship tokens only — obstacle tokens (team_id=2) have no rewards/actions.
-        N_ships = mb_alive.shape[-1]
-        team_id_t = curr_mb_obs["team_id"][:, :, :N_ships].long()  # (T, B_mb, N)
-        same_team_t = team_id_t.unsqueeze(3) == team_id_t.unsqueeze(
-            2
-        )  # (T, B_mb, N_i, N_j)
-        N = team_id_t.shape[-1]
-
-        ally_lam = torch.where(
-            self.ally_zero_k, 0.0, 1.0
-        )  # (K,) — 0 for enemy-only components
-        enemy_lam = torch.where(
-            self.enemy_neg_k, -1.0, 0.0
-        )  # (K,) — -1 for zero-sum components
-
-        # Zero out dead contributing ships (j): dead ships have untrained critic values
-        # and must not contaminate surviving ships' aggregated advantages.
-        alive_j = mb_alive.float().unsqueeze(2).unsqueeze(-1)  # (T, B_mb, 1, N_j, 1)
-
-        # Global lambda (team-based): allies share signals, enemies are zero-sum.
-        global_lambda = (
-            same_team_t.float().unsqueeze(-1) * ally_lam
-            + (~same_team_t).float().unsqueeze(-1) * enemy_lam
-        )  # (T, B_mb, N_i, N_j, K)
-
-        # Local lambda (diagonal): ship i only receives its own signal (i==j).
-        # Shape (1, 1, N, N, 1) broadcasts across T, B_mb, and K dims.
-        identity = torch.eye(N, dtype=torch.float32, device=self.device)
-        local_lambda = identity[None, None, :, :, None]  # (1, 1, N, N, 1)
-
-        lambda_ij_t = (
-            torch.where(self.local_k, local_lambda, global_lambda)
-            * comp_weights
-            * alive_j
-        )  # (T, B_mb, N_i, N_j, K)
-
-        # Normalize each ship i's lambda weights by the sum of absolute contributions
-        # across alive ships j. This makes the aggregated signal a weighted mean rather
-        # than a sum, so the policy gradient magnitude is consistent regardless of how
-        # many ships are alive at each timestep and comparable across game sizes (N).
-        # Local components (diagonal lambda) always sum to 1.0 so are unaffected.
-        # clamp(min=1.0) handles the degenerate case where all contributing ships are dead.
-        lambda_norm = lambda_ij_t.abs().sum(dim=3, keepdim=True).clamp(min=1.0)
-        lambda_ij_t = lambda_ij_t / lambda_norm  # (T, B_mb, N_i, N_j, K)
-
-        mb_advantages_normed = self.adv_scaler.normalize(
-            mb_advantages
-        )  # (T, B_mb, N, K)
-        adv_agg = torch.einsum(
-            "tbijk,tbjk->tbi", lambda_ij_t, mb_advantages_normed
-        )  # (T, B_mb, N)
-        ret_agg = torch.einsum(
-            "tbijk,tbjk->tbi", lambda_ij_t, mb_returns
-        )  # (T, B_mb, N)
-        ret_per_comp = torch.einsum(
-            "tbijk,tbjk->tbik", lambda_ij_t, mb_returns
-        )  # (T, B_mb, N, K)
+        # ---- Lambda aggregation (precomputed once per update) --------------
+        # See _precompute_lambda_aggregates: the (T, B, N_i, N_j, K) lambda
+        # tensor depends only on rollout data + per-update scalers, so it is
+        # built and reduced once per update, not per minibatch.
+        adv_agg = mb_adv_agg  # (T, B_mb, N)
+        ret_agg = mb_ret_agg  # (T, B_mb, N)
 
         adv_rms = (adv_agg.pow(2) * actor_f).sum() / actor_sum
         adv_norm = adv_agg / (adv_rms.sqrt().clamp(min=0.1) + 1e-8)
@@ -1812,29 +1752,9 @@ class PPOTrainer:
             ns_mask_f = ns_mask.float()
             ns_sum = ns_mask_f.sum().clamp(min=1.0)
 
-            # Compute aux labels from T+1 observation storage.
-            # obs[0:T] = current, obs[1:T+1] = next — same layout as the stored buffer.
-            T_flat = mb_alive.shape[0]
-            B_flat = mb_alive.shape[1]
-            N_ships_aux = mb_alive.shape[-1]
-            next_mb_obs = mb_obs.slice_time(1, T_flat + 1)  # (T, B_mb, N+M, ...)
-
-            # Flatten T and B for batch processing through the coordinator.
-            def _flat_ship(o: MVPObservation) -> MVPObservation:
-                return MVPObservation(data={
-                    k: (v[:, :, :N_ships_aux].reshape(T_flat * B_flat, N_ships_aux, *v.shape[3:])
-                        if v.dim() > 3
-                        else v[:, :, :N_ships_aux].reshape(T_flat * B_flat, N_ships_aux))
-                    for k, v in o.items()
-                })
-
-            curr_flat = _flat_ship(curr_mb_obs)  # (T*B, N, ...)
-            next_flat = _flat_ship(next_mb_obs)  # (T*B, N, ...)
-
-            curr_targets = self.coordinator.get_target_vector(curr_flat)  # (T*B, N, target_dim)
-            next_targets = self.coordinator.get_target_vector(next_flat)  # (T*B, N, target_dim)
-            labels = self.coordinator.compute_labels(curr_targets, next_targets)  # (T*B, N, pred_dim)
-            labels = labels.reshape(T_flat, B_flat, N_ships_aux, -1)  # (T, B, N, pred_dim)
+            # Labels precomputed once per update from the T+1 obs storage
+            # (see _precompute_ns_labels) — they depend only on rollout data.
+            labels = mb_ns_labels  # (T, B_mb, N, pred_dim)
 
             P = self.coordinator.total_prediction_dimension
             sq_err = (pred_next.float() - labels.detach()).pow(2)  # (T, B, N, pred_dim)
@@ -1907,10 +1827,9 @@ class PPOTrainer:
 
             # Per-component critic stats — primary scale only (K matches buffer.num_components)
             if is_primary:
-                actor_k = actor_f.unsqueeze(-1)  # (T, B_mb, N, 1)
-                ret_per_comp_mean_k = (ret_per_comp * actor_k).sum(
-                    (0, 1, 2)
-                ) / actor_sum  # (K,)
+                # Aggregated-return component means come precomputed over the
+                # full rollout (see _precompute_lambda_aggregates).
+                ret_per_comp_mean_k = self._ret_per_comp_mean_k  # (K,)
 
                 pred_k = self.scaler.denormalize(new_value.detach())  # (T, B_mb, N, K)
                 value_loss_k = (vf_loss_raw.detach() * alive_k).sum(
@@ -1940,6 +1859,103 @@ class PPOTrainer:
 
         return loss, diag
 
+    @torch.no_grad()
+    def _precompute_lambda_aggregates(
+        self, buf: RolloutBuffer, comp_weights: torch.Tensor, is_primary: bool
+    ) -> None:
+        """Fill buf.adv_agg / buf.ret_agg with lambda-aggregated advantages/returns.
+
+        The (T, B, N_i, N_j, K) lambda tensor depends only on rollout data and
+        the per-update scalers/weights — not on the policy — so it is built once
+        per update here instead of once per minibatch inside the epoch loop.
+        Work is chunked over envs to keep peak memory at the per-minibatch level.
+
+        Lambda semantics (unchanged from the previous in-loss computation):
+        allies share signals, enemies are zero-sum (enemy_neg_k), enemy-only
+        components zero the ally contribution (ally_zero_k), local components
+        use a diagonal lambda, dead contributing ships are zeroed, and each
+        ship's weights are normalized to a weighted mean over alive ships.
+
+        For the primary buffer this also computes the per-component
+        aggregated-return diagnostic mean (self._ret_per_comp_mean_k).
+        """
+        T = buf.num_steps
+        B = buf.num_envs
+        N = buf.num_ships
+
+        ally_lam = torch.where(self.ally_zero_k, 0.0, 1.0)    # (K,)
+        enemy_lam = torch.where(self.enemy_neg_k, -1.0, 0.0)  # (K,)
+        identity = torch.eye(N, dtype=torch.float32, device=self.device)
+        local_lambda = identity[None, None, :, :, None]        # (1, 1, N, N, 1)
+
+        if is_primary:
+            ret_pc_sum = torch.zeros(buf.num_components, device=self.device)
+            actor_sum = torch.zeros((), device=self.device)
+
+        chunk = max(1, B // self.cfg.num_minibatches)
+        for start in range(0, B, chunk):
+            sl = slice(start, start + chunk)
+            alive = buf.alive_mask[:, sl]                             # (T, b, N)
+            team_id_t = buf.obs[ObsKey.TEAM_ID][:T, sl, :N].long()    # (T, b, N)
+            same_team_t = team_id_t.unsqueeze(3) == team_id_t.unsqueeze(2)  # (T, b, N, N)
+            alive_j = alive.float().unsqueeze(2).unsqueeze(-1)        # (T, b, 1, N_j, 1)
+
+            global_lambda = (
+                same_team_t.float().unsqueeze(-1) * ally_lam
+                + (~same_team_t).float().unsqueeze(-1) * enemy_lam
+            )  # (T, b, N_i, N_j, K)
+            lambda_ij_t = (
+                torch.where(self.local_k, local_lambda, global_lambda)
+                * comp_weights
+                * alive_j
+            )
+            lambda_norm = lambda_ij_t.abs().sum(dim=3, keepdim=True).clamp(min=1.0)
+            lambda_ij_t = lambda_ij_t / lambda_norm
+
+            adv_normed = self.adv_scaler.normalize(buf.advantages[:, sl])
+            buf.adv_agg[:, sl] = torch.einsum(
+                "tbijk,tbjk->tbi", lambda_ij_t, adv_normed
+            )
+            buf.ret_agg[:, sl] = torch.einsum(
+                "tbijk,tbjk->tbi", lambda_ij_t, buf.returns[:, sl]
+            )
+
+            if is_primary:
+                ret_pc = torch.einsum(
+                    "tbijk,tbjk->tbik", lambda_ij_t, buf.returns[:, sl]
+                )  # (T, b, N, K)
+                actor_f = (buf.actor_masks[:, sl] & alive).float()
+                ret_pc_sum += (ret_pc * actor_f.unsqueeze(-1)).sum((0, 1, 2))
+                actor_sum += actor_f.sum()
+
+        if is_primary:
+            self._ret_per_comp_mean_k = ret_pc_sum / actor_sum.clamp(min=1.0)
+
+    @torch.no_grad()
+    def _precompute_ns_labels(self, buf: RolloutBuffer) -> None:
+        """Compute next-state prediction labels once per update.
+
+        Labels come from the stored T+1 observations only — not the policy — so
+        computing them here saves num_epochs × num_minibatches redundant passes
+        through the coordinator. Targets are computed once over all T+1 steps
+        and diffed (labels[t] = f(target[t], target[t+1])).
+        """
+        if self.cfg.next_state_coef <= 0.0 and self.cfg.windowed_loss_coef <= 0.0:
+            buf.ns_labels = None
+            return
+        T, B, N = buf.num_steps, buf.num_envs, buf.num_ships
+        ship_obs = MVPObservation(data={
+            k: (v[:, :, :N].reshape((T + 1) * B, N, *v.shape[3:])
+                if v.dim() > 3
+                else v[:, :, :N].reshape((T + 1) * B, N))
+            for k, v in buf.obs.items()
+        })
+        targets = self.coordinator.get_target_vector(ship_obs)   # ((T+1)*B, N, t_dim)
+        targets = targets.reshape(T + 1, B, N, -1)
+        buf.ns_labels = self.coordinator.compute_labels(
+            targets[:T], targets[1:]
+        )  # (T, B, N, pred_dim)
+
     def _update_epochs(
         self,
         all_buffers: list[RolloutBuffer],
@@ -1967,6 +1983,17 @@ class PPOTrainer:
             dtype=torch.float32,
             device=self.device,
         )  # (K,)
+
+        # Precompute everything that depends only on rollout data (not the
+        # policy) once per update instead of once per minibatch: the lambda
+        # aggregation and the aux next-state labels (primary scale only).
+        for scale_idx, buf in enumerate(all_buffers):
+            self._precompute_lambda_aggregates(
+                buf, comp_weights, is_primary=(scale_idx == 0)
+            )
+            if scale_idx > 0:
+                buf.ns_labels = None  # aux scales never use the aux losses
+        self._precompute_ns_labels(all_buffers[0])
 
         accum_scalar: dict[str, list[torch.Tensor]] = {
             "loss/total": [],
@@ -2064,9 +2091,7 @@ class PPOTrainer:
 
                 for scale_idx, (buf, batch) in enumerate(zip(all_buffers, batches)):
                     is_primary = scale_idx == 0
-                    loss, diag = self._compute_minibatch_loss(
-                        batch, comp_weights, is_primary
-                    )
+                    loss, diag = self._compute_minibatch_loss(batch, is_primary)
                     (loss / n_scales).backward()
 
                     # Accumulate scalar diagnostics (average across scales)

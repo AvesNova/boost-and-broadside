@@ -5,6 +5,7 @@ No Python loops over batch or ship dimensions.
 """
 
 import torch
+import torch.nn.functional as F
 from typing import Tuple
 
 from boost_and_broadside.env.state import TensorState
@@ -18,8 +19,25 @@ from boost_and_broadside.constants import PowerActions, ShootActions
 # Lookup table construction
 # ---------------------------------------------------------------------------
 
+# Keyed by (config, device string). Building the tables allocates four tensors
+# from Python lists (host→device copies), so they must not be rebuilt on the
+# per-step hot path.
+_LOOKUP_TABLE_CACHE: dict = {}
+
 
 def _get_lookup_tables(
+    config: ShipConfig, device: torch.device
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Return cached per-action physics lookup tensors for (config, device)."""
+    key = (config, str(device))
+    tables = _LOOKUP_TABLE_CACHE.get(key)
+    if tables is None:
+        tables = _build_lookup_tables(config, device)
+        _LOOKUP_TABLE_CACHE[key] = tables
+    return tables
+
+
+def _build_lookup_tables(
     config: ShipConfig, device: torch.device
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Build per-action physics lookup tensors from config.
@@ -214,12 +232,15 @@ def _update_kinematics(
 def _handle_shooting(
     state: TensorState, shoot_action: torch.Tensor, config: ShipConfig
 ) -> TensorState:
-    """Manage cooldowns and spawn bullets for ships that fire."""
+    """Manage cooldowns and spawn bullets for ships that fire.
+
+    Fully branchless: bullet spawns are written through a one-hot mask on the
+    ring-buffer cursor instead of nonzero/gather, so no host-device sync occurs
+    (this runs every step of every rollout).
+    """
     if state.max_bullets == 0:
         state.ship_is_shooting = torch.zeros_like(state.ship_is_shooting)
         return state
-
-    device = state.device
 
     state.ship_cooldown = (state.ship_cooldown - config.dt).clamp(min=0.0)
 
@@ -231,9 +252,6 @@ def _handle_shooting(
     )  # (B, N) bool
     state.ship_is_shooting = can_shoot
 
-    if not can_shoot.any():
-        return state
-
     state.ship_power = torch.where(
         can_shoot, state.ship_power - config.bullet_energy_cost, state.ship_power
     )
@@ -243,23 +261,24 @@ def _handle_shooting(
         state.ship_cooldown,
     )
 
-    batch_idx, ship_idx = torch.nonzero(can_shoot, as_tuple=True)
-    slots = state.bullet_cursor[batch_idx, ship_idx]  # write positions
-    spawn_pos = state.ship_pos[batch_idx, ship_idx]
-    att = state.ship_attitude[batch_idx, ship_idx]
-    vel = state.ship_vel[batch_idx, ship_idx]
+    # One-hot write mask: each shooter's cursor slot, masked to shooters only.
+    K = state.max_bullets
+    slot_onehot = F.one_hot(state.bullet_cursor, K).bool() & can_shoot.unsqueeze(-1)  # (B, N, K)
 
-    base_vel = vel + config.bullet_speed * att
+    base_vel = state.ship_vel + config.bullet_speed * state.ship_attitude  # (B, N)
     noise = torch.complex(
         torch.randn_like(base_vel.real) * config.bullet_spread,
         torch.randn_like(base_vel.real) * config.bullet_spread,
     )
+    spawn_vel = base_vel + noise
 
-    state.bullet_pos[batch_idx, ship_idx, slots] = spawn_pos
-    state.bullet_vel[batch_idx, ship_idx, slots] = base_vel + noise
-    state.bullet_time[batch_idx, ship_idx, slots] = config.bullet_lifetime
-    state.bullet_active[batch_idx, ship_idx, slots] = True
-    state.bullet_cursor[batch_idx, ship_idx] = (slots + 1) % state.max_bullets
+    state.bullet_pos = torch.where(slot_onehot, state.ship_pos.unsqueeze(-1), state.bullet_pos)
+    state.bullet_vel = torch.where(slot_onehot, spawn_vel.unsqueeze(-1), state.bullet_vel)
+    state.bullet_time = torch.where(slot_onehot, config.bullet_lifetime, state.bullet_time)
+    state.bullet_active = state.bullet_active | slot_onehot
+    state.bullet_cursor = torch.where(
+        can_shoot, (state.bullet_cursor + 1) % K, state.bullet_cursor
+    )
 
     return state
 
@@ -330,7 +349,11 @@ def resolve_collisions(
 def _apply_combat_damage(state: TensorState, config: ShipConfig) -> TensorState:
     """Vectorized bullet-ship hit detection and damage application.
 
-    GPU kernel: kept together for performance.
+    Dense over all bullet slots (active and inactive): inactive slots are
+    masked out of the hit test rather than compacted with nonzero/gather.
+    This keeps every tensor shape static and avoids the host-device syncs
+    that dynamic-shape indexing forces on the per-step hot path.
+
     Also fills state.damage_matrix (B, N_shooter, N_target) for this step and
     accumulates into state.cumulative_damage_matrix for episode-level attribution.
     """
@@ -342,89 +365,63 @@ def _apply_combat_damage(state: TensorState, config: ShipConfig) -> TensorState:
     # Reset per-step attribution; cumulative is carried forward across steps.
     state.damage_matrix.zero_()
 
-    # Flatten bullet arrays over the ship dimension for broadcasting
-    flat_bullet_active = state.bullet_active.view(
-        batch_size, num_ships * num_bullets
-    )  # (B, N*K)
-
-    # 1. Fast-path: If no bullets are active in the entire batch, return immediately!
-    if not flat_bullet_active.any():
+    if num_bullets == 0:
         return state
 
-    flat_bullet_pos = state.bullet_pos.view(
-        batch_size, num_ships * num_bullets
-    )  # (B, N*K)
-    flat_bullet_vel = state.bullet_vel.view(
-        batch_size, num_ships * num_bullets
-    )  # (B, N*K)
+    NB = num_ships * num_bullets
+    flat_bullet_active = state.bullet_active.view(batch_size, NB)  # (B, NB)
+    flat_bullet_pos = state.bullet_pos.view(batch_size, NB)        # (B, NB)
+    flat_bullet_vel = state.bullet_vel.view(batch_size, NB)        # (B, NB)
 
-    # Get indices of active bullets
-    env_idx, flat_b_idx = torch.nonzero(flat_bullet_active, as_tuple=True)
-
-    # Slice attributes of active bullets
-    act_pos = flat_bullet_pos[flat_bullet_active]  # (num_active,) complex
-    act_vel = flat_bullet_vel[flat_bullet_active]  # (num_active,) complex
-    act_owner = flat_b_idx // num_bullets          # (num_active,)
-
-    # Slice target ship positions and statuses in matching environments
-    ships_pos = state.ship_pos[env_idx]            # (num_active, num_ships) complex
-    ships_alive = state.ship_alive[env_idx]        # (num_active, num_ships) bool
-    ships_att = state.ship_attitude[env_idx]        # (num_active, num_ships) complex
-
-    # Wrapped vector from bullet to ship: (num_active, num_ships)
-    diff_r = ships_pos.real - act_pos.real.unsqueeze(1)
-    diff_i = ships_pos.imag - act_pos.imag.unsqueeze(1)
+    # Wrapped vector from bullet to ship: (B, NB, N)
+    diff_r = state.ship_pos.real.unsqueeze(1) - flat_bullet_pos.real.unsqueeze(2)
+    diff_i = state.ship_pos.imag.unsqueeze(1) - flat_bullet_pos.imag.unsqueeze(2)
     diff_r = (diff_r + world_w / 2) % world_w - world_w / 2
     diff_i = (diff_i + world_h / 2) % world_h - world_h / 2
 
-    dist_sq = diff_r**2 + diff_i**2  # (num_active, num_ships)
+    dist_sq = diff_r**2 + diff_i**2  # (B, NB, N)
 
-    # Combined hitbox radius and raw candidate hits
-    hit_mask = (dist_sq < config.collision_radius**2) & ships_alive  # (num_active, num_ships)
+    # Exclude own bullets: bullet slot j belongs to ship j // num_bullets.
+    owner_idx = torch.arange(NB, device=device) // num_bullets  # (NB,)
+    target_idx = torch.arange(num_ships, device=device)          # (N,)
+    not_own_bullet = owner_idx.unsqueeze(1) != target_idx.unsqueeze(0)  # (NB, N)
 
-    # Exclude own bullets
-    target_idx = torch.arange(num_ships, device=device).unsqueeze(0)  # (1, num_ships)
-    not_own_bullet = target_idx != act_owner.unsqueeze(1)             # (num_active, num_ships)
-    valid_hit = hit_mask & not_own_bullet                              # (num_active, num_ships)
+    valid_hit = (
+        (dist_sq < config.collision_radius**2)
+        & state.ship_alive.unsqueeze(1)
+        & flat_bullet_active.unsqueeze(2)
+        & not_own_bullet.unsqueeze(0)
+    )  # (B, NB, N)
 
-    if not valid_hit.any():
-        return state
-
-    # Angle-scaled damage: head-on hits deal full damage, side hits reduced
+    # Angle-scaled damage: head-on hits deal full damage, side hits reduced.
+    # Inactive slots produce garbage angles but are zeroed by valid_hit below.
     hit_angles = torch.angle(
-        -act_vel.unsqueeze(1) * torch.conj(ships_att)
-    )  # (num_active, num_ships)
+        -flat_bullet_vel.unsqueeze(2) * torch.conj(state.ship_attitude.unsqueeze(1))
+    )  # (B, NB, N)
     damage_scale = 1.0 - (1.0 - config.bullet_min_damage_frac) * torch.exp(
         -(hit_angles**2) * 4.0 / torch.pi
     )
-    damage_per_hit = damage_scale * valid_hit.float() * config.bullet_damage  # (num_active, num_ships)
+    damage_per_hit = damage_scale * valid_hit.float() * config.bullet_damage  # (B, NB, N)
 
-    # Sum total damage received by each ship
-    total_damage = torch.zeros((batch_size, num_ships), device=device)  # (B, N)
-    total_damage.index_add_(0, env_idx, damage_per_hit)
+    # Total damage received by each ship, and per-shooter attribution
+    total_damage = damage_per_hit.sum(dim=1)  # (B, N)
+    per_shooter = damage_per_hit.view(batch_size, num_ships, num_bullets, num_ships).sum(
+        dim=2
+    )  # (B, N_shooter, N_target)
+    state.damage_matrix.copy_(per_shooter)
+    state.cumulative_damage_matrix += per_shooter
 
-    # Build per-shooter attribution and sum
-    target_idx_expanded = target_idx.expand(len(env_idx), num_ships)  # (num_active, num_ships)
-    flat_idx = (
-        env_idx.unsqueeze(1) * (num_ships * num_ships)
-        + act_owner.unsqueeze(1) * num_ships
-        + target_idx_expanded
-    )  # (num_active, num_ships)
-
-    state.damage_matrix.view(-1).index_add_(0, flat_idx.view(-1), damage_per_hit.view(-1))
-    state.cumulative_damage_matrix.view(-1).index_add_(0, flat_idx.view(-1), damage_per_hit.view(-1))
-
-    # Apply health reduction
+    # Apply health reduction. Death is monotone (alive &= health > 0) so ships
+    # flagged dead by other systems are never resurrected by the alive refresh.
     state.ship_health = state.ship_health - total_damage
-    state.ship_alive = state.ship_health > 0
+    state.ship_alive = state.ship_alive & (state.ship_health > 0)
     state.ship_health = torch.clamp(state.ship_health, min=0.0)
 
     # Deactivate bullets that connected
-    hit_any_ship = valid_hit.any(dim=1)  # (num_active,)
-    if hit_any_ship.any():
-        hitting_env = env_idx[hit_any_ship]
-        hitting_flat_b = flat_b_idx[hit_any_ship]
-        flat_bullet_active[hitting_env, hitting_flat_b] = False
+    hit_any_ship = valid_hit.any(dim=2)  # (B, NB)
+    state.bullet_active = (flat_bullet_active & ~hit_any_ship).view(
+        batch_size, num_ships, num_bullets
+    )
 
     return state
 
@@ -469,39 +466,32 @@ def resolve_obstacle_collisions(state: TensorState, config: ShipConfig) -> Tenso
 
     state.ship_hit_obstacle = any_hit
     state.ship_health = torch.where(any_hit, torch.zeros_like(state.ship_health), state.ship_health)
-    state.ship_alive = state.ship_health > 0
+    state.ship_alive = state.ship_alive & (state.ship_health > 0)
 
     # ----- Bullet-obstacle collision -----
+    # Dense over all bullet slots — inactive slots are masked at the end,
+    # keeping shapes static so no host-device sync occurs on the hot path.
     if state.max_bullets == 0:
         return state
 
     num_bullets = state.max_bullets
-    flat_bullet_pos = state.bullet_pos.view(batch_size, num_ships * num_bullets)   # (B, N*K)
-    flat_bullet_active = state.bullet_active.view(batch_size, num_ships * num_bullets)  # (B, N*K)
+    NB = num_ships * num_bullets
+    flat_bullet_pos = state.bullet_pos.view(batch_size, NB)      # (B, NB)
+    flat_bullet_active = state.bullet_active.view(batch_size, NB)  # (B, NB)
 
-    active_mask = flat_bullet_active
-    if active_mask.any():
-        active_indices = torch.nonzero(active_mask, as_tuple=True)
-        env_idx, flat_b_idx = active_indices
-        
-        act_pos = flat_bullet_pos[active_mask]  # (num_active,)
-        act_obs_pos = state.obstacle_pos[env_idx]  # (num_active, M)
-        act_obs_radius = state.obstacle_radius[env_idx]  # (num_active, M)
-        
-        bdiff_r = act_pos.real.unsqueeze(1) - act_obs_pos.real
-        bdiff_i = act_pos.imag.unsqueeze(1) - act_obs_pos.imag
-        bdiff_r = (bdiff_r + world_w / 2) % world_w - world_w / 2
-        bdiff_i = (bdiff_i + world_h / 2) % world_h - world_h / 2
-        bdist_sq = bdiff_r**2 + bdiff_i**2  # (num_active, M)
-        
-        bullet_hit_r = config.bullet_collision_radius + act_obs_radius  # (num_active, M)
-        bullet_hit_obs = bdist_sq < bullet_hit_r ** 2  # (num_active, M)
-        bullet_hit_any = bullet_hit_obs.any(dim=1)  # (num_active,)
-        
-        if bullet_hit_any.any():
-            hitting_env_idx = env_idx[bullet_hit_any]
-            hitting_flat_b_idx = flat_b_idx[bullet_hit_any]
-            flat_bullet_active[hitting_env_idx, hitting_flat_b_idx] = False
+    bdiff_r = flat_bullet_pos.real.unsqueeze(2) - state.obstacle_pos.real.unsqueeze(1)  # (B, NB, M)
+    bdiff_i = flat_bullet_pos.imag.unsqueeze(2) - state.obstacle_pos.imag.unsqueeze(1)
+    bdiff_r = (bdiff_r + world_w / 2) % world_w - world_w / 2
+    bdiff_i = (bdiff_i + world_h / 2) % world_h - world_h / 2
+    bdist_sq = bdiff_r**2 + bdiff_i**2  # (B, NB, M)
+
+    bullet_hit_r = config.bullet_collision_radius + state.obstacle_radius  # (B, M)
+    bullet_hit_obs = bdist_sq < bullet_hit_r.unsqueeze(1) ** 2  # (B, NB, M)
+    bullet_hit_any = bullet_hit_obs.any(dim=2)  # (B, NB)
+
+    state.bullet_active = (flat_bullet_active & ~bullet_hit_any).view(
+        batch_size, num_ships, num_bullets
+    )
 
     return state
 

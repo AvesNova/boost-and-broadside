@@ -112,14 +112,16 @@ class TensorEnv:
     ) -> None:
         """Reset the environments selected by the boolean mask.
 
+        Fully branchless: new values are generated for every env and applied
+        only where mask is True. Generating full-size randoms is trivially
+        cheap compared to the host-device sync that counting/indexing the mask
+        would force — this runs every step of the training hot path.
+
         Args:
             mask: (B,) bool — True for envs that need resetting.
             options: Same as reset() options.
         """
-        num_reset = int(mask.sum().item())
-        if num_reset == 0:
-            return
-
+        B = self.num_envs
         world_w, world_h = self.ship_config.world_size
         N = self.env_config.num_ships
 
@@ -128,83 +130,85 @@ class TensorEnv:
         if options and "team_sizes" in options:
             n_team0, n_team1 = options["team_sizes"]
 
-        idx = torch.nonzero(mask, as_tuple=True)[0]  # indices of envs to reset
+        s = self.state
+        m = mask.unsqueeze(1)  # (B, 1) — broadcasts over ships/obstacles
 
-        self.state.step_count[mask] = 0
+        s.step_count = torch.where(mask, 0, s.step_count)
 
         # Positions — uniformly random in world
-        rand_x = torch.rand((num_reset, N), device=self.device) * world_w
-        rand_y = torch.rand((num_reset, N), device=self.device) * world_h
-        self.state.ship_pos[idx] = torch.complex(rand_x, rand_y)
+        rand_x = torch.rand((B, N), device=self.device) * world_w
+        rand_y = torch.rand((B, N), device=self.device) * world_h
+        s.ship_pos = torch.where(m, torch.complex(rand_x, rand_y), s.ship_pos)
 
         # Attitude — random unit vectors
-        rand_angle = torch.rand((num_reset, N), device=self.device) * 2 * np.pi
+        rand_angle = torch.rand((B, N), device=self.device) * 2 * np.pi
         att = torch.polar(torch.ones_like(rand_angle), rand_angle)
-        self.state.ship_attitude[idx] = att
+        s.ship_attitude = torch.where(m, att, s.ship_attitude)
 
         # Velocity — along attitude at configured speed
         if self.ship_config.random_speed:
             speed = self.ship_config.min_speed + torch.rand(
-                (num_reset, N), device=self.device
+                (B, N), device=self.device
             ) * (self.ship_config.max_speed - self.ship_config.min_speed)
         else:
             speed = torch.full(
-                (num_reset, N), self.ship_config.default_speed, device=self.device
+                (B, N), self.ship_config.default_speed, device=self.device
             )
-        self.state.ship_vel[idx] = speed * att
+        s.ship_vel = torch.where(m, speed * att, s.ship_vel)
 
         # Resources
-        self.state.ship_health[idx] = self.ship_config.max_health
-        self.state.ship_power[idx] = self.ship_config.max_power
-        self.state.ship_cooldown[idx] = 0.0
-        self.state.ship_ang_vel[idx] = 0.0
+        s.ship_health = torch.where(m, self.ship_config.max_health, s.ship_health)
+        s.ship_power = torch.where(m, self.ship_config.max_power, s.ship_power)
+        s.ship_cooldown = torch.where(m, 0.0, s.ship_cooldown)
+        s.ship_ang_vel = torch.where(m, 0.0, s.ship_ang_vel)
 
         if self.env_config.single_team:
             # All ships share one randomly chosen team id (0 or 1) per env.
             # Random team prevents the policy overfitting to always seeing itself as team 0.
-            team_id = torch.randint(0, 2, (num_reset,), device=self.device, dtype=torch.int32)
-            self.state.ship_team_id[idx] = team_id.unsqueeze(1).expand(num_reset, N).clone()
-            self.state.ship_alive[idx] = True
+            team_id = torch.randint(0, 2, (B,), device=self.device, dtype=torch.int32)
+            s.ship_team_id = torch.where(m, team_id.unsqueeze(1), s.ship_team_id)
+            s.ship_alive = s.ship_alive | m
         else:
             # Two-team setup: randomly shuffle ship slots across both teams.
-            new_alive = torch.zeros((num_reset, N), dtype=torch.bool, device=self.device)
+            new_alive = torch.zeros((B, N), dtype=torch.bool, device=self.device)
             new_alive[:, : n_team0 + n_team1] = True
 
             base_team_ids = torch.zeros(
-                (num_reset, N), dtype=torch.int32, device=self.device
+                (B, N), dtype=torch.int32, device=self.device
             )
             base_team_ids[:, n_team0 : n_team0 + n_team1] = 1  # last n_team1 slots = team 1
 
             # Independent random permutation per env → any slot can be any team.
-            perm = torch.rand((num_reset, N), device=self.device).argsort(dim=1)
+            perm = torch.rand((B, N), device=self.device).argsort(dim=1)
             new_team_ids = base_team_ids.gather(1, perm)
 
-            self.state.ship_team_id[idx] = new_team_ids
-            self.state.ship_alive[idx] = new_alive
+            s.ship_team_id = torch.where(m, new_team_ids, s.ship_team_id)
+            s.ship_alive = torch.where(m, new_alive, s.ship_alive)
 
         # Clear bullets
-        self.state.bullet_active[idx] = False
-        self.state.bullet_time[idx] = 0.0
-        self.state.bullet_cursor[idx] = 0
+        m3 = mask.view(B, 1, 1)
+        s.bullet_active = s.bullet_active & ~m3
+        s.bullet_time = torch.where(m3, 0.0, s.bullet_time)
+        s.bullet_cursor = torch.where(m, 0, s.bullet_cursor)
 
         # Clear damage attribution
-        self.state.cumulative_damage_matrix[mask] = 0.0
+        s.cumulative_damage_matrix = torch.where(m3, 0.0, s.cumulative_damage_matrix)
 
         # Clear previous action
-        self.state.prev_action[mask] = 0.0
+        s.prev_action = torch.where(m3, 0.0, s.prev_action)
 
         # Inject obstacle snapshot from cache (rotation + translation applied inside)
         if self.obstacle_cache is not None:
             obs_pos, obs_vel, obs_radius, obs_gcenter = self.obstacle_cache.sample(
-                num_reset, self.ship_config.world_size, self.device
+                B, self.ship_config.world_size, self.device
             )
-            self.state.obstacle_pos[idx] = obs_pos
-            self.state.obstacle_vel[idx] = obs_vel
-            self.state.obstacle_radius[idx] = obs_radius
-            self.state.obstacle_gcenter[idx] = obs_gcenter
+            s.obstacle_pos = torch.where(m, obs_pos, s.obstacle_pos)
+            s.obstacle_vel = torch.where(m, obs_vel, s.obstacle_vel)
+            s.obstacle_radius = torch.where(m, obs_radius, s.obstacle_radius)
+            s.obstacle_gcenter = torch.where(m, obs_gcenter, s.obstacle_gcenter)
 
         # Clear obstacle death flag
-        self.state.ship_hit_obstacle[mask] = False
+        s.ship_hit_obstacle = s.ship_hit_obstacle & ~m
 
     # ------------------------------------------------------------------
     # Step

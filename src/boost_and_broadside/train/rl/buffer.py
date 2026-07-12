@@ -259,6 +259,17 @@ class RolloutBuffer:
 
         self.advantages = torch.zeros((T, B, N, K), device=device, dtype=torch.float32)
         self.returns = torch.zeros((T, B, N, K), device=device, dtype=torch.float32)
+
+        # Lambda-aggregated advantages/returns — filled once per update by
+        # PPOTrainer._precompute_lambda_aggregates before the epoch loop (they
+        # depend only on rollout data, not the policy).
+        self.adv_agg = torch.zeros((T, B, N), device=device, dtype=torch.float32)
+        self.ret_agg = torch.zeros((T, B, N), device=device, dtype=torch.float32)
+        # Next-state prediction labels (T, B, N, pred_dim) — set once per update
+        # by PPOTrainer._precompute_ns_labels; None for aux scales or when the
+        # aux losses are disabled.
+        self.ns_labels: torch.Tensor | None = None
+
         self.actor_masks = torch.ones((T, B, N), device=device, dtype=torch.bool)
         self.expert_probs = torch.zeros(
             (T, B, N, 12), device=device, dtype=torch.float32
@@ -426,6 +437,9 @@ class RolloutBuffer:
                 mb_actor_mask:   (T, B_mb, N) bool
                 mb_expert_probs: (T, B_mb, N, 12) float32
                 mb_terminated:   (T, B_mb) bool
+                mb_adv_agg:      (T, B_mb, N) float32 — precomputed lambda-aggregated advantages
+                mb_ret_agg:      (T, B_mb, N) float32 — precomputed lambda-aggregated returns
+                mb_ns_labels:    (T, B_mb, N, pred_dim) float32 or None — precomputed aux labels
         """
         assert self.initial_hidden is not None, (
             "Call store_initial_hidden() before iterating."
@@ -463,4 +477,7 @@ class RolloutBuffer:
                 self.actor_masks[:, idx],
                 self.expert_probs[:, idx],
                 self.terminated[:, idx],
+                self.adv_agg[:, idx],
+                self.ret_agg[:, idx],
+                self.ns_labels[:, idx] if self.ns_labels is not None else None,
             )

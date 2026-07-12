@@ -97,22 +97,25 @@ class MVPEnvWrapper:
             dtype=torch.float32,
         )
 
-        # Episode stat accumulators — active components only
+        # Per-episode trackers — active components only. Components are stored as
+        # one (B, N, K) tensor (not a per-name dict) so per-step accumulation is
+        # a single kernel.
         B, N = num_envs, env_config.num_ships
+        K_active = len(self._active_names)
         self._ep_reward = torch.zeros((B, N), device=self.device)
         self._ep_length = torch.zeros((B,), device=self.device, dtype=torch.int32)
-        self._ep_reward_components: dict[str, torch.Tensor] = {
-            name: torch.zeros((B, N), device=self.device) for name in self._active_names
-        }
+        self._ep_comp = torch.zeros((B, N, K_active), device=self.device)
         # Scaled rewards: raw compute output × (individual_weight × group_scale).
-        # comp.weight is mutated each update step by ppo.py to include the group scale.
-        self._ep_scaled_reward_components: dict[str, torch.Tensor] = {
-            name: torch.zeros((B, N), device=self.device) for name in self._active_names
-        }
-        # Win flag: +1 for alive ships on the surviving team, 0 otherwise (draws = 0).
+        # comp.weight is mutated each update step by ppo.py; the trainer must call
+        # refresh_component_weights() afterwards to re-sync the cached tensor.
+        self._ep_comp_scaled = torch.zeros((B, N, K_active), device=self.device)
+        # Win flag: +1 for ships on the surviving team, 0 otherwise (draws = 0).
         self._ep_wins = torch.zeros((B, N), device=self.device)
         # Steps each ship has been alive this episode (stops at death, resets on episode end).
         self._ship_age = torch.zeros((B, N), device=self.device, dtype=torch.int32)
+
+        self.refresh_component_weights()
+        self._zero_stat_accumulators()
 
     # ------------------------------------------------------------------
     # Reset
@@ -128,13 +131,70 @@ class MVPEnvWrapper:
         self._refresh_obs_radius_all()
         self._ep_reward.zero_()
         self._ep_length.zero_()
-        for t in self._ep_reward_components.values():
-            t.zero_()
-        for t in self._ep_scaled_reward_components.values():
-            t.zero_()
+        self._ep_comp.zero_()
+        self._ep_comp_scaled.zero_()
         self._ep_wins.zero_()
         self._ship_age.zero_()
+        self._zero_stat_accumulators()
         return self._get_obs()
+
+    # ------------------------------------------------------------------
+    # Episode statistics (GPU-accumulated, flushed once per update)
+    # ------------------------------------------------------------------
+
+    def refresh_component_weights(self) -> None:
+        """Re-sync the cached (K,) weight tensor from the active components.
+
+        Must be called after mutating component weights (ppo.py does this once
+        per update when applying schedule group scales).
+        """
+        self._weight_t = torch.tensor(
+            [c.weight for c in self._active_components],
+            device=self.device,
+            dtype=torch.float32,
+        )
+
+    def _zero_stat_accumulators(self) -> None:
+        d = self.device
+        K = len(self._active_names)
+        self._acc_episodes = torch.zeros((), device=d)
+        self._acc_reward_sum = torch.zeros((), device=d)
+        self._acc_reward_min = torch.full((), float("inf"), device=d)
+        self._acc_reward_max = torch.full((), float("-inf"), device=d)
+        self._acc_length_sum = torch.zeros((), device=d)
+        self._acc_comp_sum = torch.zeros((K,), device=d)
+        self._acc_comp_scaled_sum = torch.zeros((K,), device=d)
+        self._acc_wins_sum = torch.zeros((), device=d)
+        self._acc_lifespan_sum = torch.zeros((), device=d)
+
+    def pop_episode_stats(self) -> dict[str, torch.Tensor]:
+        """Return finished-episode stats accumulated since the last call, and reset.
+
+        All values are device tensors — the caller decides when to synchronize
+        (ppo.py does so once per update). Keys:
+            episodes:         () — number of finished env-episodes.
+            reward_sum:       () — total reward over finished ship-episodes.
+            reward_min/max:   () — extremes over finished ship-episodes
+                              (±inf when episodes == 0).
+            length_sum:       () — total episode length (per env-episode).
+            comp_sum:         (K,) — per-component reward sums (ship-episodes).
+            comp_scaled_sum:  (K,) — same, scaled by component weights.
+            wins_sum:         () — total win flags over finished ship-episodes.
+            lifespan_sum:     () — total ship lifespans (steps alive).
+        """
+        stats = {
+            "episodes": self._acc_episodes,
+            "reward_sum": self._acc_reward_sum,
+            "reward_min": self._acc_reward_min,
+            "reward_max": self._acc_reward_max,
+            "length_sum": self._acc_length_sum,
+            "comp_sum": self._acc_comp_sum,
+            "comp_scaled_sum": self._acc_comp_scaled_sum,
+            "wins_sum": self._acc_wins_sum,
+            "lifespan_sum": self._acc_lifespan_sum,
+        }
+        self._zero_stat_accumulators()
+        return stats
 
     # ------------------------------------------------------------------
     # Step
@@ -149,6 +209,10 @@ class MVPEnvWrapper:
         The wrapper snapshots health/alive before physics, computes rewards from
         the post-physics state, then resets done environments.
 
+        Fully branchless on the GPU: episode stats for finished envs fold into
+        on-device accumulators (see pop_episode_stats) instead of being copied
+        to the CPU here, so a step never forces a host-device sync.
+
         Args:
             actions: (B, N, 3) int tensor — [power, turn, shoot].
 
@@ -157,7 +221,7 @@ class MVPEnvWrapper:
             comp_rewards: (B, N, K) float32 — per-component per-ship rewards (no zero-sum).
             dones:        (B,) bool — game-over (physics termination).
             truncated:    (B,) bool — episode length limit reached.
-            info:         dict with optional "ep_reward" and "ep_length" for done envs.
+            info:         empty dict (episode stats moved to pop_episode_stats).
         """
         # Snapshot pre-physics state fields needed for reward delta
         prev_health = self.env.state.ship_health.clone()  # (B, N)
@@ -183,58 +247,58 @@ class MVPEnvWrapper:
         _n_ships = self.env_config.num_ships
         comp_rewards /= _n_ships
 
-        # Accumulate episode stats (active components only)
+        # Accumulate per-episode trackers (active components only)
         self._ep_reward += comp_rewards.sum(dim=-1)
         self._ep_length += 1
         self._ship_age += prev_alive.int()  # freeze at death step
-        for k, name in enumerate(self._active_names):
-            self._ep_reward_components[name] += comp_rewards[:, :, k]
-            self._ep_scaled_reward_components[name] += (
-                comp_rewards[:, :, k] * self._active_components[k].weight
-            )
+        self._ep_comp += comp_rewards
+        self._ep_comp_scaled += comp_rewards * self._weight_t
 
-        # Collect episode info for done envs before resetting
         done_mask = dones | truncated
-        info: dict = {}
-        if done_mask.any():
-            # Win tracking — +1 for alive ships on the surviving team, 0 otherwise.
-            s = self.env.state
-            team0 = s.ship_team_id == 0  # (B, N)
-            team1 = s.ship_team_id == 1  # (B, N)
-            t0_alive = (team0 & s.ship_alive).sum(dim=1)  # (B,)
-            t1_alive = (team1 & s.ship_alive).sum(dim=1)  # (B,)
-            t0_wins = ((t0_alive > 0) & (t1_alive == 0) & done_mask).unsqueeze(1)
-            t1_wins = ((t1_alive > 0) & (t0_alive == 0) & done_mask).unsqueeze(1)
-            self._ep_wins[team0 & t0_wins.expand_as(team0)] += 1.0
-            self._ep_wins[team1 & t1_wins.expand_as(team1)] += 1.0
 
-            info["ep_reward"] = self._ep_reward[done_mask].detach().cpu()
-            info["ep_length"] = self._ep_length[done_mask].detach().cpu()
-            info["ep_reward_components"] = {
-                name: t[done_mask].detach().cpu()
-                for name, t in self._ep_reward_components.items()
-            }
-            info["ep_scaled_reward_components"] = {
-                name: t[done_mask].detach().cpu()
-                for name, t in self._ep_scaled_reward_components.items()
-            }
-            info["ep_wins"] = self._ep_wins[done_mask].detach().cpu()  # (done_envs, N)
-            info["ep_lifespan"] = self._ship_age[done_mask].float().detach().cpu()  # (done_envs, N)
+        # Win tracking — +1 for ships on the surviving team, 0 otherwise.
+        s = self.env.state
+        team0 = s.ship_team_id == 0  # (B, N)
+        team1 = s.ship_team_id == 1  # (B, N)
+        t0_alive = (team0 & s.ship_alive).sum(dim=1)  # (B,)
+        t1_alive = (team1 & s.ship_alive).sum(dim=1)  # (B,)
+        t0_wins = ((t0_alive > 0) & (t1_alive == 0) & done_mask).unsqueeze(1)
+        t1_wins = ((t1_alive > 0) & (t0_alive == 0) & done_mask).unsqueeze(1)
+        self._ep_wins += ((team0 & t0_wins) | (team1 & t1_wins)).float()
 
-        # Reset done environments (state mutated in-place)
-        if done_mask.any():
-            self.env.reset_envs(done_mask)
-            self._refresh_obs_radius(done_mask)
-            self._ep_reward[done_mask] = 0.0
-            self._ep_length[done_mask] = 0
-            for t in self._ep_reward_components.values():
-                t[done_mask] = 0.0
-            for t in self._ep_scaled_reward_components.values():
-                t[done_mask] = 0.0
-            self._ep_wins[done_mask] = 0.0
-            self._ship_age[done_mask] = 0
+        # Fold finished episodes into the per-update accumulators.
+        done_f = done_mask.float()        # (B,)
+        done_n = done_mask.unsqueeze(1)   # (B, 1)
+        done_nf = done_n.float()
+        self._acc_episodes += done_f.sum()
+        self._acc_reward_sum += (self._ep_reward * done_nf).sum()
+        self._acc_reward_min = torch.minimum(
+            self._acc_reward_min,
+            torch.where(done_n, self._ep_reward, float("inf")).min(),
+        )
+        self._acc_reward_max = torch.maximum(
+            self._acc_reward_max,
+            torch.where(done_n, self._ep_reward, float("-inf")).max(),
+        )
+        self._acc_length_sum += (self._ep_length.float() * done_f).sum()
+        self._acc_comp_sum += (self._ep_comp * done_nf.unsqueeze(-1)).sum(dim=(0, 1))
+        self._acc_comp_scaled_sum += (
+            self._ep_comp_scaled * done_nf.unsqueeze(-1)
+        ).sum(dim=(0, 1))
+        self._acc_wins_sum += (self._ep_wins * done_nf).sum()
+        self._acc_lifespan_sum += (self._ship_age.float() * done_nf).sum()
 
-        return self._get_obs(), comp_rewards, dones, truncated, info
+        # Reset done environments (state mutated in-place) and their trackers
+        self.env.reset_envs(done_mask)
+        self._refresh_obs_radius(done_mask)
+        self._ep_reward.masked_fill_(done_n, 0.0)
+        self._ep_length.masked_fill_(done_mask, 0)
+        self._ep_comp.masked_fill_(done_mask.view(B, 1, 1), 0.0)
+        self._ep_comp_scaled.masked_fill_(done_mask.view(B, 1, 1), 0.0)
+        self._ep_wins.masked_fill_(done_n, 0.0)
+        self._ship_age.masked_fill_(done_n, 0)
+
+        return self._get_obs(), comp_rewards, dones, truncated, {}
 
     # ------------------------------------------------------------------
     # Observation construction
@@ -302,7 +366,13 @@ class MVPEnvWrapper:
 
     def _refresh_obs_radius(self, mask: torch.Tensor) -> None:
         if self.env_config.num_obstacles > 0:
-            self._obs_radius[mask] = self.env.state.obstacle_radius[mask].unsqueeze(-1)
+            self._obs_radius.copy_(
+                torch.where(
+                    mask.view(-1, 1, 1),
+                    self.env.state.obstacle_radius.unsqueeze(-1),
+                    self._obs_radius,
+                )
+            )
 
     @property
     def state(self) -> TensorState:

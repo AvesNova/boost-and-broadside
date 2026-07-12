@@ -213,9 +213,6 @@ class KillShotReward(RewardComponent):
         dones: torch.Tensor,
     ) -> torch.Tensor:
         just_died = prev_state.ship_alive & ~next_state.ship_alive  # (B, N)
-        reward = torch.zeros_like(next_state.ship_health)
-        if not just_died.any():
-            return reward
 
         B, N = next_state.ship_health.shape
         dm = next_state.damage_matrix  # (B, N_shooter, N_target)
@@ -267,9 +264,6 @@ class KillAssistReward(RewardComponent):
         dones: torch.Tensor,
     ) -> torch.Tensor:
         just_died = prev_state.ship_alive & ~next_state.ship_alive  # (B, N)
-        reward = torch.zeros_like(next_state.ship_health)
-        if not just_died.any():
-            return reward
 
         B, N = next_state.ship_health.shape
         cdm = next_state.cumulative_damage_matrix  # (B, N_shooter, N_target)
@@ -316,8 +310,6 @@ class AllyWinReward(RewardComponent):
         dones: torch.Tensor,
     ) -> torch.Tensor:
         reward = torch.zeros_like(next_state.ship_health)
-        if not dones.any():
-            return reward
         team0 = next_state.ship_team_id == 0  # (B, N)
         team1 = next_state.ship_team_id == 1  # (B, N)
         t0_alive = (team0 & next_state.ship_alive).sum(dim=1)  # (B,)
@@ -356,8 +348,6 @@ class EnemyWinReward(RewardComponent):
         dones: torch.Tensor,
     ) -> torch.Tensor:
         reward = torch.zeros_like(next_state.ship_health)
-        if not dones.any():
-            return reward
         team0 = next_state.ship_team_id == 0  # (B, N)
         team1 = next_state.ship_team_id == 1  # (B, N)
         t0_alive = (team0 & next_state.ship_alive).sum(dim=1)  # (B,)
