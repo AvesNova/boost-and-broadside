@@ -5,12 +5,13 @@ but also runnable from scratch.
 
 Phase structure:
   Step 0 → 5M:   LR warmup 1e-7 → 3e-4. 50% envs vs scripted opponent.
-                  avg_model starts accumulating immediately (allow_avg_model_updates=True).
                   All reward group scales active (pretrained value function handles this).
   Step 5M:        LR at cruise.
-  Step 25M:       avg-model is ready — activate as opponent (20% envs).
+  ELO 1000:       avg-model starts accumulating (avg_model_elo_threshold gate,
+                  ELO-based rather than step-based).
+  Step 50M:       avg-model activates as opponent (20% envs).
                   Reduce scripted to 30% to make room.
-  Step 50M:       League opponents activate (20% envs).
+                  League opponents activate (20% envs).
 """
 
 from boost_and_broadside.config import (
@@ -49,8 +50,6 @@ RL_SCHEDULE = TrainingSchedule(
     avg_model_fraction=stepped((0, 0.0), (50_000_000, 0.2)),
     # League activates at step 50M once the policy has meaningful ELO.
     league_fraction=stepped((0, 0.0), (50_000_000, 0.2)),
-    # Accumulate avg-model immediately so it is ready at step 50M.
-    allow_avg_model_updates=stepped((0, False), (40_000_000, True)),
     allow_scripted_in_roster=stepped((0, True)),
     elo_eval_games=stepped((0, 512)),
     checkpoint_interval=constant(50),
@@ -91,6 +90,8 @@ RL_TRAIN_CONFIG = TrainConfig(
     elo_temperature=200.0,
     league_uniform_sampling=False,
     scripted_roster_min_steps=300_000_000,
+    # Avg-model accumulation starts once normalized training ELO reaches this.
+    avg_model_elo_threshold=1000.0,
     obstacle_cache=ObstacleCacheConfig(
         num_cache_envs=4096,
         cache_size=512,

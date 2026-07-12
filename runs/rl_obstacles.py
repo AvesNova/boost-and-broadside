@@ -73,7 +73,6 @@ RL_OBSTACLES_SCHEDULE = TrainingSchedule(
     scripted_fraction=stepped((0, 0.0)),
     avg_model_fraction=stepped((0, 0.0)),
     league_fraction=stepped((0, 0.0)),
-    allow_avg_model_updates=stepped((0, False)),
     allow_scripted_in_roster=stepped((0, False)),
     elo_eval_games=stepped((0, 0)),
     checkpoint_interval=stepped((0, 1), (3, 10)),

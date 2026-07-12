@@ -236,7 +236,6 @@ class TrainingSchedule:
     scripted_fraction: Callable[[int], float]
     avg_model_fraction: Callable[[int], float]
     league_fraction: Callable[[int], float]
-    allow_avg_model_updates: Callable[[int], bool]
     allow_scripted_in_roster: Callable[[int], bool]
 
     # --- Checkpointing / eval ---

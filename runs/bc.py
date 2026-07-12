@@ -36,7 +36,6 @@ BC_SCHEDULE = TrainingSchedule(
     scripted_fraction=constant(0.0),
     avg_model_fraction=constant(0.0),
     league_fraction=constant(0.0),
-    allow_avg_model_updates=stepped((0, False)),
     allow_scripted_in_roster=stepped((0, True)),
     # ELO evaluation disabled during BC pretraining.
     elo_eval_games=stepped((0, 0)),

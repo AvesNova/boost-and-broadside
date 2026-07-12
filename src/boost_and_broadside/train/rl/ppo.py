@@ -207,7 +207,6 @@ class _ResolvedSchedule:
     scripted_fraction: float
     avg_model_fraction: float
     league_fraction: float
-    allow_avg_model_updates: bool
     allow_scripted_in_roster: bool
     elo_eval_games: int
     checkpoint_interval: int
@@ -230,7 +229,6 @@ def _resolve_schedule(schedule: TrainingSchedule, step: int) -> _ResolvedSchedul
         scripted_fraction=schedule.scripted_fraction(step),
         avg_model_fraction=schedule.avg_model_fraction(step),
         league_fraction=schedule.league_fraction(step),
-        allow_avg_model_updates=schedule.allow_avg_model_updates(step),
         allow_scripted_in_roster=schedule.allow_scripted_in_roster(step),
         elo_eval_games=schedule.elo_eval_games(step),
         checkpoint_interval=schedule.checkpoint_interval(step),
@@ -484,7 +482,8 @@ class PPOTrainer:
 
         # --- Avg-model opponent (uniform mean of all post-warmup policy snapshots) ---
         # Weights initialized as a copy of the training policy.
-        # Only updated when allow_avg_model_updates is True in the current phase.
+        # Accumulation starts once normalized training ELO reaches
+        # cfg.avg_model_elo_threshold; once started it never stops.
         self._avg_policy_module = MVPPolicy(
             model_config, self.coordinator, num_value_components=K, num_ships=N,
             team_pma_k=self._win_k,
@@ -553,7 +552,7 @@ class PPOTrainer:
         self._avg_training_elo: float = 0.0
         self._eval_window_rand = deque(maxlen=100)
         self._eval_window_sc = deque(maxlen=100)
-        self._eval_window_avg_vs_anchors = deque(maxlen=100)
+        self._eval_window_avg_vs_sc = deque(maxlen=100)
         self._eval_window_live_vs_avg = deque(maxlen=100)
         self._elo_milestone: float = (
             0.0  # normalized training ELO (vs random) at last milestone
@@ -884,7 +883,7 @@ class PPOTrainer:
         elo_avg_gpu = torch.tensor(
             float(self._avg_training_elo), device=self.device, dtype=torch.float64
         )
-        eval_score_hist: list[torch.Tensor] = []
+        eval_win_hist: list[torch.Tensor] = []
         eval_done_hist: list[torch.Tensor] = []
         eval_anchor_hist: list[torch.Tensor] = []
 
@@ -963,6 +962,11 @@ class PPOTrainer:
         )
 
         for update in range(self._start_update, self._num_updates + 1):
+            # Avg-model eval slots only produce meaningful stats once the avg
+            # model has been initialized. Constant for the whole rollout — the
+            # count only changes in the post-update section below.
+            avg_eval_active = self._avg_update_count > 0
+
             self.buffer.reset()
             self.buffer.store_initial_hidden(hidden)
             for aux_buf, aux_h in zip(self.aux_buffers, aux_hiddens):
@@ -1398,20 +1402,26 @@ class PPOTrainer:
                             * done_f[sl_live_anchor]
                         ).sum()
 
-                        # Avg-model ELO vs anchors.
-                        expected_avg = 1.0 / (1.0 + 10.0 ** (
-                            (anchor_elo[sl_avg_anchor] - elo_avg_gpu) / 400.0
-                        ))
-                        elo_avg_gpu = elo_avg_gpu + (
-                            K_eval
-                            * (score[sl_avg_anchor] - expected_avg)
-                            * done_f[sl_avg_anchor]
-                        ).sum()
+                        # Avg-model ELO vs anchors — frozen until the avg model
+                        # has been initialized (its slots play meaningless games
+                        # with a copy of the initial policy weights until then).
+                        if avg_eval_active:
+                            expected_avg = 1.0 / (1.0 + 10.0 ** (
+                                (anchor_elo[sl_avg_anchor] - elo_avg_gpu) / 400.0
+                            ))
+                            elo_avg_gpu = elo_avg_gpu + (
+                                K_eval
+                                * (score[sl_avg_anchor] - expected_avg)
+                                * done_f[sl_avg_anchor]
+                            ).sum()
 
-                        # Score history for the win-rate windows — flushed to the
-                        # CPU deques once per update. Anchor flags are snapshotted
-                        # before re-routing so they match the finished games.
-                        eval_score_hist.append(score)
+                        # Win history for the win-rate windows — flushed to the
+                        # CPU deques once per update. Only outright wins count
+                        # (ties are not half-wins), so an untrained policy that
+                        # merely survives to truncation reports ~0%, not ~50%.
+                        # Anchor flags are snapshotted before re-routing so they
+                        # match the finished games.
+                        eval_win_hist.append(eval_team0_won.float())
                         eval_done_hist.append(eval_done_any)
                         eval_anchor_hist.append(eval_anchor_is_scripted.clone())
 
@@ -1438,28 +1448,31 @@ class PPOTrainer:
             # ----------------------------------------------------------------
             self._training_elo = float(elo_live_gpu.item())
             self._avg_training_elo = float(elo_avg_gpu.item())
-            if eval_score_hist:
-                scores_h = torch.stack(eval_score_hist).cpu()
+            if eval_win_hist:
+                wins_h = torch.stack(eval_win_hist).cpu()
                 dones_h = torch.stack(eval_done_hist).cpu()
                 anchors_h = torch.stack(eval_anchor_hist).cpu()
-                eval_score_hist.clear()
+                eval_win_hist.clear()
                 eval_done_hist.clear()
                 eval_anchor_hist.clear()
                 # Extend the deques game-by-game in eval-step order — identical
                 # contents to the old per-step extension.
-                for i in range(scores_h.shape[0]):
-                    s, d, a = scores_h[i], dones_h[i], anchors_h[i]
+                for i in range(wins_h.shape[0]):
+                    w, d, a = wins_h[i], dones_h[i], anchors_h[i]
                     d_live = d[sl_live_anchor]
                     a_live = a[sl_live_anchor]
-                    s_live = s[sl_live_anchor]
-                    self._eval_window_sc.extend(s_live[d_live & a_live].tolist())
-                    self._eval_window_rand.extend(s_live[d_live & ~a_live].tolist())
-                    self._eval_window_avg_vs_anchors.extend(
-                        s[sl_avg_anchor][d[sl_avg_anchor]].tolist()
-                    )
-                    self._eval_window_live_vs_avg.extend(
-                        s[sl_live_avg][d[sl_live_avg]].tolist()
-                    )
+                    w_live = w[sl_live_anchor]
+                    self._eval_window_sc.extend(w_live[d_live & a_live].tolist())
+                    self._eval_window_rand.extend(w_live[d_live & ~a_live].tolist())
+                    if avg_eval_active:
+                        d_avg = d[sl_avg_anchor]
+                        a_avg = a[sl_avg_anchor]
+                        self._eval_window_avg_vs_sc.extend(
+                            w[sl_avg_anchor][d_avg & a_avg].tolist()
+                        )
+                        self._eval_window_live_vs_avg.extend(
+                            w[sl_live_avg][d[sl_live_avg]].tolist()
+                        )
 
             # Store final obs for T+1 aux loss label computation
             self.buffer.store_final_obs(obs)
@@ -1532,11 +1545,22 @@ class PPOTrainer:
             metrics["schedule/local_scale"] = self._schedule_state.local_scale
 
             if self._policy_gradient_coef > 0.0:
-                # Update avg model when allowed by the current phase.
-                # The timeline's allow_avg_model_updates is the sole gate — no min_steps.
-                avg_model_ready = self._schedule_state.allow_avg_model_updates
-                if self.B_avg > 0 and avg_model_ready:
+                # Avg-model accumulation starts once normalized training ELO
+                # crosses the barrier; once started it never stops.
+                elo_barrier_reached = (
+                    self._training_elo - self._random_elo()
+                    >= self.cfg.avg_model_elo_threshold
+                )
+                if self.B_avg > 0 and (
+                    self._avg_update_count > 0 or elo_barrier_reached
+                ):
+                    first_avg_update = self._avg_update_count == 0
                     self._update_avg_model()
+                    if first_avg_update:
+                        # Seed the avg ELO at the live ELO — the first avg
+                        # snapshot is exactly the current policy.
+                        elo_avg_gpu = elo_live_gpu.clone()
+                        self._avg_training_elo = self._training_elo
 
             # Scaler stats — one CPU transfer per component group
             p5_cpu = self.scaler._p5.cpu()
@@ -1581,17 +1605,19 @@ class PPOTrainer:
             metrics["train/sps"] = sps
             metrics["train/ship_tokens_per_sec"] = ship_tps
 
-            # ELO evaluation — continuous live statistics from parallel slots
+            # ELO evaluation — continuous live statistics from parallel slots.
+            # Avg-model metrics only exist once the avg model has been initialized.
             metrics["elo/training"] = self._training_elo
-            metrics["elo/avg_model"] = self._avg_training_elo
             if self._eval_window_rand:
-                metrics["elo/win_rate_vs_random"] = sum(self._eval_window_rand) / len(self._eval_window_rand)
+                metrics["elo/training_vs_random"] = sum(self._eval_window_rand) / len(self._eval_window_rand)
             if self._eval_window_sc:
-                metrics["elo/win_rate_vs_scripted"] = sum(self._eval_window_sc) / len(self._eval_window_sc)
-            if self._eval_window_live_vs_avg:
-                metrics["elo/win_rate_vs_avg"] = sum(self._eval_window_live_vs_avg) / len(self._eval_window_live_vs_avg)
-            if self._eval_window_avg_vs_anchors:
-                metrics["elo/avg_win_rate_vs_anchors"] = sum(self._eval_window_avg_vs_anchors) / len(self._eval_window_avg_vs_anchors)
+                metrics["elo/training_vs_scripted"] = sum(self._eval_window_sc) / len(self._eval_window_sc)
+            if self._avg_update_count > 0:
+                metrics["elo/avg"] = self._avg_training_elo
+                if self._eval_window_live_vs_avg:
+                    metrics["elo/training_vs_avg"] = sum(self._eval_window_live_vs_avg) / len(self._eval_window_live_vs_avg)
+                if self._eval_window_avg_vs_sc:
+                    metrics["elo/avg_vs_scripted"] = sum(self._eval_window_avg_vs_sc) / len(self._eval_window_avg_vs_sc)
 
             # Save overwriting best-model checkpoints when normalized ELO improves.
             random_elo = self._random_elo()
@@ -1603,9 +1629,9 @@ class PPOTrainer:
             # Overview — redundant copies of the most important global metrics
             for src, dst in [
                 ("elo/training",                   "overview/elo"),
-                ("elo/win_rate_vs_scripted",        "overview/win_rate_vs_scripted"),
-                ("elo/win_rate_vs_random",          "overview/win_rate_vs_random"),
-                ("elo/win_rate_vs_avg",             "overview/win_rate_vs_avg"),
+                ("elo/training_vs_scripted",        "overview/win_rate_vs_scripted"),
+                ("elo/training_vs_random",          "overview/win_rate_vs_random"),
+                ("elo/training_vs_avg",             "overview/win_rate_vs_avg"),
                 ("loss/total",                      "overview/loss_total"),
                 ("loss_proxy/policy_gradient",      "overview/loss_proxy_pg"),
                 ("loss_proxy/behavioral_cloning",   "overview/loss_proxy_bc"),
@@ -2371,8 +2397,11 @@ class PPOTrainer:
             "elapsed_train_time": self._elapsed_train_time
             + (time.time() - self._train_start_time),
             "training_elo": self._training_elo,
+            "avg_training_elo": self._avg_training_elo,
             "eval_window_rand": list(self._eval_window_rand),
             "eval_window_sc": list(self._eval_window_sc),
+            "eval_window_avg_vs_sc": list(self._eval_window_avg_vs_sc),
+            "eval_window_live_vs_avg": list(self._eval_window_live_vs_avg),
             "elo_milestone": self._elo_milestone,
             "train_config": {
                 k: v for k, v in dataclasses.asdict(self.cfg).items() if k != "schedule"
@@ -2561,10 +2590,15 @@ class PPOTrainer:
         if "training_elo" in ckpt:
             self._training_elo = ckpt["training_elo"]
             self._elo_milestone = ckpt.get("elo_milestone", 0.0)
+        self._avg_training_elo = ckpt.get("avg_training_elo", 0.0)
         if "eval_window_rand" in ckpt:
             self._eval_window_rand = deque(ckpt["eval_window_rand"], maxlen=100)
         if "eval_window_sc" in ckpt:
             self._eval_window_sc = deque(ckpt["eval_window_sc"], maxlen=100)
+        if "eval_window_avg_vs_sc" in ckpt:
+            self._eval_window_avg_vs_sc = deque(ckpt["eval_window_avg_vs_sc"], maxlen=100)
+        if "eval_window_live_vs_avg" in ckpt:
+            self._eval_window_live_vs_avg = deque(ckpt["eval_window_live_vs_avg"], maxlen=100)
         if "global_step" in ckpt:
             self._global_step = ckpt["global_step"]
             self._start_update = ckpt["update"] + 1

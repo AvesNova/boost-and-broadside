@@ -106,6 +106,9 @@ class TrainConfig:
     scripted_roster_min_steps: (
         int  # delay adding scripted to roster until this many steps
     )
+    # Avg-model accumulation starts once normalized training ELO (vs the random
+    # anchor) reaches this barrier; once started it never stops.
+    avg_model_elo_threshold: float = 1000.0
 
     # --- Next-state prediction loss ---
     next_state_coef: float = 1.0       # weight for per-step aux prediction loss; 0 to disable
