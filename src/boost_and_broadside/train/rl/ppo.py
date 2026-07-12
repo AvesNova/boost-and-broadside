@@ -554,6 +554,11 @@ class PPOTrainer:
 
         self._global_step = 0
         self._start_update = 1
+        # Cumulative counters persisted across checkpoint resumes so throughput
+        # metrics behave as if training never stopped.
+        self._ship_steps = 0  # ship tokens (all teams, all envs, all scales)
+        self._elapsed_train_time = 0.0  # wall-clock seconds spent training
+        self._train_start_time = time.time()  # reset at the top of train()
         total_envs_all = sum(sc.num_envs for sc in train_config.scales)
         self._num_updates = train_config.total_timesteps // (
             total_envs_all * train_config.num_steps
@@ -902,7 +907,11 @@ class PPOTrainer:
         env_stream = torch.cuda.Stream() if self.device.type == "cuda" else None
         net_stream = torch.cuda.Stream() if self.device.type == "cuda" else None
 
-        start_time = time.time()
+        self._train_start_time = time.time()
+        # Ship tokens (friendly + enemy, all envs, all scales) processed per update.
+        ship_tokens_per_update = self.cfg.num_steps * sum(
+            sc.num_envs * sc.env_config.num_ships for sc in self.cfg.scales
+        )
 
         for update in range(self._start_update, self._num_updates + 1):
             self.buffer.reset()
@@ -1436,9 +1445,15 @@ class PPOTrainer:
                 if ep_lifespans:
                     metrics["episode/lifespan_mean"] = torch.cat(ep_lifespans).mean().item()
 
-            sps = int(self._global_step / (time.time() - start_time))
+            self._ship_steps += ship_tokens_per_update
+            # Cumulative work / cumulative training time — spans checkpoint
+            # resumes, as if the run never stopped.
+            elapsed = self._elapsed_train_time + (time.time() - self._train_start_time)
+            sps = int(self._global_step / elapsed)
+            ship_tps = int(self._ship_steps / elapsed)
             metrics["train/global_step"] = self._global_step
             metrics["train/sps"] = sps
+            metrics["train/ship_tokens_per_sec"] = ship_tps
 
             # ELO evaluation — continuous live statistics from parallel slots
             metrics["elo/training"] = self._training_elo
@@ -1488,6 +1503,7 @@ class PPOTrainer:
                     f"update={update}/{self._num_updates}  "
                     f"step={self._global_step:,}  "
                     f"sps={sps:,}  "
+                    f"ship_tps={ship_tps:,}  "
                     f"loss={metrics.get('loss/total', 0.0):.4f}"
                     f"{elo_str}"
                     f"{lifespan_str}"
@@ -2182,6 +2198,9 @@ class PPOTrainer:
             "avg_update_count": self._avg_update_count,
             "update": update,
             "global_step": self._global_step,
+            "ship_steps": self._ship_steps,
+            "elapsed_train_time": self._elapsed_train_time
+            + (time.time() - self._train_start_time),
             "training_elo": self._training_elo,
             "eval_window_rand": list(self._eval_window_rand),
             "eval_window_sc": list(self._eval_window_sc),
@@ -2380,6 +2399,15 @@ class PPOTrainer:
         if "global_step" in ckpt:
             self._global_step = ckpt["global_step"]
             self._start_update = ckpt["update"] + 1
+        self._elapsed_train_time = ckpt.get("elapsed_train_time", 0.0)
+        # Older checkpoints lack ship_steps — reconstruct from update count,
+        # exact as long as the scale config hasn't changed between runs.
+        ship_tokens_per_update = self.cfg.num_steps * sum(
+            sc.num_envs * sc.env_config.num_ships for sc in self.cfg.scales
+        )
+        self._ship_steps = ckpt.get(
+            "ship_steps", ckpt.get("update", 0) * ship_tokens_per_update
+        )
 
         # Restore roster if its JSON exists alongside the checkpoint
         roster_path = Path(path).parent / "roster.json"
