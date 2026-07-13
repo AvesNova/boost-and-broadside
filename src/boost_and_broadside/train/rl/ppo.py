@@ -579,6 +579,16 @@ class PPOTrainer:
         # Cumulative counters persisted across checkpoint resumes so throughput
         # metrics behave as if training never stopped.
         self._ship_steps = 0  # ship tokens (all teams, all envs, all scales)
+        # Entity tokens (ships + obstacles) the update phase processes per epoch —
+        # one full pass over all scales' rollouts.
+        self._entity_tokens_per_epoch = train_config.num_steps * sum(
+            sc.num_envs * (sc.env_config.num_ships + sc.env_config.num_obstacles)
+            for sc in train_config.scales
+        )
+        # Cumulative entity tokens consumed by backward passes (counts actual
+        # epochs completed, so target_kl early stops are reflected). The compute
+        # x-axis for comparing runs with different batch/update configurations.
+        self._grad_tokens = 0
         self._elapsed_train_time = 0.0  # wall-clock seconds spent training
         self._train_start_time = time.time()  # reset at the top of train()
         total_envs_all = sum(sc.num_envs for sc in train_config.scales)
@@ -1596,6 +1606,9 @@ class PPOTrainer:
                 metrics["episode/lifespan_mean"] = ep_stats["lifespan_sum"].item() / n_ship_eps
 
             self._ship_steps += ship_tokens_per_update
+            self._grad_tokens += int(
+                metrics["train/epochs_completed"] * self._entity_tokens_per_epoch
+            )
             # Cumulative work / cumulative training time — spans checkpoint
             # resumes, as if the run never stopped.
             elapsed = self._elapsed_train_time + (time.time() - self._train_start_time)
@@ -1604,6 +1617,13 @@ class PPOTrainer:
             metrics["train/global_step"] = self._global_step
             metrics["train/sps"] = sps
             metrics["train/ship_tokens_per_sec"] = ship_tps
+            # Alternative x-axes — log as metrics so any chart can be re-plotted
+            # against data volume, optimizer progress, compute, or wall clock.
+            metrics["counters/env_steps"] = self._global_step
+            metrics["counters/ship_tokens"] = self._ship_steps
+            metrics["counters/updates"] = update
+            metrics["counters/grad_tokens"] = self._grad_tokens
+            metrics["counters/train_hours"] = elapsed / 3600.0
 
             # ELO evaluation — continuous live statistics from parallel slots.
             # Avg-model metrics only exist once the avg model has been initialized.
@@ -2503,6 +2523,7 @@ class PPOTrainer:
             "update": update,
             "global_step": self._global_step,
             "ship_steps": self._ship_steps,
+            "grad_tokens": self._grad_tokens,
             "elapsed_train_time": self._elapsed_train_time
             + (time.time() - self._train_start_time),
             "training_elo": self._training_elo,
@@ -2719,6 +2740,15 @@ class PPOTrainer:
         )
         self._ship_steps = ckpt.get(
             "ship_steps", ckpt.get("update", 0) * ship_tokens_per_update
+        )
+        # Older checkpoints lack grad_tokens — reconstruct from the update count
+        # and the current schedule's num_epochs (approximate: ignores target_kl
+        # early stops and epoch-schedule changes before the checkpoint).
+        self._grad_tokens = ckpt.get(
+            "grad_tokens",
+            ckpt.get("update", 0)
+            * self._schedule_state.num_epochs
+            * self._entity_tokens_per_epoch,
         )
 
         # Restore roster if its JSON exists alongside the checkpoint
