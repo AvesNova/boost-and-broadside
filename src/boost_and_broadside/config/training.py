@@ -110,6 +110,14 @@ class TrainConfig:
     # anchor) reaches this barrier; once started it never stops.
     avg_model_elo_threshold: float = 1000.0
 
+    # --- Gradient accumulation (memory-only, per-machine knob) ---
+    # Max entity-tokens (envs × num_steps × (N+M)) per backward pass. Minibatches
+    # larger than this are split into micro-batches whose gradients are accumulated
+    # before each optimizer step, with loss terms normalized by minibatch-total
+    # denominators so the update is equivalent to the unsplit minibatch. Does not
+    # change training statistics — set it per GPU to fit VRAM. None = no splitting.
+    microbatch_tokens: int | None = None
+
     # --- Next-state prediction loss ---
     next_state_coef: float = 1.0       # weight for per-step aux prediction loss; 0 to disable
     windowed_loss_coef: float = 0.1    # weight for windowed cumulative bias loss; 0 to disable
@@ -137,4 +145,8 @@ class TrainConfig:
             raise ValueError(
                 f"scales[0].num_envs={primary_envs} must be divisible by "
                 f"num_minibatches={self.num_minibatches}"
+            )
+        if self.microbatch_tokens is not None and self.microbatch_tokens < 1:
+            raise ValueError(
+                f"microbatch_tokens must be positive or None, got {self.microbatch_tokens}"
             )

@@ -14,6 +14,8 @@ Phase structure:
                   League opponents activate (20% envs).
 """
 
+import os
+
 from boost_and_broadside.config import (
     EnvConfig,
     ObstacleCacheConfig,
@@ -28,6 +30,11 @@ from boost_and_broadside.config.schedule import exponential
 from runs.shared import REWARDS, COMPONENT_GAMMAS, COMPONENT_LAMBDAS
 
 _MAX_TOKENS = 2_000_000
+# Per-machine memory knob (does not affect training statistics): max tokens per
+# backward pass. Set e.g. BB_MICROBATCH_TOKENS=16000 on small GPUs to split each
+# minibatch (_MAX_TOKENS / _NUM_MINIBATCHES = 62.5k tokens) into micro-batches
+# with accumulated gradients. Unset/0 = whole minibatch per backward.
+_MICROBATCH_TOKENS = int(os.environ.get("BB_MICROBATCH_TOKENS", "0")) or None
 _NUM_SHIPS = 8
 _NUM_OBSTACLES = 0
 _NUM_STEPS = 128
@@ -73,6 +80,7 @@ RL_TRAIN_CONFIG = TrainConfig(
     rewards=REWARDS,
     num_steps=_NUM_STEPS,
     num_minibatches=_NUM_MINIBATCHES,
+    microbatch_tokens=_MICROBATCH_TOKENS,
     next_state_coef=0.2,
     gamma=0.990,
     gae_lambda=0.95,

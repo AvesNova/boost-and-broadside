@@ -1715,12 +1715,56 @@ class PPOTrainer:
     # PPO update inner loop
     # ------------------------------------------------------------------
 
+    @torch.no_grad()
+    def _minibatch_denominators(
+        self, chunks: list[tuple], buf: RolloutBuffer, is_primary: bool
+    ) -> dict:
+        """Minibatch-total loss denominators, summed over the micro-batches.
+
+        Masked-mean loss terms in _compute_minibatch_loss divide by these
+        totals instead of micro-batch-local counts, so micro-batch losses sum
+        exactly to the unsplit minibatch loss and gradient accumulation is
+        equivalent to one large minibatch. All masks are rollout data, so this
+        is cheap and policy-independent.
+        """
+        _z = torch.zeros((), device=self.device)
+        alive_sum = _z.clone()
+        actor_sum = _z.clone()
+        bc_sum = _z.clone()
+        ns_sum = _z.clone()
+        numel = 0
+        need_bc = is_primary and self._behavior_cloning_coef > 0.0
+        need_ns = is_primary and (
+            self.cfg.next_state_coef > 0.0 or self.cfg.windowed_loss_coef > 0.0
+        )
+        for chunk in chunks:
+            mb_alive, mb_actor_mask = chunk[6], chunk[8]
+            mb_expert_probs, mb_terminated = chunk[9], chunk[10]
+            alive_sum += mb_alive.sum()
+            actor_sum += (mb_actor_mask & mb_alive).sum()
+            numel += mb_alive.numel()
+            if need_bc:
+                bc_valid = mb_expert_probs.sum(-1) > 0
+                bc_sum += (bc_valid & mb_actor_mask & mb_alive).sum()
+            if need_ns:
+                ns_sum += (mb_alive & ~mb_terminated.unsqueeze(-1)).sum()
+        return {
+            "mask_sum": alive_sum.clamp(min=1.0),
+            "actor_sum": actor_sum.clamp(min=1.0),
+            "bc_sum": bc_sum.clamp(min=1.0),
+            "ns_sum": ns_sum.clamp(min=1.0),
+            "numel": float(numel),
+            "adv_rms": buf.adv_rms,
+        }
+
     def _compute_minibatch_loss(
         self,
         batch: tuple,
         is_primary: bool,
+        denoms: dict,
+        frac: float,
     ) -> tuple[torch.Tensor, dict]:
-        """Compute PPO loss for one minibatch. Does NOT call zero_grad / backward / step.
+        """Compute PPO loss for one micro-batch. Does NOT call zero_grad / backward / step.
 
         Loss coefficients are read from ``self._policy_gradient_coef``, ``self._behavior_cloning_coef``,
         and ``self._schedule_state`` (``value_function_coef``, ``entropy_coef``) which are updated
@@ -1732,14 +1776,27 @@ class PPOTrainer:
         _precompute_ns_labels) — they depend only on rollout data, so they are
         built once per update instead of once per minibatch.
 
+        Masked-mean terms divide by the minibatch-total denominators in
+        ``denoms`` rather than micro-batch-local counts, so losses and additive
+        diagnostics from a minibatch's micro-batches sum exactly to the unsplit
+        minibatch values — gradient accumulation over micro-batches is then
+        equivalent to one large minibatch. Batch-statistic terms (sigreg,
+        windowed next-state) can't decompose that way and are weighted by
+        ``frac`` instead (exact when the minibatch is unsplit, i.e. frac=1).
+
         Args:
-            batch:        Output of RolloutBuffer.get_minibatch_iterator.
+            batch:        One micro-batch tuple from RolloutBuffer.get_minibatch_iterator.
             is_primary:   True for the primary scale — enables BC loss and per-component
                           critic diagnostics. Aux scales skip these to avoid shape mismatches
                           (different N) and because BC targets only exist in the primary env.
+            denoms:       Minibatch-total denominators from _minibatch_denominators,
+                          plus "adv_rms" (whole-buffer advantage normalizer).
+            frac:         This micro-batch's env count / minibatch env count.
 
         Returns:
             (loss, diag) where diag is a dict of scalar/tensor diagnostics.
+            Except for "ratio_max" (combine with max) and the histogram tensors,
+            diag entries are additive contributions to the minibatch value.
         """
         cfg = self.cfg
         K = self.buffer.num_components
@@ -1781,10 +1838,10 @@ class PPOTrainer:
 
         alive_f = mb_alive.float()  # (T, B_mb, N)
         alive_k = alive_f.unsqueeze(-1)  # (T, B_mb, N, 1)
-        mask_sum = alive_f.sum().clamp(min=1.0)
+        mask_sum = denoms["mask_sum"]
 
         actor_f = (mb_actor_mask & mb_alive).float()  # (T, B_mb, N)
-        actor_sum = actor_f.sum().clamp(min=1.0)
+        actor_sum = denoms["actor_sum"]
 
         # ---- Lambda aggregation (precomputed once per update) --------------
         # See _precompute_lambda_aggregates: the (T, B, N_i, N_j, K) lambda
@@ -1793,8 +1850,7 @@ class PPOTrainer:
         adv_agg = mb_adv_agg  # (T, B_mb, N)
         ret_agg = mb_ret_agg  # (T, B_mb, N)
 
-        adv_rms = (adv_agg.pow(2) * actor_f).sum() / actor_sum
-        adv_norm = adv_agg / (adv_rms.sqrt().clamp(min=0.1) + 1e-8)
+        adv_norm = adv_agg / (denoms["adv_rms"].sqrt().clamp(min=0.1) + 1e-8)
 
         # ---- Policy gradient loss ----------------------------------------
         log_ratio = logprob - mb_old_logprobs
@@ -1817,7 +1873,7 @@ class PPOTrainer:
         if is_primary and self._behavior_cloning_coef > 0.0:
             bc_valid = mb_expert_probs.sum(-1) > 0  # (T, B_mb, N)
             bc_f = (bc_valid & mb_actor_mask & mb_alive).float()
-            bc_sum = bc_f.sum().clamp(min=1.0)
+            bc_sum = denoms["bc_sum"]
             ce = (
                 -(
                     mb_expert_probs[..., POWER_SLICE]
@@ -1845,17 +1901,19 @@ class PPOTrainer:
                 scripted_entropy = (scripted_ent_per_token * bc_f).sum() / bc_sum
 
         # ---- SIGReg encoder regularization ----------------------------------
+        # Batch-statistic term: not decomposable over micro-batches, so weight
+        # by env fraction (a per-chunk estimate of the minibatch value).
         sigreg_loss = self._zero_tensor
         if need_sigreg:
             T_mb, B_mb, N_mb, D_mb = z.shape
             z_flat = z.reshape(T_mb, B_mb * N_mb, D_mb)  # (T, B*N, D)
-            sigreg_loss = self.sigreg(z_flat)
+            sigreg_loss = self.sigreg(z_flat) * frac
 
         # ---- Next-state prediction loss (primary scale only) ----------------
         next_state_loss = self._zero_tensor
         next_state_cont_loss = self._zero_tensor
         windowed_ns_loss = self._zero_tensor
-        next_state_per_feat: torch.Tensor | None = None  # (pred_dim,) cpu, for logging
+        next_state_per_feat: torch.Tensor | None = None  # (pred_dim,) gpu, for logging
         _need_aux = is_primary and (
             self.cfg.next_state_coef > 0.0 or self.cfg.windowed_loss_coef > 0.0
         )
@@ -1863,7 +1921,7 @@ class PPOTrainer:
             non_terminal = ~mb_terminated.unsqueeze(-1)  # (T, B_mb, 1)
             ns_mask = mb_alive & non_terminal             # (T, B_mb, N)
             ns_mask_f = ns_mask.float()
-            ns_sum = ns_mask_f.sum().clamp(min=1.0)
+            ns_sum = denoms["ns_sum"]
 
             # Labels precomputed once per update from the T+1 obs storage
             # (see _precompute_ns_labels) — they depend only on rollout data.
@@ -1880,16 +1938,19 @@ class PPOTrainer:
                 next_state_loss = next_state_cont_loss
 
             if self.cfg.windowed_loss_coef > 0.0:
+                # Internally a masked mean over its own validity mask — weight
+                # by env fraction like sigreg (exact when the minibatch is unsplit).
                 windowed_ns_loss = self.coordinator.compute_windowed_loss(
                     pred_next.float(),
                     labels.detach(),
                     ns_mask,
                     mb_terminated,
-                )
+                ) * frac
 
             with torch.no_grad():
-                per_feat_cont = (sq_err * ns_mask_f.unsqueeze(-1)).sum((0, 1, 2)) / ns_sum  # (pred_dim,)
-                next_state_per_feat = per_feat_cont.cpu()
+                next_state_per_feat = (
+                    sq_err * ns_mask_f.unsqueeze(-1)
+                ).sum((0, 1, 2)) / ns_sum  # (pred_dim,) gpu, additive across chunks
 
         loss = (
             self._policy_gradient_coef * pg_loss
@@ -1913,17 +1974,16 @@ class PPOTrainer:
             diag["next_state_loss"] = next_state_loss.detach()
             diag["next_state_cont_loss"] = next_state_cont_loss.detach()
             diag["windowed_ns_loss"] = windowed_ns_loss.detach()
-            diag["next_state_per_feat"] = next_state_per_feat  # (16,) cpu or None
+            diag["next_state_per_feat"] = next_state_per_feat  # (pred_dim,) gpu or None
             diag["scripted_entropy"] = scripted_entropy.detach()
             diag["bc_kl"] = bc_loss.detach() - scripted_entropy.detach()
-            diag["adv_var"] = adv_rms
             diag["approx_kl"] = (((ratio - 1) - log_ratio) * actor_f).sum() / actor_sum
             diag["clip_frac"] = (
                 ((ratio - 1).abs() > cfg.clip_coef).float() * actor_f
             ).sum() / actor_sum
-            diag["alive_frac"] = alive_f.mean()
+            diag["alive_frac"] = alive_f.sum() / denoms["numel"]
             diag["ratio_mean"] = (ratio * actor_f).sum() / actor_sum
-            diag["ratio_max"] = ratio.max()
+            diag["ratio_max"] = ratio.max()  # combine across chunks with max, not sum
 
             # Per-head entropy — recomputed from policy_logits (already returned by evaluate_actions)
             power_ent = Categorical(logits=policy_logits[..., POWER_SLICE]).entropy()
@@ -1933,39 +1993,28 @@ class PPOTrainer:
             diag["entropy_turn"] = (turn_ent * actor_f).sum() / actor_sum
             diag["entropy_shoot"] = (shoot_ent * actor_f).sum() / actor_sum
 
-            ret_agg_mean = (ret_agg * actor_f).sum() / actor_sum
-            ret_agg_var = ((ret_agg - ret_agg_mean).pow(2) * actor_f).sum() / actor_sum
-            diag["ret_agg_mean"] = ret_agg_mean
-            diag["ret_agg_std"] = ret_agg_var.sqrt()
+            # First/second moments over minibatch-total actor count — variances
+            # are finalized (E[x²] − E[x]²) at the scale level in _update_epochs
+            # so they stay exact under micro-batch accumulation.
+            diag["ret_agg_mean"] = (ret_agg * actor_f).sum() / actor_sum
+            diag["ret_agg_sq"] = (ret_agg.pow(2) * actor_f).sum() / actor_sum
 
             # Per-component critic stats — primary scale only (K matches buffer.num_components)
+            # All additive GPU tensors; ev/std finalization and the single CPU
+            # transfer happen once per minibatch in _update_epochs.
             if is_primary:
-                # Aggregated-return component means come precomputed over the
-                # full rollout (see _precompute_lambda_aggregates).
-                ret_per_comp_mean_k = self._ret_per_comp_mean_k  # (K,)
-
                 pred_k = self.scaler.denormalize(new_value.detach())  # (T, B_mb, N, K)
-                value_loss_k = (vf_loss_raw.detach() * alive_k).sum(
+                residuals_k = mb_returns - pred_k  # (T, B_mb, N, K)
+                diag["value_loss_k"] = (vf_loss_raw.detach() * alive_k).sum(
                     (0, 1, 2)
                 ) / mask_sum  # (K,)
-                ret_mean_k = (mb_returns * alive_k).sum((0, 1, 2)) / mask_sum  # (K,)
-                ret_var_k = ((mb_returns - ret_mean_k) ** 2 * alive_k).sum(
-                    (0, 1, 2)
-                ) / mask_sum
-                residuals_k = mb_returns - pred_k  # (T, B_mb, N, K)
-                res_mean_k = (residuals_k * alive_k).sum((0, 1, 2)) / mask_sum  # (K,)
-                res_var_k = ((residuals_k - res_mean_k) ** 2 * alive_k).sum(
-                    (0, 1, 2)
-                ) / mask_sum
-                ev_k = 1.0 - res_var_k / (ret_var_k + 1e-8)  # (K,)
-                pred_mean_k = (pred_k * alive_k).sum((0, 1, 2)) / mask_sum  # (K,)
-                # One GPU→CPU transfer: stack → (5, K) → cpu
-                diag["stats_k_cpu"] = torch.stack(
-                    [value_loss_k, ev_k, ret_mean_k, ret_per_comp_mean_k, pred_mean_k]
-                ).cpu()
-                # Per-component advantage std — raw, unweighted, un-aggregated
-                adv_var_k = (mb_advantages.pow(2) * alive_k).sum((0, 1, 2)) / mask_sum
-                diag["adv_std_k"] = adv_var_k.sqrt().cpu()  # (K,)
+                diag["ret_mean_k"] = (mb_returns * alive_k).sum((0, 1, 2)) / mask_sum
+                diag["ret_sq_k"] = (mb_returns.pow(2) * alive_k).sum((0, 1, 2)) / mask_sum
+                diag["res_mean_k"] = (residuals_k * alive_k).sum((0, 1, 2)) / mask_sum
+                diag["res_sq_k"] = (residuals_k.pow(2) * alive_k).sum((0, 1, 2)) / mask_sum
+                diag["pred_mean_k"] = (pred_k * alive_k).sum((0, 1, 2)) / mask_sum
+                # Per-component advantage second moment — raw, unweighted, un-aggregated
+                diag["adv_sq_k"] = (mb_advantages.pow(2) * alive_k).sum((0, 1, 2)) / mask_sum
                 diag["alive_flat"] = mb_alive.reshape(-1).bool()
                 diag["mb_returns"] = mb_returns
                 diag["logprob_flat"] = logprob.detach().float().reshape(-1)
@@ -1989,6 +2038,11 @@ class PPOTrainer:
         use a diagonal lambda, dead contributing ships are zeroed, and each
         ship's weights are normalized to a weighted mean over alive ships.
 
+        Also fills buf.adv_rms — the actor-masked mean squared aggregated
+        advantage over the whole buffer. Computing it globally (not per
+        minibatch) makes the advantage normalization independent of the
+        minibatch/micro-batch split.
+
         For the primary buffer this also computes the per-component
         aggregated-return diagnostic mean (self._ret_per_comp_mean_k).
         """
@@ -2001,11 +2055,17 @@ class PPOTrainer:
         identity = torch.eye(N, dtype=torch.float32, device=self.device)
         local_lambda = identity[None, None, :, :, None]        # (1, 1, N, N, 1)
 
+        adv_sq_sum = torch.zeros((), device=self.device)
+        adv_cnt = torch.zeros((), device=self.device)
         if is_primary:
             ret_pc_sum = torch.zeros(buf.num_components, device=self.device)
             actor_sum = torch.zeros((), device=self.device)
 
         chunk = max(1, B // self.cfg.num_minibatches)
+        if self.cfg.microbatch_tokens is not None:
+            chunk = min(
+                chunk, max(1, self.cfg.microbatch_tokens // (T * buf.num_tokens))
+            )
         for start in range(0, B, chunk):
             sl = slice(start, start + chunk)
             alive = buf.alive_mask[:, sl]                             # (T, b, N)
@@ -2033,14 +2093,18 @@ class PPOTrainer:
                 "tbijk,tbjk->tbi", lambda_ij_t, buf.returns[:, sl]
             )
 
+            actor_f = (buf.actor_masks[:, sl] & alive).float()
+            adv_sq_sum += (buf.adv_agg[:, sl].pow(2) * actor_f).sum()
+            adv_cnt += actor_f.sum()
+
             if is_primary:
                 ret_pc = torch.einsum(
                     "tbijk,tbjk->tbik", lambda_ij_t, buf.returns[:, sl]
                 )  # (T, b, N, K)
-                actor_f = (buf.actor_masks[:, sl] & alive).float()
                 ret_pc_sum += (ret_pc * actor_f.unsqueeze(-1)).sum((0, 1, 2))
                 actor_sum += actor_f.sum()
 
+        buf.adv_rms = adv_sq_sum / adv_cnt.clamp(min=1.0)
         if is_primary:
             self._ret_per_comp_mean_k = ret_pc_sum / actor_sum.clamp(min=1.0)
 
@@ -2077,7 +2141,11 @@ class PPOTrainer:
         """Run num_epochs × num_minibatches of PPO updates across all scales.
 
         Gradients from every scale are accumulated before each optimizer step so
-        that each parameter update reflects all game sizes simultaneously.
+        that each parameter update reflects all game sizes simultaneously. When
+        cfg.microbatch_tokens is set, each scale's minibatch is further split
+        into micro-batches whose gradients are accumulated within the same step
+        (normalized so the update matches the unsplit minibatch exactly) —
+        a memory-only knob for fitting the backward pass on smaller GPUs.
 
         Args:
             all_buffers:       Primary buffer first, then aux buffers in order.
@@ -2167,78 +2235,103 @@ class PPOTrainer:
         for epoch_idx in range(num_epochs):
             kl_start = len(accum_scalar["policy/kl"])
             iters = [
-                buf.get_minibatch_iterator(cfg.num_minibatches) for buf in all_buffers
+                buf.get_minibatch_iterator(cfg.num_minibatches, cfg.microbatch_tokens)
+                for buf in all_buffers
             ]
             for batches in zip(*iters):
                 self.optim.zero_grad()
 
-                # Accumulate gradients across all scales before stepping.
-                # Each loss is divided by n_scales so the total gradient magnitude
-                # stays comparable to single-scale training.
-                diag_primary: dict = {}
+                # Accumulate gradients across all scales — and each scale's
+                # micro-batches when cfg.microbatch_tokens splits minibatches —
+                # before stepping. Each loss is divided by n_scales so the total
+                # gradient magnitude stays comparable to single-scale training;
+                # micro-batch losses already sum to the exact minibatch loss via
+                # the shared minibatch-total denominators.
                 _z = torch.zeros((), device=self.device)
+                # (accumulator key, diag key) for diagnostics that are additive
+                # across micro-batches and averaged across scales.
+                _additive = (
+                    ("loss", "loss"),
+                    ("pg", "pg_loss"),
+                    ("vf", "vf_loss"),
+                    ("ent", "ent_loss"),
+                    ("bc", "bc_loss"),
+                    ("sigreg", "sigreg_loss"),
+                    ("ns_loss", "next_state_loss"),
+                    ("ns_cont", "next_state_cont_loss"),
+                    ("windowed_ns", "windowed_ns_loss"),
+                    ("bc_kl", "bc_kl"),
+                    ("scripted_entropy", "scripted_entropy"),
+                    ("kl", "approx_kl"),
+                    ("clip", "clip_frac"),
+                    ("alive_frac", "alive_frac"),
+                    ("ratio_mean", "ratio_mean"),
+                    ("entropy_power", "entropy_power"),
+                    ("entropy_turn", "entropy_turn"),
+                    ("entropy_shoot", "entropy_shoot"),
+                )
+                _primary_k = (
+                    "value_loss_k",
+                    "ret_mean_k",
+                    "ret_sq_k",
+                    "res_mean_k",
+                    "res_sq_k",
+                    "pred_mean_k",
+                    "adv_sq_k",
+                )
                 scalar_accum_step: dict[str, torch.Tensor] = {
-                    "loss": _z.clone(),
-                    "pg": _z.clone(),
-                    "vf": _z.clone(),
-                    "ent": _z.clone(),
-                    "bc": _z.clone(),
-                    "sigreg": _z.clone(),
-                    "ns_loss": _z.clone(),
-                    "ns_cont": _z.clone(),
-                    "windowed_ns": _z.clone(),
-                    "bc_kl": _z.clone(),
-                    "scripted_entropy": _z.clone(),
-                    "kl": _z.clone(),
-                    "clip": _z.clone(),
-                    "adv_var": _z.clone(),
-                    "ret_agg_mean": _z.clone(),
-                    "ret_agg_std": _z.clone(),
-                    "alive_frac": _z.clone(),
-                    "ratio_mean": _z.clone(),
-                    "ratio_max": _z.clone(),
-                    "entropy_power": _z.clone(),
-                    "entropy_turn": _z.clone(),
-                    "entropy_shoot": _z.clone(),
+                    key: _z.clone() for key, _ in _additive
                 }
+                for key in ("adv_var", "ret_agg_mean", "ret_agg_std", "ratio_max"):
+                    scalar_accum_step[key] = _z.clone()
 
-                for scale_idx, (buf, batch) in enumerate(zip(all_buffers, batches)):
+                k_stats: dict[str, torch.Tensor] = {}  # primary per-K moments
+                ns_feat_step: torch.Tensor | None = None
+                hist_diag: dict = {}
+
+                for scale_idx, (buf, chunks) in enumerate(zip(all_buffers, batches)):
                     is_primary = scale_idx == 0
-                    loss, diag = self._compute_minibatch_loss(batch, is_primary)
-                    (loss / n_scales).backward()
+                    denoms = self._minibatch_denominators(chunks, buf, is_primary)
+                    mb_envs = sum(c[6].shape[1] for c in chunks)  # c[6] = mb_alive
+                    ratio_max = _z.clone()
+                    ret_agg_mean = _z.clone()
+                    ret_agg_sq = _z.clone()
 
-                    # Accumulate scalar diagnostics (average across scales)
-                    scalar_accum_step["loss"] += diag["loss"] / n_scales
-                    scalar_accum_step["pg"] += diag["pg_loss"] / n_scales
-                    scalar_accum_step["vf"] += diag["vf_loss"] / n_scales
-                    scalar_accum_step["ent"] += diag["ent_loss"] / n_scales
-                    scalar_accum_step["bc"] += diag["bc_loss"] / n_scales
-                    scalar_accum_step["sigreg"] += diag["sigreg_loss"] / n_scales
-                    scalar_accum_step["ns_loss"] += diag["next_state_loss"] / n_scales
-                    scalar_accum_step["ns_cont"] += diag["next_state_cont_loss"] / n_scales
-                    scalar_accum_step["windowed_ns"] += diag["windowed_ns_loss"] / n_scales
-                    scalar_accum_step["bc_kl"] += diag["bc_kl"] / n_scales
-                    scalar_accum_step["scripted_entropy"] += (
-                        diag["scripted_entropy"] / n_scales
-                    )
-                    scalar_accum_step["kl"] += diag["approx_kl"] / n_scales
-                    scalar_accum_step["clip"] += diag["clip_frac"] / n_scales
-                    scalar_accum_step["adv_var"] += diag["adv_var"] / n_scales
-                    scalar_accum_step["ret_agg_mean"] += diag["ret_agg_mean"] / n_scales
-                    scalar_accum_step["ret_agg_std"] += diag["ret_agg_std"] / n_scales
-                    scalar_accum_step["alive_frac"] += diag["alive_frac"] / n_scales
-                    scalar_accum_step["ratio_mean"] += diag["ratio_mean"] / n_scales
-                    scalar_accum_step["ratio_max"] += diag["ratio_max"] / n_scales
-                    scalar_accum_step["entropy_power"] += (
-                        diag["entropy_power"] / n_scales
-                    )
-                    scalar_accum_step["entropy_turn"] += diag["entropy_turn"] / n_scales
-                    scalar_accum_step["entropy_shoot"] += (
-                        diag["entropy_shoot"] / n_scales
-                    )
+                    for chunk in chunks:
+                        frac = chunk[6].shape[1] / mb_envs
+                        loss, diag = self._compute_minibatch_loss(
+                            chunk, is_primary, denoms, frac
+                        )
+                        (loss / n_scales).backward()
 
-                    if is_primary:
-                        diag_primary = diag
+                        for key, dkey in _additive:
+                            scalar_accum_step[key] += diag[dkey] / n_scales
+                        ratio_max = torch.maximum(ratio_max, diag["ratio_max"])
+                        ret_agg_mean += diag["ret_agg_mean"]
+                        ret_agg_sq += diag["ret_agg_sq"]
+
+                        if is_primary:
+                            for kk in _primary_k:
+                                k_stats[kk] = (
+                                    diag[kk]
+                                    if kk not in k_stats
+                                    else k_stats[kk] + diag[kk]
+                                )
+                            if diag.get("next_state_per_feat") is not None:
+                                ns_feat_step = (
+                                    diag["next_state_per_feat"]
+                                    if ns_feat_step is None
+                                    else ns_feat_step + diag["next_state_per_feat"]
+                                )
+                            hist_diag = diag
+
+                    # Non-additive stats finalized per scale: max for the ratio,
+                    # E[x²] − E[x]² for the aggregated-return variance.
+                    scalar_accum_step["ratio_max"] += ratio_max / n_scales
+                    scalar_accum_step["ret_agg_mean"] += ret_agg_mean / n_scales
+                    ret_agg_var = (ret_agg_sq - ret_agg_mean.pow(2)).clamp(min=0.0)
+                    scalar_accum_step["ret_agg_std"] += ret_agg_var.sqrt() / n_scales
+                    scalar_accum_step["adv_var"] += buf.adv_rms / n_scales
 
                 grad_norm = nn.utils.clip_grad_norm_(
                     self._policy_module.parameters(), cfg.max_grad_norm
@@ -2303,31 +2396,47 @@ class PPOTrainer:
                 )
                 accum_scalar["train/gradient_norm"].append(grad_norm.detach())
 
-                if "stats_k_cpu" in diag_primary:
-                    stats_k_cpu = diag_primary["stats_k_cpu"]
+                if k_stats:
+                    # Finalize variance-based stats from the accumulated moments,
+                    # then one GPU→CPU transfer per minibatch: stack → (6, K) → cpu
+                    ret_var_k = k_stats["ret_sq_k"] - k_stats["ret_mean_k"].pow(2)
+                    res_var_k = k_stats["res_sq_k"] - k_stats["res_mean_k"].pow(2)
+                    ev_k = 1.0 - res_var_k / (ret_var_k + 1e-8)  # (K,)
+                    stats_k_cpu = torch.stack(
+                        [
+                            k_stats["value_loss_k"],
+                            ev_k,
+                            k_stats["ret_mean_k"],
+                            self._ret_per_comp_mean_k,
+                            k_stats["pred_mean_k"],
+                            k_stats["adv_sq_k"],
+                        ]
+                    ).cpu()
                     accum_k["critic/value_loss"].append(stats_k_cpu[0])
                     accum_k["critic/return_mean"].append(stats_k_cpu[2])
                     accum_k["returns/component"].append(stats_k_cpu[3])
                     accum_k["critic/value_pred_mean"].append(stats_k_cpu[4])
+                    accum_k["returns/advantage_std"].append(
+                        stats_k_cpu[5].clamp(min=0.0).sqrt()
+                    )
                     if epoch_idx == num_epochs - 1:
                         accum_k["critic/explained_variance"].append(stats_k_cpu[1])
 
-                if "adv_std_k" in diag_primary:
-                    accum_k["returns/advantage_std"].append(diag_primary["adv_std_k"])
+                if ns_feat_step is not None:
+                    ns_per_feat_accum.append(ns_feat_step.cpu())
 
-                if diag_primary.get("next_state_per_feat") is not None:
-                    ns_per_feat_accum.append(diag_primary["next_state_per_feat"])
-
-                if record_histograms and "alive_flat" in diag_primary:
-                    alive_flat = diag_primary["alive_flat"]
+                if record_histograms and "alive_flat" in hist_diag:
+                    # Sampled from the last micro-batch of the last primary
+                    # minibatch — a large-enough sample for the histograms.
+                    alive_flat = hist_diag["alive_flat"]
                     last_returns_np = (
-                        diag_primary["mb_returns"]
+                        hist_diag["mb_returns"]
                         .reshape(-1, K)[alive_flat]
                         .cpu()
                         .numpy()
                     )
                     last_logprob_np = (
-                        diag_primary["logprob_flat"][alive_flat].cpu().numpy()
+                        hist_diag["logprob_flat"][alive_flat].cpu().numpy()
                     )
 
             if target_kl is not None:

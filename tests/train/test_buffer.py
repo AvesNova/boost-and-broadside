@@ -294,6 +294,8 @@ class TestMinibatchIterator:
 
         batches = list(buf.get_minibatch_iterator(num_minibatches=2))
         assert len(batches) == 2
+        # Without a microbatch budget each minibatch is a single chunk
+        assert all(len(chunks) == 1 for chunks in batches)
 
     def test_minibatch_obs_shape(self):
         T, B, N, D = 4, 8, 4, 16
@@ -306,7 +308,7 @@ class TestMinibatchIterator:
 
         mb_obs, mb_actions, *_ = next(
             iter(buf.get_minibatch_iterator(num_minibatches=2))
-        )
+        )[0]
 
         B_mb = B // 2
         assert mb_obs["pos"].shape == (T + 1, B_mb, N, 2)
@@ -323,7 +325,7 @@ class TestMinibatchIterator:
 
         _, _, _, mb_adv, mb_ret, mb_val, *_ = next(
             iter(buf.get_minibatch_iterator(num_minibatches=2))
-        )
+        )[0]
         B_mb = B // 2
         assert mb_adv.shape == (T, B_mb, N, Kc)
         assert mb_ret.shape == (T, B_mb, N, Kc)
@@ -340,7 +342,7 @@ class TestMinibatchIterator:
 
         (_, _, _, _, _, _, _, mb_hidden, mb_actor_mask, mb_expert_probs, *_) = next(
             iter(buf.get_minibatch_iterator(num_minibatches=2))
-        )
+        )[0]
         B_mb = B // 2
         assert mb_hidden.shape == (1, B_mb * N, D)
         assert mb_actor_mask.shape == (T, B_mb, N)
@@ -355,3 +357,52 @@ class TestMinibatchIterator:
 
         with pytest.raises(AssertionError):
             next(iter(buf.get_minibatch_iterator(num_minibatches=1)))
+
+    def test_microbatch_tokens_splits_minibatch(self):
+        T, B, N, D = 4, 8, 4, 16
+        buf, _, _, _, _ = _make_buffer(T=T, B=B, N=N, D=D)
+        _fill_buffer(buf, T, B, N, D)
+        Kc = buf.num_components
+
+        buf.store_initial_hidden(torch.zeros(1, B * N, D))
+        buf.compute_gae(torch.zeros(B, N, Kc), torch.zeros(B))
+
+        # Minibatch = 4 envs × T × num_tokens = 4 × 4 × 4 = 64 tokens.
+        # Budget of 32 tokens → 2 micro-batches of 2 envs each.
+        batches = list(
+            buf.get_minibatch_iterator(num_minibatches=2, microbatch_tokens=32)
+        )
+        assert len(batches) == 2
+        for chunks in batches:
+            assert len(chunks) == 2
+            env_counts = [c[1].shape[1] for c in chunks]  # c[1] = mb_actions
+            assert sum(env_counts) == B // 2
+            assert max(env_counts) - min(env_counts) <= 1
+            for c in chunks:
+                b_mb = c[1].shape[1]
+                assert c[0]["pos"].shape == (T + 1, b_mb, N, 2)  # obs
+                assert c[6].shape == (T, b_mb, N)  # alive mask
+                assert c[7].shape == (1, b_mb * N, D)  # hidden
+                # env count respects the token budget
+                assert b_mb * T * buf.num_tokens <= 32
+
+    def test_microbatch_chunks_partition_minibatch(self):
+        """Micro-batch env columns are disjoint and cover every env exactly once."""
+        T, B, N, D = 4, 8, 4, 16
+        buf, _, _, _, _ = _make_buffer(T=T, B=B, N=N, D=D)
+        _fill_buffer(buf, T, B, N, D)
+        Kc = buf.num_components
+
+        # Give each env a unique action fingerprint to track the partition.
+        buf.actions[:] = torch.arange(B, dtype=torch.int32).view(1, B, 1, 1)
+
+        buf.store_initial_hidden(torch.zeros(1, B * N, D))
+        buf.compute_gae(torch.zeros(B, N, Kc), torch.zeros(B))
+
+        seen: list[int] = []
+        for chunks in buf.get_minibatch_iterator(
+            num_minibatches=2, microbatch_tokens=32
+        ):
+            for c in chunks:
+                seen.extend(c[1][0, :, 0, 0].tolist())
+        assert sorted(seen) == list(range(B))

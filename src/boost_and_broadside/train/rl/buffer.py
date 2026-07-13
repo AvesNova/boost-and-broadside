@@ -265,6 +265,10 @@ class RolloutBuffer:
         # depend only on rollout data, not the policy).
         self.adv_agg = torch.zeros((T, B, N), device=device, dtype=torch.float32)
         self.ret_agg = torch.zeros((T, B, N), device=device, dtype=torch.float32)
+        # Mean squared aggregated advantage over actor tokens — set once per
+        # update by _precompute_lambda_aggregates. Global (whole-buffer) so the
+        # advantage normalization is independent of minibatch/micro-batch splits.
+        self.adv_rms = torch.ones((), device=device, dtype=torch.float32)
         # Next-state prediction labels (T, B, N, pred_dim) — set once per update
         # by PPOTrainer._precompute_ns_labels; None for aux scales or when the
         # aux losses are disabled.
@@ -413,19 +417,26 @@ class RolloutBuffer:
     # ------------------------------------------------------------------
 
     def get_minibatch_iterator(
-        self, num_minibatches: int
-    ) -> Generator[tuple, None, None]:
+        self, num_minibatches: int, microbatch_tokens: int | None = None
+    ) -> Generator[list[tuple], None, None]:
         """Yield minibatches of environments for PPO update epochs.
 
         Shuffles environments and slices them into num_minibatches chunks.
         Each chunk yields the full (T+1)-step observation sequence plus T-step
         non-observation data for those environments.
 
+        Each minibatch is yielded as a list of micro-batch tuples: when
+        microbatch_tokens is set and the minibatch exceeds it (tokens =
+        envs × T × num_tokens), the minibatch's envs are split near-evenly into
+        the fewest micro-batches that each fit the budget. Callers accumulate
+        gradients over the list before stepping. With microbatch_tokens=None
+        the list always has exactly one entry (the whole minibatch).
+
         The extra T+1-th obs step enables computing aux next-state prediction
         labels at update time: coordinator.compute_labels(target(obs[t]), target(obs[t+1])).
 
         Yields:
-            Tuple of:
+            List of micro-batch tuples, each:
                 mb_obs:          MVPObservation (T+1, B_mb, N+M, ...)
                 mb_actions:      (T, B_mb, N, 3) int32
                 mb_logprobs:     (T, B_mb, N) float32
@@ -449,35 +460,45 @@ class RolloutBuffer:
         env_order = np.random.permutation(self.num_envs)
         D = self.initial_hidden.shape[-1]
 
+        tokens_per_env = self.num_steps * self.num_tokens
+        n_micro = 1
+        if microbatch_tokens is not None:
+            n_micro = -(-envs_per_batch * tokens_per_env // microbatch_tokens)
+            n_micro = min(max(n_micro, 1), envs_per_batch)
+
+        n_layers = self.initial_hidden.shape[0]
+        hidden_full = self.initial_hidden.reshape(
+            n_layers, self.num_envs, self.num_tokens, D
+        )
+
         for start in range(0, self.num_envs, envs_per_batch):
             end = start + envs_per_batch
-            idx = env_order[start:end]  # (B_mb,)
+            chunks = []
+            for idx in np.array_split(env_order[start:end], n_micro):
+                # T+1 obs for this micro-batch
+                mb_obs = MVPObservation(
+                    data={k: v[:, idx] for k, v in self.obs.items()}
+                )
 
-            # T+1 obs for this minibatch
-            mb_obs = MVPObservation(data={k: v[:, idx] for k, v in self.obs.items()})
+                # Reconstruct initial hidden: (n_layers, B_mb*num_tokens, D)
+                mb_hidden = hidden_full[:, idx, :, :].reshape(
+                    n_layers, len(idx) * self.num_tokens, D
+                )
 
-            # Reconstruct initial hidden for this minibatch: (n_layers, B_mb*num_tokens, D)
-            n_layers = self.initial_hidden.shape[0]
-            hidden_full = self.initial_hidden.reshape(
-                n_layers, self.num_envs, self.num_tokens, D
-            )
-            mb_hidden = hidden_full[:, idx, :, :].reshape(
-                n_layers, len(idx) * self.num_tokens, D
-            )
-
-            yield (
-                mb_obs,
-                self.actions[:, idx],
-                self.logprobs[:, idx],
-                self.advantages[:, idx],
-                self.returns[:, idx],
-                self.values[:, idx],
-                self.alive_mask[:, idx],
-                mb_hidden.contiguous(),
-                self.actor_masks[:, idx],
-                self.expert_probs[:, idx],
-                self.terminated[:, idx],
-                self.adv_agg[:, idx],
-                self.ret_agg[:, idx],
-                self.ns_labels[:, idx] if self.ns_labels is not None else None,
-            )
+                chunks.append((
+                    mb_obs,
+                    self.actions[:, idx],
+                    self.logprobs[:, idx],
+                    self.advantages[:, idx],
+                    self.returns[:, idx],
+                    self.values[:, idx],
+                    self.alive_mask[:, idx],
+                    mb_hidden.contiguous(),
+                    self.actor_masks[:, idx],
+                    self.expert_probs[:, idx],
+                    self.terminated[:, idx],
+                    self.adv_agg[:, idx],
+                    self.ret_agg[:, idx],
+                    self.ns_labels[:, idx] if self.ns_labels is not None else None,
+                ))
+            yield chunks
