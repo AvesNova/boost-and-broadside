@@ -262,11 +262,11 @@ def _decode_targets_to_obs(
 
     _2pi = 2.0 * math.pi
     _hpi = math.pi / 2.0
-    W = ship_config.world_size[0]
+    W, H = ship_config.world_size
 
-    # Position: Fourier(1, W) encodes as (sin(2πx/W), cos(2πx/W))
+    # Position: Fourier(1, period) encodes as (sin(2πx/W), cos(2πx/W)) / (sin(2πy/H), cos(2πy/H))
     pos_x = (torch.atan2(targets[..., 0], targets[..., 1]) % _2pi) * W / _2pi
-    pos_y = (torch.atan2(targets[..., 2], targets[..., 3]) % _2pi) * W / _2pi
+    pos_y = (torch.atan2(targets[..., 2], targets[..., 3]) % _2pi) * H / _2pi
     pos = torch.stack([pos_x, pos_y], dim=-1)
 
     # Velocity: SymlogVelocity encodes as direction * symlog(speed)
