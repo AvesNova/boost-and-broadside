@@ -12,8 +12,7 @@ import time
 from collections import deque
 from collections.abc import Callable
 from pathlib import Path
-from queue import Empty, Queue
-from typing import Any
+from queue import Queue
 
 import torch
 import torch.nn as nn
@@ -23,7 +22,6 @@ from torch.distributions import Categorical
 
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import (
-    EnvConfig,
     ModelConfig,
     ShipConfig,
     TrainConfig,
@@ -44,9 +42,9 @@ from boost_and_broadside.train.rl.buffer import (
 from boost_and_broadside.train.rl.checkpoint import CheckpointMixin, cast_norms_bf16
 from boost_and_broadside.train.rl.elo_eval import EloEvaluator
 from boost_and_broadside.train.rl.features import FeatureCoordinator, build_standard_coordinator
+from boost_and_broadside.train.rl.logging import LoggingMixin
 from boost_and_broadside.train.rl.roster import EloRoster, RosterEntry
 from boost_and_broadside.train.rl.sigreg import SIGReg
-
 
 # ------------------------------------------------------------------
 # Per-component gamma / lambda tensor builder
@@ -210,7 +208,7 @@ def _max_schedule_value(
     return max(schedule_fn(s) for s in range(0, total_steps + step_size, step_size))
 
 
-class PPOTrainer(CheckpointMixin):
+class PPOTrainer(CheckpointMixin, LoggingMixin):
     """Proximal Policy Optimization for the MVP multi-agent policy.
 
     Args:
@@ -789,7 +787,7 @@ class PPOTrainer(CheckpointMixin):
         # Maintained between rollouts like hidden state.
         action_buffer = torch.zeros(B, N, 3, dtype=torch.int32, device=self.device)
 
-        # Aux-scale obs, hidden states, action buffers, and last-done flags — live across the whole run.
+        # Aux-scale rollout state lives across the whole training run.
         aux_obs: list[dict[str, torch.Tensor]] = []
         aux_hiddens: list[torch.Tensor] = []
         aux_hidden_t1s: list[torch.Tensor | None] = []
@@ -1221,110 +1219,7 @@ class PPOTrainer(CheckpointMixin):
                         elo_eval.seed_avg_elo_from_live()
                         self._avg_training_elo = self._training_elo
 
-            # Scaler stats — one CPU transfer per component group
-            p5, p95 = self.scaler.percentiles
-            p5_cpu = p5.cpu()
-            p95_cpu = p95.cpu()
-            span_cpu = p95_cpu - p5_cpu
-            adv_rms_cpu = self.adv_scaler.rms.cpu()
-            for i, name in enumerate(self._active_names):
-                metrics[f"scaler/p5/{name}"] = p5_cpu[i].item()
-                metrics[f"scaler/p95/{name}"] = p95_cpu[i].item()
-                metrics[f"scaler/span/{name}"] = span_cpu[i].item()
-                metrics[f"scaler/adv_rms/{name}"] = adv_rms_cpu[i].item()
-
-            # Scaler span minimum — flags components where normalization may be degenerate
-            metrics["scaler/span_min"] = span_cpu.min().item()
-
-            # Merge episode stats accumulated on-GPU by the wrapper — one sync per update
-            ep_stats = self.wrapper.pop_episode_stats()
-            for aux_w in self.aux_wrappers:
-                aux_w.pop_episode_stats()  # discarded, but keeps accumulators bounded
-            n_eps = ep_stats["episodes"].item()
-            if n_eps > 0:
-                n_ship_eps = n_eps * self.wrapper.num_ships
-                comp_sum = ep_stats["comp_sum"].cpu()
-                comp_scaled_sum = ep_stats["comp_scaled_sum"].cpu()
-                metrics["episode/reward_mean"] = ep_stats["reward_sum"].item() / n_ship_eps
-                metrics["episode/reward_min"] = ep_stats["reward_min"].item()
-                metrics["episode/reward_max"] = ep_stats["reward_max"].item()
-                metrics["episode/length_mean"] = ep_stats["length_sum"].item() / n_eps
-                for i, name in enumerate(self._active_names):
-                    metrics[f"episode/reward_{name}"] = comp_sum[i].item() / n_ship_eps
-                    metrics[f"episode/scaled_{name}"] = comp_scaled_sum[i].item() / n_ship_eps
-                metrics["episode/win_rate"] = ep_stats["wins_sum"].item() / n_ship_eps
-                metrics["episode/lifespan_mean"] = ep_stats["lifespan_sum"].item() / n_ship_eps
-
-            self._ship_steps += ship_tokens_per_update
-            self._grad_tokens += int(
-                metrics["train/epochs_completed"] * self._entity_tokens_per_epoch
-            )
-            # Cumulative work / cumulative training time — spans checkpoint
-            # resumes, as if the run never stopped.
-            elapsed = self._elapsed_train_time + (time.time() - self._train_start_time)
-            sps = int(self._global_step / elapsed)
-            ship_tps = int(self._ship_steps / elapsed)
-            metrics["train/global_step"] = self._global_step
-            metrics["train/sps"] = sps
-            metrics["train/ship_tokens_per_sec"] = ship_tps
-            # Alternative x-axes — log as metrics so any chart can be re-plotted
-            # against data volume, optimizer progress, compute, or wall clock.
-            metrics["counters/env_steps"] = self._global_step
-            metrics["counters/ship_tokens"] = self._ship_steps
-            metrics["counters/updates"] = update
-            metrics["counters/grad_tokens"] = self._grad_tokens
-            metrics["counters/train_hours"] = elapsed / 3600.0
-
-            # ELO evaluation — continuous live statistics from parallel slots.
-            # Avg-model metrics only exist once the avg model has been initialized.
-            metrics["elo/training"] = self._training_elo
-            if self._eval_window_rand:
-                metrics["elo/training_vs_random"] = sum(self._eval_window_rand) / len(
-                    self._eval_window_rand
-                )
-            if self._eval_window_sc:
-                metrics["elo/training_vs_scripted"] = sum(self._eval_window_sc) / len(
-                    self._eval_window_sc
-                )
-            if self._avg_update_count > 0:
-                metrics["elo/avg"] = self._avg_training_elo
-                if self._eval_window_live_vs_avg:
-                    metrics["elo/training_vs_avg"] = sum(self._eval_window_live_vs_avg) / len(
-                        self._eval_window_live_vs_avg
-                    )
-                if self._eval_window_avg_vs_sc:
-                    metrics["elo/avg_vs_scripted"] = sum(self._eval_window_avg_vs_sc) / len(
-                        self._eval_window_avg_vs_sc
-                    )
-
-            # Save overwriting best-model checkpoints when normalized ELO improves.
-            random_elo = self._random_elo()
-            training_elo_norm = self._training_elo - random_elo
-            if training_elo_norm > self._best_training_elo_norm:
-                self._best_training_elo_norm = training_elo_norm
-                self._save_best_checkpoint("best_training.pt")
-
-            # Overview — redundant copies of the most important global metrics
-            for src, dst in [
-                ("elo/training", "overview/elo"),
-                ("elo/training_vs_scripted", "overview/win_rate_vs_scripted"),
-                ("elo/training_vs_random", "overview/win_rate_vs_random"),
-                ("elo/training_vs_avg", "overview/win_rate_vs_avg"),
-                ("loss/total", "overview/loss_total"),
-                ("loss_proxy/policy_gradient", "overview/loss_proxy_pg"),
-                ("loss_proxy/behavioral_cloning", "overview/loss_proxy_bc"),
-                ("policy/kl", "overview/kl"),
-                ("policy/clip_fraction", "overview/clip_fraction"),
-                ("episode/win_rate", "overview/win_rate"),
-                ("episode/reward_mean", "overview/reward_mean"),
-                ("train/gradient_norm", "overview/gradient_norm"),
-                ("schedule/behavior_cloning_coef", "overview/bc_coef"),
-            ]:
-                if src in metrics:
-                    metrics[dst] = metrics[src]
-            ev_vals = [v for k, v in metrics.items() if k.startswith("critic/explained_variance/")]
-            if ev_vals:
-                metrics["overview/explained_variance"] = sum(ev_vals) / len(ev_vals)
+            sps, ship_tps = self._assemble_metrics(metrics, update, ship_tokens_per_update)
 
             # Single log call per update — all metrics at the same step
             self._enqueue_log(metrics, step=self._global_step)
@@ -1349,8 +1244,8 @@ class PPOTrainer(CheckpointMixin):
             checkpoint_interval: int = self._schedule_state.checkpoint_interval
             if checkpoint_interval > 0 and update % checkpoint_interval == 0:
                 self._save_checkpoint(update)
-                # Add to roster when normalized training ELO (vs random) crosses the next milestone.
-                # Skip during pretraining — ELO is not evaluated and the policy is imitating, not competing.
+                # Add to the roster at normalized-ELO milestones. Skip pretraining,
+                # where the policy is imitating rather than competing.
                 training_elo_norm = self._training_elo - self._random_elo()
                 if (
                     self._policy_gradient_coef > 0.0
@@ -1446,10 +1341,9 @@ class PPOTrainer(CheckpointMixin):
     ) -> tuple[torch.Tensor, dict]:
         """Compute PPO loss for one micro-batch. Does NOT call zero_grad / backward / step.
 
-        Loss coefficients are read from ``self._policy_gradient_coef``, ``self._behavior_cloning_coef``,
-        and ``self._schedule_state`` (``value_function_coef``, ``entropy_coef``) which are updated
-        each update step.  Setting ``policy_gradient_coef=0.0`` in the base schedule activates
-        BC pretraining mode (no policy gradient or entropy loss).
+        Loss coefficients are read from ``self._policy_gradient_coef``,
+        ``self._behavior_cloning_coef``, and ``self._schedule_state``. Setting
+        ``policy_gradient_coef=0.0`` activates BC pretraining mode.
 
         Lambda-aggregated advantages/returns and aux next-state labels arrive
         precomputed in the batch (see _precompute_lambda_aggregates /
@@ -1663,7 +1557,7 @@ class PPOTrainer(CheckpointMixin):
             diag["ratio_mean"] = (ratio * actor_f).sum() / actor_sum
             diag["ratio_max"] = ratio.max()  # combine across chunks with max, not sum
 
-            # Per-head entropy — recomputed from policy_logits (already returned by evaluate_actions)
+            # Per-head entropy from the logits already returned by evaluate_actions.
             power_ent = Categorical(logits=policy_logits[..., POWER_SLICE]).entropy()
             turn_ent = Categorical(logits=policy_logits[..., TURN_SLICE]).entropy()
             shoot_ent = Categorical(logits=policy_logits[..., SHOOT_SLICE]).entropy()
@@ -2133,81 +2027,3 @@ class PPOTrainer(CheckpointMixin):
 
     # Async logging
     # ------------------------------------------------------------------
-
-    def _init_wandb(
-        self,
-        train_config: TrainConfig,
-        model_config: ModelConfig,
-        ship_config: ShipConfig,
-        env_config: EnvConfig,
-        resume_run_id: str | None = None,
-    ) -> None:
-        """Initialize W&B run with all configs serialized as the run config."""
-        import wandb
-
-        def _sanitize(obj: object) -> object:
-            """Recursively convert frozenset/set → sorted list for JSON serialization."""
-            if isinstance(obj, (frozenset, set)):
-                return sorted(_sanitize(x) for x in obj)  # type: ignore[misc]
-            if isinstance(obj, dict):
-                return {k: _sanitize(v) for k, v in obj.items()}
-            if isinstance(obj, (list, tuple)):
-                return [_sanitize(x) for x in obj]
-            return obj
-
-        config: dict = {}
-        for prefix, cfg in [
-            ("train", train_config),
-            ("model", model_config),
-            ("ship", ship_config),
-            ("env", env_config),
-        ]:
-            for k, v in dataclasses.asdict(cfg).items():
-                if k == "schedule":
-                    continue  # TrainingSchedule contains callables — not serializable
-                config[f"{prefix}/{k}"] = _sanitize(v)
-
-        if resume_run_id is not None:
-            wandb.init(
-                project="boost-and-broadside", config=config, id=resume_run_id, resume="must"
-            )
-        else:
-            wandb.init(project="boost-and-broadside", config=config)
-
-    def _enqueue_log(self, metrics: dict, step: int) -> None:
-        """Put metrics onto the async log queue (non-blocking)."""
-        self._log_queue.put((metrics, step))
-
-    def _log_worker(self) -> None:
-        """Background thread: drains the log queue and calls wandb.log().
-
-        Handles two special value types so the training thread stays off the
-        W&B serialization path:
-          - ``np.ndarray`` with key ``"hist/returns"`` → one ``wandb.Histogram``
-            per reward component, keyed ``hist/returns/<name>``.
-          - ``np.ndarray`` with any other key → ``wandb.Histogram`` directly.
-        """
-        import numpy as np
-
-        import wandb
-
-        while True:
-            try:
-                item = self._log_queue.get(timeout=1.0)
-            except Empty:
-                continue
-            if item is None:
-                break
-            raw_metrics, step = item
-            processed: dict = {}
-            for k, v in raw_metrics.items():
-                if isinstance(v, np.ndarray):
-                    if k == "hist/returns":
-                        # v shape: (alive_count, K) — one histogram per active component
-                        for i, name in enumerate(self._active_names):
-                            processed[f"hist/returns/{name}"] = wandb.Histogram(v[:, i])
-                    else:
-                        processed[k] = wandb.Histogram(v)
-                else:
-                    processed[k] = v
-            wandb.log(processed, step=step)
