@@ -16,7 +16,7 @@ performed 2026-07-15. **Nothing has been changed** — this document only record
 
 ## 1. Correctness risks (verify before any refactor)
 
-### 1.1 Schedule group-scales silently don't apply to 18 of 21 reward components — **Critical**
+### 1.1 Schedule group-scales silently don't apply to 18 of 21 reward components — **Critical** — ✅ done (c871419)
 [ppo.py:1535-1543](src/boost_and_broadside/train/rl/ppo.py#L1535-L1543) does
 `setattr(comp, f"{comp.name}_weight", raw * group_scale)`, but most components expose
 `weight` as a property reading `self._weight` (e.g. [rewards.py:91-96](src/boost_and_broadside/env/rewards.py#L91-L96)).
@@ -177,7 +177,7 @@ The `bc` / `rl` / `rl_obstacles` cases are ~90% identical ([main.py:226-284](mai
 Also: 7 occurrences of the mangled one-liner `ship_config=SHIP_CONFIG,                device=device,`
 (e.g. [main.py:235](main.py#L235)) — a formatter artifact that looks bad; running `ruff format` fixes it.
 
-### 4.3 Reward component boilerplate — **Medium**
+### 4.3 Reward component boilerplate — **Medium** — ✅ done (c871419)
 21 components each repeat `__init__(self, weight)` + `@property weight`
 ([rewards.py](src/boost_and_broadside/env/rewards.py)); several `compute()` bodies are identical
 (AllyDamage=EnemyDamage=DamageTaken, AllyDeath=EnemyDeath=LocalDeath), and the toroidal
