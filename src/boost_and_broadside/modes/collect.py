@@ -1,8 +1,4 @@
-"""collect_stats mode: run parallel games between two specified agents and report stats.
-
-Also exports ``_run_matchup`` — a low-level helper used by the PPO trainer to compute
-ELO win rates without printing any output.
-"""
+"""collect_stats mode: run parallel games between two specified agents and report stats."""
 
 import time
 from dataclasses import replace
@@ -20,8 +16,6 @@ from boost_and_broadside.modes.agent_factory import (
     reset_done_envs,
     resolve_agent_spec,
 )
-
-# _run_matchup was removed since it is no longer required centrally.
 
 
 def _obs_from_state(state: TensorState, ship_config: ShipConfig) -> MVPObservation:
