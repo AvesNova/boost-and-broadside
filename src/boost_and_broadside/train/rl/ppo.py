@@ -1507,11 +1507,7 @@ class PPOTrainer:
             for comp in self.wrapper._all_components:
                 scale_attr = _GROUP[comp.name]
                 raw: float = getattr(self.cfg.rewards, f"{comp.name}_weight")
-                setattr(
-                    comp,
-                    f"{comp.name}_weight",
-                    raw * getattr(self._schedule_state, scale_attr),
-                )
+                comp.weight = raw * getattr(self._schedule_state, scale_attr)
             self.wrapper.refresh_component_weights()
             metrics["schedule/learning_rate"] = self._schedule_state.learning_rate
             metrics["schedule/policy_gradient_coef"] = self._schedule_state.policy_gradient_coef

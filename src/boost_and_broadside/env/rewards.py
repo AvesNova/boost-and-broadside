@@ -34,11 +34,18 @@ class RewardComponent(ABC):
     Subclasses must define:
         name: str — unique key used as W&B metric label.
 
+    ``weight`` is a plain mutable attribute: ppo.py overwrites it once per
+    update with individual_weight × schedule group scale, and the env wrapper
+    re-reads it via refresh_component_weights().
+
     Optionally override log_keys / log_breakdown to split a component into
     sub-metrics for logging without changing the training signal.
     """
 
     name: str
+
+    def __init__(self, weight: float) -> None:
+        self.weight = weight
 
     @abstractmethod
     def compute(
@@ -78,6 +85,31 @@ class RewardComponent(ABC):
 
 
 # ---------------------------------------------------------------------------
+# Shared geometry helpers
+# ---------------------------------------------------------------------------
+
+
+def _toroidal_wrap(d: torch.Tensor, world_size: tuple[float, float]) -> torch.Tensor:
+    """Wrap complex displacements to the nearest toroidal image.
+
+    Args:
+        d: Complex tensor of raw displacements (any shape).
+        world_size: (W, H) world extent.
+
+    Returns:
+        Complex tensor with real in [-W/2, W/2) and imag in [-H/2, H/2).
+    """
+    W, H = world_size
+    return torch.complex((d.real + W / 2) % W - W / 2, (d.imag + H / 2) % H - H / 2)
+
+
+def _valid_enemy_pairs(teams: torch.Tensor, alive: torch.Tensor) -> torch.Tensor:
+    """(B, N, N) mask of pairs (i, j) where both ships are alive and on opposing teams."""
+    is_enemy = teams.unsqueeze(2) != teams.unsqueeze(1)
+    return is_enemy & alive.unsqueeze(2) & alive.unsqueeze(1)
+
+
+# ---------------------------------------------------------------------------
 # Outcome reward components — split into ally/enemy pairs
 # ---------------------------------------------------------------------------
 
@@ -88,13 +120,6 @@ class AllyDamageReward(RewardComponent):
 
     name = "ally_damage"
 
-    def __init__(self, weight: float) -> None:
-        self._weight = weight
-
-    @property
-    def weight(self) -> float:
-        return self._weight
-
     def compute(
         self,
         prev_state: TensorState,
@@ -106,28 +131,11 @@ class AllyDamageReward(RewardComponent):
         return -delta * next_state.ship_alive.float()
 
 
-class EnemyDamageReward(RewardComponent):
+class EnemyDamageReward(AllyDamageReward):
     """Same compute as AllyDamageReward. Lambda=-1 for enemies inverts sign so allies
     benefit when enemies take damage. Critic learns expected enemy damage taken."""
 
     name = "enemy_damage"
-
-    def __init__(self, weight: float) -> None:
-        self._weight = weight
-
-    @property
-    def weight(self) -> float:
-        return self._weight
-
-    def compute(
-        self,
-        prev_state: TensorState,
-        actions: torch.Tensor,
-        next_state: TensorState,
-        dones: torch.Tensor,
-    ) -> torch.Tensor:
-        delta = (prev_state.ship_health - next_state.ship_health).clamp(min=0.0)  # (B, N)
-        return -delta * next_state.ship_alive.float()
 
 
 class AllyDeathReward(RewardComponent):
@@ -136,13 +144,6 @@ class AllyDeathReward(RewardComponent):
 
     name = "ally_death"
 
-    def __init__(self, weight: float) -> None:
-        self._weight = weight
-
-    @property
-    def weight(self) -> float:
-        return self._weight
-
     def compute(
         self,
         prev_state: TensorState,
@@ -156,30 +157,11 @@ class AllyDeathReward(RewardComponent):
         return reward
 
 
-class EnemyDeathReward(RewardComponent):
+class EnemyDeathReward(AllyDeathReward):
     """Same compute as AllyDeathReward. Lambda=-1 for enemies so allies benefit when
     enemies die. Critic learns expected enemy death count (positive for allies)."""
 
     name = "enemy_death"
-
-    def __init__(self, weight: float) -> None:
-        self._weight = weight
-
-    @property
-    def weight(self) -> float:
-        return self._weight
-
-    def compute(
-        self,
-        prev_state: TensorState,
-        actions: torch.Tensor,
-        next_state: TensorState,
-        dones: torch.Tensor,
-    ) -> torch.Tensor:
-        just_died = prev_state.ship_alive & ~next_state.ship_alive  # (B, N)
-        reward = torch.zeros_like(next_state.ship_health)
-        reward[just_died] = -1.0
-        return reward
 
 
 class KillShotReward(RewardComponent):
@@ -193,13 +175,6 @@ class KillShotReward(RewardComponent):
     """
 
     name = "kill_shot"
-
-    def __init__(self, weight: float) -> None:
-        self._weight = weight
-
-    @property
-    def weight(self) -> float:
-        return self._weight
 
     def compute(
         self,
@@ -245,13 +220,6 @@ class KillAssistReward(RewardComponent):
 
     name = "kill_assist"
 
-    def __init__(self, weight: float) -> None:
-        self._weight = weight
-
-    @property
-    def weight(self) -> float:
-        return self._weight
-
     def compute(
         self,
         prev_state: TensorState,
@@ -291,13 +259,6 @@ class AllyWinReward(RewardComponent):
 
     name = "ally_win"
 
-    def __init__(self, weight: float) -> None:
-        self._weight = weight
-
-    @property
-    def weight(self) -> float:
-        return self._weight
-
     def compute(
         self,
         prev_state: TensorState,
@@ -317,7 +278,7 @@ class AllyWinReward(RewardComponent):
         return reward
 
 
-class EnemyWinReward(RewardComponent):
+class EnemyWinReward(AllyWinReward):
     """+1 to each ship on the WINNING team at game end; 0 to losers and draws.
 
     Mirrors AllyWinReward but is consumed from the enemy perspective: PPO applies
@@ -329,39 +290,14 @@ class EnemyWinReward(RewardComponent):
 
     name = "enemy_win"
 
-    def __init__(self, weight: float) -> None:
-        self._weight = weight
-
-    @property
-    def weight(self) -> float:
-        return self._weight
-
-    def compute(
-        self,
-        prev_state: TensorState,
-        actions: torch.Tensor,
-        next_state: TensorState,
-        dones: torch.Tensor,
-    ) -> torch.Tensor:
-        reward = torch.zeros_like(next_state.ship_health)
-        team0 = next_state.ship_team_id == 0  # (B, N)
-        team1 = next_state.ship_team_id == 1  # (B, N)
-        t0_alive = (team0 & next_state.ship_alive).sum(dim=1)  # (B,)
-        t1_alive = (team1 & next_state.ship_alive).sum(dim=1)  # (B,)
-        t0_wins = ((t0_alive > 0) & (t1_alive == 0) & dones).unsqueeze(1)  # (B, 1)
-        t1_wins = ((t1_alive > 0) & (t0_alive == 0) & dones).unsqueeze(1)  # (B, 1)
-        reward[team0 & t0_wins.expand_as(team0)] = +1.0
-        reward[team1 & t1_wins.expand_as(team1)] = +1.0
-        return reward
-
 
 # ---------------------------------------------------------------------------
 # Local per-ship combat rewards — self-only, lambda=0 for all other ships
 # ---------------------------------------------------------------------------
 
 
-class LocalDeathReward(RewardComponent):
-    """Penalty of -1 on the step this ship dies.
+class LocalDeathReward(AllyDeathReward):
+    """Penalty of -1 on the step this ship dies (same compute as AllyDeathReward).
 
     Uses just_died = prev_state.ship_alive & ~next_state.ship_alive so the
     reward fires on the exact step of death, before the ship is masked out.
@@ -374,28 +310,9 @@ class LocalDeathReward(RewardComponent):
 
     name = "death"
 
-    def __init__(self, weight: float) -> None:
-        self._weight = weight
 
-    @property
-    def weight(self) -> float:
-        return self._weight
-
-    def compute(
-        self,
-        prev_state: TensorState,
-        actions: torch.Tensor,
-        next_state: TensorState,
-        dones: torch.Tensor,
-    ) -> torch.Tensor:
-        just_died = prev_state.ship_alive & ~next_state.ship_alive  # (B, N)
-        reward = torch.zeros_like(next_state.ship_health)
-        reward[just_died] = -1.0
-        return reward
-
-
-class LocalDamageTakenReward(RewardComponent):
-    """Damage received by this ship this step.
+class LocalDamageTakenReward(AllyDamageReward):
+    """Damage received by this ship this step (same compute as AllyDamageReward).
 
     Negative reward proportional to health lost. Unlike ally_damage, this is
     self-only (lambda=0 for all other ships) so the signal is never shared with
@@ -404,23 +321,6 @@ class LocalDamageTakenReward(RewardComponent):
     """
 
     name = "damage_taken"
-
-    def __init__(self, weight: float) -> None:
-        self._weight = weight
-
-    @property
-    def weight(self) -> float:
-        return self._weight
-
-    def compute(
-        self,
-        prev_state: TensorState,
-        actions: torch.Tensor,
-        next_state: TensorState,
-        dones: torch.Tensor,
-    ) -> torch.Tensor:
-        delta = (prev_state.ship_health - next_state.ship_health).clamp(min=0.0)
-        return -delta * next_state.ship_alive.float()
 
 
 class LocalDamageDealtEnemyReward(RewardComponent):
@@ -431,13 +331,6 @@ class LocalDamageDealtEnemyReward(RewardComponent):
     """
 
     name = "damage_dealt_enemy"
-
-    def __init__(self, weight: float) -> None:
-        self._weight = weight
-
-    @property
-    def weight(self) -> float:
-        return self._weight
 
     def compute(
         self,
@@ -463,13 +356,6 @@ class LocalDamageDealtAllyReward(RewardComponent):
     """
 
     name = "damage_dealt_ally"
-
-    def __init__(self, weight: float) -> None:
-        self._weight = weight
-
-    @property
-    def weight(self) -> float:
-        return self._weight
 
     def compute(
         self,
@@ -509,16 +395,10 @@ class FacingReward(RewardComponent):
 
     name = "facing"
 
-    def __init__(
-        self, facing_weight: float, radius: float, world_size: tuple[float, float]
-    ) -> None:
-        self.facing_weight = facing_weight
+    def __init__(self, weight: float, radius: float, world_size: tuple[float, float]) -> None:
+        super().__init__(weight)
         self.radius = radius
         self.world_size = world_size
-
-    @property
-    def weight(self) -> float:
-        return self.facing_weight
 
     def compute(
         self,
@@ -532,14 +412,10 @@ class FacingReward(RewardComponent):
         alive = next_state.ship_alive  # (B, N) bool
         teams = next_state.ship_team_id  # (B, N) int32
 
-        B, N = pos.shape
-        W, H = self.world_size
         R = self.radius
 
-        d = pos.unsqueeze(2) - pos.unsqueeze(1)  # pos_i - pos_j  (B, N, N)
-        d.real = (d.real + W / 2) % W - W / 2
-        d.imag = (d.imag + H / 2) % H - H / 2
-        dist = d.abs()
+        d = _toroidal_wrap(pos.unsqueeze(2) - pos.unsqueeze(1), self.world_size)  # pos_i - pos_j
+        dist = d.abs()  # (B, N, N)
 
         dir_j_to_i = d / dist.clamp(min=EPS)
 
@@ -549,10 +425,7 @@ class FacingReward(RewardComponent):
         prox = (1.0 - dist / R).clamp(min=0.0)  # (B, N, N)
         score = prox * alignment.clamp(min=0.0)  # (B, N, N)
 
-        is_enemy = teams.unsqueeze(2) != teams.unsqueeze(1)
-        alive_j = alive.unsqueeze(1).expand(B, N, N)
-        alive_i = alive.unsqueeze(2).expand(B, N, N)
-        valid = is_enemy & alive_j & alive_i
+        valid = _valid_enemy_pairs(teams, alive)
 
         score_masked = score.masked_fill(~valid, 0.0)
         best_score = score_masked.max(dim=2).values  # (B, N)
@@ -574,17 +447,13 @@ class ClosingSpeedReward(RewardComponent):
 
     def __init__(
         self,
-        closing_speed_weight: float,
+        weight: float,
         world_size: tuple[float, float],
         max_speed: float,
     ) -> None:
-        self.closing_speed_weight = closing_speed_weight
+        super().__init__(weight)
         self.world_size = world_size
         self.max_speed = max_speed
-
-    @property
-    def weight(self) -> float:
-        return self.closing_speed_weight
 
     def compute(
         self,
@@ -598,20 +467,12 @@ class ClosingSpeedReward(RewardComponent):
         alive = next_state.ship_alive  # (B, N) bool
         teams = next_state.ship_team_id  # (B, N) int32
 
-        B, N = pos.shape
-        W, H = self.world_size
-
-        d = pos.unsqueeze(2) - pos.unsqueeze(1)  # pos_i - pos_j  (B, N, N)
-        d.real = (d.real + W / 2) % W - W / 2
-        d.imag = (d.imag + H / 2) % H - H / 2
-        dist = d.abs()
+        d = _toroidal_wrap(pos.unsqueeze(2) - pos.unsqueeze(1), self.world_size)  # pos_i - pos_j
+        dist = d.abs()  # (B, N, N)
 
         dir_j_to_i = d / dist.clamp(min=EPS)
 
-        is_enemy = teams.unsqueeze(2) != teams.unsqueeze(1)
-        alive_j = alive.unsqueeze(1).expand(B, N, N)
-        alive_i = alive.unsqueeze(2).expand(B, N, N)
-        valid = is_enemy & alive_j & alive_i
+        valid = _valid_enemy_pairs(teams, alive)
 
         # Approach score toward each enemy j: dot(vel_i, dir_i_to_j)
         vel_i = vel.unsqueeze(2)  # (B, N, 1)
@@ -647,17 +508,13 @@ class ShootQualityReward(RewardComponent):
 
     def __init__(
         self,
-        shoot_quality_weight: float,
-        shoot_quality_radius: float,
+        weight: float,
+        radius: float,
         world_size: tuple[float, float],
     ) -> None:
-        self.shoot_quality_weight = shoot_quality_weight
-        self.shoot_quality_radius = shoot_quality_radius
+        super().__init__(weight)
+        self.radius = radius
         self.world_size = world_size
-
-    @property
-    def weight(self) -> float:
-        return self.shoot_quality_weight
 
     def compute(
         self,
@@ -672,14 +529,10 @@ class ShootQualityReward(RewardComponent):
         teams = next_state.ship_team_id  # (B, N) int32
         shooting = next_state.ship_is_shooting.float()  # (B, N)
 
-        B, N = pos.shape
-        W, H = self.world_size
-        R = self.shoot_quality_radius
+        R = self.radius
 
-        d = pos.unsqueeze(2) - pos.unsqueeze(1)  # pos_i - pos_j  (B, N, N)
-        d.real = (d.real + W / 2) % W - W / 2
-        d.imag = (d.imag + H / 2) % H - H / 2
-        dist = d.abs()
+        d = _toroidal_wrap(pos.unsqueeze(2) - pos.unsqueeze(1), self.world_size)  # pos_i - pos_j
+        dist = d.abs()  # (B, N, N)
 
         dir_j_to_i = d / dist.clamp(min=EPS)
 
@@ -693,10 +546,7 @@ class ShootQualityReward(RewardComponent):
         # Shot quality: only positive when aimed AND close
         quality = 2.0 * facing.clamp(min=0.0) * prox - 1.0  # (B, N, N) in [-1, 1]
 
-        is_enemy = teams.unsqueeze(2) != teams.unsqueeze(1)
-        alive_j = alive.unsqueeze(1).expand(B, N, N)
-        alive_i = alive.unsqueeze(2).expand(B, N, N)
-        valid = is_enemy & alive_j & alive_i
+        valid = _valid_enemy_pairs(teams, alive)
 
         # Best quality over all valid enemies (judge against most favourable target)
         quality_masked = quality.masked_fill(~valid, -1.0)
@@ -715,13 +565,6 @@ class ObstacleDeathReward(RewardComponent):
     """-1 on the step a ship is killed by an obstacle collision."""
 
     name = "obstacle_death"
-
-    def __init__(self, weight: float) -> None:
-        self._weight = weight
-
-    @property
-    def weight(self) -> float:
-        return self._weight
 
     def compute(
         self,
@@ -751,13 +594,9 @@ class ObstacleProximityReward(RewardComponent):
         proximity_radius: float,
         world_size: tuple[float, float],
     ) -> None:
-        self._weight = weight
+        super().__init__(weight)
         self.proximity_radius = proximity_radius
         self.world_size = world_size
-
-    @property
-    def weight(self) -> float:
-        return self._weight
 
     def compute(
         self,
@@ -769,17 +608,13 @@ class ObstacleProximityReward(RewardComponent):
         if next_state.num_obstacles == 0:
             return torch.zeros_like(next_state.ship_health)
 
-        W, H = self.world_size
         pos = next_state.ship_pos  # (B, N) complex64
         obs = next_state.obstacle_pos  # (B, M) complex64
         alive = next_state.ship_alive  # (B, N) bool
 
         # (B, N, M) toroidal distances
-        diff_r = pos.real.unsqueeze(2) - obs.real.unsqueeze(1)
-        diff_i = pos.imag.unsqueeze(2) - obs.imag.unsqueeze(1)
-        diff_r = (diff_r + W / 2) % W - W / 2
-        diff_i = (diff_i + H / 2) % H - H / 2
-        dist = torch.sqrt(diff_r**2 + diff_i**2)  # (B, N, M)
+        d = _toroidal_wrap(pos.unsqueeze(2) - obs.unsqueeze(1), self.world_size)
+        dist = d.abs()  # (B, N, M)
 
         # Account for obstacle radii: effective distance is surface-to-surface
         dist = (dist - next_state.obstacle_radius.unsqueeze(1)).clamp(min=0.0)
@@ -801,13 +636,9 @@ class ObstacleClosingSpeedReward(RewardComponent):
         max_speed: float,
         world_size: tuple[float, float],
     ) -> None:
-        self._weight = weight
+        super().__init__(weight)
         self.max_speed = max_speed
         self.world_size = world_size
-
-    @property
-    def weight(self) -> float:
-        return self._weight
 
     def compute(
         self,
@@ -819,25 +650,20 @@ class ObstacleClosingSpeedReward(RewardComponent):
         if next_state.num_obstacles == 0:
             return torch.zeros_like(next_state.ship_health)
 
-        W, H = self.world_size
         pos = next_state.ship_pos  # (B, N) complex64
         vel = next_state.ship_vel  # (B, N) complex64
         obs = next_state.obstacle_pos  # (B, M) complex64
         alive = next_state.ship_alive  # (B, N) bool
 
         # Toroidal diff from ship to obstacle: (B, N, M)
-        diff_r = obs.real.unsqueeze(1) - pos.real.unsqueeze(2)
-        diff_i = obs.imag.unsqueeze(1) - pos.imag.unsqueeze(2)
-        diff_r = (diff_r + W / 2) % W - W / 2
-        diff_i = (diff_i + H / 2) % H - H / 2
-        dist = torch.sqrt(diff_r**2 + diff_i**2).clamp(min=EPS)  # (B, N, M)
+        d = _toroidal_wrap(obs.unsqueeze(1) - pos.unsqueeze(2), self.world_size)
+        dist = d.abs().clamp(min=EPS)  # (B, N, M)
 
         # Unit direction ship → obstacle
-        dir_r = diff_r / dist
-        dir_i = diff_i / dist
+        dir_to_obs = d / dist
 
         # Closing speed = vel · direction (positive = heading toward obstacle)
-        closing = vel.real.unsqueeze(2) * dir_r + vel.imag.unsqueeze(2) * dir_i  # (B, N, M)
+        closing = (vel.unsqueeze(2) * torch.conj(dir_to_obs)).real  # (B, N, M)
 
         # Find nearest obstacle for each ship
         nearest_idx = dist.argmin(dim=2, keepdim=True)  # (B, N, 1)
@@ -870,14 +696,10 @@ class ObstacleTTIReward(RewardComponent):
         ship_collision_radius: float,
         world_size: tuple[float, float],
     ) -> None:
-        self._weight = weight
+        super().__init__(weight)
         self.tti_max = tti_max
         self.ship_collision_radius = ship_collision_radius
         self.world_size = world_size
-
-    @property
-    def weight(self) -> float:
-        return self._weight
 
     def compute(
         self,
@@ -889,7 +711,6 @@ class ObstacleTTIReward(RewardComponent):
         if next_state.num_obstacles == 0:
             return torch.zeros_like(next_state.ship_health)
 
-        W, H = self.world_size
         pos = next_state.ship_pos  # (B, N) complex64
         vel = next_state.ship_vel  # (B, N) complex64
         obs_pos = next_state.obstacle_pos  # (B, M) complex64
@@ -898,10 +719,8 @@ class ObstacleTTIReward(RewardComponent):
         alive = next_state.ship_alive  # (B, N) bool
 
         # Relative position d = ship - obs, wrapped: (B, N, M)
-        d_r = pos.real.unsqueeze(2) - obs_pos.real.unsqueeze(1)
-        d_i = pos.imag.unsqueeze(2) - obs_pos.imag.unsqueeze(1)
-        d_r = (d_r + W / 2) % W - W / 2
-        d_i = (d_i + H / 2) % H - H / 2
+        d = _toroidal_wrap(pos.unsqueeze(2) - obs_pos.unsqueeze(1), self.world_size)
+        d_r, d_i = d.real, d.imag
 
         # Relative velocity v_rel = ship_vel - obs_vel: (B, N, M)
         vr_r = vel.real.unsqueeze(2) - obs_vel.real.unsqueeze(1)
@@ -942,13 +761,6 @@ class ShootingPenaltyReward(RewardComponent):
 
     name = "shooting_penalty"
 
-    def __init__(self, weight: float) -> None:
-        self._weight = weight
-
-    @property
-    def weight(self) -> float:
-        return self._weight
-
     def compute(
         self,
         prev_state: TensorState,
@@ -968,12 +780,8 @@ class SpeedReward(RewardComponent):
     name = "speed"
 
     def __init__(self, weight: float, min_speed: float) -> None:
-        self._weight = weight
+        super().__init__(weight)
         self.min_speed = min_speed
-
-    @property
-    def weight(self) -> float:
-        return self._weight
 
     def compute(
         self,
@@ -1042,18 +850,18 @@ def build_reward_components(
         AllyWinReward(weight=rewards.ally_win_weight),
         EnemyWinReward(weight=rewards.enemy_win_weight),
         FacingReward(
-            facing_weight=rewards.facing_weight,
+            weight=rewards.facing_weight,
             radius=rewards.proximity_radius,
             world_size=ship_config.world_size,
         ),
         ClosingSpeedReward(
-            closing_speed_weight=rewards.closing_speed_weight,
+            weight=rewards.closing_speed_weight,
             world_size=ship_config.world_size,
             max_speed=ship_config.max_speed,
         ),
         ShootQualityReward(
-            shoot_quality_weight=rewards.shoot_quality_weight,
-            shoot_quality_radius=rewards.shoot_quality_radius,
+            weight=rewards.shoot_quality_weight,
+            radius=rewards.shoot_quality_radius,
             world_size=ship_config.world_size,
         ),
         KillShotReward(weight=rewards.kill_shot_weight),

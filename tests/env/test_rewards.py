@@ -344,7 +344,7 @@ def _facing_state(cfg):
 class TestFacingReward:
     def test_both_ships_get_positive_facing_reward(self, cfg):
         state = _facing_state(cfg)
-        comp = FacingReward(facing_weight=1.0, radius=500.0, world_size=cfg.world_size)
+        comp = FacingReward(weight=1.0, radius=500.0, world_size=cfg.world_size)
         reward = comp.compute(state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool))
 
         assert reward[0, 0].item() > 0, "team-0 should get positive facing reward"
@@ -357,7 +357,7 @@ class TestFacingReward:
         state.ship_pos[0, 0] = 0.0 + 0j
         state.ship_pos[0, 1] = 100.0 + 0j
 
-        comp = FacingReward(facing_weight=1.0, radius=500.0, world_size=cfg.world_size)
+        comp = FacingReward(weight=1.0, radius=500.0, world_size=cfg.world_size)
 
         state.ship_attitude[0, 0] = 1.0 + 0j
         r_facing = comp.compute(
@@ -380,7 +380,7 @@ class TestClosingSpeedReward:
         state.ship_vel[0, 0] = 50.0 + 0j  # moving east toward enemy
 
         comp = ClosingSpeedReward(
-            closing_speed_weight=1.0, world_size=cfg.world_size, max_speed=cfg.max_speed
+            weight=1.0, world_size=cfg.world_size, max_speed=cfg.max_speed
         )
         reward = comp.compute(state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool))
 
@@ -395,7 +395,7 @@ class TestClosingSpeedReward:
         state.ship_vel[0, 0] = -50.0 + 0j  # moving away
 
         comp = ClosingSpeedReward(
-            closing_speed_weight=1.0, world_size=cfg.world_size, max_speed=cfg.max_speed
+            weight=1.0, world_size=cfg.world_size, max_speed=cfg.max_speed
         )
         reward = comp.compute(state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool))
 
@@ -411,7 +411,7 @@ class TestClosingSpeedReward:
         state.ship_vel[0, 0] = 50.0 + 0j
 
         comp = ClosingSpeedReward(
-            closing_speed_weight=1.0, world_size=cfg.world_size, max_speed=cfg.max_speed
+            weight=1.0, world_size=cfg.world_size, max_speed=cfg.max_speed
         )
         reward = comp.compute(state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool))
 

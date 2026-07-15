@@ -261,7 +261,10 @@ class TestSchedulePrimitives:
         assert fn(99_000_000) == 0.1
 
     def test_group_scales_applied_by_trainer(self, tmp_path):
-        """After training, effective component weight = group_scale * individual weight."""
+        """After training, effective weight = group_scale * individual weight for EVERY
+        component (regression: setattr on a per-class attribute name silently missed the
+        18 components whose weight lived in a `_weight`-backed property)."""
+        group_scales = {"true_reward_scale": 0.25, "global_scale": 2.0, "local_scale": 0.5}
         trainer = PPOTrainer(
             train_config=TrainConfig(
                 paradigm="ego_pass",
@@ -271,8 +274,12 @@ class TestSchedulePrimitives:
                         num_envs=4,
                     ),
                 ),
-                schedule=_make_schedule(local_scale=constant(0.5)),
-                rewards=_make_rewards(closing_speed_weight=0.01),
+                schedule=_make_schedule(
+                    true_reward_scale=constant(group_scales["true_reward_scale"]),
+                    global_scale=constant(group_scales["global_scale"]),
+                    local_scale=constant(group_scales["local_scale"]),
+                ),
+                rewards=_make_rewards(),
                 num_steps=16,
                 num_minibatches=2,
                 gamma=0.99,
@@ -295,14 +302,18 @@ class TestSchedulePrimitives:
             use_wandb=False,
         )
         trainer.train()
+        mismatched = {}
         for comp in trainer.wrapper._all_components:
-            if comp.name == "closing_speed":
-                scale_name = _GROUP[comp.name]
-                individual_weight = getattr(trainer.cfg.rewards, f"{comp.name}_weight")
-                group_scale = getattr(trainer._schedule_state, scale_name)
-                expected = individual_weight * group_scale
-                actual = comp.weight
-                assert abs(actual - expected) < 1e-9
+            individual_weight = getattr(trainer.cfg.rewards, f"{comp.name}_weight")
+            expected = individual_weight * group_scales[_GROUP[comp.name]]
+            if abs(comp.weight - expected) > 1e-9:
+                mismatched[comp.name] = (comp.weight, expected)
+        assert not mismatched, f"components with wrong effective weight: {mismatched}"
+        # The wrapper's cached (K,) weight tensor must reflect the same scaled weights.
+        expected_t = torch.tensor(
+            [c.weight for c in trainer.wrapper._active_components], dtype=torch.float32
+        )
+        assert torch.equal(trainer.wrapper._weight_t.cpu(), expected_t)
 
 
 class TestRLSmokeTest:
