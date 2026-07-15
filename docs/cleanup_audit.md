@@ -199,7 +199,7 @@ and `make_state` in tests. Any new state field must be added in 4 places.
 ([ppo.py:1760-1761](src/boost_and_broadside/train/rl/ppo.py#L1760-L1761)).
 **Action:** a `NamedTuple`/dataclass `MicroBatch` — self-documenting and type-checkable.
 
-### 4.6 `_obs_from_state` duplicates `MVPEnvWrapper._get_obs` — **Medium**
+### 4.6 `_obs_from_state` duplicates `MVPEnvWrapper._get_obs` — **Medium** — ✅ done (566744f)
 [collect.py](src/boost_and_broadside/modes/collect.py) reimplements observation building
 ("Mirrors _get_obs() exactly") and ppo.py imports it *from a mode module* into the training path.
 **Action:** move to `env/` (e.g. a `TensorState → MVPObservation` function next to the wrapper)
