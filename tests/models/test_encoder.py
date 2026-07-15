@@ -3,11 +3,11 @@
 import pytest
 import torch
 
-from boost_and_broadside.config import ShipConfig, ModelConfig, EnvConfig
-from boost_and_broadside.models.mvp.encoder import ShipEncoder
-from boost_and_broadside.models.mvp.attention import TransformerBlock
-from boost_and_broadside.models.mvp.policy import MVPPolicy
+from boost_and_broadside.config import ModelConfig, ShipConfig
 from boost_and_broadside.env.observation import MVPObservation, ObsKey
+from boost_and_broadside.models.mvp.attention import TransformerBlock
+from boost_and_broadside.models.mvp.encoder import ShipEncoder
+from boost_and_broadside.models.mvp.policy import MVPPolicy
 from boost_and_broadside.train.rl.features import FeatureCoordinator, build_standard_coordinator
 
 
@@ -32,19 +32,21 @@ NUM_VALUE_COMPONENTS = 12  # fixed K for encoder/policy unit tests
 def _make_obs(B: int, N: int) -> MVPObservation:
     """Build a minimal random obs dict matching MVPEnvWrapper output."""
 
-    return MVPObservation(data={
-        ObsKey.POS: torch.rand(B, N, 2),
-        ObsKey.VEL: torch.randn(B, N, 2) * 100,
-        ObsKey.ATT: torch.randn(B, N, 2),
-        ObsKey.ANG_VEL: torch.randn(B, N, 1),
-        ObsKey.HEALTH: torch.rand(B, N, 1),
-        ObsKey.POWER: torch.rand(B, N, 1),
-        ObsKey.COOLDOWN: torch.rand(B, N, 1),
-        ObsKey.TEAM_ID: torch.randint(0, 2, (B, N)),
-        ObsKey.ALIVE: torch.ones(B, N, dtype=torch.bool),
-        ObsKey.PREVIOUS_ACTION: torch.zeros(B, N, 3, dtype=torch.long),
-        ObsKey.RADIUS: torch.rand(B, N, 1),
-    })
+    return MVPObservation(
+        data={
+            ObsKey.POS: torch.rand(B, N, 2),
+            ObsKey.VEL: torch.randn(B, N, 2) * 100,
+            ObsKey.ATT: torch.randn(B, N, 2),
+            ObsKey.ANG_VEL: torch.randn(B, N, 1),
+            ObsKey.HEALTH: torch.rand(B, N, 1),
+            ObsKey.POWER: torch.rand(B, N, 1),
+            ObsKey.COOLDOWN: torch.rand(B, N, 1),
+            ObsKey.TEAM_ID: torch.randint(0, 2, (B, N)),
+            ObsKey.ALIVE: torch.ones(B, N, dtype=torch.bool),
+            ObsKey.PREVIOUS_ACTION: torch.zeros(B, N, 3, dtype=torch.long),
+            ObsKey.RADIUS: torch.rand(B, N, 1),
+        }
+    )
 
 
 class TestShipEncoder:
@@ -134,6 +136,7 @@ class TestRGLRU:
 
     def _make_rglru(self, d_model: int = 32):
         from boost_and_broadside.models.mvp.griffin import RGLRU
+
         torch.manual_seed(0)
         return RGLRU(d_model).eval()
 
@@ -157,8 +160,9 @@ class TestRGLRU:
         with torch.no_grad():
             scan_out, scan_h = rglru.forward_sequence(x_seq, h0)
         assert scan_out.shape == (B, T, D)
-        assert torch.allclose(scan_out, ref_out, atol=1e-4), \
+        assert torch.allclose(scan_out, ref_out, atol=1e-4), (
             f"max diff: {(scan_out - ref_out).abs().max().item()}"
+        )
         assert torch.allclose(scan_h, ref_h, atol=1e-4)
 
     def test_matches_sequential_T1(self):
@@ -236,14 +240,19 @@ class TestMVPPolicy:
         assert logprob.shape == (B, N)
         assert value.shape == (B, N, K)
         from boost_and_broadside.models.mvp.griffin import CONV_KERNEL
-        assert new_hidden.shape == (model_cfg.n_transformer_blocks, B * N, CONV_KERNEL * model_cfg.d_model)
+
+        assert new_hidden.shape == (
+            model_cfg.n_transformer_blocks,
+            B * N,
+            CONV_KERNEL * model_cfg.d_model,
+        )
 
     def test_action_indices_in_valid_range(self, model_cfg, coordinator):
         """Sampled actions must be valid indices for each action head."""
         from boost_and_broadside.constants import (
             NUM_POWER_ACTIONS,
-            NUM_TURN_ACTIONS,
             NUM_SHOOT_ACTIONS,
+            NUM_TURN_ACTIONS,
         )
 
         B, N = 2, 4
@@ -255,25 +264,19 @@ class TestMVPPolicy:
 
         action, _, _, _, _ = policy.get_action_and_value(obs, hidden)
 
-        assert (action[..., 0] >= 0).all() and (
-            action[..., 0] < NUM_POWER_ACTIONS
-        ).all()
+        assert (action[..., 0] >= 0).all() and (action[..., 0] < NUM_POWER_ACTIONS).all()
         assert (action[..., 1] >= 0).all() and (action[..., 1] < NUM_TURN_ACTIONS).all()
-        assert (action[..., 2] >= 0).all() and (
-            action[..., 2] < NUM_SHOOT_ACTIONS
-        ).all()
+        assert (action[..., 2] >= 0).all() and (action[..., 2] < NUM_SHOOT_ACTIONS).all()
 
     def test_evaluate_actions_shapes(self, model_cfg, coordinator):
-        """evaluate_actions must return (T, B, N) for logprob/entropy and (T, B, N, K) for new_value."""
+        """evaluate_actions returns (T,B,N) logprob/entropy and (T,B,N,K) new_value."""
         T, B, N = 4, 2, 8
         policy = MVPPolicy(
             model_cfg, coordinator, num_value_components=NUM_VALUE_COMPONENTS, num_ships=N
         )
         K = NUM_VALUE_COMPONENTS
 
-        obs_dict = {
-            k: v.unsqueeze(0).expand(T, *v.shape) for k, v in _make_obs(B, N).items()
-        }
+        obs_dict = {k: v.unsqueeze(0).expand(T, *v.shape) for k, v in _make_obs(B, N).items()}
         obs = MVPObservation(data=obs_dict)
         actions = torch.zeros(T, B, N, 3, dtype=torch.long)
         hidden = policy.initial_hidden(B, N, torch.device("cpu"))
@@ -295,6 +298,7 @@ class TestMVPPolicy:
             model_cfg, coordinator, num_value_components=NUM_VALUE_COMPONENTS, num_ships=N
         )
         from boost_and_broadside.models.mvp.griffin import CONV_KERNEL
+
         hidden = torch.ones(model_cfg.n_transformer_blocks, B * N, CONV_KERNEL * model_cfg.d_model)
         done = torch.tensor([True, False, True])
 

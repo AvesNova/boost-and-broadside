@@ -10,6 +10,7 @@ Reports per-prediction-dim stats and suggested label_scale corrections:
 """
 
 import time
+
 import torch
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
@@ -46,8 +47,12 @@ def run_feature_stats_mode(
     P = coordinator.total_prediction_dimension
     curr_scale = coordinator._label_scale_vector(dev)
 
-    agent0 = resolve_agent_spec(team0_spec, ship_config, model_config, device, checkpoint_dir, num_ships=N)
-    agent1 = resolve_agent_spec(team1_spec, ship_config, model_config, device, checkpoint_dir, num_ships=N)
+    agent0 = resolve_agent_spec(
+        team0_spec, ship_config, model_config, device, checkpoint_dir, num_ships=N
+    )
+    agent1 = resolve_agent_spec(
+        team1_spec, ship_config, model_config, device, checkpoint_dir, num_ships=N
+    )
 
     env = TensorEnv(B, ship_config, env_config, device)
     init_hidden(agent0, B, num_tokens, dev)
@@ -79,11 +84,11 @@ def run_feature_stats_mode(
 
         # Valid: both ships alive this step and no episode boundary
         episode_end = (dones | truncated).unsqueeze(-1)  # (B, 1)
-        valid = prev_alive & next_alive & ~episode_end   # (B, N)
+        valid = prev_alive & next_alive & ~episode_end  # (B, N)
 
         if valid.any():
-            v_curr = prev_targets[valid]   # (K, target_dim)
-            v_next = next_targets[valid]   # (K, target_dim)
+            v_curr = prev_targets[valid]  # (K, target_dim)
+            v_next = next_targets[valid]  # (K, target_dim)
             labels = coordinator.compute_labels(v_curr, v_next)  # (K, P) scaled
             sq_err_sum += labels.pow(2).sum(0)
             count += valid.sum().float()
@@ -99,7 +104,7 @@ def run_feature_stats_mode(
         prev_alive = env.state.ship_alive.clone()
 
         if (step + 1) % 500 == 0:
-            print(f"  step {step+1}/{num_steps}  valid samples: {int(count.item()) * N:,}")
+            print(f"  step {step + 1}/{num_steps}  valid samples: {int(count.item()) * N:,}")
 
     elapsed = time.perf_counter() - t0
     n = count.item()
@@ -111,10 +116,15 @@ def run_feature_stats_mode(
 
     print("=" * 72)
     print("Null-model MSE in scaled label space (target ≈ 1.0 if well-calibrated)")
-    print(f"{'Feature':<24}  {'Mean sq (scaled)':>18}  {'Current scale':>14}  {'Suggested scale':>16}")
+    print(
+        f"{'Feature':<24}  {'Mean sq (scaled)':>18}  {'Current scale':>14}  {'Suggested scale':>16}"
+    )
     print("-" * 72)
     for i, name in enumerate(feat_names):
-        print(f"{name:<24}  {mean_sq[i].item():>18.4f}  {curr_scale_cpu[i].item():>14.2f}  {suggested[i].item():>16.2f}")
+        print(
+            f"{name:<24}  {mean_sq[i].item():>18.4f}  "
+            f"{curr_scale_cpu[i].item():>14.2f}  {suggested[i].item():>16.2f}"
+        )
     print("=" * 72)
 
     print("\nSuggested label_scale values for build_standard_coordinator:")

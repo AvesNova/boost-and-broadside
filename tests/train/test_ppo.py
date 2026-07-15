@@ -6,19 +6,19 @@ import torch
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import (
-    ShipConfig,
     EnvConfig,
     ModelConfig,
     RewardConfig,
-    TrainingSchedule,
-    TrainConfig,
     ScaleConfig,
+    ShipConfig,
+    TrainConfig,
+    TrainingSchedule,
     constant,
-    stepped,
     linear,
+    stepped,
 )
 from boost_and_broadside.env.observation import ObsKey
-from boost_and_broadside.train.rl.ppo import PPOTrainer, _GROUP
+from boost_and_broadside.train.rl.ppo import _GROUP, PPOTrainer
 
 
 def _make_rewards(**overrides) -> RewardConfig:
@@ -40,9 +40,7 @@ def _make_rewards(**overrides) -> RewardConfig:
         death_weight=0.5,
         proximity_radius=300.0,
         shoot_quality_radius=200.0,
-        enemy_neg_lambda_components=frozenset(
-            {"enemy_damage", "enemy_death", "enemy_win"}
-        ),
+        enemy_neg_lambda_components=frozenset({"enemy_damage", "enemy_death", "enemy_win"}),
         ally_zero_components=frozenset({"enemy_damage", "enemy_death", "enemy_win"}),
     )
     defaults.update(overrides)
@@ -82,9 +80,7 @@ def _make_train_config(
         paradigm=paradigm,
         scales=(
             ScaleConfig(
-                env_config=EnvConfig(
-                    num_ships=4, max_bullets=8, max_episode_steps=50
-                ),
+                env_config=EnvConfig(num_ships=4, max_bullets=8, max_episode_steps=50),
                 num_envs=4,
             ),
         ),
@@ -145,7 +141,8 @@ class TestPPOSmokeTest:
         trainer = _make_trainer(paradigm=paradigm)
         trainer.train()
 
-    # test_encoder_works_with_non_default_n_fourier_freqs is removed because n_fourier_freqs is no longer in ModelConfig.
+    # test_encoder_works_with_non_default_n_fourier_freqs is removed because
+    # n_fourier_freqs is no longer in ModelConfig.
 
     @pytest.mark.parametrize("paradigm", ["ego_pass", "shared_pass"])
     def test_policy_parameters_change_after_update(self, paradigm):
@@ -156,9 +153,7 @@ class TestPPOSmokeTest:
         trainer.train()
 
         params_after = list(trainer.policy.parameters())
-        any_changed = any(
-            not torch.equal(b, a) for b, a in zip(params_before, params_after)
-        )
+        any_changed = any(not torch.equal(b, a) for b, a in zip(params_before, params_after))
         assert any_changed, "No parameters changed after training"
 
 
@@ -268,9 +263,7 @@ class TestSchedulePrimitives:
                 paradigm="ego_pass",
                 scales=(
                     ScaleConfig(
-                        env_config=EnvConfig(
-                            num_ships=4, max_bullets=8, max_episode_steps=50
-                        ),
+                        env_config=EnvConfig(num_ships=4, max_bullets=8, max_episode_steps=50),
                         num_envs=4,
                     ),
                 ),
@@ -293,9 +286,7 @@ class TestSchedulePrimitives:
                 elo_temperature=200.0,
                 scripted_roster_min_steps=0,
             ),
-            model_config=ModelConfig(
-                d_model=32, n_heads=4, n_transformer_blocks=1
-            ),
+            model_config=ModelConfig(d_model=32, n_heads=4, n_transformer_blocks=1),
             ship_config=ShipConfig(),
             device="cpu",
             use_wandb=False,
@@ -346,9 +337,7 @@ class TestRLSmokeTest:
             paradigm=paradigm,
             scales=(
                 ScaleConfig(
-                    env_config=EnvConfig(
-                        num_ships=4, max_bullets=20, max_episode_steps=64
-                    ),
+                    env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=64),
                     num_envs=16,
                 ),
             ),

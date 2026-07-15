@@ -1,15 +1,15 @@
-import torch
 import numpy as np
-from boost_and_broadside.env.state import TensorState
-from boost_and_broadside.config import ShipConfig
-from boost_and_broadside.constants import PowerActions, TurnActions, ShootActions
-from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
+import torch
+
 from boost_and_broadside.agents.scripted_utils import (
-    select_targets,
-    predict_interception,
-    compute_team_target_bearings,
     compute_obstacle_repulsion,
+    compute_team_target_bearings,
+    predict_interception,
+    select_targets,
 )
+from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
+from boost_and_broadside.config import ShipConfig
+from boost_and_broadside.env.state import TensorState
 
 
 class StochasticScriptedAgent:
@@ -65,7 +65,6 @@ class StochasticScriptedAgent:
         Returns unmasked distributions of shape (B, N, C).
         """
         batch_size, num_ships = state.ship_pos.shape
-        device = state.device
 
         att = state.ship_attitude
         rel_angle = torch.angle(dir_turn * torch.conj(att))  # range (-pi, pi)
@@ -194,9 +193,7 @@ class StochasticScriptedAgent:
 
         return power_probs, turn_probs, shoot_probs
 
-    def get_actions_and_probs(
-        self, state: TensorState
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    def get_actions_and_probs(self, state: TensorState) -> tuple[torch.Tensor, torch.Tensor]:
         """Sample actions and return the expert probability distribution as soft labels.
 
         Returns:
@@ -221,12 +218,15 @@ class StochasticScriptedAgent:
 
         # Blend turn direction: personal intercept at close range, team target at far range
         team_bearing, _, _, team_has_target = compute_team_target_bearings(state, self.ship_config)
-        p_team = self._linear_ramp(
-            closest_dist,
-            self.config.team_target_distance_ramp[0],
-            self.config.team_target_distance_ramp[1],
-            *self.config.team_target_distance_prob,
-        ) * team_has_target.float()
+        p_team = (
+            self._linear_ramp(
+                closest_dist,
+                self.config.team_target_distance_ramp[0],
+                self.config.team_target_distance_ramp[1],
+                *self.config.team_target_distance_prob,
+            )
+            * team_has_target.float()
+        )
         dir_turn = (1.0 - p_team) * dir_pred + p_team * team_bearing
         dir_turn = dir_turn / (torch.abs(dir_turn) + 1e-8)
 
@@ -246,7 +246,6 @@ class StochasticScriptedAgent:
         )
 
         batch_size, num_ships = state.ship_pos.shape
-        device = state.device
 
         if self.config.flat_action_sampling:
             joint_probs = (
@@ -258,9 +257,7 @@ class StochasticScriptedAgent:
             expert_probs = joint_probs
 
             flat_probs = joint_probs.view(-1, 42)
-            sampled_flat = torch.multinomial(flat_probs, num_samples=1).view(
-                batch_size, num_ships
-            )
+            sampled_flat = torch.multinomial(flat_probs, num_samples=1).view(batch_size, num_ships)
 
             actions_shoot = sampled_flat % 2
             sampled_flat = sampled_flat // 2
@@ -270,15 +267,9 @@ class StochasticScriptedAgent:
         else:
             expert_probs = torch.cat([p_power, p_turn, p_shoot], dim=-1)  # (B, N, 12)
 
-            a_p = torch.multinomial(p_power.view(-1, 3), num_samples=1).view(
-                batch_size, num_ships
-            )
-            a_t = torch.multinomial(p_turn.view(-1, 7), num_samples=1).view(
-                batch_size, num_ships
-            )
-            a_s = torch.multinomial(p_shoot.view(-1, 2), num_samples=1).view(
-                batch_size, num_ships
-            )
+            a_p = torch.multinomial(p_power.view(-1, 3), num_samples=1).view(batch_size, num_ships)
+            a_t = torch.multinomial(p_turn.view(-1, 7), num_samples=1).view(batch_size, num_ships)
+            a_s = torch.multinomial(p_shoot.view(-1, 2), num_samples=1).view(batch_size, num_ships)
             actions = torch.stack([a_p, a_t, a_s], dim=-1)
 
         return actions, expert_probs

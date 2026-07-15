@@ -1,18 +1,22 @@
 import math
+
 import torch
 
-from boost_and_broadside.config import ShipConfig
-from boost_and_broadside.constants import PowerActions, TurnActions, ShootActions
-from boost_and_broadside.env.state import TensorState
 from boost_and_broadside.agents.scripted_utils import select_targets
+from boost_and_broadside.config import ShipConfig
+from boost_and_broadside.constants import PowerActions, ShootActions, TurnActions
+from boost_and_broadside.env.state import TensorState
 
-_1DEG   = math.radians(1)
-_15DEG  = math.radians(15)
+_1DEG = math.radians(1)
+_15DEG = math.radians(15)
 _MAX_SHOOT_RANGE = 500.0
 
 
 class BoomZoomAgent:
-    """Maintain high speed; only turn toward enemies within 15° of the flight path; shoot on the pass."""
+    """Maintain high speed; only turn toward enemies within 15° of the flight path.
+
+    Shoot on the pass.
+    """
 
     def __init__(self, ship_config: ShipConfig):
         self.ship_config = ship_config
@@ -31,8 +35,12 @@ class BoomZoomAgent:
 
         # Turn: only nudge when enemy is inside the 15° cone
         turn = torch.full((B, N), TurnActions.GO_STRAIGHT, dtype=torch.int32, device=device)
-        turn = torch.where(in_cone & (rel_angle > 0), torch.tensor(TurnActions.TURN_RIGHT, device=device), turn)
-        turn = torch.where(in_cone & (rel_angle < 0), torch.tensor(TurnActions.TURN_LEFT,  device=device), turn)
+        turn = torch.where(
+            in_cone & (rel_angle > 0), torch.tensor(TurnActions.TURN_RIGHT, device=device), turn
+        )
+        turn = torch.where(
+            in_cone & (rel_angle < 0), torch.tensor(TurnActions.TURN_LEFT, device=device), turn
+        )
 
         # Power: boost when power reserves are sufficient
         power_ratio = state.ship_power / self.ship_config.max_power
@@ -51,16 +59,16 @@ class BoomZoomAgent:
         aligned = abs_angle <= shoot_threshold
         shoot = torch.where(
             aligned & in_range,
-            torch.tensor(ShootActions.SHOOT,    device=device),
+            torch.tensor(ShootActions.SHOOT, device=device),
             torch.tensor(ShootActions.NO_SHOOT, device=device),
         )
 
         # Inactive ships: coast / straight / no shoot
-        coast    = torch.tensor(PowerActions.COAST,       device=device)
-        straight = torch.tensor(TurnActions.GO_STRAIGHT,  device=device)
-        no_shoot = torch.tensor(ShootActions.NO_SHOOT,    device=device)
+        coast = torch.tensor(PowerActions.COAST, device=device)
+        straight = torch.tensor(TurnActions.GO_STRAIGHT, device=device)
+        no_shoot = torch.tensor(ShootActions.NO_SHOOT, device=device)
         power = torch.where(active, power, coast)
-        turn  = torch.where(active, turn,  straight)
+        turn = torch.where(active, turn, straight)
         shoot = torch.where(active, shoot, no_shoot)
 
         return torch.stack([power, turn, shoot], dim=-1)

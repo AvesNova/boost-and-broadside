@@ -7,8 +7,8 @@ simultaneously, and reports per-agent ELO, win rates, and episode lengths.
 
 import sys
 import time
-from pathlib import Path
 from dataclasses import replace
+from pathlib import Path
 
 import torch
 
@@ -74,7 +74,10 @@ def _load_checkpoint_agent(
     K = ckpt["policy_state_dict"]["value_head_local.3.weight"].shape[0]
     team_pma_k = _infer_team_pma_k(ckpt)
     policy = MVPPolicy(
-        model_config, coordinator, num_value_components=K, num_ships=num_ships,
+        model_config,
+        coordinator,
+        num_value_components=K,
+        num_ships=num_ships,
         team_pma_k=team_pma_k,
     ).to(device)
     result = policy.load_state_dict(ckpt["policy_state_dict"], strict=False)
@@ -97,12 +100,12 @@ def run_elo_stats_mode(
     custom_agents: list[str] | None = None,
 ) -> None:
     """Run all-vs-all parallel matchups and report ELO ratings."""
-    
+
     if not matchups:
         matchups = ["2v2"]
 
     for matchup in matchups:
-        parts = matchup.split('v')
+        parts = matchup.split("v")
         if len(parts) != 2:
             print(f"Skipping invalid matchup: {matchup}")
             continue
@@ -112,10 +115,10 @@ def run_elo_stats_mode(
         num_tokens = N + curr_env_config.num_obstacles
         dev = torch.device(device)
         B = num_envs
-        
-        print(f"\n{'='*60}")
+
+        print(f"\n{'=' * 60}")
         print(f"=== ELO Matchup: {matchup} (Team0: {n0}, Team1: {n1}) ===")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         # ------------------------------------------------------------------ #
         # Step 1 — Discover and load agents                                   #
@@ -128,9 +131,13 @@ def run_elo_stats_mode(
         if custom_agents:
             print(f"Loading custom agents: {custom_agents}")
             for spec in custom_agents:
-                agents.append(resolve_agent_spec(spec, ship_config, model_config, device, checkpoint_dir, num_ships=N))
-                labels.append(Path(spec).stem if '.pt' in spec else spec)
-            
+                agents.append(
+                    resolve_agent_spec(
+                        spec, ship_config, model_config, device, checkpoint_dir, num_ships=N
+                    )
+                )
+                labels.append(Path(spec).stem if ".pt" in spec else spec)
+
             scripted_idx = labels.index("scripted") if "scripted" in labels else -1
             random_idx = labels.index("random") if "random" in labels else -1
         else:
@@ -142,14 +149,18 @@ def run_elo_stats_mode(
                     sys.exit(f"Error: no .pt checkpoints found in '{run_dir}'.")
                 print(f"Loading {len(ckpt_paths)} checkpoint(s)...")
                 for path in ckpt_paths:
-                    agents.append(_load_checkpoint_agent(path, model_config, ship_config, N, device))
+                    agents.append(
+                        _load_checkpoint_agent(path, model_config, ship_config, N, device)
+                    )
                     labels.append(path.stem)
                     print(f"  {path.stem}")
                 num_checkpoints = len(ckpt_paths)
 
             # All scripted agents — "scripted" (stochastic) is always index num_checkpoints
             for spec in SCRIPTED_SPECS:
-                agents.append(resolve_agent_spec(spec, ship_config, model_config, device, num_ships=N))
+                agents.append(
+                    resolve_agent_spec(spec, ship_config, model_config, device, num_ships=N)
+                )
                 labels.append(spec)
             scripted_idx = num_checkpoints  # index of the stochastic scripted agent
 
@@ -158,9 +169,11 @@ def run_elo_stats_mode(
             random_idx = len(agents) - 1
 
         K = len(agents)
+        num_scripted = len(SCRIPTED_SPECS) if not custom_agents else 0
+        num_random = 1 if not custom_agents else 0
         print(
             f"Total agents: {K}  "
-            f"(checkpoints={num_checkpoints}, scripted={len(SCRIPTED_SPECS) if not custom_agents else 0}, random={1 if not custom_agents else 0})"
+            f"(checkpoints={num_checkpoints}, scripted={num_scripted}, random={num_random})"
         )
 
         # ------------------------------------------------------------------ #
@@ -392,7 +405,7 @@ def run_elo_stats_mode(
             cols.append(("vs random", 10))
         if scripted_idx >= 0:
             cols.append(("vs scripted", 12))
-        
+
         if has_avg:
             cols.append(("vs avg", 8))
         cols += [
@@ -405,11 +418,19 @@ def run_elo_stats_mode(
         w_total = max(72, row_w)
         sep = "─" * w_total
 
-        title = run_dir.name if run_dir is not None else "custom agents" if custom_agents else "scripted-only"
+        title = (
+            run_dir.name
+            if run_dir is not None
+            else "custom agents"
+            if custom_agents
+            else "scripted-only"
+        )
         print(f"\n{sep}")
         print(f"  ELO Stats: {title}")
+        envs_per_matchup = B // M if M > 0 else B
         print(
-            f"  {K} agents  |  {B:,} total envs  |  {M} directed matchups  |  ~{B // M if M > 0 else B} envs/matchup"
+            f"  {K} agents  |  {B:,} total envs  |  {M} directed matchups  |  "
+            f"~{envs_per_matchup} envs/matchup"
         )
         print(f"{sep}")
         print(f"  {'Agent':<{label_w}}  {hdr_parts}")
@@ -440,7 +461,8 @@ def run_elo_stats_mode(
 
         print(f"{sep}")
         print(
-            f"  Wall time: {elapsed:.2f}s   |   {sps:,.0f} steps/s  ({sps / sim_fps:,.0f} sim-steps/s)"
+            f"  Wall time: {elapsed:.2f}s   |   {sps:,.0f} steps/s  "
+            f"({sps / sim_fps:,.0f} sim-steps/s)"
         )
         print(f"{sep}")
 
@@ -448,8 +470,8 @@ def run_elo_stats_mode(
         # Step 8 — Win-rate heatmap (tab-separated, copyable as CSV)         #
         # ------------------------------------------------------------------ #
         # Rows = team-0 agent, columns = team-1 agent, cell = team-0 win rate
-        print(f"\n  Win-rate heatmap (row=team-0, col=team-1)  —  tab-separated")
-        print(f"  Copy into a spreadsheet for colour formatting\n")
+        print("\n  Win-rate heatmap (row=team-0, col=team-1)  —  tab-separated")
+        print("  Copy into a spreadsheet for colour formatting\n")
 
         short = [lb[:16] for lb in labels]  # truncate for readability
 

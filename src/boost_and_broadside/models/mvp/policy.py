@@ -5,7 +5,7 @@ Architecture (per timestep):
          → N+M x YemongBlock → (B, N+M, D)   [spatial + temporal over all tokens]
          → slice [:N]                    → (B, N, D)    [ship tokens only]
          → ActionHead                   → (B, N, 12)   [logits: power|turn|shoot]
-         → NextStateHead                → (B, N, P)    [aux: pred next state deltas; P from coordinator]
+         → NextStateHead                → (B, N, P)    [aux: pred next state deltas; P from coord.]
          → TeamPMA                      → (B, N, D)    [pool per team, broadcast back]
          → ValueHead                    → (B, N, K)    [MSE critic: K components]
 
@@ -22,16 +22,17 @@ Hidden state shape: (n_layers, B*(N+M), CONV_KERNEL * D), packed as:
 """
 
 import math
+
 import torch
 import torch.nn as nn
 from torch.distributions import Categorical
 
 from boost_and_broadside.config import ModelConfig
 from boost_and_broadside.constants import (
-    TOTAL_ACTION_LOGITS,
     POWER_SLICE,
-    TURN_SLICE,
     SHOOT_SLICE,
+    TOTAL_ACTION_LOGITS,
+    TURN_SLICE,
 )
 from boost_and_broadside.env.observation import MVPObservation
 from boost_and_broadside.models.mvp.encoder import ShipEncoder
@@ -77,9 +78,7 @@ class TeamPMA(nn.Module):
     def __init__(self, d_model: int, n_heads: int) -> None:
         super().__init__()
         self.seeds = nn.Parameter(torch.zeros(2, d_model))
-        self.attn = nn.MultiheadAttention(
-            d_model, n_heads, batch_first=True, bias=False
-        )
+        self.attn = nn.MultiheadAttention(d_model, n_heads, batch_first=True, bias=False)
         self.norm = nn.RMSNorm(d_model)
 
     def forward(
@@ -190,9 +189,7 @@ class MVPPolicy(nn.Module):
     # Hidden state management
     # ------------------------------------------------------------------
 
-    def initial_hidden(
-        self, num_envs: int, num_tokens: int, device: torch.device
-    ) -> torch.Tensor:
+    def initial_hidden(self, num_envs: int, num_tokens: int, device: torch.device) -> torch.Tensor:
         """Return zeroed hidden states for all Yemong layers.
 
         Args:
@@ -255,7 +252,7 @@ class MVPPolicy(nn.Module):
         B, NM, D = x.shape
         BNM = B * NM
         n_layers = len(self.yemong_layers)
-        rglru_states = hidden[:, :, :D]                                      # (n_layers, B*(N+M), D)
+        rglru_states = hidden[:, :, :D]  # (n_layers, B*(N+M), D)
         conv_bufs = hidden[:, :, D:].reshape(n_layers, BNM, CONV_KERNEL - 1, D)
 
         new_rglru, new_cbs = [], []
@@ -264,22 +261,24 @@ class MVPPolicy(nn.Module):
             new_rglru.append(new_h)
             new_cbs.append(new_cb)
 
-        new_rglru_t = torch.stack(new_rglru, dim=0)                          # (n_layers, B*(N+M), D)
-        new_cbs_t = torch.stack(new_cbs, dim=0).reshape(n_layers, BNM, -1)  # (n_layers, B*(N+M), (K-1)*D)
-        new_hidden = torch.cat([new_rglru_t, new_cbs_t], dim=-1)             # (n_layers, B*(N+M), K*D)
+        new_rglru_t = torch.stack(new_rglru, dim=0)  # (n_layers, B*(N+M), D)
+        new_cbs_t = torch.stack(new_cbs, dim=0).reshape(
+            n_layers, BNM, -1
+        )  # (n_layers, B*(N+M), (K-1)*D)
+        new_hidden = torch.cat([new_rglru_t, new_cbs_t], dim=-1)  # (n_layers, B*(N+M), K*D)
 
         # Slice ship tokens only for action and value heads
         N = self._num_ships
-        x_ships = x[:, :N, :]                    # (B, N, D)
-        alive_ships = alive[:, :N]               # (B, N)
-        team_id_ships = obs["team_id"][:, :N]    # (B, N) — obstacles (team_id=2) excluded by TeamPMA
+        x_ships = x[:, :N, :]  # (B, N, D)
+        alive_ships = alive[:, :N]  # (B, N)
+        team_id_ships = obs["team_id"][:, :N]  # (B, N) — obstacles (team_id=2) excluded by TeamPMA
 
-        logits = self.action_head(x_ships)                                   # (B, N, 12)
-        pred_next = self.next_state_head(x_ships)                            # (B, N, AUX_PRED_DIM)
-        value = self.value_head_local(x_ships)                               # (B, N, K)
+        logits = self.action_head(x_ships)  # (B, N, 12)
+        pred_next = self.next_state_head(x_ships)  # (B, N, AUX_PRED_DIM)
+        value = self.value_head_local(x_ships)  # (B, N, K)
         if self._team_pma_k:
-            x_team = self.team_pma(x_ships, team_id_ships, alive_ships)     # (B, N, D)
-            win_val = self.value_head_win(x_team)                           # (B, N, K_win)
+            x_team = self.team_pma(x_ships, team_id_ships, alive_ships)  # (B, N, D)
+            win_val = self.value_head_win(x_team)  # (B, N, K_win)
             for i, k in enumerate(self._team_pma_k):
                 value[:, :, k] = win_val[:, :, i]
 
@@ -339,30 +338,30 @@ class MVPPolicy(nn.Module):
         n_layers = len(self.yemong_layers)
         BNM = initial_hidden.shape[1]  # B*(N+M)
 
-        rglru_states = initial_hidden[:, :, :D]                                        # (n_layers, B*(N+M), D)
+        rglru_states = initial_hidden[:, :, :D]  # (n_layers, B*(N+M), D)
         conv_bufs = initial_hidden[:, :, D:].reshape(n_layers, BNM, CONV_KERNEL - 1, D)
 
         # obs has (T, B, N+M, ...) — flatten T into B for encoder
         NM = obs["pos"].shape[2]  # N+M total tokens
         flat_obs = MVPObservation(data={k: v.reshape(T * B, *v.shape[2:]) for k, v in obs.items()})
 
-        x = self.encoder(flat_obs)              # (T*B, N+M, D)
-        x = x.reshape(T, B, NM, D)             # (T, B, N+M, D)
+        x = self.encoder(flat_obs)  # (T*B, N+M, D)
+        x = x.reshape(T, B, NM, D)  # (T, B, N+M, D)
         z = x if return_encoder_output else None
 
         for i, layer in enumerate(self.yemong_layers):
             x, _, _ = layer.sequence(x, alive_mask, rglru_states[i], conv_bufs[i], done_mask)
 
         # Slice ship tokens for heads
-        x_ships = x[:, :, :N, :]                      # (T, B, N, D)
-        alive_ships = alive_mask[:, :, :N]             # (T, B, N)
-        team_id_ships = obs["team_id"][:, :, :N]       # (T, B, N)
+        x_ships = x[:, :, :N, :]  # (T, B, N, D)
+        alive_ships = alive_mask[:, :, :N]  # (T, B, N)
+        team_id_ships = obs["team_id"][:, :, :N]  # (T, B, N)
 
-        logits = self.action_head(x_ships)             # (T, B, N, 12)
-        pred_next = self.next_state_head(x_ships)      # (T, B, N, AUX_PRED_DIM)
+        logits = self.action_head(x_ships)  # (T, B, N, 12)
+        pred_next = self.next_state_head(x_ships)  # (T, B, N, AUX_PRED_DIM)
 
         # Local value path: per-ship embedding, no team pooling.
-        local_value = self.value_head_local(x_ships)   # (T, B, N, K)
+        local_value = self.value_head_local(x_ships)  # (T, B, N, K)
 
         if self._team_pma_k:
             # Win/loss path: TeamPMA over ship tokens, then fold T into B.
@@ -371,7 +370,7 @@ class MVPPolicy(nn.Module):
             tid_s_flat = team_id_ships.reshape(T * B, N)
             xv_flat = self.team_pma(x_s_flat, tid_s_flat, alive_s_flat)  # (T*B, N, D)
             xv = xv_flat.reshape(T, B, N, D)
-            win_val = self.value_head_win(xv)          # (T, B, N, K_win)
+            win_val = self.value_head_win(xv)  # (T, B, N, K_win)
 
             # Merge: cat approach preserves gradients through both paths.
             K = local_value.shape[-1]
@@ -383,7 +382,7 @@ class MVPPolicy(nn.Module):
                     win_i += 1
                 else:
                     pieces.append(local_value[..., k : k + 1])
-            new_value = torch.cat(pieces, dim=-1)      # (T, B, N, K)
+            new_value = torch.cat(pieces, dim=-1)  # (T, B, N, K)
         else:
             new_value = local_value
 
@@ -419,9 +418,7 @@ def _sample_action(
 
     action = torch.stack([power_a, turn_a, shoot_a], dim=-1)  # (..., 3)
     logprob = (
-        power_dist.log_prob(power_a)
-        + turn_dist.log_prob(turn_a)
-        + shoot_dist.log_prob(shoot_a)
+        power_dist.log_prob(power_a) + turn_dist.log_prob(turn_a) + shoot_dist.log_prob(shoot_a)
     )  # (...)
     return action, logprob
 

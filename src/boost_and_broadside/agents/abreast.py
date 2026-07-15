@@ -1,17 +1,21 @@
 import math
+
 import torch
 
-from boost_and_broadside.config import ShipConfig
-from boost_and_broadside.constants import PowerActions, TurnActions, ShootActions
-from boost_and_broadside.env.state import TensorState
 from boost_and_broadside.agents.scripted_utils import select_targets
+from boost_and_broadside.config import ShipConfig
+from boost_and_broadside.constants import PowerActions, ShootActions, TurnActions
+from boost_and_broadside.env.state import TensorState
 
-_5DEG  = math.radians(5)
+_5DEG = math.radians(5)
 _15DEG = math.radians(15)
 
 
 class AbreastAgent:
-    """Stay perpendicular to the nearest enemy to ruin their shot. Boost when the enemy is aimed at us."""
+    """Stay perpendicular to the nearest enemy to ruin their shot.
+
+    Boost when the enemy is aimed at us.
+    """
 
     def __init__(self, ship_config: ShipConfig):
         self.ship_config = ship_config
@@ -28,10 +32,10 @@ class AbreastAgent:
         # Two perpendicular headings relative to bearing-to-enemy
         # CW  rotation of bearing by -90°: multiply by -i → (imag, -real)
         # CCW rotation of bearing by +90°: multiply by  i → (-imag, real)
-        dir_cw  = torch.complex( bearing.imag, -bearing.real)
-        dir_ccw = torch.complex(-bearing.imag,  bearing.real)
+        dir_cw = torch.complex(bearing.imag, -bearing.real)
+        dir_ccw = torch.complex(-bearing.imag, bearing.real)
 
-        rel_cw  = torch.angle(dir_cw  * torch.conj(att))
+        rel_cw = torch.angle(dir_cw * torch.conj(att))
         rel_ccw = torch.angle(dir_ccw * torch.conj(att))
 
         # Pick whichever perpendicular requires the smaller turn
@@ -42,11 +46,19 @@ class AbreastAgent:
         # Turn toward the chosen perpendicular heading
         turn = torch.full((B, N), TurnActions.GO_STRAIGHT, dtype=torch.int32, device=device)
         normal = (abs_target >= _5DEG) & (abs_target < _15DEG)
-        sharp  = abs_target >= _15DEG
-        turn = torch.where(normal & (target_rel > 0), torch.tensor(TurnActions.TURN_RIGHT,  device=device), turn)
-        turn = torch.where(normal & (target_rel < 0), torch.tensor(TurnActions.TURN_LEFT,   device=device), turn)
-        turn = torch.where(sharp  & (target_rel > 0), torch.tensor(TurnActions.SHARP_RIGHT, device=device), turn)
-        turn = torch.where(sharp  & (target_rel < 0), torch.tensor(TurnActions.SHARP_LEFT,  device=device), turn)
+        sharp = abs_target >= _15DEG
+        turn = torch.where(
+            normal & (target_rel > 0), torch.tensor(TurnActions.TURN_RIGHT, device=device), turn
+        )
+        turn = torch.where(
+            normal & (target_rel < 0), torch.tensor(TurnActions.TURN_LEFT, device=device), turn
+        )
+        turn = torch.where(
+            sharp & (target_rel > 0), torch.tensor(TurnActions.SHARP_RIGHT, device=device), turn
+        )
+        turn = torch.where(
+            sharp & (target_rel < 0), torch.tensor(TurnActions.SHARP_LEFT, device=device), turn
+        )
 
         # Power: boost when enemy nose is within 15° of us (we are in their sights)
         enemy_att = torch.gather(state.ship_attitude, 1, target_idx)  # (B, N) complex
@@ -61,9 +73,9 @@ class AbreastAgent:
         shoot = torch.full((B, N), ShootActions.NO_SHOOT, dtype=torch.int32, device=device)
 
         # Inactive ships: coast / straight / no shoot
-        coast    = torch.tensor(PowerActions.COAST,      device=device)
+        coast = torch.tensor(PowerActions.COAST, device=device)
         straight = torch.tensor(TurnActions.GO_STRAIGHT, device=device)
         power = torch.where(active, power, coast)
-        turn  = torch.where(active, turn,  straight)
+        turn = torch.where(active, turn, straight)
 
         return torch.stack([power, turn, shoot], dim=-1)

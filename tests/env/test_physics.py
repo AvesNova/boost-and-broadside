@@ -7,11 +7,11 @@ import pytest
 import torch
 
 from boost_and_broadside.config import ShipConfig
-from boost_and_broadside.constants import PowerActions, TurnActions, ShootActions
+from boost_and_broadside.constants import PowerActions, ShootActions, TurnActions
 from boost_and_broadside.env.physics import (
-    update_ships,
-    update_bullets,
     resolve_collisions,
+    update_bullets,
+    update_ships,
 )
 from tests.conftest import make_state
 
@@ -177,9 +177,7 @@ class TestShooting:
 
         # Power: clamp(max_power + regen*dt, 0, max_power) → max_power (already at cap)
         #        then deduct bullet_energy_cost
-        power_after_regen = min(
-            cfg.max_power + cfg.passive_power_gain * cfg.dt, cfg.max_power
-        )
+        power_after_regen = min(cfg.max_power + cfg.passive_power_gain * cfg.dt, cfg.max_power)
         expected = power_after_regen - cfg.bullet_energy_cost
         assert abs(state.ship_power[0, 0].item() - expected) < 1e-3
 
@@ -345,42 +343,43 @@ class TestCollisions:
 
 class TestApplyCombatDamage:
     def test_damage_matrix_and_health_reduction(self, cfg):
-        """Test that combat damage correctly reduces health, populates damage_matrix, and deactivates active bullets."""
+        """Combat damage must reduce health, populate damage_matrix, and deactivate bullets."""
         # 3 ships in 1 env
         state = make_state(num_envs=1, max_ships=3, ship_config=cfg)
         state.ship_team_id[0, 0] = 0
         state.ship_team_id[0, 1] = 1
         state.ship_team_id[0, 2] = 1
-        
+
         target_pos = 200.0 + 200.0j
-        state.ship_pos[0, 0] = target_pos      # target ship
+        state.ship_pos[0, 0] = target_pos  # target ship
         state.ship_pos[0, 1] = 0.0 + 0j
         state.ship_pos[0, 2] = 0.0 + 0j
-        
+
         # Ship 1 fires bullet at ship 0
         state.bullet_pos[0, 1, 0] = target_pos
         state.bullet_vel[0, 1, 0] = 500.0 + 0j
         state.bullet_active[0, 1, 0] = True
         state.bullet_time[0, 1, 0] = 1.0
-        
+
         # Ship 2 fires bullet at ship 0
         state.bullet_pos[0, 2, 0] = target_pos
         state.bullet_vel[0, 2, 0] = 500.0 + 0j
         state.bullet_active[0, 2, 0] = True
         state.bullet_time[0, 2, 0] = 1.0
-        
+
         initial_health = state.ship_health[0, 0].item()
-        
+
         # Import target function directly
         from boost_and_broadside.env.physics import _apply_combat_damage
+
         state = _apply_combat_damage(state, cfg)
-        
+
         # Health reduced
         assert state.ship_health[0, 0].item() < initial_health
         # Bullets deactivated
         assert not state.bullet_active[0, 1, 0].item()
         assert not state.bullet_active[0, 2, 0].item()
-        
+
         # Shooter attribution populated
         # dm: (B, N_shooter, N_target)
         assert state.damage_matrix[0, 1, 0].item() > 0
@@ -389,18 +388,18 @@ class TestApplyCombatDamage:
         assert state.cumulative_damage_matrix[0, 2, 0].item() > 0
         # shooter 0 (target itself) has no damage dealt
         assert state.damage_matrix[0, 0, 0].item() == 0
-        
+
     def test_empty_active_bullets_is_fast_pass(self, cfg):
         """Test that combat damage does not mutate anything when no bullets are active."""
         state = make_state(num_envs=4, max_ships=4, ship_config=cfg)
         state.bullet_active.zero_()
-        
+
         from boost_and_broadside.env.physics import _apply_combat_damage
+
         orig_health = state.ship_health.clone()
         orig_matrix = state.damage_matrix.clone()
-        
+
         state = _apply_combat_damage(state, cfg)
-        
+
         assert torch.equal(state.ship_health, orig_health)
         assert torch.equal(state.damage_matrix, orig_matrix)
-

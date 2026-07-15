@@ -1,6 +1,9 @@
 from __future__ import annotations
+
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import ClassVar, Sequence, Tuple
+from typing import ClassVar
+
 import numpy as np
 
 # Max distance on a toroidal 1024x1024 world (half-world diagonal)
@@ -52,34 +55,38 @@ class StochasticAgentConfig:
     prob_offset: float = 0.1
 
     # Power Ramps
-    boost_speed_ramp: Tuple[float, float] = (16, 32)
-    boost_speed_prob: Tuple[float, float] = (0.68, 0.04)
+    boost_speed_ramp: tuple[float, float] = (16, 32)
+    boost_speed_prob: tuple[float, float] = (0.68, 0.04)
 
-    close_range_ramp: Tuple[float, float] = (10, 50)
-    close_range_prob: Tuple[float, float] = (0.5, 0.05)
+    close_range_ramp: tuple[float, float] = (10, 50)
+    close_range_prob: tuple[float, float] = (0.5, 0.05)
 
     # Turn Ramps
-    turn_angle_ramp: Tuple[float, float] = (0.03, 0.12)
-    turn_angle_prob: Tuple[float, float] = (0.068, 0.95)
+    turn_angle_ramp: tuple[float, float] = (0.03, 0.12)
+    turn_angle_prob: tuple[float, float] = (0.068, 0.95)
 
-    sharp_turn_angle_ramp: Tuple[float, float] = (0.24, 0.42)
-    sharp_turn_angle_prob: Tuple[float, float] = (0.05, 0.95)
+    sharp_turn_angle_ramp: tuple[float, float] = (0.24, 0.42)
+    sharp_turn_angle_prob: tuple[float, float] = (0.05, 0.95)
 
     # Shoot Ramps
-    # Angle: ratio = abs_angle / shoot_threshold (threshold derived from ShipConfig.collision_radius)
-    shoot_angle_ramp: Tuple[float, float] = (1.0, 1.5)
-    shoot_angle_prob: Tuple[float, float] = (0.95, 0.05)
+    # Angle: ratio = abs_angle / shoot_threshold
+    # (threshold derived from ShipConfig.collision_radius)
+    shoot_angle_ramp: tuple[float, float] = (1.0, 1.5)
+    shoot_angle_prob: tuple[float, float] = (0.95, 0.05)
 
     # Distance: direct world-unit distances
-    shoot_distance_ramp: Tuple[float, float] = (200, 500)
-    shoot_distance_prob: Tuple[float, float] = (0.95, 0.05)
+    shoot_distance_ramp: tuple[float, float] = (200, 500)
+    shoot_distance_prob: tuple[float, float] = (0.95, 0.05)
 
     # Team Target Ramps
     # Distance to personal target that controls blending toward the team's shared target.
     # At close range (< ramp[0]): use personal targeting exclusively.
     # At far range  (> ramp[1]): defer fully to the team's closest-to-CoM target.
-    team_target_distance_ramp: Tuple[float, float] = (60.0, 100.0)
-    team_target_distance_prob: Tuple[float, float] = (0.0, 0.0)  # disabled by default; use scripted_team spec to enable
+    team_target_distance_ramp: tuple[float, float] = (60.0, 100.0)
+    team_target_distance_prob: tuple[float, float] = (
+        0.0,
+        0.0,
+    )  # disabled by default; use scripted_team spec to enable
 
     # Obstacle avoidance (potential field)
     # obstacle_tti_max:        TTI (seconds) beyond which an obstacle is not a threat.
@@ -106,16 +113,16 @@ class StochasticAgentConfig:
         (0.0, 3.0),  # shoot_angle_ramp        — ratio
         (0.0, 1.0),  # shoot_angle_prob        — probability
         (0.0, _MAX_WORLD_DIST),  # shoot_distance_ramp          — world units
-        (0.0, 1.0),              # shoot_distance_prob          — probability
+        (0.0, 1.0),  # shoot_distance_prob          — probability
         (0.0, _MAX_WORLD_DIST),  # team_target_distance_ramp   — world units
-        (0.0, 1.0),              # team_target_distance_prob   — probability
+        (0.0, 1.0),  # team_target_distance_prob   — probability
     ]
     # Vector length = 2 * len(PARAM_BOUNDS) = 28
 
     @classmethod
     def from_vector(
         cls, v: Sequence[float], flat_action_sampling: bool = False
-    ) -> "StochasticAgentConfig":
+    ) -> StochasticAgentConfig:
         """
         Construct a StochasticAgentConfig from a 24-element flat vector.
         All values in v must be in [0, 1]; they are scaled to physical units
@@ -129,7 +136,7 @@ class StochasticAgentConfig:
             lo, hi = cls.PARAM_BOUNDS[field_idx]
             return lo + float(x) * (hi - lo)
 
-        def pair(field_idx: int, vi: int) -> Tuple[float, float]:
+        def pair(field_idx: int, vi: int) -> tuple[float, float]:
             return (scale(field_idx, v[vi]), scale(field_idx, v[vi + 1]))
 
         return cls(
