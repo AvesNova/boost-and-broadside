@@ -115,7 +115,8 @@ class ModelConfig:
 class RewardConfig:
     """Reward weights and geometry parameters for the 11-component critic.
 
-    No default values — all fields must be set explicitly at the call site.
+    Core reward weights and geometry must be set explicitly at the call site.
+    Optional obstacle and behavior-shaping rewards default to disabled values.
     Reward group scales (true_reward_scale, global_scale, local_scale) live in
     TrainingSchedule since they vary over the course of a run.
 

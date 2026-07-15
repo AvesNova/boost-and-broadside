@@ -58,7 +58,7 @@ class ScaleConfig:
 
 @dataclass(frozen=True)
 class TrainConfig:
-    """Complete PPO training configuration. No defaults — all values required.
+    """Complete PPO training configuration.
 
     Sections:
         scales    — environment scale(s); scales[0] is primary.
@@ -69,7 +69,8 @@ class TrainConfig:
         league    — league play and ELO tournament parameters.
 
     All scalar values that vary over training live in ``schedule``.
-    Everything here is fixed for the entire run.
+    Everything here is fixed for the entire run. Core training values are
+    required; defaults are reserved for optional or disabled features.
 
     Paradigms:
         "ego_pass"    — two batched policy passes per step (raw obs + team-flipped
