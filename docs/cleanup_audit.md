@@ -66,7 +66,7 @@ deleted `scripted_roster_min_steps` from `TrainConfig` (training.py); deleted
 bc_warmstart.py) and `tests/train/test_ppo.py` to stop passing these kwargs.
 156/156 tests pass; `--mode rl --smoke` runs clean.
 
-### 1.4 `_decode_targets_to_obs` uses world width for the y-axis — **Medium**
+### 1.4 `_decode_targets_to_obs` uses world width for the y-axis — **Medium** — ✅ done (e49be04)
 [agent_factory.py:269-273](src/boost_and_broadside/modes/agent_factory.py#L269-L273):
 `W = ship_config.world_size[0]` is used to decode both `pos_x` and `pos_y`.
 Latent (world is square) but wrong. **Action:** use `world_size[1]` for y.
