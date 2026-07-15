@@ -187,20 +187,6 @@ class UnitCircle(Transform):
         return torch.stack([torch.sin(angle), torch.cos(angle)], dim=-1).flatten(-2)
 
 
-class Directional(Transform):
-    """Map 2D velocity vector to (cos θ, sin θ, symlog_speed)."""
-
-    def out_dim(self, in_dim: int) -> int:
-        return 3
-
-    def __call__(self, x: torch.Tensor) -> torch.Tensor:
-        x = x.float()
-        mag = torch.norm(x, dim=-1, keepdim=True).clamp(min=1e-6)
-        direction = x / mag
-        symlog_speed = symmetric_logarithm(mag)
-        return torch.cat([direction, symlog_speed], dim=-1)
-
-
 class SymlogVelocity(Transform):
     """Map 2D velocity to (vx_norm, vy_norm) where ‖output‖ = symlog(speed).
 
@@ -315,38 +301,6 @@ class UnitCirclePredictor(Predictor):
         if self.cosine_first:
             return torch.atan2(target[..., 1], target[..., 0]) % (2.0 * math.pi)
         return torch.atan2(target[..., 0], target[..., 1]) % (2.0 * math.pi)
-
-
-class VelocityPredictor(Predictor):
-    """Predict (Δphase, Δsymlog_speed) for a (cos θ, sin θ, symlog_speed) triple.
-
-    Directional component uses phase rotation; speed uses additive delta.
-    Both preserve the geometry of each sub-representation.
-    """
-
-    def target_dim(self, in_channels: int) -> int:
-        return 3
-
-    def prediction_dim(self, in_channels: int) -> int:
-        return 2  # (delta_phase, delta_symlog_speed)
-
-    def compute_labels(self, curr: torch.Tensor, next_: torch.Tensor) -> torch.Tensor:
-        curr_angle = torch.atan2(curr[..., 1], curr[..., 0])
-        next_angle = torch.atan2(next_[..., 1], next_[..., 0])
-        delta_phase = (next_angle - curr_angle + math.pi) % (2.0 * math.pi) - math.pi
-        delta_speed = next_[..., 2] - curr[..., 2]
-        return torch.stack([delta_phase, delta_speed], dim=-1)
-
-    def apply_prediction(self, curr: torch.Tensor, pred: torch.Tensor) -> torch.Tensor:
-        new_dir = phase_shift_circle(curr[..., 0:2], pred[..., 0], cosine_first=True)
-        new_speed = curr[..., 2:3] + pred[..., 1:2]
-        return torch.cat([new_dir, new_speed], dim=-1)
-
-    def decode(self, target: torch.Tensor) -> torch.Tensor:
-        direction = target[..., 0:2]
-        symlog_speed = target[..., 2:3]
-        speed = torch.sign(symlog_speed) * torch.expm1(symlog_speed.abs())
-        return direction * speed
 
 
 # ---------------------------------------------------------------------------
