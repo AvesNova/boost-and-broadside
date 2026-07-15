@@ -230,7 +230,7 @@ def _run_trainer(trainer: PPOTrainer) -> None:
         trainer.train()
     except KeyboardInterrupt:
         print("\nTraining interrupted.")
-        trainer._shutdown()
+        trainer.shutdown()
 
 
 def main() -> None:
@@ -317,13 +317,11 @@ def main() -> None:
             )
             _run_trainer(pretrain_trainer)
 
-            ckpt_dir = (
-                Path(BC_WARMSTART_PRETRAIN_CONFIG.checkpoint_dir) / pretrain_trainer._run_name
-            )
+            ckpt_dir = Path(BC_WARMSTART_PRETRAIN_CONFIG.checkpoint_dir) / pretrain_trainer.run_name
             pretrain_path = ckpt_dir / "pretrained_for_rl.pt"
-            torch.save(pretrain_trainer._checkpoint_payload(update=0), pretrain_path)
+            torch.save(pretrain_trainer.checkpoint_payload(update=0), pretrain_path)
             print(f"=== BC_WARMSTART: pretrained weights saved to {pretrain_path} ===")
-            pretrain_trainer._shutdown()
+            pretrain_trainer.shutdown()
             del pretrain_trainer
 
             print("=== BC_WARMSTART: starting RL phase ===")
