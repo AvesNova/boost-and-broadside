@@ -14,8 +14,6 @@ Phase structure:
                   League opponents activate (20% envs).
 """
 
-import os
-
 from boost_and_broadside.config import (
     EnvConfig,
     ObstacleCacheConfig,
@@ -26,22 +24,22 @@ from boost_and_broadside.config import (
     linear,
     stepped,
 )
-from boost_and_broadside.config.schedule import exponential
+from boost_and_broadside.config.schedule import exponential, join
 from runs.shared import REWARDS, COMPONENT_GAMMAS, COMPONENT_LAMBDAS
 
-_MAX_TOKENS = 2_000_000
-# Per-machine memory knob (does not affect training statistics): max tokens per
-# backward pass. Set e.g. BB_MICROBATCH_TOKENS=16000 on small GPUs to split each
-# minibatch (_MAX_TOKENS / _NUM_MINIBATCHES = 62.5k tokens) into micro-batches
-# with accumulated gradients. Unset/0 = whole minibatch per backward.
-_MICROBATCH_TOKENS = int(os.environ.get("BB_MICROBATCH_TOKENS", "0")) or None
+_MAX_TOKENS = 6_000_000
 _NUM_SHIPS = 8
 _NUM_OBSTACLES = 0
 _NUM_STEPS = 128
 _NUM_MINIBATCHES = 32
+_MICROBATCH_TOKENS = _MAX_TOKENS // _NUM_MINIBATCHES // 4
 
 RL_SCHEDULE = TrainingSchedule(
-    learning_rate=linear((0, 1e-7), (5_000_000, 3e-4)),
+    learning_rate=join(
+        (0, linear((0, 1e-7), (5_000_000, 3e-4))),
+        (5_000_000, constant(3e-4)),
+        (100_000_000, exponential((100_000_000, 3e-4), (500_000_000, 1e-4))),
+    ),
     policy_gradient_coef=constant(1.0),
     entropy_coef=constant(0.005),
     behavior_cloning_coef=constant(2.0),
@@ -88,7 +86,7 @@ RL_TRAIN_CONFIG = TrainConfig(
     component_lambdas=COMPONENT_LAMBDAS,
     clip_coef=0.15,
     max_grad_norm=1.0,
-    total_timesteps=2_000_000_000,
+    total_timesteps=500_000_000,
     return_ema_alpha=0.005,
     return_min_span=1.0,
     checkpoint_dir="checkpoints",
