@@ -48,7 +48,7 @@ import torch
 
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
-from boost_and_broadside.config import EnvConfig
+from boost_and_broadside.config import EnvConfig, TrainConfig
 from boost_and_broadside.modes.ar_report import run_ar_report_mode
 from boost_and_broadside.modes.collect import run_collect_stats_mode
 from boost_and_broadside.modes.elo_stats import run_elo_stats_mode
@@ -202,7 +202,7 @@ def _find_resume_checkpoint(
     return str(ckpt_path), wandb_run_id
 
 
-def _apply_smoke(config):
+def _apply_smoke(config: TrainConfig) -> TrainConfig:
     """Shrink a TrainConfig to the smallest viable size for crash-testing."""
     from boost_and_broadside.config.schedule import stepped
 
@@ -225,6 +225,27 @@ def _apply_smoke(config):
     )
 
 
+def _make_trainer(
+    train_config: TrainConfig,
+    args: argparse.Namespace,
+    *,
+    resume_wandb_run_id: str | None = None,
+) -> PPOTrainer:
+    """Build a trainer with the shared entry-point settings."""
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    compile_mode = None if (args.smoke or args.compile_mode == "none") else args.compile_mode
+    return PPOTrainer(
+        train_config=train_config,
+        model_config=MODEL_CONFIG,
+        ship_config=SHIP_CONFIG,
+        device=device,
+        use_wandb=not args.smoke,
+        scripted_agent=StochasticScriptedAgent(SHIP_CONFIG, StochasticAgentConfig()),
+        compile_mode=compile_mode,
+        resume_wandb_run_id=resume_wandb_run_id,
+    )
+
+
 def _run_trainer(trainer: PPOTrainer) -> None:
     try:
         trainer.train()
@@ -238,38 +259,19 @@ def main() -> None:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Device: {device}")
 
-    use_wandb = not args.smoke
-    compile_mode = None if (args.smoke or args.compile_mode == "none") else args.compile_mode
-
     match args.mode:
         case "bc":
-            scripted_agent = StochasticScriptedAgent(SHIP_CONFIG, StochasticAgentConfig())
             train_config = _apply_smoke(BC_TRAIN_CONFIG) if args.smoke else BC_TRAIN_CONFIG
-            trainer = PPOTrainer(
-                train_config=train_config,
-                model_config=MODEL_CONFIG,
-                ship_config=SHIP_CONFIG,
-                device=device,
-                use_wandb=use_wandb,
-                scripted_agent=scripted_agent,
-                compile_mode=compile_mode,
-            )
-            _run_trainer(trainer)
+            _run_trainer(_make_trainer(train_config, args))
 
         case "rl":
-            scripted_agent = StochasticScriptedAgent(SHIP_CONFIG, StochasticAgentConfig())
             train_config = _apply_smoke(RL_TRAIN_CONFIG) if args.smoke else RL_TRAIN_CONFIG
             resume_ckpt, resume_wandb_id = (
                 _find_resume_checkpoint(args.resume) if args.resume is not None else (None, None)
             )
-            trainer = PPOTrainer(
-                train_config=train_config,
-                model_config=MODEL_CONFIG,
-                ship_config=SHIP_CONFIG,
-                device=device,
-                use_wandb=use_wandb,
-                scripted_agent=scripted_agent,
-                compile_mode=compile_mode,
+            trainer = _make_trainer(
+                train_config,
+                args,
                 resume_wandb_run_id=resume_wandb_id,
             )
             if resume_ckpt is not None:
@@ -282,18 +284,12 @@ def main() -> None:
             train_config = (
                 _apply_smoke(RL_OBSTACLES_TRAIN_CONFIG) if args.smoke else RL_OBSTACLES_TRAIN_CONFIG
             )
-            scripted_agent = StochasticScriptedAgent(SHIP_CONFIG, StochasticAgentConfig())
             resume_ckpt, resume_wandb_id = (
                 _find_resume_checkpoint(args.resume) if args.resume is not None else (None, None)
             )
-            trainer = PPOTrainer(
-                train_config=train_config,
-                model_config=MODEL_CONFIG,
-                ship_config=SHIP_CONFIG,
-                device=device,
-                use_wandb=use_wandb,
-                scripted_agent=scripted_agent,
-                compile_mode=compile_mode,
+            trainer = _make_trainer(
+                train_config,
+                args,
                 resume_wandb_run_id=resume_wandb_id,
             )
             if resume_ckpt is not None:
@@ -303,18 +299,10 @@ def main() -> None:
             _run_trainer(trainer)
 
         case "bc_warmstart":
-            scripted_agent = StochasticScriptedAgent(SHIP_CONFIG, StochasticAgentConfig())
+            warmstart_args = argparse.Namespace(**vars(args), smoke=False)
 
             print("=== BC_WARMSTART: starting BC pretraining phase (50M steps) ===")
-            pretrain_trainer = PPOTrainer(
-                train_config=BC_WARMSTART_PRETRAIN_CONFIG,
-                model_config=MODEL_CONFIG,
-                ship_config=SHIP_CONFIG,
-                device=device,
-                use_wandb=True,
-                scripted_agent=scripted_agent,
-                compile_mode=None if args.compile_mode == "none" else args.compile_mode,
-            )
+            pretrain_trainer = _make_trainer(BC_WARMSTART_PRETRAIN_CONFIG, warmstart_args)
             _run_trainer(pretrain_trainer)
 
             ckpt_dir = Path(BC_WARMSTART_PRETRAIN_CONFIG.checkpoint_dir) / pretrain_trainer.run_name
@@ -325,15 +313,7 @@ def main() -> None:
             del pretrain_trainer
 
             print("=== BC_WARMSTART: starting RL phase ===")
-            rl_trainer = PPOTrainer(
-                train_config=BC_WARMSTART_RL_CONFIG,
-                model_config=MODEL_CONFIG,
-                ship_config=SHIP_CONFIG,
-                device=device,
-                use_wandb=True,
-                scripted_agent=scripted_agent,
-                compile_mode=None if args.compile_mode == "none" else args.compile_mode,
-            )
+            rl_trainer = _make_trainer(BC_WARMSTART_RL_CONFIG, warmstart_args)
             rl_trainer.load_pretrained_weights(str(pretrain_path))
             _run_trainer(rl_trainer)
 
