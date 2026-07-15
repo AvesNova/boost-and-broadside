@@ -38,6 +38,7 @@ from boost_and_broadside.env.wrapper import MVPEnvWrapper
 from boost_and_broadside.models.mvp.policy import MVPPolicy
 from boost_and_broadside.train.rl.buffer import (
     AdvantageScaler,
+    MicroBatch,
     ReturnScaler,
     RolloutBuffer,
 )
@@ -1683,7 +1684,7 @@ class PPOTrainer:
 
     @torch.no_grad()
     def _minibatch_denominators(
-        self, chunks: list[tuple], buf: RolloutBuffer, is_primary: bool
+        self, chunks: list[MicroBatch], buf: RolloutBuffer, is_primary: bool
     ) -> dict:
         """Minibatch-total loss denominators, summed over the micro-batches.
 
@@ -1704,8 +1705,10 @@ class PPOTrainer:
             self.cfg.next_state_coef > 0.0 or self.cfg.windowed_loss_coef > 0.0
         )
         for chunk in chunks:
-            mb_alive, mb_actor_mask = chunk[6], chunk[8]
-            mb_expert_probs, mb_terminated = chunk[9], chunk[10]
+            mb_alive = chunk.alive
+            mb_actor_mask = chunk.actor_mask
+            mb_expert_probs = chunk.expert_probs
+            mb_terminated = chunk.terminated
             alive_sum += mb_alive.sum()
             actor_sum += (mb_actor_mask & mb_alive).sum()
             numel += mb_alive.numel()
@@ -1725,7 +1728,7 @@ class PPOTrainer:
 
     def _compute_minibatch_loss(
         self,
-        batch: tuple,
+        batch: MicroBatch,
         is_primary: bool,
         denoms: dict,
         frac: float,
@@ -1767,22 +1770,19 @@ class PPOTrainer:
         cfg = self.cfg
         K = self.buffer.num_components
 
-        (
-            mb_obs,
-            mb_actions,
-            mb_old_logprobs,
-            mb_advantages,
-            mb_returns,
-            mb_values,
-            mb_alive,
-            mb_hidden,
-            mb_actor_mask,
-            mb_expert_probs,
-            mb_terminated,
-            mb_adv_agg,
-            mb_ret_agg,
-            mb_ns_labels,
-        ) = batch
+        mb_obs = batch.obs
+        mb_actions = batch.actions
+        mb_old_logprobs = batch.old_logprobs
+        mb_advantages = batch.advantages
+        mb_returns = batch.returns
+        mb_alive = batch.alive
+        mb_hidden = batch.hidden
+        mb_actor_mask = batch.actor_mask
+        mb_expert_probs = batch.expert_probs
+        mb_terminated = batch.terminated
+        mb_adv_agg = batch.adv_agg
+        mb_ret_agg = batch.ret_agg
+        mb_ns_labels = batch.ns_labels
 
         # mb_obs has T+1 steps; first T for encode/evaluate, last T for next-state aux loss.
         T = mb_alive.shape[0]
@@ -2258,13 +2258,13 @@ class PPOTrainer:
                 for scale_idx, (buf, chunks) in enumerate(zip(all_buffers, batches)):
                     is_primary = scale_idx == 0
                     denoms = self._minibatch_denominators(chunks, buf, is_primary)
-                    mb_envs = sum(c[6].shape[1] for c in chunks)  # c[6] = mb_alive
+                    mb_envs = sum(chunk.alive.shape[1] for chunk in chunks)
                     ratio_max = _z.clone()
                     ret_agg_mean = _z.clone()
                     ret_agg_sq = _z.clone()
 
                     for chunk in chunks:
-                        frac = chunk[6].shape[1] / mb_envs
+                        frac = chunk.alive.shape[1] / mb_envs
                         loss, diag = self._compute_minibatch_loss(chunk, is_primary, denoms, frac)
                         (loss / n_scales).backward()
 

@@ -12,11 +12,31 @@ Shape conventions throughout:
 """
 
 from collections.abc import Generator
+from typing import NamedTuple
 
 import numpy as np
 import torch
 
 from boost_and_broadside.env.observation import MVPObservation
+
+
+class MicroBatch(NamedTuple):
+    """One recurrent PPO micro-batch produced by :class:`RolloutBuffer`."""
+
+    obs: MVPObservation
+    actions: torch.Tensor
+    old_logprobs: torch.Tensor
+    advantages: torch.Tensor
+    returns: torch.Tensor
+    values: torch.Tensor
+    alive: torch.Tensor
+    hidden: torch.Tensor
+    actor_mask: torch.Tensor
+    expert_probs: torch.Tensor
+    terminated: torch.Tensor
+    adv_agg: torch.Tensor
+    ret_agg: torch.Tensor
+    ns_labels: torch.Tensor | None
 
 
 def symlog(x: torch.Tensor) -> torch.Tensor:
@@ -407,14 +427,14 @@ class RolloutBuffer:
 
     def get_minibatch_iterator(
         self, num_minibatches: int, microbatch_tokens: int | None = None
-    ) -> Generator[list[tuple]]:
+    ) -> Generator[list[MicroBatch]]:
         """Yield minibatches of environments for PPO update epochs.
 
         Shuffles environments and slices them into num_minibatches chunks.
         Each chunk yields the full (T+1)-step observation sequence plus T-step
         non-observation data for those environments.
 
-        Each minibatch is yielded as a list of micro-batch tuples: when
+        Each minibatch is yielded as a list of ``MicroBatch`` objects: when
         microbatch_tokens is set and the minibatch exceeds it (tokens =
         envs × T × num_tokens), the minibatch's envs are split near-evenly into
         the fewest micro-batches that each fit the budget. Callers accumulate
@@ -425,7 +445,7 @@ class RolloutBuffer:
         labels at update time: coordinator.compute_labels(target(obs[t]), target(obs[t+1])).
 
         Yields:
-            List of micro-batch tuples, each:
+            List of named micro-batches, each containing:
                 mb_obs:          MVPObservation (T+1, B_mb, N+M, ...)
                 mb_actions:      (T, B_mb, N, 3) int32
                 mb_logprobs:     (T, B_mb, N) float32
@@ -469,21 +489,21 @@ class RolloutBuffer:
                 )
 
                 chunks.append(
-                    (
-                        mb_obs,
-                        self.actions[:, idx],
-                        self.logprobs[:, idx],
-                        self.advantages[:, idx],
-                        self.returns[:, idx],
-                        self.values[:, idx],
-                        self.alive_mask[:, idx],
-                        mb_hidden.contiguous(),
-                        self.actor_masks[:, idx],
-                        self.expert_probs[:, idx],
-                        self.terminated[:, idx],
-                        self.adv_agg[:, idx],
-                        self.ret_agg[:, idx],
-                        self.ns_labels[:, idx] if self.ns_labels is not None else None,
+                    MicroBatch(
+                        obs=mb_obs,
+                        actions=self.actions[:, idx],
+                        old_logprobs=self.logprobs[:, idx],
+                        advantages=self.advantages[:, idx],
+                        returns=self.returns[:, idx],
+                        values=self.values[:, idx],
+                        alive=self.alive_mask[:, idx],
+                        hidden=mb_hidden.contiguous(),
+                        actor_mask=self.actor_masks[:, idx],
+                        expert_probs=self.expert_probs[:, idx],
+                        terminated=self.terminated[:, idx],
+                        adv_agg=self.adv_agg[:, idx],
+                        ret_agg=self.ret_agg[:, idx],
+                        ns_labels=self.ns_labels[:, idx] if self.ns_labels is not None else None,
                     )
                 )
             yield chunks
