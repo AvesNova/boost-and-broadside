@@ -46,6 +46,16 @@ class PrimaryStepOutput(NamedTuple):
     dones: torch.Tensor
 
 
+class EnvironmentStepOutput(NamedTuple):
+    """Environment and policy outputs computed concurrently when CUDA is available."""
+
+    obs: MVPObservation
+    reward: torch.Tensor
+    dones: torch.Tensor
+    truncated: torch.Tensor
+    network: RolloutNetworkOutput
+
+
 def slice_obs(obs: MVPObservation, start: int, end: int) -> MVPObservation:
     """Return a view of observation tensors for environments ``[start, end)``."""
     return obs.slice_envs(slice(start, end))
@@ -258,6 +268,107 @@ class OpponentMixin:
             league_action,
         )
 
+    def _step_environment_and_network(
+        self,
+        action_buffer: torch.Tensor,
+        network_args: tuple,
+        env_stream: torch.cuda.Stream | None,
+        net_stream: torch.cuda.Stream | None,
+    ) -> EnvironmentStepOutput:
+        """Advance the environment and policy, overlapping them on CUDA streams."""
+        if env_stream is None:
+            next_obs, reward, dones, truncated, _ = self.wrapper.step(action_buffer)
+            network = self._rollout_network_forwards(*network_args)
+            return EnvironmentStepOutput(next_obs, reward, dones, truncated, network)
+
+        env_stream.wait_stream(torch.cuda.current_stream())
+        net_stream.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(env_stream):
+            next_obs, reward, dones, truncated, _ = self.wrapper.step(action_buffer)
+        with torch.cuda.stream(net_stream):
+            network = self._rollout_network_forwards(*network_args)
+        torch.cuda.current_stream().wait_stream(env_stream)
+        torch.cuda.current_stream().wait_stream(net_stream)
+        return EnvironmentStepOutput(next_obs, reward, dones, truncated, network)
+
+    def _select_primary_actions(
+        self,
+        network: RolloutNetworkOutput,
+        scripted: ScriptedStepOutput,
+        team_id: torch.Tensor,
+        scripted_start: int,
+        scripted_end: int,
+        avg_start: int,
+        avg_end: int,
+        league_start: int,
+        league_end: int,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Combine live-policy actions and apply active opponent overrides."""
+        action, actor_mask = self._combine_actions(network.action_t0, network.action_t1, team_id)
+        if self._policy_gradient_coef == 0.0:
+            return action, actor_mask
+
+        league_action = (
+            scripted.league_action if scripted.league_action is not None else network.action_league
+        )
+        if scripted.use_scripted_opponent:
+            self._apply_opponent_override(
+                action, actor_mask, team_id, scripted_start, scripted_end, scripted.scripted_action
+            )
+        if scripted.use_avg:
+            self._apply_opponent_override(
+                action, actor_mask, team_id, avg_start, avg_end, network.action_avg
+            )
+        if scripted.use_league:
+            self._apply_opponent_override(
+                action, actor_mask, team_id, league_start, league_end, league_action
+            )
+        return action, actor_mask
+
+    def _reset_primary_hidden(
+        self,
+        network: RolloutNetworkOutput,
+        done_any: torch.Tensor,
+        num_tokens: int,
+        avg_start: int,
+        avg_end: int,
+        league_start: int,
+        league_end: int,
+        use_avg: bool,
+        use_league: bool,
+    ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None, torch.Tensor | None]:
+        """Reset recurrent states for completed primary-scale environments."""
+        hidden = self.policy.reset_hidden_for_envs(network.hidden, done_any, num_tokens)
+        hidden_t1 = network.hidden_t1
+        if self._ego_pass:
+            hidden_t1 = self.policy.reset_hidden_for_envs(hidden_t1, done_any, num_tokens)
+
+        avg_hidden = network.avg_hidden
+        if use_avg and self.B_avg > 0:
+            avg_hidden = self.avg_policy.reset_hidden_for_envs(
+                avg_hidden, done_any[avg_start:avg_end], num_tokens
+            )
+
+        league_hidden = network.league_hidden
+        if use_league and self._current_league_policy is not None:
+            league_hidden = self._current_league_policy.reset_hidden_for_envs(
+                league_hidden, done_any[league_start:league_end], num_tokens
+            )
+        return hidden, hidden_t1, avg_hidden, league_hidden
+
+    def _refresh_opponent_team_flags(self, done_any: torch.Tensor) -> None:
+        """Resample shared-pass opponent team assignments for completed environments."""
+        if self._ego_pass or self._opp_team_flag.numel() == 0:
+            return
+        new_flags = torch.randint(
+            0,
+            2,
+            self._opp_team_flag.shape,
+            device=self.device,
+            dtype=torch.int32,
+        )
+        self._opp_team_flag = torch.where(done_any[self.B_self :], new_flags, self._opp_team_flag)
+
     def _collect_primary_step(
         self,
         obs: MVPObservation,
@@ -298,98 +409,56 @@ class OpponentMixin:
             league_end,
             league_hidden,
         )
-        if env_stream is not None:
-            env_stream.wait_stream(torch.cuda.current_stream())
-            net_stream.wait_stream(torch.cuda.current_stream())
-            with torch.cuda.stream(env_stream):
-                next_obs, reward, dones, truncated, _ = self.wrapper.step(action_buffer)
-            with torch.cuda.stream(net_stream):
-                network = self._rollout_network_forwards(*network_args)
-            torch.cuda.current_stream().wait_stream(env_stream)
-            torch.cuda.current_stream().wait_stream(net_stream)
-        else:
-            next_obs, reward, dones, truncated, _ = self.wrapper.step(action_buffer)
-            network = self._rollout_network_forwards(*network_args)
-
-        action, actor_mask = self._combine_actions(network.action_t0, network.action_t1, team_id)
-        if self._policy_gradient_coef != 0.0:
-            league_action = (
-                scripted.league_action
-                if scripted.league_action is not None
-                else network.action_league
-            )
-            if scripted.use_scripted_opponent:
-                self._apply_opponent_override(
-                    action,
-                    actor_mask,
-                    team_id,
-                    scripted_start,
-                    scripted_end,
-                    scripted.scripted_action,
-                )
-            if scripted.use_avg:
-                self._apply_opponent_override(
-                    action, actor_mask, team_id, avg_start, avg_end, network.action_avg
-                )
-            if scripted.use_league:
-                self._apply_opponent_override(
-                    action,
-                    actor_mask,
-                    team_id,
-                    league_start,
-                    league_end,
-                    league_action,
-                )
-
-        next_obs["previous_action"][:, :num_ships] = action
-        done_any = dones | truncated
+        step = self._step_environment_and_network(
+            action_buffer, network_args, env_stream, net_stream
+        )
+        action, actor_mask = self._select_primary_actions(
+            step.network,
+            scripted,
+            team_id,
+            scripted_start,
+            scripted_end,
+            avg_start,
+            avg_end,
+            league_start,
+            league_end,
+        )
+        step.obs["previous_action"][:, :num_ships] = action
+        done_any = step.dones | step.truncated
         self.buffer.add(
             obs=obs,
             action=action,
-            logprob=network.logprob,
-            reward=reward,
-            done=dones.float(),
-            value=self.scaler.denormalize(network.value_norm),
+            logprob=step.network.logprob,
+            reward=step.reward,
+            done=step.dones.float(),
+            value=self.scaler.denormalize(step.network.value_norm),
             alive=obs["alive"][:, :num_ships].bool(),
             actor_mask=actor_mask,
             expert_probs=scripted.expert_probs,
             terminated=done_any,
         )
 
-        hidden = self.policy.reset_hidden_for_envs(network.hidden, done_any, num_tokens)
-        if self._ego_pass:
-            hidden_t1 = self.policy.reset_hidden_for_envs(network.hidden_t1, done_any, num_tokens)
+        hidden, hidden_t1, avg_hidden, league_hidden = self._reset_primary_hidden(
+            step.network,
+            done_any,
+            num_tokens,
+            avg_start,
+            avg_end,
+            league_start,
+            league_end,
+            scripted.use_avg,
+            scripted.use_league,
+        )
         action_buffer = action.detach().clone()
         action_buffer[done_any] = 0
-        avg_hidden = network.avg_hidden
-        if scripted.use_avg and self.B_avg > 0:
-            avg_hidden = self.avg_policy.reset_hidden_for_envs(
-                avg_hidden, done_any[avg_start:avg_end], num_tokens
-            )
-        league_hidden = network.league_hidden
-        if scripted.use_league and self._current_league_policy is not None:
-            league_hidden = self._current_league_policy.reset_hidden_for_envs(
-                league_hidden, done_any[league_start:league_end], num_tokens
-            )
-
-        if not self._ego_pass and self._opp_team_flag.numel() > 0:
-            new_flags = torch.randint(
-                0,
-                2,
-                self._opp_team_flag.shape,
-                device=self.device,
-                dtype=torch.int32,
-            )
-            self._opp_team_flag = torch.where(
-                done_any[self.B_self :], new_flags, self._opp_team_flag
-            )
+        self._refresh_opponent_team_flags(done_any)
         self._global_step += num_envs
         return PrimaryStepOutput(
-            next_obs,
+            step.obs,
             hidden,
             hidden_t1,
             avg_hidden,
             league_hidden,
             action_buffer,
-            dones,
+            step.dones,
         )
