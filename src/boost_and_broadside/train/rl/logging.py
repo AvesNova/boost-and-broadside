@@ -121,6 +121,26 @@ class LoggingMixin:
 
         return sps, ship_tps
 
+    def _log_training_update(self, metrics: dict, update: int, sps: int, ship_tps: int) -> None:
+        """Enqueue one metric batch and optionally print the terminal summary."""
+        self._enqueue_log(metrics, step=self._global_step)
+        if update % self.cfg.log_interval != 0:
+            return
+        lifespan = (
+            f"  lifespan={metrics['episode/lifespan_mean']:.1f}"
+            if "episode/lifespan_mean" in metrics
+            else ""
+        )
+        print(
+            f"update={update}/{self._num_updates}  "
+            f"step={self._global_step:,}  "
+            f"sps={sps:,}  "
+            f"ship_tps={ship_tps:,}  "
+            f"loss={metrics.get('loss/total', 0.0):.4f}"
+            f"  elo={self._training_elo:.0f}"
+            f"{lifespan}"
+        )
+
     def _init_wandb(
         self,
         train_config: TrainConfig,

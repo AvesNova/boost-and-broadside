@@ -45,7 +45,6 @@ from boost_and_broadside.train.rl.logging import LoggingMixin
 from boost_and_broadside.train.rl.opponents import (
     OpponentMixin,
     flip_team_obs,
-    slice_state,
 )
 from boost_and_broadside.train.rl.roster import EloRoster, RosterEntry
 from boost_and_broadside.train.rl.sigreg import SIGReg
@@ -156,6 +155,35 @@ class _ResolvedSchedule:
     target_kl: float | None
     high_elo_threshold: float | None
     high_elo_target_kl: float | None
+
+
+@dataclasses.dataclass
+class _RolloutRuntime:
+    """Mutable state that persists across rollout updates."""
+
+    num_envs: int
+    num_ships: int
+    num_tokens: int
+    scripted_start: int
+    scripted_end: int
+    avg_start: int
+    avg_end: int
+    league_start: int
+    league_end: int
+    elo_eval: EloEvaluator
+    obs: MVPObservation
+    hidden: torch.Tensor
+    hidden_t1: torch.Tensor | None
+    avg_hidden: torch.Tensor | None
+    action_buffer: torch.Tensor
+    aux_obs: list[MVPObservation]
+    aux_hiddens: list[torch.Tensor]
+    aux_hidden_t1s: list[torch.Tensor | None]
+    aux_action_buffers: list[torch.Tensor]
+    aux_last_dones: list[torch.Tensor]
+    env_stream: torch.cuda.Stream | None
+    net_stream: torch.cuda.Stream | None
+    ship_tokens_per_update: int
 
 
 def _resolve_schedule(schedule: TrainingSchedule, step: int) -> _ResolvedSchedule:
@@ -635,377 +663,283 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             hidden_out[:, batch * num_tokens :, :],  # (n_layers, B*(N+M), CONV_KERNEL*D)
         )
 
-    def train(self) -> None:
-        """Run the full PPO training loop."""
-        B = self.cfg.scales[0].num_envs
-        N = self.wrapper.num_ships
-        M = self.env_config.num_obstacles
-        num_tokens = N + M  # ships + obstacles; hidden state covers all entity tokens
+    def _collect_aux_steps(
+        self,
+        aux_obs: list[MVPObservation],
+        aux_hiddens: list[torch.Tensor],
+        aux_hidden_t1s: list[torch.Tensor | None],
+        aux_action_buffers: list[torch.Tensor],
+        aux_last_dones: list[torch.Tensor],
+    ) -> None:
+        """Collect one pure-self-play transition for every auxiliary scale."""
+        # Aux-scale rollout steps (pure self-play, 1-step delay)
+        for i, (sc, aux_w, aux_buf) in enumerate(
+            zip(self.cfg.scales[1:], self.aux_wrappers, self.aux_buffers)
+        ):
+            aux_N = sc.env_config.num_ships
+            aux_num_tokens = aux_N + sc.env_config.num_obstacles
+            with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
+                (
+                    aux_action_t0,
+                    aux_action_t1,
+                    aux_logprob,
+                    aux_value_norm,
+                    _,
+                    aux_hiddens[i],
+                    aux_hidden_t1s[i],
+                ) = self._rollout_policy_pass(
+                    aux_obs[i], aux_hiddens[i], aux_hidden_t1s[i], aux_N, aux_num_tokens
+                )
+            aux_team_id = aux_obs[i]["team_id"][:, :aux_N]  # (B_aux, N_aux)
+            aux_action, aux_actor_mask = self._combine_actions(
+                aux_action_t0, aux_action_t1, aux_team_id
+            )
+            next_aux_obs, aux_reward, aux_dones, aux_truncated, _ = aux_w.step(
+                aux_action_buffers[i]
+            )
+            # Inject aux decided action into next obs previous_action
+            next_aux_obs[ObsKey.PREVIOUS_ACTION][:, :aux_N] = aux_action
+            aux_done_any = aux_dones | aux_truncated
+            aux_buf.add(
+                obs=aux_obs[i],
+                action=aux_action,
+                logprob=aux_logprob,
+                reward=aux_reward,
+                done=aux_dones.float(),
+                value=self.scaler.denormalize(aux_value_norm),
+                alive=aux_obs[i]["alive"][:, :aux_N].bool(),
+                actor_mask=aux_actor_mask,
+                expert_probs=None,
+                terminated=aux_done_any,
+            )
+            aux_hiddens[i] = self.policy.reset_hidden_for_envs(
+                aux_hiddens[i], aux_done_any, aux_num_tokens
+            )
+            if self._ego_pass:
+                aux_hidden_t1s[i] = self.policy.reset_hidden_for_envs(
+                    aux_hidden_t1s[i], aux_done_any, aux_num_tokens
+                )
+            aux_action_buffers[i] = aux_action.detach().clone()
+            aux_action_buffers[i][aux_done_any] = 0
+            aux_last_dones[i] = aux_dones
+            aux_obs[i] = next_aux_obs
+            self._global_step += sc.num_envs
 
-        elo_eval = EloEvaluator(
-            config=self.cfg.elo_eval,
-            ship_config=self.ship_config,
-            env_config=self.env_config,
-            device=self.device,
-            obstacle_cache=self._obstacle_cache,
-            live_policy=self.policy,
-            avg_policy=self.avg_policy,
-            scripted_agent=self.scripted_agent,
-            num_ships=N,
-            num_tokens=num_tokens,
-            live_elo=self._training_elo,
-            avg_elo=self._avg_training_elo,
-            random_window=self._eval_window_rand,
-            scripted_window=self._eval_window_sc,
-            avg_vs_scripted_window=self._eval_window_avg_vs_sc,
-            live_vs_avg_window=self._eval_window_live_vs_avg,
-        )
-
-        sc_start = self.B_self
-        sc_end = self.B_self + self.B_sc
-        avg_start = sc_end
+    def _initialize_rollout_runtime(self) -> _RolloutRuntime:
+        """Initialize persistent primary, auxiliary, and evaluation rollout state."""
+        num_envs = self.cfg.scales[0].num_envs
+        num_ships = self.wrapper.num_ships
+        num_tokens = num_ships + self.env_config.num_obstacles
+        scripted_start = self.B_self
+        scripted_end = scripted_start + self.B_sc
+        avg_start = scripted_end
         avg_end = avg_start + self.B_avg
         league_start = avg_end
-        league_end = B
 
         obs = self.wrapper.reset()
-        # Stagger initial step counts so envs don't all truncate simultaneously.
-        # Uniformly distributed over [0, max_episode_steps) — after the first wave
-        # of truncations they naturally desynchronize on their own.
         self.wrapper.env.state.step_count.random_(0, self.env_config.max_episode_steps)
-        hidden = self.policy.initial_hidden(B, num_tokens, self.device)
-        # Flipped-perspective hidden state — ego_pass only.
+        hidden = self.policy.initial_hidden(num_envs, num_tokens, self.device)
         hidden_t1 = (
-            self.policy.initial_hidden(B, num_tokens, self.device) if self._ego_pass else None
+            self.policy.initial_hidden(num_envs, num_tokens, self.device)
+            if self._ego_pass
+            else None
         )
+        avg_hidden = (
+            self.avg_policy.initial_hidden(self.B_avg, num_tokens, self.device)
+            if self.B_avg > 0
+            else None
+        )
+        action_buffer = torch.zeros(num_envs, num_ships, 3, dtype=torch.int32, device=self.device)
 
-        # Avg-model hidden state — lives across the whole training run.
-        avg_hidden: torch.Tensor | None = None
-        if self.B_avg > 0:
-            avg_hidden = self.avg_policy.initial_hidden(self.B_avg, num_tokens, self.device)
-
-        # League hidden state — re-initialised each rollout when the entry changes.
-        league_hidden: torch.Tensor | None = None
-
-        # Action buffer: the most-recently-decided combined action, applied by env.step
-        # next iteration (1-step delay). Initialized to zero-action (coast/straight/no-shoot).
-        # Maintained between rollouts like hidden state.
-        action_buffer = torch.zeros(B, N, 3, dtype=torch.int32, device=self.device)
-
-        # Aux-scale rollout state lives across the whole training run.
-        aux_obs: list[dict[str, torch.Tensor]] = []
+        aux_obs: list[MVPObservation] = []
         aux_hiddens: list[torch.Tensor] = []
         aux_hidden_t1s: list[torch.Tensor | None] = []
         aux_action_buffers: list[torch.Tensor] = []
         aux_last_dones: list[torch.Tensor] = []
-        for sc, aux_w in zip(self.cfg.scales[1:], self.aux_wrappers):
-            aux_obs.append(aux_w.reset())
-            aux_w.env.state.step_count.random_(0, sc.env_config.max_episode_steps)
-            aux_num_tokens = sc.env_config.num_ships + sc.env_config.num_obstacles
-            aux_hiddens.append(self.policy.initial_hidden(sc.num_envs, aux_num_tokens, self.device))
+        for scale, wrapper in zip(self.cfg.scales[1:], self.aux_wrappers):
+            aux_obs.append(wrapper.reset())
+            wrapper.env.state.step_count.random_(0, scale.env_config.max_episode_steps)
+            aux_tokens = scale.env_config.num_ships + scale.env_config.num_obstacles
+            aux_hiddens.append(self.policy.initial_hidden(scale.num_envs, aux_tokens, self.device))
             aux_hidden_t1s.append(
-                self.policy.initial_hidden(sc.num_envs, aux_num_tokens, self.device)
+                self.policy.initial_hidden(scale.num_envs, aux_tokens, self.device)
                 if self._ego_pass
                 else None
             )
             aux_action_buffers.append(
                 torch.zeros(
-                    sc.num_envs, sc.env_config.num_ships, 3, dtype=torch.int32, device=self.device
+                    scale.num_envs,
+                    scale.env_config.num_ships,
+                    3,
+                    dtype=torch.int32,
+                    device=self.device,
                 )
             )
-            aux_last_dones.append(torch.zeros(sc.num_envs, dtype=torch.bool, device=self.device))
+            aux_last_dones.append(torch.zeros(scale.num_envs, dtype=torch.bool, device=self.device))
 
-        # CUDA streams for overlapping env physics with network forward passes.
-        # env_stream: runs wrapper.step (physics + obs extraction)
-        # net_stream: runs all policy forward passes
-        env_stream = torch.cuda.Stream() if self.device.type == "cuda" else None
-        net_stream = torch.cuda.Stream() if self.device.type == "cuda" else None
-
-        self._train_start_time = time.time()
-        # Ship tokens (friendly + enemy, all envs, all scales) processed per update.
-        ship_tokens_per_update = self.cfg.num_steps * sum(
-            sc.num_envs * sc.env_config.num_ships for sc in self.cfg.scales
+        return _RolloutRuntime(
+            num_envs=num_envs,
+            num_ships=num_ships,
+            num_tokens=num_tokens,
+            scripted_start=scripted_start,
+            scripted_end=scripted_end,
+            avg_start=avg_start,
+            avg_end=avg_end,
+            league_start=league_start,
+            league_end=num_envs,
+            elo_eval=EloEvaluator(
+                config=self.cfg.elo_eval,
+                ship_config=self.ship_config,
+                env_config=self.env_config,
+                device=self.device,
+                obstacle_cache=self._obstacle_cache,
+                live_policy=self.policy,
+                avg_policy=self.avg_policy,
+                scripted_agent=self.scripted_agent,
+                num_ships=num_ships,
+                num_tokens=num_tokens,
+                live_elo=self._training_elo,
+                avg_elo=self._avg_training_elo,
+                random_window=self._eval_window_rand,
+                scripted_window=self._eval_window_sc,
+                avg_vs_scripted_window=self._eval_window_avg_vs_sc,
+                live_vs_avg_window=self._eval_window_live_vs_avg,
+            ),
+            obs=obs,
+            hidden=hidden,
+            hidden_t1=hidden_t1,
+            avg_hidden=avg_hidden,
+            action_buffer=action_buffer,
+            aux_obs=aux_obs,
+            aux_hiddens=aux_hiddens,
+            aux_hidden_t1s=aux_hidden_t1s,
+            aux_action_buffers=aux_action_buffers,
+            aux_last_dones=aux_last_dones,
+            env_stream=torch.cuda.Stream() if self.device.type == "cuda" else None,
+            net_stream=torch.cuda.Stream() if self.device.type == "cuda" else None,
+            ship_tokens_per_update=self.cfg.num_steps
+            * sum(scale.num_envs * scale.env_config.num_ships for scale in self.cfg.scales),
         )
 
-        for update in range(self._start_update, self._num_updates + 1):
-            # Avg-model eval slots only produce meaningful stats once the avg
-            # model has been initialized. Constant for the whole rollout — the
-            # count only changes in the post-update section below.
-            avg_eval_active = self._avg_update_count > 0
+    def _collect_rollout(self, runtime: _RolloutRuntime, avg_eval_active: bool) -> torch.Tensor:
+        """Collect one complete primary and auxiliary rollout."""
+        self.buffer.reset()
+        self.buffer.store_initial_hidden(runtime.hidden)
+        for aux_buffer, aux_hidden in zip(self.aux_buffers, runtime.aux_hiddens):
+            aux_buffer.reset()
+            aux_buffer.store_initial_hidden(aux_hidden)
 
-            self.buffer.reset()
-            self.buffer.store_initial_hidden(hidden)
-            for aux_buf, aux_h in zip(self.aux_buffers, aux_hiddens):
-                aux_buf.reset()
-                aux_buf.store_initial_hidden(aux_h)
+        league_hidden = self._prepare_league_opponent(runtime.num_tokens)
+        for rollout_step in range(self.cfg.num_steps):
+            primary = self._collect_primary_step(
+                obs=runtime.obs,
+                hidden=runtime.hidden,
+                hidden_t1=runtime.hidden_t1,
+                avg_hidden=runtime.avg_hidden,
+                league_hidden=league_hidden,
+                action_buffer=runtime.action_buffer,
+                num_envs=runtime.num_envs,
+                num_ships=runtime.num_ships,
+                num_tokens=runtime.num_tokens,
+                scripted_start=runtime.scripted_start,
+                scripted_end=runtime.scripted_end,
+                avg_start=runtime.avg_start,
+                avg_end=runtime.avg_end,
+                league_start=runtime.league_start,
+                league_end=runtime.league_end,
+                env_stream=runtime.env_stream,
+                net_stream=runtime.net_stream,
+            )
+            (
+                runtime.obs,
+                runtime.hidden,
+                runtime.hidden_t1,
+                runtime.avg_hidden,
+                league_hidden,
+                runtime.action_buffer,
+                dones,
+            ) = primary
+            self._collect_aux_steps(
+                runtime.aux_obs,
+                runtime.aux_hiddens,
+                runtime.aux_hidden_t1s,
+                runtime.aux_action_buffers,
+                runtime.aux_last_dones,
+            )
+            runtime.elo_eval.step(rollout_step, avg_eval_active)
 
-            league_hidden = self._prepare_league_opponent(num_tokens)
+        self._training_elo, self._avg_training_elo = runtime.elo_eval.flush(avg_eval_active)
+        return dones
 
-            # Rollout collection  (1-step action delay + parallel env/net streams)
-            #
-            # Semantics: at step t, obs(t) = {state(t), prev_action(t-1)}.
-            # action_buffer holds action(t-1) — applied to the env this step.
-            # The policy computes action(t) in parallel; it is stored in action_buffer
-            # and injected into obs(t+1).prev_action so the next policy call sees
-            # what it just decided.
-            # ----------------------------------------------------------------
-            for _step in range(self.cfg.num_steps):
-                team_id = obs["team_id"][:, :N]  # (B, N) — stable within a step
+    def _compute_rollout_gae(self, runtime: _RolloutRuntime, dones: torch.Tensor) -> None:
+        """Store final observations and compute GAE for every scale."""
+        self.buffer.store_final_obs(runtime.obs)
+        for index, aux_buffer in enumerate(self.aux_buffers):
+            aux_buffer.store_final_obs(runtime.aux_obs[index])
 
-                # -- Phase 1: scripted computations on CURRENT state (before env stream) --
-                # Scripted agent reads env.state directly; must run before stream launch
-                # to avoid data hazard with the physics kernels.
-                if self._policy_gradient_coef == 0.0:
-                    # BC pretraining: scripted BC targets only, no opponent overrides
-                    with torch.no_grad():
-                        _, expert_probs_step = self.scripted_agent.get_actions_and_probs(
-                            self.wrapper.env.state
-                        )
-                    use_avg = False
-                    use_league = False
-                    use_sc_bc = False
-                    use_sc_opponent = False
-                    action_scripted = None
-                    action_league_scripted = None
-                else:
-                    use_avg = (
-                        self._avg_update_count > 0
-                        and self.B_avg > 0
-                        and self._schedule_state.avg_model_fraction > 0.0
-                    )
-                    use_league = (
-                        self.B_league > 0
-                        and self._current_league_entry is not None
-                        and self._schedule_state.league_fraction > 0.0
-                    )
-                    use_sc_bc = self.B_sc > 0
-                    use_sc_opponent = use_sc_bc and self._schedule_state.scripted_fraction > 0.0
-
-                    expert_probs_step: torch.Tensor | None = None
-                    action_scripted = None
-                    action_league_scripted = None
-
-                    # BC targets + scripted opponent actions (both read env.state)
-                    if self._behavior_cloning_coef > 0.0 and self.scripted_agent is not None:
-                        with torch.no_grad():
-                            action_scripted_all, expert_probs_step = (
-                                self.scripted_agent.get_actions_and_probs(self.wrapper.env.state)
-                            )
-                        if use_sc_opponent:
-                            action_scripted = action_scripted_all[sc_start:sc_end]
-                    elif use_sc_bc:
-                        with torch.no_grad():
-                            state_sc = slice_state(self.wrapper.env.state, sc_start, sc_end)
-                            action_scripted, _ = self.scripted_agent.get_actions_and_probs(state_sc)
-
-                    # Scripted league opponent also reads env.state before the env stream
-                    if use_league and self._current_league_policy is None:
-                        with torch.no_grad():
-                            state_league = slice_state(
-                                self.wrapper.env.state, league_start, league_end
-                            )
-                            action_league_scripted = self.scripted_agent.get_actions(state_league)
-
-                network_args = (
-                    obs,
-                    hidden,
-                    hidden_t1,
-                    N,
-                    num_tokens,
-                    use_avg,
-                    avg_start,
-                    avg_end,
-                    avg_hidden,
-                    use_league,
-                    league_start,
-                    league_end,
-                    league_hidden,
-                )
-                if env_stream is not None:
-                    env_stream.wait_stream(torch.cuda.current_stream())
-                    net_stream.wait_stream(torch.cuda.current_stream())
-                    with torch.cuda.stream(env_stream):
-                        next_obs, reward, dones, truncated, _ = self.wrapper.step(action_buffer)
-                    with torch.cuda.stream(net_stream):
-                        network = self._rollout_network_forwards(*network_args)
-                    torch.cuda.current_stream().wait_stream(env_stream)
-                    torch.cuda.current_stream().wait_stream(net_stream)
-                else:
-                    next_obs, reward, dones, truncated, _ = self.wrapper.step(action_buffer)
-                    network = self._rollout_network_forwards(*network_args)
-
-                action_t0 = network.action_t0
-                action_t1 = network.action_t1
-                logprob = network.logprob
-                value_norm = network.value_norm
-                hidden = network.hidden
-                hidden_t1 = network.hidden_t1
-                action_avg = network.action_avg
-                avg_hidden = network.avg_hidden
-                action_league_net = network.action_league
-                league_hidden = network.league_hidden
-
-                # -- Phase 3: combine actions and compute actor mask --
-                action, actor_mask = self._combine_actions(action_t0, action_t1, team_id)
-
-                # Override opponent-controlled ships with actual opponent actions.
-                if self._policy_gradient_coef != 0.0:
-                    action_league = (
-                        action_league_scripted
-                        if action_league_scripted is not None
-                        else action_league_net
-                    )
-                    if use_sc_opponent:
-                        self._apply_opponent_override(
-                            action, actor_mask, team_id, sc_start, sc_end, action_scripted
-                        )
-                    if use_avg:
-                        self._apply_opponent_override(
-                            action, actor_mask, team_id, avg_start, avg_end, action_avg
-                        )
-                    if use_league:
-                        self._apply_opponent_override(
-                            action, actor_mask, team_id, league_start, league_end, action_league
-                        )
-
-                # -- Phase 4: inject decided action into next obs as prev_action --
-                # obs(t+1).previous_action = action(t) — what the policy just decided,
-                # will be executed by env.step next iteration.
-                next_obs[ObsKey.PREVIOUS_ACTION][:, :N] = action
-
-                done_any = dones | truncated
-                self.buffer.add(
-                    obs=obs,
-                    action=action,
-                    logprob=logprob,
-                    reward=reward,
-                    done=dones.float(),  # only true termination cuts GAE bootstrap
-                    value=self.scaler.denormalize(value_norm),  # symlog-reward space for GAE
-                    alive=obs["alive"][:, :N].bool(),
-                    actor_mask=actor_mask,
-                    expert_probs=expert_probs_step,
-                    terminated=done_any,
-                )
-
-                # Update action buffer: action(t) will be applied by env.step next step
-                action_buffer = action.detach()
-
-                # Reset hidden states and action buffer for terminated envs
-                hidden = self.policy.reset_hidden_for_envs(hidden, done_any, num_tokens)
-                if self._ego_pass:
-                    hidden_t1 = self.policy.reset_hidden_for_envs(hidden_t1, done_any, num_tokens)
-                action_buffer = action_buffer.clone()
-                action_buffer[done_any] = 0
-                if use_avg and self.B_avg > 0:
-                    avg_hidden = self.avg_policy.reset_hidden_for_envs(
-                        avg_hidden, done_any[avg_start:avg_end], num_tokens
-                    )
-                if use_league and self._current_league_policy is not None:
-                    league_hidden = self._current_league_policy.reset_hidden_for_envs(
-                        league_hidden, done_any[league_start:league_end], num_tokens
-                    )
-
-                # Re-randomise which team the opponent controls for envs that just
-                # ended an episode (shared_pass only; ego_pass opponents are fixed
-                # to team 1).
-                if not self._ego_pass and self._opp_team_flag.numel() > 0:
-                    done_non_self = done_any[self.B_self :]
-                    new_flags = torch.randint(
-                        0,
-                        2,
-                        self._opp_team_flag.shape,
-                        device=self.device,
-                        dtype=torch.int32,
-                    )
-                    self._opp_team_flag = torch.where(done_non_self, new_flags, self._opp_team_flag)
-
-                obs = next_obs
-                self._global_step += B
-
-                # Aux-scale rollout steps (pure self-play, 1-step delay)
-                for i, (sc, aux_w, aux_buf) in enumerate(
-                    zip(self.cfg.scales[1:], self.aux_wrappers, self.aux_buffers)
-                ):
-                    aux_N = sc.env_config.num_ships
-                    aux_num_tokens = aux_N + sc.env_config.num_obstacles
-                    with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
-                        (
-                            aux_action_t0,
-                            aux_action_t1,
-                            aux_logprob,
-                            aux_value_norm,
-                            _,
-                            aux_hiddens[i],
-                            aux_hidden_t1s[i],
-                        ) = self._rollout_policy_pass(
-                            aux_obs[i], aux_hiddens[i], aux_hidden_t1s[i], aux_N, aux_num_tokens
-                        )
-                    aux_team_id = aux_obs[i]["team_id"][:, :aux_N]  # (B_aux, N_aux)
-                    aux_action, aux_actor_mask = self._combine_actions(
-                        aux_action_t0, aux_action_t1, aux_team_id
-                    )
-                    next_aux_obs, aux_reward, aux_dones, aux_truncated, _ = aux_w.step(
-                        aux_action_buffers[i]
-                    )
-                    # Inject aux decided action into next obs previous_action
-                    next_aux_obs[ObsKey.PREVIOUS_ACTION][:, :aux_N] = aux_action
-                    aux_done_any = aux_dones | aux_truncated
-                    aux_buf.add(
-                        obs=aux_obs[i],
-                        action=aux_action,
-                        logprob=aux_logprob,
-                        reward=aux_reward,
-                        done=aux_dones.float(),
-                        value=self.scaler.denormalize(aux_value_norm),
-                        alive=aux_obs[i]["alive"][:, :aux_N].bool(),
-                        actor_mask=aux_actor_mask,
-                        expert_probs=None,
-                        terminated=aux_done_any,
-                    )
-                    aux_hiddens[i] = self.policy.reset_hidden_for_envs(
-                        aux_hiddens[i], aux_done_any, aux_num_tokens
-                    )
-                    if self._ego_pass:
-                        aux_hidden_t1s[i] = self.policy.reset_hidden_for_envs(
-                            aux_hidden_t1s[i], aux_done_any, aux_num_tokens
-                        )
-                    aux_action_buffers[i] = aux_action.detach().clone()
-                    aux_action_buffers[i][aux_done_any] = 0
-                    aux_last_dones[i] = aux_dones
-                    aux_obs[i] = next_aux_obs
-                    self._global_step += sc.num_envs
-
-                elo_eval.step(_step, avg_eval_active)
-
-            self._training_elo, self._avg_training_elo = elo_eval.flush(avg_eval_active)
-
-            # Store final obs for T+1 aux loss label computation
-            self.buffer.store_final_obs(obs)
-            for i, aux_buf in enumerate(self.aux_buffers):
-                aux_buf.store_final_obs(aux_obs[i])
-
-            # ----------------------------------------------------------------
-            # GAE computation
-            # ----------------------------------------------------------------
+        with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
+            _, _, next_value_norm, _, _ = self.policy.get_action_and_value(
+                runtime.obs, runtime.hidden
+            )
+        self.buffer.compute_gae(self.scaler.denormalize(next_value_norm), dones.float())
+        for index, (aux_buffer, aux_hidden) in enumerate(
+            zip(self.aux_buffers, runtime.aux_hiddens)
+        ):
             with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
-                _, _, next_value_norm, _, _ = self.policy.get_action_and_value(obs, hidden)
-            next_value = self.scaler.denormalize(next_value_norm)  # symlog-reward space
-            self.buffer.compute_gae(next_value, dones.float())
+                _, _, next_aux_norm, _, _ = self.policy.get_action_and_value(
+                    runtime.aux_obs[index], aux_hidden
+                )
+            aux_buffer.compute_gae(
+                self.scaler.denormalize(next_aux_norm),
+                runtime.aux_last_dones[index].float(),
+            )
+        self.scaler.update(self.buffer.returns)
+        self.adv_scaler.update(self.buffer.advantages, self.buffer.alive_mask)
 
-            # Aux-scale GAE
-            for i, (aux_buf, aux_h) in enumerate(zip(self.aux_buffers, aux_hiddens)):
-                with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
-                    _, _, next_aux_val_norm, _, _ = self.policy.get_action_and_value(
-                        aux_obs[i], aux_h
-                    )
-                next_aux_val = self.scaler.denormalize(next_aux_val_norm)
-                aux_buf.compute_gae(next_aux_val, aux_last_dones[i].float())
+    def _refresh_training_schedule(self, metrics: dict, elo_eval: EloEvaluator) -> None:
+        """Refresh schedule-controlled optimization, reward, and averaging state."""
+        self._schedule_state = _resolve_schedule(self.cfg.schedule, self._global_step)
+        self._policy_gradient_coef = self._schedule_state.policy_gradient_coef
+        elo_norm = self._training_elo - self._random_elo()
+        p_bc_wins = 1.0 / (
+            1.0 + 10.0 ** ((elo_norm - self.cfg.bc_elo_target) / self.cfg.bc_elo_scale)
+        )
+        bc_factor = max(0.0, 2.0 * (p_bc_wins - 0.5))
+        self._behavior_cloning_coef = self._schedule_state.behavior_cloning_coef * bc_factor
+        self.optim.param_groups[0]["lr"] = self._schedule_state.learning_rate
+        for component in self.wrapper.reward_components:
+            raw_weight = getattr(self.cfg.rewards, f"{component.name}_weight")
+            component.weight = raw_weight * getattr(self._schedule_state, _GROUP[component.name])
+        self.wrapper.refresh_component_weights()
 
-            # Update per-component return percentiles and advantage RMS from primary rollout only
-            self.scaler.update(self.buffer.returns)
-            self.adv_scaler.update(self.buffer.advantages, self.buffer.alive_mask)
+        metrics["schedule/learning_rate"] = self._schedule_state.learning_rate
+        metrics["schedule/policy_gradient_coef"] = self._policy_gradient_coef
+        metrics["schedule/behavior_cloning_coef"] = self._behavior_cloning_coef
+        metrics["schedule/bc_decay_factor"] = bc_factor
+        metrics["schedule/target_kl"] = self._effective_target_kl()
+        metrics["schedule/true_reward_scale"] = self._schedule_state.true_reward_scale
+        metrics["schedule/global_scale"] = self._schedule_state.global_scale
+        metrics["schedule/local_scale"] = self._schedule_state.local_scale
 
-            # ----------------------------------------------------------------
+        elo_barrier_reached = elo_norm >= self.cfg.avg_model_elo_threshold
+        if self._policy_gradient_coef > 0.0 and self.B_avg > 0:
+            if self._avg_update_count > 0 or elo_barrier_reached:
+                first_avg_update = self._avg_update_count == 0
+                self._update_avg_model()
+                if first_avg_update:
+                    elo_eval.seed_avg_elo_from_live()
+                    self._avg_training_elo = self._training_elo
+
+    def train(self) -> None:
+        """Run the full PPO training loop."""
+        runtime = self._initialize_rollout_runtime()
+        self._train_start_time = time.time()
+
+        for update in range(self._start_update, self._num_updates + 1):
+            avg_eval_active = self._avg_update_count > 0
+            dones = self._collect_rollout(runtime, avg_eval_active)
+            self._compute_rollout_gae(runtime, dones)
+
             # PPO update epochs
             # ----------------------------------------------------------------
             record_hist = update % self.cfg.histogram_interval == 0
@@ -1014,90 +948,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 record_histograms=record_hist,
             )
 
-            # Refresh schedule state — syncs LR, loss coefficients, and reward weights.
-            # Runs after the PPO update so changes take effect on the next rollout.
-            self._schedule_state = _resolve_schedule(self.cfg.schedule, self._global_step)
-            self._policy_gradient_coef = self._schedule_state.policy_gradient_coef
-            # BC weight: P(bc_target_beats_current), remapped to [0, 1].
-            elo_norm = self._training_elo - self._random_elo()
-            p_bc_wins = 1.0 / (
-                1.0 + 10.0 ** ((elo_norm - self.cfg.bc_elo_target) / self.cfg.bc_elo_scale)
-            )
-            bc_factor = max(0.0, 2.0 * (p_bc_wins - 0.5))
-            self._behavior_cloning_coef = self._schedule_state.behavior_cloning_coef * bc_factor
-            self.optim.param_groups[0]["lr"] = self._schedule_state.learning_rate
-            for comp in self.wrapper.reward_components:
-                scale_attr = _GROUP[comp.name]
-                raw: float = getattr(self.cfg.rewards, f"{comp.name}_weight")
-                comp.weight = raw * getattr(self._schedule_state, scale_attr)
-            self.wrapper.refresh_component_weights()
-            metrics["schedule/learning_rate"] = self._schedule_state.learning_rate
-            metrics["schedule/policy_gradient_coef"] = self._schedule_state.policy_gradient_coef
-            metrics["schedule/behavior_cloning_coef"] = self._behavior_cloning_coef
-            metrics["schedule/bc_decay_factor"] = bc_factor
-            metrics["schedule/target_kl"] = self._effective_target_kl()
-            metrics["schedule/true_reward_scale"] = self._schedule_state.true_reward_scale
-            metrics["schedule/global_scale"] = self._schedule_state.global_scale
-            metrics["schedule/local_scale"] = self._schedule_state.local_scale
+            self._refresh_training_schedule(metrics, runtime.elo_eval)
+            sps, ship_tps = self._assemble_metrics(metrics, update, runtime.ship_tokens_per_update)
 
-            if self._policy_gradient_coef > 0.0:
-                # Avg-model accumulation starts once normalized training ELO
-                # crosses the barrier; once started it never stops.
-                elo_barrier_reached = (
-                    self._training_elo - self._random_elo() >= self.cfg.avg_model_elo_threshold
-                )
-                if self.B_avg > 0 and (self._avg_update_count > 0 or elo_barrier_reached):
-                    first_avg_update = self._avg_update_count == 0
-                    self._update_avg_model()
-                    if first_avg_update:
-                        # Seed the avg ELO at the live ELO — the first avg
-                        # snapshot is exactly the current policy.
-                        elo_eval.seed_avg_elo_from_live()
-                        self._avg_training_elo = self._training_elo
-
-            sps, ship_tps = self._assemble_metrics(metrics, update, ship_tokens_per_update)
-
-            # Single log call per update — all metrics at the same step
-            self._enqueue_log(metrics, step=self._global_step)
-
-            if update % self.cfg.log_interval == 0:
-                elo_str = f"  elo={self._training_elo:.0f}"
-                lifespan_str = (
-                    f"  lifespan={metrics['episode/lifespan_mean']:.1f}"
-                    if "episode/lifespan_mean" in metrics
-                    else ""
-                )
-                print(
-                    f"update={update}/{self._num_updates}  "
-                    f"step={self._global_step:,}  "
-                    f"sps={sps:,}  "
-                    f"ship_tps={ship_tps:,}  "
-                    f"loss={metrics.get('loss/total', 0.0):.4f}"
-                    f"{elo_str}"
-                    f"{lifespan_str}"
-                )
-
-            checkpoint_interval: int = self._schedule_state.checkpoint_interval
-            if checkpoint_interval > 0 and update % checkpoint_interval == 0:
-                self._save_checkpoint(update)
-                # Add to the roster at normalized-ELO milestones. Skip pretraining,
-                # where the policy is imitating rather than competing.
-                training_elo_norm = self._training_elo - self._random_elo()
-                if (
-                    self._policy_gradient_coef > 0.0
-                    and self._last_checkpoint_path is not None
-                    and self._last_checkpoint_path.exists()
-                    and self.cfg.elo_milestone_gap > 0
-                    and training_elo_norm - self._elo_milestone >= self.cfg.elo_milestone_gap
-                ):
-                    self.roster.add_checkpoint(
-                        str(self._last_checkpoint_path),
-                        self._global_step,
-                        update,
-                        initial_elo=self._training_elo,
-                    )
-                    self._elo_milestone = training_elo_norm
-                    self._save_roster_json()
+            self._log_training_update(metrics, update, sps, ship_tps)
+            self._maybe_save_checkpoint(update)
 
         self.shutdown()
 

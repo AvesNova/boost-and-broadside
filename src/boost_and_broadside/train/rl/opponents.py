@@ -23,6 +23,29 @@ class RolloutNetworkOutput(NamedTuple):
     league_hidden: torch.Tensor | None
 
 
+class ScriptedStepOutput(NamedTuple):
+    """Scripted-agent outputs and active opponent flags for one step."""
+
+    use_avg: bool
+    use_league: bool
+    use_scripted_opponent: bool
+    expert_probs: torch.Tensor | None
+    scripted_action: torch.Tensor | None
+    league_action: torch.Tensor | None
+
+
+class PrimaryStepOutput(NamedTuple):
+    """Mutable rollout state returned after one primary-scale step."""
+
+    obs: MVPObservation
+    hidden: torch.Tensor
+    hidden_t1: torch.Tensor | None
+    avg_hidden: torch.Tensor | None
+    league_hidden: torch.Tensor | None
+    action_buffer: torch.Tensor
+    dones: torch.Tensor
+
+
 def slice_obs(obs: MVPObservation, start: int, end: int) -> MVPObservation:
     """Return a view of observation tensors for environments ``[start, end)``."""
     return obs.slice_envs(slice(start, end))
@@ -178,4 +201,195 @@ class OpponentMixin:
             avg_hidden=avg_hidden,
             action_league=action_league,
             league_hidden=league_hidden,
+        )
+
+    def _scripted_step_outputs(
+        self,
+        scripted_start: int,
+        scripted_end: int,
+        league_start: int,
+        league_end: int,
+    ) -> ScriptedStepOutput:
+        """Compute scripted BC targets and opponent actions before stream launch."""
+        if self._policy_gradient_coef == 0.0:
+            with torch.no_grad():
+                _, expert_probs = self.scripted_agent.get_actions_and_probs(self.wrapper.env.state)
+            return ScriptedStepOutput(False, False, False, expert_probs, None, None)
+
+        use_avg = (
+            self._avg_update_count > 0
+            and self.B_avg > 0
+            and self._schedule_state.avg_model_fraction > 0.0
+        )
+        use_league = (
+            self.B_league > 0
+            and self._current_league_entry is not None
+            and self._schedule_state.league_fraction > 0.0
+        )
+        use_scripted_slots = self.B_sc > 0
+        use_scripted_opponent = use_scripted_slots and self._schedule_state.scripted_fraction > 0.0
+        expert_probs = None
+        scripted_action = None
+        league_action = None
+
+        if self._behavior_cloning_coef > 0.0 and self.scripted_agent is not None:
+            with torch.no_grad():
+                all_scripted_actions, expert_probs = self.scripted_agent.get_actions_and_probs(
+                    self.wrapper.env.state
+                )
+            if use_scripted_opponent:
+                scripted_action = all_scripted_actions[scripted_start:scripted_end]
+        elif use_scripted_slots:
+            with torch.no_grad():
+                scripted_state = slice_state(self.wrapper.env.state, scripted_start, scripted_end)
+                scripted_action, _ = self.scripted_agent.get_actions_and_probs(scripted_state)
+
+        if use_league and self._current_league_policy is None:
+            with torch.no_grad():
+                league_state = slice_state(self.wrapper.env.state, league_start, league_end)
+                league_action = self.scripted_agent.get_actions(league_state)
+
+        return ScriptedStepOutput(
+            use_avg,
+            use_league,
+            use_scripted_opponent,
+            expert_probs,
+            scripted_action,
+            league_action,
+        )
+
+    def _collect_primary_step(
+        self,
+        obs: MVPObservation,
+        hidden: torch.Tensor,
+        hidden_t1: torch.Tensor | None,
+        avg_hidden: torch.Tensor | None,
+        league_hidden: torch.Tensor | None,
+        action_buffer: torch.Tensor,
+        num_envs: int,
+        num_ships: int,
+        num_tokens: int,
+        scripted_start: int,
+        scripted_end: int,
+        avg_start: int,
+        avg_end: int,
+        league_start: int,
+        league_end: int,
+        env_stream: torch.cuda.Stream | None,
+        net_stream: torch.cuda.Stream | None,
+    ) -> PrimaryStepOutput:
+        """Collect one primary-scale transition and update recurrent rollout state."""
+        team_id = obs["team_id"][:, :num_ships]
+        scripted = self._scripted_step_outputs(
+            scripted_start, scripted_end, league_start, league_end
+        )
+        network_args = (
+            obs,
+            hidden,
+            hidden_t1,
+            num_ships,
+            num_tokens,
+            scripted.use_avg,
+            avg_start,
+            avg_end,
+            avg_hidden,
+            scripted.use_league,
+            league_start,
+            league_end,
+            league_hidden,
+        )
+        if env_stream is not None:
+            env_stream.wait_stream(torch.cuda.current_stream())
+            net_stream.wait_stream(torch.cuda.current_stream())
+            with torch.cuda.stream(env_stream):
+                next_obs, reward, dones, truncated, _ = self.wrapper.step(action_buffer)
+            with torch.cuda.stream(net_stream):
+                network = self._rollout_network_forwards(*network_args)
+            torch.cuda.current_stream().wait_stream(env_stream)
+            torch.cuda.current_stream().wait_stream(net_stream)
+        else:
+            next_obs, reward, dones, truncated, _ = self.wrapper.step(action_buffer)
+            network = self._rollout_network_forwards(*network_args)
+
+        action, actor_mask = self._combine_actions(network.action_t0, network.action_t1, team_id)
+        if self._policy_gradient_coef != 0.0:
+            league_action = (
+                scripted.league_action
+                if scripted.league_action is not None
+                else network.action_league
+            )
+            if scripted.use_scripted_opponent:
+                self._apply_opponent_override(
+                    action,
+                    actor_mask,
+                    team_id,
+                    scripted_start,
+                    scripted_end,
+                    scripted.scripted_action,
+                )
+            if scripted.use_avg:
+                self._apply_opponent_override(
+                    action, actor_mask, team_id, avg_start, avg_end, network.action_avg
+                )
+            if scripted.use_league:
+                self._apply_opponent_override(
+                    action,
+                    actor_mask,
+                    team_id,
+                    league_start,
+                    league_end,
+                    league_action,
+                )
+
+        next_obs["previous_action"][:, :num_ships] = action
+        done_any = dones | truncated
+        self.buffer.add(
+            obs=obs,
+            action=action,
+            logprob=network.logprob,
+            reward=reward,
+            done=dones.float(),
+            value=self.scaler.denormalize(network.value_norm),
+            alive=obs["alive"][:, :num_ships].bool(),
+            actor_mask=actor_mask,
+            expert_probs=scripted.expert_probs,
+            terminated=done_any,
+        )
+
+        hidden = self.policy.reset_hidden_for_envs(network.hidden, done_any, num_tokens)
+        if self._ego_pass:
+            hidden_t1 = self.policy.reset_hidden_for_envs(network.hidden_t1, done_any, num_tokens)
+        action_buffer = action.detach().clone()
+        action_buffer[done_any] = 0
+        avg_hidden = network.avg_hidden
+        if scripted.use_avg and self.B_avg > 0:
+            avg_hidden = self.avg_policy.reset_hidden_for_envs(
+                avg_hidden, done_any[avg_start:avg_end], num_tokens
+            )
+        league_hidden = network.league_hidden
+        if scripted.use_league and self._current_league_policy is not None:
+            league_hidden = self._current_league_policy.reset_hidden_for_envs(
+                league_hidden, done_any[league_start:league_end], num_tokens
+            )
+
+        if not self._ego_pass and self._opp_team_flag.numel() > 0:
+            new_flags = torch.randint(
+                0,
+                2,
+                self._opp_team_flag.shape,
+                device=self.device,
+                dtype=torch.int32,
+            )
+            self._opp_team_flag = torch.where(
+                done_any[self.B_self :], new_flags, self._opp_team_flag
+            )
+        self._global_step += num_envs
+        return PrimaryStepOutput(
+            next_obs,
+            hidden,
+            hidden_t1,
+            avg_hidden,
+            league_hidden,
+            action_buffer,
+            dones,
         )

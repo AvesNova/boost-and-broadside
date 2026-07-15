@@ -42,6 +42,29 @@ class CheckpointMixin:
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         self.roster.save_json(ckpt_dir / "roster.json")
 
+    def _maybe_save_checkpoint(self, update: int) -> None:
+        """Save on schedule and add milestone checkpoints to the league roster."""
+        interval = self._schedule_state.checkpoint_interval
+        if interval <= 0 or update % interval != 0:
+            return
+        self._save_checkpoint(update)
+        training_elo_norm = self._training_elo - self._random_elo()
+        if (
+            self._policy_gradient_coef > 0.0
+            and self._last_checkpoint_path is not None
+            and self._last_checkpoint_path.exists()
+            and self.cfg.elo_milestone_gap > 0
+            and training_elo_norm - self._elo_milestone >= self.cfg.elo_milestone_gap
+        ):
+            self.roster.add_checkpoint(
+                str(self._last_checkpoint_path),
+                self._global_step,
+                update,
+                initial_elo=self._training_elo,
+            )
+            self._elo_milestone = training_elo_norm
+            self._save_roster_json()
+
     # ------------------------------------------------------------------
     # Checkpointing
     # ------------------------------------------------------------------
