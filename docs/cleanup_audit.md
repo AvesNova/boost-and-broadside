@@ -220,7 +220,7 @@ and have both call sites share it.
 
 ## 5. Style-guide violations (mechanical)
 
-### 5.1 Old-style typing — **Medium** (§4)
+### 5.1 Old-style typing — **Medium** (§4) — ✅ done (ffff49e)
 `Tuple[...]` / `Union[...]` / `typing.Generator` etc. in:
 [stochastic_config.py](src/boost_and_broadside/agents/stochastic_config.py) (13×`Tuple`),
 [physics.py:9,334](src/boost_and_broadside/env/physics.py#L9),
