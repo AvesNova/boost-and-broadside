@@ -7,6 +7,7 @@ import torch
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import EloEvalConfig, EnvConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
+from boost_and_broadside.env.observation import observation_from_state
 from boost_and_broadside.env.obstacle_cache import ObstacleCache
 from boost_and_broadside.models.mvp.policy import MVPPolicy
 from boost_and_broadside.modes.agent_factory import (
@@ -15,7 +16,6 @@ from boost_and_broadside.modes.agent_factory import (
     init_hidden,
     reset_done_envs,
 )
-from boost_and_broadside.modes.collect import _obs_from_state
 
 _ELO_RATING_SCALE = 400.0
 
@@ -120,7 +120,7 @@ class EloEvaluator:
 
         with torch.no_grad():
             state = self.env.state
-            obs = _obs_from_state(state, self.ship_config)
+            obs = observation_from_state(state, self.ship_config)
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 action_live = get_actions(
                     self.live_agent,

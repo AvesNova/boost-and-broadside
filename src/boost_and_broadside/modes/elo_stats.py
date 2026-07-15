@@ -19,12 +19,12 @@ from boost_and_broadside.constants import (
     NUM_TURN_ACTIONS,
 )
 from boost_and_broadside.env.env import TensorEnv
+from boost_and_broadside.env.observation import observation_from_state
 from boost_and_broadside.modes.agent_factory import (
     ResolvedAgent,
     infer_team_pma_k,
     resolve_agent_spec,
 )
-from boost_and_broadside.modes.collect import _obs_from_state
 from boost_and_broadside.train.rl.elo_eval import expected_score
 
 # All scripted agents, in display order. "scripted" (stochastic) is kept first
@@ -240,7 +240,7 @@ def run_elo_stats_mode(
         # ------------------------------------------------------------------ #
         while not finished.all():
             state = env.state
-            obs = _obs_from_state(state, ship_config)
+            obs = observation_from_state(state, ship_config)
 
             # Compute each agent's actions for its active envs
             for a_idx, agent in enumerate(agents):

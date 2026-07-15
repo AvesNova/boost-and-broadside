@@ -6,87 +6,14 @@ from dataclasses import replace
 import torch
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
-from boost_and_broadside.constants import EPS
 from boost_and_broadside.env.env import TensorEnv
-from boost_and_broadside.env.observation import MVPObservation, ObsKey
-from boost_and_broadside.env.state import TensorState
+from boost_and_broadside.env.observation import MVPObservation, ObsKey, observation_from_state
 from boost_and_broadside.modes.agent_factory import (
     get_actions,
     init_hidden,
     reset_done_envs,
     resolve_agent_spec,
 )
-
-
-def _obs_from_state(state: TensorState, ship_config: ShipConfig) -> MVPObservation:
-    """Build a policy-ready MVPObservation from TensorState.
-
-    Mirrors MVPEnvWrapper._get_obs() exactly — all values are RAW (no
-    normalization). Includes obstacle tokens (team_id=2) when num_obstacles > 0.
-    """
-    B = state.num_envs
-    M = state.num_obstacles
-    dev = state.ship_pos.device
-
-    ship_pos = torch.stack([state.ship_pos.real, state.ship_pos.imag], dim=-1)
-    ship_vel = torch.stack([state.ship_vel.real, state.ship_vel.imag], dim=-1)
-    ship_att = torch.stack([state.ship_attitude.real, state.ship_attitude.imag], dim=-1)
-    ship_ang = state.ship_ang_vel.unsqueeze(-1)
-    ship_health = state.ship_health.unsqueeze(-1)
-    ship_power = state.ship_power.unsqueeze(-1)
-    ship_cooldown = state.ship_cooldown.unsqueeze(-1)
-    ship_prev_action = state.prev_action.long()  # (B, N, 3)
-    ship_radius = torch.full(
-        (B, state.max_ships, 1),
-        ship_config.collision_radius,
-        device=dev,
-        dtype=torch.float32,
-    )
-
-    if M > 0:
-        obs_pos = torch.stack([state.obstacle_pos.real, state.obstacle_pos.imag], dim=-1)
-        obs_vel = torch.stack([state.obstacle_vel.real, state.obstacle_vel.imag], dim=-1)
-        obs_speed = torch.norm(obs_vel, dim=-1, keepdim=True).clamp(min=EPS)
-        obs_att = obs_vel / obs_speed
-        obs_ang_vel = torch.zeros(B, M, 1, device=dev)
-        obs_health = torch.full((B, M, 1), ship_config.max_health, device=dev)
-        obs_power = torch.zeros(B, M, 1, device=dev)
-        obs_cooldown = torch.zeros(B, M, 1, device=dev)
-        obs_team_id = torch.full((B, M), 2, device=dev, dtype=torch.int32)
-        obs_alive = torch.ones(B, M, device=dev, dtype=torch.bool)
-        obs_prev_action = torch.zeros(B, M, 3, device=dev, dtype=torch.long)
-        obs_radius = state.obstacle_radius.unsqueeze(-1)
-        return MVPObservation(
-            data={
-                ObsKey.POS: torch.cat([ship_pos, obs_pos], dim=1),
-                ObsKey.VEL: torch.cat([ship_vel, obs_vel], dim=1),
-                ObsKey.ATT: torch.cat([ship_att, obs_att], dim=1),
-                ObsKey.ANG_VEL: torch.cat([ship_ang, obs_ang_vel], dim=1),
-                ObsKey.HEALTH: torch.cat([ship_health, obs_health], dim=1),
-                ObsKey.POWER: torch.cat([ship_power, obs_power], dim=1),
-                ObsKey.COOLDOWN: torch.cat([ship_cooldown, obs_cooldown], dim=1),
-                ObsKey.TEAM_ID: torch.cat([state.ship_team_id, obs_team_id], dim=1),
-                ObsKey.ALIVE: torch.cat([state.ship_alive, obs_alive], dim=1),
-                ObsKey.PREVIOUS_ACTION: torch.cat([ship_prev_action, obs_prev_action], dim=1),
-                ObsKey.RADIUS: torch.cat([ship_radius, obs_radius], dim=1),
-            }
-        )
-
-    return MVPObservation(
-        data={
-            ObsKey.POS: ship_pos,
-            ObsKey.VEL: ship_vel,
-            ObsKey.ATT: ship_att,
-            ObsKey.ANG_VEL: ship_ang,
-            ObsKey.HEALTH: ship_health,
-            ObsKey.POWER: ship_power,
-            ObsKey.COOLDOWN: ship_cooldown,
-            ObsKey.TEAM_ID: state.ship_team_id,
-            ObsKey.ALIVE: state.ship_alive,
-            ObsKey.PREVIOUS_ACTION: ship_prev_action,
-            ObsKey.RADIUS: ship_radius,
-        }
-    )
 
 
 def run_collect_stats_mode(
@@ -157,7 +84,7 @@ def run_collect_stats_mode(
 
         while not finished.all():
             state = env.state
-            obs = _obs_from_state(state, ship_config)
+            obs = observation_from_state(state, ship_config)
 
             action0 = get_actions(agent0, obs, state, B, N, dev)
             # Team 1 agent sees itself as team 0 (flipped team IDs)

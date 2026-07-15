@@ -15,13 +15,13 @@ import torch
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
+from boost_and_broadside.env.observation import observation_from_state
 from boost_and_broadside.modes.agent_factory import (
     get_actions,
     init_hidden,
     reset_done_envs,
     resolve_agent_spec,
 )
-from boost_and_broadside.modes.collect import _obs_from_state
 from boost_and_broadside.train.rl.features import build_standard_coordinator
 
 
@@ -62,7 +62,7 @@ def run_feature_stats_mode(
     sq_err_sum = torch.zeros(P, device=dev)
     count = torch.zeros(1, device=dev)
 
-    obs = _obs_from_state(env.state, ship_config)
+    obs = observation_from_state(env.state, ship_config)
     prev_targets = coordinator.get_target_vector(obs)[:, :N]  # (B, N, target_dim)
     prev_alive = env.state.ship_alive.clone()
 
@@ -70,7 +70,7 @@ def run_feature_stats_mode(
     print(f"Collecting label null-model MSE for {num_steps} steps across {B} envs...")
 
     for step in range(num_steps):
-        obs = _obs_from_state(env.state, ship_config)
+        obs = observation_from_state(env.state, ship_config)
         action0 = get_actions(agent0, obs, env.state, B, N, dev)
         action1 = get_actions(agent1, obs, env.state, B, N, dev)
         team_id = env.state.ship_team_id
@@ -78,7 +78,7 @@ def run_feature_stats_mode(
 
         dones, truncated = env.step(action)
 
-        next_obs = _obs_from_state(env.state, ship_config)
+        next_obs = observation_from_state(env.state, ship_config)
         next_targets = coordinator.get_target_vector(next_obs)[:, :N]
         next_alive = env.state.ship_alive.clone()
 
@@ -99,7 +99,7 @@ def run_feature_stats_mode(
             reset_done_envs(agent0, done_any, num_tokens)
             reset_done_envs(agent1, done_any, num_tokens)
 
-        next_obs_after_reset = _obs_from_state(env.state, ship_config)
+        next_obs_after_reset = observation_from_state(env.state, ship_config)
         prev_targets = coordinator.get_target_vector(next_obs_after_reset)[:, :N]
         prev_alive = env.state.ship_alive.clone()
 

@@ -5,6 +5,7 @@ import torch
 
 from boost_and_broadside.config import EnvConfig, RewardConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
+from boost_and_broadside.env.observation import observation_from_state
 from boost_and_broadside.env.wrapper import MVPEnvWrapper
 
 
@@ -193,6 +194,41 @@ class TestMVPEnvWrapper:
         assert obs["team_id"].shape == (B, N)
         assert obs["alive"].shape == (B, N)
         assert obs["previous_action"].shape == (B, N, 3)
+
+    def test_observation_from_state_matches_wrapper(self, ship_cfg, env_cfg, reward_cfg):
+        """The standalone builder and training wrapper must emit the same raw tensors."""
+        wrapper = MVPEnvWrapper(
+            num_envs=2,
+            ship_config=ship_cfg,
+            env_config=env_cfg,
+            rewards=reward_cfg,
+            device="cpu",
+        )
+        wrapper_obs = wrapper.reset(options={"team_sizes": (4, 4)})
+        standalone_obs = observation_from_state(wrapper.state, ship_cfg)
+
+        assert all(
+            torch.equal(wrapper_obs[key], standalone_obs[key]) for key in standalone_obs.data
+        )
+
+    def test_observation_from_state_copies_obstacle_radius(self, ship_cfg):
+        """The standalone builder must retain dynamic obstacle geometry."""
+        env = TensorEnv(
+            num_envs=2,
+            ship_config=ship_cfg,
+            env_config=EnvConfig(
+                num_ships=2,
+                max_bullets=20,
+                max_episode_steps=100,
+                num_obstacles=1,
+            ),
+            device="cpu",
+        )
+        env.reset(options={"team_sizes": (1, 1)})
+        env.state.obstacle_radius.fill_(42.0)
+        obs = observation_from_state(env.state, ship_cfg)
+
+        assert torch.equal(obs.radius[:, -1, 0], torch.full((2,), 42.0))
 
     def test_step_returns_correct_shapes(self, ship_cfg, env_cfg, reward_cfg):
         B, N = 2, env_cfg.num_ships
