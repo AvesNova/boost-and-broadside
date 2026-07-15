@@ -261,7 +261,7 @@ Elsewhere: `Normalize(40.0)` and the `label_scale` calibration constants in
 watch-mode `EnvConfig(num_ships=8, …)` and eval-mode `1024*4` envs inline in [main.py](main.py).
 **Action:** promote to `TrainConfig`/schedule/constants with names; wire `elo_eval_games` up or delete it.
 
-### 5.4 Config defaults contradict the guide *and* their own docstrings — **Medium** (§6.3)
+### 5.4 Config defaults contradict the guide *and* their own docstrings — **Medium** (§6.3) — ✅ done (821a3d5)
 `TrainConfig` docstring says "No defaults — all values required" directly above 7 defaulted
 fields ([training.py:111-134](src/boost_and_broadside/config/training.py#L111-L134));
 `RewardConfig` likewise defaults 9 weights ([core.py:188-198](src/boost_and_broadside/config/core.py#L188-L198));
