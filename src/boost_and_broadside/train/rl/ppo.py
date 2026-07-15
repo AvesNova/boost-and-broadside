@@ -106,9 +106,8 @@ _GROUP: dict[str, str] = {
     "speed": "local_scale",
 }
 
-# Components that use diagonal lambda (self-only: i==j). These must match the
-# "local_scale" entries above. Any component NOT in _LOCAL_COMPONENTS uses the
-# standard team-based lambda aggregation.
+# Components with self-only rewards use a diagonal lambda (i == j); all others
+# use team-based lambda aggregation.
 _LOCAL_COMPONENTS: frozenset[str] = frozenset(
     {
         "facing",

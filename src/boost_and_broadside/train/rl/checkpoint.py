@@ -123,7 +123,6 @@ class CheckpointMixin:
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         path = ckpt_dir / f"step_{self._global_step:012d}.pt"
 
-        # Build and copy checkpoints to CPU synchronously on the main thread (very fast, ~5-10ms)
         cpu_payload = clone_to_cpu(self.checkpoint_payload(update))
 
         avg_path = None
@@ -212,7 +211,6 @@ class CheckpointMixin:
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         path = ckpt_dir / name
 
-        # Build and copy payload synchronously on the main thread (extremely lightweight, ~1-3ms)
         raw_payload = (
             payload if payload is not None else self._checkpoint_payload_lightweight(update=0)
         )

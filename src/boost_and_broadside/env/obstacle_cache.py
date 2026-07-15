@@ -7,7 +7,7 @@ snapshot and apply a random rotation + toroidal translation so no two
 episodes see the exact same map layout.
 """
 
-import math  # needed for math.ceil in generate()
+import math
 
 import torch
 
