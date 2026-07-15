@@ -5,6 +5,7 @@ logs/
 __pycache__/
 checkpoints/
 *.zip
+*.log
 data/
 outputs/
 *.egg-info/
@@ -14,3 +15,5 @@ outputs/
 wandb/
 .venv/
 /tmp/
+.env
+.claude/settings.local.json

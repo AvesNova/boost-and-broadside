@@ -5,17 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "boost-and-broadside"
 version = "0.1.0"
-description = "Add your description here"
+description = "GPU-accelerated multi-agent RL environment where teams of ships compete in 2D dogfights, trained via PPO with ELO-rated league play."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "h5py>=3.15.1",
     "matplotlib>=3.10.9",
     "numpy>=2.0.0",
     "pygame>=2.6.1",
-    "ruff>=0.15.9",
-    "scikit-learn>=1.8.0",
-    "scipy>=1.16.3",
     "torch>=2.10.0",
     "wandb>=0.22.2",
 ]
@@ -33,6 +29,14 @@ where = ["src"]
 
 [dependency-groups]
 dev = [
+    "pytest>=8.0",
     "pytest-xdist>=3.8.0",
     "pytest-tap>=3.4",
+    "ruff>=0.15.9",
 ]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
