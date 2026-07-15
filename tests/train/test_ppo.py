@@ -14,6 +14,8 @@ from boost_and_broadside.config import (
     TrainConfig,
     TrainingSchedule,
     constant,
+    exponential,
+    join,
     linear,
     stepped,
 )
@@ -259,6 +261,37 @@ class TestSchedulePrimitives:
     def test_stepped_beyond_last_keypoint(self):
         fn = stepped((0, 0.5), (1_000_000, 0.1))
         assert fn(99_000_000) == 0.1
+
+    def test_exponential_endpoints(self):
+        fn = exponential((0, 1e-4), (100, 1e-2))
+        assert abs(fn(0) - 1e-4) < 1e-12
+        assert abs(fn(100) - 1e-2) < 1e-10
+
+    def test_exponential_midpoint_is_geometric_mean(self):
+        fn = exponential((0, 1e-4), (100, 1e-2))
+        assert abs(fn(50) - 1e-3) < 1e-10
+
+    def test_exponential_clamps_outside_keypoints(self):
+        fn = exponential((100, 1.0), (200, 2.0))
+        assert fn(0) == 1.0
+        assert fn(9_999) == 2.0
+
+    def test_exponential_rejects_nonpositive_values(self):
+        with pytest.raises(ValueError, match="values > 0"):
+            exponential((0, 0.0), (100, 1.0))
+
+    def test_join_switches_at_activation_step(self):
+        fn = join((0, constant(1.0)), (100, constant(2.0)))
+        assert fn(99) == 1.0
+        assert fn(100) == 2.0
+
+    def test_join_passes_global_step_to_active_segment(self):
+        fn = join((0, constant(0.0)), (100, linear((100, 0.0), (200, 1.0))))
+        assert abs(fn(150) - 0.5) < 1e-10
+
+    def test_join_rejects_non_ascending_segments(self):
+        with pytest.raises(ValueError, match="ascending"):
+            join((100, constant(1.0)), (0, constant(2.0)))
 
     def test_group_scales_applied_by_trainer(self, tmp_path):
         """After training, effective weight = group_scale * individual weight for EVERY
