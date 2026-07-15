@@ -3,7 +3,7 @@
 import pytest
 import torch
 
-from boost_and_broadside.config import EnvConfig, ModelConfig, RewardConfig, ShipConfig
+from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.env.state import TensorState
 
 
@@ -21,33 +21,6 @@ def env_config() -> EnvConfig:
 @pytest.fixture
 def model_config() -> ModelConfig:
     return ModelConfig(d_model=64, n_heads=4, n_transformer_blocks=2)
-
-
-@pytest.fixture
-def base_rewards() -> RewardConfig:
-    return RewardConfig(
-        victory_weight=1.0,
-        death_weight=0.5,
-        damage_weight=0.01,
-        facing_weight=0.01,
-        exposure_weight=0.01,
-        turn_rate_weight=0.01,
-        closing_speed_weight=0.01,
-        proximity_weight=0.01,
-        positioning_weight=0.05,
-        power_range_weight=0.01,
-        speed_range_weight=0.01,
-        shoot_quality_weight=0.01,
-        positioning_radius=300.0,
-        proximity_radius=300.0,
-        power_range_lower=0.2,
-        power_range_upper=0.8,
-        speed_range_lower=40.0,
-        speed_range_upper=120.0,
-        shoot_quality_radius=200.0,
-        enemy_neg_lambda_components=frozenset({"damage", "death", "victory", "exposure"}),
-        disabled_rewards=frozenset(),
-    )
 
 
 @pytest.fixture
