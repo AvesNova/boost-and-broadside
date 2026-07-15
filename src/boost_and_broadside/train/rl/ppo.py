@@ -317,7 +317,6 @@ class PPOTrainer:
         use_wandb: bool = False,
         scripted_agent: StochasticScriptedAgent | None = None,
         compile_mode: str | None = "reduce-overhead",
-        obs_config=None,  # deprecated, ignored
         resume_wandb_run_id: str | None = None,
     ) -> None:
         self.cfg = train_config

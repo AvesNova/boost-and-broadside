@@ -18,13 +18,6 @@ class ObsKey(StrEnum):
     PREVIOUS_ACTION = "previous_action"
 
 
-_LEGACY_KEY_MAP: dict[str, tuple[ObsKey, int]] = {
-    "prev_power": (ObsKey.PREVIOUS_ACTION, 0),
-    "prev_turn": (ObsKey.PREVIOUS_ACTION, 1),
-    "prev_shoot": (ObsKey.PREVIOUS_ACTION, 2),
-}
-
-
 @dataclass(frozen=True)
 class MVPObservation:
     """Typed immutable observation for all entities.
@@ -39,22 +32,17 @@ class MVPObservation:
     data: dict
 
     # ------------------------------------------------------------------
-    # Key access — supports ObsKey enum or str (including legacy names)
+    # Key access — supports ObsKey enum or str
     # ------------------------------------------------------------------
 
     def __getitem__(self, key) -> torch.Tensor:
         if isinstance(key, ObsKey):
             return self.data[key]
-        if key in _LEGACY_KEY_MAP:
-            obs_key, channel = _LEGACY_KEY_MAP[key]
-            return self.data[obs_key][..., channel]
         return self.data[ObsKey(key)]
 
     def __contains__(self, key) -> bool:
         if isinstance(key, ObsKey):
             return key in self.data
-        if key in _LEGACY_KEY_MAP:
-            return True
         try:
             return ObsKey(key) in self.data
         except ValueError:
@@ -139,30 +127,3 @@ class MVPObservation:
         return MVPObservation(
             data={k: torch.cat([v, other.data[k]], dim=0) for k, v in self.data.items()}
         )
-
-    # ------------------------------------------------------------------
-    # Construction from legacy dict
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def from_dict(d: dict) -> "MVPObservation":
-        """Build from a raw obs dict, handling legacy key names.
-
-        Recognises 'prev_power'/'prev_turn'/'prev_shoot' (old three-key layout)
-        and combines them into PREVIOUS_ACTION: (B, N+M, 3).
-        """
-        data: dict[ObsKey, torch.Tensor] = {}
-        for k, v in d.items():
-            try:
-                data[ObsKey(k)] = v
-            except ValueError:
-                pass
-
-        if ObsKey.PREVIOUS_ACTION not in data:
-            if "prev_power" in d:
-                p = d["prev_power"]
-                t = d["prev_turn"]
-                s = d["prev_shoot"]
-                data[ObsKey.PREVIOUS_ACTION] = torch.stack([p, t, s], dim=-1)
-
-        return MVPObservation(data=data)
