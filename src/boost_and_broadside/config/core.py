@@ -96,7 +96,8 @@ class EnvConfig:
 class ModelConfig:
     """Policy network architecture. No defaults — all values required.
 
-    Fourier frequency counts per feature are in ObsConfig, not here.
+    Fourier frequency counts per feature are set by the FeatureCoordinator
+    in train/rl/features.py, not here.
     """
 
     d_model: int  # token embedding dimension
