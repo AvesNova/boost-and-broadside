@@ -156,7 +156,7 @@ Documents bullet energy cost `3.0` and the head-on damage-reduction mechanic, bu
 
 ## 4. Structure: oversized files & duplication
 
-### 4.1 Split `ppo.py` (2839 lines; `train()` alone is ~880 lines) — **High** — ✅ done (18584e4)
+### 4.1 Split `ppo.py` (2839 lines; `train()` alone is ~880 lines) — **High** — ✅ done (ba59d56)
 Violates §6.2 (40-50-line functions, ≤3 nesting levels) and §6.6 (300-400-line files) about as
 hard as possible. Natural seams, in rough order of extraction value:
 1. **In-training ELO evaluation** (eval env setup at [ppo.py:844-899](src/boost_and_broadside/train/rl/ppo.py#L844-L899),
