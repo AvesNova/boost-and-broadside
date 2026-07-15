@@ -39,8 +39,6 @@ class EloRoster:
     Entries:
         "random"     — always present; ELO fixed at 0 as an absolute anchor.
         "avg"        — added when the avg model first becomes ready.
-        "scripted"   — added only after ``scripted_roster_min_steps`` global steps
-                       to avoid inflating its ELO before the policy is meaningful.
         "checkpoint" — added at ELO milestones; weakest pruned when over capacity.
 
     Sampling is weighted by ELO proximity so the training policy tends to face
@@ -187,33 +185,6 @@ class EloRoster:
             if r <= cumulative:
                 return entry
         return candidates[-1]  # floating-point edge case
-
-    # ------------------------------------------------------------------
-    # ELO update
-    # ------------------------------------------------------------------
-
-    def update_elo(
-        self,
-        training_elo: float,
-        entry: RosterEntry,
-        win_rate: float,
-    ) -> float:
-        """Apply a zero-sum ELO update for one matchup.
-
-        Args:
-            training_elo: Current ELO of the training policy.
-            entry:        The opponent roster entry (modified in-place).
-            win_rate:     Empirical score for the training policy
-                          (1.0 = all wins, 0.5 = all ties, 0.0 = all losses).
-
-        Returns:
-            Updated training ELO.
-        """
-        expected = 1.0 / (1.0 + 10.0 ** ((entry.elo - training_elo) / 400.0))
-        delta = self.k_factor * (win_rate - expected)
-        if not entry.fixed:
-            entry.elo -= delta  # zero-sum; fixed entries (e.g. random) stay put
-        return training_elo + delta
 
     # ------------------------------------------------------------------
     # Policy loading / eviction

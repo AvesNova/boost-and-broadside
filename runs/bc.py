@@ -36,9 +36,6 @@ BC_SCHEDULE = TrainingSchedule(
     scripted_fraction=constant(0.0),
     avg_model_fraction=constant(0.0),
     league_fraction=constant(0.0),
-    allow_scripted_in_roster=stepped((0, True)),
-    # ELO evaluation disabled during BC pretraining.
-    elo_eval_games=stepped((0, 0)),
     checkpoint_interval=stepped((0, 10)),
     num_epochs=constant(4),
     target_kl=constant(None),
@@ -69,5 +66,4 @@ BC_TRAIN_CONFIG = TrainConfig(
     elo_k_factor=32.0,
     elo_temperature=200.0,
     league_uniform_sampling=False,
-    scripted_roster_min_steps=300_000_000,
 )

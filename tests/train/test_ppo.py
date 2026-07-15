@@ -61,8 +61,6 @@ def _make_schedule(**overrides) -> TrainingSchedule:
         scripted_fraction=constant(0.0),
         avg_model_fraction=constant(0.0),
         league_fraction=constant(0.0),
-        allow_scripted_in_roster=stepped((0, False)),
-        elo_eval_games=stepped((0, 16)),
         checkpoint_interval=stepped((0, 0)),
         num_epochs=constant(1),
         target_kl=constant(None),
@@ -102,7 +100,6 @@ def _make_train_config(
         elo_milestone_gap=50.0,
         elo_k_factor=32.0,
         elo_temperature=200.0,
-        scripted_roster_min_steps=0,
     )
 
 
@@ -291,7 +288,6 @@ class TestSchedulePrimitives:
                 elo_milestone_gap=50.0,
                 elo_k_factor=32.0,
                 elo_temperature=200.0,
-                scripted_roster_min_steps=0,
             ),
             model_config=ModelConfig(d_model=32, n_heads=4, n_transformer_blocks=1),
             ship_config=ShipConfig(),
@@ -334,8 +330,6 @@ class TestRLSmokeTest:
             scripted_fraction=constant(0.5),
             avg_model_fraction=constant(0.0),
             league_fraction=constant(0.0),
-            allow_scripted_in_roster=constant(True),
-            elo_eval_games=constant(0),
             checkpoint_interval=constant(9999),
             num_epochs=constant(1),
             target_kl=constant(None),
@@ -365,7 +359,6 @@ class TestRLSmokeTest:
             elo_k_factor=32.0,
             elo_temperature=200.0,
             league_uniform_sampling=False,
-            scripted_roster_min_steps=0,
         )
         scripted = StochasticScriptedAgent(SHIP_CONFIG, StochasticAgentConfig())
         trainer = PPOTrainer(

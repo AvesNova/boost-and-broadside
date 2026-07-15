@@ -229,10 +229,8 @@ class TrainingSchedule:
     scripted_fraction: Callable[[int], float]
     avg_model_fraction: Callable[[int], float]
     league_fraction: Callable[[int], float]
-    allow_scripted_in_roster: Callable[[int], bool]
 
     # --- Checkpointing / eval ---
-    elo_eval_games: Callable[[int], int]
     checkpoint_interval: Callable[[int], int]  # 0 = disabled
 
     # --- PPO epoch control ---

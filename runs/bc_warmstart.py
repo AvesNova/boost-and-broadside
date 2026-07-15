@@ -39,7 +39,6 @@ BC_WARMSTART_PRETRAIN_CONFIG = TrainConfig(
     elo_k_factor=32.0,
     elo_temperature=200.0,
     league_uniform_sampling=False,
-    scripted_roster_min_steps=300_000_000,
 )
 
 # The RL stage is identical to a standalone RL run.

@@ -55,8 +55,6 @@ RL_SCHEDULE = TrainingSchedule(
     avg_model_fraction=stepped((0, 0.0), (50_000_000, 0.2)),
     # League activates at step 50M once the policy has meaningful ELO.
     league_fraction=stepped((0, 0.0), (50_000_000, 0.2)),
-    allow_scripted_in_roster=stepped((0, True)),
-    elo_eval_games=stepped((0, 512)),
     checkpoint_interval=constant(50),
     num_epochs=stepped((0, 4)),
     target_kl=stepped((0, 0.1)),
@@ -100,7 +98,6 @@ RL_TRAIN_CONFIG = TrainConfig(
     elo_k_factor=32.0,
     elo_temperature=200.0,
     league_uniform_sampling=False,
-    scripted_roster_min_steps=300_000_000,
     # Avg-model accumulation starts once normalized training ELO reaches this.
     avg_model_elo_threshold=1000.0,
     obstacle_cache=ObstacleCacheConfig(

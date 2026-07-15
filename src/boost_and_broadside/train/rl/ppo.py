@@ -205,8 +205,6 @@ class _ResolvedSchedule:
     scripted_fraction: float
     avg_model_fraction: float
     league_fraction: float
-    allow_scripted_in_roster: bool
-    elo_eval_games: int
     checkpoint_interval: int
     num_epochs: int
     target_kl: float | None
@@ -227,8 +225,6 @@ def _resolve_schedule(schedule: TrainingSchedule, step: int) -> _ResolvedSchedul
         scripted_fraction=schedule.scripted_fraction(step),
         avg_model_fraction=schedule.avg_model_fraction(step),
         league_fraction=schedule.league_fraction(step),
-        allow_scripted_in_roster=schedule.allow_scripted_in_roster(step),
-        elo_eval_games=schedule.elo_eval_games(step),
         checkpoint_interval=schedule.checkpoint_interval(step),
         num_epochs=schedule.num_epochs(step),
         target_kl=schedule.target_kl(step),
@@ -537,7 +533,6 @@ class PPOTrainer:
         )
         # Random anchor is added by EloRoster.__init__ (ELO=0, fixed).
         # "avg" entry is added when _update_avg_model() is first called.
-        # "scripted" entry is added lazily after scripted_roster_min_steps.
 
         # Training ELO starts at 0 — all ratings begin
         # at the same point and diverge as eval matchups accumulate.

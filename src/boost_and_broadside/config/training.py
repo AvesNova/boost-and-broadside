@@ -101,7 +101,6 @@ class TrainConfig:
     elo_k_factor: float  # ELO K-factor (score sensitivity per match)
     elo_temperature: float  # ELO bandwidth for proximity-weighted sampling
     league_uniform_sampling: bool  # if True, sample league opponents uniformly
-    scripted_roster_min_steps: int  # delay adding scripted to roster until this many steps
     # Avg-model accumulation starts once normalized training ELO (vs the random
     # anchor) reaches this barrier; once started it never stops.
     avg_model_elo_threshold: float = 1000.0
