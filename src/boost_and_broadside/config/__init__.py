@@ -17,6 +17,7 @@ from boost_and_broadside.config.schedule import (
     stepped,
 )
 from boost_and_broadside.config.training import (
+    EloEvalConfig,
     ObstacleCacheConfig,
     ScaleConfig,
     TrainConfig,
@@ -25,6 +26,7 @@ from boost_and_broadside.config.training import (
 __all__ = [
     "ShipConfig",
     "EnvConfig",
+    "EloEvalConfig",
     "ModelConfig",
     "RewardConfig",
     "Schedule",

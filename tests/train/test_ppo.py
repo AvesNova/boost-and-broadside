@@ -7,6 +7,7 @@ from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import (
     EnvConfig,
+    EloEvalConfig,
     ModelConfig,
     RewardConfig,
     ScaleConfig,
@@ -66,6 +67,8 @@ def _make_schedule(**overrides) -> TrainingSchedule:
         checkpoint_interval=stepped((0, 0)),
         num_epochs=constant(1),
         target_kl=constant(None),
+        high_elo_threshold=constant(900.0),
+        high_elo_target_kl=constant(0.02),
     )
     defaults.update(overrides)
     return TrainingSchedule(**defaults)
@@ -102,6 +105,16 @@ def _make_train_config(
         elo_milestone_gap=50.0,
         elo_k_factor=32.0,
         elo_temperature=200.0,
+        elo_eval=EloEvalConfig(
+            envs_per_matchup=4,
+            step_interval=4,
+            k_factor=4.0,
+            scripted_elo=1000.0,
+            window_size=100,
+        ),
+        bc_elo_target=950.0,
+        bc_elo_scale=200.0,
+        histogram_interval=10,
     )
 
 
@@ -328,6 +341,10 @@ class TestSchedulePrimitives:
                 elo_milestone_gap=50.0,
                 elo_k_factor=32.0,
                 elo_temperature=200.0,
+                elo_eval=EloEvalConfig(4, 4, 4.0, 1000.0, 100),
+                bc_elo_target=950.0,
+                bc_elo_scale=200.0,
+                histogram_interval=10,
             ),
             model_config=ModelConfig(d_model=32, n_heads=4, n_transformer_blocks=1),
             ship_config=ShipConfig(),
@@ -413,6 +430,8 @@ class TestRLSmokeTest:
             checkpoint_interval=constant(9999),
             num_epochs=constant(1),
             target_kl=constant(None),
+            high_elo_threshold=constant(900.0),
+            high_elo_target_kl=constant(0.02),
         )
         cfg = TrainConfig(
             paradigm=paradigm,
@@ -439,6 +458,10 @@ class TestRLSmokeTest:
             elo_k_factor=32.0,
             elo_temperature=200.0,
             league_uniform_sampling=False,
+            elo_eval=EloEvalConfig(4, 4, 4.0, 1000.0, 100),
+            bc_elo_target=950.0,
+            bc_elo_scale=200.0,
+            histogram_interval=10,
         )
         scripted = StochasticScriptedAgent(SHIP_CONFIG, StochasticAgentConfig())
         trainer = PPOTrainer(

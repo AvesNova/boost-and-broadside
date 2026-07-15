@@ -238,3 +238,5 @@ class TrainingSchedule:
     target_kl: Callable[
         [int], float | None
     ]  # exit epoch loop early if mean approx KL exceeds this; None = disabled
+    high_elo_threshold: Callable[[int], float | None]
+    high_elo_target_kl: Callable[[int], float | None]

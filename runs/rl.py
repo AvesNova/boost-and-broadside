@@ -25,7 +25,7 @@ from boost_and_broadside.config import (
     stepped,
 )
 from boost_and_broadside.config.schedule import exponential, join
-from runs.shared import COMPONENT_GAMMAS, COMPONENT_LAMBDAS, REWARDS
+from runs.shared import COMPONENT_GAMMAS, COMPONENT_LAMBDAS, ELO_EVAL, REWARDS
 
 _MAX_TOKENS = 6_000_000
 _NUM_SHIPS = 8
@@ -58,6 +58,8 @@ RL_SCHEDULE = TrainingSchedule(
     checkpoint_interval=constant(50),
     num_epochs=stepped((0, 4)),
     target_kl=stepped((0, 0.1)),
+    high_elo_threshold=constant(900.0),
+    high_elo_target_kl=constant(0.02),
 )
 
 RL_TRAIN_CONFIG = TrainConfig(
@@ -98,6 +100,10 @@ RL_TRAIN_CONFIG = TrainConfig(
     elo_k_factor=32.0,
     elo_temperature=200.0,
     league_uniform_sampling=False,
+    elo_eval=ELO_EVAL,
+    bc_elo_target=950.0,
+    bc_elo_scale=200.0,
+    histogram_interval=10,
     # Avg-model accumulation starts once normalized training ELO reaches this.
     avg_model_elo_threshold=1000.0,
     obstacle_cache=ObstacleCacheConfig(

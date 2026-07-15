@@ -12,7 +12,7 @@ before RL takes over.
 from boost_and_broadside.config import EnvConfig, ScaleConfig, TrainConfig
 from runs.bc import _MAX_TOKENS, BC_SCHEDULE
 from runs.rl import RL_TRAIN_CONFIG
-from runs.shared import REWARDS
+from runs.shared import ELO_EVAL, REWARDS
 
 BC_WARMSTART_PRETRAIN_CONFIG = TrainConfig(
     paradigm="ego_pass",
@@ -39,6 +39,10 @@ BC_WARMSTART_PRETRAIN_CONFIG = TrainConfig(
     elo_k_factor=32.0,
     elo_temperature=200.0,
     league_uniform_sampling=False,
+    elo_eval=ELO_EVAL,
+    bc_elo_target=950.0,
+    bc_elo_scale=200.0,
+    histogram_interval=10,
 )
 
 # The RL stage is identical to a standalone RL run.

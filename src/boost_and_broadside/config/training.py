@@ -27,6 +27,17 @@ class ObstacleCacheConfig:
 
 
 @dataclass(frozen=True)
+class EloEvalConfig:
+    """Configuration for continuous in-training ELO evaluation."""
+
+    envs_per_matchup: int
+    step_interval: int
+    k_factor: float
+    scripted_elo: float
+    window_size: int
+
+
+@dataclass(frozen=True)
 class ScaleConfig:
     """One training scale: an environment config paired with a batch size.
 
@@ -101,6 +112,10 @@ class TrainConfig:
     elo_k_factor: float  # ELO K-factor (score sensitivity per match)
     elo_temperature: float  # ELO bandwidth for proximity-weighted sampling
     league_uniform_sampling: bool  # if True, sample league opponents uniformly
+    elo_eval: EloEvalConfig  # continuous evaluation batch and rating parameters
+    bc_elo_target: float  # normalized ELO midpoint where BC decay approaches zero
+    bc_elo_scale: float  # logistic scale for ELO-gated BC decay
+    histogram_interval: int  # record expensive histograms every N updates
     # Avg-model accumulation starts once normalized training ELO (vs the random
     # anchor) reaches this barrier; once started it never stops.
     avg_model_elo_threshold: float = 1000.0

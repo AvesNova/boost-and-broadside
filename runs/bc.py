@@ -15,7 +15,7 @@ from boost_and_broadside.config import (
     linear,
     stepped,
 )
-from runs.shared import REWARDS
+from runs.shared import ELO_EVAL, REWARDS
 
 _MAX_TOKENS = 3840
 
@@ -39,6 +39,8 @@ BC_SCHEDULE = TrainingSchedule(
     checkpoint_interval=stepped((0, 10)),
     num_epochs=constant(4),
     target_kl=constant(None),
+    high_elo_threshold=constant(900.0),
+    high_elo_target_kl=constant(0.02),
 )
 
 BC_TRAIN_CONFIG = TrainConfig(
@@ -66,4 +68,8 @@ BC_TRAIN_CONFIG = TrainConfig(
     elo_k_factor=32.0,
     elo_temperature=200.0,
     league_uniform_sampling=False,
+    elo_eval=ELO_EVAL,
+    bc_elo_target=950.0,
+    bc_elo_scale=200.0,
+    histogram_interval=10,
 )

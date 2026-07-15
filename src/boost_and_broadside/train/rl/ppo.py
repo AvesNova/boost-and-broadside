@@ -182,6 +182,8 @@ class _ResolvedSchedule:
     checkpoint_interval: int
     num_epochs: int
     target_kl: float | None
+    high_elo_threshold: float | None
+    high_elo_target_kl: float | None
 
 
 def _resolve_schedule(schedule: TrainingSchedule, step: int) -> _ResolvedSchedule:
@@ -202,6 +204,8 @@ def _resolve_schedule(schedule: TrainingSchedule, step: int) -> _ResolvedSchedul
         checkpoint_interval=schedule.checkpoint_interval(step),
         num_epochs=schedule.num_epochs(step),
         target_kl=schedule.target_kl(step),
+        high_elo_threshold=schedule.high_elo_threshold(step),
+        high_elo_target_kl=schedule.high_elo_target_kl(step),
     )
 
 
@@ -218,12 +222,12 @@ def _max_schedule_value(
     return max(schedule_fn(s) for s in range(0, total_steps + step_size, step_size))
 
 
-def _compute_optimal_eval_ratio(training_elo: float) -> float:
+def _compute_optimal_eval_ratio(training_elo: float, scripted_elo: float) -> float:
     """Compute optimal ratio (fraction of matches against Random) using Information-Proportional Allocation."""
     # expected win rate against Random (r = 0)
     p_rand = 1.0 / (1.0 + 10.0 ** ((0.0 - training_elo) / 400.0))
-    # expected win rate against Scripted (r = 1000)
-    p_sc = 1.0 / (1.0 + 10.0 ** ((1000.0 - training_elo) / 400.0))
+    # expected win rate against the scripted anchor
+    p_sc = 1.0 / (1.0 + 10.0 ** ((scripted_elo - training_elo) / 400.0))
 
     # Bernoulli variances (Fisher Information contribution)
     v_rand = p_rand * (1.0 - p_rand)
@@ -236,14 +240,14 @@ def _compute_optimal_eval_ratio(training_elo: float) -> float:
     return v_rand / total_val
 
 
-def _compute_optimal_eval_ratio_tensor(elo: torch.Tensor) -> torch.Tensor:
+def _compute_optimal_eval_ratio_tensor(elo: torch.Tensor, scripted_elo: float) -> torch.Tensor:
     """Tensor version of _compute_optimal_eval_ratio.
 
     Same math, but on a device-resident ELO scalar so anchor re-routing inside
     the rollout never forces a host-device sync.
     """
     p_rand = 1.0 / (1.0 + 10.0 ** ((0.0 - elo) / 400.0))
-    p_sc = 1.0 / (1.0 + 10.0 ** ((1000.0 - elo) / 400.0))
+    p_sc = 1.0 / (1.0 + 10.0 ** ((scripted_elo - elo) / 400.0))
     v_rand = p_rand * (1.0 - p_rand)
     v_sc = p_sc * (1.0 - p_sc)
     total = v_rand + v_sc
@@ -512,10 +516,11 @@ class PPOTrainer:
         # at the same point and diverge as eval matchups accumulate.
         self._training_elo: float = 0.0
         self._avg_training_elo: float = 0.0
-        self._eval_window_rand = deque(maxlen=100)
-        self._eval_window_sc = deque(maxlen=100)
-        self._eval_window_avg_vs_sc = deque(maxlen=100)
-        self._eval_window_live_vs_avg = deque(maxlen=100)
+        eval_window_size = train_config.elo_eval.window_size
+        self._eval_window_rand = deque(maxlen=eval_window_size)
+        self._eval_window_sc = deque(maxlen=eval_window_size)
+        self._eval_window_avg_vs_sc = deque(maxlen=eval_window_size)
+        self._eval_window_live_vs_avg = deque(maxlen=eval_window_size)
         self._elo_milestone: float = 0.0  # normalized training ELO (vs random) at last milestone
         self._best_training_elo_norm: float = 0.0  # best normalized training ELO seen so far
         self._best_avg_elo_norm: float = 0.0  # best normalized avg ELO seen so far
@@ -795,14 +800,12 @@ class PPOTrainer:
         num_tokens = N + M  # ships + obstacles; hidden state covers all entity tokens
 
         # -- ELO Evaluation Env & State Initialization (Parallel Vectorized Slots) --
-        # Three fixed 512-env matchup slices, ordered so each network agent covers
+        # Three fixed-size matchup slices, ordered so each network agent covers
         # one contiguous span and runs a single sliced forward pass:
-        #   [0:512)     live vs anchors  → updates live ELO
-        #   [512:1024)  live vs avg      → head-to-head win rate
-        #   [1024:1536) avg  vs anchors  → updates avg-model ELO
-        # Live policy acts on [0:1024); avg policy acts on [512:1536);
-        # anchors (scripted/random) act on [0:512) and [1024:1536).
-        S_eval = 512
+        #   first slice:  live vs anchors  → updates live ELO
+        #   second slice: live vs avg      → head-to-head win rate
+        #   third slice:  avg vs anchors   → updates avg-model ELO
+        S_eval = self.cfg.elo_eval.envs_per_matchup
         B_eval = 3 * S_eval
         sl_live_anchor = slice(0, S_eval)
         sl_live_avg = slice(S_eval, 2 * S_eval)
@@ -838,8 +841,8 @@ class PPOTrainer:
         init_hidden(agent_avg, 2 * S_eval, num_tokens, self.device)
 
         # Optimal information-proportional routing variables
-        K_eval = 4.0
-        f_star = _compute_optimal_eval_ratio(self._training_elo)
+        K_eval = self.cfg.elo_eval.k_factor
+        f_star = _compute_optimal_eval_ratio(self._training_elo, self.cfg.elo_eval.scripted_elo)
         eval_anchor_is_scripted = torch.rand(B_eval, device=self.device) > f_star
 
         # On-GPU ELO scalars — updated branchlessly inside the rollout, synced to
@@ -1243,7 +1246,7 @@ class PPOTrainer:
                 # env resets are all masked tensor ops on fixed shapes. The only
                 # host sync for the whole ELO system happens once per update, when
                 # the GPU scalars and score history flush (after the rollout loop).
-                if _step % 4 == 0:
+                if _step % self.cfg.elo_eval.step_interval == 0:
                     with torch.no_grad():
                         eval_state = eval_env.state
                         eval_obs_obj = _obs_from_state(eval_state, self.ship_config)
@@ -1265,9 +1268,9 @@ class PPOTrainer:
                                 2 * S_eval,
                                 N,
                                 self.device,
-                            ).long()  # envs [512:1536): live-vs-avg + avg-vs-anchor
+                            ).long()  # second + third matchup slices
 
-                            # Anchor actions — rows map to envs [0:512) + [1024:1536).
+                            # Anchor actions cover the first and third matchup slices.
                             if agent_sc is not None:
                                 action_scripted = torch.cat(
                                     [
@@ -1343,7 +1346,9 @@ class PPOTrainer:
                         eval_tied = eval_done_any & ~eval_team0_won & ~eval_team1_won
                         score = eval_team0_won.float() + 0.5 * eval_tied.float()  # (B_eval,)
                         done_f = eval_done_any.float()
-                        anchor_elo = eval_anchor_is_scripted.float() * 1000.0
+                        anchor_elo = (
+                            eval_anchor_is_scripted.float() * self.cfg.elo_eval.scripted_elo
+                        )
 
                         # Live ELO vs anchors — every game finishing this step uses
                         # the pre-update rating, matching the old batched update.
@@ -1388,7 +1393,9 @@ class PPOTrainer:
                         # Information-Proportional anchor re-routing from the on-GPU
                         # live ELO. Matchup slices stay fixed so the 3-way split is
                         # exact.
-                        f_star_t = _compute_optimal_eval_ratio_tensor(elo_live_gpu)
+                        f_star_t = _compute_optimal_eval_ratio_tensor(
+                            elo_live_gpu, self.cfg.elo_eval.scripted_elo
+                        )
                         eval_anchor_is_scripted = torch.where(
                             eval_done_any,
                             torch.rand(B_eval, device=self.device) > f_star_t,
@@ -1461,7 +1468,7 @@ class PPOTrainer:
             # ----------------------------------------------------------------
             # PPO update epochs
             # ----------------------------------------------------------------
-            record_hist = update % 10 == 0
+            record_hist = update % self.cfg.histogram_interval == 0
             metrics = self._update_epochs(
                 all_buffers=[self.buffer] + self.aux_buffers,
                 record_histograms=record_hist,
@@ -1472,9 +1479,10 @@ class PPOTrainer:
             self._schedule_state = _resolve_schedule(self.cfg.schedule, self._global_step)
             self._policy_gradient_coef = self._schedule_state.policy_gradient_coef
             # BC weight: P(bc_target_beats_current), remapped to [0, 1].
-            # Scale=200 gives a steeper sigmoid; target=950 zeroes out BC before 1000.
             elo_norm = self._training_elo - self._random_elo()
-            p_bc_wins = 1.0 / (1.0 + 10.0 ** ((elo_norm - 950.0) / 200.0))
+            p_bc_wins = 1.0 / (
+                1.0 + 10.0 ** ((elo_norm - self.cfg.bc_elo_target) / self.cfg.bc_elo_scale)
+            )
             bc_factor = max(0.0, 2.0 * (p_bc_wins - 0.5))
             self._behavior_cloning_coef = self._schedule_state.behavior_cloning_coef * bc_factor
             self.optim.param_groups[0]["lr"] = self._schedule_state.learning_rate
@@ -1487,11 +1495,7 @@ class PPOTrainer:
             metrics["schedule/policy_gradient_coef"] = self._schedule_state.policy_gradient_coef
             metrics["schedule/behavior_cloning_coef"] = self._behavior_cloning_coef
             metrics["schedule/bc_decay_factor"] = bc_factor
-            metrics["schedule/target_kl"] = (
-                0.02
-                if (self._training_elo - self._random_elo()) >= 900.0
-                else self._schedule_state.target_kl
-            )
+            metrics["schedule/target_kl"] = self._effective_target_kl()
             metrics["schedule/true_reward_scale"] = self._schedule_state.true_reward_scale
             metrics["schedule/global_scale"] = self._schedule_state.global_scale
             metrics["schedule/local_scale"] = self._schedule_state.local_scale
@@ -2192,11 +2196,7 @@ class PPOTrainer:
         last_logprob_np = None
 
         num_epochs = self._schedule_state.num_epochs
-        target_kl = (
-            0.02
-            if (self._training_elo - self._random_elo()) >= 900.0
-            else self._schedule_state.target_kl
-        )
+        target_kl = self._effective_target_kl()
 
         for epoch_idx in range(num_epochs):
             kl_start = len(accum_scalar["policy/kl"])
@@ -2415,6 +2415,14 @@ class PPOTrainer:
             if e.kind == "random":
                 return e.elo
         return 0.0  # fallback; random entry should always exist
+
+    def _effective_target_kl(self) -> float | None:
+        """Resolve the ELO-gated target KL from the current schedule snapshot."""
+        threshold = self._schedule_state.high_elo_threshold
+        elo_norm = self._training_elo - self._random_elo()
+        if threshold is not None and elo_norm >= threshold:
+            return self._schedule_state.high_elo_target_kl
+        return self._schedule_state.target_kl
 
     def _save_roster_json(self) -> None:
         """Persist roster metadata alongside the run's checkpoints."""
@@ -2647,13 +2655,21 @@ class PPOTrainer:
             self._elo_milestone = ckpt.get("elo_milestone", 0.0)
         self._avg_training_elo = ckpt.get("avg_training_elo", 0.0)
         if "eval_window_rand" in ckpt:
-            self._eval_window_rand = deque(ckpt["eval_window_rand"], maxlen=100)
+            self._eval_window_rand = deque(
+                ckpt["eval_window_rand"], maxlen=self.cfg.elo_eval.window_size
+            )
         if "eval_window_sc" in ckpt:
-            self._eval_window_sc = deque(ckpt["eval_window_sc"], maxlen=100)
+            self._eval_window_sc = deque(
+                ckpt["eval_window_sc"], maxlen=self.cfg.elo_eval.window_size
+            )
         if "eval_window_avg_vs_sc" in ckpt:
-            self._eval_window_avg_vs_sc = deque(ckpt["eval_window_avg_vs_sc"], maxlen=100)
+            self._eval_window_avg_vs_sc = deque(
+                ckpt["eval_window_avg_vs_sc"], maxlen=self.cfg.elo_eval.window_size
+            )
         if "eval_window_live_vs_avg" in ckpt:
-            self._eval_window_live_vs_avg = deque(ckpt["eval_window_live_vs_avg"], maxlen=100)
+            self._eval_window_live_vs_avg = deque(
+                ckpt["eval_window_live_vs_avg"], maxlen=self.cfg.elo_eval.window_size
+            )
         if "global_step" in ckpt:
             self._global_step = ckpt["global_step"]
             self._start_update = ckpt["update"] + 1

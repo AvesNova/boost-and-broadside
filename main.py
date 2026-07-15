@@ -212,10 +212,12 @@ def _apply_smoke(config):
     if obstacle_cache is not None:
         obstacle_cache = replace(obstacle_cache, num_cache_envs=128, cache_size=4, max_steps=6000)
     schedule = replace(config.schedule, checkpoint_interval=stepped((0, 1)))
+    elo_eval = replace(config.elo_eval, envs_per_matchup=4)
     return replace(
         config,
         scales=scales,
         schedule=schedule,
+        elo_eval=elo_eval,
         obstacle_cache=obstacle_cache,
         num_minibatches=1,
         total_timesteps=5_000,

@@ -17,7 +17,7 @@ from boost_and_broadside.config import (
     linear,
     stepped,
 )
-from runs.shared import COMPONENT_GAMMAS, COMPONENT_LAMBDAS
+from runs.shared import COMPONENT_GAMMAS, COMPONENT_LAMBDAS, ELO_EVAL
 
 _MAX_TOKENS = 3840 * 8
 _NUM_SHIPS = 8
@@ -76,6 +76,8 @@ RL_OBSTACLES_SCHEDULE = TrainingSchedule(
     checkpoint_interval=stepped((0, 1), (3, 10)),
     num_epochs=constant(4),
     target_kl=constant(None),
+    high_elo_threshold=constant(900.0),
+    high_elo_target_kl=constant(0.02),
 )
 
 RL_OBSTACLES_TRAIN_CONFIG = TrainConfig(
@@ -111,6 +113,10 @@ RL_OBSTACLES_TRAIN_CONFIG = TrainConfig(
     elo_k_factor=32.0,
     elo_temperature=200.0,
     league_uniform_sampling=False,
+    elo_eval=ELO_EVAL,
+    bc_elo_target=950.0,
+    bc_elo_scale=200.0,
+    histogram_interval=10,
     obstacle_cache=ObstacleCacheConfig(
         num_cache_envs=4096,
         cache_size=512,
