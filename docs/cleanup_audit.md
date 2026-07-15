@@ -193,7 +193,7 @@ and `make_state` in tests. Any new state field must be added in 4 places.
 **Action:** `dataclasses.replace(state, ship_health=…, ship_alive=…)` for the proxy; a generic
 `dataclasses.fields`-driven slice helper (or a `TensorState.slice_envs()` method) for slicing.
 
-### 4.5 Positional 14-tuple minibatches — **Medium**
+### 4.5 Positional 14-tuple minibatches — **Medium** — ✅ done (a203bf3)
 `RolloutBuffer.get_minibatch_iterator` yields 14-element tuples; ppo.py indexes them as
 `chunk[6]`, `chunk[8]`… with comments explaining which index is which
 ([ppo.py:1760-1761](src/boost_and_broadside/train/rl/ppo.py#L1760-L1761)).
