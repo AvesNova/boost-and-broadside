@@ -316,6 +316,42 @@ class TestSchedulePrimitives:
         assert torch.equal(trainer.wrapper._weight_t.cpu(), expected_t)
 
 
+class TestWinComponentLambdaMatrix:
+    """Regression for the win-component lambda design (audit §1.2): ally_win/enemy_win
+    must use the team-based zero-sum lambda path, not the diagonal (self-only) path."""
+
+    def test_win_component_lambda_rows_are_zero_sum(self, tmp_path):
+        """In a 2v2 layout, ship 0 aggregates ally_win from its own team (+1) and
+        enemy_win from the enemy team (-1), so win/draw/loss are distinguishable."""
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        names = trainer._active_names
+        k_ally, k_enemy = names.index("ally_win"), names.index("enemy_win")
+
+        # Build the per-pair lambda matrix the same way _precompute_lambda_aggregates does.
+        teams = torch.tensor([0, 0, 1, 1])
+        same_team = teams.unsqueeze(1) == teams.unsqueeze(0)  # (N, N)
+        ally_lam = torch.where(trainer.ally_zero_k, 0.0, 1.0)  # (K,)
+        enemy_lam = torch.where(trainer.enemy_neg_k, -1.0, 0.0)  # (K,)
+        global_lambda = (
+            same_team.float().unsqueeze(-1) * ally_lam
+            + (~same_team).float().unsqueeze(-1) * enemy_lam
+        )  # (N, N, K)
+        lam = torch.where(trainer.local_k, torch.eye(4).unsqueeze(-1), global_lambda)
+
+        assert lam[0, :, k_ally].tolist() == [1.0, 1.0, 0.0, 0.0]
+        assert lam[0, :, k_enemy].tolist() == [0.0, 0.0, -1.0, -1.0]
+
+    def test_production_config_win_lambda_sets(self):
+        """runs/shared.py must agree with rl_obstacles.py and the test configs on
+        which win components are zero-sum (enemy_win) vs ally-shared (ally_win)."""
+        from runs.shared import REWARDS
+
+        assert "enemy_win" in REWARDS.enemy_neg_lambda_components
+        assert "enemy_win" in REWARDS.ally_zero_components
+        assert "ally_win" not in REWARDS.enemy_neg_lambda_components
+        assert "ally_win" not in REWARDS.ally_zero_components
+
+
 class TestRLSmokeTest:
     """Full RL smoke test using the real runs/shared.py config.
 

@@ -48,8 +48,10 @@ REWARDS = RewardConfig(
     # Lambda configuration:
     #   enemy_neg_lambda_components → enemy ships get lambda=-1
     #   ally_zero_components        → ally ships get lambda=0 (enemy-perspective only)
-    enemy_neg_lambda_components=frozenset({"enemy_damage", "enemy_death"}),
-    ally_zero_components=frozenset({"enemy_damage", "enemy_death"}),
+    # enemy_win is zero-sum: allies see -1 when the enemy team wins, letting the
+    # critic distinguish win / draw / loss when paired with ally_win.
+    enemy_neg_lambda_components=frozenset({"enemy_damage", "enemy_death", "enemy_win"}),
+    ally_zero_components=frozenset({"enemy_damage", "enemy_death", "enemy_win"}),
     # Obstacle rewards
     obstacle_death_weight=0.0,
     obstacle_proximity_weight=0.0,
