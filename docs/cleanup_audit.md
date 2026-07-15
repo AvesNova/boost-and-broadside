@@ -271,7 +271,7 @@ defaults. Fix only the contradicting docstrings — `TrainConfig`/`RewardConfig`
 "No defaults — all values required" — and add the §6.3 carve-out to STYLE_GUIDE. `ReturnScaler`/
 `AdvantageScaler` code defaults are fine to keep. Fix the docstrings either way.
 
-### 5.5 Comment hygiene — **Low** (§7)
+### 5.5 Comment hygiene — **Low** (§7) — ✅ done (9e7af7b)
 Mostly good, but: narrating comments that restate code ("# Build and copy checkpoints to CPU
 synchronously on the main thread (very fast, ~5-10ms)"), the contradictory `_LOCAL_COMPONENTS`
 comment ("These must match the local_scale entries above" — `ally_win`/`enemy_win` don't),
