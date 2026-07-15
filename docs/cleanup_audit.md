@@ -27,7 +27,7 @@ lambda-aggregation `comp_weights` in `_update_epochs` therefore never see schedu
 **Action:** give `RewardComponent` a plain mutable `weight` attribute (delete the 21 property
 boilerplates) and set it directly; add a test that scheduled scales actually change effective weights.
 
-### 1.2 `enemy_win` zero-sum lambda is documented everywhere but never applied — **High**
+### 1.2 `enemy_win` zero-sum lambda is documented everywhere but never applied — **High** — ✅ done (9c9522a)
 `_LOCAL_COMPONENTS` in [ppo.py:167-187](src/boost_and_broadside/train/rl/ppo.py#L167-L187)
 includes `ally_win`/`enemy_win`, and local (diagonal) lambda takes precedence in
 `_precompute_lambda_aggregates`. So `enemy_win` is self-only, making it an exact duplicate signal
