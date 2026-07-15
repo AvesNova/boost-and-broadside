@@ -300,7 +300,9 @@ in bc.py — same name, different unit; single letters `sc`/`w`/`d`/`a` in ppo.p
   README's "140 tests" needs updating.
 - **Tests pollute the working tree:** running the suite writes real checkpoints into the
   repo's `checkpoints/` directory (e.g. `checkpoints/20260715-110917/best_training.pt` from
-  `test_ppo.py`). Point checkpoint dirs at pytest's `tmp_path` fixture. — **Medium**
+  `test_ppo.py`). Point checkpoint dirs at pytest's `tmp_path` fixture. — **Medium** —
+  ✅ done (e81696a): all 8 `PPOTrainer`/`_make_trainer` call sites in `test_ppo.py` now pass
+  `checkpoint_dir=str(tmp_path)`; verified `checkpoints/` dir count unchanged across a full run.
 - **Dead fixture** `base_rewards` with nonexistent fields (finding 2, table).
 - **Coverage gaps worth closing for the portfolio story:**
   - No test that scheduled group scales reach effective component weights (would have caught 1.1).
