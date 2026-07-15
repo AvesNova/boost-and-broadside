@@ -71,7 +71,7 @@ bc_warmstart.py) and `tests/train/test_ppo.py` to stop passing these kwargs.
 `W = ship_config.world_size[0]` is used to decode both `pos_x` and `pos_y`.
 Latent (world is square) but wrong. **Action:** use `world_size[1]` for y.
 
-### 1.5 Stale docstring shape comments — **Low**
+### 1.5 Stale docstring shape comments — **Low** — ✅ done (7efee58)
 E.g. `store_initial_hidden` says `(1, B*N, D)` but state is `(n_layers, B*num_tokens, CONV_KERNEL*D)`
 ([buffer.py:303-309](src/boost_and_broadside/train/rl/buffer.py#L303-L309));
 [ppo.py:2481](src/boost_and_broadside/train/rl/ppo.py#L2481) says `# (16,) cpu` for a 9-dim tensor.
