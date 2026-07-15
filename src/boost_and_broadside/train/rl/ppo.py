@@ -30,7 +30,6 @@ from boost_and_broadside.config import (
     TrainingSchedule,
 )
 from boost_and_broadside.constants import POWER_SLICE, SHOOT_SLICE, TURN_SLICE
-from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.observation import MVPObservation, ObsKey
 from boost_and_broadside.env.obstacle_cache import ObstacleCache
 from boost_and_broadside.env.state import TensorState
@@ -42,6 +41,7 @@ from boost_and_broadside.train.rl.buffer import (
     ReturnScaler,
     RolloutBuffer,
 )
+from boost_and_broadside.train.rl.elo_eval import EloEvaluator
 from boost_and_broadside.train.rl.features import FeatureCoordinator, build_standard_coordinator
 from boost_and_broadside.train.rl.roster import EloRoster, RosterEntry
 from boost_and_broadside.train.rl.sigreg import SIGReg
@@ -220,38 +220,6 @@ def _max_schedule_value(
     """
     step_size = max(1, total_steps // n_samples)
     return max(schedule_fn(s) for s in range(0, total_steps + step_size, step_size))
-
-
-def _compute_optimal_eval_ratio(training_elo: float, scripted_elo: float) -> float:
-    """Compute optimal ratio (fraction of matches against Random) using Information-Proportional Allocation."""
-    # expected win rate against Random (r = 0)
-    p_rand = 1.0 / (1.0 + 10.0 ** ((0.0 - training_elo) / 400.0))
-    # expected win rate against the scripted anchor
-    p_sc = 1.0 / (1.0 + 10.0 ** ((scripted_elo - training_elo) / 400.0))
-
-    # Bernoulli variances (Fisher Information contribution)
-    v_rand = p_rand * (1.0 - p_rand)
-    v_sc = p_sc * (1.0 - p_sc)
-
-    # Information-Proportional Allocation: fraction of games to route to Random
-    total_val = v_rand + v_sc
-    if total_val <= 1e-8:
-        return 0.5  # fallback if variance is zero
-    return v_rand / total_val
-
-
-def _compute_optimal_eval_ratio_tensor(elo: torch.Tensor, scripted_elo: float) -> torch.Tensor:
-    """Tensor version of _compute_optimal_eval_ratio.
-
-    Same math, but on a device-resident ELO scalar so anchor re-routing inside
-    the rollout never forces a host-device sync.
-    """
-    p_rand = 1.0 / (1.0 + 10.0 ** ((0.0 - elo) / 400.0))
-    p_sc = 1.0 / (1.0 + 10.0 ** ((scripted_elo - elo) / 400.0))
-    v_rand = p_rand * (1.0 - p_rand)
-    v_sc = p_sc * (1.0 - p_sc)
-    total = v_rand + v_sc
-    return torch.where(total <= 1e-8, torch.full_like(total, 0.5), v_rand / total.clamp(min=1e-8))
 
 
 def _clone_to_cpu(obj: Any) -> Any:
@@ -799,64 +767,24 @@ class PPOTrainer:
         M = self.env_config.num_obstacles
         num_tokens = N + M  # ships + obstacles; hidden state covers all entity tokens
 
-        # -- ELO Evaluation Env & State Initialization (Parallel Vectorized Slots) --
-        # Three fixed-size matchup slices, ordered so each network agent covers
-        # one contiguous span and runs a single sliced forward pass:
-        #   first slice:  live vs anchors  → updates live ELO
-        #   second slice: live vs avg      → head-to-head win rate
-        #   third slice:  avg vs anchors   → updates avg-model ELO
-        S_eval = self.cfg.elo_eval.envs_per_matchup
-        B_eval = 3 * S_eval
-        sl_live_anchor = slice(0, S_eval)
-        sl_live_avg = slice(S_eval, 2 * S_eval)
-        sl_avg_anchor = slice(2 * S_eval, 3 * S_eval)
-        eval_env = TensorEnv(
-            B_eval,
-            self.ship_config,
-            self.env_config,
-            self.device,
-            self._obstacle_cache,
+        elo_eval = EloEvaluator(
+            config=self.cfg.elo_eval,
+            ship_config=self.ship_config,
+            env_config=self.env_config,
+            device=self.device,
+            obstacle_cache=self._obstacle_cache,
+            live_policy=self.policy,
+            avg_policy=self.avg_policy,
+            scripted_agent=self.scripted_agent,
+            num_ships=N,
+            num_tokens=num_tokens,
+            live_elo=self._training_elo,
+            avg_elo=self._avg_training_elo,
+            random_window=self._eval_window_rand,
+            scripted_window=self._eval_window_sc,
+            avg_vs_scripted_window=self._eval_window_avg_vs_sc,
+            live_vs_avg_window=self._eval_window_live_vs_avg,
         )
-        eval_env.reset()
-        eval_env.state.step_count.random_(0, self.env_config.max_episode_steps)
-
-        # Load and resolve agents for ELO evaluation.
-        # NOTE: the avg agent must use kind="policy" — get_actions dispatches on
-        # kind, and unknown kinds fall through to the null (all-zero-action) path.
-        from boost_and_broadside.modes.agent_factory import (
-            ResolvedAgent,
-            get_actions,
-            init_hidden,
-            reset_done_envs,
-        )
-        from boost_and_broadside.modes.collect import _obs_from_state
-
-        agent_policy = ResolvedAgent("policy", self.policy)
-        agent_avg = ResolvedAgent("policy", self.avg_policy)
-        agent_sc = ResolvedAgent("scripted", self.scripted_agent) if self.scripted_agent else None
-        agent_rand = ResolvedAgent("random", None)
-
-        # Each policy agent only carries hidden state for the envs it acts on.
-        init_hidden(agent_policy, 2 * S_eval, num_tokens, self.device)
-        init_hidden(agent_avg, 2 * S_eval, num_tokens, self.device)
-
-        # Optimal information-proportional routing variables
-        K_eval = self.cfg.elo_eval.k_factor
-        f_star = _compute_optimal_eval_ratio(self._training_elo, self.cfg.elo_eval.scripted_elo)
-        eval_anchor_is_scripted = torch.rand(B_eval, device=self.device) > f_star
-
-        # On-GPU ELO scalars — updated branchlessly inside the rollout, synced to
-        # the Python-float attributes once per update. Score history accumulates
-        # on-GPU and flushes to the CPU win-rate deques at the same point.
-        elo_live_gpu = torch.tensor(
-            float(self._training_elo), device=self.device, dtype=torch.float64
-        )
-        elo_avg_gpu = torch.tensor(
-            float(self._avg_training_elo), device=self.device, dtype=torch.float64
-        )
-        eval_win_hist: list[torch.Tensor] = []
-        eval_done_hist: list[torch.Tensor] = []
-        eval_anchor_hist: list[torch.Tensor] = []
 
         sc_start = self.B_self
         sc_end = self.B_self + self.B_sc
@@ -1241,203 +1169,9 @@ class PPOTrainer:
                     aux_obs[i] = next_aux_obs
                     self._global_step += sc.num_envs
 
-                # -- Continuous Live ELO Evaluation (every 4 steps) --
-                # Branchless: outcome scoring, ELO updates, anchor re-routing, and
-                # env resets are all masked tensor ops on fixed shapes. The only
-                # host sync for the whole ELO system happens once per update, when
-                # the GPU scalars and score history flush (after the rollout loop).
-                if _step % self.cfg.elo_eval.step_interval == 0:
-                    with torch.no_grad():
-                        eval_state = eval_env.state
-                        eval_obs_obj = _obs_from_state(eval_state, self.ship_config)
-                        with torch.autocast("cuda", dtype=torch.bfloat16):
-                            # Sliced forward passes — each agent covers only the
-                            # contiguous env span whose actions it provides.
-                            action_live = get_actions(
-                                agent_policy,
-                                eval_obs_obj.slice_envs(slice(0, 2 * S_eval)),
-                                eval_state,
-                                2 * S_eval,
-                                N,
-                                self.device,
-                            ).long()  # envs [0:1024): live-vs-anchor + live-vs-avg
-                            action_avg = get_actions(
-                                agent_avg,
-                                eval_obs_obj.slice_envs(slice(S_eval, 3 * S_eval)),
-                                eval_state,
-                                2 * S_eval,
-                                N,
-                                self.device,
-                            ).long()  # second + third matchup slices
+                elo_eval.step(_step, avg_eval_active)
 
-                            # Anchor actions cover the first and third matchup slices.
-                            if agent_sc is not None:
-                                action_scripted = torch.cat(
-                                    [
-                                        get_actions(
-                                            agent_sc,
-                                            None,
-                                            _slice_state(eval_state, 0, S_eval),
-                                            S_eval,
-                                            N,
-                                            self.device,
-                                        ),
-                                        get_actions(
-                                            agent_sc,
-                                            None,
-                                            _slice_state(eval_state, 2 * S_eval, 3 * S_eval),
-                                            S_eval,
-                                            N,
-                                            self.device,
-                                        ),
-                                    ],
-                                    dim=0,
-                                ).long()
-                            else:
-                                action_scripted = torch.zeros(
-                                    2 * S_eval, N, 3, dtype=torch.long, device=self.device
-                                )
-                            action_random = get_actions(
-                                agent_rand, None, eval_state, 2 * S_eval, N, self.device
-                            ).long()
-                            anchor_flags = torch.cat(
-                                [
-                                    eval_anchor_is_scripted[sl_live_anchor],
-                                    eval_anchor_is_scripted[sl_avg_anchor],
-                                ]
-                            )
-                            action_anchor = torch.where(
-                                anchor_flags.view(-1, 1, 1), action_scripted, action_random
-                            )
-
-                            # Assemble the full eval batch from the slices.
-                            action_team0 = torch.cat(
-                                [
-                                    action_live,  # live: matchups 0 + 2
-                                    action_avg[S_eval:],  # avg vs anchors
-                                ],
-                                dim=0,
-                            )
-                            action_team1 = torch.cat(
-                                [
-                                    action_anchor[:S_eval],  # anchors vs live
-                                    action_avg[:S_eval],  # avg vs live
-                                    action_anchor[S_eval:],  # anchors vs avg
-                                ],
-                                dim=0,
-                            )
-                            eval_team_id = eval_state.ship_team_id
-                            eval_action = torch.where(
-                                (eval_team_id == 0).unsqueeze(-1),
-                                action_team0,
-                                action_team1,
-                            )
-
-                            eval_dones, eval_truncated = eval_env.step(eval_action)
-                            eval_done_any = eval_dones | eval_truncated
-
-                        # Outcome scoring — masked so unfinished envs contribute zero.
-                        eval_alive = eval_env.state.ship_alive
-                        eval_team = eval_env.state.ship_team_id
-                        eval_team0_alive = (eval_alive & (eval_team == 0)).any(dim=1)
-                        eval_team1_alive = (eval_alive & (eval_team == 1)).any(dim=1)
-                        eval_team0_won = eval_done_any & eval_team0_alive & ~eval_team1_alive
-                        eval_team1_won = eval_done_any & eval_team1_alive & ~eval_team0_alive
-                        eval_tied = eval_done_any & ~eval_team0_won & ~eval_team1_won
-                        score = eval_team0_won.float() + 0.5 * eval_tied.float()  # (B_eval,)
-                        done_f = eval_done_any.float()
-                        anchor_elo = (
-                            eval_anchor_is_scripted.float() * self.cfg.elo_eval.scripted_elo
-                        )
-
-                        # Live ELO vs anchors — every game finishing this step uses
-                        # the pre-update rating, matching the old batched update.
-                        expected_live = 1.0 / (
-                            1.0 + 10.0 ** ((anchor_elo[sl_live_anchor] - elo_live_gpu) / 400.0)
-                        )
-                        elo_live_gpu = (
-                            elo_live_gpu
-                            + (
-                                K_eval
-                                * (score[sl_live_anchor] - expected_live)
-                                * done_f[sl_live_anchor]
-                            ).sum()
-                        )
-
-                        # Avg-model ELO vs anchors — frozen until the avg model
-                        # has been initialized (its slots play meaningless games
-                        # with a copy of the initial policy weights until then).
-                        if avg_eval_active:
-                            expected_avg = 1.0 / (
-                                1.0 + 10.0 ** ((anchor_elo[sl_avg_anchor] - elo_avg_gpu) / 400.0)
-                            )
-                            elo_avg_gpu = (
-                                elo_avg_gpu
-                                + (
-                                    K_eval
-                                    * (score[sl_avg_anchor] - expected_avg)
-                                    * done_f[sl_avg_anchor]
-                                ).sum()
-                            )
-
-                        # Win history for the win-rate windows — flushed to the
-                        # CPU deques once per update. Only outright wins count
-                        # (ties are not half-wins), so an untrained policy that
-                        # merely survives to truncation reports ~0%, not ~50%.
-                        # Anchor flags are snapshotted before re-routing so they
-                        # match the finished games.
-                        eval_win_hist.append(eval_team0_won.float())
-                        eval_done_hist.append(eval_done_any)
-                        eval_anchor_hist.append(eval_anchor_is_scripted.clone())
-
-                        # Information-Proportional anchor re-routing from the on-GPU
-                        # live ELO. Matchup slices stay fixed so the 3-way split is
-                        # exact.
-                        f_star_t = _compute_optimal_eval_ratio_tensor(
-                            elo_live_gpu, self.cfg.elo_eval.scripted_elo
-                        )
-                        eval_anchor_is_scripted = torch.where(
-                            eval_done_any,
-                            torch.rand(B_eval, device=self.device) > f_star_t,
-                            eval_anchor_is_scripted,
-                        )
-
-                        eval_env.reset_envs(eval_done_any)
-                        # Scripted/random anchors are stateless; only the two policy
-                        # agents carry hidden state, each over its own env span.
-                        reset_done_envs(agent_policy, eval_done_any[: 2 * S_eval], num_tokens)
-                        reset_done_envs(agent_avg, eval_done_any[S_eval:], num_tokens)
-
-            # ----------------------------------------------------------------
-            # Flush ELO bookkeeping — the eval system's only host sync, once
-            # per update. Must run before _update_epochs / the schedule refresh,
-            # which read self._training_elo (target_kl gate, BC decay factor).
-            # ----------------------------------------------------------------
-            self._training_elo = float(elo_live_gpu.item())
-            self._avg_training_elo = float(elo_avg_gpu.item())
-            if eval_win_hist:
-                wins_h = torch.stack(eval_win_hist).cpu()
-                dones_h = torch.stack(eval_done_hist).cpu()
-                anchors_h = torch.stack(eval_anchor_hist).cpu()
-                eval_win_hist.clear()
-                eval_done_hist.clear()
-                eval_anchor_hist.clear()
-                # Extend the deques game-by-game in eval-step order — identical
-                # contents to the old per-step extension.
-                for i in range(wins_h.shape[0]):
-                    w, d, a = wins_h[i], dones_h[i], anchors_h[i]
-                    d_live = d[sl_live_anchor]
-                    a_live = a[sl_live_anchor]
-                    w_live = w[sl_live_anchor]
-                    self._eval_window_sc.extend(w_live[d_live & a_live].tolist())
-                    self._eval_window_rand.extend(w_live[d_live & ~a_live].tolist())
-                    if avg_eval_active:
-                        d_avg = d[sl_avg_anchor]
-                        a_avg = a[sl_avg_anchor]
-                        self._eval_window_avg_vs_sc.extend(w[sl_avg_anchor][d_avg & a_avg].tolist())
-                        self._eval_window_live_vs_avg.extend(
-                            w[sl_live_avg][d[sl_live_avg]].tolist()
-                        )
+            self._training_elo, self._avg_training_elo = elo_eval.flush(avg_eval_active)
 
             # Store final obs for T+1 aux loss label computation
             self.buffer.store_final_obs(obs)
@@ -1512,7 +1246,7 @@ class PPOTrainer:
                     if first_avg_update:
                         # Seed the avg ELO at the live ELO — the first avg
                         # snapshot is exactly the current policy.
-                        elo_avg_gpu = elo_live_gpu.clone()
+                        elo_eval.seed_avg_elo_from_live()
                         self._avg_training_elo = self._training_elo
 
             # Scaler stats — one CPU transfer per component group

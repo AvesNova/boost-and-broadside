@@ -25,6 +25,7 @@ from boost_and_broadside.modes.agent_factory import (
     resolve_agent_spec,
 )
 from boost_and_broadside.modes.collect import _obs_from_state
+from boost_and_broadside.train.rl.elo_eval import expected_score
 
 # All scripted agents, in display order. "scripted" (stochastic) is kept first
 # so scripted_idx == num_checkpoints regardless of list length.
@@ -352,7 +353,7 @@ def run_elo_stats_mode(
             for m_idx, (i, j) in enumerate(matchups_pairs):
                 n_games = matchup_sizes[m_idx]
                 win_rate_i = (a_wins_cpu[m_idx] + 0.5 * ties_cpu[m_idx]) / n_games
-                expected_i = 1.0 / (1.0 + 10.0 ** ((elo[j] - elo[i]) / 400.0))
+                expected_i = expected_score(elo[i], elo[j])
                 delta = elo_k_factor * (win_rate_i - expected_i)
                 elo[i] += delta
                 elo[j] -= delta
