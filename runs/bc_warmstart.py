@@ -10,7 +10,7 @@ before RL takes over.
 """
 
 from boost_and_broadside.config import EnvConfig, ScaleConfig, TrainConfig
-from runs.bc import _MAX_TOKENS, BC_SCHEDULE
+from runs.bc import _NUM_BC_ENVS, BC_SCHEDULE
 from runs.rl import RL_TRAIN_CONFIG
 from runs.shared import ELO_EVAL, REWARDS
 
@@ -19,7 +19,7 @@ BC_WARMSTART_PRETRAIN_CONFIG = TrainConfig(
     scales=(
         ScaleConfig(
             env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=1024),
-            num_envs=3 * _MAX_TOKENS // 3 // 8,
+            num_envs=_NUM_BC_ENVS,
         ),
     ),
     schedule=BC_SCHEDULE,

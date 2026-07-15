@@ -17,7 +17,7 @@ from boost_and_broadside.config import (
 )
 from runs.shared import ELO_EVAL, REWARDS
 
-_MAX_TOKENS = 3840
+_NUM_BC_ENVS = 480
 
 BC_SCHEDULE = TrainingSchedule(
     # Warmup from 1e-7 to 3e-4 over 6M steps, then hold.
@@ -48,7 +48,7 @@ BC_TRAIN_CONFIG = TrainConfig(
     scales=(
         ScaleConfig(
             env_config=EnvConfig(num_ships=2, max_bullets=20, max_episode_steps=1024),
-            num_envs=3 * _MAX_TOKENS // 3 // 8,
+            num_envs=_NUM_BC_ENVS,
         ),
     ),
     schedule=BC_SCHEDULE,
