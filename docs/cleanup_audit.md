@@ -313,11 +313,12 @@ in bc.py — same name, different unit; single letters `sc`/`w`/`d`/`a` in ppo.p
   ✅ done (e81696a): all 8 `PPOTrainer`/`_make_trainer` call sites in `test_ppo.py` now pass
   `checkpoint_dir=str(tmp_path)`; verified `checkpoints/` dir count unchanged across a full run.
 - **Dead fixture** `base_rewards` with nonexistent fields (finding 2, table) — ✅ done (04cb596).
-- **Coverage gaps worth closing for the portfolio story:**
+- **Coverage gaps worth closing for the portfolio story:** — ✅ done (Session 3)
   - No test that scheduled group scales reach effective component weights (would have caught 1.1).
-  - No test of the lambda matrix for win components (would have caught 1.2).
+    — ✅ done (c871419)
+  - No test of the lambda matrix for win components (would have caught 1.2). — ✅ done (9c9522a)
   - `roster.py` (sampling, eviction, persistence) and `schedule.py` primitives (`join`,
-    `exponential`) have no dedicated tests.
+    `exponential`) have no dedicated tests. — ✅ done (7df1f2c)
 - Style guide §6.9 ("one logical assertion", parametrize) is mostly followed — keep it.
 
 ---
@@ -358,3 +359,16 @@ in bc.py — same name, different unit; single letters `sc`/`w`/`d`/`a` in ppo.p
 
 *Baseline verified before any cleanup: `uv run --no-sync pytest` → 156 passed, 0 failed
 (2026-07-15). Re-run after each step above.*
+
+---
+
+## Discovered during cleanup
+
+- **Roster random anchor is not actually `fixed`** — [roster.py:74-82](src/boost_and_broadside/train/rl/roster.py#L74-L82)
+  creates the "random" entry without `fixed=True`, but `sample()`'s docstring says "Fixed entries
+  (e.g. the random anchor) are excluded from sampling" and [ppo.py:532](src/boost_and_broadside/train/rl/ppo.py#L532)
+  comments "Random anchor is added by EloRoster.__init__ (ELO=0, fixed)". So the random anchor
+  *is* sampleable as a league opponent; when sampled, ppo.py's opponent dispatch falls into the
+  `else: # "scripted"` branch. **Action:** decide whether random should be a league opponent; if
+  not, set `fixed=True` in `EloRoster.__init__`; if yes, fix both docstrings/comments. Found
+  while writing roster tests (Session 3) — tests avoid depending on this behavior. Importance: Medium.
