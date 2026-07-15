@@ -171,7 +171,7 @@ hard as possible. Natural seams, in rough order of extraction value:
 Also fixes: duplicated CUDA-stream/CPU-fallback branches at
 [ppo.py:1114-1184](src/boost_and_broadside/train/rl/ppo.py#L1114-L1184) (identical logic twice).
 
-### 4.2 De-duplicate `main.py` mode dispatch — **Medium**
+### 4.2 De-duplicate `main.py` mode dispatch — **Medium** — ✅ done (df2dfe0)
 The `bc` / `rl` / `rl_obstacles` cases are ~90% identical ([main.py:226-284](main.py#L226-L284));
 `bc_warmstart` repeats it twice more. Extract a `_make_trainer(config, args) -> PPOTrainer` helper.
 Also: 7 occurrences of the mangled one-liner `ship_config=SHIP_CONFIG,                device=device,`
