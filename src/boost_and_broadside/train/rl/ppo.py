@@ -1715,6 +1715,3 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         if threshold is not None and elo_norm >= threshold:
             return self._schedule_state.high_elo_target_kl
         return self._schedule_state.target_kl
-
-    # Async logging
-    # ------------------------------------------------------------------
