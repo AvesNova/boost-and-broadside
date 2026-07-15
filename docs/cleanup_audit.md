@@ -278,7 +278,7 @@ comment ("These must match the local_scale entries above" — `ally_win`/`enemy_
 `import math  # needed for math.ceil in generate()` in obstacle_cache.py, and stray double
 blank lines / trailing whitespace in ppo.py (285-288, 616-618, 899-901) and main.py (394).
 
-### 5.6 Naming — **Low** (§3)
+### 5.6 Naming — **Low** (§3) — ✅ done (aec602e)
 Generally strong. Exceptions: `runs/bc.py` `num_envs=3 * _MAX_TOKENS // 3 // 8` (obfuscated
 arithmetic); `_MAX_TOKENS` means "tokens per update" in rl.py but effectively "env count basis"
 in bc.py — same name, different unit; single letters `sc`/`w`/`d`/`a` in ppo.py flush loop;
