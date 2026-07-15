@@ -156,7 +156,7 @@ Documents bullet energy cost `3.0` and the head-on damage-reduction mechanic, bu
 
 ## 4. Structure: oversized files & duplication
 
-### 4.1 Split `ppo.py` (2839 lines; `train()` alone is ~880 lines) — **High**
+### 4.1 Split `ppo.py` (2839 lines; `train()` alone is ~880 lines) — **High** — ✅ done (18584e4)
 Violates §6.2 (40-50-line functions, ≤3 nesting levels) and §6.6 (300-400-line files) about as
 hard as possible. Natural seams, in rough order of extraction value:
 1. **In-training ELO evaluation** (eval env setup at [ppo.py:844-899](src/boost_and_broadside/train/rl/ppo.py#L844-L899),
@@ -205,7 +205,7 @@ and `make_state` in tests. Any new state field must be added in 4 places.
 **Action:** move to `env/` (e.g. a `TensorState → MVPObservation` function next to the wrapper)
 and have both call sites share it.
 
-### 4.7 Misc structure smells — **Low**
+### 4.7 Misc structure smells — **Low** — ✅ done (427ab08)
 - Private cross-module access: `entry._policy` (ppo), `wrapper._all_components`,
   `wrapper._active_components`, `scaler._p5/_p95`, `adv_scaler._rms`,
   `coordinator._label_scale_vector` (agent_factory), `_infer_team_pma_k` imported by elo_stats,
