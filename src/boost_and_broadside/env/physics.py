@@ -6,12 +6,10 @@ No Python loops over batch or ship dimensions.
 
 import torch
 import torch.nn.functional as F
-from typing import Tuple
 
 from boost_and_broadside.config import ShipConfig
-from boost_and_broadside.constants import EPS, PowerActions, ShootActions
+from boost_and_broadside.constants import EPS, ShootActions
 from boost_and_broadside.env.state import TensorState
-
 
 # ---------------------------------------------------------------------------
 # Lookup table construction
@@ -133,8 +131,7 @@ def _update_kinematics(
     # Stall: below min_speed, lose turning authority and reverse thrust
     stalled = speed < config.min_speed
     turn_offset = torch.where(stalled, torch.zeros_like(turn_offset), turn_offset)
-    lift_coeff  = torch.where(stalled, torch.zeros_like(lift_coeff),  lift_coeff)
-
+    lift_coeff = torch.where(stalled, torch.zeros_like(lift_coeff), lift_coeff)
 
     # Ships with no power can't thrust
     thrust_mag = thrust_mag * (state.ship_power > 0).float()
@@ -142,12 +139,9 @@ def _update_kinematics(
     # Power exchange: forward thrust drains, reverse thrust gains (equal and opposite).
     # Passive regen added on top regardless of action.
     power_delta = (
-        -(thrust_mag / config.power_speed_constant) * speed
-        + config.passive_power_gain
+        -(thrust_mag / config.power_speed_constant) * speed + config.passive_power_gain
     ) * config.dt
-    state.ship_power = torch.clamp(
-        state.ship_power + power_delta, 0.0, config.max_power
-    )
+    state.ship_power = torch.clamp(state.ship_power + power_delta, 0.0, config.max_power)
 
     # Attitude — align with velocity direction then apply turn rotation
     speed_safe = torch.clamp(speed, min=EPS)
@@ -162,9 +156,7 @@ def _update_kinematics(
     # Forces
     thrust_force = thrust_mag * state.ship_attitude  # (B, N) complex
     drag_force = -drag_coeff * speed * state.ship_vel  # (B, N) complex
-    lift_force = (
-        lift_coeff * speed * (state.ship_vel * 1j)
-    )  # (B, N) complex  — perpendicular
+    lift_force = lift_coeff * speed * (state.ship_vel * 1j)  # (B, N) complex  — perpendicular
 
     # Pairwise gravity (attracts fast ships toward each other)
     _, num_ships = state.ship_pos.shape
@@ -195,13 +187,9 @@ def _update_kinematics(
         force_dir = diff / torch.clamp(dist, min=EPS)  # (B, N, N)
         force_vec = force_mag * force_dir  # (B, N, N) complex
 
-        alive_mask = state.ship_alive.unsqueeze(2) & state.ship_alive.unsqueeze(
-            1
-        )  # (B, N, N)
+        alive_mask = state.ship_alive.unsqueeze(2) & state.ship_alive.unsqueeze(1)  # (B, N, N)
         self_mask = torch.eye(num_ships, device=device, dtype=torch.bool).unsqueeze(0)
-        force_vec = torch.where(
-            alive_mask & ~self_mask, force_vec, torch.zeros_like(force_vec)
-        )
+        force_vec = torch.where(alive_mask & ~self_mask, force_vec, torch.zeros_like(force_vec))
         gravity = force_vec.sum(dim=2)  # (B, N) complex
 
     # Integrate
@@ -274,9 +262,7 @@ def _handle_shooting(
     state.bullet_vel = torch.where(slot_onehot, spawn_vel.unsqueeze(-1), state.bullet_vel)
     state.bullet_time = torch.where(slot_onehot, config.bullet_lifetime, state.bullet_time)
     state.bullet_active = state.bullet_active | slot_onehot
-    state.bullet_cursor = torch.where(
-        can_shoot, (state.bullet_cursor + 1) % K, state.bullet_cursor
-    )
+    state.bullet_cursor = torch.where(can_shoot, (state.bullet_cursor + 1) % K, state.bullet_cursor)
 
     return state
 
@@ -286,9 +272,7 @@ def _handle_shooting(
 # ---------------------------------------------------------------------------
 
 
-def update_ships(
-    state: TensorState, actions: torch.Tensor, config: ShipConfig
-) -> TensorState:
+def update_ships(state: TensorState, actions: torch.Tensor, config: ShipConfig) -> TensorState:
     """Apply one physics timestep: kinematics + shooting.
 
     Args:
@@ -327,9 +311,7 @@ def update_bullets(state: TensorState, config: ShipConfig) -> TensorState:
     return state
 
 
-def resolve_collisions(
-    state: TensorState, config: ShipConfig
-) -> Tuple[TensorState, torch.Tensor]:
+def resolve_collisions(state: TensorState, config: ShipConfig) -> tuple[TensorState, torch.Tensor]:
     """Detect bullet-ship collisions, apply damage, and check game-over.
 
     Args:
@@ -368,8 +350,8 @@ def _apply_combat_damage(state: TensorState, config: ShipConfig) -> TensorState:
 
     NB = num_ships * num_bullets
     flat_bullet_active = state.bullet_active.view(batch_size, NB)  # (B, NB)
-    flat_bullet_pos = state.bullet_pos.view(batch_size, NB)        # (B, NB)
-    flat_bullet_vel = state.bullet_vel.view(batch_size, NB)        # (B, NB)
+    flat_bullet_pos = state.bullet_pos.view(batch_size, NB)  # (B, NB)
+    flat_bullet_vel = state.bullet_vel.view(batch_size, NB)  # (B, NB)
 
     # Wrapped vector from bullet to ship: (B, NB, N)
     diff_r = state.ship_pos.real.unsqueeze(1) - flat_bullet_pos.real.unsqueeze(2)
@@ -381,7 +363,7 @@ def _apply_combat_damage(state: TensorState, config: ShipConfig) -> TensorState:
 
     # Exclude own bullets: bullet slot j belongs to ship j // num_bullets.
     owner_idx = torch.arange(NB, device=device) // num_bullets  # (NB,)
-    target_idx = torch.arange(num_ships, device=device)          # (N,)
+    target_idx = torch.arange(num_ships, device=device)  # (N,)
     not_own_bullet = owner_idx.unsqueeze(1) != target_idx.unsqueeze(0)  # (NB, N)
 
     valid_hit = (
@@ -474,7 +456,7 @@ def resolve_obstacle_collisions(state: TensorState, config: ShipConfig) -> Tenso
 
     num_bullets = state.max_bullets
     NB = num_ships * num_bullets
-    flat_bullet_pos = state.bullet_pos.view(batch_size, NB)      # (B, NB)
+    flat_bullet_pos = state.bullet_pos.view(batch_size, NB)  # (B, NB)
     flat_bullet_active = state.bullet_active.view(batch_size, NB)  # (B, NB)
 
     bdiff_r = flat_bullet_pos.real.unsqueeze(2) - state.obstacle_pos.real.unsqueeze(1)  # (B, NB, M)
@@ -492,5 +474,3 @@ def resolve_obstacle_collisions(state: TensorState, config: ShipConfig) -> Tenso
     )
 
     return state
-
-

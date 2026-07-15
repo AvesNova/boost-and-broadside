@@ -11,9 +11,10 @@ Shape conventions throughout:
     D = d_model
 """
 
+from collections.abc import Generator
+
 import numpy as np
 import torch
-from typing import Generator
 
 from boost_and_broadside.env.observation import MVPObservation
 
@@ -125,9 +126,7 @@ class ReturnScaler:
     def load_state_dict(self, d: dict) -> None:
         self._p5 = d["p5"].to(self._p5.device)
         self._p95 = d["p95"].to(self._p95.device)
-        self._initialized = d.get(
-            "initialized", True
-        )  # assume initialized if loading old ckpt
+        self._initialized = d.get("initialized", True)  # assume initialized if loading old ckpt
 
 
 class AdvantageScaler:
@@ -237,7 +236,7 @@ class RolloutBuffer:
         self.num_ships = num_ships
         self.num_tokens = num_tokens if num_tokens is not None else num_ships
         self.num_components = num_components
-        self.gamma = gamma.to(device=device)      # (K,)
+        self.gamma = gamma.to(device=device)  # (K,)
         self.gae_lambda = gae_lambda.to(device=device)  # (K,)
         self.device = device
 
@@ -275,9 +274,7 @@ class RolloutBuffer:
         self.ns_labels: torch.Tensor | None = None
 
         self.actor_masks = torch.ones((T, B, N), device=device, dtype=torch.bool)
-        self.expert_probs = torch.zeros(
-            (T, B, N, 12), device=device, dtype=torch.float32
-        )
+        self.expert_probs = torch.zeros((T, B, N, 12), device=device, dtype=torch.float32)
 
         # Episode termination mask: done | truncated — used to exclude terminal transitions
         # from the aux next-state prediction loss.
@@ -351,9 +348,7 @@ class RolloutBuffer:
         self.dones[t] = done.float()
         self.values[t] = value
         self.alive_mask[t] = alive
-        self.actor_masks[t] = (
-            actor_mask if actor_mask is not None else torch.ones_like(alive)
-        )
+        self.actor_masks[t] = actor_mask if actor_mask is not None else torch.ones_like(alive)
         if expert_probs is not None:
             self.expert_probs[t] = expert_probs
         if terminated is not None:
@@ -389,8 +384,8 @@ class RolloutBuffer:
         """
         with torch.no_grad():
             lastgaelam = torch.zeros_like(next_value)  # (B, N, K)
-            gamma = self.gamma.view(1, 1, -1)      # (1, 1, K) — broadcasts over (B, N, K)
-            lam   = self.gae_lambda.view(1, 1, -1)  # (1, 1, K)
+            gamma = self.gamma.view(1, 1, -1)  # (1, 1, K) — broadcasts over (B, N, K)
+            lam = self.gae_lambda.view(1, 1, -1)  # (1, 1, K)
 
             for t in reversed(range(self.num_steps)):
                 if t == self.num_steps - 1:
@@ -400,14 +395,8 @@ class RolloutBuffer:
                     non_terminal = 1.0 - self.dones[t].view(-1, 1, 1)  # (B, 1, 1)
                     next_val = self.values[t + 1]  # (B, N, K)
 
-                delta = (
-                    self.rewards[t]
-                    + gamma * next_val * non_terminal
-                    - self.values[t]
-                )
-                lastgaelam = (
-                    delta + gamma * lam * non_terminal * lastgaelam
-                )
+                delta = self.rewards[t] + gamma * next_val * non_terminal - self.values[t]
+                lastgaelam = delta + gamma * lam * non_terminal * lastgaelam
                 self.advantages[t] = lastgaelam
 
             self.returns = self.advantages + self.values
@@ -418,7 +407,7 @@ class RolloutBuffer:
 
     def get_minibatch_iterator(
         self, num_minibatches: int, microbatch_tokens: int | None = None
-    ) -> Generator[list[tuple], None, None]:
+    ) -> Generator[list[tuple]]:
         """Yield minibatches of environments for PPO update epochs.
 
         Shuffles environments and slices them into num_minibatches chunks.
@@ -452,9 +441,7 @@ class RolloutBuffer:
                 mb_ret_agg:      (T, B_mb, N) float32 — precomputed lambda-aggregated returns
                 mb_ns_labels:    (T, B_mb, N, pred_dim) float32 or None — precomputed aux labels
         """
-        assert self.initial_hidden is not None, (
-            "Call store_initial_hidden() before iterating."
-        )
+        assert self.initial_hidden is not None, "Call store_initial_hidden() before iterating."
 
         envs_per_batch = self.num_envs // num_minibatches
         env_order = np.random.permutation(self.num_envs)
@@ -467,38 +454,36 @@ class RolloutBuffer:
             n_micro = min(max(n_micro, 1), envs_per_batch)
 
         n_layers = self.initial_hidden.shape[0]
-        hidden_full = self.initial_hidden.reshape(
-            n_layers, self.num_envs, self.num_tokens, D
-        )
+        hidden_full = self.initial_hidden.reshape(n_layers, self.num_envs, self.num_tokens, D)
 
         for start in range(0, self.num_envs, envs_per_batch):
             end = start + envs_per_batch
             chunks = []
             for idx in np.array_split(env_order[start:end], n_micro):
                 # T+1 obs for this micro-batch
-                mb_obs = MVPObservation(
-                    data={k: v[:, idx] for k, v in self.obs.items()}
-                )
+                mb_obs = MVPObservation(data={k: v[:, idx] for k, v in self.obs.items()})
 
                 # Reconstruct initial hidden: (n_layers, B_mb*num_tokens, D)
                 mb_hidden = hidden_full[:, idx, :, :].reshape(
                     n_layers, len(idx) * self.num_tokens, D
                 )
 
-                chunks.append((
-                    mb_obs,
-                    self.actions[:, idx],
-                    self.logprobs[:, idx],
-                    self.advantages[:, idx],
-                    self.returns[:, idx],
-                    self.values[:, idx],
-                    self.alive_mask[:, idx],
-                    mb_hidden.contiguous(),
-                    self.actor_masks[:, idx],
-                    self.expert_probs[:, idx],
-                    self.terminated[:, idx],
-                    self.adv_agg[:, idx],
-                    self.ret_agg[:, idx],
-                    self.ns_labels[:, idx] if self.ns_labels is not None else None,
-                ))
+                chunks.append(
+                    (
+                        mb_obs,
+                        self.actions[:, idx],
+                        self.logprobs[:, idx],
+                        self.advantages[:, idx],
+                        self.returns[:, idx],
+                        self.values[:, idx],
+                        self.alive_mask[:, idx],
+                        mb_hidden.contiguous(),
+                        self.actor_masks[:, idx],
+                        self.expert_probs[:, idx],
+                        self.terminated[:, idx],
+                        self.adv_agg[:, idx],
+                        self.ret_agg[:, idx],
+                        self.ns_labels[:, idx] if self.ns_labels is not None else None,
+                    )
+                )
             yield chunks

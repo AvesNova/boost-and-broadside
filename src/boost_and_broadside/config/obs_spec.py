@@ -21,13 +21,13 @@ from typing import Union
 
 import torch
 
-
 _EPS = 1e-6
 
 
 # ---------------------------------------------------------------------------
 # Shared math helpers (also used by encoder)
 # ---------------------------------------------------------------------------
+
 
 def symlog(x: torch.Tensor) -> torch.Tensor:
     return torch.sign(x) * torch.log1p(x.abs())
@@ -45,7 +45,7 @@ def fourier_encode(coords: torch.Tensor, n_freqs: int, period: float) -> torch.T
         (..., 2*n_freqs) — interleaved [sin_0, cos_0, sin_1, cos_1, ...].
     """
     k = torch.arange(n_freqs, device=coords.device, dtype=torch.float32)
-    freqs = (2.0 * math.pi / period) * (2.0 ** k)
+    freqs = (2.0 * math.pi / period) * (2.0**k)
     args = coords.unsqueeze(-1) * freqs
     return torch.cat([torch.sin(args), torch.cos(args)], dim=-1)
 
@@ -62,7 +62,7 @@ def fourier_encode_angle(vec: torch.Tensor, n_freqs: int) -> torch.Tensor:
     """
     angle = torch.atan2(vec[..., 1], vec[..., 0])
     k = torch.arange(n_freqs, device=vec.device, dtype=torch.float32)
-    freqs = 2.0 ** k
+    freqs = 2.0**k
     args = angle.unsqueeze(-1) * freqs
     return torch.cat([torch.sin(args), torch.cos(args)], dim=-1)
 
@@ -78,6 +78,7 @@ def fourier_encode_angle(vec: torch.Tensor, n_freqs: int) -> torch.Tensor:
 @dataclass(frozen=True)
 class Normalize:
     """Divide by a constant scale. S→S."""
+
     scale: float
 
     @property
@@ -103,6 +104,7 @@ class Symlog:
 @dataclass(frozen=True)
 class Clamp:
     """Clamp to [lo, hi]. S→S."""
+
     lo: float
     hi: float
 
@@ -133,6 +135,7 @@ class Bucketize:
     Rounds to nearest bucket. Input must already be in [0, 1].
     Typically followed by OneHot(n).
     """
+
     n: int
 
     @property
@@ -150,6 +153,7 @@ class Fourier:
     The period must match the signal's natural period so that endpoints
     encode identically (e.g. period=world_w for position x in pixels).
     """
+
     n: int
     period: float
 
@@ -164,6 +168,7 @@ class Fourier:
 @dataclass(frozen=True)
 class OneHot:
     """Integer → one-hot vector. S→V (n dims)."""
+
     n: int
 
     @property
@@ -213,6 +218,7 @@ class FourierAngle:
     Accepts any 2D vector (not required to be unit); angle is extracted via atan2.
     Works for raw velocity, unit attitude vectors, etc.
     """
+
     n: int
 
     @property
@@ -245,14 +251,24 @@ class QuarterWaveFourier:
 
 # Union type for type annotations
 Transform = Union[
-    Normalize, Symlog, Clamp, AsFloat, Bucketize,
-    Fourier, OneHot, VecMag, SymlogVec, FourierAngle, QuarterWaveFourier,
+    Normalize,
+    Symlog,
+    Clamp,
+    AsFloat,
+    Bucketize,
+    Fourier,
+    OneHot,
+    VecMag,
+    SymlogVec,
+    FourierAngle,
+    QuarterWaveFourier,
 ]
 
 
 # ---------------------------------------------------------------------------
 # FeatureSpec and ObsConfig
 # ---------------------------------------------------------------------------
+
 
 def _chain_out_dim(transforms: tuple) -> int:
     """Compute output dimension of a transform chain."""
@@ -271,8 +287,9 @@ class FeatureSpec:
                 (key, int) tuple that slices one scalar channel from the last dim.
         transforms: Ordered tuple of transform blocks; output of each feeds the next.
     """
+
     name: str
-    source: Union[str, tuple]
+    source: str | tuple
     transforms: tuple
 
     @property
@@ -288,6 +305,7 @@ class ObsConfig:
     applies each chain, and concatenates results into the raw feature vector
     fed to the linear projection.
     """
+
     features: tuple
 
     def raw_dim(self) -> int:
@@ -300,8 +318,10 @@ class ObsConfig:
         Each transform block is stored with a ``_type`` key so it can be
         reconstructed exactly via :func:`obs_config_from_dict`.
         """
+
         def _ser_transform(t) -> dict:
             import dataclasses
+
             d = dataclasses.asdict(t)
             d["_type"] = type(t).__name__
             return d
@@ -333,7 +353,7 @@ _TRANSFORM_REGISTRY: dict[str, type] = {
 }
 
 
-def obs_config_from_dict(d: dict) -> "ObsConfig":
+def obs_config_from_dict(d: dict) -> ObsConfig:
     """Reconstruct an ObsConfig from the dict produced by :meth:`ObsConfig.to_dict`."""
     features = []
     for f in d["features"]:

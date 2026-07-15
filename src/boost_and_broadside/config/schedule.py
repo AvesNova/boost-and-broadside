@@ -43,8 +43,9 @@ Compound example
 """
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 # A schedule maps a global step (int) to a value of any type.
 # The concrete return type is encoded per-field in TrainingSchedule.
@@ -67,9 +68,7 @@ def linear(*keypoints: tuple[int, float]) -> Schedule:
     value after the last keypoint. Requires ≥ 2 keypoints.
     """
     if len(keypoints) < 2:
-        raise ValueError(
-            f"linear() requires at least 2 keypoints, got {len(keypoints)}"
-        )
+        raise ValueError(f"linear() requires at least 2 keypoints, got {len(keypoints)}")
     steps = [kp[0] for kp in keypoints]
     values = [kp[1] for kp in keypoints]
 
@@ -94,9 +93,7 @@ def stepped(*keypoints: tuple[int, Any]) -> Schedule:
     Requires ≥ 1 keypoint.
     """
     if len(keypoints) < 1:
-        raise ValueError(
-            f"stepped() requires at least 1 keypoint, got {len(keypoints)}"
-        )
+        raise ValueError(f"stepped() requires at least 1 keypoint, got {len(keypoints)}")
 
     def _schedule(step: int) -> Any:
         value = keypoints[0][1]
@@ -115,9 +112,7 @@ def exponential(*keypoints: tuple[int, float]) -> Schedule:
     Requires ≥ 2 keypoints.
     """
     if len(keypoints) < 2:
-        raise ValueError(
-            f"exponential() requires at least 2 keypoints, got {len(keypoints)}"
-        )
+        raise ValueError(f"exponential() requires at least 2 keypoints, got {len(keypoints)}")
     for step, value in keypoints:
         if value <= 0:
             raise ValueError(
@@ -149,9 +144,7 @@ def cosine_anneal(*keypoints: tuple[int, float]) -> Schedule:
     value after the last keypoint. Requires ≥ 2 keypoints.
     """
     if len(keypoints) < 2:
-        raise ValueError(
-            f"cosine_anneal() requires at least 2 keypoints, got {len(keypoints)}"
-        )
+        raise ValueError(f"cosine_anneal() requires at least 2 keypoints, got {len(keypoints)}")
     steps = [kp[0] for kp in keypoints]
     values = [kp[1] for kp in keypoints]
 
@@ -244,4 +237,6 @@ class TrainingSchedule:
 
     # --- PPO epoch control ---
     num_epochs: Callable[[int], int]  # PPO update epochs per rollout
-    target_kl: Callable[[int], float | None]  # exit epoch loop early if mean approx KL exceeds this; None = disabled
+    target_kl: Callable[
+        [int], float | None
+    ]  # exit epoch loop early if mean approx KL exceeds this; None = disabled

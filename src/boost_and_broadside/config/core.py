@@ -4,8 +4,9 @@ ShipConfig has defaults — it defines the reference game. Everything else has
 no defaults; all values must be set explicitly so nothing is ever silently wrong.
 """
 
-import numpy as np
 from dataclasses import dataclass
+
+import numpy as np
 
 
 @dataclass(frozen=True)
@@ -104,13 +105,9 @@ class ModelConfig:
 
     def __post_init__(self) -> None:
         if self.d_model % self.n_heads != 0:
-            raise ValueError(
-                f"d_model={self.d_model} must be divisible by n_heads={self.n_heads}"
-            )
+            raise ValueError(f"d_model={self.d_model} must be divisible by n_heads={self.n_heads}")
         if self.n_transformer_blocks < 0:
-            raise ValueError(
-                f"n_transformer_blocks must be >= 0, got {self.n_transformer_blocks}"
-            )
+            raise ValueError(f"n_transformer_blocks must be >= 0, got {self.n_transformer_blocks}")
 
 
 @dataclass(frozen=True)
@@ -140,16 +137,10 @@ class RewardConfig:
     """
 
     # --- Global outcome rewards (lambda-aggregated across ships) ---
-    ally_damage_weight: (
-        float  # damage taken by this ship (negative; enemies zero-sum via lambda)
-    )
-    enemy_damage_weight: (
-        float  # same signal, enemy-team perspective (pair with ally_damage)
-    )
+    ally_damage_weight: float  # damage taken by this ship (negative; enemies zero-sum via lambda)
+    enemy_damage_weight: float  # same signal, enemy-team perspective (pair with ally_damage)
     ally_death_weight: float  # -1 on death of this ship
-    enemy_death_weight: (
-        float  # same signal, enemy-team perspective (pair with ally_death)
-    )
+    enemy_death_weight: float  # same signal, enemy-team perspective (pair with ally_death)
     ally_win_weight: float  # +1 when this ship's team wins
     enemy_win_weight: float  # same signal, enemy-team perspective (pair with ally_win)
 
@@ -157,24 +148,12 @@ class RewardConfig:
     facing_weight: float  # pointing nose toward nearest enemy (shaping)
     closing_speed_weight: float  # velocity component toward nearest enemy (shaping)
     shoot_quality_weight: float  # shot quality when firing (shaping)
-    kill_shot_weight: (
-        float  # proportional share of +1.0 per kill, weighted by step damage
-    )
-    kill_assist_weight: (
-        float  # proportional share of +1.0 per kill, weighted by episode damage
-    )
-    damage_taken_weight: (
-        float  # damage received by this ship this step (negative reward)
-    )
-    damage_dealt_enemy_weight: (
-        float  # damage dealt to enemies this step (positive reward)
-    )
-    damage_dealt_ally_weight: (
-        float  # damage dealt to allies this step (friendly-fire penalty)
-    )
-    death_weight: (
-        float  # -1 on the step this ship dies; fires via just_died, not alive mask
-    )
+    kill_shot_weight: float  # proportional share of +1.0 per kill, weighted by step damage
+    kill_assist_weight: float  # proportional share of +1.0 per kill, weighted by episode damage
+    damage_taken_weight: float  # damage received by this ship this step (negative reward)
+    damage_dealt_enemy_weight: float  # damage dealt to enemies this step (positive reward)
+    damage_dealt_ally_weight: float  # damage dealt to allies this step (friendly-fire penalty)
+    death_weight: float  # -1 on the step this ship dies; fires via just_died, not alive mask
 
     # --- Geometry params ---
     proximity_radius: float  # falloff radius used by FacingReward

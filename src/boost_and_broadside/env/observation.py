@@ -20,7 +20,7 @@ class ObsKey(StrEnum):
 
 _LEGACY_KEY_MAP: dict[str, tuple[ObsKey, int]] = {
     "prev_power": (ObsKey.PREVIOUS_ACTION, 0),
-    "prev_turn":  (ObsKey.PREVIOUS_ACTION, 1),
+    "prev_turn": (ObsKey.PREVIOUS_ACTION, 1),
     "prev_shoot": (ObsKey.PREVIOUS_ACTION, 2),
 }
 
@@ -124,9 +124,7 @@ class MVPObservation:
         """Swap team IDs 0 and 1 for the first num_ships entity slots."""
         team_id = self.data[ObsKey.TEAM_ID].clone()
         ship_slice = team_id[..., :num_ships]
-        flipped = torch.where(
-            ship_slice == 0, 1, torch.where(ship_slice == 1, 0, ship_slice)
-        )
+        flipped = torch.where(ship_slice == 0, 1, torch.where(ship_slice == 1, 0, ship_slice))
         team_id[..., :num_ships] = flipped
         return self.update(ObsKey.TEAM_ID, team_id)
 
@@ -138,9 +136,9 @@ class MVPObservation:
 
     def concat_batch(self, other: "MVPObservation") -> "MVPObservation":
         """Concatenate two observations along the batch (env) dimension (dim 0)."""
-        return MVPObservation(data={
-            k: torch.cat([v, other.data[k]], dim=0) for k, v in self.data.items()
-        })
+        return MVPObservation(
+            data={k: torch.cat([v, other.data[k]], dim=0) for k, v in self.data.items()}
+        )
 
     # ------------------------------------------------------------------
     # Construction from legacy dict

@@ -49,11 +49,11 @@ import torch
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import EnvConfig
+from boost_and_broadside.modes.ar_report import run_ar_report_mode
 from boost_and_broadside.modes.collect import run_collect_stats_mode
 from boost_and_broadside.modes.elo_stats import run_elo_stats_mode
 from boost_and_broadside.modes.feature_stats import run_feature_stats_mode
 from boost_and_broadside.modes.interactive import run_watch_mode
-from boost_and_broadside.modes.ar_report import run_ar_report_mode
 from boost_and_broadside.modes.noise_calibration import run_noise_calibration_mode
 from boost_and_broadside.train.rl.ppo import PPOTrainer
 from boost_and_broadside.ui.renderer import RenderConfig
@@ -71,7 +71,18 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--mode",
-        choices=["bc", "rl", "rl_obstacles", "bc_warmstart", "watch", "collect_stats", "feature_stats", "elo_stats", "ar_report", "noise_calibration"],
+        choices=[
+            "bc",
+            "rl",
+            "rl_obstacles",
+            "bc_warmstart",
+            "watch",
+            "collect_stats",
+            "feature_stats",
+            "elo_stats",
+            "ar_report",
+            "noise_calibration",
+        ],
         default="rl",
         help=(
             "Operating mode. "
@@ -161,7 +172,9 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _find_resume_checkpoint(path_hint: str, checkpoint_dir: str = "checkpoints") -> tuple[str, str | None]:
+def _find_resume_checkpoint(
+    path_hint: str, checkpoint_dir: str = "checkpoints"
+) -> tuple[str, str | None]:
     """Resolve a resume hint to (checkpoint_path, wandb_run_id_or_None).
 
     path_hint == ""       → find latest step_*.pt across all subdirs of checkpoint_dir
@@ -172,8 +185,10 @@ def _find_resume_checkpoint(path_hint: str, checkpoint_dir: str = "checkpoints")
 
     if hint is None or (hint.exists() and hint.is_dir()):
         search_root = hint if hint is not None else Path(checkpoint_dir)
-        candidates = sorted(search_root.glob("*/step_*.pt" if hint is None else "step_*.pt"),
-                            key=lambda p: p.stat().st_mtime)
+        candidates = sorted(
+            search_root.glob("*/step_*.pt" if hint is None else "step_*.pt"),
+            key=lambda p: p.stat().st_mtime,
+        )
         if not candidates:
             raise FileNotFoundError(f"No step_*.pt checkpoints found under {search_root}")
         ckpt_path = candidates[-1]
@@ -190,6 +205,7 @@ def _find_resume_checkpoint(path_hint: str, checkpoint_dir: str = "checkpoints")
 def _apply_smoke(config):
     """Shrink a TrainConfig to the smallest viable size for crash-testing."""
     from boost_and_broadside.config.schedule import stepped
+
     # num_envs must be divisible by num_minibatches, so use 1 minibatch with 4 envs.
     scales = tuple(replace(s, num_envs=4) for s in config.scales)
     obstacle_cache = config.obstacle_cache
@@ -225,14 +241,13 @@ def main() -> None:
 
     match args.mode:
         case "bc":
-            scripted_agent = StochasticScriptedAgent(
-                SHIP_CONFIG, StochasticAgentConfig()
-            )
+            scripted_agent = StochasticScriptedAgent(SHIP_CONFIG, StochasticAgentConfig())
             train_config = _apply_smoke(BC_TRAIN_CONFIG) if args.smoke else BC_TRAIN_CONFIG
             trainer = PPOTrainer(
                 train_config=train_config,
                 model_config=MODEL_CONFIG,
-                ship_config=SHIP_CONFIG,                device=device,
+                ship_config=SHIP_CONFIG,
+                device=device,
                 use_wandb=use_wandb,
                 scripted_agent=scripted_agent,
                 compile_mode=compile_mode,
@@ -240,9 +255,7 @@ def main() -> None:
             _run_trainer(trainer)
 
         case "rl":
-            scripted_agent = StochasticScriptedAgent(
-                SHIP_CONFIG, StochasticAgentConfig()
-            )
+            scripted_agent = StochasticScriptedAgent(SHIP_CONFIG, StochasticAgentConfig())
             train_config = _apply_smoke(RL_TRAIN_CONFIG) if args.smoke else RL_TRAIN_CONFIG
             resume_ckpt, resume_wandb_id = (
                 _find_resume_checkpoint(args.resume) if args.resume is not None else (None, None)
@@ -250,7 +263,8 @@ def main() -> None:
             trainer = PPOTrainer(
                 train_config=train_config,
                 model_config=MODEL_CONFIG,
-                ship_config=SHIP_CONFIG,                device=device,
+                ship_config=SHIP_CONFIG,
+                device=device,
                 use_wandb=use_wandb,
                 scripted_agent=scripted_agent,
                 compile_mode=compile_mode,
@@ -263,7 +277,9 @@ def main() -> None:
             _run_trainer(trainer)
 
         case "rl_obstacles":
-            train_config = _apply_smoke(RL_OBSTACLES_TRAIN_CONFIG) if args.smoke else RL_OBSTACLES_TRAIN_CONFIG
+            train_config = (
+                _apply_smoke(RL_OBSTACLES_TRAIN_CONFIG) if args.smoke else RL_OBSTACLES_TRAIN_CONFIG
+            )
             scripted_agent = StochasticScriptedAgent(SHIP_CONFIG, StochasticAgentConfig())
             resume_ckpt, resume_wandb_id = (
                 _find_resume_checkpoint(args.resume) if args.resume is not None else (None, None)
@@ -271,7 +287,8 @@ def main() -> None:
             trainer = PPOTrainer(
                 train_config=train_config,
                 model_config=MODEL_CONFIG,
-                ship_config=SHIP_CONFIG,                device=device,
+                ship_config=SHIP_CONFIG,
+                device=device,
                 use_wandb=use_wandb,
                 scripted_agent=scripted_agent,
                 compile_mode=compile_mode,
@@ -284,15 +301,14 @@ def main() -> None:
             _run_trainer(trainer)
 
         case "bc_warmstart":
-            scripted_agent = StochasticScriptedAgent(
-                SHIP_CONFIG, StochasticAgentConfig()
-            )
+            scripted_agent = StochasticScriptedAgent(SHIP_CONFIG, StochasticAgentConfig())
 
             print("=== BC_WARMSTART: starting BC pretraining phase (50M steps) ===")
             pretrain_trainer = PPOTrainer(
                 train_config=BC_WARMSTART_PRETRAIN_CONFIG,
                 model_config=MODEL_CONFIG,
-                ship_config=SHIP_CONFIG,                device=device,
+                ship_config=SHIP_CONFIG,
+                device=device,
                 use_wandb=True,
                 scripted_agent=scripted_agent,
                 compile_mode=None if args.compile_mode == "none" else args.compile_mode,
@@ -300,8 +316,7 @@ def main() -> None:
             _run_trainer(pretrain_trainer)
 
             ckpt_dir = (
-                Path(BC_WARMSTART_PRETRAIN_CONFIG.checkpoint_dir)
-                / pretrain_trainer._run_name
+                Path(BC_WARMSTART_PRETRAIN_CONFIG.checkpoint_dir) / pretrain_trainer._run_name
             )
             pretrain_path = ckpt_dir / "pretrained_for_rl.pt"
             torch.save(pretrain_trainer._checkpoint_payload(update=0), pretrain_path)
@@ -313,7 +328,8 @@ def main() -> None:
             rl_trainer = PPOTrainer(
                 train_config=BC_WARMSTART_RL_CONFIG,
                 model_config=MODEL_CONFIG,
-                ship_config=SHIP_CONFIG,                device=device,
+                ship_config=SHIP_CONFIG,
+                device=device,
                 use_wandb=True,
                 scripted_agent=scripted_agent,
                 compile_mode=None if args.compile_mode == "none" else args.compile_mode,
@@ -329,10 +345,14 @@ def main() -> None:
                 team1_spec=team1,
                 ship_config=SHIP_CONFIG,
                 env_config=EnvConfig(
-                    num_ships=8, max_bullets=20, max_episode_steps=1024, num_obstacles=0,
+                    num_ships=8,
+                    max_bullets=20,
+                    max_episode_steps=1024,
+                    num_obstacles=0,
                 ),
                 rewards=REWARDS,
-                model_config=MODEL_CONFIG,                render_config=RenderConfig(),
+                model_config=MODEL_CONFIG,
+                render_config=RenderConfig(),
                 device=device,
                 checkpoint_dir="checkpoints",
                 fast_cache=args.fast_cache,
@@ -346,9 +366,7 @@ def main() -> None:
                 team1_spec=team1,
                 num_envs=1024,
                 ship_config=SHIP_CONFIG,
-                env_config=EnvConfig(
-                    num_ships=4, max_bullets=20, max_episode_steps=1024
-                ),
+                env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=1024),
                 model_config=MODEL_CONFIG,
                 device=device,
                 checkpoint_dir="checkpoints",
@@ -364,9 +382,7 @@ def main() -> None:
                 num_envs=128,
                 num_steps=1024,
                 ship_config=SHIP_CONFIG,
-                env_config=EnvConfig(
-                    num_ships=4, max_bullets=20, max_episode_steps=1024
-                ),
+                env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=1024),
                 model_config=MODEL_CONFIG,
                 device=device,
                 checkpoint_dir="checkpoints",
@@ -375,11 +391,9 @@ def main() -> None:
         case "elo_stats":
             run_elo_stats_mode(
                 run_spec=args.run,
-                num_envs=1024*4,
+                num_envs=1024 * 4,
                 ship_config=SHIP_CONFIG,
-                env_config=EnvConfig(
-                    num_ships=4, max_bullets=20, max_episode_steps=1024
-                ),
+                env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=1024),
                 model_config=MODEL_CONFIG,
                 device=device,
                 checkpoint_dir="checkpoints",
@@ -391,44 +405,50 @@ def main() -> None:
         case "ar_report":
             team0 = args.team0 if args.team0 is not None else "latest"
             team1 = args.team1 if args.team1 is not None else "latest"
-            
-            print("\n" + "="*40)
+
+            print("\n" + "=" * 40)
             print("--- Running 2v2 Scenario ---")
-            print("="*40)
+            print("=" * 40)
             run_ar_report_mode(
                 team0_spec=team0,
                 team1_spec=team1,
                 num_steps=512,
                 ship_config=SHIP_CONFIG,
-                env_config=EnvConfig(
-                    num_ships=4, max_bullets=20, max_episode_steps=512
-                ),
-                rewards=REWARDS,                model_config=MODEL_CONFIG,
+                env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=512),
+                rewards=REWARDS,
+                model_config=MODEL_CONFIG,
                 device=device,
                 checkpoint_dir="checkpoints",
                 out_dir="docs/ar_report/2v2",
             )
 
-            print("\n" + "="*40)
+            print("\n" + "=" * 40)
             print("--- Running 1v1 Scenario ---")
-            print("="*40)
+            print("=" * 40)
             run_ar_report_mode(
                 team0_spec=team0,
                 team1_spec=team1,
                 num_steps=512,
                 ship_config=SHIP_CONFIG,
-                env_config=EnvConfig(
-                    num_ships=2, max_bullets=20, max_episode_steps=512
-                ),
-                rewards=REWARDS,                model_config=MODEL_CONFIG,
+                env_config=EnvConfig(num_ships=2, max_bullets=20, max_episode_steps=512),
+                rewards=REWARDS,
+                model_config=MODEL_CONFIG,
                 device=device,
                 checkpoint_dir="checkpoints",
                 out_dir="docs/ar_report/1v1",
             )
 
         case "noise_calibration":
-            team0 = args.team0 if args.team0 is not None else "checkpoints/dulcet-dragon-570/recent_avg.pt"
-            team1 = args.team1 if args.team1 is not None else "checkpoints/dulcet-dragon-570/recent_avg.pt"
+            team0 = (
+                args.team0
+                if args.team0 is not None
+                else "checkpoints/dulcet-dragon-570/recent_avg.pt"
+            )
+            team1 = (
+                args.team1
+                if args.team1 is not None
+                else "checkpoints/dulcet-dragon-570/recent_avg.pt"
+            )
             run_noise_calibration_mode(
                 team0_spec=team0,
                 team1_spec=team1,

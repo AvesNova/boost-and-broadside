@@ -92,9 +92,7 @@ class TrainConfig:
     max_grad_norm: float  # gradient clipping norm
     total_timesteps: int  # total environment steps before stopping
     return_ema_alpha: float  # EMA decay for per-component return percentile scaler
-    return_min_span: (
-        float  # minimum p95-p5 span (symlog-space) — guards disabled components
-    )
+    return_min_span: float  # minimum p95-p5 span (symlog-space) — guards disabled components
     checkpoint_dir: str  # directory to write .pt files
 
     # --- League play + ELO (static tournament parameters) ---
@@ -103,9 +101,7 @@ class TrainConfig:
     elo_k_factor: float  # ELO K-factor (score sensitivity per match)
     elo_temperature: float  # ELO bandwidth for proximity-weighted sampling
     league_uniform_sampling: bool  # if True, sample league opponents uniformly
-    scripted_roster_min_steps: (
-        int  # delay adding scripted to roster until this many steps
-    )
+    scripted_roster_min_steps: int  # delay adding scripted to roster until this many steps
     # Avg-model accumulation starts once normalized training ELO (vs the random
     # anchor) reaches this barrier; once started it never stops.
     avg_model_elo_threshold: float = 1000.0
@@ -119,8 +115,8 @@ class TrainConfig:
     microbatch_tokens: int | None = None
 
     # --- Next-state prediction loss ---
-    next_state_coef: float = 1.0       # weight for per-step aux prediction loss; 0 to disable
-    windowed_loss_coef: float = 0.1    # weight for windowed cumulative bias loss; 0 to disable
+    next_state_coef: float = 1.0  # weight for per-step aux prediction loss; 0 to disable
+    windowed_loss_coef: float = 0.1  # weight for windowed cumulative bias loss; 0 to disable
 
     # --- Obstacle cache (None when num_obstacles=0) ---
     obstacle_cache: ObstacleCacheConfig | None = None
@@ -137,9 +133,7 @@ class TrainConfig:
         if len(self.scales) == 0:
             raise ValueError("scales must contain at least one ScaleConfig")
         if self.paradigm not in ("ego_pass", "shared_pass"):
-            raise ValueError(
-                f"paradigm must be 'ego_pass' or 'shared_pass', got {self.paradigm!r}"
-            )
+            raise ValueError(f"paradigm must be 'ego_pass' or 'shared_pass', got {self.paradigm!r}")
         primary_envs = self.scales[0].num_envs
         if primary_envs % self.num_minibatches != 0:
             raise ValueError(

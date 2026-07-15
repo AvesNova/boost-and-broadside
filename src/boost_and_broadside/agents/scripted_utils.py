@@ -47,7 +47,7 @@ def compute_obstacle_repulsion(
     hit_r = (ship_config.obstacle_collision_radius + state.obstacle_radius).unsqueeze(1)
 
     # Quadratic TTI: |vel|²t² + 2·dot(rel,vel)·t + |rel|² − r² = 0
-    a = vel_r * vel_r + vel_i * vel_i                       # (B, N, M)
+    a = vel_r * vel_r + vel_i * vel_i  # (B, N, M)
     b = rel_r * vel_r + rel_i * vel_i
     c = rel_r * rel_r + rel_i * rel_i - hit_r * hit_r
 
@@ -67,7 +67,7 @@ def compute_obstacle_repulsion(
     )
 
     # Repulsion weight: (1 − TTI/tti_max)²
-    weight = (1.0 - tti / tti_max).clamp(0.0, 1.0) ** 2   # (B, N, M)
+    weight = (1.0 - tti / tti_max).clamp(0.0, 1.0) ** 2  # (B, N, M)
 
     # Repulsion direction: unit vector from obstacle toward ship
     dist = (rel_r * rel_r + rel_i * rel_i).sqrt() + 1e-8
@@ -75,11 +75,11 @@ def compute_obstacle_repulsion(
     dir_i = rel_i / dist
 
     # Weighted sum across obstacles
-    rep_r = (weight * dir_r).sum(dim=2)                     # (B, N)
+    rep_r = (weight * dir_r).sum(dim=2)  # (B, N)
     rep_i = (weight * dir_i).sum(dim=2)
     repulsion = torch.complex(rep_r, rep_i)
 
-    min_tti = tti.min(dim=2).values                         # (B, N)
+    min_tti = tti.min(dim=2).values  # (B, N)
     return repulsion, min_tti
 
 
@@ -107,8 +107,8 @@ def predict_interception(
 
     t_intercept = closest_dist / ship_config.bullet_speed
 
-    pred_pos         = target_pos + target_vel * t_intercept
-    shooter_future   = state.ship_pos + state.ship_vel * t_intercept
+    pred_pos = target_pos + target_vel * t_intercept
+    shooter_future = state.ship_pos + state.ship_vel * t_intercept
 
     diff = pred_pos - shooter_future
     diff.real = (diff.real + W / 2) % W - W / 2
@@ -134,8 +134,8 @@ def compute_team_target_bearings(
     W, H = ship_config.world_size
     device = state.device
 
-    bearings   = torch.zeros(B, N, dtype=state.ship_pos.dtype, device=device)
-    distances  = torch.zeros(B, N, dtype=torch.float32, device=device)
+    bearings = torch.zeros(B, N, dtype=state.ship_pos.dtype, device=device)
+    distances = torch.zeros(B, N, dtype=torch.float32, device=device)
     target_idx = torch.zeros(B, N, dtype=torch.long, device=device)
     has_target = torch.zeros(B, N, dtype=torch.bool, device=device)
 
@@ -145,16 +145,16 @@ def compute_team_target_bearings(
 
     for team in (0, 1):
         friend_mask = (state.ship_team_id == team) & state.ship_alive  # (B, N)
-        enemy_mask  = (state.ship_team_id != team) & state.ship_alive  # (B, N)
+        enemy_mask = (state.ship_team_id != team) & state.ship_alive  # (B, N)
 
         # Toroidal CoM of alive friendlies
         disp = state.ship_pos - anchor.unsqueeze(1)
         disp.real = (disp.real + W / 2) % W - W / 2
         disp.imag = (disp.imag + H / 2) % H - H / 2
 
-        f     = friend_mask.float()
+        f = friend_mask.float()
         count = f.sum(dim=1, keepdim=True).clamp(min=1)
-        com   = anchor + torch.complex(
+        com = anchor + torch.complex(
             (disp.real * f).sum(dim=1) / count.squeeze(1),
             (disp.imag * f).sum(dim=1) / count.squeeze(1),
         )  # (B,)
@@ -169,7 +169,7 @@ def compute_team_target_bearings(
             enemy_mask, dist_to_enemy, torch.tensor(float("inf"), device=device)
         )
         min_dists, team_tgt_idx = dist_masked.min(dim=1)  # (B,)
-        team_has_target = min_dists < float("inf")         # (B,)
+        team_has_target = min_dists < float("inf")  # (B,)
 
         # Broadcast team target index to all ships on this team: (B,) → (B, N)
         team_tgt_idx_bn = team_tgt_idx.unsqueeze(1).expand(B, N)
@@ -180,12 +180,12 @@ def compute_team_target_bearings(
         diff = target_pos.unsqueeze(1) - state.ship_pos
         diff.real = (diff.real + W / 2) % W - W / 2
         diff.imag = (diff.imag + H / 2) % H - H / 2
-        dist    = torch.abs(diff)        # (B, N)
+        dist = torch.abs(diff)  # (B, N)
         bearing = diff / (dist + 1e-8)  # (B, N)
 
-        is_friend = (state.ship_team_id == team)
-        bearings   = torch.where(is_friend, bearing, bearings)
-        distances  = torch.where(is_friend, dist, distances)
+        is_friend = state.ship_team_id == team
+        bearings = torch.where(is_friend, bearing, bearings)
+        distances = torch.where(is_friend, dist, distances)
         target_idx = torch.where(is_friend, team_tgt_idx_bn, target_idx)
         has_target = torch.where(
             is_friend,
@@ -210,14 +210,14 @@ def select_targets(
     world_width, world_height = ship_config.world_size
     device = state.device
 
-    pos_targets = state.ship_pos.unsqueeze(1)   # (B, 1, N)
-    pos_sources = state.ship_pos.unsqueeze(2)   # (B, N, 1)
+    pos_targets = state.ship_pos.unsqueeze(1)  # (B, 1, N)
+    pos_sources = state.ship_pos.unsqueeze(2)  # (B, N, 1)
 
-    diff = pos_targets - pos_sources            # (B, N, N) — from source to target
+    diff = pos_targets - pos_sources  # (B, N, N) — from source to target
     diff.real = (diff.real + world_width / 2) % world_width - world_width / 2
     diff.imag = (diff.imag + world_height / 2) % world_height - world_height / 2
 
-    dist = torch.abs(diff)                      # (B, N, N)
+    dist = torch.abs(diff)  # (B, N, N)
 
     team_src = state.ship_team_id.unsqueeze(2)
     team_tgt = state.ship_team_id.unsqueeze(1)

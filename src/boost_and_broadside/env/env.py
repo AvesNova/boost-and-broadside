@@ -4,20 +4,21 @@ This class owns the physics simulation only. Observation construction, reward
 computation, and episode tracking are handled by MVPEnvWrapper (env/wrapper.py).
 """
 
-import numpy as np
-import torch
 from typing import Any
 
-from boost_and_broadside.config import ShipConfig, EnvConfig
-from boost_and_broadside.env.state import TensorState
+import numpy as np
+import torch
+
+from boost_and_broadside.config import EnvConfig, ShipConfig
+from boost_and_broadside.env.obstacle_cache import ObstacleCache
+from boost_and_broadside.env.obstacle_physics import step_obstacles_harmonic
 from boost_and_broadside.env.physics import (
-    update_ships,
-    update_bullets,
     resolve_collisions,
     resolve_obstacle_collisions,
+    update_bullets,
+    update_ships,
 )
-from boost_and_broadside.env.obstacle_physics import step_obstacles_harmonic
-from boost_and_broadside.env.obstacle_cache import ObstacleCache
+from boost_and_broadside.env.state import TensorState
 
 
 class TensorEnv:
@@ -95,9 +96,7 @@ class TensorEnv:
             bullet_active=torch.zeros((B, N, K), dtype=torch.bool, device=dev),
             bullet_cursor=torch.zeros((B, N), dtype=torch.long, device=dev),
             damage_matrix=torch.zeros((B, N, N), dtype=torch.float32, device=dev),
-            cumulative_damage_matrix=torch.zeros(
-                (B, N, N), dtype=torch.float32, device=dev
-            ),
+            cumulative_damage_matrix=torch.zeros((B, N, N), dtype=torch.float32, device=dev),
             obstacle_pos=torch.zeros((B, M), dtype=torch.complex64, device=dev),
             obstacle_vel=torch.zeros((B, M), dtype=torch.complex64, device=dev),
             obstacle_radius=torch.zeros((B, M), dtype=torch.float32, device=dev),
@@ -147,13 +146,11 @@ class TensorEnv:
 
         # Velocity — along attitude at configured speed
         if self.ship_config.random_speed:
-            speed = self.ship_config.min_speed + torch.rand(
-                (B, N), device=self.device
-            ) * (self.ship_config.max_speed - self.ship_config.min_speed)
-        else:
-            speed = torch.full(
-                (B, N), self.ship_config.default_speed, device=self.device
+            speed = self.ship_config.min_speed + torch.rand((B, N), device=self.device) * (
+                self.ship_config.max_speed - self.ship_config.min_speed
             )
+        else:
+            speed = torch.full((B, N), self.ship_config.default_speed, device=self.device)
         s.ship_vel = torch.where(m, speed * att, s.ship_vel)
 
         # Resources
@@ -173,9 +170,7 @@ class TensorEnv:
             new_alive = torch.zeros((B, N), dtype=torch.bool, device=self.device)
             new_alive[:, : n_team0 + n_team1] = True
 
-            base_team_ids = torch.zeros(
-                (B, N), dtype=torch.int32, device=self.device
-            )
+            base_team_ids = torch.zeros((B, N), dtype=torch.int32, device=self.device)
             base_team_ids[:, n_team0 : n_team0 + n_team1] = 1  # last n_team1 slots = team 1
 
             # Independent random permutation per env → any slot can be any team.

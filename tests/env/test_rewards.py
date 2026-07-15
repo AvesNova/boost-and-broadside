@@ -8,25 +8,25 @@ No compute_rewards() — per-ship signals are tested directly; zero-sum accounti
 import pytest
 import torch
 
-from boost_and_broadside.config import ShipConfig, RewardConfig
+from boost_and_broadside.config import RewardConfig, ShipConfig
 from boost_and_broadside.env.rewards import (
+    REWARD_COMPONENT_NAMES,
     AllyDamageReward,
-    EnemyDamageReward,
     AllyDeathReward,
-    EnemyDeathReward,
     AllyWinReward,
+    ClosingSpeedReward,
+    EnemyDamageReward,
+    EnemyDeathReward,
     EnemyWinReward,
     FacingReward,
-    ClosingSpeedReward,
-    KillShotReward,
     KillAssistReward,
-    LocalDamageTakenReward,
-    LocalDamageDealtEnemyReward,
+    KillShotReward,
     LocalDamageDealtAllyReward,
+    LocalDamageDealtEnemyReward,
+    LocalDamageTakenReward,
     LocalDeathReward,
-    REWARD_COMPONENT_NAMES,
-    compute_per_component_rewards,
     build_reward_components,
+    compute_per_component_rewards,
 )
 from tests.conftest import make_state
 
@@ -56,9 +56,7 @@ def reward_cfg() -> RewardConfig:
         death_weight=1.0,
         proximity_radius=500.0,
         shoot_quality_radius=200.0,
-        enemy_neg_lambda_components=frozenset(
-            {"enemy_damage", "enemy_death", "enemy_win"}
-        ),
+        enemy_neg_lambda_components=frozenset({"enemy_damage", "enemy_death", "enemy_win"}),
         ally_zero_components=frozenset({"enemy_damage", "enemy_death", "enemy_win"}),
     )
 
@@ -137,9 +135,7 @@ class TestAllyDamageReward:
         next_.ship_health[0, 0] = prev.ship_health[0, 0] - 10.0
 
         r = AllyDamageReward(weight=1.0)
-        reward = r.compute(
-            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
-        )
+        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 0].item() < 0
 
@@ -149,9 +145,7 @@ class TestAllyDamageReward:
         next_.ship_health[0, 0] = prev.ship_health[0, 0] - 10.0
 
         r = AllyDamageReward(weight=1.0)
-        reward = r.compute(
-            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
-        )
+        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 1].item() == pytest.approx(0.0)
         assert reward[0, 2].item() == pytest.approx(0.0)
@@ -161,9 +155,7 @@ class TestAllyDamageReward:
         state = _make_4ship_state(cfg)
 
         r = AllyDamageReward(weight=1.0)
-        reward = r.compute(
-            state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
-        )
+        reward = r.compute(state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool))
 
         assert reward.abs().max().item() == 0.0
 
@@ -177,9 +169,7 @@ class TestEnemyDamageReward:
         next_.ship_health[0, 2] = prev.ship_health[0, 2] - 15.0
 
         r = EnemyDamageReward(weight=1.0)
-        reward = r.compute(
-            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
-        )
+        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 2].item() < 0
 
@@ -189,9 +179,7 @@ class TestEnemyDamageReward:
         next_.ship_health[0, 2] = prev.ship_health[0, 2] - 15.0
 
         r = EnemyDamageReward(weight=1.0)
-        reward = r.compute(
-            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
-        )
+        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(0.0)
         assert reward[0, 1].item() == pytest.approx(0.0)
@@ -210,9 +198,7 @@ class TestAllyDeathReward:
         next_.ship_alive[0, 0] = False
 
         r = AllyDeathReward(weight=5.0)
-        reward = r.compute(
-            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
-        )
+        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(-1.0, rel=1e-5)
 
@@ -222,9 +208,7 @@ class TestAllyDeathReward:
         next_.ship_alive[0, 0] = False
 
         r = AllyDeathReward(weight=5.0)
-        reward = r.compute(
-            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
-        )
+        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 1].item() == pytest.approx(0.0)
         assert reward[0, 2].item() == pytest.approx(0.0)
@@ -234,9 +218,7 @@ class TestAllyDeathReward:
         state = _make_4ship_state(cfg)
 
         r = AllyDeathReward(weight=5.0)
-        reward = r.compute(
-            state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
-        )
+        reward = r.compute(state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool))
 
         assert reward.abs().max().item() == 0.0
 
@@ -250,9 +232,7 @@ class TestEnemyDeathReward:
         next_.ship_alive[0, 2] = False
 
         r = EnemyDeathReward(weight=5.0)
-        reward = r.compute(
-            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
-        )
+        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 2].item() == pytest.approx(-1.0, rel=1e-5)
 
@@ -262,9 +242,7 @@ class TestEnemyDeathReward:
         next_.ship_alive[0, 2] = False
 
         r = EnemyDeathReward(weight=5.0)
-        reward = r.compute(
-            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
-        )
+        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(0.0)
         assert reward[0, 1].item() == pytest.approx(0.0)
@@ -367,9 +345,7 @@ class TestFacingReward:
     def test_both_ships_get_positive_facing_reward(self, cfg):
         state = _facing_state(cfg)
         comp = FacingReward(facing_weight=1.0, radius=500.0, world_size=cfg.world_size)
-        reward = comp.compute(
-            state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool)
-        )
+        reward = comp.compute(state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool))
 
         assert reward[0, 0].item() > 0, "team-0 should get positive facing reward"
         assert reward[0, 1].item() > 0, "team-1 should get positive facing reward"
@@ -389,9 +365,7 @@ class TestFacingReward:
         )
 
         state.ship_attitude[0, 0] = -1.0 + 0j
-        r_away = comp.compute(
-            state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool)
-        )
+        r_away = comp.compute(state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool))
 
         assert r_facing[0, 0].item() > r_away[0, 0].item()
 
@@ -408,9 +382,7 @@ class TestClosingSpeedReward:
         comp = ClosingSpeedReward(
             closing_speed_weight=1.0, world_size=cfg.world_size, max_speed=cfg.max_speed
         )
-        reward = comp.compute(
-            state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool)
-        )
+        reward = comp.compute(state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool))
 
         assert reward[0, 0].item() > 0
 
@@ -425,9 +397,7 @@ class TestClosingSpeedReward:
         comp = ClosingSpeedReward(
             closing_speed_weight=1.0, world_size=cfg.world_size, max_speed=cfg.max_speed
         )
-        reward = comp.compute(
-            state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool)
-        )
+        reward = comp.compute(state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool))
 
         assert reward[0, 0].item() == 0.0
 
@@ -443,9 +413,7 @@ class TestClosingSpeedReward:
         comp = ClosingSpeedReward(
             closing_speed_weight=1.0, world_size=cfg.world_size, max_speed=cfg.max_speed
         )
-        reward = comp.compute(
-            state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool)
-        )
+        reward = comp.compute(state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool))
 
         assert reward[0, 0].item() == 0.0
 
@@ -474,9 +442,7 @@ class TestKillShotReward:
         next_.damage_matrix[0, 0, 2] = 30.0  # ship 0 dealt 30 to ship 2
 
         r = KillShotReward(weight=1.0)
-        reward = r.compute(
-            prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool)
-        )
+        reward = r.compute(prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(1.0)
         assert reward[0, 1].item() == pytest.approx(0.0)
@@ -492,9 +458,7 @@ class TestKillShotReward:
         next_.damage_matrix[0, 1, 2] = 30.0  # ship 1 dealt 3× more
 
         r = KillShotReward(weight=1.0)
-        reward = r.compute(
-            prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool)
-        )
+        reward = r.compute(prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(0.25, rel=1e-5)
         assert reward[0, 1].item() == pytest.approx(0.75, rel=1e-5)
@@ -508,9 +472,7 @@ class TestKillShotReward:
         next_.damage_matrix[0, 1, 2] = 20.0
 
         r = KillShotReward(weight=1.0)
-        reward = r.compute(
-            prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool)
-        )
+        reward = r.compute(prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(0.5, rel=1e-5)
         assert reward[0, 1].item() == pytest.approx(0.5, rel=1e-5)
@@ -519,9 +481,7 @@ class TestKillShotReward:
         state = _kill_state(cfg)
 
         r = KillShotReward(weight=1.0)
-        reward = r.compute(
-            state, torch.zeros(1, 4, 3), state, torch.zeros(1, dtype=torch.bool)
-        )
+        reward = r.compute(state, torch.zeros(1, 4, 3), state, torch.zeros(1, dtype=torch.bool))
 
         assert reward.abs().max().item() == 0.0
 
@@ -533,9 +493,7 @@ class TestKillShotReward:
         next_.damage_matrix[0, 0, 1] = 40.0  # ship 0 caused the death
 
         r = KillShotReward(weight=1.0)
-        reward = r.compute(
-            prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool)
-        )
+        reward = r.compute(prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(-1.0)  # friendly fire penalty
         assert reward[0, 1].item() == pytest.approx(0.0)
@@ -552,9 +510,7 @@ class TestKillAssistReward:
         next_.cumulative_damage_matrix[0, 0, 2] = 50.0
 
         r = KillAssistReward(weight=1.0)
-        reward = r.compute(
-            prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool)
-        )
+        reward = r.compute(prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(1.0)
         assert reward[0, 1].item() == pytest.approx(0.0)
@@ -568,9 +524,7 @@ class TestKillAssistReward:
         next_.cumulative_damage_matrix[0, 1, 2] = 75.0
 
         r = KillAssistReward(weight=1.0)
-        reward = r.compute(
-            prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool)
-        )
+        reward = r.compute(prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(0.25, rel=1e-5)
         assert reward[0, 1].item() == pytest.approx(0.75, rel=1e-5)
@@ -579,9 +533,7 @@ class TestKillAssistReward:
         state = _kill_state(cfg)
 
         r = KillAssistReward(weight=1.0)
-        reward = r.compute(
-            state, torch.zeros(1, 4, 3), state, torch.zeros(1, dtype=torch.bool)
-        )
+        reward = r.compute(state, torch.zeros(1, 4, 3), state, torch.zeros(1, dtype=torch.bool))
 
         assert reward.abs().max().item() == 0.0
 
@@ -596,9 +548,7 @@ class TestKillAssistReward:
         next_.cumulative_damage_matrix[0, 0, 3] = 60.0
 
         r = KillAssistReward(weight=1.0)
-        reward = r.compute(
-            prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool)
-        )
+        reward = r.compute(prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(2.0)  # 1.0 per kill
 
@@ -615,9 +565,7 @@ class TestLocalDamageTakenReward:
         next_.ship_health[0, 0] = prev.ship_health[0, 0] - 10.0
 
         r = LocalDamageTakenReward(weight=1.0)
-        reward = r.compute(
-            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
-        )
+        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(-10.0)
 
@@ -627,9 +575,7 @@ class TestLocalDamageTakenReward:
         next_.ship_health[0, 0] = prev.ship_health[0, 0] - 10.0
 
         r = LocalDamageTakenReward(weight=1.0)
-        reward = r.compute(
-            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
-        )
+        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 1].item() == pytest.approx(0.0)
         assert reward[0, 2].item() == pytest.approx(0.0)
@@ -643,9 +589,7 @@ class TestLocalDamageTakenReward:
         next_.ship_alive[0, 0] = False
 
         r = LocalDamageTakenReward(weight=1.0)
-        reward = r.compute(
-            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
-        )
+        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(0.0)
 
@@ -653,9 +597,7 @@ class TestLocalDamageTakenReward:
         state = _make_4ship_state(cfg)
 
         r = LocalDamageTakenReward(weight=1.0)
-        reward = r.compute(
-            state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
-        )
+        reward = r.compute(state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool))
 
         assert reward.abs().max().item() == 0.0
 
@@ -667,9 +609,7 @@ class TestLocalDamageDealtEnemyReward:
         state.damage_matrix[0, 0, 2] = 20.0
 
         r = LocalDamageDealtEnemyReward(weight=1.0)
-        reward = r.compute(
-            state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
-        )
+        reward = r.compute(state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(20.0)
 
@@ -678,9 +618,7 @@ class TestLocalDamageDealtEnemyReward:
         state.damage_matrix[0, 0, 2] = 20.0
 
         r = LocalDamageDealtEnemyReward(weight=1.0)
-        reward = r.compute(
-            state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
-        )
+        reward = r.compute(state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 1].item() == pytest.approx(0.0)
         assert reward[0, 2].item() == pytest.approx(0.0)
@@ -693,9 +631,7 @@ class TestLocalDamageDealtEnemyReward:
         state.damage_matrix[0, 0, 3] = 10.0
 
         r = LocalDamageDealtEnemyReward(weight=1.0)
-        reward = r.compute(
-            state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
-        )
+        reward = r.compute(state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(25.0)
 
@@ -705,9 +641,7 @@ class TestLocalDamageDealtEnemyReward:
         state.damage_matrix[0, 0, 1] = 30.0  # ship 0 hit ally ship 1
 
         r = LocalDamageDealtEnemyReward(weight=1.0)
-        reward = r.compute(
-            state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
-        )
+        reward = r.compute(state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(0.0)
 
@@ -717,9 +651,7 @@ class TestLocalDamageDealtEnemyReward:
         state.ship_alive[0, 0] = False
 
         r = LocalDamageDealtEnemyReward(weight=1.0)
-        reward = r.compute(
-            state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
-        )
+        reward = r.compute(state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(0.0)
 
@@ -731,9 +663,7 @@ class TestLocalDamageDealtAllyReward:
         state.damage_matrix[0, 0, 1] = 30.0
 
         r = LocalDamageDealtAllyReward(weight=1.0)
-        reward = r.compute(
-            state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
-        )
+        reward = r.compute(state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(-30.0)
 
@@ -743,9 +673,7 @@ class TestLocalDamageDealtAllyReward:
         state.damage_matrix[0, 0, 2] = 20.0  # ship 0 hit enemy ship 2
 
         r = LocalDamageDealtAllyReward(weight=1.0)
-        reward = r.compute(
-            state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
-        )
+        reward = r.compute(state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(0.0)
 
@@ -753,9 +681,7 @@ class TestLocalDamageDealtAllyReward:
         state = _make_4ship_state(cfg)
 
         r = LocalDamageDealtAllyReward(weight=1.0)
-        reward = r.compute(
-            state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
-        )
+        reward = r.compute(state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool))
 
         assert reward.abs().max().item() == 0.0
 
@@ -765,9 +691,7 @@ class TestLocalDamageDealtAllyReward:
         state.ship_alive[0, 0] = False
 
         r = LocalDamageDealtAllyReward(weight=1.0)
-        reward = r.compute(
-            state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
-        )
+        reward = r.compute(state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(0.0)
 
@@ -780,9 +704,7 @@ class TestLocalDeathReward:
         next_.ship_alive[0, 0] = False
 
         r = LocalDeathReward(weight=1.0)
-        reward = r.compute(
-            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
-        )
+        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(-1.0)
 
@@ -792,9 +714,7 @@ class TestLocalDeathReward:
         next_.ship_alive[0, 0] = False
 
         r = LocalDeathReward(weight=1.0)
-        reward = r.compute(
-            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
-        )
+        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 1].item() == pytest.approx(0.0)
         assert reward[0, 2].item() == pytest.approx(0.0)
@@ -808,9 +728,7 @@ class TestLocalDeathReward:
         next_.ship_alive[0, 0] = False  # still dead
 
         r = LocalDeathReward(weight=1.0)
-        reward = r.compute(
-            prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
-        )
+        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(0.0)
 
@@ -818,8 +736,6 @@ class TestLocalDeathReward:
         state = _make_4ship_state(cfg)
 
         r = LocalDeathReward(weight=1.0)
-        reward = r.compute(
-            state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
-        )
+        reward = r.compute(state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool))
 
         assert reward.abs().max().item() == 0.0

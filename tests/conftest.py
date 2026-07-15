@@ -1,9 +1,9 @@
 """Shared pytest fixtures for all test modules."""
 
-import torch
 import pytest
+import torch
 
-from boost_and_broadside.config import ShipConfig, EnvConfig, ModelConfig, RewardConfig
+from boost_and_broadside.config import EnvConfig, ModelConfig, RewardConfig, ShipConfig
 from boost_and_broadside.env.state import TensorState
 
 
@@ -45,9 +45,7 @@ def base_rewards() -> RewardConfig:
         speed_range_lower=40.0,
         speed_range_upper=120.0,
         shoot_quality_radius=200.0,
-        enemy_neg_lambda_components=frozenset(
-            {"damage", "death", "victory", "exposure"}
-        ),
+        enemy_neg_lambda_components=frozenset({"damage", "death", "victory", "exposure"}),
         disabled_rewards=frozenset(),
     )
 
@@ -72,27 +70,15 @@ def make_state(
         step_count=torch.zeros((num_envs,), dtype=torch.int32, device=dev),
         ship_pos=torch.zeros((num_envs, max_ships), dtype=torch.complex64, device=dev),
         ship_vel=torch.zeros((num_envs, max_ships), dtype=torch.complex64, device=dev),
-        ship_attitude=torch.ones(
-            (num_envs, max_ships), dtype=torch.complex64, device=dev
-        ),
-        ship_ang_vel=torch.zeros(
-            (num_envs, max_ships), dtype=torch.float32, device=dev
-        ),
-        ship_health=torch.full(
-            (num_envs, max_ships), ship_config.max_health, device=dev
-        ),
+        ship_attitude=torch.ones((num_envs, max_ships), dtype=torch.complex64, device=dev),
+        ship_ang_vel=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
+        ship_health=torch.full((num_envs, max_ships), ship_config.max_health, device=dev),
         ship_power=torch.full((num_envs, max_ships), ship_config.max_power, device=dev),
-        ship_cooldown=torch.zeros(
-            (num_envs, max_ships), dtype=torch.float32, device=dev
-        ),
+        ship_cooldown=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
         ship_team_id=torch.zeros((num_envs, max_ships), dtype=torch.int32, device=dev),
         ship_alive=torch.ones((num_envs, max_ships), dtype=torch.bool, device=dev),
-        ship_is_shooting=torch.zeros(
-            (num_envs, max_ships), dtype=torch.bool, device=dev
-        ),
-        prev_action=torch.zeros(
-            (num_envs, max_ships, 3), dtype=torch.float32, device=dev
-        ),
+        ship_is_shooting=torch.zeros((num_envs, max_ships), dtype=torch.bool, device=dev),
+        prev_action=torch.zeros((num_envs, max_ships, 3), dtype=torch.float32, device=dev),
         bullet_pos=torch.zeros(
             (num_envs, max_ships, max_bullets), dtype=torch.complex64, device=dev
         ),
@@ -102,9 +88,7 @@ def make_state(
         bullet_time=torch.zeros(
             (num_envs, max_ships, max_bullets), dtype=torch.float32, device=dev
         ),
-        bullet_active=torch.zeros(
-            (num_envs, max_ships, max_bullets), dtype=torch.bool, device=dev
-        ),
+        bullet_active=torch.zeros((num_envs, max_ships, max_bullets), dtype=torch.bool, device=dev),
         bullet_cursor=torch.zeros((num_envs, max_ships), dtype=torch.long, device=dev),
         damage_matrix=torch.zeros(
             (num_envs, max_ships, max_ships), dtype=torch.float32, device=dev

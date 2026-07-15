@@ -8,17 +8,18 @@ Responsibilities:
   - Track per-ship episode statistics for logging.
 """
 
-import torch
 from typing import Any
 
-from boost_and_broadside.config import ShipConfig, EnvConfig, RewardConfig
+import torch
+
+from boost_and_broadside.config import EnvConfig, RewardConfig, ShipConfig
 from boost_and_broadside.constants import EPS
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.observation import MVPObservation, ObsKey
 from boost_and_broadside.env.obstacle_cache import ObstacleCache
 from boost_and_broadside.env.rewards import (
-    RewardComponent,
     REWARD_COMPONENT_NAMES,
+    RewardComponent,
     build_reward_components,
 )
 from boost_and_broadside.env.state import TensorState
@@ -61,9 +62,7 @@ class MVPEnvWrapper:
         self.device = torch.device(device)
 
         # All components (group-scale multipliers update individual weights each training step).
-        self._all_components: list[RewardComponent] = build_reward_components(
-            rewards, ship_config
-        )
+        self._all_components: list[RewardComponent] = build_reward_components(rewards, ship_config)
 
         # Active components: weight != 0 and registered in REWARD_COMPONENT_NAMES,
         # in canonical REWARD_COMPONENT_NAMES order.
@@ -81,14 +80,18 @@ class MVPEnvWrapper:
         M = env_config.num_obstacles
         N = env_config.num_ships
         if M > 0:
-            self._obs_ang_vel      = torch.zeros(num_envs, M, 1, device=self.device)
-            self._obs_health       = torch.full((num_envs, M, 1), ship_config.max_health, device=self.device)
-            self._obs_power        = torch.zeros(num_envs, M, 1, device=self.device)
-            self._obs_cooldown     = torch.zeros(num_envs, M, 1, device=self.device)
-            self._obs_team_id      = torch.full((num_envs, M), 2, device=self.device, dtype=torch.int32)
-            self._obs_alive        = torch.ones(num_envs, M, device=self.device, dtype=torch.bool)
-            self._obs_prev_action  = torch.zeros(num_envs, M, 3, device=self.device, dtype=torch.long)
-            self._obs_radius       = torch.zeros(num_envs, M, 1, device=self.device)
+            self._obs_ang_vel = torch.zeros(num_envs, M, 1, device=self.device)
+            self._obs_health = torch.full(
+                (num_envs, M, 1), ship_config.max_health, device=self.device
+            )
+            self._obs_power = torch.zeros(num_envs, M, 1, device=self.device)
+            self._obs_cooldown = torch.zeros(num_envs, M, 1, device=self.device)
+            self._obs_team_id = torch.full((num_envs, M), 2, device=self.device, dtype=torch.int32)
+            self._obs_alive = torch.ones(num_envs, M, device=self.device, dtype=torch.bool)
+            self._obs_prev_action = torch.zeros(
+                num_envs, M, 3, device=self.device, dtype=torch.long
+            )
+            self._obs_radius = torch.zeros(num_envs, M, 1, device=self.device)
         self._ship_radius = torch.full(
             (num_envs, N, 1),
             ship_config.collision_radius,
@@ -235,9 +238,7 @@ class MVPEnvWrapper:
         K = len(self._active_names)
         comp_rewards = torch.zeros(B, N, K, device=self.device, dtype=torch.float32)
         for k, comp in enumerate(self._active_components):
-            comp_rewards[:, :, k] = comp.compute(
-                prev_state, actions, self.env.state, dones
-            )
+            comp_rewards[:, :, k] = comp.compute(prev_state, actions, self.env.state, dones)
 
         # Normalize all rewards by total ship count so reward scale is invariant
         # to game size across 1v1, 2v2, 4v4, etc. Win rewards are included: in 2v2
@@ -266,8 +267,8 @@ class MVPEnvWrapper:
         self._ep_wins += ((team0 & t0_wins) | (team1 & t1_wins)).float()
 
         # Fold finished episodes into the per-update accumulators.
-        done_f = done_mask.float()        # (B,)
-        done_n = done_mask.unsqueeze(1)   # (B, 1)
+        done_f = done_mask.float()  # (B,)
+        done_n = done_mask.unsqueeze(1)  # (B, 1)
         done_nf = done_n.float()
         self._acc_episodes += done_f.sum()
         self._acc_reward_sum += (self._ep_reward * done_nf).sum()
@@ -281,9 +282,7 @@ class MVPEnvWrapper:
         )
         self._acc_length_sum += (self._ep_length.float() * done_f).sum()
         self._acc_comp_sum += (self._ep_comp * done_nf.unsqueeze(-1)).sum(dim=(0, 1))
-        self._acc_comp_scaled_sum += (
-            self._ep_comp_scaled * done_nf.unsqueeze(-1)
-        ).sum(dim=(0, 1))
+        self._acc_comp_scaled_sum += (self._ep_comp_scaled * done_nf.unsqueeze(-1)).sum(dim=(0, 1))
         self._acc_wins_sum += (self._ep_wins * done_nf).sum()
         self._acc_lifespan_sum += (self._ship_age.float() * done_nf).sum()
 
@@ -313,47 +312,53 @@ class MVPEnvWrapper:
         M = s.num_obstacles
 
         # --- Ship features (raw) ---
-        ship_pos     = torch.stack([s.ship_pos.real, s.ship_pos.imag], dim=-1)           # (B, N, 2)
-        ship_vel     = torch.stack([s.ship_vel.real, s.ship_vel.imag], dim=-1)           # (B, N, 2)
-        ship_att     = torch.stack([s.ship_attitude.real, s.ship_attitude.imag], dim=-1) # (B, N, 2)
-        ship_ang     = s.ship_ang_vel.unsqueeze(-1)                                       # (B, N, 1)
-        ship_health  = s.ship_health.unsqueeze(-1)                                        # (B, N, 1)
-        ship_power   = s.ship_power.unsqueeze(-1)                                         # (B, N, 1)
-        ship_cooldown = s.ship_cooldown.unsqueeze(-1)                                     # (B, N, 1)
-        ship_prev_action = s.prev_action.long()                                           # (B, N, 3)
+        ship_pos = torch.stack([s.ship_pos.real, s.ship_pos.imag], dim=-1)  # (B, N, 2)
+        ship_vel = torch.stack([s.ship_vel.real, s.ship_vel.imag], dim=-1)  # (B, N, 2)
+        ship_att = torch.stack([s.ship_attitude.real, s.ship_attitude.imag], dim=-1)  # (B, N, 2)
+        ship_ang = s.ship_ang_vel.unsqueeze(-1)  # (B, N, 1)
+        ship_health = s.ship_health.unsqueeze(-1)  # (B, N, 1)
+        ship_power = s.ship_power.unsqueeze(-1)  # (B, N, 1)
+        ship_cooldown = s.ship_cooldown.unsqueeze(-1)  # (B, N, 1)
+        ship_prev_action = s.prev_action.long()  # (B, N, 3)
 
         if M > 0:
             obs_pos = torch.stack([s.obstacle_pos.real, s.obstacle_pos.imag], dim=-1)  # (B, M, 2)
             obs_vel = torch.stack([s.obstacle_vel.real, s.obstacle_vel.imag], dim=-1)  # (B, M, 2)
             obs_speed = torch.norm(obs_vel, dim=-1, keepdim=True).clamp(min=EPS)
             obs_att = obs_vel / obs_speed  # (B, M, 2) — unit heading = velocity direction
-            return MVPObservation(data={
-                ObsKey.POS:             torch.cat([ship_pos,          obs_pos],              dim=1),
-                ObsKey.VEL:             torch.cat([ship_vel,          obs_vel],              dim=1),
-                ObsKey.ATT:             torch.cat([ship_att,          obs_att],              dim=1),
-                ObsKey.ANG_VEL:         torch.cat([ship_ang,          self._obs_ang_vel],    dim=1),
-                ObsKey.HEALTH:          torch.cat([ship_health,       self._obs_health],     dim=1),
-                ObsKey.POWER:           torch.cat([ship_power,        self._obs_power],      dim=1),
-                ObsKey.COOLDOWN:        torch.cat([ship_cooldown,     self._obs_cooldown],   dim=1),
-                ObsKey.TEAM_ID:         torch.cat([s.ship_team_id,    self._obs_team_id],    dim=1),
-                ObsKey.ALIVE:           torch.cat([s.ship_alive,      self._obs_alive],      dim=1),
-                ObsKey.PREVIOUS_ACTION: torch.cat([ship_prev_action,  self._obs_prev_action], dim=1),
-                ObsKey.RADIUS:          torch.cat([self._ship_radius, self._obs_radius],     dim=1),
-            })
+            return MVPObservation(
+                data={
+                    ObsKey.POS: torch.cat([ship_pos, obs_pos], dim=1),
+                    ObsKey.VEL: torch.cat([ship_vel, obs_vel], dim=1),
+                    ObsKey.ATT: torch.cat([ship_att, obs_att], dim=1),
+                    ObsKey.ANG_VEL: torch.cat([ship_ang, self._obs_ang_vel], dim=1),
+                    ObsKey.HEALTH: torch.cat([ship_health, self._obs_health], dim=1),
+                    ObsKey.POWER: torch.cat([ship_power, self._obs_power], dim=1),
+                    ObsKey.COOLDOWN: torch.cat([ship_cooldown, self._obs_cooldown], dim=1),
+                    ObsKey.TEAM_ID: torch.cat([s.ship_team_id, self._obs_team_id], dim=1),
+                    ObsKey.ALIVE: torch.cat([s.ship_alive, self._obs_alive], dim=1),
+                    ObsKey.PREVIOUS_ACTION: torch.cat(
+                        [ship_prev_action, self._obs_prev_action], dim=1
+                    ),
+                    ObsKey.RADIUS: torch.cat([self._ship_radius, self._obs_radius], dim=1),
+                }
+            )
 
-        return MVPObservation(data={
-            ObsKey.POS:             ship_pos,
-            ObsKey.VEL:             ship_vel,
-            ObsKey.ATT:             ship_att,
-            ObsKey.ANG_VEL:         ship_ang,
-            ObsKey.HEALTH:          ship_health,
-            ObsKey.POWER:           ship_power,
-            ObsKey.COOLDOWN:        ship_cooldown,
-            ObsKey.TEAM_ID:         s.ship_team_id,
-            ObsKey.ALIVE:           s.ship_alive,
-            ObsKey.PREVIOUS_ACTION: ship_prev_action,
-            ObsKey.RADIUS:          self._ship_radius,
-        })
+        return MVPObservation(
+            data={
+                ObsKey.POS: ship_pos,
+                ObsKey.VEL: ship_vel,
+                ObsKey.ATT: ship_att,
+                ObsKey.ANG_VEL: ship_ang,
+                ObsKey.HEALTH: ship_health,
+                ObsKey.POWER: ship_power,
+                ObsKey.COOLDOWN: ship_cooldown,
+                ObsKey.TEAM_ID: s.ship_team_id,
+                ObsKey.ALIVE: s.ship_alive,
+                ObsKey.PREVIOUS_ACTION: ship_prev_action,
+                ObsKey.RADIUS: self._ship_radius,
+            }
+        )
 
     # ------------------------------------------------------------------
     # Helpers

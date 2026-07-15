@@ -10,7 +10,7 @@ before RL takes over.
 """
 
 from boost_and_broadside.config import EnvConfig, ScaleConfig, TrainConfig
-from runs.bc import BC_SCHEDULE, _MAX_TOKENS
+from runs.bc import _MAX_TOKENS, BC_SCHEDULE
 from runs.rl import RL_TRAIN_CONFIG
 from runs.shared import REWARDS
 

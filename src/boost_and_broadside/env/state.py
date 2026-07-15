@@ -1,7 +1,8 @@
 """TensorState: the complete GPU-resident state of all parallel environments."""
 
-import torch
 from dataclasses import dataclass
+
+import torch
 
 
 @dataclass
@@ -46,9 +47,7 @@ class TensorState:
     bullet_cursor: torch.Tensor  # (B, N) int64
 
     # Per-step and per-episode damage attribution (shooter × target)
-    damage_matrix: (
-        torch.Tensor
-    )  # (B, N, N) float32  — damage dealt this step; zeroed each step
+    damage_matrix: torch.Tensor  # (B, N, N) float32  — damage dealt this step; zeroed each step
     cumulative_damage_matrix: (
         torch.Tensor
     )  # (B, N, N) float32  — accumulated this episode; zeroed on reset

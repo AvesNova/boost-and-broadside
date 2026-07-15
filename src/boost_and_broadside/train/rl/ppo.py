@@ -7,12 +7,13 @@ Logging is async (CPU-side via wandb) to avoid GPU sync on the hot path.
 """
 
 import dataclasses
-import time
 import threading
+import time
 from collections import deque
+from collections.abc import Callable
 from pathlib import Path
-from queue import Queue, Empty
-from typing import Any, Callable
+from queue import Empty, Queue
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -22,30 +23,27 @@ from torch.distributions import Categorical
 
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import (
-    TrainConfig,
-    ModelConfig,
-    RewardConfig,
-    ShipConfig,
     EnvConfig,
+    ModelConfig,
+    ShipConfig,
+    TrainConfig,
     TrainingSchedule,
 )
-from boost_and_broadside.constants import POWER_SLICE, TURN_SLICE, SHOOT_SLICE
+from boost_and_broadside.constants import POWER_SLICE, SHOOT_SLICE, TURN_SLICE
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.observation import MVPObservation, ObsKey
 from boost_and_broadside.env.obstacle_cache import ObstacleCache
-from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
 from boost_and_broadside.env.state import TensorState
 from boost_and_broadside.env.wrapper import MVPEnvWrapper
 from boost_and_broadside.models.mvp.policy import MVPPolicy
 from boost_and_broadside.train.rl.buffer import (
-    RolloutBuffer,
-    ReturnScaler,
     AdvantageScaler,
-    symlog,
+    ReturnScaler,
+    RolloutBuffer,
 )
-from boost_and_broadside.train.rl.features import build_standard_coordinator, FeatureCoordinator
-from boost_and_broadside.train.rl.sigreg import SIGReg
+from boost_and_broadside.train.rl.features import FeatureCoordinator, build_standard_coordinator
 from boost_and_broadside.train.rl.roster import EloRoster, RosterEntry
+from boost_and_broadside.train.rl.sigreg import SIGReg
 
 
 def _cast_norms_bf16(module: nn.Module) -> None:
@@ -256,11 +254,11 @@ def _compute_optimal_eval_ratio(training_elo: float) -> float:
     p_rand = 1.0 / (1.0 + 10.0 ** ((0.0 - training_elo) / 400.0))
     # expected win rate against Scripted (r = 1000)
     p_sc = 1.0 / (1.0 + 10.0 ** ((1000.0 - training_elo) / 400.0))
-    
+
     # Bernoulli variances (Fisher Information contribution)
     v_rand = p_rand * (1.0 - p_rand)
     v_sc = p_sc * (1.0 - p_sc)
-    
+
     # Information-Proportional Allocation: fraction of games to route to Random
     total_val = v_rand + v_sc
     if total_val <= 1e-8:
@@ -279,11 +277,7 @@ def _compute_optimal_eval_ratio_tensor(elo: torch.Tensor) -> torch.Tensor:
     v_rand = p_rand * (1.0 - p_rand)
     v_sc = p_sc * (1.0 - p_sc)
     total = v_rand + v_sc
-    return torch.where(
-        total <= 1e-8, torch.full_like(total, 0.5), v_rand / total.clamp(min=1e-8)
-    )
-
-
+    return torch.where(total <= 1e-8, torch.full_like(total, 0.5), v_rand / total.clamp(min=1e-8))
 
 
 def _clone_to_cpu(obj: Any) -> Any:
@@ -371,9 +365,7 @@ class PPOTrainer:
                 "scripted_fraction > 0 in schedule requires a scripted_agent to be provided."
             )
         if base_state.policy_gradient_coef == 0.0 and scripted_agent is None:
-            raise ValueError(
-                "policy_gradient_coef=0.0 (BC mode) requires a scripted_agent."
-            )
+            raise ValueError("policy_gradient_coef=0.0 (BC mode) requires a scripted_agent.")
 
         # Generate converged obstacle maps before training begins.
         # The cache is shared across all wrappers (primary + aux scales).
@@ -422,7 +414,10 @@ class PPOTrainer:
         N = train_config.scales[0].env_config.num_ships
         self._compile_mode = compile_mode
         self._policy_module = MVPPolicy(
-            model_config, self.coordinator, num_value_components=K, num_ships=N,
+            model_config,
+            self.coordinator,
+            num_value_components=K,
+            num_ships=N,
             team_pma_k=self._win_k,
         ).to(self.device)
         _cast_norms_bf16(self._policy_module)
@@ -453,12 +448,8 @@ class PPOTrainer:
 
         # Pre-compute lambda masks for active components only.
         # Static for the entire run — derived from RewardConfig.
-        self.enemy_neg_k = self._make_enemy_neg_k(
-            train_config.rewards.enemy_neg_lambda_components
-        )
-        self.ally_zero_k = self._make_ally_zero_k(
-            train_config.rewards.ally_zero_components
-        )
+        self.enemy_neg_k = self._make_enemy_neg_k(train_config.rewards.enemy_neg_lambda_components)
+        self.ally_zero_k = self._make_ally_zero_k(train_config.rewards.ally_zero_components)
         self.local_k = self._make_local_k()
 
         self.aux_weights = self.coordinator.get_loss_weights(self.device)
@@ -485,7 +476,10 @@ class PPOTrainer:
         # Accumulation starts once normalized training ELO reaches
         # cfg.avg_model_elo_threshold; once started it never stops.
         self._avg_policy_module = MVPPolicy(
-            model_config, self.coordinator, num_value_components=K, num_ships=N,
+            model_config,
+            self.coordinator,
+            num_value_components=K,
+            num_ships=N,
             team_pma_k=self._win_k,
         ).to(self.device)
         self.avg_policy = (
@@ -554,12 +548,8 @@ class PPOTrainer:
         self._eval_window_sc = deque(maxlen=100)
         self._eval_window_avg_vs_sc = deque(maxlen=100)
         self._eval_window_live_vs_avg = deque(maxlen=100)
-        self._elo_milestone: float = (
-            0.0  # normalized training ELO (vs random) at last milestone
-        )
-        self._best_training_elo_norm: float = (
-            0.0  # best normalized training ELO seen so far
-        )
+        self._elo_milestone: float = 0.0  # normalized training ELO (vs random) at last milestone
+        self._best_training_elo_norm: float = 0.0  # best normalized training ELO seen so far
         self._best_avg_elo_norm: float = 0.0  # best normalized avg ELO seen so far
         self._last_checkpoint_path: Path | None = None
 
@@ -570,7 +560,9 @@ class PPOTrainer:
         # Async logging queue
         self._log_queue: Queue = Queue()
         if use_wandb:
-            self._init_wandb(train_config, model_config, ship_config, self.env_config, resume_wandb_run_id)
+            self._init_wandb(
+                train_config, model_config, ship_config, self.env_config, resume_wandb_run_id
+            )
             self._log_thread = threading.Thread(target=self._log_worker, daemon=True)
             self._log_thread.start()
 
@@ -614,7 +606,6 @@ class PPOTrainer:
         self._schedule_state: _ResolvedSchedule = base_state
         self._policy_gradient_coef: float = base_state.policy_gradient_coef
         self._behavior_cloning_coef: float = base_state.behavior_cloning_coef
-
 
         # --- Auxiliary training scales (multi-scale curriculum) ---
         # Each scale has its own env + buffer; policy, optimizer, and scaler are shared.
@@ -691,17 +682,13 @@ class PPOTrainer:
         self._avg_update_count += 1
         for cum, p in zip(self._avg_param_cumsum, self._policy_module.parameters()):
             cum.add_(p.detach().float())
-        for avg_p, cum in zip(
-            self._avg_policy_module.parameters(), self._avg_param_cumsum
-        ):
+        for avg_p, cum in zip(self._avg_policy_module.parameters(), self._avg_param_cumsum):
             avg_p.data.copy_(cum / self._avg_update_count)
         # Register the avg model as a roster entry the first time it's ready,
         # seeded at current training ELO (it's a recent snapshot, so it's a
         # reasonable starting estimate that will quickly self-correct via eval).
         if first_update:
-            self.roster.add_special(
-                "avg", self._global_step, 0, initial_elo=self._training_elo
-            )
+            self.roster.add_special("avg", self._global_step, 0, initial_elo=self._training_elo)
 
     def _rollout_policy_pass(
         self,
@@ -743,8 +730,8 @@ class PPOTrainer:
             hidden_t1:  Updated flipped-perspective hidden state; None in shared_pass.
         """
         if not self._ego_pass:
-            action, logprob, value_norm, pred_next, hidden = (
-                self.policy.get_action_and_value(obs, hidden)
+            action, logprob, value_norm, pred_next, hidden = self.policy.get_action_and_value(
+                obs, hidden
             )
             return action, None, logprob, value_norm, pred_next, hidden, None
 
@@ -756,13 +743,13 @@ class PPOTrainer:
             self.policy.get_action_and_value(obs_both, hidden_both)
         )
         return (
-            action_both[:batch],                        # (B, N, 3)
-            action_both[batch:],                        # (B, N, 3)
-            logprob_both[:batch],                       # (B, N)
-            value_both[:batch],                         # (B, N, K)
-            pred_next_both[:batch],                     # (B, N, pred_dim)
-            hidden_out[:, : batch * num_tokens, :],     # (n_layers, B*(N+M), K*D)
-            hidden_out[:, batch * num_tokens :, :],     # (n_layers, B*(N+M), K*D)
+            action_both[:batch],  # (B, N, 3)
+            action_both[batch:],  # (B, N, 3)
+            logprob_both[:batch],  # (B, N)
+            value_both[:batch],  # (B, N, K)
+            pred_next_both[:batch],  # (B, N, pred_dim)
+            hidden_out[:, : batch * num_tokens, :],  # (n_layers, B*(N+M), K*D)
+            hidden_out[:, batch * num_tokens :, :],  # (n_layers, B*(N+M), K*D)
         )
 
     def _opponent_obs(self, obs_slice: MVPObservation, num_ships: int) -> MVPObservation:
@@ -829,9 +816,7 @@ class PPOTrainer:
         else:
             flags = self._opp_team_flag[start - self.B_self : end - self.B_self]
             opp_mask = team_id[start:end] == flags.unsqueeze(1)  # (end-start, N)
-        action[start:end] = torch.where(
-            opp_mask.unsqueeze(-1), opp_action, action[start:end]
-        )
+        action[start:end] = torch.where(opp_mask.unsqueeze(-1), opp_action, action[start:end])
         actor_mask[start:end] &= ~opp_mask
 
     def train(self) -> None:
@@ -840,7 +825,7 @@ class PPOTrainer:
         N = self.wrapper.num_ships
         M = self.env_config.num_obstacles
         num_tokens = N + M  # ships + obstacles; hidden state covers all entity tokens
-        
+
         # -- ELO Evaluation Env & State Initialization (Parallel Vectorized Slots) --
         # Three fixed 512-env matchup slices, ordered so each network agent covers
         # one contiguous span and runs a single sliced forward pass:
@@ -867,7 +852,12 @@ class PPOTrainer:
         # Load and resolve agents for ELO evaluation.
         # NOTE: the avg agent must use kind="policy" — get_actions dispatches on
         # kind, and unknown kinds fall through to the null (all-zero-action) path.
-        from boost_and_broadside.modes.agent_factory import ResolvedAgent, get_actions, init_hidden, reset_done_envs
+        from boost_and_broadside.modes.agent_factory import (
+            ResolvedAgent,
+            get_actions,
+            init_hidden,
+            reset_done_envs,
+        )
         from boost_and_broadside.modes.collect import _obs_from_state
 
         agent_policy = ResolvedAgent("policy", self.policy)
@@ -882,7 +872,7 @@ class PPOTrainer:
         # Optimal information-proportional routing variables
         K_eval = 4.0
         f_star = _compute_optimal_eval_ratio(self._training_elo)
-        eval_anchor_is_scripted = (torch.rand(B_eval, device=self.device) > f_star)
+        eval_anchor_is_scripted = torch.rand(B_eval, device=self.device) > f_star
 
         # On-GPU ELO scalars — updated branchlessly inside the rollout, synced to
         # the Python-float attributes once per update. Score history accumulates
@@ -896,8 +886,6 @@ class PPOTrainer:
         eval_win_hist: list[torch.Tensor] = []
         eval_done_hist: list[torch.Tensor] = []
         eval_anchor_hist: list[torch.Tensor] = []
-
-
 
         sc_start = self.B_self
         sc_end = self.B_self + self.B_sc
@@ -914,9 +902,7 @@ class PPOTrainer:
         hidden = self.policy.initial_hidden(B, num_tokens, self.device)
         # Flipped-perspective hidden state — ego_pass only.
         hidden_t1 = (
-            self.policy.initial_hidden(B, num_tokens, self.device)
-            if self._ego_pass
-            else None
+            self.policy.initial_hidden(B, num_tokens, self.device) if self._ego_pass else None
         )
 
         # Avg-model hidden state — lives across the whole training run.
@@ -942,22 +928,18 @@ class PPOTrainer:
             aux_obs.append(aux_w.reset())
             aux_w.env.state.step_count.random_(0, sc.env_config.max_episode_steps)
             aux_num_tokens = sc.env_config.num_ships + sc.env_config.num_obstacles
-            aux_hiddens.append(
-                self.policy.initial_hidden(
-                    sc.num_envs, aux_num_tokens, self.device
-                )
-            )
+            aux_hiddens.append(self.policy.initial_hidden(sc.num_envs, aux_num_tokens, self.device))
             aux_hidden_t1s.append(
                 self.policy.initial_hidden(sc.num_envs, aux_num_tokens, self.device)
                 if self._ego_pass
                 else None
             )
             aux_action_buffers.append(
-                torch.zeros(sc.num_envs, sc.env_config.num_ships, 3, dtype=torch.int32, device=self.device)
+                torch.zeros(
+                    sc.num_envs, sc.env_config.num_ships, 3, dtype=torch.int32, device=self.device
+                )
             )
-            aux_last_dones.append(
-                torch.zeros(sc.num_envs, dtype=torch.bool, device=self.device)
-            )
+            aux_last_dones.append(torch.zeros(sc.num_envs, dtype=torch.bool, device=self.device))
 
         # CUDA streams for overlapping env physics with network forward passes.
         # env_stream: runs wrapper.step (physics + obs extraction)
@@ -986,15 +968,11 @@ class PPOTrainer:
             # Sample a league opponent for this rollout (rotated each update).
             # Only runs when the current phase has league_frac > 0 AND slots are allocated.
             # Evict the previous checkpoint's weights before loading the new one.
-            league_active = (
-                self.B_league > 0 and self._schedule_state.league_fraction > 0.0
-            )
+            league_active = self.B_league > 0 and self._schedule_state.league_fraction > 0.0
             if league_active:
                 entry = self.roster.sample(self._training_elo)
                 self._current_league_entry = entry
-                if entry is None or (
-                    entry.kind == "avg" and self._avg_update_count == 0
-                ):
+                if entry is None or (entry.kind == "avg" and self._avg_update_count == 0):
                     # No valid opponent yet — league group falls back to self-play this rollout.
                     self._current_league_entry = None
                     self._current_league_policy = None
@@ -1045,10 +1023,8 @@ class PPOTrainer:
                 if self._policy_gradient_coef == 0.0:
                     # BC pretraining: scripted BC targets only, no opponent overrides
                     with torch.no_grad():
-                        _, expert_probs_step = (
-                            self.scripted_agent.get_actions_and_probs(
-                                self.wrapper.env.state
-                            )
+                        _, expert_probs_step = self.scripted_agent.get_actions_and_probs(
+                            self.wrapper.env.state
                         )
                     use_avg = False
                     use_league = False
@@ -1068,35 +1044,24 @@ class PPOTrainer:
                         and self._schedule_state.league_fraction > 0.0
                     )
                     use_sc_bc = self.B_sc > 0
-                    use_sc_opponent = (
-                        use_sc_bc and self._schedule_state.scripted_fraction > 0.0
-                    )
+                    use_sc_opponent = use_sc_bc and self._schedule_state.scripted_fraction > 0.0
 
                     expert_probs_step: torch.Tensor | None = None
                     action_scripted = None
                     action_league_scripted = None
 
                     # BC targets + scripted opponent actions (both read env.state)
-                    if (
-                        self._behavior_cloning_coef > 0.0
-                        and self.scripted_agent is not None
-                    ):
+                    if self._behavior_cloning_coef > 0.0 and self.scripted_agent is not None:
                         with torch.no_grad():
                             action_scripted_all, expert_probs_step = (
-                                self.scripted_agent.get_actions_and_probs(
-                                    self.wrapper.env.state
-                                )
+                                self.scripted_agent.get_actions_and_probs(self.wrapper.env.state)
                             )
                         if use_sc_opponent:
                             action_scripted = action_scripted_all[sc_start:sc_end]
                     elif use_sc_bc:
                         with torch.no_grad():
-                            state_sc = _slice_state(
-                                self.wrapper.env.state, sc_start, sc_end
-                            )
-                            action_scripted, _ = (
-                                self.scripted_agent.get_actions_and_probs(state_sc)
-                            )
+                            state_sc = _slice_state(self.wrapper.env.state, sc_start, sc_end)
+                            action_scripted, _ = self.scripted_agent.get_actions_and_probs(state_sc)
 
                     # Scripted league opponent also reads env.state before the env stream
                     if use_league and self._current_league_policy is None:
@@ -1104,9 +1069,7 @@ class PPOTrainer:
                             state_league = _slice_state(
                                 self.wrapper.env.state, league_start, league_end
                             )
-                            action_league_scripted = self.scripted_agent.get_actions(
-                                state_league
-                            )
+                            action_league_scripted = self.scripted_agent.get_actions(state_league)
 
                 # -- Phase 2: parallel env step + all network forwards --
                 # env_stream: apply action_buffer (previous step's decision) to physics
@@ -1116,9 +1079,7 @@ class PPOTrainer:
                     net_stream.wait_stream(torch.cuda.current_stream())
 
                     with torch.cuda.stream(env_stream):
-                        next_obs, reward, dones, truncated, info = self.wrapper.step(
-                            action_buffer
-                        )
+                        next_obs, reward, dones, truncated, info = self.wrapper.step(action_buffer)
 
                     with torch.cuda.stream(net_stream):
                         with torch.autocast("cuda", dtype=torch.bfloat16):
@@ -1136,9 +1097,7 @@ class PPOTrainer:
                             with torch.autocast("cuda", dtype=torch.bfloat16):
                                 obs_avg = self._opponent_obs(_slice_obs(obs, avg_start, avg_end), N)
                                 action_avg, _, _, _, avg_hidden = (
-                                    self.avg_policy.get_action_and_value(
-                                        obs_avg, avg_hidden
-                                    )
+                                    self.avg_policy.get_action_and_value(obs_avg, avg_hidden)
                                 )
                         if use_league and self._current_league_policy is not None:
                             with torch.autocast("cuda", dtype=torch.bfloat16):
@@ -1157,9 +1116,7 @@ class PPOTrainer:
                     torch.cuda.current_stream().wait_stream(net_stream)
                 else:
                     # CPU fallback (no streams)
-                    next_obs, reward, dones, truncated, info = self.wrapper.step(
-                        action_buffer
-                    )
+                    next_obs, reward, dones, truncated, info = self.wrapper.step(action_buffer)
                     with torch.autocast("cuda", dtype=torch.bfloat16):
                         action_t0, action_t1, logprob, value_norm, pred_next, hidden, hidden_t1 = (
                             self._rollout_policy_pass(obs, hidden, hidden_t1, N, num_tokens)
@@ -1167,8 +1124,8 @@ class PPOTrainer:
                     if use_avg:
                         with torch.autocast("cuda", dtype=torch.bfloat16):
                             obs_avg = self._opponent_obs(_slice_obs(obs, avg_start, avg_end), N)
-                            action_avg, _, _, _, avg_hidden = (
-                                self.avg_policy.get_action_and_value(obs_avg, avg_hidden)
+                            action_avg, _, _, _, avg_hidden = self.avg_policy.get_action_and_value(
+                                obs_avg, avg_hidden
                             )
                     if use_league and self._current_league_policy is not None:
                         with torch.autocast("cuda", dtype=torch.bfloat16):
@@ -1231,9 +1188,7 @@ class PPOTrainer:
                 # Reset hidden states and action buffer for terminated envs
                 hidden = self.policy.reset_hidden_for_envs(hidden, done_any, num_tokens)
                 if self._ego_pass:
-                    hidden_t1 = self.policy.reset_hidden_for_envs(
-                        hidden_t1, done_any, num_tokens
-                    )
+                    hidden_t1 = self.policy.reset_hidden_for_envs(hidden_t1, done_any, num_tokens)
                 action_buffer = action_buffer.clone()
                 action_buffer[done_any] = 0
                 if use_avg and self.B_avg > 0:
@@ -1257,9 +1212,7 @@ class PPOTrainer:
                         device=self.device,
                         dtype=torch.int32,
                     )
-                    self._opp_team_flag = torch.where(
-                        done_non_self, new_flags, self._opp_team_flag
-                    )
+                    self._opp_team_flag = torch.where(done_non_self, new_flags, self._opp_team_flag)
 
                 obs = next_obs
                 self._global_step += B
@@ -1332,28 +1285,43 @@ class PPOTrainer:
                             action_live = get_actions(
                                 agent_policy,
                                 eval_obs_obj.slice_envs(slice(0, 2 * S_eval)),
-                                eval_state, 2 * S_eval, N, self.device,
+                                eval_state,
+                                2 * S_eval,
+                                N,
+                                self.device,
                             ).long()  # envs [0:1024): live-vs-anchor + live-vs-avg
                             action_avg = get_actions(
                                 agent_avg,
                                 eval_obs_obj.slice_envs(slice(S_eval, 3 * S_eval)),
-                                eval_state, 2 * S_eval, N, self.device,
+                                eval_state,
+                                2 * S_eval,
+                                N,
+                                self.device,
                             ).long()  # envs [512:1536): live-vs-avg + avg-vs-anchor
 
                             # Anchor actions — rows map to envs [0:512) + [1024:1536).
                             if agent_sc is not None:
-                                action_scripted = torch.cat([
-                                    get_actions(
-                                        agent_sc, None,
-                                        _slice_state(eval_state, 0, S_eval),
-                                        S_eval, N, self.device,
-                                    ),
-                                    get_actions(
-                                        agent_sc, None,
-                                        _slice_state(eval_state, 2 * S_eval, 3 * S_eval),
-                                        S_eval, N, self.device,
-                                    ),
-                                ], dim=0).long()
+                                action_scripted = torch.cat(
+                                    [
+                                        get_actions(
+                                            agent_sc,
+                                            None,
+                                            _slice_state(eval_state, 0, S_eval),
+                                            S_eval,
+                                            N,
+                                            self.device,
+                                        ),
+                                        get_actions(
+                                            agent_sc,
+                                            None,
+                                            _slice_state(eval_state, 2 * S_eval, 3 * S_eval),
+                                            S_eval,
+                                            N,
+                                            self.device,
+                                        ),
+                                    ],
+                                    dim=0,
+                                ).long()
                             else:
                                 action_scripted = torch.zeros(
                                     2 * S_eval, N, 3, dtype=torch.long, device=self.device
@@ -1361,24 +1329,32 @@ class PPOTrainer:
                             action_random = get_actions(
                                 agent_rand, None, eval_state, 2 * S_eval, N, self.device
                             ).long()
-                            anchor_flags = torch.cat([
-                                eval_anchor_is_scripted[sl_live_anchor],
-                                eval_anchor_is_scripted[sl_avg_anchor],
-                            ])
+                            anchor_flags = torch.cat(
+                                [
+                                    eval_anchor_is_scripted[sl_live_anchor],
+                                    eval_anchor_is_scripted[sl_avg_anchor],
+                                ]
+                            )
                             action_anchor = torch.where(
                                 anchor_flags.view(-1, 1, 1), action_scripted, action_random
                             )
 
                             # Assemble the full eval batch from the slices.
-                            action_team0 = torch.cat([
-                                action_live,               # live: matchups 0 + 2
-                                action_avg[S_eval:],       # avg vs anchors
-                            ], dim=0)
-                            action_team1 = torch.cat([
-                                action_anchor[:S_eval],    # anchors vs live
-                                action_avg[:S_eval],       # avg vs live
-                                action_anchor[S_eval:],    # anchors vs avg
-                            ], dim=0)
+                            action_team0 = torch.cat(
+                                [
+                                    action_live,  # live: matchups 0 + 2
+                                    action_avg[S_eval:],  # avg vs anchors
+                                ],
+                                dim=0,
+                            )
+                            action_team1 = torch.cat(
+                                [
+                                    action_anchor[:S_eval],  # anchors vs live
+                                    action_avg[:S_eval],  # avg vs live
+                                    action_anchor[S_eval:],  # anchors vs avg
+                                ],
+                                dim=0,
+                            )
                             eval_team_id = eval_state.ship_team_id
                             eval_action = torch.where(
                                 (eval_team_id == 0).unsqueeze(-1),
@@ -1403,27 +1379,33 @@ class PPOTrainer:
 
                         # Live ELO vs anchors — every game finishing this step uses
                         # the pre-update rating, matching the old batched update.
-                        expected_live = 1.0 / (1.0 + 10.0 ** (
-                            (anchor_elo[sl_live_anchor] - elo_live_gpu) / 400.0
-                        ))
-                        elo_live_gpu = elo_live_gpu + (
-                            K_eval
-                            * (score[sl_live_anchor] - expected_live)
-                            * done_f[sl_live_anchor]
-                        ).sum()
+                        expected_live = 1.0 / (
+                            1.0 + 10.0 ** ((anchor_elo[sl_live_anchor] - elo_live_gpu) / 400.0)
+                        )
+                        elo_live_gpu = (
+                            elo_live_gpu
+                            + (
+                                K_eval
+                                * (score[sl_live_anchor] - expected_live)
+                                * done_f[sl_live_anchor]
+                            ).sum()
+                        )
 
                         # Avg-model ELO vs anchors — frozen until the avg model
                         # has been initialized (its slots play meaningless games
                         # with a copy of the initial policy weights until then).
                         if avg_eval_active:
-                            expected_avg = 1.0 / (1.0 + 10.0 ** (
-                                (anchor_elo[sl_avg_anchor] - elo_avg_gpu) / 400.0
-                            ))
-                            elo_avg_gpu = elo_avg_gpu + (
-                                K_eval
-                                * (score[sl_avg_anchor] - expected_avg)
-                                * done_f[sl_avg_anchor]
-                            ).sum()
+                            expected_avg = 1.0 / (
+                                1.0 + 10.0 ** ((anchor_elo[sl_avg_anchor] - elo_avg_gpu) / 400.0)
+                            )
+                            elo_avg_gpu = (
+                                elo_avg_gpu
+                                + (
+                                    K_eval
+                                    * (score[sl_avg_anchor] - expected_avg)
+                                    * done_f[sl_avg_anchor]
+                                ).sum()
+                            )
 
                         # Win history for the win-rate windows — flushed to the
                         # CPU deques once per update. Only outright wins count
@@ -1477,9 +1459,7 @@ class PPOTrainer:
                     if avg_eval_active:
                         d_avg = d[sl_avg_anchor]
                         a_avg = a[sl_avg_anchor]
-                        self._eval_window_avg_vs_sc.extend(
-                            w[sl_avg_anchor][d_avg & a_avg].tolist()
-                        )
+                        self._eval_window_avg_vs_sc.extend(w[sl_avg_anchor][d_avg & a_avg].tolist())
                         self._eval_window_live_vs_avg.extend(
                             w[sl_live_avg][d[sl_live_avg]].tolist()
                         )
@@ -1521,9 +1501,7 @@ class PPOTrainer:
 
             # Refresh schedule state — syncs LR, loss coefficients, and reward weights.
             # Runs after the PPO update so changes take effect on the next rollout.
-            self._schedule_state = _resolve_schedule(
-                self.cfg.schedule, self._global_step
-            )
+            self._schedule_state = _resolve_schedule(self.cfg.schedule, self._global_step)
             self._policy_gradient_coef = self._schedule_state.policy_gradient_coef
             # BC weight: P(bc_target_beats_current), remapped to [0, 1].
             # Scale=200 gives a steeper sigmoid; target=950 zeroes out BC before 1000.
@@ -1542,15 +1520,15 @@ class PPOTrainer:
                 )
             self.wrapper.refresh_component_weights()
             metrics["schedule/learning_rate"] = self._schedule_state.learning_rate
-            metrics["schedule/policy_gradient_coef"] = (
-                self._schedule_state.policy_gradient_coef
-            )
+            metrics["schedule/policy_gradient_coef"] = self._schedule_state.policy_gradient_coef
             metrics["schedule/behavior_cloning_coef"] = self._behavior_cloning_coef
             metrics["schedule/bc_decay_factor"] = bc_factor
-            metrics["schedule/target_kl"] = 0.02 if (self._training_elo - self._random_elo()) >= 900.0 else self._schedule_state.target_kl
-            metrics["schedule/true_reward_scale"] = (
-                self._schedule_state.true_reward_scale
+            metrics["schedule/target_kl"] = (
+                0.02
+                if (self._training_elo - self._random_elo()) >= 900.0
+                else self._schedule_state.target_kl
             )
+            metrics["schedule/true_reward_scale"] = self._schedule_state.true_reward_scale
             metrics["schedule/global_scale"] = self._schedule_state.global_scale
             metrics["schedule/local_scale"] = self._schedule_state.local_scale
 
@@ -1558,12 +1536,9 @@ class PPOTrainer:
                 # Avg-model accumulation starts once normalized training ELO
                 # crosses the barrier; once started it never stops.
                 elo_barrier_reached = (
-                    self._training_elo - self._random_elo()
-                    >= self.cfg.avg_model_elo_threshold
+                    self._training_elo - self._random_elo() >= self.cfg.avg_model_elo_threshold
                 )
-                if self.B_avg > 0 and (
-                    self._avg_update_count > 0 or elo_barrier_reached
-                ):
+                if self.B_avg > 0 and (self._avg_update_count > 0 or elo_barrier_reached):
                     first_avg_update = self._avg_update_count == 0
                     self._update_avg_model()
                     if first_avg_update:
@@ -1629,15 +1604,23 @@ class PPOTrainer:
             # Avg-model metrics only exist once the avg model has been initialized.
             metrics["elo/training"] = self._training_elo
             if self._eval_window_rand:
-                metrics["elo/training_vs_random"] = sum(self._eval_window_rand) / len(self._eval_window_rand)
+                metrics["elo/training_vs_random"] = sum(self._eval_window_rand) / len(
+                    self._eval_window_rand
+                )
             if self._eval_window_sc:
-                metrics["elo/training_vs_scripted"] = sum(self._eval_window_sc) / len(self._eval_window_sc)
+                metrics["elo/training_vs_scripted"] = sum(self._eval_window_sc) / len(
+                    self._eval_window_sc
+                )
             if self._avg_update_count > 0:
                 metrics["elo/avg"] = self._avg_training_elo
                 if self._eval_window_live_vs_avg:
-                    metrics["elo/training_vs_avg"] = sum(self._eval_window_live_vs_avg) / len(self._eval_window_live_vs_avg)
+                    metrics["elo/training_vs_avg"] = sum(self._eval_window_live_vs_avg) / len(
+                        self._eval_window_live_vs_avg
+                    )
                 if self._eval_window_avg_vs_sc:
-                    metrics["elo/avg_vs_scripted"] = sum(self._eval_window_avg_vs_sc) / len(self._eval_window_avg_vs_sc)
+                    metrics["elo/avg_vs_scripted"] = sum(self._eval_window_avg_vs_sc) / len(
+                        self._eval_window_avg_vs_sc
+                    )
 
             # Save overwriting best-model checkpoints when normalized ELO improves.
             random_elo = self._random_elo()
@@ -1648,19 +1631,19 @@ class PPOTrainer:
 
             # Overview — redundant copies of the most important global metrics
             for src, dst in [
-                ("elo/training",                   "overview/elo"),
-                ("elo/training_vs_scripted",        "overview/win_rate_vs_scripted"),
-                ("elo/training_vs_random",          "overview/win_rate_vs_random"),
-                ("elo/training_vs_avg",             "overview/win_rate_vs_avg"),
-                ("loss/total",                      "overview/loss_total"),
-                ("loss_proxy/policy_gradient",      "overview/loss_proxy_pg"),
-                ("loss_proxy/behavioral_cloning",   "overview/loss_proxy_bc"),
-                ("policy/kl",                       "overview/kl"),
-                ("policy/clip_fraction",            "overview/clip_fraction"),
-                ("episode/win_rate",                "overview/win_rate"),
-                ("episode/reward_mean",             "overview/reward_mean"),
-                ("train/gradient_norm",             "overview/gradient_norm"),
-                ("schedule/behavior_cloning_coef",  "overview/bc_coef"),
+                ("elo/training", "overview/elo"),
+                ("elo/training_vs_scripted", "overview/win_rate_vs_scripted"),
+                ("elo/training_vs_random", "overview/win_rate_vs_random"),
+                ("elo/training_vs_avg", "overview/win_rate_vs_avg"),
+                ("loss/total", "overview/loss_total"),
+                ("loss_proxy/policy_gradient", "overview/loss_proxy_pg"),
+                ("loss_proxy/behavioral_cloning", "overview/loss_proxy_bc"),
+                ("policy/kl", "overview/kl"),
+                ("policy/clip_fraction", "overview/clip_fraction"),
+                ("episode/win_rate", "overview/win_rate"),
+                ("episode/reward_mean", "overview/reward_mean"),
+                ("train/gradient_norm", "overview/gradient_norm"),
+                ("schedule/behavior_cloning_coef", "overview/bc_coef"),
             ]:
                 if src in metrics:
                     metrics[dst] = metrics[src]
@@ -1675,7 +1658,8 @@ class PPOTrainer:
                 elo_str = f"  elo={self._training_elo:.0f}"
                 lifespan_str = (
                     f"  lifespan={metrics['episode/lifespan_mean']:.1f}"
-                    if "episode/lifespan_mean" in metrics else ""
+                    if "episode/lifespan_mean" in metrics
+                    else ""
                 )
                 print(
                     f"update={update}/{self._num_updates}  "
@@ -1698,8 +1682,7 @@ class PPOTrainer:
                     and self._last_checkpoint_path is not None
                     and self._last_checkpoint_path.exists()
                     and self.cfg.elo_milestone_gap > 0
-                    and training_elo_norm - self._elo_milestone
-                    >= self.cfg.elo_milestone_gap
+                    and training_elo_norm - self._elo_milestone >= self.cfg.elo_milestone_gap
                 ):
                     self.roster.add_checkpoint(
                         str(self._last_checkpoint_path),
@@ -1939,7 +1922,7 @@ class PPOTrainer:
         )
         if _need_aux:
             non_terminal = ~mb_terminated.unsqueeze(-1)  # (T, B_mb, 1)
-            ns_mask = mb_alive & non_terminal             # (T, B_mb, N)
+            ns_mask = mb_alive & non_terminal  # (T, B_mb, N)
             ns_mask_f = ns_mask.float()
             ns_sum = denoms["ns_sum"]
 
@@ -1952,25 +1935,26 @@ class PPOTrainer:
             sq_err = sq_err * self.aux_weights  # per-prediction weight
 
             if self.cfg.next_state_coef > 0.0:
-                next_state_cont_loss = (
-                    sq_err * ns_mask_f.unsqueeze(-1)
-                ).sum() / (ns_sum * P)
+                next_state_cont_loss = (sq_err * ns_mask_f.unsqueeze(-1)).sum() / (ns_sum * P)
                 next_state_loss = next_state_cont_loss
 
             if self.cfg.windowed_loss_coef > 0.0:
                 # Internally a masked mean over its own validity mask — weight
                 # by env fraction like sigreg (exact when the minibatch is unsplit).
-                windowed_ns_loss = self.coordinator.compute_windowed_loss(
-                    pred_next.float(),
-                    labels.detach(),
-                    ns_mask,
-                    mb_terminated,
-                ) * frac
+                windowed_ns_loss = (
+                    self.coordinator.compute_windowed_loss(
+                        pred_next.float(),
+                        labels.detach(),
+                        ns_mask,
+                        mb_terminated,
+                    )
+                    * frac
+                )
 
             with torch.no_grad():
-                next_state_per_feat = (
-                    sq_err * ns_mask_f.unsqueeze(-1)
-                ).sum((0, 1, 2)) / ns_sum  # (pred_dim,) gpu, additive across chunks
+                next_state_per_feat = (sq_err * ns_mask_f.unsqueeze(-1)).sum(
+                    (0, 1, 2)
+                ) / ns_sum  # (pred_dim,) gpu, additive across chunks
 
         loss = (
             self._policy_gradient_coef * pg_loss
@@ -2070,10 +2054,10 @@ class PPOTrainer:
         B = buf.num_envs
         N = buf.num_ships
 
-        ally_lam = torch.where(self.ally_zero_k, 0.0, 1.0)    # (K,)
+        ally_lam = torch.where(self.ally_zero_k, 0.0, 1.0)  # (K,)
         enemy_lam = torch.where(self.enemy_neg_k, -1.0, 0.0)  # (K,)
         identity = torch.eye(N, dtype=torch.float32, device=self.device)
-        local_lambda = identity[None, None, :, :, None]        # (1, 1, N, N, 1)
+        local_lambda = identity[None, None, :, :, None]  # (1, 1, N, N, 1)
 
         adv_sq_sum = torch.zeros((), device=self.device)
         adv_cnt = torch.zeros((), device=self.device)
@@ -2083,35 +2067,27 @@ class PPOTrainer:
 
         chunk = max(1, B // self.cfg.num_minibatches)
         if self.cfg.microbatch_tokens is not None:
-            chunk = min(
-                chunk, max(1, self.cfg.microbatch_tokens // (T * buf.num_tokens))
-            )
+            chunk = min(chunk, max(1, self.cfg.microbatch_tokens // (T * buf.num_tokens)))
         for start in range(0, B, chunk):
             sl = slice(start, start + chunk)
-            alive = buf.alive_mask[:, sl]                             # (T, b, N)
-            team_id_t = buf.obs[ObsKey.TEAM_ID][:T, sl, :N].long()    # (T, b, N)
+            alive = buf.alive_mask[:, sl]  # (T, b, N)
+            team_id_t = buf.obs[ObsKey.TEAM_ID][:T, sl, :N].long()  # (T, b, N)
             same_team_t = team_id_t.unsqueeze(3) == team_id_t.unsqueeze(2)  # (T, b, N, N)
-            alive_j = alive.float().unsqueeze(2).unsqueeze(-1)        # (T, b, 1, N_j, 1)
+            alive_j = alive.float().unsqueeze(2).unsqueeze(-1)  # (T, b, 1, N_j, 1)
 
             global_lambda = (
                 same_team_t.float().unsqueeze(-1) * ally_lam
                 + (~same_team_t).float().unsqueeze(-1) * enemy_lam
             )  # (T, b, N_i, N_j, K)
             lambda_ij_t = (
-                torch.where(self.local_k, local_lambda, global_lambda)
-                * comp_weights
-                * alive_j
+                torch.where(self.local_k, local_lambda, global_lambda) * comp_weights * alive_j
             )
             lambda_norm = lambda_ij_t.abs().sum(dim=3, keepdim=True).clamp(min=1.0)
             lambda_ij_t = lambda_ij_t / lambda_norm
 
             adv_normed = self.adv_scaler.normalize(buf.advantages[:, sl])
-            buf.adv_agg[:, sl] = torch.einsum(
-                "tbijk,tbjk->tbi", lambda_ij_t, adv_normed
-            )
-            buf.ret_agg[:, sl] = torch.einsum(
-                "tbijk,tbjk->tbi", lambda_ij_t, buf.returns[:, sl]
-            )
+            buf.adv_agg[:, sl] = torch.einsum("tbijk,tbjk->tbi", lambda_ij_t, adv_normed)
+            buf.ret_agg[:, sl] = torch.einsum("tbijk,tbjk->tbi", lambda_ij_t, buf.returns[:, sl])
 
             actor_f = (buf.actor_masks[:, sl] & alive).float()
             adv_sq_sum += (buf.adv_agg[:, sl].pow(2) * actor_f).sum()
@@ -2141,13 +2117,17 @@ class PPOTrainer:
             buf.ns_labels = None
             return
         T, B, N = buf.num_steps, buf.num_envs, buf.num_ships
-        ship_obs = MVPObservation(data={
-            k: (v[:, :, :N].reshape((T + 1) * B, N, *v.shape[3:])
-                if v.dim() > 3
-                else v[:, :, :N].reshape((T + 1) * B, N))
-            for k, v in buf.obs.items()
-        })
-        targets = self.coordinator.get_target_vector(ship_obs)   # ((T+1)*B, N, t_dim)
+        ship_obs = MVPObservation(
+            data={
+                k: (
+                    v[:, :, :N].reshape((T + 1) * B, N, *v.shape[3:])
+                    if v.dim() > 3
+                    else v[:, :, :N].reshape((T + 1) * B, N)
+                )
+                for k, v in buf.obs.items()
+            }
+        )
+        targets = self.coordinator.get_target_vector(ship_obs)  # ((T+1)*B, N, t_dim)
         targets = targets.reshape(T + 1, B, N, -1)
         buf.ns_labels = self.coordinator.compute_labels(
             targets[:T], targets[1:]
@@ -2189,9 +2169,7 @@ class PPOTrainer:
         # policy) once per update instead of once per minibatch: the lambda
         # aggregation and the aux next-state labels (primary scale only).
         for scale_idx, buf in enumerate(all_buffers):
-            self._precompute_lambda_aggregates(
-                buf, comp_weights, is_primary=(scale_idx == 0)
-            )
+            self._precompute_lambda_aggregates(buf, comp_weights, is_primary=(scale_idx == 0))
             if scale_idx > 0:
                 buf.ns_labels = None  # aux scales never use the aux losses
         self._precompute_ns_labels(all_buffers[0])
@@ -2238,7 +2216,8 @@ class PPOTrainer:
         _NS_FEAT_NAMES = (
             "pos_x_dphase",
             "pos_y_dphase",
-            "vel_dvx_norm", "vel_dvy_norm",
+            "vel_dvx_norm",
+            "vel_dvy_norm",
             "att_dphase",
             "ang_vel_abs",
             "health_dphase",
@@ -2250,7 +2229,11 @@ class PPOTrainer:
         last_logprob_np = None
 
         num_epochs = self._schedule_state.num_epochs
-        target_kl = 0.02 if (self._training_elo - self._random_elo()) >= 900.0 else self._schedule_state.target_kl
+        target_kl = (
+            0.02
+            if (self._training_elo - self._random_elo()) >= 900.0
+            else self._schedule_state.target_kl
+        )
 
         for epoch_idx in range(num_epochs):
             kl_start = len(accum_scalar["policy/kl"])
@@ -2319,9 +2302,7 @@ class PPOTrainer:
 
                     for chunk in chunks:
                         frac = chunk[6].shape[1] / mb_envs
-                        loss, diag = self._compute_minibatch_loss(
-                            chunk, is_primary, denoms, frac
-                        )
+                        loss, diag = self._compute_minibatch_loss(chunk, is_primary, denoms, frac)
                         (loss / n_scales).backward()
 
                         for key, dkey in _additive:
@@ -2333,9 +2314,7 @@ class PPOTrainer:
                         if is_primary:
                             for kk in _primary_k:
                                 k_stats[kk] = (
-                                    diag[kk]
-                                    if kk not in k_stats
-                                    else k_stats[kk] + diag[kk]
+                                    diag[kk] if kk not in k_stats else k_stats[kk] + diag[kk]
                                 )
                             if diag.get("next_state_per_feat") is not None:
                                 ns_feat_step = (
@@ -2364,9 +2343,7 @@ class PPOTrainer:
                 accum_scalar["loss/entropy"].append(scalar_accum_step["ent"])
                 accum_scalar["loss/behavioral_cloning"].append(scalar_accum_step["bc"])
                 accum_scalar["loss/behavioral_cloning_kl"].append(scalar_accum_step["bc_kl"])
-                accum_scalar["loss/scripted_entropy"].append(
-                    scalar_accum_step["scripted_entropy"]
-                )
+                accum_scalar["loss/scripted_entropy"].append(scalar_accum_step["scripted_entropy"])
                 accum_scalar["loss/sigreg"].append(scalar_accum_step["sigreg"])
                 accum_scalar["loss/next_state"].append(scalar_accum_step["ns_loss"])
                 accum_scalar["loss/next_state_cont"].append(scalar_accum_step["ns_cont"])
@@ -2393,27 +2370,13 @@ class PPOTrainer:
                 accum_scalar["policy/clip_fraction"].append(scalar_accum_step["clip"])
                 accum_scalar["policy/ratio_mean"].append(scalar_accum_step["ratio_mean"])
                 accum_scalar["policy/ratio_max"].append(scalar_accum_step["ratio_max"])
-                accum_scalar["policy/entropy_power"].append(
-                    scalar_accum_step["entropy_power"]
-                )
-                accum_scalar["policy/entropy_turn"].append(
-                    scalar_accum_step["entropy_turn"]
-                )
-                accum_scalar["policy/entropy_shoot"].append(
-                    scalar_accum_step["entropy_shoot"]
-                )
-                accum_scalar["returns/aggregate"].append(
-                    scalar_accum_step["ret_agg_mean"]
-                )
-                accum_scalar["returns/aggregate_std"].append(
-                    scalar_accum_step["ret_agg_std"]
-                )
-                accum_scalar["returns/advantage_std"].append(
-                    scalar_accum_step["adv_var"] ** 0.5
-                )
-                accum_scalar["episode/alive_fraction"].append(
-                    scalar_accum_step["alive_frac"]
-                )
+                accum_scalar["policy/entropy_power"].append(scalar_accum_step["entropy_power"])
+                accum_scalar["policy/entropy_turn"].append(scalar_accum_step["entropy_turn"])
+                accum_scalar["policy/entropy_shoot"].append(scalar_accum_step["entropy_shoot"])
+                accum_scalar["returns/aggregate"].append(scalar_accum_step["ret_agg_mean"])
+                accum_scalar["returns/aggregate_std"].append(scalar_accum_step["ret_agg_std"])
+                accum_scalar["returns/advantage_std"].append(scalar_accum_step["adv_var"] ** 0.5)
+                accum_scalar["episode/alive_fraction"].append(scalar_accum_step["alive_frac"])
                 accum_scalar["train/gradient_norm"].append(grad_norm.detach())
 
                 if k_stats:
@@ -2436,9 +2399,7 @@ class PPOTrainer:
                     accum_k["critic/return_mean"].append(stats_k_cpu[2])
                     accum_k["returns/component"].append(stats_k_cpu[3])
                     accum_k["critic/value_pred_mean"].append(stats_k_cpu[4])
-                    accum_k["returns/advantage_std"].append(
-                        stats_k_cpu[5].clamp(min=0.0).sqrt()
-                    )
+                    accum_k["returns/advantage_std"].append(stats_k_cpu[5].clamp(min=0.0).sqrt())
                     if epoch_idx == num_epochs - 1:
                         accum_k["critic/explained_variance"].append(stats_k_cpu[1])
 
@@ -2450,23 +2411,16 @@ class PPOTrainer:
                     # minibatch — a large-enough sample for the histograms.
                     alive_flat = hist_diag["alive_flat"]
                     last_returns_np = (
-                        hist_diag["mb_returns"]
-                        .reshape(-1, K)[alive_flat]
-                        .cpu()
-                        .numpy()
+                        hist_diag["mb_returns"].reshape(-1, K)[alive_flat].cpu().numpy()
                     )
-                    last_logprob_np = (
-                        hist_diag["logprob_flat"][alive_flat].cpu().numpy()
-                    )
+                    last_logprob_np = hist_diag["logprob_flat"][alive_flat].cpu().numpy()
 
             if target_kl is not None:
                 epoch_kls = accum_scalar["policy/kl"][kl_start:]
                 if epoch_kls and torch.stack(epoch_kls).mean().item() > target_kl:
                     break
 
-        metrics: dict = {
-            k: torch.stack(v).mean().item() for k, v in accum_scalar.items() if v
-        }
+        metrics: dict = {k: torch.stack(v).mean().item() for k, v in accum_scalar.items() if v}
         metrics["train/epochs_completed"] = float(epoch_idx + 1)
 
         for key, tensors in accum_k.items():
@@ -2499,7 +2453,6 @@ class PPOTrainer:
                 return e.elo
         return 0.0  # fallback; random entry should always exist
 
-
     def _save_roster_json(self) -> None:
         """Persist roster metadata alongside the run's checkpoints."""
         ckpt_dir = Path(self.cfg.checkpoint_dir) / self._run_name
@@ -2524,8 +2477,7 @@ class PPOTrainer:
             "global_step": self._global_step,
             "ship_steps": self._ship_steps,
             "grad_tokens": self._grad_tokens,
-            "elapsed_train_time": self._elapsed_train_time
-            + (time.time() - self._train_start_time),
+            "elapsed_train_time": self._elapsed_train_time + (time.time() - self._train_start_time),
             "training_elo": self._training_elo,
             "avg_training_elo": self._avg_training_elo,
             "eval_window_rand": list(self._eval_window_rand),
@@ -2550,23 +2502,29 @@ class PPOTrainer:
             update: Current update index (used as filename suffix).
         """
         # Check if the previous standard saving thread is still running
-        if hasattr(self, "_active_save_thread") and self._active_save_thread is not None and self._active_save_thread.is_alive():
-            print("[PPOTrainer] Warning: Previous standard checkpoint saving is still in progress. Skipping this save to prevent disk/GIL congestion.")
+        if (
+            hasattr(self, "_active_save_thread")
+            and self._active_save_thread is not None
+            and self._active_save_thread.is_alive()
+        ):
+            print(
+                "[PPOTrainer] Warning: Previous standard checkpoint saving is still in progress. Skipping this save to prevent disk/GIL congestion."
+            )
             return
 
         ckpt_dir = Path(self.cfg.checkpoint_dir) / self._run_name
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         path = ckpt_dir / f"step_{self._global_step:012d}.pt"
-        
+
         # Build and copy checkpoints to CPU synchronously on the main thread (very fast, ~5-10ms)
         cpu_payload = _clone_to_cpu(self._checkpoint_payload(update))
-        
+
         avg_path = None
         avg_cpu_payload = None
         if self._avg_update_count > 0:
             avg_path = ckpt_dir / "recent_avg.pt"
             avg_cpu_payload = _clone_to_cpu(self._avg_checkpoint_payload(update))
-            
+
         self._last_checkpoint_path = path
 
         def _async_save():
@@ -2632,18 +2590,26 @@ class PPOTrainer:
             payload: Custom payload dict; defaults to _checkpoint_payload_lightweight(update=0).
         """
         # Check if the previous best saving thread is still running
-        if hasattr(self, "_active_best_thread") and self._active_best_thread is not None and self._active_best_thread.is_alive():
-            print(f"[PPOTrainer] Warning: Previous best checkpoint saving for '{name}' is still in progress. Skipping this save to prevent disk/GIL congestion.")
+        if (
+            hasattr(self, "_active_best_thread")
+            and self._active_best_thread is not None
+            and self._active_best_thread.is_alive()
+        ):
+            print(
+                f"[PPOTrainer] Warning: Previous best checkpoint saving for '{name}' is still in progress. Skipping this save to prevent disk/GIL congestion."
+            )
             return
 
         ckpt_dir = Path(self.cfg.checkpoint_dir) / self._run_name
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         path = ckpt_dir / name
-        
+
         # Build and copy payload synchronously on the main thread (extremely lightweight, ~1-3ms)
-        raw_payload = payload if payload is not None else self._checkpoint_payload_lightweight(update=0)
+        raw_payload = (
+            payload if payload is not None else self._checkpoint_payload_lightweight(update=0)
+        )
         cpu_payload = _clone_to_cpu(raw_payload)
-        
+
         def _async_save():
             tmp = path.with_suffix(".tmp")
             torch.save(cpu_payload, tmp)
@@ -2671,9 +2637,7 @@ class PPOTrainer:
         self._avg_policy_module.load_state_dict(ckpt["policy_state_dict"])
         _cast_norms_bf16(self._policy_module)
         _cast_norms_bf16(self._avg_policy_module)
-        self._avg_param_cumsum = [
-            torch.zeros_like(p) for p in self._policy_module.parameters()
-        ]
+        self._avg_param_cumsum = [torch.zeros_like(p) for p in self._policy_module.parameters()]
         self._avg_update_count = 0
         if "scaler_state_dict" in ckpt:
             self.scaler.load_state_dict(ckpt["scaler_state_dict"])
@@ -2713,9 +2677,7 @@ class PPOTrainer:
         if "avg_policy_state_dict" in ckpt:
             self._avg_policy_module.load_state_dict(ckpt["avg_policy_state_dict"])
             _cast_norms_bf16(self._avg_policy_module)
-            self._avg_param_cumsum = [
-                c.to(self.device) for c in ckpt["avg_param_cumsum"]
-            ]
+            self._avg_param_cumsum = [c.to(self.device) for c in ckpt["avg_param_cumsum"]]
             self._avg_update_count = ckpt["avg_update_count"]
         if "training_elo" in ckpt:
             self._training_elo = ckpt["training_elo"]
@@ -2738,17 +2700,13 @@ class PPOTrainer:
         ship_tokens_per_update = self.cfg.num_steps * sum(
             sc.num_envs * sc.env_config.num_ships for sc in self.cfg.scales
         )
-        self._ship_steps = ckpt.get(
-            "ship_steps", ckpt.get("update", 0) * ship_tokens_per_update
-        )
+        self._ship_steps = ckpt.get("ship_steps", ckpt.get("update", 0) * ship_tokens_per_update)
         # Older checkpoints lack grad_tokens — reconstruct from the update count
         # and the current schedule's num_epochs (approximate: ignores target_kl
         # early stops and epoch-schedule changes before the checkpoint).
         self._grad_tokens = ckpt.get(
             "grad_tokens",
-            ckpt.get("update", 0)
-            * self._schedule_state.num_epochs
-            * self._entity_tokens_per_epoch,
+            ckpt.get("update", 0) * self._schedule_state.num_epochs * self._entity_tokens_per_epoch,
         )
 
         # Restore roster if its JSON exists alongside the checkpoint
@@ -2756,7 +2714,9 @@ class PPOTrainer:
         if roster_path.exists():
             self.roster.load_json(roster_path)
 
-        print(f"Checkpoint loaded from: {path} (resuming from update {self._start_update}, step {self._global_step:,})")
+        print(
+            f"Checkpoint loaded from: {path} (resuming from update {self._start_update}, step {self._global_step:,})"
+        )
         return ckpt["update"]
 
     # ------------------------------------------------------------------
@@ -2797,7 +2757,9 @@ class PPOTrainer:
                 config[f"{prefix}/{k}"] = _sanitize(v)
 
         if resume_run_id is not None:
-            wandb.init(project="boost-and-broadside", config=config, id=resume_run_id, resume="must")
+            wandb.init(
+                project="boost-and-broadside", config=config, id=resume_run_id, resume="must"
+            )
         else:
             wandb.init(project="boost-and-broadside", config=config)
 
@@ -2815,6 +2777,7 @@ class PPOTrainer:
           - ``np.ndarray`` with any other key → ``wandb.Histogram`` directly.
         """
         import numpy as np
+
         import wandb
 
         while True:

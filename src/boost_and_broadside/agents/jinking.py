@@ -1,7 +1,7 @@
 import torch
 
 from boost_and_broadside.config import ShipConfig
-from boost_and_broadside.constants import PowerActions, TurnActions, ShootActions
+from boost_and_broadside.constants import PowerActions, ShootActions, TurnActions
 from boost_and_broadside.env.state import TensorState
 
 _JINK_HALF_PERIOD = 20  # steps per direction (~0.33s at 60Hz)
@@ -19,21 +19,21 @@ class JinkingAgent:
 
         # step_count is (B,); broadcast to (B, N)
         phase = (state.step_count // _JINK_HALF_PERIOD) % 2  # (B,) — 0 or 1
-        phase = phase.unsqueeze(1).expand(B, N)               # (B, N)
+        phase = phase.unsqueeze(1).expand(B, N)  # (B, N)
 
         turn = torch.where(
             phase == 0,
-            torch.tensor(TurnActions.SHARP_LEFT,  device=device),
+            torch.tensor(TurnActions.SHARP_LEFT, device=device),
             torch.tensor(TurnActions.SHARP_RIGHT, device=device),
         ).int()
 
-        power = torch.full((B, N), PowerActions.BOOST,    dtype=torch.int32, device=device)
+        power = torch.full((B, N), PowerActions.BOOST, dtype=torch.int32, device=device)
         shoot = torch.full((B, N), ShootActions.NO_SHOOT, dtype=torch.int32, device=device)
 
         alive = state.ship_alive
-        coast    = torch.tensor(PowerActions.COAST,      device=device)
+        coast = torch.tensor(PowerActions.COAST, device=device)
         straight = torch.tensor(TurnActions.GO_STRAIGHT, device=device)
         power = torch.where(alive, power, coast)
-        turn  = torch.where(alive, turn,  straight)
+        turn = torch.where(alive, turn, straight)
 
         return torch.stack([power, turn, shoot], dim=-1)

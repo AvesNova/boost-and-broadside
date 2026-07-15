@@ -12,10 +12,17 @@ Supported agent specs (--team0 / --team1):
 """
 
 import threading
+
 import torch
 
-from boost_and_broadside.config import ShipConfig, EnvConfig, ModelConfig, RewardConfig, ObstacleCacheConfig
-from boost_and_broadside.constants import PowerActions, TurnActions, ShootActions
+from boost_and_broadside.config import (
+    EnvConfig,
+    ModelConfig,
+    ObstacleCacheConfig,
+    RewardConfig,
+    ShipConfig,
+)
+from boost_and_broadside.constants import PowerActions, ShootActions, TurnActions
 from boost_and_broadside.env.obstacle_cache import ObstacleCache, _make_obstacle_state
 from boost_and_broadside.env.obstacle_physics import (
     check_convergence,
@@ -61,11 +68,19 @@ def run_watch_mode(
         checkpoint_dir: Root directory searched when a spec is "latest".
     """
     agent0 = resolve_agent_spec(
-        team0_spec, ship_config, model_config, device, checkpoint_dir,
+        team0_spec,
+        ship_config,
+        model_config,
+        device,
+        checkpoint_dir,
         num_ships=env_config.num_ships,
     )
     agent1 = resolve_agent_spec(
-        team1_spec, ship_config, model_config, device, checkpoint_dir,
+        team1_spec,
+        ship_config,
+        model_config,
+        device,
+        checkpoint_dir,
         num_ships=env_config.num_ships,
     )
 
@@ -186,9 +201,9 @@ def _run_convergence_phase(
         renderer.tick()
 
     return ObstacleCache(
-        state.obstacle_pos,    # (1, M) complex64
-        state.obstacle_vel,    # (1, M) complex64
-        state.obstacle_radius, # (1, M) float32
+        state.obstacle_pos,  # (1, M) complex64
+        state.obstacle_vel,  # (1, M) complex64
+        state.obstacle_radius,  # (1, M) float32
         state.obstacle_gcenter,  # (1,) complex64
     )
 
@@ -238,8 +253,12 @@ def _run_interactive_loop(
                 state = wrapper.state
 
                 # Imagined trajectories use the hidden state BEFORE the real forward pass.
-                imag_nexts0 = imagine_trajectory(agent0, obs, N_IMAGINE_STEPS, N, device, wrapper.ship_config)
-                imag_nexts1 = imagine_trajectory(agent1, obs, N_IMAGINE_STEPS, N, device, wrapper.ship_config)
+                imag_nexts0 = imagine_trajectory(
+                    agent0, obs, N_IMAGINE_STEPS, N, device, wrapper.ship_config
+                )
+                imag_nexts1 = imagine_trajectory(
+                    agent1, obs, N_IMAGINE_STEPS, N, device, wrapper.ship_config
+                )
 
                 action0, _ = get_actions(agent0, obs, state, 1, N, device, return_pred_next=True)
                 action1, _ = get_actions(agent1, obs, state, 1, N, device, return_pred_next=True)
@@ -255,8 +274,16 @@ def _run_interactive_loop(
                     mask = (team_id == 0).unsqueeze(-1)  # (1, N, 1)
                     merged = []
                     for k in range(n_steps):
-                        pn0 = imag_nexts0[k] if k < len(imag_nexts0) else torch.zeros_like(imag_nexts1[k])
-                        pn1 = imag_nexts1[k] if k < len(imag_nexts1) else torch.zeros_like(imag_nexts0[k])
+                        pn0 = (
+                            imag_nexts0[k]
+                            if k < len(imag_nexts0)
+                            else torch.zeros_like(imag_nexts1[k])
+                        )
+                        pn1 = (
+                            imag_nexts1[k]
+                            if k < len(imag_nexts1)
+                            else torch.zeros_like(imag_nexts0[k])
+                        )
                         merged.append(torch.where(mask, pn0, pn1))
                     pred_nexts = merged
 
@@ -265,9 +292,7 @@ def _run_interactive_loop(
                     keyboard = _decode_keyboard().to(device)
                     for ship_idx in range(N):
                         t = int(team_id[0, ship_idx].item())
-                        if (t == 0 and agent0.kind == "null") or (
-                            t == 1 and agent1.kind == "null"
-                        ):
+                        if (t == 0 and agent0.kind == "null") or (t == 1 and agent1.kind == "null"):
                             action[0, ship_idx] = keyboard
 
                 obs, _, dones, truncated, _ = wrapper.step(action)

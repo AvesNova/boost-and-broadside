@@ -173,8 +173,8 @@ class ObstacleCache:
         C = len(self)
 
         idx = torch.randint(0, C, (B,), device=device)
-        pos = self._pos[idx].to(device)        # (B, M)
-        vel = self._vel[idx].to(device)        # (B, M)
+        pos = self._pos[idx].to(device)  # (B, M)
+        vel = self._vel[idx].to(device)  # (B, M)
         radius = self._radius[idx].to(device)  # (B, M)
         gcenter = self._gcenter[idx].to(device)  # (B, M)
 

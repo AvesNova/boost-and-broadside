@@ -25,7 +25,7 @@ from boost_and_broadside.config import (
     stepped,
 )
 from boost_and_broadside.config.schedule import exponential, join
-from runs.shared import REWARDS, COMPONENT_GAMMAS, COMPONENT_LAMBDAS
+from runs.shared import COMPONENT_GAMMAS, COMPONENT_LAMBDAS, REWARDS
 
 _MAX_TOKENS = 6_000_000
 _NUM_SHIPS = 8
@@ -70,8 +70,17 @@ RL_TRAIN_CONFIG = TrainConfig(
         #     num_envs=_MAX_TOKENS // 4 // 2,
         # ),
         ScaleConfig(
-            env_config=EnvConfig(num_ships=_NUM_SHIPS, num_obstacles=_NUM_OBSTACLES, max_bullets=20, max_episode_steps=1024,),
-            num_envs=_MAX_TOKENS // (_NUM_SHIPS + _NUM_OBSTACLES) // _NUM_STEPS // _NUM_MINIBATCHES * _NUM_MINIBATCHES,
+            env_config=EnvConfig(
+                num_ships=_NUM_SHIPS,
+                num_obstacles=_NUM_OBSTACLES,
+                max_bullets=20,
+                max_episode_steps=1024,
+            ),
+            num_envs=_MAX_TOKENS
+            // (_NUM_SHIPS + _NUM_OBSTACLES)
+            // _NUM_STEPS
+            // _NUM_MINIBATCHES
+            * _NUM_MINIBATCHES,
         ),
     ),
     schedule=RL_SCHEDULE,

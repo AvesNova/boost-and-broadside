@@ -20,7 +20,9 @@ from boost_and_broadside.constants import EPS
 from boost_and_broadside.env.state import TensorState
 
 
-def _wrap_diff(diff_real: torch.Tensor, diff_imag: torch.Tensor, world_w: float, world_h: float) -> tuple[torch.Tensor, torch.Tensor]:
+def _wrap_diff(
+    diff_real: torch.Tensor, diff_imag: torch.Tensor, world_w: float, world_h: float
+) -> tuple[torch.Tensor, torch.Tensor]:
     """Wrap component-wise differences to [-half_world, +half_world]."""
     diff_real = (diff_real + world_w / 2) % world_w - world_w / 2
     diff_imag = (diff_imag + world_h / 2) % world_h - world_h / 2
@@ -69,16 +71,17 @@ def init_obstacles_orbital(
     gcenter = torch.complex(gcx, gcy)  # (B, M)
 
     # Radii
-    radius = (
-        config.obstacle_radius_min
-        + torch.rand(B, M, device=device) * (config.obstacle_radius_max - config.obstacle_radius_min)
+    radius = config.obstacle_radius_min + torch.rand(B, M, device=device) * (
+        config.obstacle_radius_max - config.obstacle_radius_min
     )  # (B, M)
 
     # Orbital parameters — broadcasted over (B, M)
     R_max = min(world_w, world_h) * 0.35  # keep orbits within world
-    r_a = torch.sqrt(torch.rand(B, M, device=device)) * R_max  # semi-major axis a — triangle dist (PDF ∝ x)
-    beta = torch.rand(B, M, device=device)                   # axis ratio b/a
-    r_b = beta * r_a                                         # semi-minor axis b
+    r_a = (
+        torch.sqrt(torch.rand(B, M, device=device)) * R_max
+    )  # semi-major axis a — triangle dist (PDF ∝ x)
+    beta = torch.rand(B, M, device=device)  # axis ratio b/a
+    r_b = beta * r_a  # semi-minor axis b
     theta = torch.rand(B, M, device=device) * 2.0 * math.pi  # initial phase
     alpha = torch.rand(B, M, device=device) * 2.0 * math.pi  # orbit rotation angle
     sign = torch.randint(0, 2, (B, M), device=device).float() * 2.0 - 1.0  # ±1
@@ -105,8 +108,8 @@ def init_obstacles_orbital(
     pos_x = pos_x % world_w
     pos_y = pos_y % world_h
 
-    pos = torch.complex(pos_x, pos_y)      # (B, M)
-    vel = torch.complex(vx, vy)            # (B, M)
+    pos = torch.complex(pos_x, pos_y)  # (B, M)
+    vel = torch.complex(vx, vy)  # (B, M)
 
     return pos, vel, radius, gcenter
 
@@ -134,15 +137,16 @@ def step_obstacles_harmonic(
     G = config.obstacle_gravity_harmonic
     dt = config.dt
 
-    pos = state.obstacle_pos    # (B, M) complex64
-    vel = state.obstacle_vel    # (B, M) complex64
+    pos = state.obstacle_pos  # (B, M) complex64
+    vel = state.obstacle_vel  # (B, M) complex64
     gc = state.obstacle_gcenter  # (B, M) complex64
 
     # Toroidal wrapped displacement from obstacle to its gravity center
     diff_r, diff_i = _wrap_diff(
         gc.real - pos.real,
         gc.imag - pos.imag,
-        world_w, world_h,
+        world_w,
+        world_h,
     )  # (B, M) each
 
     # Semi-implicit Euler: v += F*dt, x += v*dt
@@ -164,8 +168,8 @@ def step_obstacles_harmonic(
 
 
 def _pbd_separation(
-    pos: torch.Tensor,   # (B, M) complex64
-    vel: torch.Tensor,   # (B, M) complex64
+    pos: torch.Tensor,  # (B, M) complex64
+    vel: torch.Tensor,  # (B, M) complex64
     radius: torch.Tensor,  # (B, M) float32
     gcenter: torch.Tensor,  # (B, M) complex64
     config: ShipConfig,
@@ -188,12 +192,13 @@ def _pbd_separation(
     diff_r, diff_i = _wrap_diff(
         pos.real.unsqueeze(2) - pos.real.unsqueeze(1),
         pos.imag.unsqueeze(2) - pos.imag.unsqueeze(1),
-        world_w, world_h,
+        world_w,
+        world_h,
     )
     dist = (diff_r**2 + diff_i**2).sqrt().clamp(min=EPS)  # (B, M, M)
 
-    r_sum = radius.unsqueeze(2) + radius.unsqueeze(1)       # (B, M, M)
-    overlap = (r_sum - dist).clamp(min=0.0)                 # (B, M, M)
+    r_sum = radius.unsqueeze(2) + radius.unsqueeze(1)  # (B, M, M)
+    overlap = (r_sum - dist).clamp(min=0.0)  # (B, M, M)
 
     diag = torch.eye(M, device=pos.device, dtype=torch.bool).unsqueeze(0)
     inv_dist = torch.where(diag, torch.zeros_like(dist), 1.0 / dist)
@@ -224,14 +229,18 @@ def _pbd_separation(
     speed_sq = vel.real**2 + vel.imag**2  # (B, M)
     # new_speed^2 = speed^2 + G*(r_pre^2 - r_post^2)  [PE released → KE gained, or vice-versa]
     new_speed_sq = (speed_sq + G * (r_sq_pre - r_sq_post)).clamp(min=0.0)
-    scale = torch.where(speed_sq > 1e-12, (new_speed_sq / speed_sq.clamp(min=1e-12)).sqrt(), torch.ones_like(speed_sq))
+    scale = torch.where(
+        speed_sq > 1e-12,
+        (new_speed_sq / speed_sq.clamp(min=1e-12)).sqrt(),
+        torch.ones_like(speed_sq),
+    )
     vel = torch.complex(vel.real * scale, vel.imag * scale)
 
     return pos, vel
 
 
 def check_convergence(
-    pos: torch.Tensor,    # (B, M) complex64
+    pos: torch.Tensor,  # (B, M) complex64
     radius: torch.Tensor,  # (B, M) float32
     collision_free_steps: torch.Tensor,  # (B,) int32 — mutable counter
     period_steps: int,
@@ -259,7 +268,8 @@ def check_convergence(
     diff_r, diff_i = _wrap_diff(
         pos.real.unsqueeze(2) - pos.real.unsqueeze(1),
         pos.imag.unsqueeze(2) - pos.imag.unsqueeze(1),
-        world_w, world_h,
+        world_w,
+        world_h,
     )
     dist = torch.sqrt(diff_r**2 + diff_i**2)  # (B, M, M)
 
@@ -268,7 +278,9 @@ def check_convergence(
     any_overlap = ((dist < r_sum) & ~diag).any(dim=(1, 2))  # (B,)
 
     # Reset counter where there's overlap, increment where there isn't
-    collision_free_steps = torch.where(any_overlap, torch.zeros_like(collision_free_steps), collision_free_steps + 1)
+    collision_free_steps = torch.where(
+        any_overlap, torch.zeros_like(collision_free_steps), collision_free_steps + 1
+    )
     converged = collision_free_steps >= period_steps
 
     return converged, collision_free_steps

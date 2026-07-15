@@ -13,15 +13,15 @@ from pathlib import Path
 
 import torch
 
+from boost_and_broadside.agents.abreast import AbreastAgent
+from boost_and_broadside.agents.boom_zoom import BoomZoomAgent
+from boost_and_broadside.agents.jinking import JinkingAgent
+from boost_and_broadside.agents.jouster import JousterAgent
+from boost_and_broadside.agents.reverse_turret import ReverseTurretAgent
+from boost_and_broadside.agents.run_away import RunAwayAgent
+from boost_and_broadside.agents.spiral_evader import SpiralEvaderAgent
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
-from boost_and_broadside.agents.run_away import RunAwayAgent
-from boost_and_broadside.agents.boom_zoom import BoomZoomAgent
-from boost_and_broadside.agents.abreast import AbreastAgent
-from boost_and_broadside.agents.reverse_turret import ReverseTurretAgent
-from boost_and_broadside.agents.spiral_evader import SpiralEvaderAgent
-from boost_and_broadside.agents.jouster import JousterAgent
-from boost_and_broadside.agents.jinking import JinkingAgent
 from boost_and_broadside.agents.team_jouster import TeamJousterAgent
 from boost_and_broadside.config import ModelConfig, ShipConfig
 from boost_and_broadside.constants import (
@@ -51,13 +51,9 @@ def _infer_team_pma_k(ckpt: dict) -> tuple[int, ...]:
 
     reward_weights = ckpt["train_config"]["rewards"]
     active = [
-        name
-        for name in REWARD_COMPONENT_NAMES
-        if reward_weights.get(f"{name}_weight", 0.0) != 0.0
+        name for name in REWARD_COMPONENT_NAMES if reward_weights.get(f"{name}_weight", 0.0) != 0.0
     ]
-    win_k = tuple(
-        i for i, name in enumerate(active) if name in ("ally_win", "enemy_win")
-    )
+    win_k = tuple(i for i, name in enumerate(active) if name in ("ally_win", "enemy_win"))
     n_win = ckpt["policy_state_dict"]["value_head_win.3.weight"].shape[0]
     if len(win_k) != n_win:
         sys.exit(
@@ -163,7 +159,10 @@ def resolve_agent_spec(
     K = ckpt["policy_state_dict"]["value_head_local.3.weight"].shape[0]
     team_pma_k = _infer_team_pma_k(ckpt)
     policy = MVPPolicy(
-        model_config, coordinator, num_value_components=K, num_ships=num_ships,
+        model_config,
+        coordinator,
+        num_value_components=K,
+        num_ships=num_ships,
         team_pma_k=team_pma_k,
     ).to(device)
     policy.load_state_dict(ckpt["policy_state_dict"])
@@ -196,8 +195,8 @@ def get_actions(
     Policy and scripted agents produce actions for all ships; the caller selects
     the relevant team's actions via a team-id mask.  For the null agent the
     returned tensor is all-zeros — the caller must apply keyboard overrides.
-    
-    If return_pred_next is True, also returns the predicted next state (B, N, AUX_DIM) 
+
+    If return_pred_next is True, also returns the predicted next state (B, N, AUX_DIM)
     from the policy, or None if the agent doesn't predict it.
     """
     B, N = num_envs, num_ships
@@ -230,14 +229,10 @@ def get_actions(
     return (action, None) if return_pred_next else action
 
 
-def reset_done_envs(
-    agent: ResolvedAgent, done_mask: torch.Tensor, num_tokens: int
-) -> None:
+def reset_done_envs(agent: ResolvedAgent, done_mask: torch.Tensor, num_tokens: int) -> None:
     """Reset GRU hidden state for completed envs; no-op for non-policy agents."""
     if agent.kind == "policy" and agent.hidden is not None:
-        agent.hidden = agent.agent.reset_hidden_for_envs(
-            agent.hidden, done_mask, num_tokens
-        )
+        agent.hidden = agent.agent.reset_hidden_for_envs(agent.hidden, done_mask, num_tokens)
 
 
 # ---------------------------------------------------------------------------
@@ -264,6 +259,7 @@ def _decode_targets_to_obs(
     action:   (B, N, 3) int — stored as PREVIOUS_ACTION for next step
     """
     import math
+
     _2pi = 2.0 * math.pi
     _hpi = math.pi / 2.0
     W = ship_config.world_size[0]
@@ -300,15 +296,17 @@ def _decode_targets_to_obs(
     alive = health.squeeze(-1) > ALIVE_HEALTH_EPS
 
     new_data = {k: v.clone() for k, v in prev_obs.items()}
-    new_data[ObsKey.POS]             = torch.cat([pos,     prev_obs[ObsKey.POS][:, N:]],            dim=1)
-    new_data[ObsKey.VEL]             = torch.cat([vel,     prev_obs[ObsKey.VEL][:, N:]],            dim=1)
-    new_data[ObsKey.ATT]             = torch.cat([att,     prev_obs[ObsKey.ATT][:, N:]],            dim=1)
-    new_data[ObsKey.ANG_VEL]         = torch.cat([ang_vel, prev_obs[ObsKey.ANG_VEL][:, N:]],       dim=1)
-    new_data[ObsKey.HEALTH]          = torch.cat([health,  prev_obs[ObsKey.HEALTH][:, N:]],         dim=1)
-    new_data[ObsKey.POWER]           = torch.cat([power,   prev_obs[ObsKey.POWER][:, N:]],          dim=1)
-    new_data[ObsKey.COOLDOWN]        = torch.cat([cooldown,prev_obs[ObsKey.COOLDOWN][:, N:]],       dim=1)
-    new_data[ObsKey.ALIVE]           = torch.cat([alive,   prev_obs[ObsKey.ALIVE][:, N:]],          dim=1)
-    new_data[ObsKey.PREVIOUS_ACTION] = torch.cat([action,  prev_obs[ObsKey.PREVIOUS_ACTION][:, N:]], dim=1)
+    new_data[ObsKey.POS] = torch.cat([pos, prev_obs[ObsKey.POS][:, N:]], dim=1)
+    new_data[ObsKey.VEL] = torch.cat([vel, prev_obs[ObsKey.VEL][:, N:]], dim=1)
+    new_data[ObsKey.ATT] = torch.cat([att, prev_obs[ObsKey.ATT][:, N:]], dim=1)
+    new_data[ObsKey.ANG_VEL] = torch.cat([ang_vel, prev_obs[ObsKey.ANG_VEL][:, N:]], dim=1)
+    new_data[ObsKey.HEALTH] = torch.cat([health, prev_obs[ObsKey.HEALTH][:, N:]], dim=1)
+    new_data[ObsKey.POWER] = torch.cat([power, prev_obs[ObsKey.POWER][:, N:]], dim=1)
+    new_data[ObsKey.COOLDOWN] = torch.cat([cooldown, prev_obs[ObsKey.COOLDOWN][:, N:]], dim=1)
+    new_data[ObsKey.ALIVE] = torch.cat([alive, prev_obs[ObsKey.ALIVE][:, N:]], dim=1)
+    new_data[ObsKey.PREVIOUS_ACTION] = torch.cat(
+        [action, prev_obs[ObsKey.PREVIOUS_ACTION][:, N:]], dim=1
+    )
     return MVPObservation(data=new_data)
 
 

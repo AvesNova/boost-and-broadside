@@ -6,7 +6,6 @@ acceptable overhead at 60fps on a single interactive environment.
 """
 
 import os
-import sys
 from dataclasses import dataclass
 
 import pygame
@@ -167,22 +166,28 @@ class GameRenderer:
     def _draw_ui(self, surf: pygame.Surface) -> None:
         if not hasattr(self, "_font"):
             self._font = pygame.font.SysFont("monospace", 16, bold=True)
-            
+
         # Draw pause button
         color = (150, 150, 150) if not self.paused else (255, 100, 100)
         pygame.draw.rect(surf, color, self._pause_rect)
         label = self._font.render("Play" if self.paused else "Pause", True, (0, 0, 0))
-        surf.blit(label, (self._pause_rect.centerx - label.get_width() // 2, self._pause_rect.centery - label.get_height() // 2))
+        surf.blit(
+            label,
+            (
+                self._pause_rect.centerx - label.get_width() // 2,
+                self._pause_rect.centery - label.get_height() // 2,
+            ),
+        )
 
         # Draw FPS slider track
         pygame.draw.rect(surf, (100, 100, 100), self._slider_track_rect)
-        
+
         # Draw slider handle
         frac = (self.target_fps - 1) / 119.0
         handle_x = self._slider_track_rect.x + int(frac * self._slider_track_rect.width)
         handle_rect = pygame.Rect(handle_x - 5, self._slider_track_rect.y - 5, 10, 20)
         pygame.draw.rect(surf, (200, 200, 200), handle_rect)
-        
+
         # Draw FPS text
         fps_label = self._font.render(f"{self.target_fps} FPS", True, (200, 200, 200))
         surf.blit(fps_label, (self._slider_track_rect.x, self._slider_track_rect.y - 20))
@@ -229,7 +234,9 @@ class GameRenderer:
         pygame.draw.line(surf, color, (sx0, sy0), (sx1, sy1), 1)
         if wrapped:
             src = complex(to_pos.real - dx, to_pos.imag - dy)
-            pygame.draw.line(surf, color, self._world_to_screen(src), self._world_to_screen(to_pos), 1)
+            pygame.draw.line(
+                surf, color, self._world_to_screen(src), self._world_to_screen(to_pos), 1
+            )
 
     def _draw_ghost_ships(
         self, state: TensorState, pred_nexts: list[torch.Tensor], surf: pygame.Surface
@@ -242,12 +249,13 @@ class GameRenderer:
         Ghost brightness fades linearly from 1.0 (step 0) to 0.5 (last step).
         """
         import math
+
         cfg = self._render_config
 
-        alive = state.ship_alive[0].cpu()       # (N,) bool
-        team_id = state.ship_team_id[0].cpu()   # (N,) int32
-        real_pos = state.ship_pos[0].cpu()      # (N,) complex64
-        real_att = state.ship_attitude[0].cpu() # (N,) complex64
+        alive = state.ship_alive[0].cpu()  # (N,) bool
+        team_id = state.ship_team_id[0].cpu()  # (N,) int32
+        real_pos = state.ship_pos[0].cpu()  # (N,) complex64
+        real_att = state.ship_attitude[0].cpu()  # (N,) complex64
 
         sz = cfg.ship_size
         world_w, world_h = self._world_w, self._world_h
@@ -285,8 +293,8 @@ class GameRenderer:
                 att_angle = prev_att_angle + pn[n, 4].item()
                 ghost_a = complex(math.cos(att_angle), math.sin(att_angle))
 
-                tip   = ghost_p + ghost_a * sz
-                left  = ghost_p + ghost_a * (-sz * 0.6) + ghost_a * 1j * (sz * 0.6)
+                tip = ghost_p + ghost_a * sz
+                left = ghost_p + ghost_a * (-sz * 0.6) + ghost_a * 1j * (sz * 0.6)
                 right = ghost_p + ghost_a * (-sz * 0.6) - ghost_a * 1j * (sz * 0.6)
                 verts = [self._world_to_screen(v) for v in (tip, left, right)]
                 pygame.draw.polygon(surf, fade, verts, width=1)
@@ -328,9 +336,7 @@ class GameRenderer:
             bar_w = sz * 2
             bar_x = int(p.real * self._scale) - sz
             bar_y = int(p.imag * self._scale) - sz - cfg.health_bar_height - 2
-            pygame.draw.rect(
-                surf, (60, 0, 0), (bar_x, bar_y, bar_w, cfg.health_bar_height)
-            )
+            pygame.draw.rect(surf, (60, 0, 0), (bar_x, bar_y, bar_w, cfg.health_bar_height))
             pygame.draw.rect(
                 surf,
                 (0, 200, 0),
@@ -340,9 +346,7 @@ class GameRenderer:
             # Power bar above health bar
             pw_frac = float(power[n].item()) / sc.max_power
             pw_bar_y = bar_y - cfg.power_bar_height - 2
-            pygame.draw.rect(
-                surf, (0, 0, 60), (bar_x, pw_bar_y, bar_w, cfg.power_bar_height)
-            )
+            pygame.draw.rect(surf, (0, 0, 60), (bar_x, pw_bar_y, bar_w, cfg.power_bar_height))
             pygame.draw.rect(
                 surf,
                 (30, 100, 255),
@@ -353,7 +357,7 @@ class GameRenderer:
         """Draw all obstacles in env 0 as filled white circles."""
         if state.num_obstacles == 0:
             return
-        obs_pos = state.obstacle_pos[0].cpu()     # (M,) complex64
+        obs_pos = state.obstacle_pos[0].cpu()  # (M,) complex64
         obs_rad = state.obstacle_radius[0].cpu()  # (M,) float32
         for m in range(obs_pos.shape[0]):
             cx, cy = self._world_to_screen(complex(obs_pos[m].item()))

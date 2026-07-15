@@ -6,25 +6,25 @@ import pytest
 import torch
 
 from boost_and_broadside.train.rl.buffer import (
-    RolloutBuffer,
     ReturnScaler,
-    symlog,
+    RolloutBuffer,
     symexp,
+    symlog,
 )
-
 
 K = 4  # num_components used across tests (smaller than prod K=12 for speed)
 
 
-def _make_buffer(
-    T=4, B=2, N=4, D=16, num_components=K
-) -> tuple[RolloutBuffer, int, int, int, int]:
+def _make_buffer(T=4, B=2, N=4, D=16, num_components=K) -> tuple[RolloutBuffer, int, int, int, int]:
     from boost_and_broadside.env.observation import MVPObservation
-    obs_sample = MVPObservation(data={
-        "pos": torch.zeros((B, N, 2)),
-        "vel": torch.zeros((B, N, 2)),
-        "alive": torch.zeros((B, N), dtype=torch.bool),
-    })
+
+    obs_sample = MVPObservation(
+        data={
+            "pos": torch.zeros((B, N, 2)),
+            "vel": torch.zeros((B, N, 2)),
+            "alive": torch.zeros((B, N), dtype=torch.bool),
+        }
+    )
     buf = RolloutBuffer(
         num_steps=T,
         num_envs=B,
@@ -210,6 +210,7 @@ class TestGAEComputation:
         T, B, N = 5, 1, 1
         Kc = 2  # component 0: γ=1.0, component 1: γ=0.5
         from boost_and_broadside.env.observation import MVPObservation
+
         obs_sample = MVPObservation(data={"pos": torch.zeros((B, N, 2))})
         buf = RolloutBuffer(
             num_steps=T,
@@ -243,12 +244,13 @@ class TestGAEComputation:
         for t in range(T):
             steps_back = T - 1 - t
             assert abs(adv0[t] - r) < 1e-4, f"γ=1 step {t}: {adv0[t]} != {r}"
-            assert abs(adv1[t] - r * (0.5 ** steps_back)) < 1e-4, f"γ=0.5 step {t}"
+            assert abs(adv1[t] - r * (0.5**steps_back)) < 1e-4, f"γ=0.5 step {t}"
 
     def test_done_envs_mask_future_rewards(self):
         """When done=1, bootstrap from next_value should be blocked."""
         T, B, N, Kc = 3, 1, 2, 1
         from boost_and_broadside.env.observation import MVPObservation
+
         obs_sample = MVPObservation(data={"pos": torch.zeros((B, N, 2))})
         buf = RolloutBuffer(
             num_steps=T,
@@ -273,9 +275,7 @@ class TestGAEComputation:
                 torch.ones(B, N, dtype=torch.bool),
             )
 
-        buf.compute_gae(
-            next_value=torch.full((B, N, Kc), 99.0), next_done=torch.zeros(B)
-        )
+        buf.compute_gae(next_value=torch.full((B, N, Kc), 99.0), next_done=torch.zeros(B))
 
         # Buffer applies symlog on storage: raw reward=1 → symlog(1)=log(2)≈0.693
         adv_t1 = buf.advantages[1, 0, 0, 0].item()
@@ -306,9 +306,7 @@ class TestMinibatchIterator:
         buf.store_initial_hidden(torch.zeros(1, B * N, D))
         buf.compute_gae(torch.zeros(B, N, Kc), torch.zeros(B))
 
-        mb_obs, mb_actions, *_ = next(
-            iter(buf.get_minibatch_iterator(num_minibatches=2))
-        )[0]
+        mb_obs, mb_actions, *_ = next(iter(buf.get_minibatch_iterator(num_minibatches=2)))[0]
 
         B_mb = B // 2
         assert mb_obs["pos"].shape == (T + 1, B_mb, N, 2)
@@ -369,9 +367,7 @@ class TestMinibatchIterator:
 
         # Minibatch = 4 envs × T × num_tokens = 4 × 4 × 4 = 64 tokens.
         # Budget of 32 tokens → 2 micro-batches of 2 envs each.
-        batches = list(
-            buf.get_minibatch_iterator(num_minibatches=2, microbatch_tokens=32)
-        )
+        batches = list(buf.get_minibatch_iterator(num_minibatches=2, microbatch_tokens=32))
         assert len(batches) == 2
         for chunks in batches:
             assert len(chunks) == 2
@@ -400,9 +396,7 @@ class TestMinibatchIterator:
         buf.compute_gae(torch.zeros(B, N, Kc), torch.zeros(B))
 
         seen: list[int] = []
-        for chunks in buf.get_minibatch_iterator(
-            num_minibatches=2, microbatch_tokens=32
-        ):
+        for chunks in buf.get_minibatch_iterator(num_minibatches=2, microbatch_tokens=32):
             for c in chunks:
                 seen.extend(c[1][0, :, 0, 0].tolist())
         assert sorted(seen) == list(range(B))

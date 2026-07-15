@@ -22,7 +22,6 @@ import torch.nn.functional as F
 
 from boost_and_broadside.env.observation import MVPObservation, ObsKey
 
-
 # ---------------------------------------------------------------------------
 # Math helpers
 # ---------------------------------------------------------------------------
@@ -124,7 +123,11 @@ class Normalize(Transform):
 
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
         if isinstance(self.scales, list):
-            if self._s_tensor is None or self._s_tensor.device != x.device or self._s_tensor.dtype != x.dtype:
+            if (
+                self._s_tensor is None
+                or self._s_tensor.device != x.device
+                or self._s_tensor.dtype != x.dtype
+            ):
                 self._s_tensor = torch.tensor(self.scales, device=x.device, dtype=x.dtype)
             return x.float() / self._s_tensor
         return x.float() / self.scales
@@ -154,12 +157,14 @@ class Fourier(Transform):
 
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
         x = x.float()
-        ps = [self.periods] * x.shape[-1] if isinstance(self.periods, (float, int)) else self.periods
+        ps = (
+            [self.periods] * x.shape[-1] if isinstance(self.periods, (float, int)) else self.periods
+        )
         results = []
         for i, period in enumerate(ps):
             xi = x[..., i]
             k = torch.arange(self.n_freqs, device=x.device, dtype=x.dtype)
-            freqs = (2.0 * math.pi / period) * (2.0 ** k)
+            freqs = (2.0 * math.pi / period) * (2.0**k)
             args = xi.unsqueeze(-1) * freqs
             results.append(torch.sin(args))
             results.append(torch.cos(args))
@@ -369,8 +374,8 @@ class WindowedLoss:
 
 
 def _triangle_conv_loss(
-    errors: torch.Tensor,      # (T, B, N, D)
-    ns_mask: torch.Tensor,     # (T, B, N) — True where prediction is valid
+    errors: torch.Tensor,  # (T, B, N, D)
+    ns_mask: torch.Tensor,  # (T, B, N) — True where prediction is valid
     terminated: torch.Tensor,  # (T, B)    — True where episode ended
     window: int,
 ) -> torch.Tensor:
@@ -399,18 +404,18 @@ def _triangle_conv_loss(
     # Reshape to (B*N*D, 1, T), pad left by window-1, apply conv.
     x = errors.permute(1, 2, 3, 0).reshape(B * N * D, 1, T)
     x_padded = F.pad(x, (window - 1, 0))
-    conv_out = F.conv1d(x_padded, h.view(1, 1, window))       # (B*N*D, 1, T)
+    conv_out = F.conv1d(x_padded, h.view(1, 1, window))  # (B*N*D, 1, T)
     conv_out = conv_out.view(B, N, D, T).permute(3, 0, 1, 2)  # (T, B, N, D)
 
     # Temporal validity: position t is invalid if any termination falls inside
     # the window [t-window+1, t]. Max-pool with explicit left padding checks this.
-    term_f = terminated.T.unsqueeze(1).float()                           # (B, 1, T)
+    term_f = terminated.T.unsqueeze(1).float()  # (B, 1, T)
     spread = F.max_pool1d(F.pad(term_f, (window - 1, 0)), window, stride=1)
-    t_valid = (spread.squeeze(1) == 0).T                                 # (T, B)
+    t_valid = (spread.squeeze(1) == 0).T  # (T, B)
 
     # Per-ship validity: ship must be alive and non-terminal at window endpoint.
-    valid = t_valid.unsqueeze(-1) & ns_mask           # (T, B, N)
-    valid_4d = valid.float().unsqueeze(-1)             # (T, B, N, 1)
+    valid = t_valid.unsqueeze(-1) & ns_mask  # (T, B, N)
+    valid_4d = valid.float().unsqueeze(-1)  # (T, B, N, 1)
     n_valid = valid_4d.sum() * D
 
     return (conv_out.pow(2) * valid_4d).sum() / n_valid.clamp(min=1.0)
@@ -487,19 +492,22 @@ class FeatureCoordinator:
 
     def _dummy_obs(self) -> MVPObservation:
         from boost_and_broadside.env.observation import MVPObservation, ObsKey
-        return MVPObservation(data={
-            ObsKey.POS:             torch.zeros((1, 1, 2)),
-            ObsKey.VEL:             torch.zeros((1, 1, 2)),
-            ObsKey.ATT:             torch.zeros((1, 1, 2)),
-            ObsKey.ANG_VEL:         torch.zeros((1, 1, 1)),
-            ObsKey.HEALTH:          torch.zeros((1, 1, 1)),
-            ObsKey.POWER:           torch.zeros((1, 1, 1)),
-            ObsKey.COOLDOWN:        torch.zeros((1, 1, 1)),
-            ObsKey.TEAM_ID:         torch.zeros((1, 1), dtype=torch.long),
-            ObsKey.ALIVE:           torch.zeros((1, 1), dtype=torch.bool),
-            ObsKey.RADIUS:          torch.zeros((1, 1, 1)),
-            ObsKey.PREVIOUS_ACTION: torch.zeros((1, 1, 3), dtype=torch.long),
-        })
+
+        return MVPObservation(
+            data={
+                ObsKey.POS: torch.zeros((1, 1, 2)),
+                ObsKey.VEL: torch.zeros((1, 1, 2)),
+                ObsKey.ATT: torch.zeros((1, 1, 2)),
+                ObsKey.ANG_VEL: torch.zeros((1, 1, 1)),
+                ObsKey.HEALTH: torch.zeros((1, 1, 1)),
+                ObsKey.POWER: torch.zeros((1, 1, 1)),
+                ObsKey.COOLDOWN: torch.zeros((1, 1, 1)),
+                ObsKey.TEAM_ID: torch.zeros((1, 1), dtype=torch.long),
+                ObsKey.ALIVE: torch.zeros((1, 1), dtype=torch.bool),
+                ObsKey.RADIUS: torch.zeros((1, 1, 1)),
+                ObsKey.PREVIOUS_ACTION: torch.zeros((1, 1, 3), dtype=torch.long),
+            }
+        )
 
     # ------------------------------------------------------------------
     # Forward paths
@@ -552,8 +560,8 @@ class FeatureCoordinator:
                 continue
             t_dim = f.get_target(dummy).shape[-1]
 
-            curr_slice = curr_targets[..., curr_offset: curr_offset + t_dim]
-            next_slice = next_targets[..., next_offset: next_offset + t_dim]
+            curr_slice = curr_targets[..., curr_offset : curr_offset + t_dim]
+            next_slice = next_targets[..., next_offset : next_offset + t_dim]
 
             results.append(f.predictor.compute_labels(curr_slice, next_slice))
 
@@ -577,8 +585,8 @@ class FeatureCoordinator:
             t_dim = f.get_target(dummy).shape[-1]
             p_dim = f.predictor.prediction_dim(t_dim)
 
-            t_slice = curr_targets[..., t_offset: t_offset + t_dim]
-            p_slice = predictions[..., p_offset: p_offset + p_dim]
+            t_slice = curr_targets[..., t_offset : t_offset + t_dim]
+            p_slice = predictions[..., p_offset : p_offset + p_dim]
 
             results.append(f.predictor.apply_prediction(t_slice, p_slice))
 
@@ -613,10 +621,10 @@ class FeatureCoordinator:
 
     def compute_windowed_loss(
         self,
-        pred_rollout: torch.Tensor,   # (T, B, N, D_pred)
+        pred_rollout: torch.Tensor,  # (T, B, N, D_pred)
         label_rollout: torch.Tensor,  # (T, B, N, D_pred)
-        ns_mask: torch.Tensor,        # (T, B, N) — alive & non-terminal
-        terminated: torch.Tensor,     # (T, B)
+        ns_mask: torch.Tensor,  # (T, B, N) — alive & non-terminal
+        terminated: torch.Tensor,  # (T, B)
     ) -> torch.Tensor:
         """Triangle convolution cumulative loss for features that opt in via WindowedLoss.
 
@@ -633,7 +641,7 @@ class FeatureCoordinator:
         total = pred_rollout.new_zeros(())
 
         for p_offset, p_dim, wl in self._windowed_loss_specs:
-            feat_errs = errors[..., p_offset: p_offset + p_dim]
+            feat_errs = errors[..., p_offset : p_offset + p_dim]
             total = total + wl.weight * _triangle_conv_loss(
                 feat_errs, ns_mask, terminated, wl.window
             )
@@ -750,8 +758,8 @@ def build_standard_coordinator(ship_config) -> FeatureCoordinator:
             label_scale=2.1,
         ),
         # Categoricals and static (no predictor)
-        Feature("team_id",  Accessor(ObsKey.TEAM_ID),  OneHot(3),   Identity()),
-        Feature("alive",    Accessor(ObsKey.ALIVE),     Identity(),  Identity()),
+        Feature("team_id", Accessor(ObsKey.TEAM_ID), OneHot(3), Identity()),
+        Feature("alive", Accessor(ObsKey.ALIVE), Identity(), Identity()),
         Feature(
             "prev_power",
             Accessor(ObsKey.PREVIOUS_ACTION, [0]),
@@ -770,7 +778,7 @@ def build_standard_coordinator(ship_config) -> FeatureCoordinator:
             OneHot(2),
             Identity(),
         ),
-        Feature("radius",   Accessor(ObsKey.RADIUS),    Normalize(40.0), Identity()),
+        Feature("radius", Accessor(ObsKey.RADIUS), Normalize(40.0), Identity()),
     ]
 
     return FeatureCoordinator(features)

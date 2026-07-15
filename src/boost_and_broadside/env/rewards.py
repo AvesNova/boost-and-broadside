@@ -19,8 +19,9 @@ Adding a new reward
 4. Add an instance to the list in build_reward_components().
 """
 
-import torch
 from abc import ABC, abstractmethod
+
+import torch
 
 from boost_and_broadside.config import RewardConfig, ShipConfig
 from boost_and_broadside.constants import EPS
@@ -101,9 +102,7 @@ class AllyDamageReward(RewardComponent):
         next_state: TensorState,
         dones: torch.Tensor,
     ) -> torch.Tensor:
-        delta = (prev_state.ship_health - next_state.ship_health).clamp(
-            min=0.0
-        )  # (B, N)
+        delta = (prev_state.ship_health - next_state.ship_health).clamp(min=0.0)  # (B, N)
         return -delta * next_state.ship_alive.float()
 
 
@@ -127,9 +126,7 @@ class EnemyDamageReward(RewardComponent):
         next_state: TensorState,
         dones: torch.Tensor,
     ) -> torch.Tensor:
-        delta = (prev_state.ship_health - next_state.ship_health).clamp(
-            min=0.0
-        )  # (B, N)
+        delta = (prev_state.ship_health - next_state.ship_health).clamp(min=0.0)  # (B, N)
         return -delta * next_state.ship_alive.float()
 
 
@@ -215,9 +212,9 @@ class KillShotReward(RewardComponent):
 
         B, N = next_state.ship_health.shape
         dm = next_state.damage_matrix  # (B, N_shooter, N_target)
-        is_enemy_target = next_state.ship_team_id.unsqueeze(
-            2
-        ) != next_state.ship_team_id.unsqueeze(1)  # (B, N_shooter, N_target)
+        is_enemy_target = next_state.ship_team_id.unsqueeze(2) != next_state.ship_team_id.unsqueeze(
+            1
+        )  # (B, N_shooter, N_target)
         self_mask = torch.eye(N, dtype=torch.bool, device=dm.device).unsqueeze(0)
         is_friendly_target = ~is_enemy_target & ~self_mask  # same team, not self
 
@@ -266,9 +263,9 @@ class KillAssistReward(RewardComponent):
 
         B, N = next_state.ship_health.shape
         cdm = next_state.cumulative_damage_matrix  # (B, N_shooter, N_target)
-        is_enemy_target = next_state.ship_team_id.unsqueeze(
-            2
-        ) != next_state.ship_team_id.unsqueeze(1)  # (B, N_shooter, N_target)
+        is_enemy_target = next_state.ship_team_id.unsqueeze(2) != next_state.ship_team_id.unsqueeze(
+            1
+        )  # (B, N_shooter, N_target)
         self_mask = torch.eye(N, dtype=torch.bool, device=cdm.device).unsqueeze(0)
         is_friendly_target = ~is_enemy_target & ~self_mask
 
@@ -451,9 +448,9 @@ class LocalDamageDealtEnemyReward(RewardComponent):
     ) -> torch.Tensor:
         dm = next_state.damage_matrix  # (B, N_shooter, N_target)
         B, N = next_state.ship_team_id.shape
-        is_enemy = next_state.ship_team_id.unsqueeze(
-            2
-        ) != next_state.ship_team_id.unsqueeze(1)  # (B, N_shooter, N_target)
+        is_enemy = next_state.ship_team_id.unsqueeze(2) != next_state.ship_team_id.unsqueeze(
+            1
+        )  # (B, N_shooter, N_target)
         enemy_damage = (dm * is_enemy.float()).sum(dim=2)  # (B, N_shooter)
         return enemy_damage * next_state.ship_alive.float()
 
@@ -483,9 +480,9 @@ class LocalDamageDealtAllyReward(RewardComponent):
     ) -> torch.Tensor:
         dm = next_state.damage_matrix  # (B, N_shooter, N_target)
         B, N = next_state.ship_team_id.shape
-        is_enemy = next_state.ship_team_id.unsqueeze(
-            2
-        ) != next_state.ship_team_id.unsqueeze(1)  # (B, N_shooter, N_target)
+        is_enemy = next_state.ship_team_id.unsqueeze(2) != next_state.ship_team_id.unsqueeze(
+            1
+        )  # (B, N_shooter, N_target)
         self_mask = torch.eye(N, dtype=torch.bool, device=dm.device).unsqueeze(0)
         is_friendly = ~is_enemy & ~self_mask  # same team, not self
         friendly_damage = (dm * is_friendly.float()).sum(dim=2)  # (B, N_shooter)
@@ -773,7 +770,7 @@ class ObstacleProximityReward(RewardComponent):
             return torch.zeros_like(next_state.ship_health)
 
         W, H = self.world_size
-        pos = next_state.ship_pos      # (B, N) complex64
+        pos = next_state.ship_pos  # (B, N) complex64
         obs = next_state.obstacle_pos  # (B, M) complex64
         alive = next_state.ship_alive  # (B, N) bool
 
@@ -788,7 +785,7 @@ class ObstacleProximityReward(RewardComponent):
         dist = (dist - next_state.obstacle_radius.unsqueeze(1)).clamp(min=0.0)
 
         min_dist = dist.min(dim=2).values  # (B, N) nearest obstacle surface
-        penalty = (1.0 - (min_dist / self.proximity_radius).clamp(0.0, 1.0))
+        penalty = 1.0 - (min_dist / self.proximity_radius).clamp(0.0, 1.0)
 
         return -penalty * alive.float()
 
@@ -823,8 +820,8 @@ class ObstacleClosingSpeedReward(RewardComponent):
             return torch.zeros_like(next_state.ship_health)
 
         W, H = self.world_size
-        pos = next_state.ship_pos      # (B, N) complex64
-        vel = next_state.ship_vel      # (B, N) complex64
+        pos = next_state.ship_pos  # (B, N) complex64
+        vel = next_state.ship_vel  # (B, N) complex64
         obs = next_state.obstacle_pos  # (B, M) complex64
         alive = next_state.ship_alive  # (B, N) bool
 
@@ -893,12 +890,12 @@ class ObstacleTTIReward(RewardComponent):
             return torch.zeros_like(next_state.ship_health)
 
         W, H = self.world_size
-        pos = next_state.ship_pos      # (B, N) complex64
-        vel = next_state.ship_vel      # (B, N) complex64
-        obs_pos = next_state.obstacle_pos   # (B, M) complex64
-        obs_vel = next_state.obstacle_vel   # (B, M) complex64
+        pos = next_state.ship_pos  # (B, N) complex64
+        vel = next_state.ship_vel  # (B, N) complex64
+        obs_pos = next_state.obstacle_pos  # (B, M) complex64
+        obs_vel = next_state.obstacle_vel  # (B, M) complex64
         obs_r = next_state.obstacle_radius  # (B, M) float32
-        alive = next_state.ship_alive       # (B, N) bool
+        alive = next_state.ship_alive  # (B, N) bool
 
         # Relative position d = ship - obs, wrapped: (B, N, M)
         d_r = pos.real.unsqueeze(2) - obs_pos.real.unsqueeze(1)
@@ -914,11 +911,11 @@ class ObstacleTTIReward(RewardComponent):
         hit_r = obs_r.unsqueeze(1) + self.ship_collision_radius  # (B, 1, M) → broadcast
 
         # Quadratic coefficients
-        a = vr_r**2 + vr_i**2                         # (B, N, M)
-        b = 2.0 * (d_r * vr_r + d_i * vr_i)          # (B, N, M)
-        c = d_r**2 + d_i**2 - hit_r**2                # (B, N, M)
+        a = vr_r**2 + vr_i**2  # (B, N, M)
+        b = 2.0 * (d_r * vr_r + d_i * vr_i)  # (B, N, M)
+        c = d_r**2 + d_i**2 - hit_r**2  # (B, N, M)
 
-        disc = b**2 - 4.0 * a * c                     # (B, N, M)
+        disc = b**2 - 4.0 * a * c  # (B, N, M)
 
         # TTI: smallest positive root of quadratic; inf if no real positive root
         safe_a = a.clamp(min=1e-12)
@@ -935,7 +932,7 @@ class ObstacleTTIReward(RewardComponent):
         )
 
         min_tti = tti.min(dim=2).values  # (B, N)
-        penalty = (1.0 - (min_tti / self.tti_max).clamp(0.0, 1.0))
+        penalty = 1.0 - (min_tti / self.tti_max).clamp(0.0, 1.0)
 
         return -penalty * alive.float()
 

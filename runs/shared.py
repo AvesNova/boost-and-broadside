@@ -71,32 +71,58 @@ REWARDS = RewardConfig(
 #   Shaping   γ=0.975 → γ^40≈0.36  — immediate behaviour; λ low since dense rewards → TD is accurate
 COMPONENT_GAMMAS: dict[str, float] = {
     # Terminal — ally_win (+1 win) and enemy_win (-1 loss) both need full-episode horizon
-    "ally_win": 0.999, "enemy_win": 0.999,
+    "ally_win": 0.999,
+    "enemy_win": 0.999,
     # Kill/death
-    "ally_death": 0.995, "enemy_death": 0.995, "death": 0.995,
-    "kill_shot": 0.995, "kill_assist": 0.995, "obstacle_death": 0.995,
+    "ally_death": 0.995,
+    "enemy_death": 0.995,
+    "death": 0.995,
+    "kill_shot": 0.995,
+    "kill_assist": 0.995,
+    "obstacle_death": 0.995,
     # Damage
-    "ally_damage": 0.991, "enemy_damage": 0.991,
-    "damage_taken": 0.991, "damage_dealt_enemy": 0.991, "damage_dealt_ally": 0.991,
+    "ally_damage": 0.991,
+    "enemy_damage": 0.991,
+    "damage_taken": 0.991,
+    "damage_dealt_enemy": 0.991,
+    "damage_dealt_ally": 0.991,
     # Shaping
-    "facing": 0.975, "closing_speed": 0.975, "shoot_quality": 0.975,
-    "speed": 0.975, "shooting_penalty": 0.975,
-    "obstacle_proximity": 0.975, "obstacle_closing_speed": 0.975, "obstacle_tti": 0.975,
+    "facing": 0.975,
+    "closing_speed": 0.975,
+    "shoot_quality": 0.975,
+    "speed": 0.975,
+    "shooting_penalty": 0.975,
+    "obstacle_proximity": 0.975,
+    "obstacle_closing_speed": 0.975,
+    "obstacle_tti": 0.975,
 }
 
 COMPONENT_LAMBDAS: dict[str, float] = {
     # Terminal — high λ: sparse signal must be traced back through the full episode
-    "ally_win": 0.97, "enemy_win": 0.97,
+    "ally_win": 0.97,
+    "enemy_win": 0.97,
     # Kill/death
-    "ally_death": 0.95, "enemy_death": 0.95, "death": 0.95,
+    "ally_death": 0.95,
+    "enemy_death": 0.95,
+    "death": 0.95,
     # kill_shot: winner-take-all is noisy; shorter trace reduces variance
     # kill_assist: episode-level cumulative credit needs a longer trace
-    "kill_shot": 0.87, "kill_assist": 0.97, "obstacle_death": 0.95,
+    "kill_shot": 0.87,
+    "kill_assist": 0.97,
+    "obstacle_death": 0.95,
     # Damage — slightly lower; semi-dense rewards make TD errors more informative
-    "ally_damage": 0.90, "enemy_damage": 0.90,
-    "damage_taken": 0.90, "damage_dealt_enemy": 0.90, "damage_dealt_ally": 0.90,
+    "ally_damage": 0.90,
+    "enemy_damage": 0.90,
+    "damage_taken": 0.90,
+    "damage_dealt_enemy": 0.90,
+    "damage_dealt_ally": 0.90,
     # Shaping — low λ: dense rewards → low-variance TD; prevents "style over substance" compounding
-    "facing": 0.80, "closing_speed": 0.80, "shoot_quality": 0.80,
-    "speed": 0.80, "shooting_penalty": 0.80,
-    "obstacle_proximity": 0.80, "obstacle_closing_speed": 0.80, "obstacle_tti": 0.80,
+    "facing": 0.80,
+    "closing_speed": 0.80,
+    "shoot_quality": 0.80,
+    "speed": 0.80,
+    "shooting_penalty": 0.80,
+    "obstacle_proximity": 0.80,
+    "obstacle_closing_speed": 0.80,
+    "obstacle_tti": 0.80,
 }

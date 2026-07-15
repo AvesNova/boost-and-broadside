@@ -16,7 +16,6 @@ from pathlib import Path
 
 import torch
 
-
 _DEFAULT_ELO = 0.0
 
 
@@ -31,9 +30,7 @@ class RosterEntry:
     update: int  # PPO update index when snapshotted
     path: str | None = None  # .pt file path; None for all non-checkpoint kinds
     fixed: bool = False  # If True, ELO is never modified (e.g. random anchor at 0)
-    _policy: object = field(
-        default=None, repr=False
-    )  # Loaded MVPPolicy; None if evicted
+    _policy: object = field(default=None, repr=False)  # Loaded MVPPolicy; None if evicted
 
 
 class EloRoster:
@@ -181,10 +178,7 @@ class EloRoster:
             idx = int(torch.randint(len(candidates), (1,)).item())
             return candidates[idx]
 
-        weights = [
-            math.exp(-abs(e.elo - training_elo) / self.elo_temperature)
-            for e in candidates
-        ]
+        weights = [math.exp(-abs(e.elo - training_elo) / self.elo_temperature) for e in candidates]
         total = sum(weights)
         r = torch.rand(1).item() * total
         cumulative = 0.0
@@ -239,15 +233,18 @@ class EloRoster:
         """Load checkpoint weights into entry._policy (no-op if already loaded)."""
         if entry._policy is not None or entry.kind != "checkpoint":
             return
-        from boost_and_broadside.models.mvp.policy import MVPPolicy
-
         import torch.nn as nn
+
+        from boost_and_broadside.models.mvp.policy import MVPPolicy
 
         ckpt = torch.load(entry.path, map_location=device, weights_only=False)
         ckpt_team_pma_k = tuple(ckpt.get("team_pma_k", team_pma_k))
         policy = MVPPolicy(
-            model_config, coordinator, num_value_components=num_value_components,
-            num_ships=num_ships, team_pma_k=ckpt_team_pma_k,
+            model_config,
+            coordinator,
+            num_value_components=num_value_components,
+            num_ships=num_ships,
+            team_pma_k=ckpt_team_pma_k,
         )
         policy.load_state_dict(ckpt["policy_state_dict"])
         policy.eval()
@@ -256,9 +253,7 @@ class EloRoster:
             if isinstance(m, nn.RMSNorm) and m.weight.is_cuda:
                 m.weight.data = m.weight.data.bfloat16()
         entry._policy = (
-            torch.compile(policy, mode=compile_mode)
-            if compile_mode is not None
-            else policy
+            torch.compile(policy, mode=compile_mode) if compile_mode is not None else policy
         )
 
     def evict_all_checkpoint_policies(self) -> None:

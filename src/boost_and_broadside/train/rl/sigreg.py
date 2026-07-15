@@ -53,10 +53,10 @@ class SIGReg(nn.Module):
         phi = self.phi.to(proj.dtype)
         weights = self.weights.to(proj.dtype)
 
-        x_t = (proj @ A).unsqueeze(-1) * t          # (T, B, num_proj, knots)
+        x_t = (proj @ A).unsqueeze(-1) * t  # (T, B, num_proj, knots)
         err = (
-            (x_t.cos().mean(1) - phi).square()       # mean over B samples
+            (x_t.cos().mean(1) - phi).square()  # mean over B samples
             + x_t.sin().mean(1).square()
-        )                                             # (T, num_proj, knots)
-        statistic = (err @ weights) * proj.size(1)   # (T, num_proj), scaled by B
+        )  # (T, num_proj, knots)
+        statistic = (err @ weights) * proj.size(1)  # (T, num_proj), scaled by B
         return statistic.mean()
