@@ -99,7 +99,7 @@ class StochasticAgentConfig:
     # ---------------------------------------------------------------------------
     # Flat-vector interface for hyperparameter search
     # ---------------------------------------------------------------------------
-    # One (lo, hi) bound per field. Both elements of a Tuple[float, float] field
+    # One (lo, hi) bound per field. Both elements of a tuple[float, float] field
     # are scaled using the same bound. All input values are expected in [0, 1].
     PARAM_BOUNDS: ClassVar[list[tuple[float, float]]] = [
         (0.0, 180.0),  # boost_speed_ramp       — speed units

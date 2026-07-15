@@ -187,7 +187,7 @@ def get_actions(
     state: TensorState,
     num_envs: int,
     num_ships: int,
-    device,
+    device: str | torch.device,
     return_pred_next: bool = False,
 ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor | None]:
     """Return (B, N, 3) int actions for every ship in the batch.

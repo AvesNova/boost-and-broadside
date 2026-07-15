@@ -16,6 +16,9 @@ from pathlib import Path
 
 import torch
 
+from boost_and_broadside.config import ModelConfig
+from boost_and_broadside.train.rl.features import FeatureCoordinator
+
 _DEFAULT_ELO = 0.0
 
 
@@ -193,11 +196,11 @@ class EloRoster:
     def load_policy(
         self,
         entry: RosterEntry,
-        model_config,
-        coordinator,
+        model_config: ModelConfig,
+        coordinator: FeatureCoordinator,
         num_value_components: int,
         num_ships: int,
-        device,
+        device: str | torch.device,
         compile_mode: str | None = None,
         team_pma_k: tuple[int, ...] = (),
     ) -> None:

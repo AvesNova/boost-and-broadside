@@ -20,6 +20,7 @@ from abc import ABC, abstractmethod
 import torch
 import torch.nn.functional as F
 
+from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.env.observation import MVPObservation, ObsKey
 
 # ---------------------------------------------------------------------------
@@ -632,7 +633,7 @@ class FeatureCoordinator:
 # ---------------------------------------------------------------------------
 
 
-def build_standard_coordinator(ship_config) -> FeatureCoordinator:
+def build_standard_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
     """Standard feature pipeline matching the current game's physics.
 
     Prediction layout (9 dims total):
