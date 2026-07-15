@@ -30,7 +30,6 @@ from boost_and_broadside.config import (
 from boost_and_broadside.constants import POWER_SLICE, SHOOT_SLICE, TURN_SLICE
 from boost_and_broadside.env.observation import MVPObservation, ObsKey
 from boost_and_broadside.env.obstacle_cache import ObstacleCache
-from boost_and_broadside.env.state import TensorState
 from boost_and_broadside.env.wrapper import MVPEnvWrapper
 from boost_and_broadside.models.mvp.policy import MVPPolicy
 from boost_and_broadside.train.rl.buffer import (
@@ -43,6 +42,12 @@ from boost_and_broadside.train.rl.checkpoint import CheckpointMixin, cast_norms_
 from boost_and_broadside.train.rl.elo_eval import EloEvaluator
 from boost_and_broadside.train.rl.features import FeatureCoordinator, build_standard_coordinator
 from boost_and_broadside.train.rl.logging import LoggingMixin
+from boost_and_broadside.train.rl.opponents import (
+    OpponentMixin,
+    flip_team_obs,
+    slice_obs,
+    slice_state,
+)
 from boost_and_broadside.train.rl.roster import EloRoster, RosterEntry
 from boost_and_broadside.train.rl.sigreg import SIGReg
 
@@ -71,24 +76,6 @@ def _build_component_tensor(
 # ------------------------------------------------------------------
 # Opponent-management helpers (module-level, no class coupling)
 # ------------------------------------------------------------------
-
-
-def _slice_obs(obs: MVPObservation, start: int, end: int) -> MVPObservation:
-    """Return a view of obs tensors for envs [start, end)."""
-    return obs.slice_envs(slice(start, end))
-
-
-def _slice_state(state: TensorState, start: int, end: int) -> TensorState:
-    """Return a new TensorState containing only envs [start, end)."""
-    return state.slice_envs(slice(start, end))
-
-
-def _flip_team_obs(obs: MVPObservation, N: int) -> MVPObservation:
-    """Return a copy of obs with ship team IDs flipped (0↔1).
-
-    Obstacles occupy positions ≥N and always have team_id=2 — they are unchanged.
-    """
-    return obs.flip_team(N)
 
 
 # Maps reward component name → the TrainingSchedule group-scale field to apply.
@@ -208,7 +195,7 @@ def _max_schedule_value(
     return max(schedule_fn(s) for s in range(0, total_steps + step_size, step_size))
 
 
-class PPOTrainer(CheckpointMixin, LoggingMixin):
+class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
     """Proximal Policy Optimization for the MVP multi-agent policy.
 
     Args:
@@ -587,20 +574,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin):
             device=self.device,
         )
 
-    def _update_avg_model(self) -> None:
-        """Add the current training policy snapshot to the uniform running average."""
-        first_update = self._avg_update_count == 0
-        self._avg_update_count += 1
-        for cum, p in zip(self._avg_param_cumsum, self._policy_module.parameters()):
-            cum.add_(p.detach().float())
-        for avg_p, cum in zip(self._avg_policy_module.parameters(), self._avg_param_cumsum):
-            avg_p.data.copy_(cum / self._avg_update_count)
-        # Register the avg model as a roster entry the first time it's ready,
-        # seeded at current training ELO (it's a recent snapshot, so it's a
-        # reasonable starting estimate that will quickly self-correct via eval).
-        if first_update:
-            self.roster.add_special("avg", self._global_step, 0, initial_elo=self._training_elo)
-
     def _rollout_policy_pass(
         self,
         obs: MVPObservation,
@@ -647,7 +620,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin):
             return action, None, logprob, value_norm, pred_next, hidden, None
 
         batch = hidden.shape[1] // num_tokens
-        obs_t1 = _flip_team_obs(obs, num_ships)
+        obs_t1 = flip_team_obs(obs, num_ships)
         obs_both = obs.concat_batch(obs_t1)
         hidden_both = torch.cat([hidden, hidden_t1], dim=1)  # (n_layers, 2B*(N+M), CONV_KERNEL*D)
         action_both, logprob_both, value_both, pred_next_both, hidden_out = (
@@ -662,73 +635,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin):
             hidden_out[:, : batch * num_tokens, :],  # (n_layers, B*(N+M), CONV_KERNEL*D)
             hidden_out[:, batch * num_tokens :, :],  # (n_layers, B*(N+M), CONV_KERNEL*D)
         )
-
-    def _opponent_obs(self, obs_slice: MVPObservation, num_ships: int) -> MVPObservation:
-        """Return the observation perspective policy opponents act from.
-
-        ego_pass: opponents always play team 1 but must see themselves as
-        team 0, so ship team IDs are flipped. shared_pass: opponents act on
-        raw obs and play whichever team ``_opp_team_flag`` assigns.
-        """
-        return _flip_team_obs(obs_slice, num_ships) if self._ego_pass else obs_slice
-
-    def _combine_actions(
-        self,
-        action_t0: torch.Tensor,
-        action_t1: torch.Tensor | None,
-        team_id: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Merge per-perspective policy actions and build the actor-loss mask.
-
-        ego_pass: team 0 ships act from the raw-obs pass and are the only ships
-        that train; team 1 ships act from the flipped-obs pass.
-        shared_pass: every ship acts from the single raw-obs pass and trains.
-
-        Args:
-            action_t0: (B, N, 3) raw-perspective actions.
-            action_t1: (B, N, 3) flipped-perspective actions; None in shared_pass.
-            team_id:   (B, N) int team assignment per ship.
-
-        Returns:
-            action:     (B, N, 3) executed actions — a fresh tensor, safe for
-                        in-place opponent overrides.
-            actor_mask: (B, N) bool — ships contributing to actor/BC losses.
-        """
-        if self._ego_pass:
-            team0_mask = team_id == 0  # (B, N)
-            action = torch.where(team0_mask.unsqueeze(-1), action_t0, action_t1)  # (B, N, 3)
-            return action, team0_mask
-        return action_t0.clone(), torch.ones_like(team_id, dtype=torch.bool)
-
-    def _apply_opponent_override(
-        self,
-        action: torch.Tensor,
-        actor_mask: torch.Tensor,
-        team_id: torch.Tensor,
-        start: int,
-        end: int,
-        opp_action: torch.Tensor,
-    ) -> None:
-        """Replace opponent-team ship actions in envs [start, end) in-place.
-
-        ego_pass: the opponent always controls team 1 (already excluded from
-        actor_mask). shared_pass: the opponent controls the per-episode random
-        ``_opp_team_flag`` team, which is removed from the actor-loss mask here.
-
-        Args:
-            action:     (B, N, 3) combined action tensor — modified in-place.
-            actor_mask: (B, N) bool actor-loss mask — modified in-place.
-            team_id:    (B, N) int team assignment per ship.
-            start, end: env slice controlled by this opponent group.
-            opp_action: (end-start, N, 3) opponent agent's actions.
-        """
-        if self._ego_pass:
-            opp_mask = team_id[start:end] == 1  # (end-start, N)
-        else:
-            flags = self._opp_team_flag[start - self.B_self : end - self.B_self]
-            opp_mask = team_id[start:end] == flags.unsqueeze(1)  # (end-start, N)
-        action[start:end] = torch.where(opp_mask.unsqueeze(-1), opp_action, action[start:end])
-        actor_mask[start:end] &= ~opp_mask
 
     def train(self) -> None:
         """Run the full PPO training loop."""
@@ -834,47 +740,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin):
                 aux_buf.reset()
                 aux_buf.store_initial_hidden(aux_h)
 
-            # Sample a league opponent for this rollout (rotated each update).
-            # Only runs when the current phase has league_frac > 0 AND slots are allocated.
-            # Evict the previous checkpoint's weights before loading the new one.
-            league_active = self.B_league > 0 and self._schedule_state.league_fraction > 0.0
-            if league_active:
-                entry = self.roster.sample(self._training_elo)
-                self._current_league_entry = entry
-                if entry is None or (entry.kind == "avg" and self._avg_update_count == 0):
-                    # No valid opponent yet — league group falls back to self-play this rollout.
-                    self._current_league_entry = None
-                    self._current_league_policy = None
-                elif entry.kind == "checkpoint":
-                    self.roster.load_policy(
-                        entry,
-                        self.model_config,
-                        self.coordinator,
-                        self.wrapper.num_active_components,
-                        self.wrapper.num_ships,
-                        self.device,
-                        self._compile_mode,
-                        team_pma_k=self._win_k,
-                    )
-                    self._current_league_policy = entry.policy
-                    league_hidden = self._current_league_policy.initial_hidden(
-                        self.B_league, num_tokens, self.device
-                    )
-                elif entry.kind == "avg":
-                    self._current_league_policy = self.avg_policy
-                    league_hidden = self._current_league_policy.initial_hidden(
-                        self.B_league, num_tokens, self.device
-                    )
-                else:  # "scripted" — no policy forward pass needed
-                    self._current_league_policy = None
-                    league_hidden = None
-            else:
-                # League inactive this phase — evict any loaded policy and fall back to self-play.
-                self.roster.evict_all_checkpoint_policies()
-                self._current_league_entry = None
-                self._current_league_policy = None
+            league_hidden = self._prepare_league_opponent(num_tokens)
 
-            # ----------------------------------------------------------------
             # Rollout collection  (1-step action delay + parallel env/net streams)
             #
             # Semantics: at step t, obs(t) = {state(t), prev_action(t-1)}.
@@ -929,13 +796,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin):
                             action_scripted = action_scripted_all[sc_start:sc_end]
                     elif use_sc_bc:
                         with torch.no_grad():
-                            state_sc = _slice_state(self.wrapper.env.state, sc_start, sc_end)
+                            state_sc = slice_state(self.wrapper.env.state, sc_start, sc_end)
                             action_scripted, _ = self.scripted_agent.get_actions_and_probs(state_sc)
 
                     # Scripted league opponent also reads env.state before the env stream
                     if use_league and self._current_league_policy is None:
                         with torch.no_grad():
-                            state_league = _slice_state(
+                            state_league = slice_state(
                                 self.wrapper.env.state, league_start, league_end
                             )
                             action_league_scripted = self.scripted_agent.get_actions(state_league)
@@ -964,14 +831,14 @@ class PPOTrainer(CheckpointMixin, LoggingMixin):
                             ) = self._rollout_policy_pass(obs, hidden, hidden_t1, N, num_tokens)
                         if use_avg:
                             with torch.autocast("cuda", dtype=torch.bfloat16):
-                                obs_avg = self._opponent_obs(_slice_obs(obs, avg_start, avg_end), N)
+                                obs_avg = self._opponent_obs(slice_obs(obs, avg_start, avg_end), N)
                                 action_avg, _, _, _, avg_hidden = (
                                     self.avg_policy.get_action_and_value(obs_avg, avg_hidden)
                                 )
                         if use_league and self._current_league_policy is not None:
                             with torch.autocast("cuda", dtype=torch.bfloat16):
                                 obs_league = self._opponent_obs(
-                                    _slice_obs(obs, league_start, league_end), N
+                                    slice_obs(obs, league_start, league_end), N
                                 )
                                 action_league_net, _, _, _, league_hidden = (
                                     self._current_league_policy.get_action_and_value(
@@ -992,14 +859,14 @@ class PPOTrainer(CheckpointMixin, LoggingMixin):
                         )
                     if use_avg:
                         with torch.autocast("cuda", dtype=torch.bfloat16):
-                            obs_avg = self._opponent_obs(_slice_obs(obs, avg_start, avg_end), N)
+                            obs_avg = self._opponent_obs(slice_obs(obs, avg_start, avg_end), N)
                             action_avg, _, _, _, avg_hidden = self.avg_policy.get_action_and_value(
                                 obs_avg, avg_hidden
                             )
                     if use_league and self._current_league_policy is not None:
                         with torch.autocast("cuda", dtype=torch.bfloat16):
                             obs_league = self._opponent_obs(
-                                _slice_obs(obs, league_start, league_end), N
+                                slice_obs(obs, league_start, league_end), N
                             )
                             action_league_net, _, _, _, league_hidden = (
                                 self._current_league_policy.get_action_and_value(
