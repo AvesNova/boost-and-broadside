@@ -185,7 +185,7 @@ diff/dist/valid-mask block is copy-pasted in ~6 components.
 **Action:** put `weight` on the base class (also fixes finding 1.1), share the identical computes,
 extract a `_toroidal_offsets(pos, world_size)` helper.
 
-### 4.4 `TensorState` field-list duplication — **Medium**
+### 4.4 `TensorState` field-list duplication — **Medium** — ✅ done (6a99210)
 The 24-field constructor is written out three times: `_slice_state`
 ([ppo.py:96-123](src/boost_and_broadside/train/rl/ppo.py#L96-L123)),
 `_make_prev_state_proxy` ([wrapper.py:401-436](src/boost_and_broadside/env/wrapper.py#L401-L436)),
