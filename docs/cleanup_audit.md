@@ -246,7 +246,7 @@ long-line violations deliberately left in files owned by other sessions — see 
 this doc's §5.2 action and the per-file list in the `style: manual ruff cleanup pass` commit
 message. 156/156 tests pass throughout.
 
-### 5.3 Magic numbers — **Medium** (§6.3)
+### 5.3 Magic numbers — **Medium** (§6.3) — ✅ done (797ed43)
 Worst offenders, all in [ppo.py](src/boost_and_broadside/train/rl/ppo.py):
 - `S_eval = 512` eval envs (×3), `K_eval = 4.0`, eval every `_step % 4` — not in any config;
   ignores `--smoke` (a smoke run still allocates 1536 eval envs). The unused `elo_eval_games`
