@@ -212,7 +212,7 @@ class MVPPolicy(nn.Module):
         """Zero hidden states for all tokens in done environments.
 
         Args:
-            hidden:     (n_layers, B*(N+M), D) current hidden state.
+            hidden:     (n_layers, B*(N+M), CONV_KERNEL*D) current hidden state.
             done_mask:  (B,) bool — True for envs that finished.
             num_tokens: N+M.
 
@@ -236,7 +236,7 @@ class MVPPolicy(nn.Module):
 
         Args:
             obs:    MVPObservation with (B, N+M, ...) tensors.
-            hidden: (n_layers, B*(N+M), D) RG-LRU hidden state.
+            hidden: (n_layers, B*(N+M), CONV_KERNEL*D) packed recurrent state.
 
         Returns:
             action:     (B, N, 3) int — sampled [power, turn, shoot].
@@ -244,7 +244,7 @@ class MVPPolicy(nn.Module):
             value:      (B, N, K) float — per-component value in normalized space.
                         Caller must denormalize via ReturnScaler before using for GAE.
             pred_next:  (B, N, pred_dim) float — predicted next-state deltas/phase shifts.
-            new_hidden: (n_layers, B*(N+M), D) updated hidden state.
+            new_hidden: (n_layers, B*(N+M), CONV_KERNEL*D) updated packed state.
         """
         alive = obs["alive"]  # (B, N+M) bool — ships then obstacles
         x = self.encoder(obs)  # (B, N+M, D)
@@ -264,8 +264,10 @@ class MVPPolicy(nn.Module):
         new_rglru_t = torch.stack(new_rglru, dim=0)  # (n_layers, B*(N+M), D)
         new_cbs_t = torch.stack(new_cbs, dim=0).reshape(
             n_layers, BNM, -1
-        )  # (n_layers, B*(N+M), (K-1)*D)
-        new_hidden = torch.cat([new_rglru_t, new_cbs_t], dim=-1)  # (n_layers, B*(N+M), K*D)
+        )  # (n_layers, B*(N+M), (CONV_KERNEL-1)*D)
+        new_hidden = torch.cat(
+            [new_rglru_t, new_cbs_t], dim=-1
+        )  # (n_layers, B*(N+M), CONV_KERNEL*D)
 
         # Slice ship tokens only for action and value heads
         N = self._num_ships
@@ -316,7 +318,7 @@ class MVPPolicy(nn.Module):
         Args:
             obs:                  MVPObservation with (T, B, N+M, ...) tensors.
             actions:              (T, B, N, 3) int actions taken during rollout.
-            initial_hidden:       (n_layers, B*(N+M), D) hidden state at rollout start.
+            initial_hidden:       (n_layers, B*(N+M), CONV_KERNEL*D) rollout-start state.
             alive_mask:           (T, B, N+M) bool — alive entities per timestep.
             done_mask:            (T, B) bool — True at step t means the episode ended
                                   at t; the RG-LRU resets hidden state for step t+1.

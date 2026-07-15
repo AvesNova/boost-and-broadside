@@ -688,7 +688,7 @@ class PPOTrainer:
 
         Args:
             obs:        MVPObservation with (B, N+M, ...) tensors (raw team IDs).
-            hidden:     (n_layers, B*(N+M), D) raw-perspective hidden state.
+            hidden:     (n_layers, B*(N+M), CONV_KERNEL*D) raw-perspective hidden state.
             hidden_t1:  Flipped-perspective hidden state; None in shared_pass.
             num_ships:  N — ship token count for team flipping.
             num_tokens: N+M — used to split the 2B hidden state.
@@ -711,7 +711,7 @@ class PPOTrainer:
         batch = hidden.shape[1] // num_tokens
         obs_t1 = _flip_team_obs(obs, num_ships)
         obs_both = obs.concat_batch(obs_t1)
-        hidden_both = torch.cat([hidden, hidden_t1], dim=1)  # (n_layers, 2B*(N+M), K*D)
+        hidden_both = torch.cat([hidden, hidden_t1], dim=1)  # (n_layers, 2B*(N+M), CONV_KERNEL*D)
         action_both, logprob_both, value_both, pred_next_both, hidden_out = (
             self.policy.get_action_and_value(obs_both, hidden_both)
         )
@@ -721,8 +721,8 @@ class PPOTrainer:
             logprob_both[:batch],  # (B, N)
             value_both[:batch],  # (B, N, K)
             pred_next_both[:batch],  # (B, N, pred_dim)
-            hidden_out[:, : batch * num_tokens, :],  # (n_layers, B*(N+M), K*D)
-            hidden_out[:, batch * num_tokens :, :],  # (n_layers, B*(N+M), K*D)
+            hidden_out[:, : batch * num_tokens, :],  # (n_layers, B*(N+M), CONV_KERNEL*D)
+            hidden_out[:, batch * num_tokens :, :],  # (n_layers, B*(N+M), CONV_KERNEL*D)
         )
 
     def _opponent_obs(self, obs_slice: MVPObservation, num_ships: int) -> MVPObservation:
@@ -2395,7 +2395,7 @@ class PPOTrainer:
                 metrics[f"{prefix}/{name}"] = avg[i].item()
 
         if ns_per_feat_accum:
-            avg_per_feat = torch.stack(ns_per_feat_accum).mean(0)  # (16,) cpu
+            avg_per_feat = torch.stack(ns_per_feat_accum).mean(0)  # (pred_dim,) CPU
             for i, name in enumerate(_NS_FEAT_NAMES):
                 metrics[f"next_state/{name}"] = avg_per_feat[i].item()
 

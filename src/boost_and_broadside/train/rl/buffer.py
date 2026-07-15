@@ -9,6 +9,7 @@ Shape conventions throughout:
     N = num_ships
     K = num_value_components (per-component critic decomposition)
     D = d_model
+    H = packed recurrent state width (CONV_KERNEL * D)
 """
 
 from collections.abc import Generator
@@ -321,7 +322,7 @@ class RolloutBuffer:
         """Store the GRU hidden state at rollout start.
 
         Args:
-            hidden: (1, B*N, D) float32.
+            hidden: (n_layers, B*num_tokens, H) float32.
         """
         self.initial_hidden = hidden.clone()
 
@@ -453,7 +454,7 @@ class RolloutBuffer:
                 mb_returns:      (T, B_mb, N, K) float32
                 mb_values:       (T, B_mb, N, K) float32
                 mb_alive:        (T, B_mb, N) bool
-                mb_hidden:       (n_layers, B_mb*num_tokens, D) float32
+                mb_hidden:       (n_layers, B_mb*num_tokens, H) float32
                 mb_actor_mask:   (T, B_mb, N) bool
                 mb_expert_probs: (T, B_mb, N, 12) float32
                 mb_terminated:   (T, B_mb) bool
@@ -483,7 +484,7 @@ class RolloutBuffer:
                 # T+1 obs for this micro-batch
                 mb_obs = MVPObservation(data={k: v[:, idx] for k, v in self.obs.items()})
 
-                # Reconstruct initial hidden: (n_layers, B_mb*num_tokens, D)
+                # Reconstruct initial hidden: (n_layers, B_mb*num_tokens, H)
                 mb_hidden = hidden_full[:, idx, :, :].reshape(
                     n_layers, len(idx) * self.num_tokens, D
                 )
