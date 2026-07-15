@@ -476,6 +476,19 @@ class FeatureCoordinator:
             return obs.pos.new_zeros((*obs.pos.shape[:-1], 0))
         return torch.cat(parts, dim=-1)
 
+    def target_slices(self) -> dict[str, slice]:
+        """Map predicted feature names to their slices in the target vector."""
+        slices: dict[str, slice] = {}
+        offset = 0
+        dummy = self._dummy_obs()
+        for feature in self.features:
+            if not feature.predictor:
+                continue
+            target_dim = feature.get_target(dummy).shape[-1]
+            slices[feature.name] = slice(offset, offset + target_dim)
+            offset += target_dim
+        return slices
+
     # ------------------------------------------------------------------
     # Aux loss label computation
     # ------------------------------------------------------------------

@@ -7,6 +7,7 @@ import torch
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.env.observation import MVPObservation, ObsKey
 from boost_and_broadside.modes.agent_factory import _decode_targets_to_obs
+from boost_and_broadside.train.rl.features import build_standard_coordinator
 
 
 def _make_prev_obs(B: int, N: int) -> MVPObservation:
@@ -35,15 +36,19 @@ class TestDecodeTargetsToObs:
         (Fourier(1, period) → (sin, cos)) and expect the round-trip identity.
         """
         ship_config = ShipConfig(world_size=(1024.0, 512.0))
+        coordinator = build_standard_coordinator(ship_config)
+        target_slices = coordinator.target_slices()
         W, H = ship_config.world_size
         x, y = 700.0, 300.0
 
-        targets = torch.zeros(1, 1, 15)
-        targets[0, 0, 0] = math.sin(2 * math.pi * x / W)
-        targets[0, 0, 1] = math.cos(2 * math.pi * x / W)
-        targets[0, 0, 2] = math.sin(2 * math.pi * y / H)
-        targets[0, 0, 3] = math.cos(2 * math.pi * y / H)
-        targets[0, 0, 7] = 1.0  # attitude (cos, sin) = (0, 1) placeholder
+        targets = torch.zeros(1, 1, coordinator.total_target_dimension)
+        targets[0, 0, target_slices["position_x"]] = torch.tensor(
+            [math.sin(2 * math.pi * x / W), math.cos(2 * math.pi * x / W)]
+        )
+        targets[0, 0, target_slices["position_y"]] = torch.tensor(
+            [math.sin(2 * math.pi * y / H), math.cos(2 * math.pi * y / H)]
+        )
+        targets[0, 0, target_slices["attitude"]] = torch.tensor([0.0, 1.0])
 
         obs = _decode_targets_to_obs(
             targets,
@@ -51,6 +56,7 @@ class TestDecodeTargetsToObs:
             action=torch.zeros(1, 1, 3, dtype=torch.long),
             N=1,
             ship_config=ship_config,
+            coordinator=coordinator,
         )
 
         decoded = obs[ObsKey.POS][0, 0]

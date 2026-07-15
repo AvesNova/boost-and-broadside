@@ -248,13 +248,11 @@ def _decode_targets_to_obs(
     action: torch.Tensor,
     N: int,
     ship_config,
+    coordinator,
 ) -> MVPObservation:
     """Decode a coordinator target vector back to a raw MVPObservation.
 
-    targets: (B, N, 15)
-      pos_x(sin,cos)[0:2]  pos_y(sin,cos)[2:4]  vel(vx_norm,vy_norm)[4:6]
-      att(cos,sin)[6:8]    ang_vel(symlog)[8:9]
-      health(sin,cos)[9:11]  power(sin,cos)[11:13]  cooldown(sin,cos)[13:15]
+    Target slices are resolved by feature name from the coordinator.
     prev_obs: previous MVPObservation — obstacle tokens (N:) are copied unchanged
     action:   (B, N, 3) int — stored as PREVIOUS_ACTION for next step
     """
@@ -263,34 +261,40 @@ def _decode_targets_to_obs(
     _2pi = 2.0 * math.pi
     _hpi = math.pi / 2.0
     W, H = ship_config.world_size
+    target_slices = coordinator.target_slices()
 
     # Position: Fourier(1, period) encodes as (sin(2πx/W), cos(2πx/W)) / (sin(2πy/H), cos(2πy/H))
-    pos_x = (torch.atan2(targets[..., 0], targets[..., 1]) % _2pi) * W / _2pi
-    pos_y = (torch.atan2(targets[..., 2], targets[..., 3]) % _2pi) * H / _2pi
+    pos_x_target = targets[..., target_slices["position_x"]]
+    pos_y_target = targets[..., target_slices["position_y"]]
+    pos_x = (torch.atan2(pos_x_target[..., 0], pos_x_target[..., 1]) % _2pi) * W / _2pi
+    pos_y = (torch.atan2(pos_y_target[..., 0], pos_y_target[..., 1]) % _2pi) * H / _2pi
     pos = torch.stack([pos_x, pos_y], dim=-1)
 
     # Velocity: SymlogVelocity encodes as direction * symlog(speed)
-    vel_enc = targets[..., 4:6]
+    vel_enc = targets[..., target_slices["velocity"]]
     speed_enc = torch.norm(vel_enc, dim=-1, keepdim=True)
     direction = vel_enc / speed_enc.clamp(min=1e-8)
     speed = torch.expm1(speed_enc.clamp(min=0.0))
     vel = direction * speed
 
     # Attitude: Identity transform stores raw (cos, sin)
-    att = targets[..., 6:8]
+    att = targets[..., target_slices["attitude"]]
 
     # Angular velocity: Symlog encodes as symlog(ω)
-    sym = targets[..., 8:9]
+    sym = targets[..., target_slices["angular_velocity"]]
     ang_vel = torch.sign(sym) * torch.expm1(sym.abs())
 
     # Health/power/cooldown: UnitCircle encodes as (sin(angle), cos(angle))
-    health_angle = torch.atan2(targets[..., 9], targets[..., 10]).clamp(0.0, _hpi)
+    health_target = targets[..., target_slices["health"]]
+    health_angle = torch.atan2(health_target[..., 0], health_target[..., 1]).clamp(0.0, _hpi)
     health = (health_angle / _hpi * ship_config.max_health).unsqueeze(-1)
 
-    power_angle = torch.atan2(targets[..., 11], targets[..., 12]).clamp(0.0, _hpi)
+    power_target = targets[..., target_slices["power"]]
+    power_angle = torch.atan2(power_target[..., 0], power_target[..., 1]).clamp(0.0, _hpi)
     power = (power_angle / _hpi * ship_config.max_power).unsqueeze(-1)
 
-    cd_angle = torch.atan2(targets[..., 13], targets[..., 14]).clamp(0.0, _hpi)
+    cooldown_target = targets[..., target_slices["cooldown"]]
+    cd_angle = torch.atan2(cooldown_target[..., 0], cooldown_target[..., 1]).clamp(0.0, _hpi)
     cooldown = (cd_angle / _hpi * ship_config.firing_cooldown).unsqueeze(-1)
 
     alive = health.squeeze(-1) > ALIVE_HEALTH_EPS
@@ -349,7 +353,7 @@ def imagine_trajectory(
                 curr_ship_targets, pred_next_scaled
             )
             imag_obs = _decode_targets_to_obs(
-                next_ship_targets, imag_obs, action, num_ships, ship_config
+                next_ship_targets, imag_obs, action, num_ships, ship_config, coordinator
             )
             curr_ship_targets = coordinator.get_target_vector(imag_obs)[:, :num_ships]
 

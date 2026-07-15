@@ -6,12 +6,7 @@ Runs two phases:
   Phase 2 — 256 envs × 20 windows, running short closed-loop AR rollouts (teacher-
              forced with real sim actions) to measure how RMSE grows with rollout depth.
 
-Target vector layout (15 dims from coordinator):
-  [0:2]  pos_x (sin, cos)       [2:4]  pos_y (sin, cos)
-  [4:6]  vel (vx_norm, vy_norm) [6:8]  att (cos, sin)
-  [8]    ang_vel (symlog)
-  [9:11] health (sin, cos)      [11:13] power (sin, cos)
-  [13:15] cooldown (sin, cos)
+Target-vector dimensions are derived from the feature coordinator.
 
 Errors are measured in target space (predicted target vs true target).
 
@@ -41,42 +36,49 @@ from boost_and_broadside.modes.agent_factory import (
     resolve_agent_spec,
 )
 from boost_and_broadside.modes.collect import _obs_from_state
-from boost_and_broadside.train.rl.features import build_standard_coordinator
+from boost_and_broadside.train.rl.features import FeatureCoordinator, build_standard_coordinator
 
-_N_AUX = 15  # coordinator target_dim
 _AR_WINDOW = 20
 _WARMUP_STEPS = 50
 _TEAM_SYMMETRY_REL_TOL = 0.15
 
-# Maps logical feature name → target vector dim indices
-_FEAT_GROUPS: dict[str, tuple[list[int], str]] = {
-    "pos_x": ([0, 1], "pos_x (sin, cos)"),
-    "pos_y": ([2, 3], "pos_y (sin, cos)"),
-    "velocity": ([4, 5], "velocity (vx_norm, vy_norm)"),
-    "att": ([6, 7], "attitude (cos, sin)"),
-    "ang_vel": ([8], "angular velocity (symlog)"),
-    "health": ([9, 10], "health (sin, cos)"),
-    "power": ([11, 12], "power (sin, cos)"),
-    "cooldown": ([13, 14], "cooldown (sin, cos)"),
+# Coordinator feature name → stable report name, description, and channel labels.
+_REPORT_FEATURES = {
+    "position_x": ("pos_x", "pos_x (sin, cos)", ("pos_sin_x", "pos_cos_x")),
+    "position_y": ("pos_y", "pos_y (sin, cos)", ("pos_sin_y", "pos_cos_y")),
+    "velocity": (
+        "velocity",
+        "velocity (vx_norm, vy_norm)",
+        ("vel_vx_norm", "vel_vy_norm"),
+    ),
+    "attitude": ("att", "attitude (cos, sin)", ("att_cos", "att_sin")),
+    "angular_velocity": ("ang_vel", "angular velocity (symlog)", ("ang_vel_symlog",)),
+    "health": ("health", "health (sin, cos)", ("health_sin", "health_cos")),
+    "power": ("power", "power (sin, cos)", ("power_sin", "power_cos")),
+    "cooldown": (
+        "cooldown",
+        "cooldown (sin, cos)",
+        ("cooldown_sin", "cooldown_cos"),
+    ),
 }
 
-_DIM_NAMES = (
-    "pos_sin_x",
-    "pos_cos_x",
-    "pos_sin_y",
-    "pos_cos_y",
-    "vel_vx_norm",
-    "vel_vy_norm",
-    "att_cos",
-    "att_sin",
-    "ang_vel_symlog",
-    "health_sin",
-    "health_cos",
-    "power_sin",
-    "power_cos",
-    "cooldown_sin",
-    "cooldown_cos",
-)
+
+def _report_layout(
+    coordinator: FeatureCoordinator,
+) -> tuple[dict[str, tuple[list[int], str]], list[str]]:
+    """Build report dimension groups from the coordinator's target layout."""
+    target_slices = coordinator.target_slices()
+    groups: dict[str, tuple[list[int], str]] = {}
+    dim_names = [""] * coordinator.total_target_dimension
+    for feature_name, (report_name, description, channel_names) in _REPORT_FEATURES.items():
+        target_slice = target_slices[feature_name]
+        dims = list(range(target_slice.start, target_slice.stop))
+        if len(dims) != len(channel_names):
+            raise ValueError(f"Unexpected target width for feature {feature_name!r}")
+        groups[report_name] = (dims, description)
+        for dim, channel_name in zip(dims, channel_names):
+            dim_names[dim] = channel_name
+    return groups, dim_names
 
 
 # ---------------------------------------------------------------------------
@@ -117,6 +119,7 @@ def run_noise_calibration_mode(
         )
 
     coordinator = build_standard_coordinator(ship_config)
+    feature_groups, dim_names = _report_layout(coordinator)
     scripted_for_warmup = resolve_agent_spec(
         "scripted", ship_config, model_config, device, num_ships=N
     )
@@ -157,11 +160,18 @@ def run_noise_calibration_mode(
 
     print("\nBuilding output...")
     output = _build_output(
-        phase1, phase2, team0_spec, num_envs, num_steps, num_ar_envs, num_ar_windows
+        phase1,
+        phase2,
+        team0_spec,
+        num_envs,
+        num_steps,
+        num_ar_envs,
+        num_ar_windows,
+        feature_groups,
     )
-    _write_outputs(output, output_dir)
+    _write_outputs(output, output_dir, feature_groups, dim_names)
 
-    _print_summary(output)
+    _print_summary(output, feature_groups)
     print(f"\nWrote results to {output_dir}/")
 
 
@@ -187,18 +197,19 @@ def _run_phase1(
     init_hidden(agent1, B, num_tokens, dev)
     env.reset()
 
-    err_sum = torch.zeros(_N_AUX, device=dev)
-    err_sq_sum = torch.zeros(_N_AUX, device=dev)
+    num_targets = coordinator.total_target_dimension
+    err_sum = torch.zeros(num_targets, device=dev)
+    err_sq_sum = torch.zeros(num_targets, device=dev)
     err_count = torch.zeros(1, device=dev)
-    lag1_cross_sum = torch.zeros(_N_AUX, device=dev)
-    lag1_sq_sum = torch.zeros(_N_AUX, device=dev)
+    lag1_cross_sum = torch.zeros(num_targets, device=dev)
+    lag1_sq_sum = torch.zeros(num_targets, device=dev)
     lag1_count = torch.zeros(1, device=dev)
-    team_err_sq_sum = torch.zeros(2, _N_AUX, device=dev)
+    team_err_sq_sum = torch.zeros(2, num_targets, device=dev)
     team_count = torch.zeros(2, device=dev)
-    combat_err_sq_sum = torch.zeros(2, _N_AUX, device=dev)
+    combat_err_sq_sum = torch.zeros(2, num_targets, device=dev)
     combat_count = torch.zeros(2, device=dev)
 
-    prev_err = torch.zeros(B, N, _N_AUX, device=dev)
+    prev_err = torch.zeros(B, N, num_targets, device=dev)
     prev_valid = torch.zeros(B, N, dtype=torch.bool, device=dev)
 
     t0 = time.perf_counter()
@@ -219,7 +230,7 @@ def _run_phase1(
         action = torch.where((team_id == 0).unsqueeze(-1), action0, action1)
 
         curr_alive = obs["alive"][:, :N].clone()  # (B, N) bool, before step
-        curr_targets = coordinator.get_target_vector(obs)[:, :N]  # (B, N, 15)
+        curr_targets = coordinator.get_target_vector(obs)[:, :N]  # (B, N, target_dim)
 
         dones, truncated = env.step(action)
         done_any = dones | truncated  # (B,)
@@ -230,14 +241,14 @@ def _run_phase1(
         if pred_next_scaled is not None:
             pred_targets = coordinator.apply_scaled_predictions(curr_targets, pred_next_scaled)
             true_targets = coordinator.get_target_vector(next_obs)[:, :N]
-            err = pred_targets - true_targets  # (B, N, 15)
+            err = pred_targets - true_targets  # (B, N, target_dim)
 
             # valid: alive at both ends, no episode boundary
             episode_end = done_any.unsqueeze(-1)  # (B, 1)
             valid = curr_alive & next_alive & ~episode_end  # (B, N)
 
             if valid.any():
-                v_err = err[valid]  # (K, 15)
+                v_err = err[valid]  # (K, target_dim)
                 err_sum += v_err.sum(0)
                 err_sq_sum += v_err.pow(2).sum(0)
                 err_count += valid.sum().float()
@@ -245,7 +256,7 @@ def _run_phase1(
                 # Lag-1 autocorrelation
                 lag_valid = valid & prev_valid  # (B, N)
                 if lag_valid.any():
-                    lv_curr = err[lag_valid]  # (M, 15)
+                    lv_curr = err[lag_valid]  # (M, target_dim)
                     lv_prev = prev_err[lag_valid]
                     lag1_cross_sum += (lv_prev * lv_curr).sum(0)
                     lag1_sq_sum += lv_prev.pow(2).sum(0)
@@ -322,7 +333,7 @@ def _run_phase2(
     init_hidden(warmup_agent1, B, num_tokens, dev)
     env.reset()
 
-    ar_sq_sum = torch.zeros(_AR_WINDOW, _N_AUX, device=dev)
+    ar_sq_sum = torch.zeros(_AR_WINDOW, coordinator.total_target_dimension, device=dev)
     ar_count = torch.zeros(_AR_WINDOW, device=dev)
 
     t0 = time.perf_counter()
@@ -345,11 +356,11 @@ def _run_phase2(
         # --- Snapshot after warmup ---
         ar_start_obs = _obs_from_state(env.state, ship_config)
         ar_start_hidden = agent0.hidden.clone()
-        ar_start_targets = coordinator.get_target_vector(ar_start_obs)[:, :N]  # (B, N, 15)
+        ar_start_targets = coordinator.get_target_vector(ar_start_obs)[:, :N]
 
         # --- Real-sim recording ---
         stored_actions = []  # list of (B, N, 3) int tensors
-        stored_true_targets = []  # list of (B, N, 15) float tensors
+        stored_true_targets = []  # list of (B, N, target_dim) float tensors
         stored_alive = []  # list of (B, N) bool tensors
         window_valid = torch.ones(B, dtype=torch.bool, device=dev)
 
@@ -390,7 +401,7 @@ def _run_phase2(
                 next_targets_ar = coordinator.apply_scaled_predictions(
                     curr_targets, pred_next_scaled
                 )
-                err_k = (next_targets_ar - stored_true_targets[k]).pow(2)  # (B, N, 15)
+                err_k = (next_targets_ar - stored_true_targets[k]).pow(2)
 
                 # valid: window not terminated + ship alive in ground truth
                 valid_k = window_valid.unsqueeze(-1) & stored_alive[k]  # (B, N)
@@ -401,7 +412,12 @@ def _run_phase2(
                     ar_count[k] += valid_k.sum().float()
 
                 curr_obs = _decode_targets_to_obs(
-                    next_targets_ar, curr_obs, stored_actions[k], N, ship_config
+                    next_targets_ar,
+                    curr_obs,
+                    stored_actions[k],
+                    N,
+                    ship_config,
+                    coordinator,
                 )
                 curr_targets = coordinator.get_target_vector(curr_obs)[:, :N]
 
@@ -416,7 +432,7 @@ def _run_phase2(
     print(f"Phase 2 done in {elapsed:.1f}s.")
 
     return {
-        "ar_sq_sum": ar_sq_sum.cpu().numpy(),  # (20, 15)
+        "ar_sq_sum": ar_sq_sum.cpu().numpy(),  # (AR_WINDOW, target_dim)
         "ar_count": ar_count.cpu().numpy(),  # (20,)
     }
 
@@ -434,32 +450,33 @@ def _build_output(
     num_steps: int,
     num_ar_envs: int,
     num_ar_windows: int,
+    feature_groups: dict[str, tuple[list[int], str]],
 ) -> dict:
     n = max(phase1["err_count"], 1.0)
-    sigma_per_dim = np.sqrt(phase1["err_sq_sum"] / n)  # (16,)
-    bias_per_dim = phase1["err_sum"] / n  # (16,)
+    sigma_per_dim = np.sqrt(phase1["err_sq_sum"] / n)  # (target_dim,)
+    bias_per_dim = phase1["err_sum"] / n  # (target_dim,)
 
     lag_denom = phase1["lag1_sq_sum"]
     rho_per_dim = np.where(
         lag_denom > 1e-9,
         phase1["lag1_cross_sum"] / lag_denom,
         0.0,
-    ).clip(-1.0, 1.0)  # (16,)
+    ).clip(-1.0, 1.0)  # (target_dim,)
 
     team_sigma = np.sqrt(
         phase1["team_err_sq_sum"] / np.maximum(phase1["team_count"][:, None], 1.0)
-    )  # (2, 16)
+    )  # (2, target_dim)
 
     combat_sigma = np.sqrt(
         phase1["combat_err_sq_sum"] / np.maximum(phase1["combat_count"][:, None], 1.0)
-    )  # (2, 16)
+    )  # (2, target_dim)
 
     ar_rmse = np.sqrt(
         phase2["ar_sq_sum"] / np.maximum(phase2["ar_count"][:, None], 1.0)
-    )  # (20, 16)
+    )  # (AR_WINDOW, target_dim)
 
     features_json: dict = {}
-    for name, (dims, _desc) in _FEAT_GROUPS.items():
+    for name, (dims, _desc) in feature_groups.items():
         sig = float(np.mean(sigma_per_dim[dims]))
         s0 = float(np.mean(team_sigma[0, dims]))
         s1 = float(np.mean(team_sigma[1, dims]))
@@ -479,7 +496,7 @@ def _build_output(
         "depth": list(range(1, _AR_WINDOW + 1)),
         "rmse_per_feature": {
             name: [float(np.mean(ar_rmse[k, dims])) for k in range(_AR_WINDOW)]
-            for name, (dims, _) in _FEAT_GROUPS.items()
+            for name, (dims, _) in feature_groups.items()
         },
     }
 
@@ -488,7 +505,7 @@ def _build_output(
             "sigma": features_json[name]["sigma"],
             "rho": features_json[name]["rho_lag1"],
         }
-        for name in _FEAT_GROUPS
+        for name in feature_groups
     }
 
     return {
@@ -513,7 +530,12 @@ def _build_output(
 # ---------------------------------------------------------------------------
 
 
-def _write_outputs(data: dict, output_dir: str) -> None:
+def _write_outputs(
+    data: dict,
+    output_dir: str,
+    feature_groups: dict[str, tuple[list[int], str]],
+    dim_names: list[str],
+) -> None:
     os.makedirs(output_dir, exist_ok=True)
 
     # JSON
@@ -521,24 +543,27 @@ def _write_outputs(data: dict, output_dir: str) -> None:
         json.dump(data, f, indent=2)
 
     feats = data["features"]
-    feat_names = list(_FEAT_GROUPS.keys())
+    feat_names = list(feature_groups)
 
     # --- error_distributions.png: sigma bar chart per target dim with bias overlay ---
-    fig, axes = plt.subplots(3, 5, figsize=(14, 9))
+    num_targets = len(dim_names)
+    num_columns = 5
+    num_rows = (num_targets + num_columns - 1) // num_columns
+    fig, axes = plt.subplots(num_rows, num_columns, figsize=(14, 3 * num_rows))
     fig.suptitle("Per-dim sigma (bar) and bias (line marker)", fontsize=11)
 
     # Rebuild per-dim sigma and bias from feature groups
-    sigma_arr = np.zeros(_N_AUX)
-    bias_arr = np.zeros(_N_AUX)
-    for name, (dims, _) in _FEAT_GROUPS.items():
+    sigma_arr = np.zeros(num_targets)
+    bias_arr = np.zeros(num_targets)
+    for name, (dims, _) in feature_groups.items():
         sigma_arr[dims] = feats[name]["sigma"]
         bias_arr[dims] = feats[name]["bias"]
 
     for i, ax in enumerate(axes.flat):
-        if i < _N_AUX:
+        if i < num_targets:
             ax.bar([0], [sigma_arr[i]], color="steelblue", alpha=0.8, label="sigma")
             ax.axhline(bias_arr[i], color="red", linewidth=1.5, linestyle="--", label="bias")
-            ax.set_title(_DIM_NAMES[i], fontsize=8)
+            ax.set_title(dim_names[i], fontsize=8)
             ax.set_xticks([])
             ax.set_ylim(0, max(sigma_arr[i] * 1.5, 1e-6))
             if i == 0:
@@ -601,7 +626,7 @@ def _write_outputs(data: dict, output_dir: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _print_summary(data: dict) -> None:
+def _print_summary(data: dict, feature_groups: dict[str, tuple[list[int], str]]) -> None:
     feats = data["features"]
     rec = data["recommended_noise"]
     print(f"\n{'=' * 70}")
@@ -610,7 +635,7 @@ def _print_summary(data: dict) -> None:
         f"{'sym_ok':>6}  {'sigma_cmbt':>10}  {'rec_sigma':>9}  {'rec_rho':>7}"
     )
     print(f"{'-' * 70}")
-    for name in _FEAT_GROUPS:
+    for name in feature_groups:
         f = feats[name]
         r = rec[name]
         sym = "yes" if f["team_symmetry_ok"] else "NO"
