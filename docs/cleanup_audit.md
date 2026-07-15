@@ -221,13 +221,21 @@ Missing annotations on several public functions (`load_policy(model_config, coor
 `_apply_smoke(config)`, `get_actions(..., device)`, `build_standard_coordinator(ship_config)`).
 **Action:** modernize to `tuple[float, float]` etc.; add the missing hints. `ruff --select UP` automates most of it.
 
-### 5.2 ruff violations: 41 errors — **Medium**
+### 5.2 ruff violations: 41 errors — **Medium** — ✅ done (bdadebc, ecceaf6, 9365ab4)
 18 unused imports, 14 module-import-not-at-top (the `_EPS = …` wedged between imports pattern in
 [wrapper.py:14](src/boost_and_broadside/env/wrapper.py#L14),
 [physics.py:13](src/boost_and_broadside/env/physics.py#L13),
 [collect.py:12](src/boost_and_broadside/modes/collect.py#L12)), 4 unused variables,
 4 empty f-strings, 1 multi-statement line. 22 are auto-fixable.
 **Action:** move `_EPS` to `constants.py` (it's duplicated 4×), then `ruff check --fix` + manual pass.
+
+**Done:** `_EPS` consolidated into `constants.EPS` (obs_spec.py's copy left — dead code, Session 2
+deletes it). `ruff check --fix` (95 autofixes) + `ruff format` (49 files) + a manual pass for
+F841/E501 that ruff couldn't autofix. Remaining ruff state: 2 errors total (1 F841 + 1 UP007),
+both in `relational_features_head.py`/`obs_spec.py` (Session 2 deletes both files), plus 26 E501
+long-line violations deliberately left in files owned by other sessions — see the note added to
+this doc's §5.2 action and the per-file list in the `style: manual ruff cleanup pass` commit
+message. 156/156 tests pass throughout.
 
 ### 5.3 Magic numbers — **Medium** (§6.3)
 Worst offenders, all in [ppo.py](src/boost_and_broadside/train/rl/ppo.py):
