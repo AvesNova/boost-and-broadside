@@ -93,32 +93,7 @@ def _slice_obs(obs: MVPObservation, start: int, end: int) -> MVPObservation:
 
 def _slice_state(state: TensorState, start: int, end: int) -> TensorState:
     """Return a new TensorState containing only envs [start, end)."""
-    return TensorState(
-        step_count=state.step_count[start:end],
-        ship_pos=state.ship_pos[start:end],
-        ship_vel=state.ship_vel[start:end],
-        ship_attitude=state.ship_attitude[start:end],
-        ship_ang_vel=state.ship_ang_vel[start:end],
-        ship_health=state.ship_health[start:end],
-        ship_power=state.ship_power[start:end],
-        ship_cooldown=state.ship_cooldown[start:end],
-        ship_team_id=state.ship_team_id[start:end],
-        ship_alive=state.ship_alive[start:end],
-        ship_is_shooting=state.ship_is_shooting[start:end],
-        prev_action=state.prev_action[start:end],
-        bullet_pos=state.bullet_pos[start:end],
-        bullet_vel=state.bullet_vel[start:end],
-        bullet_time=state.bullet_time[start:end],
-        bullet_active=state.bullet_active[start:end],
-        bullet_cursor=state.bullet_cursor[start:end],
-        damage_matrix=state.damage_matrix[start:end],
-        cumulative_damage_matrix=state.cumulative_damage_matrix[start:end],
-        obstacle_pos=state.obstacle_pos[start:end],
-        obstacle_vel=state.obstacle_vel[start:end],
-        obstacle_radius=state.obstacle_radius[start:end],
-        obstacle_gcenter=state.obstacle_gcenter[start:end],
-        ship_hit_obstacle=state.ship_hit_obstacle[start:end],
-    )
+    return state.slice_envs(slice(start, end))
 
 
 def _flip_team_obs(obs: MVPObservation, N: int) -> MVPObservation:

@@ -1,6 +1,6 @@
 """TensorState: the complete GPU-resident state of all parallel environments."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 import torch
 
@@ -88,28 +88,11 @@ class TensorState:
     def clone(self) -> "TensorState":
         """Deep copy — all tensors are cloned onto the same device."""
         return TensorState(
-            step_count=self.step_count.clone(),
-            ship_pos=self.ship_pos.clone(),
-            ship_vel=self.ship_vel.clone(),
-            ship_attitude=self.ship_attitude.clone(),
-            ship_ang_vel=self.ship_ang_vel.clone(),
-            ship_health=self.ship_health.clone(),
-            ship_power=self.ship_power.clone(),
-            ship_cooldown=self.ship_cooldown.clone(),
-            ship_team_id=self.ship_team_id.clone(),
-            ship_alive=self.ship_alive.clone(),
-            ship_is_shooting=self.ship_is_shooting.clone(),
-            prev_action=self.prev_action.clone(),
-            bullet_pos=self.bullet_pos.clone(),
-            bullet_vel=self.bullet_vel.clone(),
-            bullet_time=self.bullet_time.clone(),
-            bullet_active=self.bullet_active.clone(),
-            bullet_cursor=self.bullet_cursor.clone(),
-            damage_matrix=self.damage_matrix.clone(),
-            cumulative_damage_matrix=self.cumulative_damage_matrix.clone(),
-            obstacle_pos=self.obstacle_pos.clone(),
-            obstacle_vel=self.obstacle_vel.clone(),
-            obstacle_radius=self.obstacle_radius.clone(),
-            obstacle_gcenter=self.obstacle_gcenter.clone(),
-            ship_hit_obstacle=self.ship_hit_obstacle.clone(),
+            **{field.name: getattr(self, field.name).clone() for field in fields(self)}
+        )
+
+    def slice_envs(self, env_slice: slice) -> "TensorState":
+        """Return a view-backed state containing only the selected environments."""
+        return TensorState(
+            **{field.name: getattr(self, field.name)[env_slice] for field in fields(self)}
         )

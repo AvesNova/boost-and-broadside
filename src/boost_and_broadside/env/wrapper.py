@@ -8,6 +8,7 @@ Responsibilities:
   - Track per-ship episode statistics for logging.
 """
 
+import dataclasses
 from typing import Any
 
 import torch
@@ -412,29 +413,8 @@ def _make_prev_state_proxy(
     This avoids a full state clone while giving reward components the correct
     delta (health before → health after damage).
     """
-    return TensorState(
-        step_count=state.step_count,
-        ship_pos=state.ship_pos,
-        ship_vel=state.ship_vel,
-        ship_attitude=state.ship_attitude,
-        ship_ang_vel=state.ship_ang_vel,
+    return dataclasses.replace(
+        state,
         ship_health=prev_health,
-        ship_power=state.ship_power,
-        ship_cooldown=state.ship_cooldown,
-        ship_team_id=state.ship_team_id,
         ship_alive=prev_alive,
-        ship_is_shooting=state.ship_is_shooting,
-        prev_action=state.prev_action,
-        bullet_pos=state.bullet_pos,
-        bullet_vel=state.bullet_vel,
-        bullet_time=state.bullet_time,
-        bullet_active=state.bullet_active,
-        bullet_cursor=state.bullet_cursor,
-        damage_matrix=state.damage_matrix,
-        cumulative_damage_matrix=state.cumulative_damage_matrix,
-        obstacle_pos=state.obstacle_pos,
-        obstacle_vel=state.obstacle_vel,
-        obstacle_radius=state.obstacle_radius,
-        obstacle_gcenter=state.obstacle_gcenter,
-        ship_hit_obstacle=state.ship_hit_obstacle,
     )
