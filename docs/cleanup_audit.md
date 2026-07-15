@@ -44,7 +44,7 @@ use the team-based lambda path, and add `enemy_win` to `enemy_neg_lambda_compone
 a **live reward-signal change** — pair it with the win-component lambda-matrix regression test and
 a smoke run to confirm stability. Reconcile all configs so they agree on the win-component lambda set.
 
-### 1.3 Dead schedule/config fields imply features that don't exist — **High**
+### 1.3 Dead schedule/config fields imply features that don't exist — **High** — ✅ done (01946a8)
 - `allow_scripted_in_roster` and `elo_eval_games` are resolved every update
   ([ppo.py:210-233](src/boost_and_broadside/train/rl/ppo.py#L210-L233)) and set in every run
   profile, but never read.
@@ -56,6 +56,15 @@ a smoke run to confirm stability. Reconcile all configs so they agree on the win
 
 **Action:** delete the dead fields/method from configs, schedule, run profiles and tests,
 or re-implement the scripted-roster feature if it's still wanted.
+
+**Done (01946a8):** deleted `allow_scripted_in_roster` and `elo_eval_games` from
+`TrainingSchedule` (schedule.py) and ppo.py's `_ResolvedSchedule`/`_resolve_schedule`;
+deleted `scripted_roster_min_steps` from `TrainConfig` (training.py); deleted
+`EloRoster.update_elo()` (roster.py) and fixed its docstring's false claim that a
+"scripted" entry is auto-added; removed the matching stale comment in `ppo.py`'s
+`__init__`. Updated all four run profiles (rl.py, rl_obstacles.py, bc.py,
+bc_warmstart.py) and `tests/train/test_ppo.py` to stop passing these kwargs.
+156/156 tests pass; `--mode rl --smoke` runs clean.
 
 ### 1.4 `_decode_targets_to_obs` uses world width for the y-axis — **Medium**
 [agent_factory.py:269-273](src/boost_and_broadside/modes/agent_factory.py#L269-L273):
@@ -74,16 +83,16 @@ E.g. `store_initial_hidden` says `(1, B*N, D)` but state is `(n_layers, B*num_to
 
 | What | Where | Action | Importance |
 |---|---|---|---|
-| `config/obs_spec.py` — 347-line `ObsConfig` system, only re-exported, used by nothing (yet documented as *the* observation pipeline in README) | [obs_spec.py](src/boost_and_broadside/config/obs_spec.py), [config/__init__.py](src/boost_and_broadside/config/__init__.py) | Delete module + re-exports; fix `ModelConfig` docstring that references it | **High** |
-| `relational_features_head.py` — orphaned scratch script at repo root, never imported, has unused imports/vars | [relational_features_head.py](relational_features_head.py) | Delete (or move to a `sketches/` dir if you must keep it) | **High** |
-| `runs/rl_hpc.py` — `RL_HPC_TRAIN_CONFIG` imported nowhere; no `rl_hpc` mode in main.py; README lists it | [rl_hpc.py](runs/rl_hpc.py) | Delete, or wire up a mode; fix README either way | **High** |
-| `Directional` transform + `VelocityPredictor` — unused classes | [features.py:185-196](src/boost_and_broadside/train/rl/features.py#L185-L196), [features.py:315-344](src/boost_and_broadside/train/rl/features.py#L315-L344) | Delete | Medium |
-| `base_rewards` pytest fixture — constructs `RewardConfig` with ~14 fields that no longer exist; used by zero tests (would `TypeError` if used) | [tests/conftest.py](tests/conftest.py) | Delete | Medium |
-| Commented-out `ScaleConfig` block | [runs/rl.py:68-71](runs/rl.py#L68-L71) | Delete | Medium |
-| Deprecated `obs_config=None  # deprecated, ignored` parameter (style guide §6.8 forbids this) | [ppo.py:326](src/boost_and_broadside/train/rl/ppo.py#L326) | Delete parameter | Medium |
-| Legacy obs-key compatibility: `_LEGACY_KEY_MAP`, `from_dict` legacy branch; features.py still uses legacy string names `"prev_power"` etc. | [observation.py:21-25](src/boost_and_broadside/env/observation.py#L21-L25), [features.py:756-771](src/boost_and_broadside/train/rl/features.py#L756-L771) | Make features.py use `Accessor(ObsKey.PREVIOUS_ACTION, [i])` names only, then delete the legacy map (§6.8) | Medium |
-| Leftover tombstone comment `# _run_matchup was removed…` while the module docstring still says it exports `_run_matchup` | [collect.py:4,27](src/boost_and_broadside/modes/collect.py#L27) | Delete comment, fix docstring | Low |
-| `SIGReg` machinery always instantiated though `sigreg_coef=0.0` in every profile | [ppo.py:429](src/boost_and_broadside/train/rl/ppo.py#L429), [sigreg.py](src/boost_and_broadside/train/rl/sigreg.py) | **Decision (2026-07-15): keep** as a config-gated feature. (1) Add a short README/docstring note that it exists and is off by default. (2) Verify the disabled-path cost stays ≈ one `if`: confirmed 2026-07-15 that `need_sigreg=False` skips the compute *and* stops `z` being returned from `evaluate_actions`, and that `self.sigreg` holds no optimizer params — leave that gating intact, don't regress it in the ppo.py split. The only always-on remnant is `self.sigreg` init (tiny buffers, negligible); optionally make it lazy. | Low |
+| `config/obs_spec.py` — 347-line `ObsConfig` system, only re-exported, used by nothing (yet documented as *the* observation pipeline in README) | [obs_spec.py](src/boost_and_broadside/config/obs_spec.py), [config/__init__.py](src/boost_and_broadside/config/__init__.py) | Delete module + re-exports; fix `ModelConfig` docstring that references it | **High** — ✅ done (7850430) |
+| `relational_features_head.py` — orphaned scratch script at repo root, never imported, has unused imports/vars | [relational_features_head.py](relational_features_head.py) | Delete (or move to a `sketches/` dir if you must keep it) | **High** — ✅ done (7850430) |
+| `runs/rl_hpc.py` — `RL_HPC_TRAIN_CONFIG` imported nowhere; no `rl_hpc` mode in main.py; README lists it | [rl_hpc.py](runs/rl_hpc.py) | Delete, or wire up a mode; fix README either way | **High** — ✅ done (7850430): deleted. README's dangling reference is Session 6's to fix during the full rewrite. |
+| `Directional` transform + `VelocityPredictor` — unused classes | [features.py:185-196](src/boost_and_broadside/train/rl/features.py#L185-L196), [features.py:315-344](src/boost_and_broadside/train/rl/features.py#L315-L344) | Delete | Medium — ✅ done (55d31fb) |
+| `base_rewards` pytest fixture — constructs `RewardConfig` with ~14 fields that no longer exist; used by zero tests (would `TypeError` if used) | [tests/conftest.py](tests/conftest.py) | Delete | Medium — ✅ done (04cb596) |
+| Commented-out `ScaleConfig` block | [runs/rl.py:68-71](runs/rl.py#L68-L71) | Delete | Medium — ✅ done (04cb596) |
+| Deprecated `obs_config=None  # deprecated, ignored` parameter (style guide §6.8 forbids this) | [ppo.py:326](src/boost_and_broadside/train/rl/ppo.py#L326) | Delete parameter | Medium — ✅ done (173391a) |
+| Legacy obs-key compatibility: `_LEGACY_KEY_MAP`, `from_dict` legacy branch; features.py still uses legacy string names `"prev_power"` etc. | [observation.py:21-25](src/boost_and_broadside/env/observation.py#L21-L25), [features.py:756-771](src/boost_and_broadside/train/rl/features.py#L756-L771) | Make features.py use `Accessor(ObsKey.PREVIOUS_ACTION, [i])` names only, then delete the legacy map (§6.8) | Medium — ✅ done (173391a): features.py already accessed via `Accessor(ObsKey.PREVIOUS_ACTION, [i])` — the `"prev_power"` etc. strings were only `Feature.name` display labels, not lookups. Deleted `_LEGACY_KEY_MAP`, the legacy branches in `__getitem__`/`__contains__`, and `from_dict` (zero callers). |
+| Leftover tombstone comment `# _run_matchup was removed…` while the module docstring still says it exports `_run_matchup` | [collect.py:4,27](src/boost_and_broadside/modes/collect.py#L27) | Delete comment, fix docstring | Low — ✅ done (faf6162) |
+| `SIGReg` machinery always instantiated though `sigreg_coef=0.0` in every profile | [ppo.py:429](src/boost_and_broadside/train/rl/ppo.py#L429), [sigreg.py](src/boost_and_broadside/train/rl/sigreg.py) | **Decision (2026-07-15): keep** as a config-gated feature. (1) Add a short README/docstring note that it exists and is off by default. (2) Verify the disabled-path cost stays ≈ one `if`: confirmed 2026-07-15 that `need_sigreg=False` skips the compute *and* stops `z` being returned from `evaluate_actions`, and that `self.sigreg` holds no optimizer params — leave that gating intact, don't regress it in the ppo.py split. The only always-on remnant is `self.sigreg` init (tiny buffers, negligible); optionally make it lazy. | Low — ✅ done (97d4912): added the note to sigreg.py's module docstring; re-verified the disabled-path gating still holds. Left `self.sigreg` init eager (negligible cost) — not required by the decision. |
 
 ---
 
@@ -303,7 +312,7 @@ in bc.py — same name, different unit; single letters `sc`/`w`/`d`/`a` in ppo.p
   `test_ppo.py`). Point checkpoint dirs at pytest's `tmp_path` fixture. — **Medium** —
   ✅ done (e81696a): all 8 `PPOTrainer`/`_make_trainer` call sites in `test_ppo.py` now pass
   `checkpoint_dir=str(tmp_path)`; verified `checkpoints/` dir count unchanged across a full run.
-- **Dead fixture** `base_rewards` with nonexistent fields (finding 2, table).
+- **Dead fixture** `base_rewards` with nonexistent fields (finding 2, table) — ✅ done (04cb596).
 - **Coverage gaps worth closing for the portfolio story:**
   - No test that scheduled group scales reach effective component weights (would have caught 1.1).
   - No test of the lambda matrix for win components (would have caught 1.2).
