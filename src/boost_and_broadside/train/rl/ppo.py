@@ -958,7 +958,7 @@ class PPOTrainer:
                         self._compile_mode,
                         team_pma_k=self._win_k,
                     )
-                    self._current_league_policy = entry._policy
+                    self._current_league_policy = entry.policy
                     league_hidden = self._current_league_policy.initial_hidden(
                         self.B_league, num_tokens, self.device
                     )
@@ -1486,7 +1486,7 @@ class PPOTrainer:
             bc_factor = max(0.0, 2.0 * (p_bc_wins - 0.5))
             self._behavior_cloning_coef = self._schedule_state.behavior_cloning_coef * bc_factor
             self.optim.param_groups[0]["lr"] = self._schedule_state.learning_rate
-            for comp in self.wrapper._all_components:
+            for comp in self.wrapper.reward_components:
                 scale_attr = _GROUP[comp.name]
                 raw: float = getattr(self.cfg.rewards, f"{comp.name}_weight")
                 comp.weight = raw * getattr(self._schedule_state, scale_attr)
@@ -1516,10 +1516,11 @@ class PPOTrainer:
                         self._avg_training_elo = self._training_elo
 
             # Scaler stats — one CPU transfer per component group
-            p5_cpu = self.scaler._p5.cpu()
-            p95_cpu = self.scaler._p95.cpu()
+            p5, p95 = self.scaler.percentiles
+            p5_cpu = p5.cpu()
+            p95_cpu = p95.cpu()
             span_cpu = p95_cpu - p5_cpu
-            adv_rms_cpu = self.adv_scaler._rms.cpu()
+            adv_rms_cpu = self.adv_scaler.rms.cpu()
             for i, name in enumerate(self._active_names):
                 metrics[f"scaler/p5/{name}"] = p5_cpu[i].item()
                 metrics[f"scaler/p95/{name}"] = p95_cpu[i].item()
@@ -2127,7 +2128,7 @@ class PPOTrainer:
         n_scales = len(all_buffers)
 
         comp_weights = torch.tensor(
-            [c.weight for c in self.wrapper._active_components],
+            [c.weight for c in self.wrapper.active_components],
             dtype=torch.float32,
             device=self.device,
         )  # (K,)

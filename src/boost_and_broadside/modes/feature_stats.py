@@ -45,7 +45,7 @@ def run_feature_stats_mode(
     coordinator = build_standard_coordinator(ship_config)
     feat_names = coordinator.get_feature_names()
     P = coordinator.total_prediction_dimension
-    curr_scale = coordinator._label_scale_vector(dev)
+    curr_scale = coordinator.label_scale_vector(dev)
 
     agent0 = resolve_agent_spec(
         team0_spec, ship_config, model_config, device, checkpoint_dir, num_ships=N

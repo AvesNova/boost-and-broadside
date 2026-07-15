@@ -30,7 +30,7 @@ class RosterEntry:
     update: int  # PPO update index when snapshotted
     path: str | None = None  # .pt file path; None for all non-checkpoint kinds
     fixed: bool = False  # If True, ELO is never modified (e.g. random anchor at 0)
-    _policy: object = field(default=None, repr=False)  # Loaded MVPPolicy; None if evicted
+    policy: object = field(default=None, repr=False)  # Loaded MVPPolicy; None if evicted
 
 
 class EloRoster:
@@ -201,8 +201,8 @@ class EloRoster:
         compile_mode: str | None = None,
         team_pma_k: tuple[int, ...] = (),
     ) -> None:
-        """Load checkpoint weights into entry._policy (no-op if already loaded)."""
-        if entry._policy is not None or entry.kind != "checkpoint":
+        """Load checkpoint weights into entry.policy (no-op if already loaded)."""
+        if entry.policy is not None or entry.kind != "checkpoint":
             return
         import torch.nn as nn
 
@@ -223,7 +223,7 @@ class EloRoster:
         for m in policy.modules():
             if isinstance(m, nn.RMSNorm) and m.weight.is_cuda:
                 m.weight.data = m.weight.data.bfloat16()
-        entry._policy = (
+        entry.policy = (
             torch.compile(policy, mode=compile_mode) if compile_mode is not None else policy
         )
 
@@ -231,7 +231,7 @@ class EloRoster:
         """Free loaded weights from all checkpoint entries to reclaim GPU memory."""
         for e in self.entries:
             if e.kind == "checkpoint":
-                e._policy = None
+                e.policy = None
 
     # ------------------------------------------------------------------
     # Checkpoint file paths referenced by the roster (must not be pruned)

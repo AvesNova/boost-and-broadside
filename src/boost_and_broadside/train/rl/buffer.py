@@ -144,6 +144,11 @@ class ReturnScaler:
             "initialized": self._initialized,
         }
 
+    @property
+    def percentiles(self) -> tuple[torch.Tensor, torch.Tensor]:
+        """Current p5 and p95 vectors."""
+        return self._p5, self._p95
+
     def load_state_dict(self, d: dict) -> None:
         self._p5 = d["p5"].to(self._p5.device)
         self._p95 = d["p95"].to(self._p95.device)
@@ -215,6 +220,11 @@ class AdvantageScaler:
 
     def state_dict(self) -> dict:
         return {"rms": self._rms.cpu(), "initialized": self._initialized}
+
+    @property
+    def rms(self) -> torch.Tensor:
+        """Current per-component advantage RMS vector."""
+        return self._rms
 
     def load_state_dict(self, d: dict) -> None:
         self._rms = d["rms"].to(self._rms.device)

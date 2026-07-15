@@ -33,7 +33,7 @@ from boost_and_broadside.env.observation import MVPObservation, ObsKey
 from boost_and_broadside.env.state import TensorState
 
 
-def _infer_team_pma_k(ckpt: dict) -> tuple[int, ...]:
+def infer_team_pma_k(ckpt: dict) -> tuple[int, ...]:
     """Return the win/loss value-component indices for a checkpoint.
 
     Newer checkpoints store this directly under "team_pma_k". Older ones
@@ -157,7 +157,7 @@ def resolve_agent_spec(
     ckpt = torch.load(path, map_location=device, weights_only=False)
     coordinator = build_standard_coordinator(ship_config)
     K = ckpt["policy_state_dict"]["value_head_local.3.weight"].shape[0]
-    team_pma_k = _infer_team_pma_k(ckpt)
+    team_pma_k = infer_team_pma_k(ckpt)
     policy = MVPPolicy(
         model_config,
         coordinator,
@@ -331,7 +331,7 @@ def imagine_trajectory(
         return []
 
     coordinator = agent.agent.coordinator
-    label_scale = coordinator._label_scale_vector(device)
+    label_scale = coordinator.label_scale_vector(device)
     imag_hidden = agent.hidden.clone()
     imag_obs = MVPObservation(data={k: v.clone() for k, v in obs.items()})
     curr_ship_targets = coordinator.get_target_vector(imag_obs)[:, :num_ships]

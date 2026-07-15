@@ -480,7 +480,7 @@ class FeatureCoordinator:
     # Aux loss label computation
     # ------------------------------------------------------------------
 
-    def _label_scale_vector(self, device: torch.device) -> torch.Tensor:
+    def label_scale_vector(self, device: torch.device) -> torch.Tensor:
         """Per-prediction-dim scale factors (1/std of raw labels)."""
         scales = []
         dummy = self._dummy_obs()
@@ -523,7 +523,7 @@ class FeatureCoordinator:
             next_offset += t_dim
 
         labels = torch.cat(results, dim=-1)
-        return labels * self._label_scale_vector(labels.device)
+        return labels * self.label_scale_vector(labels.device)
 
     def apply_all_predictions(
         self, curr_targets: torch.Tensor, predictions: torch.Tensor
@@ -557,7 +557,7 @@ class FeatureCoordinator:
         The network predicts in scaled space (labels * label_scale). Dividing by
         label_scale recovers the raw delta/absolute before calling apply_all_predictions.
         """
-        scale = self._label_scale_vector(scaled_predictions.device)
+        scale = self.label_scale_vector(scaled_predictions.device)
         predictions = scaled_predictions / scale
         return self.apply_all_predictions(curr_targets, predictions)
 

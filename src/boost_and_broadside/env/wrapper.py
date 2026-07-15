@@ -390,6 +390,21 @@ class MVPEnvWrapper:
         return self._active_names
 
     @property
+    def reward_components(self) -> tuple[RewardComponent, ...]:
+        """All configured reward components in canonical order."""
+        return tuple(self._all_components)
+
+    @property
+    def active_components(self) -> tuple[RewardComponent, ...]:
+        """Active reward components in canonical order."""
+        return tuple(self._active_components)
+
+    @property
+    def component_weights(self) -> torch.Tensor:
+        """Cached weights for the active reward components."""
+        return self._weight_t
+
+    @property
     def num_active_components(self) -> int:
         """Number of active reward components (= K, value head width)."""
         return len(self._active_names)

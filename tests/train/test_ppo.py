@@ -353,7 +353,7 @@ class TestSchedulePrimitives:
         )
         trainer.train()
         mismatched = {}
-        for comp in trainer.wrapper._all_components:
+        for comp in trainer.wrapper.reward_components:
             individual_weight = getattr(trainer.cfg.rewards, f"{comp.name}_weight")
             expected = individual_weight * group_scales[_GROUP[comp.name]]
             if abs(comp.weight - expected) > 1e-9:
@@ -361,9 +361,9 @@ class TestSchedulePrimitives:
         assert not mismatched, f"components with wrong effective weight: {mismatched}"
         # The wrapper's cached (K,) weight tensor must reflect the same scaled weights.
         expected_t = torch.tensor(
-            [c.weight for c in trainer.wrapper._active_components], dtype=torch.float32
+            [c.weight for c in trainer.wrapper.active_components], dtype=torch.float32
         )
-        assert torch.equal(trainer.wrapper._weight_t.cpu(), expected_t)
+        assert torch.equal(trainer.wrapper.component_weights.cpu(), expected_t)
 
 
 class TestWinComponentLambdaMatrix:

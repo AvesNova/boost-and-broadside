@@ -21,7 +21,7 @@ from boost_and_broadside.constants import (
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.modes.agent_factory import (
     ResolvedAgent,
-    _infer_team_pma_k,
+    infer_team_pma_k,
     resolve_agent_spec,
 )
 from boost_and_broadside.modes.collect import _obs_from_state
@@ -72,7 +72,7 @@ def _load_checkpoint_agent(
     ckpt = torch.load(str(path), map_location=device, weights_only=False)
     coordinator = build_standard_coordinator(ship_config)
     K = ckpt["policy_state_dict"]["value_head_local.3.weight"].shape[0]
-    team_pma_k = _infer_team_pma_k(ckpt)
+    team_pma_k = infer_team_pma_k(ckpt)
     policy = MVPPolicy(
         model_config,
         coordinator,

@@ -113,8 +113,8 @@ class TestReturnScaler:
 
         scaler2 = ReturnScaler(num_components=K, device=torch.device("cpu"))
         scaler2.load_state_dict(sd)
-        assert torch.allclose(scaler._p5, scaler2._p5)
-        assert torch.allclose(scaler._p95, scaler2._p95)
+        assert torch.allclose(scaler.percentiles[0], scaler2.percentiles[0])
+        assert torch.allclose(scaler.percentiles[1], scaler2.percentiles[1])
 
 
 class TestBufferAdd:
