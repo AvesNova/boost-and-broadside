@@ -8,11 +8,9 @@ import torch
 import torch.nn.functional as F
 from typing import Tuple
 
-from boost_and_broadside.env.state import TensorState
-
-_EPS = 1e-6  # division safety guard for direction normalization
 from boost_and_broadside.config import ShipConfig
-from boost_and_broadside.constants import PowerActions, ShootActions
+from boost_and_broadside.constants import EPS, PowerActions, ShootActions
+from boost_and_broadside.env.state import TensorState
 
 
 # ---------------------------------------------------------------------------
@@ -152,7 +150,7 @@ def _update_kinematics(
     )
 
     # Attitude — align with velocity direction then apply turn rotation
-    speed_safe = torch.clamp(speed, min=_EPS)
+    speed_safe = torch.clamp(speed, min=EPS)
     vel_dir = state.ship_vel / speed_safe
     stopped = speed < config.min_speed
     base_att = torch.where(stopped, state.ship_attitude, vel_dir)
@@ -194,7 +192,7 @@ def _update_kinematics(
             * _symlog(speed_i * speed_j)
             / (dist_sq + config.gravity_eps)
         )  # (B, N, N)
-        force_dir = diff / torch.clamp(dist, min=_EPS)  # (B, N, N)
+        force_dir = diff / torch.clamp(dist, min=EPS)  # (B, N, N)
         force_vec = force_mag * force_dir  # (B, N, N) complex
 
         alive_mask = state.ship_alive.unsqueeze(2) & state.ship_alive.unsqueeze(
@@ -217,8 +215,8 @@ def _update_kinematics(
 
     # Prevent exactly-zero velocity (would break direction computations)
     new_speed = state.ship_vel.abs()
-    too_slow = new_speed < _EPS
-    min_vel = _EPS * state.ship_attitude
+    too_slow = new_speed < EPS
+    min_vel = EPS * state.ship_attitude
     state.ship_vel = torch.where(too_slow, min_vel, state.ship_vel)
 
     return state

@@ -11,9 +11,8 @@ Responsibilities:
 import torch
 from typing import Any
 
-_EPS = 1e-6  # division safety guard for direction normalization
-
 from boost_and_broadside.config import ShipConfig, EnvConfig, RewardConfig
+from boost_and_broadside.constants import EPS
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.observation import MVPObservation, ObsKey
 from boost_and_broadside.env.obstacle_cache import ObstacleCache
@@ -326,7 +325,7 @@ class MVPEnvWrapper:
         if M > 0:
             obs_pos = torch.stack([s.obstacle_pos.real, s.obstacle_pos.imag], dim=-1)  # (B, M, 2)
             obs_vel = torch.stack([s.obstacle_vel.real, s.obstacle_vel.imag], dim=-1)  # (B, M, 2)
-            obs_speed = torch.norm(obs_vel, dim=-1, keepdim=True).clamp(min=_EPS)
+            obs_speed = torch.norm(obs_vel, dim=-1, keepdim=True).clamp(min=EPS)
             obs_att = obs_vel / obs_speed  # (B, M, 2) — unit heading = velocity direction
             return MVPObservation(data={
                 ObsKey.POS:             torch.cat([ship_pos,          obs_pos],              dim=1),

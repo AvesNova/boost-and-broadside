@@ -22,10 +22,9 @@ Adding a new reward
 import torch
 from abc import ABC, abstractmethod
 
-from boost_and_broadside.env.state import TensorState
 from boost_and_broadside.config import RewardConfig, ShipConfig
-
-_EPS = 1e-6  # division safety guard for direction normalization
+from boost_and_broadside.constants import EPS
+from boost_and_broadside.env.state import TensorState
 
 
 class RewardComponent(ABC):
@@ -545,7 +544,7 @@ class FacingReward(RewardComponent):
         d.imag = (d.imag + H / 2) % H - H / 2
         dist = d.abs()
 
-        dir_j_to_i = d / dist.clamp(min=_EPS)
+        dir_j_to_i = d / dist.clamp(min=EPS)
 
         att_i = att.unsqueeze(2)  # (B, N, 1)
         alignment = (att_i * torch.conj(-dir_j_to_i)).real  # (B, N, N)
@@ -610,7 +609,7 @@ class ClosingSpeedReward(RewardComponent):
         d.imag = (d.imag + H / 2) % H - H / 2
         dist = d.abs()
 
-        dir_j_to_i = d / dist.clamp(min=_EPS)
+        dir_j_to_i = d / dist.clamp(min=EPS)
 
         is_enemy = teams.unsqueeze(2) != teams.unsqueeze(1)
         alive_j = alive.unsqueeze(1).expand(B, N, N)
@@ -685,7 +684,7 @@ class ShootQualityReward(RewardComponent):
         d.imag = (d.imag + H / 2) % H - H / 2
         dist = d.abs()
 
-        dir_j_to_i = d / dist.clamp(min=_EPS)
+        dir_j_to_i = d / dist.clamp(min=EPS)
 
         # Facing: dot(att_i, dir_i_to_j)  where dir_i_to_j = -dir_j_to_i
         att_i = att.unsqueeze(2)  # (B, N, 1)
@@ -834,7 +833,7 @@ class ObstacleClosingSpeedReward(RewardComponent):
         diff_i = obs.imag.unsqueeze(1) - pos.imag.unsqueeze(2)
         diff_r = (diff_r + W / 2) % W - W / 2
         diff_i = (diff_i + H / 2) % H - H / 2
-        dist = torch.sqrt(diff_r**2 + diff_i**2).clamp(min=_EPS)  # (B, N, M)
+        dist = torch.sqrt(diff_r**2 + diff_i**2).clamp(min=EPS)  # (B, N, M)
 
         # Unit direction ship → obstacle
         dir_r = diff_r / dist

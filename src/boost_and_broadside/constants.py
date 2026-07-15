@@ -1,9 +1,12 @@
-"""Central action-space constants for Boost and Broadside.
+"""Central constants for Boost and Broadside.
 
-Single source of truth for action definitions and derived sizes.
+Single source of truth for action definitions, derived sizes, and shared
+numerical guards.
 """
 
 from enum import IntEnum
+
+EPS: float = 1e-6  # division safety guard for direction/speed normalization
 
 
 class PowerActions(IntEnum):

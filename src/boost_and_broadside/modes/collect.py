@@ -9,9 +9,8 @@ from dataclasses import replace
 
 import torch
 
-_EPS = 1e-6  # division safety guard for direction normalization
-
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
+from boost_and_broadside.constants import EPS
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.observation import MVPObservation, ObsKey
 from boost_and_broadside.env.state import TensorState
@@ -59,7 +58,7 @@ def _obs_from_state(
             [state.obstacle_pos.real, state.obstacle_pos.imag], dim=-1
         )
         obs_vel = torch.stack([state.obstacle_vel.real, state.obstacle_vel.imag], dim=-1)
-        obs_speed = torch.norm(obs_vel, dim=-1, keepdim=True).clamp(min=_EPS)
+        obs_speed = torch.norm(obs_vel, dim=-1, keepdim=True).clamp(min=EPS)
         obs_att = obs_vel / obs_speed
         obs_ang_vel    = torch.zeros(B, M, 1, device=dev)
         obs_health     = torch.full((B, M, 1), ship_config.max_health, device=dev)
