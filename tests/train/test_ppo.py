@@ -74,6 +74,7 @@ def _make_schedule(**overrides) -> TrainingSchedule:
 def _make_train_config(
     paradigm: str = "ego_pass",
     scripted_fraction: float = 0.0,
+    checkpoint_dir: str = "checkpoints",
     **reward_overrides,
 ) -> TrainConfig:
     return TrainConfig(
@@ -95,7 +96,7 @@ def _make_train_config(
         total_timesteps=64,
         return_ema_alpha=0.005,
         return_min_span=1.0,
-        checkpoint_dir="checkpoints",
+        checkpoint_dir=checkpoint_dir,
         league_size=20,
         league_uniform_sampling=False,
         elo_milestone_gap=50.0,
@@ -108,6 +109,7 @@ def _make_train_config(
 def _make_trainer(
     paradigm: str = "ego_pass",
     scripted_fraction: float = 0.0,
+    checkpoint_dir: str = "checkpoints",
     **reward_overrides,
 ) -> PPOTrainer:
     ship_config = ShipConfig()
@@ -120,6 +122,7 @@ def _make_trainer(
         train_config=_make_train_config(
             paradigm=paradigm,
             scripted_fraction=scripted_fraction,
+            checkpoint_dir=checkpoint_dir,
             **reward_overrides,
         ),
         model_config=ModelConfig(
@@ -136,18 +139,18 @@ def _make_trainer(
 
 class TestPPOSmokeTest:
     @pytest.mark.parametrize("paradigm", ["ego_pass", "shared_pass"])
-    def test_full_training_loop_runs(self, paradigm):
+    def test_full_training_loop_runs(self, paradigm, tmp_path):
         """One complete PPO training run (64 total timesteps) must not raise."""
-        trainer = _make_trainer(paradigm=paradigm)
+        trainer = _make_trainer(paradigm=paradigm, checkpoint_dir=str(tmp_path))
         trainer.train()
 
     # test_encoder_works_with_non_default_n_fourier_freqs is removed because
     # n_fourier_freqs is no longer in ModelConfig.
 
     @pytest.mark.parametrize("paradigm", ["ego_pass", "shared_pass"])
-    def test_policy_parameters_change_after_update(self, paradigm):
+    def test_policy_parameters_change_after_update(self, paradigm, tmp_path):
         """At least one policy parameter must change after one PPO update."""
-        trainer = _make_trainer(paradigm=paradigm)
+        trainer = _make_trainer(paradigm=paradigm, checkpoint_dir=str(tmp_path))
         params_before = [p.clone() for p in trainer.policy.parameters()]
 
         trainer.train()
@@ -164,26 +167,28 @@ class TestParadigm:
         with pytest.raises(ValueError, match="paradigm"):
             _make_train_config(paradigm="both_sides")
 
-    def test_ego_pass_actor_mask_covers_only_team0(self):
+    def test_ego_pass_actor_mask_covers_only_team0(self, tmp_path):
         """ego_pass: exactly the team 0 ships contribute to the actor loss."""
-        trainer = _make_trainer(paradigm="ego_pass")
+        trainer = _make_trainer(paradigm="ego_pass", checkpoint_dir=str(tmp_path))
         trainer.train()
 
         T, N = trainer.cfg.num_steps, trainer.wrapper.num_ships
         team_id = trainer.buffer.obs[ObsKey.TEAM_ID][:T, :, :N].long()  # (T, B, N)
         assert torch.equal(trainer.buffer.actor_masks, team_id == 0)
 
-    def test_shared_pass_actor_mask_covers_both_teams_in_self_play(self):
+    def test_shared_pass_actor_mask_covers_both_teams_in_self_play(self, tmp_path):
         """shared_pass self-play: every ship contributes to the actor loss."""
-        trainer = _make_trainer(paradigm="shared_pass")
+        trainer = _make_trainer(paradigm="shared_pass", checkpoint_dir=str(tmp_path))
         trainer.train()
 
         assert trainer.buffer.actor_masks.all()
 
-    def test_shared_pass_opponent_envs_exclude_one_full_team(self):
+    def test_shared_pass_opponent_envs_exclude_one_full_team(self, tmp_path):
         """shared_pass + scripted opponent: the masked-out ships in each opponent
         env form exactly one complete team (whichever the random flag assigned)."""
-        trainer = _make_trainer(paradigm="shared_pass", scripted_fraction=0.5)
+        trainer = _make_trainer(
+            paradigm="shared_pass", scripted_fraction=0.5, checkpoint_dir=str(tmp_path)
+        )
         trainer.train()
 
         T, N = trainer.cfg.num_steps, trainer.wrapper.num_ships
@@ -195,9 +200,11 @@ class TestParadigm:
         excluded_is_team1 = (excluded == (team_id == 1)).all(dim=-1)  # (T, B_sc)
         assert (excluded_is_team0 | excluded_is_team1).all()
 
-    def test_ego_pass_scripted_opponent_always_controls_team1(self):
+    def test_ego_pass_scripted_opponent_always_controls_team1(self, tmp_path):
         """ego_pass + scripted opponent: only team 0 ships train in opponent envs."""
-        trainer = _make_trainer(paradigm="ego_pass", scripted_fraction=0.5)
+        trainer = _make_trainer(
+            paradigm="ego_pass", scripted_fraction=0.5, checkpoint_dir=str(tmp_path)
+        )
         trainer.train()
 
         T, N = trainer.cfg.num_steps, trainer.wrapper.num_ships
@@ -256,7 +263,7 @@ class TestSchedulePrimitives:
         fn = stepped((0, 0.5), (1_000_000, 0.1))
         assert fn(99_000_000) == 0.1
 
-    def test_group_scales_applied_by_trainer(self):
+    def test_group_scales_applied_by_trainer(self, tmp_path):
         """After training, effective component weight = group_scale * individual weight."""
         trainer = PPOTrainer(
             train_config=TrainConfig(
@@ -278,7 +285,7 @@ class TestSchedulePrimitives:
                 total_timesteps=64,
                 return_ema_alpha=0.005,
                 return_min_span=1.0,
-                checkpoint_dir="checkpoints",
+                checkpoint_dir=str(tmp_path),
                 league_size=20,
                 league_uniform_sampling=False,
                 elo_milestone_gap=50.0,
@@ -311,7 +318,7 @@ class TestRLSmokeTest:
     """
 
     @pytest.mark.parametrize("paradigm", ["ego_pass", "shared_pass"])
-    def test_rl_run_with_production_config(self, paradigm):
+    def test_rl_run_with_production_config(self, paradigm, tmp_path):
         from runs.shared import MODEL_CONFIG, REWARDS, SHIP_CONFIG
 
         schedule = TrainingSchedule(
@@ -352,7 +359,7 @@ class TestRLSmokeTest:
             total_timesteps=16 * 32 * 3,  # 3 updates
             return_ema_alpha=0.005,
             return_min_span=1.0,
-            checkpoint_dir="checkpoints",
+            checkpoint_dir=str(tmp_path),
             league_size=5,
             elo_milestone_gap=100.0,
             elo_k_factor=32.0,
