@@ -45,7 +45,6 @@ from boost_and_broadside.train.rl.logging import LoggingMixin
 from boost_and_broadside.train.rl.opponents import (
     OpponentMixin,
     flip_team_obs,
-    slice_obs,
     slice_state,
 )
 from boost_and_broadside.train.rl.roster import EloRoster, RosterEntry
@@ -807,74 +806,44 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                             )
                             action_league_scripted = self.scripted_agent.get_actions(state_league)
 
-                # -- Phase 2: parallel env step + all network forwards --
-                # env_stream: apply action_buffer (previous step's decision) to physics
-                # net_stream: compute new actions and values for all policies
+                network_args = (
+                    obs,
+                    hidden,
+                    hidden_t1,
+                    N,
+                    num_tokens,
+                    use_avg,
+                    avg_start,
+                    avg_end,
+                    avg_hidden,
+                    use_league,
+                    league_start,
+                    league_end,
+                    league_hidden,
+                )
                 if env_stream is not None:
                     env_stream.wait_stream(torch.cuda.current_stream())
                     net_stream.wait_stream(torch.cuda.current_stream())
-
                     with torch.cuda.stream(env_stream):
-                        next_obs, reward, dones, truncated, info = self.wrapper.step(action_buffer)
-
+                        next_obs, reward, dones, truncated, _ = self.wrapper.step(action_buffer)
                     with torch.cuda.stream(net_stream):
-                        with torch.autocast("cuda", dtype=torch.bfloat16):
-                            # get_action_and_value is @no_grad, so no gradient concerns.
-                            (
-                                action_t0,
-                                action_t1,
-                                logprob,
-                                value_norm,
-                                pred_next,
-                                hidden,
-                                hidden_t1,
-                            ) = self._rollout_policy_pass(obs, hidden, hidden_t1, N, num_tokens)
-                        if use_avg:
-                            with torch.autocast("cuda", dtype=torch.bfloat16):
-                                obs_avg = self._opponent_obs(slice_obs(obs, avg_start, avg_end), N)
-                                action_avg, _, _, _, avg_hidden = (
-                                    self.avg_policy.get_action_and_value(obs_avg, avg_hidden)
-                                )
-                        if use_league and self._current_league_policy is not None:
-                            with torch.autocast("cuda", dtype=torch.bfloat16):
-                                obs_league = self._opponent_obs(
-                                    slice_obs(obs, league_start, league_end), N
-                                )
-                                action_league_net, _, _, _, league_hidden = (
-                                    self._current_league_policy.get_action_and_value(
-                                        obs_league, league_hidden
-                                    )
-                                )
-                        else:
-                            action_league_net = None
-
+                        network = self._rollout_network_forwards(*network_args)
                     torch.cuda.current_stream().wait_stream(env_stream)
                     torch.cuda.current_stream().wait_stream(net_stream)
                 else:
-                    # CPU fallback (no streams)
-                    next_obs, reward, dones, truncated, info = self.wrapper.step(action_buffer)
-                    with torch.autocast("cuda", dtype=torch.bfloat16):
-                        action_t0, action_t1, logprob, value_norm, pred_next, hidden, hidden_t1 = (
-                            self._rollout_policy_pass(obs, hidden, hidden_t1, N, num_tokens)
-                        )
-                    if use_avg:
-                        with torch.autocast("cuda", dtype=torch.bfloat16):
-                            obs_avg = self._opponent_obs(slice_obs(obs, avg_start, avg_end), N)
-                            action_avg, _, _, _, avg_hidden = self.avg_policy.get_action_and_value(
-                                obs_avg, avg_hidden
-                            )
-                    if use_league and self._current_league_policy is not None:
-                        with torch.autocast("cuda", dtype=torch.bfloat16):
-                            obs_league = self._opponent_obs(
-                                slice_obs(obs, league_start, league_end), N
-                            )
-                            action_league_net, _, _, _, league_hidden = (
-                                self._current_league_policy.get_action_and_value(
-                                    obs_league, league_hidden
-                                )
-                            )
-                    else:
-                        action_league_net = None
+                    next_obs, reward, dones, truncated, _ = self.wrapper.step(action_buffer)
+                    network = self._rollout_network_forwards(*network_args)
+
+                action_t0 = network.action_t0
+                action_t1 = network.action_t1
+                logprob = network.logprob
+                value_norm = network.value_norm
+                hidden = network.hidden
+                hidden_t1 = network.hidden_t1
+                action_avg = network.action_avg
+                avg_hidden = network.avg_hidden
+                action_league_net = network.action_league
+                league_hidden = network.league_hidden
 
                 # -- Phase 3: combine actions and compute actor mask --
                 action, actor_mask = self._combine_actions(action_t0, action_t1, team_id)

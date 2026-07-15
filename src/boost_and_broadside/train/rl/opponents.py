@@ -1,9 +1,26 @@
 """Opponent perspectives, action overrides, league sampling, and policy averaging."""
 
+from typing import NamedTuple
+
 import torch
 
 from boost_and_broadside.env.observation import MVPObservation
 from boost_and_broadside.env.state import TensorState
+
+
+class RolloutNetworkOutput(NamedTuple):
+    """Policy outputs computed alongside one environment step."""
+
+    action_t0: torch.Tensor
+    action_t1: torch.Tensor | None
+    logprob: torch.Tensor
+    value_norm: torch.Tensor
+    hidden: torch.Tensor
+    hidden_t1: torch.Tensor | None
+    action_avg: torch.Tensor | None
+    avg_hidden: torch.Tensor | None
+    action_league: torch.Tensor | None
+    league_hidden: torch.Tensor | None
 
 
 def slice_obs(obs: MVPObservation, start: int, end: int) -> MVPObservation:
@@ -105,3 +122,60 @@ class OpponentMixin:
             self._current_league_policy = None
             return None
         return self._current_league_policy.initial_hidden(self.B_league, num_tokens, self.device)
+
+    def _rollout_network_forwards(
+        self,
+        obs: MVPObservation,
+        hidden: torch.Tensor,
+        hidden_t1: torch.Tensor | None,
+        num_ships: int,
+        num_tokens: int,
+        use_avg: bool,
+        avg_start: int,
+        avg_end: int,
+        avg_hidden: torch.Tensor | None,
+        use_league: bool,
+        league_start: int,
+        league_end: int,
+        league_hidden: torch.Tensor | None,
+    ) -> RolloutNetworkOutput:
+        """Run the live, average, and league policy forwards for one rollout step."""
+        with torch.autocast("cuda", dtype=torch.bfloat16):
+            (
+                action_t0,
+                action_t1,
+                logprob,
+                value_norm,
+                _,
+                hidden,
+                hidden_t1,
+            ) = self._rollout_policy_pass(obs, hidden, hidden_t1, num_ships, num_tokens)
+
+        action_avg = None
+        if use_avg:
+            with torch.autocast("cuda", dtype=torch.bfloat16):
+                obs_avg = self._opponent_obs(slice_obs(obs, avg_start, avg_end), num_ships)
+                action_avg, _, _, _, avg_hidden = self.avg_policy.get_action_and_value(
+                    obs_avg, avg_hidden
+                )
+
+        action_league = None
+        if use_league and self._current_league_policy is not None:
+            with torch.autocast("cuda", dtype=torch.bfloat16):
+                obs_league = self._opponent_obs(slice_obs(obs, league_start, league_end), num_ships)
+                action_league, _, _, _, league_hidden = (
+                    self._current_league_policy.get_action_and_value(obs_league, league_hidden)
+                )
+
+        return RolloutNetworkOutput(
+            action_t0=action_t0,
+            action_t1=action_t1,
+            logprob=logprob,
+            value_norm=value_norm,
+            hidden=hidden,
+            hidden_t1=hidden_t1,
+            action_avg=action_avg,
+            avg_hidden=avg_hidden,
+            action_league=action_league,
+            league_hidden=league_hidden,
+        )
