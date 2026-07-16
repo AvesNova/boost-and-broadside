@@ -129,3 +129,14 @@ def test_unplayed_agent_has_infinite_standard_error() -> None:
     _, errors = solve_bt(counts, "random")
 
     assert math.isinf(errors["new"])
+
+
+def test_gameless_agent_keeps_warm_start_rating_exactly() -> None:
+    counts = MatchCounts(("live", "random", "scripted"))
+    counts.add_pair("live", "random", wins=8.0, losses=2.0)
+
+    ratings, _ = solve_bt(counts, "random", {"scripted": 1_000.0})
+
+    assert ratings["scripted"] == 1_000.0
+    assert ratings["random"] == 0.0
+    assert ratings["live"] > 0.0

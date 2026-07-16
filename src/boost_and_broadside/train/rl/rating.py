@@ -213,6 +213,8 @@ def solve_bt(
 
     Ties count as half a win for each player. Virtual draws regularize only
     observed pairs, preserving the match graph rather than inventing evidence.
+    Agents without any observed games keep their ``warm_start`` rating exactly
+    — the warm start doubles as the prior guess until evidence arrives.
     """
     if prior_draws < 0.0:
         raise ValueError(f"prior_draws must be non-negative, got {prior_draws}")
@@ -251,6 +253,11 @@ def solve_bt(
     ratings = {
         agent_id: float(theta[index] * ELO_SCALE) for index, agent_id in enumerate(counts.agent_ids)
     }
+    # Game-less agents would otherwise drift with the anchor's raw MM scale;
+    # pin them to their prior guess instead.
+    for index, agent_id in enumerate(counts.agent_ids):
+        if not bool(active[index]):
+            ratings[agent_id] = float(ratings_start.get(agent_id, 0.0))
     ratings[anchor_id] = 0.0
     standard_errors = _standard_errors(theta, pair_totals, anchor_index, counts.agent_ids)
     return ratings, standard_errors

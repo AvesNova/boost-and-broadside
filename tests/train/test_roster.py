@@ -172,3 +172,18 @@ def test_layout_version_bumps_and_tally_layout_tracks_counts(tmp_path) -> None:
     roster.add_checkpoint(str(tmp_path / "b.pt"), global_step=3, update=3)  # evicts one
     assert roster.layout_version > version
     assert roster.update_tally.agent_ids == roster.counts.agent_ids
+
+
+def test_scripted_starts_at_1000_and_holds_until_evidence() -> None:
+    roster = _make_roster()
+    assert roster.ratings["scripted"] == 1_000.0
+    assert roster.entry("scripted").elo == 1_000.0
+
+    live = roster.counts.index("live")
+    random_index = roster.counts.index("random")
+    roster.record_outcomes(
+        torch.tensor([live] * 4), torch.tensor([random_index] * 4), torch.tensor([0, 0, 0, 1])
+    )
+    ratings, _ = roster.solve_ratings()
+
+    assert ratings["scripted"] == 1_000.0

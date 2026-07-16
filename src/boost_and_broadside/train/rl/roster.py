@@ -16,6 +16,10 @@ _LIVE_ID = "live"
 _RANDOM_ID = "random"
 _SCRIPTED_ID = "scripted"
 _AVG_ID = "avg"
+# Initial rating guess for the scripted agent. The Bradley-Terry solve leaves
+# game-less agents at their warm-start rating, so this is what PFSP sampling
+# and reporting see until real scripted games arrive and the fit takes over.
+_SCRIPTED_INITIAL_ELO = 1000.0
 
 
 @dataclass
@@ -62,7 +66,7 @@ class LeagueRoster:
         self.admission_prior_games = admission_prior_games
         self.entries = [
             RosterEntry(_RANDOM_ID, "random", "random", 0.0, 0, 0, True),
-            RosterEntry(_SCRIPTED_ID, "scripted", "scripted", 0.0, 0, 0, True),
+            RosterEntry(_SCRIPTED_ID, "scripted", "scripted", _SCRIPTED_INITIAL_ELO, 0, 0, True),
         ]
         self.counts = MatchCounts(
             (_LIVE_ID, _RANDOM_ID, _SCRIPTED_ID), device=device, dtype=count_dtype
@@ -75,7 +79,7 @@ class LeagueRoster:
         # Bumped whenever the count-matrix agent layout changes so cached dense
         # indices held by the evaluator and opponent slots can be invalidated.
         self.layout_version = 0
-        self.ratings = {_LIVE_ID: 0.0, _RANDOM_ID: 0.0, _SCRIPTED_ID: 0.0}
+        self.ratings = {_LIVE_ID: 0.0, _RANDOM_ID: 0.0, _SCRIPTED_ID: _SCRIPTED_INITIAL_ELO}
         self.standard_errors = {
             _LIVE_ID: float("inf"),
             _RANDOM_ID: 0.0,
