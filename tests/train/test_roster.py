@@ -1,116 +1,132 @@
-"""Unit tests for the ELO league roster: sampling, eviction, persistence."""
+"""Tests for the v2 league roster, PFSP curriculum, and retention policy."""
+
+import json
 
 import pytest
 import torch
 
-from boost_and_broadside.train.rl.roster import EloRoster
+from boost_and_broadside.train.rl.roster import LeagueRoster
 
 
-def _make_roster(max_size: int = 3, **overrides) -> EloRoster:
-    defaults = dict(max_size=max_size, k_factor=32.0, elo_temperature=200.0)
+def _make_roster(league_size: int = 8, **overrides) -> LeagueRoster:
+    defaults = {
+        "league_size": league_size,
+        "pfsp_mode": "hard",
+        "pfsp_exponent": 2.0,
+        "admission_prior_games": 10.0,
+    }
     defaults.update(overrides)
-    return EloRoster(**defaults)
+    return LeagueRoster(**defaults)
 
 
-class TestSampling:
-    def test_sample_returns_none_when_all_entries_fixed(self):
-        roster = _make_roster()
-        for e in roster.entries:
-            e.fixed = True
-        assert roster.sample(training_elo=1000.0) is None
+def test_random_and_scripted_are_first_class_sampleable_members() -> None:
+    roster = _make_roster()
 
-    def test_fixed_entries_are_never_sampled(self):
-        torch.manual_seed(0)
-        roster = _make_roster()
-        roster.entries[0].fixed = True  # exclude the random anchor
-        roster.add_checkpoint(path="/ckpt/a.pt", global_step=1, update=1, initial_elo=1000.0)
-        sampled = {roster.sample(training_elo=1000.0).label for _ in range(50)}
-        assert sampled == {"ckpt_1"}
+    sampled = roster.sample_opponents(4, roster.ratings)
 
-    def test_proximity_sampling_prefers_near_elo_entries(self):
-        """With a huge ELO gap the far entry's weight underflows to ~0, so the
-        near-ELO entry is sampled every time."""
-        torch.manual_seed(0)
-        roster = _make_roster()
-        roster.entries[0].fixed = True  # exclude the random anchor
-        roster.add_checkpoint(path="/ckpt/near.pt", global_step=1, update=1, initial_elo=1000.0)
-        roster.add_checkpoint(path="/ckpt/far.pt", global_step=2, update=2, initial_elo=51000.0)
-        sampled = {roster.sample(training_elo=1000.0).label for _ in range(100)}
-        assert sampled == {"ckpt_1"}
-
-    def test_uniform_sampling_ignores_elo_proximity(self):
-        torch.manual_seed(0)
-        roster = _make_roster(uniform_sampling=True)
-        roster.entries[0].fixed = True  # exclude the random anchor
-        roster.add_checkpoint(path="/ckpt/near.pt", global_step=1, update=1, initial_elo=1000.0)
-        roster.add_checkpoint(path="/ckpt/far.pt", global_step=2, update=2, initial_elo=51000.0)
-        sampled = {roster.sample(training_elo=1000.0).label for _ in range(200)}
-        assert sampled == {"ckpt_1", "ckpt_2"}
+    assert {entry.kind for entry in sampled} == {"random", "scripted"}
 
 
-class TestEviction:
-    def test_lowest_elo_checkpoint_evicted_over_capacity(self):
-        roster = _make_roster(max_size=2)
-        roster.add_checkpoint(path="/ckpt/a.pt", global_step=1, update=1, initial_elo=100.0)
-        roster.add_checkpoint(path="/ckpt/b.pt", global_step=2, update=2, initial_elo=50.0)
-        roster.add_checkpoint(path="/ckpt/c.pt", global_step=3, update=3, initial_elo=200.0)
-        ckpt_labels = {e.label for e in roster.entries if e.kind == "checkpoint"}
-        assert ckpt_labels == {"ckpt_1", "ckpt_3"}
+def test_hard_pfsp_prefers_opponent_live_rarely_beats() -> None:
+    torch.manual_seed(0)
+    roster = _make_roster()
+    roster.refresh_ratings({"live": 1_000.0, "random": -2_000.0, "scripted": 2_000.0})
 
-    def test_special_entries_do_not_count_toward_capacity(self):
-        roster = _make_roster(max_size=1)
-        roster.add_special("avg", initial_elo=500.0)
-        roster.add_special("scripted", initial_elo=500.0)
-        roster.add_checkpoint(path="/ckpt/a.pt", global_step=1, update=1, initial_elo=100.0)
-        kinds = sorted(e.kind for e in roster.entries)
-        assert kinds == ["avg", "checkpoint", "random", "scripted"]
+    sampled = [roster.sample_opponents(1)[0].kind for _ in range(50)]
 
-    def test_add_special_is_idempotent(self):
-        roster = _make_roster()
-        first = roster.add_special("avg", initial_elo=500.0)
-        second = roster.add_special("avg", initial_elo=999.0)
-        assert second is first
-        assert sum(e.kind == "avg" for e in roster.entries) == 1
-
-    def test_add_special_rejects_unknown_kind(self):
-        roster = _make_roster()
-        with pytest.raises(AssertionError):
-            roster.add_special("checkpoint")
+    assert set(sampled) == {"scripted"}
 
 
-class TestPersistence:
-    def test_save_load_round_trip(self, tmp_path):
-        roster = _make_roster()
-        roster.add_special("avg", global_step=10, update=2, initial_elo=750.0)
-        roster.add_checkpoint(path="/ckpt/a.pt", global_step=20, update=4, initial_elo=800.0)
-        path = tmp_path / "roster.json"
-        roster.save_json(path)
+def test_variance_pfsp_prefers_near_even_opponent() -> None:
+    torch.manual_seed(0)
+    roster = _make_roster(pfsp_mode="variance")
+    roster.refresh_ratings({"live": 0.0, "random": -2_000.0, "scripted": 0.0})
 
-        restored = _make_roster()
-        restored.load_json(path)
-        original = [
-            (e.kind, e.label, e.elo, e.global_step, e.update, e.path, e.fixed)
-            for e in roster.entries
-        ]
-        loaded = [
-            (e.kind, e.label, e.elo, e.global_step, e.update, e.path, e.fixed)
-            for e in restored.entries
-        ]
-        assert loaded == original
+    sampled = [roster.sample_opponents(1)[0].kind for _ in range(50)]
 
-    def test_load_json_replaces_existing_entries(self, tmp_path):
-        roster = _make_roster()
-        path = tmp_path / "roster.json"
-        roster.save_json(path)  # only the random anchor
+    assert set(sampled) == {"scripted"}
 
-        restored = _make_roster()
-        restored.add_checkpoint(path="/ckpt/stale.pt", global_step=1, update=1)
-        restored.load_json(path)
-        assert [e.kind for e in restored.entries] == ["random"]
 
-    def test_kept_paths_returns_checkpoint_paths_only(self):
-        roster = _make_roster()
-        roster.add_special("avg")
-        roster.add_checkpoint(path="/ckpt/a.pt", global_step=1, update=1)
-        roster.add_checkpoint(path="/ckpt/b.pt", global_step=2, update=2)
-        assert roster.kept_paths() == {"/ckpt/a.pt", "/ckpt/b.pt"}
+def test_pfsp_samples_without_replacement() -> None:
+    roster = _make_roster()
+    roster.add_avg(global_step=10, update=2)
+
+    sampled = roster.sample_opponents(3)
+
+    assert len({entry.agent_id for entry in sampled}) == 3
+
+
+def test_avg_is_excluded_until_added() -> None:
+    roster = _make_roster()
+
+    sampled = roster.sample_opponents(10)
+
+    assert "avg" not in {entry.kind for entry in sampled}
+
+
+def test_checkpoint_admission_adds_live_draw_prior() -> None:
+    roster = _make_roster()
+
+    entry = roster.add_checkpoint("/ckpt/a.pt", global_step=20, update=4)
+
+    checkpoint_index = roster.counts.index(entry.agent_id)
+    live_index = roster.counts.index("live")
+    assert roster.counts.tensor[checkpoint_index, live_index, 2] == 10.0
+
+
+def test_crowding_evicts_oldest_member_of_closest_unprotected_pair() -> None:
+    roster = _make_roster(league_size=6)
+    elos = (0.0, 10.0, 1_000.0, 2_000.0, 3_000.0, 4_000.0, 5_000.0)
+    for update, elo in enumerate(elos, start=1):
+        roster.add_checkpoint(
+            f"/ckpt/{update}.pt",
+            global_step=update,
+            update=update,
+            initial_elo=elo,
+        )
+
+    checkpoint_ids = {entry.agent_id for entry in roster.entries if entry.kind == "checkpoint"}
+
+    assert "ckpt_1" not in checkpoint_ids
+
+
+def test_retention_removes_evicted_agent_counts() -> None:
+    roster = _make_roster(league_size=1)
+    roster.add_checkpoint("/ckpt/one.pt", global_step=1, update=1)
+    roster.add_checkpoint("/ckpt/two.pt", global_step=2, update=2)
+
+    checkpoint_ids = {entry.agent_id for entry in roster.entries if entry.kind == "checkpoint"}
+
+    assert set(roster.counts.agent_ids) == {"live", "random", "scripted", *checkpoint_ids}
+
+
+def test_save_load_v2_round_trip_includes_counts(tmp_path) -> None:
+    roster = _make_roster()
+    roster.add_avg(global_step=10, update=2)
+    checkpoint = roster.add_checkpoint("/ckpt/a.pt", global_step=20, update=4)
+    roster.counts.add_pair("live", checkpoint.agent_id, wins=2.5, losses=1.0)
+    path = tmp_path / "roster.json"
+    roster.save_json(path)
+
+    restored = _make_roster()
+    restored.load_json(path)
+
+    assert restored.entries == roster.entries
+    assert torch.equal(restored.counts.tensor, roster.counts.tensor)
+
+
+def test_loader_rejects_v1_roster(tmp_path) -> None:
+    path = tmp_path / "roster.json"
+    path.write_text(json.dumps({"entries": []}))
+
+    with pytest.raises(ValueError, match="version 2"):
+        _make_roster().load_json(path)
+
+
+def test_kept_paths_returns_retained_checkpoint_paths_only() -> None:
+    roster = _make_roster()
+    roster.add_avg(global_step=1, update=1)
+    roster.add_checkpoint("/ckpt/a.pt", global_step=2, update=2)
+    roster.add_checkpoint("/ckpt/b.pt", global_step=3, update=3)
+
+    assert roster.kept_paths() == {"/ckpt/a.pt", "/ckpt/b.pt"}

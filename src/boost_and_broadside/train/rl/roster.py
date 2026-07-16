@@ -1,16 +1,6 @@
-"""ELO-rated league roster for mixed-opponent training.
-
-Maintains a pool of rated agents (past checkpoints, avg policy, scripted agent)
-and supports ELO-proximity-weighted sampling for league play.
-
-Entry kinds:
-    "checkpoint" — a past training-policy snapshot loaded from a .pt file.
-    "avg"        — the live running-average policy (weights accessed externally).
-    "scripted"   — the StochasticScriptedAgent (no weights to load).
-"""
+"""Persistent league roster with count-based ratings and PFSP sampling."""
 
 import json
-import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -18,180 +8,237 @@ import torch
 
 from boost_and_broadside.config import ModelConfig
 from boost_and_broadside.train.rl.features import FeatureCoordinator
+from boost_and_broadside.train.rl.rating import MatchCounts, expected_score, solve_bt
 
-_DEFAULT_ELO = 0.0
+_ROSTER_VERSION = 2
+_LIVE_ID = "live"
+_RANDOM_ID = "random"
+_SCRIPTED_ID = "scripted"
+_AVG_ID = "avg"
 
 
 @dataclass
 class RosterEntry:
-    """A single rated agent in the league roster."""
+    """One first-class league member and its lazily loaded policy."""
 
-    kind: str  # "random" | "checkpoint" | "avg" | "scripted"
-    label: str  # W&B key suffix (e.g. "random", "avg", "scripted", "ckpt_1024000")
-    elo: float  # Current ELO rating
-    global_step: int  # Training step when this agent was snapshotted
-    update: int  # PPO update index when snapshotted
-    path: str | None = None  # .pt file path; None for all non-checkpoint kinds
-    fixed: bool = False  # If True, ELO is never modified (e.g. random anchor at 0)
-    policy: object = field(default=None, repr=False)  # Loaded MVPPolicy; None if evicted
+    agent_id: str
+    kind: str
+    label: str
+    elo: float
+    global_step: int
+    update: int
+    stationary: bool
+    path: str | None = None
+    policy: object = field(default=None, repr=False)
 
 
-class EloRoster:
-    """ELO-rated pool of league opponents with proximity-weighted sampling.
-
-    Entries:
-        "random"     — always present; ELO fixed at 0 as an absolute anchor.
-        "avg"        — added when the avg model first becomes ready.
-        "checkpoint" — added at ELO milestones; weakest pruned when over capacity.
-
-    Sampling is weighted by ELO proximity so the training policy tends to face
-    near-equal opponents:
-
-        w_i = exp( -|elo_i - training_elo| / elo_temperature )
-
-    The "random" entry is excluded from sampling (only used as an eval anchor).
-
-    Args:
-        max_size:        Maximum number of "checkpoint" entries.  Special entries
-                         are not counted toward this cap.
-        k_factor:         ELO K-factor — how many points change per match.
-        elo_temperature:  ELO bandwidth for proximity sampling (in ELO points).
-                          Higher → more uniform; lower → tighter focus on peers.
-        uniform_sampling: If True, sample opponents uniformly at random instead
-                          of ELO-proximity weighting.
-    """
+class LeagueRoster:
+    """League members, persistent match evidence, and PFSP curriculum sampling."""
 
     def __init__(
         self,
-        max_size: int = 20,
-        k_factor: float = 32.0,
-        elo_temperature: float = 200.0,
-        uniform_sampling: bool = False,
+        league_size: int,
+        pfsp_mode: str,
+        pfsp_exponent: float,
+        admission_prior_games: float,
+        *,
+        device: str | torch.device = "cpu",
+        count_dtype: torch.dtype = torch.float64,
     ) -> None:
-        self.max_size = max_size
-        self.k_factor = k_factor
-        self.elo_temperature = elo_temperature
-        self.uniform_sampling = uniform_sampling
-        self.entries: list[RosterEntry] = []
-        # Random agent entry: ELO starts at 0 and participates in zero-sum updates.
-        self.entries.append(
-            RosterEntry(
-                kind="random",
-                label="random",
-                elo=_DEFAULT_ELO,
-                global_step=0,
-                update=0,
+        if league_size < 1:
+            raise ValueError(f"league_size must be positive, got {league_size}")
+        if pfsp_mode not in ("hard", "variance"):
+            raise ValueError(f"pfsp_mode must be 'hard' or 'variance', got {pfsp_mode!r}")
+        if pfsp_exponent <= 0.0:
+            raise ValueError(f"pfsp_exponent must be positive, got {pfsp_exponent}")
+        if admission_prior_games < 0.0:
+            raise ValueError(
+                f"admission_prior_games must be non-negative, got {admission_prior_games}"
             )
+        self.league_size = league_size
+        self.pfsp_mode = pfsp_mode
+        self.pfsp_exponent = pfsp_exponent
+        self.admission_prior_games = admission_prior_games
+        self.entries = [
+            RosterEntry(_RANDOM_ID, "random", "random", 0.0, 0, 0, True),
+            RosterEntry(_SCRIPTED_ID, "scripted", "scripted", 0.0, 0, 0, True),
+        ]
+        self.counts = MatchCounts(
+            (_LIVE_ID, _RANDOM_ID, _SCRIPTED_ID), device=device, dtype=count_dtype
         )
+        self.ratings = {_LIVE_ID: 0.0, _RANDOM_ID: 0.0, _SCRIPTED_ID: 0.0}
+        self.standard_errors = {
+            _LIVE_ID: float("inf"),
+            _RANDOM_ID: 0.0,
+            _SCRIPTED_ID: float("inf"),
+        }
 
-    # ------------------------------------------------------------------
-    # Entry management
-    # ------------------------------------------------------------------
+    def entry(self, agent_id: str) -> RosterEntry:
+        """Return one roster entry by stable ID."""
+        for roster_entry in self.entries:
+            if roster_entry.agent_id == agent_id:
+                return roster_entry
+        raise KeyError(f"unknown roster agent_id {agent_id!r}")
 
-    def add_special(
-        self,
-        kind: str,
-        global_step: int = 0,
-        update: int = 0,
-        initial_elo: float = _DEFAULT_ELO,
-    ) -> RosterEntry:
-        """Add or return the existing entry for a special agent ("avg" or "scripted").
-
-        Idempotent: if an entry of this kind already exists it is returned unchanged.
-
-        Args:
-            kind:        "avg" or "scripted".
-            global_step: Training step when this agent became available.
-            update:      PPO update index when it became available.
-            initial_elo: Starting ELO.  Pass the current training ELO so the new
-                         entry begins calibrated rather than at an arbitrary default.
-        """
-        assert kind in ("avg", "scripted"), f"add_special: invalid kind {kind!r}"
-        for e in self.entries:
-            if e.kind == kind:
-                return e
-        entry = RosterEntry(
-            kind=kind,
-            label=kind,
-            elo=initial_elo,
-            global_step=global_step,
-            update=update,
+    def add_avg(self, global_step: int, update: int) -> RosterEntry:
+        """Add the nonstationary average policy on its first active update."""
+        for roster_entry in self.entries:
+            if roster_entry.kind == "avg":
+                return roster_entry
+        live_elo = self.ratings[_LIVE_ID]
+        roster_entry = RosterEntry(
+            _AVG_ID,
+            "avg",
+            "avg",
+            live_elo,
+            global_step,
+            update,
+            False,
         )
-        self.entries.append(entry)
-        return entry
+        self.entries.append(roster_entry)
+        self.counts.add_agent(_AVG_ID)
+        self.ratings[_AVG_ID] = live_elo
+        self.standard_errors[_AVG_ID] = float("inf")
+        return roster_entry
 
     def add_checkpoint(
         self,
         path: str,
         global_step: int,
         update: int,
-        initial_elo: float = _DEFAULT_ELO,
+        initial_elo: float | None = None,
     ) -> RosterEntry:
-        """Add a checkpoint entry, evicting the lowest-ELO checkpoint if at capacity.
-
-        Weights are NOT loaded here; call ``load_policy()`` when needed.
-
-        Args:
-            path:        Absolute path to the saved .pt file.
-            global_step: Training step at which the snapshot was taken.
-            update:      PPO update index at which it was saved.
-            initial_elo: Starting ELO.  Pass the current training ELO so the new
-                         entry begins calibrated rather than at an arbitrary default.
-
-        Returns:
-            The newly created RosterEntry.
-        """
-        entry = RosterEntry(
-            kind="checkpoint",
-            label=f"ckpt_{global_step}",
-            elo=initial_elo,
-            global_step=global_step,
-            update=update,
-            path=path,
+        """Admit a frozen live snapshot with a draw prior against live."""
+        agent_id = f"ckpt_{global_step}"
+        if agent_id in self.counts.agent_ids:
+            raise ValueError(f"checkpoint agent_id already exists: {agent_id!r}")
+        elo = self.ratings[_LIVE_ID] if initial_elo is None else initial_elo
+        roster_entry = RosterEntry(
+            agent_id,
+            "checkpoint",
+            agent_id,
+            elo,
+            global_step,
+            update,
+            True,
+            path,
         )
-        self.entries.append(entry)
+        self.entries.append(roster_entry)
+        self.counts.add_agent(agent_id)
+        if self.admission_prior_games > 0.0:
+            self.counts.add_pair(agent_id, _LIVE_ID, draws=self.admission_prior_games)
+        self.ratings[agent_id] = elo
+        self.standard_errors[agent_id] = float("inf")
         self._evict_excess_checkpoints()
-        return entry
+        return roster_entry
+
+    def add_special(
+        self,
+        kind: str,
+        global_step: int = 0,
+        update: int = 0,
+        initial_elo: float = 0.0,
+    ) -> RosterEntry:
+        """Return a built-in member or activate avg during trainer transition."""
+        if kind == "avg":
+            roster_entry = self.add_avg(global_step, update)
+            roster_entry.elo = initial_elo
+            self.ratings[_AVG_ID] = initial_elo
+            return roster_entry
+        if kind == "scripted":
+            return self.entry(_SCRIPTED_ID)
+        raise ValueError(f"invalid special roster kind {kind!r}")
+
+    def refresh_ratings(
+        self,
+        ratings: dict[str, float],
+        standard_errors: dict[str, float] | None = None,
+    ) -> None:
+        """Refresh derived rating caches after a Bradley-Terry solve."""
+        missing = set(self.counts.agent_ids) - ratings.keys()
+        if missing:
+            raise ValueError(f"ratings missing agent IDs: {sorted(missing)}")
+        self.ratings = dict(ratings)
+        if standard_errors is not None:
+            self.standard_errors = dict(standard_errors)
+        for roster_entry in self.entries:
+            roster_entry.elo = ratings[roster_entry.agent_id]
+
+    def solve_ratings(
+        self, *, prior_draws: float = 1.0
+    ) -> tuple[dict[str, float], dict[str, float]]:
+        """Solve and cache ratings from the current persistent count matrix."""
+        ratings, standard_errors = solve_bt(
+            self.counts,
+            _RANDOM_ID,
+            self.ratings,
+            prior_draws=prior_draws,
+        )
+        self.refresh_ratings(ratings, standard_errors)
+        return ratings, standard_errors
+
+    def sample_opponents(
+        self,
+        k: int,
+        ratings: dict[str, float] | None = None,
+    ) -> list[RosterEntry]:
+        """Sample up to ``k`` distinct opponents using configured PFSP weights."""
+        if k < 0:
+            raise ValueError(f"k must be non-negative, got {k}")
+        active_ratings = self.ratings if ratings is None else ratings
+        candidates = [entry for entry in self.entries if entry.agent_id in active_ratings]
+        sample_count = min(k, len(candidates))
+        if sample_count == 0:
+            return []
+        probabilities = torch.tensor(
+            [
+                expected_score(active_ratings[_LIVE_ID], active_ratings[entry.agent_id])
+                for entry in candidates
+            ],
+            dtype=torch.float64,
+        )  # (C,)
+        if self.pfsp_mode == "hard":
+            weights = (1.0 - probabilities).pow(self.pfsp_exponent)  # (C,)
+        else:
+            weights = probabilities * (1.0 - probabilities)  # (C,)
+        if not torch.isfinite(weights).all() or weights.sum() <= 0.0:
+            weights.fill_(1.0)
+        sampled_indices = torch.multinomial(weights, sample_count, replacement=False)
+        return [candidates[index] for index in sampled_indices.tolist()]
 
     def _evict_excess_checkpoints(self) -> None:
-        """Remove the lowest-ELO checkpoint entry when over max_size."""
-        ckpts = [e for e in self.entries if e.kind == "checkpoint"]
-        while len(ckpts) > self.max_size:
-            worst = min(ckpts, key=lambda e: e.elo)
-            self.entries.remove(worst)
-            ckpts.remove(worst)
+        """Evict redundant old checkpoints while protecting ladder landmarks."""
+        checkpoints = [entry for entry in self.entries if entry.kind == "checkpoint"]
+        while len(checkpoints) > self.league_size:
+            newest = sorted(
+                checkpoints, key=lambda entry: (entry.update, entry.global_step), reverse=True
+            )[:4]
+            top_rated = sorted(checkpoints, key=lambda entry: entry.elo, reverse=True)[:2]
+            protected_ids = {entry.agent_id for entry in newest + top_rated}
+            removable = [entry for entry in checkpoints if entry.agent_id not in protected_ids]
+            if not removable:
+                removable = sorted(
+                    checkpoints, key=lambda entry: (entry.update, entry.global_step)
+                )[:1]
+            crowded = min(
+                removable,
+                key=lambda entry: (
+                    self._nearest_rating_gap(entry, checkpoints),
+                    entry.update,
+                    entry.global_step,
+                ),
+            )
+            self.entries.remove(crowded)
+            checkpoints.remove(crowded)
+            self.counts.remove_agent(crowded.agent_id)
+            self.ratings.pop(crowded.agent_id, None)
+            self.standard_errors.pop(crowded.agent_id, None)
 
-    # ------------------------------------------------------------------
-    # Sampling
-    # ------------------------------------------------------------------
-
-    def sample(self, training_elo: float) -> RosterEntry | None:
-        """Sample one entry, either uniformly or weighted by ELO proximity.
-
-        Fixed entries (e.g. the random anchor) are excluded from sampling.
-        Returns None if no non-fixed entries exist.
-        """
-        candidates = [e for e in self.entries if not e.fixed]
-        if not candidates:
-            return None
-
-        if self.uniform_sampling:
-            idx = int(torch.randint(len(candidates), (1,)).item())
-            return candidates[idx]
-
-        weights = [math.exp(-abs(e.elo - training_elo) / self.elo_temperature) for e in candidates]
-        total = sum(weights)
-        r = torch.rand(1).item() * total
-        cumulative = 0.0
-        for entry, w in zip(candidates, weights):
-            cumulative += w
-            if r <= cumulative:
-                return entry
-        return candidates[-1]  # floating-point edge case
-
-    # ------------------------------------------------------------------
-    # Policy loading / eviction
-    # ------------------------------------------------------------------
+    @staticmethod
+    def _nearest_rating_gap(entry: RosterEntry, checkpoints: list[RosterEntry]) -> float:
+        """Return distance to the nearest other frozen checkpoint rating."""
+        gaps = [abs(entry.elo - other.elo) for other in checkpoints if other is not entry]
+        return min(gaps, default=float("inf"))
 
     def load_policy(
         self,
@@ -204,80 +251,122 @@ class EloRoster:
         compile_mode: str | None = None,
         team_pma_k: tuple[int, ...] = (),
     ) -> None:
-        """Load checkpoint weights into entry.policy (no-op if already loaded)."""
+        """Lazily load checkpoint weights into a roster entry."""
         if entry.policy is not None or entry.kind != "checkpoint":
             return
+        if entry.path is None:
+            raise ValueError(f"checkpoint entry {entry.agent_id!r} has no path")
         import torch.nn as nn
 
         from boost_and_broadside.models.mvp.policy import MVPPolicy
 
-        ckpt = torch.load(entry.path, map_location=device, weights_only=False)
-        ckpt_team_pma_k = tuple(ckpt.get("team_pma_k", team_pma_k))
+        checkpoint = torch.load(entry.path, map_location=device, weights_only=False)
+        checkpoint_team_pma_k = tuple(checkpoint.get("team_pma_k", team_pma_k))
         policy = MVPPolicy(
             model_config,
             coordinator,
             num_value_components=num_value_components,
             num_ships=num_ships,
-            team_pma_k=ckpt_team_pma_k,
+            team_pma_k=checkpoint_team_pma_k,
         )
-        policy.load_state_dict(ckpt["policy_state_dict"])
+        policy.load_state_dict(checkpoint["policy_state_dict"])
         policy.eval()
         policy.to(device)
-        for m in policy.modules():
-            if isinstance(m, nn.RMSNorm) and m.weight.is_cuda:
-                m.weight.data = m.weight.data.bfloat16()
+        for module in policy.modules():
+            if isinstance(module, nn.RMSNorm) and module.weight.is_cuda:
+                module.weight.data = module.weight.data.bfloat16()
         entry.policy = (
             torch.compile(policy, mode=compile_mode) if compile_mode is not None else policy
         )
 
     def evict_all_checkpoint_policies(self) -> None:
-        """Free loaded weights from all checkpoint entries to reclaim GPU memory."""
-        for e in self.entries:
-            if e.kind == "checkpoint":
-                e.policy = None
-
-    # ------------------------------------------------------------------
-    # Checkpoint file paths referenced by the roster (must not be pruned)
-    # ------------------------------------------------------------------
+        """Release lazily loaded checkpoint policies."""
+        for roster_entry in self.entries:
+            if roster_entry.kind == "checkpoint":
+                roster_entry.policy = None
 
     def kept_paths(self) -> set[str]:
-        """Return the set of .pt paths that are currently roster entries."""
-        return {e.path for e in self.entries if e.kind == "checkpoint" and e.path}
-
-    # ------------------------------------------------------------------
-    # Persistence
-    # ------------------------------------------------------------------
+        """Return checkpoint files still referenced by the retained roster."""
+        return {
+            entry.path
+            for entry in self.entries
+            if entry.kind == "checkpoint" and entry.path is not None
+        }
 
     def save_json(self, path: str | Path) -> None:
-        """Persist roster metadata (ELO ratings, file paths) to JSON."""
+        """Persist v2 roster metadata and the complete pairwise count matrix."""
         data = {
+            "version": _ROSTER_VERSION,
             "entries": [
                 {
-                    "kind": e.kind,
-                    "label": e.label,
-                    "elo": e.elo,
-                    "global_step": e.global_step,
-                    "update": e.update,
-                    "path": e.path,
-                    "fixed": e.fixed,
+                    "agent_id": entry.agent_id,
+                    "kind": entry.kind,
+                    "label": entry.label,
+                    "elo": entry.elo,
+                    "global_step": entry.global_step,
+                    "update": entry.update,
+                    "stationary": entry.stationary,
+                    "path": entry.path,
                 }
-                for e in self.entries
+                for entry in self.entries
             ],
+            "counts": self.counts.to_dict(),
+            "ratings": self.ratings,
+            "standard_errors": self.standard_errors,
         }
         Path(path).write_text(json.dumps(data, indent=2))
 
     def load_json(self, path: str | Path) -> None:
-        """Restore roster metadata from JSON (replaces current entries; no weights loaded)."""
+        """Replace roster state from v2 JSON, rejecting all older formats."""
         data = json.loads(Path(path).read_text())
+        if data.get("version") != _ROSTER_VERSION:
+            raise ValueError("roster.json must use version 2; old runs cannot be resumed")
         self.entries = [
             RosterEntry(
-                kind=d["kind"],
-                label=d["label"],
-                elo=d["elo"],
-                global_step=d["global_step"],
-                update=d["update"],
-                path=d.get("path"),
-                fixed=d.get("fixed", False),
+                agent_id=entry["agent_id"],
+                kind=entry["kind"],
+                label=entry["label"],
+                elo=entry["elo"],
+                global_step=entry["global_step"],
+                update=entry["update"],
+                stationary=entry["stationary"],
+                path=entry.get("path"),
             )
-            for d in data["entries"]
+            for entry in data["entries"]
         ]
+        self.counts = MatchCounts.from_dict(
+            data["counts"], device=self.counts.device, dtype=self.counts.tensor.dtype
+        )
+        expected_ids = {_LIVE_ID, *(entry.agent_id for entry in self.entries)}
+        if set(self.counts.agent_ids) != expected_ids:
+            raise ValueError("roster entries and count-matrix agent IDs do not match")
+        self.ratings = {key: float(value) for key, value in data["ratings"].items()}
+        self.standard_errors = {key: float(value) for key, value in data["standard_errors"].items()}
+
+
+class EloRoster(LeagueRoster):
+    """Temporary adapter for the trainer before the Phase 3-4 clean break."""
+
+    def __init__(
+        self,
+        max_size: int = 20,
+        k_factor: float = 32.0,
+        elo_temperature: float = 200.0,
+        uniform_sampling: bool = False,
+    ) -> None:
+        del k_factor, elo_temperature
+        super().__init__(
+            league_size=max_size,
+            pfsp_mode="variance" if uniform_sampling else "hard",
+            pfsp_exponent=2.0,
+            admission_prior_games=10.0,
+        )
+
+    def sample(self, training_elo: float) -> RosterEntry | None:
+        """Serve the old single-opponent trainer until its unified-slice migration."""
+        self.ratings[_LIVE_ID] = training_elo
+        # The old trainer cannot execute random entries; Phase 4 removes this adapter.
+        sampled = self.sample_opponents(1, self.ratings)
+        if sampled and sampled[0].kind == "random":
+            return self.entry(_SCRIPTED_ID)
+        return sampled[0] if sampled else None
