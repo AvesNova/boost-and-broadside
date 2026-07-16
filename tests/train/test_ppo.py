@@ -6,8 +6,8 @@ import torch
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import (
-    EnvConfig,
     EloEvalConfig,
+    EnvConfig,
     ModelConfig,
     RewardConfig,
     ScaleConfig,
