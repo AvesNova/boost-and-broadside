@@ -1,7 +1,7 @@
-"""BC warm-start profile: run BC pretraining for 50M steps, then switch to RL.
+"""BC warm-start profile: run a short BC pretraining stage, then switch to RL.
 
 This defines configs for both stages. main.py handles the two-stage pipeline:
-  1. Run BC_WARMSTART_PRETRAIN_CONFIG for 50M steps → save weights.
+  1. Run BC_WARMSTART_PRETRAIN_CONFIG to completion → save weights.
   2. Load those weights into RL_TRAIN_CONFIG → run full RL.
 
 The pretrain stage uses the same schedule as bc.py but with a shorter

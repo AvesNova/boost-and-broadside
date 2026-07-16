@@ -3,28 +3,30 @@
 Select a mode with --mode. All hyperparameters live in runs/.
 
 Training:
-    uv run main.py --mode rl                                              # RL from scratch
-    uv run main.py --mode rl --compile max-autotune                       # RL with max-autotune
-    uv run main.py --mode rl --pretrain_from checkpoints/run/best.pt      # RL from pretrained weights
-    uv run main.py --mode rl --resume                                     # resume latest checkpoint
-    uv run main.py --mode rl --resume checkpoints/run/step_000001000.pt   # resume specific checkpoint
-    uv run main.py --mode rl_obstacles                                    # RL with dynamic obstacles
-    uv run main.py --mode bc                                              # BC pretraining from scratch
-    uv run main.py --mode bc_warmstart                                    # BC 50M steps → RL (one process)
-    uv run main.py --mode rl --smoke                                      # crash-test (tiny batch, no W&B)
+    uv run --no-sync main.py --mode rl                          # RL from scratch
+    uv run --no-sync main.py --mode rl --smoke                  # crash-test (tiny batch, no W&B)
+    uv run --no-sync main.py --mode rl --compile max-autotune   # RL with max-autotune
+    uv run --no-sync main.py --mode rl --pretrain_from checkpoints/run/best.pt
+    uv run --no-sync main.py --mode rl --resume                 # resume latest checkpoint
+    uv run --no-sync main.py --mode rl --resume checkpoints/run/step_000001000.pt
+    uv run --no-sync main.py --mode rl_obstacles                # RL with dynamic obstacles
+    uv run --no-sync main.py --mode bc                          # BC pretraining from scratch
+    uv run --no-sync main.py --mode bc_warmstart                # BC pretrain → RL (one process)
 
 Watch / play:
-    uv run main.py --mode watch                                           # human vs latest checkpoint
-    uv run main.py --mode watch --team0 null --team1 scripted             # human vs scripted
-    uv run main.py --mode watch --team0 latest --team1 latest             # self-play
-    uv run main.py --mode watch --fast-cache                              # skip convergence animation
+    uv run --no-sync main.py --mode watch                       # human vs latest checkpoint
+    uv run --no-sync main.py --mode watch --team0 null --team1 scripted
+    uv run --no-sync main.py --mode watch --team0 latest --team1 latest
+    uv run --no-sync main.py --mode watch --fast-cache          # skip convergence animation
 
 Evaluation:
-    uv run main.py --mode collect_stats                                   # scripted vs random
-    uv run main.py --mode collect_stats --team0 latest --team1 scripted
-    uv run main.py --mode feature_stats                                   # compute feature deltas
-    uv run main.py --mode elo_stats                                       # ELO across all scripted agents
-    uv run main.py --mode elo_stats --run latest                          # scripted + latest checkpoints
+    uv run --no-sync main.py --mode collect_stats               # scripted vs random
+    uv run --no-sync main.py --mode collect_stats --team0 latest --team1 scripted
+    uv run --no-sync main.py --mode feature_stats               # label-scale calibration stats
+    uv run --no-sync main.py --mode elo_stats                   # ELO across scripted agents
+    uv run --no-sync main.py --mode elo_stats --run latest      # + checkpoints from latest run
+    uv run --no-sync main.py --mode ar_report                   # autoregressive prediction report
+    uv run --no-sync main.py --mode noise_calibration           # NextStateHead error statistics
 
 Agent specs (--team0 / --team1):
     null        human keyboard (watch only)
@@ -32,6 +34,8 @@ Agent specs (--team0 / --team1):
     scripted    stochastic scripted agent
     latest      most recently modified checkpoint in checkpoints/
     <path.pt>   specific checkpoint file
+    plus named scripted agents: scripted_team, jouster, team_jouster, boom_zoom,
+    abreast, reverse_turret, run_away, spiral_evader, jinking
 
 Compile profiles (--compile):
     reduce-overhead    default; fast startup, good throughput
@@ -88,7 +92,7 @@ def _parse_args() -> argparse.Namespace:
             "Operating mode. "
             "'bc': BC-only pretraining, no RL gradient. "
             "'rl': RL run, optionally loading pretrained weights via --pretrain_from. "
-            "'bc_warmstart': pretrain for 50M steps then immediately start RL from those weights."
+            "'bc_warmstart': run BC pretraining then immediately start RL from those weights."
         ),
     )
     parser.add_argument(
@@ -139,7 +143,8 @@ def _parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         metavar="SPEC",
-        help="Agent for team 0: null, random, scripted, latest, or path/to/checkpoint.pt. "
+        help="Agent for team 0: null, random, scripted, latest, path/to/checkpoint.pt, "
+        "or a named scripted agent (see module docstring). "
         "Defaults: watch→null, collect_stats→scripted.",
     )
     parser.add_argument(
@@ -147,7 +152,8 @@ def _parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         metavar="SPEC",
-        help="Agent for team 1: null, random, scripted, latest, or path/to/checkpoint.pt. "
+        help="Agent for team 1: null, random, scripted, latest, path/to/checkpoint.pt, "
+        "or a named scripted agent (see module docstring). "
         "Defaults: watch→latest, collect_stats→random.",
     )
     parser.add_argument(
@@ -301,7 +307,7 @@ def main() -> None:
         case "bc_warmstart":
             warmstart_args = argparse.Namespace(**vars(args), smoke=False)
 
-            print("=== BC_WARMSTART: starting BC pretraining phase (50M steps) ===")
+            print("=== BC_WARMSTART: starting BC pretraining phase ===")
             pretrain_trainer = _make_trainer(BC_WARMSTART_PRETRAIN_CONFIG, warmstart_args)
             _run_trainer(pretrain_trainer)
 

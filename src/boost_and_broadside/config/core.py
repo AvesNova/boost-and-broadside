@@ -113,7 +113,7 @@ class ModelConfig:
 
 @dataclass(frozen=True)
 class RewardConfig:
-    """Reward weights and geometry parameters for the 11-component critic.
+    """Reward weights and geometry parameters for the decomposed critic.
 
     Core reward weights and geometry must be set explicitly at the call site.
     Optional obstacle and behavior-shaping rewards default to disabled values.
@@ -132,10 +132,12 @@ class RewardConfig:
     matrix), so the signal never propagates. Each ship is the sole recipient of
     its own reward.
 
-    Group scales (applied as a multiplier on top of individual weights):
-        true_reward  → ally_win, enemy_win
-        global       → global outcome rewards + shaping (ally/enemy damage, death, facing, closing_speed, shoot_quality)
-        local        → self-only per-ship rewards (kill_shot, kill_assist, damage_taken, damage_dealt, death)
+    Group scales (applied as a multiplier on top of individual weights; the
+    authoritative component → group mapping is _GROUP in train/rl/ppo.py):
+        true_reward  → win components (ally_win, enemy_win)
+        global       → team outcome rewards (ally/enemy damage and death)
+        local        → self-only per-ship rewards (shaping, kill credit,
+                       per-ship damage/death, obstacle penalties)
     """
 
     # --- Global outcome rewards (lambda-aggregated across ships) ---

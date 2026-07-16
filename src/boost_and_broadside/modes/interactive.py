@@ -3,12 +3,9 @@
 Entry point:
   - run_watch_mode: render live gameplay between two specified agents at 60fps.
 
-Supported agent specs (--team0 / --team1):
-    null        — human keyboard (WASD + Space)
-    random      — uniform random actions
-    scripted    — StochasticScriptedAgent
-    latest      — most recently modified checkpoint
-    <path.pt>   — specific checkpoint file
+Agent specs (--team0 / --team1) are resolved by modes/agent_factory.py —
+`null` maps to human keyboard control (WASD to fly, Shift for sharp turns,
+Space to shoot); see that module for the full spec list.
 """
 
 import threading

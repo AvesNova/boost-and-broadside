@@ -1,11 +1,15 @@
-"""Agent specification resolution for interactive and collect-stats modes.
+"""Agent specification resolution for interactive and evaluation modes.
 
 Supported specs:
-    null        — human keyboard input (watch mode only)
-    random      — uniform random actions every step
-    scripted    — StochasticScriptedAgent
-    latest      — most recently modified checkpoint under checkpoint_dir
-    <path.pt>   — specific .pt checkpoint file
+    null           — human keyboard input (watch mode only)
+    random         — uniform random actions every step
+    latest         — most recently modified checkpoint under checkpoint_dir
+    <path.pt>      — specific .pt checkpoint file
+    scripted       — StochasticScriptedAgent
+    scripted_team  — StochasticScriptedAgent with team target selection
+    jouster / team_jouster / boom_zoom / abreast / reverse_turret /
+    run_away / spiral_evader / jinking
+                   — deterministic scripted agents (see agents/)
 """
 
 import sys

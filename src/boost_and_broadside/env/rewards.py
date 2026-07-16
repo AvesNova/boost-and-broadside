@@ -1,15 +1,14 @@
-"""Modular reward components for the 9-component decomposed critic.
-
+"""Modular reward components for the decomposed critic.
 
 All computations are GPU-vectorized. No Python loops over ships or envs.
 Each component returns the reward from the perspective of that specific ship —
 no zero-sum pre-inversion. Zero-sum accounting is handled at PPO update time
 via the lambda aggregation matrix.
 
-The 9 components split outcomes into ally/enemy pairs so the critic can
-distinguish symmetric from asymmetric situations (e.g. mutual damage vs no
-damage, standoff vs close fight). Shaping rewards provide dense feedback to
-prevent passive collapse during early RL.
+REWARD_COMPONENT_NAMES is the full registry; outcome components are split into
+ally/enemy pairs so the critic can distinguish symmetric from asymmetric
+situations (e.g. mutual damage vs no damage, standoff vs close fight). Shaping
+rewards provide dense feedback to prevent passive collapse during early RL.
 
 Adding a new reward
 -------------------
@@ -813,7 +812,7 @@ REWARD_COMPONENT_NAMES: tuple[str, ...] = (
     "kill_assist",  # 10 — proportional kill credit from episode-level damage (self only)
     "damage_taken",  # 11 — damage received by this ship this step (self only)
     "damage_dealt_enemy",  # 12 — damage dealt to enemies this step (self only)
-    "damage_dealt_ally",  # 13 — damage dealt to allies this step — friendly-fire penalty (self only)
+    "damage_dealt_ally",  # 13 — damage dealt to allies — friendly-fire penalty (self only)
     "death",  # 14 — -1 on the step this ship dies (self only)
     "obstacle_death",  # 15 — -1 on the step this ship is killed by an obstacle (self only)
     "obstacle_proximity",  # 16 — penalty proportional to nearness to closest obstacle (self only)
@@ -830,7 +829,7 @@ def build_reward_components(
     rewards: RewardConfig,
     ship_config: ShipConfig,
 ) -> list[RewardComponent]:
-    """Construct the 9 reward components from config.
+    """Construct one instance of every registered reward component from config.
 
     Called once at PPOTrainer init. Individual component weights are updated
     live each update by the group-scale multipliers in the training schedule.
@@ -840,7 +839,7 @@ def build_reward_components(
         ship_config: Physics config (provides world_size).
 
     Returns:
-        List of all 11 RewardComponent instances.
+        One RewardComponent per entry in REWARD_COMPONENT_NAMES, in order.
     """
     return [
         AllyDamageReward(weight=rewards.ally_damage_weight),

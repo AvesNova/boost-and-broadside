@@ -1,9 +1,18 @@
-"""Clean recurrent PPO trainer for the MVP policy.
+"""Recurrent PPO trainer for the MVP policy.
 
-Zero Mamba, zero auxiliary losses. One clean loop:
-    collect rollout → compute GAE → update epochs → log async → repeat.
+Core loop: collect rollout → compute per-component GAE → PPO update epochs →
+log async → repeat. On top of that, PPOTrainer coordinates:
 
-Logging is async (CPU-side via wandb) to avoid GPU sync on the hot path.
+  - the decomposed critic (per-component returns, lambda aggregation,
+    schedule-driven group scales),
+  - auxiliary losses (behavior cloning from the scripted agent with ELO-gated
+    decay, next-state prediction, windowed cumulative loss, optional SIGReg),
+  - opponent management (scripted / avg-model / league fractions, OpponentMixin),
+  - continuous in-training ELO evaluation (EloEvaluator) and the ELO roster,
+  - checkpointing (CheckpointMixin) and async W&B logging (LoggingMixin).
+
+Rollout and update work run on CUDA streams where available, with a CPU
+fallback path; logging stays off the GPU hot path.
 """
 
 import dataclasses

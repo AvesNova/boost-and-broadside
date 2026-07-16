@@ -3,7 +3,8 @@
 Responsibilities:
   - Convert TensorState into the raw obs dict consumed by MVPPolicy.
   - Concatenate ship and obstacle tokens into a single (B, N+M, ...) obs dict.
-  - Compute zero-sum rewards via the reward components.
+  - Compute per-ship per-component rewards via the reward components
+    (zero-sum accounting happens later, in PPO's lambda aggregation).
   - Reset done / truncated environments and zero GRU hidden states.
   - Track per-ship episode statistics for logging.
 """
