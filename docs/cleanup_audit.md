@@ -3,6 +3,11 @@
 Systematic review of the codebase against STYLE_GUIDE.md and general portfolio-readiness,
 performed 2026-07-15. **Nothing has been changed** — this document only records what to do.
 
+> **Status (2026-07-16): cleanup complete.** Every finding below is marked ✅ done (with
+> commit hash) or ⏭ won't-fix (with reason). One open question remains in
+> *Discovered during cleanup* (roster random-anchor sampling) — it needs a design decision,
+> not a cleanup.
+
 **Importance ratings**
 
 | Rating | Meaning |
@@ -98,7 +103,7 @@ E.g. `store_initial_hidden` says `(1, B*N, D)` but state is `(n_layers, B*num_to
 
 ## 3. Documentation drift
 
-### 3.1 README.md — multiple sections describe a previous generation of the code — **High**
+### 3.1 README.md — multiple sections describe a previous generation of the code — **High** — ✅ done (19382eb, 5086304)
 - **Observations section is wrong end-to-end**: documents `ObsConfig` in `runs/shared.py`,
   `raw_dim = 105`, transforms `FourierAngle`, `QuarterWaveFourier`, `VecMag`, `Bucketize`,
   `Clamp`, `AsFloat`, and `Fourier(10, …)` — none exist. Live system is
@@ -121,7 +126,13 @@ E.g. `store_initial_hidden` says `(1, B*N, D)` but state is `(n_layers, B*num_to
 **Action:** rewrite the stale sections from the current code (this is the highest-value doc fix
 for a portfolio — the README is the first and often only thing reviewers read).
 
-### 3.2 Stale module docstrings — **High**
+**Done (19382eb, 5086304):** README rewritten end-to-end from the verified current code
+(all 10 modes, full agent-spec list, FeatureCoordinator obs pipeline, 9-dim aux prediction,
+component registry + lambda groups, league/ELO eval, multi-scale, checkpoints; commands use
+`uv run --no-sync`; no hardcoded test count). main.py docstring/help and bc_warmstart.py
+docstring fixed alongside (agent-spec gap, "50M steps" → config-agnostic wording).
+
+### 3.2 Stale module docstrings — **High** — ✅ done (5086304)
 - [ppo.py:1-7](src/boost_and_broadside/train/rl/ppo.py#L1-L7): "Zero Mamba, zero auxiliary
   losses. One clean loop" — the file contains BC loss, next-state aux loss, windowed loss,
   SIGReg, avg-model, league play, in-rollout ELO eval.
@@ -136,17 +147,24 @@ for a portfolio — the README is the first and often only thing reviewers read)
 
 **Action:** fix during the corresponding code cleanups; grep for hardcoded component counts.
 
-### 3.3 ROADMAP.md — **High**
+**Done (5086304):** ppo.py docstring rewritten to describe the real trainer; rewards.py /
+core.py / wrapper.py count and zero-sum claims fixed (counts now point at
+`REWARD_COMPONENT_NAMES`); agent_factory.py + interactive.py list the full spec set; also
+fixed the stale group-scale mapping comments in core.py and schedule.py (facing/closing_speed/
+shoot_quality are local, not global).
+
+### 3.3 ROADMAP.md — **High** — ✅ done (92b204c)
 Raw brain-dump with typos ("attension", "spacial", "perterbations"), items completed long ago
 ("Change world to 1024x1024"), and items referencing deleted systems (BC data collection).
 **Action:** rewrite as a short, honest "Future work" list (or delete). For a portfolio, a
 polished 10-line roadmap beats this.
 
-### 3.4 proposals/data_pipeline_refactor.md — **Medium**
+### 3.4 proposals/data_pipeline_refactor.md — **Medium** — ✅ done (c66bee4)
 Analyzes `src/modes/collect.py`, `src/data_collector.py`, pickle checkpoints — architecture that
 no longer exists. **Action:** delete, or move to a clearly-labeled `docs/archive/`.
+Moved to `docs/archive/` with an "Archived" banner explaining what replaced it.
 
-### 3.5 docs/game_design.md vs actual config — **Low**
+### 3.5 docs/game_design.md vs actual config — **Low** — ✅ done (586cdfd)
 Documents bullet energy cost `3.0` and the head-on damage-reduction mechanic, but
 [runs/shared.py:9](runs/shared.py#L9) overrides `bullet_energy_cost=2` and
 `bullet_min_damage_frac=1.0` (mechanic disabled in training).
@@ -299,7 +317,7 @@ in bc.py — same name, different unit; single letters `sc`/`w`/`d`/`a` in ppo.p
 | `src/__init__.py` tracked | Makes `src` itself a package — wrong with `packages.find where=["src"]` layout | Delete | Medium — ✅ done (eeae409) |
 | `.claude/settings.local.json` tracked | "local" settings are per-machine by convention | Untrack + gitignore | Low — ✅ done (eeae409) |
 | Stray empty `models/` dir at root | Gitignored but confusing next to `src/.../models/` | Delete locally | Low — ✅ done (local only, not a git change) |
-| `checkpoints/` + `wandb/` bulk | Properly gitignored (good), but ~300 run dirs locally; fresh clones look nothing like your working copy | No repo action; consider a `runs/README` note on artifacts | Low |
+| `checkpoints/` + `wandb/` bulk | Properly gitignored (good), but ~300 run dirs locally; fresh clones look nothing like your working copy | No repo action; consider a `runs/README` note on artifacts | Low — ⏭ won't fix: local-only clutter, both dirs gitignored; README's Checkpoints section now explains what lands in `checkpoints/` |
 
 ---
 
@@ -323,7 +341,7 @@ in bc.py — same name, different unit; single letters `sc`/`w`/`d`/`a` in ppo.p
 
 ---
 
-## 8. STYLE_GUIDE.md updates (make the guide match reality where reality is right)
+## 8. STYLE_GUIDE.md updates (make the guide match reality where reality is right) — ✅ done (5ed25c5, all 6 items)
 
 1. **§6.3 "No Defaults for Hyperparameters"** — **Decision (2026-07-15): (a) amend the guide.**
    Add: *"Fields that disable an optional feature may default to the disabled value (0.0 / None).
@@ -342,6 +360,13 @@ in bc.py — same name, different unit; single letters `sc`/`w`/`d`/`a` in ppo.p
    step totals) — they rot."* This single rule covers findings 3.1/3.2.
 6. Optionally document the observation/feature pipeline (`FeatureCoordinator`) as the canonical
    encoding layer, since the guide predates it.
+
+**Done (5ed25c5):** §6.3 carve-out added (defaults kept per the resolved decision); §2 tooling
+made binding with a pointer to `[tool.ruff]`; entry-point form standardized on
+`uv run --no-sync` across guide, README, and main.py docstring; §6.4 gained `M`/`T+1`
+letters, the `K` overload note, and the "shape comments are code" rule; §5 gained the
+"never hardcode counts in prose" rule; new §6.10 documents `FeatureCoordinator` as the
+canonical encoding layer.
 
 ---
 
