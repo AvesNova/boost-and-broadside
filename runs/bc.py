@@ -3,7 +3,7 @@
 LR warms up from 1e-7 → 3e-4 over 6M steps, then holds.
 policy_gradient_coef=0.0 throughout — no policy gradient loss.
 Scripted agent is queried on all envs for supervised targets only;
-no opponents are active (scripted_fraction=0.0).
+no opponents are active (opponent_fraction=0.0).
 """
 
 from boost_and_broadside.config import (
@@ -15,7 +15,7 @@ from boost_and_broadside.config import (
     linear,
     stepped,
 )
-from runs.shared import ELO_EVAL, REWARDS
+from runs.shared import LEAGUE_EVAL, REWARDS
 
 _NUM_BC_ENVS = 480
 
@@ -33,9 +33,7 @@ BC_SCHEDULE = TrainingSchedule(
     global_scale=constant(1.0),
     local_scale=constant(1.0),
     # No opponents during BC — scripted agent only supplies supervised targets.
-    scripted_fraction=constant(0.0),
-    avg_model_fraction=constant(0.0),
-    league_fraction=constant(0.0),
+    opponent_fraction=constant(0.0),
     checkpoint_interval=stepped((0, 10)),
     num_epochs=constant(4),
     target_kl=constant(None),
@@ -64,11 +62,15 @@ BC_TRAIN_CONFIG = TrainConfig(
     return_min_span=1.0,
     checkpoint_dir="checkpoints",
     league_size=20,
-    elo_milestone_gap=100.0,
-    elo_k_factor=32.0,
-    elo_temperature=200.0,
-    league_uniform_sampling=False,
-    elo_eval=ELO_EVAL,
+    league_k=4,
+    league_admission_interval=25,
+    pfsp_mode="hard",
+    pfsp_exponent=2.0,
+    live_rating_decay=0.9,
+    avg_rating_decay=0.995,
+    bt_prior_draws=1.0,
+    admission_prior_games=10.0,
+    league_eval=LEAGUE_EVAL,
     bc_elo_target=950.0,
     bc_elo_scale=200.0,
     histogram_interval=10,

@@ -25,7 +25,7 @@ from boost_and_broadside.config import (
     stepped,
 )
 from boost_and_broadside.config.schedule import exponential, join
-from runs.shared import COMPONENT_GAMMAS, COMPONENT_LAMBDAS, ELO_EVAL, REWARDS
+from runs.shared import COMPONENT_GAMMAS, COMPONENT_LAMBDAS, LEAGUE_EVAL, REWARDS
 
 _MAX_TOKENS = 6_000_000
 _NUM_SHIPS = 8
@@ -48,13 +48,7 @@ RL_SCHEDULE = TrainingSchedule(
     true_reward_scale=constant(1.0),
     global_scale=constant(1.0),
     local_scale=constant(1.0),
-    # Scripted at 50% from step 0 — stable, strong signal from the start.
-    # At step 50M avg-model is ready; reduce scripted to make room.
-    scripted_fraction=stepped((0, 0.5), (50_000_000, 0.3)),
-    # avg-model not used as opponent until step 50M (needs time to diverge from init).
-    avg_model_fraction=stepped((0, 0.0), (50_000_000, 0.2)),
-    # League activates at step 50M once the policy has meaningful ELO.
-    league_fraction=stepped((0, 0.0), (50_000_000, 0.2)),
+    opponent_fraction=stepped((0, 0.5), (50_000_000, 0.7)),
     checkpoint_interval=constant(50),
     num_epochs=stepped((0, 4)),
     target_kl=stepped((0, 0.1)),
@@ -96,11 +90,15 @@ RL_TRAIN_CONFIG = TrainConfig(
     return_min_span=1.0,
     checkpoint_dir="checkpoints",
     league_size=20,
-    elo_milestone_gap=100.0,
-    elo_k_factor=32.0,
-    elo_temperature=200.0,
-    league_uniform_sampling=False,
-    elo_eval=ELO_EVAL,
+    league_k=4,
+    league_admission_interval=25,
+    pfsp_mode="hard",
+    pfsp_exponent=2.0,
+    live_rating_decay=0.9,
+    avg_rating_decay=0.995,
+    bt_prior_draws=1.0,
+    admission_prior_games=10.0,
+    league_eval=LEAGUE_EVAL,
     bc_elo_target=950.0,
     bc_elo_scale=200.0,
     histogram_interval=10,

@@ -213,7 +213,7 @@ class MVPEnvWrapper:
             comp_rewards: (B, N, K) float32 — per-component per-ship rewards (no zero-sum).
             dones:        (B,) bool — game-over (physics termination).
             truncated:    (B,) bool — episode length limit reached.
-            info:         empty dict (episode stats moved to pop_episode_stats).
+            info:         GPU terminal-team flags used by league outcome recording.
         """
         # Snapshot pre-physics state fields needed for reward delta
         prev_health = self.env.state.ship_health.clone()  # (B, N)
@@ -286,7 +286,11 @@ class MVPEnvWrapper:
         self._ep_wins.masked_fill_(done_n, 0.0)
         self._ship_age.masked_fill_(done_n, 0)
 
-        return self._get_obs(), comp_rewards, dones, truncated, {}
+        info = {
+            "team0_won": t0_wins.squeeze(1),
+            "team1_won": t1_wins.squeeze(1),
+        }
+        return self._get_obs(), comp_rewards, dones, truncated, info
 
     # ------------------------------------------------------------------
     # Observation construction

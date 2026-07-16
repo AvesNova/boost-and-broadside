@@ -218,15 +218,21 @@ def _apply_smoke(config: TrainConfig) -> TrainConfig:
     if obstacle_cache is not None:
         obstacle_cache = replace(obstacle_cache, num_cache_envs=128, cache_size=4, max_steps=6000)
     schedule = replace(config.schedule, checkpoint_interval=stepped((0, 1)))
-    elo_eval = replace(config.elo_eval, envs_per_matchup=4)
+    league_eval = replace(
+        config.league_eval,
+        eval_num_envs=4,
+        eval_pairs=4,
+        eval_slots=1,
+    )
     return replace(
         config,
         scales=scales,
         schedule=schedule,
-        elo_eval=elo_eval,
+        league_eval=league_eval,
         obstacle_cache=obstacle_cache,
         num_minibatches=1,
         total_timesteps=5_000,
+        league_admission_interval=1,
         log_interval=1,
     )
 

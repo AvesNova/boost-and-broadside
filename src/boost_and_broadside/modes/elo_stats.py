@@ -25,7 +25,7 @@ from boost_and_broadside.modes.agent_factory import (
     infer_team_pma_k,
     resolve_agent_spec,
 )
-from boost_and_broadside.train.rl.elo_eval import expected_score
+from boost_and_broadside.train.rl.rating import expected_score
 
 # All scripted agents, in display order. "scripted" (stochastic) is kept first
 # so scripted_idx == num_checkpoints regardless of list length.

@@ -7,8 +7,8 @@ log async → repeat. On top of that, PPOTrainer coordinates:
     schedule-driven group scales),
   - auxiliary losses (behavior cloning from the scripted agent with ELO-gated
     decay, next-state prediction, windowed cumulative loss, optional SIGReg),
-  - opponent management (scripted / avg-model / league fractions, OpponentMixin),
-  - continuous in-training ELO evaluation (EloEvaluator) and the ELO roster,
+  - unified PFSP opponent management (OpponentMixin),
+  - continuous count-based league evaluation and Bradley-Terry ratings,
   - checkpointing (CheckpointMixin) and async W&B logging (LoggingMixin).
 
 Rollout and update work run on CUDA streams where available, with a CPU
@@ -18,7 +18,6 @@ fallback path; logging stays off the GPU hot path.
 import dataclasses
 import threading
 import time
-from collections import deque
 from collections.abc import Callable
 from pathlib import Path
 from queue import Queue
@@ -48,14 +47,14 @@ from boost_and_broadside.train.rl.buffer import (
     RolloutBuffer,
 )
 from boost_and_broadside.train.rl.checkpoint import CheckpointMixin, cast_norms_bf16
-from boost_and_broadside.train.rl.elo_eval import EloEvaluator
 from boost_and_broadside.train.rl.features import FeatureCoordinator, build_standard_coordinator
+from boost_and_broadside.train.rl.league_eval import LeagueEvaluator
 from boost_and_broadside.train.rl.logging import LoggingMixin
 from boost_and_broadside.train.rl.opponents import (
     OpponentMixin,
     flip_team_obs,
 )
-from boost_and_broadside.train.rl.roster import EloRoster, RosterEntry
+from boost_and_broadside.train.rl.roster import LeagueRoster
 from boost_and_broadside.train.rl.sigreg import SIGReg
 
 # ------------------------------------------------------------------
@@ -155,9 +154,7 @@ class _ResolvedSchedule:
     true_reward_scale: float
     global_scale: float
     local_scale: float
-    scripted_fraction: float
-    avg_model_fraction: float
-    league_fraction: float
+    opponent_fraction: float
     checkpoint_interval: int
     num_epochs: int
     target_kl: float | None
@@ -172,17 +169,10 @@ class _RolloutRuntime:
     num_envs: int
     num_ships: int
     num_tokens: int
-    scripted_start: int
-    scripted_end: int
-    avg_start: int
-    avg_end: int
-    league_start: int
-    league_end: int
-    elo_eval: EloEvaluator
+    league_eval: LeagueEvaluator
     obs: MVPObservation
     hidden: torch.Tensor
     hidden_t1: torch.Tensor | None
-    avg_hidden: torch.Tensor | None
     action_buffer: torch.Tensor
     aux_obs: list[MVPObservation]
     aux_hiddens: list[torch.Tensor]
@@ -206,9 +196,7 @@ def _resolve_schedule(schedule: TrainingSchedule, step: int) -> _ResolvedSchedul
         true_reward_scale=schedule.true_reward_scale(step),
         global_scale=schedule.global_scale(step),
         local_scale=schedule.local_scale(step),
-        scripted_fraction=schedule.scripted_fraction(step),
-        avg_model_fraction=schedule.avg_model_fraction(step),
-        league_fraction=schedule.league_fraction(step),
+        opponent_fraction=schedule.opponent_fraction(step),
         checkpoint_interval=schedule.checkpoint_interval(step),
         num_epochs=schedule.num_epochs(step),
         target_kl=schedule.target_kl(step),
@@ -268,35 +256,17 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         base_state = _resolve_schedule(train_config.schedule, 0)
 
-        # Primary scale — supports scripted / avg-model / league opponents.
-        # Env groups are sized from the MAXIMUM fraction seen across the entire run
-        # so that slots exist when a later phase activates a higher fraction.
-        # Whether each group is ACTIVE each step is controlled by the current schedule
-        # fraction (> 0 → active, == 0 → those envs run self-play silently).
-        # Env groups are contiguous slices of the B primary envs:
-        #   [0, B_self)                          → pure self-play (+ overflow from inactive groups)
-        #   [B_self, B_self+B_sc)               → scripted opponent (+ BC targets)
-        #   [B_self+B_sc, B_self+B_sc+B_avg)   → avg-model opponent
-        #   [B_self+B_sc+B_avg, B)              → league roster opponent
+        # The primary batch has one contiguous opponent region sized for the
+        # maximum scheduled fraction. Inactive capacity silently remains self-play.
         B = train_config.scales[0].num_envs
-        max_sc_frac = _max_schedule_value(
-            train_config.schedule.scripted_fraction, train_config.total_timesteps
+        max_opponent_fraction = _max_schedule_value(
+            train_config.schedule.opponent_fraction, train_config.total_timesteps
         )
-        max_avg_frac = _max_schedule_value(
-            train_config.schedule.avg_model_fraction, train_config.total_timesteps
-        )
-        max_league_frac = _max_schedule_value(
-            train_config.schedule.league_fraction, train_config.total_timesteps
-        )
-        self.B_sc = round(max_sc_frac * B)
-        self.B_avg = round(max_avg_frac * B)
-        self.B_league = round(max_league_frac * B)
-        self.B_self = B - self.B_sc - self.B_avg - self.B_league
+        if not 0.0 <= max_opponent_fraction <= 1.0:
+            raise ValueError(f"opponent_fraction must stay in [0, 1], got {max_opponent_fraction}")
+        self.B_opp = round(max_opponent_fraction * B)
+        self.B_self = B - self.B_opp
 
-        if self.B_sc > 0 and scripted_agent is None:
-            raise ValueError(
-                "scripted_fraction > 0 in schedule requires a scripted_agent to be provided."
-            )
         if base_state.policy_gradient_coef == 0.0 and scripted_agent is None:
             raise ValueError("policy_gradient_coef=0.0 (BC mode) requires a scripted_agent.")
 
@@ -448,59 +418,42 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 _h_avg = self._avg_policy_module.initial_hidden(B, _nt, self.device)
                 self.avg_policy.get_action_and_value(sample_obs, _h_avg)
 
-        # Per-env flag (shared_pass only): which team_id is the opponent in
-        # scripted/avg/league groups. In ego_pass opponents always play team 1.
-        # Randomised at init and re-randomised each episode reset.
-        # Shape: (B_sc + B_avg + B_league,) — indexed relative to the non-self-play slice.
-        #   [:B_sc]                → scripted group
-        #   [B_sc : B_sc+B_avg]   → avg-model group
-        #   [B_sc+B_avg :]         → league group
-        n_opp_envs = self.B_sc + self.B_avg + self.B_league
+        # Shared-pass opponent team assignments span the maximum opponent region.
         self._opp_team_flag = (
-            torch.randint(0, 2, (n_opp_envs,), device=self.device, dtype=torch.int32)
-            if n_opp_envs > 0
+            torch.randint(0, 2, (self.B_opp,), device=self.device, dtype=torch.int32)
+            if self.B_opp > 0
             else torch.empty(0, device=self.device, dtype=torch.int32)
         )
 
-        # --- League play + ELO ---
-        self.roster = EloRoster(
-            max_size=train_config.league_size,
-            k_factor=train_config.elo_k_factor,
-            elo_temperature=train_config.elo_temperature,
-            uniform_sampling=train_config.league_uniform_sampling,
+        self.roster = LeagueRoster(
+            league_size=train_config.league_size,
+            pfsp_mode=train_config.pfsp_mode,
+            pfsp_exponent=train_config.pfsp_exponent,
+            admission_prior_games=train_config.admission_prior_games,
+            device=self.device,
+            count_dtype=torch.float32,
         )
-        # Random anchor is added by EloRoster.__init__ (ELO=0, fixed).
-        # "avg" entry is added when _update_avg_model() is first called.
-
-        # Training ELO starts at 0 — all ratings begin
-        # at the same point and diverge as eval matchups accumulate.
         self._training_elo: float = 0.0
         self._avg_training_elo: float = 0.0
-        eval_window_size = train_config.elo_eval.window_size
-        self._eval_window_rand = deque(maxlen=eval_window_size)
-        self._eval_window_sc = deque(maxlen=eval_window_size)
-        self._eval_window_avg_vs_sc = deque(maxlen=eval_window_size)
-        self._eval_window_live_vs_avg = deque(maxlen=eval_window_size)
-        self._elo_milestone: float = 0.0  # normalized training ELO (vs random) at last milestone
-        self._best_training_elo_norm: float = 0.0  # best normalized training ELO seen so far
-        self._best_avg_elo_norm: float = 0.0  # best normalized avg ELO seen so far
+        self._rating_metrics: dict[str, float] = {}
+        self._latest_counts_snapshot = self.roster.counts.to_cpu()
+        self._best_training_elo: float = 0.0
+        self._best_avg_elo: float = 0.0
         self._last_checkpoint_path: Path | None = None
 
-        # Current league opponent for the ongoing rollout (rotated each rollout).
-        self._current_league_entry: RosterEntry | None = None
-        self._current_league_policy: MVPPolicy | None = None
-
-        # Async logging queue
+        # The background worker owns CPU rating solves and W&B serialization.
         self._log_queue: Queue = Queue()
+        self._rating_results: Queue = Queue()
         if use_wandb:
             self._init_wandb(
                 train_config, model_config, ship_config, self.env_config, resume_wandb_run_id
             )
-            self._log_thread = threading.Thread(target=self._log_worker, daemon=True)
-            self._log_thread.start()
+        self._log_thread = threading.Thread(target=self._log_worker, daemon=True)
+        self._log_thread.start()
 
         self._global_step = 0
         self._start_update = 1
+        self._current_update = 0
         # Cumulative counters persisted across checkpoint resumes so throughput
         # metrics behave as if training never stopped.
         self._ship_steps = 0  # ship tokens (all teams, all envs, all scales)
@@ -738,11 +691,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         num_envs = self.cfg.scales[0].num_envs
         num_ships = self.wrapper.num_ships
         num_tokens = num_ships + self.env_config.num_obstacles
-        scripted_start = self.B_self
-        scripted_end = scripted_start + self.B_sc
-        avg_start = scripted_end
-        avg_end = avg_start + self.B_avg
-        league_start = avg_end
 
         obs = self.wrapper.reset()
         self.wrapper.env.state.step_count.random_(0, self.env_config.max_episode_steps)
@@ -750,11 +698,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         hidden_t1 = (
             self.policy.initial_hidden(num_envs, num_tokens, self.device)
             if self._ego_pass
-            else None
-        )
-        avg_hidden = (
-            self.avg_policy.initial_hidden(self.B_avg, num_tokens, self.device)
-            if self.B_avg > 0
             else None
         )
         action_buffer = torch.zeros(num_envs, num_ships, 3, dtype=torch.int32, device=self.device)
@@ -789,34 +732,27 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             num_envs=num_envs,
             num_ships=num_ships,
             num_tokens=num_tokens,
-            scripted_start=scripted_start,
-            scripted_end=scripted_end,
-            avg_start=avg_start,
-            avg_end=avg_end,
-            league_start=league_start,
-            league_end=num_envs,
-            elo_eval=EloEvaluator(
-                config=self.cfg.elo_eval,
+            league_eval=LeagueEvaluator(
+                config=self.cfg.league_eval,
                 ship_config=self.ship_config,
                 env_config=self.env_config,
+                model_config=self.model_config,
+                coordinator=self.coordinator,
+                num_value_components=self.wrapper.num_active_components,
+                team_pma_k=self._win_k,
                 device=self.device,
                 obstacle_cache=self._obstacle_cache,
+                roster=self.roster,
                 live_policy=self.policy,
                 avg_policy=self.avg_policy,
                 scripted_agent=self.scripted_agent,
                 num_ships=num_ships,
                 num_tokens=num_tokens,
-                live_elo=self._training_elo,
-                avg_elo=self._avg_training_elo,
-                random_window=self._eval_window_rand,
-                scripted_window=self._eval_window_sc,
-                avg_vs_scripted_window=self._eval_window_avg_vs_sc,
-                live_vs_avg_window=self._eval_window_live_vs_avg,
+                compile_mode=self._compile_mode,
             ),
             obs=obs,
             hidden=hidden,
             hidden_t1=hidden_t1,
-            avg_hidden=avg_hidden,
             action_buffer=action_buffer,
             aux_obs=aux_obs,
             aux_hiddens=aux_hiddens,
@@ -837,24 +773,18 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             aux_buffer.reset()
             aux_buffer.store_initial_hidden(aux_hidden)
 
-        league_hidden = self._prepare_league_opponent(runtime.num_tokens)
+        opponent_slots = self._prepare_opponents(runtime.num_tokens)
+        runtime.league_eval.begin_rollout(avg_eval_active)
         for rollout_step in range(self.cfg.num_steps):
             primary = self._collect_primary_step(
                 obs=runtime.obs,
                 hidden=runtime.hidden,
                 hidden_t1=runtime.hidden_t1,
-                avg_hidden=runtime.avg_hidden,
-                league_hidden=league_hidden,
                 action_buffer=runtime.action_buffer,
                 num_envs=runtime.num_envs,
                 num_ships=runtime.num_ships,
                 num_tokens=runtime.num_tokens,
-                scripted_start=runtime.scripted_start,
-                scripted_end=runtime.scripted_end,
-                avg_start=runtime.avg_start,
-                avg_end=runtime.avg_end,
-                league_start=runtime.league_start,
-                league_end=runtime.league_end,
+                opponent_slots=opponent_slots,
                 env_stream=runtime.env_stream,
                 net_stream=runtime.net_stream,
             )
@@ -862,8 +792,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 runtime.obs,
                 runtime.hidden,
                 runtime.hidden_t1,
-                runtime.avg_hidden,
-                league_hidden,
                 runtime.action_buffer,
                 dones,
             ) = primary
@@ -874,9 +802,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 runtime.aux_action_buffers,
                 runtime.aux_last_dones,
             )
-            runtime.elo_eval.step(rollout_step, avg_eval_active)
+            runtime.league_eval.step(rollout_step)
 
-        self._training_elo, self._avg_training_elo = runtime.elo_eval.flush(avg_eval_active)
+        self._latest_counts_snapshot = runtime.league_eval.flush()
+        self._enqueue_rating_solve(self._latest_counts_snapshot)
         return dones
 
     def _compute_rollout_gae(self, runtime: _RolloutRuntime, dones: torch.Tensor) -> None:
@@ -904,11 +833,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self.scaler.update(self.buffer.returns)
         self.adv_scaler.update(self.buffer.advantages, self.buffer.alive_mask)
 
-    def _refresh_training_schedule(self, metrics: dict, elo_eval: EloEvaluator) -> None:
+    def _refresh_training_schedule(self, metrics: dict) -> None:
         """Refresh schedule-controlled optimization, reward, and averaging state."""
         self._schedule_state = _resolve_schedule(self.cfg.schedule, self._global_step)
         self._policy_gradient_coef = self._schedule_state.policy_gradient_coef
-        elo_norm = self._training_elo - self._random_elo()
+        elo_norm = self._training_elo
         p_bc_wins = 1.0 / (
             1.0 + 10.0 ** ((elo_norm - self.cfg.bc_elo_target) / self.cfg.bc_elo_scale)
         )
@@ -930,13 +859,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         metrics["schedule/local_scale"] = self._schedule_state.local_scale
 
         elo_barrier_reached = elo_norm >= self.cfg.avg_model_elo_threshold
-        if self._policy_gradient_coef > 0.0 and self.B_avg > 0:
+        if self._policy_gradient_coef > 0.0 and self.B_opp > 0:
             if self._avg_update_count > 0 or elo_barrier_reached:
-                first_avg_update = self._avg_update_count == 0
                 self._update_avg_model()
-                if first_avg_update:
-                    elo_eval.seed_avg_elo_from_live()
-                    self._avg_training_elo = self._training_elo
 
     def train(self) -> None:
         """Run the full PPO training loop."""
@@ -944,6 +869,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._train_start_time = time.time()
 
         for update in range(self._start_update, self._num_updates + 1):
+            self._current_update = update
+            self._consume_rating_result()
+            self.roster.counts.decay("live", self.cfg.live_rating_decay)
+            if "avg" in self.roster.counts.agent_ids:
+                self.roster.counts.decay("avg", self.cfg.avg_rating_decay)
             avg_eval_active = self._avg_update_count > 0
             dones = self._collect_rollout(runtime, avg_eval_active)
             self._compute_rollout_gae(runtime, dones)
@@ -956,7 +886,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 record_histograms=record_hist,
             )
 
-            self._refresh_training_schedule(metrics, runtime.elo_eval)
+            self._refresh_training_schedule(metrics)
             sps, ship_tps = self._assemble_metrics(metrics, update, runtime.ship_tokens_per_update)
 
             self._log_training_update(metrics, update, sps, ship_tps)
@@ -973,11 +903,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             return
         self._shutdown_called = True
         self.roster.evict_all_checkpoint_policies()
-        self._current_league_policy = None
+        self._log_queue.put(None)
+        if hasattr(self, "_log_thread"):
+            self._log_thread.join(timeout=10)
         if self.use_wandb:
-            self._log_queue.put(None)
-            if hasattr(self, "_log_thread"):
-                self._log_thread.join(timeout=10)
             import wandb
 
             wandb.finish()
@@ -1706,20 +1635,12 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         return metrics
 
     # ------------------------------------------------------------------
-    # ELO evaluation
+    # Rating-gated optimization
     # ------------------------------------------------------------------
-
-    def _random_elo(self) -> float:
-        """Return the current ELO of the random anchor roster entry."""
-        for e in self.roster.entries:
-            if e.kind == "random":
-                return e.elo
-        return 0.0  # fallback; random entry should always exist
 
     def _effective_target_kl(self) -> float | None:
         """Resolve the ELO-gated target KL from the current schedule snapshot."""
         threshold = self._schedule_state.high_elo_threshold
-        elo_norm = self._training_elo - self._random_elo()
-        if threshold is not None and elo_norm >= threshold:
+        if threshold is not None and self._training_elo >= threshold:
             return self._schedule_state.high_elo_target_kl
         return self._schedule_state.target_kl

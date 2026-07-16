@@ -17,7 +17,7 @@ from boost_and_broadside.config import (
     linear,
     stepped,
 )
-from runs.shared import COMPONENT_GAMMAS, COMPONENT_LAMBDAS, ELO_EVAL
+from runs.shared import COMPONENT_GAMMAS, COMPONENT_LAMBDAS, LEAGUE_EVAL
 
 _MAX_TOKENS = 3840 * 8
 _NUM_SHIPS = 8
@@ -70,9 +70,7 @@ RL_OBSTACLES_SCHEDULE = TrainingSchedule(
     global_scale=constant(1.0),
     local_scale=constant(1.0),
     # No opponents — pure self-navigation, obstacle avoidance only.
-    scripted_fraction=stepped((0, 0.0)),
-    avg_model_fraction=stepped((0, 0.0)),
-    league_fraction=stepped((0, 0.0)),
+    opponent_fraction=stepped((0, 0.0)),
     checkpoint_interval=stepped((0, 1), (3, 10)),
     num_epochs=constant(4),
     target_kl=constant(None),
@@ -109,11 +107,15 @@ RL_OBSTACLES_TRAIN_CONFIG = TrainConfig(
     return_min_span=1.0,
     checkpoint_dir="checkpoints",
     league_size=20,
-    elo_milestone_gap=100.0,
-    elo_k_factor=32.0,
-    elo_temperature=200.0,
-    league_uniform_sampling=False,
-    elo_eval=ELO_EVAL,
+    league_k=4,
+    league_admission_interval=25,
+    pfsp_mode="hard",
+    pfsp_exponent=2.0,
+    live_rating_decay=0.9,
+    avg_rating_decay=0.995,
+    bt_prior_draws=1.0,
+    admission_prior_games=10.0,
+    league_eval=LEAGUE_EVAL,
     bc_elo_target=950.0,
     bc_elo_scale=200.0,
     histogram_interval=10,

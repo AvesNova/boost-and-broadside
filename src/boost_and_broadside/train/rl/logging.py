@@ -1,10 +1,12 @@
 """Training metric assembly and asynchronous W&B logging."""
 
 import dataclasses
+import statistics
 import time
 from queue import Empty
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig, TrainConfig
+from boost_and_broadside.train.rl.rating import DRAW, LOSS, WIN, MatchCounts, solve_bt
 
 
 class LoggingMixin:
@@ -68,41 +70,31 @@ class LoggingMixin:
         metrics["counters/grad_tokens"] = self._grad_tokens
         metrics["counters/train_hours"] = elapsed / 3600.0
 
-        # ELO evaluation — continuous live statistics from parallel slots.
-        # Avg-model metrics only exist once the avg model has been initialized.
-        metrics["elo/training"] = self._training_elo
-        if self._eval_window_rand:
-            metrics["elo/training_vs_random"] = sum(self._eval_window_rand) / len(
-                self._eval_window_rand
-            )
-        if self._eval_window_sc:
-            metrics["elo/training_vs_scripted"] = sum(self._eval_window_sc) / len(
-                self._eval_window_sc
-            )
+        metrics["elo/live"] = self._training_elo
+        metrics["elo/live_se"] = self.roster.standard_errors.get("live", float("inf"))
+        metrics["elo/scripted"] = self.roster.ratings.get("scripted", 0.0)
         if self._avg_update_count > 0:
             metrics["elo/avg"] = self._avg_training_elo
-            if self._eval_window_live_vs_avg:
-                metrics["elo/training_vs_avg"] = sum(self._eval_window_live_vs_avg) / len(
-                    self._eval_window_live_vs_avg
-                )
-            if self._eval_window_avg_vs_sc:
-                metrics["elo/avg_vs_scripted"] = sum(self._eval_window_avg_vs_sc) / len(
-                    self._eval_window_avg_vs_sc
-                )
+        metrics.update(self._rating_metrics)
+        roster_elos = [entry.elo for entry in self.roster.entries]
+        if roster_elos:
+            metrics["elo/roster_min"] = min(roster_elos)
+            metrics["elo/roster_median"] = statistics.median(roster_elos)
+            metrics["elo/roster_max"] = max(roster_elos)
 
-        # Save overwriting best-model checkpoints when normalized ELO improves.
-        random_elo = self._random_elo()
-        training_elo_norm = self._training_elo - random_elo
-        if training_elo_norm > self._best_training_elo_norm:
-            self._best_training_elo_norm = training_elo_norm
+        if self._training_elo > self._best_training_elo:
+            self._best_training_elo = self._training_elo
             self._save_best_checkpoint("best_training.pt")
+        if self._avg_update_count > 0 and self._avg_training_elo > self._best_avg_elo:
+            self._best_avg_elo = self._avg_training_elo
+            self._save_best_checkpoint("best_avg.pt", self._avg_checkpoint_payload(update))
 
         # Overview — redundant copies of the most important global metrics
         for src, dst in [
-            ("elo/training", "overview/elo"),
-            ("elo/training_vs_scripted", "overview/win_rate_vs_scripted"),
-            ("elo/training_vs_random", "overview/win_rate_vs_random"),
-            ("elo/training_vs_avg", "overview/win_rate_vs_avg"),
+            ("elo/live", "overview/elo"),
+            ("elo/live_vs_scripted", "overview/win_rate_vs_scripted"),
+            ("elo/live_vs_random", "overview/win_rate_vs_random"),
+            ("elo/live_vs_avg", "overview/win_rate_vs_avg"),
             ("loss/total", "overview/loss_total"),
             ("loss_proxy/policy_gradient", "overview/loss_proxy_pg"),
             ("loss_proxy/behavioral_cloning", "overview/loss_proxy_bc"),
@@ -183,7 +175,34 @@ class LoggingMixin:
 
     def _enqueue_log(self, metrics: dict, step: int) -> None:
         """Put metrics onto the async log queue (non-blocking)."""
-        self._log_queue.put((metrics, step))
+        self._log_queue.put(("metrics", metrics, step))
+
+    def _enqueue_rating_solve(self, counts: MatchCounts) -> None:
+        """Queue one CPU Bradley-Terry solve without blocking training."""
+        self._log_queue.put(("ratings", counts, dict(self.roster.ratings)))
+
+    def _consume_rating_result(self) -> None:
+        """Apply the newest completed rating solve at a rollout boundary."""
+        latest = None
+        while True:
+            try:
+                latest = self._rating_results.get_nowait()
+            except Empty:
+                break
+        if latest is None:
+            return
+        ratings, standard_errors, rating_metrics = latest
+        merged_ratings = dict(self.roster.ratings)
+        merged_errors = dict(self.roster.standard_errors)
+        merged_ratings.update(ratings)
+        merged_errors.update(standard_errors)
+        current_ids = set(self.roster.counts.agent_ids)
+        merged_ratings = {key: value for key, value in merged_ratings.items() if key in current_ids}
+        merged_errors = {key: value for key, value in merged_errors.items() if key in current_ids}
+        self.roster.refresh_ratings(merged_ratings, merged_errors)
+        self._training_elo = self.roster.ratings["live"]
+        self._avg_training_elo = self.roster.ratings.get("avg", 0.0)
+        self._rating_metrics = rating_metrics
 
     def _log_worker(self) -> None:
         """Background thread: drains the log queue and calls wandb.log().
@@ -196,7 +215,13 @@ class LoggingMixin:
         """
         import numpy as np
 
-        import wandb
+        wandb = None
+        if self.use_wandb:
+            import wandb as wandb_module
+
+            wandb = wandb_module
+
+        previous_counts: MatchCounts | None = None
 
         while True:
             try:
@@ -205,7 +230,23 @@ class LoggingMixin:
                 continue
             if item is None:
                 break
-            raw_metrics, step = item
+            kind, payload, context = item
+            if kind == "ratings":
+                counts = payload
+                ratings, standard_errors = solve_bt(
+                    counts,
+                    "random",
+                    context,
+                    prior_draws=self.cfg.bt_prior_draws,
+                )
+                rating_metrics = self._recent_rating_metrics(counts, previous_counts)
+                previous_counts = counts
+                self._rating_results.put((ratings, standard_errors, rating_metrics))
+                continue
+
+            raw_metrics, step = payload, context
+            if wandb is None:
+                continue
             processed: dict = {}
             for k, v in raw_metrics.items():
                 if isinstance(v, np.ndarray):
@@ -218,3 +259,31 @@ class LoggingMixin:
                 else:
                     processed[k] = v
             wandb.log(processed, step=step)
+
+    @staticmethod
+    def _recent_rating_metrics(
+        counts: MatchCounts,
+        previous: MatchCounts | None,
+    ) -> dict[str, float]:
+        """Derive recent live matchup scores from consecutive count snapshots."""
+        delta = counts.tensor.clone()
+        if previous is not None and previous.agent_ids == counts.agent_ids:
+            delta.sub_(previous.tensor)
+            delta.clamp_(min=0.0)
+        metrics = {}
+        live_index = counts.index("live")
+        for opponent_id in ("random", "scripted", "avg"):
+            if opponent_id not in counts.agent_ids:
+                continue
+            opponent_index = counts.index(opponent_id)
+            wins = delta[live_index, opponent_index, WIN] + delta[opponent_index, live_index, LOSS]
+            losses = (
+                delta[live_index, opponent_index, LOSS] + delta[opponent_index, live_index, WIN]
+            )
+            draws = (
+                delta[live_index, opponent_index, DRAW] + delta[opponent_index, live_index, DRAW]
+            )
+            games = wins + losses + draws
+            if games > 0.0:
+                metrics[f"elo/live_vs_{opponent_id}"] = float((wins + 0.5 * draws) / games)
+        return metrics

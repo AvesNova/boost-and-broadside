@@ -1,6 +1,7 @@
 """Persistent league roster with count-based ratings and PFSP sampling."""
 
 import json
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -293,8 +294,9 @@ class LeagueRoster:
             if entry.kind == "checkpoint" and entry.path is not None
         }
 
-    def save_json(self, path: str | Path) -> None:
+    def save_json(self, path: str | Path, counts: MatchCounts | None = None) -> None:
         """Persist v2 roster metadata and the complete pairwise count matrix."""
+        persisted_counts = self.counts if counts is None else counts
         data = {
             "version": _ROSTER_VERSION,
             "entries": [
@@ -310,9 +312,12 @@ class LeagueRoster:
                 }
                 for entry in self.entries
             ],
-            "counts": self.counts.to_dict(),
+            "counts": persisted_counts.to_dict(),
             "ratings": self.ratings,
-            "standard_errors": self.standard_errors,
+            "standard_errors": {
+                key: value if math.isfinite(value) else None
+                for key, value in self.standard_errors.items()
+            },
         }
         Path(path).write_text(json.dumps(data, indent=2))
 
@@ -341,32 +346,7 @@ class LeagueRoster:
         if set(self.counts.agent_ids) != expected_ids:
             raise ValueError("roster entries and count-matrix agent IDs do not match")
         self.ratings = {key: float(value) for key, value in data["ratings"].items()}
-        self.standard_errors = {key: float(value) for key, value in data["standard_errors"].items()}
-
-
-class EloRoster(LeagueRoster):
-    """Temporary adapter for the trainer before the Phase 3-4 clean break."""
-
-    def __init__(
-        self,
-        max_size: int = 20,
-        k_factor: float = 32.0,
-        elo_temperature: float = 200.0,
-        uniform_sampling: bool = False,
-    ) -> None:
-        del k_factor, elo_temperature
-        super().__init__(
-            league_size=max_size,
-            pfsp_mode="variance" if uniform_sampling else "hard",
-            pfsp_exponent=2.0,
-            admission_prior_games=10.0,
-        )
-
-    def sample(self, training_elo: float) -> RosterEntry | None:
-        """Serve the old single-opponent trainer until its unified-slice migration."""
-        self.ratings[_LIVE_ID] = training_elo
-        # The old trainer cannot execute random entries; Phase 4 removes this adapter.
-        sampled = self.sample_opponents(1, self.ratings)
-        if sampled and sampled[0].kind == "random":
-            return self.entry(_SCRIPTED_ID)
-        return sampled[0] if sampled else None
+        self.standard_errors = {
+            key: float(value) if value is not None else float("inf")
+            for key, value in data["standard_errors"].items()
+        }

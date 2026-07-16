@@ -6,8 +6,8 @@ import torch
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import (
-    EloEvalConfig,
     EnvConfig,
+    LeagueEvalConfig,
     ModelConfig,
     RewardConfig,
     ScaleConfig,
@@ -21,6 +21,7 @@ from boost_and_broadside.config import (
     stepped,
 )
 from boost_and_broadside.env.observation import ObsKey
+from boost_and_broadside.train.rl.opponents import OpponentSlot
 from boost_and_broadside.train.rl.ppo import _GROUP, PPOTrainer
 
 
@@ -61,9 +62,7 @@ def _make_schedule(**overrides) -> TrainingSchedule:
         true_reward_scale=constant(1.0),
         global_scale=constant(1.0),
         local_scale=constant(1.0),
-        scripted_fraction=constant(0.0),
-        avg_model_fraction=constant(0.0),
-        league_fraction=constant(0.0),
+        opponent_fraction=constant(0.0),
         checkpoint_interval=stepped((0, 0)),
         num_epochs=constant(1),
         target_kl=constant(None),
@@ -76,7 +75,7 @@ def _make_schedule(**overrides) -> TrainingSchedule:
 
 def _make_train_config(
     paradigm: str = "ego_pass",
-    scripted_fraction: float = 0.0,
+    opponent_fraction: float = 0.0,
     checkpoint_dir: str = "checkpoints",
     **reward_overrides,
 ) -> TrainConfig:
@@ -88,7 +87,7 @@ def _make_train_config(
                 num_envs=4,
             ),
         ),
-        schedule=_make_schedule(scripted_fraction=constant(scripted_fraction)),
+        schedule=_make_schedule(opponent_fraction=constant(opponent_fraction)),
         rewards=_make_rewards(**reward_overrides),
         num_steps=16,
         num_minibatches=2,
@@ -101,17 +100,15 @@ def _make_train_config(
         return_min_span=1.0,
         checkpoint_dir=checkpoint_dir,
         league_size=20,
-        league_uniform_sampling=False,
-        elo_milestone_gap=50.0,
-        elo_k_factor=32.0,
-        elo_temperature=200.0,
-        elo_eval=EloEvalConfig(
-            envs_per_matchup=4,
-            step_interval=4,
-            k_factor=4.0,
-            scripted_elo=1000.0,
-            window_size=100,
-        ),
+        league_k=4,
+        league_admission_interval=999,
+        pfsp_mode="hard",
+        pfsp_exponent=2.0,
+        live_rating_decay=0.9,
+        avg_rating_decay=0.995,
+        bt_prior_draws=1.0,
+        admission_prior_games=10.0,
+        league_eval=LeagueEvalConfig(4, 4, 2, 1),
         bc_elo_target=950.0,
         bc_elo_scale=200.0,
         histogram_interval=10,
@@ -120,20 +117,20 @@ def _make_train_config(
 
 def _make_trainer(
     paradigm: str = "ego_pass",
-    scripted_fraction: float = 0.0,
+    opponent_fraction: float = 0.0,
     checkpoint_dir: str = "checkpoints",
     **reward_overrides,
 ) -> PPOTrainer:
     ship_config = ShipConfig()
     scripted_agent = (
         StochasticScriptedAgent(ship_config, StochasticAgentConfig())
-        if scripted_fraction > 0.0
+        if opponent_fraction > 0.0
         else None
     )
     return PPOTrainer(
         train_config=_make_train_config(
             paradigm=paradigm,
-            scripted_fraction=scripted_fraction,
+            opponent_fraction=opponent_fraction,
             checkpoint_dir=checkpoint_dir,
             **reward_overrides,
         ),
@@ -199,29 +196,60 @@ class TestParadigm:
         """shared_pass + scripted opponent: the masked-out ships in each opponent
         env form exactly one complete team (whichever the random flag assigned)."""
         trainer = _make_trainer(
-            paradigm="shared_pass", scripted_fraction=0.5, checkpoint_dir=str(tmp_path)
+            paradigm="shared_pass", opponent_fraction=0.5, checkpoint_dir=str(tmp_path)
         )
         trainer.train()
 
         T, N = trainer.cfg.num_steps, trainer.wrapper.num_ships
-        sc = slice(trainer.B_self, trainer.B_self + trainer.B_sc)
-        team_id = trainer.buffer.obs[ObsKey.TEAM_ID][:T, sc, :N].long()  # (T, B_sc, N)
-        excluded = ~trainer.buffer.actor_masks[:, sc]  # (T, B_sc, N)
+        opponent_slice = slice(trainer.B_self, trainer.B_self + trainer.B_opp)
+        team_id = trainer.buffer.obs[ObsKey.TEAM_ID][:T, opponent_slice, :N].long()
+        excluded = ~trainer.buffer.actor_masks[:, opponent_slice]
 
-        excluded_is_team0 = (excluded == (team_id == 0)).all(dim=-1)  # (T, B_sc)
-        excluded_is_team1 = (excluded == (team_id == 1)).all(dim=-1)  # (T, B_sc)
+        excluded_is_team0 = (excluded == (team_id == 0)).all(dim=-1)
+        excluded_is_team1 = (excluded == (team_id == 1)).all(dim=-1)
         assert (excluded_is_team0 | excluded_is_team1).all()
 
     def test_ego_pass_scripted_opponent_always_controls_team1(self, tmp_path):
         """ego_pass + scripted opponent: only team 0 ships train in opponent envs."""
         trainer = _make_trainer(
-            paradigm="ego_pass", scripted_fraction=0.5, checkpoint_dir=str(tmp_path)
+            paradigm="ego_pass", opponent_fraction=0.5, checkpoint_dir=str(tmp_path)
         )
         trainer.train()
 
         T, N = trainer.cfg.num_steps, trainer.wrapper.num_ships
         team_id = trainer.buffer.obs[ObsKey.TEAM_ID][:T, :, :N].long()  # (T, B, N)
         assert torch.equal(trainer.buffer.actor_masks, team_id == 0)
+
+    def test_training_outcomes_record_terminal_team_before_reset(self, tmp_path):
+        trainer = _make_trainer(
+            paradigm="ego_pass", opponent_fraction=0.5, checkpoint_dir=str(tmp_path)
+        )
+        random_entry = trainer.roster.entry("random")
+        opponent_indices = torch.full((2,), trainer.roster.counts.index("random"))
+        slot = OpponentSlot(random_entry, 2, 4, None, None, opponent_indices)
+        info = {
+            "team0_won": torch.tensor([False, False, True, False]),
+            "team1_won": torch.tensor([False, False, False, True]),
+        }
+
+        trainer._record_training_outcomes(torch.tensor([False, False, True, True]), [slot], info)
+        trainer.shutdown()
+
+        live_index = trainer.roster.counts.index("live")
+        random_index = trainer.roster.counts.index("random")
+        assert trainer.roster.counts.tensor[live_index, random_index].tolist() == [1.0, 1.0, 0.0]
+
+    def test_opponent_partition_never_creates_empty_slots(self, tmp_path):
+        trainer = _make_trainer(
+            paradigm="ego_pass", opponent_fraction=0.5, checkpoint_dir=str(tmp_path)
+        )
+        trainer._avg_update_count = 1
+        trainer.roster.add_avg(global_step=1, update=1)
+
+        slots = trainer._prepare_opponents(trainer.wrapper.num_ships)
+        trainer.shutdown()
+
+        assert all(slot.end > slot.start for slot in slots)
 
 
 class TestSchedulePrimitives:
@@ -337,11 +365,15 @@ class TestSchedulePrimitives:
                 return_min_span=1.0,
                 checkpoint_dir=str(tmp_path),
                 league_size=20,
-                league_uniform_sampling=False,
-                elo_milestone_gap=50.0,
-                elo_k_factor=32.0,
-                elo_temperature=200.0,
-                elo_eval=EloEvalConfig(4, 4, 4.0, 1000.0, 100),
+                league_k=4,
+                league_admission_interval=999,
+                pfsp_mode="hard",
+                pfsp_exponent=2.0,
+                live_rating_decay=0.9,
+                avg_rating_decay=0.995,
+                bt_prior_draws=1.0,
+                admission_prior_games=10.0,
+                league_eval=LeagueEvalConfig(4, 4, 2, 1),
                 bc_elo_target=950.0,
                 bc_elo_scale=200.0,
                 histogram_interval=10,
@@ -424,9 +456,7 @@ class TestRLSmokeTest:
             true_reward_scale=constant(1.0),
             global_scale=constant(1.0),
             local_scale=constant(1.0),
-            scripted_fraction=constant(0.5),
-            avg_model_fraction=constant(0.0),
-            league_fraction=constant(0.0),
+            opponent_fraction=constant(0.5),
             checkpoint_interval=constant(9999),
             num_epochs=constant(1),
             target_kl=constant(None),
@@ -454,11 +484,15 @@ class TestRLSmokeTest:
             return_min_span=1.0,
             checkpoint_dir=str(tmp_path),
             league_size=5,
-            elo_milestone_gap=100.0,
-            elo_k_factor=32.0,
-            elo_temperature=200.0,
-            league_uniform_sampling=False,
-            elo_eval=EloEvalConfig(4, 4, 4.0, 1000.0, 100),
+            league_k=4,
+            league_admission_interval=999,
+            pfsp_mode="hard",
+            pfsp_exponent=2.0,
+            live_rating_decay=0.9,
+            avg_rating_decay=0.995,
+            bt_prior_draws=1.0,
+            admission_prior_games=10.0,
+            league_eval=LeagueEvalConfig(4, 4, 2, 1),
             bc_elo_target=950.0,
             bc_elo_scale=200.0,
             histogram_interval=10,

@@ -4,7 +4,7 @@ Import these into individual profiles rather than duplicating values.
 Override in a profile only when the run genuinely needs a different value.
 """
 
-from boost_and_broadside.config import EloEvalConfig, ModelConfig, RewardConfig, ShipConfig
+from boost_and_broadside.config import LeagueEvalConfig, ModelConfig, RewardConfig, ShipConfig
 
 SHIP_CONFIG = ShipConfig(bullet_energy_cost=2, bullet_min_damage_frac=1.0)
 
@@ -14,12 +14,11 @@ MODEL_CONFIG = ModelConfig(
     n_transformer_blocks=2,
 )
 
-ELO_EVAL = EloEvalConfig(
-    envs_per_matchup=512,
+LEAGUE_EVAL = LeagueEvalConfig(
+    eval_num_envs=1536,
     step_interval=4,
-    k_factor=4.0,
-    scripted_elo=1000.0,
-    window_size=100,
+    eval_pairs=12,
+    eval_slots=6,
 )
 
 # Reward weights shared by all training profiles.

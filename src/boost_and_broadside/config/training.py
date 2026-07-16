@@ -27,14 +27,18 @@ class ObstacleCacheConfig:
 
 
 @dataclass(frozen=True)
-class EloEvalConfig:
-    """Configuration for continuous in-training ELO evaluation."""
+class LeagueEvalConfig:
+    """Configuration for continuous information-scheduled league evaluation."""
 
-    envs_per_matchup: int
+    eval_num_envs: int
     step_interval: int
-    k_factor: float
-    scripted_elo: float
-    window_size: int
+    eval_pairs: int
+    eval_slots: int
+
+    def __post_init__(self) -> None:
+        for name in ("eval_num_envs", "step_interval", "eval_pairs", "eval_slots"):
+            if getattr(self, name) < 1:
+                raise ValueError(f"{name} must be positive, got {getattr(self, name)}")
 
 
 @dataclass(frozen=True)
@@ -107,13 +111,17 @@ class TrainConfig:
     return_min_span: float  # minimum p95-p5 span (symlog-space) — guards disabled components
     checkpoint_dir: str  # directory to write .pt files
 
-    # --- League play + ELO (static tournament parameters) ---
+    # --- League curriculum and Bradley-Terry rating ---
     league_size: int  # max number of checkpoint entries in the roster
-    elo_milestone_gap: float  # add checkpoint to roster every N ELO points gained
-    elo_k_factor: float  # ELO K-factor (score sensitivity per match)
-    elo_temperature: float  # ELO bandwidth for proximity-weighted sampling
-    league_uniform_sampling: bool  # if True, sample league opponents uniformly
-    elo_eval: EloEvalConfig  # continuous evaluation batch and rating parameters
+    league_k: int  # maximum distinct PFSP opponents per rollout
+    league_admission_interval: int  # PPO updates between frozen checkpoint admissions
+    pfsp_mode: str  # "hard" or "variance"
+    pfsp_exponent: float  # exponent for hard-PFSP weights
+    live_rating_decay: float  # per-update count decay for the live policy
+    avg_rating_decay: float  # per-update count decay for the average policy
+    bt_prior_draws: float  # virtual draws regularizing each played pair
+    admission_prior_games: float  # virtual live-vs-copy draws on admission
+    league_eval: LeagueEvalConfig
     bc_elo_target: float  # normalized ELO midpoint where BC decay approaches zero
     bc_elo_scale: float  # logistic scale for ELO-gated BC decay
     histogram_interval: int  # record expensive histograms every N updates
@@ -159,3 +167,19 @@ class TrainConfig:
             raise ValueError(
                 f"microbatch_tokens must be positive or None, got {self.microbatch_tokens}"
             )
+        if self.league_k < 1:
+            raise ValueError(f"league_k must be positive, got {self.league_k}")
+        if self.league_admission_interval < 1:
+            raise ValueError(
+                f"league_admission_interval must be positive, got {self.league_admission_interval}"
+            )
+        if not 0.0 <= self.live_rating_decay <= 1.0:
+            raise ValueError("live_rating_decay must be in [0, 1]")
+        if not 0.0 <= self.avg_rating_decay <= 1.0:
+            raise ValueError("avg_rating_decay must be in [0, 1]")
+        if self.pfsp_mode not in ("hard", "variance"):
+            raise ValueError(f"invalid pfsp_mode {self.pfsp_mode!r}")
+        if self.pfsp_exponent <= 0.0:
+            raise ValueError("pfsp_exponent must be positive")
+        if self.bt_prior_draws < 0.0 or self.admission_prior_games < 0.0:
+            raise ValueError("BT prior counts must be non-negative")

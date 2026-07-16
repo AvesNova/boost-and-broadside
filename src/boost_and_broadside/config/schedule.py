@@ -222,9 +222,7 @@ class TrainingSchedule:
     local_scale: Callable[[int], float]  # self-only rewards (shaping, kill credit, obstacles, ...)
 
     # --- Opponents ---
-    scripted_fraction: Callable[[int], float]
-    avg_model_fraction: Callable[[int], float]
-    league_fraction: Callable[[int], float]
+    opponent_fraction: Callable[[int], float]
 
     # --- Checkpointing / eval ---
     checkpoint_interval: Callable[[int], int]  # 0 = disabled

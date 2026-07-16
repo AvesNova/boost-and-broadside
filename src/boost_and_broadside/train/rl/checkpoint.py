@@ -3,7 +3,6 @@
 import dataclasses
 import threading
 import time
-from collections import deque
 from pathlib import Path
 from typing import Any
 
@@ -40,30 +39,37 @@ class CheckpointMixin:
         """Persist roster metadata alongside the run's checkpoints."""
         ckpt_dir = Path(self.cfg.checkpoint_dir) / self.run_name
         ckpt_dir.mkdir(parents=True, exist_ok=True)
-        self.roster.save_json(ckpt_dir / "roster.json")
+        self.roster.save_json(ckpt_dir / "roster.json", self._latest_counts_snapshot)
 
     def _maybe_save_checkpoint(self, update: int) -> None:
-        """Save on schedule and add milestone checkpoints to the league roster."""
-        interval = self._schedule_state.checkpoint_interval
-        if interval <= 0 or update % interval != 0:
+        """Save scheduled snapshots and admit frozen policies on a fixed cadence."""
+        checkpoint_due = (
+            self._schedule_state.checkpoint_interval > 0
+            and update % self._schedule_state.checkpoint_interval == 0
+        )
+        admission_due = (
+            self._policy_gradient_coef > 0.0 and update % self.cfg.league_admission_interval == 0
+        )
+        if not checkpoint_due and not admission_due:
             return
         self._save_checkpoint(update)
-        training_elo_norm = self._training_elo - self._random_elo()
-        if (
-            self._policy_gradient_coef > 0.0
-            and self._last_checkpoint_path is not None
-            and self._last_checkpoint_path.exists()
-            and self.cfg.elo_milestone_gap > 0
-            and training_elo_norm - self._elo_milestone >= self.cfg.elo_milestone_gap
-        ):
-            self.roster.add_checkpoint(
+        if admission_due and self._last_checkpoint_path is not None:
+            entry = self.roster.add_checkpoint(
                 str(self._last_checkpoint_path),
                 self._global_step,
                 update,
-                initial_elo=self._training_elo,
             )
-            self._elo_milestone = training_elo_norm
-            self._save_roster_json()
+            self._latest_counts_snapshot.add_agent(entry.agent_id)
+            self._latest_counts_snapshot.add_pair(
+                entry.agent_id,
+                "live",
+                draws=self.cfg.admission_prior_games,
+            )
+            retained_ids = set(self.roster.counts.agent_ids)
+            for agent_id in list(self._latest_counts_snapshot.agent_ids):
+                if agent_id not in retained_ids:
+                    self._latest_counts_snapshot.remove_agent(agent_id)
+        self._save_roster_json()
 
     # ------------------------------------------------------------------
     # Checkpointing
@@ -86,11 +92,7 @@ class CheckpointMixin:
             "elapsed_train_time": self._elapsed_train_time + (time.time() - self._train_start_time),
             "training_elo": self._training_elo,
             "avg_training_elo": self._avg_training_elo,
-            "eval_window_rand": list(self._eval_window_rand),
-            "eval_window_sc": list(self._eval_window_sc),
-            "eval_window_avg_vs_sc": list(self._eval_window_avg_vs_sc),
-            "eval_window_live_vs_avg": list(self._eval_window_live_vs_avg),
-            "elo_milestone": self._elo_milestone,
+            "team_pma_k": self._win_k,
             "train_config": {
                 k: v for k, v in dataclasses.asdict(self.cfg).items() if k != "schedule"
             },
@@ -177,9 +179,6 @@ class CheckpointMixin:
             "update": update,
             "global_step": self._global_step,
             "training_elo": self._training_elo,
-            "eval_window_rand": list(self._eval_window_rand),
-            "eval_window_sc": list(self._eval_window_sc),
-            "elo_milestone": self._elo_milestone,
             "team_pma_k": self._win_k,
             "train_config": {
                 k: v for k, v in dataclasses.asdict(self.cfg).items() if k != "schedule"
@@ -287,24 +286,7 @@ class CheckpointMixin:
             self._avg_update_count = ckpt["avg_update_count"]
         if "training_elo" in ckpt:
             self._training_elo = ckpt["training_elo"]
-            self._elo_milestone = ckpt.get("elo_milestone", 0.0)
         self._avg_training_elo = ckpt.get("avg_training_elo", 0.0)
-        if "eval_window_rand" in ckpt:
-            self._eval_window_rand = deque(
-                ckpt["eval_window_rand"], maxlen=self.cfg.elo_eval.window_size
-            )
-        if "eval_window_sc" in ckpt:
-            self._eval_window_sc = deque(
-                ckpt["eval_window_sc"], maxlen=self.cfg.elo_eval.window_size
-            )
-        if "eval_window_avg_vs_sc" in ckpt:
-            self._eval_window_avg_vs_sc = deque(
-                ckpt["eval_window_avg_vs_sc"], maxlen=self.cfg.elo_eval.window_size
-            )
-        if "eval_window_live_vs_avg" in ckpt:
-            self._eval_window_live_vs_avg = deque(
-                ckpt["eval_window_live_vs_avg"], maxlen=self.cfg.elo_eval.window_size
-            )
         if "global_step" in ckpt:
             self._global_step = ckpt["global_step"]
             self._start_update = ckpt["update"] + 1
@@ -323,10 +305,13 @@ class CheckpointMixin:
             ckpt.get("update", 0) * self._schedule_state.num_epochs * self._entity_tokens_per_epoch,
         )
 
-        # Restore roster if its JSON exists alongside the checkpoint
         roster_path = Path(path).parent / "roster.json"
-        if roster_path.exists():
-            self.roster.load_json(roster_path)
+        if not roster_path.exists():
+            raise ValueError("resuming training requires a v2 roster.json; use --pretrain_from")
+        self.roster.load_json(roster_path)
+        self._latest_counts_snapshot = self.roster.counts.to_cpu()
+        self._training_elo = self.roster.ratings["live"]
+        self._avg_training_elo = self.roster.ratings.get("avg", 0.0)
 
         print(
             f"Checkpoint loaded from: {path} (resuming from update {self._start_update}, "
