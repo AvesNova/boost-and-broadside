@@ -1,30 +1,24 @@
-When a ship kills another ship, it gets energy. We add 4 ships that just go in a circle or from random point to random point or something. Decrease the base energy replenishment rate and increase the energy maximum.
+# Roadmap
 
-Add respawning.
+Ideas under consideration, roughly ordered by interest. None are commitments.
 
-Make bullets that hit the from 15deg of a ship do 10x less damage.
+## Gameplay
 
-Google Collab
-Use Zarr instead of pickle
-Asynchronous data loading
-Can we get away with 16 bit floats?
+- **Kill rewards in-game**: grant energy on kills (paired with a lower base
+  regeneration rate and higher energy cap) to reward aggression mechanically
+  rather than only through reward shaping.
+- **Respawning**: continuous battles instead of elimination rounds.
+- **Head-on damage reduction**: the `bullet_min_damage_frac` mechanic exists in
+  the physics engine but is disabled in the training config (see
+  `docs/game_design.md`); evaluate enabling it once the meta stabilizes.
 
-Normalize each input to mean=0 and std=1 and min/max=+-5. For binary features too?
+## Training & performance
 
-Revamp the data loading and saving (we dont need to save the enemies perspective)
+- **Reduced precision**: parts of the pipeline already run under bf16 autocast;
+  evaluate an end-to-end low-precision training pass for throughput.
 
-Make the enemy randomly more random for data collection. (70% perfect, 30% uniform from perfect expert to perfect random)
-Have the agent predict a competence score (% expert moves)
+## Interpretability
 
-Add random perterbations to the state of ships during data collection. Log these so we don't calculate state loss here. (Similar to how we do random actions now)
-
-Change world to 1024x1024 and remove hard coded world size values
-Add random rotations to the world during bc pretraining
-
-Add UMAP data visualization 
-Run visualization on just the latent space from a single ship (one for enemy and one for ally)
-Create an interactive visualization dashboard where you can specify labels and subsets for latent space
-
-Starting long batch training at step 32 (where the small batch ends)
-
-Add spacial embeddings for the attension mechanism during the spacial layers. (done, need to do a test train run)
+- **Latent-space visualization**: UMAP projections of ship token embeddings
+  (ally vs enemy), ideally as an interactive dashboard with selectable labels
+  and subsets.
