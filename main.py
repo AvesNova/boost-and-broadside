@@ -136,7 +136,7 @@ def _parse_args() -> argparse.Namespace:
         "--smoke",
         action="store_true",
         default=False,
-        help="Smoke-test mode: tiny batch (4 envs), no W&B, no compile, exits after a few updates.",
+        help="Smoke-test mode: tiny training or elo_stats run, with no W&B or compilation.",
     )
     parser.add_argument(
         "--team0",
@@ -381,15 +381,20 @@ def main() -> None:
             )
 
         case "elo_stats":
+            elo_num_envs = 128 if args.smoke else 1024 * 4
+            elo_max_steps = 128 if args.smoke else 1024
             run_elo_stats_mode(
                 run_spec=args.run,
-                num_envs=1024 * 4,
+                num_envs=elo_num_envs,
                 ship_config=SHIP_CONFIG,
-                env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=1024),
+                env_config=EnvConfig(
+                    num_ships=4,
+                    max_bullets=20,
+                    max_episode_steps=elo_max_steps,
+                ),
                 model_config=MODEL_CONFIG,
                 device=device,
                 checkpoint_dir="checkpoints",
-                elo_k_factor=32.0,
                 matchups=args.matchups,
                 custom_agents=args.agents,
             )

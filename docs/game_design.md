@@ -85,3 +85,25 @@ Agents control ships using a discrete action space with three independent compon
 | :--- | :--- | :--- |
 | 0 | **HOLD** | Do not fire. |
 | 1 | **FIRE** | Fire principal weapon (if cooldown/power allows). |
+
+## 5. Training League and Ratings
+
+Self-play training uses one schedule-controlled opponent region. At each rollout, that
+region is divided among up to `league_k` distinct opponents sampled from the league by
+prioritized fictitious self-play (PFSP). Random, scripted, the running-average policy,
+and retained frozen checkpoints are ordinary league members. The default hard-PFSP
+weight is `(1 - p_win)^2`, so opponents the live policy already dominates naturally
+receive little curriculum weight.
+
+Ratings are estimated separately from curriculum selection. Every completed training
+or evaluation game adds a win, loss, or draw to a persistent pairwise count matrix. A
+global Bradley-Terry maximum-likelihood fit converts those counts to the ELO scale, with
+random as the sole fixed anchor at ELO 0. Scripted and all learned policies float. Since
+the fit uses outcome ratios for every pair rather than incremental zero-sum updates,
+oversampling a curriculum opponent does not drag its rating up or down.
+
+Dedicated evaluation environments schedule informative directed pairs across the full
+league, including checkpoint-vs-checkpoint games. Outcomes accumulate on the device and
+are transferred once per PPO update; the CPU fit runs in the asynchronous logging worker.
+Counts involving the changing live and average policies decay at different rates, while
+frozen checkpoints and built-in agents retain their evidence.

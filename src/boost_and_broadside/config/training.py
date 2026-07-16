@@ -47,8 +47,8 @@ class ScaleConfig:
 
     All scales share the same policy, optimizer, and return scaler.
     Gradients are accumulated across scales before each optimizer step.
-    scales[0] in TrainConfig is the primary scale and supports scripted /
-    avg-model / league opponents; scales[1:] run pure self-play.
+    scales[0] in TrainConfig is the primary scale and supports the unified
+    PFSP opponent slice; scales[1:] run pure self-play.
 
     Args:
         env_config: Environment config for this scale — num_ships defines N.

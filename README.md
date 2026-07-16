@@ -36,7 +36,8 @@ uv run --no-sync main.py --mode rl --smoke
 | `noise_calibration` | Measure NextStateHead prediction-error statistics. |
 
 Training modes accept `--smoke` for a tiny crash-test run (4 envs, no W&B, exits after a
-few updates).
+few updates). `elo_stats --smoke` similarly limits the tournament to 128 environments
+and 128 simulation steps per game.
 
 Agent specs for `--team0` / `--team1`: `null` (human keyboard, watch only), `random`,
 `latest` (most recent checkpoint), a path to a `.pt` checkpoint, or one of the scripted
@@ -55,7 +56,7 @@ runs/                       # Hyperparameter profiles (one file per experiment)
 src/boost_and_broadside/
   config/
     core.py                 # Frozen dataclasses: ShipConfig, EnvConfig, ModelConfig, RewardConfig
-    training.py             # TrainConfig, ScaleConfig, EloEvalConfig, ObstacleCacheConfig
+    training.py             # TrainConfig, ScaleConfig, LeagueEvalConfig, ObstacleCacheConfig
     schedule.py             # Schedule primitives: constant, linear, stepped, exponential, join
   env/
     state.py                # TensorState — GPU-resident state for B parallel envs
@@ -77,9 +78,10 @@ src/boost_and_broadside/
     ppo.py                  # PPOTrainer — rollout, GAE, PPO epochs
     features.py             # FeatureCoordinator — observation encoding + aux-prediction spec
     buffer.py               # RolloutBuffer — pre-allocated GAE buffer, return/advantage scalers
-    roster.py               # EloRoster — rated league pool with proximity-weighted sampling
-    elo_eval.py             # Continuous in-training ELO evaluation
-    opponents.py            # Opponent perspectives, league sampling, policy averaging
+    rating.py               # Persistent match counts + anchored Bradley-Terry solver
+    roster.py               # LeagueRoster — v2 persistence, PFSP, and ladder retention
+    league_eval.py          # Information-scheduled in-training league evaluation
+    opponents.py            # Unified opponent slice, perspectives, and policy averaging
     checkpoint.py           # Checkpoint serialization, async saves, resume
     logging.py              # Metric assembly + async W&B worker
     sigreg.py               # SIGReg embedding regularizer (config-gated, off by default)
@@ -201,18 +203,19 @@ groups can be faded in or out over training.
 
 ### League play & ELO evaluation
 
-`EloRoster` maintains a pool of rated opponents: a fixed random anchor (ELO 0), the
-running-average policy, the scripted agent, and past checkpoints added at ELO milestones
-(weakest evicted beyond capacity). League opponents are sampled by ELO proximity
-(`exp(−|elo_i − training_elo| / temperature)`), and the opponent mix per rollout
-(scripted / avg-model / league fractions) is schedule-driven.
+`LeagueRoster` treats random, scripted, the running-average policy, and frozen
+checkpoints as first-class opponents. A single `opponent_fraction` schedule controls the
+training curriculum; its environments are divided among up to four opponents sampled
+without replacement by PFSP. The default weight `(1 - p_win)^2` focuses training on hard
+members without using match frequency as rating evidence.
 
-Evaluation runs continuously during training on dedicated eval environments stepping
-three matchups in parallel — live vs anchor, live vs average, and average vs anchor —
-where the anchor for each env is the random or scripted agent, chosen in proportion to
-the information that matchup provides about the current rating. ELO updates run on-GPU
-off the win/loss results; the resulting rating also gates schedule features (BC-loss
-decay, avg-model accumulation, tighter KL threshold at high ELO).
+Training and dedicated evaluation games accumulate in one persistent pairwise
+win/loss/draw matrix. Ratings come from a global Bradley-Terry maximum-likelihood fit,
+with random pinned at ELO 0 and scripted floating. Evaluation schedules informative
+pairs throughout the league, including checkpoint-vs-checkpoint games. Outcomes stay on
+the GPU until one update-boundary flush, and the CPU solve runs in the async logging
+worker. The live rating gates BC decay, average-policy accumulation, best-model saves,
+and the high-rating KL schedule.
 
 ## Configuration
 
@@ -230,7 +233,7 @@ learning_rate = join(
     (5_000_000, constant(3e-4)),                                      # cruise
     (100_000_000, exponential((100_000_000, 3e-4), (500_000_000, 1e-4))),  # decay
 )
-scripted_fraction = stepped((0, 0.5), (50_000_000, 0.3))
+opponent_fraction = stepped((0, 0.5), (50_000_000, 0.7))
 ```
 
 A `TrainConfig` can also carry multiple `ScaleConfig`s — environment sizes trained
@@ -240,10 +243,11 @@ opponents, additional scales run pure self-play.
 ## Checkpoints
 
 Saved to `checkpoints/<run-name>/` on a scheduled interval: rolling `step_<N>.pt` files
-(full training state: policy, optimizer, scalers, average policy, ELO state — everything
-`--resume` needs), `recent_avg.pt` (the average policy), and best-model snapshots. ELO
-milestone checkpoints are registered in the league roster, with roster metadata persisted
-alongside as JSON. Saves run asynchronously off the training loop.
+(full training state: policy, optimizer, scalers, and average policy), `recent_avg.pt`
+(the average policy), and best-model snapshots. Frozen league checkpoints are admitted
+on a fixed update cadence. The v2 `roster.json` stores roster metadata and the complete
+pairwise count matrix required for resume; old roster formats are intentionally rejected.
+Saves run asynchronously off the training loop.
 
 ## Logging
 

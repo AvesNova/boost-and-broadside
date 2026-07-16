@@ -1,4 +1,4 @@
-"""elo_stats mode: run every agent pair simultaneously and compute ELO ratings.
+"""elo_stats mode: run every agent pair and fit anchored Bradley-Terry ratings.
 
 Loads all checkpoints from a training run plus scripted and random agents,
 distributes B parallel environments across all directed matchups, runs them
@@ -25,7 +25,7 @@ from boost_and_broadside.modes.agent_factory import (
     infer_team_pma_k,
     resolve_agent_spec,
 )
-from boost_and_broadside.train.rl.rating import expected_score
+from boost_and_broadside.train.rl.rating import MatchCounts, solve_bt
 
 # All scripted agents, in display order. "scripted" (stochastic) is kept first
 # so scripted_idx == num_checkpoints regardless of list length.
@@ -96,7 +96,6 @@ def run_elo_stats_mode(
     model_config: ModelConfig,
     device: str,
     checkpoint_dir: str = "checkpoints",
-    elo_k_factor: float = 32.0,
     matchups: list[str] | None = None,
     custom_agents: list[str] | None = None,
 ) -> None:
@@ -139,8 +138,11 @@ def run_elo_stats_mode(
                 )
                 labels.append(Path(spec).stem if ".pt" in spec else spec)
 
+            if "random" not in labels:
+                agents.append(ResolvedAgent("random", None))
+                labels.append("random")
             scripted_idx = labels.index("scripted") if "scripted" in labels else -1
-            random_idx = labels.index("random") if "random" in labels else -1
+            random_idx = labels.index("random")
         else:
             if run_spec != "none":
                 run_dir = find_run_dir(run_spec, checkpoint_dir)
@@ -171,7 +173,7 @@ def run_elo_stats_mode(
 
         K = len(agents)
         num_scripted = len(SCRIPTED_SPECS) if not custom_agents else 0
-        num_random = 1 if not custom_agents else 0
+        num_random = int("random" in labels)
         print(
             f"Total agents: {K}  "
             f"(checkpoints={num_checkpoints}, scripted={num_scripted}, random={num_random})"
@@ -319,12 +321,28 @@ def run_elo_stats_mode(
         elapsed = time.perf_counter() - t0
 
         # ------------------------------------------------------------------ #
-        # Step 5 — ELO computation (iterative convergence)                   #
+        # Step 5 — anchored Bradley-Terry fit                                #
         # ------------------------------------------------------------------ #
-        elo = [0.0] * K
         a_wins_cpu = matchup_a_wins.cpu().tolist()
         b_wins_cpu = matchup_b_wins.cpu().tolist()
         ties_cpu = matchup_ties.cpu().tolist()
+
+        agent_ids = [
+            label if labels.count(label) == 1 else f"{label}_{index}"
+            for index, label in enumerate(labels)
+        ]
+        counts = MatchCounts(agent_ids)
+        for matchup_index, (first_index, second_index) in enumerate(matchups_pairs):
+            counts.add_pair(
+                agent_ids[first_index],
+                agent_ids[second_index],
+                wins=a_wins_cpu[matchup_index],
+                losses=b_wins_cpu[matchup_index],
+                draws=ties_cpu[matchup_index],
+            )
+        ratings, standard_errors = solve_bt(counts, agent_ids[random_idx])
+        elo = [ratings[agent_id] for agent_id in agent_ids]
+        elo_se = [standard_errors[agent_id] for agent_id in agent_ids]
 
         # Precompute lookup: (i, j) -> matchup index
         matchup_lookup: dict[tuple[int, int], int] = {
@@ -348,15 +366,6 @@ def run_elo_stats_mode(
             n2 = matchup_sizes[m2]
             r1 = (b_wins_cpu[m2] + 0.5 * ties_cpu[m2]) / n2 if n2 > 0 else 0.5
             return (r0 + r1) / 2.0
-
-        for _ in range(200):
-            for m_idx, (i, j) in enumerate(matchups_pairs):
-                n_games = matchup_sizes[m_idx]
-                win_rate_i = (a_wins_cpu[m_idx] + 0.5 * ties_cpu[m_idx]) / n_games
-                expected_i = expected_score(elo[i], elo[j])
-                delta = elo_k_factor * (win_rate_i - expected_i)
-                elo[i] += delta
-                elo[j] -= delta
 
         # ------------------------------------------------------------------ #
         # Step 6 — Per-agent stats                                            #
@@ -401,6 +410,7 @@ def run_elo_stats_mode(
         # Build header columns
         cols = [
             ("ELO", 6),
+            ("SE", 6),
         ]
         if random_idx >= 0:
             cols.append(("vs random", 10))
@@ -448,7 +458,7 @@ def run_elo_stats_mode(
             delta = _role_delta(a_idx)
             el = agent_ep_len[a_idx]
 
-            row = f"  {lb:<{label_w}}  {elo[a_idx]:>6.0f}"
+            row = f"  {lb:<{label_w}}  {elo[a_idx]:>6.0f}  {elo_se[a_idx]:>6.0f}"
             if random_idx >= 0:
                 row += f"  {_pct(vr):>10}"
             if scripted_idx >= 0:

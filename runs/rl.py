@@ -4,14 +4,12 @@ Designed to be used after loading a pretrained BC checkpoint (via --pretrain_fro
 but also runnable from scratch.
 
 Phase structure:
-  Step 0 → 5M:   LR warmup 1e-7 → 3e-4. 50% envs vs scripted opponent.
+  Step 0 → 5M:   LR warmup 1e-7 → 3e-4. 50% envs use PFSP opponents.
                   All reward group scales active (pretrained value function handles this).
   Step 5M:        LR at cruise.
   ELO 1000:       avg-model starts accumulating (avg_model_elo_threshold gate,
                   ELO-based rather than step-based).
-  Step 50M:       avg-model activates as opponent (20% envs).
-                  Reduce scripted to 30% to make room.
-                  League opponents activate (20% envs).
+  Step 50M:       PFSP opponent coverage rises to 70% of environments.
 """
 
 from boost_and_broadside.config import (
