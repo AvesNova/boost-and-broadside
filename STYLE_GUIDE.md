@@ -16,7 +16,10 @@ This document defines the coding standards for the **Boost and Broadside** proje
     1.  Standard library imports.
     2.  Third-party application imports (e.g., `numpy`, `torch`).
     3.  Local application imports (e.g., `boost_and_broadside.env...`).
-    *   *Tip*: Use `isort` or `ruff` to manage this automatically.
+*   **Tooling (binding)**: Formatting and linting are enforced by ruff, configured under
+    `[tool.ruff]` in `pyproject.toml` (line length 100; rule sets `E`, `F`, `I`, `UP`).
+    Run `uv run --no-sync ruff check .` and `uv run --no-sync ruff format .` before
+    committing — a clean check is expected, not aspirational.
 *   **Whitespace**:
     *   Two blank lines between top-level definitions (classes, functions).
     *   One blank line between methods inside a class.
@@ -57,6 +60,9 @@ We follow the **Google Style** for docstrings.
     *   **Args**: List each argument, its type (if not obvious), and description.
     *   **Returns**: Describe the return value.
     *   **Raises**: List exceptions that are explicitly raised.
+*   **Never hardcode counts in prose** (component counts, test counts, step totals) —
+    they rot. Point at the source of truth instead (e.g. "one head per entry in
+    `REWARD_COMPONENT_NAMES`" rather than "the 21 heads").
 
 ```python
 def calculate_velocity(distance: float, time: float) -> float:
@@ -97,9 +103,12 @@ We use `@dataclass(frozen=True)` for all configuration. No Hydra, no OmegaConf.
 *   **No Magic Numbers**: Do not hardcode numeric constants inline. Every constant that controls behavior must be in a config dataclass or `constants.py`.
     *   *Bad*: `reward = damage * 0.001`
     *   *Good*: `reward = damage * config.damage_weight`
-*   **No Defaults for Hyperparameters**: Training, model, and reward configs must have **no default field values**. Every value must be explicitly specified at the call site in `main.py`.
+*   **No Defaults for Active Hyperparameters**: Training, model, and reward configs must not default values that shape training. Every active hyperparameter must be explicitly specified at the call site (in `runs/`).
     *   *Bad*: `learning_rate: float = 3e-4`
-    *   *Good*: `learning_rate: float  # required — set in main.py`
+    *   *Good*: `learning_rate: float  # required — set in the run profile`
+    *   **Carve-out**: fields that *disable* an optional feature may default to the
+        disabled value (`0.0` / `None` / empty). Example: `obstacle_cache: ObstacleCacheConfig | None = None`.
+        The moment a feature is active, its values must be explicit.
 *   **Physics defaults OK**: `ShipConfig` (physics simulation parameters) may have default values since these define the game model, not a tunable hyperparameter.
 *   **Immutability enforced**: `frozen=True` means mutations raise `FrozenInstanceError` at runtime, catching config bugs early.
 *   **Validation**: Validate config values immediately after construction (e.g., assert `n_heads` divides `d_model`).
@@ -112,7 +121,7 @@ class TrainConfig:
     num_envs: int          # no default
     gamma: float           # no default
 
-# main.py — all values explicit
+# run profile (runs/*.py) — all active values explicit
 cfg = TrainConfig(learning_rate=3e-4, num_envs=64, gamma=0.99)
 ```
 
@@ -120,8 +129,14 @@ cfg = TrainConfig(learning_rate=3e-4, num_envs=64, gamma=0.99)
 
 Every non-trivial tensor must have a shape comment on the line it is created or transformed. Use the `(dim0, dim1, ...)` format with named dimensions.
 
-*   Use single letters for common dims: `B` = batch/num_envs, `N` = num_ships, `T` = time/steps, `D` = feature dim, `H` = heads, `K` = bullets.
+*   Use single letters for common dims: `B` = batch/num_envs, `N` = num_ships,
+    `M` = num_obstacles (entity tokens are `N+M`), `T` = time/steps, `D` = feature dim,
+    `H` = heads, `K` = bullets in `env/`, reward components in `train/`.
+*   The rollout buffer stores `T+1` observation steps (the extra final observation feeds
+    aux-loss label computation) — annotate those tensors as `(T+1, B, ...)`.
 *   Put the comment inline for short lines, above for complex reshapes.
+*   **Shape comments are code**: when a tensor's shape changes, its comment changes in
+    the same commit. A stale shape comment is a bug, not a nit.
 
 ```python
 x = self.encoder(obs)                              # (B, N, D)
@@ -171,6 +186,15 @@ attn_mask = alive.unsqueeze(1).unsqueeze(2)        # (B, 1, 1, N) — broadcast 
 *   **No mocking physics**: Do not mock the physics engine or GPU tensors in env tests. Run against real tensors (CPU is fine in tests). We got burned before when mocked tests passed but the real environment had silent bugs.
 *   **Test at system boundaries**: Test the public API of each module (what goes in, what comes out). Do not test private helpers directly unless they have complex, isolated logic.
 *   **Parametrize over configurations**: Use `@pytest.mark.parametrize` to test the same behavior across multiple configs or inputs rather than copy-pasting test bodies.
+
+### 6.10. Observation & Feature Encoding
+*   The `FeatureCoordinator` (`train/rl/features.py`) is the **canonical encoding layer**:
+    every observation channel enters the network through a `Feature` (accessor +
+    input encoder + optional target encoder/predictor) registered in
+    `build_standard_coordinator()`.
+*   New observation inputs or aux-prediction targets are added there — never by
+    hand-rolling encodings in model or mode code. Dimensions (encoder input, aux target,
+    aux prediction) are always derived from the coordinator, never hardcoded.
 
 ## 7. Comments
 *   **Inline Comments**: Use them to explain **why**, not **what**.
