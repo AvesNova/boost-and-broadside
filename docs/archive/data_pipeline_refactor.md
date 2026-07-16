@@ -1,5 +1,10 @@
 # Pretraining Data Pipeline Analysis & Refactoring Proposal
 
+> **Archived.** This proposal analyzes an offline BC data-collection pipeline
+> (`src/modes/collect.py`, `src/data_collector.py`, pickle checkpoints) that no
+> longer exists — BC pretraining now queries the scripted agent live during
+> rollout, with no dataset on disk. Kept for historical context only.
+
 ## 1. Current Architecture Analysis
 
 ### 1.1 Components & Flow
