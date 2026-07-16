@@ -102,13 +102,14 @@ def _make_train_config(
         league_size=20,
         league_k=4,
         league_admission_interval=999,
+        opponent_hold_rollouts=1,
         pfsp_mode="hard",
         pfsp_exponent=2.0,
         live_rating_decay=0.9,
         avg_rating_decay=0.995,
         bt_prior_draws=1.0,
         admission_prior_games=10.0,
-        league_eval=LeagueEvalConfig(4, 4, 2, 1),
+        league_eval=LeagueEvalConfig(4, 4, 2, 1, 1),
         bc_elo_target=950.0,
         bc_elo_scale=200.0,
         histogram_interval=10,
@@ -220,23 +221,32 @@ class TestParadigm:
         team_id = trainer.buffer.obs[ObsKey.TEAM_ID][:T, :, :N].long()  # (T, B, N)
         assert torch.equal(trainer.buffer.actor_masks, team_id == 0)
 
-    def test_training_outcomes_record_terminal_team_before_reset(self, tmp_path):
+    def test_training_outcomes_respect_attribution_watermark(self, tmp_path):
         trainer = _make_trainer(
             paradigm="ego_pass", opponent_fraction=0.5, checkpoint_dir=str(tmp_path)
         )
         random_entry = trainer.roster.entry("random")
-        opponent_indices = torch.full((2,), trainer.roster.counts.index("random"))
-        slot = OpponentSlot(random_entry, 2, 4, None, None, opponent_indices)
+        slot = OpponentSlot(random_entry, 2, 4, None, None)
+        trainer._opp_count_index.fill_(trainer.roster.counts.index("random"))
+        trainer._opp_active_mask.fill_(True)
         info = {
             "team0_won": torch.tensor([False, False, True, False]),
             "team1_won": torch.tensor([False, False, False, True]),
         }
-
-        trainer._record_training_outcomes(torch.tensor([False, False, True, True]), [slot], info)
-        trainer.shutdown()
-
+        done = torch.tensor([False, False, True, True])
         live_index = trainer.roster.counts.index("live")
         random_index = trainer.roster.counts.index("random")
+
+        # The first completion after a reassignment only validates attribution —
+        # the episode may have been played against a previous opponent.
+        trainer._record_training_outcomes(done, [slot], info)
+        first_counts = trainer.roster.counts.tensor[live_index, random_index].sum().item()
+
+        # Episodes that began under the validated assignment are recorded.
+        trainer._record_training_outcomes(done, [slot], info)
+        trainer.shutdown()
+
+        assert first_counts == 0.0
         assert trainer.roster.counts.tensor[live_index, random_index].tolist() == [1.0, 1.0, 0.0]
 
     def test_opponent_partition_never_creates_empty_slots(self, tmp_path):
@@ -367,13 +377,14 @@ class TestSchedulePrimitives:
                 league_size=20,
                 league_k=4,
                 league_admission_interval=999,
+                opponent_hold_rollouts=1,
                 pfsp_mode="hard",
                 pfsp_exponent=2.0,
                 live_rating_decay=0.9,
                 avg_rating_decay=0.995,
                 bt_prior_draws=1.0,
                 admission_prior_games=10.0,
-                league_eval=LeagueEvalConfig(4, 4, 2, 1),
+                league_eval=LeagueEvalConfig(4, 4, 2, 1, 1),
                 bc_elo_target=950.0,
                 bc_elo_scale=200.0,
                 histogram_interval=10,
@@ -486,13 +497,14 @@ class TestRLSmokeTest:
             league_size=5,
             league_k=4,
             league_admission_interval=999,
+            opponent_hold_rollouts=1,
             pfsp_mode="hard",
             pfsp_exponent=2.0,
             live_rating_decay=0.9,
             avg_rating_decay=0.995,
             bt_prior_draws=1.0,
             admission_prior_games=10.0,
-            league_eval=LeagueEvalConfig(4, 4, 2, 1),
+            league_eval=LeagueEvalConfig(4, 4, 2, 1, 1),
             bc_elo_target=950.0,
             bc_elo_scale=200.0,
             histogram_interval=10,

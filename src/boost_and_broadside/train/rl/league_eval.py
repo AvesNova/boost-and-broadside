@@ -79,7 +79,7 @@ def schedule_eval_pairs(
 
 @dataclass
 class _PolicySlot:
-    """One persistent compiled policy whose weights may be swapped per rollout."""
+    """One persistent compiled policy whose weights may be swapped per block."""
 
     module: MVPPolicy
     policy: MVPPolicy
@@ -125,7 +125,10 @@ class LeagueEvaluator:
             device,
             obstacle_cache,
         )
+        # Environments persist across rollouts so episodes complete naturally;
+        # this is the only reset and the only step-count randomization.
         self.env.reset()
+        self.env.state.step_count.random_(0, eval_env_config.max_episode_steps)
         self._slots = [
             self._build_slot(
                 model_config,
@@ -138,10 +141,17 @@ class LeagueEvaluator:
         ]
         self._agents: list[ResolvedAgent] = []
         self._active_envs: list[torch.Tensor] = []
-        self._env_agent0 = torch.empty(config.eval_num_envs, dtype=torch.long, device=device)
-        self._env_agent1 = torch.empty(config.eval_num_envs, dtype=torch.long, device=device)
-        self._env_count0 = torch.empty(config.eval_num_envs, dtype=torch.long, device=device)
-        self._env_count1 = torch.empty(config.eval_num_envs, dtype=torch.long, device=device)
+        self._env_agent0 = torch.zeros(config.eval_num_envs, dtype=torch.long, device=device)
+        self._env_agent1 = torch.zeros(config.eval_num_envs, dtype=torch.long, device=device)
+        self._env_count0 = torch.zeros(config.eval_num_envs, dtype=torch.long, device=device)
+        self._env_count1 = torch.zeros(config.eval_num_envs, dtype=torch.long, device=device)
+        # Attribution watermark: an env's outcome only counts once it has reset
+        # under its current pair assignment, so every recorded game is a complete
+        # episode between exactly the two assigned agents.
+        self._attribution_valid = torch.zeros(config.eval_num_envs, dtype=torch.bool, device=device)
+        self._blocks_remaining = 0
+        self._scheduled_layout_version = -1
+        self._current_pairs: list[tuple[str, str]] = []
         self._arange_envs = torch.arange(config.eval_num_envs, device=device)
         self._all_actions = torch.empty(
             0,
@@ -180,7 +190,7 @@ class LeagueEvaluator:
         return _PolicySlot(module, policy)
 
     def _load_checkpoint_slots(self) -> dict[str, MVPPolicy]:
-        """Load the most uncertain frozen checkpoints into persistent slots."""
+        """Assign the most uncertain frozen checkpoints to slots, loading only changes."""
         checkpoints = [entry for entry in self.roster.entries if entry.kind == "checkpoint"]
         checkpoints.sort(
             key=lambda entry: (
@@ -189,21 +199,40 @@ class LeagueEvaluator:
             ),
             reverse=True,
         )
+        desired = [
+            entry for entry in checkpoints if entry.path is not None and Path(entry.path).exists()
+        ][: len(self._slots)]
+        desired_ids = {entry.agent_id for entry in desired}
+        held = {slot.agent_id: slot for slot in self._slots if slot.agent_id is not None}
+        free_slots = [slot for slot in self._slots if slot.agent_id not in desired_ids]
         loaded: dict[str, MVPPolicy] = {}
-        for slot, entry in zip(self._slots, checkpoints):
-            if entry.path is None or not Path(entry.path).exists():
-                continue
-            checkpoint = torch.load(entry.path, map_location=self.device, weights_only=False)
-            slot.module.load_state_dict(checkpoint["policy_state_dict"])
-            for module in slot.module.modules():
-                if isinstance(module, nn.RMSNorm) and module.weight.is_cuda:
-                    module.weight.data = module.weight.data.bfloat16()
-            slot.agent_id = entry.agent_id
+        for entry in desired:
+            slot = held.get(entry.agent_id)
+            if slot is None:
+                slot = free_slots.pop()
+                checkpoint = torch.load(entry.path, map_location=self.device, weights_only=False)
+                slot.module.load_state_dict(checkpoint["policy_state_dict"])
+                for module in slot.module.modules():
+                    if isinstance(module, nn.RMSNorm) and module.weight.is_cuda:
+                        module.weight.data = module.weight.data.bfloat16()
+                slot.agent_id = entry.agent_id
             loaded[entry.agent_id] = slot.policy
         return loaded
 
     def begin_rollout(self, avg_active: bool) -> list[tuple[str, str]]:
-        """Assign checkpoint slots and schedule the next evaluation block."""
+        """Schedule a new evaluation block when the current one expires.
+
+        Environments are never reset here — in-flight episodes continue across
+        rollouts and blocks. A reschedule reassigns pairs and hidden states, so
+        it clears the attribution watermark; each env records again after its
+        first natural reset under the new assignment. A roster layout change
+        (admission or eviction shifts dense count indices) forces an immediate
+        reschedule so stale indices are never recorded into.
+        """
+        roster_changed = self.roster.layout_version != self._scheduled_layout_version
+        if self._blocks_remaining > 0 and not roster_changed:
+            self._blocks_remaining -= 1
+            return self._current_pairs
         checkpoint_policies = self._load_checkpoint_slots()
         available_ids = ["live", "random"]
         if self.scripted_agent is not None:
@@ -224,8 +253,10 @@ class LeagueEvaluator:
         scheduled_ids = [agent_id for agent_id in available_ids if agent_id in participating_ids]
         self._assign_agents(scheduled_ids, checkpoint_policies)
         self._assign_env_pairs(pairs)
-        self.env.reset()
-        self.env.state.step_count.random_(0, self.env.env_config.max_episode_steps)
+        self._attribution_valid.fill_(False)
+        self._scheduled_layout_version = self.roster.layout_version
+        self._blocks_remaining = self.config.eval_block_rollouts - 1
+        self._current_pairs = pairs
         return pairs
 
     def _assign_agents(
@@ -345,18 +376,23 @@ class LeagueEvaluator:
                 torch.full_like(self._env_count0, DRAW),
             ),
         )
-        self.roster.counts.record(
+        recordable = done_any & self._attribution_valid
+        self.roster.record_outcomes(
             self._env_count0,
             self._env_count1,
             outcomes,
-            done_any.to(self.roster.counts.tensor.dtype),
+            recordable.to(self.roster.counts.tensor.dtype),
         )
+        self._attribution_valid |= done_any
         self.env.reset_envs(done_any)
         for agent, active in zip(self._agents, self._active_envs):
             reset_done_envs(agent, done_any[active], self.num_tokens)
 
-    def flush(self) -> MatchCounts:
-        """Return the one CPU count snapshot transferred at this update boundary."""
+    def flush(self) -> tuple[MatchCounts, MatchCounts]:
+        """Snapshot lifetime counts and drain the per-update outcome tally."""
         if self._stream is not None:
             torch.cuda.current_stream().wait_stream(self._stream)
-        return self.roster.counts.to_cpu()
+        counts = self.roster.counts.to_cpu()
+        tally = self.roster.update_tally.to_cpu()
+        self.roster.reset_update_tally()
+        return counts, tally

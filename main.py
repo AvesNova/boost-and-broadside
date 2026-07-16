@@ -223,6 +223,7 @@ def _apply_smoke(config: TrainConfig) -> TrainConfig:
         eval_num_envs=4,
         eval_pairs=4,
         eval_slots=1,
+        eval_block_rollouts=2,
     )
     return replace(
         config,

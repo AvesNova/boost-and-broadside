@@ -23,7 +23,6 @@ class OpponentSlot:
     end: int
     policy: MVPPolicy | None
     hidden: torch.Tensor | None
-    count_indices: torch.Tensor
 
 
 class RolloutNetworkOutput(NamedTuple):
@@ -137,13 +136,40 @@ class OpponentMixin:
         )
         actor_mask[slot.start : slot.end] &= ~opponent_mask
 
+    def _clear_opponents(self) -> None:
+        """Release held opponents and disable outcome attribution."""
+        self.roster.evict_all_checkpoint_policies()
+        self._held_opponents = []
+        self._held_hiddens = []
+        self._held_ages = []
+        self._opponent_slots = []
+        self._opp_partition = ()
+        if self._opp_valid.numel() > 0:
+            self._opp_valid.fill_(False)
+            self._opp_active_mask.fill_(False)
+
     def _prepare_opponents(self, num_tokens: int) -> list[OpponentSlot]:
-        """Sample and initialize up to ``league_k`` opponents for one rollout."""
+        """Refresh held PFSP opponents and rebuild their slot views for one rollout.
+
+        Opponents are held for ``opponent_hold_rollouts`` rollouts with at most
+        one replacement per rollout, so episodes usually complete against a
+        single opponent. Per-env attribution is invalidated wherever the
+        assignment changes; ``_record_training_outcomes`` re-validates each env
+        at its first episode reset under the new assignment.
+        """
         active_count = round(self._schedule_state.opponent_fraction * self.cfg.scales[0].num_envs)
         active_count = min(self.B_opp, max(0, active_count))
         if active_count == 0 or self._policy_gradient_coef == 0.0:
-            self.roster.evict_all_checkpoint_policies()
+            self._clear_opponents()
             return []
+
+        # Carry recurrent state forward from the previous rollout's slot views.
+        for index, slot in enumerate(self._opponent_slots):
+            if index < len(self._held_hiddens):
+                self._held_hiddens[index] = slot.hidden
+
+        layout_changed = self.roster.layout_version != self._opp_layout_version
+        self._opp_layout_version = self.roster.layout_version
 
         available_ratings = dict(self.roster.ratings)
         if self.scripted_agent is None:
@@ -153,31 +179,98 @@ class OpponentMixin:
         for entry in self.roster.entries:
             if entry.kind == "checkpoint" and (entry.path is None or not Path(entry.path).exists()):
                 available_ratings.pop(entry.agent_id, None)
-        entries = self.roster.sample_opponents(
-            min(self.cfg.league_k, active_count), available_ratings
-        )
-        if not entries:
-            return []
 
-        self.roster.evict_all_checkpoint_policies()
+        self._refresh_held_opponents(min(self.cfg.league_k, active_count), available_ratings)
+        if not self._held_opponents:
+            self._clear_opponents()
+            return []
+        held_ids = {entry.agent_id for entry in self._held_opponents}
+        for entry in self.roster.entries:
+            if entry.kind == "checkpoint" and entry.agent_id not in held_ids:
+                entry.policy = None
+        return self._build_opponent_slots(active_count, num_tokens, layout_changed)
+
+    def _refresh_held_opponents(self, k: int, available_ratings: dict[str, float]) -> None:
+        """Age out, trim, and top up the held opponent set with PFSP samples."""
+        held = self._held_opponents
+        hiddens = self._held_hiddens
+        ages = self._held_ages
+        for index in range(len(ages)):
+            ages[index] += 1
+        # Drop members evicted from the roster or no longer sampleable.
+        for index in reversed(range(len(held))):
+            if held[index].agent_id not in available_ratings:
+                del held[index], hiddens[index], ages[index]
+        while len(held) > k:
+            oldest = max(range(len(held)), key=lambda position: ages[position])
+            del held[oldest], hiddens[oldest], ages[oldest]
+        # Replace at most one expired member per rollout (staggered turnover).
+        replace_index = None
+        if held:
+            oldest = max(range(len(held)), key=lambda position: ages[position])
+            if ages[oldest] >= self.cfg.opponent_hold_rollouts:
+                replace_index = oldest
+        need = k - len(held) + (1 if replace_index is not None else 0)
+        if need <= 0:
+            return
+        held_ids = {entry.agent_id for entry in held}
+        fresh_ratings = {
+            agent_id: rating
+            for agent_id, rating in available_ratings.items()
+            if agent_id == "live" or agent_id not in held_ids
+        }
+        sampled = self.roster.sample_opponents(need, fresh_ratings)
+        if not sampled:
+            sampled = self.roster.sample_opponents(need, available_ratings)
+        for entry in sampled:
+            if replace_index is not None:
+                held[replace_index] = entry
+                hiddens[replace_index] = None
+                ages[replace_index] = 0
+                replace_index = None
+            else:
+                held.append(entry)
+                hiddens.append(None)
+                ages.append(0)
+
+    def _build_opponent_slots(
+        self, active_count: int, num_tokens: int, layout_changed: bool
+    ) -> list[OpponentSlot]:
+        """Partition the active region and refresh per-env attribution state."""
+        entries = self._held_opponents
         base, remainder = divmod(active_count, len(entries))
         start = self.cfg.scales[0].num_envs - active_count
-        slots = []
+        new_partition: list[tuple[str, int, int]] = []
+        new_count_index = torch.zeros_like(self._opp_count_index)
+        new_active = torch.zeros_like(self._opp_active_mask)
+        slots: list[OpponentSlot] = []
         for index, entry in enumerate(entries):
             size = base + (1 if index < remainder else 0)
             end = start + size
+            segment = (entry.agent_id, start, end)
+            if index >= len(self._opp_partition) or self._opp_partition[index] != segment:
+                self._held_hiddens[index] = None
             policy = self._resolve_opponent_policy(entry)
-            hidden = (
-                policy.initial_hidden(size, num_tokens, self.device) if policy is not None else None
-            )
-            count_indices = torch.full(
-                (size,),
-                self.roster.counts.index(entry.agent_id),
-                device=self.device,
-                dtype=torch.long,
-            )  # (B_slot,)
-            slots.append(OpponentSlot(entry, start, end, policy, hidden, count_indices))
+            hidden = self._held_hiddens[index] if policy is not None else None
+            if policy is not None and hidden is None:
+                hidden = policy.initial_hidden(size, num_tokens, self.device)
+            self._held_hiddens[index] = hidden
+            relative = slice(start - self.B_self, end - self.B_self)
+            new_count_index[relative] = self.roster.counts.index(entry.agent_id)
+            new_active[relative] = True
+            new_partition.append(segment)
+            slots.append(OpponentSlot(entry, start, end, policy, hidden))
             start = end
+        changed = (new_count_index != self._opp_count_index) | (new_active != self._opp_active_mask)
+        if layout_changed:
+            self._opp_valid.fill_(False)
+        else:
+            self._opp_valid &= ~changed
+        self._opp_valid &= new_active
+        self._opp_count_index = new_count_index
+        self._opp_active_mask = new_active
+        self._opp_partition = tuple(new_partition)
+        self._opponent_slots = slots
         return slots
 
     def _resolve_opponent_policy(self, entry: RosterEntry) -> MVPPolicy | None:
@@ -349,37 +442,42 @@ class OpponentMixin:
         opponent_slots: list[OpponentSlot],
         info: dict[str, torch.Tensor],
     ) -> None:
-        """Accumulate live-vs-opponent terminal outcomes without a host sync."""
-        team0_won = info["team0_won"]
-        team1_won = info["team1_won"]
+        """Accumulate live-vs-opponent outcomes for validly attributed episodes.
+
+        An env only counts once it has reset under its current opponent
+        assignment, so the first (possibly mixed-opponent) episode after any
+        reassignment is discarded rather than misattributed.
+        """
+        if not opponent_slots or self._opp_valid.numel() == 0:
+            return
+        region = slice(self.B_self, self.B_self + self.B_opp)
+        team0_won = info["team0_won"][region]
+        team1_won = info["team1_won"][region]
+        if self._ego_pass:
+            opponent_team = torch.ones_like(self._opp_count_index)
+        else:
+            opponent_team = self._opp_team_flag.long()
+        opponent_won = torch.where(opponent_team == 0, team0_won, team1_won)
+        live_won = torch.where(opponent_team == 0, team1_won, team0_won)
+        outcomes = torch.where(
+            live_won,
+            torch.full_like(self._opp_count_index, WIN),
+            torch.where(
+                opponent_won,
+                torch.full_like(self._opp_count_index, LOSS),
+                torch.full_like(self._opp_count_index, DRAW),
+            ),
+        )
+        done_region = done_any[region]
+        recordable = done_region & self._opp_valid
         live_index = self.roster.counts.index("live")
-        for slot in opponent_slots:
-            env_slice = slice(slot.start, slot.end)
-            if self._ego_pass:
-                opponent_team = torch.ones_like(team0_won[env_slice], dtype=torch.long)
-            else:
-                opponent_team = self._opp_team_flag[
-                    slot.start - self.B_self : slot.end - self.B_self
-                ].long()
-            opponent_won = torch.where(
-                opponent_team == 0, team0_won[env_slice], team1_won[env_slice]
-            )
-            live_won = torch.where(opponent_team == 0, team1_won[env_slice], team0_won[env_slice])
-            outcomes = torch.where(
-                live_won,
-                torch.full_like(opponent_team, WIN),
-                torch.where(
-                    opponent_won,
-                    torch.full_like(opponent_team, LOSS),
-                    torch.full_like(opponent_team, DRAW),
-                ),
-            )
-            self.roster.counts.record(
-                torch.full_like(slot.count_indices, live_index),
-                slot.count_indices,
-                outcomes,
-                done_any[env_slice].to(self.roster.counts.tensor.dtype),
-            )
+        self.roster.record_outcomes(
+            torch.full_like(self._opp_count_index, live_index),
+            self._opp_count_index,
+            outcomes,
+            recordable.to(self.roster.counts.tensor.dtype),
+        )
+        self._opp_valid |= done_region & self._opp_active_mask
 
     def _refresh_opponent_team_flags(self, done_any: torch.Tensor) -> None:
         """Resample shared-pass opponent team assignments for completed environments."""

@@ -177,9 +177,9 @@ class LoggingMixin:
         """Put metrics onto the async log queue (non-blocking)."""
         self._log_queue.put(("metrics", metrics, step))
 
-    def _enqueue_rating_solve(self, counts: MatchCounts) -> None:
+    def _enqueue_rating_solve(self, counts: MatchCounts, update_tally: MatchCounts) -> None:
         """Queue one CPU Bradley-Terry solve without blocking training."""
-        self._log_queue.put(("ratings", counts, dict(self.roster.ratings)))
+        self._log_queue.put(("ratings", (counts, update_tally), dict(self.roster.ratings)))
 
     def _consume_rating_result(self) -> None:
         """Apply the newest completed rating solve at a rollout boundary."""
@@ -221,8 +221,6 @@ class LoggingMixin:
 
             wandb = wandb_module
 
-        previous_counts: MatchCounts | None = None
-
         while True:
             try:
                 item = self._log_queue.get(timeout=1.0)
@@ -232,15 +230,14 @@ class LoggingMixin:
                 break
             kind, payload, context = item
             if kind == "ratings":
-                counts = payload
+                counts, update_tally = payload
                 ratings, standard_errors = solve_bt(
                     counts,
                     "random",
                     context,
                     prior_draws=self.cfg.bt_prior_draws,
                 )
-                rating_metrics = self._recent_rating_metrics(counts, previous_counts)
-                previous_counts = counts
+                rating_metrics = self._tally_rating_metrics(update_tally)
                 self._rating_results.put((ratings, standard_errors, rating_metrics))
                 continue
 
@@ -261,29 +258,35 @@ class LoggingMixin:
             wandb.log(processed, step=step)
 
     @staticmethod
-    def _recent_rating_metrics(
-        counts: MatchCounts,
-        previous: MatchCounts | None,
-    ) -> dict[str, float]:
-        """Derive recent live matchup scores from consecutive count snapshots."""
-        delta = counts.tensor.clone()
-        if previous is not None and previous.agent_ids == counts.agent_ids:
-            delta.sub_(previous.tensor)
-            delta.clamp_(min=0.0)
-        metrics = {}
-        live_index = counts.index("live")
+    def _tally_rating_metrics(tally: MatchCounts) -> dict[str, float]:
+        """Derive this update's matchup scores and recording canaries from the tally.
+
+        The tally holds only games recorded this update and is never decayed,
+        so these numbers are exact — unlike snapshot deltas, which decay of the
+        live/avg rows would corrupt.
+        """
+        tensor = tally.tensor
+        metrics: dict[str, float] = {}
+        total_games = float(tensor.sum())
+        metrics["elo/games_recorded"] = total_games
+        if total_games > 0.0:
+            metrics["elo/draw_fraction"] = float(tensor[:, :, DRAW].sum()) / total_games
+        live_index = tally.index("live")
         for opponent_id in ("random", "scripted", "avg"):
-            if opponent_id not in counts.agent_ids:
+            if opponent_id not in tally.agent_ids:
                 continue
-            opponent_index = counts.index(opponent_id)
-            wins = delta[live_index, opponent_index, WIN] + delta[opponent_index, live_index, LOSS]
+            opponent_index = tally.index(opponent_id)
+            wins = (
+                tensor[live_index, opponent_index, WIN] + tensor[opponent_index, live_index, LOSS]
+            )
             losses = (
-                delta[live_index, opponent_index, LOSS] + delta[opponent_index, live_index, WIN]
+                tensor[live_index, opponent_index, LOSS] + tensor[opponent_index, live_index, WIN]
             )
             draws = (
-                delta[live_index, opponent_index, DRAW] + delta[opponent_index, live_index, DRAW]
+                tensor[live_index, opponent_index, DRAW] + tensor[opponent_index, live_index, DRAW]
             )
-            games = wins + losses + draws
+            games = float(wins + losses + draws)
             if games > 0.0:
-                metrics[f"elo/live_vs_{opponent_id}"] = float((wins + 0.5 * draws) / games)
+                metrics[f"elo/live_vs_{opponent_id}"] = float(wins + 0.5 * draws) / games
+                metrics[f"elo/live_vs_{opponent_id}_games"] = games
         return metrics

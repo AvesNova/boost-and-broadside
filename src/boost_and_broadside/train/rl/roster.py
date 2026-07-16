@@ -67,6 +67,14 @@ class LeagueRoster:
         self.counts = MatchCounts(
             (_LIVE_ID, _RANDOM_ID, _SCRIPTED_ID), device=device, dtype=count_dtype
         )
+        # Per-update outcome tally: same agent layout as counts, but zeroed after
+        # every flush and never decayed — the honest source for matchup metrics.
+        self.update_tally = MatchCounts(
+            (_LIVE_ID, _RANDOM_ID, _SCRIPTED_ID), device=device, dtype=count_dtype
+        )
+        # Bumped whenever the count-matrix agent layout changes so cached dense
+        # indices held by the evaluator and opponent slots can be invalidated.
+        self.layout_version = 0
         self.ratings = {_LIVE_ID: 0.0, _RANDOM_ID: 0.0, _SCRIPTED_ID: 0.0}
         self.standard_errors = {
             _LIVE_ID: float("inf"),
@@ -98,6 +106,8 @@ class LeagueRoster:
         )
         self.entries.append(roster_entry)
         self.counts.add_agent(_AVG_ID)
+        self.update_tally.add_agent(_AVG_ID)
+        self.layout_version += 1
         self.ratings[_AVG_ID] = live_elo
         self.standard_errors[_AVG_ID] = float("inf")
         return roster_entry
@@ -126,6 +136,8 @@ class LeagueRoster:
         )
         self.entries.append(roster_entry)
         self.counts.add_agent(agent_id)
+        self.update_tally.add_agent(agent_id)
+        self.layout_version += 1
         if self.admission_prior_games > 0.0:
             self.counts.add_pair(agent_id, _LIVE_ID, draws=self.admission_prior_games)
         self.ratings[agent_id] = elo
@@ -149,6 +161,21 @@ class LeagueRoster:
         if kind == "scripted":
             return self.entry(_SCRIPTED_ID)
         raise ValueError(f"invalid special roster kind {kind!r}")
+
+    def record_outcomes(
+        self,
+        agent_indices: torch.Tensor,
+        opponent_indices: torch.Tensor,
+        outcomes: torch.Tensor,
+        weights: torch.Tensor | None = None,
+    ) -> None:
+        """Accumulate directed outcomes into both lifetime and per-update counts."""
+        self.counts.record(agent_indices, opponent_indices, outcomes, weights)
+        self.update_tally.record(agent_indices, opponent_indices, outcomes, weights)
+
+    def reset_update_tally(self) -> None:
+        """Zero the per-update outcome tally after it has been flushed."""
+        self.update_tally.tensor.zero_()
 
     def refresh_ratings(
         self,
@@ -232,6 +259,8 @@ class LeagueRoster:
             self.entries.remove(crowded)
             checkpoints.remove(crowded)
             self.counts.remove_agent(crowded.agent_id)
+            self.update_tally.remove_agent(crowded.agent_id)
+            self.layout_version += 1
             self.ratings.pop(crowded.agent_id, None)
             self.standard_errors.pop(crowded.agent_id, None)
 
@@ -345,6 +374,10 @@ class LeagueRoster:
         expected_ids = {_LIVE_ID, *(entry.agent_id for entry in self.entries)}
         if set(self.counts.agent_ids) != expected_ids:
             raise ValueError("roster entries and count-matrix agent IDs do not match")
+        self.update_tally = MatchCounts(
+            self.counts.agent_ids, device=self.counts.device, dtype=self.counts.tensor.dtype
+        )
+        self.layout_version += 1
         self.ratings = {key: float(value) for key, value in data["ratings"].items()}
         self.standard_errors = {
             key: float(value) if value is not None else float("inf")

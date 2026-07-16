@@ -34,9 +34,18 @@ class LeagueEvalConfig:
     step_interval: int
     eval_pairs: int
     eval_slots: int
+    # Rollouts each scheduled pair block persists. Environments run across
+    # rollouts so episodes complete; blocks must span at least one episode.
+    eval_block_rollouts: int
 
     def __post_init__(self) -> None:
-        for name in ("eval_num_envs", "step_interval", "eval_pairs", "eval_slots"):
+        for name in (
+            "eval_num_envs",
+            "step_interval",
+            "eval_pairs",
+            "eval_slots",
+            "eval_block_rollouts",
+        ):
             if getattr(self, name) < 1:
                 raise ValueError(f"{name} must be positive, got {getattr(self, name)}")
 
@@ -115,6 +124,9 @@ class TrainConfig:
     league_size: int  # max number of checkpoint entries in the roster
     league_k: int  # maximum distinct PFSP opponents per rollout
     league_admission_interval: int  # PPO updates between frozen checkpoint admissions
+    # Rollouts each sampled opponent is held before staggered replacement —
+    # episodes must usually finish under one opponent for valid attribution.
+    opponent_hold_rollouts: int
     pfsp_mode: str  # "hard" or "variance"
     pfsp_exponent: float  # exponent for hard-PFSP weights
     live_rating_decay: float  # per-update count decay for the live policy
@@ -172,6 +184,10 @@ class TrainConfig:
         if self.league_admission_interval < 1:
             raise ValueError(
                 f"league_admission_interval must be positive, got {self.league_admission_interval}"
+            )
+        if self.opponent_hold_rollouts < 1:
+            raise ValueError(
+                f"opponent_hold_rollouts must be positive, got {self.opponent_hold_rollouts}"
             )
         if not 0.0 <= self.live_rating_decay <= 1.0:
             raise ValueError("live_rating_decay must be in [0, 1]")

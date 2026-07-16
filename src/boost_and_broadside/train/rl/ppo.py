@@ -52,9 +52,10 @@ from boost_and_broadside.train.rl.league_eval import LeagueEvaluator
 from boost_and_broadside.train.rl.logging import LoggingMixin
 from boost_and_broadside.train.rl.opponents import (
     OpponentMixin,
+    OpponentSlot,
     flip_team_obs,
 )
-from boost_and_broadside.train.rl.roster import LeagueRoster
+from boost_and_broadside.train.rl.roster import LeagueRoster, RosterEntry
 from boost_and_broadside.train.rl.sigreg import SIGReg
 
 # ------------------------------------------------------------------
@@ -433,6 +434,18 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             device=self.device,
             count_dtype=torch.float32,
         )
+        # Held PFSP opponents persist across rollouts (opponent_hold_rollouts)
+        # with per-env attribution state so recorded outcomes are complete
+        # episodes against a single known opponent.
+        self._held_opponents: list[RosterEntry] = []
+        self._held_hiddens: list[torch.Tensor | None] = []
+        self._held_ages: list[int] = []
+        self._opponent_slots: list[OpponentSlot] = []
+        self._opp_partition: tuple[tuple[str, int, int], ...] = ()
+        self._opp_layout_version = -1
+        self._opp_count_index = torch.zeros(self.B_opp, dtype=torch.long, device=self.device)
+        self._opp_valid = torch.zeros(self.B_opp, dtype=torch.bool, device=self.device)
+        self._opp_active_mask = torch.zeros(self.B_opp, dtype=torch.bool, device=self.device)
         self._training_elo: float = 0.0
         self._avg_training_elo: float = 0.0
         self._rating_metrics: dict[str, float] = {}
@@ -804,8 +817,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             )
             runtime.league_eval.step(rollout_step)
 
-        self._latest_counts_snapshot = runtime.league_eval.flush()
-        self._enqueue_rating_solve(self._latest_counts_snapshot)
+        self._latest_counts_snapshot, update_tally = runtime.league_eval.flush()
+        self._enqueue_rating_solve(self._latest_counts_snapshot, update_tally)
         return dones
 
     def _compute_rollout_gae(self, runtime: _RolloutRuntime, dones: torch.Tensor) -> None:

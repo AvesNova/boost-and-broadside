@@ -130,3 +130,45 @@ def test_kept_paths_returns_retained_checkpoint_paths_only() -> None:
     roster.add_checkpoint("/ckpt/b.pt", global_step=3, update=3)
 
     assert roster.kept_paths() == {"/ckpt/a.pt", "/ckpt/b.pt"}
+
+
+def test_record_outcomes_writes_lifetime_counts_and_update_tally() -> None:
+    roster = _make_roster()
+    live = roster.counts.index("live")
+    random_index = roster.counts.index("random")
+
+    roster.record_outcomes(
+        torch.tensor([live, live]),
+        torch.tensor([random_index, random_index]),
+        torch.tensor([0, 1]),
+    )
+
+    assert roster.counts.tensor[live, random_index].tolist() == [1.0, 1.0, 0.0]
+    assert roster.update_tally.tensor[live, random_index].tolist() == [1.0, 1.0, 0.0]
+
+
+def test_reset_update_tally_preserves_lifetime_counts() -> None:
+    roster = _make_roster()
+    live = roster.counts.index("live")
+    random_index = roster.counts.index("random")
+    roster.record_outcomes(torch.tensor([live]), torch.tensor([random_index]), torch.tensor([0]))
+
+    roster.reset_update_tally()
+
+    assert roster.update_tally.tensor.sum() == 0.0
+    assert roster.counts.tensor.sum() == 1.0
+
+
+def test_layout_version_bumps_and_tally_layout_tracks_counts(tmp_path) -> None:
+    roster = _make_roster(league_size=1)
+    version = roster.layout_version
+
+    roster.add_avg(global_step=1, update=1)
+    assert roster.layout_version > version
+    assert roster.update_tally.agent_ids == roster.counts.agent_ids
+
+    version = roster.layout_version
+    roster.add_checkpoint(str(tmp_path / "a.pt"), global_step=2, update=2)
+    roster.add_checkpoint(str(tmp_path / "b.pt"), global_step=3, update=3)  # evicts one
+    assert roster.layout_version > version
+    assert roster.update_tally.agent_ids == roster.counts.agent_ids

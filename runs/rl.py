@@ -90,6 +90,7 @@ RL_TRAIN_CONFIG = TrainConfig(
     league_size=20,
     league_k=4,
     league_admission_interval=25,
+    opponent_hold_rollouts=4,
     pfsp_mode="hard",
     pfsp_exponent=2.0,
     live_rating_decay=0.9,

@@ -19,6 +19,9 @@ LEAGUE_EVAL = LeagueEvalConfig(
     step_interval=4,
     eval_pairs=12,
     eval_slots=6,
+    # 32 rollouts × (128 steps / interval 4) = 1024 eval steps per block —
+    # enough for ~3 episodes so most games complete under one assignment.
+    eval_block_rollouts=32,
 )
 
 # Reward weights shared by all training profiles.

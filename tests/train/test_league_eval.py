@@ -3,9 +3,51 @@
 import pytest
 import torch
 
+from boost_and_broadside.config import EnvConfig, LeagueEvalConfig, ModelConfig, ShipConfig
+from boost_and_broadside.models.mvp.policy import MVPPolicy
+from boost_and_broadside.train.rl.features import build_standard_coordinator
 from boost_and_broadside.train.rl.league_eval import LeagueEvaluator, schedule_eval_pairs
 from boost_and_broadside.train.rl.rating import expected_score
 from boost_and_broadside.train.rl.roster import LeagueRoster
+
+
+def _make_evaluator(
+    max_episode_steps: int, eval_block_rollouts: int
+) -> tuple[LeagueEvaluator, LeagueRoster]:
+    ship_config = ShipConfig()
+    env_config = EnvConfig(num_ships=2, max_bullets=4, max_episode_steps=max_episode_steps)
+    model_config = ModelConfig(d_model=32, n_heads=4, n_transformer_blocks=1)
+    coordinator = build_standard_coordinator(ship_config)
+    policy = MVPPolicy(
+        model_config, coordinator, num_value_components=1, num_ships=2, team_pma_k=()
+    )
+    roster = LeagueRoster(8, "hard", 2.0, 10.0)
+    config = LeagueEvalConfig(
+        eval_num_envs=4,
+        step_interval=1,
+        eval_pairs=2,
+        eval_slots=1,
+        eval_block_rollouts=eval_block_rollouts,
+    )
+    evaluator = LeagueEvaluator(
+        config=config,
+        ship_config=ship_config,
+        env_config=env_config,
+        model_config=model_config,
+        coordinator=coordinator,
+        num_value_components=1,
+        team_pma_k=(),
+        device=torch.device("cpu"),
+        obstacle_cache=None,
+        roster=roster,
+        live_policy=policy,
+        avg_policy=policy,
+        scripted_agent=None,
+        num_ships=2,
+        num_tokens=2,
+        compile_mode=None,
+    )
+    return evaluator, roster
 
 
 @pytest.mark.parametrize(
@@ -46,15 +88,63 @@ def test_scheduler_can_select_league_vs_league_pair() -> None:
     assert any(set(pair) == {"ckpt_1", "ckpt_2"} for pair in pairs)
 
 
-def test_flush_returns_independent_cpu_snapshot() -> None:
+def test_envs_persist_across_begin_rollout_within_block() -> None:
+    evaluator, _ = _make_evaluator(max_episode_steps=64, eval_block_rollouts=4)
+    pairs = evaluator.begin_rollout(avg_active=False)
+    evaluator.env.state.step_count.zero_()
+    evaluator.step(0)
+    step_counts = evaluator.env.state.step_count.clone()
+
+    assert evaluator.begin_rollout(avg_active=False) == pairs
+    assert torch.equal(evaluator.env.state.step_count, step_counts)
+
+
+def test_watermark_defers_recording_until_first_reset() -> None:
+    evaluator, roster = _make_evaluator(max_episode_steps=4, eval_block_rollouts=10)
+    evaluator.begin_rollout(avg_active=False)
+    evaluator.env.state.step_count.zero_()
+
+    for _ in range(4):
+        evaluator.step(0)
+    first_episode_games = float(roster.counts.tensor.sum())
+    validated = bool(evaluator._attribution_valid.all())
+    for _ in range(4):
+        evaluator.step(0)
+
+    # First truncations only validate attribution; the next episode records.
+    assert first_episode_games == 0.0
+    assert validated
+    assert float(roster.counts.tensor.sum()) == 4.0
+
+
+def test_roster_layout_change_forces_reschedule_and_invalidates() -> None:
+    evaluator, roster = _make_evaluator(max_episode_steps=64, eval_block_rollouts=10)
+    evaluator.begin_rollout(avg_active=False)
+    evaluator._attribution_valid.fill_(True)
+
+    roster.add_avg(global_step=1, update=1)
+    evaluator.begin_rollout(avg_active=False)
+
+    assert not evaluator._attribution_valid.any()
+
+
+def test_flush_returns_independent_cpu_snapshots_and_drains_tally() -> None:
     roster = LeagueRoster(8, "hard", 2.0, 10.0)
-    roster.counts.add_pair("live", "random", wins=3.0)
+    roster.record_outcomes(
+        torch.tensor([roster.counts.index("live")] * 3),
+        torch.tensor([roster.counts.index("random")] * 3),
+        torch.tensor([0, 0, 0]),
+    )
     evaluator = LeagueEvaluator.__new__(LeagueEvaluator)
     evaluator.roster = roster
     evaluator._stream = None
 
-    snapshot = evaluator.flush()
+    counts, tally = evaluator.flush()
     roster.counts.add_pair("live", "random", wins=1.0)
 
-    assert snapshot.device.type == "cpu"
-    assert snapshot.tensor[snapshot.index("live"), snapshot.index("random"), 0] == 3.0
+    assert counts.device.type == "cpu"
+    assert counts.tensor[counts.index("live"), counts.index("random"), 0] == 3.0
+    assert tally.tensor[tally.index("live"), tally.index("random"), 0] == 3.0
+    # The tally is drained on flush; lifetime counts persist.
+    assert roster.update_tally.tensor.sum() == 0.0
+    assert roster.counts.tensor.sum() == 4.0
