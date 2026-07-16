@@ -2,6 +2,12 @@
 
 **Boost and Broadside** is a high-speed, competitive 2D space dogfighting environment. Teams of ships compete to eliminate each other in a frictionless (but drag-limited) physics environment.
 
+> **Note — training overrides.** This document describes the `ShipConfig` defaults. The
+> training profiles override some of them in `runs/shared.py`: bullet energy cost is `2.0`
+> (not `3.0`), and `bullet_min_damage_frac=1.0` disables the head-on damage-reduction
+> mechanic (by default, bullets striking within a narrow head-on cone deal a reduced
+> fraction of their damage).
+
 ## 1. Overview
 
 - **View**: Top-down 2D.
