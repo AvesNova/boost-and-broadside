@@ -9,16 +9,20 @@ import torch
 
 from boost_and_broadside.config import ModelConfig
 from boost_and_broadside.train.rl.features import FeatureCoordinator
-from boost_and_broadside.train.rl.rating import MatchCounts, expected_score, solve_bt
+from boost_and_broadside.train.rl.rating import MatchCounts, expected_score, solve_league
 
-_ROSTER_VERSION = 2
+_ROSTER_VERSION = 3
 _LIVE_ID = "live"
 _RANDOM_ID = "random"
 _SCRIPTED_ID = "scripted"
 _AVG_ID = "avg"
-# Initial rating guess for the scripted agent. The Bradley-Terry solve leaves
-# game-less agents at their warm-start rating, so this is what PFSP sampling
-# and reporting see until real scripted games arrive and the fit takes over.
+# Probe kinds are rated one-directionally against the pool: their games never
+# affect pool (live/checkpoint/avg) ratings, so a stomp-heavy probe matchup
+# cannot distort the ladder. Scripted's flat derived rating doubles as the
+# pool-scale drift canary.
+_PROBE_KINDS = frozenset({"scripted", "random"})
+# Initial rating guess for the scripted probe, kept until it has games against
+# identified pool members.
 _SCRIPTED_INITIAL_ELO = 1000.0
 
 
@@ -33,8 +37,14 @@ class RosterEntry:
     global_step: int
     update: int
     stationary: bool
+    protected: bool = False
     path: str | None = None
     policy: object = field(default=None, repr=False)
+
+    @property
+    def is_probe(self) -> bool:
+        """True for one-directionally rated members (scripted, random)."""
+        return self.kind in _PROBE_KINDS
 
 
 class LeagueRoster:
@@ -122,8 +132,14 @@ class LeagueRoster:
         global_step: int,
         update: int,
         initial_elo: float | None = None,
+        *,
+        protected: bool = False,
     ) -> RosterEntry:
-        """Admit a frozen live snapshot with a draw prior against live."""
+        """Admit a frozen live snapshot with a draw prior against live.
+
+        A ``protected`` checkpoint is exempt from eviction; the first one
+        admitted (ckpt_0, the initial weights) is the pool's rating anchor.
+        """
         agent_id = f"ckpt_{global_step}"
         if agent_id in self.counts.agent_ids:
             raise ValueError(f"checkpoint agent_id already exists: {agent_id!r}")
@@ -136,7 +152,8 @@ class LeagueRoster:
             global_step,
             update,
             True,
-            path,
+            protected=protected,
+            path=path,
         )
         self.entries.append(roster_entry)
         self.counts.add_agent(agent_id)
@@ -196,15 +213,40 @@ class LeagueRoster:
         for roster_entry in self.entries:
             roster_entry.elo = ratings[roster_entry.agent_id]
 
+    def pool_agent_ids(self) -> list[str]:
+        """Return the pool members (live plus every non-probe entry)."""
+        return [_LIVE_ID] + [entry.agent_id for entry in self.entries if not entry.is_probe]
+
+    def probe_agent_ids(self) -> list[str]:
+        """Return the one-directionally rated members."""
+        return [entry.agent_id for entry in self.entries if entry.is_probe]
+
+    def anchor_id(self) -> str | None:
+        """Return the pool anchor (the protected initial checkpoint), if admitted."""
+        for entry in self.entries:
+            if entry.kind == "checkpoint" and entry.protected:
+                return entry.agent_id
+        return None
+
+    def newest_checkpoint(self) -> RosterEntry | None:
+        """Return the most recently admitted checkpoint entry."""
+        checkpoints = [entry for entry in self.entries if entry.kind == "checkpoint"]
+        if not checkpoints:
+            return None
+        return max(checkpoints, key=lambda entry: (entry.update, entry.global_step))
+
     def solve_ratings(
-        self, *, prior_draws: float = 1.0
+        self, *, prior_draws: float = 1.0, prior_frac: float = 0.0
     ) -> tuple[dict[str, float], dict[str, float]]:
         """Solve and cache ratings from the current persistent count matrix."""
-        ratings, standard_errors = solve_bt(
+        ratings, standard_errors = solve_league(
             self.counts,
-            _RANDOM_ID,
+            self.anchor_id(),
+            self.pool_agent_ids(),
+            self.probe_agent_ids(),
             self.ratings,
             prior_draws=prior_draws,
+            prior_frac=prior_frac,
         )
         self.refresh_ratings(ratings, standard_errors)
         return ratings, standard_errors
@@ -239,8 +281,15 @@ class LeagueRoster:
         return [candidates[index] for index in sampled_indices.tolist()]
 
     def _evict_excess_checkpoints(self) -> None:
-        """Evict redundant old checkpoints while protecting ladder landmarks."""
-        checkpoints = [entry for entry in self.entries if entry.kind == "checkpoint"]
+        """Evict redundant old checkpoints while protecting ladder landmarks.
+
+        Protected entries (the ckpt_0 anchor) never count against the league
+        size and are never removable — evicting the anchor would sever the
+        pool's rating scale.
+        """
+        checkpoints = [
+            entry for entry in self.entries if entry.kind == "checkpoint" and not entry.protected
+        ]
         while len(checkpoints) > self.league_size:
             newest = sorted(
                 checkpoints, key=lambda entry: (entry.update, entry.global_step), reverse=True
@@ -328,7 +377,7 @@ class LeagueRoster:
         }
 
     def save_json(self, path: str | Path, counts: MatchCounts | None = None) -> None:
-        """Persist v2 roster metadata and the complete pairwise count matrix."""
+        """Persist v3 roster metadata and the complete pairwise count matrix."""
         persisted_counts = self.counts if counts is None else counts
         data = {
             "version": _ROSTER_VERSION,
@@ -341,6 +390,7 @@ class LeagueRoster:
                     "global_step": entry.global_step,
                     "update": entry.update,
                     "stationary": entry.stationary,
+                    "protected": entry.protected,
                     "path": entry.path,
                 }
                 for entry in self.entries
@@ -355,10 +405,10 @@ class LeagueRoster:
         Path(path).write_text(json.dumps(data, indent=2))
 
     def load_json(self, path: str | Path) -> None:
-        """Replace roster state from v2 JSON, rejecting all older formats."""
+        """Replace roster state from v3 JSON, rejecting all older formats."""
         data = json.loads(Path(path).read_text())
         if data.get("version") != _ROSTER_VERSION:
-            raise ValueError("roster.json must use version 2; old runs cannot be resumed")
+            raise ValueError("roster.json must use version 3; old runs cannot be resumed")
         self.entries = [
             RosterEntry(
                 agent_id=entry["agent_id"],
@@ -368,6 +418,7 @@ class LeagueRoster:
                 global_step=entry["global_step"],
                 update=entry["update"],
                 stationary=entry["stationary"],
+                protected=entry["protected"],
                 path=entry.get("path"),
             )
             for entry in data["entries"]

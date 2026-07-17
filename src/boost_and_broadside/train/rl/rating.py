@@ -138,6 +138,16 @@ class MatchCounts:
         """Return an independent CPU snapshot suitable for rating solves."""
         return MatchCounts(self.agent_ids, self.tensor.detach().to("cpu").clone())
 
+    def select_agents(self, agent_ids: Sequence[str]) -> "MatchCounts":
+        """Return an independent sub-matrix restricted to ``agent_ids`` (in order)."""
+        indices = torch.tensor(
+            [self.index(agent_id) for agent_id in agent_ids],
+            dtype=torch.long,
+            device=self.tensor.device,
+        )
+        selected = self.tensor.index_select(0, indices).index_select(1, indices)
+        return MatchCounts(list(agent_ids), selected.clone())
+
     def to_dict(self) -> dict[str, object]:
         """Return JSON-serializable count data."""
         snapshot = self.tensor.detach().to("cpu")
@@ -185,19 +195,40 @@ def expected_score(
     return 1.0 / (1.0 + 10.0 ** ((opponent_rating - rating) / 400.0))
 
 
-def _pair_results(counts: MatchCounts, prior_draws: float) -> tuple[torch.Tensor, torch.Tensor]:
-    """Collapse directed observations into fractional wins and totals."""
+def _pair_results(
+    counts: MatchCounts, prior_draws: float, prior_frac: float = 0.0
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Collapse directed observations into fractional wins and totals.
+
+    The virtual-draw prior on each played pair is ``prior_draws + prior_frac *
+    games``. The proportional part keeps a fully saturated pair's implied gap
+    bounded (~``400*log10(2/prior_frac)``) no matter how many games it logs, so
+    lopsided matchups cannot buy rating spread with volume.
+    """
     raw = counts.tensor.to(dtype=torch.float64, device="cpu")  # (K, K, 3)
     wins = raw[:, :, WIN] + raw[:, :, DRAW] * 0.5
     totals = raw.sum(dim=2)
     pair_wins = wins + raw[:, :, LOSS].T + raw[:, :, DRAW].T * 0.5  # (K, K)
     pair_totals = totals + totals.T  # (K, K)
     played = pair_totals > 0.0
-    pair_wins = pair_wins + played * (prior_draws * 0.5)
-    pair_totals = pair_totals + played * prior_draws
+    pair_prior = played * (prior_draws + prior_frac * pair_totals)  # (K, K)
+    pair_wins = pair_wins + pair_prior * 0.5
+    pair_totals = pair_totals + pair_prior
     pair_wins.fill_diagonal_(0.0)
     pair_totals.fill_diagonal_(0.0)
     return pair_wins, pair_totals
+
+
+def _anchor_component(pair_totals: torch.Tensor, anchor_index: int) -> torch.Tensor:
+    """Return the boolean mask of agents connected to the anchor by played pairs."""
+    adjacency = pair_totals > 0.0  # (K, K)
+    reached = torch.zeros(pair_totals.shape[0], dtype=torch.bool)  # (K,)
+    reached[anchor_index] = True
+    while True:
+        expanded = reached | (adjacency & reached[None, :]).any(dim=1)
+        if bool((expanded == reached).all()):
+            return reached
+        reached = expanded
 
 
 def solve_bt(
@@ -206,6 +237,7 @@ def solve_bt(
     warm_start: Mapping[str, float] | None = None,
     *,
     prior_draws: float = 1.0,
+    prior_frac: float = 0.0,
     max_iterations: int = 1_000,
     tolerance: float = 1e-10,
 ) -> tuple[dict[str, float], dict[str, float]]:
@@ -214,12 +246,18 @@ def solve_bt(
     Ties count as half a win for each player. Virtual draws regularize only
     observed pairs, preserving the match graph rather than inventing evidence.
     Agents without any observed games keep their ``warm_start`` rating exactly
-    — the warm start doubles as the prior guess until evidence arrives.
+    — the warm start doubles as the prior guess until evidence arrives. The
+    same holds for any agent whose played pairs have no path to the anchor:
+    a disconnected component's offset is not identified by the data, so its
+    members are frozen at their warm start (SE = inf) rather than positioned
+    by solver dynamics.
     """
     if prior_draws < 0.0:
         raise ValueError(f"prior_draws must be non-negative, got {prior_draws}")
+    if prior_frac < 0.0:
+        raise ValueError(f"prior_frac must be non-negative, got {prior_frac}")
     anchor_index = counts.index(anchor_id)
-    pair_wins, pair_totals = _pair_results(counts, prior_draws)
+    pair_wins, pair_totals = _pair_results(counts, prior_draws, prior_frac)
     size = len(counts)
     if size == 0:
         raise ValueError("cannot solve an empty rating table")
@@ -230,7 +268,8 @@ def solve_bt(
         dtype=torch.float64,
     )  # (K,)
     theta = theta - theta[anchor_index]
-    active = pair_totals.sum(dim=1) > 0.0  # (K,)
+    anchored = _anchor_component(pair_totals, anchor_index)  # (K,)
+    active = (pair_totals.sum(dim=1) > 0.0) & anchored  # (K,)
 
     for _ in range(max_iterations):
         strengths = theta.exp()  # (K,)
@@ -259,7 +298,7 @@ def solve_bt(
         if not bool(active[index]):
             ratings[agent_id] = float(ratings_start.get(agent_id, 0.0))
     ratings[anchor_id] = 0.0
-    standard_errors = _standard_errors(theta, pair_totals, anchor_index, counts.agent_ids)
+    standard_errors = _standard_errors(theta, pair_totals, anchor_index, counts.agent_ids, active)
     return ratings, standard_errors
 
 
@@ -268,13 +307,25 @@ def _standard_errors(
     pair_totals: torch.Tensor,
     anchor_index: int,
     agent_ids: Sequence[str],
+    identified: torch.Tensor,
 ) -> dict[str, float]:
-    """Compute anchored ELO standard errors from observed Fisher information."""
+    """Compute anchored ELO standard errors from observed Fisher information.
+
+    Agents outside ``identified`` (game-less or disconnected from the anchor)
+    report infinite error — their position was pinned, not measured.
+    """
     probabilities = torch.sigmoid(theta[:, None] - theta[None, :])  # (K, K)
     edge_information = pair_totals * probabilities * (1.0 - probabilities)  # (K, K)
     information = torch.diag(edge_information.sum(dim=1)) - edge_information  # (K, K)
-    free_indices = [index for index in range(len(agent_ids)) if index != anchor_index]
+    free_indices = [
+        index
+        for index in range(len(agent_ids))
+        if index != anchor_index and bool(identified[index])
+    ]
     errors = {agent_ids[anchor_index]: 0.0}
+    for index in range(len(agent_ids)):
+        if index != anchor_index and not bool(identified[index]):
+            errors[agent_ids[index]] = math.inf
     if not free_indices:
         return errors
     reduced = information[free_indices][:, free_indices]
@@ -294,6 +345,119 @@ def _standard_errors(
     return errors
 
 
+def solve_probe(
+    counts: MatchCounts,
+    pool_ratings: Mapping[str, float],
+    probe_id: str,
+    *,
+    warm_start: float = 0.0,
+    prior_draws: float = 1.0,
+    prior_frac: float = 0.0,
+    tolerance: float = 1e-10,
+) -> tuple[float, float]:
+    """Rate one probe agent against frozen pool ratings (one-dimensional MLE).
+
+    Probe games inform only the probe: the pool ratings are constants here, so
+    a probe's saturated or lopsided matchups can never distort pool members.
+    Returns ``(rating, standard_error)``; with no games against any rated pool
+    member the probe keeps ``warm_start`` with infinite error.
+    """
+    pair_wins, pair_totals = _pair_results(counts, prior_draws, prior_frac)
+    probe_index = counts.index(probe_id)
+    opponents = [
+        (counts.index(agent_id), float(rating) / ELO_SCALE)
+        for agent_id, rating in pool_ratings.items()
+        if agent_id != probe_id and float(pair_totals[probe_index, counts.index(agent_id)]) > 0.0
+    ]
+    if not opponents:
+        return warm_start, math.inf
+
+    def score(theta: float) -> float:
+        total = 0.0
+        for opponent_index, opponent_theta in opponents:
+            games = float(pair_totals[probe_index, opponent_index])
+            wins = float(pair_wins[probe_index, opponent_index])
+            probability = 1.0 / (1.0 + math.exp(opponent_theta - theta))
+            total += wins - games * probability
+        return total
+
+    low, high = -40.0, 40.0
+    for _ in range(200):
+        midpoint = (low + high) / 2.0
+        if score(midpoint) > 0.0:
+            low = midpoint
+        else:
+            high = midpoint
+        if high - low <= tolerance:
+            break
+    theta = (low + high) / 2.0
+    information = 0.0
+    for opponent_index, opponent_theta in opponents:
+        games = float(pair_totals[probe_index, opponent_index])
+        probability = 1.0 / (1.0 + math.exp(opponent_theta - theta))
+        information += games * probability * (1.0 - probability)
+    standard_error = ELO_SCALE / math.sqrt(information) if information > 0.0 else math.inf
+    return theta * ELO_SCALE, standard_error
+
+
+def solve_league(
+    counts: MatchCounts,
+    anchor_id: str | None,
+    pool_ids: Sequence[str],
+    probe_ids: Sequence[str],
+    warm_start: Mapping[str, float] | None = None,
+    *,
+    prior_draws: float = 1.0,
+    prior_frac: float = 0.0,
+) -> tuple[dict[str, float], dict[str, float]]:
+    """Two-stage league solve: anchored pool fit, then one-directional probes.
+
+    Pool agents are rated only from pool-vs-pool games, anchored at
+    ``anchor_id`` (rating 0). Probe agents are then rated one-directionally
+    against the identified pool members — probe games never move pool ratings.
+    Before the anchor exists (or for agents the data cannot place), warm-start
+    ratings are kept with infinite standard error.
+    """
+    ratings_start = dict(warm_start or {})
+    ratings = {agent_id: float(ratings_start.get(agent_id, 0.0)) for agent_id in counts.agent_ids}
+    standard_errors = {agent_id: math.inf for agent_id in counts.agent_ids}
+
+    pool_present = [agent_id for agent_id in pool_ids if agent_id in counts.agent_ids]
+    if anchor_id is not None and anchor_id in pool_present:
+        pool_ratings, pool_errors = solve_bt(
+            counts.select_agents(pool_present),
+            anchor_id,
+            ratings_start,
+            prior_draws=prior_draws,
+            prior_frac=prior_frac,
+        )
+        ratings.update(pool_ratings)
+        standard_errors.update(pool_errors)
+
+    identified_pool = {
+        agent_id: ratings[agent_id]
+        for agent_id in pool_present
+        if math.isfinite(standard_errors[agent_id])
+    }
+    for probe_id in probe_ids:
+        if probe_id not in counts.agent_ids:
+            continue
+        ratings[probe_id], standard_errors[probe_id] = solve_probe(
+            counts,
+            identified_pool,
+            probe_id,
+            warm_start=float(ratings_start.get(probe_id, 0.0)),
+            prior_draws=prior_draws,
+            prior_frac=prior_frac,
+        )
+    return ratings, standard_errors
+
+
+# Finite stand-in for unmeasured agents when weighting candidate pairs, so one
+# infinite standard error cannot capture the entire scheduling distribution.
+_SE_WEIGHT_CAP = 500.0
+
+
 def information_pair_weights(
     ratings: Mapping[str, float],
     standard_errors: Mapping[str, float],
@@ -303,12 +467,12 @@ def information_pair_weights(
     weights = []
     for first_id, second_id in candidate_pairs:
         probability = float(expected_score(ratings[first_id], ratings[second_id]))
-        uncertainty = standard_errors[first_id] ** 2 + standard_errors[second_id] ** 2
+        uncertainty = (
+            min(standard_errors[first_id], _SE_WEIGHT_CAP) ** 2
+            + min(standard_errors[second_id], _SE_WEIGHT_CAP) ** 2
+        )
         weights.append(probability * (1.0 - probability) * uncertainty)
     result = torch.tensor(weights, dtype=torch.float64)  # (P,)
-    infinite = torch.isinf(result)
-    if infinite.any():
-        return infinite.to(torch.float64) / infinite.sum()
     total = result.sum()
     if not torch.isfinite(total) or total <= 0.0:
         return torch.full_like(result, 1.0 / len(result))

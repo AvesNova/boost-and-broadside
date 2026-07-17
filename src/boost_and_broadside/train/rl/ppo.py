@@ -159,8 +159,8 @@ class _ResolvedSchedule:
     checkpoint_interval: int
     num_epochs: int
     target_kl: float | None
-    high_elo_threshold: float | None
-    high_elo_target_kl: float | None
+    high_winrate_threshold: float | None
+    high_winrate_target_kl: float | None
 
 
 @dataclasses.dataclass
@@ -201,8 +201,8 @@ def _resolve_schedule(schedule: TrainingSchedule, step: int) -> _ResolvedSchedul
         checkpoint_interval=schedule.checkpoint_interval(step),
         num_epochs=schedule.num_epochs(step),
         target_kl=schedule.target_kl(step),
-        high_elo_threshold=schedule.high_elo_threshold(step),
-        high_elo_target_kl=schedule.high_elo_target_kl(step),
+        high_winrate_threshold=schedule.high_winrate_threshold(step),
+        high_winrate_target_kl=schedule.high_winrate_target_kl(step),
     )
 
 
@@ -377,8 +377,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         # --- Avg-model opponent (uniform mean of all post-warmup policy snapshots) ---
         # Weights initialized as a copy of the training policy.
-        # Accumulation starts once normalized training ELO reaches
-        # cfg.avg_model_elo_threshold; once started it never stops.
+        # Accumulation starts once the measured live-vs-scripted win rate
+        # reaches cfg.avg_model_winrate_threshold; once started it never stops.
         self._avg_policy_module = MVPPolicy(
             model_config,
             self.coordinator,
@@ -453,6 +453,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._best_training_elo: float = 0.0
         self._best_avg_elo: float = 0.0
         self._last_checkpoint_path: Path | None = None
+        self._last_admission_update: int = 0
+        # Decayed live-vs-scripted tally sums driving the win-rate gates (BC
+        # decay, KL clamp, avg-model start). Scale-free: no rating involved.
+        self._wr_scripted_wins: float = 0.0
+        self._wr_scripted_games: float = 0.0
 
         # The background worker owns CPU rating solves and W&B serialization.
         self._log_queue: Queue = Queue()
@@ -850,11 +855,12 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         """Refresh schedule-controlled optimization, reward, and averaging state."""
         self._schedule_state = _resolve_schedule(self.cfg.schedule, self._global_step)
         self._policy_gradient_coef = self._schedule_state.policy_gradient_coef
-        elo_norm = self._training_elo
-        p_bc_wins = 1.0 / (
-            1.0 + 10.0 ** ((elo_norm - self.cfg.bc_elo_target) / self.cfg.bc_elo_scale)
-        )
-        bc_factor = max(0.0, 2.0 * (p_bc_wins - 0.5))
+        # BC decays on the measured win rate against the BC teacher: full
+        # cloning while scripted dominates, zero at bc_winrate_target (parity).
+        # No recorded games yet means the policy has proven nothing — BC stays
+        # fully on, which is also the correct dead-zone default.
+        wr_scripted = self._gate_wr_scripted
+        bc_factor = max(0.0, 1.0 - wr_scripted / self.cfg.bc_winrate_target)
         self._behavior_cloning_coef = self._schedule_state.behavior_cloning_coef * bc_factor
         self.optim.param_groups[0]["lr"] = self._schedule_state.learning_rate
         for component in self.wrapper.reward_components:
@@ -870,16 +876,18 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         metrics["schedule/true_reward_scale"] = self._schedule_state.true_reward_scale
         metrics["schedule/global_scale"] = self._schedule_state.global_scale
         metrics["schedule/local_scale"] = self._schedule_state.local_scale
+        metrics["elo/gate_wr_scripted"] = wr_scripted
 
-        elo_barrier_reached = elo_norm >= self.cfg.avg_model_elo_threshold
+        winrate_barrier_reached = wr_scripted >= self.cfg.avg_model_winrate_threshold
         if self._policy_gradient_coef > 0.0 and self.B_opp > 0:
-            if self._avg_update_count > 0 or elo_barrier_reached:
+            if self._avg_update_count > 0 or winrate_barrier_reached:
                 self._update_avg_model()
 
     def train(self) -> None:
         """Run the full PPO training loop."""
         runtime = self._initialize_rollout_runtime()
         self._train_start_time = time.time()
+        self._admit_initial_checkpoint()
 
         for update in range(self._start_update, self._num_updates + 1):
             self._current_update = update
@@ -1651,9 +1659,16 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
     # Rating-gated optimization
     # ------------------------------------------------------------------
 
+    @property
+    def _gate_wr_scripted(self) -> float:
+        """Decayed live-vs-scripted win rate driving the schedule gates."""
+        if self._wr_scripted_games <= 0.0:
+            return 0.0
+        return self._wr_scripted_wins / self._wr_scripted_games
+
     def _effective_target_kl(self) -> float | None:
-        """Resolve the ELO-gated target KL from the current schedule snapshot."""
-        threshold = self._schedule_state.high_elo_threshold
-        if threshold is not None and self._training_elo >= threshold:
-            return self._schedule_state.high_elo_target_kl
+        """Resolve the win-rate-gated target KL from the current schedule snapshot."""
+        threshold = self._schedule_state.high_winrate_threshold
+        if threshold is not None and self._gate_wr_scripted >= threshold:
+            return self._schedule_state.high_winrate_target_kl
         return self._schedule_state.target_kl

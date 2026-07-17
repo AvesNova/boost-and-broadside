@@ -1,6 +1,7 @@
-"""Tests for the v2 league roster, PFSP curriculum, and retention policy."""
+"""Tests for the v3 league roster, PFSP curriculum, and retention policy."""
 
 import json
+import math
 
 import pytest
 import torch
@@ -115,11 +116,11 @@ def test_save_load_v2_round_trip_includes_counts(tmp_path) -> None:
     assert torch.equal(restored.counts.tensor, roster.counts.tensor)
 
 
-def test_loader_rejects_v1_roster(tmp_path) -> None:
+def test_loader_rejects_older_roster_versions(tmp_path) -> None:
     path = tmp_path / "roster.json"
-    path.write_text(json.dumps({"entries": []}))
+    path.write_text(json.dumps({"version": 2, "entries": []}))
 
-    with pytest.raises(ValueError, match="version 2"):
+    with pytest.raises(ValueError, match="version 3"):
         _make_roster().load_json(path)
 
 
@@ -187,3 +188,83 @@ def test_scripted_starts_at_1000_and_holds_until_evidence() -> None:
     ratings, _ = roster.solve_ratings()
 
     assert ratings["scripted"] == 1_000.0
+
+
+def test_protected_anchor_survives_eviction_pressure() -> None:
+    roster = _make_roster(league_size=1)
+    roster.add_checkpoint(
+        "/ckpt/anchor.pt", global_step=0, update=0, initial_elo=0.0, protected=True
+    )
+    roster.add_checkpoint("/ckpt/one.pt", global_step=1, update=1)
+    roster.add_checkpoint("/ckpt/two.pt", global_step=2, update=2)
+
+    checkpoint_ids = {entry.agent_id for entry in roster.entries if entry.kind == "checkpoint"}
+
+    # The anchor never counts against league_size and is never evicted.
+    assert "ckpt_0" in checkpoint_ids
+    assert len(checkpoint_ids) == 2
+    assert roster.anchor_id() == "ckpt_0"
+
+
+def test_pool_and_probe_partition_helpers() -> None:
+    roster = _make_roster()
+    roster.add_avg(global_step=1, update=1)
+    roster.add_checkpoint("/ckpt/a.pt", global_step=2, update=2)
+
+    assert set(roster.pool_agent_ids()) == {"live", "avg", "ckpt_2"}
+    assert set(roster.probe_agent_ids()) == {"random", "scripted"}
+    assert roster.anchor_id() is None
+    assert roster.newest_checkpoint().agent_id == "ckpt_2"
+
+
+def test_solve_ratings_routes_pool_and_probe_stages() -> None:
+    roster = _make_roster()
+    roster.add_checkpoint(
+        "/ckpt/anchor.pt", global_step=0, update=0, initial_elo=0.0, protected=True
+    )
+    roster.counts.add_pair("live", "ckpt_0", wins=600.0, losses=400.0)
+    baseline, _ = roster.solve_ratings()
+    live_baseline = baseline["live"]
+
+    # Heavy scripted stomps against live: probe rating moves, pool does not.
+    roster.counts.add_pair("live", "scripted", losses=5000.0)
+    ratings, errors = roster.solve_ratings()
+
+    assert ratings["live"] == pytest.approx(live_baseline)
+    assert ratings["ckpt_0"] == 0.0
+    assert ratings["scripted"] > ratings["live"]
+    assert math.isfinite(errors["scripted"])
+
+
+def test_gap_triggered_admission_logic() -> None:
+    from types import SimpleNamespace
+
+    from boost_and_broadside.train.rl.checkpoint import CheckpointMixin
+
+    roster = _make_roster()
+    roster.add_checkpoint(
+        "/ckpt/anchor.pt", global_step=0, update=0, initial_elo=0.0, protected=True
+    )
+    stub = SimpleNamespace(
+        cfg=SimpleNamespace(
+            admission_min_interval=3,
+            league_admission_interval=25,
+            admission_winrate_trigger=0.65,
+        ),
+        roster=roster,
+        _policy_gradient_coef=1.0,
+        _last_admission_update=0,
+    )
+
+    # Unidentified ratings: only the interval fallback fires.
+    roster.standard_errors = {"live": math.inf, "ckpt_0": 0.0}
+    assert not CheckpointMixin._admission_due(stub, 10)
+    assert CheckpointMixin._admission_due(stub, 25)
+
+    # Identified and live well above the newest rung: gap trigger fires.
+    roster.refresh_ratings({**roster.ratings, "live": 200.0})
+    roster.standard_errors = {"live": 10.0, "ckpt_0": 0.0}
+    assert CheckpointMixin._admission_due(stub, 10)
+    # ...but never within the minimum spacing of the last admission.
+    stub._last_admission_update = 9
+    assert not CheckpointMixin._admission_due(stub, 10)

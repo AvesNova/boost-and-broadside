@@ -34,9 +34,15 @@ class LeagueEvalConfig:
     step_interval: int
     eval_pairs: int
     eval_slots: int
-    # Rollouts each scheduled pair block persists. Environments run across
-    # rollouts so episodes complete; blocks must span at least one episode.
+    # Rollouts each scheduled pair block persists. Envs are hard-reset at each
+    # block assignment, so blocks should span at least one full episode at the
+    # eval stride: eval steps per block = eval_block_rollouts * num_steps /
+    # step_interval >= max_episode_steps.
     eval_block_rollouts: int
+    # Eval-only episode truncation. Shorter than the training env's cap so
+    # draw-bound (evenly matched) pairs complete and record sooner; decisive
+    # games end well under this anyway.
+    max_episode_steps: int
 
     def __post_init__(self) -> None:
         for name in (
@@ -45,6 +51,7 @@ class LeagueEvalConfig:
             "eval_pairs",
             "eval_slots",
             "eval_block_rollouts",
+            "max_episode_steps",
         ):
             if getattr(self, name) < 1:
                 raise ValueError(f"{name} must be positive, got {getattr(self, name)}")
@@ -132,14 +139,26 @@ class TrainConfig:
     live_rating_decay: float  # per-update count decay for the live policy
     avg_rating_decay: float  # per-update count decay for the average policy
     bt_prior_draws: float  # virtual draws regularizing each played pair
+    # Volume-proportional extra prior per played pair (draws per game). Caps a
+    # fully saturated pair's implied gap at ~400*log10(2/frac) regardless of
+    # how many games it logs.
+    bt_prior_frac: float
     admission_prior_games: float  # virtual live-vs-copy draws on admission
     league_eval: LeagueEvalConfig
-    bc_elo_target: float  # normalized ELO midpoint where BC decay approaches zero
-    bc_elo_scale: float  # logistic scale for ELO-gated BC decay
+    # BC aux decay is gated on the measured live-vs-scripted win rate: the
+    # coefficient scales by max(0, 1 - wr / bc_winrate_target), i.e. full BC
+    # while scripted dominates, zero at wr >= target (parity with the teacher).
+    bc_winrate_target: float
     histogram_interval: int  # record expensive histograms every N updates
-    # Avg-model accumulation starts once normalized training ELO (vs the random
-    # anchor) reaches this barrier; once started it never stops.
-    avg_model_elo_threshold: float = 1000.0
+    # Avg-model accumulation starts once the measured live-vs-scripted win
+    # rate reaches this barrier; once started it never stops.
+    avg_model_winrate_threshold: float = 0.5
+    # Early checkpoint admission: admit a new rung when live's expected score
+    # vs the newest checkpoint reaches this trigger (both must be identified),
+    # at most once per admission_min_interval updates. The fixed
+    # league_admission_interval remains as the slow-cadence fallback.
+    admission_winrate_trigger: float = 0.65
+    admission_min_interval: int = 3
 
     # --- Gradient accumulation (memory-only, per-machine knob) ---
     # Max entity-tokens (envs × num_steps × (N+M)) per backward pass. Minibatches
@@ -199,3 +218,13 @@ class TrainConfig:
             raise ValueError("pfsp_exponent must be positive")
         if self.bt_prior_draws < 0.0 or self.admission_prior_games < 0.0:
             raise ValueError("BT prior counts must be non-negative")
+        if self.bt_prior_frac < 0.0:
+            raise ValueError("bt_prior_frac must be non-negative")
+        if not 0.0 < self.bc_winrate_target <= 1.0:
+            raise ValueError("bc_winrate_target must be in (0, 1]")
+        if not 0.0 < self.avg_model_winrate_threshold <= 1.0:
+            raise ValueError("avg_model_winrate_threshold must be in (0, 1]")
+        if not 0.0 < self.admission_winrate_trigger < 1.0:
+            raise ValueError("admission_winrate_trigger must be in (0, 1)")
+        if self.admission_min_interval < 1:
+            raise ValueError("admission_min_interval must be positive")

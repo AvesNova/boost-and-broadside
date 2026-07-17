@@ -37,9 +37,16 @@ def schedule_eval_pairs(
     num_pairs: int,
     *,
     avg_active: bool,
+    newest_checkpoint_id: str | None = None,
     generator: torch.Generator | None = None,
 ) -> list[tuple[str, str]]:
-    """Select distinct directed pairs by expected information gain."""
+    """Select distinct directed pairs by expected information gain.
+
+    Three pairs are guaranteed regardless of information weight: live vs
+    scripted feeds the win-rate schedule gates, live vs the newest checkpoint
+    keeps the pool's freshest rung measured (and drives gap-triggered
+    admission), and one random pair keeps the canary metrics alive.
+    """
     candidates = [(first, second) for first in agent_ids for second in agent_ids if first != second]
     if not candidates or num_pairs <= 0:
         return []
@@ -55,6 +62,10 @@ def schedule_eval_pairs(
         chosen = eligible[int(torch.argmax(eligible_weights))]
         selected.append(candidates[chosen])
 
+    if "scripted" in agent_ids:
+        add_required(lambda pair: "live" in pair and "scripted" in pair)
+    if newest_checkpoint_id is not None and newest_checkpoint_id in agent_ids:
+        add_required(lambda pair: "live" in pair and newest_checkpoint_id in pair)
     add_required(lambda pair: "live" in pair)
     if avg_active and "avg" in agent_ids:
         add_required(lambda pair: "avg" in pair)
@@ -117,7 +128,11 @@ class LeagueEvaluator:
         self.scripted_agent = scripted_agent
         self.num_ships = num_ships
         self.num_tokens = num_tokens
-        eval_env_config = dataclasses.replace(env_config, single_team=False)
+        eval_env_config = dataclasses.replace(
+            env_config,
+            single_team=False,
+            max_episode_steps=config.max_episode_steps,
+        )
         self.env = TensorEnv(
             config.eval_num_envs,
             ship_config,
@@ -125,10 +140,10 @@ class LeagueEvaluator:
             device,
             obstacle_cache,
         )
-        # Environments persist across rollouts so episodes complete naturally;
-        # this is the only reset and the only step-count randomization.
+        # Envs are hard-reset again at every block assignment so first episodes
+        # are attributable; no step-count randomization — blocks align to
+        # fresh, honest-length episodes.
         self.env.reset()
-        self.env.state.step_count.random_(0, eval_env_config.max_episode_steps)
         self._slots = [
             self._build_slot(
                 model_config,
@@ -145,9 +160,9 @@ class LeagueEvaluator:
         self._env_agent1 = torch.zeros(config.eval_num_envs, dtype=torch.long, device=device)
         self._env_count0 = torch.zeros(config.eval_num_envs, dtype=torch.long, device=device)
         self._env_count1 = torch.zeros(config.eval_num_envs, dtype=torch.long, device=device)
-        # Attribution watermark: an env's outcome only counts once it has reset
-        # under its current pair assignment, so every recorded game is a complete
-        # episode between exactly the two assigned agents.
+        # Attribution validity: hard resets at block assignment mean every env
+        # is valid from its first episode; the mask exists so recording can be
+        # suspended if an assignment ever changes without a reset.
         self._attribution_valid = torch.zeros(config.eval_num_envs, dtype=torch.bool, device=device)
         self._blocks_remaining = 0
         self._scheduled_layout_version = -1
@@ -222,10 +237,9 @@ class LeagueEvaluator:
     def begin_rollout(self, avg_active: bool) -> list[tuple[str, str]]:
         """Schedule a new evaluation block when the current one expires.
 
-        Environments are never reset here — in-flight episodes continue across
-        rollouts and blocks. A reschedule reassigns pairs and hidden states, so
-        it clears the attribution watermark; each env records again after its
-        first natural reset under the new assignment. A roster layout change
+        Every (re)schedule hard-resets all eval environments, so first
+        episodes start fresh under the new assignment and are immediately
+        attributable — no discarded watermark episode. A roster layout change
         (admission or eviction shifts dense count indices) forces an immediate
         reschedule so stale indices are never recorded into.
         """
@@ -240,12 +254,14 @@ class LeagueEvaluator:
         if avg_active and "avg" in self.roster.counts.agent_ids:
             available_ids.append("avg")
         available_ids.extend(checkpoint_policies)
+        newest = self.roster.newest_checkpoint()
         pairs = schedule_eval_pairs(
             available_ids,
             self.roster.ratings,
             self.roster.standard_errors,
             self.config.eval_pairs,
             avg_active=avg_active,
+            newest_checkpoint_id=newest.agent_id if newest is not None else None,
         )
         if not pairs:
             raise RuntimeError("league evaluation requires at least two executable agents")
@@ -253,7 +269,11 @@ class LeagueEvaluator:
         scheduled_ids = [agent_id for agent_id in available_ids if agent_id in participating_ids]
         self._assign_agents(scheduled_ids, checkpoint_policies)
         self._assign_env_pairs(pairs)
-        self._attribution_valid.fill_(False)
+        # Hard reset: fresh episodes under the new assignment record from their
+        # first completion. flush() synchronized the eval stream last update,
+        # so mutating env state on the default stream here is race-free.
+        self.env.reset_envs(torch.ones_like(self._attribution_valid))
+        self._attribution_valid.fill_(True)
         self._scheduled_layout_version = self.roster.layout_version
         self._blocks_remaining = self.config.eval_block_rollouts - 1
         self._current_pairs = pairs
@@ -383,7 +403,6 @@ class LeagueEvaluator:
             outcomes,
             recordable.to(self.roster.counts.tensor.dtype),
         )
-        self._attribution_valid |= done_any
         self.env.reset_envs(done_any)
         for agent, active in zip(self._agents, self._active_envs):
             reset_done_envs(agent, done_any[active], self.num_tokens)

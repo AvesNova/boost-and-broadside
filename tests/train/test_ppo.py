@@ -1,5 +1,7 @@
 """End-to-end smoke test for the PPO training loop."""
 
+from types import SimpleNamespace
+
 import pytest
 import torch
 
@@ -66,8 +68,8 @@ def _make_schedule(**overrides) -> TrainingSchedule:
         checkpoint_interval=stepped((0, 0)),
         num_epochs=constant(1),
         target_kl=constant(None),
-        high_elo_threshold=constant(900.0),
-        high_elo_target_kl=constant(0.02),
+        high_winrate_threshold=constant(0.40),
+        high_winrate_target_kl=constant(0.02),
     )
     defaults.update(overrides)
     return TrainingSchedule(**defaults)
@@ -108,10 +110,10 @@ def _make_train_config(
         live_rating_decay=0.9,
         avg_rating_decay=0.995,
         bt_prior_draws=1.0,
+        bt_prior_frac=0.02,
         admission_prior_games=10.0,
-        league_eval=LeagueEvalConfig(4, 4, 2, 1, 1),
-        bc_elo_target=950.0,
-        bc_elo_scale=200.0,
+        league_eval=LeagueEvalConfig(4, 4, 2, 1, 1, 8),
+        bc_winrate_target=0.5,
         histogram_interval=10,
     )
 
@@ -383,10 +385,10 @@ class TestSchedulePrimitives:
                 live_rating_decay=0.9,
                 avg_rating_decay=0.995,
                 bt_prior_draws=1.0,
+                bt_prior_frac=0.02,
                 admission_prior_games=10.0,
-                league_eval=LeagueEvalConfig(4, 4, 2, 1, 1),
-                bc_elo_target=950.0,
-                bc_elo_scale=200.0,
+                league_eval=LeagueEvalConfig(4, 4, 2, 1, 1, 8),
+                bc_winrate_target=0.5,
                 histogram_interval=10,
             ),
             model_config=ModelConfig(d_model=32, n_heads=4, n_transformer_blocks=1),
@@ -471,8 +473,8 @@ class TestRLSmokeTest:
             checkpoint_interval=constant(9999),
             num_epochs=constant(1),
             target_kl=constant(None),
-            high_elo_threshold=constant(900.0),
-            high_elo_target_kl=constant(0.02),
+            high_winrate_threshold=constant(0.40),
+            high_winrate_target_kl=constant(0.02),
         )
         cfg = TrainConfig(
             paradigm=paradigm,
@@ -503,10 +505,10 @@ class TestRLSmokeTest:
             live_rating_decay=0.9,
             avg_rating_decay=0.995,
             bt_prior_draws=1.0,
+            bt_prior_frac=0.02,
             admission_prior_games=10.0,
-            league_eval=LeagueEvalConfig(4, 4, 2, 1, 1),
-            bc_elo_target=950.0,
-            bc_elo_scale=200.0,
+            league_eval=LeagueEvalConfig(4, 4, 2, 1, 1, 8),
+            bc_winrate_target=0.5,
             histogram_interval=10,
         )
         scripted = StochasticScriptedAgent(SHIP_CONFIG, StochasticAgentConfig())
@@ -519,3 +521,31 @@ class TestRLSmokeTest:
             scripted_agent=scripted,
         )
         trainer.train()
+
+
+class TestWinRateGates:
+    """Schedule gates key on the measured live-vs-scripted win rate, not ELO."""
+
+    def test_gate_wr_property_defaults_to_zero_without_games(self) -> None:
+        stub = SimpleNamespace(_wr_scripted_wins=0.0, _wr_scripted_games=0.0)
+        assert PPOTrainer._gate_wr_scripted.fget(stub) == 0.0
+
+    def test_gate_wr_property_is_decayed_sum_ratio(self) -> None:
+        stub = SimpleNamespace(_wr_scripted_wins=30.0, _wr_scripted_games=60.0)
+        assert PPOTrainer._gate_wr_scripted.fget(stub) == pytest.approx(0.5)
+
+    def test_target_kl_clamps_at_winrate_threshold(self) -> None:
+        schedule_state = SimpleNamespace(
+            high_winrate_threshold=0.40, high_winrate_target_kl=0.02, target_kl=0.1
+        )
+        above = SimpleNamespace(_schedule_state=schedule_state, _gate_wr_scripted=0.5)
+        below = SimpleNamespace(_schedule_state=schedule_state, _gate_wr_scripted=0.3)
+        assert PPOTrainer._effective_target_kl(above) == 0.02
+        assert PPOTrainer._effective_target_kl(below) == 0.1
+
+    def test_target_kl_disabled_threshold_keeps_base_kl(self) -> None:
+        schedule_state = SimpleNamespace(
+            high_winrate_threshold=None, high_winrate_target_kl=0.02, target_kl=0.1
+        )
+        stub = SimpleNamespace(_schedule_state=schedule_state, _gate_wr_scripted=0.9)
+        assert PPOTrainer._effective_target_kl(stub) == 0.1

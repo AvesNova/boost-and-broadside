@@ -28,6 +28,7 @@ def _make_evaluator(
         eval_pairs=2,
         eval_slots=1,
         eval_block_rollouts=eval_block_rollouts,
+        max_episode_steps=max_episode_steps,
     )
     evaluator = LeagueEvaluator(
         config=config,
@@ -58,15 +59,18 @@ def test_expected_score(rating: float, opponent: float, expected: float) -> None
     assert expected_score(rating, opponent) == pytest.approx(expected)
 
 
-def test_scheduler_guarantees_live_avg_and_anchor_pairs() -> None:
+def test_scheduler_guarantees_gate_rung_and_canary_pairs() -> None:
     agent_ids = ["live", "random", "scripted", "avg", "ckpt_1", "ckpt_2"]
     ratings = dict.fromkeys(agent_ids, 0.0)
     errors = dict.fromkeys(agent_ids, 100.0)
     errors["random"] = 0.0
 
-    pairs = schedule_eval_pairs(agent_ids, ratings, errors, 6, avg_active=True)
+    pairs = schedule_eval_pairs(
+        agent_ids, ratings, errors, 6, avg_active=True, newest_checkpoint_id="ckpt_2"
+    )
 
-    assert any("live" in pair for pair in pairs)
+    assert any({"live", "scripted"} == set(pair) for pair in pairs)
+    assert any({"live", "ckpt_2"} == set(pair) for pair in pairs)
     assert any("avg" in pair for pair in pairs)
     assert any("random" in pair for pair in pairs)
 
@@ -99,33 +103,33 @@ def test_envs_persist_across_begin_rollout_within_block() -> None:
     assert torch.equal(evaluator.env.state.step_count, step_counts)
 
 
-def test_watermark_defers_recording_until_first_reset() -> None:
+def test_hard_reset_records_from_first_episode() -> None:
     evaluator, roster = _make_evaluator(max_episode_steps=4, eval_block_rollouts=10)
     evaluator.begin_rollout(avg_active=False)
-    evaluator.env.state.step_count.zero_()
 
+    # The block assignment hard-reset the envs, so the very first completed
+    # episode of every env is attributable and recorded.
+    assert bool(evaluator._attribution_valid.all())
     for _ in range(4):
         evaluator.step(0)
-    first_episode_games = float(roster.counts.tensor.sum())
-    validated = bool(evaluator._attribution_valid.all())
-    for _ in range(4):
-        evaluator.step(0)
-
-    # First truncations only validate attribution; the next episode records.
-    assert first_episode_games == 0.0
-    assert validated
     assert float(roster.counts.tensor.sum()) == 4.0
+    for _ in range(4):
+        evaluator.step(0)
+    assert float(roster.counts.tensor.sum()) == 8.0
 
 
-def test_roster_layout_change_forces_reschedule_and_invalidates() -> None:
+def test_roster_layout_change_forces_reschedule_with_hard_reset() -> None:
     evaluator, roster = _make_evaluator(max_episode_steps=64, eval_block_rollouts=10)
     evaluator.begin_rollout(avg_active=False)
-    evaluator._attribution_valid.fill_(True)
+    evaluator.env.state.step_count.fill_(7)
 
     roster.add_avg(global_step=1, update=1)
     evaluator.begin_rollout(avg_active=False)
 
-    assert not evaluator._attribution_valid.any()
+    # The layout change triggers an immediate reschedule whose hard reset
+    # starts fresh, attributable episodes.
+    assert bool(evaluator._attribution_valid.all())
+    assert bool((evaluator.env.state.step_count == 0).all())
 
 
 def test_flush_returns_independent_cpu_snapshots_and_drains_tally() -> None:

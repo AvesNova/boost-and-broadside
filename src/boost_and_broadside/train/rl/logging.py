@@ -6,7 +6,10 @@ import time
 from queue import Empty
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig, TrainConfig
-from boost_and_broadside.train.rl.rating import DRAW, LOSS, WIN, MatchCounts, solve_bt
+from boost_and_broadside.train.rl.rating import DRAW, LOSS, WIN, MatchCounts, solve_league
+
+# Per-update decay of the win-rate gate tally sums (~50-update window).
+_GATE_WR_DECAY = 0.98
 
 
 class LoggingMixin:
@@ -72,15 +75,19 @@ class LoggingMixin:
 
         metrics["elo/live"] = self._training_elo
         metrics["elo/live_se"] = self.roster.standard_errors.get("live", float("inf"))
+        # Probe ratings: one-directional fits against the pool. Scripted is
+        # stationary, so a trend in elo/scripted is pool-scale drift (canary).
         metrics["elo/scripted"] = self.roster.ratings.get("scripted", 0.0)
+        metrics["elo/scripted_se"] = self.roster.standard_errors.get("scripted", float("inf"))
+        metrics["elo/random"] = self.roster.ratings.get("random", 0.0)
         if self._avg_update_count > 0:
             metrics["elo/avg"] = self._avg_training_elo
         metrics.update(self._rating_metrics)
-        roster_elos = [entry.elo for entry in self.roster.entries]
-        if roster_elos:
-            metrics["elo/roster_min"] = min(roster_elos)
-            metrics["elo/roster_median"] = statistics.median(roster_elos)
-            metrics["elo/roster_max"] = max(roster_elos)
+        pool_elos = [entry.elo for entry in self.roster.entries if not entry.is_probe]
+        if pool_elos:
+            metrics["elo/roster_min"] = min(pool_elos)
+            metrics["elo/roster_median"] = statistics.median(pool_elos)
+            metrics["elo/roster_max"] = max(pool_elos)
 
         if self._training_elo > self._best_training_elo:
             self._best_training_elo = self._training_elo
@@ -178,8 +185,14 @@ class LoggingMixin:
         self._log_queue.put(("metrics", metrics, step))
 
     def _enqueue_rating_solve(self, counts: MatchCounts, update_tally: MatchCounts) -> None:
-        """Queue one CPU Bradley-Terry solve without blocking training."""
-        self._log_queue.put(("ratings", (counts, update_tally), dict(self.roster.ratings)))
+        """Queue one CPU two-stage league solve without blocking training."""
+        solve_context = (
+            dict(self.roster.ratings),
+            self.roster.anchor_id(),
+            self.roster.pool_agent_ids(),
+            self.roster.probe_agent_ids(),
+        )
+        self._log_queue.put(("ratings", (counts, update_tally), solve_context))
 
     def _consume_rating_result(self) -> None:
         """Apply the newest completed rating solve at a rollout boundary."""
@@ -203,6 +216,11 @@ class LoggingMixin:
         self._training_elo = self.roster.ratings["live"]
         self._avg_training_elo = self.roster.ratings.get("avg", 0.0)
         self._rating_metrics = rating_metrics
+        # Fold this update's scripted tally into the decayed win-rate gate sums.
+        games = rating_metrics.get("elo/live_vs_scripted_games", 0.0)
+        win_rate = rating_metrics.get("elo/live_vs_scripted", 0.0)
+        self._wr_scripted_wins = _GATE_WR_DECAY * self._wr_scripted_wins + win_rate * games
+        self._wr_scripted_games = _GATE_WR_DECAY * self._wr_scripted_games + games
 
     def _log_worker(self) -> None:
         """Background thread: drains the log queue and calls wandb.log().
@@ -231,11 +249,15 @@ class LoggingMixin:
             kind, payload, context = item
             if kind == "ratings":
                 counts, update_tally = payload
-                ratings, standard_errors = solve_bt(
+                warm_start, anchor_id, pool_ids, probe_ids = context
+                ratings, standard_errors = solve_league(
                     counts,
-                    "random",
-                    context,
+                    anchor_id,
+                    pool_ids,
+                    probe_ids,
+                    warm_start,
                     prior_draws=self.cfg.bt_prior_draws,
+                    prior_frac=self.cfg.bt_prior_frac,
                 )
                 rating_metrics = self._tally_rating_metrics(update_tally)
                 self._rating_results.put((ratings, standard_errors, rating_metrics))

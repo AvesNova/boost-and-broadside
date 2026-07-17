@@ -1,6 +1,7 @@
 """Checkpoint serialization, asynchronous saves, and resume support."""
 
 import dataclasses
+import math
 import threading
 import time
 from pathlib import Path
@@ -8,6 +9,8 @@ from typing import Any
 
 import torch
 import torch.nn as nn
+
+from boost_and_broadside.train.rl.rating import expected_score
 
 
 def cast_norms_bf16(module: nn.Module) -> None:
@@ -41,15 +44,60 @@ class CheckpointMixin:
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         self.roster.save_json(ckpt_dir / "roster.json", self._latest_counts_snapshot)
 
+    def _admit_initial_checkpoint(self) -> None:
+        """Admit the initial weights as the protected pool anchor (ckpt_0).
+
+        Fresh runs only — a resumed roster already carries its anchor. The
+        anchor is pinned at ELO 0, giving live a near-equal, informative
+        opponent from the first update instead of a rating dead zone.
+        """
+        if self.roster.anchor_id() is not None:
+            return
+        self._save_checkpoint(0)
+        entry = self.roster.add_checkpoint(
+            str(self._last_checkpoint_path),
+            self._global_step,
+            0,
+            initial_elo=0.0,
+            protected=True,
+        )
+        self._mirror_admission_into_snapshot(entry.agent_id)
+        self._last_admission_update = 0
+        self._save_roster_json()
+
+    def _admission_due(self, update: int) -> bool:
+        """Admit on the fixed interval, or early when live outgrows the newest rung.
+
+        The gap trigger keeps the ladder dense while live improves quickly:
+        without it, live would leave ckpt_0's neighborhood long before the
+        first interval admission (~league_admission_interval updates later)
+        and the pool would lose its informative edge.
+        """
+        if self._policy_gradient_coef <= 0.0:
+            return False
+        last = getattr(self, "_last_admission_update", 0)
+        if update - last < self.cfg.admission_min_interval:
+            return False
+        if update % self.cfg.league_admission_interval == 0:
+            return True
+        newest = self.roster.newest_checkpoint()
+        if newest is None:
+            return False
+        errors = self.roster.standard_errors
+        live_identified = math.isfinite(errors.get("live", math.inf))
+        newest_identified = math.isfinite(errors.get(newest.agent_id, math.inf))
+        if not (live_identified and newest_identified):
+            return False
+        live_score = expected_score(self.roster.ratings["live"], newest.elo)
+        return float(live_score) >= self.cfg.admission_winrate_trigger
+
     def _maybe_save_checkpoint(self, update: int) -> None:
-        """Save scheduled snapshots and admit frozen policies on a fixed cadence."""
+        """Save scheduled snapshots and admit frozen policies when due."""
         checkpoint_due = (
             self._schedule_state.checkpoint_interval > 0
             and update % self._schedule_state.checkpoint_interval == 0
         )
-        admission_due = (
-            self._policy_gradient_coef > 0.0 and update % self.cfg.league_admission_interval == 0
-        )
+        admission_due = self._admission_due(update)
         if not checkpoint_due and not admission_due:
             return
         self._save_checkpoint(update)
@@ -59,17 +107,22 @@ class CheckpointMixin:
                 self._global_step,
                 update,
             )
-            self._latest_counts_snapshot.add_agent(entry.agent_id)
-            self._latest_counts_snapshot.add_pair(
-                entry.agent_id,
-                "live",
-                draws=self.cfg.admission_prior_games,
-            )
-            retained_ids = set(self.roster.counts.agent_ids)
-            for agent_id in list(self._latest_counts_snapshot.agent_ids):
-                if agent_id not in retained_ids:
-                    self._latest_counts_snapshot.remove_agent(agent_id)
+            self._mirror_admission_into_snapshot(entry.agent_id)
+            self._last_admission_update = update
         self._save_roster_json()
+
+    def _mirror_admission_into_snapshot(self, agent_id: str) -> None:
+        """Reflect one admission (and any evictions) into the counts snapshot."""
+        self._latest_counts_snapshot.add_agent(agent_id)
+        self._latest_counts_snapshot.add_pair(
+            agent_id,
+            "live",
+            draws=self.cfg.admission_prior_games,
+        )
+        retained_ids = set(self.roster.counts.agent_ids)
+        for stale_id in list(self._latest_counts_snapshot.agent_ids):
+            if stale_id not in retained_ids:
+                self._latest_counts_snapshot.remove_agent(stale_id)
 
     # ------------------------------------------------------------------
     # Checkpointing
@@ -92,6 +145,9 @@ class CheckpointMixin:
             "elapsed_train_time": self._elapsed_train_time + (time.time() - self._train_start_time),
             "training_elo": self._training_elo,
             "avg_training_elo": self._avg_training_elo,
+            "wr_scripted_wins": self._wr_scripted_wins,
+            "wr_scripted_games": self._wr_scripted_games,
+            "last_admission_update": self._last_admission_update,
             "team_pma_k": self._win_k,
             "train_config": {
                 k: v for k, v in dataclasses.asdict(self.cfg).items() if k != "schedule"
@@ -287,6 +343,9 @@ class CheckpointMixin:
         if "training_elo" in ckpt:
             self._training_elo = ckpt["training_elo"]
         self._avg_training_elo = ckpt.get("avg_training_elo", 0.0)
+        self._wr_scripted_wins = ckpt.get("wr_scripted_wins", 0.0)
+        self._wr_scripted_games = ckpt.get("wr_scripted_games", 0.0)
+        self._last_admission_update = ckpt.get("last_admission_update", 0)
         if "global_step" in ckpt:
             self._global_step = ckpt["global_step"]
             self._start_update = ckpt["update"] + 1
@@ -307,7 +366,7 @@ class CheckpointMixin:
 
         roster_path = Path(path).parent / "roster.json"
         if not roster_path.exists():
-            raise ValueError("resuming training requires a v2 roster.json; use --pretrain_from")
+            raise ValueError("resuming training requires a v3 roster.json; use --pretrain_from")
         self.roster.load_json(roster_path)
         self._latest_counts_snapshot = self.roster.counts.to_cpu()
         self._training_elo = self.roster.ratings["live"]

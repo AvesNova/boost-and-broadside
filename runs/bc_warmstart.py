@@ -38,15 +38,15 @@ BC_WARMSTART_PRETRAIN_CONFIG = TrainConfig(
     league_k=4,
     league_admission_interval=25,
     opponent_hold_rollouts=4,
-    pfsp_mode="hard",
+    pfsp_mode="variance",
     pfsp_exponent=2.0,
     live_rating_decay=0.9,
     avg_rating_decay=0.995,
     bt_prior_draws=1.0,
+    bt_prior_frac=0.02,
     admission_prior_games=10.0,
     league_eval=LEAGUE_EVAL,
-    bc_elo_target=950.0,
-    bc_elo_scale=200.0,
+    bc_winrate_target=0.5,
     histogram_interval=10,
 )
 

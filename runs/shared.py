@@ -15,13 +15,18 @@ MODEL_CONFIG = ModelConfig(
 )
 
 LEAGUE_EVAL = LeagueEvalConfig(
-    eval_num_envs=1536,
-    step_interval=4,
+    # 1:1 stride with fewer envs: same env-step budget as the old 1536 @ 1:4,
+    # but episodes complete 4x sooner — draw-bound pairs record within ~4
+    # updates instead of ~32 (run 664's first live-vs-random game took 10.5M
+    # steps to arrive; the rating graph was disconnected until then).
+    eval_num_envs=512,
+    step_interval=1,
     eval_pairs=12,
     eval_slots=6,
-    # 32 rollouts × (128 steps / interval 4) = 1024 eval steps per block —
-    # enough for ~3 episodes so most games complete under one assignment.
-    eval_block_rollouts=32,
+    # 8 rollouts × 128 steps = 1024 eval steps per block = exactly two full
+    # 512-step episodes under one hard-reset assignment.
+    eval_block_rollouts=8,
+    max_episode_steps=512,
 )
 
 # Reward weights shared by all training profiles.

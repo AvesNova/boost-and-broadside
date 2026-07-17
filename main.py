@@ -224,6 +224,9 @@ def _apply_smoke(config: TrainConfig) -> TrainConfig:
         eval_pairs=4,
         eval_slots=1,
         eval_block_rollouts=2,
+        # Blocks hard-reset the eval envs, so episodes must fit in one block:
+        # 2 rollouts x 128 steps at 1:1 stride = 2 episodes per block.
+        max_episode_steps=128,
     )
     return replace(
         config,
@@ -234,6 +237,7 @@ def _apply_smoke(config: TrainConfig) -> TrainConfig:
         num_minibatches=1,
         total_timesteps=5_000,
         league_admission_interval=1,
+        admission_min_interval=1,
         log_interval=1,
     )
 

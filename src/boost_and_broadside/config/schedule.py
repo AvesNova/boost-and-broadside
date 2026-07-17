@@ -232,5 +232,7 @@ class TrainingSchedule:
     target_kl: Callable[
         [int], float | None
     ]  # exit epoch loop early if mean approx KL exceeds this; None = disabled
-    high_elo_threshold: Callable[[int], float | None]
-    high_elo_target_kl: Callable[[int], float | None]
+    # Tighter KL clamp once the measured live-vs-scripted win rate crosses the
+    # threshold — keyed on the tally, never on the rating scale.
+    high_winrate_threshold: Callable[[int], float | None]
+    high_winrate_target_kl: Callable[[int], float | None]

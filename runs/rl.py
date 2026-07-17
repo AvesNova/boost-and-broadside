@@ -7,8 +7,8 @@ Phase structure:
   Step 0 → 5M:   LR warmup 1e-7 → 3e-4. 50% envs use PFSP opponents.
                   All reward group scales active (pretrained value function handles this).
   Step 5M:        LR at cruise.
-  ELO 1000:       avg-model starts accumulating (avg_model_elo_threshold gate,
-                  ELO-based rather than step-based).
+  WR 0.5:         avg-model starts accumulating (avg_model_winrate_threshold
+                  gate on the measured live-vs-scripted win rate).
   Step 50M:       PFSP opponent coverage rises to 70% of environments.
 """
 
@@ -50,8 +50,8 @@ RL_SCHEDULE = TrainingSchedule(
     checkpoint_interval=constant(50),
     num_epochs=stepped((0, 4)),
     target_kl=stepped((0, 0.1)),
-    high_elo_threshold=constant(900.0),
-    high_elo_target_kl=constant(0.02),
+    high_winrate_threshold=constant(0.40),
+    high_winrate_target_kl=constant(0.02),
 )
 
 RL_TRAIN_CONFIG = TrainConfig(
@@ -91,18 +91,20 @@ RL_TRAIN_CONFIG = TrainConfig(
     league_k=4,
     league_admission_interval=25,
     opponent_hold_rollouts=4,
-    pfsp_mode="hard",
+    # Variance PFSP: opponents weighted by p(1-p), so a dominant scripted gets
+    # ~zero curriculum weight until live becomes competitive with it.
+    pfsp_mode="variance",
     pfsp_exponent=2.0,
     live_rating_decay=0.9,
     avg_rating_decay=0.995,
     bt_prior_draws=1.0,
+    bt_prior_frac=0.02,
     admission_prior_games=10.0,
     league_eval=LEAGUE_EVAL,
-    bc_elo_target=950.0,
-    bc_elo_scale=200.0,
+    bc_winrate_target=0.5,
     histogram_interval=10,
-    # Avg-model accumulation starts once normalized training ELO reaches this.
-    avg_model_elo_threshold=1000.0,
+    # Avg-model accumulation starts at this measured live-vs-scripted win rate.
+    avg_model_winrate_threshold=0.5,
     obstacle_cache=ObstacleCacheConfig(
         num_cache_envs=4096,
         cache_size=512,
