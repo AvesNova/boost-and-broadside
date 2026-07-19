@@ -78,6 +78,7 @@ def _make_train_config(
     paradigm: str = "ego_pass",
     scripted_fraction: float = 0.0,
     checkpoint_dir: str = "checkpoints",
+    min_games_to_freeze: int = 0,
     **reward_overrides,
 ) -> TrainConfig:
     return TrainConfig(
@@ -103,17 +104,16 @@ def _make_train_config(
         league_size=20,
         league_uniform_sampling=False,
         elo_milestone_gap=50.0,
-        elo_k_factor=32.0,
         elo_temperature=200.0,
         elo_eval=EloEvalConfig(
             envs_per_matchup=4,
             step_interval=4,
             k_factor=4.0,
-            scripted_elo=1000.0,
+            scripted_elo_init=1000.0,
             window_size=100,
+            min_games_to_freeze=min_games_to_freeze,
         ),
-        bc_elo_target=950.0,
-        bc_elo_scale=200.0,
+        bc_winrate_target=0.9,
         histogram_interval=10,
     )
 
@@ -122,6 +122,7 @@ def _make_trainer(
     paradigm: str = "ego_pass",
     scripted_fraction: float = 0.0,
     checkpoint_dir: str = "checkpoints",
+    min_games_to_freeze: int = 0,
     **reward_overrides,
 ) -> PPOTrainer:
     ship_config = ShipConfig()
@@ -135,6 +136,7 @@ def _make_trainer(
             paradigm=paradigm,
             scripted_fraction=scripted_fraction,
             checkpoint_dir=checkpoint_dir,
+            min_games_to_freeze=min_games_to_freeze,
             **reward_overrides,
         ),
         model_config=ModelConfig(
@@ -170,6 +172,80 @@ class TestPPOSmokeTest:
         params_after = list(trainer.policy.parameters())
         any_changed = any(not torch.equal(b, a) for b, a in zip(params_before, params_after))
         assert any_changed, "No parameters changed after training"
+
+
+class TestEloLadder:
+    """Milestone flow: snapshot → settle → freeze, driven via _maybe_advance_ladder."""
+
+    def test_first_milestone_creates_floating_checkpoint(self, tmp_path):
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        runtime = trainer._initialize_rollout_runtime()
+        trainer._training_elo = 60.0  # above the 50-point milestone gap
+        trainer._maybe_advance_ladder(update=1, elo_eval=runtime.elo_eval)
+        assert trainer.roster.floating_checkpoint() is not None
+        assert runtime.elo_eval.float_pro_agent is not None
+
+    def test_ladder_snapshot_file_is_written(self, tmp_path):
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        runtime = trainer._initialize_rollout_runtime()
+        trainer._training_elo = 60.0
+        trainer._maybe_advance_ladder(update=1, elo_eval=runtime.elo_eval)
+        floating = trainer.roster.floating_checkpoint()
+        ckpt = torch.load(floating.path, map_location="cpu", weights_only=False)
+        assert "policy_state_dict" in ckpt
+
+    def test_second_milestone_freezes_first_at_measured_rating(self, tmp_path):
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        runtime = trainer._initialize_rollout_runtime()
+        trainer._training_elo = 60.0
+        trainer._maybe_advance_ladder(update=1, elo_eval=runtime.elo_eval)
+        first = trainer.roster.floating_checkpoint()
+        # Pretend the floating rating settled at 42 rather than a round number.
+        trainer.roster.set_floating_elo(42.0)
+        runtime.elo_eval.floating_elo.fill_(42.0)
+        trainer._training_elo = 120.0
+        trainer._maybe_advance_ladder(update=2, elo_eval=runtime.elo_eval)
+        assert first.fixed
+        assert first.elo == 42.0
+        assert trainer.roster.floating_checkpoint() is not first
+
+    def test_milestone_deferred_until_floating_settles(self, tmp_path):
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path), min_games_to_freeze=10_000)
+        runtime = trainer._initialize_rollout_runtime()
+        trainer._training_elo = 60.0
+        trainer._maybe_advance_ladder(update=1, elo_eval=runtime.elo_eval)
+        first = trainer.roster.floating_checkpoint()
+        trainer._training_elo = 120.0
+        trainer._floating_games = 0  # rating has not settled yet
+        trainer._maybe_advance_ladder(update=2, elo_eval=runtime.elo_eval)
+        assert trainer.roster.floating_checkpoint() is first
+        assert not first.fixed
+
+    def test_fresh_runtime_reloads_ladder_from_disk(self, tmp_path):
+        """A new rollout runtime (resume path) rebuilds anchors and the floating
+        checkpoint from the roster's saved ladder snapshot files."""
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        runtime = trainer._initialize_rollout_runtime()
+        for update, elo in enumerate([60.0, 120.0, 180.0], start=1):
+            trainer._training_elo = elo
+            trainer._maybe_advance_ladder(update=update, elo_eval=runtime.elo_eval)
+        trainer.roster.evict_all_checkpoint_policies()  # force reload from disk
+        fresh = trainer._initialize_rollout_runtime()
+        assert fresh.elo_eval.float_pro_agent is not None
+        fresh.elo_eval.step(0, avg_active=False)
+
+    def test_evaluator_steps_with_ladder_anchors(self, tmp_path):
+        """After several milestones the eval battery holds policy anchors plus a
+        floating checkpoint; full eval steps and a flush must run cleanly."""
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        runtime = trainer._initialize_rollout_runtime()
+        for update, elo in enumerate([60.0, 120.0, 180.0], start=1):
+            trainer._training_elo = elo
+            trainer._maybe_advance_ladder(update=update, elo_eval=runtime.elo_eval)
+        for _ in range(8):
+            runtime.elo_eval.step(0, avg_active=False)
+        snapshot = runtime.elo_eval.flush(avg_active=False)
+        assert snapshot.floating_elo is not None
 
 
 class TestParadigm:
@@ -339,11 +415,9 @@ class TestSchedulePrimitives:
                 league_size=20,
                 league_uniform_sampling=False,
                 elo_milestone_gap=50.0,
-                elo_k_factor=32.0,
                 elo_temperature=200.0,
                 elo_eval=EloEvalConfig(4, 4, 4.0, 1000.0, 100),
-                bc_elo_target=950.0,
-                bc_elo_scale=200.0,
+                bc_winrate_target=0.9,
                 histogram_interval=10,
             ),
             model_config=ModelConfig(d_model=32, n_heads=4, n_transformer_blocks=1),
@@ -455,12 +529,10 @@ class TestRLSmokeTest:
             checkpoint_dir=str(tmp_path),
             league_size=5,
             elo_milestone_gap=100.0,
-            elo_k_factor=32.0,
             elo_temperature=200.0,
             league_uniform_sampling=False,
             elo_eval=EloEvalConfig(4, 4, 4.0, 1000.0, 100),
-            bc_elo_target=950.0,
-            bc_elo_scale=200.0,
+            bc_winrate_target=0.9,
             histogram_interval=10,
         )
         scripted = StochasticScriptedAgent(SHIP_CONFIG, StochasticAgentConfig())

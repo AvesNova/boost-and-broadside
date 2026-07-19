@@ -1,7 +1,9 @@
 """Training metric assembly and asynchronous W&B logging."""
 
 import dataclasses
+import json
 import time
+from pathlib import Path
 from queue import Empty
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig, TrainConfig
@@ -71,6 +73,14 @@ class LoggingMixin:
         # ELO evaluation — continuous live statistics from parallel slots.
         # Avg-model metrics only exist once the avg model has been initialized.
         metrics["elo/training"] = self._training_elo
+        metrics["elo/scripted"] = self._scripted_elo
+        metrics["ladder/frozen_count"] = sum(
+            1 for e in self.roster.entries if e.kind == "checkpoint" and e.fixed
+        )
+        floating_entry = self.roster.floating_checkpoint()
+        if floating_entry is not None:
+            metrics["elo/floating"] = floating_entry.elo
+            metrics["ladder/floating_games"] = self._floating_games
         if self._eval_window_rand:
             metrics["elo/training_vs_random"] = sum(self._eval_window_rand) / len(
                 self._eval_window_rand
@@ -79,16 +89,21 @@ class LoggingMixin:
             metrics["elo/training_vs_scripted"] = sum(self._eval_window_sc) / len(
                 self._eval_window_sc
             )
+        if self._eval_window_ladder:
+            metrics["elo/training_vs_ladder"] = sum(self._eval_window_ladder) / len(
+                self._eval_window_ladder
+            )
+        if self._eval_window_floating:
+            metrics["elo/training_vs_floating"] = sum(self._eval_window_floating) / len(
+                self._eval_window_floating
+            )
         if self._avg_update_count > 0:
             metrics["elo/avg"] = self._avg_training_elo
             if self._eval_window_live_vs_avg:
                 metrics["elo/training_vs_avg"] = sum(self._eval_window_live_vs_avg) / len(
                     self._eval_window_live_vs_avg
                 )
-            if self._eval_window_avg_vs_sc:
-                metrics["elo/avg_vs_scripted"] = sum(self._eval_window_avg_vs_sc) / len(
-                    self._eval_window_avg_vs_sc
-                )
+        self._append_elo_history(update)
 
         # Save overwriting best-model checkpoints when normalized ELO improves.
         random_elo = self._random_elo()
@@ -102,6 +117,7 @@ class LoggingMixin:
             ("elo/training", "overview/elo"),
             ("elo/training_vs_scripted", "overview/win_rate_vs_scripted"),
             ("elo/training_vs_random", "overview/win_rate_vs_random"),
+            ("elo/training_vs_ladder", "overview/win_rate_vs_ladder"),
             ("elo/training_vs_avg", "overview/win_rate_vs_avg"),
             ("loss/total", "overview/loss_total"),
             ("loss_proxy/policy_gradient", "overview/loss_proxy_pg"),
@@ -120,6 +136,28 @@ class LoggingMixin:
             metrics["overview/explained_variance"] = sum(ev_vals) / len(ev_vals)
 
         return sps, ship_tps
+
+    def _append_elo_history(self, update: int) -> None:
+        """Append one line of rating state to the run's elo_history.jsonl.
+
+        The file is append-only across resumes, so the complete rating history
+        of every ladder entry survives training for post-hoc analysis
+        (calibration drift, cycling checks against old anchors).
+        """
+        path = Path(self.cfg.checkpoint_dir) / self.run_name / "elo_history.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        record = {
+            "update": update,
+            "global_step": self._global_step,
+            "live": self._training_elo,
+            "avg": self._avg_training_elo,
+            "scripted": self._scripted_elo,
+            "entries": [
+                {"label": e.label, "elo": e.elo, "fixed": e.fixed} for e in self.roster.entries
+            ],
+        }
+        with path.open("a") as history_file:
+            history_file.write(json.dumps(record) + "\n")
 
     def _log_training_update(self, metrics: dict, update: int, sps: int, ship_tps: int) -> None:
         """Enqueue one metric batch and optionally print the terminal summary."""
