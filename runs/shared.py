@@ -18,8 +18,11 @@ ELO_EVAL = EloEvalConfig(
     envs_per_matchup=512,
     step_interval=4,
     k_factor=4.0,
-    scripted_elo=1000.0,
+    scripted_elo_init=1000.0,
     window_size=100,
+    # A floating ladder checkpoint must settle over this many rated games
+    # before it can be frozen as an anchor — milestones are deferred until then.
+    min_games_to_freeze=1000,
 )
 
 # Reward weights shared by all training profiles.

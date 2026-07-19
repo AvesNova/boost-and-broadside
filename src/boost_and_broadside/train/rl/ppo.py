@@ -5,10 +5,11 @@ log async → repeat. On top of that, PPOTrainer coordinates:
 
   - the decomposed critic (per-component returns, lambda aggregation,
     schedule-driven group scales),
-  - auxiliary losses (behavior cloning from the scripted agent with ELO-gated
-    decay, next-state prediction, windowed cumulative loss, optional SIGReg),
+  - auxiliary losses (behavior cloning from the scripted agent with
+    win-rate-gated decay, next-state prediction, windowed cumulative loss,
+    optional SIGReg),
   - opponent management (scripted / avg-model / league fractions, OpponentMixin),
-  - continuous in-training ELO evaluation (EloEvaluator) and the ELO roster,
+  - continuous in-training ELO ladder evaluation (EloEvaluator) and the roster,
   - checkpointing (CheckpointMixin) and async W&B logging (LoggingMixin).
 
 Rollout and update work run on CUDA streams where available, with a CPU
@@ -48,7 +49,7 @@ from boost_and_broadside.train.rl.buffer import (
     RolloutBuffer,
 )
 from boost_and_broadside.train.rl.checkpoint import CheckpointMixin, cast_norms_bf16
-from boost_and_broadside.train.rl.elo_eval import EloEvaluator
+from boost_and_broadside.train.rl.elo_eval import MAX_ANCHORS, EloEvaluator
 from boost_and_broadside.train.rl.features import FeatureCoordinator, build_standard_coordinator
 from boost_and_broadside.train.rl.logging import LoggingMixin
 from boost_and_broadside.train.rl.opponents import (
@@ -465,7 +466,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # --- League play + ELO ---
         self.roster = EloRoster(
             max_size=train_config.league_size,
-            k_factor=train_config.elo_k_factor,
             elo_temperature=train_config.elo_temperature,
             uniform_sampling=train_config.league_uniform_sampling,
         )
@@ -476,10 +476,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # at the same point and diverge as eval matchups accumulate.
         self._training_elo: float = 0.0
         self._avg_training_elo: float = 0.0
+        self._scripted_elo: float = train_config.elo_eval.scripted_elo_init
+        self._floating_games: int = 0  # rated games of the floating ladder checkpoint
         eval_window_size = train_config.elo_eval.window_size
         self._eval_window_rand = deque(maxlen=eval_window_size)
         self._eval_window_sc = deque(maxlen=eval_window_size)
-        self._eval_window_avg_vs_sc = deque(maxlen=eval_window_size)
+        self._eval_window_ladder = deque(maxlen=eval_window_size)
+        self._eval_window_floating = deque(maxlen=eval_window_size)
         self._eval_window_live_vs_avg = deque(maxlen=eval_window_size)
         self._elo_milestone: float = 0.0  # normalized training ELO (vs random) at last milestone
         self._best_training_elo_norm: float = 0.0  # best normalized training ELO seen so far
@@ -785,6 +788,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             )
             aux_last_dones.append(torch.zeros(scale.num_envs, dtype=torch.bool, device=self.device))
 
+        anchors, floating = self._ladder_eval_state()
         return _RolloutRuntime(
             num_envs=num_envs,
             num_ships=num_ships,
@@ -806,11 +810,17 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 scripted_agent=self.scripted_agent,
                 num_ships=num_ships,
                 num_tokens=num_tokens,
+                ego_pass=self._ego_pass,
                 live_elo=self._training_elo,
                 avg_elo=self._avg_training_elo,
+                scripted_elo=self._scripted_elo,
+                anchors=anchors,
+                floating=floating,
+                floating_games=self._floating_games,
                 random_window=self._eval_window_rand,
+                ladder_window=self._eval_window_ladder,
+                floating_window=self._eval_window_floating,
                 scripted_window=self._eval_window_sc,
-                avg_vs_scripted_window=self._eval_window_avg_vs_sc,
                 live_vs_avg_window=self._eval_window_live_vs_avg,
             ),
             obs=obs,
@@ -876,7 +886,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             )
             runtime.elo_eval.step(rollout_step, avg_eval_active)
 
-        self._training_elo, self._avg_training_elo = runtime.elo_eval.flush(avg_eval_active)
+        elo_snapshot = runtime.elo_eval.flush(avg_eval_active)
+        self._training_elo = elo_snapshot.live_elo
+        self._avg_training_elo = elo_snapshot.avg_elo
+        self._scripted_elo = elo_snapshot.scripted_elo
+        self._floating_games = elo_snapshot.floating_games
+        if elo_snapshot.floating_elo is not None:
+            self.roster.set_floating_elo(elo_snapshot.floating_elo)
         return dones
 
     def _compute_rollout_gae(self, runtime: _RolloutRuntime, dones: torch.Tensor) -> None:
@@ -909,10 +925,12 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._schedule_state = _resolve_schedule(self.cfg.schedule, self._global_step)
         self._policy_gradient_coef = self._schedule_state.policy_gradient_coef
         elo_norm = self._training_elo - self._random_elo()
-        p_bc_wins = 1.0 / (
-            1.0 + 10.0 ** ((elo_norm - self.cfg.bc_elo_target) / self.cfg.bc_elo_scale)
-        )
-        bc_factor = max(0.0, 2.0 * (p_bc_wins - 0.5))
+        # BC aux loss decays linearly with the win rate against the scripted
+        # agent, reaching zero at bc_winrate_target (full strength before any
+        # scripted games have been recorded).
+        window_sc = self._eval_window_sc
+        scripted_win_rate = sum(window_sc) / len(window_sc) if window_sc else 0.0
+        bc_factor = max(0.0, 1.0 - scripted_win_rate / self.cfg.bc_winrate_target)
         self._behavior_cloning_coef = self._schedule_state.behavior_cloning_coef * bc_factor
         self.optim.param_groups[0]["lr"] = self._schedule_state.learning_rate
         for component in self.wrapper.reward_components:
@@ -961,6 +979,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
             self._log_training_update(metrics, update, sps, ship_tps)
             self._maybe_save_checkpoint(update)
+            self._maybe_advance_ladder(update, runtime.elo_eval)
 
         self.shutdown()
 
@@ -1715,6 +1734,37 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             if e.kind == "random":
                 return e.elo
         return 0.0  # fallback; random entry should always exist
+
+    def _ladder_eval_state(
+        self,
+    ) -> tuple[list[tuple[MVPPolicy | None, float]], tuple[MVPPolicy, float] | None]:
+        """Build the evaluator's (anchors, floating) ladder state from the roster.
+
+        Loads anchor and floating checkpoint policies from disk (resume path);
+        a None policy stands for the random agent.
+        """
+
+        def _load(entry: RosterEntry) -> MVPPolicy:
+            self.roster.load_policy(
+                entry,
+                self.model_config,
+                self.coordinator,
+                self.wrapper.num_active_components,
+                self.wrapper.num_ships,
+                self.device,
+                self._compile_mode,
+                team_pma_k=self._win_k,
+            )
+            return entry.policy
+
+        anchors: list[tuple[MVPPolicy | None, float]] = [
+            (None if entry.kind == "random" else _load(entry), entry.elo)
+            for entry in self.roster.ladder_anchors(MAX_ANCHORS)
+        ]
+        floating_entry = self.roster.floating_checkpoint()
+        if floating_entry is None:
+            return anchors, None
+        return anchors, (_load(floating_entry), floating_entry.elo)
 
     def _effective_target_kl(self) -> float | None:
         """Resolve the ELO-gated target KL from the current schedule snapshot."""

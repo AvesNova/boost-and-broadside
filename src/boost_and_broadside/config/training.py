@@ -28,13 +28,16 @@ class ObstacleCacheConfig:
 
 @dataclass(frozen=True)
 class EloEvalConfig:
-    """Configuration for continuous in-training ELO evaluation."""
+    """Configuration for continuous in-training ELO ladder evaluation."""
 
     envs_per_matchup: int
     step_interval: int
     k_factor: float
-    scripted_elo: float
+    scripted_elo_init: float  # initial estimate for the scripted agent's floating rating
     window_size: int
+    # Rated games the floating checkpoint must accumulate before it may be
+    # frozen at the next milestone. 0 disables the gate.
+    min_games_to_freeze: int = 0
 
 
 @dataclass(frozen=True)
@@ -108,14 +111,12 @@ class TrainConfig:
     checkpoint_dir: str  # directory to write .pt files
 
     # --- League play + ELO (static tournament parameters) ---
-    league_size: int  # max number of checkpoint entries in the roster
-    elo_milestone_gap: float  # add checkpoint to roster every N ELO points gained
-    elo_k_factor: float  # ELO K-factor (score sensitivity per match)
+    league_size: int  # max number of checkpoint policies kept loaded for league play
+    elo_milestone_gap: float  # take a ladder snapshot every N ELO points gained
     elo_temperature: float  # ELO bandwidth for proximity-weighted sampling
     league_uniform_sampling: bool  # if True, sample league opponents uniformly
     elo_eval: EloEvalConfig  # continuous evaluation batch and rating parameters
-    bc_elo_target: float  # normalized ELO midpoint where BC decay approaches zero
-    bc_elo_scale: float  # logistic scale for ELO-gated BC decay
+    bc_winrate_target: float  # win rate vs scripted at which the BC aux loss reaches zero
     histogram_interval: int  # record expensive histograms every N updates
     # Avg-model accumulation starts once normalized training ELO (vs the random
     # anchor) reaches this barrier; once started it never stops.
@@ -159,3 +160,5 @@ class TrainConfig:
             raise ValueError(
                 f"microbatch_tokens must be positive or None, got {self.microbatch_tokens}"
             )
+        if not 0.0 < self.bc_winrate_target <= 1.0:
+            raise ValueError(f"bc_winrate_target must be in (0, 1], got {self.bc_winrate_target}")

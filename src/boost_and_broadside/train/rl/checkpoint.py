@@ -1,5 +1,6 @@
-"""Checkpoint serialization, asynchronous saves, and resume support."""
+"""Checkpoint serialization, asynchronous saves, ladder milestones, and resume support."""
 
+import copy
 import dataclasses
 import threading
 import time
@@ -9,6 +10,8 @@ from typing import Any
 
 import torch
 import torch.nn as nn
+
+from boost_and_broadside.train.rl.elo_eval import EloEvaluator
 
 
 def cast_norms_bf16(module: nn.Module) -> None:
@@ -43,27 +46,67 @@ class CheckpointMixin:
         self.roster.save_json(ckpt_dir / "roster.json")
 
     def _maybe_save_checkpoint(self, update: int) -> None:
-        """Save on schedule and add milestone checkpoints to the league roster."""
+        """Save the resumable checkpoint on schedule."""
         interval = self._schedule_state.checkpoint_interval
         if interval <= 0 or update % interval != 0:
             return
         self._save_checkpoint(update)
-        training_elo_norm = self._training_elo - self._random_elo()
-        if (
-            self._policy_gradient_coef > 0.0
-            and self._last_checkpoint_path is not None
-            and self._last_checkpoint_path.exists()
-            and self.cfg.elo_milestone_gap > 0
-            and training_elo_norm - self._elo_milestone >= self.cfg.elo_milestone_gap
-        ):
-            self.roster.add_checkpoint(
-                str(self._last_checkpoint_path),
-                self._global_step,
-                update,
-                initial_elo=self._training_elo,
-            )
-            self._elo_milestone = training_elo_norm
-            self._save_roster_json()
+        self._save_roster_json()
+
+    # ------------------------------------------------------------------
+    # ELO measurement ladder
+    # ------------------------------------------------------------------
+
+    def _save_ladder_snapshot(self) -> Path:
+        """Synchronously save a policy-only ladder snapshot.
+
+        Ladder files are small (no optimizer or averaging state) and are never
+        pruned — the full ladder is kept for post-hoc analysis.
+        """
+        ckpt_dir = Path(self.cfg.checkpoint_dir) / self.run_name
+        ckpt_dir.mkdir(parents=True, exist_ok=True)
+        path = ckpt_dir / f"ladder_step_{self._global_step:012d}.pt"
+        payload = clone_to_cpu(
+            {
+                "policy_state_dict": self._policy_module.state_dict(),
+                "team_pma_k": self._win_k,
+                "global_step": self._global_step,
+                "training_elo": self._training_elo,
+            }
+        )
+        tmp = path.with_suffix(".tmp")
+        torch.save(payload, tmp)
+        tmp.replace(path)
+        return path
+
+    def _maybe_advance_ladder(self, update: int, elo_eval: EloEvaluator) -> None:
+        """Advance the measurement ladder when the live rating crosses a milestone.
+
+        Freezes the floating checkpoint at its settled (measured) rating,
+        snapshots the live policy as the new floating checkpoint, and promotes
+        both inside the continuous evaluator. Deferred while the floating
+        checkpoint has fewer than ``min_games_to_freeze`` rated games.
+        """
+        if self._policy_gradient_coef <= 0.0 or self.cfg.elo_milestone_gap <= 0:
+            return
+        elo_norm = self._training_elo - self._random_elo()
+        if elo_norm - self._elo_milestone < self.cfg.elo_milestone_gap:
+            return
+        floating = self.roster.floating_checkpoint()
+        if floating is not None and self._floating_games < self.cfg.elo_eval.min_games_to_freeze:
+            return
+
+        self.roster.freeze_floating()
+        path = self._save_ladder_snapshot()
+        self.roster.add_checkpoint(
+            str(path), self._global_step, update, initial_elo=self._training_elo
+        )
+        snapshot_policy = copy.deepcopy(self._policy_module).eval()
+        snapshot_policy.requires_grad_(False)
+        elo_eval.promote_floating(snapshot_policy)
+        self._floating_games = 0
+        self._elo_milestone = elo_norm
+        self._save_roster_json()
 
     # ------------------------------------------------------------------
     # Checkpointing
@@ -86,9 +129,12 @@ class CheckpointMixin:
             "elapsed_train_time": self._elapsed_train_time + (time.time() - self._train_start_time),
             "training_elo": self._training_elo,
             "avg_training_elo": self._avg_training_elo,
+            "scripted_elo": self._scripted_elo,
+            "floating_games": self._floating_games,
             "eval_window_rand": list(self._eval_window_rand),
             "eval_window_sc": list(self._eval_window_sc),
-            "eval_window_avg_vs_sc": list(self._eval_window_avg_vs_sc),
+            "eval_window_ladder": list(self._eval_window_ladder),
+            "eval_window_floating": list(self._eval_window_floating),
             "eval_window_live_vs_avg": list(self._eval_window_live_vs_avg),
             "elo_milestone": self._elo_milestone,
             "train_config": {
@@ -289,6 +335,8 @@ class CheckpointMixin:
             self._training_elo = ckpt["training_elo"]
             self._elo_milestone = ckpt.get("elo_milestone", 0.0)
         self._avg_training_elo = ckpt.get("avg_training_elo", 0.0)
+        self._scripted_elo = ckpt.get("scripted_elo", self.cfg.elo_eval.scripted_elo_init)
+        self._floating_games = ckpt.get("floating_games", 0)
         if "eval_window_rand" in ckpt:
             self._eval_window_rand = deque(
                 ckpt["eval_window_rand"], maxlen=self.cfg.elo_eval.window_size
@@ -297,9 +345,13 @@ class CheckpointMixin:
             self._eval_window_sc = deque(
                 ckpt["eval_window_sc"], maxlen=self.cfg.elo_eval.window_size
             )
-        if "eval_window_avg_vs_sc" in ckpt:
-            self._eval_window_avg_vs_sc = deque(
-                ckpt["eval_window_avg_vs_sc"], maxlen=self.cfg.elo_eval.window_size
+        if "eval_window_ladder" in ckpt:
+            self._eval_window_ladder = deque(
+                ckpt["eval_window_ladder"], maxlen=self.cfg.elo_eval.window_size
+            )
+        if "eval_window_floating" in ckpt:
+            self._eval_window_floating = deque(
+                ckpt["eval_window_floating"], maxlen=self.cfg.elo_eval.window_size
             )
         if "eval_window_live_vs_avg" in ckpt:
             self._eval_window_live_vs_avg = deque(

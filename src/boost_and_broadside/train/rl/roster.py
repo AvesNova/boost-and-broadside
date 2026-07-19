@@ -1,7 +1,14 @@
-"""ELO-rated league roster for mixed-opponent training.
+"""ELO-rated league roster and measurement ladder for mixed-opponent training.
 
 Maintains a pool of rated agents (past checkpoints, avg policy, scripted agent)
 and supports ELO-proximity-weighted sampling for league play.
+
+The checkpoint entries double as the ELO measurement ladder:
+
+    Ladder invariant: at most one checkpoint entry is floating (``fixed=False``)
+    — the newest milestone snapshot, whose rating is still settling. All older
+    checkpoints and the random anchor are frozen (``fixed=True``); their ratings
+    are permanent calibration references and are never modified again.
 
 Entry kinds:
     "checkpoint" — a past training-policy snapshot loaded from a .pt file.
@@ -22,6 +29,54 @@ from boost_and_broadside.train.rl.features import FeatureCoordinator
 _DEFAULT_ELO = 0.0
 
 
+def load_checkpoint_policy(
+    path: str,
+    model_config: ModelConfig,
+    coordinator: FeatureCoordinator,
+    num_value_components: int,
+    num_ships: int,
+    device: str | torch.device,
+    compile_mode: str | None = None,
+    team_pma_k: tuple[int, ...] = (),
+):
+    """Construct an eval-mode MVPPolicy from a saved checkpoint file.
+
+    Args:
+        path:                 Path to a .pt file containing "policy_state_dict".
+        model_config:         Policy architecture config.
+        coordinator:          Feature coordinator shared with the trainer.
+        num_value_components: Number of critic output components.
+        num_ships:            Ship count (N) the policy heads are sized for.
+        device:               Target device.
+        compile_mode:         Optional torch.compile mode; None loads uncompiled.
+        team_pma_k:           Fallback win-component indices for checkpoints
+                              saved before "team_pma_k" was stored.
+
+    Returns:
+        The loaded policy in eval mode (compiled when compile_mode is set).
+    """
+    import torch.nn as nn
+
+    from boost_and_broadside.models.mvp.policy import MVPPolicy
+
+    ckpt = torch.load(path, map_location=device, weights_only=False)
+    ckpt_team_pma_k = tuple(ckpt.get("team_pma_k", team_pma_k))
+    policy = MVPPolicy(
+        model_config,
+        coordinator,
+        num_value_components=num_value_components,
+        num_ships=num_ships,
+        team_pma_k=ckpt_team_pma_k,
+    )
+    policy.load_state_dict(ckpt["policy_state_dict"])
+    policy.eval()
+    policy.to(device)
+    for module in policy.modules():
+        if isinstance(module, nn.RMSNorm) and module.weight.is_cuda:
+            module.weight.data = module.weight.data.bfloat16()
+    return torch.compile(policy, mode=compile_mode) if compile_mode is not None else policy
+
+
 @dataclass
 class RosterEntry:
     """A single rated agent in the league roster."""
@@ -32,17 +87,22 @@ class RosterEntry:
     global_step: int  # Training step when this agent was snapshotted
     update: int  # PPO update index when snapshotted
     path: str | None = None  # .pt file path; None for all non-checkpoint kinds
-    fixed: bool = False  # If True, ELO is never modified (e.g. random anchor at 0)
-    policy: object = field(default=None, repr=False)  # Loaded MVPPolicy; None if evicted
+    fixed: bool = False  # If True, the rating is frozen forever (ladder anchor)
+    policy: object = field(default=None, repr=False)  # Loaded MVPPolicy; None if unloaded
 
 
 class EloRoster:
     """ELO-rated pool of league opponents with proximity-weighted sampling.
 
     Entries:
-        "random"     — always present; ELO fixed at 0 as an absolute anchor.
+        "random"     — always present; ELO fixed at 0 as the absolute ladder anchor.
         "avg"        — added when the avg model first becomes ready.
-        "checkpoint" — added at ELO milestones; weakest pruned when over capacity.
+        "checkpoint" — added at ELO milestones; frozen at the following milestone.
+
+    Entries are never removed: the frozen checkpoints are the measurement
+    ladder, and the full set (with ratings) is kept for post-hoc analysis.
+    ``max_size`` bounds only how many checkpoint policies stay loaded on the
+    device at once (least recently used are unloaded first).
 
     Sampling is weighted by ELO proximity so the training policy tends to face
     near-equal opponents:
@@ -52,9 +112,7 @@ class EloRoster:
     The "random" entry is excluded from sampling (only used as an eval anchor).
 
     Args:
-        max_size:        Maximum number of "checkpoint" entries.  Special entries
-                         are not counted toward this cap.
-        k_factor:         ELO K-factor — how many points change per match.
+        max_size:         Maximum number of checkpoint policies kept loaded.
         elo_temperature:  ELO bandwidth for proximity sampling (in ELO points).
                           Higher → more uniform; lower → tighter focus on peers.
         uniform_sampling: If True, sample opponents uniformly at random instead
@@ -64,16 +122,15 @@ class EloRoster:
     def __init__(
         self,
         max_size: int = 20,
-        k_factor: float = 32.0,
         elo_temperature: float = 200.0,
         uniform_sampling: bool = False,
     ) -> None:
         self.max_size = max_size
-        self.k_factor = k_factor
         self.elo_temperature = elo_temperature
         self.uniform_sampling = uniform_sampling
         self.entries: list[RosterEntry] = []
-        # Random agent entry: ELO starts at 0 and participates in zero-sum updates.
+        self._load_order: list[RosterEntry] = []  # loaded checkpoints, oldest use first
+        # Random agent entry: the absolute ladder anchor, frozen at ELO 0.
         self.entries.append(
             RosterEntry(
                 kind="random",
@@ -81,6 +138,7 @@ class EloRoster:
                 elo=_DEFAULT_ELO,
                 global_step=0,
                 update=0,
+                fixed=True,
             )
         )
 
@@ -107,9 +165,9 @@ class EloRoster:
                          entry begins calibrated rather than at an arbitrary default.
         """
         assert kind in ("avg", "scripted"), f"add_special: invalid kind {kind!r}"
-        for e in self.entries:
-            if e.kind == kind:
-                return e
+        for entry in self.entries:
+            if entry.kind == kind:
+                return entry
         entry = RosterEntry(
             kind=kind,
             label=kind,
@@ -127,7 +185,10 @@ class EloRoster:
         update: int,
         initial_elo: float = _DEFAULT_ELO,
     ) -> RosterEntry:
-        """Add a checkpoint entry, evicting the lowest-ELO checkpoint if at capacity.
+        """Add a floating checkpoint entry (the new milestone snapshot).
+
+        The previous floating checkpoint must be frozen first — the ladder
+        allows exactly one settling rating at a time.
 
         Weights are NOT loaded here; call ``load_policy()`` when needed.
 
@@ -141,6 +202,9 @@ class EloRoster:
         Returns:
             The newly created RosterEntry.
         """
+        assert self.floating_checkpoint() is None, (
+            "add_checkpoint: freeze the current floating checkpoint before adding a new one"
+        )
         entry = RosterEntry(
             kind="checkpoint",
             label=f"ckpt_{global_step}",
@@ -150,16 +214,49 @@ class EloRoster:
             path=path,
         )
         self.entries.append(entry)
-        self._evict_excess_checkpoints()
         return entry
 
-    def _evict_excess_checkpoints(self) -> None:
-        """Remove the lowest-ELO checkpoint entry when over max_size."""
-        ckpts = [e for e in self.entries if e.kind == "checkpoint"]
-        while len(ckpts) > self.max_size:
-            worst = min(ckpts, key=lambda e: e.elo)
-            self.entries.remove(worst)
-            ckpts.remove(worst)
+    # ------------------------------------------------------------------
+    # Measurement ladder
+    # ------------------------------------------------------------------
+
+    def floating_checkpoint(self) -> RosterEntry | None:
+        """Return the single floating (non-fixed) checkpoint entry, if any."""
+        floating = [e for e in self.entries if e.kind == "checkpoint" and not e.fixed]
+        assert len(floating) <= 1, "ladder invariant violated: multiple floating checkpoints"
+        return floating[0] if floating else None
+
+    def set_floating_elo(self, elo: float) -> None:
+        """Sync the floating checkpoint's rating from the continuous evaluator."""
+        entry = self.floating_checkpoint()
+        if entry is not None:
+            entry.elo = elo
+
+    def freeze_floating(self) -> RosterEntry | None:
+        """Permanently freeze the floating checkpoint's rating at its current value.
+
+        Returns:
+            The newly frozen entry, or None if no checkpoint was floating.
+        """
+        entry = self.floating_checkpoint()
+        if entry is not None:
+            entry.fixed = True
+        return entry
+
+    def ladder_anchors(self, count: int) -> list[RosterEntry]:
+        """Return the newest ``count`` frozen ladder entries, oldest first.
+
+        The ladder is the random anchor followed by every frozen checkpoint in
+        snapshot order; its tail holds the calibration anchors the continuous
+        evaluator rates the live policy against.
+        """
+        random_entry = next(e for e in self.entries if e.kind == "random")
+        frozen = sorted(
+            (e for e in self.entries if e.kind == "checkpoint" and e.fixed),
+            key=lambda e: e.global_step,
+        )
+        ladder = [random_entry] + frozen
+        return ladder[-count:]
 
     # ------------------------------------------------------------------
     # Sampling
@@ -168,10 +265,10 @@ class EloRoster:
     def sample(self, training_elo: float) -> RosterEntry | None:
         """Sample one entry, either uniformly or weighted by ELO proximity.
 
-        Fixed entries (e.g. the random anchor) are excluded from sampling.
-        Returns None if no non-fixed entries exist.
+        The random anchor is excluded (eval-only reference); frozen checkpoints
+        remain valid league opponents. Returns None if no candidates exist.
         """
-        candidates = [e for e in self.entries if not e.fixed]
+        candidates = [e for e in self.entries if e.kind != "random"]
         if not candidates:
             return None
 
@@ -183,8 +280,8 @@ class EloRoster:
         total = sum(weights)
         r = torch.rand(1).item() * total
         cumulative = 0.0
-        for entry, w in zip(candidates, weights):
-            cumulative += w
+        for entry, weight in zip(candidates, weights):
+            cumulative += weight
             if r <= cumulative:
                 return entry
         return candidates[-1]  # floating-point edge case
@@ -204,37 +301,36 @@ class EloRoster:
         compile_mode: str | None = None,
         team_pma_k: tuple[int, ...] = (),
     ) -> None:
-        """Load checkpoint weights into entry.policy (no-op if already loaded)."""
-        if entry.policy is not None or entry.kind != "checkpoint":
+        """Load checkpoint weights into entry.policy (no-op if already loaded).
+
+        At most ``max_size`` checkpoint policies stay loaded; the least
+        recently used beyond that are unloaded to reclaim device memory.
+        """
+        if entry.kind != "checkpoint":
             return
-        import torch.nn as nn
-
-        from boost_and_broadside.models.mvp.policy import MVPPolicy
-
-        ckpt = torch.load(entry.path, map_location=device, weights_only=False)
-        ckpt_team_pma_k = tuple(ckpt.get("team_pma_k", team_pma_k))
-        policy = MVPPolicy(
-            model_config,
-            coordinator,
-            num_value_components=num_value_components,
-            num_ships=num_ships,
-            team_pma_k=ckpt_team_pma_k,
-        )
-        policy.load_state_dict(ckpt["policy_state_dict"])
-        policy.eval()
-        policy.to(device)
-        for m in policy.modules():
-            if isinstance(m, nn.RMSNorm) and m.weight.is_cuda:
-                m.weight.data = m.weight.data.bfloat16()
-        entry.policy = (
-            torch.compile(policy, mode=compile_mode) if compile_mode is not None else policy
-        )
+        if entry.policy is None:
+            entry.policy = load_checkpoint_policy(
+                entry.path,
+                model_config,
+                coordinator,
+                num_value_components,
+                num_ships,
+                device,
+                compile_mode,
+                team_pma_k,
+            )
+        if entry in self._load_order:
+            self._load_order.remove(entry)
+        self._load_order.append(entry)
+        while len(self._load_order) > self.max_size:
+            self._load_order.pop(0).policy = None
 
     def evict_all_checkpoint_policies(self) -> None:
         """Free loaded weights from all checkpoint entries to reclaim GPU memory."""
-        for e in self.entries:
-            if e.kind == "checkpoint":
-                e.policy = None
+        for entry in self.entries:
+            if entry.kind == "checkpoint":
+                entry.policy = None
+        self._load_order.clear()
 
     # ------------------------------------------------------------------
     # Checkpoint file paths referenced by the roster (must not be pruned)
@@ -281,3 +377,4 @@ class EloRoster:
             )
             for d in data["entries"]
         ]
+        self._load_order.clear()
