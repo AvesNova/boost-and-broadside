@@ -19,6 +19,14 @@ they carry the most rating information.
 
 Before the first milestone there is no floating checkpoint: slot 1 falls back to
 extra live-vs-random games and slot 4 idles (random-vs-random play, ignored).
+
+Slots are reseeded with staggered step counts (at startup, and on promotion for
+the slots whose participants changed) so rating updates arrive continuously
+rather than in one synchronized block. An episode only counts toward a rating if
+it ran the full horizon from step 0: a seeded partial episode is too short to
+resolve, so its forced truncation would score as a draw and drag every rating it
+touches toward its opponent's. Truncation of a full-length episode is a genuine
+draw and is rated normally.
 """
 
 from collections import deque
@@ -148,6 +156,9 @@ class EloEvaluator:
         )
         self.env.reset()
         self.env.state.step_count.random_(0, env_config.max_episode_steps)
+        # Episodes seeded mid-horizon are too short to resolve, so their forced
+        # truncation would score as a draw. They stay unrated until they recycle.
+        self._rated = self.env.state.step_count == 0  # (5·size,)
 
         size = self.matchup_size
         self.live_agent = ResolvedAgent("policy", live_policy)
@@ -174,7 +185,7 @@ class EloEvaluator:
         self._build_ladder_agents()
 
         self._win_history: list[torch.Tensor] = []
-        self._done_history: list[torch.Tensor] = []
+        self._rated_history: list[torch.Tensor] = []
         self._anchor_idx_history: list[torch.Tensor] = []
         self.random_window = random_window
         self.ladder_window = ladder_window
@@ -242,6 +253,7 @@ class EloEvaluator:
         # Stagger episode ends so rating updates arrive continuously.
         staggered = torch.randint_like(self.env.state.step_count, 0, self.max_episode_steps)
         self.env.state.step_count[mask] = staggered[mask]
+        self._rated = torch.where(mask, self.env.state.step_count == 0, self._rated)
         reset_done_envs(self.live_agent, mask[: 4 * size], self.num_tokens)
         self._anchor_idx_live.zero_()
         self._anchor_idx_float.zero_()
@@ -398,20 +410,23 @@ class EloEvaluator:
             team1_won = done_any & team1_alive & ~team0_alive
             tied = done_any & ~team0_won & ~team1_won
             score = team0_won.float() + 0.5 * tied.float()  # (5·size,)
-            self._apply_rating_updates(score, done_any.float(), avg_active)
+            rated = done_any & self._rated  # (5·size,)
+            self._apply_rating_updates(score, rated.float(), avg_active)
 
             self._win_history.append(team0_won.float())
-            self._done_history.append(done_any)
+            self._rated_history.append(rated)
             self._anchor_idx_history.append(self._anchor_idx_live.clone())
 
+            # Env bookkeeping tracks every finished episode, rated or not.
             self._resample_anchor_assignments(done_any)
             self.env.reset_envs(done_any)
             self._reset_agent_hiddens(done_any)
+            self._rated = self._rated | done_any  # recycled envs restart at step 0
 
     def _apply_rating_updates(
-        self, score: torch.Tensor, done_float: torch.Tensor, avg_active: bool
+        self, score: torch.Tensor, rated_float: torch.Tensor, avg_active: bool
     ) -> None:
-        """Apply per-slot ELO updates for episodes that just finished."""
+        """Apply per-slot ELO updates for rated episodes that just finished."""
         size = self.matchup_size
         k = self.config.k_factor
         live_before = self.live_elo
@@ -419,7 +434,7 @@ class EloEvaluator:
         anchor_elo_live = self._anchor_elos[self._anchor_idx_live]  # (size,)
         slot0 = slice(0, size)
         delta_live = (
-            k * (score[slot0] - expected_score(live_before, anchor_elo_live)) * done_float[slot0]
+            k * (score[slot0] - expected_score(live_before, anchor_elo_live)) * rated_float[slot0]
         ).sum()
 
         slot1 = slice(size, 2 * size)
@@ -430,14 +445,14 @@ class EloEvaluator:
                 + (
                     k
                     * (score[slot1] - expected_score(live_before, self._anchor_elos[0]))
-                    * done_float[slot1]
+                    * rated_float[slot1]
                 ).sum()
             )
         else:
             zero_sum = (
                 k
                 * (score[slot1] - expected_score(live_before, self.floating_elo))
-                * done_float[slot1]
+                * rated_float[slot1]
             ).sum()
             delta_live = delta_live + zero_sum
             slot4 = slice(4 * size, 5 * size)
@@ -448,11 +463,11 @@ class EloEvaluator:
                 + (
                     k
                     * (score[slot4] - expected_score(self.floating_elo, anchor_elo_float))
-                    * done_float[slot4]
+                    * rated_float[slot4]
                 ).sum()
             )
             self.floating_games = (
-                self.floating_games + done_float[slot1].sum() + done_float[slot4].sum()
+                self.floating_games + rated_float[slot1].sum() + rated_float[slot4].sum()
             )
         self.live_elo = live_before + delta_live
 
@@ -463,7 +478,7 @@ class EloEvaluator:
                 + (
                     k
                     * ((1.0 - score[slot2]) - expected_score(self.scripted_elo, live_before))
-                    * done_float[slot2]
+                    * rated_float[slot2]
                 ).sum()
             )
         if avg_active:
@@ -473,7 +488,7 @@ class EloEvaluator:
                 + (
                     k
                     * ((1.0 - score[slot3]) - expected_score(self.avg_elo, live_before))
-                    * done_float[slot3]
+                    * rated_float[slot3]
                 ).sum()
             )
 
@@ -528,10 +543,10 @@ class EloEvaluator:
 
         size = self.matchup_size
         wins = torch.stack(self._win_history).cpu()  # (T_eval, 5·size)
-        dones = torch.stack(self._done_history).cpu()
+        rated = torch.stack(self._rated_history).cpu()
         anchor_idx = torch.stack(self._anchor_idx_history).cpu()  # (T_eval, size)
         self._win_history.clear()
-        self._done_history.clear()
+        self._rated_history.clear()
         self._anchor_idx_history.clear()
         # Anchor identities are constant within an update (promotion happens
         # between updates), so classify slot-0 games with the current mapping.
@@ -540,20 +555,20 @@ class EloEvaluator:
         )  # (A,)
 
         for index in range(wins.shape[0]):
-            win, done, idx = wins[index], dones[index], anchor_idx[index]
-            done0, win0 = done[:size], win[:size]
+            win, is_rated, idx = wins[index], rated[index], anchor_idx[index]
+            rated0, win0 = is_rated[:size], win[:size]
             versus_random = anchor_is_random[idx]  # (size,)
-            self.random_window.extend(win0[done0 & versus_random].tolist())
-            self.ladder_window.extend(win0[done0 & ~versus_random].tolist())
-            done1, win1 = done[size : 2 * size], win[size : 2 * size]
+            self.random_window.extend(win0[rated0 & versus_random].tolist())
+            self.ladder_window.extend(win0[rated0 & ~versus_random].tolist())
+            rated1, win1 = is_rated[size : 2 * size], win[size : 2 * size]
             if floating_active:
-                self.floating_window.extend(win1[done1].tolist())
+                self.floating_window.extend(win1[rated1].tolist())
             else:
-                self.random_window.extend(win1[done1].tolist())
+                self.random_window.extend(win1[rated1].tolist())
             if self.scripted_agent is not None:
-                done2 = done[2 * size : 3 * size]
-                self.scripted_window.extend(win[2 * size : 3 * size][done2].tolist())
+                rated2 = is_rated[2 * size : 3 * size]
+                self.scripted_window.extend(win[2 * size : 3 * size][rated2].tolist())
             if avg_active:
-                done3 = done[3 * size : 4 * size]
-                self.live_vs_avg_window.extend(win[3 * size : 4 * size][done3].tolist())
+                rated3 = is_rated[3 * size : 4 * size]
+                self.live_vs_avg_window.extend(win[3 * size : 4 * size][rated3].tolist())
         return snapshot
