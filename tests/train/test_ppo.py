@@ -221,6 +221,35 @@ class TestEloLadder:
         assert trainer.roster.floating_checkpoint() is first
         assert not first.fixed
 
+    def test_third_milestone_keeps_surviving_anchor_episodes(self, tmp_path):
+        """Dropping the oldest anchor restarts only its envs; the surviving
+        anchor's slot-0 episodes play on with their assignment shifted down."""
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        runtime = trainer._initialize_rollout_runtime()
+        elo_eval = runtime.elo_eval
+        size = elo_eval.matchup_size
+        for update, elo in enumerate([60.0, 120.0], start=1):
+            trainer._training_elo = elo
+            trainer._maybe_advance_ladder(update=update, elo_eval=elo_eval)
+
+        # Anchors are now [random, first-frozen]; split slot 0 across both.
+        elo_eval._anchor_idx_live = torch.tensor(
+            [0, 1] * (size // 2), device=elo_eval.device, dtype=torch.long
+        )
+        survivor = elo_eval._anchor_idx_live == 1
+        elo_eval._rated[:size] = True
+        elo_eval.env.state.step_count[:size] = 7
+
+        trainer._training_elo = 180.0
+        trainer._maybe_advance_ladder(update=3, elo_eval=elo_eval)
+
+        step_count = elo_eval.env.state.step_count[:size]
+        # The random anchor was dropped, so the survivor shifts from index 1 to 0.
+        assert (elo_eval._anchor_idx_live[survivor] == 0).all()
+        assert (step_count[survivor] == 7).all(), "surviving episodes were restarted"
+        assert elo_eval._rated[:size][survivor].all(), "surviving episodes lost their rated flag"
+        assert not (step_count[~survivor] == 7).all(), "dropped-anchor envs were not reseeded"
+
     def test_fresh_runtime_reloads_ladder_from_disk(self, tmp_path):
         """A new rollout runtime (resume path) rebuilds anchors and the floating
         checkpoint from the roster's saved ladder snapshot files."""

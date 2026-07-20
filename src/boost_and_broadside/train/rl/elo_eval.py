@@ -52,6 +52,15 @@ _ELO_RATING_SCALE = 400.0
 # Frozen ladder entries the live and floating ratings are measured against.
 # Two anchors keep each new frozen rating tied to more than one chain link,
 # damping the random-walk error a single-link ladder accumulates.
+#
+# NOT a tunable constant. _anchor_actions selects between anchors with a binary
+# torch.where and _resample_anchor_assignments draws against a single weight
+# threshold, so both assume exactly two. Raising this alone fails silently
+# rather than loudly: specs are oldest-first, so the newest anchor — the one
+# information weighting gives most of the games — would never be assigned or
+# played, and its share would land on the second-oldest instead. The evaluator
+# would keep running and report a quietly degraded rating. Generalize both
+# functions first (multinomial draw, gather-based select).
 MAX_ANCHORS = 2
 
 
@@ -197,34 +206,58 @@ class EloEvaluator:
     # Ladder state
     # ------------------------------------------------------------------
 
-    def _build_ladder_agents(self) -> None:
-        """(Re)build anchor/floating agents and rating tensors from the specs."""
-        size = self.matchup_size
-        self._anchor_elos = torch.tensor(
+    def _anchor_elo_tensor(self) -> torch.Tensor:
+        """Anchor ratings as a (A,) tensor, oldest first."""
+        # The 2 here is the binary-select assumption documented on MAX_ANCHORS,
+        # not MAX_ANCHORS itself — asserting against that would not catch a raise.
+        assert len(self._anchor_specs) <= 2, (
+            "anchor action selection and assignment sampling are hardcoded for two "
+            "anchors; generalize both (see the MAX_ANCHORS comment) before adding a third"
+        )
+        return torch.tensor(
             [elo for _, elo in self._anchor_specs], device=self.device, dtype=torch.float64
         )  # (A,)
+
+    def _make_anchor_agents(
+        self, policy: MVPPolicy | None
+    ) -> tuple[ResolvedAgent | None, ResolvedAgent | None]:
+        """Fresh (live-slot, float-slot) agents for one anchor; None is the random agent."""
+        if policy is None:
+            return None, None
+        size = self.matchup_size
+        agent_live = ResolvedAgent("policy", policy)
+        agent_float = ResolvedAgent("policy", policy)
+        init_hidden(agent_live, size, self.num_tokens, self.device)
+        init_hidden(agent_float, size, self.num_tokens, self.device)
+        return agent_live, agent_float
+
+    def _build_floating_agents(self) -> None:
+        """(Re)build the floating checkpoint's opponent/protagonist agents."""
+        if self._floating_policy is None:
+            self.float_opp_agent = None
+            self.float_pro_agent = None
+            return
+        size = self.matchup_size
+        self.float_opp_agent = ResolvedAgent("policy", self._floating_policy)
+        self.float_pro_agent = ResolvedAgent("policy", self._floating_policy)
+        init_hidden(self.float_opp_agent, size, self.num_tokens, self.device)
+        init_hidden(self.float_pro_agent, size, self.num_tokens, self.device)
+
+    def _build_ladder_agents(self) -> None:
+        """Build anchor/floating agents and rating tensors from the specs.
+
+        Full rebuild — every hidden state starts fresh, so this is only valid
+        before any episode is in flight. Promotion mutates the anchor lists
+        in place instead, to preserve surviving anchors' hidden states.
+        """
+        self._anchor_elos = self._anchor_elo_tensor()
         self._anchor_agents_live: list[ResolvedAgent | None] = []
         self._anchor_agents_float: list[ResolvedAgent | None] = []
         for policy, _ in self._anchor_specs:
-            if policy is None:
-                self._anchor_agents_live.append(None)
-                self._anchor_agents_float.append(None)
-                continue
-            agent_live = ResolvedAgent("policy", policy)
-            agent_float = ResolvedAgent("policy", policy)
-            init_hidden(agent_live, size, self.num_tokens, self.device)
-            init_hidden(agent_float, size, self.num_tokens, self.device)
+            agent_live, agent_float = self._make_anchor_agents(policy)
             self._anchor_agents_live.append(agent_live)
             self._anchor_agents_float.append(agent_float)
-
-        if self._floating_policy is not None:
-            self.float_opp_agent = ResolvedAgent("policy", self._floating_policy)
-            self.float_pro_agent = ResolvedAgent("policy", self._floating_policy)
-            init_hidden(self.float_opp_agent, size, self.num_tokens, self.device)
-            init_hidden(self.float_pro_agent, size, self.num_tokens, self.device)
-        else:
-            self.float_opp_agent = None
-            self.float_pro_agent = None
+        self._build_floating_agents()
 
     def promote_floating(self, snapshot_policy: MVPPolicy) -> None:
         """Freeze the floating checkpoint into the anchor set and start a new one.
@@ -233,21 +266,42 @@ class EloEvaluator:
         policy becomes the newest anchor at its settled rating (dropping the
         oldest anchor beyond MAX_ANCHORS) and the fresh snapshot starts floating
         at the live policy's current rating.
+
+        Anchors are appended and dropped in place so the ones that survive keep
+        their agents and hidden states: their slot-0 episodes play on across the
+        promotion, and live keeps accruing rated games instead of going dark for
+        a full reseeded episode. Only the envs whose anchor was dropped restart.
         """
+        dropped = 0
         if self._floating_policy is not None:
             self._anchor_specs.append((self._floating_policy, float(self.floating_elo.item())))
-            del self._anchor_specs[:-MAX_ANCHORS]
+            agent_live, agent_float = self._make_anchor_agents(self._floating_policy)
+            self._anchor_agents_live.append(agent_live)
+            self._anchor_agents_float.append(agent_float)
+            dropped = max(0, len(self._anchor_specs) - MAX_ANCHORS)
+            del self._anchor_specs[:dropped]
+            del self._anchor_agents_live[:dropped]
+            del self._anchor_agents_float[:dropped]
+            self._anchor_elos = self._anchor_elo_tensor()
         self._floating_policy = snapshot_policy
         self.floating_elo = self.live_elo.clone()
         self.floating_games = torch.zeros((), device=self.device, dtype=torch.float64)
-        self._build_ladder_agents()
-        self._reset_ladder_slots()
+        self._build_floating_agents()
+        self._reset_ladder_slots(dropped)
 
-    def _reset_ladder_slots(self) -> None:
-        """Hard-reset the episodes of every slot whose participants just changed."""
+    def _reset_ladder_slots(self, dropped: int) -> None:
+        """Hard-reset the episodes of every slot whose participants just changed.
+
+        Args:
+            dropped: Anchors removed from the front of the set. Slot-0 envs
+                     assigned to one of them restart; the rest keep their
+                     episode and shift their assignment down by this much.
+        """
         size = self.matchup_size
+        stale_live = self._anchor_idx_live < dropped  # (size,) anchor left the set
         mask = torch.zeros(self.batch_size, dtype=torch.bool, device=self.device)
-        mask[0 : 2 * size] = True  # slots 0-1: anchor set / floating opponent changed
+        mask[0:size] = stale_live  # slot 0: only envs whose anchor was dropped
+        mask[size : 2 * size] = True  # slot 1: floating opponent changed
         mask[4 * size :] = True  # slot 4: floating protagonist changed
         self.env.reset_envs(mask)
         # Stagger episode ends so rating updates arrive continuously.
@@ -255,7 +309,15 @@ class EloEvaluator:
         self.env.state.step_count[mask] = staggered[mask]
         self._rated = torch.where(mask, self.env.state.step_count == 0, self._rated)
         reset_done_envs(self.live_agent, mask[: 4 * size], self.num_tokens)
-        self._anchor_idx_live.zero_()
+        # Surviving anchors carry their hidden states over, so clear only the
+        # restarted envs; every anchor observes every env regardless of assignment.
+        for agent in self._anchor_agents_live:
+            if agent is not None:
+                reset_done_envs(agent, stale_live, self.num_tokens)
+        for agent in self._anchor_agents_float:
+            if agent is not None:
+                reset_done_envs(agent, mask[4 * size :], self.num_tokens)
+        self._anchor_idx_live = (self._anchor_idx_live - dropped).clamp(min=0)
         self._anchor_idx_float.zero_()
         self._resample_anchor_assignments(mask)
 
