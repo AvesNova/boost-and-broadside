@@ -28,10 +28,29 @@ class ObstacleCacheConfig:
 
 @dataclass(frozen=True)
 class EloEvalConfig:
-    """Configuration for continuous in-training ELO ladder evaluation."""
+    """Configuration for continuous in-training ELO ladder evaluation.
+
+    envs_per_matchup and step_interval trade against each other at fixed cost.
+    The eval env advances num_steps / step_interval steps per update, so with
+    both scaled together the rated-game rate and the env-step cost hold constant
+    while the episode span does not:
+
+        games per update = envs_per_matchup × (num_steps / step_interval)
+                           / max_episode_steps                    — invariant
+        episode span     = max_episode_steps
+                           / (num_steps / step_interval)          — halves
+
+    Episode span is the lag between the live policy and what its rating
+    reflects, since the evaluator holds a live reference to the policy and its
+    weights change mid-episode. Span also sets how long live ELO stays flat
+    after a milestone, because promotion reseeds both slots that feed it.
+
+    The floor is kernel efficiency: each eval step fires up to eight separate
+    policy forward passes, which go launch-bound as envs_per_matchup shrinks.
+    """
 
     envs_per_matchup: int
-    step_interval: int
+    step_interval: int  # eval steps once per this many rollout steps
     k_factor: float
     scripted_elo_init: float  # initial estimate for the scripted agent's floating rating
     window_size: int

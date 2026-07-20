@@ -15,8 +15,8 @@ MODEL_CONFIG = ModelConfig(
 )
 
 ELO_EVAL = EloEvalConfig(
-    envs_per_matchup=512,
-    step_interval=4,
+    envs_per_matchup=256,
+    step_interval=2,
     k_factor=4.0,
     scripted_elo_init=1000.0,
     window_size=100,
