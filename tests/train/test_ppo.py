@@ -221,19 +221,6 @@ class TestEloLadder:
         assert trainer.roster.floating_checkpoint() is first
         assert not first.fixed
 
-    def test_ladder_series_accumulates_and_hands_out_a_copy(self, tmp_path):
-        """Each sample extends every trace; snapshots must not alias the live
-        lists, which the W&B worker reads while training keeps appending."""
-        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
-        trainer._training_elo = 10.0
-        first = trainer._sample_ladder_series(update=10)
-        trainer._training_elo = 20.0
-        second = trainer._sample_ladder_series(update=20)
-
-        assert first.series["live"] == [(10, 10.0)], "earlier snapshot was mutated in place"
-        assert second.series["live"] == [(10, 10.0), (20, 20.0)]
-        assert "random" in second.series, "roster entries should ride along with live"
-
     def test_third_milestone_keeps_surviving_anchor_episodes(self, tmp_path):
         """Dropping the oldest anchor restarts only its envs; the surviving
         anchor's slot-0 episodes play on with their assignment shifted down."""

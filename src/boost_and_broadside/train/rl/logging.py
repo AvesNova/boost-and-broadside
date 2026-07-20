@@ -9,19 +9,6 @@ from queue import Empty
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig, TrainConfig
 
 
-@dataclasses.dataclass(frozen=True)
-class LineSeries:
-    """Multi-series line chart: one W&B panel holding one line per key.
-
-    Logged instead of a metric per series, which would spread the same data
-    over a panel each. The worker thread converts this to a custom chart.
-    """
-
-    series: dict[str, list[tuple[int, float]]]  # line name → [(x, y), ...]
-    title: str
-    xname: str
-
-
 class LoggingMixin:
     """Metric and logging behavior mixed into PPOTrainer."""
 
@@ -117,8 +104,13 @@ class LoggingMixin:
                     self._eval_window_live_vs_avg
                 )
         self._append_elo_history(update)
-        if update % self.cfg.histogram_interval == 0:
-            metrics["ladder/elo"] = self._sample_ladder_series(update)
+        # One scalar per ladder entry, keyed under a shared prefix so a single
+        # line-plot panel with y = `ladder/elo/*` overlays them all natively.
+        # Frozen entries log a constant (flat line); live rides along as the
+        # reference the floating rating is chasing.
+        metrics["ladder/elo/live"] = self._training_elo
+        for entry in self.roster.entries:
+            metrics[f"ladder/elo/{entry.label}"] = entry.elo
 
         # Save overwriting best-model checkpoints when normalized ELO improves.
         random_elo = self._random_elo()
@@ -151,26 +143,6 @@ class LoggingMixin:
             metrics["overview/explained_variance"] = sum(ev_vals) / len(ev_vals)
 
         return sps, ship_tps
-
-    def _sample_ladder_series(self, update: int) -> LineSeries:
-        """Extend each ladder entry's rating trace and return the whole set.
-
-        A frozen entry holds its rating forever, so each line traces a
-        checkpoint while it floated and then runs flat — which is the read on
-        whether a rating had settled by the time it was frozen. The live rating
-        rides along as the reference the floating one is chasing.
-
-        The lists are copied because the W&B worker thread reads them while the
-        training thread keeps appending.
-        """
-        self._ladder_elo_series.setdefault("live", []).append((update, self._training_elo))
-        for entry in self.roster.entries:
-            self._ladder_elo_series.setdefault(entry.label, []).append((update, entry.elo))
-        return LineSeries(
-            series={label: list(points) for label, points in self._ladder_elo_series.items()},
-            title="Ladder ELO by entry",
-            xname="update",
-        )
 
     def _append_elo_history(self, update: int) -> None:
         """Append one line of rating state to the run's elo_history.jsonl.
@@ -261,12 +233,11 @@ class LoggingMixin:
     def _log_worker(self) -> None:
         """Background thread: drains the log queue and calls wandb.log().
 
-        Handles three special value types so the training thread stays off the
+        Handles two special value types so the training thread stays off the
         W&B serialization path:
           - ``np.ndarray`` with key ``"hist/returns"`` → one ``wandb.Histogram``
             per reward component, keyed ``hist/returns/<name>``.
           - ``np.ndarray`` with any other key → ``wandb.Histogram`` directly.
-          - ``LineSeries`` → one multi-line custom chart panel.
         """
         import numpy as np
 
@@ -289,15 +260,6 @@ class LoggingMixin:
                             processed[f"hist/returns/{name}"] = wandb.Histogram(v[:, i])
                     else:
                         processed[k] = wandb.Histogram(v)
-                elif isinstance(v, LineSeries):
-                    # keys()/values() share an order, so lines pair with names.
-                    processed[k] = wandb.plot.line_series(
-                        xs=[[x for x, _ in points] for points in v.series.values()],
-                        ys=[[y for _, y in points] for points in v.series.values()],
-                        keys=list(v.series.keys()),
-                        title=v.title,
-                        xname=v.xname,
-                    )
                 else:
                     processed[k] = v
             wandb.log(processed, step=step)

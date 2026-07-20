@@ -484,9 +484,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._eval_window_ladder = deque(maxlen=eval_window_size)
         self._eval_window_floating = deque(maxlen=eval_window_size)
         self._eval_window_live_vs_avg = deque(maxlen=eval_window_size)
-        # Ladder ratings sampled over time for the combined W&B chart, keyed by
-        # entry label. Sampled on the histogram cadence, so it stays bounded.
-        self._ladder_elo_series: dict[str, list[tuple[int, float]]] = {}
         self._elo_milestone: float = 0.0  # normalized training ELO (vs random) at last milestone
         self._best_training_elo_norm: float = 0.0  # best normalized training ELO seen so far
         self._best_avg_elo_norm: float = 0.0  # best normalized avg ELO seen so far
