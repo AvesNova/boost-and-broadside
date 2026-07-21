@@ -86,11 +86,19 @@ class CheckpointMixin:
         snapshots the live policy as the new floating checkpoint, and promotes
         both inside the continuous evaluator. Deferred while the floating
         checkpoint has fewer than ``min_games_to_freeze`` rated games.
+
+        Milestones sit on an absolute grid — multiples of ``elo_milestone_gap``,
+        so snapshots land near 200, 400, 600 ELO and so on. Measuring the gap
+        from the previous snapshot's actual rating instead would let the grid
+        ratchet upward: a snapshot deferred to 250 pushes the next to 450, and
+        the drift compounds for the rest of the run, leaving the ladder's rungs
+        at run-dependent heights that no two runs share.
         """
         if self._policy_gradient_coef <= 0.0 or self.cfg.elo_milestone_gap <= 0:
             return
+        gap = self.cfg.elo_milestone_gap
         elo_norm = self._training_elo - self._random_elo()
-        if elo_norm - self._elo_milestone < self.cfg.elo_milestone_gap:
+        if elo_norm < self._elo_milestone + gap:
             return
         floating = self.roster.floating_checkpoint()
         if floating is not None and self._floating_games < self.cfg.elo_eval.min_games_to_freeze:
@@ -98,14 +106,18 @@ class CheckpointMixin:
 
         self.roster.freeze_floating()
         path = self._save_ladder_snapshot()
-        self.roster.add_checkpoint(
+        entry = self.roster.add_checkpoint(
             str(path), self._global_step, update, initial_elo=self._training_elo
         )
         snapshot_policy = copy.deepcopy(self._policy_module).eval()
         snapshot_policy.requires_grad_(False)
-        elo_eval.promote_floating(snapshot_policy)
+        elo_eval.promote_floating(snapshot_policy, entry.label)
         self._floating_games = 0
-        self._elo_milestone = elo_norm
+        # Claim every grid point at or below the current rating, not just the one
+        # that fired. A rating that jumps several gaps in one update takes a
+        # single snapshot rather than queueing one per crossed point, and a dip
+        # back below a claimed point cannot re-trigger on the way up.
+        self._elo_milestone = elo_norm // gap * gap
         self._save_roster_json()
 
     # ------------------------------------------------------------------

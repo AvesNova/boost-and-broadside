@@ -49,7 +49,7 @@ from boost_and_broadside.train.rl.buffer import (
     RolloutBuffer,
 )
 from boost_and_broadside.train.rl.checkpoint import CheckpointMixin, cast_norms_bf16
-from boost_and_broadside.train.rl.elo_eval import MAX_ANCHORS, EloEvaluator
+from boost_and_broadside.train.rl.elo_eval import MAX_ANCHORS, EloEvaluator, LadderOpponent
 from boost_and_broadside.train.rl.features import FeatureCoordinator, build_standard_coordinator
 from boost_and_broadside.train.rl.logging import LoggingMixin
 from boost_and_broadside.train.rl.opponents import (
@@ -484,13 +484,19 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._scripted_elo: float = train_config.elo_eval.scripted_elo_init
         self._floating_games: int = 0  # rated games of the floating ladder checkpoint
         self._bc_cutoff_streak: int = 0  # consecutive updates past the BC win-rate target
+        # Latest update's rated outcomes, opponent label → (win, loss, tie).
+        self._match_counts: dict[str, tuple[int, int, int]] = {}
         eval_window_size = train_config.elo_eval.window_size
         self._eval_window_rand = deque(maxlen=eval_window_size)
         self._eval_window_sc = deque(maxlen=eval_window_size)
         self._eval_window_ladder = deque(maxlen=eval_window_size)
         self._eval_window_floating = deque(maxlen=eval_window_size)
         self._eval_window_live_vs_avg = deque(maxlen=eval_window_size)
-        self._elo_milestone: float = 0.0  # normalized training ELO (vs random) at last milestone
+        # Highest claimed ladder-milestone grid point, in normalized ELO (vs random).
+        # Always a multiple of cfg.elo_milestone_gap once the first snapshot lands;
+        # runs resumed from before the grid existed carry one off-grid value forward
+        # and snap to the grid at their next snapshot.
+        self._elo_milestone: float = 0.0
         self._best_training_elo_norm: float = 0.0  # best normalized training ELO seen so far
         self._best_avg_elo_norm: float = 0.0  # best normalized avg ELO seen so far
         self._last_checkpoint_path: Path | None = None
@@ -897,6 +903,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._avg_training_elo = elo_snapshot.avg_elo
         self._scripted_elo = elo_snapshot.scripted_elo
         self._floating_games = elo_snapshot.floating_games
+        self._match_counts = elo_snapshot.match_counts
         if elo_snapshot.floating_elo is not None:
             self.roster.set_floating_elo(elo_snapshot.floating_elo)
         return dones
@@ -1757,7 +1764,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
     def _ladder_eval_state(
         self,
-    ) -> tuple[list[tuple[MVPPolicy | None, float]], tuple[MVPPolicy, float] | None]:
+    ) -> tuple[list[LadderOpponent], LadderOpponent | None]:
         """Build the evaluator's (anchors, floating) ladder state from the roster.
 
         Loads anchor and floating checkpoint policies from disk (resume path);
@@ -1777,14 +1784,22 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             )
             return entry.policy
 
-        anchors: list[tuple[MVPPolicy | None, float]] = [
-            (None if entry.kind == "random" else _load(entry), entry.elo)
+        anchors = [
+            LadderOpponent(
+                policy=None if entry.kind == "random" else _load(entry),
+                elo=entry.elo,
+                label=entry.label,
+            )
             for entry in self.roster.ladder_anchors(MAX_ANCHORS)
         ]
         floating_entry = self.roster.floating_checkpoint()
         if floating_entry is None:
             return anchors, None
-        return anchors, (_load(floating_entry), floating_entry.elo)
+        return anchors, LadderOpponent(
+            policy=_load(floating_entry),
+            elo=floating_entry.elo,
+            label=floating_entry.label,
+        )
 
     def _effective_target_kl(self) -> float | None:
         """Resolve the ELO-gated target KL from the current schedule snapshot."""
