@@ -9,16 +9,8 @@ from pathlib import Path
 from typing import Any
 
 import torch
-import torch.nn as nn
 
 from boost_and_broadside.train.rl.elo_eval import EloEvaluator
-
-
-def cast_norms_bf16(module: nn.Module) -> None:
-    """Cast CUDA RMSNorm weights to bf16 for the fused policy path."""
-    for submodule in module.modules():
-        if isinstance(submodule, nn.RMSNorm) and submodule.weight.is_cuda:
-            submodule.weight.data = submodule.weight.data.bfloat16()
 
 
 def clone_to_cpu(obj: Any) -> Any:
@@ -308,9 +300,13 @@ class CheckpointMixin:
         ckpt = torch.load(path, map_location=self.device, weights_only=False)
         self._policy_module.load_state_dict(ckpt["policy_state_dict"])
         self._avg_policy_module.load_state_dict(ckpt["policy_state_dict"])
-        cast_norms_bf16(self._policy_module)
-        cast_norms_bf16(self._avg_policy_module)
-        self._avg_param_cumsum = [torch.zeros_like(p) for p in self._policy_module.parameters()]
+        # fp32 regardless of parameter dtype: this is a running sum over every
+        # snapshot, so accumulating it in a narrower dtype lets each += round
+        # away and the mean drifts without bound. Mirrors the fresh-init path.
+        self._avg_param_cumsum = [
+            torch.zeros(p.shape, dtype=torch.float32, device=p.device)
+            for p in self._policy_module.parameters()
+        ]
         self._avg_update_count = 0
         if "scaler_state_dict" in ckpt:
             self.scaler.load_state_dict(ckpt["scaler_state_dict"])
@@ -341,7 +337,6 @@ class CheckpointMixin:
                 f"paradigms is not supported."
             )
         self._policy_module.load_state_dict(ckpt["policy_state_dict"])
-        cast_norms_bf16(self._policy_module)
         self.optim.load_state_dict(ckpt["optimizer_state_dict"])
         if "scaler_state_dict" in ckpt:
             self.scaler.load_state_dict(ckpt["scaler_state_dict"])
@@ -349,8 +344,9 @@ class CheckpointMixin:
             self.adv_scaler.load_state_dict(ckpt["adv_scaler_state_dict"])
         if "avg_policy_state_dict" in ckpt:
             self._avg_policy_module.load_state_dict(ckpt["avg_policy_state_dict"])
-            cast_norms_bf16(self._avg_policy_module)
-            self._avg_param_cumsum = [c.to(self.device) for c in ckpt["avg_param_cumsum"]]
+            self._avg_param_cumsum = [
+                c.to(self.device, torch.float32) for c in ckpt["avg_param_cumsum"]
+            ]
             self._avg_update_count = ckpt["avg_update_count"]
         if "training_elo" in ckpt:
             self._training_elo = ckpt["training_elo"]

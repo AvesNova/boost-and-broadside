@@ -55,8 +55,6 @@ def load_checkpoint_policy(
     Returns:
         The loaded policy in eval mode (compiled when compile_mode is set).
     """
-    import torch.nn as nn
-
     from boost_and_broadside.models.mvp.policy import MVPPolicy
 
     ckpt = torch.load(path, map_location=device, weights_only=False)
@@ -71,9 +69,6 @@ def load_checkpoint_policy(
     policy.load_state_dict(ckpt["policy_state_dict"])
     policy.eval()
     policy.to(device)
-    for module in policy.modules():
-        if isinstance(module, nn.RMSNorm) and module.weight.is_cuda:
-            module.weight.data = module.weight.data.bfloat16()
     return torch.compile(policy, mode=compile_mode) if compile_mode is not None else policy
 
 

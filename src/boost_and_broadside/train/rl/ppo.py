@@ -48,7 +48,7 @@ from boost_and_broadside.train.rl.buffer import (
     ReturnScaler,
     RolloutBuffer,
 )
-from boost_and_broadside.train.rl.checkpoint import CheckpointMixin, cast_norms_bf16
+from boost_and_broadside.train.rl.checkpoint import CheckpointMixin
 from boost_and_broadside.train.rl.elo_eval import MAX_ANCHORS, EloEvaluator, LadderOpponent
 from boost_and_broadside.train.rl.features import FeatureCoordinator, build_standard_coordinator
 from boost_and_broadside.train.rl.logging import LoggingMixin
@@ -359,7 +359,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             num_ships=N,
             team_pma_k=self._win_k,
         ).to(self.device)
-        cast_norms_bf16(self._policy_module)
         self.sigreg = SIGReg(d_model=model_config.d_model, num_proj=64).to(self.device)
         self.policy = (
             torch.compile(self._policy_module, mode=compile_mode)
@@ -427,7 +426,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             else self._avg_policy_module
         )
         self._avg_policy_module.load_state_dict(self._policy_module.state_dict())
-        cast_norms_bf16(self._avg_policy_module)
         for p in self._avg_policy_module.parameters():
             p.requires_grad_(False)
         self._avg_param_cumsum: list[torch.Tensor] = [
@@ -436,10 +434,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         ]
         self._avg_update_count: int = 0
 
-        # Warmup: force torch.compile to trace both policies under autocast so
-        # the BF16 norm weights always see BF16 inputs during compilation.
-        # Without this, the internal fake-tensor trace runs in fp32 and emits a
-        # dtype-mismatch warning (and misses the fused RMSNorm kernel).
+        # Warmup: force torch.compile to trace both policies under autocast, so
+        # the graph it specializes on matches the one training actually runs.
+        # Without this the internal fake-tensor trace runs in fp32 and compiles
+        # a graph the first real autocast call immediately invalidates.
         if compile_mode is not None and self.device.type == "cuda":
             _nt = N + M
             with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
@@ -1517,6 +1515,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             "returns/advantage_std": [],
             "episode/alive_fraction": [],
             "train/gradient_norm": [],
+            # Fraction of optimizer steps whose gradients were non-finite and
+            # got scrubbed. Any sustained non-zero reading means the forward or
+            # backward pass is overflowing and needs investigating at source.
+            "train/nonfinite_grad_fraction": [],
         }
         accum_k: dict[str, list[torch.Tensor]] = {
             "critic/value_loss": [],
@@ -1641,9 +1643,23 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     scalar_accum_step["ret_agg_std"] += ret_agg_var.sqrt() / n_scales
                     scalar_accum_step["adv_var"] += buf.adv_rms / n_scales
 
-                grad_norm = nn.utils.clip_grad_norm_(
-                    self._policy_module.parameters(), cfg.max_grad_norm
-                )
+                params = list(self._policy_module.parameters())
+                grad_norm = nn.utils.clip_grad_norm_(params, cfg.max_grad_norm)
+                # One inf/NaN gradient element makes the total norm non-finite,
+                # and clip_grad_norm_ then scales every gradient by
+                # max_norm/inf == 0 — turning that element into NaN (inf * 0)
+                # while zeroing all the others. Adam folds the NaN into exp_avg,
+                # so the parameter stays NaN for the rest of the run and the
+                # policy emits NaN logits until something samples them and the
+                # CUDA multinomial assert fires, far from the real cause.
+                # Scrubbing degrades the bad micro-batch to a no-op step.
+                # The norm is finite only if every gradient is, so this is a
+                # no-op on healthy steps. Kept on-device: the flag rides along
+                # with the other metrics rather than forcing a host sync here.
+                nonfinite_grad = ~torch.isfinite(grad_norm)
+                for param in params:
+                    if param.grad is not None:
+                        torch.nan_to_num_(param.grad, nan=0.0, posinf=0.0, neginf=0.0)
                 self.optim.step()
 
                 accum_scalar["loss/total"].append(scalar_accum_step["loss"])
@@ -1687,6 +1703,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 accum_scalar["returns/advantage_std"].append(scalar_accum_step["adv_var"] ** 0.5)
                 accum_scalar["episode/alive_fraction"].append(scalar_accum_step["alive_frac"])
                 accum_scalar["train/gradient_norm"].append(grad_norm.detach())
+                accum_scalar["train/nonfinite_grad_fraction"].append(nonfinite_grad.float())
 
                 if k_stats:
                     # Finalize variance-based stats from the accumulated moments,
