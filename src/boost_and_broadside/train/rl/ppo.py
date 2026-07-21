@@ -86,6 +86,11 @@ def _build_component_tensor(
 # ------------------------------------------------------------------
 
 
+# Consecutive updates the scripted win rate must hold at bc_winrate_target before
+# avg-model accumulation latches on. The eval window refills in roughly two updates,
+# so three gives the trigger two near-independent looks at the win rate.
+_BC_CUTOFF_UPDATES = 3
+
 # Maps reward component name → the TrainingSchedule group-scale field to apply.
 # Effective weight = group_scale * individual_weight (from RewardConfig).
 # Groups:
@@ -407,8 +412,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         # --- Avg-model opponent (uniform mean of all post-warmup policy snapshots) ---
         # Weights initialized as a copy of the training policy.
-        # Accumulation starts once normalized training ELO reaches
-        # cfg.avg_model_elo_threshold; once started it never stops.
+        # Accumulation starts when the BC aux loss decays to zero (scripted win
+        # rate reaches cfg.bc_winrate_target); once started it never stops.
         self._avg_policy_module = MVPPolicy(
             model_config,
             self.coordinator,
@@ -478,6 +483,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._avg_training_elo: float = 0.0
         self._scripted_elo: float = train_config.elo_eval.scripted_elo_init
         self._floating_games: int = 0  # rated games of the floating ladder checkpoint
+        self._bc_cutoff_streak: int = 0  # consecutive updates past the BC win-rate target
         eval_window_size = train_config.elo_eval.window_size
         self._eval_window_rand = deque(maxlen=eval_window_size)
         self._eval_window_sc = deque(maxlen=eval_window_size)
@@ -924,7 +930,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         """Refresh schedule-controlled optimization, reward, and averaging state."""
         self._schedule_state = _resolve_schedule(self.cfg.schedule, self._global_step)
         self._policy_gradient_coef = self._schedule_state.policy_gradient_coef
-        elo_norm = self._training_elo - self._random_elo()
         # BC aux loss decays linearly with the win rate against the scripted
         # agent, reaching zero at bc_winrate_target (full strength before any
         # scripted games have been recorded).
@@ -947,9 +952,24 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         metrics["schedule/global_scale"] = self._schedule_state.global_scale
         metrics["schedule/local_scale"] = self._schedule_state.local_scale
 
-        elo_barrier_reached = elo_norm >= self.cfg.avg_model_elo_threshold
+        # Avg-model accumulation picks up exactly where the BC aux loss lets go:
+        # bc_factor hits zero when the scripted win rate reaches bc_winrate_target.
+        # Keyed to the win rate rather than to _behavior_cloning_coef, because
+        # profiles that disable BC entirely (behavior_cloning_coef=0) would
+        # otherwise trip the trigger on update one.
+        #
+        # The gate latches forever, so it is guarded against a lucky window: the
+        # window must be full, and the target must hold for _BC_CUTOFF_UPDATES
+        # consecutive updates — long enough to refresh the window end to end.
+        # The streak is not checkpointed; a resume mid-streak just re-earns it.
+        if bc_factor <= 0.0 and len(window_sc) == window_sc.maxlen:
+            self._bc_cutoff_streak += 1
+        else:
+            self._bc_cutoff_streak = 0
+        bc_cutoff_reached = self._bc_cutoff_streak >= _BC_CUTOFF_UPDATES
+        metrics["schedule/bc_cutoff_streak"] = self._bc_cutoff_streak
         if self._policy_gradient_coef > 0.0 and self.B_avg > 0:
-            if self._avg_update_count > 0 or elo_barrier_reached:
+            if self._avg_update_count > 0 or bc_cutoff_reached:
                 first_avg_update = self._avg_update_count == 0
                 self._update_avg_model()
                 if first_avg_update:

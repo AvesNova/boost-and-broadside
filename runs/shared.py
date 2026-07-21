@@ -15,8 +15,12 @@ MODEL_CONFIG = ModelConfig(
 )
 
 ELO_EVAL = EloEvalConfig(
-    envs_per_matchup=256,
-    step_interval=2,
+    # 5 slots × 512 envs, stepped every rollout step: 64 rated games per slot per
+    # update, and an episode span of 8 updates. Rollout collection has headroom
+    # the eval battery can absorb, and wider slices also push the per-slot policy
+    # forward passes further from the launch-bound floor.
+    envs_per_matchup=512,
+    step_interval=1,
     k_factor=4.0,
     scripted_elo_init=1000.0,
     window_size=100,
