@@ -128,6 +128,7 @@ def _make_trainer(
     avg_model_fraction: float = 0.0,
     checkpoint_dir: str = "checkpoints",
     min_games_to_freeze: int = 0,
+    device: str = "cpu",
     **reward_overrides,
 ) -> PPOTrainer:
     ship_config = ShipConfig()
@@ -151,7 +152,7 @@ def _make_trainer(
             n_transformer_blocks=1,
         ),
         ship_config=ship_config,
-        device="cpu",
+        device=device,
         use_wandb=False,
         scripted_agent=scripted_agent,
     )
@@ -366,9 +367,7 @@ class TestMatchCounts:
         won = torch.zeros(5 * size, dtype=torch.bool, device=elo_eval.device)
         tied = torch.zeros_like(won)
         tied[:size] = True  # every slot-0 episode timed out as a draw
-        elo_eval._accumulate_match_counts(
-            won, won, tied, torch.ones_like(won), avg_active=False
-        )
+        elo_eval._accumulate_match_counts(won, won, tied, torch.ones_like(won), avg_active=False)
         counts = elo_eval.flush(avg_active=False).match_counts
         assert counts["random"] == (0, 0, size)
 
@@ -714,3 +713,95 @@ class TestRLSmokeTest:
             scripted_agent=scripted,
         )
         trainer.train()
+
+
+class TestNumericalPrecision:
+    """Parameter storage stays fp32 so the optimizer can actually move it.
+
+    bf16 carries 8 mantissa bits, so its ulp at 1.0 is ~0.0039 while an Adam
+    step is ~lr (3e-4). A bf16 parameter sitting at 1.0 — where every RMSNorm
+    gain initializes — absorbs every update as a rounding no-op and never
+    trains. These run on CUDA because the cast that caused this was guarded on
+    ``weight.is_cuda``, so a CPU-only suite cannot observe it.
+    """
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
+    @pytest.mark.parametrize("module_attr", ["_policy_module", "_avg_policy_module"])
+    def test_no_low_precision_parameters(self, module_attr, tmp_path):
+        trainer = _make_trainer(
+            checkpoint_dir=str(tmp_path), avg_model_fraction=0.25, device="cuda"
+        )
+        offenders = {
+            name: str(param.dtype)
+            for name, param in getattr(trainer, module_attr).named_parameters()
+            if param.dtype != torch.float32
+        }
+        assert not offenders, f"{module_attr} has non-fp32 parameters: {offenders}"
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
+    def test_rmsnorm_gains_are_trainable(self, tmp_path):
+        """Every RMSNorm gain must move under a run of optimizer steps."""
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path), device="cuda")
+        gains = [
+            (name, module.weight)
+            for name, module in trainer._policy_module.named_modules()
+            if isinstance(module, torch.nn.RMSNorm)
+        ]
+        assert gains, "no RMSNorm gains found"
+
+        before = {name: weight.detach().clone() for name, weight in gains}
+        for _ in range(50):
+            for _, weight in gains:
+                weight.grad = torch.randn_like(weight) * 0.01
+            trainer.optim.step()
+            trainer.optim.zero_grad()
+
+        stuck = [name for name, weight in gains if torch.equal(weight.detach(), before[name])]
+        assert not stuck, f"RMSNorm gains never moved: {stuck}"
+
+
+class TestNonFiniteGradientGuard:
+    """A single overflowing gradient element must not poison the run.
+
+    clip_grad_norm_ scales by max_norm/inf == 0 when the total norm is
+    non-finite, which turns that element into NaN (inf * 0) and zeroes the rest.
+    Adam folds the NaN into exp_avg, so the parameter stays NaN forever and the
+    policy emits NaN logits until a sampler trips a CUDA assert somewhere
+    unrelated.
+    """
+
+    def test_inf_gradient_does_not_poison_parameters(self, tmp_path):
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        params = list(trainer._policy_module.parameters())
+        for param in params:
+            param.grad = torch.randn_like(param) * 0.01
+        params[0].grad.view(-1)[0] = float("inf")
+
+        torch.nn.utils.clip_grad_norm_(params, trainer.cfg.max_grad_norm)
+        for param in params:
+            if param.grad is not None:
+                torch.nan_to_num_(param.grad, nan=0.0, posinf=0.0, neginf=0.0)
+        trainer.optim.step()
+
+        assert all(torch.isfinite(p).all() for p in params), "an inf gradient reached a parameter"
+        for param in params:
+            state = trainer.optim.state.get(param, {})
+            for key in ("exp_avg", "exp_avg_sq"):
+                if key in state:
+                    assert torch.isfinite(state[key]).all(), f"Adam {key} went non-finite"
+
+    def test_training_reports_the_skip_fraction(self, tmp_path):
+        """The counter has to reach the metrics or a real overflow stays silent."""
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        runtime = trainer._initialize_rollout_runtime()
+        dones = trainer._collect_rollout(runtime, False)
+        trainer._compute_rollout_gae(runtime, dones)
+
+        metrics = trainer._update_epochs(
+            all_buffers=[trainer.buffer] + trainer.aux_buffers, record_histograms=False
+        )
+
+        assert "train/nonfinite_grad_fraction" in metrics
+        assert metrics["train/nonfinite_grad_fraction"] == 0.0, (
+            "healthy gradients must not be reported as scrubbed"
+        )
