@@ -137,9 +137,6 @@ class TrainConfig:
     elo_eval: EloEvalConfig  # continuous evaluation batch and rating parameters
     bc_winrate_target: float  # win rate vs scripted at which the BC aux loss reaches zero
     histogram_interval: int  # record expensive histograms every N updates
-    # Avg-model accumulation starts once normalized training ELO (vs the random
-    # anchor) reaches this barrier; once started it never stops.
-    avg_model_elo_threshold: float = 1000.0
 
     # --- Gradient accumulation (memory-only, per-machine knob) ---
     # Max entity-tokens (envs × num_steps × (N+M)) per backward pass. Minibatches

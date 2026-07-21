@@ -7,8 +7,9 @@ Phase structure:
   Step 0 → 5M:   LR warmup 1e-7 → 3e-4. 50% envs vs scripted opponent.
                   All reward group scales active (pretrained value function handles this).
   Step 5M:        LR at cruise.
-  ELO 1000:       avg-model starts accumulating (avg_model_elo_threshold gate,
-                  ELO-based rather than step-based).
+  BC cutoff:      avg-model starts accumulating — the handoff is exact, the avg
+                  model picks up as the BC aux loss reaches zero (scripted win
+                  rate at bc_winrate_target). Outcome-based, not step-based.
   Step 50M:       avg-model activates as opponent (20% envs).
                   Reduce scripted to 30% to make room.
                   League opponents activate (20% envs).
@@ -102,8 +103,6 @@ RL_TRAIN_CONFIG = TrainConfig(
     elo_eval=ELO_EVAL,
     bc_winrate_target=0.45,
     histogram_interval=10,
-    # Avg-model accumulation starts once normalized training ELO reaches this.
-    avg_model_elo_threshold=1000.0,
     obstacle_cache=ObstacleCacheConfig(
         num_cache_envs=4096,
         cache_size=512,
