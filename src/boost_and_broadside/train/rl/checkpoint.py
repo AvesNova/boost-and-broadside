@@ -22,9 +22,17 @@ def cast_norms_bf16(module: nn.Module) -> None:
 
 
 def clone_to_cpu(obj: Any) -> Any:
-    """Recursively copy all tensors to CPU and clone them non-blockingly."""
+    """Recursively copy all tensors to CPU, detached from live training memory.
+
+    The device-to-host copy must block. ``non_blocking=True`` issues a
+    ``cudaMemcpyAsync`` and returns immediately, so any read of the destination
+    races the DMA — and because the caching allocator recycles the pageable
+    destination buffer, the read silently returns a *previous* tensor's bytes
+    rather than anything obviously wrong. A blocking copy of a CUDA tensor
+    already yields a fresh tensor, so only CPU tensors need an explicit clone.
+    """
     if isinstance(obj, torch.Tensor):
-        return obj.to("cpu", non_blocking=True).clone()
+        return obj.to("cpu") if obj.is_cuda else obj.clone()
     if isinstance(obj, dict):
         return {key: clone_to_cpu(value) for key, value in obj.items()}
     if isinstance(obj, list):
@@ -132,7 +140,8 @@ class CheckpointMixin:
             "scaler_state_dict": self.scaler.state_dict(),
             "adv_scaler_state_dict": self.adv_scaler.state_dict(),
             "avg_policy_state_dict": self._avg_policy_module.state_dict(),
-            "avg_param_cumsum": [c.to("cpu", non_blocking=True) for c in self._avg_param_cumsum],
+            # Left on device; the clone_to_cpu walk over this payload copies it.
+            "avg_param_cumsum": list(self._avg_param_cumsum),
             "avg_update_count": self._avg_update_count,
             "update": update,
             "global_step": self._global_step,
