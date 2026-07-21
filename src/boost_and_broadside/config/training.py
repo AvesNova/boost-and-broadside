@@ -131,7 +131,10 @@ class TrainConfig:
 
     # --- League play + ELO (static tournament parameters) ---
     league_size: int  # max number of checkpoint policies kept loaded for league play
-    elo_milestone_gap: float  # take a ladder snapshot every N ELO points gained
+    # Ladder-snapshot grid spacing: snapshots are taken as normalized ELO crosses
+    # each multiple of this value, so rungs land at absolute heights (200, 400, …)
+    # that are comparable across runs rather than drifting from run history.
+    elo_milestone_gap: float
     elo_temperature: float  # ELO bandwidth for proximity-weighted sampling
     league_uniform_sampling: bool  # if True, sample league opponents uniformly
     elo_eval: EloEvalConfig  # continuous evaluation batch and rating parameters

@@ -63,6 +63,29 @@ _ELO_RATING_SCALE = 400.0
 # functions first (multinomial draw, gather-based select).
 MAX_ANCHORS = 2
 
+# Row layout of the per-update match-count table. Anchors occupy the leading
+# MAX_ANCHORS rows (indexed by the live slot's per-episode anchor assignment);
+# the three fixed opponents follow. Columns are (live win, live loss, tie).
+#
+# Slot 4 (floating vs anchor) is deliberately absent: both of its participants
+# are frozen ladder entries that the post-hoc suite rates directly from far more
+# games than in-training eval could contribute. Only matchups involving the live
+# or avg policy — the two non-stationary players, which exist just once at each
+# update and can never be replayed — are recorded here.
+_COUNT_FLOATING = MAX_ANCHORS
+_COUNT_SCRIPTED = MAX_ANCHORS + 1
+_COUNT_AVG = MAX_ANCHORS + 2
+_COUNT_ROWS = MAX_ANCHORS + 3
+
+
+@dataclass(frozen=True)
+class LadderOpponent:
+    """One rated reference the live or floating policy is measured against."""
+
+    policy: "MVPPolicy | None"  # None stands for the random agent
+    elo: float
+    label: str  # roster label; the key match counts are recorded under
+
 
 def expected_score(
     rating: float | torch.Tensor, opponent_rating: float | torch.Tensor
@@ -102,6 +125,9 @@ class EloSnapshot:
     scripted_elo: float
     floating_elo: float | None  # None before the first milestone snapshot
     floating_games: int  # rated games the floating checkpoint has accumulated
+    # Rated episodes this update, keyed by opponent label → (win, loss, tie)
+    # from the live policy's perspective. Empty entries are omitted.
+    match_counts: dict[str, tuple[int, int, int]]
 
 
 class EloEvaluator:
@@ -123,8 +149,8 @@ class EloEvaluator:
         live_elo: float,
         avg_elo: float,
         scripted_elo: float,
-        anchors: list[tuple[MVPPolicy | None, float]],
-        floating: tuple[MVPPolicy, float] | None,
+        anchors: list[LadderOpponent],
+        floating: LadderOpponent | None,
         floating_games: int,
         random_window: deque[float],
         ladder_window: deque[float],
@@ -135,15 +161,15 @@ class EloEvaluator:
         """Build the eval battery from the current ladder state.
 
         Args:
-            anchors:  (policy, frozen_elo) per anchor, oldest first; a None
-                      policy is the random agent. At most MAX_ANCHORS entries.
-            floating: (policy, elo) of the floating checkpoint, or None before
-                      the first milestone (then anchors must be just random).
+            anchors:  One LadderOpponent per anchor, oldest first; a None policy
+                      is the random agent. At most MAX_ANCHORS entries.
+            floating: The floating checkpoint, or None before the first
+                      milestone (then anchors must be just random).
             floating_games: Rated games already accumulated by the floating
                       checkpoint (restored on resume).
         """
         assert 1 <= len(anchors) <= MAX_ANCHORS, f"expected 1-{MAX_ANCHORS} anchors, got {anchors}"
-        assert floating is not None or (len(anchors) == 1 and anchors[0][0] is None), (
+        assert floating is not None or (len(anchors) == 1 and anchors[0].policy is None), (
             "without a floating checkpoint the ladder must consist of only the random anchor"
         )
         self.config = config
@@ -183,8 +209,9 @@ class EloEvaluator:
         self.avg_elo = torch.tensor(float(avg_elo), device=device, dtype=torch.float64)
         self.scripted_elo = torch.tensor(float(scripted_elo), device=device, dtype=torch.float64)
         self._anchor_specs = list(anchors)
-        self._floating_policy = floating[0] if floating is not None else None
-        floating_elo = floating[1] if floating is not None else 0.0
+        self._floating_policy = floating.policy if floating is not None else None
+        self._floating_label = floating.label if floating is not None else ""
+        floating_elo = floating.elo if floating is not None else 0.0
         self.floating_elo = torch.tensor(float(floating_elo), device=device, dtype=torch.float64)
         self.floating_games = torch.tensor(
             float(floating_games), device=device, dtype=torch.float64
@@ -192,6 +219,11 @@ class EloEvaluator:
         self._anchor_idx_live = torch.zeros(size, dtype=torch.long, device=device)
         self._anchor_idx_float = torch.zeros(size, dtype=torch.long, device=device)
         self._build_ladder_agents()
+
+        # (_COUNT_ROWS, 3) tally of rated episodes since the last flush, as
+        # (live win, live loss, tie). Accumulated on device to keep step() free
+        # of syncs; read back once per update in flush().
+        self._match_counts = torch.zeros(_COUNT_ROWS, 3, device=device, dtype=torch.float64)
 
         self._win_history: list[torch.Tensor] = []
         self._rated_history: list[torch.Tensor] = []
@@ -215,7 +247,7 @@ class EloEvaluator:
             "anchors; generalize both (see the MAX_ANCHORS comment) before adding a third"
         )
         return torch.tensor(
-            [elo for _, elo in self._anchor_specs], device=self.device, dtype=torch.float64
+            [spec.elo for spec in self._anchor_specs], device=self.device, dtype=torch.float64
         )  # (A,)
 
     def _make_anchor_agents(
@@ -253,13 +285,13 @@ class EloEvaluator:
         self._anchor_elos = self._anchor_elo_tensor()
         self._anchor_agents_live: list[ResolvedAgent | None] = []
         self._anchor_agents_float: list[ResolvedAgent | None] = []
-        for policy, _ in self._anchor_specs:
-            agent_live, agent_float = self._make_anchor_agents(policy)
+        for spec in self._anchor_specs:
+            agent_live, agent_float = self._make_anchor_agents(spec.policy)
             self._anchor_agents_live.append(agent_live)
             self._anchor_agents_float.append(agent_float)
         self._build_floating_agents()
 
-    def promote_floating(self, snapshot_policy: MVPPolicy) -> None:
+    def promote_floating(self, snapshot_policy: MVPPolicy, snapshot_label: str) -> None:
         """Freeze the floating checkpoint into the anchor set and start a new one.
 
         The caller freezes the matching roster entry; here the current floating
@@ -274,7 +306,13 @@ class EloEvaluator:
         """
         dropped = 0
         if self._floating_policy is not None:
-            self._anchor_specs.append((self._floating_policy, float(self.floating_elo.item())))
+            self._anchor_specs.append(
+                LadderOpponent(
+                    policy=self._floating_policy,
+                    elo=float(self.floating_elo.item()),
+                    label=self._floating_label,
+                )
+            )
             agent_live, agent_float = self._make_anchor_agents(self._floating_policy)
             self._anchor_agents_live.append(agent_live)
             self._anchor_agents_float.append(agent_float)
@@ -284,6 +322,7 @@ class EloEvaluator:
             del self._anchor_agents_float[:dropped]
             self._anchor_elos = self._anchor_elo_tensor()
         self._floating_policy = snapshot_policy
+        self._floating_label = snapshot_label
         self.floating_elo = self.live_elo.clone()
         self.floating_games = torch.zeros((), device=self.device, dtype=torch.float64)
         self._build_floating_agents()
@@ -474,6 +513,7 @@ class EloEvaluator:
             score = team0_won.float() + 0.5 * tied.float()  # (5·size,)
             rated = done_any & self._rated  # (5·size,)
             self._apply_rating_updates(score, rated.float(), avg_active)
+            self._accumulate_match_counts(team0_won, team1_won, tied, rated, avg_active)
 
             self._win_history.append(team0_won.float())
             self._rated_history.append(rated)
@@ -554,6 +594,50 @@ class EloEvaluator:
                 ).sum()
             )
 
+    def _accumulate_match_counts(
+        self,
+        team0_won: torch.Tensor,
+        team1_won: torch.Tensor,
+        tied: torch.Tensor,
+        rated: torch.Tensor,
+        avg_active: bool,
+    ) -> None:
+        """Tally this step's rated outcomes for every live-policy matchup.
+
+        Counts are raw win/loss/tie totals rather than the ELO score's
+        win + 0.5·tie collapse. Draw frequency in this game is strongly
+        level-dependent — near-random pairs almost always time out, strong
+        pairs almost never do — so which likelihood the post-hoc suite should
+        fit is an open question. Keeping the three outcomes separate leaves
+        that choice open; collapsing them here would destroy it irreversibly.
+        """
+        size = self.matchup_size
+        outcomes = torch.stack([team0_won, team1_won, tied], dim=-1).to(torch.float64)
+        outcomes = outcomes * rated.to(torch.float64).unsqueeze(-1)  # (5·size, 3)
+
+        # Slot 0 spreads across anchors by per-episode assignment.
+        self._match_counts.index_add_(0, self._anchor_idx_live, outcomes[:size])
+        # Slot 1 is the floating checkpoint, or — before the first milestone —
+        # extra games against the sole random anchor, matching the rating path.
+        slot1_row = _COUNT_FLOATING if self.float_pro_agent is not None else 0
+        self._match_counts[slot1_row] += outcomes[size : 2 * size].sum(dim=0)
+        if self.scripted_agent is not None:
+            self._match_counts[_COUNT_SCRIPTED] += outcomes[2 * size : 3 * size].sum(dim=0)
+        if avg_active:
+            self._match_counts[_COUNT_AVG] += outcomes[3 * size : 4 * size].sum(dim=0)
+
+    def _match_count_labels(self) -> list[str | None]:
+        """Row → opponent label, or None for rows with no active opponent."""
+        labels: list[str | None] = [None] * _COUNT_ROWS
+        for index, spec in enumerate(self._anchor_specs):
+            labels[index] = spec.label
+        if self.float_pro_agent is not None:
+            labels[_COUNT_FLOATING] = self._floating_label
+        if self.scripted_agent is not None:
+            labels[_COUNT_SCRIPTED] = "scripted"
+        labels[_COUNT_AVG] = "avg"
+        return labels
+
     def _resample_anchor_assignments(self, done_any: torch.Tensor) -> None:
         """Redraw anchor assignments for finished ladder-slot episodes."""
         if self._anchor_elos.numel() < 2:
@@ -590,6 +674,25 @@ class EloEvaluator:
     # Flushing
     # ------------------------------------------------------------------
 
+    def _flush_match_counts(self) -> dict[str, tuple[int, int, int]]:
+        """Read back and reset the match-count table, keyed by opponent label.
+
+        Rows with no games are dropped, so an update contributes a key only
+        where the live policy actually completed a rated episode. Two anchors
+        can briefly share a label across a promotion boundary; their counts are
+        summed rather than one silently overwriting the other.
+        """
+        counts = self._match_counts.cpu().tolist()
+        self._match_counts.zero_()
+        records: dict[str, tuple[int, int, int]] = {}
+        for label, row in zip(self._match_count_labels(), counts):
+            win, loss, tie = (int(value) for value in row)
+            if label is None or win + loss + tie == 0:
+                continue
+            previous = records.get(label, (0, 0, 0))
+            records[label] = (previous[0] + win, previous[1] + loss, previous[2] + tie)
+        return records
+
     def flush(self, avg_active: bool) -> EloSnapshot:
         """Flush GPU ratings and outcome history to CPU once per PPO update."""
         floating_active = self.float_pro_agent is not None
@@ -599,6 +702,7 @@ class EloEvaluator:
             scripted_elo=float(self.scripted_elo.item()),
             floating_elo=float(self.floating_elo.item()) if floating_active else None,
             floating_games=int(self.floating_games.item()) if floating_active else 0,
+            match_counts=self._flush_match_counts(),
         )
         if not self._win_history:
             return snapshot

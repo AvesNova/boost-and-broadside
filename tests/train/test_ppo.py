@@ -77,6 +77,7 @@ def _make_schedule(**overrides) -> TrainingSchedule:
 def _make_train_config(
     paradigm: str = "ego_pass",
     scripted_fraction: float = 0.0,
+    avg_model_fraction: float = 0.0,
     checkpoint_dir: str = "checkpoints",
     min_games_to_freeze: int = 0,
     **reward_overrides,
@@ -89,7 +90,10 @@ def _make_train_config(
                 num_envs=4,
             ),
         ),
-        schedule=_make_schedule(scripted_fraction=constant(scripted_fraction)),
+        schedule=_make_schedule(
+            scripted_fraction=constant(scripted_fraction),
+            avg_model_fraction=constant(avg_model_fraction),
+        ),
         rewards=_make_rewards(**reward_overrides),
         num_steps=16,
         num_minibatches=2,
@@ -121,6 +125,7 @@ def _make_train_config(
 def _make_trainer(
     paradigm: str = "ego_pass",
     scripted_fraction: float = 0.0,
+    avg_model_fraction: float = 0.0,
     checkpoint_dir: str = "checkpoints",
     min_games_to_freeze: int = 0,
     **reward_overrides,
@@ -135,6 +140,7 @@ def _make_trainer(
         train_config=_make_train_config(
             paradigm=paradigm,
             scripted_fraction=scripted_fraction,
+            avg_model_fraction=avg_model_fraction,
             checkpoint_dir=checkpoint_dir,
             min_games_to_freeze=min_games_to_freeze,
             **reward_overrides,
@@ -275,6 +281,140 @@ class TestEloLadder:
             runtime.elo_eval.step(0, avg_active=False)
         snapshot = runtime.elo_eval.flush(avg_active=False)
         assert snapshot.floating_elo is not None
+
+    def test_milestones_land_on_an_absolute_grid(self, tmp_path):
+        """A snapshot that fires late claims its grid point, not its own rating,
+        so the next one is still due at the following multiple of the gap."""
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        runtime = trainer._initialize_rollout_runtime()
+        # Fires well past the 50 grid point; the grid must not ratchet to 90+50.
+        trainer._training_elo = 90.0
+        trainer._maybe_advance_ladder(update=1, elo_eval=runtime.elo_eval)
+        assert trainer._elo_milestone == 50.0
+        first = trainer.roster.floating_checkpoint()
+
+        trainer._training_elo = 105.0  # past the 100 grid point
+        trainer._maybe_advance_ladder(update=2, elo_eval=runtime.elo_eval)
+        assert trainer.roster.floating_checkpoint() is not first
+        assert trainer._elo_milestone == 100.0
+
+    def test_milestone_grid_point_is_claimed_once(self, tmp_path):
+        """Rating is not monotonic: dipping below a claimed grid point and
+        recrossing it must not take a second snapshot at the same rung."""
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        runtime = trainer._initialize_rollout_runtime()
+        trainer._training_elo = 60.0
+        trainer._maybe_advance_ladder(update=1, elo_eval=runtime.elo_eval)
+        floating = trainer.roster.floating_checkpoint()
+
+        trainer._training_elo = 40.0  # dipped back below the 50 rung
+        trainer._maybe_advance_ladder(update=2, elo_eval=runtime.elo_eval)
+        trainer._training_elo = 70.0  # and recrossed it
+        trainer._maybe_advance_ladder(update=3, elo_eval=runtime.elo_eval)
+        assert trainer.roster.floating_checkpoint() is floating
+
+    def test_jump_across_several_grid_points_snapshots_once(self, tmp_path):
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        runtime = trainer._initialize_rollout_runtime()
+        trainer._training_elo = 260.0  # crosses 50, 100, 150, 200, 250 at once
+        trainer._maybe_advance_ladder(update=1, elo_eval=runtime.elo_eval)
+        checkpoints = [e for e in trainer.roster.entries if e.kind == "checkpoint"]
+        assert len(checkpoints) == 1
+        assert trainer._elo_milestone == 250.0
+
+
+class TestMatchCounts:
+    """Per-opponent win/loss/tie capture for the non-stationary players."""
+
+    def test_counts_are_keyed_by_roster_label(self, tmp_path):
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        runtime = trainer._initialize_rollout_runtime()
+        trainer._training_elo = 60.0
+        trainer._maybe_advance_ladder(update=1, elo_eval=runtime.elo_eval)
+        floating_label = trainer.roster.floating_checkpoint().label
+
+        elo_eval = runtime.elo_eval
+        elo_eval._rated[:] = True
+        for _ in range(120):  # long enough for 50-step episodes to resolve
+            elo_eval.step(0, avg_active=False)
+        counts = elo_eval.flush(avg_active=False).match_counts
+
+        assert "random" in counts, "games against the random anchor were not recorded"
+        assert floating_label in counts, "games against the floating checkpoint were lost"
+        assert all(len(wlt) == 3 for wlt in counts.values())
+        assert any(sum(wlt) > 0 for wlt in counts.values())
+
+    def test_counts_reset_between_flushes(self, tmp_path):
+        """Each update's record must describe only that update's games — the live
+        policy is a different player at every one."""
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        elo_eval = trainer._initialize_rollout_runtime().elo_eval
+        elo_eval._rated[:] = True
+        for _ in range(120):
+            elo_eval.step(0, avg_active=False)
+        assert sum(sum(wlt) for wlt in elo_eval.flush(avg_active=False).match_counts.values()) > 0
+        second = elo_eval.flush(avg_active=False).match_counts
+        assert sum(sum(wlt) for wlt in second.values()) == 0
+
+    def test_ties_are_recorded_separately_from_wins(self, tmp_path):
+        """Tie counts must survive as their own column. The ELO update collapses
+        them into a half-win, but draw frequency here is level-dependent, so the
+        post-hoc fit needs the raw three-way split to model it at all."""
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        elo_eval = trainer._initialize_rollout_runtime().elo_eval
+        size = elo_eval.matchup_size
+        won = torch.zeros(5 * size, dtype=torch.bool, device=elo_eval.device)
+        tied = torch.zeros_like(won)
+        tied[:size] = True  # every slot-0 episode timed out as a draw
+        elo_eval._accumulate_match_counts(
+            won, won, tied, torch.ones_like(won), avg_active=False
+        )
+        counts = elo_eval.flush(avg_active=False).match_counts
+        assert counts["random"] == (0, 0, size)
+
+
+class TestAvgModelTrigger:
+    """Avg-model accumulation starts exactly where the BC aux loss ends."""
+
+    def _drive(self, trainer, win_rate: float, updates: int) -> None:
+        window = trainer._eval_window_sc
+        window.clear()
+        window.extend([win_rate] * window.maxlen)
+        for _ in range(updates):
+            trainer._refresh_training_schedule({}, trainer._elo_eval_stub)
+
+    def test_starts_once_scripted_target_holds(self, tmp_path):
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path), avg_model_fraction=0.25)
+        trainer._elo_eval_stub = trainer._initialize_rollout_runtime().elo_eval
+        # bc_winrate_target is 0.9 in the test config.
+        self._drive(trainer, win_rate=0.95, updates=3)
+        assert trainer._avg_update_count > 0
+
+    def test_below_target_never_starts(self, tmp_path):
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path), avg_model_fraction=0.25)
+        trainer._elo_eval_stub = trainer._initialize_rollout_runtime().elo_eval
+        self._drive(trainer, win_rate=0.5, updates=20)
+        assert trainer._avg_update_count == 0
+
+    def test_single_lucky_update_does_not_latch(self, tmp_path):
+        """The gate is permanent, so one window above target must not trip it."""
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path), avg_model_fraction=0.25)
+        trainer._elo_eval_stub = trainer._initialize_rollout_runtime().elo_eval
+        self._drive(trainer, win_rate=0.95, updates=1)
+        assert trainer._avg_update_count == 0
+        self._drive(trainer, win_rate=0.5, updates=1)  # streak broken
+        assert trainer._bc_cutoff_streak == 0
+
+    def test_partial_window_does_not_count(self, tmp_path):
+        """A window with only a handful of games is too noisy to latch on."""
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path), avg_model_fraction=0.25)
+        trainer._elo_eval_stub = trainer._initialize_rollout_runtime().elo_eval
+        trainer._eval_window_sc.clear()
+        trainer._eval_window_sc.extend([1.0] * 5)
+        for _ in range(5):
+            trainer._refresh_training_schedule({}, trainer._elo_eval_stub)
+        assert trainer._bc_cutoff_streak == 0
+        assert trainer._avg_update_count == 0
 
 
 class TestParadigm:

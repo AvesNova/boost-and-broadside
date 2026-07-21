@@ -104,6 +104,23 @@ class LoggingMixin:
                     self._eval_window_live_vs_avg
                 )
         self._append_elo_history(update)
+        # Per-opponent outcome mix. tie_rate is the diagnostic that decides how
+        # the post-hoc suite should handle draws: this game's draw frequency is
+        # level-dependent rather than gap-dependent, which is exactly what the
+        # standard tie models (Davidson, Rao-Kupper) cannot represent.
+        total_games = 0
+        for label, (win, loss, tie) in self._match_counts.items():
+            games = win + loss + tie
+            total_games += games
+            if games == 0:
+                continue
+            metrics[f"matches/{label}/games"] = games
+            metrics[f"matches/{label}/win_rate"] = win / games
+            metrics[f"matches/{label}/tie_rate"] = tie / games
+            decisive = win + loss
+            if decisive > 0:
+                metrics[f"matches/{label}/decisive_win_rate"] = win / decisive
+        metrics["matches/games_total"] = total_games
         # One scalar per ladder entry, keyed under a shared prefix so a single
         # line-plot panel with y = `ladder/elo/*` overlays them all natively.
         # Frozen entries log a constant (flat line); live rides along as the
@@ -150,6 +167,12 @@ class LoggingMixin:
         The file is append-only across resumes, so the complete rating history
         of every ladder entry survives training for post-hoc analysis
         (calibration drift, cycling checks against old anchors).
+
+        ``counts`` carries this update's raw win/loss/tie totals per opponent
+        from the live policy's perspective. These are the run's only irreplaceable
+        measurements: the live and avg policies exist in one form for exactly one
+        update and can never be replayed, whereas every frozen ladder entry can
+        be re-measured from disk afterwards at whatever precision is wanted.
         """
         path = Path(self.cfg.checkpoint_dir) / self.run_name / "elo_history.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -159,6 +182,7 @@ class LoggingMixin:
             "live": self._training_elo,
             "avg": self._avg_training_elo,
             "scripted": self._scripted_elo,
+            "counts": {label: list(wlt) for label, wlt in self._match_counts.items()},
             "entries": [
                 {"label": e.label, "elo": e.elo, "fixed": e.fixed} for e in self.roster.entries
             ],
