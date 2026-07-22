@@ -236,7 +236,8 @@ def fit_single_rating(
     wins: np.ndarray,
     losses: np.ndarray,
     max_iterations: int = 200,
-    tolerance: float = 1e-10,
+    tolerance: float = 1e-9,
+    bracket: float = 4_000.0,
 ) -> tuple[float, float]:
     """Fit one player's rating against opponents whose ratings are already known.
 
@@ -246,6 +247,11 @@ def fit_single_rating(
     explains that record against calibrated opponents recovers what the policy
     was actually worth at that moment, independent of wherever the in-training
     filter had drifted to.
+
+    Args:
+        bracket: How far beyond the opponents' own range to search, in rating
+                 points. A record that implies a rating outside this window is
+                 reported as unbounded rather than as a huge finite number.
 
     Returns:
         (rating, standard error). The rating is +/- inf when the record is a
@@ -263,19 +269,31 @@ def fit_single_rating(
     if wins.sum() <= 0:
         return float("-inf"), float("inf")
 
-    # Newton on the log-likelihood; it is strictly concave in the rating, so a
-    # plain Newton step from the opponents' mean converges in a few iterations.
-    rating = float((opponent_ratings * decisive).sum() / total)
-    for _ in range(max_iterations):
+    def gradient(rating: float) -> float:
         probability = win_probability(rating, opponent_ratings)
-        gradient = _C * (wins * (1.0 - probability) - losses * probability).sum()
-        curvature = _C**2 * (decisive * probability * (1.0 - probability)).sum()
-        if curvature <= 1e-300:
+        return float((wins * (1.0 - probability) - losses * probability).sum())
+
+    # Bisection rather than Newton. The log-likelihood is strictly concave, so
+    # its gradient decreases monotonically and a bracket cannot fail — whereas
+    # Newton diverges on lopsided records: as the rating runs ahead of every
+    # opponent the curvature underflows toward zero while the gradient stays
+    # finite, so the step explodes. That produced ratings around 1e144 on real
+    # early-training records, which are near-sweeps against the random anchor.
+    low = float(opponent_ratings.min()) - bracket
+    high = float(opponent_ratings.max()) + bracket
+    if gradient(low) < 0.0:
+        return float("-inf"), float("inf")
+    if gradient(high) > 0.0:
+        return float("inf"), float("inf")
+    for _ in range(max_iterations):
+        middle = 0.5 * (low + high)
+        if gradient(middle) > 0.0:
+            low = middle
+        else:
+            high = middle
+        if high - low < tolerance:
             break
-        step = gradient / curvature
-        rating += step
-        if abs(step) < tolerance:
-            break
+    rating = 0.5 * (low + high)
     probability = win_probability(rating, opponent_ratings)
     information = _C**2 * (decisive * probability * (1.0 - probability)).sum()
     stderr = float(1.0 / np.sqrt(information)) if information > 0 else float("inf")
