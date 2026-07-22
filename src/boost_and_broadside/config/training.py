@@ -27,6 +27,32 @@ class ObstacleCacheConfig:
 
 
 @dataclass(frozen=True)
+class EloCalibrateConfig:
+    """Configuration for the post-training ELO calibration tournament.
+
+    Used by ``--mode elo_calibrate`` to re-rate a finished run. Unlike
+    EloEvalConfig this costs nothing during training — it runs once afterwards,
+    so the budget is bounded by patience rather than by throughput.
+
+    num_envs is both the parallel width and the games per batch: every env plays
+    exactly one episode per batch. Raising it buys precision per batch at a
+    proportional increase in batch wall time, so it trades against max_batches
+    at roughly fixed total cost; prefer more envs to more batches, since each
+    batch also pays for its slowest episode to reach the horizon.
+
+    Precision improves as 1/sqrt(games), so halving target_stderr costs about
+    four times the games.
+    """
+
+    num_envs: int  # parallel envs per batch, i.e. games played per batch
+    target_stderr: float  # stop once every rating is pinned to within this
+    max_batches: int  # cap, so an unreachable target cannot run forever
+    # Virtual decisive games per player, split for and against the anchor.
+    # Keeps a player that never loses from having an infinite rating.
+    prior_games: float = 1.0
+
+
+@dataclass(frozen=True)
 class EloEvalConfig:
     """Configuration for continuous in-training ELO ladder evaluation.
 

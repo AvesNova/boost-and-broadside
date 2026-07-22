@@ -27,6 +27,7 @@ Evaluation:
     uv run --no-sync main.py --mode elo_stats --run latest      # + checkpoints from latest run
     uv run --no-sync main.py --mode elo_calibrate --run latest  # post-hoc calibrated ELO + plots
     uv run --no-sync main.py --mode elo_calibrate --run vague-lion-678 --target-stderr 5
+        writes checkpoints/<run>/elo_calibrated.json and elo_calibration/*.png
     uv run --no-sync main.py --mode ar_report                   # autoregressive prediction report
     uv run --no-sync main.py --mode noise_calibration           # NextStateHead error statistics
 
@@ -68,7 +69,7 @@ from runs.bc import BC_TRAIN_CONFIG
 from runs.bc_warmstart import BC_WARMSTART_PRETRAIN_CONFIG, BC_WARMSTART_RL_CONFIG
 from runs.rl import RL_TRAIN_CONFIG
 from runs.rl_obstacles import RL_OBSTACLES_TRAIN_CONFIG
-from runs.shared import MODEL_CONFIG, REWARDS, SHIP_CONFIG
+from runs.shared import ELO_CALIBRATE, MODEL_CONFIG, REWARDS, SHIP_CONFIG
 
 
 def _parse_args() -> argparse.Namespace:
@@ -127,21 +128,31 @@ def _parse_args() -> argparse.Namespace:
         help="Run name for elo_stats / elo_calibrate modes (e.g. 'bright-cloud-219'), "
         "'latest', or 'none' (scripted agents only, no checkpoints).",
     )
+    # elo_calibrate defaults live in runs/shared.py (ELO_CALIBRATE); these flags
+    # are ad-hoc overrides, so they default to None and fall back to the config.
     parser.add_argument(
         "--target-stderr",
         type=float,
-        default=10.0,
+        default=None,
         metavar="ELO",
-        help="(elo_calibrate) Stop once every rating is pinned to within this standard "
-        "error, in ELO points. Default 10.",
+        help="(elo_calibrate) Override ELO_CALIBRATE.target_stderr: stop once every "
+        "rating is pinned to within this standard error, in ELO points.",
     )
     parser.add_argument(
         "--max-batches",
         type=int,
-        default=12,
+        default=None,
         metavar="N",
-        help="(elo_calibrate) Cap on adaptive tournament batches, so an unreachable "
-        "target cannot run forever. Default 12.",
+        help="(elo_calibrate) Override ELO_CALIBRATE.max_batches, the cap on adaptive "
+        "tournament batches.",
+    )
+    parser.add_argument(
+        "--calib-envs",
+        type=int,
+        default=None,
+        metavar="N",
+        help="(elo_calibrate) Override ELO_CALIBRATE.num_envs: parallel envs per batch, "
+        "which is also the number of games each batch plays.",
     )
     parser.add_argument(
         "--no-plots",
@@ -416,14 +427,24 @@ def main() -> None:
             )
 
         case "elo_calibrate":
+            calibrate_config = replace(
+                ELO_CALIBRATE,
+                **{
+                    field: value
+                    for field, value in (
+                        ("num_envs", args.calib_envs),
+                        ("target_stderr", args.target_stderr),
+                        ("max_batches", args.max_batches),
+                    )
+                    if value is not None
+                },
+            )
             run_elo_calibrate_mode(
                 run_spec=args.run if args.run != "none" else "latest",
                 ship_config=SHIP_CONFIG,
                 device=device,
                 checkpoint_dir="checkpoints",
-                num_envs=1024 * 4,
-                target_stderr=args.target_stderr,
-                max_batches=args.max_batches,
+                config=calibrate_config,
                 plot=args.plots,
             )
 

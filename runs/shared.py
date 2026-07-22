@@ -4,7 +4,13 @@ Import these into individual profiles rather than duplicating values.
 Override in a profile only when the run genuinely needs a different value.
 """
 
-from boost_and_broadside.config import EloEvalConfig, ModelConfig, RewardConfig, ShipConfig
+from boost_and_broadside.config import (
+    EloCalibrateConfig,
+    EloEvalConfig,
+    ModelConfig,
+    RewardConfig,
+    ShipConfig,
+)
 
 SHIP_CONFIG = ShipConfig(bullet_energy_cost=2, bullet_min_damage_frac=1.0)
 
@@ -27,6 +33,19 @@ ELO_EVAL = EloEvalConfig(
     # A floating ladder checkpoint must settle over this many rated games
     # before it can be frozen as an anchor — milestones are deferred until then.
     min_games_to_freeze=1000,
+)
+
+# Post-training calibration (`--mode elo_calibrate`). Runs once after a run
+# finishes, so this budget costs nothing during training.
+#
+# Measured on vague-lion-678 (7-player field): 4096 envs takes ~2 min per batch
+# and reached +/-9.7 ELO after 8 batches / 32,768 games. Precision goes as
+# 1/sqrt(games), so +/-5 costs roughly four times that.
+ELO_CALIBRATE = EloCalibrateConfig(
+    num_envs=4096,
+    target_stderr=10.0,
+    max_batches=12,
+    prior_games=1.0,
 )
 
 # Reward weights shared by all training profiles.

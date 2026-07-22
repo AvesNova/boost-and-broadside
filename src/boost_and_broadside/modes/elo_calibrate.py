@@ -13,6 +13,17 @@ standard error, then replays each update's stored record against those now-known
 opponents to recover what the live policy was actually worth at that moment.
 The result is a training curve that no longer depends on where the in-training
 K-factor filter happened to drift.
+
+Every rating is fit twice, under both draw conventions (see TIE_MODES). The two
+differ only where draws are common, which in this game means the weak end of the
+ladder, and the half-win fit is the one directly comparable to the in-training
+curve. Both come from the same match counts, so carrying both is free.
+
+Writes to the run's checkpoint directory:
+    elo_calibrated.json      ratings, per-update curve, batch stats, and the raw
+                             win/tie matrices, so any later refit needs no replay
+    elo_calibration/*.png    live curve vs in-training, the two draw conventions,
+                             per-checkpoint ratings, convergence, and draw rates
 """
 
 import json
@@ -26,7 +37,7 @@ import torch
 
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
-from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
+from boost_and_broadside.config import EloCalibrateConfig, EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.observation import ObsKey, observation_from_state
 from boost_and_broadside.modes.agent_factory import (
@@ -48,6 +59,23 @@ from boost_and_broadside.train.rl.bradley_terry import (
 # changes every update, exactly like the live policy it is measured against.
 _NON_STATIONARY = frozenset({"avg"})
 
+# How draws enter the likelihood.
+#   "decisive" — draws dropped; the rating answers "who wins, given a winner".
+#   "half_win" — draws split evenly, the convention the in-training K-factor
+#                filter uses, kept so the two can be compared on one scale.
+# Both are fit from the same match counts, so carrying both costs no extra play.
+TIE_MODES = ("decisive", "half_win")
+
+
+def effective_wins(wins: np.ndarray, ties: np.ndarray, tie_mode: str) -> np.ndarray:
+    """Win counts as the chosen draw convention sees them."""
+    assert tie_mode in TIE_MODES, f"unknown tie_mode {tie_mode!r}"
+    if tie_mode == "decisive":
+        return wins
+    # A draw is half a win for each side. Bradley-Terry's MM iteration is
+    # weight-based, so fractional counts need no special handling.
+    return wins + 0.5 * (ties + ties.T)
+
 
 @dataclass
 class Player:
@@ -57,6 +85,48 @@ class Player:
     agent: ResolvedAgent
     training_elo: float | None  # rating the run itself assigned, for comparison
     global_step: int | None  # None for agents with no place on the timeline
+
+
+class Progress:
+    """Single-line terminal progress for a long tournament.
+
+    Batches take minutes and episodes finish at wildly different times, so a
+    silent run gives no way to tell slow progress from a hang. Redraws in place
+    on a terminal; falls back to one line per milestone when redirected, so log
+    files do not fill with carriage returns.
+    """
+
+    def __init__(self, enabled: bool = True) -> None:
+        self.live = enabled and sys.stdout.isatty()
+        self.enabled = enabled
+        self._width = 0
+
+    def stage(self, message: str) -> None:
+        """Announce a phase change; always its own line."""
+        if not self.enabled:
+            return
+        self._clear()
+        print(f"  {message}", flush=True)
+
+    def bar(self, done: int, total: int, prefix: str, suffix: str = "") -> None:
+        """Draw an in-place progress bar. No-op when output is redirected."""
+        if not self.live:
+            return
+        filled = int(18 * done / max(total, 1))
+        text = f"  {prefix} [{'#' * filled}{'.' * (18 - filled)}] {done}/{total} {suffix}"
+        self._width = max(self._width, len(text))
+        print(f"\r{text.ljust(self._width)}", end="", flush=True)
+
+    def _clear(self) -> None:
+        if self.live and self._width:
+            print(f"\r{' ' * self._width}\r", end="", flush=True)
+            self._width = 0
+
+    def done(self, message: str) -> None:
+        """Replace the current bar with a permanent line."""
+        self._clear()
+        if self.enabled:
+            print(f"  {message}", flush=True)
 
 
 @dataclass
@@ -166,6 +236,7 @@ class Tournament:
         self.device = torch.device(device)
         self.num_ships = env_config.num_ships
         self.num_tokens = env_config.num_ships + env_config.num_obstacles
+        self.max_steps = env_config.max_episode_steps
         self.team_sizes = (self.num_ships // 2, self.num_ships - self.num_ships // 2)
 
         self.env = TensorEnv(num_envs, ship_config, env_config, self.device)
@@ -207,7 +278,7 @@ class Tournament:
             torch.tensor(team1, device=self.device, dtype=torch.long),
         )
 
-    def play_batch(self, allocation: np.ndarray) -> int:
+    def play_batch(self, allocation: np.ndarray, progress: "Progress | None" = None) -> int:
         """Play one episode in every env under the given allocation; tally results.
 
         Every env is run to completion rather than cutting the batch off at a
@@ -231,8 +302,16 @@ class Tournament:
         )
         arange = torch.arange(self.num_envs, device=self.device)
         games = 0
+        step = 0
 
         while not finished.all():
+            step += 1
+            # Polling the count costs a device sync, so do it sparsely — the
+            # step loop already runs several policy forwards per iteration.
+            if progress is not None and step % 16 == 0:
+                progress.bar(
+                    games, self.num_envs, "playing", f"episodes   step {step}/{self.max_steps}"
+                )
             state = self.env.state
             obs = observation_from_state(state, self.ship_config)
             with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
@@ -338,9 +417,8 @@ def choose_reference(tournament: Tournament, ratings: np.ndarray, random_index: 
 def run_tournament(
     tournament: Tournament,
     random_index: int,
-    target_stderr: float,
-    max_batches: int,
-    prior_games: float,
+    config: EloCalibrateConfig,
+    progress: Progress | None = None,
 ) -> tuple[RatingFit, list[BatchStat], int]:
     """Play adaptive batches until every rating is pinned or the budget runs out.
 
@@ -350,15 +428,23 @@ def run_tournament(
     """
     stats: list[BatchStat] = []
     size = tournament.size
+    prior_games = config.prior_games
     reference = random_index
     fit = fit_bradley_terry(np.zeros((size, size)), anchor=reference, prior_games=prior_games)
     cumulative = 0
-    for batch in range(1, max_batches + 1):
+    for batch in range(1, config.max_batches + 1):
+        if progress is not None:
+            worst = f"{stats[-1].max_stderr:.1f}" if stats else "—"
+            progress.bar(
+                0, tournament.num_envs,
+                f"batch {batch}/{config.max_batches}",
+                f"episodes   worst SE so far {worst}",
+            )
         allocation = allocate_games(
             tournament.pair_games(), fit.ratings, anchor=reference, budget=tournament.num_envs
         )
         started = time.perf_counter()
-        games = tournament.play_batch(allocation)
+        games = tournament.play_batch(allocation, progress)
         elapsed = time.perf_counter() - started
         cumulative += games
         if batch == 1:
@@ -366,7 +452,8 @@ def run_tournament(
                 tournament.wins, anchor=random_index, prior_games=prior_games
             )
             reference = choose_reference(tournament, provisional.ratings, random_index)
-            print(f"  reference gauge: {tournament.players[reference].label}")
+            if progress is not None:
+                progress.done(f"reference gauge: {tournament.players[reference].label}")
         fit = fit_bradley_terry(tournament.wins, anchor=reference, prior_games=prior_games)
 
         # Random's own error is the unresolvable anchor link, reported separately.
@@ -382,21 +469,30 @@ def run_tournament(
             ratings=[float(r) for r in fit.ratings],
         )
         stats.append(stat)
-        print(
-            f"  batch {batch:2d}  games={games:6d}  cumulative={cumulative:7d}  "
-            f"max SE={stat.max_stderr:6.2f}  mean SE={stat.mean_stderr:5.2f}  "
-            f"({elapsed:.1f}s)"
+        line = (
+            f"batch {batch:2d}/{config.max_batches}  games={games:6d}  "
+            f"total={cumulative:7d}  worst SE={stat.max_stderr:6.2f}  "
+            f"mean SE={stat.mean_stderr:5.2f}  ({elapsed:.0f}s)"
         )
-        if worst <= target_stderr:
-            print(f"  converged: every rating within +/-{target_stderr:.1f} of the reference")
+        if progress is not None:
+            progress.done(line)
+        else:
+            print(f"  {line}", flush=True)
+        if worst <= config.target_stderr:
+            message = f"converged: every rating within +/-{config.target_stderr:.1f} of reference"
+            progress.done(message) if progress else print(f"  {message}")
             break
     else:
-        print(f"  budget exhausted at {max_batches} batches before reaching the target")
+        message = (
+            f"budget exhausted at {config.max_batches} batches; worst rating is still "
+            f"+/-{stats[-1].max_stderr:.1f} against a +/-{config.target_stderr:.1f} target"
+        )
+        progress.done(message) if progress else print(f"  {message}")
     return fit, stats, reference
 
 
 def calibrate_live_curve(
-    history: list[dict], ratings: dict[str, float]
+    history: list[dict], ratings: dict[str, float], tie_mode: str = "decisive"
 ) -> list[dict]:
     """Recover the live and averaged policies' ratings, update by update.
 
@@ -409,12 +505,13 @@ def calibrate_live_curve(
     for record in history:
         counts = record.get("counts") or {}
         opponents, wins, losses = [], [], []
-        for label, (win, loss, _tie) in counts.items():
+        for label, (win, loss, tie) in counts.items():
             if label in _NON_STATIONARY or label not in ratings:
                 continue
+            share = 0.0 if tie_mode == "decisive" else 0.5 * tie
             opponents.append(ratings[label])
-            wins.append(win)
-            losses.append(loss)
+            wins.append(win + share)
+            losses.append(loss + share)
         if not opponents:
             continue
         live, live_stderr = fit_single_rating(
@@ -431,9 +528,12 @@ def calibrate_live_curve(
         avg_counts = counts.get("avg")
         if avg_counts is not None and np.isfinite(live):
             # Stored from the live policy's perspective, so invert for the avg.
-            live_win, live_loss, _ = avg_counts
+            live_win, live_loss, live_tie = avg_counts
+            share = 0.0 if tie_mode == "decisive" else 0.5 * live_tie
             avg, avg_stderr = fit_single_rating(
-                np.array([live]), np.array([float(live_loss)]), np.array([float(live_win)])
+                np.array([live]),
+                np.array([float(live_loss) + share]),
+                np.array([float(live_win) + share]),
             )
             point["avg_training"] = record["avg"]
             point["avg_calibrated"] = avg
@@ -507,16 +607,16 @@ def run_elo_calibrate_mode(
     run_spec: str,
     ship_config: ShipConfig,
     device: str,
+    config: EloCalibrateConfig,
     checkpoint_dir: str = "checkpoints",
-    num_envs: int = 4096,
-    target_stderr: float = 10.0,
-    max_batches: int = 12,
-    prior_games: float = 1.0,
     plot: bool = True,
 ) -> dict:
     """Re-rate a finished run and write calibrated ratings, curve, and plots."""
     from boost_and_broadside.modes.elo_stats import find_run_dir
 
+    progress = Progress()
+    num_envs = config.num_envs
+    prior_games = config.prior_games
     run_dir = find_run_dir(run_spec, checkpoint_dir)
     roster_path = run_dir / "roster.json"
     history_path = run_dir / "elo_history.jsonl"
@@ -531,19 +631,21 @@ def run_elo_calibrate_mode(
         f"max_episode_steps={env_config.max_episode_steps}"
     )
 
+    ladder_count = sum(1 for e in roster["entries"] if e["kind"] == "checkpoint")
+    progress.stage(f"loading {ladder_count} ladder snapshots...")
     players = build_players(
         run_dir, roster, model_config, ship_config, env_config.num_ships, device
     )
-    print(f"  field: {', '.join(p.label for p in players)}")
+    progress.done(f"field ({len(players)}): {', '.join(p.label for p in players)}")
     anchor = next(i for i, p in enumerate(players) if p.label == "random")
 
-    tournament = Tournament(
-        players, ship_config, env_config, paradigm, num_envs, device
+    tournament = Tournament(players, ship_config, env_config, paradigm, num_envs, device)
+    pairs = len(players) * (len(players) - 1) // 2
+    progress.stage(
+        f"{num_envs} games/batch over {pairs} pairs, target +/-{config.target_stderr:.0f} ELO, "
+        f"max {config.max_batches} batches"
     )
-    print(f"  {num_envs} envs/batch, target +/-{target_stderr:.0f} ELO, max {max_batches} batches")
-    fit, stats, reference = run_tournament(
-        tournament, anchor, target_stderr, max_batches, prior_games
-    )
+    fit, stats, reference = run_tournament(tournament, anchor, config, progress)
 
     # Report on the familiar scale (random = 0) while keeping the errors from the
     # gauge that is actually resolved. The shift is a constant: it moves every
@@ -553,11 +655,33 @@ def run_elo_calibrate_mode(
     ratings = {player.label: float(shifted[i]) for i, player in enumerate(players)}
     stderrs = {player.label: float(fit.stderr[i]) for i, player in enumerate(players)}
 
+    # Refit the same match counts under the half-win convention. No extra play is
+    # needed, and it separates a genuine rating disagreement from a difference in
+    # how the two scales treat draws — which is most of the gap against the
+    # in-training curve, since that filter scores a draw as half a win.
+    half_fit = fit_bradley_terry(
+        effective_wins(tournament.wins, tournament.ties, "half_win"),
+        anchor=reference,
+        prior_games=prior_games,
+    )
+    half_shifted = half_fit.ratings - half_fit.ratings[anchor]
+    half_ratings = {player.label: float(half_shifted[i]) for i, player in enumerate(players)}
+
     history = []
     if history_path.exists():
         history = [json.loads(line) for line in history_path.read_text().splitlines() if line]
-    curve = calibrate_live_curve(history, ratings)
-    print(f"  calibrated {len(curve)} live-curve points from {len(history)} update records")
+    progress.stage(f"refitting {len(history)} update records under both draw conventions...")
+    curve = calibrate_live_curve(history, ratings, "decisive")
+    half_curve = {
+        point["update"]: point
+        for point in calibrate_live_curve(history, half_ratings, "half_win")
+    }
+    for point in curve:
+        other = half_curve.get(point["update"])
+        if other is not None:
+            point["live_calibrated_half_win"] = other["live_calibrated"]
+            point["live_stderr_half_win"] = other["live_stderr"]
+    progress.done(f"calibrated {len(curve)} live-curve points")
 
     result = {
         "run": run_dir.name,
@@ -566,18 +690,26 @@ def run_elo_calibrate_mode(
                 "label": player.label,
                 "training_elo": player.training_elo,
                 "calibrated_elo": ratings[player.label],
+                "calibrated_elo_half_win": half_ratings[player.label],
                 "stderr": stderrs[player.label],
+                "stderr_half_win": float(half_fit.stderr[index]),
                 "global_step": player.global_step,
                 "games": float(fit.games[index]),
             }
             for index, player in enumerate(players)
         ],
+        # The raw tally is the expensive artifact — everything else is a refit of
+        # it. Persisting it means a new draw convention or estimator can be tried
+        # without replaying a single match.
+        "player_labels": [player.label for player in players],
+        "wins_matrix": tournament.wins.tolist(),
+        "ties_matrix": tournament.ties.tolist(),
         "curve": curve,
         "batches": [vars(stat) for stat in stats],
         "tie_rates": tie_rate_table(tournament, shifted),
         "training_tie_rates": training_tie_rates(history, curve, ratings),
-        "converged": bool(stats[-1].max_stderr <= target_stderr) if stats else False,
-        "target_stderr": target_stderr,
+        "converged": bool(stats[-1].max_stderr <= config.target_stderr) if stats else False,
+        "target_stderr": config.target_stderr,
         "reference": players[reference].label,
         # Every reported rating is measured relative to the reference and then
         # shifted so random reads 0. That shift is itself uncertain by this much,
@@ -586,14 +718,17 @@ def run_elo_calibrate_mode(
     }
     output = run_dir / "elo_calibrated.json"
     output.write_text(json.dumps(result, indent=2))
-    print(f"  wrote {output}")
+    progress.done(f"wrote {output}")
 
     _print_summary(result)
     if plot:
         from boost_and_broadside.modes.elo_calibrate_plots import write_plots
 
-        for path in write_plots(result, run_dir):
-            print(f"  wrote {path}")
+        progress.stage("rendering plots...")
+        written = write_plots(result, run_dir)
+        progress.done(f"wrote {len(written)} plots to {run_dir / 'elo_calibration'}")
+        for path in written:
+            print(f"    {path.name}")
     return result
 
 
@@ -609,6 +744,16 @@ def _print_summary(result: dict) -> None:
         print(
             f"  {player['label']:<20} {training_text} {calibrated:12.1f} "
             f"{player['stderr']:7.1f} {drift}"
+        )
+    print(f"\n  {'agent':<20} {'calibrated':>12} {'ties = 1/2 win':>15} {'convention':>12}")
+    print(f"  {'-' * 62}")
+    for player in result["players"]:
+        half = player.get("calibrated_elo_half_win")
+        if half is None:
+            continue
+        print(
+            f"  {player['label']:<20} {player['calibrated_elo']:12.1f} {half:15.1f} "
+            f"{player['calibrated_elo'] - half:+12.1f}"
         )
     print(
         f"\n  Errors are relative to '{result['reference']}'. Shifting the scale so random "
