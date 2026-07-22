@@ -51,6 +51,10 @@ class EloCalibrateConfig:
     # modes/elo_calibrate.py. Both are always fit and reported; this selects
     # which one drives allocation, the gauge, and the convergence test.
     tie_mode: str = "half_win"
+    # Render the charts built on the secondary draw convention. Both conventions
+    # are always fit and written to JSON; this only controls the extra plots,
+    # which are a diagnostic rather than a result.
+    plot_decisive: bool = False
     # Virtual decisive games per player, split for and against the anchor.
     # Keeps a player that never loses from having an infinite rating.
     prior_games: float = 1.0

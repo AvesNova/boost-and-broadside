@@ -763,7 +763,7 @@ def run_elo_calibrate_mode(
         from boost_and_broadside.modes.elo_calibrate_plots import write_plots
 
         progress.stage("rendering plots...")
-        written = write_plots(result, run_dir)
+        written = write_plots(result, run_dir, plot_decisive=config.plot_decisive)
         progress.done(f"wrote {len(written)} plots to {run_dir / 'elo_calibration'}")
         for path in written:
             print(f"    {path.name}")
