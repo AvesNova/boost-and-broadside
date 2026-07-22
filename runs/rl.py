@@ -33,7 +33,7 @@ _NUM_SHIPS = 8
 _NUM_OBSTACLES = 0
 _NUM_STEPS = 128
 _NUM_MINIBATCHES = 32
-_MICROBATCH_TOKENS = _MAX_TOKENS // _NUM_MINIBATCHES // 4
+_MICROBATCH_TOKENS = _MAX_TOKENS // _NUM_MINIBATCHES // 5
 
 RL_SCHEDULE = TrainingSchedule(
     learning_rate=join(
@@ -92,7 +92,7 @@ RL_TRAIN_CONFIG = TrainConfig(
     component_lambdas=COMPONENT_LAMBDAS,
     clip_coef=0.15,
     max_grad_norm=1.0,
-    total_timesteps=500_000_000,
+    total_timesteps=1_000_000_000,
     return_ema_alpha=0.005,
     return_min_span=1.0,
     checkpoint_dir="checkpoints",
