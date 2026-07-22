@@ -55,8 +55,22 @@ def _style_axes(axes, title: str = "", subtitle: str = "") -> None:
         )
 
 
+# A rating this uncertain is not a measurement — a +/-150 band spans a quarter of
+# the whole ladder. These arise early, when the live policy has completed only a
+# game or two against an opponent it can actually contest: the fit is real but
+# rests on almost nothing, and plotting it puts a wild outlier at the left edge
+# that stretches the axis and reads as if the run started far from the anchor.
+# Such points stay in the JSON with their error, and are simply not drawn.
+_MAX_PLOT_STDERR = 150.0
+
+
 def _finite(curve: list[dict], key: str) -> np.ndarray:
     return np.array([point.get(key, float("nan")) for point in curve], dtype=float)
+
+
+def _measured(values: np.ndarray, stderr: np.ndarray) -> np.ndarray:
+    """Mask of points precise enough to plot as a measurement."""
+    return np.isfinite(values) & np.isfinite(stderr) & (stderr <= _MAX_PLOT_STDERR)
 
 
 def _label_series_ends(axes, entries: list[tuple[float, float, str, str]]) -> None:
@@ -124,7 +138,7 @@ def plot_live_curve(result: dict, path: Path) -> Path:
     training = _finite(curve, "live_training")
     calibrated = _finite(curve, "live_calibrated")
     stderr = _finite(curve, "live_stderr")
-    good = np.isfinite(calibrated) & np.isfinite(stderr)
+    good = _measured(calibrated, stderr)
 
     figure = _new_figure((11.0, 7.2))
     grid = figure.add_gridspec(2, 1, height_ratios=[3, 1], hspace=0.28)
@@ -193,15 +207,26 @@ def plot_tie_conventions(result: dict, path: Path) -> Path:
     if not any("live_calibrated_half_win" in point for point in curve):
         return path
     steps = _finite(curve, "global_step") / 1e6
+    # The in-training curve has no standard error of its own — it is the filter's
+    # running state, defined at every update — so it is drawn unfiltered.
+    always = np.isfinite(_finite(curve, "live_training"))
     series = (
-        (_finite(curve, "live_training"), TRAINING, "in-training", "In-training (ties = ½ win)"),
         (
-            _finite(curve, "live_calibrated_half_win"), HALF_WIN,
-            "calibrated, ties = ½", "Calibrated, ties as ½ win",
+            _finite(curve, "live_training"), always,
+            TRAINING, "in-training", "In-training (ties = ½ win)",
         ),
         (
-            _finite(curve, "live_calibrated"), CALIBRATED,
-            "calibrated, decisive", "Calibrated, decisive games only",
+            _finite(curve, "live_calibrated_half_win"),
+            _measured(
+                _finite(curve, "live_calibrated_half_win"),
+                _finite(curve, "live_stderr_half_win"),
+            ),
+            HALF_WIN, "calibrated, ties = ½", "Calibrated, ties as ½ win",
+        ),
+        (
+            _finite(curve, "live_calibrated"),
+            _measured(_finite(curve, "live_calibrated"), _finite(curve, "live_stderr")),
+            CALIBRATED, "calibrated, decisive", "Calibrated, decisive games only",
         ),
     )
 
@@ -215,8 +240,7 @@ def plot_tie_conventions(result: dict, path: Path) -> Path:
     )
     _draw_reference_lines(axes, _reference_lines(result))
     ends = []
-    for values, color, short, label in series:
-        good = np.isfinite(values)
+    for values, good, color, short, label in series:
         axes.plot(steps[good], values[good], color=color, linewidth=2.0, zorder=3, label=label)
         if good.any():
             ends.append((steps[good][-1], values[good][-1], color, short))
@@ -248,7 +272,7 @@ def plot_calibrated_only(result: dict, path: Path, tie_mode: str) -> Path:
     steps = _finite(curve, "global_step") / 1e6
     values = _finite(curve, key)
     stderr = _finite(curve, error_key)
-    good = np.isfinite(values) & np.isfinite(stderr)
+    good = _measured(values, stderr)
     if not good.any():
         return path
 
