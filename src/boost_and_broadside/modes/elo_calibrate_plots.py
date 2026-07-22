@@ -24,7 +24,10 @@ GRID = "#e3e2de"
 # the light surface, so every series it appears with is also direct-labelled.
 TRAINING = "#2a78d6"  # blue
 CALIBRATED = "#008300"  # green
-HALF_WIN = "#e87ba4"  # magenta
+# Slot 3 serves two roles that never share a chart: the secondary draw
+# convention, and the averaged policy where both series are already calibrated
+# and blue would read as "in-training".
+HALF_WIN = AVG = "#e87ba4"  # magenta
 # One-hue shades for the before/after dumbbell.
 SHADE_LIGHT = "#86b6ef"
 SHADE_DARK = "#184f95"
@@ -116,11 +119,16 @@ def _draw_reference_lines(axes, lines: list[tuple[str, float]]) -> None:
     """Draw landmark ratings as recessive dashed rules, labelled in place."""
     for name, value in lines:
         axes.axhline(value, color=INK_MUTED, linewidth=1.2, linestyle=(0, (5, 4)), zorder=2)
+        # A landmark spans the full width, so no anchor position is reliably
+        # clear of the data — a rising curve crosses it at the left, a flat one
+        # runs beside it at the right. The label sits on a surface-coloured
+        # plate instead, which keeps it legible over whatever it lands on.
         axes.annotate(
             f"{name}  {value:.0f}",
             xy=(0.008, value), xycoords=("axes fraction", "data"),
             xytext=(0, 4), textcoords="offset points",
-            color=INK_MUTED, fontsize=9, va="bottom",
+            color=INK_MUTED, fontsize=9, va="bottom", zorder=6,
+            bbox={"facecolor": SURFACE, "edgecolor": "none", "pad": 1.5, "alpha": 0.85},
         )
 
 
@@ -191,6 +199,112 @@ def plot_live_curve(result: dict, path: Path) -> Path:
     lower.fill_between(steps, 0.0, drift, color=INK_SECONDARY, alpha=0.13, linewidth=0, zorder=2)
     lower.set_ylabel("calibrated − in-training", color=INK_SECONDARY, fontsize=9)
     lower.set_xlabel("environment steps (millions)", color=INK_SECONDARY, fontsize=10)
+
+    figure.tight_layout()
+    figure.savefig(path, facecolor=SURFACE, bbox_inches="tight")
+    plt.close(figure)
+    return path
+
+
+def plot_avg_curve(result: dict, path: Path) -> Path:
+    """The averaged policy's climb, in-training against calibrated.
+
+    The avg model is rated in a second stage: its only opponent is the live
+    policy, which is itself non-stationary, so it can only be placed once the
+    live rating for that same update is known. Its errors are correspondingly
+    wider than the live curve's, and it starts only once avg accumulation
+    switches on.
+    """
+    curve = result["curve"]
+    steps = _finite(curve, "global_step") / 1e6
+    training = _finite(curve, "avg_training")
+    calibrated = _finite(curve, "avg_calibrated")
+    stderr = _finite(curve, "avg_stderr")
+    good = _measured(calibrated, stderr)
+    if not good.any():
+        return path
+
+    figure = _new_figure((11.0, 6.0))
+    axes = figure.add_subplot(111)
+    _style_axes(
+        axes,
+        f"Averaged-policy ELO: in-training vs calibrated  —  {result['run']}",
+        "Rated through the live policy it plays, so its error is the live curve's "
+        "plus its own",
+    )
+    _draw_reference_lines(axes, _reference_lines(result))
+    axes.fill_between(
+        steps[good], calibrated[good] - stderr[good], calibrated[good] + stderr[good],
+        color=CALIBRATED, alpha=0.16, linewidth=0, zorder=3,
+    )
+    ends = []
+    training_good = np.isfinite(training) & (steps >= steps[good].min())
+    axes.plot(
+        steps[training_good], training[training_good],
+        color=TRAINING, linewidth=2.0, zorder=4, label="In-training",
+    )
+    axes.plot(
+        steps[good], calibrated[good],
+        color=CALIBRATED, linewidth=2.0, zorder=5, label="Calibrated (±1 SE)",
+    )
+    if training_good.any():
+        ends.append((steps[training_good][-1], training[training_good][-1],
+                     TRAINING, "in-training"))
+    ends.append((steps[good][-1], calibrated[good][-1], CALIBRATED, "calibrated"))
+    _label_series_ends(axes, ends)
+    axes.set_xlabel("environment steps (millions)", color=INK_SECONDARY, fontsize=10)
+    axes.set_ylabel("ELO vs random anchor", color=INK_SECONDARY, fontsize=10)
+    axes.legend(frameon=False, labelcolor=INK_SECONDARY, fontsize=10, loc="lower right")
+    axes.margins(x=0.06)
+
+    figure.tight_layout()
+    figure.savefig(path, facecolor=SURFACE, bbox_inches="tight")
+    plt.close(figure)
+    return path
+
+
+def plot_live_and_avg(result: dict, path: Path) -> Path:
+    """Both policies' calibrated climbs on one scale.
+
+    The gap between them is the averaging lag: avg trails the live policy by
+    however long its window takes to catch up, and closing that gap late in a
+    run means the live policy has stopped improving fast enough to outrun it.
+    """
+    curve = result["curve"]
+    steps = _finite(curve, "global_step") / 1e6
+    series = (
+        (_finite(curve, "live_calibrated"), _finite(curve, "live_stderr"),
+         CALIBRATED, "live", "Live policy"),
+        (_finite(curve, "avg_calibrated"), _finite(curve, "avg_stderr"),
+         AVG, "avg", "Averaged policy"),
+    )
+    if not any(_measured(values, error).any() for values, error, *_ in series):
+        return path
+
+    figure = _new_figure((11.0, 6.0))
+    axes = figure.add_subplot(111)
+    _style_axes(
+        axes,
+        f"Calibrated ELO: live vs averaged policy  —  {result['run']}",
+        f"Both refit from their own records ({_TIE_LABEL.get(result.get('tie_mode', ''), '')})",
+    )
+    _draw_reference_lines(axes, _reference_lines(result))
+    ends = []
+    for values, error, color, short, label in series:
+        good = _measured(values, error)
+        if not good.any():
+            continue
+        axes.fill_between(
+            steps[good], values[good] - error[good], values[good] + error[good],
+            color=color, alpha=0.15, linewidth=0, zorder=3,
+        )
+        axes.plot(steps[good], values[good], color=color, linewidth=2.0, zorder=4, label=label)
+        ends.append((steps[good][-1], values[good][-1], color, short))
+    _label_series_ends(axes, ends)
+    axes.set_xlabel("environment steps (millions)", color=INK_SECONDARY, fontsize=10)
+    axes.set_ylabel("ELO vs random anchor", color=INK_SECONDARY, fontsize=10)
+    axes.legend(frameon=False, labelcolor=INK_SECONDARY, fontsize=10, loc="lower right")
+    axes.margins(x=0.06)
 
     figure.tight_layout()
     figure.savefig(path, facecolor=SURFACE, bbox_inches="tight")
@@ -472,20 +586,35 @@ def plot_tie_rates(result: dict, path: Path) -> Path:
     return path
 
 
-def write_plots(result: dict, run_dir: Path) -> list[Path]:
-    """Render every calibration plot into the run directory."""
+def write_plots(result: dict, run_dir: Path, plot_decisive: bool = False) -> list[Path]:
+    """Render the calibration plots into the run directory.
+
+    The secondary draw convention's charts are off by default. Both conventions
+    are still fit and written to JSON — they are a diagnostic for draw farming,
+    not a result, and rendering them alongside the primary curve invites reading
+    two different scales as though they disagreed about the same quantity.
+    """
     output = run_dir / "elo_calibration"
     output.mkdir(parents=True, exist_ok=True)
     written = []
+    primary = result.get("tie_mode", "half_win")
     renders = [
         ("live_curve.png", plot_live_curve),
-        ("calibrated_half_win.png", partial(plot_calibrated_only, tie_mode="half_win")),
-        ("calibrated_decisive.png", partial(plot_calibrated_only, tie_mode="decisive")),
-        ("tie_conventions.png", plot_tie_conventions),
+        ("avg_curve.png", plot_avg_curve),
+        ("live_and_avg.png", plot_live_and_avg),
+        (f"calibrated_{primary}.png", partial(plot_calibrated_only, tie_mode=primary)),
         ("checkpoint_ratings.png", plot_checkpoint_ratings),
         ("convergence.png", plot_convergence),
         ("tie_rates.png", plot_tie_rates),
     ]
+    if plot_decisive:
+        alt = result.get("tie_mode_alt", "decisive")
+        renders.extend(
+            [
+                (f"calibrated_{alt}.png", partial(plot_calibrated_only, tie_mode=alt)),
+                ("tie_conventions.png", plot_tie_conventions),
+            ]
+        )
     for name, render in renders:
         path = render(result, output / name)
         if path.exists():

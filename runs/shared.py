@@ -38,11 +38,13 @@ ELO_EVAL = EloEvalConfig(
 # Post-training calibration (`--mode elo_calibrate`). Runs once after a run
 # finishes, so this budget costs nothing during training.
 #
-# Measured on vague-lion-678 (7-player field): 4096 envs takes ~2 min per batch
-# and reached +/-9.7 ELO after 8 batches / 32,768 games. Precision goes as
-# 1/sqrt(games), so +/-5 costs roughly four times that.
+# Measured on vague-lion-678 (7-player field): 4096 envs took ~2 min per batch
+# and reached +/-9.7 ELO after 8 batches. At 16384 a batch carries four times the
+# games, so the target should fall inside the first two or three; max_batches is
+# left generous as a cap rather than an expectation. Precision goes as
+# 1/sqrt(games), so halving target_stderr costs roughly four times the games.
 ELO_CALIBRATE = EloCalibrateConfig(
-    num_envs=4096,
+    num_envs=16384,
     target_stderr=10.0,
     max_batches=12,
     prior_games=1.0,
