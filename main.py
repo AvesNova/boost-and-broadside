@@ -25,6 +25,8 @@ Evaluation:
     uv run --no-sync main.py --mode feature_stats               # label-scale calibration stats
     uv run --no-sync main.py --mode elo_stats                   # ELO across scripted agents
     uv run --no-sync main.py --mode elo_stats --run latest      # + checkpoints from latest run
+    uv run --no-sync main.py --mode elo_calibrate --run latest  # post-hoc calibrated ELO + plots
+    uv run --no-sync main.py --mode elo_calibrate --run vague-lion-678 --target-stderr 5
     uv run --no-sync main.py --mode ar_report                   # autoregressive prediction report
     uv run --no-sync main.py --mode noise_calibration           # NextStateHead error statistics
 
@@ -55,6 +57,7 @@ from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAge
 from boost_and_broadside.config import EnvConfig, TrainConfig
 from boost_and_broadside.modes.ar_report import run_ar_report_mode
 from boost_and_broadside.modes.collect import run_collect_stats_mode
+from boost_and_broadside.modes.elo_calibrate import run_elo_calibrate_mode
 from boost_and_broadside.modes.elo_stats import run_elo_stats_mode
 from boost_and_broadside.modes.feature_stats import run_feature_stats_mode
 from boost_and_broadside.modes.interactive import run_watch_mode
@@ -84,6 +87,7 @@ def _parse_args() -> argparse.Namespace:
             "collect_stats",
             "feature_stats",
             "elo_stats",
+            "elo_calibrate",
             "ar_report",
             "noise_calibration",
         ],
@@ -120,8 +124,31 @@ def _parse_args() -> argparse.Namespace:
         type=str,
         default="none",
         metavar="RUN",
-        help="Run name for elo_stats mode (e.g. 'bright-cloud-219'), 'latest', or 'none' "
-        "(scripted agents only, no checkpoints).",
+        help="Run name for elo_stats / elo_calibrate modes (e.g. 'bright-cloud-219'), "
+        "'latest', or 'none' (scripted agents only, no checkpoints).",
+    )
+    parser.add_argument(
+        "--target-stderr",
+        type=float,
+        default=10.0,
+        metavar="ELO",
+        help="(elo_calibrate) Stop once every rating is pinned to within this standard "
+        "error, in ELO points. Default 10.",
+    )
+    parser.add_argument(
+        "--max-batches",
+        type=int,
+        default=12,
+        metavar="N",
+        help="(elo_calibrate) Cap on adaptive tournament batches, so an unreachable "
+        "target cannot run forever. Default 12.",
+    )
+    parser.add_argument(
+        "--no-plots",
+        dest="plots",
+        action="store_false",
+        default=True,
+        help="(elo_calibrate) Skip PNG rendering and write only elo_calibrated.json.",
     )
     parser.add_argument(
         "--compile",
@@ -386,6 +413,18 @@ def main() -> None:
                 elo_k_factor=32.0,
                 matchups=args.matchups,
                 custom_agents=args.agents,
+            )
+
+        case "elo_calibrate":
+            run_elo_calibrate_mode(
+                run_spec=args.run if args.run != "none" else "latest",
+                ship_config=SHIP_CONFIG,
+                device=device,
+                checkpoint_dir="checkpoints",
+                num_envs=1024 * 4,
+                target_stderr=args.target_stderr,
+                max_batches=args.max_batches,
+                plot=args.plots,
             )
 
         case "ar_report":

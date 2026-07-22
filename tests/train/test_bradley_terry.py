@@ -172,6 +172,21 @@ class TestSingleRating:
         assert fit_single_rating(opponents, np.array([10.0, 10.0]), np.zeros(2))[0] == float("inf")
         assert fit_single_rating(opponents, np.zeros(2), np.array([10.0, 10.0]))[0] == -float("inf")
 
+    def test_lopsided_records_stay_bounded(self):
+        """A near-sweep implies a high rating, not an astronomical one. Newton
+        diverges here — curvature underflows while the gradient stays finite —
+        and produced ~1e144 on real early-training records against random."""
+        rating, _ = fit_single_rating(np.array([0.0]), np.array([4_999.0]), np.array([1.0]))
+        assert np.isfinite(rating)
+        assert 1_000.0 < rating < 4_000.0
+
+    def test_a_record_beyond_the_bracket_is_unbounded(self):
+        rating, stderr = fit_single_rating(
+            np.array([0.0]), np.array([1e9]), np.array([1.0]), bracket=200.0
+        )
+        assert rating == float("inf")
+        assert stderr == float("inf")
+
     def test_no_games_is_not_a_rating(self):
         rating, stderr = fit_single_rating(np.array([0.0]), np.array([0.0]), np.array([0.0]))
         assert np.isnan(rating)
