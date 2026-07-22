@@ -6,6 +6,7 @@ carries more than two categorical series. Every series is direct-labelled as
 well as legended, so identity never rests on colour alone.
 """
 
+from functools import partial
 from pathlib import Path
 
 import matplotlib
@@ -19,9 +20,11 @@ INK = "#0b0b0b"
 INK_SECONDARY = "#52514e"
 INK_MUTED = "#83817a"
 GRID = "#e3e2de"
-# Categorical slots 1 and 2, in fixed palette order.
+# Categorical slots 1-3, in fixed palette order. Slot 3 sits below 3:1 against
+# the light surface, so every series it appears with is also direct-labelled.
 TRAINING = "#2a78d6"  # blue
 CALIBRATED = "#008300"  # green
+HALF_WIN = "#e87ba4"  # magenta
 # One-hue shades for the before/after dumbbell.
 SHADE_LIGHT = "#86b6ef"
 SHADE_DARK = "#184f95"
@@ -56,6 +59,54 @@ def _finite(curve: list[dict], key: str) -> np.ndarray:
     return np.array([point.get(key, float("nan")) for point in curve], dtype=float)
 
 
+def _label_series_ends(axes, entries: list[tuple[float, float, str, str]]) -> None:
+    """Direct-label each series past its right end, nudging apart any that collide.
+
+    Curves that converge — which is the interesting case here, since the whole
+    point is comparing scales that should agree — would otherwise stack their
+    labels on one another and render both unreadable. Call after all series are
+    drawn so the y-limits are settled.
+    """
+    if not entries:
+        return
+    low, high = axes.get_ylim()
+    minimum = 0.042 * (high - low or 1.0)
+    placed: list[float] = []
+    for x, y, color, text in sorted(entries, key=lambda entry: entry[1]):
+        target = y if not placed else max(y, placed[-1] + minimum)
+        placed.append(target)
+        axes.annotate(
+            text, (x, target), xytext=(7, 0), textcoords="offset points",
+            color=color, fontsize=9.5, va="center", fontweight="medium",
+        )
+
+
+def _reference_lines(result: dict, key: str = "calibrated_elo") -> list[tuple[str, float]]:
+    """Fixed opponents worth drawing as a rule across a curve.
+
+    The scripted agent is the one rating on the ladder with meaning outside this
+    run — it is the same opponent in every run — so it doubles as the landmark
+    for reading where a policy actually got to.
+    """
+    lines = []
+    for player in result.get("players", []):
+        if player["label"] == "scripted" and np.isfinite(player.get(key, float("nan"))):
+            lines.append(("scripted agent", float(player[key])))
+    return lines
+
+
+def _draw_reference_lines(axes, lines: list[tuple[str, float]]) -> None:
+    """Draw landmark ratings as recessive dashed rules, labelled in place."""
+    for name, value in lines:
+        axes.axhline(value, color=INK_MUTED, linewidth=1.2, linestyle=(0, (5, 4)), zorder=2)
+        axes.annotate(
+            f"{name}  {value:.0f}",
+            xy=(0.008, value), xycoords=("axes fraction", "data"),
+            xytext=(0, 4), textcoords="offset points",
+            color=INK_MUTED, fontsize=9, va="bottom",
+        )
+
+
 def _new_figure(size=(11.0, 6.0)):
     figure = plt.figure(figsize=size, dpi=160, facecolor=SURFACE)
     return figure
@@ -86,6 +137,7 @@ def plot_live_curve(result: dict, path: Path) -> Path:
         "Each update's rating refit from its own win/loss record against "
         f"post-hoc measured opponents (reference: {result.get('reference', 'n/a')})",
     )
+    _draw_reference_lines(axes, _reference_lines(result))
     axes.fill_between(
         steps[good],
         calibrated[good] - stderr[good],
@@ -98,18 +150,15 @@ def plot_live_curve(result: dict, path: Path) -> Path:
     axes.set_ylabel("ELO vs random anchor", color=INK_SECONDARY, fontsize=10)
     axes.legend(frameon=False, labelcolor=INK_SECONDARY, fontsize=10, loc="lower right")
     # Direct labels at the right edge, so identity survives without the legend.
+    ends = []
     for values, color, name in (
         (training, TRAINING, "in-training"),
         (np.where(good, calibrated, np.nan), CALIBRATED, "calibrated"),
     ):
         finite = np.isfinite(values)
         if finite.any():
-            axes.annotate(
-                name,
-                (steps[finite][-1], values[finite][-1]),
-                xytext=(6, 0), textcoords="offset points",
-                color=color, fontsize=9.5, va="center", fontweight="medium",
-            )
+            ends.append((steps[finite][-1], values[finite][-1], color, name))
+    _label_series_ends(axes, ends)
 
     axes.tick_params(labelbottom=False)  # x is labelled once, on the lower panel
 
@@ -125,6 +174,105 @@ def plot_live_curve(result: dict, path: Path) -> Path:
     lower.fill_between(steps, 0.0, drift, color=INK_SECONDARY, alpha=0.13, linewidth=0, zorder=2)
     lower.set_ylabel("calibrated − in-training", color=INK_SECONDARY, fontsize=9)
     lower.set_xlabel("environment steps (millions)", color=INK_SECONDARY, fontsize=10)
+
+    figure.tight_layout()
+    figure.savefig(path, facecolor=SURFACE, bbox_inches="tight")
+    plt.close(figure)
+    return path
+
+
+def plot_tie_conventions(result: dict, path: Path) -> Path:
+    """The same records rated under both draw conventions, against the run's own curve.
+
+    The in-training filter scores a draw as half a win, so the half-win refit is
+    the like-for-like comparison: whatever still separates it from the run's own
+    curve is genuine estimator error rather than a difference of scale. The
+    decisive-only curve is shown alongside to size what the convention is worth.
+    """
+    curve = result["curve"]
+    if not any("live_calibrated_half_win" in point for point in curve):
+        return path
+    steps = _finite(curve, "global_step") / 1e6
+    series = (
+        (_finite(curve, "live_training"), TRAINING, "in-training", "In-training (ties = ½ win)"),
+        (
+            _finite(curve, "live_calibrated_half_win"), HALF_WIN,
+            "calibrated, ties = ½", "Calibrated, ties as ½ win",
+        ),
+        (
+            _finite(curve, "live_calibrated"), CALIBRATED,
+            "calibrated, decisive", "Calibrated, decisive games only",
+        ),
+    )
+
+    figure = _new_figure((11.0, 6.4))
+    axes = figure.add_subplot(111)
+    _style_axes(
+        axes,
+        f"Calibrated ELO under both draw conventions  —  {result['run']}",
+        "Ties as half a win puts the calibrated curve on the same scale the run "
+        "itself used; dropping them rescales the anchor",
+    )
+    _draw_reference_lines(axes, _reference_lines(result))
+    ends = []
+    for values, color, short, label in series:
+        good = np.isfinite(values)
+        axes.plot(steps[good], values[good], color=color, linewidth=2.0, zorder=3, label=label)
+        if good.any():
+            ends.append((steps[good][-1], values[good][-1], color, short))
+    _label_series_ends(axes, ends)
+    axes.set_xlabel("environment steps (millions)", color=INK_SECONDARY, fontsize=10)
+    axes.set_ylabel("ELO vs random anchor", color=INK_SECONDARY, fontsize=10)
+    axes.legend(frameon=False, labelcolor=INK_SECONDARY, fontsize=10, loc="lower right")
+    axes.margins(x=0.1)
+
+    figure.tight_layout()
+    figure.savefig(path, facecolor=SURFACE, bbox_inches="tight")
+    plt.close(figure)
+    return path
+
+
+def plot_calibrated_only(result: dict, path: Path, tie_mode: str) -> Path:
+    """The calibrated curve on its own, with no in-training line to compare to.
+
+    One series, so no legend — the title names it. Useful when the calibrated
+    rating is the answer rather than one side of a comparison; the in-training
+    curve's offset otherwise compresses the y-range and hides the shape.
+    """
+    decisive = tie_mode == "decisive"
+    key = "live_calibrated" if decisive else "live_calibrated_half_win"
+    error_key = "live_stderr" if decisive else "live_stderr_half_win"
+    curve = result["curve"]
+    if not any(key in point for point in curve):
+        return path
+    steps = _finite(curve, "global_step") / 1e6
+    values = _finite(curve, key)
+    stderr = _finite(curve, error_key)
+    good = np.isfinite(values) & np.isfinite(stderr)
+    if not good.any():
+        return path
+
+    figure = _new_figure((11.0, 6.0))
+    axes = figure.add_subplot(111)
+    _style_axes(
+        axes,
+        f"Calibrated ELO — {'decisive games only' if decisive else 'ties as ½ win'}"
+        f"  —  {result['run']}",
+        f"Refit from each update's own record; shaded band is ±1 SE "
+        f"(ratings pinned to ±{result['target_stderr']:.0f} against "
+        f"{result.get('reference', 'the reference')})",
+    )
+    reference_key = "calibrated_elo" if decisive else "calibrated_elo_half_win"
+    _draw_reference_lines(axes, _reference_lines(result, reference_key))
+    color = CALIBRATED if decisive else HALF_WIN
+    axes.fill_between(
+        steps[good], values[good] - stderr[good], values[good] + stderr[good],
+        color=color, alpha=0.18, linewidth=0, zorder=3,
+    )
+    axes.plot(steps[good], values[good], color=color, linewidth=2.0, zorder=4)
+    axes.set_xlabel("environment steps (millions)", color=INK_SECONDARY, fontsize=10)
+    axes.set_ylabel("ELO vs random anchor", color=INK_SECONDARY, fontsize=10)
+    axes.margins(x=0.02)
 
     figure.tight_layout()
     figure.savefig(path, facecolor=SURFACE, bbox_inches="tight")
@@ -295,12 +443,16 @@ def write_plots(result: dict, run_dir: Path) -> list[Path]:
     output = run_dir / "elo_calibration"
     output.mkdir(parents=True, exist_ok=True)
     written = []
-    for name, render in (
+    renders = [
         ("live_curve.png", plot_live_curve),
+        ("calibrated_decisive.png", partial(plot_calibrated_only, tie_mode="decisive")),
+        ("calibrated_half_win.png", partial(plot_calibrated_only, tie_mode="half_win")),
+        ("tie_conventions.png", plot_tie_conventions),
         ("checkpoint_ratings.png", plot_checkpoint_ratings),
         ("convergence.png", plot_convergence),
         ("tie_rates.png", plot_tie_rates),
-    ):
+    ]
+    for name, render in renders:
         path = render(result, output / name)
         if path.exists():
             written.append(path)

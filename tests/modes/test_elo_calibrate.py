@@ -65,6 +65,31 @@ class TestCalibrateLiveCurve:
         with_ties = calibrate_live_curve([_record(1, 10, {"random": [800, 200, 500]})], ratings)
         assert without[0]["live_calibrated"] == pytest.approx(with_ties[0]["live_calibrated"])
 
+    def test_half_win_mode_counts_draws_as_half(self):
+        """Under the half-win convention a drawn game is half a win and half a
+        loss, so a record of pure draws sits level with its opponent."""
+        curve = calibrate_live_curve(
+            [_record(1, 10, {"random": [0, 0, 400]})], {"random": 0.0}, tie_mode="half_win"
+        )
+        assert curve[0]["live_calibrated"] == pytest.approx(0.0, abs=1.0)
+
+    def test_half_win_and_decisive_disagree_exactly_where_draws_are(self):
+        """A tie-free record is identical under both conventions; adding draws
+        pulls the half-win rating toward the opponent and leaves the other put."""
+        ratings = {"random": 0.0}
+        clean = {"random": [900, 100, 0]}
+        drawn = {"random": [900, 100, 1000]}
+        decisive_clean = calibrate_live_curve([_record(1, 10, clean)], ratings)[0]
+        decisive_drawn = calibrate_live_curve([_record(1, 10, drawn)], ratings)[0]
+        half_clean = calibrate_live_curve([_record(1, 10, clean)], ratings, "half_win")[0]
+        half_drawn = calibrate_live_curve([_record(1, 10, drawn)], ratings, "half_win")[0]
+
+        assert decisive_clean["live_calibrated"] == pytest.approx(
+            decisive_drawn["live_calibrated"]
+        )
+        assert half_clean["live_calibrated"] == pytest.approx(decisive_clean["live_calibrated"])
+        assert 0.0 < half_drawn["live_calibrated"] < half_clean["live_calibrated"]
+
     def test_a_clean_sweep_is_reported_as_unbounded(self):
         curve = calibrate_live_curve([_record(1, 10, {"random": [100, 0, 0]})], {"random": 0.0})
         assert not np.isfinite(curve[0]["live_calibrated"])
