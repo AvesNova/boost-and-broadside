@@ -60,11 +60,31 @@ from boost_and_broadside.train.rl.bradley_terry import (
 _NON_STATIONARY = frozenset({"avg"})
 
 # How draws enter the likelihood.
-#   "decisive" — draws dropped; the rating answers "who wins, given a winner".
-#   "half_win" — draws split evenly, the convention the in-training K-factor
-#                filter uses, kept so the two can be compared on one scale.
+#
+#   "half_win" — a draw is half a win to each side. The default, and the
+#                convention Elo has always used. It treats drawing as evidence
+#                of parity, which is the whole content of a draw: tying every
+#                game against a 3600-rated opponent implies a rating of 3600.
+#   "decisive" — draws dropped; the rating answers the narrower question "who
+#                wins, given that somebody wins".
+#
+# Note that neither introduces a draw *parameter*. Davidson and Rao-Kupper do,
+# and both are scale-invariant in the strengths, so they can only express draw
+# frequency as a function of the rating gap — which measurement here contradicts,
+# since draws track the absolute level of a matchup instead. That rules those two
+# models out; it says nothing against half-win scoring, which models no draw
+# process at all and simply fits the expected score.
+#
+# Dropping draws is the costly option in this game. Against the random anchor the
+# live policy's whole-run record is 2794W/10L/1120T: decisive-only extracts a
+# Fisher information of 10 from it, half-win extracts 487 — a 49x difference,
+# because a 99.6% win rate sits where p(1-p) has almost nothing left to give.
+# "decisive" is kept as a diagnostic rather than a default: it is the check for a
+# policy farming draws, which would earn parity under half-win scoring without
+# ever having to win. A large disagreement between the two is that signature.
+#
 # Both are fit from the same match counts, so carrying both costs no extra play.
-TIE_MODES = ("decisive", "half_win")
+TIE_MODES = ("half_win", "decisive")
 
 
 def effective_wins(wins: np.ndarray, ties: np.ndarray, tie_mode: str) -> np.ndarray:
@@ -243,9 +263,18 @@ class Tournament:
         self.wins = np.zeros((self.size, self.size), dtype=np.float64)
         self.ties = np.zeros((self.size, self.size), dtype=np.float64)
 
-    def pair_games(self) -> np.ndarray:
-        """Symmetric decisive-game counts per pair."""
-        return self.wins + self.wins.T
+    def scored_wins(self, tie_mode: str) -> np.ndarray:
+        """Win counts as the given draw convention scores them."""
+        return effective_wins(self.wins, self.ties, tie_mode)
+
+    def pair_games(self, tie_mode: str = "half_win") -> np.ndarray:
+        """Symmetric per-pair game counts under the given convention.
+
+        Under half-win scoring a drawn game still counts as a game played, so it
+        contributes information; under decisive-only it does not exist at all.
+        """
+        scored = self.scored_wins(tie_mode)
+        return scored + scored.T
 
     def _assign(self, allocation: np.ndarray) -> tuple[torch.Tensor, torch.Tensor]:
         """Expand a per-pair game allocation into per-env team assignments.
@@ -395,21 +424,26 @@ class Tournament:
             self.wins += counts.reshape(self.size, self.size).cpu().numpy().astype(np.float64)
 
 
-def choose_reference(tournament: Tournament, ratings: np.ndarray, random_index: int) -> int:
+def choose_reference(
+    tournament: Tournament, ratings: np.ndarray, random_index: int, tie_mode: str
+) -> int:
     """Pick the player to measure everything else against.
 
-    Not the random anchor. Random's games are all either draws (28% of them,
-    against similarly hopeless opponents) or foregone conclusions (99.6% decisive
-    losses to anything trained), and both carry almost no information about where
-    it sits: pinning a rating to +/-10 through that link would take on the order
-    of 80,000 games. Measuring in a gauge the tournament cannot resolve would put
-    that irreducible uncertainty into every rating at once, hiding the fact that
-    the ladder's internal spacing is known far better than its absolute height.
+    Standard errors are only meaningful relative to some player, and picking a
+    badly-connected one loads its own uncertainty onto every other rating at
+    once. The most information-dense player is chosen so the reported errors
+    describe what the tournament actually determines.
 
-    The most information-dense player is chosen instead, so reported standard
-    errors describe what the tournament actually determines.
+    Under half-win scoring the random anchor is usually a perfectly serviceable
+    gauge, since draws against it are informative. Under decisive-only it is not
+    — its games are then either dropped as draws or foregone conclusions, and
+    pinning anything through that link would take on the order of 80,000 games.
+    The anchor is excluded from the choice either way: it is the reported zero,
+    so measuring it against itself would say nothing.
     """
-    information = np.diag(fisher_information(tournament.pair_games(), ratings)).copy()
+    information = np.diag(
+        fisher_information(tournament.pair_games(tie_mode), ratings)
+    ).copy()
     information[random_index] = -1.0
     return int(np.argmax(information))
 
@@ -429,6 +463,7 @@ def run_tournament(
     stats: list[BatchStat] = []
     size = tournament.size
     prior_games = config.prior_games
+    tie_mode = config.tie_mode
     reference = random_index
     fit = fit_bradley_terry(np.zeros((size, size)), anchor=reference, prior_games=prior_games)
     cumulative = 0
@@ -441,20 +476,22 @@ def run_tournament(
                 f"episodes   worst SE so far {worst}",
             )
         allocation = allocate_games(
-            tournament.pair_games(), fit.ratings, anchor=reference, budget=tournament.num_envs
+            tournament.pair_games(tie_mode),
+            fit.ratings,
+            anchor=reference,
+            budget=tournament.num_envs,
         )
         started = time.perf_counter()
         games = tournament.play_batch(allocation, progress)
         elapsed = time.perf_counter() - started
         cumulative += games
+        scored = tournament.scored_wins(tie_mode)
         if batch == 1:
-            provisional = fit_bradley_terry(
-                tournament.wins, anchor=random_index, prior_games=prior_games
-            )
-            reference = choose_reference(tournament, provisional.ratings, random_index)
+            provisional = fit_bradley_terry(scored, anchor=random_index, prior_games=prior_games)
+            reference = choose_reference(tournament, provisional.ratings, random_index, tie_mode)
             if progress is not None:
                 progress.done(f"reference gauge: {tournament.players[reference].label}")
-        fit = fit_bradley_terry(tournament.wins, anchor=reference, prior_games=prior_games)
+        fit = fit_bradley_terry(scored, anchor=reference, prior_games=prior_games)
 
         # Random's own error is the unresolvable anchor link, reported separately.
         rated = (fit.games > 0) & (np.arange(size) != random_index)
@@ -655,32 +692,31 @@ def run_elo_calibrate_mode(
     ratings = {player.label: float(shifted[i]) for i, player in enumerate(players)}
     stderrs = {player.label: float(fit.stderr[i]) for i, player in enumerate(players)}
 
-    # Refit the same match counts under the half-win convention. No extra play is
-    # needed, and it separates a genuine rating disagreement from a difference in
-    # how the two scales treat draws — which is most of the gap against the
-    # in-training curve, since that filter scores a draw as half a win.
-    half_fit = fit_bradley_terry(
-        effective_wins(tournament.wins, tournament.ties, "half_win"),
-        anchor=reference,
-        prior_games=prior_games,
+    # Refit the same match counts under the other convention. No extra play is
+    # needed, and the comparison is the diagnostic for a policy that farms draws:
+    # half-win scoring grants it parity it never had to win, decisive-only does
+    # not, so a large disagreement for one agent is that signature.
+    alt_mode = next(mode for mode in TIE_MODES if mode != config.tie_mode)
+    alt_fit = fit_bradley_terry(
+        tournament.scored_wins(alt_mode), anchor=reference, prior_games=prior_games
     )
-    half_shifted = half_fit.ratings - half_fit.ratings[anchor]
-    half_ratings = {player.label: float(half_shifted[i]) for i, player in enumerate(players)}
+    alt_shifted = alt_fit.ratings - alt_fit.ratings[anchor]
+    alt_ratings = {player.label: float(alt_shifted[i]) for i, player in enumerate(players)}
 
     history = []
     if history_path.exists():
         history = [json.loads(line) for line in history_path.read_text().splitlines() if line]
     progress.stage(f"refitting {len(history)} update records under both draw conventions...")
-    curve = calibrate_live_curve(history, ratings, "decisive")
-    half_curve = {
+    curve = calibrate_live_curve(history, ratings, config.tie_mode)
+    alt_curve = {
         point["update"]: point
-        for point in calibrate_live_curve(history, half_ratings, "half_win")
+        for point in calibrate_live_curve(history, alt_ratings, alt_mode)
     }
     for point in curve:
-        other = half_curve.get(point["update"])
+        other = alt_curve.get(point["update"])
         if other is not None:
-            point["live_calibrated_half_win"] = other["live_calibrated"]
-            point["live_stderr_half_win"] = other["live_stderr"]
+            point["live_calibrated_alt"] = other["live_calibrated"]
+            point["live_stderr_alt"] = other["live_stderr"]
     progress.done(f"calibrated {len(curve)} live-curve points")
 
     result = {
@@ -690,9 +726,9 @@ def run_elo_calibrate_mode(
                 "label": player.label,
                 "training_elo": player.training_elo,
                 "calibrated_elo": ratings[player.label],
-                "calibrated_elo_half_win": half_ratings[player.label],
+                "calibrated_elo_alt": alt_ratings[player.label],
                 "stderr": stderrs[player.label],
-                "stderr_half_win": float(half_fit.stderr[index]),
+                "stderr_alt": float(alt_fit.stderr[index]),
                 "global_step": player.global_step,
                 "games": float(fit.games[index]),
             }
@@ -711,6 +747,8 @@ def run_elo_calibrate_mode(
         "converged": bool(stats[-1].max_stderr <= config.target_stderr) if stats else False,
         "target_stderr": config.target_stderr,
         "reference": players[reference].label,
+        "tie_mode": config.tie_mode,
+        "tie_mode_alt": alt_mode,
         # Every reported rating is measured relative to the reference and then
         # shifted so random reads 0. That shift is itself uncertain by this much,
         # in common across all of them; it cancels between any two ratings.
@@ -745,21 +783,25 @@ def _print_summary(result: dict) -> None:
             f"  {player['label']:<20} {training_text} {calibrated:12.1f} "
             f"{player['stderr']:7.1f} {drift}"
         )
-    print(f"\n  {'agent':<20} {'calibrated':>12} {'ties = 1/2 win':>15} {'convention':>12}")
+    primary, alt = result.get("tie_mode", "half_win"), result.get("tie_mode_alt", "decisive")
+    print(f"\n  {'agent':<20} {primary:>14} {alt:>14} {'difference':>12}")
     print(f"  {'-' * 62}")
     for player in result["players"]:
-        half = player.get("calibrated_elo_half_win")
-        if half is None:
+        other = player.get("calibrated_elo_alt")
+        if other is None:
             continue
         print(
-            f"  {player['label']:<20} {player['calibrated_elo']:12.1f} {half:15.1f} "
-            f"{player['calibrated_elo'] - half:+12.1f}"
+            f"  {player['label']:<20} {player['calibrated_elo']:14.1f} {other:14.1f} "
+            f"{player['calibrated_elo'] - other:+12.1f}"
         )
     print(
         f"\n  Errors are relative to '{result['reference']}'. Shifting the scale so random "
         f"reads 0\n  adds +/-{result['anchor_offset_stderr']:.0f} in common to every rating "
-        "above — that link runs through\n  games random cannot meaningfully contest, so it "
-        "stays coarse at any budget.\n  It cancels whenever two ratings are compared."
+        "above, and cancels whenever two are\n  compared. That link is coarse because every "
+        "agent in the field beats random\n  decisively — nothing here plays near its level, so "
+        "those games say little\n  however they are scored. The live curve does not have this "
+        "problem: early in\n  training it drew against random constantly, and draws are "
+        "informative."
     )
     # Spacing is the part a shared offset cannot flatter, so report it directly.
     # Random is excluded: the step from it to the first rung is the coarse anchor

@@ -7,15 +7,19 @@ where the rating happened to start. For a roster of frozen checkpoints — none
 of which move — the ratings are a static estimation problem with a maximum
 likelihood answer, and this module computes it.
 
-Draws are excluded rather than scored as half-wins. Draw frequency in this game
-is level-dependent, not gap-dependent: near-random pairs stalemate to the
-horizon ~30% of the time while evenly matched strong pairs draw well under 1%.
-Davidson and Rao-Kupper, the standard tie-aware models, are both scale-invariant
-in the strengths and so can only express draws as a function of rating gap; both
-would be misspecified here in a way that biases every rating touching a
-tie-heavy pair. Rating decisive games alone asks a well-posed question — who
-wins, given that someone wins — at the cost of ignoring the draws themselves.
-Report tie rates alongside these ratings; they are not part of them.
+Draws are supplied to this module already scored, as fractional wins — the
+caller decides the convention (see TIE_MODES in modes/elo_calibrate.py). The MM
+iteration is weight-based, so fractional counts need no special handling.
+
+What this module deliberately does not do is fit a draw *parameter*. Davidson
+and Rao-Kupper, the standard tie-aware models, are both scale-invariant in the
+strengths, so they can only express draw frequency as a function of the rating
+gap. Measurement here contradicts that: draws track the absolute level of a
+matchup, with near-random pairs stalemating to the horizon ~30% of the time
+while evenly matched strong pairs draw well under 1%. Fitting either model would
+bias every rating touching a tie-heavy pair. Scoring a draw as half a win avoids
+this entirely, because it models no draw process at all — it just fits the
+expected score, which is what Elo has always meant.
 """
 
 from dataclasses import dataclass
