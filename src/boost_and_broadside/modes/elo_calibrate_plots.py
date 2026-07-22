@@ -63,6 +63,9 @@ def _style_axes(axes, title: str = "", subtitle: str = "") -> None:
 # Such points stay in the JSON with their error, and are simply not drawn.
 _MAX_PLOT_STDERR = 150.0
 
+# Human-readable names for the draw conventions, for titles and legends.
+_TIE_LABEL = {"half_win": "ties as ½ win", "decisive": "decisive games only"}
+
 
 def _finite(curve: list[dict], key: str) -> np.ndarray:
     return np.array([point.get(key, float("nan")) for point in curve], dtype=float)
@@ -200,35 +203,43 @@ def plot_tie_conventions(result: dict, path: Path) -> Path:
 
     The in-training filter scores a draw as half a win, so the half-win refit is
     the like-for-like comparison: whatever still separates it from the run's own
-    curve is genuine estimator error rather than a difference of scale. The
-    decisive-only curve is shown alongside to size what the convention is worth.
+    curve is genuine estimator error rather than a difference of scale.
+
+    The decisive-only curve alongside it is the draw-farming check. A policy that
+    survives to the horizon rather than winning earns parity under half-win
+    scoring without ever beating anyone; it cannot earn it under decisive-only.
+    The two tracking together means draws are being earned honestly.
     """
     curve = result["curve"]
-    if not any("live_calibrated_half_win" in point for point in curve):
+    if not any("live_calibrated_alt" in point for point in curve):
         return path
+    primary = result.get("tie_mode", "half_win")
+    alt = result.get("tie_mode_alt", "decisive")
     steps = _finite(curve, "global_step") / 1e6
     # The in-training curve has no standard error of its own — it is the filter's
     # running state, defined at every update — so it is drawn unfiltered.
     always = np.isfinite(_finite(curve, "live_training"))
-    series = (
+    series = [
         (
             _finite(curve, "live_training"), always,
             TRAINING, "in-training", "In-training (ties = ½ win)",
         ),
-        (
-            _finite(curve, "live_calibrated_half_win"),
-            _measured(
-                _finite(curve, "live_calibrated_half_win"),
-                _finite(curve, "live_stderr_half_win"),
-            ),
-            HALF_WIN, "calibrated, ties = ½", "Calibrated, ties as ½ win",
-        ),
-        (
-            _finite(curve, "live_calibrated"),
-            _measured(_finite(curve, "live_calibrated"), _finite(curve, "live_stderr")),
-            CALIBRATED, "calibrated, decisive", "Calibrated, decisive games only",
-        ),
-    )
+    ]
+    for mode, value_key, error_key in (
+        (primary, "live_calibrated", "live_stderr"),
+        (alt, "live_calibrated_alt", "live_stderr_alt"),
+    ):
+        values = _finite(curve, value_key)
+        color = CALIBRATED if mode == "half_win" else HALF_WIN
+        series.append(
+            (
+                values,
+                _measured(values, _finite(curve, error_key)),
+                color,
+                f"calibrated, {_TIE_LABEL.get(mode, mode)}",
+                f"Calibrated, {_TIE_LABEL.get(mode, mode)}",
+            )
+        )
 
     figure = _new_figure((11.0, 6.4))
     axes = figure.add_subplot(111)
@@ -263,9 +274,9 @@ def plot_calibrated_only(result: dict, path: Path, tie_mode: str) -> Path:
     rating is the answer rather than one side of a comparison; the in-training
     curve's offset otherwise compresses the y-range and hides the shape.
     """
-    decisive = tie_mode == "decisive"
-    key = "live_calibrated" if decisive else "live_calibrated_half_win"
-    error_key = "live_stderr" if decisive else "live_stderr_half_win"
+    is_primary = tie_mode == result.get("tie_mode", "half_win")
+    key = "live_calibrated" if is_primary else "live_calibrated_alt"
+    error_key = "live_stderr" if is_primary else "live_stderr_alt"
     curve = result["curve"]
     if not any(key in point for point in curve):
         return path
@@ -280,15 +291,14 @@ def plot_calibrated_only(result: dict, path: Path, tie_mode: str) -> Path:
     axes = figure.add_subplot(111)
     _style_axes(
         axes,
-        f"Calibrated ELO — {'decisive games only' if decisive else 'ties as ½ win'}"
-        f"  —  {result['run']}",
+        f"Calibrated ELO — {_TIE_LABEL.get(tie_mode, tie_mode)}  —  {result['run']}",
         f"Refit from each update's own record; shaded band is ±1 SE "
         f"(ratings pinned to ±{result['target_stderr']:.0f} against "
         f"{result.get('reference', 'the reference')})",
     )
-    reference_key = "calibrated_elo" if decisive else "calibrated_elo_half_win"
+    reference_key = "calibrated_elo" if is_primary else "calibrated_elo_alt"
     _draw_reference_lines(axes, _reference_lines(result, reference_key))
-    color = CALIBRATED if decisive else HALF_WIN
+    color = CALIBRATED if tie_mode == "half_win" else HALF_WIN
     axes.fill_between(
         steps[good], values[good] - stderr[good], values[good] + stderr[good],
         color=color, alpha=0.18, linewidth=0, zorder=3,
@@ -469,8 +479,8 @@ def write_plots(result: dict, run_dir: Path) -> list[Path]:
     written = []
     renders = [
         ("live_curve.png", plot_live_curve),
-        ("calibrated_decisive.png", partial(plot_calibrated_only, tie_mode="decisive")),
         ("calibrated_half_win.png", partial(plot_calibrated_only, tie_mode="half_win")),
+        ("calibrated_decisive.png", partial(plot_calibrated_only, tie_mode="decisive")),
         ("tie_conventions.png", plot_tie_conventions),
         ("checkpoint_ratings.png", plot_checkpoint_ratings),
         ("convergence.png", plot_convergence),

@@ -65,6 +65,28 @@ class TestCalibrateLiveCurve:
         with_ties = calibrate_live_curve([_record(1, 10, {"random": [800, 200, 500]})], ratings)
         assert without[0]["live_calibrated"] == pytest.approx(with_ties[0]["live_calibrated"])
 
+    def test_drawing_every_game_matches_the_opponents_rating(self):
+        """Drawing every game against a known opponent is exactly the evidence
+        that you are that opponent's equal, and half-win scoring says so. This is
+        the case decisive-only cannot answer at all: with no decisive games it
+        has nothing to fit, and reports the rating as undefined."""
+        opponent = {"stockfish": 3_600.0}
+        counts = {"stockfish": [0, 0, 1_000]}
+        half = calibrate_live_curve([_record(1, 10, counts)], opponent, "half_win")
+        assert half[0]["live_calibrated"] == pytest.approx(3_600.0, abs=1.0)
+
+        decisive = calibrate_live_curve([_record(1, 10, counts)], opponent, "decisive")
+        assert np.isnan(decisive[0]["live_calibrated"])
+
+    def test_half_win_extracts_more_information_from_a_draw_heavy_record(self):
+        """Draws carry information about parity. Dropping them throws it away,
+        which is most costly exactly where draws are common."""
+        ratings = {"random": 0.0}
+        record = _record(1, 10, {"random": [2794, 10, 1120]})
+        half = calibrate_live_curve([record], ratings, "half_win")[0]
+        decisive = calibrate_live_curve([record], ratings, "decisive")[0]
+        assert half["live_stderr"] < decisive["live_stderr"] / 4.0
+
     def test_half_win_mode_counts_draws_as_half(self):
         """Under the half-win convention a drawn game is half a win and half a
         loss, so a record of pure draws sits level with its opponent."""
