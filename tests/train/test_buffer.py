@@ -155,7 +155,8 @@ class TestBufferAdd:
         _fill_buffer(buf, T, B, N, D)
         Kc = buf.num_components
         expected = symlog(torch.full((T, B, N, Kc), 0.1))
-        assert torch.allclose(buf.rewards, expected)
+        # Rewards are stored fp16 in the buffer (memory optimization); compare in fp32.
+        assert torch.allclose(buf.rewards.float(), expected, atol=1e-3)
 
 
 class TestGAEComputation:
@@ -203,7 +204,7 @@ class TestGAEComputation:
 
         buf.compute_gae(next_value=torch.zeros(B, N, Kc), next_done=torch.zeros(B))
 
-        assert torch.allclose(buf.advantages, torch.zeros(T, B, N, Kc), atol=1e-6)
+        assert torch.allclose(buf.advantages.float(), torch.zeros(T, B, N, Kc), atol=1e-6)
 
     def test_per_component_gamma(self):
         """Components with different gammas should produce different advantage decay."""
@@ -237,14 +238,15 @@ class TestGAEComputation:
                 torch.ones(B, N, dtype=torch.bool),
             )
         buf.compute_gae(next_value=torch.zeros(B, N, Kc), next_done=torch.zeros(B))
-        # With λ=1 and zero values, A_t ≈ γ^(T-1-t) * r_{T-1} (symlog(1)=log(2))
+        # With λ=1 and zero values, A_t ≈ γ^(T-1-t) * r_{T-1} (symlog(1)=log(2)).
+        # Advantages are stored fp16, so tolerances reflect fp16 rounding (~3e-4 at r).
         r = math.log(2)
-        adv0 = buf.advantages[:, 0, 0, 0].tolist()  # γ=1.0: all steps get same credit
-        adv1 = buf.advantages[:, 0, 0, 1].tolist()  # γ=0.5: decays as 0.5^(T-1-t)
+        adv0 = buf.advantages[:, 0, 0, 0].float().tolist()  # γ=1.0: same credit each step
+        adv1 = buf.advantages[:, 0, 0, 1].float().tolist()  # γ=0.5: decays as 0.5^(T-1-t)
         for t in range(T):
             steps_back = T - 1 - t
-            assert abs(adv0[t] - r) < 1e-4, f"γ=1 step {t}: {adv0[t]} != {r}"
-            assert abs(adv1[t] - r * (0.5**steps_back)) < 1e-4, f"γ=0.5 step {t}"
+            assert abs(adv0[t] - r) < 1e-3, f"γ=1 step {t}: {adv0[t]} != {r}"
+            assert abs(adv1[t] - r * (0.5**steps_back)) < 1e-3, f"γ=0.5 step {t}"
 
     def test_done_envs_mask_future_rewards(self):
         """When done=1, bootstrap from next_value should be blocked."""

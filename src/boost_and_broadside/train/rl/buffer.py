@@ -54,6 +54,26 @@ def symexp(x: torch.Tensor) -> torch.Tensor:
     return torch.sign(x) * torch.expm1(x.abs())
 
 
+# Reduced-precision storage for the GPU-resident rollout buffer. Float channels
+# are stored fp16: observations feed the encoder under bf16 autocast (transforms
+# upcast to fp32 anyway), and the per-component reward/value/advantage arrays live
+# in the compressed symlog-reward space where magnitudes stay well within fp16's
+# range while fp16's extra mantissa (vs bf16) keeps positions ~1px accurate for
+# the Fourier encoder. Integer obs (team_id 0-2, previous_action indices 0-6) fit
+# in int8. GAE and the scaler reductions upcast to fp32 internally so accumulation
+# precision is unaffected.
+_STORAGE_FLOAT: torch.dtype = torch.float16
+
+
+def _obs_storage_dtype(dt: torch.dtype) -> torch.dtype:
+    """Reduced dtype for storing an observation channel of dtype ``dt``."""
+    if dt.is_floating_point:
+        return _STORAGE_FLOAT
+    if dt == torch.bool:
+        return torch.bool
+    return torch.int8  # team_id / previous_action — small non-negative indices
+
+
 class ReturnScaler:
     """Per-component EMA of 5th/95th percentiles for return normalization.
 
@@ -199,7 +219,9 @@ class AdvantageScaler:
         """
         alive_k = alive_mask.float().unsqueeze(-1)  # (T, B, N, 1)
         mask_sum = alive_mask.float().sum().clamp(min=1.0)
-        rms_k = (advantages.pow(2) * alive_k).sum((0, 1, 2)) / mask_sum  # (K,)
+        # Upcast to fp32 before squaring/reducing: advantages may be fp16-stored,
+        # and an fp16 sum-of-squares over T*B*N elements would lose precision.
+        rms_k = (advantages.float().pow(2) * alive_k).sum((0, 1, 2)) / mask_sum  # (K,)
         rms_k = rms_k.sqrt().clamp(min=self.min_rms)
         if not self._initialized:
             self._rms = rms_k
@@ -276,19 +298,21 @@ class RolloutBuffer:
         # Observations — T+1 slots per key: obs[t] = obs at time t, obs[T] = final obs
         # Preserves original dtypes from the environment observation.
         self.obs: dict = {
-            key: torch.zeros((T + 1, B, *val.shape[1:]), device=device, dtype=val.dtype)
+            key: torch.zeros(
+                (T + 1, B, *val.shape[1:]), device=device, dtype=_obs_storage_dtype(val.dtype)
+            )
             for key, val in obs_sample.items()
         }
 
         self.actions = torch.zeros((T, B, N, 3), device=device, dtype=torch.int32)
         self.logprobs = torch.zeros((T, B, N), device=device, dtype=torch.float32)
-        self.rewards = torch.zeros((T, B, N, K), device=device, dtype=torch.float32)
-        self.values = torch.zeros((T, B, N, K), device=device, dtype=torch.float32)
+        self.rewards = torch.zeros((T, B, N, K), device=device, dtype=_STORAGE_FLOAT)
+        self.values = torch.zeros((T, B, N, K), device=device, dtype=_STORAGE_FLOAT)
         self.dones = torch.zeros((T, B), device=device, dtype=torch.float32)
         self.alive_mask = torch.zeros((T, B, N), device=device, dtype=torch.bool)
 
-        self.advantages = torch.zeros((T, B, N, K), device=device, dtype=torch.float32)
-        self.returns = torch.zeros((T, B, N, K), device=device, dtype=torch.float32)
+        self.advantages = torch.zeros((T, B, N, K), device=device, dtype=_STORAGE_FLOAT)
+        self.returns = torch.zeros((T, B, N, K), device=device, dtype=_STORAGE_FLOAT)
 
         # Lambda-aggregated advantages/returns — filled once per update by
         # PPOTrainer._precompute_lambda_aggregates before the epoch loop (they
@@ -305,7 +329,7 @@ class RolloutBuffer:
         self.ns_labels: torch.Tensor | None = None
 
         self.actor_masks = torch.ones((T, B, N), device=device, dtype=torch.bool)
-        self.expert_probs = torch.zeros((T, B, N, 12), device=device, dtype=torch.float32)
+        self.expert_probs = torch.zeros((T, B, N, 12), device=device, dtype=_STORAGE_FLOAT)
 
         # Episode termination mask: done | truncated — used to exclude terminal transitions
         # from the aux next-state prediction loss.
@@ -426,11 +450,16 @@ class RolloutBuffer:
                     non_terminal = 1.0 - self.dones[t].view(-1, 1, 1)  # (B, 1, 1)
                     next_val = self.values[t + 1]  # (B, N, K)
 
+                # rewards/values are fp16; arithmetic with the fp32 gamma/lam and
+                # fp32 next_value promotes the whole recursion to fp32, so the GAE
+                # accumulation precision matches the all-fp32 buffer. Only the stored
+                # copy is downcast to fp16.
                 delta = self.rewards[t] + gamma * next_val * non_terminal - self.values[t]
                 lastgaelam = delta + gamma * lam * non_terminal * lastgaelam
-                self.advantages[t] = lastgaelam
+                self.advantages[t] = lastgaelam.to(self.advantages.dtype)
 
-            self.returns = self.advantages + self.values
+            # returns = advantages + values, summed in fp32 then stored fp16.
+            self.returns = (self.advantages.float() + self.values.float()).to(self.returns.dtype)
 
     # ------------------------------------------------------------------
     # Minibatch iteration for PPO update
