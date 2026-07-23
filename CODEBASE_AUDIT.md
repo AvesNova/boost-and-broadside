@@ -418,7 +418,7 @@ resolve checkpoints correctly after the extraction.
 - **Location:** `JousterAgent.get_actions`, `TeamJousterAgent.get_actions`, `AbreastAgent.get_actions`, `ReverseTurretAgent.get_actions`, `RunAwayAgent.get_actions`, `SpiralEvaderAgent.get_actions`
 - **Severity:** Medium
 - **Category:** Duplication
-- **Status:** ✅ Done (pending commit)
+- **Status:** ✅ Done (03c81b7)
 - **Confidence:** High
 
 **Problem**
@@ -480,7 +480,7 @@ extraction.
 - **Location:** `ObstacleCache.generate` / `_make_obstacle_state`, and `step_obstacles_harmonic` in `src/boost_and_broadside/env/obstacle_physics.py`
 - **Severity:** Medium
 - **Category:** Module boundaries / coupling
-- **Status:** ✅ Done (pending commit) — `_make_obstacle_state` was kept (not deleted as the
+- **Status:** ✅ Done (03c81b7) — `_make_obstacle_state` was kept (not deleted as the
   recommended change suggested): `modes/interactive.py`'s `_run_convergence_phase` also calls it
   to build a full `TensorState` for the live renderer during obstacle convergence, independent
   of `step_obstacles_harmonic`. `ObstacleCache.generate()` no longer calls it at all.
@@ -978,7 +978,7 @@ None beyond review; re-run any type checker the project adopts.
 - **Location:** `_update_kinematics`
 - **Severity:** Low
 - **Category:** Duplication / readability
-- **Status:** ✅ Done (pending commit)
+- **Status:** ✅ Done (03c81b7)
 - **Confidence:** High
 
 **Problem**
