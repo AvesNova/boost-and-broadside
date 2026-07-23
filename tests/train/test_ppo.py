@@ -1,5 +1,7 @@
 """End-to-end smoke test for the PPO training loop."""
 
+import math
+
 import pytest
 import torch
 
@@ -824,3 +826,59 @@ class TestNonFiniteGradientGuard:
         assert metrics["train/nonfinite_grad_fraction"] == 0.0, (
             "healthy gradients must not be reported as scrubbed"
         )
+
+
+class TestUpdateEpochsMetricKeys:
+    """AUDIT-015: the accumulator-to-output copy in _update_epochs is table-driven
+    for direct renames; this pins the full output key set so a future edit can't
+    silently drop or rename one — the exact failure mode a hand-written block of
+    25 near-identical lines invites."""
+
+    _EXPECTED_KEYS = frozenset(
+        {
+            "loss/total",
+            "loss/policy_gradient",
+            "loss/value",
+            "loss/entropy",
+            "loss/behavioral_cloning",
+            "loss/behavioral_cloning_kl",
+            "loss/scripted_entropy",
+            "loss/sigreg",
+            "loss/next_state",
+            "loss/next_state_cont",
+            "loss/windowed_ns",
+            "loss_proxy/policy_gradient",
+            "loss_proxy/value",
+            "loss_proxy/entropy",
+            "loss_proxy/behavioral_cloning",
+            "loss_proxy/sigreg",
+            "loss_proxy/next_state",
+            "policy/kl",
+            "policy/clip_fraction",
+            "policy/ratio_mean",
+            "policy/ratio_max",
+            "policy/entropy_power",
+            "policy/entropy_turn",
+            "policy/entropy_shoot",
+            "returns/aggregate",
+            "returns/aggregate_std",
+            "returns/advantage_std",
+            "episode/alive_fraction",
+            "train/gradient_norm",
+            "train/nonfinite_grad_fraction",
+        }
+    )
+
+    def test_all_expected_metric_keys_are_present_and_finite(self, tmp_path):
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        runtime = trainer._initialize_rollout_runtime()
+        dones = trainer._collect_rollout(runtime, False)
+        trainer._compute_rollout_gae(runtime, dones)
+
+        metrics = trainer._update_epochs(
+            all_buffers=[trainer.buffer] + trainer.aux_buffers, record_histograms=False
+        )
+
+        assert self._EXPECTED_KEYS <= metrics.keys()
+        for key in self._EXPECTED_KEYS:
+            assert math.isfinite(metrics[key]), f"{key} is not finite: {metrics[key]}"

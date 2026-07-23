@@ -1578,6 +1578,34 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     "pred_mean_k",
                     "adv_sq_k",
                 )
+                # (accum_scalar output key, scalar_accum_step key) for metrics that
+                # are a direct 1:1 copy at the end of the minibatch step — i.e. every
+                # entry that isn't scaled by a loss coefficient or read from a
+                # variable outside scalar_accum_step (those stay as explicit lines
+                # below since this table only covers the pure-rename case).
+                _direct_metrics = (
+                    ("loss/total", "loss"),
+                    ("loss/policy_gradient", "pg"),
+                    ("loss/value", "vf"),
+                    ("loss/entropy", "ent"),
+                    ("loss/behavioral_cloning", "bc"),
+                    ("loss/behavioral_cloning_kl", "bc_kl"),
+                    ("loss/scripted_entropy", "scripted_entropy"),
+                    ("loss/sigreg", "sigreg"),
+                    ("loss/next_state", "ns_loss"),
+                    ("loss/next_state_cont", "ns_cont"),
+                    ("loss/windowed_ns", "windowed_ns"),
+                    ("policy/kl", "kl"),
+                    ("policy/clip_fraction", "clip"),
+                    ("policy/ratio_mean", "ratio_mean"),
+                    ("policy/ratio_max", "ratio_max"),
+                    ("policy/entropy_power", "entropy_power"),
+                    ("policy/entropy_turn", "entropy_turn"),
+                    ("policy/entropy_shoot", "entropy_shoot"),
+                    ("returns/aggregate", "ret_agg_mean"),
+                    ("returns/aggregate_std", "ret_agg_std"),
+                    ("episode/alive_fraction", "alive_frac"),
+                )
                 scalar_accum_step: dict[str, torch.Tensor] = {
                     key: _z.clone() for key, _ in _additive
                 }
@@ -1647,17 +1675,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                         torch.nan_to_num_(param.grad, nan=0.0, posinf=0.0, neginf=0.0)
                 self.optim.step()
 
-                accum_scalar["loss/total"].append(scalar_accum_step["loss"])
-                accum_scalar["loss/policy_gradient"].append(scalar_accum_step["pg"])
-                accum_scalar["loss/value"].append(scalar_accum_step["vf"])
-                accum_scalar["loss/entropy"].append(scalar_accum_step["ent"])
-                accum_scalar["loss/behavioral_cloning"].append(scalar_accum_step["bc"])
-                accum_scalar["loss/behavioral_cloning_kl"].append(scalar_accum_step["bc_kl"])
-                accum_scalar["loss/scripted_entropy"].append(scalar_accum_step["scripted_entropy"])
-                accum_scalar["loss/sigreg"].append(scalar_accum_step["sigreg"])
-                accum_scalar["loss/next_state"].append(scalar_accum_step["ns_loss"])
-                accum_scalar["loss/next_state_cont"].append(scalar_accum_step["ns_cont"])
-                accum_scalar["loss/windowed_ns"].append(scalar_accum_step["windowed_ns"])
+                for out_key, short_key in _direct_metrics:
+                    accum_scalar[out_key].append(scalar_accum_step[short_key])
                 accum_scalar["loss_proxy/policy_gradient"].append(
                     self._policy_gradient_coef * scalar_accum_step["pg"]
                 )
@@ -1676,17 +1695,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 accum_scalar["loss_proxy/next_state"].append(
                     self.cfg.next_state_coef * scalar_accum_step["ns_loss"]
                 )
-                accum_scalar["policy/kl"].append(scalar_accum_step["kl"])
-                accum_scalar["policy/clip_fraction"].append(scalar_accum_step["clip"])
-                accum_scalar["policy/ratio_mean"].append(scalar_accum_step["ratio_mean"])
-                accum_scalar["policy/ratio_max"].append(scalar_accum_step["ratio_max"])
-                accum_scalar["policy/entropy_power"].append(scalar_accum_step["entropy_power"])
-                accum_scalar["policy/entropy_turn"].append(scalar_accum_step["entropy_turn"])
-                accum_scalar["policy/entropy_shoot"].append(scalar_accum_step["entropy_shoot"])
-                accum_scalar["returns/aggregate"].append(scalar_accum_step["ret_agg_mean"])
-                accum_scalar["returns/aggregate_std"].append(scalar_accum_step["ret_agg_std"])
                 accum_scalar["returns/advantage_std"].append(scalar_accum_step["adv_var"] ** 0.5)
-                accum_scalar["episode/alive_fraction"].append(scalar_accum_step["alive_frac"])
                 accum_scalar["train/gradient_norm"].append(grad_norm.detach())
                 accum_scalar["train/nonfinite_grad_fraction"].append(nonfinite_grad.float())
 

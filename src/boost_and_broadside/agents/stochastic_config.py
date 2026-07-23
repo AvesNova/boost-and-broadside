@@ -124,9 +124,9 @@ class StochasticAgentConfig:
         cls, v: Sequence[float], flat_action_sampling: bool = False
     ) -> StochasticAgentConfig:
         """
-        Construct a StochasticAgentConfig from a 24-element flat vector.
-        All values in v must be in [0, 1]; they are scaled to physical units
-        using PARAM_BOUNDS.
+        Construct a StochasticAgentConfig from a flat vector of length
+        2 * len(PARAM_BOUNDS). All values in v must be in [0, 1]; they are scaled
+        to physical units using PARAM_BOUNDS.
         """
         expected = 2 * len(cls.PARAM_BOUNDS)
         if len(v) != expected:
@@ -159,7 +159,8 @@ class StochasticAgentConfig:
 
     @classmethod
     def default_vector(cls) -> list[float]:
-        """Returns the 24-element [0, 1]-normalized vector for the default config."""
+        """Returns the [0, 1]-normalized vector (length 2 * len(PARAM_BOUNDS)) for the
+        default config."""
         cfg = cls()
         raw = [
             *cfg.boost_speed_ramp,

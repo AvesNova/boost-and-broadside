@@ -8,6 +8,8 @@ deterministic.
 import sys
 from types import SimpleNamespace
 
+import pytest
+
 import main
 from runs.bc_warmstart import BC_WARMSTART_PRETRAIN_CONFIG, BC_WARMSTART_RL_CONFIG
 
@@ -17,14 +19,24 @@ class _StubTrainer:
 
     run_name = "stub-run"
 
+    def __init__(self) -> None:
+        self.loaded_checkpoint: str | None = None
+        self.loaded_pretrained: str | None = None
+
     def checkpoint_payload(self, update: int) -> dict:
         return {}
 
     def shutdown(self) -> None:
         pass
 
-    def load_pretrained_weights(self, path: str) -> None:
+    def train(self) -> None:
         pass
+
+    def load_checkpoint(self, path: str) -> None:
+        self.loaded_checkpoint = path
+
+    def load_pretrained_weights(self, path: str) -> None:
+        self.loaded_pretrained = path
 
 
 def _run_bc_warmstart(monkeypatch, tmp_path, smoke: bool) -> list[SimpleNamespace]:
@@ -47,6 +59,48 @@ def _run_bc_warmstart(monkeypatch, tmp_path, smoke: bool) -> list[SimpleNamespac
 
     main.main()
     return captured
+
+
+class TestTrainingModeDispatch:
+    """AUDIT-002: `rl` and `rl_obstacles` share `_run_training_mode`, so resume and
+    pretrain handling must behave identically for both modes."""
+
+    @pytest.mark.parametrize("mode", ["rl", "rl_obstacles"])
+    def test_resume_flag_loads_checkpoint(self, monkeypatch, mode):
+        captured: list[_StubTrainer] = []
+
+        def fake_make_trainer(train_config, args, *, resume_wandb_run_id=None):
+            trainer = _StubTrainer()
+            captured.append(trainer)
+            return trainer
+
+        monkeypatch.setattr(sys, "argv", ["main.py", "--mode", mode, "--resume", "ckpt.pt"])
+        monkeypatch.setattr(main, "_make_trainer", fake_make_trainer)
+        monkeypatch.setattr(main, "_find_resume_checkpoint", lambda hint: ("ckpt.pt", None))
+
+        main.main()
+
+        assert captured[0].loaded_checkpoint == "ckpt.pt"
+        assert captured[0].loaded_pretrained is None
+
+    @pytest.mark.parametrize("mode", ["rl", "rl_obstacles"])
+    def test_pretrain_from_flag_loads_pretrained_weights(self, monkeypatch, mode):
+        captured: list[_StubTrainer] = []
+
+        def fake_make_trainer(train_config, args, *, resume_wandb_run_id=None):
+            trainer = _StubTrainer()
+            captured.append(trainer)
+            return trainer
+
+        monkeypatch.setattr(
+            sys, "argv", ["main.py", "--mode", mode, "--pretrain_from", "pretrained.pt"]
+        )
+        monkeypatch.setattr(main, "_make_trainer", fake_make_trainer)
+
+        main.main()
+
+        assert captured[0].loaded_pretrained == "pretrained.pt"
+        assert captured[0].loaded_checkpoint is None
 
 
 class TestBcWarmstartSmoke:

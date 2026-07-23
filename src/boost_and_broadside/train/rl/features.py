@@ -429,7 +429,6 @@ class Feature:
         input_encoder: Transform,
         target_encoder: Transform,
         predictor: Predictor | None = None,
-        weight: float | tuple[float, ...] = 1.0,
         label_scale: float | tuple[float, ...] = 1.0,
         windowed_loss: WindowedLoss | None = None,
     ):
@@ -438,7 +437,6 @@ class Feature:
         self.input_encoder = input_encoder
         self.target_encoder = target_encoder
         self.predictor = predictor
-        self.weight = weight
         self.label_scale = label_scale
         self.windowed_loss = windowed_loss
 
