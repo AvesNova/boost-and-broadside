@@ -1,5 +1,7 @@
 """Tests for the ship encoder and policy forward passes."""
 
+import math
+
 import pytest
 import torch
 
@@ -309,3 +311,61 @@ class TestMVPPolicy:
             assert (new_hidden[0, ship, :] == 0).all()  # env 0
             assert (new_hidden[0, N + ship, :] != 0).any()  # env 1 unchanged
             assert (new_hidden[0, 2 * N + ship, :] == 0).all()  # env 2
+
+
+class TestFeatureCoordinatorLayout:
+    """AUDIT-012: the five prediction-layout views derive from one cached spec."""
+
+    def test_label_scale_vector_is_cached_per_device(self, coordinator):
+        """label_scale_vector is constant per coordinator, so it is built once."""
+        device = torch.device("cpu")
+        first = coordinator.label_scale_vector(device)
+        assert coordinator.label_scale_vector(device) is first
+
+    def test_prediction_layout_widths_agree_across_views(self, coordinator):
+        """Feature names, label scales, and target slices all size from one source.
+
+        A drift between the previously-independent recomputations would surface as
+        these widths disagreeing, so pinning them together guards the refactor.
+        """
+        names = coordinator.get_feature_names()
+        scales = coordinator.label_scale_vector(torch.device("cpu"))
+        target_end = max(sl.stop for sl in coordinator.target_slices().values())
+        assert len(names) == coordinator.total_prediction_dimension
+        assert scales.shape[0] == coordinator.total_prediction_dimension
+        assert target_end == coordinator.total_target_dimension
+
+
+class TestFeatureCoordinatorDecode:
+    """AUDIT-022: decode_targets inverts each feature's target Transform."""
+
+    def test_decode_targets_round_trips_raw_observation(self, ship_cfg):
+        """Encoding an observation then decoding it must recover the raw channels.
+
+        Exercises every invertible target Transform (Fourier, SymlogVelocity,
+        Identity, Symlog, UnitCircle) through the public coordinator boundary that
+        _decode_targets_to_obs relies on.
+        """
+        coordinator = build_standard_coordinator(ship_cfg)
+        w, h = ship_cfg.world_size
+        att_angle = 0.7
+        obs = MVPObservation(
+            data={
+                ObsKey.POS: torch.tensor([[[0.3 * w, 0.65 * h]]]),
+                ObsKey.VEL: torch.tensor([[[18.0, -7.0]]]),
+                ObsKey.ATT: torch.tensor([[[math.cos(att_angle), math.sin(att_angle)]]]),
+                ObsKey.ANG_VEL: torch.tensor([[[1.4]]]),
+                ObsKey.HEALTH: torch.tensor([[[0.4 * ship_cfg.max_health]]]),
+                ObsKey.POWER: torch.tensor([[[0.6 * ship_cfg.max_power]]]),
+                ObsKey.COOLDOWN: torch.tensor([[[0.5 * ship_cfg.firing_cooldown]]]),
+            }
+        )
+
+        raw = coordinator.decode_targets(coordinator.get_target_vector(obs))
+        pos = torch.cat([raw["position_x"], raw["position_y"]], dim=-1)
+
+        assert torch.allclose(pos, obs[ObsKey.POS], atol=1e-2)
+        assert torch.allclose(raw["velocity"], obs[ObsKey.VEL], atol=1e-2)
+        assert torch.allclose(raw["angular_velocity"], obs[ObsKey.ANG_VEL], atol=1e-3)
+        assert torch.allclose(raw["health"], obs[ObsKey.HEALTH], atol=1e-2)
+        assert torch.allclose(raw["cooldown"], obs[ObsKey.COOLDOWN], atol=1e-4)

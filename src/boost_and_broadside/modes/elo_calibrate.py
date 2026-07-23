@@ -43,6 +43,7 @@ from boost_and_broadside.env.observation import ObsKey, observation_from_state
 from boost_and_broadside.modes.agent_factory import (
     ResolvedAgent,
     get_actions,
+    infer_num_value_components,
     infer_team_pma_k,
     init_hidden,
     reset_done_envs,
@@ -188,7 +189,7 @@ def _load_ladder_policy(
 
     checkpoint = torch.load(str(path), map_location=device, weights_only=False)
     coordinator = build_standard_coordinator(ship_config)
-    num_components = checkpoint["policy_state_dict"]["value_head_local.3.weight"].shape[0]
+    num_components = infer_num_value_components(checkpoint)
     policy = MVPPolicy(
         model_config,
         coordinator,

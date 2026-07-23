@@ -70,6 +70,7 @@ class CheckpointMixin:
             {
                 "policy_state_dict": self._policy_module.state_dict(),
                 "team_pma_k": self._win_k,
+                "num_value_components": self.wrapper.num_active_components,
                 "global_step": self._global_step,
                 "training_elo": self._training_elo,
             }
@@ -128,6 +129,7 @@ class CheckpointMixin:
         """Build the data dict shared by all checkpoint saves."""
         return {
             "policy_state_dict": self._policy_module.state_dict(),
+            "num_value_components": self.wrapper.num_active_components,
             "optimizer_state_dict": self.optim.state_dict(),
             "scaler_state_dict": self.scaler.state_dict(),
             "adv_scaler_state_dict": self.adv_scaler.state_dict(),
@@ -231,6 +233,7 @@ class CheckpointMixin:
         """Build a best-model payload without heavy optimizer and average states."""
         return {
             "policy_state_dict": self._policy_module.state_dict(),
+            "num_value_components": self.wrapper.num_active_components,
             "scaler_state_dict": self.scaler.state_dict(),
             "adv_scaler_state_dict": self.adv_scaler.state_dict(),
             "update": update,

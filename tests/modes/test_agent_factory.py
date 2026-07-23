@@ -55,7 +55,6 @@ class TestDecodeTargetsToObs:
             prev_obs=_make_prev_obs(B=1, N=1),
             action=torch.zeros(1, 1, 3, dtype=torch.long),
             N=1,
-            ship_config=ship_config,
             coordinator=coordinator,
         )
 

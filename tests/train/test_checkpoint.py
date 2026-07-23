@@ -8,6 +8,7 @@ only surfaces later as a diverged resume or a NaN with no traceable origin.
 import pytest
 import torch
 
+from boost_and_broadside.modes.agent_factory import infer_num_value_components
 from boost_and_broadside.train.rl.checkpoint import clone_to_cpu
 
 requires_cuda = pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
@@ -119,3 +120,39 @@ class TestSavedCheckpointIntegrity:
         saved = list(tmp_path.rglob("step_*.pt"))
         trainer.load_checkpoint(str(saved[0]))
         assert all(c.dtype == torch.float32 for c in trainer._avg_param_cumsum)
+
+
+class TestNumValueComponents:
+    """AUDIT-018: critic width K is saved explicitly, not reverse-engineered.
+
+    Every loader used to read K off a hardcoded state-dict key
+    (``value_head_local.3.weight``). Saving it as a field decouples the loaders
+    from the value head's internal structure; the shape introspection survives
+    only as a legacy fallback for checkpoints written before the field existed.
+    """
+
+    def test_payloads_record_active_component_count(self, tmp_path):
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path), avg_model_fraction=0.25)
+        expected = trainer.wrapper.num_active_components
+
+        assert trainer.checkpoint_payload(update=0)["num_value_components"] == expected
+        assert trainer._checkpoint_payload_lightweight(update=0)["num_value_components"] == expected
+
+        ladder_path = trainer._save_ladder_snapshot()
+        ladder = torch.load(ladder_path, map_location="cpu", weights_only=False)
+        assert ladder["num_value_components"] == expected
+
+    def test_infer_reads_explicit_field_over_state_dict_shape(self):
+        """The stored field wins even when the state-dict shape would disagree."""
+        ckpt = {
+            "num_value_components": 7,
+            "policy_state_dict": {"value_head_local.3.weight": torch.zeros(3, 4)},
+        }
+        assert infer_num_value_components(ckpt) == 7
+
+    def test_infer_falls_back_to_state_dict_shape_for_legacy_checkpoints(self):
+        """Checkpoints written before the field recover K from the value head."""
+        ckpt = {"policy_state_dict": {"value_head_local.3.weight": torch.zeros(5, 4)}}
+        assert infer_num_value_components(ckpt) == 5
