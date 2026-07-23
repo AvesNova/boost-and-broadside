@@ -103,6 +103,11 @@ class ModelConfig:
     d_model: int  # token embedding dimension
     n_heads: int  # attention heads (must divide d_model)
     n_transformer_blocks: int  # number of pre-norm transformer blocks before the GRU
+    # Recompute each Yemong block's activations during the PPO backward pass instead
+    # of storing them (torch.utils.checkpoint). Trades ~one extra forward per block
+    # in backward for activation memory that no longer scales with depth — set True
+    # to fit deeper networks. Only affects the update-time re-evaluation path.
+    grad_checkpoint: bool = False
 
     def __post_init__(self) -> None:
         if self.d_model % self.n_heads != 0:

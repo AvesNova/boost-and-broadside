@@ -309,3 +309,45 @@ class TestMVPPolicy:
             assert (new_hidden[0, ship, :] == 0).all()  # env 0
             assert (new_hidden[0, N + ship, :] != 0).any()  # env 1 unchanged
             assert (new_hidden[0, 2 * N + ship, :] == 0).all()  # env 2
+
+
+class TestGradCheckpoint:
+    """grad_checkpoint must be a memory-only change: identical outputs and gradients."""
+
+    def test_checkpoint_matches_non_checkpoint(self, model_cfg, coordinator):
+        from dataclasses import replace
+
+        T, B, N = 4, 2, 8
+        K = NUM_VALUE_COMPONENTS
+        torch.manual_seed(0)
+        base = MVPPolicy(model_cfg, coordinator, num_value_components=K, num_ships=N)
+        ckpt = MVPPolicy(
+            replace(model_cfg, grad_checkpoint=True),
+            coordinator,
+            num_value_components=K,
+            num_ships=N,
+        )
+        ckpt.load_state_dict(base.state_dict())  # identical weights
+
+        obs_dict = {
+            k: v.unsqueeze(0).expand(T, *v.shape).clone() for k, v in _make_obs(B, N).items()
+        }
+        obs = MVPObservation(data=obs_dict)
+        actions = torch.zeros(T, B, N, 3, dtype=torch.long)
+        hidden = base.initial_hidden(B, N, torch.device("cpu"))
+        alive = torch.ones(T, B, N, dtype=torch.bool)
+
+        lp0, _, val0, _, _, pn0 = base.evaluate_actions(obs, actions, hidden, alive)
+        lp1, _, val1, _, _, pn1 = ckpt.evaluate_actions(obs, actions, hidden, alive)
+
+        assert torch.allclose(lp0, lp1, atol=1e-6)
+        assert torch.allclose(val0, val1, atol=1e-6)
+        assert torch.allclose(pn0, pn1, atol=1e-6)
+
+        # Gradients must match exactly — checkpointing recomputes the same forward.
+        (lp0.sum() + val0.sum() + pn0.sum()).backward()
+        (lp1.sum() + val1.sum() + pn1.sum()).backward()
+        g0 = base.yemong_layers[0].temporal.linear1.weight.grad
+        g1 = ckpt.yemong_layers[0].temporal.linear1.weight.grad
+        assert g0 is not None and g1 is not None
+        assert torch.allclose(g0, g1, atol=1e-5)

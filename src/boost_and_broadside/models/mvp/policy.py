@@ -26,6 +26,7 @@ import math
 import torch
 import torch.nn as nn
 from torch.distributions import Categorical
+from torch.utils.checkpoint import checkpoint
 
 from boost_and_broadside.config import ModelConfig
 from boost_and_broadside.constants import (
@@ -137,6 +138,7 @@ class MVPPolicy(nn.Module):
         self.yemong_layers = nn.ModuleList(
             [YemongBlock(model_config) for _ in range(model_config.n_transformer_blocks)]
         )
+        self._grad_checkpoint = model_config.grad_checkpoint
 
         hidden_dim = D * 2
 
@@ -352,7 +354,22 @@ class MVPPolicy(nn.Module):
         z = x if return_encoder_output else None
 
         for i, layer in enumerate(self.yemong_layers):
-            x, _, _ = layer.sequence(x, alive_mask, rglru_states[i], conv_bufs[i], done_mask)
+            if self._grad_checkpoint and torch.is_grad_enabled():
+                # Recompute this block's activations in backward instead of storing
+                # them: activation memory stops scaling with depth. use_reentrant=False
+                # is the modern checkpoint API and composes with torch.compile.
+                x = checkpoint(
+                    _yemong_forward,
+                    layer,
+                    x,
+                    alive_mask,
+                    rglru_states[i],
+                    conv_bufs[i],
+                    done_mask,
+                    use_reentrant=False,
+                )
+            else:
+                x, _, _ = layer.sequence(x, alive_mask, rglru_states[i], conv_bufs[i], done_mask)
 
         # Slice ship tokens for heads
         x_ships = x[:, :, :N, :]  # (T, B, N, D)
@@ -391,6 +408,28 @@ class MVPPolicy(nn.Module):
         logprob, entropy = _evaluate_action(logits, actions)
 
         return logprob, entropy, new_value, logits, z, pred_next
+
+
+# ---------------------------------------------------------------------------
+# Checkpoint helper
+# ---------------------------------------------------------------------------
+
+
+def _yemong_forward(
+    layer: YemongBlock,
+    x: torch.Tensor,
+    alive_mask: torch.Tensor,
+    h0: torch.Tensor,
+    conv_buf0: torch.Tensor,
+    done_mask: torch.Tensor | None,
+) -> torch.Tensor:
+    """Run one Yemong block's full-sequence forward, returning only the output.
+
+    Module-level (no ``self`` capture) so ``torch.utils.checkpoint`` can rematerialize
+    it cleanly. The final hidden/conv states are unused by the update-time re-evaluation.
+    """
+    out, _, _ = layer.sequence(x, alive_mask, h0, conv_buf0, done_mask)
+    return out
 
 
 # ---------------------------------------------------------------------------
