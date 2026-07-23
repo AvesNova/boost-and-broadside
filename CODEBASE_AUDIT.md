@@ -212,7 +212,7 @@ are stable across re-sorts — do not renumber on future passes.
 - **Location:** `main()`, `case "bc_warmstart":` block
 - **Severity:** Critical
 - **Category:** Correctness / reliability
-- **Status:** ✅ Done (pending commit)
+- **Status:** ✅ Done (d4e4d23)
 - **Confidence:** High
 
 **Problem**
@@ -324,7 +324,7 @@ generated PNGs/markdown.
 - **Location:** module level, `_GROUP`, `_LOCAL_COMPONENTS`; consumed in `PPOTrainer._refresh_training_schedule` and `PPOTrainer._precompute_lambda_aggregates`
 - **Severity:** High
 - **Category:** Maintainability / architecture
-- **Status:** ✅ Done (pending commit)
+- **Status:** ✅ Done (d4e4d23)
 - **Confidence:** High
 
 **Problem**
@@ -729,7 +729,7 @@ docstring.
 - **Location:** module-level (missing `Test*` classes)
 - **Severity:** Medium
 - **Category:** Test coverage
-- **Status:** ✅ Done (pending commit)
+- **Status:** ✅ Done (d4e4d23)
 - **Confidence:** High
 
 **Problem**
@@ -903,7 +903,7 @@ None beyond review; re-run any type checker the project adopts.
 - **Location:** `TensorEnv.reset_envs`
 - **Severity:** Low
 - **Category:** Missing validation
-- **Status:** ✅ Done (pending commit)
+- **Status:** ✅ Done (d4e4d23)
 - **Confidence:** Medium
 
 **Problem**
