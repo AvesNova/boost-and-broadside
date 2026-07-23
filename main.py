@@ -343,13 +343,22 @@ def main() -> None:
             _run_trainer(trainer)
 
         case "bc_warmstart":
-            warmstart_args = argparse.Namespace(**vars(args), smoke=False)
+            # --smoke must shrink BOTH stages; forcing it off here (as an earlier
+            # version did) launched a full multi-day run under a crash-test flag.
+            pretrain_config = (
+                _apply_smoke(BC_WARMSTART_PRETRAIN_CONFIG)
+                if args.smoke
+                else BC_WARMSTART_PRETRAIN_CONFIG
+            )
+            rl_config = (
+                _apply_smoke(BC_WARMSTART_RL_CONFIG) if args.smoke else BC_WARMSTART_RL_CONFIG
+            )
 
             print("=== BC_WARMSTART: starting BC pretraining phase ===")
-            pretrain_trainer = _make_trainer(BC_WARMSTART_PRETRAIN_CONFIG, warmstart_args)
+            pretrain_trainer = _make_trainer(pretrain_config, args)
             _run_trainer(pretrain_trainer)
 
-            ckpt_dir = Path(BC_WARMSTART_PRETRAIN_CONFIG.checkpoint_dir) / pretrain_trainer.run_name
+            ckpt_dir = Path(pretrain_config.checkpoint_dir) / pretrain_trainer.run_name
             pretrain_path = ckpt_dir / "pretrained_for_rl.pt"
             torch.save(pretrain_trainer.checkpoint_payload(update=0), pretrain_path)
             print(f"=== BC_WARMSTART: pretrained weights saved to {pretrain_path} ===")
@@ -357,7 +366,7 @@ def main() -> None:
             del pretrain_trainer
 
             print("=== BC_WARMSTART: starting RL phase ===")
-            rl_trainer = _make_trainer(BC_WARMSTART_RL_CONFIG, warmstart_args)
+            rl_trainer = _make_trainer(rl_config, args)
             rl_trainer.load_pretrained_weights(str(pretrain_path))
             _run_trainer(rl_trainer)
 

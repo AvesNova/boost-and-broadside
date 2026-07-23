@@ -79,6 +79,19 @@ class TestTensorEnvReset:
             t1_alive = (alive[b] & (teams[b] == 1)).sum().item()
             assert {t0_alive, t1_alive} == {3, 4}
 
+    def test_team_sizes_summing_past_num_ships_raises(self, ship_cfg, env_cfg):
+        """team_sizes that overflow num_ships must fail fast, not silently write
+        past the alive-slot range (AUDIT-005)."""
+        env = TensorEnv(num_envs=2, ship_config=ship_cfg, env_config=env_cfg, device="cpu")
+        with pytest.raises(ValueError, match="team_sizes"):
+            env.reset(options={"team_sizes": (env_cfg.num_ships, 1)})
+
+    def test_negative_team_size_raises(self, ship_cfg, env_cfg):
+        """A negative team count must fail fast rather than corrupt team ids."""
+        env = TensorEnv(num_envs=2, ship_config=ship_cfg, env_config=env_cfg, device="cpu")
+        with pytest.raises(ValueError, match="team_sizes"):
+            env.reset(options={"team_sizes": (-1, 4)})
+
     def test_team_assignment_is_randomized(self, ship_cfg, env_cfg):
         """With many parallel envs, both team-ID orderings must occur."""
         env = TensorEnv(num_envs=200, ship_config=ship_cfg, env_config=env_cfg, device="cpu")

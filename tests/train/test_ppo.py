@@ -21,7 +21,7 @@ from boost_and_broadside.config import (
     stepped,
 )
 from boost_and_broadside.env.observation import ObsKey
-from boost_and_broadside.train.rl.ppo import _GROUP, PPOTrainer
+from boost_and_broadside.train.rl.ppo import _GROUP, _LOCAL_COMPONENTS, PPOTrainer
 
 
 def _make_rewards(**overrides) -> RewardConfig:
@@ -642,6 +642,25 @@ class TestWinComponentLambdaMatrix:
         assert "enemy_win" in REWARDS.ally_zero_components
         assert "ally_win" not in REWARDS.enemy_neg_lambda_components
         assert "ally_win" not in REWARDS.ally_zero_components
+
+
+class TestLocalComponentRegistry:
+    """Regression for AUDIT-014: the self-only (diagonal-lambda) set and the
+    group-scale classification must not drift apart."""
+
+    def test_local_components_match_local_scale_group(self):
+        """A component uses diagonal (self-only) lambda iff it is in the
+        `local_scale` group. If a new reward is classified in one registry but
+        not the other, its lambda aggregation would be silently wrong."""
+        local_scale_group = {name for name, group in _GROUP.items() if group == "local_scale"}
+        assert _LOCAL_COMPONENTS == local_scale_group
+
+    def test_every_reward_component_is_classified(self):
+        """Every registered reward component must appear in _GROUP, or
+        `_refresh_training_schedule` would KeyError on the first update."""
+        from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
+
+        assert set(REWARD_COMPONENT_NAMES) == set(_GROUP)
 
 
 class TestRLSmokeTest:

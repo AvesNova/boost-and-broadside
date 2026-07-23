@@ -16,6 +16,9 @@ Adding a new reward
 2. Add its name to REWARD_COMPONENT_NAMES (fixes K and value head ordering).
 3. Add a weight field to RewardConfig in config/core.py and set it in runs/shared.py.
 4. Add an instance to the list in build_reward_components().
+5. Classify it in `_GROUP` in train/rl/ppo.py (true_reward / global / local scale).
+   `_LOCAL_COMPONENTS` — which components use diagonal (self-only) lambda — is
+   derived from `_GROUP`, so a "local_scale" entry is automatically self-only.
 """
 
 from abc import ABC, abstractmethod

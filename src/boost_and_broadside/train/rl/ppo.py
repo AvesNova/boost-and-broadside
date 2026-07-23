@@ -122,25 +122,10 @@ _GROUP: dict[str, str] = {
 }
 
 # Components with self-only rewards use a diagonal lambda (i == j); all others
-# use team-based lambda aggregation.
+# use team-based lambda aggregation. Derived from _GROUP so the two registries
+# cannot silently drift: a "local_scale" component is exactly a self-only one.
 _LOCAL_COMPONENTS: frozenset[str] = frozenset(
-    {
-        "facing",
-        "closing_speed",
-        "shoot_quality",
-        "kill_shot",
-        "kill_assist",
-        "damage_taken",
-        "damage_dealt_enemy",
-        "damage_dealt_ally",
-        "death",
-        "obstacle_death",
-        "obstacle_proximity",
-        "obstacle_closing_speed",
-        "obstacle_tti",
-        "shooting_penalty",
-        "speed",
-    }
+    name for name, group in _GROUP.items() if group == "local_scale"
 )
 
 
