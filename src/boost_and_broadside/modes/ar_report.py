@@ -1,3 +1,21 @@
+"""Autoregressive-rollout diagnostic report.
+
+`--mode ar_report` runs one ground-truth episode, then replays it two ways through the
+policy's learned next-state predictor: a *closed-loop* rollout (the recorded actions are
+forced, so only the imagined dynamics drift) and an *open-loop* rollout (the policy also
+imagines its own actions). It writes a set of PNG plots and a markdown report under
+``out_dir`` comparing how far each imagined rollout diverges from ground truth over time.
+
+The plotting/markdown layer is a public output contract: filenames, headings, metric
+definitions, ship ordering, death markers, the every-10-steps trajectory dot sampling, and
+toroidal-wrap handling are all preserved exactly. Pure calculations (position unwrapping,
+toroidal center of mass, error metrics) live as module-level helpers so they can be tested
+independently of matplotlib.
+"""
+
+import os
+from dataclasses import dataclass
+
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -6,11 +24,19 @@ from boost_and_broadside.config import EnvConfig, ModelConfig, RewardConfig, Shi
 from boost_and_broadside.env.observation import MVPObservation
 from boost_and_broadside.env.wrapper import MVPEnvWrapper
 from boost_and_broadside.modes.agent_factory import (
+    ResolvedAgent,
     _decode_targets_to_obs,
     get_actions,
     init_hidden,
     resolve_agent_spec,
 )
+
+# Trajectory dots are drawn every N steps (part of the report's visual contract).
+_DOT_INTERVAL = 10
+TEAM_DOT_COLORS = ["blue", "red"]  # team0=blue, team1=red
+METHOD_COLORS = {"gt": "black", "cl": "orange", "ol": "green"}
+
+History = list[dict[str, torch.Tensor]]
 
 
 def run_ar_report_mode(
@@ -24,7 +50,7 @@ def run_ar_report_mode(
     device: str,
     checkpoint_dir: str = "checkpoints",
     out_dir: str = "docs/ar_report",
-):
+) -> None:
     print("Initializing agents...")
     agent0 = resolve_agent_spec(
         team0_spec,
@@ -65,7 +91,7 @@ def run_ar_report_mode(
     init_hidden0 = agent0.hidden.clone() if agent0.hidden is not None else None
     init_hidden1 = agent1.hidden.clone() if agent1.hidden is not None else None
 
-    history_sim = []
+    history_sim: History = []
     actions_sim = []
 
     for _ in range(num_steps):
@@ -133,17 +159,17 @@ def run_ar_report_mode(
 
 
 def _run_ar(
-    agent0,
-    agent1,
-    init_obs,
-    init_hidden0,
-    init_hidden1,
-    num_steps,
-    N,
-    ship_config,
-    forced_actions,
-    is_closed_loop,
-):
+    agent0: ResolvedAgent,
+    agent1: ResolvedAgent,
+    init_obs: MVPObservation,
+    init_hidden0: torch.Tensor | None,
+    init_hidden1: torch.Tensor | None,
+    num_steps: int,
+    N: int,
+    ship_config: ShipConfig,
+    forced_actions: list[torch.Tensor] | None,
+    is_closed_loop: bool,
+) -> History:
     obs = MVPObservation(data={k: v.clone() for k, v in init_obs.items()})
     if agent0.hidden is not None:
         agent0.hidden = init_hidden0.clone()
@@ -157,7 +183,7 @@ def _run_ar(
     elif agent1.kind == "policy":
         coordinator = agent1.agent.coordinator
 
-    history = []
+    history: History = []
     curr_ship_targets = coordinator.get_target_vector(obs)[:, :N] if coordinator else None
 
     for step in range(num_steps):
@@ -211,203 +237,279 @@ def _run_ar(
     return history
 
 
-def _generate_report(history_sim, history_closed, history_open, ship_config, num_steps, out_dir):
-    import os
+# --- Pure calculations (no matplotlib) ------------------------------------------------
 
-    os.makedirs(out_dir, exist_ok=True)
 
-    num_ships = history_sim[0]["pos"].shape[1]  # shape is (1, N, 2) — dim 1 is ship count
-    plot_N = 2 if num_ships == 2 else 1
+def _extract_feat(hist: History, key: str) -> np.ndarray:
+    """Stack one feature across a rollout, squeezing the leading env/batch dim."""
+    return np.array([h[key].squeeze(0).cpu().numpy() for h in hist])
 
-    # Extract arrays for ALL ships — squeeze the leading env/batch dim (dim 1 of stacked)
-    def extract_feat(hist, key):
-        return np.array([h[key].squeeze(0).cpu().numpy() for h in hist])
 
-    def get_ship_feat(hist, key):
-        # returns shape: [steps, plot_N, ...]
-        return extract_feat(hist, key)[:, :plot_N].astype(float)
+def _clamp_alive_prob(alive_prob: np.ndarray, alive: np.ndarray, plot_N: int) -> np.ndarray:
+    """Zero each ship's alive-probability from its first death step onward (in place)."""
+    for s in range(plot_N):
+        d = np.where(~alive[:, s])[0]
+        if len(d) > 0:
+            alive_prob[d[0] :, s] = 0.0
+    return alive_prob
 
-    # Sim (All Ships)
-    sim_pos_all = extract_feat(history_sim, "pos")
-    sim_alive_all = extract_feat(history_sim, "alive")
 
-    # Closed Loop (All Ships)
-    cl_pos_all = extract_feat(history_closed, "pos")
-    cl_alive_all = extract_feat(history_closed, "alive")
+def _unwrap_1d(arr_1d: np.ndarray, W: float) -> np.ndarray:
+    """Undo toroidal wrapping of a 1D position sequence spanning world extent W."""
+    unwrapped = arr_1d.copy()
+    for i in range(1, len(unwrapped)):
+        diff = unwrapped[i] - unwrapped[i - 1]
+        if diff > W / 2:
+            unwrapped[i:] -= W
+        elif diff < -W / 2:
+            unwrapped[i:] += W
+    return unwrapped
 
-    # Open Loop (All Ships)
-    ol_pos_all = extract_feat(history_open, "pos")
-    ol_alive_all = extract_feat(history_open, "alive")
 
-    # Sim (Selected Ships)
-    sim_pos = get_ship_feat(history_sim, "pos")
-    sim_vel = get_ship_feat(history_sim, "vel")
-    sim_att = get_ship_feat(history_sim, "att")
-    sim_ang_vel = get_ship_feat(history_sim, "ang_vel")
-    sim_health = get_ship_feat(history_sim, "health")
-    sim_power = get_ship_feat(history_sim, "power")
-    sim_cooldown = get_ship_feat(history_sim, "cooldown")
-    sim_alive = extract_feat(history_sim, "alive")[:, :plot_N]
+def _unwrap_pos(pos: np.ndarray, W_x: float, W_y: float) -> np.ndarray:
+    """Unwrap a (steps, ships, 2) position array along each world axis independently."""
+    uw = pos.copy()
+    for s in range(pos.shape[1]):
+        uw[:, s, 0] = _unwrap_1d(pos[:, s, 0], W_x)
+        uw[:, s, 1] = _unwrap_1d(pos[:, s, 1], W_y)
+    return uw
 
-    # Closed Loop (Selected Ships)
-    cl_pos = get_ship_feat(history_closed, "pos")
-    cl_vel = get_ship_feat(history_closed, "vel")
-    cl_att = get_ship_feat(history_closed, "att")
-    cl_ang_vel = get_ship_feat(history_closed, "ang_vel")
-    cl_health = get_ship_feat(history_closed, "health")
-    cl_power = get_ship_feat(history_closed, "power")
-    cl_cooldown = get_ship_feat(history_closed, "cooldown")
-    cl_alive = extract_feat(history_closed, "alive")[:, :plot_N]
-    cl_alive_prob = get_ship_feat(history_closed, "alive_prob")
 
-    # Open Loop (Selected Ships)
-    ol_pos = get_ship_feat(history_open, "pos")
-    ol_vel = get_ship_feat(history_open, "vel")
-    ol_att = get_ship_feat(history_open, "att")
-    ol_ang_vel = get_ship_feat(history_open, "ang_vel")
-    ol_health = get_ship_feat(history_open, "health")
-    ol_power = get_ship_feat(history_open, "power")
-    ol_cooldown = get_ship_feat(history_open, "cooldown")
-    ol_alive = extract_feat(history_open, "alive")[:, :plot_N]
-    ol_alive_prob = get_ship_feat(history_open, "alive_prob")
+def _toroidal_center_of_mass(positions: np.ndarray, W_x: float, W_y: float) -> tuple[float, float]:
+    """Compute the toroidal center of mass across a flat array of (x,y) points."""
+    angles_x = 2 * np.pi * positions[:, 0] / W_x
+    angles_y = 2 * np.pi * positions[:, 1] / W_y
+    mean_x = np.arctan2(np.nanmean(np.sin(angles_x)), np.nanmean(np.cos(angles_x)))
+    mean_y = np.arctan2(np.nanmean(np.sin(angles_y)), np.nanmean(np.cos(angles_y)))
+    return mean_x * W_x / (2 * np.pi), mean_y * W_y / (2 * np.pi)
 
-    def clamp_alive_prob(alive_prob_arr, alive_arr):
-        for s in range(plot_N):
-            d = np.where(~alive_arr[:, s])[0]
-            if len(d) > 0:
-                alive_prob_arr[d[0] :, s] = 0.0
-        return alive_prob_arr
 
-    cl_alive_prob = clamp_alive_prob(cl_alive_prob, cl_alive)
-    ol_alive_prob = clamp_alive_prob(ol_alive_prob, ol_alive)
+def _center_pos_uw(pos_uw: np.ndarray, com_x: float, com_y: float) -> np.ndarray:
+    """Shift all unwrapped positions so that the CoM is at (0,0)."""
+    centered = pos_uw.copy()
+    centered[:, :, 0] -= com_x
+    centered[:, :, 1] -= com_y
+    return centered
 
-    # Unwrap position arrays per-ship
-    def unwrap_1d(arr_1d, W):
-        unwrapped = arr_1d.copy()
-        for i in range(1, len(unwrapped)):
-            diff = unwrapped[i] - unwrapped[i - 1]
-            if diff > W / 2:
-                unwrapped[i:] -= W
-            elif diff < -W / 2:
-                unwrapped[i:] += W
-        return unwrapped
 
-    def unwrap_pos(pos, W_x, W_y):
-        # pos shape: (steps, plot_N, 2)
-        uw = pos.copy()
-        for s in range(pos.shape[1]):
-            uw[:, s, 0] = unwrap_1d(pos[:, s, 0], W_x)
-            uw[:, s, 1] = unwrap_1d(pos[:, s, 1], W_y)
-        return uw
+def _calc_toroidal_euclidean(
+    pos1: np.ndarray,
+    pos2: np.ndarray,
+    W_x: float,
+    W_y: float,
+    alive1: np.ndarray,
+    alive2: np.ndarray,
+) -> np.ndarray:
+    dx = np.abs(pos1[..., 0] - pos2[..., 0])
+    dy = np.abs(pos1[..., 1] - pos2[..., 1])
+    dx = np.minimum(dx, W_x - dx)
+    dy = np.minimum(dy, W_y - dy)
+    dist = np.sqrt(dx**2 + dy**2)
+    dist[~(alive1 & alive2)] = np.nan
+    return dist
 
-    W_x, W_y = ship_config.world_size
-    sim_pos_uw = unwrap_pos(sim_pos, W_x, W_y)
-    cl_pos_uw = unwrap_pos(cl_pos, W_x, W_y)
-    ol_pos_uw = unwrap_pos(ol_pos, W_x, W_y)
 
-    TEAM_DOT_COLORS = ["blue", "red"]  # team0=blue, team1=red
-    METHOD_COLORS = {"gt": "black", "cl": "orange", "ol": "green"}
+def _calc_euclidean(
+    arr1: np.ndarray, arr2: np.ndarray, alive1: np.ndarray, alive2: np.ndarray
+) -> np.ndarray:
+    dist = np.linalg.norm(arr1 - arr2, axis=-1)
+    dist[~(alive1 & alive2)] = np.nan
+    return dist
 
-    def toroidal_center_of_mass(positions, W_x, W_y):
-        """Compute the toroidal center of mass across a flat array of (x,y) points."""
-        angles_x = 2 * np.pi * positions[:, 0] / W_x
-        angles_y = 2 * np.pi * positions[:, 1] / W_y
-        mean_x = np.arctan2(np.nanmean(np.sin(angles_x)), np.nanmean(np.cos(angles_x)))
-        mean_y = np.arctan2(np.nanmean(np.sin(angles_y)), np.nanmean(np.cos(angles_y)))
-        return mean_x * W_x / (2 * np.pi), mean_y * W_y / (2 * np.pi)
 
-    # Collect all pos points for ALL displayed ships (plot_N) from unwrapped arrays,
-    # then compute a toroidal CoM for the centered/cropped map
-    def center_pos_uw(pos_uw_arr, com_x, com_y):
-        """Shift all unwrapped positions so that CoM is at (0,0)."""
-        centered = pos_uw_arr.copy()
-        centered[:, :, 0] -= com_x
-        centered[:, :, 1] -= com_y
-        return centered
+def _calc_4d_euclidean(
+    pos1: np.ndarray,
+    vel1: np.ndarray,
+    pos2: np.ndarray,
+    vel2: np.ndarray,
+    W_x: float,
+    W_y: float,
+    alive1: np.ndarray,
+    alive2: np.ndarray,
+) -> np.ndarray:
+    dx = np.abs(pos1[..., 0] - pos2[..., 0])
+    dy = np.abs(pos1[..., 1] - pos2[..., 1])
+    dx = np.minimum(dx, W_x - dx)
+    dy = np.minimum(dy, W_y - dy)
 
-    # --- 1. Full-world 2D Game Map (ALL Ships) --- only for 2v2
-    if plot_N > 1 or num_ships > 2:
-        # 2v2 case: always draw the full-world map
-        pass
+    dvx = vel1[..., 0] - vel2[..., 0]
+    dvy = vel1[..., 1] - vel2[..., 1]
 
-    # Always draw full-world map for non-1v1
-    def plot_trajectory_on_ax(ax_target, pos_arr_all, alive_arr_all, label, method_color, W_x, W_y):
-        n_ships = pos_arr_all.shape[1]
-        for s in range(n_ships):
-            pos_arr = pos_arr_all[:, s]
-            alive_arr = alive_arr_all[:, s]
-            dot_color = TEAM_DOT_COLORS[1] if s >= n_ships // 2 else TEAM_DOT_COLORS[0]
+    dist = np.sqrt(dx**2 + dy**2 + dvx**2 + dvy**2)
+    dist[~(alive1 & alive2)] = np.nan
+    return dist
 
-            dead_idx = np.where(~alive_arr)[0]
-            if len(dead_idx) > 0:
-                d_idx = dead_idx[0]
-                ax_target.plot(
-                    pos_arr[d_idx, 0],
-                    pos_arr[d_idx, 1],
-                    marker="x",
-                    color="red",
-                    markersize=5,
-                    mew=1.5,
-                    zorder=5,
+
+def _calc_mae(
+    arr1: np.ndarray, arr2: np.ndarray, alive1: np.ndarray, alive2: np.ndarray
+) -> np.ndarray:
+    err = np.mean(np.abs(arr1 - arr2), axis=-1)
+    err[~(alive1 & alive2)] = np.nan
+    return err
+
+
+@dataclass
+class _RolloutArrays:
+    """Numpy trajectory arrays for one rollout method (ground-truth / closed / open loop).
+
+    All arrays index ``[step, ship, ...]``. The ``*_all`` arrays keep every ship (used for
+    the full-world map); the rest keep only the featured ships (``plot_N``). ``pos_uw`` is
+    the toroidally-unwrapped position; ``pos_c`` is the unwrapped position re-centered on
+    the ground-truth center of mass, filled in after all three methods are extracted.
+    """
+
+    pos_all: np.ndarray
+    alive_all: np.ndarray
+    pos: np.ndarray
+    vel: np.ndarray
+    att: np.ndarray
+    ang_vel: np.ndarray
+    health: np.ndarray
+    power: np.ndarray
+    cooldown: np.ndarray
+    alive: np.ndarray
+    alive_prob: np.ndarray
+    pos_uw: np.ndarray
+    pos_c: np.ndarray | None = None
+
+
+def _extract_rollout_arrays(hist: History, plot_N: int, W_x: float, W_y: float) -> _RolloutArrays:
+    """Pull every plotted feature out of a rollout history into a `_RolloutArrays`."""
+
+    def featured(key: str) -> np.ndarray:
+        return _extract_feat(hist, key)[:, :plot_N].astype(float)
+
+    pos = featured("pos")
+    return _RolloutArrays(
+        pos_all=_extract_feat(hist, "pos"),
+        alive_all=_extract_feat(hist, "alive"),
+        pos=pos,
+        vel=featured("vel"),
+        att=featured("att"),
+        ang_vel=featured("ang_vel"),
+        health=featured("health"),
+        power=featured("power"),
+        cooldown=featured("cooldown"),
+        alive=_extract_feat(hist, "alive")[:, :plot_N],
+        alive_prob=featured("alive_prob"),
+        pos_uw=_unwrap_pos(pos, W_x, W_y),
+    )
+
+
+# --- Plotting -------------------------------------------------------------------------
+
+
+def _plot_ship_trajectories(
+    ax: plt.Axes,
+    positions: np.ndarray,
+    alive: np.ndarray,
+    label: str,
+    method_color: str,
+    num_ships: int,
+    wrap_size: tuple[float, float] | None = None,
+) -> None:
+    """Draw one method's per-ship trajectory onto ``ax``.
+
+    Args:
+        positions:   (steps, ships, 2) point array (world, centered, or velocity space).
+        alive:       (steps, ships) alive mask; the first death step gets an "x" marker.
+        method_color: Line color identifying the rollout method.
+        num_ships:   Total ship count — the first half are team0 (blue dots), rest team1.
+        wrap_size:   World (W_x, W_y). When set, connecting lines spanning more than half
+            the world are skipped (toroidal-wrap gaps); when None, all lines are drawn.
+    """
+    for s in range(positions.shape[1]):
+        pos_s = positions[:, s]
+        alive_s = alive[:, s]
+        dot_color = TEAM_DOT_COLORS[1] if s >= num_ships // 2 else TEAM_DOT_COLORS[0]
+
+        dead_idx = np.where(~alive_s)[0]
+        if len(dead_idx) > 0:
+            d_idx = dead_idx[0]
+            ax.plot(
+                pos_s[d_idx, 0],
+                pos_s[d_idx, 1],
+                marker="x",
+                color="red",
+                markersize=5,
+                mew=1.5,
+                zorder=5,
+            )
+
+        # Draw dots first (lower z-order)
+        for i in range(len(pos_s)):
+            if i % _DOT_INTERVAL == 0:
+                ax.plot(
+                    pos_s[i, 0],
+                    pos_s[i, 1],
+                    marker="o",
+                    color=dot_color,
+                    markersize=2,
+                    zorder=2,
                 )
 
-            # Draw dots first (lower z-order)
-            for i in range(len(pos_arr)):
-                if i % 10 == 0:
-                    ax_target.plot(
-                        pos_arr[i, 0],
-                        pos_arr[i, 1],
-                        marker="o",
-                        color=dot_color,
-                        markersize=2,
-                        zorder=2,
-                    )
+        # Draw lines on top (higher z-order)
+        for i in range(len(pos_s) - 1):
+            if wrap_size is not None:
+                W_x, W_y = wrap_size
+                dist_x = abs(pos_s[i + 1, 0] - pos_s[i, 0])
+                dist_y = abs(pos_s[i + 1, 1] - pos_s[i, 1])
+                if not (dist_x < W_x / 2 and dist_y < W_y / 2):
+                    continue
+            ax.plot(
+                [pos_s[i, 0], pos_s[i + 1, 0]],
+                [pos_s[i, 1], pos_s[i + 1, 1]],
+                color=method_color,
+                alpha=0.6,
+                lw=1.0,
+                zorder=3,
+            )
+    ax.plot([], [], color=method_color, label=label, lw=1)
 
-            # Draw lines on top (higher z-order)
-            for i in range(len(pos_arr) - 1):
-                dist_x = abs(pos_arr[i + 1, 0] - pos_arr[i, 0])
-                dist_y = abs(pos_arr[i + 1, 1] - pos_arr[i, 1])
-                if dist_x < W_x / 2 and dist_y < W_y / 2:
-                    ax_target.plot(
-                        [pos_arr[i, 0], pos_arr[i + 1, 0]],
-                        [pos_arr[i, 1], pos_arr[i + 1, 1]],
-                        color=method_color,
-                        alpha=0.6,
-                        lw=1.0,
-                        zorder=3,
-                    )
-        ax_target.plot([], [], color=method_color, label=label, lw=1)
 
-    if num_ships > 2:  # 2v2+ only
-        fig_map = plt.figure(figsize=(12, 12))
-        ax_map = fig_map.add_subplot(1, 1, 1)
-        ax_map.set_title("2D Trajectory Map (All Ships)")
-        ax_map.set_xlim(0, W_x)
-        ax_map.set_ylim(0, W_y)
-        ax_map.set_aspect("equal")
-        ax_map.grid(True, linestyle="--", alpha=0.5)
-        plot_trajectory_on_ax(
-            ax_map, sim_pos_all, sim_alive_all, "Ground Truth", METHOD_COLORS["gt"], W_x, W_y
-        )
-        plot_trajectory_on_ax(
-            ax_map, cl_pos_all, cl_alive_all, "AR Closed Loop", METHOD_COLORS["cl"], W_x, W_y
-        )
-        plot_trajectory_on_ax(
-            ax_map, ol_pos_all, ol_alive_all, "AR Open Loop", METHOD_COLORS["ol"], W_x, W_y
-        )
-        ax_map.legend()
-        fig_map.tight_layout()
-        fig_map.savefig(os.path.join(out_dir, "2d_map.png"))
-        plt.close(fig_map)
+def _plot_full_world_map(
+    out_dir: str,
+    gt: _RolloutArrays,
+    cl: _RolloutArrays,
+    ol: _RolloutArrays,
+    num_ships: int,
+    W_x: float,
+    W_y: float,
+) -> None:
+    """Full-world 2D map of every ship — 2v2+ only."""
+    fig_map = plt.figure(figsize=(12, 12))
+    ax_map = fig_map.add_subplot(1, 1, 1)
+    ax_map.set_title("2D Trajectory Map (All Ships)")
+    ax_map.set_xlim(0, W_x)
+    ax_map.set_ylim(0, W_y)
+    ax_map.set_aspect("equal")
+    ax_map.grid(True, linestyle="--", alpha=0.5)
+    wrap = (W_x, W_y)
+    _plot_ship_trajectories(
+        ax_map, gt.pos_all, gt.alive_all, "Ground Truth", METHOD_COLORS["gt"], num_ships, wrap
+    )
+    _plot_ship_trajectories(
+        ax_map, cl.pos_all, cl.alive_all, "AR Closed Loop", METHOD_COLORS["cl"], num_ships, wrap
+    )
+    _plot_ship_trajectories(
+        ax_map, ol.pos_all, ol.alive_all, "AR Open Loop", METHOD_COLORS["ol"], num_ships, wrap
+    )
+    ax_map.legend()
+    fig_map.tight_layout()
+    fig_map.savefig(os.path.join(out_dir, "2d_map.png"))
+    plt.close(fig_map)
 
-    # Use toroidal CoM on ONLY the ground truth positions — anchors center to actual game
-    gt_pts_raw = sim_pos[:, :plot_N].reshape(-1, 2)
-    com_x, com_y = toroidal_center_of_mass(gt_pts_raw, W_x, W_y)
 
-    sim_pos_c = center_pos_uw(sim_pos_uw, com_x, com_y)
-    cl_pos_c = center_pos_uw(cl_pos_uw, com_x, com_y)
-    ol_pos_c = center_pos_uw(ol_pos_uw, com_x, com_y)
-
+def _plot_centered_map(
+    out_dir: str,
+    gt: _RolloutArrays,
+    cl: _RolloutArrays,
+    ol: _RolloutArrays,
+    num_ships: int,
+    W_x: float,
+    W_y: float,
+) -> None:
+    """Featured-ship 2D map, centered on the ground-truth CoM and cropped to its bounds."""
     map_title = "2D Trajectory Map" if num_ships == 2 else "2D Trajectory Map (Featured Ships)"
     fig_map2 = plt.figure(figsize=(8, 8))
     ax_map2 = fig_map2.add_subplot(1, 1, 1)
@@ -415,67 +517,20 @@ def _generate_report(history_sim, history_closed, history_open, ship_config, num
     ax_map2.set_aspect("equal")
     ax_map2.grid(True, linestyle="--", alpha=0.5)
 
-    def plot_centered_trajectory(ax_target, pos_c, alive_arr_all, label, method_color):
-        for s in range(plot_N):
-            pos_s = pos_c[:, s]
-            alive_arr = alive_arr_all[:, s]
-            dot_color = TEAM_DOT_COLORS[1] if s >= num_ships // 2 else TEAM_DOT_COLORS[0]
-
-            dead_idx = np.where(~alive_arr)[0]
-            if len(dead_idx) > 0:
-                d_idx = dead_idx[0]
-                ax_target.plot(
-                    pos_s[d_idx, 0],
-                    pos_s[d_idx, 1],
-                    marker="x",
-                    color="red",
-                    markersize=5,
-                    mew=1.5,
-                    zorder=5,
-                )
-
-            # Draw dots first (lower z-order)
-            for i in range(len(pos_s)):
-                if i % 10 == 0:
-                    ax_target.plot(
-                        pos_s[i, 0],
-                        pos_s[i, 1],
-                        marker="o",
-                        color=dot_color,
-                        markersize=2,
-                        zorder=2,
-                    )
-
-            # Draw lines on top (higher z-order)
-            for i in range(len(pos_s) - 1):
-                ax_target.plot(
-                    [pos_s[i, 0], pos_s[i + 1, 0]],
-                    [pos_s[i, 1], pos_s[i + 1, 1]],
-                    color=method_color,
-                    alpha=0.6,
-                    lw=1.0,
-                    zorder=3,
-                )
-        ax_target.plot([], [], color=method_color, label=label, lw=1)
-
-    alive_for_plot = sim_alive[:, :plot_N]
-    cl_alive_for_plot = cl_alive[:, :plot_N]
-    ol_alive_for_plot = ol_alive[:, :plot_N]
-
-    plot_centered_trajectory(
-        ax_map2, sim_pos_c, alive_for_plot, "Ground Truth", METHOD_COLORS["gt"]
+    _plot_ship_trajectories(
+        ax_map2, gt.pos_c, gt.alive, "Ground Truth", METHOD_COLORS["gt"], num_ships
     )
-    plot_centered_trajectory(
-        ax_map2, cl_pos_c, cl_alive_for_plot, "AR Closed Loop", METHOD_COLORS["cl"]
+    _plot_ship_trajectories(
+        ax_map2, cl.pos_c, cl.alive, "AR Closed Loop", METHOD_COLORS["cl"], num_ships
     )
-    plot_centered_trajectory(
-        ax_map2, ol_pos_c, ol_alive_for_plot, "AR Open Loop", METHOD_COLORS["ol"]
+    _plot_ship_trajectories(
+        ax_map2, ol.pos_c, ol.alive, "AR Open Loop", METHOD_COLORS["ol"], num_ships
     )
     ax_map2.legend()
 
     # Crop to GT trajectory bounds — AR may go off-screen if it diverges
-    gt_cx = sim_pos_c[:, :, 0].ravel()
-    gt_cy = sim_pos_c[:, :, 1].ravel()
+    gt_cx = gt.pos_c[:, :, 0].ravel()
+    gt_cy = gt.pos_c[:, :, 1].ravel()
     if len(gt_cx) > 0:
         px = max((np.nanmax(gt_cx) - np.nanmin(gt_cx)) * 0.15, W_x * 0.05)
         py = max((np.nanmax(gt_cy) - np.nanmin(gt_cy)) * 0.15, W_y * 0.05)
@@ -488,7 +543,15 @@ def _generate_report(history_sim, history_closed, history_open, ship_config, num
     fig_map2.savefig(os.path.join(out_dir, map2_filename))
     plt.close(fig_map2)
 
-    # --- 1.75. 2D Velocity-Space Map ---
+
+def _plot_velocity_map(
+    out_dir: str,
+    gt: _RolloutArrays,
+    cl: _RolloutArrays,
+    ol: _RolloutArrays,
+    num_ships: int,
+) -> None:
+    """Featured-ship trajectory in velocity space (Vx, Vy)."""
     fig_vel_map = plt.figure(figsize=(8, 8))
     ax_vel_map = fig_vel_map.add_subplot(1, 1, 1)
     ax_vel_map.set_title("Velocity Space (Vx, Vy)")
@@ -497,127 +560,67 @@ def _generate_report(history_sim, history_closed, history_open, ship_config, num
     ax_vel_map.set_aspect("equal")
     ax_vel_map.grid(True, linestyle="--", alpha=0.5)
 
-    def plot_vel_trajectory(ax_target, vel_arr, alive_arr_all, label, method_color):
-        for s in range(plot_N):
-            vel_s = vel_arr[:, s]  # shape (steps, 2)
-            alive_arr = alive_arr_all[:, s]
-            dot_color = TEAM_DOT_COLORS[1] if s >= num_ships // 2 else TEAM_DOT_COLORS[0]
-
-            dead_idx = np.where(~alive_arr)[0]
-            if len(dead_idx) > 0:
-                d_idx = dead_idx[0]
-                ax_target.plot(
-                    vel_s[d_idx, 0],
-                    vel_s[d_idx, 1],
-                    marker="x",
-                    color="red",
-                    markersize=5,
-                    mew=1.5,
-                    zorder=5,
-                )
-
-            # Dots first
-            for i in range(len(vel_s)):
-                if i % 10 == 0:
-                    ax_target.plot(
-                        vel_s[i, 0],
-                        vel_s[i, 1],
-                        marker="o",
-                        color=dot_color,
-                        markersize=2,
-                        zorder=2,
-                    )
-
-            # Lines on top
-            for i in range(len(vel_s) - 1):
-                ax_target.plot(
-                    [vel_s[i, 0], vel_s[i + 1, 0]],
-                    [vel_s[i, 1], vel_s[i + 1, 1]],
-                    color=method_color,
-                    alpha=0.6,
-                    lw=1.0,
-                    zorder=3,
-                )
-        ax_target.plot([], [], color=method_color, label=label, lw=1)
-
-    plot_vel_trajectory(ax_vel_map, sim_vel, alive_for_plot, "Ground Truth", METHOD_COLORS["gt"])
-    plot_vel_trajectory(
-        ax_vel_map, cl_vel, cl_alive_for_plot, "AR Closed Loop", METHOD_COLORS["cl"]
+    _plot_ship_trajectories(
+        ax_vel_map, gt.vel, gt.alive, "Ground Truth", METHOD_COLORS["gt"], num_ships
     )
-    plot_vel_trajectory(ax_vel_map, ol_vel, ol_alive_for_plot, "AR Open Loop", METHOD_COLORS["ol"])
+    _plot_ship_trajectories(
+        ax_vel_map, cl.vel, cl.alive, "AR Closed Loop", METHOD_COLORS["cl"], num_ships
+    )
+    _plot_ship_trajectories(
+        ax_vel_map, ol.vel, ol.alive, "AR Open Loop", METHOD_COLORS["ol"], num_ships
+    )
     ax_vel_map.legend()
     fig_vel_map.tight_layout()
     fig_vel_map.savefig(os.path.join(out_dir, "2d_vel_map.png"))
     plt.close(fig_vel_map)
 
-    # --- 2. Divergence Stats (MAE & L2) Line Charts ---
-    def calc_toroidal_euclidean(pos1, pos2, W_x, W_y, alive1, alive2):
-        dx = np.abs(pos1[..., 0] - pos2[..., 0])
-        dy = np.abs(pos1[..., 1] - pos2[..., 1])
-        dx = np.minimum(dx, W_x - dx)
-        dy = np.minimum(dy, W_y - dy)
-        dist = np.sqrt(dx**2 + dy**2)
-        dist[~(alive1 & alive2)] = np.nan
-        return dist
 
-    def calc_euclidean(arr1, arr2, alive1, alive2):
-        dist = np.linalg.norm(arr1 - arr2, axis=-1)
-        dist[~(alive1 & alive2)] = np.nan
-        return dist
+def _compute_error_metrics(
+    gt: _RolloutArrays, cl: _RolloutArrays, ol: _RolloutArrays, W_x: float, W_y: float
+) -> list[tuple[str, str, np.ndarray, np.ndarray]]:
+    """Per-step CL/OL-vs-GT divergence metrics, masked to steps where both are alive."""
+    err_pos_cl = _calc_toroidal_euclidean(cl.pos, gt.pos, W_x, W_y, cl.alive, gt.alive)
+    err_pos_ol = _calc_toroidal_euclidean(ol.pos, gt.pos, W_x, W_y, ol.alive, gt.alive)
 
-    def calc_4d_euclidean(pos1, vel1, pos2, vel2, W_x, W_y, alive1, alive2):
-        dx = np.abs(pos1[..., 0] - pos2[..., 0])
-        dy = np.abs(pos1[..., 1] - pos2[..., 1])
-        dx = np.minimum(dx, W_x - dx)
-        dy = np.minimum(dy, W_y - dy)
+    err_vel_cl = _calc_euclidean(cl.vel, gt.vel, cl.alive, gt.alive)
+    err_vel_ol = _calc_euclidean(ol.vel, gt.vel, ol.alive, gt.alive)
 
-        dvx = vel1[..., 0] - vel2[..., 0]
-        dvy = vel1[..., 1] - vel2[..., 1]
+    err_4d_cl = _calc_4d_euclidean(cl.pos, cl.vel, gt.pos, gt.vel, W_x, W_y, cl.alive, gt.alive)
+    err_4d_ol = _calc_4d_euclidean(ol.pos, ol.vel, gt.pos, gt.vel, W_x, W_y, ol.alive, gt.alive)
 
-        dist = np.sqrt(dx**2 + dy**2 + dvx**2 + dvy**2)
-        dist[~(alive1 & alive2)] = np.nan
-        return dist
-
-    def calc_mae(arr1, arr2, alive1, alive2):
-        err = np.mean(np.abs(arr1 - arr2), axis=-1)
-        err[~(alive1 & alive2)] = np.nan
-        return err
-
-    steps = np.arange(num_steps)
-
-    err_pos_cl = calc_toroidal_euclidean(cl_pos, sim_pos, W_x, W_y, cl_alive, sim_alive)
-    err_pos_ol = calc_toroidal_euclidean(ol_pos, sim_pos, W_x, W_y, ol_alive, sim_alive)
-
-    err_vel_cl = calc_euclidean(cl_vel, sim_vel, cl_alive, sim_alive)
-    err_vel_ol = calc_euclidean(ol_vel, sim_vel, ol_alive, sim_alive)
-
-    err_4d_cl = calc_4d_euclidean(cl_pos, cl_vel, sim_pos, sim_vel, W_x, W_y, cl_alive, sim_alive)
-    err_4d_ol = calc_4d_euclidean(ol_pos, ol_vel, sim_pos, sim_vel, W_x, W_y, ol_alive, sim_alive)
-
-    mae_features = [
+    return [
         ("position", "Position Error (Toroidal L2)", err_pos_cl, err_pos_ol),
         ("velocity", "Velocity Error (L2)", err_vel_cl, err_vel_ol),
         ("pos_vel_4d", "Pos+Vel 4D Error (L2)", err_4d_cl, err_4d_ol),
         (
             "attitude",
             "Attitude Error (MAE)",
-            calc_mae(cl_att, sim_att, cl_alive, sim_alive),
-            calc_mae(ol_att, sim_att, ol_alive, sim_alive),
+            _calc_mae(cl.att, gt.att, cl.alive, gt.alive),
+            _calc_mae(ol.att, gt.att, ol.alive, gt.alive),
         ),
         (
             "health",
             "Health Error (MAE)",
-            calc_mae(cl_health, sim_health, cl_alive, sim_alive),
-            calc_mae(ol_health, sim_health, ol_alive, sim_alive),
+            _calc_mae(cl.health, gt.health, cl.alive, gt.alive),
+            _calc_mae(ol.health, gt.health, ol.alive, gt.alive),
         ),
         (
             "power",
             "Power Error (MAE)",
-            calc_mae(cl_power, sim_power, cl_alive, sim_alive),
-            calc_mae(ol_power, sim_power, ol_alive, sim_alive),
+            _calc_mae(cl.power, gt.power, cl.alive, gt.alive),
+            _calc_mae(ol.power, gt.power, ol.alive, gt.alive),
         ),
     ]
 
+
+def _plot_error_metrics(
+    out_dir: str,
+    mae_features: list[tuple[str, str, np.ndarray, np.ndarray]],
+    plot_N: int,
+    num_ships: int,
+    steps: np.ndarray,
+) -> None:
+    """Line charts of each error metric over time, per featured ship."""
     for file_key, name, err_cl, err_ol in mae_features:
         fig_err = plt.figure(figsize=(8, 4))
         ax_err = fig_err.add_subplot(1, 1, 1)
@@ -647,25 +650,38 @@ def _generate_report(history_sim, history_closed, history_open, ship_config, num
         fig_err.savefig(os.path.join(out_dir, f"mae_{file_key}.png"))
         plt.close(fig_err)
 
-    # --- 3. Feature Divergence Line Plots ---
-    features = [
-        ("position_x", "Position X", sim_pos_uw[..., 0], cl_pos_uw[..., 0], ol_pos_uw[..., 0]),
-        ("velocity_x", "Velocity X", sim_vel[..., 0], cl_vel[..., 0], ol_vel[..., 0]),
-        ("angle_cos", "Angle (cos)", sim_att[..., 0], cl_att[..., 0], ol_att[..., 0]),
-        ("angular_vel", "Angular Vel", sim_ang_vel[..., 0], cl_ang_vel[..., 0], ol_ang_vel[..., 0]),
+
+def _build_feature_series(
+    gt: _RolloutArrays, cl: _RolloutArrays, ol: _RolloutArrays
+) -> list[tuple[str, str, np.ndarray, np.ndarray, np.ndarray]]:
+    """Per-feature (GT, CL, OL) series driving the feature-divergence line plots."""
+    return [
+        ("position_x", "Position X", gt.pos_uw[..., 0], cl.pos_uw[..., 0], ol.pos_uw[..., 0]),
+        ("velocity_x", "Velocity X", gt.vel[..., 0], cl.vel[..., 0], ol.vel[..., 0]),
+        ("angle_cos", "Angle (cos)", gt.att[..., 0], cl.att[..., 0], ol.att[..., 0]),
+        ("angular_vel", "Angular Vel", gt.ang_vel[..., 0], cl.ang_vel[..., 0], ol.ang_vel[..., 0]),
         (
             "angular_vel_scaled",
             "Angular Vel (Scaled to GT)",
-            sim_ang_vel[..., 0],
-            cl_ang_vel[..., 0],
-            ol_ang_vel[..., 0],
+            gt.ang_vel[..., 0],
+            cl.ang_vel[..., 0],
+            ol.ang_vel[..., 0],
         ),
-        ("health", "Health", sim_health[..., 0], cl_health[..., 0], ol_health[..., 0]),
-        ("power", "Power", sim_power[..., 0], cl_power[..., 0], ol_power[..., 0]),
-        ("cooldown", "Cooldown", sim_cooldown[..., 0], cl_cooldown[..., 0], ol_cooldown[..., 0]),
-        ("alive", "Alive Prob", sim_alive, cl_alive_prob, ol_alive_prob),
+        ("health", "Health", gt.health[..., 0], cl.health[..., 0], ol.health[..., 0]),
+        ("power", "Power", gt.power[..., 0], cl.power[..., 0], ol.power[..., 0]),
+        ("cooldown", "Cooldown", gt.cooldown[..., 0], cl.cooldown[..., 0], ol.cooldown[..., 0]),
+        ("alive", "Alive Prob", gt.alive, cl.alive_prob, ol.alive_prob),
     ]
 
+
+def _plot_feature_divergence(
+    out_dir: str,
+    features: list[tuple[str, str, np.ndarray, np.ndarray, np.ndarray]],
+    plot_N: int,
+    num_ships: int,
+    steps: np.ndarray,
+) -> None:
+    """Line charts overlaying GT/CL/OL for each individual feature."""
     for file_key, name, sim_f, cl_f, ol_f in features:
         fig_feat = plt.figure(figsize=(8, 4))
         ax = fig_feat.add_subplot(1, 1, 1)
@@ -721,7 +737,14 @@ def _generate_report(history_sim, history_closed, history_open, ship_config, num
         fig_feat.savefig(os.path.join(out_dir, f"feature_{file_key}.png"))
         plt.close(fig_feat)
 
-    # --- Markdown Report ---
+
+def _write_markdown_report(
+    out_dir: str,
+    num_ships: int,
+    mae_features: list[tuple[str, str, np.ndarray, np.ndarray]],
+    features: list[tuple[str, str, np.ndarray, np.ndarray, np.ndarray]],
+) -> None:
+    """Write ar_report.md linking every generated plot."""
     with open(os.path.join(out_dir, "ar_report.md"), "w") as f:
         f.write("# Autoregressive Rollout Report\n\n")
         f.write(
@@ -751,3 +774,47 @@ def _generate_report(history_sim, history_closed, history_open, ship_config, num
         for file_key, name, _, _, _ in features:
             f.write(f"### {name}\n")
             f.write(f"![{name}](feature_{file_key}.png)\n\n")
+
+
+def _generate_report(
+    history_sim: History,
+    history_closed: History,
+    history_open: History,
+    ship_config: ShipConfig,
+    num_steps: int,
+    out_dir: str,
+) -> None:
+    os.makedirs(out_dir, exist_ok=True)
+
+    num_ships = history_sim[0]["pos"].shape[1]  # shape is (1, N, 2) — dim 1 is ship count
+    plot_N = 2 if num_ships == 2 else 1
+    W_x, W_y = ship_config.world_size
+
+    gt = _extract_rollout_arrays(history_sim, plot_N, W_x, W_y)
+    cl = _extract_rollout_arrays(history_closed, plot_N, W_x, W_y)
+    ol = _extract_rollout_arrays(history_open, plot_N, W_x, W_y)
+
+    # GT alive-prob is constant 1; only the AR rollouts can "revive" a dead ship's prob.
+    cl.alive_prob = _clamp_alive_prob(cl.alive_prob, cl.alive, plot_N)
+    ol.alive_prob = _clamp_alive_prob(ol.alive_prob, ol.alive, plot_N)
+
+    # Center on the toroidal CoM of the ground-truth featured ships (raw, wrapped coords),
+    # anchoring the centered/cropped map to where the actual game happened.
+    com_x, com_y = _toroidal_center_of_mass(gt.pos.reshape(-1, 2), W_x, W_y)
+    gt.pos_c = _center_pos_uw(gt.pos_uw, com_x, com_y)
+    cl.pos_c = _center_pos_uw(cl.pos_uw, com_x, com_y)
+    ol.pos_c = _center_pos_uw(ol.pos_uw, com_x, com_y)
+
+    if num_ships > 2:  # 2v2+ only
+        _plot_full_world_map(out_dir, gt, cl, ol, num_ships, W_x, W_y)
+    _plot_centered_map(out_dir, gt, cl, ol, num_ships, W_x, W_y)
+    _plot_velocity_map(out_dir, gt, cl, ol, num_ships)
+
+    steps = np.arange(num_steps)
+    mae_features = _compute_error_metrics(gt, cl, ol, W_x, W_y)
+    _plot_error_metrics(out_dir, mae_features, plot_N, num_ships, steps)
+
+    features = _build_feature_series(gt, cl, ol)
+    _plot_feature_divergence(out_dir, features, plot_N, num_ships, steps)
+
+    _write_markdown_report(out_dir, num_ships, mae_features, features)

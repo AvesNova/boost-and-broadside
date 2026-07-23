@@ -1,7 +1,8 @@
 # Codebase Audit — Boost and Broadside
 
-_Status: First full pass complete. 18 open findings, 7 fixed, 0 won't-fix
-(AUDIT-001, AUDIT-005, AUDIT-009, AUDIT-014 resolved in a later batch)._
+_Status: First full pass complete. 15 open findings, 10 fixed, 0 won't-fix
+(AUDIT-001, AUDIT-005, AUDIT-009, AUDIT-014 resolved in a later batch;
+AUDIT-019, AUDIT-020, AUDIT-021 resolved in the ar_report batch)._
 _Audit started and completed: 2026-07-23._
 
 This document is the persistent, cross-session record of a repository-wide Python code
@@ -270,7 +271,7 @@ configs.
 - **Location:** `_generate_report`
 - **Severity:** High
 - **Category:** Excessive complexity / duplication
-- **Status:** Open
+- **Status:** ✅ Done (pending commit)
 - **Confidence:** High
 
 **Problem**
@@ -509,7 +510,7 @@ Touches the main per-step physics call site (`env.py`), so it should be covered 
 - **Location:** module level; `_run_ar`; `_generate_report`
 - **Severity:** Medium
 - **Category:** Typing / documentation
-- **Status:** Open
+- **Status:** ✅ Done (pending commit)
 - **Confidence:** High
 
 **Problem**
@@ -1057,7 +1058,7 @@ that per-parameter init statistics (mean/std) are unchanged before/after.
 - **Location:** `_generate_report`, near the "Full-world 2D Game Map" comment
 - **Severity:** Low
 - **Category:** Dead code
-- **Status:** Open
+- **Status:** ✅ Done (pending commit)
 - **Confidence:** High
 
 **Problem**
