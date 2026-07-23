@@ -1148,7 +1148,7 @@ format expecting exactly `Z`.
 - **Location:** `CheckpointMixin._save_checkpoint`, `CheckpointMixin._save_best_checkpoint`
 - **Severity:** Low
 - **Category:** Duplication
-- **Status:** ✅ Done (pending commit)
+- **Status:** ✅ Done (b2966a4)
 - **Confidence:** High
 
 **Problem**
@@ -1190,7 +1190,7 @@ checkpoint still skip-and-warn when triggered twice in quick succession.
 - **Location:** `CheckpointMixin._save_checkpoint` (the `_async_save` prune block); `EloRoster.kept_paths` in `src/boost_and_broadside/train/rl/roster.py`
 - **Severity:** Low
 - **Category:** Misleading comment / dead code path
-- **Status:** ✅ Done (pending commit) — went beyond the comment-only fix per an explicit
+- **Status:** ✅ Done (b2966a4) — went beyond the comment-only fix per an explicit
   product request to retain more history: pruning now keeps a rolling window of the
   newest `_KEEP_LAST_N_CHECKPOINTS` (3) `step_*.pt` and `avg_step_*.pt` files each
   (previously: the single newest `step_*.pt` and a single, non-rotated, overwritten
