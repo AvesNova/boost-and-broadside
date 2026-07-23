@@ -128,6 +128,11 @@ class TensorEnv:
         n_team1 = N - n_team0
         if options and "team_sizes" in options:
             n_team0, n_team1 = options["team_sizes"]
+            if n_team0 < 0 or n_team1 < 0 or n_team0 + n_team1 > N:
+                raise ValueError(
+                    f"team_sizes {(n_team0, n_team1)} invalid for num_ships={N}: counts "
+                    "must be non-negative and sum to at most num_ships."
+                )
 
         s = self.state
         m = mask.unsqueeze(1)  # (B, 1) — broadcasts over ships/obstacles

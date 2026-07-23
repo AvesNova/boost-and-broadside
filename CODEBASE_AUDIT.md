@@ -1,7 +1,7 @@
 # Codebase Audit — Boost and Broadside
 
-_Status: First full pass complete. 25 open findings, 0 fixed, 0 won't-fix. Audit only —
-no production code was modified during this pass._
+_Status: First full pass complete. 21 open findings, 4 fixed, 0 won't-fix
+(AUDIT-001, AUDIT-005, AUDIT-009, AUDIT-014 resolved in a later batch)._
 _Audit started and completed: 2026-07-23._
 
 This document is the persistent, cross-session record of a repository-wide Python code
@@ -212,7 +212,7 @@ are stable across re-sorts — do not renumber on future passes.
 - **Location:** `main()`, `case "bc_warmstart":` block
 - **Severity:** Critical
 - **Category:** Correctness / reliability
-- **Status:** Open
+- **Status:** ✅ Done (pending commit)
 - **Confidence:** High
 
 **Problem**
@@ -324,7 +324,7 @@ generated PNGs/markdown.
 - **Location:** module level, `_GROUP`, `_LOCAL_COMPONENTS`; consumed in `PPOTrainer._refresh_training_schedule` and `PPOTrainer._precompute_lambda_aggregates`
 - **Severity:** High
 - **Category:** Maintainability / architecture
-- **Status:** Open
+- **Status:** ✅ Done (pending commit)
 - **Confidence:** High
 
 **Problem**
@@ -729,7 +729,7 @@ docstring.
 - **Location:** module-level (missing `Test*` classes)
 - **Severity:** Medium
 - **Category:** Test coverage
-- **Status:** Open
+- **Status:** ✅ Done (pending commit)
 - **Confidence:** High
 
 **Problem**
@@ -903,7 +903,7 @@ None beyond review; re-run any type checker the project adopts.
 - **Location:** `TensorEnv.reset_envs`
 - **Severity:** Low
 - **Category:** Missing validation
-- **Status:** Open
+- **Status:** ✅ Done (pending commit)
 - **Confidence:** Medium
 
 **Problem**
