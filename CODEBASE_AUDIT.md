@@ -271,7 +271,7 @@ configs.
 - **Location:** `_generate_report`
 - **Severity:** High
 - **Category:** Excessive complexity / duplication
-- **Status:** ✅ Done (pending commit)
+- **Status:** ✅ Done (1721689)
 - **Confidence:** High
 
 **Problem**
@@ -510,7 +510,7 @@ Touches the main per-step physics call site (`env.py`), so it should be covered 
 - **Location:** module level; `_run_ar`; `_generate_report`
 - **Severity:** Medium
 - **Category:** Typing / documentation
-- **Status:** ✅ Done (pending commit)
+- **Status:** ✅ Done (1721689)
 - **Confidence:** High
 
 **Problem**
@@ -1058,7 +1058,7 @@ that per-parameter init statistics (mean/std) are unchanged before/after.
 - **Location:** `_generate_report`, near the "Full-world 2D Game Map" comment
 - **Severity:** Low
 - **Category:** Dead code
-- **Status:** ✅ Done (pending commit)
+- **Status:** ✅ Done (1721689)
 - **Confidence:** High
 
 **Problem**
