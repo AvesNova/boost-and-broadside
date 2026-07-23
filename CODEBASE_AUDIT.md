@@ -384,7 +384,7 @@ derived set.
 - **Location:** `main()`, `case "rl":` and `case "rl_obstacles":` blocks
 - **Severity:** Medium
 - **Category:** Duplication / maintainability
-- **Status:** ✅ Done (pending commit)
+- **Status:** ✅ Done (8eca6b6)
 - **Confidence:** High
 
 **Problem**
@@ -790,7 +790,7 @@ sign) to confirm they actually constrain the behavior, then pass against current
 - **Location:** module level, `_MICROBATCH_TOKENS = _MAX_TOKENS // _NUM_MINIBATCHES // 5`
 - **Severity:** Low
 - **Category:** Documentation / clarity
-- **Status:** ✅ Done (pending commit)
+- **Status:** ✅ Done (8eca6b6)
 - **Confidence:** Medium
 
 **Problem**
@@ -826,7 +826,7 @@ None needed beyond review.
 - **Location:** `StochasticAgentConfig.from_vector`, `StochasticAgentConfig.default_vector`
 - **Severity:** Low
 - **Category:** Documentation
-- **Status:** ✅ Done (pending commit)
+- **Status:** ✅ Done (8eca6b6)
 - **Confidence:** High
 
 **Problem**
@@ -869,7 +869,7 @@ None beyond review.
 - **Location:** `linear`, `exponential`, `cosine_anneal` (declared return type `Schedule`); module-level `Schedule = Callable[[int], Any]`
 - **Severity:** Low
 - **Category:** Typing
-- **Status:** ✅ Done (pending commit)
+- **Status:** ✅ Done (8eca6b6)
 - **Confidence:** High
 
 **Problem**
@@ -944,7 +944,7 @@ Add a test that passing an invalid `team_sizes` (e.g. summing past `num_ships`, 
 - **Location:** `MVPObservation.data`, `__getitem__`, `__contains__`, `items`, `slice_envs`
 - **Severity:** Low
 - **Category:** Typing
-- **Status:** ✅ Done (pending commit)
+- **Status:** ✅ Done (8eca6b6)
 - **Confidence:** High
 
 **Problem**
@@ -1024,7 +1024,7 @@ None — behavior-preserving, since both sites use the identical condition today
 - **Location:** `MVPPolicy.__init__`
 - **Severity:** Low
 - **Category:** Maintainability
-- **Status:** ✅ Done (pending commit)
+- **Status:** ✅ Done (8eca6b6)
 - **Confidence:** Medium
 
 **Problem**
@@ -1113,7 +1113,7 @@ None — removing a no-op statement.
 - **Location:** `_build_output`
 - **Severity:** Low
 - **Category:** Non-idiomatic / deprecated API
-- **Status:** ✅ Done (pending commit)
+- **Status:** ✅ Done (8eca6b6)
 - **Confidence:** High
 
 **Problem**
@@ -1265,7 +1265,7 @@ does not prune it.
 - **Location:** `Feature.__init__` / `Feature.weight`
 - **Severity:** Low
 - **Category:** Dead code
-- **Status:** ✅ Done (pending commit)
+- **Status:** ✅ Done (8eca6b6)
 - **Confidence:** High
 
 **Problem**
@@ -1305,7 +1305,7 @@ confirm none rely on it before removing.
 - **Location:** `PPOTrainer._update_epochs`
 - **Severity:** Low
 - **Category:** Duplication
-- **Status:** ✅ Done (pending commit)
+- **Status:** ✅ Done (8eca6b6)
 - **Confidence:** Medium
 
 **Problem**
