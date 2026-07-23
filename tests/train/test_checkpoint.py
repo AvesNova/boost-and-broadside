@@ -5,6 +5,8 @@ tensor has the right shape and dtype, and the values look plausible. The damage
 only surfaces later as a diverged resume or a NaN with no traceable origin.
 """
 
+from pathlib import Path
+
 import pytest
 import torch
 
@@ -156,3 +158,139 @@ class TestNumValueComponents:
         """Checkpoints written before the field recover K from the value head."""
         ckpt = {"policy_state_dict": {"value_head_local.3.weight": torch.zeros(5, 4)}}
         assert infer_num_value_components(ckpt) == 5
+
+
+def _save_checkpoint_and_join(trainer, update: int) -> None:
+    trainer._save_checkpoint(update=update)
+    trainer._active_save_thread.join(timeout=60)
+
+
+class TestCheckpointRetention:
+    """AUDIT-017: the ELO ladder keeps every snapshot; regular saves keep a rolling window.
+
+    Previously ``_save_checkpoint`` kept only the single newest ``step_*.pt``
+    file and a single, non-rotated ``recent_avg.pt``. This exercises the
+    replacement policy: the newest ``_KEEP_LAST_N_CHECKPOINTS`` live and avg
+    checkpoints survive, older ones in each family are pruned, and neither the
+    best-model files nor the ELO ladder's own snapshots are ever touched.
+    """
+
+    def test_prune_keeps_only_last_n_live_checkpoints(self, tmp_path):
+        from boost_and_broadside.train.rl.checkpoint import _KEEP_LAST_N_CHECKPOINTS
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        for step in range(1, _KEEP_LAST_N_CHECKPOINTS + 3):
+            trainer._global_step = step
+            _save_checkpoint_and_join(trainer, update=step)
+
+        remaining = sorted(p.name for p in tmp_path.rglob("step_*.pt"))
+        expected_steps = range(3, _KEEP_LAST_N_CHECKPOINTS + 3)
+        assert remaining == [f"step_{s:012d}.pt" for s in expected_steps]
+
+    def test_prune_keeps_only_last_n_avg_checkpoints(self, tmp_path):
+        from boost_and_broadside.train.rl.checkpoint import _KEEP_LAST_N_CHECKPOINTS
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path), avg_model_fraction=0.25)
+        trainer._avg_update_count = 1  # avg policy is ready to be checkpointed
+        for step in range(1, _KEEP_LAST_N_CHECKPOINTS + 3):
+            trainer._global_step = step
+            _save_checkpoint_and_join(trainer, update=step)
+
+        remaining = sorted(p.name for p in tmp_path.rglob("avg_step_*.pt"))
+        expected_steps = range(3, _KEEP_LAST_N_CHECKPOINTS + 3)
+        assert remaining == [f"avg_step_{s:012d}.pt" for s in expected_steps]
+
+    def test_best_and_ladder_files_survive_rolling_prune(self, tmp_path):
+        from boost_and_broadside.train.rl.checkpoint import _KEEP_LAST_N_CHECKPOINTS
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        trainer._save_best_checkpoint("best_training.pt")
+        trainer._active_best_thread.join(timeout=60)
+        ladder_path = trainer._save_ladder_snapshot()
+
+        for step in range(1, _KEEP_LAST_N_CHECKPOINTS + 3):
+            trainer._global_step = step
+            _save_checkpoint_and_join(trainer, update=step)
+
+        ckpt_dir = Path(tmp_path) / trainer.run_name
+        assert (ckpt_dir / "best_training.pt").exists()
+        assert ladder_path.exists()
+
+    def test_roster_referenced_path_is_protected_from_pruning(self, tmp_path):
+        """Defense in depth: a roster "checkpoint" entry protects its path even
+        though, in practice, roster entries always name ``ladder_step_*`` files
+        that this glob never matches in the first place."""
+        from boost_and_broadside.train.rl.checkpoint import _KEEP_LAST_N_CHECKPOINTS
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        ckpt_dir = Path(tmp_path) / trainer.run_name
+        ckpt_dir.mkdir(parents=True, exist_ok=True)
+        protected_path = ckpt_dir / "step_000000000001.pt"
+        protected_path.write_bytes(b"placeholder")
+        trainer.roster.add_checkpoint(str(protected_path), global_step=1, update=1)
+
+        for step in range(2, _KEEP_LAST_N_CHECKPOINTS + 4):
+            trainer._global_step = step
+            _save_checkpoint_and_join(trainer, update=step)
+
+        remaining = sorted(p.name for p in ckpt_dir.glob("step_*.pt"))
+        expected_steps = [1, *range(4, _KEEP_LAST_N_CHECKPOINTS + 4)]
+        assert remaining == [f"step_{s:012d}.pt" for s in expected_steps]
+
+
+class TestBestCheckpoints:
+    """The best-model checkpoints (live and avg) overwrite in place as ELO improves."""
+
+    def test_best_training_is_saved_only_when_live_elo_improves(self, tmp_path):
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        ckpt_dir = Path(tmp_path) / trainer.run_name
+
+        trainer._training_elo = 10.0
+        trainer._maybe_save_best_checkpoints(random_elo=0.0)
+        trainer._active_best_thread.join(timeout=60)
+        assert (ckpt_dir / "best_training.pt").exists()
+        first_mtime = (ckpt_dir / "best_training.pt").stat().st_mtime_ns
+
+        # ELO regresses: the file must not be rewritten.
+        trainer._training_elo = 5.0
+        trainer._maybe_save_best_checkpoints(random_elo=0.0)
+        assert (ckpt_dir / "best_training.pt").stat().st_mtime_ns == first_mtime
+
+    def test_best_avg_is_not_saved_before_avg_model_is_ready(self, tmp_path):
+        """AUDIT-adjacent: _best_avg_elo_norm previously had no writer at all."""
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path), avg_model_fraction=0.25)
+        ckpt_dir = Path(tmp_path) / trainer.run_name
+
+        assert trainer._avg_update_count == 0
+        trainer._avg_training_elo = 1000.0  # would trip the threshold if checked
+        trainer._maybe_save_best_checkpoints(random_elo=0.0)
+        assert not (ckpt_dir / "best_avg.pt").exists()
+
+    def test_best_avg_checkpoint_holds_avg_policy_weights(self, tmp_path):
+        """The previously-dead best-avg trigger now writes the avg policy's
+        weights, not the live policy's, into best_avg.pt."""
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path), avg_model_fraction=0.25)
+        ckpt_dir = Path(tmp_path) / trainer.run_name
+        with torch.no_grad():
+            for p in trainer._avg_policy_module.parameters():
+                p.add_(1.0)
+
+        trainer._avg_update_count = 1
+        trainer._avg_training_elo = 50.0
+        trainer._maybe_save_best_checkpoints(random_elo=0.0)
+        trainer._active_best_thread.join(timeout=60)
+
+        saved = torch.load(ckpt_dir / "best_avg.pt", map_location="cpu", weights_only=False)
+        live_state = trainer._policy_module.state_dict()
+        for name, avg_param in saved["policy_state_dict"].items():
+            assert not torch.equal(avg_param, live_state[name])
