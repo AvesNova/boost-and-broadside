@@ -1,8 +1,9 @@
 # Codebase Audit — Boost and Broadside
 
-_Status: First full pass complete. 15 open findings, 10 fixed, 0 won't-fix
+_Status: First full pass complete. 12 open findings, 13 fixed, 0 won't-fix
 (AUDIT-001, AUDIT-005, AUDIT-009, AUDIT-014 resolved in a later batch;
-AUDIT-019, AUDIT-020, AUDIT-021 resolved in the ar_report batch)._
+AUDIT-019, AUDIT-020, AUDIT-021 resolved in the ar_report batch;
+AUDIT-006, AUDIT-007, AUDIT-024 resolved in the obstacle-stepping/scripted-agent batch)._
 _Audit started and completed: 2026-07-23._
 
 This document is the persistent, cross-session record of a repository-wide Python code
@@ -417,7 +418,7 @@ resolve checkpoints correctly after the extraction.
 - **Location:** `JousterAgent.get_actions`, `TeamJousterAgent.get_actions`, `AbreastAgent.get_actions`, `ReverseTurretAgent.get_actions`, `RunAwayAgent.get_actions`, `SpiralEvaderAgent.get_actions`
 - **Severity:** Medium
 - **Category:** Duplication
-- **Status:** Open
+- **Status:** ✅ Done (pending commit)
 - **Confidence:** High
 
 **Problem**
@@ -479,7 +480,10 @@ extraction.
 - **Location:** `ObstacleCache.generate` / `_make_obstacle_state`, and `step_obstacles_harmonic` in `src/boost_and_broadside/env/obstacle_physics.py`
 - **Severity:** Medium
 - **Category:** Module boundaries / coupling
-- **Status:** Open
+- **Status:** ✅ Done (pending commit) — `_make_obstacle_state` was kept (not deleted as the
+  recommended change suggested): `modes/interactive.py`'s `_run_convergence_phase` also calls it
+  to build a full `TensorState` for the live renderer during obstacle convergence, independent
+  of `step_obstacles_harmonic`. `ObstacleCache.generate()` no longer calls it at all.
 - **Confidence:** High
 
 **Problem**
@@ -974,7 +978,7 @@ None beyond review; re-run any type checker the project adopts.
 - **Location:** `_update_kinematics`
 - **Severity:** Low
 - **Category:** Duplication / readability
-- **Status:** Open
+- **Status:** ✅ Done (pending commit)
 - **Confidence:** High
 
 **Problem**

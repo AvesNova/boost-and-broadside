@@ -1,9 +1,47 @@
 """Shared geometry utilities for deterministic scripted agents."""
 
+import math
+
 import torch
 
 from boost_and_broadside.config import ShipConfig
+from boost_and_broadside.constants import TurnActions
 from boost_and_broadside.env.state import TensorState
+
+TURN_NORMAL_ANGLE = math.radians(5)
+TURN_SHARP_ANGLE = math.radians(15)
+
+
+def turn_toward(rel_angle: torch.Tensor) -> torch.Tensor:
+    """Convert a signed relative heading angle into a discrete turn action.
+
+    Args:
+        rel_angle: (...) float — signed angle (radians) from current heading
+            to the desired direction. Positive = target is to the right.
+
+    Returns:
+        Same shape, int32 — GO_STRAIGHT below TURN_NORMAL_ANGLE, TURN_LEFT/RIGHT
+        between TURN_NORMAL_ANGLE and TURN_SHARP_ANGLE, SHARP_LEFT/RIGHT at or
+        above TURN_SHARP_ANGLE.
+    """
+    device = rel_angle.device
+    abs_angle = rel_angle.abs()
+    turn = torch.full_like(rel_angle, TurnActions.GO_STRAIGHT, dtype=torch.int32)
+    normal = (abs_angle >= TURN_NORMAL_ANGLE) & (abs_angle < TURN_SHARP_ANGLE)
+    sharp = abs_angle >= TURN_SHARP_ANGLE
+    turn = torch.where(
+        normal & (rel_angle > 0), torch.tensor(TurnActions.TURN_RIGHT, device=device), turn
+    )
+    turn = torch.where(
+        normal & (rel_angle < 0), torch.tensor(TurnActions.TURN_LEFT, device=device), turn
+    )
+    turn = torch.where(
+        sharp & (rel_angle > 0), torch.tensor(TurnActions.SHARP_RIGHT, device=device), turn
+    )
+    turn = torch.where(
+        sharp & (rel_angle < 0), torch.tensor(TurnActions.SHARP_LEFT, device=device), turn
+    )
+    return turn
 
 
 def compute_obstacle_repulsion(

@@ -1,14 +1,9 @@
-import math
-
 import torch
 
-from boost_and_broadside.agents.scripted_utils import select_targets
+from boost_and_broadside.agents.scripted_utils import select_targets, turn_toward
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.constants import PowerActions, ShootActions, TurnActions
 from boost_and_broadside.env.state import TensorState
-
-_5DEG = math.radians(5)
-_15DEG = math.radians(15)
 
 
 class RunAwayAgent:
@@ -27,24 +22,9 @@ class RunAwayAgent:
         att = state.ship_attitude
         dir_away = -bearing
         rel_angle = torch.angle(dir_away * torch.conj(att))  # (B, N)
-        abs_angle = rel_angle.abs()
 
         # Turn: aim heading away from enemy
-        turn = torch.full((B, N), TurnActions.GO_STRAIGHT, dtype=torch.int32, device=device)
-        normal = (abs_angle >= _5DEG) & (abs_angle < _15DEG)
-        sharp = abs_angle >= _15DEG
-        turn = torch.where(
-            normal & (rel_angle > 0), torch.tensor(TurnActions.TURN_RIGHT, device=device), turn
-        )
-        turn = torch.where(
-            normal & (rel_angle < 0), torch.tensor(TurnActions.TURN_LEFT, device=device), turn
-        )
-        turn = torch.where(
-            sharp & (rel_angle > 0), torch.tensor(TurnActions.SHARP_RIGHT, device=device), turn
-        )
-        turn = torch.where(
-            sharp & (rel_angle < 0), torch.tensor(TurnActions.SHARP_LEFT, device=device), turn
-        )
+        turn = turn_toward(rel_angle)
 
         power = torch.full((B, N), PowerActions.BOOST, dtype=torch.int32, device=device)
         shoot = torch.full((B, N), ShootActions.NO_SHOOT, dtype=torch.int32, device=device)

@@ -179,7 +179,14 @@ def _run_convergence_phase(
 
     # Phase 1: run until converged
     while True:
-        state = step_obstacles_harmonic(state, ship_config, enable_pbd=True)
+        state.obstacle_pos, state.obstacle_vel = step_obstacles_harmonic(
+            state.obstacle_pos,
+            state.obstacle_vel,
+            state.obstacle_radius,
+            state.obstacle_gcenter,
+            ship_config,
+            enable_pbd=True,
+        )
         converged, collision_free = check_convergence(
             state.obstacle_pos, state.obstacle_radius, collision_free, period, ship_config
         )
