@@ -87,18 +87,10 @@ class ObstacleCache:
         cache_gcenter = torch.empty(target, M, dtype=torch.complex64, device=device)
         collected = 0
 
-        # Minimal TensorState proxy for obstacle physics functions
-        _dummy_state = _make_obstacle_state(pos, vel, radius, gcenter, ship_config, device)
-
         for step in range(cache_config.max_steps):
-            _dummy_state.obstacle_pos = pos
-            _dummy_state.obstacle_vel = vel
-            _dummy_state.obstacle_radius = radius
-            _dummy_state.obstacle_gcenter = gcenter
-
-            _dummy_state = step_obstacles_harmonic(_dummy_state, ship_config, enable_pbd=True)
-            pos = _dummy_state.obstacle_pos
-            vel = _dummy_state.obstacle_vel
+            pos, vel = step_obstacles_harmonic(
+                pos, vel, radius, gcenter, ship_config, enable_pbd=True
+            )
 
             converged, collision_free = check_convergence(
                 pos, radius, collision_free, period_steps, ship_config

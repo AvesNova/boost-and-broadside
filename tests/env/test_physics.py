@@ -148,6 +148,42 @@ class TestTurning:
         assert angle < 1e-5
 
 
+class TestBelowMinSpeedGating:
+    """The stall (turn/lift zeroing) and attitude-hold branches share one threshold."""
+
+    def test_below_min_speed_zeros_turn_and_holds_attitude_together(self, cfg):
+        """Below min_speed: turn authority is zeroed AND attitude does not re-align to velocity."""
+        state = make_state(num_envs=1, max_ships=1, ship_config=cfg)
+        state.ship_attitude[:] = 1.0 + 0j  # facing East
+        state.ship_vel[:] = 1j * (cfg.min_speed * 0.5)  # slow, facing North
+
+        actions = torch.zeros((1, 1, 3), dtype=torch.float32)
+        actions[0, 0, 1] = TurnActions.SHARP_LEFT
+
+        state = update_ships(state, actions, cfg)
+
+        # Turn authority zeroed by the stall gate
+        assert state.ship_ang_vel[0, 0].item() == 0.0
+        # Attitude held at its prior value rather than aligning to velocity direction
+        assert state.ship_attitude[0, 0].real.item() > 0.9
+
+    def test_above_min_speed_applies_turn_and_aligns_attitude_together(self, cfg):
+        """Above min_speed: turn authority applies AND attitude aligns to velocity direction."""
+        state = make_state(num_envs=1, max_ships=1, ship_config=cfg)
+        state.ship_attitude[:] = 1.0 + 0j  # facing East
+        state.ship_vel[:] = 1j * (cfg.min_speed * 5.0)  # fast, facing North
+
+        actions = torch.zeros((1, 1, 3), dtype=torch.float32)
+        actions[0, 0, 1] = TurnActions.SHARP_LEFT
+
+        state = update_ships(state, actions, cfg)
+
+        # Turn authority is not zeroed
+        assert state.ship_ang_vel[0, 0].item() != 0.0
+        # Attitude re-aligned toward velocity direction (North) rather than held at East
+        assert state.ship_attitude[0, 0].imag.item() > 0.9
+
+
 class TestShooting:
     def test_shoot_action_spawns_active_bullet(self, cfg):
         """SHOOT with sufficient power and zero cooldown must activate a bullet."""

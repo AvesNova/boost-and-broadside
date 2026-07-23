@@ -233,7 +233,14 @@ class TensorEnv:
         self.state = update_ships(self.state, actions, self.ship_config)
         if self.env_config.max_bullets > 0:
             self.state = update_bullets(self.state, self.ship_config)
-        self.state = step_obstacles_harmonic(self.state, self.ship_config, enable_pbd=False)
+        self.state.obstacle_pos, self.state.obstacle_vel = step_obstacles_harmonic(
+            self.state.obstacle_pos,
+            self.state.obstacle_vel,
+            self.state.obstacle_radius,
+            self.state.obstacle_gcenter,
+            self.ship_config,
+            enable_pbd=False,
+        )
         self.state = resolve_obstacle_collisions(self.state, self.ship_config)
         self.state, dones = resolve_collisions(self.state, self.ship_config)
 

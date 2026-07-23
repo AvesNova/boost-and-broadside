@@ -5,13 +5,12 @@ import torch
 from boost_and_broadside.agents.scripted_utils import (
     compute_team_target_bearings,
     predict_interception,
+    turn_toward,
 )
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.constants import PowerActions, ShootActions, TurnActions
 from boost_and_broadside.env.state import TensorState
 
-_5DEG = math.radians(5)
-_15DEG = math.radians(15)
 _1DEG = math.radians(1)
 
 
@@ -22,7 +21,6 @@ class TeamJousterAgent:
         self.ship_config = ship_config
 
     def get_actions(self, state: TensorState) -> torch.Tensor:
-        B, N = state.ship_pos.shape
         device = state.device
 
         _, team_dist, team_target_idx, has_target = compute_team_target_bearings(
@@ -36,21 +34,7 @@ class TeamJousterAgent:
         abs_angle = rel_angle.abs()
 
         # Turn hard toward lead-corrected intercept of team target
-        turn = torch.full((B, N), TurnActions.GO_STRAIGHT, dtype=torch.int32, device=device)
-        normal = (abs_angle >= _5DEG) & (abs_angle < _15DEG)
-        sharp = abs_angle >= _15DEG
-        turn = torch.where(
-            normal & (rel_angle > 0), torch.tensor(TurnActions.TURN_RIGHT, device=device), turn
-        )
-        turn = torch.where(
-            normal & (rel_angle < 0), torch.tensor(TurnActions.TURN_LEFT, device=device), turn
-        )
-        turn = torch.where(
-            sharp & (rel_angle > 0), torch.tensor(TurnActions.SHARP_RIGHT, device=device), turn
-        )
-        turn = torch.where(
-            sharp & (rel_angle < 0), torch.tensor(TurnActions.SHARP_LEFT, device=device), turn
-        )
+        turn = turn_toward(rel_angle)
 
         # Boost while power reserves allow shooting; coast otherwise
         power_ratio = state.ship_power / self.ship_config.max_power

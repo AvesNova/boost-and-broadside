@@ -2,13 +2,10 @@ import math
 
 import torch
 
-from boost_and_broadside.agents.scripted_utils import select_targets
+from boost_and_broadside.agents.scripted_utils import select_targets, turn_toward
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.constants import PowerActions, ShootActions, TurnActions
 from boost_and_broadside.env.state import TensorState
-
-_5DEG = math.radians(5)
-_15DEG = math.radians(15)
 
 # Unit complex for ±45° rotation
 _COS45 = math.cos(math.radians(45))
@@ -46,24 +43,9 @@ class SpiralEvaderAgent:
 
         use_ccw = rel_ccw.abs() <= rel_cw.abs()
         target_rel = torch.where(use_ccw, rel_ccw, rel_cw)
-        abs_target = target_rel.abs()
 
         # Turn toward the chosen spiral heading
-        turn = torch.full((B, N), TurnActions.GO_STRAIGHT, dtype=torch.int32, device=device)
-        normal = (abs_target >= _5DEG) & (abs_target < _15DEG)
-        sharp = abs_target >= _15DEG
-        turn = torch.where(
-            normal & (target_rel > 0), torch.tensor(TurnActions.TURN_RIGHT, device=device), turn
-        )
-        turn = torch.where(
-            normal & (target_rel < 0), torch.tensor(TurnActions.TURN_LEFT, device=device), turn
-        )
-        turn = torch.where(
-            sharp & (target_rel > 0), torch.tensor(TurnActions.SHARP_RIGHT, device=device), turn
-        )
-        turn = torch.where(
-            sharp & (target_rel < 0), torch.tensor(TurnActions.SHARP_LEFT, device=device), turn
-        )
+        turn = turn_toward(target_rel)
 
         power = torch.full((B, N), PowerActions.BOOST, dtype=torch.int32, device=device)
         shoot = torch.full((B, N), ShootActions.NO_SHOOT, dtype=torch.int32, device=device)

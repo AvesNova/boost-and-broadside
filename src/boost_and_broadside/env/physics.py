@@ -128,10 +128,13 @@ def _update_kinematics(
     # Speed from current velocity — used for power drain and forces below
     speed = state.ship_vel.abs()  # (B, N)
 
+    # Gates both stall (turn/lift zeroing) and attitude-hold below: a ship this
+    # slow has neither turning authority nor a well-defined velocity direction.
+    below_min_speed = speed < config.min_speed
+
     # Stall: below min_speed, lose turning authority and reverse thrust
-    stalled = speed < config.min_speed
-    turn_offset = torch.where(stalled, torch.zeros_like(turn_offset), turn_offset)
-    lift_coeff = torch.where(stalled, torch.zeros_like(lift_coeff), lift_coeff)
+    turn_offset = torch.where(below_min_speed, torch.zeros_like(turn_offset), turn_offset)
+    lift_coeff = torch.where(below_min_speed, torch.zeros_like(lift_coeff), lift_coeff)
 
     # Ships with no power can't thrust
     thrust_mag = thrust_mag * (state.ship_power > 0).float()
@@ -146,8 +149,7 @@ def _update_kinematics(
     # Attitude — align with velocity direction then apply turn rotation
     speed_safe = torch.clamp(speed, min=EPS)
     vel_dir = state.ship_vel / speed_safe
-    stopped = speed < config.min_speed
-    base_att = torch.where(stopped, state.ship_attitude, vel_dir)
+    base_att = torch.where(below_min_speed, state.ship_attitude, vel_dir)
 
     rotation = torch.polar(torch.ones_like(turn_offset), turn_offset)  # (B, N)
     state.ship_attitude = base_att * rotation

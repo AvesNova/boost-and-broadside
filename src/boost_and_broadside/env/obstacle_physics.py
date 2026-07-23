@@ -17,7 +17,6 @@ import torch
 
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.constants import EPS
-from boost_and_broadside.env.state import TensorState
 
 
 def _wrap_diff(
@@ -115,10 +114,13 @@ def init_obstacles_orbital(
 
 
 def step_obstacles_harmonic(
-    state: TensorState,
+    pos: torch.Tensor,  # (B, M) complex64
+    vel: torch.Tensor,  # (B, M) complex64
+    radius: torch.Tensor,  # (B, M) float32
+    gcenter: torch.Tensor,  # (B, M) complex64
     config: ShipConfig,
     enable_pbd: bool,
-) -> TensorState:
+) -> tuple[torch.Tensor, torch.Tensor]:
     """Advance obstacle positions by one timestep under harmonic gravity.
 
     Semi-implicit Euler integration: velocity updated first, then position.
@@ -126,25 +128,24 @@ def step_obstacles_harmonic(
     the kinetic energy is adjusted to conserve total mechanical energy.
 
     Args:
-        state:      Current TensorState (obstacle fields mutated in-place).
+        pos:        Current obstacle positions.
+        vel:        Current obstacle velocities.
+        radius:     Obstacle radii (only read when enable_pbd=True).
+        gcenter:    Per-obstacle harmonic gravity center.
         config:     Physics config.
         enable_pbd: Whether to run PBD overlap correction (cache gen only).
 
     Returns:
-        Mutated state.
+        (pos, vel) updated tensors.
     """
     world_w, world_h = config.world_size
     G = config.obstacle_gravity_harmonic
     dt = config.dt
 
-    pos = state.obstacle_pos  # (B, M) complex64
-    vel = state.obstacle_vel  # (B, M) complex64
-    gc = state.obstacle_gcenter  # (B, M) complex64
-
     # Toroidal wrapped displacement from obstacle to its gravity center
     diff_r, diff_i = _wrap_diff(
-        gc.real - pos.real,
-        gc.imag - pos.imag,
+        gcenter.real - pos.real,
+        gcenter.imag - pos.imag,
         world_w,
         world_h,
     )  # (B, M) each
@@ -160,11 +161,9 @@ def step_obstacles_harmonic(
     )
 
     if enable_pbd:
-        pos, vel = _pbd_separation(pos, vel, state.obstacle_radius, gc, config)
+        pos, vel = _pbd_separation(pos, vel, radius, gcenter, config)
 
-    state.obstacle_pos = pos
-    state.obstacle_vel = vel
-    return state
+    return pos, vel
 
 
 def _pbd_separation(

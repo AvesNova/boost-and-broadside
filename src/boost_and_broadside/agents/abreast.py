@@ -2,12 +2,11 @@ import math
 
 import torch
 
-from boost_and_broadside.agents.scripted_utils import select_targets
+from boost_and_broadside.agents.scripted_utils import select_targets, turn_toward
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.constants import PowerActions, ShootActions, TurnActions
 from boost_and_broadside.env.state import TensorState
 
-_5DEG = math.radians(5)
 _15DEG = math.radians(15)
 
 
@@ -41,24 +40,9 @@ class AbreastAgent:
         # Pick whichever perpendicular requires the smaller turn
         use_cw = rel_cw.abs() <= rel_ccw.abs()
         target_rel = torch.where(use_cw, rel_cw, rel_ccw)
-        abs_target = target_rel.abs()
 
         # Turn toward the chosen perpendicular heading
-        turn = torch.full((B, N), TurnActions.GO_STRAIGHT, dtype=torch.int32, device=device)
-        normal = (abs_target >= _5DEG) & (abs_target < _15DEG)
-        sharp = abs_target >= _15DEG
-        turn = torch.where(
-            normal & (target_rel > 0), torch.tensor(TurnActions.TURN_RIGHT, device=device), turn
-        )
-        turn = torch.where(
-            normal & (target_rel < 0), torch.tensor(TurnActions.TURN_LEFT, device=device), turn
-        )
-        turn = torch.where(
-            sharp & (target_rel > 0), torch.tensor(TurnActions.SHARP_RIGHT, device=device), turn
-        )
-        turn = torch.where(
-            sharp & (target_rel < 0), torch.tensor(TurnActions.SHARP_LEFT, device=device), turn
-        )
+        turn = turn_toward(target_rel)
 
         # Power: boost when enemy nose is within 15° of us (we are in their sights)
         enemy_att = torch.gather(state.ship_attitude, 1, target_idx)  # (B, N) complex
