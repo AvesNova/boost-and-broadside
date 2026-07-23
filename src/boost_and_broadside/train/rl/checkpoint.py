@@ -5,12 +5,33 @@ import dataclasses
 import threading
 import time
 from collections import deque
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import torch
 
 from boost_and_broadside.train.rl.elo_eval import EloEvaluator
+
+# Rolling window of full-resume (step_*.pt) and avg (avg_step_*.pt) checkpoints
+# kept per run. Ladder snapshots (ladder_step_*.pt) and named best checkpoints
+# (best_*.pt) use separate filename families and are never subject to this cap.
+_KEEP_LAST_N_CHECKPOINTS = 3
+
+
+def _prune_checkpoint_family(
+    ckpt_dir: Path, glob_pattern: str, protected: set[str], keep_last_n: int
+) -> None:
+    """Delete files matching glob_pattern beyond the newest keep_last_n, minus protected paths.
+
+    Filenames in every pruned family embed the zero-padded global step, so
+    lexicographic sort order is chronological order.
+    """
+    candidates = sorted(ckpt_dir.glob(glob_pattern))
+    kept = {str(p) for p in candidates[-keep_last_n:]} | protected
+    for old_path in candidates:
+        if str(old_path) not in kept:
+            old_path.unlink(missing_ok=True)
 
 
 def clone_to_cpu(obj: Any) -> Any:
@@ -52,6 +73,25 @@ class CheckpointMixin:
             return
         self._save_checkpoint(update)
         self._save_roster_json()
+
+    def _maybe_save_best_checkpoints(self, random_elo: float) -> None:
+        """Overwrite the best-model checkpoints (live, then avg) when normalized ELO improves.
+
+        Each family (live/avg) tracks its own high-water mark independently, so
+        the two files can lag different updates — e.g. the avg policy may still
+        be rising after the live policy has plateaued.
+        """
+        training_elo_norm = self._training_elo - random_elo
+        if training_elo_norm > self._best_training_elo_norm:
+            self._best_training_elo_norm = training_elo_norm
+            self._save_best_checkpoint("best_training.pt")
+        if self._avg_update_count > 0:
+            avg_elo_norm = self._avg_training_elo - random_elo
+            if avg_elo_norm > self._best_avg_elo_norm:
+                self._best_avg_elo_norm = avg_elo_norm
+                self._save_best_checkpoint(
+                    "best_avg.pt", payload=self._avg_checkpoint_payload_lightweight(update=0)
+                )
 
     # ------------------------------------------------------------------
     # ELO measurement ladder
@@ -159,6 +199,25 @@ class CheckpointMixin:
             "env_config": dataclasses.asdict(self.env_config),
         }
 
+    def _run_async_save(self, thread_attr: str, label: str, target: Callable[[], None]) -> None:
+        """Spawn an async save thread, skipping if the previous save of this kind is still running.
+
+        Args:
+            thread_attr: Name of the instance attribute tracking this save kind's thread.
+            label:       Describes the in-flight save in the skip warning.
+            target:      The save function to run on the background thread.
+        """
+        active = getattr(self, thread_attr, None)
+        if active is not None and active.is_alive():
+            print(
+                f"[PPOTrainer] Warning: Previous {label} is still in progress. "
+                "Skipping this save to prevent disk/GIL congestion."
+            )
+            return
+        thread = threading.Thread(target=target, daemon=True)
+        setattr(self, thread_attr, thread)
+        thread.start()
+
     def _save_checkpoint(self, update: int) -> None:
         """Save policy and optimizer state to a .pt file asynchronously.
 
@@ -168,18 +227,6 @@ class CheckpointMixin:
         Args:
             update: Current update index (used as filename suffix).
         """
-        # Check if the previous standard saving thread is still running
-        if (
-            hasattr(self, "_active_save_thread")
-            and self._active_save_thread is not None
-            and self._active_save_thread.is_alive()
-        ):
-            print(
-                "[PPOTrainer] Warning: Previous standard checkpoint saving is still in "
-                "progress. Skipping this save to prevent disk/GIL congestion."
-            )
-            return
-
         ckpt_dir = Path(self.cfg.checkpoint_dir) / self.run_name
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         path = ckpt_dir / f"step_{self._global_step:012d}.pt"
@@ -189,7 +236,7 @@ class CheckpointMixin:
         avg_path = None
         avg_cpu_payload = None
         if self._avg_update_count > 0:
-            avg_path = ckpt_dir / "recent_avg.pt"
+            avg_path = ckpt_dir / f"avg_step_{self._global_step:012d}.pt"
             avg_cpu_payload = clone_to_cpu(self._avg_checkpoint_payload(update))
 
         self._last_checkpoint_path = path
@@ -206,23 +253,26 @@ class CheckpointMixin:
                 tmp_avg = avg_path.with_suffix(".tmp")
                 torch.save(avg_cpu_payload, tmp_avg)
                 tmp_avg.replace(avg_path)
-                print(f"Recent avg checkpoint saved asynchronously: {avg_path}")
+                print(f"Avg checkpoint saved asynchronously: {avg_path}")
 
-            # Prune: keep only the latest checkpoint + all roster-referenced files.
-            # best_*.pt files are not touched (they don't match the step_*.pt glob).
-            kept = self.roster.kept_paths()
-            kept.add(str(path))
-            for old_path in ckpt_dir.glob("step_*.pt"):
-                if str(old_path) not in kept:
-                    old_path.unlink(missing_ok=True)
+            # Prune each family (live step_*.pt, avg avg_step_*.pt) down to the
+            # newest _KEEP_LAST_N_CHECKPOINTS. best_*.pt and ladder_step_*.pt live
+            # under different filename prefixes, so neither glob below ever
+            # touches them regardless of this cap. roster.kept_paths() is unioned
+            # in as defense in depth for any roster entry that ever names a path
+            # in one of these two families — today ladder snapshots always use
+            # the ladder_step_ prefix, so in practice this set never intersects
+            # either glob.
+            protected = self.roster.kept_paths()
+            _prune_checkpoint_family(ckpt_dir, "step_*.pt", protected, _KEEP_LAST_N_CHECKPOINTS)
+            _prune_checkpoint_family(ckpt_dir, "avg_step_*.pt", protected, _KEEP_LAST_N_CHECKPOINTS)
 
-        self._active_save_thread = threading.Thread(target=_async_save, daemon=True)
-        self._active_save_thread.start()
+        self._run_async_save("_active_save_thread", "standard checkpoint saving", _async_save)
 
     def _avg_checkpoint_payload(self, update: int) -> dict:
         """Build checkpoint payload with avg_policy as the primary policy_state_dict.
 
-        Allows best_avg.pt / recent_avg.pt to be loaded by _load_checkpoint_agent
+        Allows best_avg.pt / avg_step_*.pt to be loaded by _load_checkpoint_agent
         in elo_stats.py, which reads ``ckpt["policy_state_dict"]``.
         """
         payload = self.checkpoint_payload(update)
@@ -250,6 +300,12 @@ class CheckpointMixin:
             "env_config": dataclasses.asdict(self.env_config),
         }
 
+    def _avg_checkpoint_payload_lightweight(self, update: int) -> dict:
+        """Build a best-avg-model payload: lightweight payload with the avg policy's weights."""
+        payload = self._checkpoint_payload_lightweight(update)
+        payload["policy_state_dict"] = self._avg_policy_module.state_dict()
+        return payload
+
     def _save_best_checkpoint(self, name: str, payload: dict | None = None) -> None:
         """Save a named best-model checkpoint asynchronously, overwriting any previous version.
 
@@ -257,18 +313,6 @@ class CheckpointMixin:
             name:    Filename, e.g. "best_training.pt" or "best_avg.pt".
             payload: Custom payload dict; defaults to _checkpoint_payload_lightweight(update=0).
         """
-        # Check if the previous best saving thread is still running
-        if (
-            hasattr(self, "_active_best_thread")
-            and self._active_best_thread is not None
-            and self._active_best_thread.is_alive()
-        ):
-            print(
-                f"[PPOTrainer] Warning: Previous best checkpoint save for '{name}' is still "
-                "in progress. Skipping this save to prevent disk/GIL congestion."
-            )
-            return
-
         ckpt_dir = Path(self.cfg.checkpoint_dir) / self.run_name
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         path = ckpt_dir / name
@@ -284,8 +328,9 @@ class CheckpointMixin:
             tmp.replace(path)
             print(f"Best checkpoint saved asynchronously: {path}")
 
-        self._active_best_thread = threading.Thread(target=_async_save, daemon=True)
-        self._active_best_thread.start()
+        self._run_async_save(
+            "_active_best_thread", f"best checkpoint save for '{name}'", _async_save
+        )
 
     def load_pretrained_weights(self, path: str) -> None:
         """Load policy and scaler from a pretrained checkpoint, discarding optimizer state.

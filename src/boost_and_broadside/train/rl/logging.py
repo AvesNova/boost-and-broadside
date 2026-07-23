@@ -129,12 +129,8 @@ class LoggingMixin:
         for entry in self.roster.entries:
             metrics[f"ladder/elo/{entry.label}"] = entry.elo
 
-        # Save overwriting best-model checkpoints when normalized ELO improves.
-        random_elo = self._random_elo()
-        training_elo_norm = self._training_elo - random_elo
-        if training_elo_norm > self._best_training_elo_norm:
-            self._best_training_elo_norm = training_elo_norm
-            self._save_best_checkpoint("best_training.pt")
+        # Save overwriting best-model checkpoints (live, then avg) when normalized ELO improves.
+        self._maybe_save_best_checkpoints(self._random_elo())
 
         # Overview — redundant copies of the most important global metrics
         for src, dst in [

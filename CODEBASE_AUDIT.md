@@ -1,9 +1,10 @@
 # Codebase Audit — Boost and Broadside
 
-_Status: First full pass complete. 12 open findings, 13 fixed, 0 won't-fix
+_Status: First full pass complete. 10 open findings, 15 fixed, 0 won't-fix
 (AUDIT-001, AUDIT-005, AUDIT-009, AUDIT-014 resolved in a later batch;
 AUDIT-019, AUDIT-020, AUDIT-021 resolved in the ar_report batch;
-AUDIT-006, AUDIT-007, AUDIT-024 resolved in the obstacle-stepping/scripted-agent batch)._
+AUDIT-006, AUDIT-007, AUDIT-024 resolved in the obstacle-stepping/scripted-agent batch;
+AUDIT-016, AUDIT-017 resolved in the checkpoint-retention batch)._
 _Audit started and completed: 2026-07-23._
 
 This document is the persistent, cross-session record of a repository-wide Python code
@@ -1147,7 +1148,7 @@ format expecting exactly `Z`.
 - **Location:** `CheckpointMixin._save_checkpoint`, `CheckpointMixin._save_best_checkpoint`
 - **Severity:** Low
 - **Category:** Duplication
-- **Status:** Open
+- **Status:** ✅ Done (pending commit)
 - **Confidence:** High
 
 **Problem**
@@ -1189,7 +1190,21 @@ checkpoint still skip-and-warn when triggered twice in quick succession.
 - **Location:** `CheckpointMixin._save_checkpoint` (the `_async_save` prune block); `EloRoster.kept_paths` in `src/boost_and_broadside/train/rl/roster.py`
 - **Severity:** Low
 - **Category:** Misleading comment / dead code path
-- **Status:** Open
+- **Status:** ✅ Done (pending commit) — went beyond the comment-only fix per an explicit
+  product request to retain more history: pruning now keeps a rolling window of the
+  newest `_KEEP_LAST_N_CHECKPOINTS` (3) `step_*.pt` and `avg_step_*.pt` files each
+  (previously: the single newest `step_*.pt` and a single, non-rotated, overwritten
+  `recent_avg.pt`), via a shared `_prune_checkpoint_family` helper applied to both
+  families. `roster.kept_paths()` is still unioned into the protected set (now
+  honestly documented as defense-in-depth for a hypothetical future roster entry
+  in one of these families, since ladder snapshots use the separate `ladder_step_`
+  prefix and never intersect either glob today — this was the finding's core
+  complaint, now stated accurately in the code comment instead of implied). Full ELO
+  ladder snapshots (`ladder_step_*.pt`) and both named best-model files
+  (`best_training.pt`, `best_avg.pt`) remain entirely untouched by pruning, which was
+  already true and is now covered by regression tests. `tests/train/test_checkpoint.py::TestCheckpointRetention`
+  adds the integration test the finding's Validation section called for, including
+  the roster-protection case with a contrived `step_*.pt`-named roster entry.
 - **Confidence:** Medium
 
 **Problem**
