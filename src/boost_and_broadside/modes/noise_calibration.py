@@ -516,7 +516,7 @@ def _build_output(
             "num_ar_windows": num_ar_windows,
             "ar_window_len": _AR_WINDOW,
             "warmup_steps": _WARMUP_STEPS,
-            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
         },
         "features": features_json,
         "ar_growth": ar_growth_json,

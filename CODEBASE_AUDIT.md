@@ -1,10 +1,14 @@
 # Codebase Audit — Boost and Broadside
 
-_Status: First full pass complete. 10 open findings, 15 fixed, 0 won't-fix
+_Status: First full pass complete. 1 open finding (Note-severity, AUDIT-010), 24 fixed,
+0 won't-fix
 (AUDIT-001, AUDIT-005, AUDIT-009, AUDIT-014 resolved in a later batch;
 AUDIT-019, AUDIT-020, AUDIT-021 resolved in the ar_report batch;
 AUDIT-006, AUDIT-007, AUDIT-024 resolved in the obstacle-stepping/scripted-agent batch;
-AUDIT-016, AUDIT-017 resolved in the checkpoint-retention batch)._
+AUDIT-016, AUDIT-017 resolved in the checkpoint-retention batch;
+AUDIT-012, AUDIT-018, AUDIT-022 resolved in a later batch;
+AUDIT-002, AUDIT-003, AUDIT-004, AUDIT-008, AUDIT-011, AUDIT-013, AUDIT-015, AUDIT-023,
+AUDIT-025 resolved in the low-severity/typing cleanup batch)._
 _Audit started and completed: 2026-07-23._
 
 This document is the persistent, cross-session record of a repository-wide Python code
@@ -380,7 +384,7 @@ derived set.
 - **Location:** `main()`, `case "rl":` and `case "rl_obstacles":` blocks
 - **Severity:** Medium
 - **Category:** Duplication / maintainability
-- **Status:** Open
+- **Status:** ✅ Done (pending commit)
 - **Confidence:** High
 
 **Problem**
@@ -786,7 +790,7 @@ sign) to confirm they actually constrain the behavior, then pass against current
 - **Location:** module level, `_MICROBATCH_TOKENS = _MAX_TOKENS // _NUM_MINIBATCHES // 5`
 - **Severity:** Low
 - **Category:** Documentation / clarity
-- **Status:** Open
+- **Status:** ✅ Done (pending commit)
 - **Confidence:** Medium
 
 **Problem**
@@ -822,7 +826,7 @@ None needed beyond review.
 - **Location:** `StochasticAgentConfig.from_vector`, `StochasticAgentConfig.default_vector`
 - **Severity:** Low
 - **Category:** Documentation
-- **Status:** Open
+- **Status:** ✅ Done (pending commit)
 - **Confidence:** High
 
 **Problem**
@@ -865,7 +869,7 @@ None beyond review.
 - **Location:** `linear`, `exponential`, `cosine_anneal` (declared return type `Schedule`); module-level `Schedule = Callable[[int], Any]`
 - **Severity:** Low
 - **Category:** Typing
-- **Status:** Open
+- **Status:** ✅ Done (pending commit)
 - **Confidence:** High
 
 **Problem**
@@ -940,7 +944,7 @@ Add a test that passing an invalid `team_sizes` (e.g. summing past `num_ships`, 
 - **Location:** `MVPObservation.data`, `__getitem__`, `__contains__`, `items`, `slice_envs`
 - **Severity:** Low
 - **Category:** Typing
-- **Status:** Open
+- **Status:** ✅ Done (pending commit)
 - **Confidence:** High
 
 **Problem**
@@ -1020,7 +1024,7 @@ None — behavior-preserving, since both sites use the identical condition today
 - **Location:** `MVPPolicy.__init__`
 - **Severity:** Low
 - **Category:** Maintainability
-- **Status:** Open
+- **Status:** ✅ Done (pending commit)
 - **Confidence:** Medium
 
 **Problem**
@@ -1109,7 +1113,7 @@ None — removing a no-op statement.
 - **Location:** `_build_output`
 - **Severity:** Low
 - **Category:** Non-idiomatic / deprecated API
-- **Status:** Open
+- **Status:** ✅ Done (pending commit)
 - **Confidence:** High
 
 **Problem**
@@ -1261,7 +1265,7 @@ does not prune it.
 - **Location:** `Feature.__init__` / `Feature.weight`
 - **Severity:** Low
 - **Category:** Dead code
-- **Status:** Open
+- **Status:** ✅ Done (pending commit)
 - **Confidence:** High
 
 **Problem**
@@ -1301,7 +1305,7 @@ confirm none rely on it before removing.
 - **Location:** `PPOTrainer._update_epochs`
 - **Severity:** Low
 - **Category:** Duplication
-- **Status:** Open
+- **Status:** ✅ Done (pending commit)
 - **Confidence:** Medium
 
 **Problem**

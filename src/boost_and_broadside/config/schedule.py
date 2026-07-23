@@ -61,7 +61,7 @@ def constant(value: Any) -> Schedule:
     return _schedule
 
 
-def linear(*keypoints: tuple[int, float]) -> Schedule:
+def linear(*keypoints: tuple[int, float]) -> Callable[[int], float]:
     """Linearly interpolate between (step, value) keypoints.
 
     Clamps to the first value before the first keypoint and to the last
@@ -105,7 +105,7 @@ def stepped(*keypoints: tuple[int, Any]) -> Schedule:
     return _schedule
 
 
-def exponential(*keypoints: tuple[int, float]) -> Schedule:
+def exponential(*keypoints: tuple[int, float]) -> Callable[[int], float]:
     """Exponential (log-space linear) interpolation between keypoints.
 
     All values must be strictly positive. Clamps at both ends.
@@ -135,7 +135,7 @@ def exponential(*keypoints: tuple[int, float]) -> Schedule:
     return _schedule
 
 
-def cosine_anneal(*keypoints: tuple[int, float]) -> Schedule:
+def cosine_anneal(*keypoints: tuple[int, float]) -> Callable[[int], float]:
     """Half-cosine interpolation between (step, value) keypoints.
 
     Between each consecutive pair of keypoints, applies a half-cosine curve

@@ -313,6 +313,57 @@ class TestMVPPolicy:
             assert (new_hidden[0, 2 * N + ship, :] == 0).all()  # env 2
 
 
+class TestOrthogonalHeadInit:
+    """AUDIT-011: head init locates Linear layers by type, not fixed index."""
+
+    def test_finds_linears_regardless_of_position(self):
+        """Inserting a non-Linear layer before the first Linear must not shift which
+        module gets orthogonal-initialized (previously a hardcoded head[0]/head[3])."""
+        import torch.nn as nn
+
+        from boost_and_broadside.models.mvp.policy import _init_head_orthogonal
+
+        torch.manual_seed(0)
+        head = nn.Sequential(
+            nn.Dropout(0.1),  # pushes the first Linear off index 0
+            nn.Linear(4, 8),
+            nn.RMSNorm(8),
+            nn.GELU(),
+            nn.Linear(8, 4),
+        )
+        _init_head_orthogonal(head)
+
+        first_linear, last_linear = head[1], head[4]
+        assert torch.allclose(first_linear.bias, torch.zeros_like(first_linear.bias))
+        assert torch.allclose(last_linear.bias, torch.zeros_like(last_linear.bias))
+        # orthogonal_ with gain sqrt(2) on an (8, 4) weight: columns are orthonormal
+        # up to that gain, i.e. W^T W == gain^2 * I.
+        gram = first_linear.weight.T @ first_linear.weight
+        assert torch.allclose(gram, 2.0 * torch.eye(4), atol=1e-4)
+
+    def test_policy_heads_are_orthogonal_initialized(self, model_cfg, coordinator):
+        """MVPPolicy's actual heads (including the team_pma_k win/loss head) still
+        get orthogonal-initialized end to end after the by-type refactor."""
+        team_pma_k = (0, 1)
+        policy = MVPPolicy(
+            model_cfg,
+            coordinator,
+            num_value_components=NUM_VALUE_COMPONENTS,
+            num_ships=4,
+            team_pma_k=team_pma_k,
+        )
+
+        for head in [policy.action_head, policy.value_head_local, policy.value_head_win]:
+            linears = [m for m in head if isinstance(m, torch.nn.Linear)]
+            first, last = linears[0], linears[-1]
+            assert torch.allclose(first.bias, torch.zeros_like(first.bias))
+            assert torch.allclose(last.bias, torch.zeros_like(last.bias))
+            out_f, in_f = first.weight.shape
+            gram = first.weight.T @ first.weight if out_f >= in_f else first.weight @ first.weight.T
+            n = min(out_f, in_f)
+            assert torch.allclose(gram, 2.0 * torch.eye(n), atol=1e-3)
+
+
 class TestFeatureCoordinatorLayout:
     """AUDIT-012: the five prediction-layout views derive from one cached spec."""
 

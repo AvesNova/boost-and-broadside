@@ -298,6 +298,20 @@ def _run_trainer(trainer: PPOTrainer) -> None:
         trainer.shutdown()
 
 
+def _run_training_mode(base_config: TrainConfig, args: argparse.Namespace) -> None:
+    """Apply --smoke, resolve --resume/--pretrain_from, build the trainer, and run it."""
+    train_config = _apply_smoke(base_config) if args.smoke else base_config
+    resume_ckpt, resume_wandb_id = (
+        _find_resume_checkpoint(args.resume) if args.resume is not None else (None, None)
+    )
+    trainer = _make_trainer(train_config, args, resume_wandb_run_id=resume_wandb_id)
+    if resume_ckpt is not None:
+        trainer.load_checkpoint(resume_ckpt)
+    elif args.pretrain_from is not None:
+        trainer.load_pretrained_weights(args.pretrain_from)
+    _run_trainer(trainer)
+
+
 def main() -> None:
     args = _parse_args()
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -309,38 +323,10 @@ def main() -> None:
             _run_trainer(_make_trainer(train_config, args))
 
         case "rl":
-            train_config = _apply_smoke(RL_TRAIN_CONFIG) if args.smoke else RL_TRAIN_CONFIG
-            resume_ckpt, resume_wandb_id = (
-                _find_resume_checkpoint(args.resume) if args.resume is not None else (None, None)
-            )
-            trainer = _make_trainer(
-                train_config,
-                args,
-                resume_wandb_run_id=resume_wandb_id,
-            )
-            if resume_ckpt is not None:
-                trainer.load_checkpoint(resume_ckpt)
-            elif args.pretrain_from is not None:
-                trainer.load_pretrained_weights(args.pretrain_from)
-            _run_trainer(trainer)
+            _run_training_mode(RL_TRAIN_CONFIG, args)
 
         case "rl_obstacles":
-            train_config = (
-                _apply_smoke(RL_OBSTACLES_TRAIN_CONFIG) if args.smoke else RL_OBSTACLES_TRAIN_CONFIG
-            )
-            resume_ckpt, resume_wandb_id = (
-                _find_resume_checkpoint(args.resume) if args.resume is not None else (None, None)
-            )
-            trainer = _make_trainer(
-                train_config,
-                args,
-                resume_wandb_run_id=resume_wandb_id,
-            )
-            if resume_ckpt is not None:
-                trainer.load_checkpoint(resume_ckpt)
-            elif args.pretrain_from is not None:
-                trainer.load_pretrained_weights(args.pretrain_from)
-            _run_trainer(trainer)
+            _run_training_mode(RL_OBSTACLES_TRAIN_CONFIG, args)
 
         case "bc_warmstart":
             # --smoke must shrink BOTH stages; forcing it off here (as an earlier

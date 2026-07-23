@@ -106,6 +106,19 @@ class TeamPMA(nn.Module):
         return team_pool.gather(1, idx)  # (B, N, D)
 
 
+def _init_head_orthogonal(head: nn.Sequential) -> None:
+    """Orthogonal-init a Linear+Norm+Act+Linear head's first and last Linear layers.
+
+    Locates layers by type instead of a fixed index, so the head's Sequential can
+    grow or reorder non-Linear layers without corrupting or missing this init.
+    """
+    linears = [m for m in head if isinstance(m, nn.Linear)]
+    nn.init.orthogonal_(linears[0].weight, gain=math.sqrt(2))
+    nn.init.zeros_(linears[0].bias)
+    nn.init.orthogonal_(linears[-1].weight, gain=0.01)
+    nn.init.zeros_(linears[-1].bias)
+
+
 class MVPPolicy(nn.Module):
     """Actor-critic policy with shared trunk: Encoder → N × YemongBlock.
 
@@ -166,21 +179,13 @@ class MVPPolicy(nn.Module):
             )
         self.next_state_head = NextStateHead(D, pred_dim=coordinator.total_prediction_dimension)
 
-        # Orthogonal init — standard PPO practice
-        for head in [self.action_head, self.value_head_local]:
-            nn.init.orthogonal_(head[0].weight, gain=math.sqrt(2))
-            nn.init.zeros_(head[0].bias)
-            nn.init.orthogonal_(head[3].weight, gain=0.01)
-            nn.init.zeros_(head[3].bias)
-        nn.init.orthogonal_(self.next_state_head.net[0].weight, gain=math.sqrt(2))
-        nn.init.zeros_(self.next_state_head.net[0].bias)
-        nn.init.orthogonal_(self.next_state_head.net[3].weight, gain=0.01)
-        nn.init.zeros_(self.next_state_head.net[3].bias)
+        # Orthogonal init — standard PPO practice. Located by type (first/last Linear)
+        # rather than fixed Sequential index, so inserting a non-Linear layer (e.g.
+        # Dropout) into a head can't silently init the wrong module.
+        for head in [self.action_head, self.value_head_local, self.next_state_head.net]:
+            _init_head_orthogonal(head)
         if team_pma_k:
-            nn.init.orthogonal_(self.value_head_win[0].weight, gain=math.sqrt(2))
-            nn.init.zeros_(self.value_head_win[0].bias)
-            nn.init.orthogonal_(self.value_head_win[3].weight, gain=0.01)
-            nn.init.zeros_(self.value_head_win[3].bias)
+            _init_head_orthogonal(self.value_head_win)
             nn.init.normal_(self.team_pma.seeds, mean=0.0, std=0.02)
             nn.init.orthogonal_(self.team_pma.attn.in_proj_weight, gain=math.sqrt(2))
             nn.init.orthogonal_(self.team_pma.attn.out_proj.weight, gain=1.0)

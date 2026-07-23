@@ -1,3 +1,4 @@
+from collections.abc import ItemsView
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -33,18 +34,18 @@ class MVPObservation:
     all others have a trailing feature dimension.
     """
 
-    data: dict
+    data: dict[ObsKey, torch.Tensor]
 
     # ------------------------------------------------------------------
     # Key access — supports ObsKey enum or str
     # ------------------------------------------------------------------
 
-    def __getitem__(self, key) -> torch.Tensor:
+    def __getitem__(self, key: "ObsKey | str") -> torch.Tensor:
         if isinstance(key, ObsKey):
             return self.data[key]
         return self.data[ObsKey(key)]
 
-    def __contains__(self, key) -> bool:
+    def __contains__(self, key: "ObsKey | str") -> bool:
         if isinstance(key, ObsKey):
             return key in self.data
         try:
@@ -52,7 +53,7 @@ class MVPObservation:
         except ValueError:
             return False
 
-    def items(self):
+    def items(self) -> ItemsView[ObsKey, torch.Tensor]:
         return self.data.items()
 
     # ------------------------------------------------------------------
@@ -120,7 +121,7 @@ class MVPObservation:
         team_id[..., :num_ships] = flipped
         return self.update(ObsKey.TEAM_ID, team_id)
 
-    def slice_envs(self, idx) -> "MVPObservation":
+    def slice_envs(self, idx: "slice | torch.Tensor") -> "MVPObservation":
         return MVPObservation(data={k: v[idx] for k, v in self.data.items()})
 
     def slice_time(self, start: int, end: int) -> "MVPObservation":

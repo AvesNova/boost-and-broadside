@@ -33,6 +33,9 @@ _NUM_SHIPS = 8
 _NUM_OBSTACLES = 0
 _NUM_STEPS = 128
 _NUM_MINIBATCHES = 32
+# // 5: split each minibatch into 5 gradient-accumulation micro-batches — the
+# headroom needed to fit this scale's attention activations in VRAM on the target GPU.
+# Memory-only knob (see TrainConfig.microbatch_tokens); retune the divisor per GPU.
 _MICROBATCH_TOKENS = _MAX_TOKENS // _NUM_MINIBATCHES // 5
 
 RL_SCHEDULE = TrainingSchedule(
