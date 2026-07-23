@@ -37,6 +37,19 @@ from boost_and_broadside.env.observation import MVPObservation, ObsKey
 from boost_and_broadside.env.state import TensorState
 
 
+def infer_num_value_components(ckpt: dict) -> int:
+    """Return the critic width K (number of value components) for a checkpoint.
+
+    Newer checkpoints store this directly under "num_value_components". Older ones
+    predate the field, so fall back to reading the final value-head Linear's output
+    width straight from the state dict — the same shape introspection every loader
+    used before the field existed.
+    """
+    if "num_value_components" in ckpt:
+        return int(ckpt["num_value_components"])
+    return ckpt["policy_state_dict"]["value_head_local.3.weight"].shape[0]
+
+
 def infer_team_pma_k(ckpt: dict) -> tuple[int, ...]:
     """Return the win/loss value-component indices for a checkpoint.
 
@@ -160,7 +173,7 @@ def resolve_agent_spec(
 
     ckpt = torch.load(path, map_location=device, weights_only=False)
     coordinator = build_standard_coordinator(ship_config)
-    K = ckpt["policy_state_dict"]["value_head_local.3.weight"].shape[0]
+    K = infer_num_value_components(ckpt)
     team_pma_k = infer_team_pma_k(ckpt)
     policy = MVPPolicy(
         model_config,
@@ -251,55 +264,27 @@ def _decode_targets_to_obs(
     prev_obs: MVPObservation,
     action: torch.Tensor,
     N: int,
-    ship_config,
     coordinator,
 ) -> MVPObservation:
     """Decode a coordinator target vector back to a raw MVPObservation.
 
-    Target slices are resolved by feature name from the coordinator.
+    Per-feature target encodings are inverted by the coordinator — each feature's
+    target Transform owns its own inverse — so this function only reassembles the
+    raw values into an MVPObservation: obstacle tokens (N:) are copied unchanged,
+    `alive` is derived from decoded health, and `action` becomes PREVIOUS_ACTION.
+
     prev_obs: previous MVPObservation — obstacle tokens (N:) are copied unchanged
     action:   (B, N, 3) int — stored as PREVIOUS_ACTION for next step
     """
-    import math
+    raw = coordinator.decode_targets(targets)
 
-    _2pi = 2.0 * math.pi
-    _hpi = math.pi / 2.0
-    W, H = ship_config.world_size
-    target_slices = coordinator.target_slices()
-
-    # Position: Fourier(1, period) encodes as (sin(2πx/W), cos(2πx/W)) / (sin(2πy/H), cos(2πy/H))
-    pos_x_target = targets[..., target_slices["position_x"]]
-    pos_y_target = targets[..., target_slices["position_y"]]
-    pos_x = (torch.atan2(pos_x_target[..., 0], pos_x_target[..., 1]) % _2pi) * W / _2pi
-    pos_y = (torch.atan2(pos_y_target[..., 0], pos_y_target[..., 1]) % _2pi) * H / _2pi
-    pos = torch.stack([pos_x, pos_y], dim=-1)
-
-    # Velocity: SymlogVelocity encodes as direction * symlog(speed)
-    vel_enc = targets[..., target_slices["velocity"]]
-    speed_enc = torch.norm(vel_enc, dim=-1, keepdim=True)
-    direction = vel_enc / speed_enc.clamp(min=1e-8)
-    speed = torch.expm1(speed_enc.clamp(min=0.0))
-    vel = direction * speed
-
-    # Attitude: Identity transform stores raw (cos, sin)
-    att = targets[..., target_slices["attitude"]]
-
-    # Angular velocity: Symlog encodes as symlog(ω)
-    sym = targets[..., target_slices["angular_velocity"]]
-    ang_vel = torch.sign(sym) * torch.expm1(sym.abs())
-
-    # Health/power/cooldown: UnitCircle encodes as (sin(angle), cos(angle))
-    health_target = targets[..., target_slices["health"]]
-    health_angle = torch.atan2(health_target[..., 0], health_target[..., 1]).clamp(0.0, _hpi)
-    health = (health_angle / _hpi * ship_config.max_health).unsqueeze(-1)
-
-    power_target = targets[..., target_slices["power"]]
-    power_angle = torch.atan2(power_target[..., 0], power_target[..., 1]).clamp(0.0, _hpi)
-    power = (power_angle / _hpi * ship_config.max_power).unsqueeze(-1)
-
-    cooldown_target = targets[..., target_slices["cooldown"]]
-    cd_angle = torch.atan2(cooldown_target[..., 0], cooldown_target[..., 1]).clamp(0.0, _hpi)
-    cooldown = (cd_angle / _hpi * ship_config.firing_cooldown).unsqueeze(-1)
+    pos = torch.cat([raw["position_x"], raw["position_y"]], dim=-1)  # (B, N, 2)
+    vel = raw["velocity"]  # (B, N, 2)
+    att = raw["attitude"]  # (B, N, 2)
+    ang_vel = raw["angular_velocity"]  # (B, N, 1)
+    health = raw["health"]  # (B, N, 1)
+    power = raw["power"]  # (B, N, 1)
+    cooldown = raw["cooldown"]  # (B, N, 1)
 
     alive = health.squeeze(-1) > ALIVE_HEALTH_EPS
 
@@ -324,7 +309,6 @@ def imagine_trajectory(
     n_steps: int,
     num_ships: int,
     device,
-    ship_config,
 ) -> list:
     """Autoregressive imagined rollout for watch-mode visualization.
 
@@ -357,7 +341,7 @@ def imagine_trajectory(
                 curr_ship_targets, pred_next_scaled
             )
             imag_obs = _decode_targets_to_obs(
-                next_ship_targets, imag_obs, action, num_ships, ship_config, coordinator
+                next_ship_targets, imag_obs, action, num_ships, coordinator
             )
             curr_ship_targets = coordinator.get_target_vector(imag_obs)[:, :num_ships]
 

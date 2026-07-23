@@ -1,6 +1,6 @@
 # Codebase Audit — Boost and Broadside
 
-_Status: First full pass complete. 21 open findings, 4 fixed, 0 won't-fix
+_Status: First full pass complete. 18 open findings, 7 fixed, 0 won't-fix
 (AUDIT-001, AUDIT-005, AUDIT-009, AUDIT-014 resolved in a later batch)._
 _Audit started and completed: 2026-07-23._
 
@@ -553,7 +553,7 @@ None beyond review; re-run any type checker the project adopts.
 - **Location:** `CheckpointMixin.checkpoint_payload` / `_save_ladder_snapshot`; consumed at `src/boost_and_broadside/modes/agent_factory.py:163`, `src/boost_and_broadside/modes/elo_stats.py:75`, `src/boost_and_broadside/modes/elo_calibrate.py:191`
 - **Severity:** Medium
 - **Category:** Coupling / duplication
-- **Status:** Open
+- **Status:** ✅ Done (pending commit)
 - **Confidence:** High
 
 **Problem**
@@ -605,7 +605,7 @@ against both the new field and (with it stripped from the payload) the fallback 
 - **Location:** `FeatureCoordinator.target_slices`, `label_scale_vector`, `compute_labels`, `apply_all_predictions`, `get_feature_names`
 - **Severity:** Medium
 - **Category:** Duplication / repeated logic
-- **Status:** Open
+- **Status:** ✅ Done (pending commit)
 - **Confidence:** High
 
 **Problem**
@@ -659,7 +659,7 @@ path and the PPO aux-loss path); compare `get_feature_names()`, `target_slices()
 - **Location:** `Predictor.decode` (abstract) and its three implementations (`AbsolutePredictor.decode`, `AdditivePredictor.decode`, `UnitCirclePredictor.decode`); compare `src/boost_and_broadside/modes/agent_factory.py`'s `_decode_targets_to_obs`
 - **Severity:** Medium
 - **Category:** Dead code / architecture
-- **Status:** Open
+- **Status:** ✅ Done (pending commit)
 - **Confidence:** High
 
 **Problem**

@@ -250,12 +250,8 @@ def _run_interactive_loop(
                 state = wrapper.state
 
                 # Imagined trajectories use the hidden state BEFORE the real forward pass.
-                imag_nexts0 = imagine_trajectory(
-                    agent0, obs, N_IMAGINE_STEPS, N, device, wrapper.ship_config
-                )
-                imag_nexts1 = imagine_trajectory(
-                    agent1, obs, N_IMAGINE_STEPS, N, device, wrapper.ship_config
-                )
+                imag_nexts0 = imagine_trajectory(agent0, obs, N_IMAGINE_STEPS, N, device)
+                imag_nexts1 = imagine_trajectory(agent1, obs, N_IMAGINE_STEPS, N, device)
 
                 action0, _ = get_actions(agent0, obs, state, 1, N, device, return_pred_next=True)
                 action1, _ = get_actions(agent1, obs, state, 1, N, device, return_pred_next=True)

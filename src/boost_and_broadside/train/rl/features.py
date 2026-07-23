@@ -83,6 +83,15 @@ class Transform(ABC):
     @abstractmethod
     def __call__(self, x: torch.Tensor) -> torch.Tensor: ...
 
+    def invert(self, x: torch.Tensor) -> torch.Tensor:
+        """Map target-encoded values back to raw physical space.
+
+        Only defined for transforms used as a Feature's target encoder on the
+        aux-prediction path; transforms that never need inversion inherit this
+        fail-fast default rather than a silently-wrong stub.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not define an inverse")
+
 
 class Identity(Transform):
     """Pass-through; ensures at least 3D."""
@@ -93,6 +102,9 @@ class Identity(Transform):
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
         if x.dim() == 2:
             return x.unsqueeze(-1).float()
+        return x.float()
+
+    def invert(self, x: torch.Tensor) -> torch.Tensor:
         return x.float()
 
 
@@ -141,6 +153,10 @@ class Symlog(Transform):
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
         return symmetric_logarithm(x.float())
 
+    def invert(self, x: torch.Tensor) -> torch.Tensor:
+        x = x.float()
+        return torch.sign(x) * torch.expm1(x.abs())
+
 
 class Fourier(Transform):
     """Base-2 power frequency Fourier expansion.
@@ -171,6 +187,28 @@ class Fourier(Transform):
             results.append(torch.cos(args))
         return torch.cat(results, dim=-1)
 
+    def invert(self, x: torch.Tensor) -> torch.Tensor:
+        """Recover the raw channels from a single-frequency (sin, cos) encoding.
+
+        Only the ``n_freqs == 1`` case is invertible in closed form (one phase
+        per channel); higher-frequency inputs are the encoder-only path and never
+        decoded, so requesting their inverse fails fast.
+        """
+        if self.n_freqs != 1:
+            raise NotImplementedError("Fourier.invert supports only n_freqs=1 encodings")
+        x = x.float()
+        num_channels = x.shape[-1] // 2  # (..., 2C) laid out [sin_c, cos_c] per channel
+        ps = (
+            [self.periods] * num_channels
+            if isinstance(self.periods, (float, int))
+            else self.periods
+        )
+        outs = []
+        for c in range(num_channels):
+            angle = torch.atan2(x[..., 2 * c], x[..., 2 * c + 1]) % (2.0 * math.pi)
+            outs.append(angle * ps[c] / (2.0 * math.pi))
+        return torch.stack(outs, dim=-1)
+
 
 class UnitCircle(Transform):
     """Map a [0, scale] scalar to a quarter-wave (sin, cos) pair."""
@@ -186,6 +224,16 @@ class UnitCircle(Transform):
         norm = (x / self.scales).clamp(0.0, 1.0)
         angle = (math.pi / 2.0) * norm
         return torch.stack([torch.sin(angle), torch.cos(angle)], dim=-1).flatten(-2)
+
+    def invert(self, x: torch.Tensor) -> torch.Tensor:
+        """Recover the raw [0, scale] scalar(s) from the (sin, cos) quarter-wave."""
+        x = x.float()
+        num_channels = x.shape[-1] // 2  # (..., 2C) laid out [sin_c, cos_c] per channel
+        outs = []
+        for c in range(num_channels):
+            angle = torch.atan2(x[..., 2 * c], x[..., 2 * c + 1]).clamp(0.0, math.pi / 2.0)
+            outs.append(angle / (math.pi / 2.0) * self.scales)
+        return torch.stack(outs, dim=-1)
 
 
 class SymlogVelocity(Transform):
@@ -206,6 +254,14 @@ class SymlogVelocity(Transform):
         symlog_speed = symmetric_logarithm(speed)
         return direction * symlog_speed
 
+    def invert(self, x: torch.Tensor) -> torch.Tensor:
+        """Recover raw (vx, vy) from direction * symlog(speed)."""
+        x = x.float()
+        symlog_speed = torch.norm(x, dim=-1, keepdim=True)
+        direction = x / symlog_speed.clamp(min=1e-8)
+        speed = torch.expm1(symlog_speed.clamp(min=0.0))
+        return direction * speed
+
 
 # ---------------------------------------------------------------------------
 # Predictors (define label computation and prediction application)
@@ -225,11 +281,6 @@ class Predictor(ABC):
     @abstractmethod
     def apply_prediction(self, curr: torch.Tensor, pred: torch.Tensor) -> torch.Tensor: ...
 
-    @abstractmethod
-    def decode(self, target: torch.Tensor) -> torch.Tensor:
-        """Invert target encoding back toward raw physical space."""
-        ...
-
 
 class AbsolutePredictor(Predictor):
     """Predict next state directly (absolute, no delta)."""
@@ -246,9 +297,6 @@ class AbsolutePredictor(Predictor):
     def apply_prediction(self, curr: torch.Tensor, pred: torch.Tensor) -> torch.Tensor:
         return pred
 
-    def decode(self, target: torch.Tensor) -> torch.Tensor:
-        return torch.sign(target) * torch.expm1(target.abs())
-
 
 class AdditivePredictor(Predictor):
     """Predict delta: next − curr in target space."""
@@ -264,9 +312,6 @@ class AdditivePredictor(Predictor):
 
     def apply_prediction(self, curr: torch.Tensor, pred: torch.Tensor) -> torch.Tensor:
         return curr + pred
-
-    def decode(self, target: torch.Tensor) -> torch.Tensor:
-        return target
 
 
 class UnitCirclePredictor(Predictor):
@@ -297,11 +342,6 @@ class UnitCirclePredictor(Predictor):
 
     def apply_prediction(self, curr: torch.Tensor, pred: torch.Tensor) -> torch.Tensor:
         return phase_shift_circle(curr, pred.squeeze(-1), self.cosine_first)
-
-    def decode(self, target: torch.Tensor) -> torch.Tensor:
-        if self.cosine_first:
-            return torch.atan2(target[..., 1], target[..., 0]) % (2.0 * math.pi)
-        return torch.atan2(target[..., 0], target[..., 1]) % (2.0 * math.pi)
 
 
 # ---------------------------------------------------------------------------
@@ -414,6 +454,25 @@ class Feature:
 # ---------------------------------------------------------------------------
 
 
+@dataclasses.dataclass(frozen=True)
+class _PredictorSpec:
+    """Cached per-feature layout for a predictor feature.
+
+    Computed once in ``FeatureCoordinator._init_dims`` so every downstream method
+    reads offsets/dimensions from one source of truth instead of re-deriving them
+    from a fresh dummy observation on each call.
+    """
+
+    name: str
+    predictor: Predictor
+    target_encoder: Transform
+    t_dim: int  # target-space width
+    p_dim: int  # prediction-space width
+    t_offset: int  # start of this feature's slice in the target vector
+    p_offset: int  # start of this feature's slice in the prediction vector
+    label_scale: tuple[float, ...]  # per-prediction-dim scale, length == p_dim
+
+
 class FeatureCoordinator:
     """Integrates a list of Features into cohesive input/target vectors."""
 
@@ -426,9 +485,15 @@ class FeatureCoordinator:
         self.total_input_dimension = 0
         self.total_target_dimension = 0
         self.total_prediction_dimension = 0
+        # One cached spec per predictor feature — the single source of truth for
+        # every per-feature offset/dimension lookup below.
+        self._predictor_specs: list[_PredictorSpec] = []
         # (pred_offset, pred_dim, WindowedLoss) for features that opt in
         self._windowed_loss_specs: list[tuple[int, int, WindowedLoss]] = []
+        # Lazily-built label-scale tensor, cached per device (see label_scale_vector).
+        self._label_scale_cache: torch.Tensor | None = None
 
+        t_offset = 0
         p_offset = 0
         for f in self.features:
             raw = f.accessor.get(dummy)
@@ -436,13 +501,29 @@ class FeatureCoordinator:
             self.total_input_dimension += f.input_encoder.out_dim(in_c)
 
             if f.predictor:
-                target_dummy = f.get_target(dummy)
-                t_c = target_dummy.shape[-1]
-                self.total_target_dimension += t_c
-                p_dim = f.predictor.prediction_dim(t_c)
+                t_dim = f.get_target(dummy).shape[-1]
+                p_dim = f.predictor.prediction_dim(t_dim)
+                if isinstance(f.label_scale, (list, tuple)):
+                    label_scale = tuple(float(s) for s in f.label_scale)
+                else:
+                    label_scale = (float(f.label_scale),) * p_dim
+                self._predictor_specs.append(
+                    _PredictorSpec(
+                        name=f.name,
+                        predictor=f.predictor,
+                        target_encoder=f.target_encoder,
+                        t_dim=t_dim,
+                        p_dim=p_dim,
+                        t_offset=t_offset,
+                        p_offset=p_offset,
+                        label_scale=label_scale,
+                    )
+                )
+                self.total_target_dimension += t_dim
                 self.total_prediction_dimension += p_dim
                 if f.windowed_loss is not None:
                     self._windowed_loss_specs.append((p_offset, p_dim, f.windowed_loss))
+                t_offset += t_dim
                 p_offset += p_dim
 
     def _dummy_obs(self) -> MVPObservation:
@@ -479,35 +560,45 @@ class FeatureCoordinator:
 
     def target_slices(self) -> dict[str, slice]:
         """Map predicted feature names to their slices in the target vector."""
-        slices: dict[str, slice] = {}
-        offset = 0
-        dummy = self._dummy_obs()
-        for feature in self.features:
-            if not feature.predictor:
-                continue
-            target_dim = feature.get_target(dummy).shape[-1]
-            slices[feature.name] = slice(offset, offset + target_dim)
-            offset += target_dim
-        return slices
+        return {
+            spec.name: slice(spec.t_offset, spec.t_offset + spec.t_dim)
+            for spec in self._predictor_specs
+        }
+
+    def decode_targets(self, targets: torch.Tensor) -> dict[str, torch.Tensor]:
+        """Invert each predictor feature's target encoding back to raw physical space.
+
+        Args:
+            targets: (..., total_target_dimension) — absolute target-space values,
+                e.g. the output of ``apply_scaled_predictions``.
+
+        Returns:
+            Feature-name → raw tensor (..., raw_channels), one entry per predictor
+            feature, with each feature's own target Transform performing the inverse.
+        """
+        return {
+            spec.name: spec.target_encoder.invert(
+                targets[..., spec.t_offset : spec.t_offset + spec.t_dim]
+            )
+            for spec in self._predictor_specs
+        }
 
     # ------------------------------------------------------------------
     # Aux loss label computation
     # ------------------------------------------------------------------
 
     def label_scale_vector(self, device: torch.device) -> torch.Tensor:
-        """Per-prediction-dim scale factors (1/std of raw labels)."""
-        scales = []
-        dummy = self._dummy_obs()
-        for f in self.features:
-            if not f.predictor:
-                continue
-            t_dim = f.get_target(dummy).shape[-1]
-            p_dim = f.predictor.prediction_dim(t_dim)
-            if isinstance(f.label_scale, (list, tuple)):
-                scales.extend(f.label_scale)
-            else:
-                scales.extend([f.label_scale] * p_dim)
-        return torch.tensor(scales, device=device, dtype=torch.float32)
+        """Per-prediction-dim scale factors (1/std of raw labels).
+
+        The vector is constant per coordinator, so it is built once and cached
+        per device (mirroring Normalize's own scale-tensor caching).
+        """
+        cache = self._label_scale_cache
+        if cache is None or cache.device != torch.device(device):
+            scales = [s for spec in self._predictor_specs for s in spec.label_scale]
+            cache = torch.tensor(scales, device=device, dtype=torch.float32)
+            self._label_scale_cache = cache
+        return cache
 
     def compute_labels(
         self, curr_targets: torch.Tensor, next_targets: torch.Tensor
@@ -519,22 +610,11 @@ class FeatureCoordinator:
         Labels are multiplied by label_scale so the network predicts O(1) values.
         """
         results = []
-        curr_offset = 0
-        next_offset = 0
-        dummy = self._dummy_obs()
-
-        for f in self.features:
-            if not f.predictor:
-                continue
-            t_dim = f.get_target(dummy).shape[-1]
-
-            curr_slice = curr_targets[..., curr_offset : curr_offset + t_dim]
-            next_slice = next_targets[..., next_offset : next_offset + t_dim]
-
-            results.append(f.predictor.compute_labels(curr_slice, next_slice))
-
-            curr_offset += t_dim
-            next_offset += t_dim
+        for spec in self._predictor_specs:
+            sl = slice(spec.t_offset, spec.t_offset + spec.t_dim)
+            curr_slice = curr_targets[..., sl]
+            next_slice = next_targets[..., sl]
+            results.append(spec.predictor.compute_labels(curr_slice, next_slice))
 
         labels = torch.cat(results, dim=-1)
         return labels * self.label_scale_vector(labels.device)
@@ -543,23 +623,10 @@ class FeatureCoordinator:
         self, curr_targets: torch.Tensor, predictions: torch.Tensor
     ) -> torch.Tensor:
         results = []
-        t_offset = 0
-        p_offset = 0
-        dummy = self._dummy_obs()
-
-        for f in self.features:
-            if not f.predictor:
-                continue
-            t_dim = f.get_target(dummy).shape[-1]
-            p_dim = f.predictor.prediction_dim(t_dim)
-
-            t_slice = curr_targets[..., t_offset : t_offset + t_dim]
-            p_slice = predictions[..., p_offset : p_offset + p_dim]
-
-            results.append(f.predictor.apply_prediction(t_slice, p_slice))
-
-            t_offset += t_dim
-            p_offset += p_dim
+        for spec in self._predictor_specs:
+            t_slice = curr_targets[..., spec.t_offset : spec.t_offset + spec.t_dim]
+            p_slice = predictions[..., spec.p_offset : spec.p_offset + spec.p_dim]
+            results.append(spec.predictor.apply_prediction(t_slice, p_slice))
 
         return torch.cat(results, dim=-1)
 
@@ -618,13 +685,8 @@ class FeatureCoordinator:
 
     def get_feature_names(self) -> list[str]:
         names = []
-        dummy = self._dummy_obs()
-        for f in self.features:
-            if not f.predictor:
-                continue
-            t_dim = f.get_target(dummy).shape[-1]
-            p_dim = f.predictor.prediction_dim(t_dim)
-            names.extend(f"{f.name}_{i}" for i in range(p_dim))
+        for spec in self._predictor_specs:
+            names.extend(f"{spec.name}_{i}" for i in range(spec.p_dim))
         return names
 
 

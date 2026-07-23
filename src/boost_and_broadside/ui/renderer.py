@@ -14,6 +14,16 @@ import torch
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.env.state import TensorState
 
+# Prediction-vector channel indices used to decode ghost trajectories: the
+# position-x, position-y, and attitude phase-delta channels of the standard
+# FeatureCoordinator prediction layout (the order of get_feature_names()). Named
+# rather than inlined so the dependency on that layout is explicit; a regression
+# test (tests/ui/test_renderer.py) pins them against the live coordinator so a
+# reordering of the prediction vector can't silently desync these ghosts.
+_GHOST_DPHI_X = 0
+_GHOST_DPHI_Y = 1
+_GHOST_DPHI_ATT = 4
+
 
 @dataclass(frozen=True)
 class RenderConfig:
@@ -76,8 +86,9 @@ class GameRenderer:
 
         Args:
             state: Live TensorState — only env index 0 is read.
-            pred_nexts: Optional list of (B, N, AUX_PRED_DIM) tensors, one per imagined
-                step. A single tensor is also accepted for backward compatibility.
+            pred_nexts: Optional list of (B, N, pred_dim) tensors, one per imagined
+                step, where pred_dim is the coordinator's total prediction width.
+                A single tensor is also accepted for backward compatibility.
 
         Returns:
             True to keep running, False if the user closed the window.
@@ -243,10 +254,11 @@ class GameRenderer:
     ) -> None:
         """Draw autoregressive predicted positions as fading hollow triangles.
 
-        pred_nexts: list of (B, N, AUX_PRED_DIM=10) tensors, one per imagined step.
-          Each tensor's [0] Δφ_x and [1] Δφ_y are phase shifts relative to the
-          previous ghost position; [4] Δφ_att is relative to the previous attitude.
-        Ghost brightness fades linearly from 1.0 (step 0) to 0.5 (last step).
+        pred_nexts: list of (B, N, pred_dim) tensors, one per imagined step, in the
+          coordinator's prediction layout. Channels _GHOST_DPHI_X and _GHOST_DPHI_Y
+          are position phase shifts relative to the previous ghost position;
+          _GHOST_DPHI_ATT is the attitude phase shift relative to the previous
+          attitude. Ghost brightness fades linearly from 1.0 (step 0) to 0.5 (last).
         """
         import math
 
@@ -262,7 +274,7 @@ class GameRenderer:
         _2pi = 2.0 * math.pi
         n_steps = len(pred_nexts)
 
-        pn_cpu = [pn[0].cpu() for pn in pred_nexts]  # list of (N, 10)
+        pn_cpu = [pn[0].cpu() for pn in pred_nexts]  # list of (N, pred_dim)
 
         for n in range(pn_cpu[0].shape[0]):
             if not alive[n].item():
@@ -285,12 +297,12 @@ class GameRenderer:
                 # Decode ghost position: phase shift applied to prev ghost position.
                 phi_x = _2pi * prev_p.real / world_w
                 phi_y = _2pi * prev_p.imag / world_h
-                ghost_x = ((phi_x + pn[n, 0].item()) % _2pi) / _2pi * world_w
-                ghost_y = ((phi_y + pn[n, 1].item()) % _2pi) / _2pi * world_h
+                ghost_x = ((phi_x + pn[n, _GHOST_DPHI_X].item()) % _2pi) / _2pi * world_w
+                ghost_y = ((phi_y + pn[n, _GHOST_DPHI_Y].item()) % _2pi) / _2pi * world_h
                 ghost_p = complex(ghost_x, ghost_y)
 
                 # Decode ghost attitude: phase shift applied to prev attitude.
-                att_angle = prev_att_angle + pn[n, 4].item()
+                att_angle = prev_att_angle + pn[n, _GHOST_DPHI_ATT].item()
                 ghost_a = complex(math.cos(att_angle), math.sin(att_angle))
 
                 tip = ghost_p + ghost_a * sz
