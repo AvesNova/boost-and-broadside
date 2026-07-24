@@ -50,9 +50,19 @@ def _buffer_bytes(trainer: PPOTrainer) -> int:
     for v in buf.obs.values():
         total += v.numel() * v.element_size()
     for name in (
-        "actions", "logprobs", "rewards", "values", "dones", "alive_mask",
-        "advantages", "returns", "adv_agg", "ret_agg", "actor_masks",
-        "expert_probs", "terminated",
+        "actions",
+        "logprobs",
+        "rewards",
+        "values",
+        "dones",
+        "alive_mask",
+        "advantages",
+        "returns",
+        "adv_agg",
+        "ret_agg",
+        "actor_masks",
+        "expert_probs",
+        "terminated",
     ):
         t = getattr(buf, name, None)
         if isinstance(t, torch.Tensor):
@@ -62,7 +72,43 @@ def _buffer_bytes(trainer: PPOTrainer) -> int:
     return total
 
 
-def _lean_config(base, num_envs, minibatches, microbatch_tokens, num_ships=None, epochs=None):
+def _host_buffer_bytes(buffers) -> int:
+    """Sum pageable tensors retained by host-backed logical buffers."""
+    total = 0
+    for buffer in buffers:
+        for shard in getattr(buffer, "shards", ()):
+            tensors = [
+                *shard.obs.values(),
+                shard.actions,
+                shard.logprobs,
+                shard.advantages,
+                shard.returns,
+                shard.alive_mask,
+                shard.actor_masks,
+                shard.expert_probs,
+                shard.terminated,
+                shard.initial_hidden,
+                shard.adv_agg,
+                shard.ret_agg,
+                shard.ns_labels,
+            ]
+            total += sum(
+                tensor.numel() * tensor.element_size()
+                for tensor in tensors
+                if isinstance(tensor, torch.Tensor)
+            )
+    return total
+
+
+def _lean_config(
+    base,
+    num_envs,
+    minibatches,
+    microbatch_tokens,
+    rollouts_per_update,
+    num_ships=None,
+    epochs=None,
+):
     """Reduce to a policy-only benchmark: no scripted/avg/league opponents, tiny eval."""
     schedule = replace(
         base.schedule,
@@ -83,6 +129,7 @@ def _lean_config(base, num_envs, minibatches, microbatch_tokens, num_ships=None,
         schedule=schedule,
         num_minibatches=minibatches,
         microbatch_tokens=microbatch_tokens,
+        rollouts_per_update=rollouts_per_update,
         elo_eval=replace(base.elo_eval, envs_per_matchup=4),
         obstacle_cache=None,
     )
@@ -95,13 +142,19 @@ def main() -> None:
     ap.add_argument("--num-ships", type=int, default=None)
     ap.add_argument("--minibatches", type=int, default=1)
     ap.add_argument("--microbatch-tokens", type=int, default=37500)
+    ap.add_argument("--rollouts-per-update", type=int, default=1)
     ap.add_argument(
         "--compile",
         default="none",
         choices=["none", "reduce-overhead", "default", "max-autotune"],
     )
     ap.add_argument("--grad-checkpoint", action="store_true")
-    ap.add_argument("--epochs", type=int, default=None, help="Override PPO epochs/update (default: schedule's 4)")
+    ap.add_argument(
+        "--epochs",
+        type=int,
+        default=None,
+        help="Override PPO epochs/update (default: schedule's 4)",
+    )
     ap.add_argument("--warmup", type=int, default=2)
     ap.add_argument("--measure", type=int, default=3)
     ap.add_argument("--tag", default="")
@@ -114,23 +167,39 @@ def main() -> None:
         model_kwargs["grad_checkpoint"] = True  # field only exists where the feature is present
     model_cfg = replace(MODEL_CONFIG, **model_kwargs)
     cfg = _lean_config(
-        RL_TRAIN_CONFIG, args.num_envs, args.minibatches, args.microbatch_tokens,
-        num_ships=args.num_ships, epochs=args.epochs,
+        RL_TRAIN_CONFIG,
+        args.num_envs,
+        args.minibatches,
+        args.microbatch_tokens,
+        args.rollouts_per_update,
+        num_ships=args.num_ships,
+        epochs=args.epochs,
     )
     agent = StochasticScriptedAgent(SHIP_CONFIG, StochasticAgentConfig())
 
     result = {
-        "tag": args.tag, "blocks": args.blocks, "num_envs": args.num_envs,
+        "tag": args.tag,
+        "blocks": args.blocks,
+        "num_envs": args.num_envs,
         "num_ships": cfg.scales[0].env_config.num_ships,
-        "minibatches": args.minibatches, "microbatch_tokens": args.microbatch_tokens,
-        "compile": args.compile, "grad_checkpoint": args.grad_checkpoint, "oom": False,
+        "minibatches": args.minibatches,
+        "microbatch_tokens": args.microbatch_tokens,
+        "rollouts_per_update": args.rollouts_per_update,
+        "compile": args.compile,
+        "grad_checkpoint": args.grad_checkpoint,
+        "oom": False,
     }
 
     try:
         torch.manual_seed(0)
         trainer = PPOTrainer(
-            train_config=cfg, model_config=model_cfg, ship_config=SHIP_CONFIG,
-            device=device, use_wandb=False, scripted_agent=agent, compile_mode=compile_mode,
+            train_config=cfg,
+            model_config=model_cfg,
+            ship_config=SHIP_CONFIG,
+            device=device,
+            use_wandb=False,
+            scripted_agent=agent,
+            compile_mode=compile_mode,
         )
         torch.cuda.synchronize()
         result["alloc_after_init_mb"] = torch.cuda.memory_allocated() / MB
@@ -138,54 +207,72 @@ def main() -> None:
         result["params_m"] = sum(p.numel() for p in trainer._policy_module.parameters()) / 1e6
 
         runtime = trainer._initialize_rollout_runtime()
-        all_buffers = [trainer.buffer] + trainer.aux_buffers
 
-        def one_update():
+        def collect_update():
+            if cfg.rollouts_per_update > 1:
+                return trainer._collect_host_rollouts(runtime, avg_eval_active=False)
             dones = trainer._collect_rollout(runtime, avg_eval_active=False)
             trainer._compute_rollout_gae(runtime, dones)
+            return [trainer.buffer] + trainer.aux_buffers
 
         for _ in range(args.warmup):
-            one_update()
-            trainer._update_epochs(all_buffers=all_buffers)
+            all_buffers = collect_update()
+            trainer._update_epochs(
+                all_buffers=all_buffers,
+                precomputed=cfg.rollouts_per_update > 1,
+            )
         torch.cuda.synchronize()
         result["persistent_mb"] = torch.cuda.memory_allocated() / MB
+        result["host_buffer_mb"] = _host_buffer_bytes(all_buffers) / MB
 
         rollout_ms, rollout_peak = [], 0
         for _ in range(max(1, args.measure // 2)):
             torch.cuda.reset_peak_memory_stats()
-            torch.cuda.synchronize(); t0 = time.perf_counter()
-            one_update()
-            torch.cuda.synchronize(); t1 = time.perf_counter()
+            torch.cuda.synchronize()
+            t0 = time.perf_counter()
+            all_buffers = collect_update()
+            torch.cuda.synchronize()
+            t1 = time.perf_counter()
             rollout_peak = max(rollout_peak, torch.cuda.max_memory_allocated())
             rollout_ms.append((t1 - t0) * 1e3)
 
         update_ms, update_peak = [], 0
         for _ in range(args.measure):
             torch.cuda.reset_peak_memory_stats()
-            torch.cuda.synchronize(); t0 = time.perf_counter()
-            trainer._update_epochs(all_buffers=all_buffers)
-            torch.cuda.synchronize(); t1 = time.perf_counter()
+            torch.cuda.synchronize()
+            t0 = time.perf_counter()
+            trainer._update_epochs(
+                all_buffers=all_buffers,
+                precomputed=cfg.rollouts_per_update > 1,
+            )
+            torch.cuda.synchronize()
+            t1 = time.perf_counter()
             update_peak = max(update_peak, torch.cuda.max_memory_allocated())
             update_ms.append((t1 - t0) * 1e3)
 
         roll = sum(rollout_ms) / len(rollout_ms)
         upd = sum(update_ms) / len(update_ms)
-        result.update({
-            "rollout_ms": roll,
-            "update_ms": upd,
-            "rollout_peak_mb": rollout_peak / MB,
-            "update_peak_mb": update_peak / MB,
-            "activation_mb": (update_peak / MB) - result["persistent_mb"],
-            "reserved_peak_mb": torch.cuda.max_memory_reserved() / MB,
-            "sps": int(args.num_envs * cfg.num_steps / ((roll + upd) / 1e3)),
-            "ship_tokens_per_sec": int(
-                args.num_envs
-                * cfg.num_steps
-                * cfg.scales[0].env_config.num_ships
-                / ((roll + upd) / 1e3)
-            ),
-            "epochs": trainer._schedule_state.num_epochs,
-        })
+        result.update(
+            {
+                "rollout_ms": roll,
+                "update_ms": upd,
+                "rollout_peak_mb": rollout_peak / MB,
+                "update_peak_mb": update_peak / MB,
+                "activation_mb": (update_peak / MB) - result["persistent_mb"],
+                "reserved_peak_mb": torch.cuda.max_memory_reserved() / MB,
+                "sps": int(
+                    args.num_envs * cfg.num_steps * cfg.rollouts_per_update / ((roll + upd) / 1e3)
+                ),
+                "ship_tokens_per_sec": int(
+                    args.num_envs
+                    * cfg.num_steps
+                    * cfg.scales[0].env_config.num_ships
+                    * cfg.rollouts_per_update
+                    / ((roll + upd) / 1e3)
+                ),
+                "epochs": trainer._schedule_state.num_epochs,
+            }
+        )
         trainer.shutdown()
     except torch.cuda.OutOfMemoryError as e:
         result["oom"] = True

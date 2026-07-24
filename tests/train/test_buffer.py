@@ -116,6 +116,18 @@ class TestReturnScaler:
         assert torch.allclose(scaler.percentiles[0], scaler2.percentiles[0])
         assert torch.allclose(scaler.percentiles[1], scaler2.percentiles[1])
 
+    def test_chunked_update_matches_concatenated_rollout(self):
+        first = torch.randn(4, 3, 2, K)
+        second = torch.randn(4, 3, 2, K)
+        chunked = ReturnScaler(num_components=K, device=torch.device("cpu"))
+        concatenated = ReturnScaler(num_components=K, device=torch.device("cpu"))
+
+        chunked.update_chunks([first, second])
+        concatenated.update(torch.cat((first, second), dim=1))
+
+        assert torch.allclose(chunked.percentiles[0], concatenated.percentiles[0])
+        assert torch.allclose(chunked.percentiles[1], concatenated.percentiles[1])
+
 
 class TestBufferAdd:
     def test_buffer_fills_without_error(self):
