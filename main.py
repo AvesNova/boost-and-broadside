@@ -5,6 +5,7 @@ Select a mode with --mode. All hyperparameters live in runs/.
 Training:
     uv run --no-sync main.py --mode rl                          # RL from scratch
     uv run --no-sync main.py --mode rl --smoke                  # crash-test (tiny batch, no W&B)
+    uv run --no-sync main.py --mode rl --no-wandb               # full run, no W&B logging
     uv run --no-sync main.py --mode rl --compile max-autotune   # RL with max-autotune
     uv run --no-sync main.py --mode rl --pretrain_from checkpoints/run/best.pt
     uv run --no-sync main.py --mode rl --resume                 # resume latest checkpoint
@@ -177,6 +178,14 @@ def _parse_args() -> argparse.Namespace:
         help="Smoke-test mode: tiny batch (4 envs), no W&B, no compile, exits after a few updates.",
     )
     parser.add_argument(
+        "--no-wandb",
+        dest="no_wandb",
+        action="store_true",
+        default=False,
+        help="Disable W&B logging for a full run (keeps batch size and compile). "
+        "Implied by --smoke.",
+    )
+    parser.add_argument(
         "--team0",
         type=str,
         default=None,
@@ -283,7 +292,7 @@ def _make_trainer(
         model_config=MODEL_CONFIG,
         ship_config=SHIP_CONFIG,
         device=device,
-        use_wandb=not args.smoke,
+        use_wandb=not (args.smoke or args.no_wandb),
         scripted_agent=StochasticScriptedAgent(SHIP_CONFIG, StochasticAgentConfig()),
         compile_mode=compile_mode,
         resume_wandb_run_id=resume_wandb_run_id,
