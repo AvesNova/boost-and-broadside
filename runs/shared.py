@@ -18,6 +18,7 @@ MODEL_CONFIG = ModelConfig(
     d_model=128,
     n_heads=4,
     n_transformer_blocks=2,
+    grad_checkpoint=False,
 )
 
 ELO_EVAL = EloEvalConfig(

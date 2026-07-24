@@ -62,7 +62,7 @@ def _buffer_bytes(trainer: PPOTrainer) -> int:
     return total
 
 
-def _lean_config(base, num_envs, minibatches, microbatch_tokens):
+def _lean_config(base, num_envs, minibatches, microbatch_tokens, num_ships=None, epochs=None):
     """Reduce to a policy-only benchmark: no scripted/avg/league opponents, tiny eval."""
     schedule = replace(
         base.schedule,
@@ -71,7 +71,12 @@ def _lean_config(base, num_envs, minibatches, microbatch_tokens):
         league_fraction=constant(0.0),
         behavior_cloning_coef=constant(0.0),
     )
-    scales = (replace(base.scales[0], num_envs=num_envs),) + tuple(base.scales[1:])
+    if epochs is not None:
+        schedule = replace(schedule, num_epochs=constant(epochs))
+    scale0 = base.scales[0]
+    if num_ships is not None:
+        scale0 = replace(scale0, env_config=replace(scale0.env_config, num_ships=num_ships))
+    scales = (replace(scale0, num_envs=num_envs),) + tuple(base.scales[1:])
     return replace(
         base,
         scales=scales,
@@ -87,10 +92,16 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--blocks", type=int, required=True)
     ap.add_argument("--num-envs", type=int, default=36)
+    ap.add_argument("--num-ships", type=int, default=None)
     ap.add_argument("--minibatches", type=int, default=1)
     ap.add_argument("--microbatch-tokens", type=int, default=37500)
-    ap.add_argument("--compile", default="none", choices=["none", "default", "max-autotune"])
+    ap.add_argument(
+        "--compile",
+        default="none",
+        choices=["none", "reduce-overhead", "default", "max-autotune"],
+    )
     ap.add_argument("--grad-checkpoint", action="store_true")
+    ap.add_argument("--epochs", type=int, default=None, help="Override PPO epochs/update (default: schedule's 4)")
     ap.add_argument("--warmup", type=int, default=2)
     ap.add_argument("--measure", type=int, default=3)
     ap.add_argument("--tag", default="")
@@ -102,11 +113,15 @@ def main() -> None:
     if args.grad_checkpoint:
         model_kwargs["grad_checkpoint"] = True  # field only exists where the feature is present
     model_cfg = replace(MODEL_CONFIG, **model_kwargs)
-    cfg = _lean_config(RL_TRAIN_CONFIG, args.num_envs, args.minibatches, args.microbatch_tokens)
+    cfg = _lean_config(
+        RL_TRAIN_CONFIG, args.num_envs, args.minibatches, args.microbatch_tokens,
+        num_ships=args.num_ships, epochs=args.epochs,
+    )
     agent = StochasticScriptedAgent(SHIP_CONFIG, StochasticAgentConfig())
 
     result = {
         "tag": args.tag, "blocks": args.blocks, "num_envs": args.num_envs,
+        "num_ships": cfg.scales[0].env_config.num_ships,
         "minibatches": args.minibatches, "microbatch_tokens": args.microbatch_tokens,
         "compile": args.compile, "grad_checkpoint": args.grad_checkpoint, "oom": False,
     }
@@ -163,6 +178,12 @@ def main() -> None:
             "activation_mb": (update_peak / MB) - result["persistent_mb"],
             "reserved_peak_mb": torch.cuda.max_memory_reserved() / MB,
             "sps": int(args.num_envs * cfg.num_steps / ((roll + upd) / 1e3)),
+            "ship_tokens_per_sec": int(
+                args.num_envs
+                * cfg.num_steps
+                * cfg.scales[0].env_config.num_ships
+                / ((roll + upd) / 1e3)
+            ),
             "epochs": trainer._schedule_state.num_epochs,
         })
         trainer.shutdown()

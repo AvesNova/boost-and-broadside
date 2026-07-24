@@ -99,3 +99,118 @@ Adopt all three — they stack (activation vs buffer are different pools; the SD
 checkpointing both cut activation but compose). Set
 `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`, `ModelConfig.grad_checkpoint=True`, and keep
 the bf16/uint8 buffer. Budget ~20–30% update-phase SPS for the depth checkpointing buys you.
+
+## Measured frontier: RTX 4070 Laptop 8GB (Jul 2026)
+
+One-factor-at-a-time sweep (`scripts/bench_mem.py`, extended with `--num-ships`, `--epochs`, and
+`reduce-overhead` compile support) across `_MAX_TOKENS`, `_NUM_SHIPS`, `_NUM_MINIBATCHES`,
+`_MICROBATCH_TOKENS`, `grad_checkpoint`, and `--compile`. Full grid would be ~4800 runs; since the
+knobs are independent, each axis varies alone against a shared baseline (`blocks=2`, `_MAX_TOKENS=
+5_000_000`, `_NUM_SHIPS=8`, `_NUM_MINIBATCHES=32`, `grad_checkpoint=True`, `compile=none`,
+`num_envs` computed from the real `rl.py` formula, 1 PPO epoch measured — production runs 4, so
+scale `update_ms` ×4 for real per-update cost). 21 configs, ~35 min total.
+
+**⚠ The microbatch divisor currently in `runs/rl.py` (uncommitted: `_MAX_TOKENS=5_000_000 //
+_NUM_MINIBATCHES // 1`, i.e. `microbatch_tokens=156250`) OOMs on this card even with
+`grad_checkpoint=True`** — confirmed directly (`microbatch_d1` row below). Divisor **5**
+(`microbatch_tokens=31250`, the previously-committed value) is the largest that fits and is used
+as the baseline below.
+
+### 1. `_MAX_TOKENS` → `num_envs` (ships=8, mb=32, microbatch=31250, gc=True, compile=none)
+
+| tokens | envs | persistent MB | activation MB | reserved peak MB | rollout ms | update ms (1ep) | ship-tok/s |
+|---|---|---|---|---|---|---|---|
+| 1M | 960 | 346 | 1076 | 1986 | 6856 | 4658 | 85,374 |
+| 2M | 1952 | 647 | 1128 | 2808 | 9081 | 9492 | 107,623 |
+| 3M | 2912 | 937 | 1141 | 3866 | 11610 | 14206 | 115,507 |
+| 4M | 3904 | 1236 | 1158 | 5148 | 14263 | 18977 | 120,268 |
+| 5M | 4864 | 1525 | 1171 | 6328 | 16308 | 23540 | 124,993 |
+
+`persistent_mb` (buffer) scales linearly with `num_envs`, exactly as expected. `activation_mb`
+stays flat (~1.1 GB) — confirms it's governed by `microbatch_tokens`, not batch size.
+Ship-tokens/sec rises with diminishing returns as rollout's fixed per-step overhead amortizes over
+more envs — bigger `_MAX_TOKENS` is free throughput headroom until VRAM runs out (~6.3 GB at 5M
+here, of 7.62 GB usable).
+
+### 2. `_NUM_SHIPS` (tokens=5M, mb=32, microbatch=31250, gc=True, compile=none)
+
+| ships | envs | persistent MB | activation MB | reserved peak MB | ship-tok/s |
+|---|---|---|---|---|---|
+| 2 | 19520 | 1536 | 1564 | 6746 | 101,958 |
+| 4 | 9760 | 1530 | 1155 | 6322 | 115,866 |
+| 8 | 4864 | 1525 | 1171 | 6328 | 124,993 |
+| 16 | 2432 | 1527 | 1199 | 6592 | 125,937 |
+
+`ScaleConfig.num_envs` is inversely proportional to `num_ships` by design (docstring: "keeps
+total ships-per-update constant across scales") — confirmed: `persistent_mb` and ship-tok/s are
+both nearly invariant across this axis (buffer ±1%, throughput 102k–126k). `_NUM_SHIPS` mostly
+just trades env count for ships/env at fixed total throughput; the only real VRAM wrinkle is at
+the extreme (ships=2, 19520 envs), where activation rises ~34% — worth a wider check before
+running that scale for real.
+
+### 3. `_NUM_MINIBATCHES` (tokens=5M, ships=8, microbatch=31250, gc=True, compile=none)
+
+| minibatches | activation MB | reserved peak MB | ship-tok/s |
+|---|---|---|---|
+| 4 | 1622 | 6944 | 124,765 |
+| 8 | 1365 | 6622 | 124,751 |
+| 16 | 1236 | 6460 | 124,641 |
+| 32 | 1171 | 6328 | 124,993 |
+| 64 | 953 | 6304 | 125,664 |
+
+Clean, useful result: more minibatches → monotonically lower activation VRAM (1622→953 MB, −41%
+from 4→64) with **no throughput cost** (ship-tok/s flat within noise, 124.6k–125.7k). Raising
+`_NUM_MINIBATCHES` is close to a free way to buy VRAM headroom — total compute per update doesn't
+change, just how it's chunked.
+
+### 4. `_MICROBATCH_TOKENS` divisor (tokens=5M, ships=8, mb=32, gc=True, compile=none)
+
+Per-minibatch token count at this baseline is fixed at 156,250 (`_MAX_TOKENS // _NUM_MINIBATCHES`);
+the divisor sets how finely that gets split for the backward pass.
+
+| divisor | microbatch_tokens | activation MB | reserved peak MB | update ms (1ep) | ship-tok/s |
+|---|---|---|---|---|---|
+| 1 | 156250 | — | — | **OOM** | — |
+| 2 | 78125 | 2767 | 6632 | 26484 | 116,127 |
+| 3 | 52083 | 1883 | 6284 | 26250 | 116,757 |
+| 4 | 39062 | 1423 | 6314 | 24828 | 121,060 |
+| 5 | 31250 | 1171 | 6328 | 23540 | 124,993 |
+| 6 | 26041 | 989 | 6344 | 23181 | 126,110 |
+
+Smaller microbatches are both smaller **and faster** here (activation 2767→989 MB and update time
+26484→23181 ms from divisor 2→6) — on this VRAM-constrained 8GB card, finer chunking avoids
+allocator/fragmentation pressure near the ceiling. This ordering likely reverses on a GPU with
+slack VRAM (per-chunk kernel-launch overhead would then dominate instead). Divisor 1 (the
+uncommitted `rl.py` value) is the exact OOM boundary — confirms the divisor must be ≥2 on this card.
+
+### 5. `grad_checkpoint` (tokens=5M, ships=8, mb=32, microbatch=31250, compile=none)
+
+| grad_checkpoint | activation MB | reserved peak MB | update ms (1ep) | ship-tok/s |
+|---|---|---|---|---|
+| False | 2569 | 6818 | 19522 | 139,391 |
+| True | 1171 | 6328 | 23540 | 124,993 |
+
+Matches the documented tradeoff almost exactly: checkpointing cuts activation by **54%** for
+**+20.6%** update time (doc estimated ~20–30%). `grad_checkpoint=False` is faster when it fits —
+use it whenever VRAM allows; flip it on only when the batch/microbatch you actually want doesn't
+fit otherwise.
+
+### 6. `--compile` (tokens=5M, ships=8, mb=32, microbatch=31250, gc=True)
+
+| compile | rollout ms | update ms (1ep) | reserved peak MB | ship-tok/s |
+|---|---|---|---|---|
+| none | 16308 | 23540 | 6328 | 124,993 |
+| reduce-overhead | 15935 | 22169 | 6688 | 130,713 |
+| default | 15882 | 22164 | 6688 | 130,916 |
+| max-autotune | 15920 | 22185 | 6688 | 130,711 |
+
+All three compiled modes land within noise of each other (~6% faster than eager, both rollout and
+update) — no measurable extra win from `default`/`max-autotune` over `reduce-overhead` in this
+config, and compile adds ~360 MB reserved (workspace). Caveat: this used only 1 warmup iteration
+before measuring, which may undersell `max-autotune` — its autotuning cache can need more warm
+calls to fully engage. `reduce-overhead` gets the same speedup for the cheapest compile-time cost,
+so it's the reasonable default here (matches `main.py`'s existing default).
+
+**Bottom line for this card:** `grad_checkpoint=True` + microbatch divisor ≥2 is required just to
+fit `_MAX_TOKENS=5_000_000` at all; divisor 5–6 and `_NUM_MINIBATCHES=32–64` give the best VRAM/
+speed balance found. The uncommitted divisor-1 change in `runs/rl.py` will OOM as-is on this GPU.
