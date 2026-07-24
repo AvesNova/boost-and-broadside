@@ -1,7 +1,7 @@
 # Codebase Audit — Boost and Broadside
 
 _Status: First full pass complete, then a remediation-verification pass (2026-07-24).
-28 findings total: 2 open (Note-severity AUDIT-010; AUDIT-027), 26 fixed,
+28 findings total: 1 open (Note-severity AUDIT-010), 27 fixed,
 0 won't-fix
 (AUDIT-001, AUDIT-005, AUDIT-009, AUDIT-014 resolved in a later batch;
 AUDIT-019, AUDIT-020, AUDIT-021 resolved in the ar_report batch;
@@ -10,15 +10,15 @@ AUDIT-016, AUDIT-017 resolved in the checkpoint-retention batch;
 AUDIT-012, AUDIT-018, AUDIT-022 resolved in a later batch;
 AUDIT-002, AUDIT-003, AUDIT-004, AUDIT-008, AUDIT-011, AUDIT-013, AUDIT-015, AUDIT-023,
 AUDIT-025 resolved in the low-severity/typing cleanup batch;
-AUDIT-026 and AUDIT-028 found and fixed during the verification pass; AUDIT-027 found and
-left open during the verification pass)._
+AUDIT-026, AUDIT-027, AUDIT-028 found and fixed during the verification pass)._
 _Audit started and completed: 2026-07-23. Remediation verified: 2026-07-24._
 
 **Verification-pass note (2026-07-24).** Every finding marked Done was independently
 re-checked against the current code, tests, and its original description. All prior fixes
-verified correct except one regression the remediation itself introduced (AUDIT-026,
-fixed during this pass) and one incomplete new feature (AUDIT-027, open). Ruff and the
-full test suite (327 passed) were re-run. See AUDIT-026/027/028 below.
+verified correct except one regression the remediation itself introduced (AUDIT-026) and
+one incomplete new feature (AUDIT-027) — both fixed during this pass, along with the
+outstanding ruff cleanup (AUDIT-028). Ruff (clean) and the full test suite (329 passed)
+were re-run. See AUDIT-026/027/028 below.
 
 This document is the persistent, cross-session record of a repository-wide Python code
 quality audit. Findings are never deleted — mark them `✅ Done (<commit>)` or
@@ -1461,7 +1461,15 @@ checkpoint are the checks that would have caught this.
 - **Location:** `CheckpointMixin._maybe_save_best_checkpoints`, `_save_best_checkpoint` / `_run_async_save`
 - **Severity:** Medium
 - **Category:** Correctness / reliability (incomplete new feature)
-- **Status:** Open
+- **Status:** ✅ Done (see AUDIT-027 fix commit) — both halves of the recommended
+  change applied: (1) `best_avg.pt` now uses a separate `_active_best_avg_thread`
+  slot so it never contends with `best_training.pt` within one update; and
+  (2) `_run_async_save` / `_save_best_checkpoint` return whether the save was
+  dispatched, and `_maybe_save_best_checkpoints` advances each family's
+  high-water mark only on a dispatched save, so a skipped save is retried on the
+  next improving update instead of being silently recorded as captured. Two
+  regression tests added: the both-improve-in-one-update case (previously left
+  `best_avg.pt` unwritten) and the skipped-save-does-not-advance-the-mark case.
 - **Confidence:** High
 
 **Problem**

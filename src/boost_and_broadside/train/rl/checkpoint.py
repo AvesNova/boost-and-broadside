@@ -79,19 +79,25 @@ class CheckpointMixin:
 
         Each family (live/avg) tracks its own high-water mark independently, so
         the two files can lag different updates — e.g. the avg policy may still
-        be rising after the live policy has plateaued.
+        be rising after the live policy has plateaued. The mark is advanced only
+        when the save is actually dispatched: a save skipped for an in-flight
+        write must be retried on the next improving update, not silently recorded
+        as captured. The two families use separate thread slots so they never
+        contend within a single update.
         """
         training_elo_norm = self._training_elo - random_elo
-        if training_elo_norm > self._best_training_elo_norm:
+        if training_elo_norm > self._best_training_elo_norm and self._save_best_checkpoint(
+            "best_training.pt"
+        ):
             self._best_training_elo_norm = training_elo_norm
-            self._save_best_checkpoint("best_training.pt")
         if self._avg_update_count > 0:
             avg_elo_norm = self._avg_training_elo - random_elo
-            if avg_elo_norm > self._best_avg_elo_norm:
+            if avg_elo_norm > self._best_avg_elo_norm and self._save_best_checkpoint(
+                "best_avg.pt",
+                payload=self._avg_checkpoint_payload_lightweight(update=0),
+                thread_attr="_active_best_avg_thread",
+            ):
                 self._best_avg_elo_norm = avg_elo_norm
-                self._save_best_checkpoint(
-                    "best_avg.pt", payload=self._avg_checkpoint_payload_lightweight(update=0)
-                )
 
     # ------------------------------------------------------------------
     # ELO measurement ladder
@@ -199,13 +205,19 @@ class CheckpointMixin:
             "env_config": dataclasses.asdict(self.env_config),
         }
 
-    def _run_async_save(self, thread_attr: str, label: str, target: Callable[[], None]) -> None:
+    def _run_async_save(self, thread_attr: str, label: str, target: Callable[[], None]) -> bool:
         """Spawn an async save thread, skipping if the previous save of this kind is still running.
 
         Args:
             thread_attr: Name of the instance attribute tracking this save kind's thread.
             label:       Describes the in-flight save in the skip warning.
             target:      The save function to run on the background thread.
+
+        Returns:
+            True if the save was dispatched, False if it was skipped because the
+            previous save on this thread slot is still running. Callers that gate a
+            high-water mark on the save must only advance it when this returns True,
+            or a skipped save would raise the bar without persisting the checkpoint.
         """
         active = getattr(self, thread_attr, None)
         if active is not None and active.is_alive():
@@ -213,10 +225,11 @@ class CheckpointMixin:
                 f"[PPOTrainer] Warning: Previous {label} is still in progress. "
                 "Skipping this save to prevent disk/GIL congestion."
             )
-            return
+            return False
         thread = threading.Thread(target=target, daemon=True)
         setattr(self, thread_attr, thread)
         thread.start()
+        return True
 
     def _save_checkpoint(self, update: int) -> None:
         """Save policy and optimizer state to a .pt file asynchronously.
@@ -306,12 +319,21 @@ class CheckpointMixin:
         payload["policy_state_dict"] = self._avg_policy_module.state_dict()
         return payload
 
-    def _save_best_checkpoint(self, name: str, payload: dict | None = None) -> None:
+    def _save_best_checkpoint(
+        self, name: str, payload: dict | None = None, thread_attr: str = "_active_best_thread"
+    ) -> bool:
         """Save a named best-model checkpoint asynchronously, overwriting any previous version.
 
         Args:
-            name:    Filename, e.g. "best_training.pt" or "best_avg.pt".
-            payload: Custom payload dict; defaults to _checkpoint_payload_lightweight(update=0).
+            name:        Filename, e.g. "best_training.pt" or "best_avg.pt".
+            payload:     Custom payload dict; defaults to _checkpoint_payload_lightweight(update=0).
+            thread_attr: Instance attribute tracking this save kind's thread. Each best-model
+                family gets its own slot so a best_training save in flight cannot cause a
+                same-update best_avg save to be skipped (and vice versa).
+
+        Returns:
+            True if the save was dispatched, False if skipped (previous same-family
+            save still running).
         """
         ckpt_dir = Path(self.cfg.checkpoint_dir) / self.run_name
         ckpt_dir.mkdir(parents=True, exist_ok=True)
@@ -328,9 +350,7 @@ class CheckpointMixin:
             tmp.replace(path)
             print(f"Best checkpoint saved asynchronously: {path}")
 
-        self._run_async_save(
-            "_active_best_thread", f"best checkpoint save for '{name}'", _async_save
-        )
+        return self._run_async_save(thread_attr, f"best checkpoint save for '{name}'", _async_save)
 
     def load_pretrained_weights(self, path: str) -> None:
         """Load policy and scaler from a pretrained checkpoint, discarding optimizer state.
