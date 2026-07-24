@@ -1735,8 +1735,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     # Sampled from the last micro-batch of the last primary
                     # minibatch — a large-enough sample for the histograms.
                     alive_flat = hist_diag["alive_flat"]
+                    # returns are bf16-stored; upcast before numpy (no bf16 dtype there).
                     last_returns_np = (
-                        hist_diag["mb_returns"].reshape(-1, K)[alive_flat].cpu().numpy()
+                        hist_diag["mb_returns"].reshape(-1, K)[alive_flat].float().cpu().numpy()
                     )
                     last_logprob_np = hist_diag["logprob_flat"][alive_flat].cpu().numpy()
 
