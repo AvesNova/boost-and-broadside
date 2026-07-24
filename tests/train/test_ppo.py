@@ -827,6 +827,25 @@ class TestNonFiniteGradientGuard:
             "healthy gradients must not be reported as scrubbed"
         )
 
+    def test_update_with_histograms_handles_bf16_returns(self, tmp_path):
+        """record_histograms=True must not choke on the bf16-stored returns buffer.
+
+        The histogram diagnostic path calls .numpy() on mb_returns, and numpy has no
+        bfloat16 dtype — so the buffer's reduced-precision storage requires an explicit
+        upcast. record_histograms=False paths never exercise this, hence the guard here.
+        """
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        assert trainer.buffer.returns.dtype == torch.bfloat16  # precondition for the bug
+        runtime = trainer._initialize_rollout_runtime()
+        dones = trainer._collect_rollout(runtime, False)
+        trainer._compute_rollout_gae(runtime, dones)
+
+        # Must not raise "Got unsupported ScalarType BFloat16".
+        metrics = trainer._update_epochs(
+            all_buffers=[trainer.buffer] + trainer.aux_buffers, record_histograms=True
+        )
+        assert "train/epochs_completed" in metrics
+
 
 class TestUpdateEpochsMetricKeys:
     """AUDIT-015: the accumulator-to-output copy in _update_epochs is table-driven
