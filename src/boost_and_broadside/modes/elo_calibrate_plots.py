@@ -47,14 +47,23 @@ def _style_axes(axes, title: str = "", subtitle: str = "") -> None:
         # Pad leaves room for the subtitle, which is offset in points rather than
         # axes fractions so the gap does not shrink as the panel gets shorter.
         axes.set_title(
-            title, color=INK, fontsize=13, fontweight="semibold", loc="left",
+            title,
+            color=INK,
+            fontsize=13,
+            fontweight="semibold",
+            loc="left",
             pad=30 if subtitle else 12,
         )
     if subtitle:
         axes.annotate(
-            subtitle, xy=(0.0, 1.0), xycoords="axes fraction",
-            xytext=(0, 7), textcoords="offset points",
-            color=INK_MUTED, fontsize=9.5, va="bottom",
+            subtitle,
+            xy=(0.0, 1.0),
+            xycoords="axes fraction",
+            xytext=(0, 7),
+            textcoords="offset points",
+            color=INK_MUTED,
+            fontsize=9.5,
+            va="bottom",
         )
 
 
@@ -96,8 +105,14 @@ def _label_series_ends(axes, entries: list[tuple[float, float, str, str]]) -> No
         target = y if not placed else max(y, placed[-1] + minimum)
         placed.append(target)
         axes.annotate(
-            text, (x, target), xytext=(7, 0), textcoords="offset points",
-            color=color, fontsize=9.5, va="center", fontweight="medium",
+            text,
+            (x, target),
+            xytext=(7, 0),
+            textcoords="offset points",
+            color=color,
+            fontsize=9.5,
+            va="center",
+            fontweight="medium",
         )
 
 
@@ -125,9 +140,14 @@ def _draw_reference_lines(axes, lines: list[tuple[str, float]]) -> None:
         # plate instead, which keeps it legible over whatever it lands on.
         axes.annotate(
             f"{name}  {value:.0f}",
-            xy=(0.008, value), xycoords=("axes fraction", "data"),
-            xytext=(0, 4), textcoords="offset points",
-            color=INK_MUTED, fontsize=9, va="bottom", zorder=6,
+            xy=(0.008, value),
+            xycoords=("axes fraction", "data"),
+            xytext=(0, 4),
+            textcoords="offset points",
+            color=INK_MUTED,
+            fontsize=9,
+            va="bottom",
+            zorder=6,
             bbox={"facecolor": SURFACE, "edgecolor": "none", "pad": 1.5, "alpha": 0.85},
         )
 
@@ -167,11 +187,20 @@ def plot_live_curve(result: dict, path: Path) -> Path:
         steps[good],
         calibrated[good] - stderr[good],
         calibrated[good] + stderr[good],
-        color=CALIBRATED, alpha=0.16, linewidth=0, zorder=2,
+        color=CALIBRATED,
+        alpha=0.16,
+        linewidth=0,
+        zorder=2,
     )
     axes.plot(steps, training, color=TRAINING, linewidth=2.0, zorder=3, label="In-training")
-    axes.plot(steps[good], calibrated[good], color=CALIBRATED, linewidth=2.0, zorder=4,
-              label="Calibrated (±1 SE)")
+    axes.plot(
+        steps[good],
+        calibrated[good],
+        color=CALIBRATED,
+        linewidth=2.0,
+        zorder=4,
+        label="Calibrated (±1 SE)",
+    )
     axes.set_ylabel("ELO vs random anchor", color=INK_SECONDARY, fontsize=10)
     axes.legend(frameon=False, labelcolor=INK_SECONDARY, fontsize=10, loc="lower right")
     # Direct labels at the right edge, so identity survives without the legend.
@@ -229,27 +258,40 @@ def plot_avg_curve(result: dict, path: Path) -> Path:
     _style_axes(
         axes,
         f"Averaged-policy ELO: in-training vs calibrated  —  {result['run']}",
-        "Rated through the live policy it plays, so its error is the live curve's "
-        "plus its own",
+        "Rated through the live policy it plays, so its error is the live curve's plus its own",
     )
     _draw_reference_lines(axes, _reference_lines(result))
     axes.fill_between(
-        steps[good], calibrated[good] - stderr[good], calibrated[good] + stderr[good],
-        color=CALIBRATED, alpha=0.16, linewidth=0, zorder=3,
+        steps[good],
+        calibrated[good] - stderr[good],
+        calibrated[good] + stderr[good],
+        color=CALIBRATED,
+        alpha=0.16,
+        linewidth=0,
+        zorder=3,
     )
     ends = []
     training_good = np.isfinite(training) & (steps >= steps[good].min())
     axes.plot(
-        steps[training_good], training[training_good],
-        color=TRAINING, linewidth=2.0, zorder=4, label="In-training",
+        steps[training_good],
+        training[training_good],
+        color=TRAINING,
+        linewidth=2.0,
+        zorder=4,
+        label="In-training",
     )
     axes.plot(
-        steps[good], calibrated[good],
-        color=CALIBRATED, linewidth=2.0, zorder=5, label="Calibrated (±1 SE)",
+        steps[good],
+        calibrated[good],
+        color=CALIBRATED,
+        linewidth=2.0,
+        zorder=5,
+        label="Calibrated (±1 SE)",
     )
     if training_good.any():
-        ends.append((steps[training_good][-1], training[training_good][-1],
-                     TRAINING, "in-training"))
+        ends.append(
+            (steps[training_good][-1], training[training_good][-1], TRAINING, "in-training")
+        )
     ends.append((steps[good][-1], calibrated[good][-1], CALIBRATED, "calibrated"))
     _label_series_ends(axes, ends)
     axes.set_xlabel("environment steps (millions)", color=INK_SECONDARY, fontsize=10)
@@ -273,10 +315,20 @@ def plot_live_and_avg(result: dict, path: Path) -> Path:
     curve = result["curve"]
     steps = _finite(curve, "global_step") / 1e6
     series = (
-        (_finite(curve, "live_calibrated"), _finite(curve, "live_stderr"),
-         CALIBRATED, "live", "Live policy"),
-        (_finite(curve, "avg_calibrated"), _finite(curve, "avg_stderr"),
-         AVG, "avg", "Averaged policy"),
+        (
+            _finite(curve, "live_calibrated"),
+            _finite(curve, "live_stderr"),
+            CALIBRATED,
+            "live",
+            "Live policy",
+        ),
+        (
+            _finite(curve, "avg_calibrated"),
+            _finite(curve, "avg_stderr"),
+            AVG,
+            "avg",
+            "Averaged policy",
+        ),
     )
     if not any(_measured(values, error).any() for values, error, *_ in series):
         return path
@@ -295,8 +347,13 @@ def plot_live_and_avg(result: dict, path: Path) -> Path:
         if not good.any():
             continue
         axes.fill_between(
-            steps[good], values[good] - error[good], values[good] + error[good],
-            color=color, alpha=0.15, linewidth=0, zorder=3,
+            steps[good],
+            values[good] - error[good],
+            values[good] + error[good],
+            color=color,
+            alpha=0.15,
+            linewidth=0,
+            zorder=3,
         )
         axes.plot(steps[good], values[good], color=color, linewidth=2.0, zorder=4, label=label)
         ends.append((steps[good][-1], values[good][-1], color, short))
@@ -335,8 +392,11 @@ def plot_tie_conventions(result: dict, path: Path) -> Path:
     always = np.isfinite(_finite(curve, "live_training"))
     series = [
         (
-            _finite(curve, "live_training"), always,
-            TRAINING, "in-training", "In-training (ties = ½ win)",
+            _finite(curve, "live_training"),
+            always,
+            TRAINING,
+            "in-training",
+            "In-training (ties = ½ win)",
         ),
     ]
     for mode, value_key, error_key in (
@@ -414,8 +474,13 @@ def plot_calibrated_only(result: dict, path: Path, tie_mode: str) -> Path:
     _draw_reference_lines(axes, _reference_lines(result, reference_key))
     color = CALIBRATED if tie_mode == "half_win" else HALF_WIN
     axes.fill_between(
-        steps[good], values[good] - stderr[good], values[good] + stderr[good],
-        color=color, alpha=0.18, linewidth=0, zorder=3,
+        steps[good],
+        values[good] - stderr[good],
+        values[good] + stderr[good],
+        color=color,
+        alpha=0.18,
+        linewidth=0,
+        zorder=3,
     )
     axes.plot(steps[good], values[good], color=color, linewidth=2.0, zorder=4)
     axes.set_xlabel("environment steps (millions)", color=INK_SECONDARY, fontsize=10)
@@ -454,26 +519,51 @@ def plot_checkpoint_ratings(result: dict, path: Path) -> Path:
     )
     for position, start, end in zip(positions, training, calibrated):
         axes.plot([start, end], [position, position], color=GRID, linewidth=2.4, zorder=2)
-    axes.scatter(training, positions, s=95, color=SHADE_LIGHT, zorder=3,
-                 edgecolors=SURFACE, linewidths=2, label="In-training")
+    axes.scatter(
+        training,
+        positions,
+        s=95,
+        color=SHADE_LIGHT,
+        zorder=3,
+        edgecolors=SURFACE,
+        linewidths=2,
+        label="In-training",
+    )
     axes.errorbar(
-        calibrated, positions, xerr=stderr, fmt="o", markersize=9.5,
-        color=SHADE_DARK, ecolor=SHADE_DARK, elinewidth=1.6, capsize=3.5,
-        markeredgecolor=SURFACE, markeredgewidth=2, zorder=4, label="Calibrated (±1 SE)",
+        calibrated,
+        positions,
+        xerr=stderr,
+        fmt="o",
+        markersize=9.5,
+        color=SHADE_DARK,
+        ecolor=SHADE_DARK,
+        elinewidth=1.6,
+        capsize=3.5,
+        markeredgecolor=SURFACE,
+        markeredgewidth=2,
+        zorder=4,
+        label="Calibrated (±1 SE)",
     )
     # Anchored past the error bar's right cap so the delta never sits on it.
     for position, start, end, error in zip(positions, training, calibrated, stderr):
         axes.annotate(
             f"{end - start:+.0f}",
-            (max(start, end + error), position), xytext=(12, 0), textcoords="offset points",
-            color=INK_SECONDARY, fontsize=9, va="center",
+            (max(start, end + error), position),
+            xytext=(12, 0),
+            textcoords="offset points",
+            color=INK_SECONDARY,
+            fontsize=9,
+            va="center",
         )
     axes.set_yticks(positions)
     axes.set_yticklabels(labels, color=INK_SECONDARY, fontsize=10)
     axes.set_xlabel("ELO vs random anchor", color=INK_SECONDARY, fontsize=10)
     axes.legend(
-        frameon=False, labelcolor=INK_SECONDARY, fontsize=10,
-        loc="lower right", bbox_to_anchor=(1.0, -0.02),
+        frameon=False,
+        labelcolor=INK_SECONDARY,
+        fontsize=10,
+        loc="lower right",
+        bbox_to_anchor=(1.0, -0.02),
     )
     axes.margins(x=0.16, y=0.12)
 
@@ -503,16 +593,49 @@ def plot_convergence(result: dict, path: Path) -> Path:
     target = result["target_stderr"]
     axes.axhline(target, color=INK_MUTED, linewidth=1.2, linestyle=(0, (5, 4)), zorder=2)
     axes.annotate(
-        f"target ±{target:.0f}", (games[-1], target), xytext=(0, 6),
-        textcoords="offset points", color=INK_MUTED, fontsize=9, ha="right",
+        f"target ±{target:.0f}",
+        (games[-1], target),
+        xytext=(0, 6),
+        textcoords="offset points",
+        color=INK_MUTED,
+        fontsize=9,
+        ha="right",
     )
-    axes.plot(games, worst, color=TRAINING, linewidth=2.0, marker="o", markersize=6.5,
-              markeredgecolor=SURFACE, markeredgewidth=1.5, zorder=4, label="Worst rating")
-    axes.plot(games, mean, color=CALIBRATED, linewidth=2.0, marker="o", markersize=6.5,
-              markeredgecolor=SURFACE, markeredgewidth=1.5, zorder=3, label="Mean rating")
+    axes.plot(
+        games,
+        worst,
+        color=TRAINING,
+        linewidth=2.0,
+        marker="o",
+        markersize=6.5,
+        markeredgecolor=SURFACE,
+        markeredgewidth=1.5,
+        zorder=4,
+        label="Worst rating",
+    )
+    axes.plot(
+        games,
+        mean,
+        color=CALIBRATED,
+        linewidth=2.0,
+        marker="o",
+        markersize=6.5,
+        markeredgecolor=SURFACE,
+        markeredgewidth=1.5,
+        zorder=3,
+        label="Mean rating",
+    )
     for values, color, name in ((worst, TRAINING, "worst"), (mean, CALIBRATED, "mean")):
-        axes.annotate(name, (games[-1], values[-1]), xytext=(8, 0), textcoords="offset points",
-                      color=color, fontsize=9.5, va="center", fontweight="medium")
+        axes.annotate(
+            name,
+            (games[-1], values[-1]),
+            xytext=(8, 0),
+            textcoords="offset points",
+            color=color,
+            fontsize=9.5,
+            va="center",
+            fontweight="medium",
+        )
     axes.set_xlabel("cumulative games played", color=INK_SECONDARY, fontsize=10)
     axes.set_ylabel("standard error (ELO)", color=INK_SECONDARY, fontsize=10)
     axes.set_yscale("log")
@@ -568,16 +691,26 @@ def plot_tie_rates(result: dict, path: Path) -> Path:
         size = np.clip(games / max(games.max(), 1.0) * 150, 18, 170)
         for axis, x in ((left, level), (right, gap)):
             axis.scatter(
-                x, rate, s=size, color=color, alpha=0.75,
-                edgecolors=SURFACE, linewidths=1.2, zorder=3, label=name,
+                x,
+                rate,
+                s=size,
+                color=color,
+                alpha=0.75,
+                edgecolors=SURFACE,
+                linewidths=1.2,
+                zorder=3,
+                label=name,
             )
     left.set_xlabel("mean rating of the pair (ELO)", color=INK_SECONDARY, fontsize=10)
     left.set_ylabel("draws (% of games)", color=INK_SECONDARY, fontsize=10)
     right.set_xlabel("rating gap within the pair (ELO)", color=INK_SECONDARY, fontsize=10)
     if rows and training_rows:
         left.legend(
-            frameon=False, labelcolor=INK_SECONDARY, fontsize=9.5,
-            loc="upper right", markerscale=0.7,
+            frameon=False,
+            labelcolor=INK_SECONDARY,
+            fontsize=9.5,
+            loc="upper right",
+            markerscale=0.7,
         )
 
     figure.tight_layout()

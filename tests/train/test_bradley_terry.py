@@ -157,7 +157,9 @@ class TestSingleRating:
         truth = 400.0
         probability = win_probability(truth, opponents)
         games = 20_000
-        rating, stderr = fit_single_rating(opponents, probability * games, (1 - probability) * games)
+        rating, stderr = fit_single_rating(
+            opponents, probability * games, (1 - probability) * games
+        )
         assert rating == pytest.approx(truth, abs=2.0)
         assert stderr < 5.0
 

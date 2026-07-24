@@ -226,9 +226,7 @@ def _run_ar(
 
         if pred_next is not None and coordinator is not None:
             next_ship_targets = coordinator.apply_scaled_predictions(curr_ship_targets, pred_next)
-            obs = _decode_targets_to_obs(
-                next_ship_targets, obs, action_to_apply, N, coordinator
-            )
+            obs = _decode_targets_to_obs(next_ship_targets, obs, action_to_apply, N, coordinator)
             curr_ship_targets = coordinator.get_target_vector(obs)[:, :N]
 
     return history
