@@ -18,7 +18,7 @@ from typing import NamedTuple
 import numpy as np
 import torch
 
-from boost_and_broadside.env.observation import MVPObservation
+from boost_and_broadside.env.observation import MVPObservation, ObsKey
 
 
 class MicroBatch(NamedTuple):
@@ -52,6 +52,51 @@ def symlog(x: torch.Tensor) -> torch.Tensor:
 def symexp(x: torch.Tensor) -> torch.Tensor:
     """Inverse of symlog: sign(x) * (exp(|x|) - 1)."""
     return torch.sign(x) * torch.expm1(x.abs())
+
+
+# --------------------------------------------------------------------------
+# Reduced-precision storage for the GPU-resident rollout buffer
+# --------------------------------------------------------------------------
+# The buffer is the batch-axis memory hog: every array scales with num_envs. We
+# halve its float channels while holding two hard rules that keep this a pure
+# memory optimization rather than a training change:
+#
+#   1. bf16, never fp16. bf16 keeps fp32's full exponent range, so a reward or
+#      value spike cannot silently overflow to inf the way fp16 (max 65504) can.
+#      The stored channels are read-once leaf data whose ~0.4% mantissa rounding
+#      is negligible; range safety is what matters.
+#
+#   2. Accumulators stay fp32. Anything that sums or runs an EMA over the stored
+#      data upcasts first (see compute_gae, AdvantageScaler/ReturnScaler.update
+#      and PPOTrainer._precompute_lambda_aggregates). bf16's ~0.4% resolution
+#      would let small increments vanish under a large running value — the classic
+#      swamping failure — so no running statistic is ever held in bf16.
+#
+# Positions are the deliberate exception and stay fp32: the Fourier position
+# encoder needs sub-pixel accuracy, and bf16's 8-bit mantissa resolves only ~1
+# part in 256 (~4 px on a 1024 map, and linearly worse as maps grow). fp16 would
+# reach 2048 px but violates rule 1 and still caps out on large maps.
+_STORAGE_FLOAT: torch.dtype = torch.bfloat16
+
+# Per-observation-channel storage dtype overrides. Channels not listed fall back
+# by kind (see _obs_storage_dtype): float → bf16, int → uint8, bool → bool.
+_OBS_STORAGE_OVERRIDES: dict[ObsKey, torch.dtype] = {
+    ObsKey.POS: torch.float32,  # keep full precision — needed now and for large maps
+}
+
+
+def _obs_storage_dtype(key: ObsKey, dt: torch.dtype) -> torch.dtype:
+    """Reduced storage dtype for observation channel ``key`` of source dtype ``dt``."""
+    override = _OBS_STORAGE_OVERRIDES.get(key)
+    if override is not None:
+        return override
+    if dt.is_floating_point:
+        return _STORAGE_FLOAT
+    if dt == torch.bool:
+        return torch.bool
+    # team_id (0-2) and previous_action indices (0-6) are small non-negatives; the
+    # feature read path upcasts via .long()/.float() before any arithmetic.
+    return torch.uint8
 
 
 class ReturnScaler:
@@ -95,7 +140,8 @@ class ReturnScaler:
         (no prior) so that normalization is correct from the very first update.
 
         Args:
-            returns: (T, B, N, K) float32 — GAE returns in symlog-reward space.
+            returns: (T, B, N, K) bf16-stored — GAE returns in symlog-reward space
+                     (upcast to fp32 internally for the percentile reduction).
         """
         T, B, N, K = returns.shape
         flat = returns.reshape(-1, K)  # (T*B*N, K)
@@ -194,12 +240,15 @@ class AdvantageScaler:
         """Update EMA RMS from this rollout's per-component advantages.
 
         Args:
-            advantages: (T, B, N, K) float32 — GAE advantages in symlog-reward space.
+            advantages: (T, B, N, K) bf16-stored — GAE advantages in symlog-reward space
+                        (upcast to fp32 internally for the RMS reduction).
             alive_mask: (T, B, N) bool — which ships were alive each step.
         """
         alive_k = alive_mask.float().unsqueeze(-1)  # (T, B, N, 1)
         mask_sum = alive_mask.float().sum().clamp(min=1.0)
-        rms_k = (advantages.pow(2) * alive_k).sum((0, 1, 2)) / mask_sum  # (K,)
+        # Upcast before squaring/reducing: advantages are bf16-stored, and a bf16
+        # sum-of-squares over T*B*N elements would swamp small terms under the total.
+        rms_k = (advantages.float().pow(2) * alive_k).sum((0, 1, 2)) / mask_sum  # (K,)
         rms_k = rms_k.sqrt().clamp(min=self.min_rms)
         if not self._initialized:
             self._rms = rms_k
@@ -274,21 +323,27 @@ class RolloutBuffer:
         T, B, N, K = num_steps, num_envs, num_ships, num_components
 
         # Observations — T+1 slots per key: obs[t] = obs at time t, obs[T] = final obs
-        # Preserves original dtypes from the environment observation.
+        # Stored at reduced precision (bf16 floats / uint8 indices) except positions;
+        # the feature transforms upcast every channel to fp32 on read. See
+        # _obs_storage_dtype for the per-channel policy.
         self.obs: dict = {
-            key: torch.zeros((T + 1, B, *val.shape[1:]), device=device, dtype=val.dtype)
+            key: torch.zeros(
+                (T + 1, B, *val.shape[1:]), device=device, dtype=_obs_storage_dtype(key, val.dtype)
+            )
             for key, val in obs_sample.items()
         }
 
         self.actions = torch.zeros((T, B, N, 3), device=device, dtype=torch.int32)
+        # logprobs stay fp32: PPO's ratio exp(new - old) is precision-sensitive.
         self.logprobs = torch.zeros((T, B, N), device=device, dtype=torch.float32)
-        self.rewards = torch.zeros((T, B, N, K), device=device, dtype=torch.float32)
-        self.values = torch.zeros((T, B, N, K), device=device, dtype=torch.float32)
+        # Per-component float arrays are read-once leaf data → bf16 (see _STORAGE_FLOAT).
+        self.rewards = torch.zeros((T, B, N, K), device=device, dtype=_STORAGE_FLOAT)
+        self.values = torch.zeros((T, B, N, K), device=device, dtype=_STORAGE_FLOAT)
         self.dones = torch.zeros((T, B), device=device, dtype=torch.float32)
         self.alive_mask = torch.zeros((T, B, N), device=device, dtype=torch.bool)
 
-        self.advantages = torch.zeros((T, B, N, K), device=device, dtype=torch.float32)
-        self.returns = torch.zeros((T, B, N, K), device=device, dtype=torch.float32)
+        self.advantages = torch.zeros((T, B, N, K), device=device, dtype=_STORAGE_FLOAT)
+        self.returns = torch.zeros((T, B, N, K), device=device, dtype=_STORAGE_FLOAT)
 
         # Lambda-aggregated advantages/returns — filled once per update by
         # PPOTrainer._precompute_lambda_aggregates before the epoch loop (they
@@ -305,7 +360,7 @@ class RolloutBuffer:
         self.ns_labels: torch.Tensor | None = None
 
         self.actor_masks = torch.ones((T, B, N), device=device, dtype=torch.bool)
-        self.expert_probs = torch.zeros((T, B, N, 12), device=device, dtype=torch.float32)
+        self.expert_probs = torch.zeros((T, B, N, 12), device=device, dtype=_STORAGE_FLOAT)
 
         # Episode termination mask: done | truncated — used to exclude terminal transitions
         # from the aux next-state prediction loss.
@@ -414,7 +469,10 @@ class RolloutBuffer:
             next_done:  (B,) float — whether step T+1 is terminal.
         """
         with torch.no_grad():
-            lastgaelam = torch.zeros_like(next_value)  # (B, N, K)
+            # Accumulate in fp32 even though rewards/values are stored bf16: gamma/lam
+            # are fp32 so every product promotes, and lastgaelam is fp32-seeded, so the
+            # recursion runs at full precision. Only the stored advantage is downcast.
+            lastgaelam = torch.zeros_like(next_value, dtype=torch.float32)  # (B, N, K)
             gamma = self.gamma.view(1, 1, -1)  # (1, 1, K) — broadcasts over (B, N, K)
             lam = self.gae_lambda.view(1, 1, -1)  # (1, 1, K)
 
@@ -428,9 +486,10 @@ class RolloutBuffer:
 
                 delta = self.rewards[t] + gamma * next_val * non_terminal - self.values[t]
                 lastgaelam = delta + gamma * lam * non_terminal * lastgaelam
-                self.advantages[t] = lastgaelam
+                self.advantages[t] = lastgaelam.to(self.advantages.dtype)  # store bf16
 
-            self.returns = self.advantages + self.values
+            # returns = advantages + values, summed in fp32 then stored bf16.
+            self.returns = (self.advantages.float() + self.values.float()).to(self.returns.dtype)
 
     # ------------------------------------------------------------------
     # Minibatch iteration for PPO update

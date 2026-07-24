@@ -155,7 +155,91 @@ class TestBufferAdd:
         _fill_buffer(buf, T, B, N, D)
         Kc = buf.num_components
         expected = symlog(torch.full((T, B, N, Kc), 0.1))
-        assert torch.allclose(buf.rewards, expected)
+        # rewards are bf16-stored (see _STORAGE_FLOAT), so compare at bf16 precision.
+        assert torch.allclose(buf.rewards.float(), expected, atol=5e-3)
+
+
+class TestStoragePrecision:
+    """Reduced-precision storage policy: bf16 floats, fp32 positions, uint8 indices."""
+
+    def _make_typed_buffer(self, T=3, B=2, N=2):
+        from boost_and_broadside.env.observation import MVPObservation, ObsKey
+
+        obs_sample = MVPObservation(
+            data={
+                ObsKey.POS: torch.zeros((B, N, 2)),
+                ObsKey.VEL: torch.zeros((B, N, 2)),
+                ObsKey.TEAM_ID: torch.zeros((B, N), dtype=torch.int32),
+                ObsKey.PREVIOUS_ACTION: torch.zeros((B, N, 3), dtype=torch.int64),
+                ObsKey.ALIVE: torch.zeros((B, N), dtype=torch.bool),
+            }
+        )
+        buf = RolloutBuffer(
+            num_steps=T,
+            num_envs=B,
+            num_ships=N,
+            num_components=K,
+            obs_sample=obs_sample,
+            gamma=torch.full((K,), 0.99),
+            gae_lambda=torch.full((K,), 0.95),
+            device=torch.device("cpu"),
+        )
+        return buf
+
+    def test_obs_channels_use_per_field_dtypes(self):
+        from boost_and_broadside.env.observation import ObsKey
+
+        buf = self._make_typed_buffer()
+        # Positions keep full precision (large-map accuracy); other floats drop to bf16.
+        assert buf.obs[ObsKey.POS].dtype == torch.float32
+        assert buf.obs[ObsKey.VEL].dtype == torch.bfloat16
+        # Small non-negative index channels compress to uint8; bool stays bool.
+        assert buf.obs[ObsKey.TEAM_ID].dtype == torch.uint8
+        assert buf.obs[ObsKey.PREVIOUS_ACTION].dtype == torch.uint8
+        assert buf.obs[ObsKey.ALIVE].dtype == torch.bool
+
+    def test_per_component_arrays_are_bf16_never_fp16(self):
+        buf = self._make_typed_buffer()
+        for arr in (buf.rewards, buf.values, buf.advantages, buf.returns, buf.expert_probs):
+            assert arr.dtype == torch.bfloat16
+            assert arr.dtype != torch.float16
+
+    def test_accumulators_and_ratio_inputs_stay_fp32(self):
+        buf = self._make_typed_buffer()
+        # logprobs (PPO ratio) and the fp32 aggregates/accumulators must not be reduced.
+        assert buf.logprobs.dtype == torch.float32
+        assert buf.dones.dtype == torch.float32
+        assert buf.adv_agg.dtype == torch.float32
+        assert buf.ret_agg.dtype == torch.float32
+        assert buf.adv_rms.dtype == torch.float32
+
+    def test_uint8_index_channel_round_trips_through_add(self):
+        from boost_and_broadside.env.observation import MVPObservation, ObsKey
+
+        buf = self._make_typed_buffer(T=3, B=2, N=2)
+        team = torch.tensor([[0, 1], [2, 0]], dtype=torch.int32)  # ships + obstacle id 2
+        prev = torch.randint(0, 7, (2, 2, 3), dtype=torch.int64)  # OneHot(3/7/2) indices
+        obs = MVPObservation(
+            data={
+                ObsKey.POS: torch.rand(2, 2, 2),
+                ObsKey.VEL: torch.rand(2, 2, 2),
+                ObsKey.TEAM_ID: team,
+                ObsKey.PREVIOUS_ACTION: prev,
+                ObsKey.ALIVE: torch.ones(2, 2, dtype=torch.bool),
+            }
+        )
+        buf.add(
+            obs=obs,
+            action=torch.zeros(2, 2, 3, dtype=torch.int32),
+            logprob=torch.zeros(2, 2),
+            reward=torch.zeros(2, 2, K),
+            done=torch.zeros(2),
+            value=torch.zeros(2, 2, K),
+            alive=torch.ones(2, 2, dtype=torch.bool),
+        )
+        # Values survive the uint8 downcast exactly and read back correctly as long.
+        assert torch.equal(buf.obs[ObsKey.TEAM_ID][0].long(), team.long())
+        assert torch.equal(buf.obs[ObsKey.PREVIOUS_ACTION][0].long(), prev.long())
 
 
 class TestGAEComputation:
@@ -178,7 +262,10 @@ class TestGAEComputation:
             next_value=torch.zeros(B, N, Kc),
             next_done=torch.zeros(B),
         )
-        assert torch.allclose(buf.returns, buf.advantages + buf.values)
+        # returns = advantages + values holds up to bf16 storage rounding.
+        assert torch.allclose(
+            buf.returns.float(), buf.advantages.float() + buf.values.float(), atol=1e-2
+        )
 
     def test_zero_reward_zero_value_gives_zero_advantage(self):
         """With all-zero rewards and values, advantages should be zero."""
@@ -203,7 +290,7 @@ class TestGAEComputation:
 
         buf.compute_gae(next_value=torch.zeros(B, N, Kc), next_done=torch.zeros(B))
 
-        assert torch.allclose(buf.advantages, torch.zeros(T, B, N, Kc), atol=1e-6)
+        assert torch.allclose(buf.advantages.float(), torch.zeros(T, B, N, Kc), atol=1e-6)
 
     def test_per_component_gamma(self):
         """Components with different gammas should produce different advantage decay."""
@@ -237,14 +324,16 @@ class TestGAEComputation:
                 torch.ones(B, N, dtype=torch.bool),
             )
         buf.compute_gae(next_value=torch.zeros(B, N, Kc), next_done=torch.zeros(B))
-        # With λ=1 and zero values, A_t ≈ γ^(T-1-t) * r_{T-1} (symlog(1)=log(2))
+        # With λ=1 and zero values, A_t ≈ γ^(T-1-t) * r_{T-1} (symlog(1)=log(2)).
+        # Tolerance is set by bf16 advantage storage (~0.4% relative); still far
+        # tighter than the γ=1 vs γ=0.5 decay spread the test distinguishes.
         r = math.log(2)
-        adv0 = buf.advantages[:, 0, 0, 0].tolist()  # γ=1.0: all steps get same credit
-        adv1 = buf.advantages[:, 0, 0, 1].tolist()  # γ=0.5: decays as 0.5^(T-1-t)
+        adv0 = buf.advantages[:, 0, 0, 0].float().tolist()  # γ=1.0: all steps same credit
+        adv1 = buf.advantages[:, 0, 0, 1].float().tolist()  # γ=0.5: decays as 0.5^(T-1-t)
         for t in range(T):
             steps_back = T - 1 - t
-            assert abs(adv0[t] - r) < 1e-4, f"γ=1 step {t}: {adv0[t]} != {r}"
-            assert abs(adv1[t] - r * (0.5**steps_back)) < 1e-4, f"γ=0.5 step {t}"
+            assert abs(adv0[t] - r) < 1e-2, f"γ=1 step {t}: {adv0[t]} != {r}"
+            assert abs(adv1[t] - r * (0.5**steps_back)) < 1e-2, f"γ=0.5 step {t}"
 
     def test_done_envs_mask_future_rewards(self):
         """When done=1, bootstrap from next_value should be blocked."""
