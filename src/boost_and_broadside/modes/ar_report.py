@@ -134,7 +134,6 @@ def run_ar_report_mode(
         init_hidden1,
         actual_steps,
         N,
-        ship_config,
         actions_sim,
         True,
     )
@@ -148,7 +147,6 @@ def run_ar_report_mode(
         init_hidden1,
         actual_steps,
         N,
-        ship_config,
         None,
         False,
     )
@@ -166,7 +164,6 @@ def _run_ar(
     init_hidden1: torch.Tensor | None,
     num_steps: int,
     N: int,
-    ship_config: ShipConfig,
     forced_actions: list[torch.Tensor] | None,
     is_closed_loop: bool,
 ) -> History:
@@ -230,7 +227,7 @@ def _run_ar(
         if pred_next is not None and coordinator is not None:
             next_ship_targets = coordinator.apply_scaled_predictions(curr_ship_targets, pred_next)
             obs = _decode_targets_to_obs(
-                next_ship_targets, obs, action_to_apply, N, ship_config, coordinator
+                next_ship_targets, obs, action_to_apply, N, coordinator
             )
             curr_ship_targets = coordinator.get_target_vector(obs)[:, :N]
 
