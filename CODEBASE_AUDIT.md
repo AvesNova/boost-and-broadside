@@ -1,6 +1,7 @@
 # Codebase Audit — Boost and Broadside
 
-_Status: First full pass complete. 1 open finding (Note-severity, AUDIT-010), 24 fixed,
+_Status: First full pass complete, then a remediation-verification pass (2026-07-24).
+28 findings total: 3 open (Note-severity AUDIT-010; AUDIT-027; AUDIT-028), 25 fixed,
 0 won't-fix
 (AUDIT-001, AUDIT-005, AUDIT-009, AUDIT-014 resolved in a later batch;
 AUDIT-019, AUDIT-020, AUDIT-021 resolved in the ar_report batch;
@@ -8,8 +9,16 @@ AUDIT-006, AUDIT-007, AUDIT-024 resolved in the obstacle-stepping/scripted-agent
 AUDIT-016, AUDIT-017 resolved in the checkpoint-retention batch;
 AUDIT-012, AUDIT-018, AUDIT-022 resolved in a later batch;
 AUDIT-002, AUDIT-003, AUDIT-004, AUDIT-008, AUDIT-011, AUDIT-013, AUDIT-015, AUDIT-023,
-AUDIT-025 resolved in the low-severity/typing cleanup batch)._
-_Audit started and completed: 2026-07-23._
+AUDIT-025 resolved in the low-severity/typing cleanup batch;
+AUDIT-026 found and fixed during the verification pass; AUDIT-027, AUDIT-028 found and
+left open during the verification pass)._
+_Audit started and completed: 2026-07-23. Remediation verified: 2026-07-24._
+
+**Verification-pass note (2026-07-24).** Every finding marked Done was independently
+re-checked against the current code, tests, and its original description. All prior fixes
+verified correct except one regression the remediation itself introduced (AUDIT-026,
+fixed during this pass) and one incomplete new feature (AUDIT-027, open). Ruff and the
+full test suite (327 passed) were re-run. See AUDIT-026/027/028 below.
 
 This document is the persistent, cross-session record of a repository-wide Python code
 quality audit. Findings are never deleted — mark them `✅ Done (<commit>)` or
@@ -23,16 +32,17 @@ where they land in the sorted presentation below.
 full and reviewed against `STYLE_GUIDE.md`. No file was skipped, sampled, or only
 partially evaluated — see "Files that could not be fully evaluated" below.
 
-**Findings.** **25 findings** total.
+**Findings.** **28 findings** total (25 from the first pass; AUDIT-026/027/028 added
+during the 2026-07-24 remediation-verification pass).
 
 By severity:
 
 | Severity | Count |
 | --- | ---: |
 | Critical | 1 |
-| High | 2 |
-| Medium | 8 |
-| Low | 13 |
+| High | 3 |
+| Medium | 9 |
+| Low | 14 |
 | Note (no numeric column in §2) | 1 |
 
 By category (each finding is counted once, under its primary category; several findings
@@ -46,11 +56,12 @@ legitimately span two, noted inline):
 | Documentation / stale comments | 4 | AUDIT-004, 017, 020, 025 |
 | Typing gaps | 3 | AUDIT-003, 008, 020 |
 | Maintainability | 2 | AUDIT-011, 014 |
-| Correctness / reliability | 1 | AUDIT-001 |
+| Correctness / reliability | 3 | AUDIT-001, 026, 027 |
 | Missing validation | 1 | AUDIT-005 |
 | Test coverage | 1 | AUDIT-009 |
 | Excessive complexity | 1 | AUDIT-019 |
 | Non-idiomatic / deprecated API | 1 | AUDIT-023 |
+| Tooling / style-guide compliance | 1 | AUDIT-028 |
 | Hidden mutable state (Note) | 1 | AUDIT-010 |
 
 **Highest-priority repository-wide concerns, in order:**
@@ -1389,6 +1400,175 @@ is correct; this is a preventive suggestion for future maintainers, not an activ
 
 None required today; revisit if a future reward component starts reading a `prev_state`
 field other than `ship_health`/`ship_alive`.
+
+---
+
+### AUDIT-026 — `_decode_targets_to_obs` call sites in `ar_report` and `noise_calibration` still passed the removed `ship_config` argument (regression)
+
+- **File:** `src/boost_and_broadside/modes/ar_report.py`, `src/boost_and_broadside/modes/noise_calibration.py`
+- **Location:** `ar_report._run_ar` (autoregressive-decode branch); `noise_calibration`'s AR-rollout loop
+- **Severity:** High
+- **Category:** Correctness / reliability (regression introduced by remediation)
+- **Status:** ✅ Done (ee902cd) — found and fixed during the 2026-07-24 verification pass
+- **Confidence:** High
+
+**Problem**
+
+The AUDIT-018/022 fix (commit `240f85f`) removed the `ship_config` parameter from
+`_decode_targets_to_obs`, changing its signature to
+`(targets, prev_obs, action, N, coordinator)` — 5 parameters — and updated the one
+call site it noticed (`imagine_trajectory` in `agent_factory.py`). It missed the other
+two call sites: `ar_report.py` and `noise_calibration.py` both still called
+`_decode_targets_to_obs(next_targets, obs, action, N, ship_config, coordinator)` — six
+positional arguments to a five-parameter function. Any invocation of `--mode ar_report`
+or `--mode noise_calibration` that exercises the learned-predictor autoregressive path
+(i.e. whenever a policy agent is involved, which is the entire point of both modes) would
+raise `TypeError: _decode_targets_to_obs() takes 5 positional arguments but 6 were given`
+before producing any output. Neither mode has automated test coverage (see AUDIT-021 for
+`ar_report`), so the 327-test suite stayed green over a broken code path — exactly the
+gap the `decode()`-unification work was meant to close, reintroduced one call site away.
+
+**Evidence**
+
+`git grep` for `_decode_targets_to_obs(` after `240f85f`: three call sites, only
+`agent_factory.py`'s updated to 5 args; `ar_report.py:232` and
+`noise_calibration.py:413` still on 6. `inspect.signature(...).bind(...)` with six
+positional args raises `TypeError: too many positional arguments`.
+
+**Fix applied**
+
+Dropped the extra `ship_config` argument at both sites, and removed the now-unused
+`ship_config` parameter from `ar_report._run_ar` (its only remaining use was the broken
+call). `noise_calibration` still uses `ship_config` elsewhere, so only the call argument
+was removed there. `ruff check` clean on both files; full suite still 327 passed.
+
+**Risks or tradeoffs**
+
+None — restores the intended 5-argument call. The underlying decode math is unchanged
+(verified equivalent to the pre-`240f85f` inline decode during this pass).
+
+**Validation**
+
+Ideally a smoke test for each mode (see AUDIT-028); until then, `inspect.signature`
+binding and a manual `--mode ar_report` / `--mode noise_calibration` run against a real
+checkpoint are the checks that would have caught this.
+
+---
+
+### AUDIT-027 — `best_avg.pt` is starved by sharing one save thread with `best_training.pt`, while its high-water mark advances regardless
+
+- **File:** `src/boost_and_broadside/train/rl/checkpoint.py`
+- **Location:** `CheckpointMixin._maybe_save_best_checkpoints`, `_save_best_checkpoint` / `_run_async_save`
+- **Severity:** Medium
+- **Category:** Correctness / reliability (incomplete new feature)
+- **Status:** Open
+- **Confidence:** High
+
+**Problem**
+
+The checkpoint-retention batch (`b2966a4`) newly wired up `best_avg.pt`, which the audit
+notes was previously "declared but never triggered." `_maybe_save_best_checkpoints`
+advances each family's high-water mark and then requests a save:
+
+```python
+if training_elo_norm > self._best_training_elo_norm:
+    self._best_training_elo_norm = training_elo_norm
+    self._save_best_checkpoint("best_training.pt")
+if self._avg_update_count > 0:
+    avg_elo_norm = self._avg_training_elo - random_elo
+    if avg_elo_norm > self._best_avg_elo_norm:
+        self._best_avg_elo_norm = avg_elo_norm          # advanced unconditionally
+        self._save_best_checkpoint("best_avg.pt", ...)  # may be silently skipped
+```
+
+Both `_save_best_checkpoint` calls funnel through `_run_async_save("_active_best_thread", ...)`,
+which **skips the save entirely** (with a warning) if the previous save on
+`_active_best_thread` is still running. `_save_best_checkpoint` clones the payload on the
+main thread and does the `torch.save` disk write on the background thread, so when both
+ELOs improve in the same update, the `best_training.pt` thread is still writing when
+`best_avg.pt` is attempted microseconds later — the best_avg save is dropped. Crucially,
+`_best_avg_elo_norm` was **already advanced** to the new peak, so no later update with a
+lower avg ELO will re-trigger the save. Net effect: on any update where live and avg ELO
+improve together (the common case early in training), `best_avg.pt` is skipped but the
+bar is raised, so `best_avg.pt` can be left holding a stale checkpoint — or never written
+at all — even though the trainer "believes" it captured the avg peak.
+
+The existing tests don't catch this: `test_best_avg_checkpoint_holds_avg_policy_weights`
+sets `_training_elo` such that `training_elo_norm == 0` (not an improvement), so
+`best_training.pt` never fires and the shared thread is free — the exact scenario that
+hides the collision.
+
+**Evidence**
+
+`checkpoint.py`: both saves pass the literal `"_active_best_thread"` to `_run_async_save`;
+`_run_async_save` early-returns when `active.is_alive()`. `_save_best_checkpoint` calls
+`clone_to_cpu` on the main thread and `torch.save` inside `_async_save` (the thread body).
+`_maybe_save_best_checkpoints` mutates `self._best_avg_elo_norm` before the (possibly
+skipped) save.
+
+**Recommended change**
+
+Two independent issues, either fix closes the hole:
+1. Give the two best-model kinds separate thread slots (e.g. `_active_best_thread` keyed by
+   filename, or a distinct `_active_best_avg_thread`) so `best_avg` doesn't contend with
+   `best_training` within one update.
+2. Only advance `_best_avg_elo_norm` / `_best_training_elo_norm` when the save is actually
+   dispatched (have `_save_best_checkpoint` / `_run_async_save` report whether it ran, and
+   roll the high-water mark forward only then) — this also hardens `best_training` against
+   its own back-to-back-update skip case.
+
+**Risks or tradeoffs**
+
+Doing (2) alone means a skipped save leaves the bar where it was, so the next improving
+update retries — correct, and cheap. Doing (1) alone still advances the bar on a skip but
+makes the same-update collision essentially impossible. Prefer (2), or both.
+
+**Validation**
+
+Add a test where both `_training_elo` and `_avg_training_elo` clear their thresholds in
+the same `_maybe_save_best_checkpoints` call (without pre-joining the training thread) and
+assert `best_avg.pt` is eventually written with the avg policy's weights — it fails today.
+
+---
+
+### AUDIT-028 — `ruff check` / `ruff format --check` are still not clean
+
+- **File:** `src/boost_and_broadside/modes/elo_calibrate.py`, `src/boost_and_broadside/modes/elo_calibrate_plots.py`, `tests/modes/test_elo_calibrate.py`, `tests/train/test_bradley_terry.py`
+- **Location:** `elo_calibrate.py:233`, `test_bradley_terry.py:160` (E501); four files need `ruff format`
+- **Severity:** Low
+- **Category:** Tooling / style-guide compliance
+- **Status:** Open
+- **Confidence:** High
+
+**Problem**
+
+STYLE_GUIDE §2 makes a clean `ruff check` / `ruff format --check` binding ("expected, not
+aspirational"), and §4 of this audit recorded the pre-fix baseline: 2 `E501` line-length
+errors and 5 files needing reformat, flagged for "a single mechanical cleanup commit."
+That cleanup was never done. As of the 2026-07-24 verification pass, `ruff check .` still
+reports the same 2 `E501` errors (`elo_calibrate.py:233`, `test_bradley_terry.py:160`) and
+`ruff format --check .` still wants to reformat 4 files (`test_rewards.py` was
+incidentally reformatted by the AUDIT-009 rewrite, dropping the count from 5 to 4). None of
+these were introduced or touched by the remediation commits, but the repository is not in
+the clean-tooling state the executive summary's "areas of strength" bullet implies.
+
+**Evidence**
+
+`uv run --no-sync ruff check .` → `Found 2 errors` (both `E501`).
+`uv run --no-sync ruff format --check .` → `4 files would be reformatted`.
+
+**Recommended change**
+
+Run `ruff format .` and wrap the two long lines (or `ruff check --fix` where applicable) as
+one mechanical commit, then keep CI honest with a `ruff check` / `ruff format --check` gate.
+
+**Risks or tradeoffs**
+
+None — pure formatting / line-wrapping, no behavior change.
+
+**Validation**
+
+`uv run --no-sync ruff check .` and `ruff format --check .` both exit clean.
 
 <!-- FINDINGS_END -->
 
