@@ -132,6 +132,42 @@ class TestTransformerBlock:
         # May be all-zero or garbage but must not be NaN
         assert not torch.isnan(out).any()
 
+    def test_attn_mask_dtype_matches_query_under_autocast(self, model_cfg, monkeypatch):
+        """The SDPA attn_mask must match the query dtype so the fused kernels apply.
+
+        Regression: under bf16 autocast the qkv Linear emits bf16 while RMSNorm keeps
+        x fp32. Building the mask from x's dtype yields an fp32 mask on bf16 q/k/v,
+        which disqualifies the flash/mem-efficient SDPA kernels and silently falls
+        back to the math kernel. The mask must follow q's dtype instead.
+        """
+        from boost_and_broadside.models.mvp import attention as attention_mod
+
+        B, N = 2, 4
+        block = TransformerBlock(model_cfg)
+        x = torch.randn(B, N, model_cfg.d_model)
+        alive = torch.ones(B, N, dtype=torch.bool)
+        alive[0, 2] = False  # partial mask so attn_bias is actually built
+
+        captured = {}
+        real_sdpa = attention_mod.F.scaled_dot_product_attention
+
+        def spy(q, k, v, attn_mask=None, **kwargs):
+            captured["q_dtype"] = q.dtype
+            captured["mask_dtype"] = None if attn_mask is None else attn_mask.dtype
+            return real_sdpa(q, k, v, attn_mask=attn_mask, **kwargs)
+
+        monkeypatch.setattr(attention_mod.F, "scaled_dot_product_attention", spy)
+
+        # CPU autocast supports bf16 and reproduces the fp32-norm / bf16-Linear split.
+        with torch.autocast("cpu", dtype=torch.bfloat16):
+            block(x, alive_mask=alive)
+
+        assert captured["mask_dtype"] is not None, "attn_bias was not built"
+        assert captured["mask_dtype"] == captured["q_dtype"], (
+            f"attn_mask dtype {captured['mask_dtype']} != query dtype "
+            f"{captured['q_dtype']} — fused SDPA kernel would be disqualified"
+        )
+
 
 class TestRGLRU:
     """Verify forward_sequence (parallel scan) matches the sequential _step reference."""
