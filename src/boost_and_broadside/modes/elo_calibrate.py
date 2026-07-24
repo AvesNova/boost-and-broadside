@@ -231,7 +231,9 @@ def build_players(
             continue
         policy = _load_ladder_policy(path, model_config, ship_config, num_ships, device)
         players.append(
-            Player(entry["label"], ResolvedAgent("policy", policy), entry["elo"], entry["global_step"])
+            Player(
+                entry["label"], ResolvedAgent("policy", policy), entry["elo"], entry["global_step"]
+            )
         )
     return players
 
@@ -355,8 +357,12 @@ class Tournament:
                             obs.slice_envs(indices), env_team1[indices] == index
                         )
                         actions[index, indices] = get_actions(
-                            agent, view, state, int(indices.numel()),
-                            self.num_ships, self.device,
+                            agent,
+                            view,
+                            state,
+                            int(indices.numel()),
+                            self.num_ships,
+                            self.device,
                         ).long()
                     else:
                         actions[index] = get_actions(
@@ -442,9 +448,7 @@ def choose_reference(
     The anchor is excluded from the choice either way: it is the reported zero,
     so measuring it against itself would say nothing.
     """
-    information = np.diag(
-        fisher_information(tournament.pair_games(tie_mode), ratings)
-    ).copy()
+    information = np.diag(fisher_information(tournament.pair_games(tie_mode), ratings)).copy()
     information[random_index] = -1.0
     return int(np.argmax(information))
 
@@ -472,7 +476,8 @@ def run_tournament(
         if progress is not None:
             worst = f"{stats[-1].max_stderr:.1f}" if stats else "—"
             progress.bar(
-                0, tournament.num_envs,
+                0,
+                tournament.num_envs,
                 f"batch {batch}/{config.max_batches}",
                 f"episodes   worst SE so far {worst}",
             )
@@ -710,8 +715,7 @@ def run_elo_calibrate_mode(
     progress.stage(f"refitting {len(history)} update records under both draw conventions...")
     curve = calibrate_live_curve(history, ratings, config.tie_mode)
     alt_curve = {
-        point["update"]: point
-        for point in calibrate_live_curve(history, alt_ratings, alt_mode)
+        point["update"]: point for point in calibrate_live_curve(history, alt_ratings, alt_mode)
     }
     for point in curve:
         other = alt_curve.get(point["update"])
@@ -808,9 +812,7 @@ def _print_summary(result: dict) -> None:
     # Random is excluded: the step from it to the first rung is the coarse anchor
     # link, not a rung-to-rung gap, and listing it here would read as one.
     ladder = [
-        p
-        for p in result["players"]
-        if p["training_elo"] is not None and p["label"] != "random"
+        p for p in result["players"] if p["training_elo"] is not None and p["label"] != "random"
     ]
     ladder.sort(key=lambda p: p["global_step"] or 0)
     if len(ladder) > 1:

@@ -1,7 +1,7 @@
 # Codebase Audit — Boost and Broadside
 
 _Status: First full pass complete, then a remediation-verification pass (2026-07-24).
-28 findings total: 3 open (Note-severity AUDIT-010; AUDIT-027; AUDIT-028), 25 fixed,
+28 findings total: 2 open (Note-severity AUDIT-010; AUDIT-027), 26 fixed,
 0 won't-fix
 (AUDIT-001, AUDIT-005, AUDIT-009, AUDIT-014 resolved in a later batch;
 AUDIT-019, AUDIT-020, AUDIT-021 resolved in the ar_report batch;
@@ -10,7 +10,7 @@ AUDIT-016, AUDIT-017 resolved in the checkpoint-retention batch;
 AUDIT-012, AUDIT-018, AUDIT-022 resolved in a later batch;
 AUDIT-002, AUDIT-003, AUDIT-004, AUDIT-008, AUDIT-011, AUDIT-013, AUDIT-015, AUDIT-023,
 AUDIT-025 resolved in the low-severity/typing cleanup batch;
-AUDIT-026 found and fixed during the verification pass; AUDIT-027, AUDIT-028 found and
+AUDIT-026 and AUDIT-028 found and fixed during the verification pass; AUDIT-027 found and
 left open during the verification pass)._
 _Audit started and completed: 2026-07-23. Remediation verified: 2026-07-24._
 
@@ -1537,7 +1537,9 @@ assert `best_avg.pt` is eventually written with the avg policy's weights — it 
 - **Location:** `elo_calibrate.py:233`, `test_bradley_terry.py:160` (E501); four files need `ruff format`
 - **Severity:** Low
 - **Category:** Tooling / style-guide compliance
-- **Status:** Open
+- **Status:** ✅ Done (see cleanup commit) — `ruff format .` reformatted the 5 files and
+  wrapped both `E501` lines in the same pass; `ruff check .` and `ruff format --check .`
+  now exit clean, and the full suite still passes (327).
 - **Confidence:** High
 
 **Problem**

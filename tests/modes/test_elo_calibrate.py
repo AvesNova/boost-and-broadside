@@ -106,9 +106,7 @@ class TestCalibrateLiveCurve:
         half_clean = calibrate_live_curve([_record(1, 10, clean)], ratings, "half_win")[0]
         half_drawn = calibrate_live_curve([_record(1, 10, drawn)], ratings, "half_win")[0]
 
-        assert decisive_clean["live_calibrated"] == pytest.approx(
-            decisive_drawn["live_calibrated"]
-        )
+        assert decisive_clean["live_calibrated"] == pytest.approx(decisive_drawn["live_calibrated"])
         assert half_clean["live_calibrated"] == pytest.approx(decisive_clean["live_calibrated"])
         assert 0.0 < half_drawn["live_calibrated"] < half_clean["live_calibrated"]
 
