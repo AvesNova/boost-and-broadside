@@ -12,6 +12,7 @@ import pytest
 
 import main
 from runs.bc_warmstart import BC_WARMSTART_PRETRAIN_CONFIG, BC_WARMSTART_RL_CONFIG
+from runs.rl import RL_TRAIN_CONFIG
 
 
 class _StubTrainer:
@@ -101,6 +102,24 @@ class TestTrainingModeDispatch:
 
         assert captured[0].loaded_pretrained == "pretrained.pt"
         assert captured[0].loaded_checkpoint is None
+
+    def test_no_wandb_flag_threads_through_without_shrinking(self, monkeypatch):
+        """--no-wandb must reach _make_trainer (which derives use_wandb from it)
+        while leaving the full config untouched — unlike --smoke."""
+        captured: list[SimpleNamespace] = []
+
+        def fake_make_trainer(train_config, args, *, resume_wandb_run_id=None):
+            captured.append(SimpleNamespace(config=train_config, args=args))
+            return _StubTrainer()
+
+        monkeypatch.setattr(sys, "argv", ["main.py", "--mode", "rl", "--no-wandb"])
+        monkeypatch.setattr(main, "_make_trainer", fake_make_trainer)
+
+        main.main()
+
+        assert captured[0].args.no_wandb is True
+        assert captured[0].args.smoke is False
+        assert captured[0].config is RL_TRAIN_CONFIG
 
 
 class TestBcWarmstartSmoke:
