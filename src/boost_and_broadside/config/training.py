@@ -179,6 +179,11 @@ class TrainConfig:
     bc_winrate_target: float  # win rate vs scripted at which the BC aux loss reaches zero
     histogram_interval: int  # record expensive histograms every N updates
 
+    # Maximum entity samples used for host-backed return percentiles. None keeps
+    # exact quantiles; a bounded sample prevents CPU sorting from dominating large
+    # logical batches.
+    return_quantile_samples: int | None = None
+
     # --- Gradient accumulation (memory-only, per-machine knob) ---
     # Max entity-tokens (envs × num_steps × (N+M)) per backward pass. Minibatches
     # larger than this are split into micro-batches whose gradients are accumulated
@@ -220,6 +225,11 @@ class TrainConfig:
         if self.rollouts_per_update < 1:
             raise ValueError(
                 f"rollouts_per_update must be positive, got {self.rollouts_per_update}"
+            )
+        if self.return_quantile_samples is not None and self.return_quantile_samples < 1:
+            raise ValueError(
+                "return_quantile_samples must be positive or None, "
+                f"got {self.return_quantile_samples}"
             )
         if not 0.0 < self.bc_winrate_target <= 1.0:
             raise ValueError(f"bc_winrate_target must be in (0, 1], got {self.bc_winrate_target}")

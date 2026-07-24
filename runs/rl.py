@@ -39,6 +39,7 @@ _NUM_MINIBATCHES = 32
 # Memory-only knob (see TrainConfig.microbatch_tokens); retune the divisor per GPU.
 _MICROBATCH_TOKENS = _ROLLOUT_TOKENS // _NUM_MINIBATCHES // 5
 _ROLLOUTS_PER_UPDATE = _MAX_TOKENS // _ROLLOUT_TOKENS
+assert _MAX_TOKENS % _ROLLOUT_TOKENS == 0
 
 RL_SCHEDULE = TrainingSchedule(
     learning_rate=join(
@@ -101,6 +102,7 @@ RL_TRAIN_CONFIG = TrainConfig(
     total_timesteps=1_000_000_000,
     return_ema_alpha=0.005,
     return_min_span=1.0,
+    return_quantile_samples=262_144,
     checkpoint_dir="checkpoints",
     league_size=20,
     elo_milestone_gap=200.0,
