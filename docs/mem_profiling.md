@@ -211,6 +211,64 @@ before measuring, which may undersell `max-autotune` — its autotuning cache ca
 calls to fully engage. `reduce-overhead` gets the same speedup for the cheapest compile-time cost,
 so it's the reasonable default here (matches `main.py`'s existing default).
 
-**Bottom line for this card:** `grad_checkpoint=True` + microbatch divisor ≥2 is required just to
-fit `_MAX_TOKENS=5_000_000` at all; divisor 5–6 and `_NUM_MINIBATCHES=32–64` give the best VRAM/
-speed balance found. The uncommitted divisor-1 change in `runs/rl.py` will OOM as-is on this GPU.
+**Bottom line for this card before host-backed batches:** `grad_checkpoint=True` + microbatch
+divisor ≥2 was required to fit `_MAX_TOKENS=5_000_000`; divisor 5–6 and
+`_NUM_MINIBATCHES=32–64` gave the best VRAM/speed balance. The host-backed results below
+supersede the old requirement that the entire logical batch fit at once.
+
+## Host-backed logical rollout shards (Jul 2026)
+
+`TrainConfig.rollouts_per_update` now separates logical experience per PPO update from the
+GPU-resident rollout width:
+
+- Collection runs one fixed-width shard at a time without changing policy weights.
+- Bootstrap values, GAE, and next-state labels are computed on GPU before the shard moves to
+  pageable CPU RAM.
+- Return percentiles use a deterministic, evenly spaced entity sample bounded by
+  `return_quantile_samples`; advantage RMS remains an exact whole-logical-batch reduction.
+- Lambda aggregates reload only team IDs, alive/actor masks, advantages, and returns, one shard
+  at a time.
+- PPO gathers one shard minibatch into pinned RAM, copies it on a dedicated CUDA stream, and
+  slices microbatch views on GPU. The following shard minibatch is prefetched during compute.
+
+The bulk host arena is deliberately pageable. Only the bounded minibatch staging tensors are
+page-locked, preventing a large `_MAX_TOKENS` from permanently removing the same amount of RAM
+from the host pager.
+
+The production profile now uses `_MAX_TOKENS=12_000_000`,
+`_ROLLOUT_TOKENS=6_000_000`, and two rollouts per update. The actual logical count is
+11,993,088 after rounding `num_envs` down for minibatch divisibility. `_MICROBATCH_TOKENS`
+derives from `_ROLLOUT_TOKENS`, so increasing the logical batch no longer raises activation
+memory.
+
+### Measured production comparison
+
+RTX 4070 Laptop 8GB, two backbone blocks, 8 ships, 128 rollout steps, 32 minibatches,
+`microbatch_tokens=37500`, gradient checkpointing enabled, eager mode, one warmup and one
+measured update in a fresh process. One PPO epoch was timed so the transfer/preprocessing cost
+is not hidden by repeated compute.
+
+| storage | logical tokens | shard tokens | shards | persistent MB | rollout peak MB | update peak MB | host MB | rollout ms | update ms (1ep) | ship-tok/s |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| GPU resident | 5,996,544 | 5,996,544 | 1 | 1825.5 | 4142.9 | 3211.0 | 0.0 | 23179.8 | 32372.9 | 107,943 |
+| host backed | 11,993,088 | 5,996,544 | 2 | 1825.2 | 3726.0 | 3211.5 | 2211.6 | 51375.7 | 67116.2 | 101,214 |
+
+Doubling experience therefore adds effectively **zero persistent VRAM** (−0.2 MB measured);
+the update allocated peak is unchanged and the rollout allocated peak is 417 MB lower. CPU
+storage grows linearly, as intended: about 2.16 GiB for the 12M logical batch.
+
+The deliberately harsh one-epoch comparison loses **6.2% ship-token throughput**. Production
+uses four PPO epochs; extrapolating the separately measured rollout/update phases gives 305.3 s
+for two GPU-resident 6M updates versus 319.8 s for one host-backed 12M update, a **4.5%
+throughput cost** at equal experience. This is an inference from the measured phase times, not
+a separately timed four-epoch run.
+
+The single-shard 6M baseline emitted a recoverable allocator warning while requesting a
+temporary 504 MiB block; the two-shard 12M run completed without one. Allocated peaks are the
+reliable comparison here—reserved-memory peaks depend on allocator history and fragmentation.
+
+Use shard width, not logical batch size, to tune rollout throughput. A matched 5M experiment
+split into two 2.5M shards lost much more throughput because small rollout batches became
+launch-bound; transfer and host preprocessing accounted for only about 2.5 seconds of that
+run. Keep `_ROLLOUT_TOKENS` near the efficient 5–6M frontier on this GPU and raise
+`rollouts_per_update` to grow total experience.
