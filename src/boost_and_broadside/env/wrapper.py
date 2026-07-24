@@ -358,6 +358,13 @@ def _make_prev_state_proxy(
 
     This avoids a full state clone while giving reward components the correct
     delta (health before → health after damage).
+
+    Invariant (see TensorState): every non-swapped field aliases the live,
+    already-advanced state, so this snapshot is correct only because physics
+    advances fields by reassignment (never in-place). Reward components must read
+    *only* `ship_health`/`ship_alive` from the returned proxy; reading any other
+    field here would see post-step values with no error. A new component needing a
+    genuine pre-step value for another field must take a full `.clone()` instead.
     """
     return dataclasses.replace(
         state,

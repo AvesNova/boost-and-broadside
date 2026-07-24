@@ -153,7 +153,8 @@ attn_mask = alive.unsqueeze(1).unsqueeze(2)        # (B, 1, 1, N) — broadcast 
 *   **Pre-allocate tensors**: Never `torch.zeros(...)` inside a step loop. Allocate buffers in `__init__` or `reset()`.
 *   **Avoid Python loops over batch dims**: Use tensor operations. If you find yourself writing `for i in range(num_envs):`, that is a red flag.
 *   **Device discipline**: Every tensor must be on the correct device from creation. Pass `device` explicitly. Never rely on implicit CPU fallback.
-*   **In-place ops**: Prefer in-place tensor writes (e.g., `state.ship_health[mask] = value`) for large buffers to avoid allocations, but be careful with autograd.
+*   **In-place ops**: Prefer in-place tensor writes (e.g., `self._ep_reward.masked_fill_(done, 0.0)`) for large, long-lived preallocated buffers to avoid allocations, but be careful with autograd.
+    *   **Carve-out — `TensorState` physics fields**: advance these by *reassignment* (`state.x = f(state.x)`), never in-place mutation. The reward-shaping snapshot (`_make_prev_state_proxy`) aliases the pre-step tensors and depends on reassignment leaving them untouched; an in-place write would silently corrupt it (see `TensorState`'s docstring). The in-place preference above applies to buffers nothing snapshots — wrapper episode accumulators, the preallocated observation buffer, and per-step scratch fields like `damage_matrix`.
 
 ### 6.6. Classes vs. Functions
 *   **Use Classes** when you need to maintain state or bundle data with behavior.

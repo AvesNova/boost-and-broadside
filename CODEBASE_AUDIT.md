@@ -1,8 +1,7 @@
 # Codebase Audit — Boost and Broadside
 
 _Status: First full pass complete, then a remediation-verification pass (2026-07-24).
-28 findings total: 1 open (Note-severity AUDIT-010), 27 fixed,
-0 won't-fix
+28 findings total: 0 open, 28 fixed, 0 won't-fix
 (AUDIT-001, AUDIT-005, AUDIT-009, AUDIT-014 resolved in a later batch;
 AUDIT-019, AUDIT-020, AUDIT-021 resolved in the ar_report batch;
 AUDIT-006, AUDIT-007, AUDIT-024 resolved in the obstacle-stepping/scripted-agent batch;
@@ -10,7 +9,8 @@ AUDIT-016, AUDIT-017 resolved in the checkpoint-retention batch;
 AUDIT-012, AUDIT-018, AUDIT-022 resolved in a later batch;
 AUDIT-002, AUDIT-003, AUDIT-004, AUDIT-008, AUDIT-011, AUDIT-013, AUDIT-015, AUDIT-023,
 AUDIT-025 resolved in the low-severity/typing cleanup batch;
-AUDIT-026, AUDIT-027, AUDIT-028 found and fixed during the verification pass)._
+AUDIT-026, AUDIT-027, AUDIT-028 found and fixed during the verification pass;
+AUDIT-010 documentation note also closed during that pass)._
 _Audit started and completed: 2026-07-23. Remediation verified: 2026-07-24._
 
 **Verification-pass note (2026-07-24).** Every finding marked Done was independently
@@ -1359,7 +1359,13 @@ at least mechanically easy to get right (each line is a simple rename).
 - **Location:** `_make_prev_state_proxy`
 - **Severity:** Note
 - **Category:** Hidden mutable state
-- **Status:** Open
+- **Status:** ✅ Done (see AUDIT-010 fix commit) — documented the invariant in the three
+  places a maintainer could violate it: the `TensorState` class docstring (now the
+  canonical statement — its prior text was itself inaccurate, describing in-place writes
+  as the norm and `.clone()` as the only snapshot path, both wrong), a pointer on
+  `_make_prev_state_proxy`, and a carve-out in STYLE_GUIDE §6.5 whose in-place example was
+  changed away from `state.ship_health[mask] = value` (the exact dangerous pattern on a
+  snapshotted field). No functional change, as the finding recommended.
 - **Confidence:** Medium
 
 **Problem**

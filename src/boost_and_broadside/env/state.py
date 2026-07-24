@@ -12,8 +12,24 @@ class TensorState:
     All tensors share the same device. Shape notation:
       B = num_envs, N = max_ships, K = max_bullets per ship.
 
-    The dataclass is NOT frozen so that physics functions can write into fields
-    in-place. Callers that need a snapshot must call .clone() explicitly.
+    The dataclass is NOT frozen so physics functions can advance fields between
+    steps. The load-bearing convention is that they do so by *reassignment*
+    (`state.x = f(state.x)`), not in-place mutation of the existing tensor. This
+    is what lets a snapshot alias the pre-step tensors cheaply: a later
+    reassignment on the live state rebinds the attribute and leaves the aliased
+    tensor untouched. Two snapshot mechanisms rely on this:
+
+      - `.clone()` — deep copy, safe to read from for every field.
+      - `_make_prev_state_proxy` (env/wrapper.py) — aliases all tensors and swaps
+        in only pre-damage `ship_health`/`ship_alive`. Reward components must read
+        *only* those two fields from the proxy; any other field aliases the live,
+        already-advanced state.
+
+    Converting a physics field's advance to in-place mutation (e.g. for the
+    allocation win STYLE_GUIDE §6.5 favors) would silently break that proxy — so
+    it is deliberately reassignment. The few in-place writes on state fields
+    (`damage_matrix`, `ship_hit_obstacle`) are per-step scratch/outputs that
+    nothing snapshots, which is why they are exempt.
     """
 
     step_count: torch.Tensor  # (B,) int32
