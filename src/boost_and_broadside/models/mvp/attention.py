@@ -107,9 +107,14 @@ class TransformerBlock(nn.Module):
         if alive_mask is not None:
             # Mask out dead ships as keys — they cannot emit information.
             # Shape: (B, 1, 1, N) broadcastable over (B, H, N_q, N_k).
-            key_mask = alive_mask.view(B, 1, 1, N).float()  # 1.0 = alive
-            large_neg = torch.finfo(x.dtype).min / 2
-            attn_bias = (1.0 - key_mask) * large_neg  # (B, 1, 1, N)
+            # Build the bias in q's dtype, not x's: under bf16 autocast the qkv
+            # Linear emits bf16 while RMSNorm keeps x fp32, and an fp32 attn_mask on
+            # bf16 q/k/v disqualifies the fused flash/mem-efficient SDPA kernels,
+            # silently falling back to the math kernel (materializes the full
+            # (B, H, N, N) scores — slower and much larger activation peak).
+            key_mask = alive_mask.view(B, 1, 1, N).to(q.dtype)  # 1.0 = alive
+            large_neg = torch.finfo(q.dtype).min / 2
+            attn_bias = (1.0 - key_mask) * large_neg  # (B, 1, 1, N), matches q/k/v
 
         out = F.scaled_dot_product_attention(
             q,
