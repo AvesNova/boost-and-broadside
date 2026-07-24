@@ -116,6 +116,53 @@ class MicroBatch(NamedTuple):
             if isinstance(value, torch.Tensor):
                 value.record_stream(stream)
 
+    def slice_envs(self, start: int, end: int, num_tokens: int) -> "MicroBatch":
+        """Slice a contiguous environment range from a staged shard minibatch.
+
+        Args:
+            start: Inclusive environment offset.
+            end: Exclusive environment offset.
+            num_tokens: Entity tokens per environment, used to reshape hidden state.
+
+        Returns:
+            A view-only micro-batch over ``[start:end]``.
+        """
+        batch_envs = self.actions.shape[1]
+        n_layers, _, hidden_width = self.hidden.shape
+        hidden = self.hidden.reshape(
+            n_layers,
+            batch_envs,
+            num_tokens,
+            hidden_width,
+        )[:, start:end]
+        return MicroBatch(
+            obs=MVPObservation(data={key: value[:, start:end] for key, value in self.obs.items()}),
+            actions=self.actions[:, start:end],
+            old_logprobs=self.old_logprobs[:, start:end],
+            advantages=self.advantages[:, start:end],
+            returns=self.returns[:, start:end],
+            alive=self.alive[:, start:end],
+            hidden=hidden.reshape(n_layers, (end - start) * num_tokens, hidden_width),
+            actor_mask=self.actor_mask[:, start:end],
+            expert_probs=self.expert_probs[:, start:end],
+            terminated=self.terminated[:, start:end],
+            adv_agg=self.adv_agg[:, start:end],
+            ret_agg=self.ret_agg[:, start:end],
+            ns_labels=self.ns_labels[:, start:end] if self.ns_labels is not None else None,
+        )
+
+    def split_envs(self, num_chunks: int, num_tokens: int) -> list["MicroBatch"]:
+        """Split a staged shard minibatch into near-even contiguous views."""
+        batch_envs = self.actions.shape[1]
+        base, remainder = divmod(batch_envs, num_chunks)
+        chunks = []
+        start = 0
+        for index in range(num_chunks):
+            width = base + (1 if index < remainder else 0)
+            chunks.append(self.slice_envs(start, start + width, num_tokens))
+            start += width
+        return chunks
+
 
 def symlog(x: torch.Tensor) -> torch.Tensor:
     """Symmetric log transform: sign(x) * log(1 + |x|).
@@ -227,30 +274,49 @@ class ReturnScaler:
         self._update_percentiles(p5, p95)
 
     @torch.no_grad()
-    def update_chunks(self, returns_chunks: list[torch.Tensor]) -> None:
+    def update_chunks(
+        self,
+        returns_chunks: list[torch.Tensor],
+        max_samples: int | None = None,
+    ) -> None:
         """Update percentiles from one logical rollout split across host shards.
 
         Args:
             returns_chunks: Shards shaped ``(T, B, N, K)`` on a common device.
+            max_samples: Maximum flattened entities retained across all shards.
+                None computes exact quantiles.
         """
         if len(returns_chunks) == 0:
             raise ValueError("returns_chunks must contain at least one shard")
         K = returns_chunks[0].shape[-1]
+        flat_chunks = [returns.reshape(-1, K) for returns in returns_chunks]
+        if max_samples is not None:
+            samples_per_chunk = max(1, max_samples // len(flat_chunks))
+            flat_chunks = [
+                self._evenly_sample_entities(flat, samples_per_chunk) for flat in flat_chunks
+            ]
+        flat = torch.cat(flat_chunks, dim=0).float()  # (samples, K)
         quantiles = torch.tensor(
             (0.05, 0.95),
             dtype=torch.float32,
             device=returns_chunks[0].device,
         )
-        percentiles = []
-        for component_index in range(K):
-            component_values = torch.cat(
-                [returns[..., component_index].reshape(-1).float() for returns in returns_chunks],
-                dim=0,
-            )  # (sum(T*B*N),)
-            percentiles.append(torch.quantile(component_values, quantiles))
-        percentile_matrix = torch.stack(percentiles, dim=1)  # (2, K)
+        percentile_matrix = torch.quantile(flat, quantiles, dim=0)  # (2, K)
         p5, p95 = percentile_matrix[0], percentile_matrix[1]
         self._update_percentiles(p5, p95)
+
+    @staticmethod
+    def _evenly_sample_entities(flat: torch.Tensor, max_samples: int) -> torch.Tensor:
+        """Select a deterministic, evenly spaced entity sample."""
+        if flat.shape[0] <= max_samples:
+            return flat
+        indices = torch.linspace(
+            0,
+            flat.shape[0] - 1,
+            steps=max_samples,
+            device=flat.device,
+        ).long()  # (max_samples,)
+        return flat[indices]  # (max_samples, K)
 
     def _update_percentiles(self, p5: torch.Tensor, p95: torch.Tensor) -> None:
         """Apply one observed percentile pair to the running EMA."""
@@ -740,30 +806,27 @@ class StoredRollout:
 
         self.adv_agg: torch.Tensor | None = None
         self.ret_agg: torch.Tensor | None = None
-        self.ns_labels: torch.Tensor | None = None
+        self.ns_labels = (
+            source.ns_labels.detach().to(device="cpu", copy=True)
+            if source.ns_labels is not None
+            else None
+        )
 
-    def restore_raw(self, destination: RolloutBuffer) -> None:
-        """Restore raw update-live tensors into a reusable device buffer.
+    def restore_aggregate_inputs(self, destination: RolloutBuffer) -> None:
+        """Restore only tensors required for lambda aggregation.
 
         Args:
             destination: Fixed-width rollout buffer with matching dimensions.
         """
         self._validate_destination(destination)
-        for key, value in self.obs.items():
-            destination.obs[key].copy_(value)
-        destination.actions.copy_(self.actions)
-        destination.logprobs.copy_(self.logprobs)
+        destination.obs[ObsKey.TEAM_ID].copy_(self.obs[ObsKey.TEAM_ID])
         destination.advantages.copy_(self.advantages)
         destination.returns.copy_(self.returns)
         destination.alive_mask.copy_(self.alive_mask)
         destination.actor_masks.copy_(self.actor_masks)
-        destination.expert_probs.copy_(self.expert_probs)
-        destination.terminated.copy_(self.terminated)
-        destination.initial_hidden = self.initial_hidden.to(destination.device)
-        destination.ptr = destination.num_steps
 
-    def capture_derived(self, source: RolloutBuffer) -> None:
-        """Copy device-computed update tensors into host storage.
+    def capture_aggregates(self, source: RolloutBuffer) -> None:
+        """Copy device-computed lambda aggregates into host storage.
 
         Args:
             source: Fixed-width rollout buffer containing derived tensors.
@@ -771,11 +834,6 @@ class StoredRollout:
         self._validate_destination(source)
         self.adv_agg = source.adv_agg.detach().to(device="cpu", copy=True)
         self.ret_agg = source.ret_agg.detach().to(device="cpu", copy=True)
-        self.ns_labels = (
-            source.ns_labels.detach().to(device="cpu", copy=True)
-            if source.ns_labels is not None
-            else None
-        )
 
     def get_minibatch_iterator(
         self,
@@ -792,15 +850,11 @@ class StoredRollout:
             Lists of CPU micro-batches whose gradients form one optimizer step.
         """
         if self.adv_agg is None or self.ret_agg is None:
-            raise RuntimeError("capture_derived() must run before minibatch iteration")
+            raise RuntimeError("capture_aggregates() must run before minibatch iteration")
 
+        del microbatch_tokens  # device staging performs the split after one host gather
         envs_per_batch = self.num_envs // num_minibatches
         env_order = np.random.permutation(self.num_envs)
-        tokens_per_env = self.num_steps * self.num_tokens
-        n_micro = 1
-        if microbatch_tokens is not None:
-            n_micro = -(-envs_per_batch * tokens_per_env // microbatch_tokens)
-            n_micro = min(max(n_micro, 1), envs_per_batch)
 
         n_layers = self.initial_hidden.shape[0]
         hidden_width = self.initial_hidden.shape[-1]
@@ -812,36 +866,30 @@ class StoredRollout:
         )
 
         for start in range(0, self.num_envs, envs_per_batch):
-            chunks = []
-            for indices in np.array_split(env_order[start : start + envs_per_batch], n_micro):
-                obs = MVPObservation(
-                    data={key: value[:, indices] for key, value in self.obs.items()}
+            indices = env_order[start : start + envs_per_batch]
+            obs = MVPObservation(data={key: value[:, indices] for key, value in self.obs.items()})
+            hidden = hidden_full[:, indices].reshape(
+                n_layers,
+                len(indices) * self.num_tokens,
+                hidden_width,
+            )
+            yield [
+                MicroBatch(
+                    obs=obs,
+                    actions=self.actions[:, indices],
+                    old_logprobs=self.logprobs[:, indices],
+                    advantages=self.advantages[:, indices],
+                    returns=self.returns[:, indices],
+                    alive=self.alive_mask[:, indices],
+                    hidden=hidden.contiguous(),
+                    actor_mask=self.actor_masks[:, indices],
+                    expert_probs=self.expert_probs[:, indices],
+                    terminated=self.terminated[:, indices],
+                    adv_agg=self.adv_agg[:, indices],
+                    ret_agg=self.ret_agg[:, indices],
+                    ns_labels=(self.ns_labels[:, indices] if self.ns_labels is not None else None),
                 )
-                hidden = hidden_full[:, indices].reshape(
-                    n_layers,
-                    len(indices) * self.num_tokens,
-                    hidden_width,
-                )
-                chunks.append(
-                    MicroBatch(
-                        obs=obs,
-                        actions=self.actions[:, indices],
-                        old_logprobs=self.logprobs[:, indices],
-                        advantages=self.advantages[:, indices],
-                        returns=self.returns[:, indices],
-                        alive=self.alive_mask[:, indices],
-                        hidden=hidden.contiguous(),
-                        actor_mask=self.actor_masks[:, indices],
-                        expert_probs=self.expert_probs[:, indices],
-                        terminated=self.terminated[:, indices],
-                        adv_agg=self.adv_agg[:, indices],
-                        ret_agg=self.ret_agg[:, indices],
-                        ns_labels=(
-                            self.ns_labels[:, indices] if self.ns_labels is not None else None
-                        ),
-                    )
-                )
-            yield chunks
+            ]
 
     def _validate_destination(self, destination: RolloutBuffer) -> None:
         expected = (

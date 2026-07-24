@@ -128,6 +128,17 @@ class TestReturnScaler:
         assert torch.allclose(chunked.percentiles[0], concatenated.percentiles[0])
         assert torch.allclose(chunked.percentiles[1], concatenated.percentiles[1])
 
+    def test_sampled_chunked_update_tracks_exact_percentiles(self):
+        values = torch.linspace(-5.0, 5.0, 20_000).reshape(100, 100, 2, 1)
+        exact = ReturnScaler(num_components=1, device=torch.device("cpu"))
+        sampled = ReturnScaler(num_components=1, device=torch.device("cpu"))
+
+        exact.update_chunks([values[:, :50], values[:, 50:]])
+        sampled.update_chunks([values[:, :50], values[:, 50:]], max_samples=2_000)
+
+        assert torch.allclose(sampled.percentiles[0], exact.percentiles[0], atol=0.01)
+        assert torch.allclose(sampled.percentiles[1], exact.percentiles[1], atol=0.01)
+
 
 class TestBufferAdd:
     def test_buffer_fills_without_error(self):

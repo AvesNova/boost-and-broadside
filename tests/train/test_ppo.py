@@ -196,6 +196,18 @@ class TestPPOSmokeTest:
 
         assert trainer._global_step == 128
 
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
+    def test_host_backed_logical_batch_runs_on_cuda(self, tmp_path):
+        trainer = _make_trainer(
+            checkpoint_dir=str(tmp_path),
+            rollouts_per_update=2,
+            device="cuda",
+        )
+
+        trainer.train()
+
+        assert trainer._global_step == 128
+
 
 class TestEloLadder:
     """Milestone flow: snapshot → settle → freeze, driven via _maybe_advance_ladder."""

@@ -968,11 +968,20 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         for _ in range(self.cfg.rollouts_per_update):
             dones = self._collect_rollout(runtime, avg_eval_active)
             self._compute_rollout_gae(runtime, dones, update_scalers=False)
-            for shards, buffer in zip(stored_by_scale, device_buffers, strict=True):
+            for scale_index, (shards, buffer) in enumerate(
+                zip(stored_by_scale, device_buffers, strict=True)
+            ):
+                if scale_index == 0:
+                    self._precompute_ns_labels(buffer)
+                else:
+                    buffer.ns_labels = None
                 shards.append(StoredRollout(buffer))
 
         primary_shards = stored_by_scale[0]
-        self.scaler.update_chunks([shard.returns for shard in primary_shards])
+        self.scaler.update_chunks(
+            [shard.returns for shard in primary_shards],
+            max_samples=self.cfg.return_quantile_samples,
+        )
         self.adv_scaler.update_chunks(
             [shard.advantages for shard in primary_shards],
             [shard.alive_mask for shard in primary_shards],
@@ -1010,7 +1019,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             ret_actor_count = torch.zeros((), device=self.device)
 
             for stored in stored_shards:
-                stored.restore_raw(device_buffer)
+                stored.restore_aggregate_inputs(device_buffer)
                 shard_stats = self._precompute_lambda_aggregates(
                     device_buffer,
                     comp_weights,
@@ -1023,11 +1032,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     ret_component_sum += shard_ret_sum
                     ret_actor_count += shard_actor_count
 
-                if is_primary:
-                    self._precompute_ns_labels(device_buffer)
-                else:
-                    device_buffer.ns_labels = None
-                stored.capture_derived(device_buffer)
+                stored.capture_aggregates(device_buffer)
 
             adv_rms = adv_square_sum / adv_count.clamp(min=1.0)
             if is_primary:
@@ -1157,18 +1162,35 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
     def _iter_device_chunks(
         self,
         chunks: list[MicroBatch],
+        buffer: RolloutBuffer | LogicalRolloutBuffer,
     ) -> Generator[tuple[MicroBatch, MicroBatch]]:
         """Yield device chunks while prefetching the following host chunk.
 
         Args:
             chunks: Micro-batches forming one optimizer minibatch.
+            buffer: Source buffer, used to split staged logical shard minibatches.
 
         Yields:
             Source/device pairs. The source supplies shape metadata without a sync.
         """
-        if self.device.type != "cuda" or chunks[0].actions.device.type != "cpu":
+        if not isinstance(buffer, LogicalRolloutBuffer):
             for chunk in chunks:
                 yield chunk, chunk.to(self.device)
+            return
+
+        tokens_per_env = buffer.num_steps * buffer.num_tokens
+
+        def split_count(batch: MicroBatch) -> int:
+            if self.cfg.microbatch_tokens is None:
+                return 1
+            batch_tokens = batch.actions.shape[1] * tokens_per_env
+            count = -(-batch_tokens // self.cfg.microbatch_tokens)
+            return min(max(count, 1), batch.actions.shape[1])
+
+        if self.device.type != "cuda":
+            for chunk in chunks:
+                for microbatch in chunk.split_envs(split_count(chunk), buffer.num_tokens):
+                    yield microbatch, microbatch
             return
 
         current_stream = torch.cuda.current_stream(self.device)
@@ -1179,7 +1201,12 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             next_staged = (
                 self._stage_microbatch(chunks[index + 1]) if index + 1 < len(chunks) else None
             )
-            yield source, staged.device
+            source_microbatches = source.split_envs(split_count(source), buffer.num_tokens)
+            device_microbatches = staged.device.split_envs(
+                split_count(source),
+                buffer.num_tokens,
+            )
+            yield from zip(source_microbatches, device_microbatches, strict=True)
             if next_staged is not None:
                 staged = next_staged
 
@@ -1810,7 +1837,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     ret_agg_mean = _z.clone()
                     ret_agg_sq = _z.clone()
 
-                    for source_chunk, device_chunk in self._iter_device_chunks(chunks):
+                    for source_chunk, device_chunk in self._iter_device_chunks(chunks, buf):
                         frac = source_chunk.alive.shape[1] / mb_envs
                         loss, diag = self._compute_minibatch_loss(
                             device_chunk,
