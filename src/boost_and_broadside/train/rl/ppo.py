@@ -1382,9 +1382,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             lambda_norm = lambda_ij_t.abs().sum(dim=3, keepdim=True).clamp(min=1.0)
             lambda_ij_t = lambda_ij_t / lambda_norm
 
+            # advantages/returns are bf16-stored; normalize() promotes advantages via
+            # the fp32 rms divisor, and returns is upcast explicitly so the einsum with
+            # the fp32 lambda tensor stays fp32 (einsum will not mix dtypes).
             adv_normed = self.adv_scaler.normalize(buf.advantages[:, sl])
+            returns_sl = buf.returns[:, sl].float()
             buf.adv_agg[:, sl] = torch.einsum("tbijk,tbjk->tbi", lambda_ij_t, adv_normed)
-            buf.ret_agg[:, sl] = torch.einsum("tbijk,tbjk->tbi", lambda_ij_t, buf.returns[:, sl])
+            buf.ret_agg[:, sl] = torch.einsum("tbijk,tbjk->tbi", lambda_ij_t, returns_sl)
 
             actor_f = (buf.actor_masks[:, sl] & alive).float()
             adv_sq_sum += (buf.adv_agg[:, sl].pow(2) * actor_f).sum()
@@ -1392,7 +1396,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
             if is_primary:
                 ret_pc = torch.einsum(
-                    "tbijk,tbjk->tbik", lambda_ij_t, buf.returns[:, sl]
+                    "tbijk,tbjk->tbik", lambda_ij_t, returns_sl
                 )  # (T, b, N, K)
                 ret_pc_sum += (ret_pc * actor_f.unsqueeze(-1)).sum((0, 1, 2))
                 actor_sum += actor_f.sum()
