@@ -288,9 +288,57 @@ class TestBestCheckpoints:
         trainer._avg_update_count = 1
         trainer._avg_training_elo = 50.0
         trainer._maybe_save_best_checkpoints(random_elo=0.0)
-        trainer._active_best_thread.join(timeout=60)
+        trainer._active_best_avg_thread.join(timeout=60)
 
         saved = torch.load(ckpt_dir / "best_avg.pt", map_location="cpu", weights_only=False)
         live_state = trainer._policy_module.state_dict()
         for name, avg_param in saved["policy_state_dict"].items():
             assert not torch.equal(avg_param, live_state[name])
+
+    def test_best_avg_saves_when_live_elo_improves_in_the_same_update(self, tmp_path):
+        """AUDIT-027: best_avg and best_training must not share a save thread.
+
+        When both ELOs improve in one call, the best_training save is in flight
+        by the time best_avg is attempted; a shared thread slot would skip the
+        best_avg save while its high-water mark advanced anyway, leaving
+        best_avg.pt unwritten. Separate slots must let both persist.
+        """
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path), avg_model_fraction=0.25)
+        ckpt_dir = Path(tmp_path) / trainer.run_name
+
+        trainer._avg_update_count = 1
+        trainer._training_elo = 10.0  # live improves
+        trainer._avg_training_elo = 10.0  # avg improves in the same call
+        trainer._maybe_save_best_checkpoints(random_elo=0.0)
+        trainer._active_best_thread.join(timeout=60)
+        trainer._active_best_avg_thread.join(timeout=60)
+
+        assert (ckpt_dir / "best_training.pt").exists()
+        assert (ckpt_dir / "best_avg.pt").exists()
+
+    def test_skipped_best_save_does_not_advance_high_water_mark(self, tmp_path):
+        """AUDIT-027: a save skipped for an in-flight write must not raise the bar.
+
+        If the mark advanced on a skipped save, the peak would be recorded as
+        captured and never retried. Simulate an in-flight save with a live dummy
+        thread and assert the mark stays put so the next update retries.
+        """
+        import threading
+        import time
+
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+
+        blocker = threading.Thread(target=lambda: time.sleep(2.0), daemon=True)
+        blocker.start()
+        trainer._active_best_thread = blocker  # occupy the live-best slot
+
+        trainer._training_elo = 10.0
+        trainer._maybe_save_best_checkpoints(random_elo=0.0)
+
+        # Save was skipped (slot busy), so the bar must not have moved.
+        assert trainer._best_training_elo_norm == 0.0
+        blocker.join(timeout=60)

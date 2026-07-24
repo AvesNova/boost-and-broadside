@@ -570,6 +570,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         self._active_save_thread = None
         self._active_best_thread = None
+        self._active_best_avg_thread = None
 
     # ------------------------------------------------------------------
     # Main training loop
