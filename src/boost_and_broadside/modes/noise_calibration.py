@@ -415,7 +415,6 @@ def _run_phase2(
                     curr_obs,
                     stored_actions[k],
                     N,
-                    ship_config,
                     coordinator,
                 )
                 curr_targets = coordinator.get_target_vector(curr_obs)[:, :N]
