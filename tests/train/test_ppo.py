@@ -82,6 +82,7 @@ def _make_train_config(
     avg_model_fraction: float = 0.0,
     checkpoint_dir: str = "checkpoints",
     min_games_to_freeze: int = 0,
+    rollouts_per_update: int = 1,
     **reward_overrides,
 ) -> TrainConfig:
     return TrainConfig(
@@ -98,12 +99,13 @@ def _make_train_config(
         ),
         rewards=_make_rewards(**reward_overrides),
         num_steps=16,
+        rollouts_per_update=rollouts_per_update,
         num_minibatches=2,
         gamma=0.99,
         gae_lambda=0.95,
         clip_coef=0.2,
         max_grad_norm=0.5,
-        total_timesteps=64,
+        total_timesteps=64 * rollouts_per_update,
         return_ema_alpha=0.005,
         return_min_span=1.0,
         checkpoint_dir=checkpoint_dir,
@@ -130,6 +132,7 @@ def _make_trainer(
     avg_model_fraction: float = 0.0,
     checkpoint_dir: str = "checkpoints",
     min_games_to_freeze: int = 0,
+    rollouts_per_update: int = 1,
     device: str = "cpu",
     **reward_overrides,
 ) -> PPOTrainer:
@@ -146,6 +149,7 @@ def _make_trainer(
             avg_model_fraction=avg_model_fraction,
             checkpoint_dir=checkpoint_dir,
             min_games_to_freeze=min_games_to_freeze,
+            rollouts_per_update=rollouts_per_update,
             **reward_overrides,
         ),
         model_config=ModelConfig(
@@ -181,6 +185,16 @@ class TestPPOSmokeTest:
         params_after = list(trainer.policy.parameters())
         any_changed = any(not torch.equal(b, a) for b, a in zip(params_before, params_after))
         assert any_changed, "No parameters changed after training"
+
+    def test_host_backed_logical_batch_runs_one_update(self, tmp_path):
+        trainer = _make_trainer(
+            checkpoint_dir=str(tmp_path),
+            rollouts_per_update=2,
+        )
+
+        trainer.train()
+
+        assert trainer._global_step == 128
 
 
 class TestEloLadder:
@@ -573,6 +587,7 @@ class TestSchedulePrimitives:
                 ),
                 rewards=_make_rewards(),
                 num_steps=16,
+                rollouts_per_update=1,
                 num_minibatches=2,
                 gamma=0.99,
                 gae_lambda=0.95,
@@ -707,6 +722,7 @@ class TestRLSmokeTest:
             schedule=schedule,
             rewards=REWARDS,
             num_steps=32,
+            rollouts_per_update=1,
             num_minibatches=2,
             gamma=0.99,
             gae_lambda=0.95,

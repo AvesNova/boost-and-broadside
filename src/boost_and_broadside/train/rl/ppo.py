@@ -44,9 +44,11 @@ from boost_and_broadside.env.wrapper import MVPEnvWrapper
 from boost_and_broadside.models.mvp.policy import MVPPolicy
 from boost_and_broadside.train.rl.buffer import (
     AdvantageScaler,
+    LogicalRolloutBuffer,
     MicroBatch,
     ReturnScaler,
     RolloutBuffer,
+    StoredRollout,
 )
 from boost_and_broadside.train.rl.checkpoint import CheckpointMixin
 from boost_and_broadside.train.rl.elo_eval import MAX_ANCHORS, EloEvaluator, LadderOpponent
@@ -504,9 +506,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._ship_steps = 0  # ship tokens (all teams, all envs, all scales)
         # Entity tokens (ships + obstacles) the update phase processes per epoch —
         # one full pass over all scales' rollouts.
-        self._entity_tokens_per_epoch = train_config.num_steps * sum(
-            sc.num_envs * (sc.env_config.num_ships + sc.env_config.num_obstacles)
-            for sc in train_config.scales
+        self._entity_tokens_per_epoch = (
+            train_config.num_steps
+            * sum(
+                sc.num_envs * (sc.env_config.num_ships + sc.env_config.num_obstacles)
+                for sc in train_config.scales
+            )
+            * train_config.rollouts_per_update
         )
         # Cumulative entity tokens consumed by backward passes (counts actual
         # epochs completed, so target_kl early stops are reflected). The compute
@@ -516,7 +522,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._train_start_time = time.time()  # reset at the top of train()
         total_envs_all = sum(sc.num_envs for sc in train_config.scales)
         self._num_updates = train_config.total_timesteps // (
-            total_envs_all * train_config.num_steps
+            total_envs_all * train_config.num_steps * train_config.rollouts_per_update
         )
 
         # Run name used as checkpoint subdirectory (e.g. "checkpoints/good-spaceship-223/")
@@ -832,7 +838,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             env_stream=torch.cuda.Stream() if self.device.type == "cuda" else None,
             net_stream=torch.cuda.Stream() if self.device.type == "cuda" else None,
             ship_tokens_per_update=self.cfg.num_steps
-            * sum(scale.num_envs * scale.env_config.num_ships for scale in self.cfg.scales),
+            * sum(scale.num_envs * scale.env_config.num_ships for scale in self.cfg.scales)
+            * self.cfg.rollouts_per_update,
         )
 
     def _collect_rollout(self, runtime: _RolloutRuntime, avg_eval_active: bool) -> torch.Tensor:
@@ -892,8 +899,20 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             self.roster.set_floating_elo(elo_snapshot.floating_elo)
         return dones
 
-    def _compute_rollout_gae(self, runtime: _RolloutRuntime, dones: torch.Tensor) -> None:
-        """Store final observations and compute GAE for every scale."""
+    def _compute_rollout_gae(
+        self,
+        runtime: _RolloutRuntime,
+        dones: torch.Tensor,
+        update_scalers: bool = True,
+    ) -> None:
+        """Store final observations and compute GAE for every scale.
+
+        Args:
+            runtime: Persistent environment and recurrent rollout state.
+            dones: Primary-scale terminal flags after the final step.
+            update_scalers: Update statistics immediately for a single-shard batch.
+                Logical host batches defer this until every shard is available.
+        """
         self.buffer.store_final_obs(runtime.obs)
         for index, aux_buffer in enumerate(self.aux_buffers):
             aux_buffer.store_final_obs(runtime.aux_obs[index])
@@ -914,8 +933,95 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 self.scaler.denormalize(next_aux_norm),
                 runtime.aux_last_dones[index].float(),
             )
-        self.scaler.update(self.buffer.returns)
-        self.adv_scaler.update(self.buffer.advantages, self.buffer.alive_mask)
+        if update_scalers:
+            self.scaler.update(self.buffer.returns)
+            self.adv_scaler.update(self.buffer.advantages, self.buffer.alive_mask)
+
+    def _collect_host_rollouts(
+        self,
+        runtime: _RolloutRuntime,
+        avg_eval_active: bool,
+    ) -> list[LogicalRolloutBuffer]:
+        """Collect a logical PPO batch into CPU-resident rollout shards.
+
+        Args:
+            runtime: Persistent rollout state.
+            avg_eval_active: Whether average-policy ELO evaluation is active.
+
+        Returns:
+            One logical host buffer per training scale.
+        """
+        device_buffers = [self.buffer] + self.aux_buffers
+        stored_by_scale: list[list[StoredRollout]] = [[] for _ in device_buffers]
+        for _ in range(self.cfg.rollouts_per_update):
+            dones = self._collect_rollout(runtime, avg_eval_active)
+            self._compute_rollout_gae(runtime, dones, update_scalers=False)
+            for shards, buffer in zip(stored_by_scale, device_buffers, strict=True):
+                shards.append(StoredRollout(buffer))
+
+        primary_shards = stored_by_scale[0]
+        self.scaler.update_chunks([shard.returns for shard in primary_shards])
+        self.adv_scaler.update_chunks(
+            [shard.advantages for shard in primary_shards],
+            [shard.alive_mask for shard in primary_shards],
+        )
+        return self._prepare_host_rollouts(device_buffers, stored_by_scale)
+
+    @torch.no_grad()
+    def _prepare_host_rollouts(
+        self,
+        device_buffers: list[RolloutBuffer],
+        stored_by_scale: list[list[StoredRollout]],
+    ) -> list[LogicalRolloutBuffer]:
+        """Compute derived PPO data a shard at a time on the GPU.
+
+        Args:
+            device_buffers: Reusable fixed-width GPU buffers, one per scale.
+            stored_by_scale: CPU rollout shards grouped by scale.
+
+        Returns:
+            Logical host buffers ready for PPO epoch iteration.
+        """
+        comp_weights = torch.tensor(
+            [component.weight for component in self.wrapper.active_components],
+            dtype=torch.float32,
+            device=self.device,
+        )  # (K,)
+        logical_buffers = []
+        for scale_index, (device_buffer, stored_shards) in enumerate(
+            zip(device_buffers, stored_by_scale, strict=True)
+        ):
+            is_primary = scale_index == 0
+            adv_square_sum = torch.zeros((), device=self.device)
+            adv_count = torch.zeros((), device=self.device)
+            ret_component_sum = torch.zeros(device_buffer.num_components, device=self.device)
+            ret_actor_count = torch.zeros((), device=self.device)
+
+            for stored in stored_shards:
+                stored.restore_raw(device_buffer)
+                shard_stats = self._precompute_lambda_aggregates(
+                    device_buffer,
+                    comp_weights,
+                    is_primary=is_primary,
+                )
+                shard_adv_sum, shard_adv_count, shard_ret_sum, shard_actor_count = shard_stats
+                adv_square_sum += shard_adv_sum
+                adv_count += shard_adv_count
+                if shard_ret_sum is not None and shard_actor_count is not None:
+                    ret_component_sum += shard_ret_sum
+                    ret_actor_count += shard_actor_count
+
+                if is_primary:
+                    self._precompute_ns_labels(device_buffer)
+                else:
+                    device_buffer.ns_labels = None
+                stored.capture_derived(device_buffer)
+
+            adv_rms = adv_square_sum / adv_count.clamp(min=1.0)
+            if is_primary:
+                self._ret_per_comp_mean_k = ret_component_sum / ret_actor_count.clamp(min=1.0)
+            logical_buffers.append(LogicalRolloutBuffer(stored_shards, adv_rms))
+        return logical_buffers
 
     def _refresh_training_schedule(self, metrics: dict, elo_eval: EloEvaluator) -> None:
         """Refresh schedule-controlled optimization, reward, and averaging state."""
@@ -974,15 +1080,23 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         for update in range(self._start_update, self._num_updates + 1):
             avg_eval_active = self._avg_update_count > 0
-            dones = self._collect_rollout(runtime, avg_eval_active)
-            self._compute_rollout_gae(runtime, dones)
+            if self.cfg.rollouts_per_update == 1:
+                dones = self._collect_rollout(runtime, avg_eval_active)
+                self._compute_rollout_gae(runtime, dones)
+                update_buffers: list[RolloutBuffer | LogicalRolloutBuffer] = [
+                    self.buffer,
+                    *self.aux_buffers,
+                ]
+                precomputed = False
+            else:
+                update_buffers = self._collect_host_rollouts(runtime, avg_eval_active)
+                precomputed = True
 
-            # PPO update epochs
-            # ----------------------------------------------------------------
             record_hist = update % self.cfg.histogram_interval == 0
             metrics = self._update_epochs(
-                all_buffers=[self.buffer] + self.aux_buffers,
+                all_buffers=update_buffers,
                 record_histograms=record_hist,
+                precomputed=precomputed,
             )
 
             self._refresh_training_schedule(metrics, runtime.elo_eval)
@@ -1019,7 +1133,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
     @torch.no_grad()
     def _minibatch_denominators(
-        self, chunks: list[MicroBatch], buf: RolloutBuffer, is_primary: bool
+        self,
+        chunks: list[MicroBatch],
+        buf: RolloutBuffer | LogicalRolloutBuffer,
+        is_primary: bool,
     ) -> dict:
         """Minibatch-total loss denominators, summed over the micro-batches.
 
@@ -1029,7 +1146,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         equivalent to one large minibatch. All masks are rollout data, so this
         is cheap and policy-independent.
         """
-        _z = torch.zeros((), device=self.device)
+        source_device = chunks[0].alive.device
+        _z = torch.zeros((), device=source_device)
         alive_sum = _z.clone()
         actor_sum = _z.clone()
         bc_sum = _z.clone()
@@ -1053,10 +1171,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             if need_ns:
                 ns_sum += (mb_alive & ~mb_terminated.unsqueeze(-1)).sum()
         return {
-            "mask_sum": alive_sum.clamp(min=1.0),
-            "actor_sum": actor_sum.clamp(min=1.0),
-            "bc_sum": bc_sum.clamp(min=1.0),
-            "ns_sum": ns_sum.clamp(min=1.0),
+            "mask_sum": alive_sum.clamp(min=1.0).to(self.device),
+            "actor_sum": actor_sum.clamp(min=1.0).to(self.device),
+            "bc_sum": bc_sum.clamp(min=1.0).to(self.device),
+            "ns_sum": ns_sum.clamp(min=1.0).to(self.device),
             "numel": float(numel),
             "adv_rms": buf.adv_rms,
         }
@@ -1325,7 +1443,12 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
     @torch.no_grad()
     def _precompute_lambda_aggregates(
         self, buf: RolloutBuffer, comp_weights: torch.Tensor, is_primary: bool
-    ) -> None:
+    ) -> tuple[
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor | None,
+        torch.Tensor | None,
+    ]:
         """Fill buf.adv_agg / buf.ret_agg with lambda-aggregated advantages/returns.
 
         The (T, B, N_i, N_j, K) lambda tensor depends only on rollout data and
@@ -1395,15 +1518,15 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             adv_cnt += actor_f.sum()
 
             if is_primary:
-                ret_pc = torch.einsum(
-                    "tbijk,tbjk->tbik", lambda_ij_t, returns_sl
-                )  # (T, b, N, K)
+                ret_pc = torch.einsum("tbijk,tbjk->tbik", lambda_ij_t, returns_sl)  # (T, b, N, K)
                 ret_pc_sum += (ret_pc * actor_f.unsqueeze(-1)).sum((0, 1, 2))
                 actor_sum += actor_f.sum()
 
         buf.adv_rms = adv_sq_sum / adv_cnt.clamp(min=1.0)
         if is_primary:
             self._ret_per_comp_mean_k = ret_pc_sum / actor_sum.clamp(min=1.0)
+            return adv_sq_sum, adv_cnt, ret_pc_sum, actor_sum
+        return adv_sq_sum, adv_cnt, None, None
 
     @torch.no_grad()
     def _precompute_ns_labels(self, buf: RolloutBuffer) -> None:
@@ -1436,8 +1559,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
     def _update_epochs(
         self,
-        all_buffers: list[RolloutBuffer],
+        all_buffers: list[RolloutBuffer | LogicalRolloutBuffer],
         record_histograms: bool = False,
+        precomputed: bool = False,
     ) -> dict:
         """Run num_epochs × num_minibatches of PPO updates across all scales.
 
@@ -1452,6 +1576,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             all_buffers:       Primary buffer first, then aux buffers in order.
             record_histograms: If True, capture return/logprob distributions from
                 the last primary-scale minibatch for async histogram logging.
+            precomputed: Derived tensors already exist in host-backed logical buffers.
 
         Returns:
             Dict of mean metric values over all minibatch updates.
@@ -1469,11 +1594,15 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # Precompute everything that depends only on rollout data (not the
         # policy) once per update instead of once per minibatch: the lambda
         # aggregation and the aux next-state labels (primary scale only).
-        for scale_idx, buf in enumerate(all_buffers):
-            self._precompute_lambda_aggregates(buf, comp_weights, is_primary=(scale_idx == 0))
-            if scale_idx > 0:
-                buf.ns_labels = None  # aux scales never use the aux losses
-        self._precompute_ns_labels(all_buffers[0])
+        if not precomputed:
+            for scale_idx, buf in enumerate(all_buffers):
+                assert isinstance(buf, RolloutBuffer)
+                self._precompute_lambda_aggregates(buf, comp_weights, is_primary=(scale_idx == 0))
+                if scale_idx > 0:
+                    buf.ns_labels = None  # aux scales never use the aux losses
+            primary = all_buffers[0]
+            assert isinstance(primary, RolloutBuffer)
+            self._precompute_ns_labels(primary)
 
         accum_scalar: dict[str, list[torch.Tensor]] = {
             "loss/total": [],
@@ -1631,7 +1760,16 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
                     for chunk in chunks:
                         frac = chunk.alive.shape[1] / mb_envs
-                        loss, diag = self._compute_minibatch_loss(chunk, is_primary, denoms, frac)
+                        device_chunk = chunk.to(
+                            self.device,
+                            non_blocking=self.device.type == "cuda",
+                        )
+                        loss, diag = self._compute_minibatch_loss(
+                            device_chunk,
+                            is_primary,
+                            denoms,
+                            frac,
+                        )
                         (loss / n_scales).backward()
 
                         for key, dkey in _additive:

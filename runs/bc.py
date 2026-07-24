@@ -54,6 +54,7 @@ BC_TRAIN_CONFIG = TrainConfig(
     schedule=BC_SCHEDULE,
     rewards=REWARDS,
     num_steps=128,
+    rollouts_per_update=1,
     num_minibatches=4,
     gamma=0.99,
     gae_lambda=0.95,

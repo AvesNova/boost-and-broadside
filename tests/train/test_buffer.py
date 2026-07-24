@@ -410,13 +410,10 @@ class TestMinibatchIterator:
         buf.store_initial_hidden(torch.zeros(1, B * N, D))
         buf.compute_gae(torch.zeros(B, N, Kc), torch.zeros(B))
 
-        _, _, _, mb_adv, mb_ret, mb_val, *_ = next(
-            iter(buf.get_minibatch_iterator(num_minibatches=2))
-        )[0]
+        batch = next(iter(buf.get_minibatch_iterator(num_minibatches=2)))[0]
         B_mb = B // 2
-        assert mb_adv.shape == (T, B_mb, N, Kc)
-        assert mb_ret.shape == (T, B_mb, N, Kc)
-        assert mb_val.shape == (T, B_mb, N, Kc)
+        assert batch.advantages.shape == (T, B_mb, N, Kc)
+        assert batch.returns.shape == (T, B_mb, N, Kc)
 
     def test_minibatch_hidden_shape(self):
         T, B, N, D = 4, 8, 4, 16
@@ -427,13 +424,11 @@ class TestMinibatchIterator:
         buf.store_initial_hidden(torch.zeros(1, B * N, D))
         buf.compute_gae(torch.zeros(B, N, Kc), torch.zeros(B))
 
-        (_, _, _, _, _, _, _, mb_hidden, mb_actor_mask, mb_expert_probs, *_) = next(
-            iter(buf.get_minibatch_iterator(num_minibatches=2))
-        )[0]
+        batch = next(iter(buf.get_minibatch_iterator(num_minibatches=2)))[0]
         B_mb = B // 2
-        assert mb_hidden.shape == (1, B_mb * N, D)
-        assert mb_actor_mask.shape == (T, B_mb, N)
-        assert mb_expert_probs.shape == (T, B_mb, N, 12)
+        assert batch.hidden.shape == (1, B_mb * N, D)
+        assert batch.actor_mask.shape == (T, B_mb, N)
+        assert batch.expert_probs.shape == (T, B_mb, N, 12)
 
     def test_requires_initial_hidden(self):
         T, B, N, D = 4, 4, 4, 16
@@ -460,14 +455,14 @@ class TestMinibatchIterator:
         assert len(batches) == 2
         for chunks in batches:
             assert len(chunks) == 2
-            env_counts = [c[1].shape[1] for c in chunks]  # c[1] = mb_actions
+            env_counts = [chunk.actions.shape[1] for chunk in chunks]
             assert sum(env_counts) == B // 2
             assert max(env_counts) - min(env_counts) <= 1
-            for c in chunks:
-                b_mb = c[1].shape[1]
-                assert c[0]["pos"].shape == (T + 1, b_mb, N, 2)  # obs
-                assert c[6].shape == (T, b_mb, N)  # alive mask
-                assert c[7].shape == (1, b_mb * N, D)  # hidden
+            for chunk in chunks:
+                b_mb = chunk.actions.shape[1]
+                assert chunk.obs["pos"].shape == (T + 1, b_mb, N, 2)
+                assert chunk.alive.shape == (T, b_mb, N)
+                assert chunk.hidden.shape == (1, b_mb * N, D)
                 # env count respects the token budget
                 assert b_mb * T * buf.num_tokens <= 32
 
@@ -486,6 +481,6 @@ class TestMinibatchIterator:
 
         seen: list[int] = []
         for chunks in buf.get_minibatch_iterator(num_minibatches=2, microbatch_tokens=32):
-            for c in chunks:
-                seen.extend(c[1][0, :, 0, 0].tolist())
+            for chunk in chunks:
+                seen.extend(chunk.actions[0, :, 0, 0].tolist())
         assert sorted(seen) == list(range(B))

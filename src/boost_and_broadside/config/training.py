@@ -153,6 +153,10 @@ class TrainConfig:
 
     # --- PPO hyperparameters ---
     num_steps: int  # rollout length per environment
+    # Fixed-width rollout shards collected under one policy snapshot before each
+    # PPO update. This grows the logical batch in host RAM without growing the
+    # GPU-resident environment or rollout buffer.
+    rollouts_per_update: int
     num_minibatches: int  # minibatches per epoch (scales[0].num_envs must be divisible)
     gamma: float  # discount factor
     gae_lambda: float  # GAE lambda
@@ -212,6 +216,10 @@ class TrainConfig:
         if self.microbatch_tokens is not None and self.microbatch_tokens < 1:
             raise ValueError(
                 f"microbatch_tokens must be positive or None, got {self.microbatch_tokens}"
+            )
+        if self.rollouts_per_update < 1:
+            raise ValueError(
+                f"rollouts_per_update must be positive, got {self.rollouts_per_update}"
             )
         if not 0.0 < self.bc_winrate_target <= 1.0:
             raise ValueError(f"bc_winrate_target must be in (0, 1], got {self.bc_winrate_target}")
