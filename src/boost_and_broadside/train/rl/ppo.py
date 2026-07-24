@@ -20,7 +20,7 @@ import dataclasses
 import threading
 import time
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from pathlib import Path
 from queue import Queue
 
@@ -187,6 +187,15 @@ class _RolloutRuntime:
     ship_tokens_per_update: int
 
 
+@dataclasses.dataclass
+class _StagedMicroBatch:
+    """Pinned source, device copy, and readiness event for one prefetched batch."""
+
+    pinned: MicroBatch
+    device: MicroBatch
+    ready: torch.cuda.Event
+
+
 def _resolve_schedule(schedule: TrainingSchedule, step: int) -> _ResolvedSchedule:
     """Evaluate every schedule field at ``step`` and return a resolved snapshot."""
     return _ResolvedSchedule(
@@ -256,6 +265,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self.env_config = train_config.scales[0].env_config
         self.device = torch.device(device)
         self._zero_tensor = torch.zeros((), device=self.device)
+        self._host_transfer_stream = (
+            torch.cuda.Stream(device=self.device) if self.device.type == "cuda" else None
+        )
         self.use_wandb = use_wandb
         self.scripted_agent = scripted_agent
 
@@ -1131,6 +1143,46 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
     # PPO update inner loop
     # ------------------------------------------------------------------
 
+    def _stage_microbatch(self, batch: MicroBatch) -> _StagedMicroBatch:
+        """Pin and enqueue one host micro-batch on the dedicated copy stream."""
+        if self._host_transfer_stream is None:
+            raise RuntimeError("host transfer staging requires a CUDA device")
+        pinned = batch.pin_memory()
+        with torch.cuda.stream(self._host_transfer_stream):
+            device_batch = pinned.to(self.device, non_blocking=True)
+            ready = torch.cuda.Event()
+            ready.record(self._host_transfer_stream)
+        return _StagedMicroBatch(pinned=pinned, device=device_batch, ready=ready)
+
+    def _iter_device_chunks(
+        self,
+        chunks: list[MicroBatch],
+    ) -> Generator[tuple[MicroBatch, MicroBatch]]:
+        """Yield device chunks while prefetching the following host chunk.
+
+        Args:
+            chunks: Micro-batches forming one optimizer minibatch.
+
+        Yields:
+            Source/device pairs. The source supplies shape metadata without a sync.
+        """
+        if self.device.type != "cuda" or chunks[0].actions.device.type != "cpu":
+            for chunk in chunks:
+                yield chunk, chunk.to(self.device)
+            return
+
+        current_stream = torch.cuda.current_stream(self.device)
+        staged = self._stage_microbatch(chunks[0])
+        for index, source in enumerate(chunks):
+            current_stream.wait_event(staged.ready)
+            staged.device.record_stream(current_stream)
+            next_staged = (
+                self._stage_microbatch(chunks[index + 1]) if index + 1 < len(chunks) else None
+            )
+            yield source, staged.device
+            if next_staged is not None:
+                staged = next_staged
+
     @torch.no_grad()
     def _minibatch_denominators(
         self,
@@ -1758,12 +1810,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     ret_agg_mean = _z.clone()
                     ret_agg_sq = _z.clone()
 
-                    for chunk in chunks:
-                        frac = chunk.alive.shape[1] / mb_envs
-                        device_chunk = chunk.to(
-                            self.device,
-                            non_blocking=self.device.type == "cuda",
-                        )
+                    for source_chunk, device_chunk in self._iter_device_chunks(chunks):
+                        frac = source_chunk.alive.shape[1] / mb_envs
                         loss, diag = self._compute_minibatch_loss(
                             device_chunk,
                             is_primary,

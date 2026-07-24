@@ -38,6 +38,34 @@ class MicroBatch(NamedTuple):
     ret_agg: torch.Tensor
     ns_labels: torch.Tensor | None
 
+    def pin_memory(self) -> "MicroBatch":
+        """Copy one CPU micro-batch into page-locked transfer memory.
+
+        Returns:
+            A structurally identical micro-batch backed by pinned CPU tensors.
+
+        Raises:
+            ValueError: If the batch is not CPU-resident.
+        """
+        if self.actions.device.type != "cpu":
+            raise ValueError("pin_memory() requires a CPU micro-batch")
+        obs = MVPObservation(data={key: value.pin_memory() for key, value in self.obs.items()})
+        return MicroBatch(
+            obs=obs,
+            actions=self.actions.pin_memory(),
+            old_logprobs=self.old_logprobs.pin_memory(),
+            advantages=self.advantages.pin_memory(),
+            returns=self.returns.pin_memory(),
+            alive=self.alive.pin_memory(),
+            hidden=self.hidden.pin_memory(),
+            actor_mask=self.actor_mask.pin_memory(),
+            expert_probs=self.expert_probs.pin_memory(),
+            terminated=self.terminated.pin_memory(),
+            adv_agg=self.adv_agg.pin_memory(),
+            ret_agg=self.ret_agg.pin_memory(),
+            ns_labels=self.ns_labels.pin_memory() if self.ns_labels is not None else None,
+        )
+
     def to(self, device: torch.device, non_blocking: bool = False) -> "MicroBatch":
         """Move one micro-batch to the update device.
 
@@ -75,6 +103,18 @@ class MicroBatch(NamedTuple):
                 else None
             ),
         )
+
+    def record_stream(self, stream: torch.cuda.Stream) -> None:
+        """Record a CUDA consumer stream for every tensor in this batch.
+
+        Args:
+            stream: Stream that will consume tensors allocated by a copy stream.
+        """
+        for _, value in self.obs.items():
+            value.record_stream(stream)
+        for value in self[1:]:
+            if isinstance(value, torch.Tensor):
+                value.record_stream(stream)
 
 
 def symlog(x: torch.Tensor) -> torch.Tensor:
@@ -180,7 +220,11 @@ class ReturnScaler:
             returns: (T, B, N, K) bf16-stored — GAE returns in symlog-reward space
                      (upcast to fp32 internally for the percentile reduction).
         """
-        self.update_chunks([returns])
+        K = returns.shape[-1]
+        flat = returns.reshape(-1, K)  # (T*B*N, K)
+        p5 = torch.quantile(flat.float(), 0.05, dim=0)  # (K,)
+        p95 = torch.quantile(flat.float(), 0.95, dim=0)
+        self._update_percentiles(p5, p95)
 
     @torch.no_grad()
     def update_chunks(self, returns_chunks: list[torch.Tensor]) -> None:
@@ -192,12 +236,24 @@ class ReturnScaler:
         if len(returns_chunks) == 0:
             raise ValueError("returns_chunks must contain at least one shard")
         K = returns_chunks[0].shape[-1]
-        flat = torch.cat(
-            [returns.reshape(-1, K).float() for returns in returns_chunks],
-            dim=0,
-        )  # (sum(T*B*N), K)
-        p5 = torch.quantile(flat.float(), 0.05, dim=0)  # (K,)
-        p95 = torch.quantile(flat.float(), 0.95, dim=0)
+        quantiles = torch.tensor(
+            (0.05, 0.95),
+            dtype=torch.float32,
+            device=returns_chunks[0].device,
+        )
+        percentiles = []
+        for component_index in range(K):
+            component_values = torch.cat(
+                [returns[..., component_index].reshape(-1).float() for returns in returns_chunks],
+                dim=0,
+            )  # (sum(T*B*N),)
+            percentiles.append(torch.quantile(component_values, quantiles))
+        percentile_matrix = torch.stack(percentiles, dim=1)  # (2, K)
+        p5, p95 = percentile_matrix[0], percentile_matrix[1]
+        self._update_percentiles(p5, p95)
+
+    def _update_percentiles(self, p5: torch.Tensor, p95: torch.Tensor) -> None:
+        """Apply one observed percentile pair to the running EMA."""
         p5 = p5.to(self._p5.device)
         p95 = p95.to(self._p95.device)
         if not self._initialized:
