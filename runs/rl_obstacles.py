@@ -97,6 +97,7 @@ RL_OBSTACLES_TRAIN_CONFIG = TrainConfig(
     schedule=RL_OBSTACLES_SCHEDULE,
     rewards=OBSTACLES_REWARDS,
     num_steps=128,
+    rollouts_per_update=1,
     num_minibatches=32,
     gamma=0.99,
     gae_lambda=0.95,

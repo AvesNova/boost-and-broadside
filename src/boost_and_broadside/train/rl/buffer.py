@@ -29,7 +29,6 @@ class MicroBatch(NamedTuple):
     old_logprobs: torch.Tensor
     advantages: torch.Tensor
     returns: torch.Tensor
-    values: torch.Tensor
     alive: torch.Tensor
     hidden: torch.Tensor
     actor_mask: torch.Tensor
@@ -38,6 +37,44 @@ class MicroBatch(NamedTuple):
     adv_agg: torch.Tensor
     ret_agg: torch.Tensor
     ns_labels: torch.Tensor | None
+
+    def to(self, device: torch.device, non_blocking: bool = False) -> "MicroBatch":
+        """Move one micro-batch to the update device.
+
+        Args:
+            device: Destination device.
+            non_blocking: Request asynchronous copies when the source supports them.
+
+        Returns:
+            A micro-batch whose tensors reside on ``device``.
+        """
+        if self.actions.device == device:
+            return self
+        obs = MVPObservation(
+            data={
+                key: value.to(device=device, non_blocking=non_blocking)
+                for key, value in self.obs.items()
+            }
+        )
+        return MicroBatch(
+            obs=obs,
+            actions=self.actions.to(device=device, non_blocking=non_blocking),
+            old_logprobs=self.old_logprobs.to(device=device, non_blocking=non_blocking),
+            advantages=self.advantages.to(device=device, non_blocking=non_blocking),
+            returns=self.returns.to(device=device, non_blocking=non_blocking),
+            alive=self.alive.to(device=device, non_blocking=non_blocking),
+            hidden=self.hidden.to(device=device, non_blocking=non_blocking),
+            actor_mask=self.actor_mask.to(device=device, non_blocking=non_blocking),
+            expert_probs=self.expert_probs.to(device=device, non_blocking=non_blocking),
+            terminated=self.terminated.to(device=device, non_blocking=non_blocking),
+            adv_agg=self.adv_agg.to(device=device, non_blocking=non_blocking),
+            ret_agg=self.ret_agg.to(device=device, non_blocking=non_blocking),
+            ns_labels=(
+                self.ns_labels.to(device=device, non_blocking=non_blocking)
+                if self.ns_labels is not None
+                else None
+            ),
+        )
 
 
 def symlog(x: torch.Tensor) -> torch.Tensor:
@@ -143,10 +180,26 @@ class ReturnScaler:
             returns: (T, B, N, K) bf16-stored — GAE returns in symlog-reward space
                      (upcast to fp32 internally for the percentile reduction).
         """
-        T, B, N, K = returns.shape
-        flat = returns.reshape(-1, K)  # (T*B*N, K)
+        self.update_chunks([returns])
+
+    @torch.no_grad()
+    def update_chunks(self, returns_chunks: list[torch.Tensor]) -> None:
+        """Update percentiles from one logical rollout split across host shards.
+
+        Args:
+            returns_chunks: Shards shaped ``(T, B, N, K)`` on a common device.
+        """
+        if len(returns_chunks) == 0:
+            raise ValueError("returns_chunks must contain at least one shard")
+        K = returns_chunks[0].shape[-1]
+        flat = torch.cat(
+            [returns.reshape(-1, K).float() for returns in returns_chunks],
+            dim=0,
+        )  # (sum(T*B*N), K)
         p5 = torch.quantile(flat.float(), 0.05, dim=0)  # (K,)
         p95 = torch.quantile(flat.float(), 0.95, dim=0)
+        p5 = p5.to(self._p5.device)
+        p95 = p95.to(self._p95.device)
         if not self._initialized:
             self._p5 = p5
             self._p95 = p95
@@ -244,12 +297,34 @@ class AdvantageScaler:
                         (upcast to fp32 internally for the RMS reduction).
             alive_mask: (T, B, N) bool — which ships were alive each step.
         """
-        alive_k = alive_mask.float().unsqueeze(-1)  # (T, B, N, 1)
-        mask_sum = alive_mask.float().sum().clamp(min=1.0)
+        self.update_chunks([advantages], [alive_mask])
+
+    @torch.no_grad()
+    def update_chunks(
+        self,
+        advantage_chunks: list[torch.Tensor],
+        alive_chunks: list[torch.Tensor],
+    ) -> None:
+        """Update RMS from one logical rollout split across host shards.
+
+        Args:
+            advantage_chunks: Shards shaped ``(T, B, N, K)``.
+            alive_chunks: Matching alive masks shaped ``(T, B, N)``.
+        """
+        if len(advantage_chunks) == 0 or len(advantage_chunks) != len(alive_chunks):
+            raise ValueError("advantage_chunks and alive_chunks must be non-empty and aligned")
+        K = advantage_chunks[0].shape[-1]
+        square_sum = torch.zeros(K, dtype=torch.float32, device=advantage_chunks[0].device)
+        mask_sum = torch.zeros((), dtype=torch.float32, device=advantage_chunks[0].device)
+        for advantages, alive_mask in zip(advantage_chunks, alive_chunks):
+            alive_k = alive_mask.float().unsqueeze(-1)  # (T, B, N, 1)
+            square_sum += (advantages.float().pow(2) * alive_k).sum((0, 1, 2))
+            mask_sum += alive_mask.float().sum()
+        mask_sum.clamp_(min=1.0)
         # Upcast before squaring/reducing: advantages are bf16-stored, and a bf16
         # sum-of-squares over T*B*N elements would swamp small terms under the total.
-        rms_k = (advantages.float().pow(2) * alive_k).sum((0, 1, 2)) / mask_sum  # (K,)
-        rms_k = rms_k.sqrt().clamp(min=self.min_rms)
+        rms_k = (square_sum / mask_sum).sqrt().clamp(min=self.min_rms)  # (K,)
+        rms_k = rms_k.to(self._rms.device)
         if not self._initialized:
             self._rms = rms_k
             self._initialized = True
@@ -521,7 +596,6 @@ class RolloutBuffer:
                 mb_logprobs:     (T, B_mb, N) float32
                 mb_advantages:   (T, B_mb, N, K) float32
                 mb_returns:      (T, B_mb, N, K) float32
-                mb_values:       (T, B_mb, N, K) float32
                 mb_alive:        (T, B_mb, N) bool
                 mb_hidden:       (n_layers, B_mb*num_tokens, H) float32
                 mb_actor_mask:   (T, B_mb, N) bool
@@ -565,7 +639,6 @@ class RolloutBuffer:
                         old_logprobs=self.logprobs[:, idx],
                         advantages=self.advantages[:, idx],
                         returns=self.returns[:, idx],
-                        values=self.values[:, idx],
                         alive=self.alive_mask[:, idx],
                         hidden=mb_hidden.contiguous(),
                         actor_mask=self.actor_masks[:, idx],
@@ -577,3 +650,193 @@ class RolloutBuffer:
                     )
                 )
             yield chunks
+
+
+class StoredRollout:
+    """One completed rollout shard stored in pageable CPU memory.
+
+    Raw experience is copied here after GPU GAE, allowing the fixed-width device
+    buffer to be reused for another shard collected under the same policy. Derived
+    PPO tensors are filled later after logical-batch scaler statistics are known.
+    """
+
+    def __init__(self, source: RolloutBuffer) -> None:
+        if source.initial_hidden is None:
+            raise ValueError("source rollout has no initial hidden state")
+        self.num_steps = source.num_steps
+        self.num_envs = source.num_envs
+        self.num_ships = source.num_ships
+        self.num_tokens = source.num_tokens
+        self.num_components = source.num_components
+
+        self.obs = {
+            key: value.detach().to(device="cpu", copy=True) for key, value in source.obs.items()
+        }
+        self.actions = source.actions.detach().to(device="cpu", copy=True)
+        self.logprobs = source.logprobs.detach().to(device="cpu", copy=True)
+        self.advantages = source.advantages.detach().to(device="cpu", copy=True)
+        self.returns = source.returns.detach().to(device="cpu", copy=True)
+        self.alive_mask = source.alive_mask.detach().to(device="cpu", copy=True)
+        self.actor_masks = source.actor_masks.detach().to(device="cpu", copy=True)
+        self.expert_probs = source.expert_probs.detach().to(device="cpu", copy=True)
+        self.terminated = source.terminated.detach().to(device="cpu", copy=True)
+        self.initial_hidden = source.initial_hidden.detach().to(device="cpu", copy=True)
+
+        self.adv_agg: torch.Tensor | None = None
+        self.ret_agg: torch.Tensor | None = None
+        self.ns_labels: torch.Tensor | None = None
+
+    def restore_raw(self, destination: RolloutBuffer) -> None:
+        """Restore raw update-live tensors into a reusable device buffer.
+
+        Args:
+            destination: Fixed-width rollout buffer with matching dimensions.
+        """
+        self._validate_destination(destination)
+        for key, value in self.obs.items():
+            destination.obs[key].copy_(value)
+        destination.actions.copy_(self.actions)
+        destination.logprobs.copy_(self.logprobs)
+        destination.advantages.copy_(self.advantages)
+        destination.returns.copy_(self.returns)
+        destination.alive_mask.copy_(self.alive_mask)
+        destination.actor_masks.copy_(self.actor_masks)
+        destination.expert_probs.copy_(self.expert_probs)
+        destination.terminated.copy_(self.terminated)
+        destination.initial_hidden = self.initial_hidden.to(destination.device)
+        destination.ptr = destination.num_steps
+
+    def capture_derived(self, source: RolloutBuffer) -> None:
+        """Copy device-computed update tensors into host storage.
+
+        Args:
+            source: Fixed-width rollout buffer containing derived tensors.
+        """
+        self._validate_destination(source)
+        self.adv_agg = source.adv_agg.detach().to(device="cpu", copy=True)
+        self.ret_agg = source.ret_agg.detach().to(device="cpu", copy=True)
+        self.ns_labels = (
+            source.ns_labels.detach().to(device="cpu", copy=True)
+            if source.ns_labels is not None
+            else None
+        )
+
+    def get_minibatch_iterator(
+        self,
+        num_minibatches: int,
+        microbatch_tokens: int | None = None,
+    ) -> Generator[list[MicroBatch]]:
+        """Yield CPU micro-batches for one PPO epoch.
+
+        Args:
+            num_minibatches: Number of optimizer minibatches per epoch.
+            microbatch_tokens: Maximum entity tokens per backward pass.
+
+        Yields:
+            Lists of CPU micro-batches whose gradients form one optimizer step.
+        """
+        if self.adv_agg is None or self.ret_agg is None:
+            raise RuntimeError("capture_derived() must run before minibatch iteration")
+
+        envs_per_batch = self.num_envs // num_minibatches
+        env_order = np.random.permutation(self.num_envs)
+        tokens_per_env = self.num_steps * self.num_tokens
+        n_micro = 1
+        if microbatch_tokens is not None:
+            n_micro = -(-envs_per_batch * tokens_per_env // microbatch_tokens)
+            n_micro = min(max(n_micro, 1), envs_per_batch)
+
+        n_layers = self.initial_hidden.shape[0]
+        hidden_width = self.initial_hidden.shape[-1]
+        hidden_full = self.initial_hidden.reshape(
+            n_layers,
+            self.num_envs,
+            self.num_tokens,
+            hidden_width,
+        )
+
+        for start in range(0, self.num_envs, envs_per_batch):
+            chunks = []
+            for indices in np.array_split(env_order[start : start + envs_per_batch], n_micro):
+                obs = MVPObservation(
+                    data={key: value[:, indices] for key, value in self.obs.items()}
+                )
+                hidden = hidden_full[:, indices].reshape(
+                    n_layers,
+                    len(indices) * self.num_tokens,
+                    hidden_width,
+                )
+                chunks.append(
+                    MicroBatch(
+                        obs=obs,
+                        actions=self.actions[:, indices],
+                        old_logprobs=self.logprobs[:, indices],
+                        advantages=self.advantages[:, indices],
+                        returns=self.returns[:, indices],
+                        alive=self.alive_mask[:, indices],
+                        hidden=hidden.contiguous(),
+                        actor_mask=self.actor_masks[:, indices],
+                        expert_probs=self.expert_probs[:, indices],
+                        terminated=self.terminated[:, indices],
+                        adv_agg=self.adv_agg[:, indices],
+                        ret_agg=self.ret_agg[:, indices],
+                        ns_labels=(
+                            self.ns_labels[:, indices] if self.ns_labels is not None else None
+                        ),
+                    )
+                )
+            yield chunks
+
+    def _validate_destination(self, destination: RolloutBuffer) -> None:
+        expected = (
+            self.num_steps,
+            self.num_envs,
+            self.num_ships,
+            self.num_tokens,
+            self.num_components,
+        )
+        actual = (
+            destination.num_steps,
+            destination.num_envs,
+            destination.num_ships,
+            destination.num_tokens,
+            destination.num_components,
+        )
+        if actual != expected:
+            raise ValueError(f"rollout buffer shape mismatch: expected {expected}, got {actual}")
+
+
+class LogicalRolloutBuffer:
+    """Host-backed logical PPO batch composed of fixed-width rollout shards."""
+
+    def __init__(self, shards: list[StoredRollout], adv_rms: torch.Tensor) -> None:
+        if len(shards) == 0:
+            raise ValueError("shards must contain at least one stored rollout")
+        first = shards[0]
+        if any(shard.num_envs != first.num_envs for shard in shards):
+            raise ValueError("all logical rollout shards must have the same width")
+        self.shards = shards
+        self.num_steps = first.num_steps
+        self.num_envs = sum(shard.num_envs for shard in shards)
+        self.num_ships = first.num_ships
+        self.num_tokens = first.num_tokens
+        self.num_components = first.num_components
+        self.adv_rms = adv_rms
+
+    def get_minibatch_iterator(
+        self,
+        num_minibatches: int,
+        microbatch_tokens: int | None = None,
+    ) -> Generator[list[MicroBatch]]:
+        """Yield aligned minibatches from every host shard.
+
+        Each shard is shuffled independently. Corresponding shard minibatches are
+        combined into one optimizer step, producing the same loss normalization as
+        a single larger environment batch.
+        """
+        iterators = [
+            shard.get_minibatch_iterator(num_minibatches, microbatch_tokens)
+            for shard in self.shards
+        ]
+        for shard_batches in zip(*iterators, strict=True):
+            yield [chunk for shard_batch in shard_batches for chunk in shard_batch]

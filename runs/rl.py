@@ -28,7 +28,8 @@ from boost_and_broadside.config import (
 from boost_and_broadside.config.schedule import exponential, join
 from runs.shared import COMPONENT_GAMMAS, COMPONENT_LAMBDAS, ELO_EVAL, REWARDS
 
-_MAX_TOKENS = 6_000_000
+_MAX_TOKENS = 12_000_000
+_ROLLOUT_TOKENS = 6_000_000
 _NUM_SHIPS = 8
 _NUM_OBSTACLES = 0
 _NUM_STEPS = 128
@@ -36,7 +37,8 @@ _NUM_MINIBATCHES = 32
 # // 5: split each minibatch into 5 gradient-accumulation micro-batches — the
 # headroom needed to fit this scale's attention activations in VRAM on the target GPU.
 # Memory-only knob (see TrainConfig.microbatch_tokens); retune the divisor per GPU.
-_MICROBATCH_TOKENS = _MAX_TOKENS // _NUM_MINIBATCHES // 5
+_MICROBATCH_TOKENS = _ROLLOUT_TOKENS // _NUM_MINIBATCHES // 5
+_ROLLOUTS_PER_UPDATE = _MAX_TOKENS // _ROLLOUT_TOKENS
 
 RL_SCHEDULE = TrainingSchedule(
     learning_rate=join(
@@ -76,7 +78,7 @@ RL_TRAIN_CONFIG = TrainConfig(
                 max_bullets=20,
                 max_episode_steps=1024,
             ),
-            num_envs=_MAX_TOKENS
+            num_envs=_ROLLOUT_TOKENS
             // (_NUM_SHIPS + _NUM_OBSTACLES)
             // _NUM_STEPS
             // _NUM_MINIBATCHES
@@ -86,6 +88,7 @@ RL_TRAIN_CONFIG = TrainConfig(
     schedule=RL_SCHEDULE,
     rewards=REWARDS,
     num_steps=_NUM_STEPS,
+    rollouts_per_update=_ROLLOUTS_PER_UPDATE,
     num_minibatches=_NUM_MINIBATCHES,
     microbatch_tokens=_MICROBATCH_TOKENS,
     next_state_coef=0.2,
