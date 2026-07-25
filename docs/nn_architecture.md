@@ -5,33 +5,34 @@ Every shape, layer, activation, mask and parameter count below is read directly 
 implementation (`src/boost_and_broadside/models/mvp/`, `train/rl/features.py`,
 `train/rl/ppo.py`) and the shipped run profile (`runs/shared.py`, `runs/rl.py`).
 
+**Scope:** this document describes the combat configuration (`runs/rl.py`) — 8 ships, no
+obstacles, 11 active reward components. The codebase also supports obstacle entities (extra
+tokens that attend and carry recurrent state but get no heads) and 10 further reward components
+that are weight-zero here; both are omitted throughout.
+
 ---
 
 ## 1. One-paragraph summary
 
-`MVPPolicy` is a recurrent, entity-centric actor–critic. Every ship and every obstacle in an
-environment is encoded as one token. A shared trunk of **Yemong blocks** alternates *spatial*
-processing (multi-head self-attention across the entities of a single timestep) with *temporal*
-processing (a Griffin RG-LRU linear recurrence run independently per entity across time). The
-trunk is fully shared: one network produces the behaviour of every ship. Obstacle tokens
-participate in attention and carry recurrent state but are sliced away before the output heads.
-Four heads read the ship tokens: a factored categorical **action head**, an auxiliary
-**next-state prediction head** (self-supervised dynamics signal), a **per-component value head**
-(one scalar per reward component), and a **team-pooled value path** (pooling-by-multi-head-
-attention over each team's alive ships) that supplies the win/loss value components with global
-team context.
+`MVPPolicy` is a recurrent, entity-centric actor–critic. Every ship in an environment is encoded
+as one token. A shared trunk of **Yemong blocks** alternates *spatial* processing (multi-head
+self-attention across the ships of a single timestep) with *temporal* processing (a Griffin
+RG-LRU linear recurrence run independently per ship across time). The trunk is fully shared: one
+network produces the behaviour of every ship. Four heads read the ship tokens: a factored
+categorical **action head**, an auxiliary **next-state prediction head** (self-supervised
+dynamics signal), a **per-component value head** (one scalar per reward component), and a
+**team-pooled value path** (pooling-by-multi-head-attention over each team's alive ships) that
+supplies the two win/loss value components with global team context.
 
 ---
 
 ## 2. Symbols and concrete values
 
-| Symbol | Meaning | Value in the shipped RL profile |
+| Symbol | Meaning | Value |
 |---|---|---|
-| `B` | parallel environments | 5856 per rollout (≈6 M tokens per update ÷ `N+M` ÷ `T`, rounded to a multiple of the 32 minibatches → 183 envs per minibatch) |
+| `B` | parallel environments | 5856 per rollout (≈6 M tokens per update ÷ `N` ÷ `T`, rounded to a multiple of the 32 minibatches → 183 envs per minibatch) |
 | `T` | rollout length (timesteps per PPO update segment) | 128 |
-| `N` | ships per environment (both teams combined) | 8 |
-| `M` | obstacles per environment | 0 in `runs/rl.py`, 8 in `runs/rl_obstacles.py` |
-| `N+M` | entity tokens per environment per timestep | 8 (combat) / 16 (obstacle run) |
+| `N` | ships per environment (both teams combined) | **8** |
 | `D` = `d_model` | token embedding width | **128** |
 | `H` = `n_heads` | attention heads | **4** (head dim 32) |
 | `L` = `n_transformer_blocks` | number of Yemong blocks | **2** |
@@ -50,7 +51,7 @@ Total trainable parameters: **1,340,578 (≈ 1.34 M)**.
 ## 3. Top-level dataflow
 
 ```
-                    MVPObservation  (per entity: pos, vel, att, ang_vel,
+                    MVPObservation  (per ship: pos, vel, att, ang_vel,
                                      health, power, cooldown, team_id,
                                      alive, radius, previous_action)
                              │
@@ -58,24 +59,22 @@ Total trainable parameters: **1,340,578 (≈ 1.34 M)**.
                     │ FeatureCoordinator│   14 features → encode → concat
                     │   (non-learned)   │
                     └────────┬─────────┘
-                             │  (B, N+M, 58)
+                             │  (B, N, 58)
                     ┌────────▼─────────┐
-                    │   ShipEncoder    │   2-layer MLP, shared by ships & obstacles
+                    │   ShipEncoder    │   2-layer MLP, shared by all ships
                     └────────┬─────────┘
-                             │  (B, N+M, 128)   ← "entity tokens"
+                             │  (B, N, 128)   ← "ship tokens"
               ┌──────────────▼──────────────┐
               │      YemongBlock  × 2       │  ← recurrent state in/out
               │  ┌───────────────────────┐  │
-              │  │ TransformerBlock      │  │  spatial: entities ↔ entities,
+              │  │ TransformerBlock      │  │  spatial: ships ↔ ships,
               │  │   (MHSA + GatedMLP)   │  │  within one timestep
               │  ├───────────────────────┤  │
-              │  │ GriffinTemporalBlock  │  │  temporal: per entity, across time
+              │  │ GriffinTemporalBlock  │  │  temporal: per ship, across time
               │  │   (conv + RG-LRU +    │  │
               │  │    GatedMLP)          │  │
               │  └───────────────────────┘  │
               └──────────────┬──────────────┘
-                             │  (B, N+M, 128)
-                     slice [:, :N, :]         ← obstacles dropped here
                              │  (B, N, 128)  = x_ships
         ┌────────────────────┼────────────────────┬────────────────────┐
         │                    │                    │                    │
@@ -89,8 +88,8 @@ Total trainable parameters: **1,340,578 (≈ 1.34 M)**.
         │                    │                    │            └───────┬────────┘
         │                    │                    │                    │ (B,N,2)
         │                    │                    └────── merge ───────┘
-        │                    │                             │  indices 0,1 of K
-        │                    │                             │  come from the win path
+        │                    │                             │  components 0,1 come
+        │                    │                             │  from the win path
    factored                 aux                        (B, N, 11)
    Categorical            MSE loss                  per-component value
    (power|turn|shoot)                               (normalized space)
@@ -101,7 +100,7 @@ Total trainable parameters: **1,340,578 (≈ 1.34 M)**.
 ## 4. Stage 1 — Observation → feature vector (`FeatureCoordinator`, not learned)
 
 This stage is a fixed, hand-designed encoding, not a learned layer. It runs identically for
-every entity token. Each `Feature` = (accessor → input encoder), and predicted features
+every ship token. Each `Feature` = (accessor → input encoder), and predicted features
 additionally carry (target encoder → predictor) used only for the auxiliary loss.
 
 | # | Feature | Raw channels | Input encoding | Enc. dims | Predicted? | Prediction type | Pred. dims | `label_scale` |
@@ -114,7 +113,7 @@ additionally carry (target encoder → predictor) used only for the auxiliary lo
 | 6 | `health` | health | `UnitCircle(max_health=100)` → quarter-wave (sin, cos) | 2 | ✓ | phase delta | 1 | 36.0 |
 | 7 | `power` | power | `UnitCircle(max_power=100)` | 2 | ✓ | phase delta | 1 | 93.0 |
 | 8 | `cooldown` | cooldown | `UnitCircle(firing_cooldown=0.1)` | 2 | ✓ | phase delta | 1 | 2.1 |
-| 9 | `team_id` | team_id | `OneHot(3)` — team 0 / team 1 / obstacle | 3 | — | — | — | — |
+| 9 | `team_id` | team_id | `OneHot(3)` | 3 | — | — | — | — |
 | 10 | `alive` | alive | identity | 1 | — | — | — | — |
 | 11 | `prev_power` | previous_action[0] | `OneHot(3)` | 3 | — | — | — | — |
 | 12 | `prev_turn` | previous_action[1] | `OneHot(7)` | 7 | — | — | — | — |
@@ -128,18 +127,19 @@ Notes worth showing in a figure:
   i.e. `2n` dims per scalar channel — an octave-spaced positional encoding whose lowest
   frequency wraps exactly with the toroidal world.
 - Positions are absolute world coordinates, **not** ego-relative. There is no positional
-  encoding on the attention: the model is permutation-equivariant over entity slots, and all
+  encoding on the attention: the model is permutation-equivariant over ship slots, and all
   spatial information enters through these features.
-- Obstacles use the same 58-dim layout: `team_id = 2`, `alive = True` always, `health` set to
-  max, `power`/`cooldown`/`ang_vel` zero, `attitude` = velocity direction, `radius` = the
-  obstacle's actual radius (ships use the constant collision radius 10).
 - `symlog(x) = sign(x)·log(1+|x|)`.
+- Two features are constant in this configuration and could be drawn greyed: `radius` (all ships
+  share `collision_radius = 10`), and the third slot of the `team_id` one-hot (reserved for
+  obstacle tokens, which this configuration has none of). They still occupy their dims in the
+  58-wide input.
 
 ---
 
-## 5. Stage 2 — `ShipEncoder` (learned, shared across all entities)
+## 5. Stage 2 — `ShipEncoder` (learned, shared across all ships)
 
-Applied independently to every token; the leading `(…, N+M)` dims are treated as batch.
+Applied independently to every token; the leading `(…, N)` dims are treated as batch.
 
 ```
 (…, 58)
@@ -151,8 +151,8 @@ Applied independently to every token; the leading `(…, N+M)` dims are treated 
 (…, 128)
 ```
 
-Parameters: **48,384**. One encoder instance; ships and obstacles share weights (distinguished
-only by their feature content, chiefly the `team_id` one-hot and `radius`).
+Parameters: **48,384**. One encoder instance, shared by every ship on both teams; ships are
+distinguished only by their feature content.
 
 ---
 
@@ -162,7 +162,7 @@ Each block is `TransformerBlock` (spatial) followed by `GriffinTemporalBlock` (t
 Both are pre-norm with residual connections. Blocks are stacked; each block owns an independent
 slice of the recurrent state.
 
-### 6a. `TransformerBlock` — spatial (entities ↔ entities, within one timestep)
+### 6a. `TransformerBlock` — spatial (ships ↔ ships, within one timestep)
 
 ```
 x  ─┬────────────────────────────────────────────────► (+) ─┬──────────────────────────► (+) ──► out
@@ -172,12 +172,12 @@ x  ─┬───────────────────────�
                   alive mask (keys)
 ```
 
-- `qkv`: `Linear(128 → 384, bias=False)`, split into Q, K, V; reshaped to `(B, 4, N+M, 32)`.
+- `qkv`: `Linear(128 → 384, bias=False)`, split into Q, K, V; reshaped to `(B, 4, N, 32)`.
 - Attention: `F.scaled_dot_product_attention`, no dropout, no causal mask — **full attention
-  over the `N+M` entities of one timestep**.
-- **Alive masking:** an additive bias `(1 − alive) · (−large)` of shape `(B, 1, 1, N+M)` is
+  over the `N` ships of one timestep**.
+- **Alive masking:** an additive bias `(1 − alive) · (−large)` of shape `(B, 1, 1, N)` is
   applied to the *key* axis. Dead ships cannot emit information; they still form queries
-  (their outputs are simply masked out of the losses). Obstacles are always alive.
+  (their outputs are simply masked out of the losses).
 - `out_proj`: `Linear(128 → 128, bias=False)`.
 - `GatedMLP` (SwiGLU-shaped, GELU gate, 4× expansion, all bias-free):
   `down_proj( GELU(gate_proj(x)) ⊙ up_proj(x) )` with `gate_proj, up_proj: 128 → 512`,
@@ -185,10 +185,10 @@ x  ─┬───────────────────────�
 
 Parameters per block: **262,400**.
 
-### 6b. `GriffinTemporalBlock` — temporal (per entity, across time)
+### 6b. `GriffinTemporalBlock` — temporal (per ship, across time)
 
-Runs with the entity axis folded into the batch: batch = `B·(N+M)`, sequence = `T`.
-There is **no** mixing between entities here.
+Runs with the ship axis folded into the batch: batch = `B·N`, sequence = `T`.
+There is **no** mixing between ships here.
 
 ```
 x_seq ─┬──────────────────────────────────────────────────────► (+) ─┬────────────────────► (+) ──► out
@@ -235,38 +235,27 @@ Parameters per block: **279,808**.
 One tensor carries everything the trunk needs between steps:
 
 ```
-hidden : (L, B·(N+M), CONV_KERNEL · D) = (2, B·(N+M), 512)   float32
+hidden : (L, B·N, CONV_KERNEL · D) = (2, B·N, 512)   float32
 
    hidden[l, :,   0:128]  → RG-LRU state h for layer l
    hidden[l, :, 128:512]  → causal-conv buffer: last 3 Linear1 outputs, flattened (3 × 128)
 ```
 
-Every entity token — ships **and** obstacles — carries its own recurrent state.
+Every ship token carries its own independent recurrent state.
+
+Ship slots carry no team structure: the two teams are assigned to slots by an independent random
+permutation per environment on every reset, so the only team signal the network sees is the
+`team_id` one-hot inside each token.
 
 ---
 
-## 7. Stage 4 — token slicing
-
-```
-x        : (B, N+M, 128)     trunk output
-x_ships  = x[:, :N, :]       (B, N, 128)      ← everything downstream uses only this
-```
-
-Token order is fixed: indices `0 … N−1` are ships, indices `N … N+M−1` are obstacles.
-Within the ship range the two teams are assigned to slots by an independent random permutation
-per environment on every reset, so slot index carries no team information — the only team signal
-the network sees is the `team_id` one-hot inside each token. Obstacles receive **no** action,
-value, or prediction head.
-
----
-
-## 8. Stage 5 — Output heads
+## 7. Stage 4 — Output heads
 
 All four heads share the same 2-layer MLP shape: `Linear(128 → 256) → RMSNorm(256) → GELU →
 Linear(256 → out)`, both Linears with bias. Initialisation is standard PPO orthogonal: first
 Linear gain `√2`, last Linear gain `0.01`, biases zero.
 
-### 8a. ActionHead → `(B, N, 12)`
+### 7a. ActionHead → `(B, N, 12)`
 
 Output is **three concatenated categorical logit blocks**, not one 12-way softmax:
 
@@ -280,7 +269,7 @@ Each block is an independent `Categorical`; the sampled action is the triple
 `(power, turn, shoot)` and the joint log-prob / entropy are the **sums** over the three
 sub-distributions. Effective joint action space: 3 × 7 × 2 = 42, factored into 12 logits.
 
-### 8b. NextStateHead → `(B, N, 9)` — auxiliary, training-only
+### 7b. NextStateHead → `(B, N, 9)` — auxiliary, training-only
 
 `Linear(128 → 256) → RMSNorm → GELU → Linear(256 → 9)`. Predicts the next-step change of the
 ship's own physical state, in a scaled space (targets are multiplied by `label_scale` so all
@@ -298,36 +287,50 @@ the reconstructed state stays on the unit circle by construction and toroidal po
 exact. This head is a dense dynamics-learning signal (a world-model-style auxiliary task); it
 does not feed back into the policy at inference and is not used to act.
 
-### 8c. ValueHead — local path → `(B, N, 11)`
+### 7c. The two value paths
 
-`Linear(128 → 256) → RMSNorm → GELU → Linear(256 → K=11)`. One scalar per active reward
-component, read straight from the ship's own token. Outputs live in a *normalized* space
-maintained by `ReturnScaler` (per-component EMA of the 5th/95th percentiles of returns in
-symlog-reward space, mapping returns to roughly `[−1, 1]`), so a single MSE with uniform
-weighting is well-conditioned across components whose natural scales differ by orders of
-magnitude.
+The critic is decomposed: one scalar per reward component, `K = 11` outputs total. **Nine
+components are read from the ship's own token; two are read from a team-pooled embedding.**
 
-The 11 active components, in value-head output order:
+| Value path | Components | Why |
+|---|---|---|
+| **`value_head_local`** — per-ship token | `facing`, `closing_speed`, `shoot_quality`, `kill_shot`, `kill_assist`, `damage_taken`, `damage_dealt_enemy`, `damage_dealt_ally`, `death` | Self-only signals: each is scored from this ship's own perspective and never propagates to teammates, so the ship's own embedding carries everything the estimate needs. |
+| **TeamPMA → `value_head_win`** — per-team pooled embedding | `ally_win`, `enemy_win` | Whether a team wins is a property of the whole team's state, not of one ship. Pooling gives these two heads global team context. |
 
-| k | Component | Aggregation | γ | λ |
-|---|---|---|---|---|
-| 0 | `ally_win` | team (TeamPMA path) | 0.999 | 0.97 |
-| 1 | `enemy_win` | team, λ = −1 for enemies (TeamPMA path) | 0.999 | 0.97 |
-| 2 | `facing` | local (self-only) | 0.975 | 0.80 |
-| 3 | `closing_speed` | local | 0.975 | 0.80 |
-| 4 | `shoot_quality` | local | 0.975 | 0.80 |
-| 5 | `kill_shot` | local | 0.995 | 0.87 |
-| 6 | `kill_assist` | local | 0.995 | 0.97 |
-| 7 | `damage_taken` | local | 0.991 | 0.90 |
-| 8 | `damage_dealt_enemy` | local | 0.991 | 0.90 |
-| 9 | `damage_dealt_ally` | local | 0.991 | 0.90 |
-| 10 | `death` | local | 0.995 | 0.95 |
+`value_head_local` is `Linear(128 → 256) → RMSNorm → GELU → Linear(256 → 11)` — it emits all 11
+outputs, but the two win components are then **overridden** by the win path (at update time the
+merge is a `cat` of slices so both paths receive gradients; at rollout time it is an in-place
+write under `no_grad`).
 
-(The registry in `rewards.py` has 21 components; the 10 with weight 0 in the shipped profile —
-the `ally_*`/`enemy_*` damage and death pairs, the four obstacle penalties, `shooting_penalty`,
-`speed` — are dropped before the model is built, so `K` is 11 here. `K` is profile-dependent.)
+Full active component table, in value-head output order:
 
-### 8d. TeamPMA + win/loss ValueHead → overrides `k = 0, 1`
+| k | Component | Value path | Reward aggregation | γ | λ |
+|---|---|---|---|---|---|
+| 0 | `ally_win` | **TeamPMA** | team-aggregated | 0.999 | 0.97 |
+| 1 | `enemy_win` | **TeamPMA** | team-aggregated, λ = −1 for enemies (zero-sum) | 0.999 | 0.97 |
+| 2 | `facing` | local | self-only (diagonal λ) | 0.975 | 0.80 |
+| 3 | `closing_speed` | local | self-only | 0.975 | 0.80 |
+| 4 | `shoot_quality` | local | self-only | 0.975 | 0.80 |
+| 5 | `kill_shot` | local | self-only | 0.995 | 0.87 |
+| 6 | `kill_assist` | local | self-only | 0.995 | 0.97 |
+| 7 | `damage_taken` | local | self-only | 0.991 | 0.90 |
+| 8 | `damage_dealt_enemy` | local | self-only | 0.991 | 0.90 |
+| 9 | `damage_dealt_ally` | local | self-only | 0.991 | 0.90 |
+| 10 | `death` | local | self-only | 0.995 | 0.95 |
+
+> **Two independent mechanisms that coincide here.** *Value-path routing* is selected by
+> `team_pma_k`, which matches exactly the component names `ally_win` / `enemy_win`. *Reward
+> aggregation* is selected by `_GROUP` in `ppo.py`, where `local_scale` components get a diagonal
+> self-only lambda and everything else aggregates across the team. In this active set the two
+> partitions land on the same split, so the table's two middle columns agree — but they are not
+> the same switch, and they separate as soon as a non-win team-aggregated component is enabled.
+
+All value outputs live in a *normalized* space maintained by `ReturnScaler` (per-component EMA of
+the 5th/95th percentiles of returns in symlog-reward space, mapping returns to roughly
+`[−1, 1]`), so a single MSE with uniform weighting is well-conditioned across components whose
+natural scales differ by orders of magnitude.
+
+### 7d. TeamPMA
 
 Pooling by Multi-head Attention, giving the win/loss critic global team context that a single
 ship's token cannot carry.
@@ -343,18 +346,16 @@ for each team t ∈ {0, 1}:
     pool_t = RMSNorm(out_t)
 ```
 
-The two pooled team embeddings are then **gathered back per ship** (`team_pool[team_id(ship)]`,
-team id clamped to 0/1), restoring a `(B, N, 128)` tensor, and passed through a dedicated
-`ValueHead(128 → 256 → K_win=2)`. Its two outputs replace the local head's outputs at indices
-0 and 1. All other components keep the local per-ship estimate. Both paths receive gradients
-(at update time the merge is a `cat` of slices, not an in-place write).
+The two pooled team embeddings are then **gathered back per ship** (`team_pool[team_id(ship)]`),
+restoring a `(B, N, 128)` tensor, and passed through the dedicated
+`ValueHead(128 → 256 → K_win = 2)`. The attention `in_proj` is orthogonal-initialised with gain
+`√2`, `out_proj` with gain 1.0.
 
-TeamPMA is only instantiated when `team_pma_k` is non-empty; the attention `in_proj` is
-orthogonal-initialised with gain `√2`, `out_proj` with gain 1.0.
+This is the only place the network aggregates across ships *after* the trunk.
 
 ---
 
-## 9. Parameter budget
+## 8. Parameter budget
 
 | Module | Params | Share |
 |---|---:|---:|
@@ -383,35 +384,37 @@ Per-Yemong-block breakdown (×2 in the shipped config):
 | temporal RMSNorms (×2) | 256 |
 | **block total** | **542,208** |
 
+The trunk is **81 %** of all parameters; the four heads together are 11 %.
+
 ---
 
-## 10. Two execution modes (same weights, same math)
+## 9. Two execution modes (same weights, same math)
 
 The figure benefits from showing these as two "reading modes" of the same trunk.
 
 **A. Rollout / inference — `get_action_and_value`, `T = 1`, `torch.no_grad`**
 
 ```
-obs (B, N+M, …) + hidden (2, B·(N+M), 512)
+obs (B, N, …) + hidden (2, B·N, 512)
   → encoder → for each Yemong layer: layer.step(...)
-  → spatial attention over (B, N+M, D)
+  → spatial attention over (B, N, D)
   → temporal recurrence advanced by exactly one step (conv buffer supplies the
     previous 3 inputs, RG-LRU advanced once)
-  → slice ships → sample action, read value + pred_next
+  → sample action, read value + pred_next
   → new hidden
 ```
 
 **B. PPO update / re-evaluation — `evaluate_actions`, full `T = 128`**
 
 ```
-obs (T, B, N+M, …) + initial_hidden (2, B·(N+M), 512)
-  → encoder over all T·B·(N+M) tokens in parallel
+obs (T, B, N, …) + initial_hidden (2, B·N, 512)
+  → encoder over all T·B·N tokens in parallel
   → per Yemong layer:
-        spatial: fold T into batch → attention over (T·B, N+M, D), all timesteps at once
-        temporal: fold B·(N+M) into batch → RG-LRU over T via a Hillis–Steele
+        spatial: fold T into batch → attention over (T·B, N, D), all timesteps at once
+        temporal: fold B·N into batch → RG-LRU over T via a Hillis–Steele
                   parallel scan (log₂T rounds of the associative operator
                   (a₂,b₂)∘(a₁,b₁) = (a₂a₁, a₂b₁+b₂)), plus done-mask resets
-  → slice ships → logprob, entropy, values, logits, pred_next
+  → logprob, entropy, values, logits, pred_next
 ```
 
 The parallel scan is mathematically identical to the sequential recurrence; it exists only to
@@ -427,7 +430,7 @@ carries its own hidden state.
 
 ---
 
-## 11. What trains what (loss → head arrows)
+## 10. What trains what (loss → head arrows)
 
 Total loss, per PPO minibatch, all terms masked to alive ships:
 
@@ -438,18 +441,16 @@ L = pg_coef · L_PPO-clip
   + bc_coef  · L_BC
   + ns_coef  · L_next_state
   + win_coef · L_windowed
-  ( + sigreg_coef · L_SIGReg  — 0.0 in every shipped profile )
 ```
 
 | Loss | Reads | Detail |
 |---|---|---|
-| `L_PPO-clip` | ActionHead logits | Clipped surrogate, `clip_coef = 0.15`, advantages normalised by an RMS estimate; advantages come from per-component GAE combined through a **lambda aggregation matrix** (teammates/enemies see each other's global components; local components use a diagonal, self-only lambda). |
+| `L_PPO-clip` | ActionHead logits | Clipped surrogate, `clip_coef = 0.15`, advantages normalised by an RMS estimate; advantages come from per-component GAE combined through a **lambda aggregation matrix** (the win pair propagates across the team; the nine local components use a diagonal, self-only lambda). |
 | `L_entropy` | ActionHead logits | Sum of the three sub-action entropies; coefficient 0.005. |
 | `L_BC` | ActionHead logits | Cross-entropy against the stochastic scripted agent's action distribution, per sub-action block. Schedule-gated: decays to zero as the policy's win rate against the scripted agent reaches `bc_winrate_target = 0.45`. Logged alongside the scripted agent's own entropy so `CE − H` reads as a KL. |
 | `L_value` | ValueHead (local + win paths) | MSE against `ReturnScaler`-normalized per-component returns, averaged over alive ships and over `K`. |
 | `L_next_state` | NextStateHead | Per-step weighted MSE against `label_scale`-scaled labels, masked to alive & non-terminal steps. `next_state_coef = 0.2`. |
-| `L_windowed` | NextStateHead | Triangle-kernel (window 32) convolution of the per-step errors of `position_x`, `position_y`, `velocity` along time, squared. Amplifies systematic drift (∝ window²) relative to per-step noise (∝ window) — catches bias that teacher-forced per-step MSE cannot see. `windowed_loss_coef = 0.1` (default; not overridden in `runs/rl.py`). |
-| `L_SIGReg` | encoder output `z` | Optional embedding regulariser on the raw encoder output, 64 random projections. Disabled (`sigreg_coef = 0.0`) in every profile — safe to omit from the figure or show greyed. |
+| `L_windowed` | NextStateHead | Triangle-kernel (window 32) convolution of the per-step errors of `position_x`, `position_y`, `velocity` along time, squared. Amplifies systematic drift (∝ window²) relative to per-step noise (∝ window) — catches bias that teacher-forced per-step MSE cannot see. `windowed_loss_coef = 0.1`. |
 
 Training runs under `torch.autocast(bfloat16)`; gradients are clipped at global norm 1.0 with
 Adam (`eps = 1e-5`), 4 epochs per update, 32 minibatches, each split into 5 gradient-
@@ -457,30 +458,29 @@ accumulation micro-batches.
 
 ---
 
-## 12. Notes for the figure
+## 11. Notes for the figure
 
 Things that are architecturally load-bearing and worth making visually explicit:
 
-1. **Two axes of mixing.** Spatial = across entities within a timestep (attention). Temporal =
-   across time within an entity (RG-LRU). They never mix in the same operator; the Yemong block
+1. **Two axes of mixing.** Spatial = across ships within a timestep (attention). Temporal =
+   across time within a ship (RG-LRU). They never mix in the same operator; the Yemong block
    is exactly the alternation of the two. Consider drawing the trunk as a 2-D grid of tokens
-   (entities × time) with horizontal arrows for attention and vertical arrows for recurrence.
+   (ships × time) with horizontal arrows for attention and vertical arrows for recurrence.
 2. **One shared network, many ships.** There is no per-agent network. The batch axis is
-   `environments × entities`; ship identity exists only in the features.
-3. **Obstacles enter and leave.** They are encoded, attended to, and carry recurrent state, but
-   are sliced off before all heads. A dashed token colour that stops at the slice line reads well.
-4. **Two value paths.** The local path is per-ship; the win/loss path detours through TeamPMA
-   and rejoins as components 0 and 1. This is the only place the network aggregates across ships
-   *after* the trunk.
-5. **Masking legend.** Three distinct masks appear: (a) `alive` as an attention key mask in the
+   `environments × ships`; ship identity exists only in the features.
+3. **Two value paths.** The local path is per-ship and serves 9 of 11 components; the win/loss
+   path detours through TeamPMA and rejoins as components 0 and 1. This is the only place the
+   network aggregates across ships after the trunk, and the contrast is the most conceptually
+   interesting part of the head block.
+4. **Masking legend.** Three distinct masks appear: (a) `alive` as an attention key mask in the
    spatial block, (b) `alive & team` as the TeamPMA key-padding mask, (c) `alive & non-terminal`
    as the loss mask. Worth a small legend rather than three separate annotations.
-6. **Auxiliary vs. control.** ActionHead is the only head used at inference. Value and
+5. **Auxiliary vs. control.** ActionHead is the only head used at inference. Value and
    NextState heads are training-only; consider a lighter weight or dashed border for those two
    plus TeamPMA/win-value.
-7. **Recurrent state is a single packed tensor** — RG-LRU state and conv buffer side by side,
-   `(2, B·(N+M), 512)`. Showing the packing explicitly explains why rollout and update agree.
-8. **Suggested block colours:** non-learned preprocessing (FeatureCoordinator) in a neutral
+6. **Recurrent state is a single packed tensor** — RG-LRU state and conv buffer side by side,
+   `(2, B·N, 512)`. Showing the packing explicitly explains why rollout and update agree.
+7. **Suggested block colours:** non-learned preprocessing (FeatureCoordinator) in a neutral
    grey; shared trunk (encoder + Yemong) in the primary colour; heads in a secondary colour;
    training-only paths desaturated. Shape annotations on every arrow — the shapes are the most
    information-dense part of this architecture.
