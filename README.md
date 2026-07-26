@@ -235,12 +235,11 @@ uv run --no-sync scripts/render_charts.py            # -> docs/results/*.png
 
 ### Skill over training
 
-The headline is ELO against a fixed random anchor. The **calibrated** curve is each
+The headline is ELO against a fixed random anchor. This is the **calibrated** curve: each
 update's live policy re-rated post-hoc against opponents whose ratings a full tournament
-has pinned down (`--mode elo_calibrate`), which recovers what the policy was actually
-worth free of the in-training rating filter's drift — it clears the scripted agent by
-~800 ELO and lands well above the in-training estimate. Points are the frozen ladder
-checkpoints; the dashed rule is the scripted agent, the one opponent shared across runs.
+has pinned down (`--mode elo_calibrate`), recovering what the policy was actually worth
+free of the in-training rating filter's drift. It reaches ~2050 — roughly 800 ELO clear of
+the scripted agent.
 
 ![Calibrated ELO over training](docs/results/elo_curve.png)
 
@@ -255,10 +254,10 @@ self-play beyond anything the scripted opponent can measure.
 The critic's aggregate explained variance, the mean episode reward, and the PPO
 diagnostics (update KL and clip fraction) over the run:
 
-![Critic explained variance](docs/results/explained_variance.png)
-![Mean episode reward](docs/results/reward.png)
-![Policy update KL divergence](docs/results/kl.png)
-![PPO clip fraction](docs/results/clip_fraction.png)
+| | |
+|:---:|:---:|
+| ![Critic explained variance](docs/results/explained_variance.png) | ![Mean episode reward](docs/results/reward.png) |
+| ![Policy update KL divergence](docs/results/kl.png) | ![PPO clip fraction](docs/results/clip_fraction.png) |
 
 ### Next-state prediction
 
