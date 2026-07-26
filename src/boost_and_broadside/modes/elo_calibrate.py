@@ -763,6 +763,14 @@ def run_elo_calibrate_mode(
     output.write_text(json.dumps(result, indent=2))
     progress.done(f"wrote {output}")
 
+    # Also leave the calibrated ratings in the W&B export format, so the same
+    # loader and chart system can read them alongside the run's in-training
+    # history without reshaping either.
+    from boost_and_broadside.modes.elo_calibrate_history import write_chart_data
+
+    for path in write_chart_data(result, run_dir):
+        progress.done(f"wrote {path}")
+
     _print_summary(result)
     if plot:
         from boost_and_broadside.modes.elo_calibrate_plots import write_plots
