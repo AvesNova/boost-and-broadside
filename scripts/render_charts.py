@@ -45,12 +45,19 @@ def render(run: str, out_dir: Path) -> list[Path]:
 
     wandb_rows = history.load_history(wandb_dir / "history.jsonl")
     calib_rows = history.load_history(calib_dir / "history.jsonl")
+    calib_summary = history.load_summary(calib_dir / "summary.json")
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # The scripted agent — the one opponent shared across runs — is a landmark for
+    # reading where the policy actually got to.
+    scripted = calib_summary.get("elo/scripted")
+    elo_landmarks = [("scripted agent", float(scripted))] if history._finite(scripted) else None
 
     written = [
         charts.trend(
             [_line(calib_rows, "ladder/elo/live", "ELO")], out_dir / "elo_curve.png",
             title="Calibrated ELO over training", ylabel="ELO vs random anchor",
+            reference_lines=elo_landmarks,
         ),
         charts.trend(
             [_line(wandb_rows, "overview/reward_mean", "reward")], out_dir / "reward.png",

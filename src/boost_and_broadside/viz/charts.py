@@ -37,6 +37,7 @@ def trend(
     ylabel: str,
     log_y: bool = False,
     percent: bool = False,
+    reference_lines: list[tuple[str, float]] | None = None,
     size: tuple[float, float] = (10.0, 5.8),
 ) -> Path:
     """A metric (or a few) over training.
@@ -45,10 +46,15 @@ def trend(
     names it. Several lines take the categorical palette in fixed order and are
     direct-labelled at their right ends, which carries identity without a legend
     box and satisfies the relief rule for the low-contrast slots.
+
+    ``reference_lines`` are landmark values — a fixed opponent's rating, a target
+    — drawn as recessive dashed rules behind the data.
     """
     figure = style.new_figure(size)
     axes = figure.add_subplot(111)
     style.style_axes(axes, title, subtitle)
+    if reference_lines:
+        style.draw_reference_lines(axes, reference_lines)
 
     multi = len(lines) > 1
     ends: list[tuple[float, float, str, str]] = []
