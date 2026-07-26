@@ -254,10 +254,7 @@ self-play beyond anything the scripted opponent can measure.
 The critic's aggregate explained variance, the mean episode reward, and the PPO
 diagnostics (update KL and clip fraction) over the run:
 
-| | |
-|:---:|:---:|
-| ![Critic explained variance](docs/results/explained_variance.png) | ![Mean episode reward](docs/results/reward.png) |
-| ![Policy update KL divergence](docs/results/kl.png) | ![PPO clip fraction](docs/results/clip_fraction.png) |
+![Training health diagnostics](docs/results/training_health.png)
 
 ### Next-state prediction
 

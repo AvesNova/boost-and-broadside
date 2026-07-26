@@ -125,9 +125,15 @@ def draw_reference_lines(axes, lines: list[tuple[str, float]]) -> None:
         )
 
 
-def save(figure, path: Path) -> Path:
-    """Tighten and write a figure to disk on the paper surface."""
-    figure.tight_layout()
+def save(figure, path: Path, tight: bool = True) -> Path:
+    """Write a figure to disk on the paper surface.
+
+    ``tight`` runs ``tight_layout`` for a single-panel figure; a multi-panel grid
+    that manages its own spacing (e.g. via a constrained layout) passes
+    ``tight=False`` so the two do not fight.
+    """
+    if tight:
+        figure.tight_layout()
     figure.savefig(path, facecolor=SURFACE, bbox_inches="tight")
     plt.close(figure)
     return path

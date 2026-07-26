@@ -1,13 +1,14 @@
 """Figure builders that turn W&B-format history into paper-quality plots.
 
-One builder covers the README's needs: ``trend`` plots any metric over training —
-a single series in the accent hue (the emphasis form, no legend, the title names
-it) or several in the categorical palette with direct-labelled ends. It reads the
-arrays produced by ``viz.history`` and paints with ``viz.style``, so the
-in-training and calibrated sources are drawn by the very same code.
+``trend`` plots one metric over training as a standalone figure; ``grid`` packs
+several such panels into one figure (a 2xN quad). Both share ``_draw_panel`` — the
+same per-axes drawing — so a metric looks identical whether it stands alone or
+sits in a grid. They read the arrays from ``viz.history`` and paint with
+``viz.style``, so in-training and calibrated sources are drawn by the same code.
 """
 
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -28,30 +29,37 @@ class Line:
     label: str
 
 
-def trend(
+@dataclass
+class Panel:
+    """One metric's worth of a grid: its lines and how to scale/label them."""
+
+    lines: list[Line]
+    title: str
+    ylabel: str
+    log_y: bool = False
+    percent: bool = False
+    reference_lines: list[tuple[str, float]] = field(default_factory=list)
+
+
+def _draw_panel(
+    axes,
     lines: list[Line],
-    out: Path,
     *,
     title: str,
-    subtitle: str = "",
     ylabel: str,
+    subtitle: str = "",
     log_y: bool = False,
     percent: bool = False,
     reference_lines: list[tuple[str, float]] | None = None,
-    size: tuple[float, float] = (10.0, 5.8),
-) -> Path:
-    """A metric (or a few) over training.
+    xlabel: bool = True,
+) -> list[tuple[float, float, str, str]]:
+    """Draw one metric onto ``axes``; return its right-end label entries.
 
-    A single line is the emphasis form — the accent hue, no legend, the title
-    names it. Several lines take the categorical palette in fixed order and are
-    direct-labelled at their right ends, which carries identity without a legend
-    box and satisfies the relief rule for the low-contrast slots.
-
-    ``reference_lines`` are landmark values — a fixed opponent's rating, a target
-    — drawn as recessive dashed rules behind the data.
+    A single line is the emphasis form (the accent hue). Several take the
+    categorical palette in fixed order and are direct-labelled at their ends —
+    the caller places those labels after a draw, once the scale is final. Landmark
+    ``reference_lines`` sit behind the data as recessive dashed rules.
     """
-    figure = style.new_figure(size)
-    axes = figure.add_subplot(111)
     style.style_axes(axes, title, subtitle)
     if reference_lines:
         style.draw_reference_lines(axes, reference_lines)
@@ -68,17 +76,77 @@ def trend(
             ends.append((x[-1], float(line.y[-1]), color, line.label))
 
     axes.set_ylabel(ylabel, color=style.INK_SECONDARY, fontsize=10)
-    axes.set_xlabel(_X_LABEL, color=style.INK_SECONDARY, fontsize=10)
+    if xlabel:
+        axes.set_xlabel(_X_LABEL, color=style.INK_SECONDARY, fontsize=10)
     if percent:
         axes.yaxis.set_major_formatter(PercentFormatter(xmax=1.0))
     if log_y:
         axes.set_yscale("log")
     axes.margins(x=0.14 if multi else 0.02)
+    return ends
 
-    # Place the direct labels last, and only after a draw has settled the scale
-    # and limits — label_series_ends maps data to axes-fraction, which is wrong
-    # if the y-scale (e.g. log) or the autoscaled limits are not yet final.
-    if multi:
+
+def trend(
+    lines: list[Line],
+    out: Path,
+    *,
+    title: str,
+    subtitle: str = "",
+    ylabel: str,
+    log_y: bool = False,
+    percent: bool = False,
+    reference_lines: list[tuple[str, float]] | None = None,
+    size: tuple[float, float] = (10.0, 5.8),
+) -> Path:
+    """One metric over training as a standalone figure."""
+    figure = style.new_figure(size)
+    axes = figure.add_subplot(111)
+    ends = _draw_panel(
+        axes, lines, title=title, subtitle=subtitle, ylabel=ylabel,
+        log_y=log_y, percent=percent, reference_lines=reference_lines,
+    )
+    # Place direct labels last, after a draw settles the scale and limits —
+    # label_series_ends maps data to axes-fraction, wrong if the y-scale (log) or
+    # autoscaled limits are not yet final.
+    if ends:
         figure.canvas.draw()
         style.label_series_ends(axes, ends)
     return style.save(figure, out)
+
+
+def grid(
+    panels: list[Panel],
+    out: Path,
+    *,
+    ncols: int = 2,
+    size: tuple[float, float] = (12.0, 8.4),
+) -> Path:
+    """Several metrics as panels in one figure — a 2xN quad.
+
+    Each panel is drawn by the same ``_draw_panel`` a standalone ``trend`` uses,
+    so a metric reads the same either way. Only the bottom row carries the shared
+    x-axis label, keeping the interior uncluttered.
+    """
+    nrows = math.ceil(len(panels) / ncols)
+    figure = style.new_figure(size)
+    # A constrained layout spaces the panels (titles, ticks, labels) without the
+    # tight_layout/annotation conflict; save() then skips tight_layout.
+    figure.set_layout_engine("constrained")
+    spec = figure.add_gridspec(nrows, ncols)
+
+    deferred: list[tuple] = []
+    for index, panel in enumerate(panels):
+        axes = figure.add_subplot(spec[divmod(index, ncols)])
+        on_bottom_row = index >= len(panels) - ncols
+        ends = _draw_panel(
+            axes, panel.lines, title=panel.title, ylabel=panel.ylabel,
+            log_y=panel.log_y, percent=panel.percent,
+            reference_lines=panel.reference_lines, xlabel=on_bottom_row,
+        )
+        if ends:
+            deferred.append((axes, ends))
+
+    figure.canvas.draw()  # settle every panel's scale/limits before labelling
+    for axes, ends in deferred:
+        style.label_series_ends(axes, ends)
+    return style.save(figure, out, tight=False)

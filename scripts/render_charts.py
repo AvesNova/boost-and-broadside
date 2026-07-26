@@ -13,7 +13,7 @@ import argparse
 from pathlib import Path
 
 from boost_and_broadside.viz import charts, history
-from boost_and_broadside.viz.charts import Line
+from boost_and_broadside.viz.charts import Line, Panel
 
 DEFAULT_RUN = "resilient-resonance-682"
 
@@ -60,26 +60,22 @@ def render(run: str, out_dir: Path) -> list[Path]:
             reference_lines=elo_landmarks,
         ),
         charts.trend(
-            [_line(wandb_rows, "overview/reward_mean", "reward")], out_dir / "reward.png",
-            title="Mean episode reward", ylabel="reward",
-        ),
-        charts.trend(
             [_line(wandb_rows, "overview/win_rate_vs_scripted", "vs scripted")],
             out_dir / "win_rate_vs_scripted.png",
             title="Win rate vs the scripted agent", ylabel="win rate", percent=True,
         ),
-        charts.trend(
-            [_line(wandb_rows, "overview/explained_variance", "EV")],
-            out_dir / "explained_variance.png",
-            title="Critic explained variance", ylabel="explained variance",
-        ),
-        charts.trend(
-            [_line(wandb_rows, "overview/kl", "KL")], out_dir / "kl.png",
-            title="Policy update KL divergence", ylabel="KL divergence",
-        ),
-        charts.trend(
-            [_line(wandb_rows, "overview/clip_fraction", "clip")], out_dir / "clip_fraction.png",
-            title="PPO clip fraction", ylabel="clip fraction", percent=True,
+        charts.grid(
+            [
+                Panel([_line(wandb_rows, "overview/explained_variance", "EV")],
+                      title="Critic explained variance", ylabel="explained variance"),
+                Panel([_line(wandb_rows, "overview/reward_mean", "reward")],
+                      title="Mean episode reward", ylabel="reward"),
+                Panel([_line(wandb_rows, "overview/kl", "KL")],
+                      title="Policy update KL divergence", ylabel="KL divergence"),
+                Panel([_line(wandb_rows, "overview/clip_fraction", "clip")],
+                      title="PPO clip fraction", ylabel="clip fraction", percent=True),
+            ],
+            out_dir / "training_health.png",
         ),
         charts.trend(
             [Line(*history.combine_series(wandb_rows, keys), label=label)
