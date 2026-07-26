@@ -3,7 +3,9 @@
 best_model/
 logs/
 __pycache__/
-checkpoints/
+checkpoints/*
+# Landmark runs (baselines future work forks from) are kept in-repo via git-lfs.
+!checkpoints/resilient-resonance-682/
 *.zip
 *.log
 data/

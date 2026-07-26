@@ -1,0 +1,139 @@
+{
+  "entries": [
+    {
+      "kind": "random",
+      "label": "random",
+      "elo": 0.0,
+      "global_step": 0,
+      "update": 0,
+      "path": null,
+      "fixed": true
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_14991360",
+      "elo": 485.84750080466154,
+      "global_step": 14991360,
+      "update": 15,
+      "path": "checkpoints/resilient-resonance-682/ladder_step_000014991360.pt",
+      "fixed": true
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_21987328",
+      "elo": 621.9866974827597,
+      "global_step": 21987328,
+      "update": 22,
+      "path": "checkpoints/resilient-resonance-682/ladder_step_000021987328.pt",
+      "fixed": true
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_28983296",
+      "elo": 650.4894993507961,
+      "global_step": 28983296,
+      "update": 29,
+      "path": "checkpoints/resilient-resonance-682/ladder_step_000028983296.pt",
+      "fixed": true
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_36978688",
+      "elo": 639.1787293610302,
+      "global_step": 36978688,
+      "update": 37,
+      "path": "checkpoints/resilient-resonance-682/ladder_step_000036978688.pt",
+      "fixed": true
+    },
+    {
+      "kind": "avg",
+      "label": "avg",
+      "elo": 730.9146785790335,
+      "global_step": 41975808,
+      "update": 0,
+      "path": null,
+      "fixed": false
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_49971200",
+      "elo": 796.0864524896639,
+      "global_step": 49971200,
+      "update": 50,
+      "path": "checkpoints/resilient-resonance-682/ladder_step_000049971200.pt",
+      "fixed": true
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_70959104",
+      "elo": 908.3582317954164,
+      "global_step": 70959104,
+      "update": 71,
+      "path": "checkpoints/resilient-resonance-682/ladder_step_000070959104.pt",
+      "fixed": true
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_87949312",
+      "elo": 1019.2118678115312,
+      "global_step": 87949312,
+      "update": 88,
+      "path": "checkpoints/resilient-resonance-682/ladder_step_000087949312.pt",
+      "fixed": true
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_102940672",
+      "elo": 1063.8939396643382,
+      "global_step": 102940672,
+      "update": 103,
+      "path": "checkpoints/resilient-resonance-682/ladder_step_000102940672.pt",
+      "fixed": true
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_155910144",
+      "elo": 1198.595190813629,
+      "global_step": 155910144,
+      "update": 156,
+      "path": "checkpoints/resilient-resonance-682/ladder_step_000155910144.pt",
+      "fixed": true
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_206880768",
+      "elo": 1297.2308256295908,
+      "global_step": 206880768,
+      "update": 207,
+      "path": "checkpoints/resilient-resonance-682/ladder_step_000206880768.pt",
+      "fixed": true
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_272842752",
+      "elo": 1368.7851509499787,
+      "global_step": 272842752,
+      "update": 273,
+      "path": "checkpoints/resilient-resonance-682/ladder_step_000272842752.pt",
+      "fixed": true
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_416759808",
+      "elo": 1476.8494026844273,
+      "global_step": 416759808,
+      "update": 417,
+      "path": "checkpoints/resilient-resonance-682/ladder_step_000416759808.pt",
+      "fixed": true
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_876494848",
+      "elo": 1550.7800895832308,
+      "global_step": 876494848,
+      "update": 877,
+      "path": "checkpoints/resilient-resonance-682/ladder_step_000876494848.pt",
+      "fixed": false
+    }
+  ]
+}

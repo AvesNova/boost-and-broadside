@@ -7,6 +7,13 @@ observation/prediction feature pipeline.
 
 ## Quick Start
 
+This repo stores landmark-run checkpoints via [git-lfs](https://git-lfs.com). Install it
+**once** before cloning so `*.pt` files come down as real weights instead of pointer stubs:
+
+```bash
+git lfs install   # then: git clone …  (already-cloned repos: git lfs pull)
+```
+
 ```bash
 uv sync
 
@@ -244,6 +251,11 @@ Saved to `checkpoints/<run-name>/` on a scheduled interval: rolling `step_<N>.pt
 `--resume` needs), `recent_avg.pt` (the average policy), and best-model snapshots. ELO
 milestone checkpoints are registered in the league roster, with roster metadata persisted
 alongside as JSON. Saves run asynchronously off the training loop.
+
+Working runs are gitignored. **Landmark runs** — baselines that future work forks from — are
+kept in-repo: un-ignored in `.gitignore`, `.pt` files tracked by git-lfs, plus a
+`wandb_export/` archive (config, summary, sampled metric history, run files) produced by
+`scripts/export_wandb_run.py`. The current baseline is `resilient-resonance-682`.
 
 ## Logging
 

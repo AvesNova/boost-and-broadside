@@ -1,0 +1,290 @@
+_wandb:
+    value:
+        cli_version: 0.25.1
+        e:
+            9qz61mgyflmnguda3tyeef2got9ubtdj:
+                args:
+                    - --mode
+                    - rl
+                    - --compile
+                    - max-autotune
+                codePath: main.py
+                codePathLocal: main.py
+                cpu_count: 16
+                cpu_count_logical: 32
+                cudaVersion: "13.0"
+                disk:
+                    /:
+                        total: "32212254720"
+                        used: "16924672"
+                email: julianzia@gmail.com
+                executable: /workspace/boost-and-broadside/.venv/bin/python3
+                git:
+                    commit: b4883769ca49bb60e818986586db5673a4bf83c1
+                    remote: https://github.com/AvesNova/boost-and-broadside
+                gpu: NVIDIA GeForce RTX 5090
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Blackwell
+                      cudaCores: 21760
+                      memoryTotal: "34190917632"
+                      name: NVIDIA GeForce RTX 5090
+                      uuid: GPU-26eaec73-3c16-0043-ad5f-f5a213ab5137
+                host: 7f6dcaeb6d43
+                memory:
+                    total: "200081207296"
+                os: Linux-6.8.0-124-generic-x86_64-with-glibc2.39
+                program: /workspace/boost-and-broadside/main.py
+                python: CPython 3.13.8
+                root: /workspace/boost-and-broadside
+                startedAt: "2026-07-22T17:44:03.090614Z"
+                writerId: 9qz61mgyflmnguda3tyeef2got9ubtdj
+        m: []
+        python_version: 3.13.8
+        t:
+            "1":
+                - 1
+            "2":
+                - 1
+            "3":
+                - 2
+                - 16
+                - 61
+            "4": 3.13.8
+            "5": 0.25.1
+            "12": 0.25.1
+            "13": linux-x86_64
+env/max_bullets:
+    value: 20
+env/max_episode_steps:
+    value: 1024
+env/num_obstacles:
+    value: 0
+env/num_ships:
+    value: 8
+env/single_team:
+    value: false
+model/d_model:
+    value: 128
+model/n_heads:
+    value: 4
+model/n_transformer_blocks:
+    value: 2
+ship/base_thrust:
+    value: 8
+ship/boost_thrust:
+    value: 80
+ship/bullet_collision_radius:
+    value: 10
+ship/bullet_damage:
+    value: 10
+ship/bullet_energy_cost:
+    value: 2
+ship/bullet_lifetime:
+    value: 1
+ship/bullet_min_damage_frac:
+    value: 1
+ship/bullet_speed:
+    value: 500
+ship/bullet_spread:
+    value: 12
+ship/collision_radius:
+    value: 10
+ship/default_speed:
+    value: 100
+ship/dt:
+    value: 0.016666666666666666
+ship/firing_cooldown:
+    value: 0.1
+ship/gravity_eps:
+    value: 10000
+ship/gravity_factor:
+    value: 0
+ship/max_health:
+    value: 100
+ship/max_power:
+    value: 100
+ship/max_speed:
+    value: 180
+ship/min_speed:
+    value: 1
+ship/no_turn_drag_coeff:
+    value: 0.0008
+ship/normal_turn_angle:
+    value: 0.08726646259971647
+ship/normal_turn_drag_coeff:
+    value: 0.0012
+ship/normal_turn_lift_coeff:
+    value: 0.015
+ship/obstacle_collision_radius:
+    value: 3
+ship/obstacle_gravity_harmonic:
+    value: 0.2
+ship/obstacle_radius_max:
+    value: 40
+ship/obstacle_radius_min:
+    value: 5
+ship/passive_power_gain:
+    value: 10
+ship/power_speed_constant:
+    value: 200
+ship/random_speed:
+    value: false
+ship/reverse_thrust:
+    value: -80
+ship/sharp_turn_angle:
+    value: 0.2617993877991494
+ship/sharp_turn_drag_coeff:
+    value: 0.005
+ship/sharp_turn_lift_coeff:
+    value: 0.027
+ship/world_size:
+    value:
+        - 1024
+        - 1024
+train/bc_winrate_target:
+    value: 0.45
+train/checkpoint_dir:
+    value: checkpoints
+train/clip_coef:
+    value: 0.15
+train/component_gammas:
+    value:
+        ally_damage: 0.991
+        ally_death: 0.995
+        ally_win: 0.999
+        closing_speed: 0.975
+        damage_dealt_ally: 0.991
+        damage_dealt_enemy: 0.991
+        damage_taken: 0.991
+        death: 0.995
+        enemy_damage: 0.991
+        enemy_death: 0.995
+        enemy_win: 0.999
+        facing: 0.975
+        kill_assist: 0.995
+        kill_shot: 0.995
+        obstacle_closing_speed: 0.975
+        obstacle_death: 0.995
+        obstacle_proximity: 0.975
+        obstacle_tti: 0.975
+        shoot_quality: 0.975
+        shooting_penalty: 0.975
+        speed: 0.975
+train/component_lambdas:
+    value:
+        ally_damage: 0.9
+        ally_death: 0.95
+        ally_win: 0.97
+        closing_speed: 0.8
+        damage_dealt_ally: 0.9
+        damage_dealt_enemy: 0.9
+        damage_taken: 0.9
+        death: 0.95
+        enemy_damage: 0.9
+        enemy_death: 0.95
+        enemy_win: 0.97
+        facing: 0.8
+        kill_assist: 0.97
+        kill_shot: 0.87
+        obstacle_closing_speed: 0.8
+        obstacle_death: 0.95
+        obstacle_proximity: 0.8
+        obstacle_tti: 0.8
+        shoot_quality: 0.8
+        shooting_penalty: 0.8
+        speed: 0.8
+train/elo_eval:
+    value:
+        envs_per_matchup: 512
+        k_factor: 4
+        min_games_to_freeze: 1000
+        scripted_elo_init: 1000
+        step_interval: 1
+        window_size: 100
+train/elo_milestone_gap:
+    value: 100
+train/elo_temperature:
+    value: 200
+train/gae_lambda:
+    value: 0.95
+train/gamma:
+    value: 0.99
+train/histogram_interval:
+    value: 10
+train/league_size:
+    value: 20
+train/league_uniform_sampling:
+    value: false
+train/log_interval:
+    value: 10
+train/max_grad_norm:
+    value: 1
+train/microbatch_tokens:
+    value: 250000
+train/next_state_coef:
+    value: 0.2
+train/num_minibatches:
+    value: 32
+train/num_steps:
+    value: 128
+train/obstacle_cache:
+    value:
+        cache_size: 512
+        max_steps: 6000
+        num_cache_envs: 4096
+train/paradigm:
+    value: ego_pass
+train/return_ema_alpha:
+    value: 0.005
+train/return_min_span:
+    value: 1
+train/rewards:
+    value:
+        ally_damage_weight: 0
+        ally_death_weight: 0
+        ally_win_weight: 4
+        ally_zero_components:
+            - enemy_damage
+            - enemy_death
+            - enemy_win
+        closing_speed_weight: 0.1
+        damage_dealt_ally_weight: 0.5
+        damage_dealt_enemy_weight: 0.5
+        damage_taken_weight: 0.5
+        death_weight: 1
+        enemy_damage_weight: 0
+        enemy_death_weight: 0
+        enemy_neg_lambda_components:
+            - enemy_damage
+            - enemy_death
+            - enemy_win
+        enemy_win_weight: 4
+        facing_weight: 0.1
+        kill_assist_weight: 1
+        kill_shot_weight: 1
+        obstacle_closing_speed_weight: 0
+        obstacle_death_weight: 0
+        obstacle_proximity_radius: 80
+        obstacle_proximity_weight: 0
+        obstacle_tti_max: 3
+        obstacle_tti_weight: 0
+        proximity_radius: 400
+        shoot_quality_radius: 200
+        shoot_quality_weight: 0.1
+        shooting_penalty_weight: 0
+        speed_penalty_min: 10
+        speed_weight: 0
+train/scales:
+    value:
+        - env_config:
+            max_bullets: 20
+            max_episode_steps: 1024
+            num_obstacles: 0
+            num_ships: 8
+            single_team: false
+          num_envs: 7808
+train/total_timesteps:
+    value: 1000000000
+train/windowed_loss_coef:
+    value: 0.1
