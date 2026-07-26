@@ -88,19 +88,23 @@ def label_series_ends(axes, entries: list[tuple[float, float, str, str]]) -> Non
     """Direct-label each series past its right end, nudging apart any collisions.
 
     Curves that converge would otherwise stack their labels and render both
-    unreadable. Call after all series are drawn so the y-limits are settled.
-    Each entry is (x, y, colour, text).
+    unreadable. The de-collision runs in axes-fraction space, so it spaces labels
+    by how far apart they *look* — which stays correct on a log axis, where equal
+    pixel gaps span very different data distances. Call after all series are drawn
+    so the limits are settled. Each entry is (x, y, colour, text).
     """
     if not entries:
         return
-    low, high = axes.get_ylim()
-    minimum = 0.042 * (high - low or 1.0)
+    to_fraction = (axes.transData + axes.transAxes.inverted()).transform
+    converted = [(x, *to_fraction((x, y)), color, text) for x, y, color, text in entries]
+    minimum = 0.034  # a labelline-height gap, in fraction of the panel
     placed: list[float] = []
-    for x, y, color, text in sorted(entries, key=lambda entry: entry[1]):
-        target = y if not placed else max(y, placed[-1] + minimum)
+    for x, _fx, fy, color, text in sorted(converted, key=lambda entry: entry[2]):
+        target = fy if not placed else max(fy, placed[-1] + minimum)
         placed.append(target)
         axes.annotate(
-            text, (x, target), xytext=(7, 0), textcoords="offset points",
+            text, (x, target), xycoords=("data", "axes fraction"),
+            xytext=(7, 0), textcoords="offset points",
             color=color, fontsize=9.5, va="center", fontweight="medium",
         )
 
