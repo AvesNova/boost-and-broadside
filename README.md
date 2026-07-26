@@ -221,6 +221,54 @@ the information that matchup provides about the current rating. ELO updates run 
 off the win/loss results; the resulting rating also gates schedule features (BC-loss
 decay, avg-model accumulation, tighter KL threshold at high ELO).
 
+## Results
+
+Figures below are for the current landmark run, `resilient-resonance-682` — a
+1B-environment-step run. They are rendered by `scripts/render_charts.py` from a single
+W&B-export-format source (`checkpoints/<run>/wandb_export/` for the in-training history,
+`checkpoints/<run>/elo_calibration/` for the post-hoc calibrated ELO), so both curves are
+read and drawn by the same code. Re-render any time with:
+
+```bash
+uv run --no-sync scripts/render_charts.py            # -> docs/results/*.png
+```
+
+### Skill over training
+
+The headline is ELO against a fixed random anchor. The **calibrated** curve is each
+update's live policy re-rated post-hoc against opponents whose ratings a full tournament
+has pinned down (`--mode elo_calibrate`), which recovers what the policy was actually
+worth free of the in-training rating filter's drift — it clears the scripted agent by
+~800 ELO and lands well above the in-training estimate. Points are the frozen ladder
+checkpoints; the dashed rule is the scripted agent, the one opponent shared across runs.
+
+![Calibrated ELO over training](docs/results/elo_curve.png)
+
+Win rate against the scripted agent saturates near 100% within the first ~200M steps,
+long before the ELO curve stops climbing — evidence that most of the run's improvement is
+self-play beyond anything the scripted opponent can measure.
+
+![Win rate vs the scripted agent](docs/results/win_rate_vs_scripted.png)
+
+### Training health
+
+The critic's aggregate explained variance, the mean episode reward, and the PPO
+diagnostics (update KL and clip fraction) over the run:
+
+![Critic explained variance](docs/results/explained_variance.png)
+![Mean episode reward](docs/results/reward.png)
+![Policy update KL divergence](docs/results/kl.png)
+![PPO clip fraction](docs/results/clip_fraction.png)
+
+### Next-state prediction
+
+The auxiliary next-state head's normalised prediction error per state dimension (symmetric
+x/y channels averaged), on a log scale. Most dimensions fall two to three orders of
+magnitude as the model learns the dynamics; `health` stays high, as damage events are
+sparse and hard to anticipate step-to-step.
+
+![Next-state prediction error by dimension](docs/results/next_state_error.png)
+
 ## Configuration
 
 All hyperparameters live in `runs/`. Shared constants (`MODEL_CONFIG`, `REWARDS`,

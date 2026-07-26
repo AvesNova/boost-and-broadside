@@ -24,6 +24,9 @@ Writes to the run's checkpoint directory:
                              win/tie matrices, so any later refit needs no replay
     elo_calibration/*.png    live curve vs in-training, the two draw conventions,
                              per-checkpoint ratings, convergence, and draw rates
+    elo_calibration/         the calibrated ratings in the W&B export format
+      history.jsonl,           (see modes/elo_calibrate_history.py), so one loader
+      summary.json             reads them alongside the run's in-training history
 """
 
 import json
