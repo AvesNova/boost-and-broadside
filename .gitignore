@@ -19,3 +19,4 @@ wandb/
 /tmp/
 .env
 .claude/settings.local.json
+gameplay_clips/

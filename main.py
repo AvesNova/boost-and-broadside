@@ -31,6 +31,15 @@ Evaluation:
         writes checkpoints/<run>/elo_calibrated.json and elo_calibration/*.png
     uv run --no-sync main.py --mode ar_report                   # autoregressive prediction report
     uv run --no-sync main.py --mode noise_calibration           # NextStateHead error statistics
+    uv run --no-sync main.py --mode crossover                   # scripted count to beat T trained
+    uv run --no-sync main.py --mode crossover --trained-counts 4,8 --eval-envs 512
+        writes docs/crossover/crossover.json and prints a crossover table
+
+Gameplay video (headless mp4 capture of a run's final checkpoint):
+    uv run --no-sync main.py --mode capture                     # 682, self + vs_scripted, seeds 0-7
+    uv run --no-sync main.py --mode capture --run latest --scenarios self --seeds 0-15
+    uv run --no-sync main.py --mode capture --scenarios self --sizes 1v1 4v4 16v16 64v64
+        writes <out>/<scenario>_<AvA>_seed<NN>.mp4 (default out: gameplay_clips/)
 
 Agent specs (--team0 / --team1):
     null        human keyboard (watch only)
@@ -58,7 +67,9 @@ from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import EnvConfig, TrainConfig
 from boost_and_broadside.modes.ar_report import run_ar_report_mode
+from boost_and_broadside.modes.capture import run_capture_mode
 from boost_and_broadside.modes.collect import run_collect_stats_mode
+from boost_and_broadside.modes.crossover import parse_counts, run_crossover_mode
 from boost_and_broadside.modes.elo_calibrate import run_elo_calibrate_mode
 from boost_and_broadside.modes.elo_stats import run_elo_stats_mode
 from boost_and_broadside.modes.feature_stats import run_feature_stats_mode
@@ -92,6 +103,8 @@ def _parse_args() -> argparse.Namespace:
             "elo_calibrate",
             "ar_report",
             "noise_calibration",
+            "capture",
+            "crossover",
         ],
         default="rl",
         help=(
@@ -221,6 +234,72 @@ def _parse_args() -> argparse.Namespace:
         nargs="+",
         default=None,
         help="List of specific agents to evaluate. Overrides default agent discovery in elo_stats.",
+    )
+    parser.add_argument(
+        "--scenarios",
+        nargs="+",
+        default=["self", "vs_scripted"],
+        help="(capture) Match scenarios to record: 'self' (final policy vs itself) and/or "
+        "'vs_scripted' (final policy vs the scripted agent).",
+    )
+    parser.add_argument(
+        "--seeds",
+        type=str,
+        default="0-7",
+        help="(capture) Seeds to record, as a range '0-7' or a list '0,3,9'. One clip per "
+        "scenario per size per seed.",
+    )
+    parser.add_argument(
+        "--sizes",
+        nargs="+",
+        default=None,
+        help="(capture) Team sizes to record zero-shot, e.g. 1v1 2v2 4v4 8v8 16v16 32v32 64v64. "
+        "Omit to use the run's native training size.",
+    )
+    parser.add_argument(
+        "--trained-counts",
+        type=str,
+        default="1,2,4,8,16,32,64",
+        help="(crossover) Trained-team sizes to sweep: a list '1,2,4' or ranges '1-64' (mixable). "
+        "Swept ascending so each size warm-starts from the previous crossover.",
+    )
+    parser.add_argument(
+        "--eval-envs",
+        type=int,
+        default=256,
+        help="(crossover) Parallel games per matchup used to estimate each win rate.",
+    )
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=Path("gameplay_clips"),
+        help="(capture) Output directory for the mp4 clips.",
+    )
+    parser.add_argument(
+        "--fps",
+        type=int,
+        default=60,
+        help="(capture) Playback frame rate of the recorded clips.",
+    )
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=1024,
+        help="(capture) Match length before it's called a tie (steps at 60Hz ≈ seconds×60); "
+        "most matches end far sooner when a team is eliminated.",
+    )
+    parser.add_argument(
+        "--hold-ms",
+        type=int,
+        default=1500,
+        help="(capture) Keep playing this many ms after the outcome is decided so the winner "
+        "is clear before the clip ends.",
+    )
+    parser.add_argument(
+        "--gif",
+        action="store_true",
+        default=False,
+        help="(capture) Also write a downscaled .gif beside each .mp4.",
     )
     return parser.parse_args()
 
@@ -512,6 +591,34 @@ def main() -> None:
                 device=device,
                 checkpoint_dir="checkpoints",
                 output_dir="docs/noise_calibration",
+            )
+
+        case "capture":
+            run_capture_mode(
+                run_spec=args.run if args.run != "none" else "resilient-resonance-682",
+                scenarios=args.scenarios,
+                seeds=args.seeds,
+                ship_config=SHIP_CONFIG,
+                model_config=MODEL_CONFIG,
+                device=device,
+                checkpoint_dir="checkpoints",
+                out_dir=args.out,
+                sizes=args.sizes,
+                fps=args.fps,
+                max_steps=args.max_steps,
+                hold_ms=args.hold_ms,
+                gif=args.gif,
+            )
+
+        case "crossover":
+            run_crossover_mode(
+                run_spec=args.run if args.run != "none" else "resilient-resonance-682",
+                trained_counts=parse_counts(args.trained_counts),
+                ship_config=SHIP_CONFIG,
+                model_config=MODEL_CONFIG,
+                device=device,
+                checkpoint_dir="checkpoints",
+                num_envs=args.eval_envs,
             )
 
 
