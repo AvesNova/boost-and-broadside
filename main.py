@@ -32,6 +32,11 @@ Evaluation:
     uv run --no-sync main.py --mode ar_report                   # autoregressive prediction report
     uv run --no-sync main.py --mode noise_calibration           # NextStateHead error statistics
 
+Gameplay video (headless mp4 capture of a run's final checkpoint):
+    uv run --no-sync main.py --mode capture                     # 682, self + vs_scripted, seeds 0-7
+    uv run --no-sync main.py --mode capture --run latest --scenarios self --seeds 0-15
+        writes <out>/<scenario>_seed<NN>.mp4 (default out: gameplay_clips/)
+
 Agent specs (--team0 / --team1):
     null        human keyboard (watch only)
     random      uniform random actions
@@ -58,6 +63,7 @@ from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import EnvConfig, TrainConfig
 from boost_and_broadside.modes.ar_report import run_ar_report_mode
+from boost_and_broadside.modes.capture import run_capture_mode
 from boost_and_broadside.modes.collect import run_collect_stats_mode
 from boost_and_broadside.modes.elo_calibrate import run_elo_calibrate_mode
 from boost_and_broadside.modes.elo_stats import run_elo_stats_mode
@@ -92,6 +98,7 @@ def _parse_args() -> argparse.Namespace:
             "elo_calibrate",
             "ar_report",
             "noise_calibration",
+            "capture",
         ],
         default="rl",
         help=(
@@ -221,6 +228,38 @@ def _parse_args() -> argparse.Namespace:
         nargs="+",
         default=None,
         help="List of specific agents to evaluate. Overrides default agent discovery in elo_stats.",
+    )
+    parser.add_argument(
+        "--scenarios",
+        nargs="+",
+        default=["self", "vs_scripted"],
+        help="(capture) Match scenarios to record: 'self' (final policy vs itself) and/or "
+        "'vs_scripted' (final policy vs the scripted agent).",
+    )
+    parser.add_argument(
+        "--seeds",
+        type=str,
+        default="0-7",
+        help="(capture) Seeds to record, as a range '0-7' or a list '0,3,9'. One clip per "
+        "scenario per seed.",
+    )
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=Path("gameplay_clips"),
+        help="(capture) Output directory for the mp4 clips.",
+    )
+    parser.add_argument(
+        "--fps",
+        type=int,
+        default=60,
+        help="(capture) Playback frame rate of the recorded clips.",
+    )
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=1024,
+        help="(capture) Frame cap per clip; a match also stops early when a team is eliminated.",
     )
     return parser.parse_args()
 
@@ -512,6 +551,21 @@ def main() -> None:
                 device=device,
                 checkpoint_dir="checkpoints",
                 output_dir="docs/noise_calibration",
+            )
+
+        case "capture":
+            run_capture_mode(
+                run_spec=args.run if args.run != "none" else "resilient-resonance-682",
+                scenarios=args.scenarios,
+                seeds=args.seeds,
+                ship_config=SHIP_CONFIG,
+                model_config=MODEL_CONFIG,
+                rewards=REWARDS,
+                device=device,
+                checkpoint_dir="checkpoints",
+                out_dir=args.out,
+                fps=args.fps,
+                max_steps=args.max_steps,
             )
 
 
