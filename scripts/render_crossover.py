@@ -71,8 +71,8 @@ def ratio_chart(trained, beats, crossover, out: Path) -> Path:
     style.style_axes(
         axes,
         "Advantage per trained agent",
-        "Scripted agents defeated for each trained agent — the edge compounds with "
-        "team size, then plateaus",
+        "Scripted agents defeated for each trained agent — the edge peaks for "
+        "mid-sized teams (~1.5x), then eases toward ~1.35x",
     )
     ratio = beats / trained
 
