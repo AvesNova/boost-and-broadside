@@ -284,16 +284,22 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-steps",
         type=int,
-        default=3600,
+        default=1024,
         help="(capture) Match length before it's called a tie (steps at 60Hz ≈ seconds×60); "
         "most matches end far sooner when a team is eliminated.",
     )
     parser.add_argument(
         "--hold-ms",
         type=int,
-        default=750,
+        default=1500,
         help="(capture) Keep playing this many ms after the outcome is decided so the winner "
         "is clear before the clip ends.",
+    )
+    parser.add_argument(
+        "--gif",
+        action="store_true",
+        default=False,
+        help="(capture) Also write a downscaled .gif beside each .mp4.",
     )
     return parser.parse_args()
 
@@ -601,6 +607,7 @@ def main() -> None:
                 fps=args.fps,
                 max_steps=args.max_steps,
                 hold_ms=args.hold_ms,
+                gif=args.gif,
             )
 
         case "crossover":

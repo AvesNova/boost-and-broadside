@@ -135,6 +135,7 @@ def _capture_match(
     encoder = _open_encoder(out, renderer._render_config.window_size, fps)
     frames = 0
     ended_at: int | None = None
+    winner = "tie"
     try:
         for step in range(max_steps + hold_frames):
             state = env.state
@@ -152,9 +153,11 @@ def _capture_match(
             encoder.stdin.write(pygame.image.tostring(renderer._screen, "RGB"))
             frames += 1
 
-            # Once decided, keep playing for the hold, then stop.
+            # Once decided, record the winner from the terminal survivors, then
+            # keep playing for the hold before stopping.
             if ended_at is None and bool((dones | truncated).any()):
                 ended_at = step
+                winner = _winner(env.state)
             if ended_at is not None and step - ended_at >= hold_frames:
                 break
     finally:
@@ -162,7 +165,35 @@ def _capture_match(
         err = encoder.stderr.read().decode(errors="replace")
         if encoder.wait() != 0:
             sys.exit(f"ffmpeg failed for {out}:\n{err}")
-    return frames
+    return frames, winner
+
+
+def _winner(state) -> str:
+    """Which side survives at a terminal state: 'team0', 'team1', or 'tie'."""
+    alive, team = state.ship_alive, state.ship_team_id
+    team0 = bool((alive & (team == 0)).any())
+    team1 = bool((alive & (team == 1)).any())
+    if team0 and not team1:
+        return "team0"
+    if team1 and not team0:
+        return "team1"
+    return "tie"
+
+
+def _write_gif(mp4: Path, fps: int, width: int) -> Path:
+    """Convert an mp4 to a palette-optimised gif beside it (downscaled for size)."""
+    gif = mp4.with_suffix(".gif")
+    vf = (
+        f"fps={fps},scale={width}:-1:flags=lanczos,"
+        "split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse"
+    )
+    result = subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-i", str(mp4), "-vf", vf, str(gif)],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        sys.exit(f"ffmpeg gif failed for {mp4}:\n{result.stderr}")
+    return gif
 
 
 def run_capture_mode(
@@ -176,9 +207,12 @@ def run_capture_mode(
     out_dir: Path = Path("gameplay_clips"),
     sizes: list[str] | None = None,
     fps: int = 60,
-    max_steps: int = 3600,
+    max_steps: int = 1024,
     window: int = 720,
-    hold_ms: int = 750,
+    hold_ms: int = 1500,
+    gif: bool = False,
+    gif_fps: int = 24,
+    gif_width: int = 480,
 ) -> list[Path]:
     """Capture one seeded mp4 per (scenario, size, seed) for a run's final checkpoint.
 
@@ -186,7 +220,7 @@ def run_capture_mode(
     counts); each is played zero-shot by the same weights. When omitted, the run's
     native training size is used. ``max_steps`` is the match length before it is
     called a tie (also the env's truncation point); most matches end far sooner by
-    elimination.
+    elimination. With ``gif`` a downscaled gif is written beside each mp4.
     """
     os.environ.setdefault("HEADLESS", "1")  # dummy SDL driver — set before pygame init
 
@@ -222,12 +256,16 @@ def run_capture_mode(
             for scenario in scenarios:
                 for seed in seed_list:
                     out = out_dir / f"{scenario}_{n0}v{n1}_seed{seed:02d}.mp4"
-                    frames = _capture_match(
+                    frames, winner = _capture_match(
                         scenario, seed, n0, n1, policy, scripted, ship_config, env_config,
                         renderer, torch_device, out, max_steps, fps, hold_ms,
                     )
                     written.append(out)
-                    print(f"wrote {out}  ({frames} frames, {frames / fps:.1f}s)")
+                    if gif:
+                        written.append(_write_gif(out, gif_fps, gif_width))
+                    # team0 is always blue (the trained policy); name the winner plainly.
+                    side = {"team0": "blue", "team1": "red", "tie": "tie"}[winner]
+                    print(f"wrote {out}  ({frames} frames, {frames / fps:.1f}s)  winner: {side}")
     finally:
         renderer.close()
     return written
