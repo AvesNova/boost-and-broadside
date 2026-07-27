@@ -35,6 +35,18 @@ def _envs_for(n_ships: int, max_envs: int) -> int:
     return max(_MIN_ENVS, min(max_envs, _COLLISION_BUDGET // (n_ships * n_ships)))
 
 
+def parse_counts(spec: str) -> list[int]:
+    """Trained-team sizes from a spec: '1,2,4' or ranges like '1-64' (mixable)."""
+    out: list[int] = []
+    for token in spec.split(","):
+        if "-" in token:
+            lo, hi = token.split("-", 1)
+            out.extend(range(int(lo), int(hi) + 1))
+        elif token:
+            out.append(int(token))
+    return out
+
+
 def run_crossover_mode(
     run_spec: str,
     trained_counts: list[int],
@@ -57,8 +69,19 @@ def run_crossover_mode(
     scripted = resolve_agent_spec("scripted", ship_config, model_config, device)
     print(f"\n=== crossover: {run_dir.name}  ({num_envs} games/matchup, {device}) ===\n")
 
-    rows: list[dict] = []
-    for trained_n in trained_counts:
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    out_json = out / "crossover.json"
+    # Resume: keep any rows already computed so a crash mid-sweep loses nothing.
+    by_trained = _load_progress(out_json)
+
+    # Ascending order makes the crossover monotonic, so each size warm-starts from
+    # the previous one's result (whether just computed or loaded from a prior run).
+    hint: int | None = None
+    for trained_n in sorted(trained_counts):
+        if trained_n in by_trained:
+            hint = by_trained[trained_n]["crossover"] or hint
+            continue
         curve: dict[int, float] = {}
 
         def win_rate(scripted_n: int, trained_n: int = trained_n, curve=curve) -> float:
@@ -80,42 +103,68 @@ def run_crossover_mode(
                       f"  ({games} games)")
             return curve[scripted_n]
 
-        crossover = _find_crossover(win_rate, trained_n, max_total_ships)
+        # Warm start from the previous size's crossover (monotonic in T); the very
+        # first size has no hint and falls back to an exponential bracket.
+        crossover = _find_crossover(win_rate, trained_n, max_total_ships, hint)
         beats_up_to = None if crossover is None else crossover - 1
-        rows.append(
-            {
-                "trained": trained_n,
-                "crossover": crossover,  # first scripted count with trained < 50%
-                "beats_up_to": beats_up_to,  # largest scripted team still beaten
-                "capped": crossover is None,
-                "win_rate_at_beats_up_to": curve.get(beats_up_to) if beats_up_to else None,
-                "win_rate_at_crossover": curve.get(crossover) if crossover else None,
-                "curve": {str(k): v for k, v in sorted(curve.items())},
-            }
-        )
+        by_trained[trained_n] = {
+            "trained": trained_n,
+            "crossover": crossover,  # first scripted count with trained < 50%
+            "beats_up_to": beats_up_to,  # largest scripted team still beaten
+            "capped": crossover is None,
+            "win_rate_at_beats_up_to": curve.get(beats_up_to) if beats_up_to else None,
+            "win_rate_at_crossover": curve.get(crossover) if crossover else None,
+            "curve": {str(k): v for k, v in sorted(curve.items())},
+        }
+        if crossover is not None:
+            hint = crossover
+        _save(out_json, run_dir.name, num_envs, max_total_ships, by_trained)  # after each size
 
-    result = {
-        "run": run_dir.name,
-        "num_envs": num_envs,
-        "max_total_ships": max_total_ships,
-        "rows": rows,
-    }
-    out = Path(output_dir)
-    out.mkdir(parents=True, exist_ok=True)
-    (out / "crossover.json").write_text(json.dumps(result, indent=2))
+    rows = [by_trained[t] for t in sorted(by_trained)]
     _print_table(rows, max_total_ships)
-    print(f"\n  wrote {out / 'crossover.json'}")
-    return result
+    print(f"\n  wrote {out_json}")
+    return {"run": run_dir.name, "num_envs": num_envs, "max_total_ships": max_total_ships,
+            "rows": rows}
 
 
-def _find_crossover(win_rate, trained_n: int, max_total_ships: int) -> int | None:
-    """Smallest scripted S with trained win rate < 50%, by exponential + bisection.
+def _load_progress(path: Path) -> dict[int, dict]:
+    """Rows already computed, keyed by trained-team size (empty if none)."""
+    if not path.exists():
+        return {}
+    return {r["trained"]: r for r in json.loads(path.read_text()).get("rows", [])}
 
-    Returns None if no crossover is found before the total-ship cap.
+
+def _save(path: Path, run: str, num_envs: int, max_total_ships: int, by_trained: dict) -> None:
+    rows = [by_trained[t] for t in sorted(by_trained)]
+    path.write_text(json.dumps(
+        {"run": run, "num_envs": num_envs, "max_total_ships": max_total_ships, "rows": rows},
+        indent=2,
+    ))
+
+
+def _find_crossover(
+    win_rate, trained_n: int, max_total_ships: int, hint: int | None = None
+) -> int | None:
+    """Smallest scripted S with trained win rate < 50%.
+
+    With a ``hint`` (the previous size's crossover), walk locally from it — win
+    rate is monotonic in S, so the boundary is a step or two away. Without one,
+    fall back to an exponential bracket. Returns None if no crossover is found
+    before the total-ship cap.
     """
     cap = max_total_ships - trained_n  # largest scripted count that fits
     if cap < 1:
         return None
+
+    if hint is not None:
+        probe = max(1, min(hint, cap))
+        if win_rate(probe) >= 0.5:  # still winning at the hint — climb until it loses
+            while probe < cap and win_rate(probe + 1) >= 0.5:
+                probe += 1
+            return probe + 1 if probe < cap else None
+        while probe > 1 and win_rate(probe - 1) < 0.5:  # losing — descend to the boundary
+            probe -= 1
+        return probe
 
     # Bracket: lo = a scripted count still won (>=50%), hi = one lost (<50%).
     lo: int | None = None

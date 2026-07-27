@@ -69,7 +69,7 @@ from boost_and_broadside.config import EnvConfig, TrainConfig
 from boost_and_broadside.modes.ar_report import run_ar_report_mode
 from boost_and_broadside.modes.capture import run_capture_mode
 from boost_and_broadside.modes.collect import run_collect_stats_mode
-from boost_and_broadside.modes.crossover import run_crossover_mode
+from boost_and_broadside.modes.crossover import parse_counts, run_crossover_mode
 from boost_and_broadside.modes.elo_calibrate import run_elo_calibrate_mode
 from boost_and_broadside.modes.elo_stats import run_elo_stats_mode
 from boost_and_broadside.modes.feature_stats import run_feature_stats_mode
@@ -260,7 +260,8 @@ def _parse_args() -> argparse.Namespace:
         "--trained-counts",
         type=str,
         default="1,2,4,8,16,32,64",
-        help="(crossover) Comma-separated trained-team sizes to sweep, e.g. '1,2,4,8,16,32,64'.",
+        help="(crossover) Trained-team sizes to sweep: a list '1,2,4' or ranges '1-64' (mixable). "
+        "Swept ascending so each size warm-starts from the previous crossover.",
     )
     parser.add_argument(
         "--eval-envs",
@@ -597,7 +598,7 @@ def main() -> None:
         case "crossover":
             run_crossover_mode(
                 run_spec=args.run if args.run != "none" else "resilient-resonance-682",
-                trained_counts=[int(c) for c in args.trained_counts.split(",") if c],
+                trained_counts=parse_counts(args.trained_counts),
                 ship_config=SHIP_CONFIG,
                 model_config=MODEL_CONFIG,
                 device=device,
