@@ -34,6 +34,7 @@ class RenderConfig:
 
     window_size: int = 900
     fps: int = 60
+    show_ui: bool = True  # pause button + FPS slider; off for clean video capture
     team_colors: tuple[tuple[int, int, int], tuple[int, int, int]] = (
         (100, 180, 255),  # team 0: blue
         (255, 120, 80),  # team 1: red
@@ -163,7 +164,8 @@ class GameRenderer:
         if pred_nexts is not None:
             self._draw_ghost_ships(state, pred_nexts, surf)
         self._draw_ships(state, surf)
-        self._draw_ui(surf)
+        if self._render_config.show_ui:
+            self._draw_ui(surf)
 
     def _blit_label(self, text: str, color: tuple[int, int, int]) -> None:
         if not hasattr(self, "_font_large"):
