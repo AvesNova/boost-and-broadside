@@ -24,6 +24,9 @@ Writes to the run's checkpoint directory:
                              win/tie matrices, so any later refit needs no replay
     elo_calibration/*.png    live curve vs in-training, the two draw conventions,
                              per-checkpoint ratings, convergence, and draw rates
+    elo_calibration/         the calibrated ratings in the W&B export format
+      history.jsonl,           (see modes/elo_calibrate_history.py), so one loader
+      summary.json             reads them alongside the run's in-training history
 """
 
 import json
@@ -762,6 +765,14 @@ def run_elo_calibrate_mode(
     output = run_dir / "elo_calibrated.json"
     output.write_text(json.dumps(result, indent=2))
     progress.done(f"wrote {output}")
+
+    # Also leave the calibrated ratings in the W&B export format, so the same
+    # loader and chart system can read them alongside the run's in-training
+    # history without reshaping either.
+    from boost_and_broadside.modes.elo_calibrate_history import write_chart_data
+
+    for path in write_chart_data(result, run_dir):
+        progress.done(f"wrote {path}")
 
     _print_summary(result)
     if plot:

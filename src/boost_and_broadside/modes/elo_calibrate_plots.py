@@ -15,65 +15,25 @@ matplotlib.use("Agg")  # no display in a training container
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
-SURFACE = "#fcfcfb"
-INK = "#0b0b0b"
-INK_SECONDARY = "#52514e"
-INK_MUTED = "#83817a"
-GRID = "#e3e2de"
-# Categorical slots 1-3, in fixed palette order. Slot 3 sits below 3:1 against
-# the light surface, so every series it appears with is also direct-labelled.
-TRAINING = "#2a78d6"  # blue
-CALIBRATED = "#008300"  # green
-# Slot 3 serves two roles that never share a chart: the secondary draw
-# convention, and the averaged policy where both series are already calibrated
-# and blue would read as "in-training".
-HALF_WIN = AVG = "#e87ba4"  # magenta
-# One-hue shades for the before/after dumbbell.
-SHADE_LIGHT = "#86b6ef"
-SHADE_DARK = "#184f95"
-
-
-def _style_axes(axes, title: str = "", subtitle: str = "") -> None:
-    """Recessive grid and axes; titles in ink, never in a series colour."""
-    axes.set_facecolor(SURFACE)
-    axes.grid(True, color=GRID, linewidth=0.8, zorder=0)
-    axes.set_axisbelow(True)
-    for side in ("top", "right"):
-        axes.spines[side].set_visible(False)
-    for side in ("left", "bottom"):
-        axes.spines[side].set_color(GRID)
-    axes.tick_params(colors=INK_SECONDARY, labelsize=9, length=0)
-    if title:
-        # Pad leaves room for the subtitle, which is offset in points rather than
-        # axes fractions so the gap does not shrink as the panel gets shorter.
-        axes.set_title(
-            title,
-            color=INK,
-            fontsize=13,
-            fontweight="semibold",
-            loc="left",
-            pad=30 if subtitle else 12,
-        )
-    if subtitle:
-        axes.annotate(
-            subtitle,
-            xy=(0.0, 1.0),
-            xycoords="axes fraction",
-            xytext=(0, 7),
-            textcoords="offset points",
-            color=INK_MUTED,
-            fontsize=9.5,
-            va="bottom",
-        )
-
-
-# A rating this uncertain is not a measurement — a +/-150 band spans a quarter of
-# the whole ladder. These arise early, when the live policy has completed only a
-# game or two against an opponent it can actually contest: the fit is real but
-# rests on almost nothing, and plotting it puts a wild outlier at the left edge
-# that stretches the axis and reads as if the run started far from the anchor.
-# Such points stay in the JSON with their error, and are simply not drawn.
-_MAX_PLOT_STDERR = 150.0
+from boost_and_broadside.viz.style import (  # noqa: E402
+    AVG,
+    CALIBRATED,
+    GRID,
+    HALF_WIN,
+    INK_MUTED,
+    INK_SECONDARY,
+    SHADE_DARK,
+    SHADE_LIGHT,
+    SURFACE,
+    TRAINING,
+)
+from boost_and_broadside.viz.style import MAX_PLOT_STDERR as _MAX_PLOT_STDERR  # noqa: E402
+from boost_and_broadside.viz.style import (
+    draw_reference_lines as _draw_reference_lines,  # noqa: E402
+)
+from boost_and_broadside.viz.style import label_series_ends as _label_series_ends  # noqa: E402
+from boost_and_broadside.viz.style import new_figure as _new_figure  # noqa: E402
+from boost_and_broadside.viz.style import style_axes as _style_axes  # noqa: E402
 
 # Human-readable names for the draw conventions, for titles and legends.
 _TIE_LABEL = {"half_win": "ties as ½ win", "decisive": "decisive games only"}
@@ -88,34 +48,6 @@ def _measured(values: np.ndarray, stderr: np.ndarray) -> np.ndarray:
     return np.isfinite(values) & np.isfinite(stderr) & (stderr <= _MAX_PLOT_STDERR)
 
 
-def _label_series_ends(axes, entries: list[tuple[float, float, str, str]]) -> None:
-    """Direct-label each series past its right end, nudging apart any that collide.
-
-    Curves that converge — which is the interesting case here, since the whole
-    point is comparing scales that should agree — would otherwise stack their
-    labels on one another and render both unreadable. Call after all series are
-    drawn so the y-limits are settled.
-    """
-    if not entries:
-        return
-    low, high = axes.get_ylim()
-    minimum = 0.042 * (high - low or 1.0)
-    placed: list[float] = []
-    for x, y, color, text in sorted(entries, key=lambda entry: entry[1]):
-        target = y if not placed else max(y, placed[-1] + minimum)
-        placed.append(target)
-        axes.annotate(
-            text,
-            (x, target),
-            xytext=(7, 0),
-            textcoords="offset points",
-            color=color,
-            fontsize=9.5,
-            va="center",
-            fontweight="medium",
-        )
-
-
 def _reference_lines(result: dict, key: str = "calibrated_elo") -> list[tuple[str, float]]:
     """Fixed opponents worth drawing as a rule across a curve.
 
@@ -128,33 +60,6 @@ def _reference_lines(result: dict, key: str = "calibrated_elo") -> list[tuple[st
         if player["label"] == "scripted" and np.isfinite(player.get(key, float("nan"))):
             lines.append(("scripted agent", float(player[key])))
     return lines
-
-
-def _draw_reference_lines(axes, lines: list[tuple[str, float]]) -> None:
-    """Draw landmark ratings as recessive dashed rules, labelled in place."""
-    for name, value in lines:
-        axes.axhline(value, color=INK_MUTED, linewidth=1.2, linestyle=(0, (5, 4)), zorder=2)
-        # A landmark spans the full width, so no anchor position is reliably
-        # clear of the data — a rising curve crosses it at the left, a flat one
-        # runs beside it at the right. The label sits on a surface-coloured
-        # plate instead, which keeps it legible over whatever it lands on.
-        axes.annotate(
-            f"{name}  {value:.0f}",
-            xy=(0.008, value),
-            xycoords=("axes fraction", "data"),
-            xytext=(0, 4),
-            textcoords="offset points",
-            color=INK_MUTED,
-            fontsize=9,
-            va="bottom",
-            zorder=6,
-            bbox={"facecolor": SURFACE, "edgecolor": "none", "pad": 1.5, "alpha": 0.85},
-        )
-
-
-def _new_figure(size=(11.0, 6.0)):
-    figure = plt.figure(figsize=size, dpi=160, facecolor=SURFACE)
-    return figure
 
 
 def plot_live_curve(result: dict, path: Path) -> Path:
