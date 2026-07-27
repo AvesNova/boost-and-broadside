@@ -23,6 +23,17 @@ from boost_and_broadside.modes.agent_factory import resolve_agent_spec
 from boost_and_broadside.modes.capture import _final_checkpoint, _find_run_dir
 from boost_and_broadside.modes.collect import evaluate_matchup
 
+# Collision physics allocates a (B, N*bullets, N) tensor, so peak memory grows as
+# B*N^2. Hold B*N^2 under this budget (tuned for an 8 GB GPU) by shrinking the
+# batch for big battles; a floor keeps the win-rate estimate meaningful.
+_COLLISION_BUDGET = 4_000_000
+_MIN_ENVS = 48
+
+
+def _envs_for(n_ships: int, max_envs: int) -> int:
+    """Parallel games to run at this ship count, shrunk to fit the memory budget."""
+    return max(_MIN_ENVS, min(max_envs, _COLLISION_BUDGET // (n_ships * n_ships)))
+
 
 def run_crossover_mode(
     run_spec: str,
@@ -55,13 +66,18 @@ def run_crossover_mode(
             if scripted_n not in curve:
                 # The policy only slices the first (T+S) tokens as ships; nothing in
                 # it is sized by ship count, so one loaded module plays every matchup.
-                trained.agent._num_ships = trained_n + scripted_n
+                total = trained_n + scripted_n
+                trained.agent._num_ships = total
+                games = _envs_for(total, num_envs)
                 t0_wins, _, _, _ = evaluate_matchup(
-                    trained, scripted, trained_n, scripted_n, num_envs, ship_config,
+                    trained, scripted, trained_n, scripted_n, games, ship_config,
                     base_env, device,
                 )
-                curve[scripted_n] = t0_wins / num_envs
-                print(f"  {trained_n:>3}v{scripted_n:<3}  trained wins {curve[scripted_n]:6.1%}")
+                curve[scripted_n] = t0_wins / games
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                print(f"  {trained_n:>3}v{scripted_n:<4} trained wins {curve[scripted_n]:6.1%}"
+                      f"  ({games} games)")
             return curve[scripted_n]
 
         crossover = _find_crossover(win_rate, trained_n, max_total_ships)

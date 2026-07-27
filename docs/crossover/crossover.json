@@ -1,0 +1,112 @@
+{
+  "run": "resilient-resonance-682",
+  "num_envs": 256,
+  "max_total_ships": 320,
+  "rows": [
+    {
+      "trained": 1,
+      "crossover": 2,
+      "beats_up_to": 1,
+      "capped": false,
+      "win_rate_at_beats_up_to": 0.90234375,
+      "win_rate_at_crossover": 0.1015625,
+      "curve": {
+        "1": 0.90234375,
+        "2": 0.1015625
+      }
+    },
+    {
+      "trained": 2,
+      "crossover": 3,
+      "beats_up_to": 2,
+      "capped": false,
+      "win_rate_at_beats_up_to": 0.94140625,
+      "win_rate_at_crossover": 0.4140625,
+      "curve": {
+        "2": 0.94140625,
+        "3": 0.4140625,
+        "4": 0.03515625
+      }
+    },
+    {
+      "trained": 4,
+      "crossover": 6,
+      "beats_up_to": 5,
+      "capped": false,
+      "win_rate_at_beats_up_to": 0.81640625,
+      "win_rate_at_crossover": 0.40234375,
+      "curve": {
+        "4": 0.984375,
+        "5": 0.81640625,
+        "6": 0.40234375,
+        "8": 0.01953125
+      }
+    },
+    {
+      "trained": 8,
+      "crossover": 12,
+      "beats_up_to": 11,
+      "capped": false,
+      "win_rate_at_beats_up_to": 0.6953125,
+      "win_rate_at_crossover": 0.421875,
+      "curve": {
+        "8": 1.0,
+        "10": 0.87109375,
+        "11": 0.6953125,
+        "12": 0.421875,
+        "16": 0.0078125
+      }
+    },
+    {
+      "trained": 16,
+      "crossover": 25,
+      "beats_up_to": 24,
+      "capped": false,
+      "win_rate_at_beats_up_to": 0.52734375,
+      "win_rate_at_crossover": 0.3359375,
+      "curve": {
+        "16": 1.0,
+        "24": 0.52734375,
+        "25": 0.3359375,
+        "26": 0.2734375,
+        "28": 0.09375,
+        "32": 0.0078125
+      }
+    },
+    {
+      "trained": 32,
+      "crossover": 48,
+      "beats_up_to": 47,
+      "capped": false,
+      "win_rate_at_beats_up_to": 0.55859375,
+      "win_rate_at_crossover": 0.47265625,
+      "curve": {
+        "32": 1.0,
+        "40": 0.97265625,
+        "44": 0.828125,
+        "46": 0.6484375,
+        "47": 0.55859375,
+        "48": 0.47265625,
+        "64": 0.0
+      }
+    },
+    {
+      "trained": 64,
+      "crossover": 88,
+      "beats_up_to": 87,
+      "capped": false,
+      "win_rate_at_beats_up_to": 0.5314285714285715,
+      "win_rate_at_crossover": 0.4682080924855491,
+      "curve": {
+        "64": 1.0,
+        "80": 0.9114583333333334,
+        "84": 0.7142857142857143,
+        "86": 0.5423728813559322,
+        "87": 0.5314285714285715,
+        "88": 0.4682080924855491,
+        "96": 0.21153846153846154,
+        "128": 0.0
+      }
+    }
+  ]
+}
