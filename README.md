@@ -117,6 +117,8 @@ obs dict → ShipEncoder → n × YemongBlock → slice [:N] ships
          → ActionHead + NextStateHead + ValueHead (local + TeamPMA win path)
 ```
 
+![MVPPolicy architecture: Observation → Ship Encoder → Yemong Block (spatial Transformer + temporal Griffin) × L → Action / Next State / Value heads](docs/policy_architecture.png)
+
 - **ShipEncoder**: encodes each entity into a `d_model` token. The `FeatureCoordinator`
   (see Observations) produces a flat encoded vector per entity, which a 2-layer MLP
   (`Linear → RMSNorm → GELU → Linear → RMSNorm`) projects to `d_model`.
