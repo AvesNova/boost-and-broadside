@@ -1,7 +1,7 @@
-"""MVPEnvWrapper: observation builder and episode manager around TensorEnv.
+"""YemongEnvWrapper: observation builder and episode manager around TensorEnv.
 
 Responsibilities:
-  - Convert TensorState into the raw obs dict consumed by MVPPolicy.
+  - Convert TensorState into the raw obs dict consumed by YemongPolicy.
   - Concatenate ship and obstacle tokens into a single (B, N+M, ...) obs dict.
   - Compute per-ship per-component rewards via the reward components
     (zero-sum accounting happens later, in PPO's lambda aggregation).
@@ -17,8 +17,8 @@ import torch
 from boost_and_broadside.config import EnvConfig, RewardConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.observation import (
-    MVPObservation,
     ObservationBuffers,
+    YemongObservation,
     observation_from_state,
 )
 from boost_and_broadside.env.obstacle_cache import ObstacleCache
@@ -30,10 +30,10 @@ from boost_and_broadside.env.rewards import (
 from boost_and_broadside.env.state import TensorState
 
 
-class MVPEnvWrapper:
+class YemongEnvWrapper:
     """Wraps TensorEnv to produce policy-ready observations and zero-sum rewards.
 
-    MVPObservation keys and shapes (B = num_envs, N = num_ships, M = num_obstacles).
+    YemongObservation keys and shapes (B = num_envs, N = num_ships, M = num_obstacles).
     All values are RAW — no normalization applied. All encoding decisions
     (Fourier expand, symlog, normalize, one-hot) live in FeatureCoordinator feature chains.
 
@@ -117,7 +117,7 @@ class MVPEnvWrapper:
         self,
         options: dict[str, Any] | None = None,
         seed: int | None = None,
-    ) -> MVPObservation:
+    ) -> YemongObservation:
         """Reset all environments and return initial observations."""
         self.env.reset(options=options, seed=seed)
         self._refresh_obs_radius_all()
@@ -195,7 +195,7 @@ class MVPEnvWrapper:
     def step(
         self,
         actions: torch.Tensor,
-    ) -> tuple[MVPObservation, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
+    ) -> tuple[YemongObservation, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
         """Advance all environments and return (obs, rewards, dones, truncated, info).
 
         The wrapper snapshots health/alive before physics, computes rewards from
@@ -292,8 +292,8 @@ class MVPEnvWrapper:
     # Observation construction
     # ------------------------------------------------------------------
 
-    def _get_obs(self) -> MVPObservation:
-        """Build the combined (ship + obstacle) raw observation as MVPObservation.
+    def _get_obs(self) -> YemongObservation:
+        """Build the combined (ship + obstacle) raw observation as YemongObservation.
 
         All values are in native units — no normalization. Feature chains in
         FeatureCoordinator handle all encoding (Fourier, symlog, one-hot, etc.).

@@ -1,7 +1,7 @@
 """TensorEnv: pure physics engine for vectorized parallel game environments.
 
 This class owns the physics simulation only. Observation construction, reward
-computation, and episode tracking are handled by MVPEnvWrapper (env/wrapper.py).
+computation, and episode tracking are handled by YemongEnvWrapper (env/wrapper.py).
 """
 
 from typing import Any

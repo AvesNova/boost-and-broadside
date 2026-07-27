@@ -7,7 +7,7 @@ import torch
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
-from boost_and_broadside.env.observation import MVPObservation, ObsKey, observation_from_state
+from boost_and_broadside.env.observation import ObsKey, YemongObservation, observation_from_state
 from boost_and_broadside.modes.agent_factory import (
     ResolvedAgent,
     get_actions,
@@ -55,7 +55,7 @@ def evaluate_matchup(
         obs_t1_data = {k: v for k, v in obs.data.items()}
         obs_t1_data[ObsKey.TEAM_ID] = obs_t1_data[ObsKey.TEAM_ID].clone()
         obs_t1_data[ObsKey.TEAM_ID][..., :N] = 1 - obs_t1_data[ObsKey.TEAM_ID][..., :N]
-        action1 = get_actions(agent1, MVPObservation(data=obs_t1_data), state, num_envs, N, dev)
+        action1 = get_actions(agent1, YemongObservation(data=obs_t1_data), state, num_envs, N, dev)
 
         team_id = state.ship_team_id
         action = torch.where((team_id == 0).unsqueeze(-1), action0, action1)

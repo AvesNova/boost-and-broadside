@@ -4,7 +4,7 @@ from typing import NamedTuple
 
 import torch
 
-from boost_and_broadside.env.observation import MVPObservation
+from boost_and_broadside.env.observation import YemongObservation
 from boost_and_broadside.env.state import TensorState
 
 
@@ -37,7 +37,7 @@ class ScriptedStepOutput(NamedTuple):
 class PrimaryStepOutput(NamedTuple):
     """Mutable rollout state returned after one primary-scale step."""
 
-    obs: MVPObservation
+    obs: YemongObservation
     hidden: torch.Tensor
     hidden_t1: torch.Tensor | None
     avg_hidden: torch.Tensor | None
@@ -49,14 +49,14 @@ class PrimaryStepOutput(NamedTuple):
 class EnvironmentStepOutput(NamedTuple):
     """Environment and policy outputs computed concurrently when CUDA is available."""
 
-    obs: MVPObservation
+    obs: YemongObservation
     reward: torch.Tensor
     dones: torch.Tensor
     truncated: torch.Tensor
     network: RolloutNetworkOutput
 
 
-def slice_obs(obs: MVPObservation, start: int, end: int) -> MVPObservation:
+def slice_obs(obs: YemongObservation, start: int, end: int) -> YemongObservation:
     """Return a view of observation tensors for environments ``[start, end)``."""
     return obs.slice_envs(slice(start, end))
 
@@ -66,7 +66,7 @@ def slice_state(state: TensorState, start: int, end: int) -> TensorState:
     return state.slice_envs(slice(start, end))
 
 
-def flip_team_obs(obs: MVPObservation, num_ships: int) -> MVPObservation:
+def flip_team_obs(obs: YemongObservation, num_ships: int) -> YemongObservation:
     """Flip ship team IDs while leaving obstacle team IDs unchanged."""
     return obs.flip_team(num_ships)
 
@@ -87,7 +87,7 @@ class OpponentMixin:
         if first_update:
             self.roster.add_special("avg", self._global_step, 0, initial_elo=self._training_elo)
 
-    def _opponent_obs(self, obs_slice: MVPObservation, num_ships: int) -> MVPObservation:
+    def _opponent_obs(self, obs_slice: YemongObservation, num_ships: int) -> YemongObservation:
         """Return the observation perspective used by policy opponents."""
         return flip_team_obs(obs_slice, num_ships) if self._ego_pass else obs_slice
 
@@ -158,7 +158,7 @@ class OpponentMixin:
 
     def _rollout_network_forwards(
         self,
-        obs: MVPObservation,
+        obs: YemongObservation,
         hidden: torch.Tensor,
         hidden_t1: torch.Tensor | None,
         num_ships: int,
@@ -371,7 +371,7 @@ class OpponentMixin:
 
     def _collect_primary_step(
         self,
-        obs: MVPObservation,
+        obs: YemongObservation,
         hidden: torch.Tensor,
         hidden_t1: torch.Tensor | None,
         avg_hidden: torch.Tensor | None,

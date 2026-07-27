@@ -68,16 +68,16 @@ src/boost_and_broadside/
     state.py                # TensorState — GPU-resident state for B parallel envs
     physics.py              # Pure physics (kinematics, shooting, collisions)
     env.py                  # TensorEnv — vectorized physics, no rewards
-    observation.py          # MVPObservation dict + TensorState → observation builder
+    observation.py          # YemongObservation dict + TensorState → observation builder
     rewards.py              # Decomposed reward components (one critic head per component)
-    wrapper.py              # MVPEnvWrapper — observations, rewards, auto-reset
+    wrapper.py              # YemongEnvWrapper — observations, rewards, auto-reset
     obstacle_physics.py     # Harmonic gravity + PBD obstacle dynamics
     obstacle_cache.py       # Pre-converged obstacle map cache
-  models/mvp/
+  models/yemong/
     encoder.py              # ShipEncoder — entity tokens from the feature pipeline
     attention.py            # TransformerBlock (MHSA + GatedMLP) with alive masking
     griffin.py              # YemongBlock: TransformerBlock + Griffin RG-LRU temporal block
-    policy.py               # MVPPolicy — encoder → YemongBlocks → action/value/aux heads
+    policy.py               # YemongPolicy — encoder → YemongBlocks → action/value/aux heads
   agents/                   # Scripted agents (stochastic_scripted, jouster, boom_zoom, ...)
   modes/                    # One module per --mode (agent_factory resolves agent specs)
   train/rl/
@@ -104,10 +104,10 @@ The entire simulation is tensorized: `TensorState` holds the state of all parall
 environments as GPU tensors, and `TensorEnv` steps physics for every environment at once —
 no Python loops over envs or ships. The world is toroidal (positions wrap), teams can be
 asymmetric, and optional obstacle fields orbit a per-env gravity center using snapshots
-pre-converged by `obstacle_cache.py`. `MVPEnvWrapper` adds observation construction,
+pre-converged by `obstacle_cache.py`. `YemongEnvWrapper` adds observation construction,
 per-component rewards, and episode auto-reset.
 
-### Policy (`MVPPolicy`)
+### Policy (`YemongPolicy`)
 
 A shared trunk processes ships and obstacles as entity tokens; heads apply to ship tokens
 only:
@@ -116,6 +116,8 @@ only:
 obs dict → ShipEncoder → n × YemongBlock → slice [:N] ships
          → ActionHead + NextStateHead + ValueHead (local + TeamPMA win path)
 ```
+
+![YemongPolicy architecture: Observation → Ship Encoder → Yemong Block (spatial Transformer + temporal Griffin) × L → Action / Next State / Value heads](docs/policy_architecture.png)
 
 - **ShipEncoder**: encodes each entity into a `d_model` token. The `FeatureCoordinator`
   (see Observations) produces a flat encoded vector per entity, which a 2-layer MLP

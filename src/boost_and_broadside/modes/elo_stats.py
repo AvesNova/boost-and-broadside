@@ -68,14 +68,14 @@ def _load_checkpoint_agent(
     path: Path, model_config: ModelConfig, ship_config: ShipConfig, num_ships: int, device: str
 ) -> ResolvedAgent:
     """Load a .pt checkpoint and return a ResolvedAgent."""
-    from boost_and_broadside.models.mvp.policy import MVPPolicy
+    from boost_and_broadside.models.yemong.policy import YemongPolicy
     from boost_and_broadside.train.rl.features import build_standard_coordinator
 
     ckpt = torch.load(str(path), map_location=device, weights_only=False)
     coordinator = build_standard_coordinator(ship_config)
     K = infer_num_value_components(ckpt)
     team_pma_k = infer_team_pma_k(ckpt)
-    policy = MVPPolicy(
+    policy = YemongPolicy(
         model_config,
         coordinator,
         num_value_components=K,

@@ -1,4 +1,4 @@
-"""MVPPolicy: the full per-ship actor-critic policy.
+"""YemongPolicy: the full per-ship actor-critic policy.
 
 Architecture (per timestep):
     obs → EntityEncoder → (B, N+M, D)     [ships N then obstacles M]
@@ -35,9 +35,9 @@ from boost_and_broadside.constants import (
     TOTAL_ACTION_LOGITS,
     TURN_SLICE,
 )
-from boost_and_broadside.env.observation import MVPObservation
-from boost_and_broadside.models.mvp.encoder import ShipEncoder
-from boost_and_broadside.models.mvp.griffin import CONV_KERNEL, YemongBlock
+from boost_and_broadside.env.observation import YemongObservation
+from boost_and_broadside.models.yemong.encoder import ShipEncoder
+from boost_and_broadside.models.yemong.griffin import CONV_KERNEL, YemongBlock
 from boost_and_broadside.train.rl.features import FeatureCoordinator
 
 
@@ -120,7 +120,7 @@ def _init_head_orthogonal(head: nn.Sequential) -> None:
     nn.init.zeros_(linears[-1].bias)
 
 
-class MVPPolicy(nn.Module):
+class YemongPolicy(nn.Module):
     """Actor-critic policy with shared trunk: Encoder → N × YemongBlock.
 
     Args:
@@ -236,13 +236,13 @@ class MVPPolicy(nn.Module):
     @torch.no_grad()
     def get_action_and_value(
         self,
-        obs: MVPObservation,
+        obs: YemongObservation,
         hidden: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Sample an action and estimate value for one environment step.
 
         Args:
-            obs:    MVPObservation with (B, N+M, ...) tensors.
+            obs:    YemongObservation with (B, N+M, ...) tensors.
             hidden: (n_layers, B*(N+M), CONV_KERNEL*D) packed recurrent state.
 
         Returns:
@@ -301,7 +301,7 @@ class MVPPolicy(nn.Module):
 
     def evaluate_actions(
         self,
-        obs: MVPObservation,
+        obs: YemongObservation,
         actions: torch.Tensor,
         initial_hidden: torch.Tensor,
         alive_mask: torch.Tensor,
@@ -323,7 +323,7 @@ class MVPPolicy(nn.Module):
         Action and value heads are applied only to the first N ship tokens.
 
         Args:
-            obs:                  MVPObservation with (T, B, N+M, ...) tensors.
+            obs:                  YemongObservation with (T, B, N+M, ...) tensors.
             actions:              (T, B, N, 3) int actions taken during rollout.
             initial_hidden:       (n_layers, B*(N+M), CONV_KERNEL*D) rollout-start state.
             alive_mask:           (T, B, N+M) bool — alive entities per timestep.
@@ -352,7 +352,9 @@ class MVPPolicy(nn.Module):
 
         # obs has (T, B, N+M, ...) — flatten T into B for encoder
         NM = obs["pos"].shape[2]  # N+M total tokens
-        flat_obs = MVPObservation(data={k: v.reshape(T * B, *v.shape[2:]) for k, v in obs.items()})
+        flat_obs = YemongObservation(
+            data={k: v.reshape(T * B, *v.shape[2:]) for k, v in obs.items()}
+        )
 
         x = self.encoder(flat_obs)  # (T*B, N+M, D)
         x = x.reshape(T, B, NM, D)  # (T, B, N+M, D)

@@ -1,4 +1,4 @@
-"""Griffin temporal block and Yemong combined block for the MVP policy backbone.
+"""Griffin temporal block and Yemong combined block for the Yemong policy backbone.
 
 YemongBlock = SpatialTransformerBlock (MHA + GatedMLP) + GriffinTemporalBlock (RG-LRU + GatedMLP).
 
@@ -17,7 +17,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from boost_and_broadside.config import ModelConfig
-from boost_and_broadside.models.mvp.attention import GatedMLP, TransformerBlock
+from boost_and_broadside.models.yemong.attention import GatedMLP, TransformerBlock
 
 CONV_KERNEL: int = 4  # causal depthwise conv kernel size
 

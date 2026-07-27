@@ -16,9 +16,9 @@ K = 4  # num_components used across tests (smaller than prod K=12 for speed)
 
 
 def _make_buffer(T=4, B=2, N=4, D=16, num_components=K) -> tuple[RolloutBuffer, int, int, int, int]:
-    from boost_and_broadside.env.observation import MVPObservation
+    from boost_and_broadside.env.observation import YemongObservation
 
-    obs_sample = MVPObservation(
+    obs_sample = YemongObservation(
         data={
             "pos": torch.zeros((B, N, 2)),
             "vel": torch.zeros((B, N, 2)),
@@ -186,9 +186,9 @@ class TestStoragePrecision:
     """Reduced-precision storage policy: bf16 floats, fp32 positions, uint8 indices."""
 
     def _make_typed_buffer(self, T=3, B=2, N=2):
-        from boost_and_broadside.env.observation import MVPObservation, ObsKey
+        from boost_and_broadside.env.observation import ObsKey, YemongObservation
 
-        obs_sample = MVPObservation(
+        obs_sample = YemongObservation(
             data={
                 ObsKey.POS: torch.zeros((B, N, 2)),
                 ObsKey.VEL: torch.zeros((B, N, 2)),
@@ -237,12 +237,12 @@ class TestStoragePrecision:
         assert buf.adv_rms.dtype == torch.float32
 
     def test_uint8_index_channel_round_trips_through_add(self):
-        from boost_and_broadside.env.observation import MVPObservation, ObsKey
+        from boost_and_broadside.env.observation import ObsKey, YemongObservation
 
         buf = self._make_typed_buffer(T=3, B=2, N=2)
         team = torch.tensor([[0, 1], [2, 0]], dtype=torch.int32)  # ships + obstacle id 2
         prev = torch.randint(0, 7, (2, 2, 3), dtype=torch.int64)  # OneHot(3/7/2) indices
-        obs = MVPObservation(
+        obs = YemongObservation(
             data={
                 ObsKey.POS: torch.rand(2, 2, 2),
                 ObsKey.VEL: torch.rand(2, 2, 2),
@@ -319,9 +319,9 @@ class TestGAEComputation:
         """Components with different gammas should produce different advantage decay."""
         T, B, N = 5, 1, 1
         Kc = 2  # component 0: γ=1.0, component 1: γ=0.5
-        from boost_and_broadside.env.observation import MVPObservation
+        from boost_and_broadside.env.observation import YemongObservation
 
-        obs_sample = MVPObservation(data={"pos": torch.zeros((B, N, 2))})
+        obs_sample = YemongObservation(data={"pos": torch.zeros((B, N, 2))})
         buf = RolloutBuffer(
             num_steps=T,
             num_envs=B,
@@ -361,9 +361,9 @@ class TestGAEComputation:
     def test_done_envs_mask_future_rewards(self):
         """When done=1, bootstrap from next_value should be blocked."""
         T, B, N, Kc = 3, 1, 2, 1
-        from boost_and_broadside.env.observation import MVPObservation
+        from boost_and_broadside.env.observation import YemongObservation
 
-        obs_sample = MVPObservation(data={"pos": torch.zeros((B, N, 2))})
+        obs_sample = YemongObservation(data={"pos": torch.zeros((B, N, 2))})
         buf = RolloutBuffer(
             num_steps=T,
             num_envs=B,

@@ -29,7 +29,7 @@ This document defines the coding standards for the **Boost and Broadside** proje
 | Type | Convention | Example |
 | :--- | :--- | :--- |
 | **Modules** | `snake_case` | `train_model.py`, `utils.py` |
-| **Classes** | `PascalCase` | `MVPPolicy`, `TensorEnv` |
+| **Classes** | `PascalCase` | `YemongPolicy`, `TensorEnv` |
 | **Functions/Methods** | `snake_case` | `compute_loss()`, `get_active_positions()` |
 | **Variables** | `snake_case` | `batch_size`, `num_ships` |
 | **Constants** | `UPPER_CASE` | `TOTAL_ACTION_LOGITS`, `NUM_POWER_ACTIONS` |

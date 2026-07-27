@@ -33,7 +33,7 @@ from boost_and_broadside.constants import (
     NUM_SHOOT_ACTIONS,
     NUM_TURN_ACTIONS,
 )
-from boost_and_broadside.env.observation import MVPObservation, ObsKey
+from boost_and_broadside.env.observation import ObsKey, YemongObservation
 from boost_and_broadside.env.state import TensorState
 
 
@@ -85,7 +85,7 @@ class ResolvedAgent:
 
     def __init__(self, kind: str, agent, hidden=None):
         self.kind = kind  # "null" | "random" | "scripted" | "policy"
-        self.agent = agent  # None | StochasticScriptedAgent | MVPPolicy
+        self.agent = agent  # None | StochasticScriptedAgent | YemongPolicy
         self.hidden = hidden  # (1, B*N, D) float tensor, policy agents only
 
     def __repr__(self) -> str:
@@ -168,14 +168,14 @@ def resolve_agent_spec(
             sys.exit(f"Error: checkpoint not found: {path!r}")
 
     # Deferred import to avoid circular dependency
-    from boost_and_broadside.models.mvp.policy import MVPPolicy
+    from boost_and_broadside.models.yemong.policy import YemongPolicy
     from boost_and_broadside.train.rl.features import build_standard_coordinator
 
     ckpt = torch.load(path, map_location=device, weights_only=False)
     coordinator = build_standard_coordinator(ship_config)
     K = infer_num_value_components(ckpt)
     team_pma_k = infer_team_pma_k(ckpt)
-    policy = MVPPolicy(
+    policy = YemongPolicy(
         model_config,
         coordinator,
         num_value_components=K,
@@ -200,7 +200,7 @@ def init_hidden(agent: ResolvedAgent, num_envs: int, num_tokens: int, device) ->
 
 def get_actions(
     agent: ResolvedAgent,
-    obs: MVPObservation | None,
+    obs: YemongObservation | None,
     state: TensorState,
     num_envs: int,
     num_ships: int,
@@ -261,19 +261,19 @@ ALIVE_HEALTH_EPS = 1.0  # ship is dead when decoded health ≤ this value
 
 def _decode_targets_to_obs(
     targets: torch.Tensor,
-    prev_obs: MVPObservation,
+    prev_obs: YemongObservation,
     action: torch.Tensor,
     N: int,
     coordinator,
-) -> MVPObservation:
-    """Decode a coordinator target vector back to a raw MVPObservation.
+) -> YemongObservation:
+    """Decode a coordinator target vector back to a raw YemongObservation.
 
     Per-feature target encodings are inverted by the coordinator — each feature's
     target Transform owns its own inverse — so this function only reassembles the
-    raw values into an MVPObservation: obstacle tokens (N:) are copied unchanged,
+    raw values into an YemongObservation: obstacle tokens (N:) are copied unchanged,
     `alive` is derived from decoded health, and `action` becomes PREVIOUS_ACTION.
 
-    prev_obs: previous MVPObservation — obstacle tokens (N:) are copied unchanged
+    prev_obs: previous YemongObservation — obstacle tokens (N:) are copied unchanged
     action:   (B, N, 3) int — stored as PREVIOUS_ACTION for next step
     """
     raw = coordinator.decode_targets(targets)
@@ -300,12 +300,12 @@ def _decode_targets_to_obs(
     new_data[ObsKey.PREVIOUS_ACTION] = torch.cat(
         [action, prev_obs[ObsKey.PREVIOUS_ACTION][:, N:]], dim=1
     )
-    return MVPObservation(data=new_data)
+    return YemongObservation(data=new_data)
 
 
 def imagine_trajectory(
     agent: ResolvedAgent,
-    obs: MVPObservation,
+    obs: YemongObservation,
     n_steps: int,
     num_ships: int,
     device,
@@ -325,7 +325,7 @@ def imagine_trajectory(
     coordinator = agent.agent.coordinator
     label_scale = coordinator.label_scale_vector(device)
     imag_hidden = agent.hidden.clone()
-    imag_obs = MVPObservation(data={k: v.clone() for k, v in obs.items()})
+    imag_obs = YemongObservation(data={k: v.clone() for k, v in obs.items()})
     curr_ship_targets = coordinator.get_target_vector(imag_obs)[:, :num_ships]
 
     pred_nexts = []

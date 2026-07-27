@@ -187,13 +187,13 @@ def _load_ladder_policy(
     path: Path, model_config: ModelConfig, ship_config: ShipConfig, num_ships: int, device: str
 ):
     """Build an eval-mode policy from a ladder snapshot."""
-    from boost_and_broadside.models.mvp.policy import MVPPolicy
+    from boost_and_broadside.models.yemong.policy import YemongPolicy
     from boost_and_broadside.train.rl.features import build_standard_coordinator
 
     checkpoint = torch.load(str(path), map_location=device, weights_only=False)
     coordinator = build_standard_coordinator(ship_config)
     num_components = infer_num_value_components(checkpoint)
-    policy = MVPPolicy(
+    policy = YemongPolicy(
         model_config,
         coordinator,
         num_value_components=num_components,
