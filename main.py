@@ -35,7 +35,8 @@ Evaluation:
 Gameplay video (headless mp4 capture of a run's final checkpoint):
     uv run --no-sync main.py --mode capture                     # 682, self + vs_scripted, seeds 0-7
     uv run --no-sync main.py --mode capture --run latest --scenarios self --seeds 0-15
-        writes <out>/<scenario>_seed<NN>.mp4 (default out: gameplay_clips/)
+    uv run --no-sync main.py --mode capture --scenarios self --sizes 1v1 4v4 16v16 64v64
+        writes <out>/<scenario>_<AvA>_seed<NN>.mp4 (default out: gameplay_clips/)
 
 Agent specs (--team0 / --team1):
     null        human keyboard (watch only)
@@ -241,7 +242,14 @@ def _parse_args() -> argparse.Namespace:
         type=str,
         default="0-7",
         help="(capture) Seeds to record, as a range '0-7' or a list '0,3,9'. One clip per "
-        "scenario per seed.",
+        "scenario per size per seed.",
+    )
+    parser.add_argument(
+        "--sizes",
+        nargs="+",
+        default=None,
+        help="(capture) Team sizes to record zero-shot, e.g. 1v1 2v2 4v4 8v8 16v16 32v32 64v64. "
+        "Omit to use the run's native training size.",
     )
     parser.add_argument(
         "--out",
@@ -564,6 +572,7 @@ def main() -> None:
                 device=device,
                 checkpoint_dir="checkpoints",
                 out_dir=args.out,
+                sizes=args.sizes,
                 fps=args.fps,
                 max_steps=args.max_steps,
             )

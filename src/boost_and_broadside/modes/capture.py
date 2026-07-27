@@ -10,12 +10,16 @@ Scenarios, all with the run's final checkpoint:
                    learned to act as team 0; without the flip its team-1 play is off.
     vs_scripted  — the final policy (team 0) against the stochastic scripted agent.
 
-Writes ``<out>/<scenario>_seed<NN>.mp4``, one clip per (scenario, seed).
+The same weights play any team size (1v1 … 64v64) zero-shot, since the model is
+token-based and nothing in it is sized by the ship count.
+
+Writes ``<out>/<scenario>_<AvA>_seed<NN>.mp4``, one clip per (scenario, size, seed).
 """
 
 import os
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pygame
@@ -40,6 +44,15 @@ def parse_seeds(spec: str) -> list[int]:
         lo, hi = spec.split("-", 1)
         return list(range(int(lo), int(hi) + 1))
     return [int(s) for s in spec.split(",") if s]
+
+
+def parse_side(spec: str) -> int:
+    """Ships per side from a size spec: '4v4' -> 4, or a bare '4' -> 4.
+
+    The model is token-based and scale-invariant, so the same weights play any
+    team size zero-shot; the size only sets how many ship tokens the env spawns.
+    """
+    return int(spec.split("v", 1)[0]) if "v" in spec else int(spec)
 
 
 def _find_run_dir(run_spec: str, checkpoint_dir: str) -> Path:
@@ -146,41 +159,54 @@ def run_capture_mode(
     device: str,
     checkpoint_dir: str = "checkpoints",
     out_dir: Path = Path("gameplay_clips"),
+    sizes: list[str] | None = None,
     fps: int = 60,
     max_steps: int = 1024,
     window: int = 720,
 ) -> list[Path]:
-    """Capture one seeded mp4 per (scenario, seed) for a run's final checkpoint."""
+    """Capture one seeded mp4 per (scenario, size, seed) for a run's final checkpoint.
+
+    ``sizes`` is a list of team-size specs ('1v1', '4v4', ..., or bare per-side
+    counts); each is played zero-shot by the same weights. When omitted, the run's
+    native training size is used.
+    """
     os.environ.setdefault("HEADLESS", "1")  # dummy SDL driver — set before pygame init
 
     run_dir = _find_run_dir(run_spec, checkpoint_dir)
     checkpoint = _final_checkpoint(run_dir)
-    env_config = EnvConfig(**torch.load(str(checkpoint), map_location="cpu", weights_only=False)[
+    base_env = EnvConfig(**torch.load(str(checkpoint), map_location="cpu", weights_only=False)[
         "env_config"
     ])
+    per_side = [parse_side(s) for s in sizes] if sizes else [base_env.num_ships // 2]
     torch_device = torch.device(device)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    for scenario in scenarios:
+        if scenario not in SCENARIOS:
+            sys.exit(f"unknown scenario {scenario!r}; choose from {SCENARIOS}")
+
     renderer = GameRenderer(ship_config, RenderConfig(window_size=window, show_ui=False))
-    policy = resolve_agent_spec(
-        str(checkpoint), ship_config, model_config, device, num_ships=env_config.num_ships
-    )
     scripted = resolve_agent_spec("scripted", ship_config, model_config, device)
     seed_list = parse_seeds(seeds)
 
     written: list[Path] = []
     try:
-        for scenario in scenarios:
-            if scenario not in SCENARIOS:
-                sys.exit(f"unknown scenario {scenario!r}; choose from {SCENARIOS}")
-            for seed in seed_list:
-                out = out_dir / f"{scenario}_seed{seed:02d}.mp4"
-                frames = _capture_match(
-                    scenario, seed, policy, scripted, ship_config, env_config, rewards,
-                    renderer, torch_device, out, max_steps, fps,
-                )
-                written.append(out)
-                print(f"wrote {out}  ({frames} frames, {frames / fps:.1f}s)")
+        for side in per_side:
+            env_config = replace(base_env, num_ships=2 * side)
+            # A fresh policy per size so its token slicing matches the env; the same
+            # weights load at any size (nothing in the model is sized by ship count).
+            policy = resolve_agent_spec(
+                str(checkpoint), ship_config, model_config, device, num_ships=env_config.num_ships
+            )
+            for scenario in scenarios:
+                for seed in seed_list:
+                    out = out_dir / f"{scenario}_{side}v{side}_seed{seed:02d}.mp4"
+                    frames = _capture_match(
+                        scenario, seed, policy, scripted, ship_config, env_config, rewards,
+                        renderer, torch_device, out, max_steps, fps,
+                    )
+                    written.append(out)
+                    print(f"wrote {out}  ({frames} frames, {frames / fps:.1f}s)")
     finally:
         renderer.close()
     return written
