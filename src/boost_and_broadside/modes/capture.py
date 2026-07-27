@@ -25,8 +25,9 @@ from pathlib import Path
 import pygame
 import torch
 
-from boost_and_broadside.config import EnvConfig, ModelConfig, RewardConfig, ShipConfig
-from boost_and_broadside.env.wrapper import MVPEnvWrapper
+from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
+from boost_and_broadside.env.env import TensorEnv
+from boost_and_broadside.env.observation import observation_from_state
 from boost_and_broadside.modes.agent_factory import (
     ResolvedAgent,
     get_actions,
@@ -100,53 +101,61 @@ def _capture_match(
     scripted: ResolvedAgent,
     ship_config: ShipConfig,
     env_config: EnvConfig,
-    rewards: RewardConfig,
     renderer: GameRenderer,
     device: torch.device,
     out: Path,
     max_steps: int,
     fps: int,
+    hold_ms: int,
 ) -> int:
     """Play one seeded match, encode it to ``out``; return the frame count.
 
     team-0 (n0 ships) is always the policy; team-1 (n1 ships) is a second policy
     view of the same weights (self) or the scripted agent (vs_scripted).
+
+    Uses TensorEnv directly (not the training wrapper, which auto-resets a finished
+    env): the terminal state persists, so after the outcome is decided the match
+    keeps stepping for ``hold_ms`` — the winning team cruises, the eliminated team
+    stays gone — letting a viewer see who won before the clip ends.
     """
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
     N = env_config.num_ships
     num_tokens = N + env_config.num_obstacles
-    wrapper = MVPEnvWrapper(
-        num_envs=1, ship_config=ship_config, env_config=env_config,
-        rewards=rewards, device=str(device),
-    )
+    env = TensorEnv(1, ship_config, env_config, device)
     agent0 = policy
     agent1 = ResolvedAgent("policy", policy.agent) if scenario == "self" else scripted
 
-    obs = wrapper.reset(options={"team_sizes": (n0, n1)}, seed=seed)
+    env.reset(options={"team_sizes": (n0, n1)}, seed=seed)
     init_hidden(agent0, 1, num_tokens, device)
     init_hidden(agent1, 1, num_tokens, device)
 
+    hold_frames = round(hold_ms / 1000 * fps)
     encoder = _open_encoder(out, renderer._render_config.window_size, fps)
     frames = 0
+    ended_at: int | None = None
     try:
-        for _ in range(max_steps):
-            state = wrapper.state
+        for step in range(max_steps + hold_frames):
+            state = env.state
+            obs = observation_from_state(state, ship_config)
             action0 = get_actions(agent0, obs, state, 1, N, device)
             if scenario == "self":
                 action1 = get_actions(agent1, obs.flip_team(N), state, 1, N, device)
             else:
                 action1 = get_actions(agent1, None, state, 1, N, device)
 
-            team_id = obs.team_id[:, :N]
-            action = torch.where((team_id == 0).unsqueeze(-1), action0, action1)
-            obs, _, dones, truncated, _ = wrapper.step(action)
+            action = torch.where((state.ship_team_id == 0).unsqueeze(-1), action0, action1)
+            dones, truncated = env.step(action)
 
-            renderer._draw_frame(wrapper.state)  # no UI, no ghost trajectories
+            renderer._draw_frame(env.state)  # no UI, no ghost trajectories
             encoder.stdin.write(pygame.image.tostring(renderer._screen, "RGB"))
             frames += 1
-            if bool((dones | truncated).any()):
+
+            # Once decided, keep playing for the hold, then stop.
+            if ended_at is None and bool((dones | truncated).any()):
+                ended_at = step
+            if ended_at is not None and step - ended_at >= hold_frames:
                 break
     finally:
         encoder.stdin.close()
@@ -162,20 +171,22 @@ def run_capture_mode(
     seeds: str,
     ship_config: ShipConfig,
     model_config: ModelConfig,
-    rewards: RewardConfig,
     device: str,
     checkpoint_dir: str = "checkpoints",
     out_dir: Path = Path("gameplay_clips"),
     sizes: list[str] | None = None,
     fps: int = 60,
-    max_steps: int = 1024,
+    max_steps: int = 3600,
     window: int = 720,
+    hold_ms: int = 750,
 ) -> list[Path]:
     """Capture one seeded mp4 per (scenario, size, seed) for a run's final checkpoint.
 
     ``sizes`` is a list of team-size specs ('1v1', '4v4', ..., or bare per-side
     counts); each is played zero-shot by the same weights. When omitted, the run's
-    native training size is used.
+    native training size is used. ``max_steps`` is the match length before it is
+    called a tie (also the env's truncation point); most matches end far sooner by
+    elimination.
     """
     os.environ.setdefault("HEADLESS", "1")  # dummy SDL driver — set before pygame init
 
@@ -200,7 +211,9 @@ def run_capture_mode(
     written: list[Path] = []
     try:
         for n0, n1 in matchups:
-            env_config = replace(base_env, num_ships=n0 + n1)
+            # Override the env's truncation so matches get max_steps to resolve
+            # before being called a tie.
+            env_config = replace(base_env, num_ships=n0 + n1, max_episode_steps=max_steps)
             # A fresh policy per size so its token slicing matches the env; the same
             # weights load at any size (nothing in the model is sized by ship count).
             policy = resolve_agent_spec(
@@ -211,7 +224,7 @@ def run_capture_mode(
                     out = out_dir / f"{scenario}_{n0}v{n1}_seed{seed:02d}.mp4"
                     frames = _capture_match(
                         scenario, seed, n0, n1, policy, scripted, ship_config, env_config,
-                        rewards, renderer, torch_device, out, max_steps, fps,
+                        renderer, torch_device, out, max_steps, fps, hold_ms,
                     )
                     written.append(out)
                     print(f"wrote {out}  ({frames} frames, {frames / fps:.1f}s)")

@@ -284,8 +284,16 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-steps",
         type=int,
-        default=1024,
-        help="(capture) Frame cap per clip; a match also stops early when a team is eliminated.",
+        default=3600,
+        help="(capture) Match length before it's called a tie (steps at 60Hz ≈ seconds×60); "
+        "most matches end far sooner when a team is eliminated.",
+    )
+    parser.add_argument(
+        "--hold-ms",
+        type=int,
+        default=750,
+        help="(capture) Keep playing this many ms after the outcome is decided so the winner "
+        "is clear before the clip ends.",
     )
     return parser.parse_args()
 
@@ -586,13 +594,13 @@ def main() -> None:
                 seeds=args.seeds,
                 ship_config=SHIP_CONFIG,
                 model_config=MODEL_CONFIG,
-                rewards=REWARDS,
                 device=device,
                 checkpoint_dir="checkpoints",
                 out_dir=args.out,
                 sizes=args.sizes,
                 fps=args.fps,
                 max_steps=args.max_steps,
+                hold_ms=args.hold_ms,
             )
 
         case "crossover":
