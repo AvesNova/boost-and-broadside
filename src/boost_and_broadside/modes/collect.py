@@ -9,11 +9,84 @@ from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.observation import MVPObservation, ObsKey, observation_from_state
 from boost_and_broadside.modes.agent_factory import (
+    ResolvedAgent,
     get_actions,
     init_hidden,
     reset_done_envs,
     resolve_agent_spec,
 )
+
+
+def evaluate_matchup(
+    agent0: ResolvedAgent,
+    agent1: ResolvedAgent,
+    n0: int,
+    n1: int,
+    num_envs: int,
+    ship_config: ShipConfig,
+    env_config: EnvConfig,
+    device: str,
+) -> tuple[int, int, int, float]:
+    """Run ``num_envs`` parallel games of n0 (team 0) vs n1 (team 1) to completion.
+
+    Both agents already carry the right ``num_ships`` (= n0 + n1); team 1 sees a
+    team-flipped observation so a policy on that side plays from its own ego view.
+    Returns ``(team0_wins, team1_wins, ties, mean_episode_steps)``.
+    """
+    N = n0 + n1
+    num_tokens = N + env_config.num_obstacles
+    dev = torch.device(device)
+    env = TensorEnv(num_envs, ship_config, replace(env_config, num_ships=N), dev)
+
+    results = torch.zeros(num_envs, dtype=torch.int32, device=dev)  # 0=t0, 1=t1, 2=tie
+    ep_lengths = torch.zeros(num_envs, dtype=torch.int64, device=dev)
+    finished = torch.zeros(num_envs, dtype=torch.bool, device=dev)
+
+    init_hidden(agent0, num_envs, num_tokens, dev)
+    init_hidden(agent1, num_envs, num_tokens, dev)
+    env.reset(options={"team_sizes": (n0, n1)})
+
+    while not finished.all():
+        state = env.state
+        obs = observation_from_state(state, ship_config)
+
+        action0 = get_actions(agent0, obs, state, num_envs, N, dev)
+        # Team 1 agent sees itself as team 0 (flipped team IDs).
+        obs_t1_data = {k: v for k, v in obs.data.items()}
+        obs_t1_data[ObsKey.TEAM_ID] = obs_t1_data[ObsKey.TEAM_ID].clone()
+        obs_t1_data[ObsKey.TEAM_ID][..., :N] = 1 - obs_t1_data[ObsKey.TEAM_ID][..., :N]
+        action1 = get_actions(agent1, MVPObservation(data=obs_t1_data), state, num_envs, N, dev)
+
+        team_id = state.ship_team_id
+        action = torch.where((team_id == 0).unsqueeze(-1), action0, action1)
+
+        dones, truncated = env.step(action)
+        done_any = dones | truncated
+        new_done = done_any & ~finished
+        if new_done.any():
+            ep_lengths[new_done] = env.state.step_count[new_done].long()
+            alive = env.state.ship_alive
+            team = env.state.ship_team_id
+            team0_alive = (alive & (team == 0)).any(dim=1)
+            team1_alive = (alive & (team == 1)).any(dim=1)
+            team0_won = new_done & team0_alive & ~team1_alive
+            team1_won = new_done & team1_alive & ~team0_alive
+            results[team0_won] = 0
+            results[team1_won] = 1
+            results[new_done & ~team0_won & ~team1_won] = 2
+            finished |= new_done
+        if done_any.any():
+            env.reset_envs(done_any, options={"team_sizes": (n0, n1)})
+            reset_done_envs(agent0, done_any, num_tokens)
+            reset_done_envs(agent1, done_any, num_tokens)
+
+    results_cpu = results.cpu()
+    return (
+        int((results_cpu == 0).sum()),
+        int((results_cpu == 1).sum()),
+        int((results_cpu == 2).sum()),
+        float(ep_lengths.cpu().float().mean()),
+    )
 
 
 def run_collect_stats_mode(
@@ -47,7 +120,6 @@ def run_collect_stats_mode(
         matchups = ["2v2"]
 
     B = num_envs
-    dev = torch.device(device)
 
     for matchup in matchups:
         parts = matchup.split("v")
@@ -56,10 +128,6 @@ def run_collect_stats_mode(
             continue
         n0, n1 = int(parts[0]), int(parts[1])
         N = n0 + n1
-        M = env_config.num_obstacles
-        num_tokens = N + M
-
-        curr_env_config = replace(env_config, num_ships=N)
 
         agent0 = resolve_agent_spec(
             team0_spec, ship_config, model_config, device, checkpoint_dir, num_ships=N
@@ -68,77 +136,11 @@ def run_collect_stats_mode(
             team1_spec, ship_config, model_config, device, checkpoint_dir, num_ships=N
         )
 
-        env = TensorEnv(B, ship_config, curr_env_config, device)
-
-        # Per-game outcome tracking: 0 = team0 wins, 1 = team1 wins, 2 = tie
-        results = torch.zeros(B, dtype=torch.int32, device=dev)
-        ep_lengths = torch.zeros(B, dtype=torch.int64, device=dev)
-        finished = torch.zeros(B, dtype=torch.bool, device=dev)
-
-        init_hidden(agent0, B, num_tokens, dev)
-        init_hidden(agent1, B, num_tokens, dev)
-
-        env.reset(options={"team_sizes": (n0, n1)})
-        total_steps = 0
         t0 = time.perf_counter()
-
-        while not finished.all():
-            state = env.state
-            obs = observation_from_state(state, ship_config)
-
-            action0 = get_actions(agent0, obs, state, B, N, dev)
-            # Team 1 agent sees itself as team 0 (flipped team IDs)
-            obs_t1_data = {k: v for k, v in obs.data.items()}
-            obs_t1_data[ObsKey.TEAM_ID] = obs_t1_data[ObsKey.TEAM_ID].clone()
-            obs_t1_data[ObsKey.TEAM_ID][..., :N] = 1 - obs_t1_data[ObsKey.TEAM_ID][..., :N]
-            obs_t1 = MVPObservation(data=obs_t1_data)
-            action1 = get_actions(agent1, obs_t1, state, B, N, dev)
-
-            # Each agent generates actions for all ships; select by team ownership
-            team_id = state.ship_team_id  # (B, N)
-            action = torch.where((team_id == 0).unsqueeze(-1), action0, action1)
-
-            dones, truncated = env.step(action)
-            done_any = dones | truncated
-            total_steps += B
-
-            new_done = done_any & ~finished
-            if new_done.any():
-                ep_lengths[new_done] = env.state.step_count[new_done].long()
-
-                alive = env.state.ship_alive  # (B, N) — post-step terminal state
-                team = env.state.ship_team_id  # (B, N)
-
-                team0_alive = (alive & (team == 0)).any(dim=1)  # (B,)
-                team1_alive = (alive & (team == 1)).any(dim=1)  # (B,)
-
-                team0_won = new_done & team0_alive & ~team1_alive
-                team1_won = new_done & team1_alive & ~team0_alive
-
-                results[team0_won] = 0
-                results[team1_won] = 1
-                results[new_done & ~team0_won & ~team1_won] = 2
-
-                finished |= new_done
-
-            if done_any.any():
-                env.reset_envs(done_any, options={"team_sizes": (n0, n1)})
-                reset_done_envs(agent0, done_any, num_tokens)
-                reset_done_envs(agent1, done_any, num_tokens)
-
+        num_0, num_1, n_tie, avg_len = evaluate_matchup(
+            agent0, agent1, n0, n1, B, ship_config, env_config, device
+        )
         elapsed = time.perf_counter() - t0
-
-        # ---- Print results -------------------------------------------------------
-        results_cpu = results.cpu()
-        ep_lengths_cpu = ep_lengths.cpu()
-
-        num_0 = int((results_cpu == 0).sum())
-        num_1 = int((results_cpu == 1).sum())
-        n_tie = int((results_cpu == 2).sum())
-
-        avg_len = float(ep_lengths_cpu.float().mean())
-        min_len = int(ep_lengths_cpu.min())
-        max_len = int(ep_lengths_cpu.max())
         sim_fps = 1.0 / ship_config.dt
 
         w = 56
@@ -151,6 +153,5 @@ def run_collect_stats_mode(
         print(f"  Ties        : {n_tie:6d}  ({100 * n_tie / B:5.1f}%)")
         print(f"{'─' * w}")
         print(f"  Avg episode : {avg_len:7.1f} steps  ({avg_len / sim_fps:.1f}s sim)")
-        print(f"  Min / Max   : {min_len} / {max_len} steps")
-        print(f"  Wall time   : {elapsed:.2f}s  ({total_steps / elapsed:,.0f} steps/s)")
+        print(f"  Wall time   : {elapsed:.2f}s")
         print(f"{'─' * w}\n")

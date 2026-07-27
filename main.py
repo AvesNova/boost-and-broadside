@@ -31,6 +31,9 @@ Evaluation:
         writes checkpoints/<run>/elo_calibrated.json and elo_calibration/*.png
     uv run --no-sync main.py --mode ar_report                   # autoregressive prediction report
     uv run --no-sync main.py --mode noise_calibration           # NextStateHead error statistics
+    uv run --no-sync main.py --mode crossover                   # scripted count to beat T trained
+    uv run --no-sync main.py --mode crossover --trained-counts 4,8 --eval-envs 512
+        writes docs/crossover/crossover.json and prints a crossover table
 
 Gameplay video (headless mp4 capture of a run's final checkpoint):
     uv run --no-sync main.py --mode capture                     # 682, self + vs_scripted, seeds 0-7
@@ -66,6 +69,7 @@ from boost_and_broadside.config import EnvConfig, TrainConfig
 from boost_and_broadside.modes.ar_report import run_ar_report_mode
 from boost_and_broadside.modes.capture import run_capture_mode
 from boost_and_broadside.modes.collect import run_collect_stats_mode
+from boost_and_broadside.modes.crossover import run_crossover_mode
 from boost_and_broadside.modes.elo_calibrate import run_elo_calibrate_mode
 from boost_and_broadside.modes.elo_stats import run_elo_stats_mode
 from boost_and_broadside.modes.feature_stats import run_feature_stats_mode
@@ -100,6 +104,7 @@ def _parse_args() -> argparse.Namespace:
             "ar_report",
             "noise_calibration",
             "capture",
+            "crossover",
         ],
         default="rl",
         help=(
@@ -250,6 +255,18 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="(capture) Team sizes to record zero-shot, e.g. 1v1 2v2 4v4 8v8 16v16 32v32 64v64. "
         "Omit to use the run's native training size.",
+    )
+    parser.add_argument(
+        "--trained-counts",
+        type=str,
+        default="1,2,4,8,16,32,64",
+        help="(crossover) Comma-separated trained-team sizes to sweep, e.g. '1,2,4,8,16,32,64'.",
+    )
+    parser.add_argument(
+        "--eval-envs",
+        type=int,
+        default=256,
+        help="(crossover) Parallel games per matchup used to estimate each win rate.",
     )
     parser.add_argument(
         "--out",
@@ -575,6 +592,17 @@ def main() -> None:
                 sizes=args.sizes,
                 fps=args.fps,
                 max_steps=args.max_steps,
+            )
+
+        case "crossover":
+            run_crossover_mode(
+                run_spec=args.run if args.run != "none" else "resilient-resonance-682",
+                trained_counts=[int(c) for c in args.trained_counts.split(",") if c],
+                ship_config=SHIP_CONFIG,
+                model_config=MODEL_CONFIG,
+                device=device,
+                checkpoint_dir="checkpoints",
+                num_envs=args.eval_envs,
             )
 
 

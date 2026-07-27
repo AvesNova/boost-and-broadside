@@ -46,13 +46,18 @@ def parse_seeds(spec: str) -> list[int]:
     return [int(s) for s in spec.split(",") if s]
 
 
-def parse_side(spec: str) -> int:
-    """Ships per side from a size spec: '4v4' -> 4, or a bare '4' -> 4.
+def parse_matchup(spec: str) -> tuple[int, int]:
+    """Team-0 and team-1 ship counts from a size spec.
 
-    The model is token-based and scale-invariant, so the same weights play any
-    team size zero-shot; the size only sets how many ship tokens the env spawns.
+    '4v4' -> (4, 4); the asymmetric '8v12' -> (8, 12); a bare '4' -> (4, 4). The
+    model is token-based and scale-invariant, so the same weights play any size or
+    imbalance zero-shot; the spec only sets how many ship tokens each side spawns.
     """
-    return int(spec.split("v", 1)[0]) if "v" in spec else int(spec)
+    if "v" in spec:
+        a, b = spec.split("v", 1)
+        return int(a), int(b)
+    n = int(spec)
+    return n, n
 
 
 def _find_run_dir(run_spec: str, checkpoint_dir: str) -> Path:
@@ -89,6 +94,8 @@ def _open_encoder(out: Path, size: int, fps: int) -> subprocess.Popen:
 def _capture_match(
     scenario: str,
     seed: int,
+    n0: int,
+    n1: int,
     policy: ResolvedAgent,
     scripted: ResolvedAgent,
     ship_config: ShipConfig,
@@ -102,8 +109,8 @@ def _capture_match(
 ) -> int:
     """Play one seeded match, encode it to ``out``; return the frame count.
 
-    team-0 is always the policy; team-1 is a second policy view of the same
-    weights (self) or the scripted agent (vs_scripted).
+    team-0 (n0 ships) is always the policy; team-1 (n1 ships) is a second policy
+    view of the same weights (self) or the scripted agent (vs_scripted).
     """
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
@@ -117,7 +124,7 @@ def _capture_match(
     agent0 = policy
     agent1 = ResolvedAgent("policy", policy.agent) if scenario == "self" else scripted
 
-    obs = wrapper.reset(options={"team_sizes": (N // 2, N - N // 2)}, seed=seed)
+    obs = wrapper.reset(options={"team_sizes": (n0, n1)}, seed=seed)
     init_hidden(agent0, 1, num_tokens, device)
     init_hidden(agent1, 1, num_tokens, device)
 
@@ -177,7 +184,8 @@ def run_capture_mode(
     base_env = EnvConfig(**torch.load(str(checkpoint), map_location="cpu", weights_only=False)[
         "env_config"
     ])
-    per_side = [parse_side(s) for s in sizes] if sizes else [base_env.num_ships // 2]
+    native = base_env.num_ships // 2
+    matchups = [parse_matchup(s) for s in sizes] if sizes else [(native, native)]
     torch_device = torch.device(device)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -191,8 +199,8 @@ def run_capture_mode(
 
     written: list[Path] = []
     try:
-        for side in per_side:
-            env_config = replace(base_env, num_ships=2 * side)
+        for n0, n1 in matchups:
+            env_config = replace(base_env, num_ships=n0 + n1)
             # A fresh policy per size so its token slicing matches the env; the same
             # weights load at any size (nothing in the model is sized by ship count).
             policy = resolve_agent_spec(
@@ -200,10 +208,10 @@ def run_capture_mode(
             )
             for scenario in scenarios:
                 for seed in seed_list:
-                    out = out_dir / f"{scenario}_{side}v{side}_seed{seed:02d}.mp4"
+                    out = out_dir / f"{scenario}_{n0}v{n1}_seed{seed:02d}.mp4"
                     frames = _capture_match(
-                        scenario, seed, policy, scripted, ship_config, env_config, rewards,
-                        renderer, torch_device, out, max_steps, fps,
+                        scenario, seed, n0, n1, policy, scripted, ship_config, env_config,
+                        rewards, renderer, torch_device, out, max_steps, fps,
                     )
                     written.append(out)
                     print(f"wrote {out}  ({frames} frames, {frames / fps:.1f}s)")
