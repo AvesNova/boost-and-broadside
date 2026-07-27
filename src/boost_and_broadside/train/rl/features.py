@@ -1,7 +1,7 @@
 """Composable feature pipeline for observation encoding and aux prediction.
 
 Each Feature bundles:
-  - Accessor:  extracts raw channels from MVPObservation
+  - Accessor:  extracts raw channels from YemongObservation
   - Transform: encodes raw values into network-ready representation (input path)
   - Transform: encodes raw values into target space (aux prediction path)
   - Predictor: defines label computation and how predictions update the target
@@ -21,7 +21,7 @@ import torch
 import torch.nn.functional as F
 
 from boost_and_broadside.config import ShipConfig
-from boost_and_broadside.env.observation import MVPObservation, ObsKey
+from boost_and_broadside.env.observation import ObsKey, YemongObservation
 
 # ---------------------------------------------------------------------------
 # Math helpers
@@ -58,13 +58,13 @@ def phase_shift_circle(
 
 
 class Accessor:
-    """Reads specific channels from an MVPObservation tensor."""
+    """Reads specific channels from an YemongObservation tensor."""
 
     def __init__(self, key: ObsKey, channels: list[int] | None = None):
         self.key = key
         self.channels = channels
 
-    def get(self, obs: MVPObservation) -> torch.Tensor:
+    def get(self, obs: YemongObservation) -> torch.Tensor:
         val = obs[self.key]
         if self.channels is not None:
             return val[..., self.channels]
@@ -440,10 +440,10 @@ class Feature:
         self.label_scale = label_scale
         self.windowed_loss = windowed_loss
 
-    def get_input(self, obs: MVPObservation) -> torch.Tensor:
+    def get_input(self, obs: YemongObservation) -> torch.Tensor:
         return self.input_encoder(self.accessor.get(obs))
 
-    def get_target(self, obs: MVPObservation) -> torch.Tensor:
+    def get_target(self, obs: YemongObservation) -> torch.Tensor:
         return self.target_encoder(self.accessor.get(obs))
 
 
@@ -524,10 +524,10 @@ class FeatureCoordinator:
                 t_offset += t_dim
                 p_offset += p_dim
 
-    def _dummy_obs(self) -> MVPObservation:
-        from boost_and_broadside.env.observation import MVPObservation, ObsKey
+    def _dummy_obs(self) -> YemongObservation:
+        from boost_and_broadside.env.observation import ObsKey, YemongObservation
 
-        return MVPObservation(
+        return YemongObservation(
             data={
                 ObsKey.POS: torch.zeros((1, 1, 2)),
                 ObsKey.VEL: torch.zeros((1, 1, 2)),
@@ -547,10 +547,10 @@ class FeatureCoordinator:
     # Forward paths
     # ------------------------------------------------------------------
 
-    def get_input_vector(self, obs: MVPObservation) -> torch.Tensor:
+    def get_input_vector(self, obs: YemongObservation) -> torch.Tensor:
         return torch.cat([f.get_input(obs) for f in self.features], dim=-1)
 
-    def get_target_vector(self, obs: MVPObservation) -> torch.Tensor:
+    def get_target_vector(self, obs: YemongObservation) -> torch.Tensor:
         parts = [f.get_target(obs) for f in self.features if f.predictor]
         if not parts:
             return obs.pos.new_zeros((*obs.pos.shape[:-1], 0))

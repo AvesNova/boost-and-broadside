@@ -37,9 +37,9 @@ import torch
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import EloEvalConfig, EnvConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
-from boost_and_broadside.env.observation import MVPObservation, observation_from_state
+from boost_and_broadside.env.observation import YemongObservation, observation_from_state
 from boost_and_broadside.env.obstacle_cache import ObstacleCache
-from boost_and_broadside.models.mvp.policy import MVPPolicy
+from boost_and_broadside.models.yemong.policy import YemongPolicy
 from boost_and_broadside.modes.agent_factory import (
     ResolvedAgent,
     get_actions,
@@ -82,7 +82,7 @@ _COUNT_ROWS = MAX_ANCHORS + 3
 class LadderOpponent:
     """One rated reference the live or floating policy is measured against."""
 
-    policy: "MVPPolicy | None"  # None stands for the random agent
+    policy: "YemongPolicy | None"  # None stands for the random agent
     elo: float
     label: str  # roster label; the key match counts are recorded under
 
@@ -140,8 +140,8 @@ class EloEvaluator:
         env_config: EnvConfig,
         device: torch.device,
         obstacle_cache: ObstacleCache | None,
-        live_policy: MVPPolicy,
-        avg_policy: MVPPolicy,
+        live_policy: YemongPolicy,
+        avg_policy: YemongPolicy,
         scripted_agent: StochasticScriptedAgent | None,
         num_ships: int,
         num_tokens: int,
@@ -251,7 +251,7 @@ class EloEvaluator:
         )  # (A,)
 
     def _make_anchor_agents(
-        self, policy: MVPPolicy | None
+        self, policy: YemongPolicy | None
     ) -> tuple[ResolvedAgent | None, ResolvedAgent | None]:
         """Fresh (live-slot, float-slot) agents for one anchor; None is the random agent."""
         if policy is None:
@@ -291,7 +291,7 @@ class EloEvaluator:
             self._anchor_agents_float.append(agent_float)
         self._build_floating_agents()
 
-    def promote_floating(self, snapshot_policy: MVPPolicy, snapshot_label: str) -> None:
+    def promote_floating(self, snapshot_policy: YemongPolicy, snapshot_label: str) -> None:
         """Freeze the floating checkpoint into the anchor set and start a new one.
 
         The caller freezes the matching roster entry; here the current floating
@@ -368,14 +368,14 @@ class EloEvaluator:
     # Stepping
     # ------------------------------------------------------------------
 
-    def _opponent_obs(self, obs: MVPObservation, lo: int, hi: int) -> MVPObservation:
+    def _opponent_obs(self, obs: YemongObservation, lo: int, hi: int) -> YemongObservation:
         """Return the team-1 perspective for policy opponents in envs [lo, hi)."""
         sliced = obs.slice_envs(slice(lo, hi))
         return sliced.flip_team(self.num_ships) if self.ego_pass else sliced
 
     def _anchor_actions(
         self,
-        obs: MVPObservation,
+        obs: YemongObservation,
         lo: int,
         hi: int,
         agents: list[ResolvedAgent | None],
@@ -406,7 +406,7 @@ class EloEvaluator:
         idx = self._anchor_idx_live if lo == 0 else self._anchor_idx_float  # (B_slot,)
         return torch.where(idx.view(-1, 1, 1) == 1, per_anchor[1], per_anchor[0])
 
-    def _compute_team_actions(self, obs: MVPObservation) -> tuple[torch.Tensor, torch.Tensor]:
+    def _compute_team_actions(self, obs: YemongObservation) -> tuple[torch.Tensor, torch.Tensor]:
         """Return (team0, team1) actions, each (5·size, N, 3), for one eval step."""
         size = self.matchup_size
         state = self.env.state

@@ -21,8 +21,8 @@ import numpy as np
 import torch
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, RewardConfig, ShipConfig
-from boost_and_broadside.env.observation import MVPObservation
-from boost_and_broadside.env.wrapper import MVPEnvWrapper
+from boost_and_broadside.env.observation import YemongObservation
+from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.modes.agent_factory import (
     ResolvedAgent,
     _decode_targets_to_obs,
@@ -69,7 +69,7 @@ def run_ar_report_mode(
         num_ships=env_config.num_ships,
     )
 
-    wrapper = MVPEnvWrapper(
+    wrapper = YemongEnvWrapper(
         num_envs=1,
         ship_config=ship_config,
         env_config=env_config,
@@ -87,7 +87,7 @@ def run_ar_report_mode(
     init_hidden(agent1, 1, num_tokens, device)
 
     # Save initial state for AR
-    init_obs = MVPObservation(data={k: v.clone() for k, v in obs.items()})
+    init_obs = YemongObservation(data={k: v.clone() for k, v in obs.items()})
     init_hidden0 = agent0.hidden.clone() if agent0.hidden is not None else None
     init_hidden1 = agent1.hidden.clone() if agent1.hidden is not None else None
 
@@ -159,7 +159,7 @@ def run_ar_report_mode(
 def _run_ar(
     agent0: ResolvedAgent,
     agent1: ResolvedAgent,
-    init_obs: MVPObservation,
+    init_obs: YemongObservation,
     init_hidden0: torch.Tensor | None,
     init_hidden1: torch.Tensor | None,
     num_steps: int,
@@ -167,7 +167,7 @@ def _run_ar(
     forced_actions: list[torch.Tensor] | None,
     is_closed_loop: bool,
 ) -> History:
-    obs = MVPObservation(data={k: v.clone() for k, v in init_obs.items()})
+    obs = YemongObservation(data={k: v.clone() for k, v in init_obs.items()})
     if agent0.hidden is not None:
         agent0.hidden = init_hidden0.clone()
     if agent1.hidden is not None:

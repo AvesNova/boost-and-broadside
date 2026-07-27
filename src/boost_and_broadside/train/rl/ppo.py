@@ -1,4 +1,4 @@
-"""Recurrent PPO trainer for the MVP policy.
+"""Recurrent PPO trainer for the Yemong policy.
 
 Core loop: collect rollout → compute per-component GAE → PPO update epochs →
 log async → repeat. On top of that, PPOTrainer coordinates:
@@ -38,10 +38,10 @@ from boost_and_broadside.config import (
     TrainingSchedule,
 )
 from boost_and_broadside.constants import POWER_SLICE, SHOOT_SLICE, TURN_SLICE
-from boost_and_broadside.env.observation import MVPObservation, ObsKey
+from boost_and_broadside.env.observation import ObsKey, YemongObservation
 from boost_and_broadside.env.obstacle_cache import ObstacleCache
-from boost_and_broadside.env.wrapper import MVPEnvWrapper
-from boost_and_broadside.models.mvp.policy import MVPPolicy
+from boost_and_broadside.env.wrapper import YemongEnvWrapper
+from boost_and_broadside.models.yemong.policy import YemongPolicy
 from boost_and_broadside.train.rl.buffer import (
     AdvantageScaler,
     LogicalRolloutBuffer,
@@ -172,12 +172,12 @@ class _RolloutRuntime:
     league_start: int
     league_end: int
     elo_eval: EloEvaluator
-    obs: MVPObservation
+    obs: YemongObservation
     hidden: torch.Tensor
     hidden_t1: torch.Tensor | None
     avg_hidden: torch.Tensor | None
     action_buffer: torch.Tensor
-    aux_obs: list[MVPObservation]
+    aux_obs: list[YemongObservation]
     aux_hiddens: list[torch.Tensor]
     aux_hidden_t1s: list[torch.Tensor | None]
     aux_action_buffers: list[torch.Tensor]
@@ -233,7 +233,7 @@ def _max_schedule_value(
 
 
 class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
-    """Proximal Policy Optimization for the MVP multi-agent policy.
+    """Proximal Policy Optimization for the Yemong multi-agent policy.
 
     Args:
         train_config:    PPO hyperparameters and timeline.
@@ -325,7 +325,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         else:
             self._obstacle_cache = None
 
-        self.wrapper = MVPEnvWrapper(
+        self.wrapper = YemongEnvWrapper(
             num_envs=train_config.scales[0].num_envs,
             ship_config=ship_config,
             env_config=train_config.scales[0].env_config,
@@ -351,7 +351,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         N = train_config.scales[0].env_config.num_ships
         self._compile_mode = compile_mode
-        self._policy_module = MVPPolicy(
+        self._policy_module = YemongPolicy(
             model_config,
             self.coordinator,
             num_value_components=K,
@@ -412,7 +412,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # Weights initialized as a copy of the training policy.
         # Accumulation starts when the BC aux loss decays to zero (scripted win
         # rate reaches cfg.bc_winrate_target); once started it never stops.
-        self._avg_policy_module = MVPPolicy(
+        self._avg_policy_module = YemongPolicy(
             model_config,
             self.coordinator,
             num_value_components=K,
@@ -500,7 +500,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         # Current league opponent for the ongoing rollout (rotated each rollout).
         self._current_league_entry: RosterEntry | None = None
-        self._current_league_policy: MVPPolicy | None = None
+        self._current_league_policy: YemongPolicy | None = None
 
         # Async logging queue
         self._log_queue: Queue = Queue()
@@ -559,11 +559,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # --- Auxiliary training scales (multi-scale curriculum) ---
         # Each scale has its own env + buffer; policy, optimizer, and scaler are shared.
         # Pure self-play only — no scripted/avg/league opponents on aux scales.
-        self.aux_wrappers: list[MVPEnvWrapper] = []
+        self.aux_wrappers: list[YemongEnvWrapper] = []
         self.aux_buffers: list[RolloutBuffer] = []
 
         for sc in train_config.scales[1:]:
-            aux_w = MVPEnvWrapper(
+            aux_w = YemongEnvWrapper(
                 num_envs=sc.num_envs,
                 ship_config=ship_config,
                 env_config=sc.env_config,
@@ -628,7 +628,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
     def _rollout_policy_pass(
         self,
-        obs: MVPObservation,
+        obs: YemongObservation,
         hidden: torch.Tensor,
         hidden_t1: torch.Tensor | None,
         num_ships: int,
@@ -650,7 +650,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         shared_pass: one B pass on raw obs — every ship acts from it.
 
         Args:
-            obs:        MVPObservation with (B, N+M, ...) tensors (raw team IDs).
+            obs:        YemongObservation with (B, N+M, ...) tensors (raw team IDs).
             hidden:     (n_layers, B*(N+M), CONV_KERNEL*D) raw-perspective hidden state.
             hidden_t1:  Flipped-perspective hidden state; None in shared_pass.
             num_ships:  N — ship token count for team flipping.
@@ -690,7 +690,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
     def _collect_aux_steps(
         self,
-        aux_obs: list[MVPObservation],
+        aux_obs: list[YemongObservation],
         aux_hiddens: list[torch.Tensor],
         aux_hidden_t1s: list[torch.Tensor | None],
         aux_action_buffers: list[torch.Tensor],
@@ -776,7 +776,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         )
         action_buffer = torch.zeros(num_envs, num_ships, 3, dtype=torch.int32, device=self.device)
 
-        aux_obs: list[MVPObservation] = []
+        aux_obs: list[YemongObservation] = []
         aux_hiddens: list[torch.Tensor] = []
         aux_hidden_t1s: list[torch.Tensor | None] = []
         aux_action_buffers: list[torch.Tensor] = []
@@ -1620,7 +1620,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             buf.ns_labels = None
             return
         T, B, N = buf.num_steps, buf.num_envs, buf.num_ships
-        ship_obs = MVPObservation(
+        ship_obs = YemongObservation(
             data={
                 k: (
                     v[:, :, :N].reshape((T + 1) * B, N, *v.shape[3:])
@@ -2001,7 +2001,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         a None policy stands for the random agent.
         """
 
-        def _load(entry: RosterEntry) -> MVPPolicy:
+        def _load(entry: RosterEntry) -> YemongPolicy:
             self.roster.load_policy(
                 entry,
                 self.model_config,

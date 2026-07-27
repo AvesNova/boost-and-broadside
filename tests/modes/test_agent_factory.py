@@ -5,14 +5,14 @@ import math
 import torch
 
 from boost_and_broadside.config import ShipConfig
-from boost_and_broadside.env.observation import MVPObservation, ObsKey
+from boost_and_broadside.env.observation import ObsKey, YemongObservation
 from boost_and_broadside.modes.agent_factory import _decode_targets_to_obs
 from boost_and_broadside.train.rl.features import build_standard_coordinator
 
 
-def _make_prev_obs(B: int, N: int) -> MVPObservation:
+def _make_prev_obs(B: int, N: int) -> YemongObservation:
     """Minimal ship-only observation with every key _decode_targets_to_obs touches."""
-    return MVPObservation(
+    return YemongObservation(
         data={
             ObsKey.POS: torch.zeros(B, N, 2),
             ObsKey.VEL: torch.zeros(B, N, 2),

@@ -6,10 +6,10 @@ import pytest
 import torch
 
 from boost_and_broadside.config import ModelConfig, ShipConfig
-from boost_and_broadside.env.observation import MVPObservation, ObsKey
-from boost_and_broadside.models.mvp.attention import TransformerBlock
-from boost_and_broadside.models.mvp.encoder import ShipEncoder
-from boost_and_broadside.models.mvp.policy import MVPPolicy
+from boost_and_broadside.env.observation import ObsKey, YemongObservation
+from boost_and_broadside.models.yemong.attention import TransformerBlock
+from boost_and_broadside.models.yemong.encoder import ShipEncoder
+from boost_and_broadside.models.yemong.policy import YemongPolicy
 from boost_and_broadside.train.rl.features import FeatureCoordinator, build_standard_coordinator
 
 
@@ -31,10 +31,10 @@ def coordinator(ship_cfg) -> FeatureCoordinator:
 NUM_VALUE_COMPONENTS = 12  # fixed K for encoder/policy unit tests
 
 
-def _make_obs(B: int, N: int) -> MVPObservation:
-    """Build a minimal random obs dict matching MVPEnvWrapper output."""
+def _make_obs(B: int, N: int) -> YemongObservation:
+    """Build a minimal random obs dict matching YemongEnvWrapper output."""
 
-    return MVPObservation(
+    return YemongObservation(
         data={
             ObsKey.POS: torch.rand(B, N, 2),
             ObsKey.VEL: torch.randn(B, N, 2) * 100,
@@ -140,7 +140,7 @@ class TestTransformerBlock:
         which disqualifies the flash/mem-efficient SDPA kernels and silently falls
         back to the math kernel. The mask must follow q's dtype instead.
         """
-        from boost_and_broadside.models.mvp import attention as attention_mod
+        from boost_and_broadside.models.yemong import attention as attention_mod
 
         B, N = 2, 4
         block = TransformerBlock(model_cfg)
@@ -173,7 +173,7 @@ class TestRGLRU:
     """Verify forward_sequence (parallel scan) matches the sequential _step reference."""
 
     def _make_rglru(self, d_model: int = 32):
-        from boost_and_broadside.models.mvp.griffin import RGLRU
+        from boost_and_broadside.models.yemong.griffin import RGLRU
 
         torch.manual_seed(0)
         return RGLRU(d_model).eval()
@@ -261,11 +261,11 @@ class TestRGLRU:
         assert torch.isfinite(scan_h).all()
 
 
-class TestMVPPolicy:
+class TestYemongPolicy:
     def test_get_action_and_value_shapes(self, model_cfg, coordinator):
         """get_action_and_value must return correct tensor shapes."""
         B, N = 2, 8
-        policy = MVPPolicy(
+        policy = YemongPolicy(
             model_cfg, coordinator, num_value_components=NUM_VALUE_COMPONENTS, num_ships=N
         )
         obs = _make_obs(B, N)
@@ -277,7 +277,7 @@ class TestMVPPolicy:
         assert action.shape == (B, N, 3)
         assert logprob.shape == (B, N)
         assert value.shape == (B, N, K)
-        from boost_and_broadside.models.mvp.griffin import CONV_KERNEL
+        from boost_and_broadside.models.yemong.griffin import CONV_KERNEL
 
         assert new_hidden.shape == (
             model_cfg.n_transformer_blocks,
@@ -294,7 +294,7 @@ class TestMVPPolicy:
         )
 
         B, N = 2, 4
-        policy = MVPPolicy(
+        policy = YemongPolicy(
             model_cfg, coordinator, num_value_components=NUM_VALUE_COMPONENTS, num_ships=N
         )
         obs = _make_obs(B, N)
@@ -309,13 +309,13 @@ class TestMVPPolicy:
     def test_evaluate_actions_shapes(self, model_cfg, coordinator):
         """evaluate_actions returns (T,B,N) logprob/entropy and (T,B,N,K) new_value."""
         T, B, N = 4, 2, 8
-        policy = MVPPolicy(
+        policy = YemongPolicy(
             model_cfg, coordinator, num_value_components=NUM_VALUE_COMPONENTS, num_ships=N
         )
         K = NUM_VALUE_COMPONENTS
 
         obs_dict = {k: v.unsqueeze(0).expand(T, *v.shape) for k, v in _make_obs(B, N).items()}
-        obs = MVPObservation(data=obs_dict)
+        obs = YemongObservation(data=obs_dict)
         actions = torch.zeros(T, B, N, 3, dtype=torch.long)
         hidden = policy.initial_hidden(B, N, torch.device("cpu"))
         alive_mask = torch.ones(T, B, N, dtype=torch.bool)
@@ -332,10 +332,10 @@ class TestMVPPolicy:
     def test_hidden_reset_zeros_done_envs(self, model_cfg, coordinator):
         """reset_hidden_for_envs must zero hidden states for done environments."""
         B, N = 3, 4
-        policy = MVPPolicy(
+        policy = YemongPolicy(
             model_cfg, coordinator, num_value_components=NUM_VALUE_COMPONENTS, num_ships=N
         )
-        from boost_and_broadside.models.mvp.griffin import CONV_KERNEL
+        from boost_and_broadside.models.yemong.griffin import CONV_KERNEL
 
         hidden = torch.ones(model_cfg.n_transformer_blocks, B * N, CONV_KERNEL * model_cfg.d_model)
         done = torch.tensor([True, False, True])
@@ -357,7 +357,7 @@ class TestOrthogonalHeadInit:
         module gets orthogonal-initialized (previously a hardcoded head[0]/head[3])."""
         import torch.nn as nn
 
-        from boost_and_broadside.models.mvp.policy import _init_head_orthogonal
+        from boost_and_broadside.models.yemong.policy import _init_head_orthogonal
 
         torch.manual_seed(0)
         head = nn.Sequential(
@@ -378,10 +378,10 @@ class TestOrthogonalHeadInit:
         assert torch.allclose(gram, 2.0 * torch.eye(4), atol=1e-4)
 
     def test_policy_heads_are_orthogonal_initialized(self, model_cfg, coordinator):
-        """MVPPolicy's actual heads (including the team_pma_k win/loss head) still
+        """YemongPolicy's actual heads (including the team_pma_k win/loss head) still
         get orthogonal-initialized end to end after the by-type refactor."""
         team_pma_k = (0, 1)
-        policy = MVPPolicy(
+        policy = YemongPolicy(
             model_cfg,
             coordinator,
             num_value_components=NUM_VALUE_COMPONENTS,
@@ -436,7 +436,7 @@ class TestFeatureCoordinatorDecode:
         coordinator = build_standard_coordinator(ship_cfg)
         w, h = ship_cfg.world_size
         att_angle = 0.7
-        obs = MVPObservation(
+        obs = YemongObservation(
             data={
                 ObsKey.POS: torch.tensor([[[0.3 * w, 0.65 * h]]]),
                 ObsKey.VEL: torch.tensor([[[18.0, -7.0]]]),
@@ -467,8 +467,8 @@ class TestGradCheckpoint:
         T, B, N = 4, 2, 8
         K = NUM_VALUE_COMPONENTS
         torch.manual_seed(0)
-        base = MVPPolicy(model_cfg, coordinator, num_value_components=K, num_ships=N)
-        ckpt = MVPPolicy(
+        base = YemongPolicy(model_cfg, coordinator, num_value_components=K, num_ships=N)
+        ckpt = YemongPolicy(
             replace(model_cfg, grad_checkpoint=True),
             coordinator,
             num_value_components=K,
@@ -479,7 +479,7 @@ class TestGradCheckpoint:
         obs_dict = {
             k: v.unsqueeze(0).expand(T, *v.shape).clone() for k, v in _make_obs(B, N).items()
         }
-        obs = MVPObservation(data=obs_dict)
+        obs = YemongObservation(data=obs_dict)
         actions = torch.zeros(T, B, N, 3, dtype=torch.long)
         hidden = base.initial_hidden(B, N, torch.device("cpu"))
         alive = torch.ones(T, B, N, dtype=torch.bool)

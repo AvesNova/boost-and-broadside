@@ -24,7 +24,7 @@ class ObsKey(StrEnum):
 
 
 @dataclass(frozen=True)
-class MVPObservation:
+class YemongObservation:
     """Typed immutable observation for all entities.
 
     data: maps ObsKey → tensor of shape (B, N+M, ...) or (T, B, N+M, ...) etc.
@@ -108,12 +108,12 @@ class MVPObservation:
     # Immutable update / structural ops
     # ------------------------------------------------------------------
 
-    def update(self, key: ObsKey, value: torch.Tensor) -> "MVPObservation":
+    def update(self, key: ObsKey, value: torch.Tensor) -> "YemongObservation":
         new_data = dict(self.data)
         new_data[key] = value
-        return MVPObservation(data=new_data)
+        return YemongObservation(data=new_data)
 
-    def flip_team(self, num_ships: int) -> "MVPObservation":
+    def flip_team(self, num_ships: int) -> "YemongObservation":
         """Swap team IDs 0 and 1 for the first num_ships entity slots."""
         team_id = self.data[ObsKey.TEAM_ID].clone()
         ship_slice = team_id[..., :num_ships]
@@ -121,15 +121,15 @@ class MVPObservation:
         team_id[..., :num_ships] = flipped
         return self.update(ObsKey.TEAM_ID, team_id)
 
-    def slice_envs(self, idx: "slice | torch.Tensor") -> "MVPObservation":
-        return MVPObservation(data={k: v[idx] for k, v in self.data.items()})
+    def slice_envs(self, idx: "slice | torch.Tensor") -> "YemongObservation":
+        return YemongObservation(data={k: v[idx] for k, v in self.data.items()})
 
-    def slice_time(self, start: int, end: int) -> "MVPObservation":
-        return MVPObservation(data={k: v[start:end] for k, v in self.data.items()})
+    def slice_time(self, start: int, end: int) -> "YemongObservation":
+        return YemongObservation(data={k: v[start:end] for k, v in self.data.items()})
 
-    def concat_batch(self, other: "MVPObservation") -> "MVPObservation":
+    def concat_batch(self, other: "YemongObservation") -> "YemongObservation":
         """Concatenate two observations along the batch (env) dimension (dim 0)."""
-        return MVPObservation(
+        return YemongObservation(
             data={k: torch.cat([v, other.data[k]], dim=0) for k, v in self.data.items()}
         )
 
@@ -211,7 +211,7 @@ def observation_from_state(
     state: TensorState,
     ship_config: ShipConfig,
     buffers: ObservationBuffers | None = None,
-) -> MVPObservation:
+) -> YemongObservation:
     """Build the raw policy observation for the supplied environment state.
 
     Obstacles are represented as always-alive team-2 tokens. Passing reusable
@@ -238,7 +238,7 @@ def observation_from_state(
     ship_prev_action = state.prev_action.long()
 
     if state.num_obstacles == 0:
-        return MVPObservation(
+        return YemongObservation(
             data={
                 ObsKey.POS: ship_pos,
                 ObsKey.VEL: ship_vel,
@@ -267,7 +267,7 @@ def observation_from_state(
     obstacle_vel = torch.stack([state.obstacle_vel.real, state.obstacle_vel.imag], dim=-1)
     obstacle_speed = torch.norm(obstacle_vel, dim=-1, keepdim=True).clamp(min=EPS)
     obstacle_att = obstacle_vel / obstacle_speed
-    return MVPObservation(
+    return YemongObservation(
         data={
             ObsKey.POS: torch.cat([ship_pos, obstacle_pos], dim=1),
             ObsKey.VEL: torch.cat([ship_vel, obstacle_vel], dim=1),

@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 
 from boost_and_broadside.config import ModelConfig
-from boost_and_broadside.env.observation import MVPObservation
+from boost_and_broadside.env.observation import YemongObservation
 from boost_and_broadside.train.rl.features import FeatureCoordinator
 
 
@@ -35,11 +35,11 @@ class ShipEncoder(nn.Module):
             nn.RMSNorm(model_config.d_model),
         )
 
-    def forward(self, obs: MVPObservation) -> torch.Tensor:
+    def forward(self, obs: YemongObservation) -> torch.Tensor:
         """Encode entity observations into tokens.
 
         Args:
-            obs: MVPObservation from MVPEnvWrapper.
+            obs: YemongObservation from YemongEnvWrapper.
 
         Returns:
             (..., N, d_model) float32 token tensor.

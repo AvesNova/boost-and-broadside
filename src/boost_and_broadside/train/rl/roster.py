@@ -39,7 +39,7 @@ def load_checkpoint_policy(
     compile_mode: str | None = None,
     team_pma_k: tuple[int, ...] = (),
 ):
-    """Construct an eval-mode MVPPolicy from a saved checkpoint file.
+    """Construct an eval-mode YemongPolicy from a saved checkpoint file.
 
     Args:
         path:                 Path to a .pt file containing "policy_state_dict".
@@ -55,11 +55,11 @@ def load_checkpoint_policy(
     Returns:
         The loaded policy in eval mode (compiled when compile_mode is set).
     """
-    from boost_and_broadside.models.mvp.policy import MVPPolicy
+    from boost_and_broadside.models.yemong.policy import YemongPolicy
 
     ckpt = torch.load(path, map_location=device, weights_only=False)
     ckpt_team_pma_k = tuple(ckpt.get("team_pma_k", team_pma_k))
-    policy = MVPPolicy(
+    policy = YemongPolicy(
         model_config,
         coordinator,
         num_value_components=num_value_components,
@@ -83,7 +83,7 @@ class RosterEntry:
     update: int  # PPO update index when snapshotted
     path: str | None = None  # .pt file path; None for all non-checkpoint kinds
     fixed: bool = False  # If True, the rating is frozen forever (ladder anchor)
-    policy: object = field(default=None, repr=False)  # Loaded MVPPolicy; None if unloaded
+    policy: object = field(default=None, repr=False)  # Loaded YemongPolicy; None if unloaded
 
 
 class EloRoster:

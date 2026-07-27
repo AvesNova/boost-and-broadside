@@ -18,13 +18,13 @@ from typing import NamedTuple
 import numpy as np
 import torch
 
-from boost_and_broadside.env.observation import MVPObservation, ObsKey
+from boost_and_broadside.env.observation import ObsKey, YemongObservation
 
 
 class MicroBatch(NamedTuple):
     """One recurrent PPO micro-batch produced by :class:`RolloutBuffer`."""
 
-    obs: MVPObservation
+    obs: YemongObservation
     actions: torch.Tensor
     old_logprobs: torch.Tensor
     advantages: torch.Tensor
@@ -49,7 +49,7 @@ class MicroBatch(NamedTuple):
         """
         if self.actions.device.type != "cpu":
             raise ValueError("pin_memory() requires a CPU micro-batch")
-        obs = MVPObservation(data={key: value.pin_memory() for key, value in self.obs.items()})
+        obs = YemongObservation(data={key: value.pin_memory() for key, value in self.obs.items()})
         return MicroBatch(
             obs=obs,
             actions=self.actions.pin_memory(),
@@ -78,7 +78,7 @@ class MicroBatch(NamedTuple):
         """
         if self.actions.device == device:
             return self
-        obs = MVPObservation(
+        obs = YemongObservation(
             data={
                 key: value.to(device=device, non_blocking=non_blocking)
                 for key, value in self.obs.items()
@@ -136,7 +136,9 @@ class MicroBatch(NamedTuple):
             hidden_width,
         )[:, start:end]
         return MicroBatch(
-            obs=MVPObservation(data={key: value[:, start:end] for key, value in self.obs.items()}),
+            obs=YemongObservation(
+                data={key: value[:, start:end] for key, value in self.obs.items()}
+            ),
             actions=self.actions[:, start:end],
             old_logprobs=self.old_logprobs[:, start:end],
             advantages=self.advantages[:, start:end],
@@ -489,7 +491,7 @@ class RolloutBuffer:
         num_envs:        Parallel environments B.
         num_ships:       Ships per environment N.
         num_components:  Value components K (len(REWARD_COMPONENT_NAMES)).
-        obs_sample:      Sample MVPObservation (B, N+M, ...) — used to infer shapes/dtypes.
+        obs_sample:      Sample YemongObservation (B, N+M, ...) — used to infer shapes/dtypes.
         gamma:           Discount factor.
         gae_lambda:      GAE lambda.
         device:          GPU device for all storage.
@@ -502,7 +504,7 @@ class RolloutBuffer:
         num_envs: int,
         num_ships: int,
         num_components: int,
-        obs_sample: MVPObservation,
+        obs_sample: YemongObservation,
         gamma: torch.Tensor,
         gae_lambda: torch.Tensor,
         device: torch.device,
@@ -590,7 +592,7 @@ class RolloutBuffer:
 
     def add(
         self,
-        obs: MVPObservation,
+        obs: YemongObservation,
         action: torch.Tensor,
         logprob: torch.Tensor,
         reward: torch.Tensor,
@@ -604,7 +606,7 @@ class RolloutBuffer:
         """Store one step.
 
         Args:
-            obs:          MVPObservation with (B, N+M, ...) tensors.
+            obs:          YemongObservation with (B, N+M, ...) tensors.
             action:       (B, N, 3) int.
             logprob:      (B, N) float.
             reward:       (B, N, K) float — raw per-component per-ship rewards.
@@ -639,7 +641,7 @@ class RolloutBuffer:
 
         self.ptr += 1
 
-    def store_final_obs(self, obs: MVPObservation) -> None:
+    def store_final_obs(self, obs: YemongObservation) -> None:
         """Store the observation at the end of the rollout (the T+1-th obs slot).
 
         Called once after the rollout loop completes. This final obs enables
@@ -713,7 +715,7 @@ class RolloutBuffer:
 
         Yields:
             List of named micro-batches, each containing:
-                mb_obs:          MVPObservation (T+1, B_mb, N+M, ...)
+                mb_obs:          YemongObservation (T+1, B_mb, N+M, ...)
                 mb_actions:      (T, B_mb, N, 3) int32
                 mb_logprobs:     (T, B_mb, N) float32
                 mb_advantages:   (T, B_mb, N, K) float32
@@ -747,7 +749,7 @@ class RolloutBuffer:
             chunks = []
             for idx in np.array_split(env_order[start:end], n_micro):
                 # T+1 obs for this micro-batch
-                mb_obs = MVPObservation(data={k: v[:, idx] for k, v in self.obs.items()})
+                mb_obs = YemongObservation(data={k: v[:, idx] for k, v in self.obs.items()})
 
                 # Reconstruct initial hidden: (n_layers, B_mb*num_tokens, H)
                 mb_hidden = hidden_full[:, idx, :, :].reshape(
@@ -867,7 +869,9 @@ class StoredRollout:
 
         for start in range(0, self.num_envs, envs_per_batch):
             indices = env_order[start : start + envs_per_batch]
-            obs = MVPObservation(data={key: value[:, indices] for key, value in self.obs.items()})
+            obs = YemongObservation(
+                data={key: value[:, indices] for key, value in self.obs.items()}
+            )
             hidden = hidden_full[:, indices].reshape(
                 n_layers,
                 len(indices) * self.num_tokens,

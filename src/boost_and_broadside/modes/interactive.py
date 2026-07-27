@@ -27,7 +27,7 @@ from boost_and_broadside.env.obstacle_physics import (
     init_obstacles_orbital,
     step_obstacles_harmonic,
 )
-from boost_and_broadside.env.wrapper import MVPEnvWrapper
+from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.modes.agent_factory import (
     ResolvedAgent,
     get_actions,
@@ -97,7 +97,7 @@ def run_watch_mode(
             renderer.close()
             return
 
-    wrapper = MVPEnvWrapper(
+    wrapper = YemongEnvWrapper(
         num_envs=1,
         ship_config=ship_config,
         env_config=env_config,
@@ -213,7 +213,7 @@ def _run_convergence_phase(
 
 
 def _run_interactive_loop(
-    wrapper: MVPEnvWrapper,
+    wrapper: YemongEnvWrapper,
     agent0: ResolvedAgent,
     agent1: ResolvedAgent,
     renderer: GameRenderer,
@@ -222,7 +222,7 @@ def _run_interactive_loop(
     """Core render loop.  Runs episodes back-to-back until the window is closed.
 
     Args:
-        wrapper:  Single-env MVPEnvWrapper (num_envs=1).
+        wrapper:  Single-env YemongEnvWrapper (num_envs=1).
         agent0:   Agent controlling team-0 ships.
         agent1:   Agent controlling team-1 ships.
         renderer: Pygame renderer.

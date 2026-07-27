@@ -26,7 +26,7 @@ import torch
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
-from boost_and_broadside.env.observation import MVPObservation, observation_from_state
+from boost_and_broadside.env.observation import YemongObservation, observation_from_state
 from boost_and_broadside.modes.agent_factory import (
     ResolvedAgent,
     _decode_targets_to_obs,
@@ -385,7 +385,7 @@ def _run_phase2(
                 reset_done_envs(warmup_agent1, done_any, num_tokens)
 
         # --- AR replay from snapshot ---
-        curr_obs = MVPObservation(data={k: v.clone() for k, v in ar_start_obs.items()})
+        curr_obs = YemongObservation(data={k: v.clone() for k, v in ar_start_obs.items()})
         curr_hidden = ar_start_hidden.clone()
         curr_targets = ar_start_targets.clone()
 
