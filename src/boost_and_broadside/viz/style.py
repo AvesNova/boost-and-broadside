@@ -110,7 +110,7 @@ def label_series_ends(axes, entries: list[tuple[float, float, str, str]]) -> Non
 
 
 def draw_reference_lines(axes, lines: list[tuple[str, float]]) -> None:
-    """Landmark values as recessive dashed rules, labelled on a surface plate.
+    """Landmark values as recessive dashed rules, right-labelled on a surface plate.
 
     A landmark spans the full width, so no anchor position is reliably clear of
     the data; the label sits on a surface-coloured plate to stay legible over
@@ -119,9 +119,17 @@ def draw_reference_lines(axes, lines: list[tuple[str, float]]) -> None:
     for name, value in lines:
         axes.axhline(value, color=INK_MUTED, linewidth=1.2, linestyle=(0, (5, 4)), zorder=2)
         axes.annotate(
-            f"{name}  {value:.0f}", xy=(0.008, value), xycoords=("axes fraction", "data"),
-            xytext=(0, 4), textcoords="offset points", color=INK_MUTED, fontsize=9, va="bottom",
-            zorder=6, bbox={"facecolor": SURFACE, "edgecolor": "none", "pad": 1.5, "alpha": 0.85},
+            f"{name}  {value:.0f}",
+            xy=(0.992, value),
+            xycoords=("axes fraction", "data"),
+            xytext=(0, 4),
+            textcoords="offset points",
+            color=INK_MUTED,
+            fontsize=9,
+            ha="right",
+            va="bottom",
+            zorder=6,
+            bbox={"facecolor": SURFACE, "edgecolor": "none", "pad": 1.5, "alpha": 0.85},
         )
 
 

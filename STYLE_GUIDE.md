@@ -18,7 +18,7 @@ This document defines the coding standards for the **Boost and Broadside** proje
     3.  Local application imports (e.g., `boost_and_broadside.env...`).
 *   **Tooling (binding)**: Formatting and linting are enforced by ruff, configured under
     `[tool.ruff]` in `pyproject.toml` (line length 100; rule sets `E`, `F`, `I`, `UP`).
-    Run `uv run --no-sync ruff check .` and `uv run --no-sync ruff format .` before
+    Run `uv run ruff check .` and `uv run ruff format .` before
     committing — a clean check is expected, not aspirational.
 *   **Whitespace**:
     *   Two blank lines between top-level definitions (classes, functions).
@@ -169,8 +169,7 @@ attn_mask = alive.unsqueeze(1).unsqueeze(2)        # (B, 1, 1, N) — broadcast 
     *   Avoid deep inheritance chains (A -> B -> C -> D).
 
 ### 6.7. Entry Point
-*   The only valid entry point is `uv run --no-sync main.py`.
-*   **Note for AI Agents**: Always use `uv run --no-sync` instead of `uv run` when executing Python commands or scripts to avoid background execution issues.
+*   The only valid entry point is `uv run main.py`.
 *   All other scripts in `src/` should be modules, not executable scripts (unless they are specific utility scripts in `tools/`).
 
 ### 6.8. Backward Compatibility

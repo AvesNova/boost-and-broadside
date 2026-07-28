@@ -3,42 +3,44 @@
 Select a mode with --mode. All hyperparameters live in runs/.
 
 Training:
-    uv run --no-sync main.py --mode rl                          # RL from scratch
-    uv run --no-sync main.py --mode rl --smoke                  # crash-test (tiny batch, no W&B)
-    uv run --no-sync main.py --mode rl --no-wandb               # full run, no W&B logging
-    uv run --no-sync main.py --mode rl --compile max-autotune   # RL with max-autotune
-    uv run --no-sync main.py --mode rl --pretrain_from checkpoints/run/best.pt
-    uv run --no-sync main.py --mode rl --resume                 # resume latest checkpoint
-    uv run --no-sync main.py --mode rl --resume checkpoints/run/step_000001000.pt
-    uv run --no-sync main.py --mode rl_obstacles                # RL with dynamic obstacles
-    uv run --no-sync main.py --mode bc                          # BC pretraining from scratch
-    uv run --no-sync main.py --mode bc_warmstart                # BC pretrain → RL (one process)
+    uv run main.py --mode rl                          # RL from scratch
+    uv run main.py --mode rl --smoke                  # crash-test (tiny batch, no W&B)
+    uv run main.py --mode rl --no-wandb               # full run, no W&B logging
+    uv run main.py --mode rl --compile max-autotune   # RL with max-autotune
+    uv run main.py --mode rl --pretrain_from checkpoints/run/best.pt
+    uv run main.py --mode rl --resume                 # resume latest checkpoint
+    uv run main.py --mode rl --resume checkpoints/run/step_000001000.pt
+    uv run main.py --mode rl_obstacles                # RL with dynamic obstacles
+    uv run main.py --mode bc                          # BC pretraining from scratch
+    uv run main.py --mode bc_warmstart                # BC pretrain → RL (one process)
 
 Watch / play:
-    uv run --no-sync main.py --mode watch                       # human vs latest checkpoint
-    uv run --no-sync main.py --mode watch --team0 null --team1 scripted
-    uv run --no-sync main.py --mode watch --team0 latest --team1 latest
-    uv run --no-sync main.py --mode watch --fast-cache          # skip convergence animation
+    uv run main.py --mode watch                       # human vs latest checkpoint
+    uv run main.py --mode watch --team0 null --team1 scripted
+    uv run main.py --mode watch --team0 latest --team1 latest
+    uv run main.py --mode watch --fast-cache          # skip convergence animation
 
 Evaluation:
-    uv run --no-sync main.py --mode collect_stats               # scripted vs random
-    uv run --no-sync main.py --mode collect_stats --team0 latest --team1 scripted
-    uv run --no-sync main.py --mode feature_stats               # label-scale calibration stats
-    uv run --no-sync main.py --mode elo_stats                   # ELO across scripted agents
-    uv run --no-sync main.py --mode elo_stats --run latest      # + checkpoints from latest run
-    uv run --no-sync main.py --mode elo_calibrate --run latest  # post-hoc calibrated ELO + plots
-    uv run --no-sync main.py --mode elo_calibrate --run vague-lion-678 --target-stderr 5
+    uv run main.py --mode collect_stats               # scripted vs random
+    uv run main.py --mode collect_stats --team0 latest --team1 scripted
+    uv run main.py --mode feature_stats               # label-scale calibration stats
+    uv run main.py --mode elo_stats                   # ELO across scripted agents
+    uv run main.py --mode elo_stats --run latest      # + checkpoints from latest run
+    uv run main.py --mode elo_calibrate --run latest  # post-hoc calibrated ELO + plots
+    uv run main.py --mode elo_calibrate --run vague-lion-678 --target-stderr 5
         writes checkpoints/<run>/elo_calibrated.json and elo_calibration/*.png
-    uv run --no-sync main.py --mode ar_report                   # autoregressive prediction report
-    uv run --no-sync main.py --mode noise_calibration           # NextStateHead error statistics
-    uv run --no-sync main.py --mode crossover                   # scripted count to beat T trained
-    uv run --no-sync main.py --mode crossover --trained-counts 4,8 --eval-envs 512
+    uv run main.py --mode elo_scale --run resilient-resonance-682
+        rates frozen checkpoints at 1v1 through 64v64 and writes three anchor views
+    uv run main.py --mode ar_report                   # autoregressive prediction report
+    uv run main.py --mode noise_calibration           # NextStateHead error statistics
+    uv run main.py --mode crossover                   # scripted count to beat T trained
+    uv run main.py --mode crossover --trained-counts 4,8 --eval-envs 512
         writes docs/crossover/crossover.json and prints a crossover table
 
 Gameplay video (headless mp4 capture of a run's final checkpoint):
-    uv run --no-sync main.py --mode capture                     # 682, self + vs_scripted, seeds 0-7
-    uv run --no-sync main.py --mode capture --run latest --scenarios self --seeds 0-15
-    uv run --no-sync main.py --mode capture --scenarios self --sizes 1v1 4v4 16v16 64v64
+    uv run main.py --mode capture                     # 682, self + vs_scripted, seeds 0-7
+    uv run main.py --mode capture --run latest --scenarios self --seeds 0-15
+    uv run main.py --mode capture --scenarios self --sizes 1v1 4v4 16v16 64v64
         writes <out>/<scenario>_<AvA>_seed<NN>.mp4 (default out: gameplay_clips/)
 
 Agent specs (--team0 / --team1):
@@ -71,6 +73,7 @@ from boost_and_broadside.modes.capture import run_capture_mode
 from boost_and_broadside.modes.collect import run_collect_stats_mode
 from boost_and_broadside.modes.crossover import parse_counts, run_crossover_mode
 from boost_and_broadside.modes.elo_calibrate import run_elo_calibrate_mode
+from boost_and_broadside.modes.elo_scale import run_elo_scale_mode
 from boost_and_broadside.modes.elo_stats import run_elo_stats_mode
 from boost_and_broadside.modes.feature_stats import run_feature_stats_mode
 from boost_and_broadside.modes.interactive import run_watch_mode
@@ -101,6 +104,7 @@ def _parse_args() -> argparse.Namespace:
             "feature_stats",
             "elo_stats",
             "elo_calibrate",
+            "elo_scale",
             "ar_report",
             "noise_calibration",
             "capture",
@@ -139,7 +143,7 @@ def _parse_args() -> argparse.Namespace:
         type=str,
         default="none",
         metavar="RUN",
-        help="Run name for elo_stats / elo_calibrate modes (e.g. 'bright-cloud-219'), "
+        help="Run name for ELO modes (e.g. 'bright-cloud-219'), "
         "'latest', or 'none' (scripted agents only, no checkpoints).",
     )
     # elo_calibrate defaults live in runs/shared.py (ELO_CALIBRATE); these flags
@@ -149,7 +153,7 @@ def _parse_args() -> argparse.Namespace:
         type=float,
         default=None,
         metavar="ELO",
-        help="(elo_calibrate) Override ELO_CALIBRATE.target_stderr: stop once every "
+        help="(ELO calibration modes) Override ELO_CALIBRATE.target_stderr: stop once every "
         "rating is pinned to within this standard error, in ELO points.",
     )
     parser.add_argument(
@@ -157,7 +161,7 @@ def _parse_args() -> argparse.Namespace:
         type=int,
         default=None,
         metavar="N",
-        help="(elo_calibrate) Override ELO_CALIBRATE.max_batches, the cap on adaptive "
+        help="(ELO calibration modes) Override ELO_CALIBRATE.max_batches, the cap on adaptive "
         "tournament batches.",
     )
     parser.add_argument(
@@ -165,7 +169,7 @@ def _parse_args() -> argparse.Namespace:
         type=int,
         default=None,
         metavar="N",
-        help="(elo_calibrate) Override ELO_CALIBRATE.num_envs: parallel envs per batch, "
+        help="(ELO calibration modes) Override ELO_CALIBRATE.num_envs: parallel envs per batch, "
         "which is also the number of games each batch plays.",
     )
     parser.add_argument(
@@ -173,7 +177,7 @@ def _parse_args() -> argparse.Namespace:
         dest="plots",
         action="store_false",
         default=True,
-        help="(elo_calibrate) Skip PNG rendering and write only elo_calibrated.json.",
+        help="(ELO calibration modes) Skip PNG rendering.",
     )
     parser.add_argument(
         "--compile",
@@ -255,6 +259,12 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="(capture) Team sizes to record zero-shot, e.g. 1v1 2v2 4v4 8v8 16v16 32v32 64v64. "
         "Omit to use the run's native training size.",
+    )
+    parser.add_argument(
+        "--team-counts",
+        type=str,
+        default="1,2,4,8,16,32,64",
+        help="(elo_scale) Symmetric ships-per-team sizes: a list '1,2,4' or ranges '1-8'.",
     )
     parser.add_argument(
         "--trained-counts",
@@ -524,6 +534,31 @@ def main() -> None:
             )
             run_elo_calibrate_mode(
                 run_spec=args.run if args.run != "none" else "latest",
+                ship_config=SHIP_CONFIG,
+                device=device,
+                checkpoint_dir="checkpoints",
+                config=calibrate_config,
+                plot=args.plots,
+            )
+
+        case "elo_scale":
+            calibrate_config = replace(
+                ELO_CALIBRATE,
+                **{
+                    field: value
+                    for field, value in (
+                        ("num_envs", args.calib_envs),
+                        ("target_stderr", args.target_stderr),
+                        ("max_batches", args.max_batches),
+                    )
+                    if value is not None
+                },
+            )
+            run_elo_scale_mode(
+                run_spec=(
+                    args.run if args.run != "none" else "resilient-resonance-682"
+                ),
+                team_sizes=parse_counts(args.team_counts),
                 ship_config=SHIP_CONFIG,
                 device=device,
                 checkpoint_dir="checkpoints",

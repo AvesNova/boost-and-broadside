@@ -1,21 +1,15 @@
 # Replays and qualitative results
 
-Replays are evidence of what the learned controller actually does, not decoration. This
-gallery prioritizes clips that clarify controller semantics, zero-shot team-size transfer,
-and the limits of purely quantitative summaries.
+These clips complement the aggregate results with examples of tactics at different fleet
+sizes. In every `vs_scripted` replay, the learned fleet is blue and the scripted fleet is
+red.
 
-In every `vs_scripted` clip, blue/team 0 is controlled by one learned recurrent policy and
-red/team 1 by the stochastic scripted controller. A label such as “8-vs-11” counts ships,
-not neural-network instances.
-
-## Primary replay: 8 policy-controlled vs 11 scripted-controlled ships
+## Primary replay: 8 learned vs 11 scripted
 
 ![Eight blue learned-policy ships versus eleven red scripted ships](results/replays/vs_scripted_8v11_seed03.gif)
 
-One policy jointly emits the actions for all eight blue ships. The terminal frame contains
-three blue survivors and no red ships, matching a learned-team win. At 480×480, 6.29
-seconds, and about 1.5 MiB, this is the best balance of legibility, asymmetric difficulty,
-and GitHub-friendly size; it is therefore the README hero.
+Outnumbered 11 ships to 8, the learned fleet wins with three ships to spare. The matchup
+is easy to follow and compact enough to serve as the README hero.
 
 The quantitative sweep reports a 69.5% learned-team win rate at this 8-vs-11 matchup and
 42.2% at 8-vs-12. See [zero-shot crossover](evaluation.md#zero-shot-crossover) for the raw
@@ -24,7 +18,7 @@ that aggregate rate.
 
 ## Large-scale transfer: 64 vs 80
 
-![Sixty-four policy-controlled blue ships versus eighty scripted red ships](results/replays/vs_scripted_64v80_seed01.gif)
+![Sixty-four learned blue ships versus eighty scripted red ships](results/replays/vs_scripted_64v80_seed01.gif)
 
 This clip shows the same variable-cardinality execution path at a much larger scale. The
 stored crossover sweep reports a 91.1% learned-team win rate at 64-vs-80, while the
@@ -48,7 +42,7 @@ when they demonstrate a distinct behavior rather than more visual scale alone.
 
 ## Other asymmetric clips
 
-- [4 policy-controlled vs 5 scripted, seed 00](results/replays/vs_scripted_4v5_seed00.gif)
+- [4 learned vs 5 scripted, seed 00](results/replays/vs_scripted_4v5_seed00.gif)
   and [seed 04](results/replays/vs_scripted_4v5_seed04.gif) are candidates for showing
   qualitative variability near the native training scale.
 - [16 vs 22, seed 02](results/replays/vs_scripted_16v22_seed02.gif) provides an intermediate
@@ -79,7 +73,7 @@ controller.
 Generate the selected 8-vs-11 scenario with:
 
 ```bash
-uv run --no-sync main.py --mode capture \
+uv run main.py --mode capture \
   --run resilient-resonance-682 \
   --scenarios vs_scripted \
   --sizes 8v11 \

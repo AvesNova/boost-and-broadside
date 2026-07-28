@@ -9,6 +9,7 @@ from boost_and_broadside.train.rl.bradley_terry import (
     allocation_value,
     fit_bradley_terry,
     fit_single_rating,
+    rating_covariance,
     rating_stderr,
     win_probability,
 )
@@ -79,6 +80,15 @@ class TestFit:
 
 
 class TestStandardError:
+    def test_covariance_is_zero_for_the_selected_anchor(self):
+        ratings = np.array([0.0, 100.0, 200.0])
+        covariance = rating_covariance(
+            np.full((3, 3), 500.0), ratings, anchor=1
+        )
+
+        assert np.all(covariance[1] == 0.0)
+        assert np.all(covariance[:, 1] == 0.0)
+
     def test_error_shrinks_as_the_square_root_of_games(self):
         truth = np.array([0.0, 100.0, 200.0])
         few = fit_bradley_terry(_synthetic_wins(truth, 250), anchor=0)

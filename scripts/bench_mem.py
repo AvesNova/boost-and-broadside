@@ -17,7 +17,7 @@ Rollout is measured separately from the update phase (gradient checkpointing onl
 affects the update-time backward).
 
 Usage (from the repo root):
-    uv run --no-sync python scripts/bench_mem.py \
+    uv run python scripts/bench_mem.py \
         --blocks 4 --num-envs 36 --minibatches 1 --microbatch-tokens 37500 \
         --compile default --grad-checkpoint --warmup 2 --measure 3
 """

@@ -30,21 +30,20 @@ uv sync
 All Python commands use the single repository entry point:
 
 ```bash
-uv run --no-sync main.py --help
+uv run main.py --help
 ```
 
-`--no-sync` assumes `uv sync` has already completed and prevents an ordinary run from
-changing the environment. The available modes and their arguments are defined in
-[`main.py`](../main.py).
+`uv run` keeps the environment aligned with the project's lockfile. The available modes
+and their arguments are defined in [`main.py`](../main.py).
 
 ## Verify the checkout
 
 ```bash
-uv run --no-sync pytest -q
-uv run --no-sync ruff check .
+uv run pytest -q
+uv run ruff check .
 ```
 
-The documentation audit ran 354 tests successfully; six hardware-specific cases were
+The documentation audit ran 362 tests successfully; six hardware-specific cases were
 skipped in the CPU-visible test process. A fresh-clone install is not currently exercised
 by repository CI, so treat the commands above as the local verification path.
 
@@ -52,13 +51,13 @@ by repository CI, so treat the commands above as the local verification path.
 
 ```bash
 # Human team 0 vs the newest available checkpoint
-uv run --no-sync main.py --mode watch
+uv run main.py --mode watch
 
 # Learned policy vs scripted controller
-uv run --no-sync main.py --mode watch --team0 latest --team1 scripted
+uv run main.py --mode watch --team0 latest --team1 scripted
 
 # Two views of the same learned weights in self-play
-uv run --no-sync main.py --mode watch --team0 latest --team1 latest
+uv run main.py --mode watch --team0 latest --team1 latest
 ```
 
 Human controls are WASD for flight, Shift for sharp turns, and Space to shoot. Agent specs
@@ -71,7 +70,7 @@ accepted by `--team0` and `--team1` include `null` (human in watch mode), `rando
 Start with the smoke path after changing code or configuration:
 
 ```bash
-uv run --no-sync main.py --mode rl --smoke
+uv run main.py --mode rl --smoke
 ```
 
 Smoke mode uses four environments, disables W&B and compilation, and stops after a few
@@ -81,21 +80,21 @@ Production entry points:
 
 ```bash
 # Recurrent PPO from scratch
-uv run --no-sync main.py --mode rl
+uv run main.py --mode rl
 
 # Full-size run without W&B
-uv run --no-sync main.py --mode rl --no-wandb
+uv run main.py --mode rl --no-wandb
 
 # Warm-start policy/scaler weights; optimizer starts fresh
-uv run --no-sync main.py --mode rl \
+uv run main.py --mode rl \
   --pretrain_from checkpoints/<run>/best_training.pt
 
 # Restore a complete training state
-uv run --no-sync main.py --mode rl --resume checkpoints/<run>/step_<N>.pt
+uv run main.py --mode rl --resume checkpoints/<run>/step_<N>.pt
 
 # Behavior cloning, or cloning followed by RL in one process
-uv run --no-sync main.py --mode bc
-uv run --no-sync main.py --mode bc_warmstart
+uv run main.py --mode bc
+uv run main.py --mode bc_warmstart
 ```
 
 Hyperparameters live in [`runs/`](../runs/). The main combat profile is
@@ -107,27 +106,32 @@ Hyperparameters live in [`runs/`](../runs/). The main combat profile is
 
 ```bash
 # Direct parallel matchup
-uv run --no-sync main.py --mode collect_stats \
+uv run main.py --mode collect_stats \
   --team0 latest --team1 scripted --matchups 4v4 8v11
 
 # Post-hoc ELO calibration for a completed run
-uv run --no-sync main.py --mode elo_calibrate \
+uv run main.py --mode elo_calibrate \
   --run resilient-resonance-682
 
+# Rate frozen checkpoints across symmetric fleet sizes (resumable)
+uv run main.py --mode elo_scale \
+  --run resilient-resonance-682 --team-counts 1,2,4,8,16,32,64
+
 # Search the scripted-team crossover for selected learned-team sizes
-uv run --no-sync main.py --mode crossover \
+uv run main.py --mode crossover \
   --run resilient-resonance-682 --trained-counts 4,8,16,32,64 --eval-envs 256
 ```
 
-Calibration writes to `checkpoints/<run>/elo_calibrated.json` and
-`elo_calibration/`. Crossover writes `docs/crossover/crossover.json`. Both can require
-substantial GPU time; existing landmark artifacts are already included. Methodology and
+Calibration writes to `checkpoints/<run>/elo_calibrated.json` and `elo_calibration/`.
+Scale calibration writes its resumable match matrices to `checkpoints/<run>/elo_scale.json`;
+crossover writes `docs/crossover/crossover.json`. These evaluations can require substantial
+GPU time, and the existing landmark artifacts are already included. Methodology and
 interpretation are in [evaluation and results](evaluation.md).
 
 ## Capture replays
 
 ```bash
-uv run --no-sync main.py --mode capture \
+uv run main.py --mode capture \
   --run resilient-resonance-682 \
   --scenarios vs_scripted \
   --sizes 8v11 \
@@ -155,7 +159,7 @@ runs.
 ## Development notes
 
 - Follow [STYLE_GUIDE.md](../STYLE_GUIDE.md).
-- Use `uv run --no-sync` for project commands.
+- Use `uv run` for project commands.
 - Keep physical behavior covered by real tensor tests rather than mocks; environment tests
   live in [`tests/env/`](../tests/env/).
 - Memory measurements and the host-backed rollout design are documented in

@@ -45,9 +45,9 @@ independent evidence.
 
 Recommended thesis sentence:
 
-> A single recurrent team policy, trained only in 4-vs-4 combat, transfers without
-> retraining to much larger and asymmetric battles—jointly controlling every ship on the
-> learned team and defeating larger scripted teams across the recorded crossover sweep.
+> Trained only in 4-vs-4 combat, the landmark policy transfers zero-shot to much larger
+> and asymmetric battles, defeating larger scripted fleets across the recorded crossover
+> sweep.
 
 This is supported as an empirical result. Claims that the experiment proves a general
 law of scale invariance or identifies why transfer occurs would be interpretations.
@@ -151,7 +151,7 @@ curve endpoint, last frozen-checkpoint rating, and online training rating.
 
 ## Replay evidence
 
-### Selected hero: 8 policy-controlled vs 11 scripted-controlled ships
+### Selected hero: 8 learned vs 11 scripted
 
 Asset: [vs_scripted_8v11_seed03.gif](results/replays/vs_scripted_8v11_seed03.gif)
 
@@ -159,16 +159,15 @@ Asset: [vs_scripted_8v11_seed03.gif](results/replays/vs_scripted_8v11_seed03.gif
   scripted controller to red/team 1; one policy instance produces actions for every blue
   ship. The GIF is 480×480, 6.29 seconds, and about 1.5 MiB. Its terminal frame contains
   three surviving blue ships and no red ships, so this replay is a learned-team win.
-- **What it demonstrates:** the controller-semantics clarification and asymmetric
-  zero-shot story in one compact visual. It is the preferred README hero.
+- **What it demonstrates:** asymmetric zero-shot transfer in one compact, legible visual.
+  It is the preferred README hero.
 - **Provenance gap:** the GIF has no sidecar or embedded metadata naming the source
   checkpoint/run, source commit, capture arguments, or machine-readable outcome. The
   filename alone is not sufficient evidence of those details. Until regenerated or
   matched byte-for-byte to a provenance-bearing source, caption it as a replay from the
   included learned policy without asserting an exact checkpoint step.
-- **Recommended caption:** “One recurrent policy jointly controls all eight blue ships;
-  the red team's 11 ships use the scripted controller. This seeded replay ends with three
-  blue ships surviving.”
+- **Recommended caption:** “Outnumbered 11 ships to 8, the learned fleet wins with three
+  ships to spare.”
 
 [Capture mode](../src/boost_and_broadside/modes/capture.py) seeds each game, uses the final
 `step_*.pt` checkpoint of the selected run, records the terminal winner, and holds the
@@ -188,10 +187,11 @@ in a JSON sidecar.
 
 | Asset | Intended location | What it supports | Required action |
 |---|---|---|---|
-| [8-vs-11 replay](results/replays/vs_scripted_8v11_seed03.gif) | README hero; replays page | One-policy-per-team semantics, asymmetric zero-shot transfer, qualitative result | Usable now with the qualified caption above. Add metadata sidecar when regenerated. |
-| [crossover phase plot](results/crossover_phase.png) | README results; evaluation page | Central zero-shot thesis across team sizes | **Relabel before final publication if possible:** “trained agents” → “policy-controlled ships” and “scripted agents” → “scripted-controlled ships.” Until then, the surrounding caption must define the unit. Add uncertainty in a later revision. |
-| [crossover ratio plot](results/crossover_ratio.png) | Evaluation page only | Compact view of numerical advantage | Same terminology correction. Treat the claimed mid-size peak/easing as descriptive, not a fitted trend. |
+| [8-vs-11 replay](results/replays/vs_scripted_8v11_seed03.gif) | README hero; replays page | Asymmetric zero-shot transfer and qualitative result | Usable now with the caption above. Add metadata sidecar when regenerated. |
+| [crossover phase plot](results/crossover_phase.png) | README results; evaluation page | Central zero-shot thesis across team sizes | Labels distinguish policy-controlled and scripted-controlled ships; both axes span 0–64 with equal data-unit scales and policy ships on x. Add uncertainty in a later revision. |
+| [crossover ratio plot](results/crossover_ratio.png) | Evaluation page only | Compact view of numerical advantage | Labels now use policy-controlled/scripted-controlled ships. Treat the claimed mid-size peak/easing as descriptive, not a fitted trend. |
 | [calibrated ELO curve](results/elo_curve.png) | README secondary result; evaluation page | Improvement over training and scripted landmark | Underlying values are verified. The simplified README chart omits uncertainty; replace later with a compact uncertainty-aware render or explicitly link to methodology. |
+| [fleet-scale ELO views](results/elo_scale_random_zero.png) | Evaluation page; one candidate may later be promoted | Symmetric zero-shot strength from 1-vs-1 through 64-vs-64 | Generated from saved win/loss/tie matrices for random, scripted, 13 ladder checkpoints, and the final checkpoint. The three anchor conventions remain candidates pending a presentation decision. |
 | [scripted win-rate curve](results/win_rate_vs_scripted.png) | Evaluation page; optional small README panel | Scripted baseline becomes saturated before training ends | Usable. Caption should avoid implying monotonic saturation. |
 | [policy diagram](policy_architecture.png) | Architecture page; optional compact README overview | Spatial-attention + temporal-recurrence structure and three heads | Existing raster is tall and manually maintained. Regenerate as a wide diagram later and avoid hard-coded reward-component counts. Not blocking. |
 | [next-state error](results/next_state_error.png) | Architecture/evaluation deep section | Auxiliary dynamics learning | Usable with factual channel descriptions; label causal explanations as interpretations. |
@@ -206,8 +206,7 @@ temporary mitigation.
 
 | Priority | Needed item | Narrative gap filled | Planned location | Blocking? |
 |---|---|---|---|---|
-| High | Relabeled crossover plots with “policy-controlled ships” / “scripted-controlled ships” | Prevents the one-network-per-ship misreading | README and evaluation | No; caption around current plot for now |
-| High | Preserve `games`, seed policy, checkpoint SHA/hash, source commit, and uncertainty per crossover matchup | Makes the central quantitative result independently auditable | `crossover.json` schema and evaluation | No; qualify current numbers |
+| High | Rerun/migrate the historical crossover artifact with count records; add seed policy, checkpoint SHA/hash, source commit, and uncertainty | Makes the central quantitative result independently auditable | `crossover.json` schema and evaluation | No; new runs already preserve wins/losses/ties/games |
 | High | Replay metadata sidecars and poster frames | Makes outcome/provenance machine-readable and keeps large media lightweight | Replays page and README | No |
 | Medium | Wide, count-agnostic system diagram | Explains simulation → observation → team policy → training/evaluation at a glance | README/architecture | No |
 | Medium | Boundary or failure replay near an empirical crossover | Shows limitations and prevents cherry-picked qualitative storytelling | Replays/evaluation | No |
@@ -218,8 +217,8 @@ temporary mitigation.
 
 The Phase 4 rewrite applied these evidence-audit requirements:
 
-- Ambiguous “multi-agent” language near the top was replaced with an immediate definition
-  of policy-controlled ships and one centralized team controller.
+- Ambiguous “multi-agent” language near the top was replaced with one concise definition
+  of the centralized team controller.
 - The landmark configuration is described as eight ships total, 4-vs-4—not 8-vs-8.
 - The README claim that weak roster members are evicted beyond `league_size` was removed.
 - The old three-matchup ELO description was replaced with the verified current five-slot
@@ -243,7 +242,7 @@ The Phase 4 rewrite applied these evidence-audit requirements:
 |---|---|---|
 | Supported Python | Python 3.13+ | [package metadata](../pyproject.toml); audit ran on Python 3.13.11. |
 | CLI help | Pass | `main.py --help` imports and lists all current modes. The sandbox required a temporary uv cache because the normal home cache is read-only. |
-| Test suite | Pass | 354 passed, six hardware-specific tests skipped, 72 expected CUDA-autocast warnings on a CPU-visible test process; 14.06 s. |
+| Test suite | Pass | 362 passed, six hardware-specific tests skipped, 72 expected CUDA-autocast warnings on a CPU-visible test process; 17.01 s. |
 | Lint | Pass | `ruff check .` reports “All checks passed.” |
 | Fresh install | Not exercised | `uv sync` may require package/network access and would be better checked in a clean environment or CI. |
 | Training smoke test | Not exercised in this audit | It mutates checkpoint/log output and is more expensive than documentation inspection. Run before publishing setup guarantees. |
@@ -266,8 +265,13 @@ The initial documentation stack uses the current assets without making new produ
 prerequisite:
 
 1. use the 8-vs-11 GIF as the single README hero;
-2. use crossover as the central quantitative result, with explicit controller semantics;
+2. use crossover as the central quantitative result;
 3. use calibrated ELO as secondary evidence of learning progression;
 4. move training-health and prediction diagnostics to supporting pages;
 5. record new asset requests in the deferred ledger and integrate them later without
    restructuring the narrative.
+
+The crossover renderer was subsequently updated to use correct ship/controller labels,
+policy-controlled ships on x, scripted-controlled ships on y, and equal 0–64 data scales. New
+crossover evaluations also preserve wins, losses, ties, game counts, and mean episode
+length per cell; the included rate-only historical JSON remains explicitly marked as such.

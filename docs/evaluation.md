@@ -1,9 +1,9 @@
 # Evaluation and results
 
-The central result is zero-shot transfer across team size: one recurrent policy trained in
-4-vs-4 is evaluated without retraining while jointly controlling learned teams from one to
-64 ships. Crossover against the scripted controller provides the quantitative view;
-seeded replays provide qualitative evidence.
+The central result is zero-shot transfer across team size: a policy trained in 4-vs-4
+combat remains effective without retraining as the learned fleet grows from one to 64
+ships. Crossover against the scripted controller provides the quantitative view; seeded
+replays show what that transfer looks like in motion.
 
 This page distinguishes stored measurements from interpretations and describes the raw
 artifacts behind every headline. The maintainer-level claim ledger is
@@ -31,9 +31,8 @@ identifies one RTX 5090. These are run-specific measurements.
 
 ![Policy-controlled vs scripted-controlled crossover](results/crossover_phase.png)
 
-*Each axis unit in the existing plot is a ship, despite the older “agents” labels. One
-recurrent policy jointly controls every ship on the learned team. The dashed diagonal is
-equal ship counts.*
+*The learned fleet's 50% crossover stays above equal numbers throughout the displayed
+1-to-64 range.*
 
 [`crossover.py`](../src/boost_and_broadside/modes/crossover.py) fixes the learned policy to
 team 0 and the stochastic scripted controller to team 1. For each learned-team size `T`,
@@ -71,13 +70,16 @@ fluctuate.
 
 ### Sample-size limitation
 
-The JSON stores a run-level maximum of 256 parallel games, not the exact game count beside
-each curve point. Current evaluator logic uses all 256 for the 8-vs-11 matchup and reduces
-the count for large battles to fit a `B×N²` collision-memory budget. Because the artifact
-does not preserve per-point counts, checkpoint hash, seed policy, source commit, or
-confidence intervals, this documentation reports stored rates without inventing more
-precision. Those fields are high-priority additions in the [deferred asset
-ledger](evidence.md#deferred-asset-and-analysis-ledger).
+The included JSON predates count-preserving output: it stores a run-level maximum of 256
+parallel games, not exact per-point wins, losses, and ties. Current evaluator logic uses
+all 256 for the 8-vs-11 matchup and reduces the count for large battles to fit a `B×N²`
+collision-memory budget. New crossover runs store wins, losses, ties, games, win rate, and
+mean episode length for every evaluated cell. The historical artifact cannot be
+retroactively separated into losses and ties from win rate alone.
+
+Checkpoint hash, seed policy, source commit, and confidence intervals also remain absent.
+This documentation therefore reports the stored rates without inventing more precision.
+Those fields remain in the [deferred asset ledger](evidence.md#deferred-asset-and-analysis-ledger).
 
 ![Scripted ships beaten per policy-controlled ship](results/crossover_ratio.png)
 
@@ -89,10 +91,9 @@ and weaknesses of the scripted controller.
 
 ![Eight policy-controlled ships versus eleven scripted-controlled ships](results/replays/vs_scripted_8v11_seed03.gif)
 
-The preferred replay matches the most legible headline row: eight blue ships share one
-learned policy, while 11 red ships use the scripted controller. The terminal frame has
-three blue survivors and no red ships. See [replays](replays.md) for capture semantics,
-larger battles, and the current provenance limitation.
+Outnumbered 11 ships to 8, the learned fleet wins with three ships to spare. See
+[replays](replays.md) for larger battles, capture details, and the current provenance
+limitation.
 
 ## Post-hoc ELO calibration
 
@@ -128,6 +129,51 @@ be mixed with the calibrated curve.
 The compact plot above omits uncertainty bands. The calibration directory preserves
 methodology plots with error bands and convergence diagnostics under
 [`checkpoints/resilient-resonance-682/elo_calibration/`](../checkpoints/resilient-resonance-682/elo_calibration/).
+
+## Symmetric fleet-scale ratings
+
+The frozen ladder and final checkpoint were also replayed in symmetric battles from
+1-vs-1 through 64-vs-64. Each size has its own stationary tournament containing random,
+scripted, 13 ladder checkpoints, and the final checkpoint. The evaluator swaps team roles,
+stores directed win/loss/tie counts, and derives every rating view from the same raw
+matrices in [`elo_scale.json`](../checkpoints/resilient-resonance-682/elo_scale.json).
+
+The first pass prioritizes seeing the shape before spending equally at every scale. Small
+fleets have roughly 41,000–49,000 games each; the exploratory 16-, 32-, and 64-vs-64
+points have 23,436, 5,856, and 1,464. Their wider uncertainty bands are retained in the
+plots rather than smoothed away.
+
+![Fleet-scale ELO with random anchored at zero](results/elo_scale_random_zero.png)
+
+With random fixed at zero, both the final and scripted controllers rise strongly with
+fleet size. This view preserves standard ELO units, but the distant random link makes the
+large-scale final rating comparatively uncertain.
+
+![Fleet-scale ELO with scripted anchored at 1000](results/elo_scale_scripted_1000.png)
+
+Anchoring scripted at 1000 isolates the benchmark gap. The final checkpoint's advantage
+grows through 16-vs-16, is similar at 32-vs-32, and narrows at 64-vs-64; the last two
+points remain exploratory.
+
+![Fleet-scale rating with random at zero and scripted at 1000](results/elo_scale_dual_anchor.png)
+
+The dual-anchor normalization measures the final checkpoint in random-to-scripted
+intervals. It stays relatively flat through 32-vs-32 before declining at 64-vs-64, but
+the rescaling means it is a normalized index rather than fixed-unit ELO.
+
+| Ships per team | Games | Random = 0 | Scripted = 1000 | Dual anchor |
+|---:|---:|---:|---:|---:|
+| 1 | 45,184 | 1512 ± 22 | 1543 ± 10 | 1559 ± 17 |
+| 2 | 40,960 | 1652 ± 27 | 1658 ± 11 | 1661 ± 22 |
+| 4 | 49,152 | 2124 ± 46 | 1819 ± 12 | 1627 ± 24 |
+| 8 | 49,152 | 2493 ± 67 | 1989 ± 14 | 1658 ± 31 |
+| 16 | 23,436 | 2895 ± 125 | 2182 ± 23 | 1690 ± 52 |
+| 32 | 5,856 | 2980 ± 251 | 2155 ± 49 | 1633 ± 91 |
+| 64 | 1,464 | 2698 ± 265 | 1916 ± 82 | 1514 ± 89 |
+
+The 4-vs-4 checkpoint tournament provides a useful cross-check: the final checkpoint is
+819 ELO above scripted, close to the existing final-live estimate of about 813. The two
+measurements use different final-policy evidence, so exact equality is not expected.
 
 ## Scripted benchmark over training
 
@@ -172,18 +218,21 @@ The README/evaluation charts share one renderer for W&B-format history and calib
 history:
 
 ```bash
-uv run --no-sync scripts/render_charts.py \
+uv run scripts/render_charts.py \
   --run resilient-resonance-682 \
   --out docs/results
 
-uv run --no-sync scripts/render_crossover.py \
+uv run scripts/render_crossover.py \
   --data docs/crossover/crossover.json \
+  --out docs/results
+
+uv run scripts/render_elo_scale.py \
+  --data checkpoints/resilient-resonance-682/elo_scale.json \
   --out docs/results
 ```
 
-The second command currently regenerates the older “agents” axis labels. Relabeling them
-to “policy-controlled ships” and “scripted-controlled ships” is intentionally tracked as
-deferred plot work rather than silently editing only the raster.
+The renderer is the source of the axis labels and equal-scale geometry; the tracked raster
+is regenerated from it rather than edited independently.
 
 To rerun the underlying evaluations, see [getting started](getting-started.md#evaluate).
 They can require substantial GPU time; rendering from included artifacts does not.
@@ -191,6 +240,8 @@ They can require substantial GPU time; rendering from included artifacts does no
 ## Remaining limitations
 
 - Crossover lacks per-point provenance and uncertainty fields.
+- The 16-, 32-, and 64-vs-64 scale-rating points are exploratory and have materially
+  wider uncertainty than the small-fleet tournaments.
 - Curated GIFs lack sidecar metadata tying them to an exact checkpoint hash and capture
   command.
 - Results use one landmark training run and one scripted opponent family; no multi-run

@@ -5,8 +5,8 @@ Reads the two W&B-format sources a run leaves behind — the in-training archive
 the one ``viz.history`` reader, and paints each figure with ``viz.charts``.
 
 Usage:
-    uv run --no-sync scripts/render_charts.py            # run 682 -> docs/results/
-    uv run --no-sync scripts/render_charts.py --run <name> --out <dir>
+    uv run scripts/render_charts.py            # run 682 -> docs/results/
+    uv run scripts/render_charts.py --run <name> --out <dir>
 """
 
 import argparse

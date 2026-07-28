@@ -83,7 +83,7 @@ Recompute each Yemong block's activations in the backward pass (`torch.utils.che
 > target card before relying on absolutes:
 
 ```bash
-uv run --no-sync python scripts/bench_mem.py --blocks <N> \
+uv run python scripts/bench_mem.py --blocks <N> \
     --num-envs <full> --minibatches 32 --microbatch-tokens 37500 \
     --compile max-autotune --grad-checkpoint
 ```

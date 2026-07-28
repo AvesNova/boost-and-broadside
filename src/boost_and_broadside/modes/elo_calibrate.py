@@ -32,6 +32,7 @@ Writes to the run's checkpoint directory:
 import json
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -268,6 +269,9 @@ class Tournament:
         self.env = TensorEnv(num_envs, ship_config, env_config, self.device)
         self.wins = np.zeros((self.size, self.size), dtype=np.float64)
         self.ties = np.zeros((self.size, self.size), dtype=np.float64)
+        # [team-0 player, team-1 player, team0 win/team1 win/tie]. Unlike the
+        # rating matrices, this preserves side assignment for later bias checks.
+        self.directed_outcomes = np.zeros((self.size, self.size, 3), dtype=np.float64)
 
     def scored_wins(self, tie_mode: str) -> np.ndarray:
         """Win counts as the given draw convention scores them."""
@@ -423,11 +427,19 @@ class Tournament:
         tied = newly_done & ~team0_won & ~team1_won
 
         flat = self.size * env_team0 + env_team1
-        for outcome, target in ((team0_won, self.wins), (tied, self.ties)):
+        for outcome_index, outcome in enumerate((team0_won, team1_won, tied)):
             if not outcome.any():
                 continue
             counts = torch.bincount(flat[outcome], minlength=self.size**2)
-            target += counts.reshape(self.size, self.size).cpu().numpy().astype(np.float64)
+            self.directed_outcomes[..., outcome_index] += (
+                counts.reshape(self.size, self.size).cpu().numpy().astype(np.float64)
+            )
+        if team0_won.any():
+            counts = torch.bincount(flat[team0_won], minlength=self.size**2)
+            self.wins += counts.reshape(self.size, self.size).cpu().numpy().astype(np.float64)
+        if tied.any():
+            counts = torch.bincount(flat[tied], minlength=self.size**2)
+            self.ties += counts.reshape(self.size, self.size).cpu().numpy().astype(np.float64)
         if team1_won.any():
             flipped = self.size * env_team1 + env_team0
             counts = torch.bincount(flipped[team1_won], minlength=self.size**2)
@@ -461,6 +473,9 @@ def run_tournament(
     random_index: int,
     config: EloCalibrateConfig,
     progress: Progress | None = None,
+    initial_stats: list[BatchStat] | None = None,
+    on_batch: Callable[[Tournament, RatingFit, list[BatchStat], int], None] | None = None,
+    seed_base: int | None = None,
 ) -> tuple[RatingFit, list[BatchStat], int]:
     """Play adaptive batches until every rating is pinned or the budget runs out.
 
@@ -468,14 +483,22 @@ def run_tournament(
     gauge rather than the random anchor. Optimizing against random would sink the
     whole budget into the one link that cannot be improved at any realistic cost.
     """
-    stats: list[BatchStat] = []
+    stats = list(initial_stats or [])
     size = tournament.size
     prior_games = config.prior_games
     tie_mode = config.tie_mode
     reference = random_index
-    fit = fit_bradley_terry(np.zeros((size, size)), anchor=reference, prior_games=prior_games)
-    cumulative = 0
-    for batch in range(1, config.max_batches + 1):
+    scored = tournament.scored_wins(tie_mode)
+    if scored.sum() > 0:
+        provisional = fit_bradley_terry(scored, anchor=random_index, prior_games=prior_games)
+        reference = choose_reference(tournament, provisional.ratings, random_index, tie_mode)
+        fit = fit_bradley_terry(scored, anchor=reference, prior_games=prior_games)
+    else:
+        fit = fit_bradley_terry(scored, anchor=reference, prior_games=prior_games)
+    cumulative = stats[-1].cumulative_games if stats else int(tournament.pair_games().sum() / 2)
+    for batch in range(len(stats) + 1, config.max_batches + 1):
+        if seed_base is not None:
+            torch.manual_seed(seed_base + batch)
         if progress is not None:
             worst = f"{stats[-1].max_stderr:.1f}" if stats else "—"
             progress.bar(
@@ -524,6 +547,8 @@ def run_tournament(
             progress.done(line)
         else:
             print(f"  {line}", flush=True)
+        if on_batch is not None:
+            on_batch(tournament, fit, stats, reference)
         if worst <= config.target_stderr:
             message = f"converged: every rating within +/-{config.target_stderr:.1f} of reference"
             progress.done(message) if progress else print(f"  {message}")
@@ -748,6 +773,7 @@ def run_elo_calibrate_mode(
         "player_labels": [player.label for player in players],
         "wins_matrix": tournament.wins.tolist(),
         "ties_matrix": tournament.ties.tolist(),
+        "directed_outcomes": tournament.directed_outcomes.tolist(),
         "curve": curve,
         "batches": [vars(stat) for stat in stats],
         "tie_rates": tie_rate_table(tournament, shifted),

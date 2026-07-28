@@ -1,12 +1,9 @@
 # Policy architecture
 
-The learned controller is a single centralized recurrent policy for one team. It receives
-tokens for the full scene, communicates across entities with spatial attention, carries
-per-entity memory through time, and emits one action per ship.
-
-That controller model is essential to interpreting the results: “8 policy-controlled
-ships vs 11 scripted-controlled ships” means one neural network jointly chooses all eight
-learned-team actions. It does not mean eight separately instantiated neural agents.
+`YemongPolicy` is a centralized recurrent controller: it reads the full scene, exchanges
+information across entities with spatial attention, carries per-entity memory through
+time, and emits a factored action for every ship in the learned fleet. This
+variable-cardinality design makes zero-shot transfer across team sizes possible.
 
 ![YemongPolicy architecture](policy_architecture.png)
 
@@ -83,9 +80,6 @@ Within each timestep, [`TransformerBlock`](../src/boost_and_broadside/models/yem
 applies pre-normalized multi-head self-attention and a gated MLP with residual connections.
 Every live ship can therefore condition its action on every other live ship and obstacle.
 
-This is centralized observation and centralized action selection for the team. It should
-not be confused with decentralized execution by isolated per-ship policies.
-
 ## Temporal recurrence
 
 After spatial mixing, [`GriffinTemporalBlock`](../src/boost_and_broadside/models/yemong/griffin.py)
@@ -108,9 +102,7 @@ The action head emits 12 logits for each ship and splits them into categorical p
 turn, and shoot distributions with sizes 3, 7, and 2. Actions and entropy remain factored;
 the joint log probability is the sum of the three selected sub-action log probabilities.
 
-The output shape is `(B, N, 3)` action indices. This single batched output is the concrete
-reason team-size language in the docs refers to *policy-controlled ships*, not a count of
-neural networks.
+The output shape is `(B, N, 3)` action indices.
 
 ## Decomposed value head
 
@@ -141,11 +133,8 @@ analysis under [`docs/noise_calibration/`](noise_calibration/).
 
 ## Why team size can change
 
-No learned weight matrix has a ship-count dimension. Attention and the recurrent block
-operate over the current token axis; heads apply to however many ship tokens are present.
-Capture and crossover modes update the runtime ship-token count while loading the same
-policy weights.
-
-This makes different team sizes executable without retraining. Whether behavior remains
-effective is an empirical question—which is why the [crossover sweep](evaluation.md#zero-shot-crossover)
-is the project's central result rather than an architectural claim by itself.
+No learned weight matrix has a ship-count dimension. Attention and recurrence operate
+over the current token axis, and the heads apply to however many ship tokens are present.
+That makes new team sizes executable without retraining; the
+[crossover sweep](evaluation.md#zero-shot-crossover) tests whether the learned behavior
+remains effective as the fleet grows.
