@@ -70,7 +70,7 @@ class LoggingMixin:
         metrics["counters/grad_tokens"] = self._grad_tokens
         metrics["counters/train_hours"] = elapsed / 3600.0
 
-        # ELO evaluation — continuous live statistics from parallel slots.
+        # Elo evaluation — continuous live statistics from parallel slots.
         # Avg-model metrics only exist once the avg model has been initialized.
         metrics["elo/training"] = self._training_elo
         metrics["elo/scripted"] = self._scripted_elo
@@ -129,7 +129,7 @@ class LoggingMixin:
         for entry in self.roster.entries:
             metrics[f"ladder/elo/{entry.label}"] = entry.elo
 
-        # Save overwriting best-model checkpoints (live, then avg) when normalized ELO improves.
+        # Save overwriting best-model checkpoints (live, then avg) when normalized Elo improves.
         self._maybe_save_best_checkpoints(self._random_elo())
 
         # Overview — redundant copies of the most important global metrics

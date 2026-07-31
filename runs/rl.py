@@ -60,7 +60,7 @@ RL_SCHEDULE = TrainingSchedule(
     scripted_fraction=stepped((0, 0.5), (50_000_000, 0.3)),
     # avg-model not used as opponent until step 50M (needs time to diverge from init).
     avg_model_fraction=stepped((0, 0.0), (50_000_000, 0.2)),
-    # League activates at step 50M once the policy has meaningful ELO.
+    # League activates at step 50M once the policy has meaningful Elo.
     league_fraction=stepped((0, 0.0), (50_000_000, 0.2)),
     checkpoint_interval=constant(50),
     num_epochs=stepped((0, 4)),

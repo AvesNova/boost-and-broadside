@@ -378,7 +378,7 @@ def run_elo_scale_mode(
         total_ships = 2 * team_size
         num_envs = parallel_envs_for(total_ships, config.num_envs)
         print(
-            f"\n=== scale ELO: {run_dir.name}  {team_size}v{team_size}  "
+            f"\n=== scale Elo: {run_dir.name}  {team_size}v{team_size}  "
             f"({num_envs} games/batch, {device}) ==="
         )
         players = _build_scale_players(

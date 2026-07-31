@@ -166,13 +166,13 @@ def _save_checkpoint_and_join(trainer, update: int) -> None:
 
 
 class TestCheckpointRetention:
-    """AUDIT-017: the ELO ladder keeps every snapshot; regular saves keep a rolling window.
+    """AUDIT-017: the Elo ladder keeps every snapshot; regular saves keep a rolling window.
 
     Previously ``_save_checkpoint`` kept only the single newest ``step_*.pt``
     file and a single, non-rotated ``recent_avg.pt``. This exercises the
     replacement policy: the newest ``_KEEP_LAST_N_CHECKPOINTS`` live and avg
     checkpoints survive, older ones in each family are pruned, and neither the
-    best-model files nor the ELO ladder's own snapshots are ever touched.
+    best-model files nor the Elo ladder's own snapshots are ever touched.
     """
 
     def test_prune_keeps_only_last_n_live_checkpoints(self, tmp_path):
@@ -243,7 +243,7 @@ class TestCheckpointRetention:
 
 
 class TestBestCheckpoints:
-    """The best-model checkpoints (live and avg) overwrite in place as ELO improves."""
+    """The best-model checkpoints (live and avg) overwrite in place as Elo improves."""
 
     def test_best_training_is_saved_only_when_live_elo_improves(self, tmp_path):
         from tests.train.test_ppo import _make_trainer
@@ -257,7 +257,7 @@ class TestBestCheckpoints:
         assert (ckpt_dir / "best_training.pt").exists()
         first_mtime = (ckpt_dir / "best_training.pt").stat().st_mtime_ns
 
-        # ELO regresses: the file must not be rewritten.
+        # Elo regresses: the file must not be rewritten.
         trainer._training_elo = 5.0
         trainer._maybe_save_best_checkpoints(random_elo=0.0)
         assert (ckpt_dir / "best_training.pt").stat().st_mtime_ns == first_mtime

@@ -1,4 +1,4 @@
-"""Continuous in-training ELO ladder evaluation and shared rating math.
+"""Continuous in-training Elo ladder evaluation and shared rating math.
 
 The live policy's rating is measured against a ladder of frozen references
 rather than the scripted agent, so it stays informative after the live policy
@@ -90,7 +90,7 @@ class LadderOpponent:
 def expected_score(
     rating: float | torch.Tensor, opponent_rating: float | torch.Tensor
 ) -> float | torch.Tensor:
-    """Return the standard logistic ELO expected score."""
+    """Return the standard logistic Elo expected score."""
     return 1.0 / (1.0 + 10.0 ** ((opponent_rating - rating) / _ELO_RATING_SCALE))
 
 
@@ -528,7 +528,7 @@ class EloEvaluator:
     def _apply_rating_updates(
         self, score: torch.Tensor, rated_float: torch.Tensor, avg_active: bool
     ) -> None:
-        """Apply per-slot ELO updates for rated episodes that just finished."""
+        """Apply per-slot Elo updates for rated episodes that just finished."""
         size = self.matchup_size
         k = self.config.k_factor
         live_before = self.live_elo
@@ -604,7 +604,7 @@ class EloEvaluator:
     ) -> None:
         """Tally this step's rated outcomes for every live-policy matchup.
 
-        Counts are raw win/loss/tie totals rather than the ELO score's
+        Counts are raw win/loss/tie totals rather than the Elo score's
         win + 0.5·tie collapse. Draw frequency in this game is strongly
         level-dependent — near-random pairs almost always time out, strong
         pairs almost never do — so which likelihood the post-hoc suite should

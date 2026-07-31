@@ -84,7 +84,7 @@ def _plot_view(result: dict, path: Path) -> Path:
 
     axes.set_xticks(x, [f"{size}v{size}" for size in team_sizes])
     axes.set_xlabel("ships per team", color=style.INK_SECONDARY, fontsize=10)
-    axes.set_ylabel("ELO (scripted = 1000)", color=style.INK_SECONDARY, fontsize=10)
+    axes.set_ylabel("Elo (scripted = 1000)", color=style.INK_SECONDARY, fontsize=10)
     axes.legend(frameon=False, labelcolor=style.INK_SECONDARY, fontsize=9, loc="best")
     axes.margins(x=0.05)
     return style.save(figure, path)

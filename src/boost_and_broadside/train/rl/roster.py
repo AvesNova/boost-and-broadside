@@ -1,9 +1,9 @@
-"""ELO-rated league roster and measurement ladder for mixed-opponent training.
+"""Elo-rated league roster and measurement ladder for mixed-opponent training.
 
 Maintains a pool of rated agents (past checkpoints, avg policy, scripted agent)
-and supports ELO-proximity-weighted sampling for league play.
+and supports Elo-proximity-weighted sampling for league play.
 
-The checkpoint entries double as the ELO measurement ladder:
+The checkpoint entries double as the Elo measurement ladder:
 
     Ladder invariant: at most one checkpoint entry is floating (``fixed=False``)
     — the newest milestone snapshot, whose rating is still settling. All older
@@ -78,7 +78,7 @@ class RosterEntry:
 
     kind: str  # "random" | "checkpoint" | "avg" | "scripted"
     label: str  # W&B key suffix (e.g. "random", "avg", "scripted", "ckpt_1024000")
-    elo: float  # Current ELO rating
+    elo: float  # Current Elo rating
     global_step: int  # Training step when this agent was snapshotted
     update: int  # PPO update index when snapshotted
     path: str | None = None  # .pt file path; None for all non-checkpoint kinds
@@ -87,19 +87,19 @@ class RosterEntry:
 
 
 class EloRoster:
-    """ELO-rated pool of league opponents with proximity-weighted sampling.
+    """Elo-rated pool of league opponents with proximity-weighted sampling.
 
     Entries:
-        "random"     — always present; ELO fixed at 0 as the absolute ladder anchor.
+        "random"     — always present; Elo fixed at 0 as the absolute ladder anchor.
         "avg"        — added when the avg model first becomes ready.
-        "checkpoint" — added at ELO milestones; frozen at the following milestone.
+        "checkpoint" — added at Elo milestones; frozen at the following milestone.
 
     Entries are never removed: the frozen checkpoints are the measurement
     ladder, and the full set (with ratings) is kept for post-hoc analysis.
     ``max_size`` bounds only how many checkpoint policies stay loaded on the
     device at once (least recently used are unloaded first).
 
-    Sampling is weighted by ELO proximity so the training policy tends to face
+    Sampling is weighted by Elo proximity so the training policy tends to face
     near-equal opponents:
 
         w_i = exp( -|elo_i - training_elo| / elo_temperature )
@@ -108,10 +108,10 @@ class EloRoster:
 
     Args:
         max_size:         Maximum number of checkpoint policies kept loaded.
-        elo_temperature:  ELO bandwidth for proximity sampling (in ELO points).
+        elo_temperature:  Elo bandwidth for proximity sampling (in Elo points).
                           Higher → more uniform; lower → tighter focus on peers.
         uniform_sampling: If True, sample opponents uniformly at random instead
-                          of ELO-proximity weighting.
+                          of Elo-proximity weighting.
     """
 
     def __init__(
@@ -125,7 +125,7 @@ class EloRoster:
         self.uniform_sampling = uniform_sampling
         self.entries: list[RosterEntry] = []
         self._load_order: list[RosterEntry] = []  # loaded checkpoints, oldest use first
-        # Random agent entry: the absolute ladder anchor, frozen at ELO 0.
+        # Random agent entry: the absolute ladder anchor, frozen at Elo 0.
         self.entries.append(
             RosterEntry(
                 kind="random",
@@ -156,7 +156,7 @@ class EloRoster:
             kind:        "avg" or "scripted".
             global_step: Training step when this agent became available.
             update:      PPO update index when it became available.
-            initial_elo: Starting ELO.  Pass the current training ELO so the new
+            initial_elo: Starting Elo.  Pass the current training Elo so the new
                          entry begins calibrated rather than at an arbitrary default.
         """
         assert kind in ("avg", "scripted"), f"add_special: invalid kind {kind!r}"
@@ -191,7 +191,7 @@ class EloRoster:
             path:        Absolute path to the saved .pt file.
             global_step: Training step at which the snapshot was taken.
             update:      PPO update index at which it was saved.
-            initial_elo: Starting ELO.  Pass the current training ELO so the new
+            initial_elo: Starting Elo.  Pass the current training Elo so the new
                          entry begins calibrated rather than at an arbitrary default.
 
         Returns:
@@ -258,7 +258,7 @@ class EloRoster:
     # ------------------------------------------------------------------
 
     def sample(self, training_elo: float) -> RosterEntry | None:
-        """Sample one entry, either uniformly or weighted by ELO proximity.
+        """Sample one entry, either uniformly or weighted by Elo proximity.
 
         The random anchor is excluded (eval-only reference); frozen checkpoints
         remain valid league opponents. Returns None if no candidates exist.
@@ -340,7 +340,7 @@ class EloRoster:
     # ------------------------------------------------------------------
 
     def save_json(self, path: str | Path) -> None:
-        """Persist roster metadata (ELO ratings, file paths) to JSON."""
+        """Persist roster metadata (Elo ratings, file paths) to JSON."""
         data = {
             "entries": [
                 {

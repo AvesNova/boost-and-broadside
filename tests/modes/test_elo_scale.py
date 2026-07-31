@@ -1,4 +1,4 @@
-"""Tests for scale-ELO transforms and rendering."""
+"""Tests for scale-Elo transforms and rendering."""
 
 from pathlib import Path
 

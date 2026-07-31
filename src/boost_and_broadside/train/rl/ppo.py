@@ -9,7 +9,7 @@ log async → repeat. On top of that, PPOTrainer coordinates:
     win-rate-gated decay, next-state prediction, windowed cumulative loss,
     optional SIGReg),
   - opponent management (scripted / avg-model / league fractions, OpponentMixin),
-  - continuous in-training ELO ladder evaluation (EloEvaluator) and the roster,
+  - continuous in-training Elo ladder evaluation (EloEvaluator) and the roster,
   - checkpointing (CheckpointMixin) and async W&B logging (LoggingMixin).
 
 Rollout and update work run on CUDA streams where available, with a CPU
@@ -465,16 +465,16 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             else torch.empty(0, device=self.device, dtype=torch.int32)
         )
 
-        # --- League play + ELO ---
+        # --- League play + Elo ---
         self.roster = EloRoster(
             max_size=train_config.league_size,
             elo_temperature=train_config.elo_temperature,
             uniform_sampling=train_config.league_uniform_sampling,
         )
-        # Random anchor is added by EloRoster.__init__ (ELO=0, fixed).
+        # Random anchor is added by EloRoster.__init__ (Elo=0, fixed).
         # "avg" entry is added when _update_avg_model() is first called.
 
-        # Training ELO starts at 0 — all ratings begin
+        # Training Elo starts at 0 — all ratings begin
         # at the same point and diverge as eval matchups accumulate.
         self._training_elo: float = 0.0
         self._avg_training_elo: float = 0.0
@@ -489,13 +489,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._eval_window_ladder = deque(maxlen=eval_window_size)
         self._eval_window_floating = deque(maxlen=eval_window_size)
         self._eval_window_live_vs_avg = deque(maxlen=eval_window_size)
-        # Highest claimed ladder-milestone grid point, in normalized ELO (vs random).
+        # Highest claimed ladder-milestone grid point, in normalized Elo (vs random).
         # Always a multiple of cfg.elo_milestone_gap once the first snapshot lands;
         # runs resumed from before the grid existed carry one off-grid value forward
         # and snap to the grid at their next snapshot.
         self._elo_milestone: float = 0.0
-        self._best_training_elo_norm: float = 0.0  # best normalized training ELO seen so far
-        self._best_avg_elo_norm: float = 0.0  # best normalized avg ELO seen so far
+        self._best_training_elo_norm: float = 0.0  # best normalized training Elo seen so far
+        self._best_avg_elo_norm: float = 0.0  # best normalized avg Elo seen so far
         self._last_checkpoint_path: Path | None = None
 
         # Current league opponent for the ongoing rollout (rotated each rollout).
@@ -958,7 +958,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         Args:
             runtime: Persistent rollout state.
-            avg_eval_active: Whether average-policy ELO evaluation is active.
+            avg_eval_active: Whether average-policy Elo evaluation is active.
 
         Returns:
             One logical host buffer per training scale.
@@ -1982,11 +1982,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         return metrics
 
     # ------------------------------------------------------------------
-    # ELO evaluation
+    # Elo evaluation
     # ------------------------------------------------------------------
 
     def _random_elo(self) -> float:
-        """Return the current ELO of the random anchor roster entry."""
+        """Return the current Elo of the random anchor roster entry."""
         for e in self.roster.entries:
             if e.kind == "random":
                 return e.elo
@@ -2032,7 +2032,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         )
 
     def _effective_target_kl(self) -> float | None:
-        """Resolve the ELO-gated target KL from the current schedule snapshot."""
+        """Resolve the Elo-gated target KL from the current schedule snapshot."""
         threshold = self._schedule_state.high_elo_threshold
         elo_norm = self._training_elo - self._random_elo()
         if threshold is not None and elo_norm >= threshold:

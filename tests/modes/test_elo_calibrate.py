@@ -1,9 +1,16 @@
 """Tests for the post-training calibration mode's pure logic."""
 
+import json
+
 import numpy as np
 import pytest
 
-from boost_and_broadside.modes.elo_calibrate import calibrate_live_curve
+from boost_and_broadside.config import EloCalibrateConfig, ShipConfig
+from boost_and_broadside.modes.elo_calibrate import (
+    SCRIPTED_ANCHOR_ELO,
+    calibrate_live_curve,
+    run_elo_calibrate_mode,
+)
 from boost_and_broadside.train.rl.bradley_terry import win_probability
 
 
@@ -114,3 +121,109 @@ class TestCalibrateLiveCurve:
         curve = calibrate_live_curve([_record(1, 10, {"random": [100, 0, 0]})], {"random": 0.0})
         assert not np.isfinite(curve[0]["live_calibrated"])
         assert not np.isfinite(curve[0]["live_stderr"])
+
+
+def _stored_result(reference: str) -> dict:
+    """A minimal persisted calibration: random < scripted < ckpt_100 by wins."""
+    labels = ["random", "scripted", "ckpt_100"]
+    wins = [
+        [0.0, 10.0, 5.0],
+        [190.0, 0.0, 60.0],
+        [195.0, 140.0, 0.0],
+    ]
+    ties = [[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
+    return {
+        "run": "test-run",
+        "players": [
+            {"label": "random", "training_elo": 0.0, "global_step": 0},
+            {"label": "scripted", "training_elo": None, "global_step": None},
+            {"label": "ckpt_100", "training_elo": 1500.0, "global_step": 100},
+        ],
+        "player_labels": labels,
+        "wins_matrix": wins,
+        "ties_matrix": ties,
+        "batches": [
+            {
+                "batch": 1,
+                "games": 305,
+                "cumulative_games": 305,
+                "max_stderr": 8.0,
+                "mean_stderr": 5.0,
+                "seconds": 1.0,
+                "ratings": [0.0, 0.0, 0.0],
+            }
+        ],
+        "target_stderr": 10.0,
+        "converged": True,
+        "reference": reference,
+        "tie_mode": "half_win",
+        "tie_mode_alt": "decisive",
+    }
+
+
+def _run_refit(tmp_path, reference: str = "scripted") -> dict:
+    run_dir = tmp_path / "checkpoints" / "test-run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "elo_calibrated.json").write_text(json.dumps(_stored_result(reference)))
+    (run_dir / "elo_history.jsonl").write_text(
+        json.dumps(
+            {
+                "update": 1,
+                "global_step": 100,
+                "live": 1200.0,
+                "avg": None,
+                "counts": {"scripted": [60, 40, 0]},
+            }
+        )
+        + "\n"
+    )
+    return run_elo_calibrate_mode(
+        run_spec="test-run",
+        ship_config=ShipConfig(),
+        device="cpu",
+        config=EloCalibrateConfig(num_envs=4, target_stderr=10.0, max_batches=1),
+        checkpoint_dir=str(tmp_path / "checkpoints"),
+        plot=False,
+        refit=True,
+    )
+
+
+class TestRefit:
+    def test_refit_pins_scripted_to_the_anchor_rating(self, tmp_path):
+        """Refit plays nothing; it refits stored matrices and reports on the
+        scripted-anchored scale."""
+        result = _run_refit(tmp_path)
+        by_label = {p["label"]: p for p in result["players"]}
+        assert by_label["scripted"]["calibrated_elo"] == pytest.approx(SCRIPTED_ANCHOR_ELO)
+        assert by_label["scripted"]["calibrated_elo_alt"] == pytest.approx(SCRIPTED_ANCHOR_ELO)
+        assert result["anchor"] == "scripted"
+        assert result["anchor_elo"] == SCRIPTED_ANCHOR_ELO
+
+    def test_refit_orders_players_by_their_stored_record(self, tmp_path):
+        result = _run_refit(tmp_path)
+        by_label = {p["label"]: p["calibrated_elo"] for p in result["players"]}
+        assert by_label["random"] < SCRIPTED_ANCHOR_ELO < by_label["ckpt_100"]
+
+    def test_refit_recovers_the_live_curve_from_history(self, tmp_path):
+        """A 60/40 record against scripted places the live policy above it."""
+        result = _run_refit(tmp_path)
+        assert result["curve"][0]["live_calibrated"] > SCRIPTED_ANCHOR_ELO
+
+    def test_refit_rewrites_the_stored_artifact(self, tmp_path):
+        _run_refit(tmp_path)
+        stored = json.loads(
+            (tmp_path / "checkpoints" / "test-run" / "elo_calibrated.json").read_text()
+        )
+        assert stored["anchor"] == "scripted"
+        assert stored["wins_matrix"] == _stored_result("scripted")["wins_matrix"]
+
+    def test_rating_gaps_are_invariant_to_the_stored_reference_gauge(self, tmp_path):
+        """The reference only sets the error gauge; reported gaps must not move
+        beyond the shrinkage of prior_games, whose virtual games attach to
+        whichever player is the gauge."""
+        gaps = []
+        for index, reference in enumerate(("scripted", "ckpt_100")):
+            result = _run_refit(tmp_path / f"gauge_{index}", reference)
+            by_label = {p["label"]: p["calibrated_elo"] for p in result["players"]}
+            gaps.append(by_label["ckpt_100"] - by_label["random"])
+        assert gaps[0] == pytest.approx(gaps[1], abs=2.0)

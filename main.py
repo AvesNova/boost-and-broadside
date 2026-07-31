@@ -24,13 +24,13 @@ Evaluation:
     uv run main.py --mode collect_stats               # scripted vs random
     uv run main.py --mode collect_stats --team0 latest --team1 scripted
     uv run main.py --mode feature_stats               # label-scale calibration stats
-    uv run main.py --mode elo_stats                   # ELO across scripted agents
+    uv run main.py --mode elo_stats                   # Elo across scripted agents
     uv run main.py --mode elo_stats --run latest      # + checkpoints from latest run
-    uv run main.py --mode elo_calibrate --run latest  # post-hoc calibrated ELO + plots
+    uv run main.py --mode elo_calibrate --run latest  # post-hoc calibrated Elo + plots
     uv run main.py --mode elo_calibrate --run vague-lion-678 --target-stderr 5
         writes checkpoints/<run>/elo_calibrated.json and elo_calibration/*.png
     uv run main.py --mode elo_scale --run resilient-resonance-682
-        rates frozen checkpoints at 1v1 through 64v64 and writes the selected ELO view
+        rates frozen checkpoints at 1v1 through 64v64 and writes the selected Elo view
     uv run main.py --mode semi_random --run resilient-resonance-682
         evaluates a random-to-scripted action-mixture ladder across fleet sizes
     uv run main.py --mode ar_report                   # autoregressive prediction report
@@ -144,14 +144,14 @@ def _parse_args() -> argparse.Namespace:
         help="Resume training from a checkpoint. "
         "No PATH → finds the latest step_*.pt across all runs in checkpoints/. "
         "PATH can be a .pt file or a run directory (latest step_*.pt in dir is used). "
-        "Restores optimizer, scheduler state, ELO, and W&B graph.",
+        "Restores optimizer, scheduler state, Elo, and W&B graph.",
     )
     parser.add_argument(
         "--run",
         type=str,
         default="none",
         metavar="RUN",
-        help="Run name for ELO modes (e.g. 'bright-cloud-219'), "
+        help="Run name for Elo modes (e.g. 'bright-cloud-219'), "
         "'latest', or 'none' (scripted agents only, no checkpoints).",
     )
     # elo_calibrate defaults live in runs/shared.py (ELO_CALIBRATE); these flags
@@ -161,15 +161,15 @@ def _parse_args() -> argparse.Namespace:
         type=float,
         default=None,
         metavar="ELO",
-        help="(ELO calibration modes) Override ELO_CALIBRATE.target_stderr: stop once every "
-        "rating is pinned to within this standard error, in ELO points.",
+        help="(Elo calibration modes) Override ELO_CALIBRATE.target_stderr: stop once every "
+        "rating is pinned to within this standard error, in Elo points.",
     )
     parser.add_argument(
         "--max-batches",
         type=int,
         default=None,
         metavar="N",
-        help="(ELO calibration modes) Override ELO_CALIBRATE.max_batches, the cap on adaptive "
+        help="(Elo calibration modes) Override ELO_CALIBRATE.max_batches, the cap on adaptive "
         "tournament batches.",
     )
     parser.add_argument(
@@ -177,7 +177,7 @@ def _parse_args() -> argparse.Namespace:
         type=int,
         default=None,
         metavar="N",
-        help="(ELO calibration modes) Override ELO_CALIBRATE.num_envs: parallel envs per batch, "
+        help="(Elo calibration modes) Override ELO_CALIBRATE.num_envs: parallel envs per batch, "
         "which is also the number of games each batch plays.",
     )
     parser.add_argument(
@@ -185,7 +185,15 @@ def _parse_args() -> argparse.Namespace:
         dest="plots",
         action="store_false",
         default=True,
-        help="(ELO calibration modes) Skip PNG rendering.",
+        help="(Elo calibration modes) Skip PNG rendering.",
+    )
+    parser.add_argument(
+        "--refit",
+        action="store_true",
+        default=False,
+        help="(elo_calibrate) Refit from the stored win/tie matrices in elo_calibrated.json "
+        "instead of playing a tournament. Cheap CPU-only path for a change of anchor or "
+        "draw convention; requires a previous full calibration.",
     )
     parser.add_argument(
         "--compile",
@@ -561,6 +569,7 @@ def main() -> None:
                 checkpoint_dir="checkpoints",
                 config=calibrate_config,
                 plot=args.plots,
+                refit=args.refit,
             )
 
         case "elo_scale":

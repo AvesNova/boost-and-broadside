@@ -19,6 +19,11 @@ differ only where draws are common, which in this game means the weak end of the
 ladder, and the half-win fit is the one directly comparable to the in-training
 curve. Both come from the same match counts, so carrying both is free.
 
+Reported ratings are shifted so the scripted controller reads
+SCRIPTED_ANCHOR_ELO (see that constant for why). Because the raw win/tie
+matrices are persisted, ``refit=True`` reruns every fit and artifact from the
+stored counts without playing a single game.
+
 Writes to the run's checkpoint directory:
     elo_calibrated.json      ratings, per-update curve, batch stats, and the raw
                              win/tie matrices, so any later refit needs no replay
@@ -90,6 +95,14 @@ _NON_STATIONARY = frozenset({"avg"})
 #
 # Both are fit from the same match counts, so carrying both costs no extra play.
 TIE_MODES = ("half_win", "decisive")
+
+# Reporting anchor: every rating is shifted so the scripted controller reads
+# 1000. Scripted is the one opponent shared across runs and fleet scales, so
+# pinning it makes ratings comparable between them, and its link to the field
+# is far tighter than random's — every trained agent beats random so decisively
+# that those games barely constrain the scale. Random still plays in the
+# tournament and is reported like any other player; it lands below zero here.
+SCRIPTED_ANCHOR_ELO = 1000.0
 
 
 def effective_wins(wins: np.ndarray, ties: np.ndarray, tie_mode: str) -> np.ndarray:
@@ -460,9 +473,7 @@ class Tournament:
             self.wins += counts.reshape(self.size, self.size).cpu().numpy().astype(np.float64)
 
 
-def choose_reference(
-    tournament: Tournament, ratings: np.ndarray, random_index: int, tie_mode: str
-) -> int:
+def choose_reference(pair_games: np.ndarray, ratings: np.ndarray, random_index: int) -> int:
     """Pick the player to measure everything else against.
 
     Standard errors are only meaningful relative to some player, and picking a
@@ -477,7 +488,7 @@ def choose_reference(
     The anchor is excluded from the choice either way: it is the reported zero,
     so measuring it against itself would say nothing.
     """
-    information = np.diag(fisher_information(tournament.pair_games(tie_mode), ratings)).copy()
+    information = np.diag(fisher_information(pair_games, ratings)).copy()
     information[random_index] = -1.0
     return int(np.argmax(information))
 
@@ -505,7 +516,9 @@ def run_tournament(
     scored = tournament.scored_wins(tie_mode)
     if scored.sum() > 0:
         provisional = fit_bradley_terry(scored, anchor=random_index, prior_games=prior_games)
-        reference = choose_reference(tournament, provisional.ratings, random_index, tie_mode)
+        reference = choose_reference(
+            tournament.pair_games(tie_mode), provisional.ratings, random_index
+        )
         fit = fit_bradley_terry(scored, anchor=reference, prior_games=prior_games)
     else:
         fit = fit_bradley_terry(scored, anchor=reference, prior_games=prior_games)
@@ -534,7 +547,9 @@ def run_tournament(
         scored = tournament.scored_wins(tie_mode)
         if batch == 1:
             provisional = fit_bradley_terry(scored, anchor=random_index, prior_games=prior_games)
-            reference = choose_reference(tournament, provisional.ratings, random_index, tie_mode)
+            reference = choose_reference(
+                tournament.pair_games(tie_mode), provisional.ratings, random_index
+            )
             if progress is not None:
                 progress.done(f"reference gauge: {tournament.players[reference].label}")
         fit = fit_bradley_terry(scored, anchor=reference, prior_games=prior_games)
@@ -665,27 +680,37 @@ def training_tie_rates(
     return rows
 
 
-def tie_rate_table(tournament: Tournament, ratings: np.ndarray) -> list[dict]:
+def tie_rate_table(
+    labels: list[str], wins: np.ndarray, ties: np.ndarray, ratings: np.ndarray
+) -> list[dict]:
     """Per-pair tie rates against the pair's rating level, for the draw model."""
     rows = []
-    for i in range(tournament.size):
-        for j in range(i + 1, tournament.size):
-            decisive = tournament.wins[i, j] + tournament.wins[j, i]
-            ties = tournament.ties[i, j] + tournament.ties[j, i]
-            total = decisive + ties
+    for i in range(len(labels)):
+        for j in range(i + 1, len(labels)):
+            decisive = wins[i, j] + wins[j, i]
+            tied = ties[i, j] + ties[j, i]
+            total = decisive + tied
             if total <= 0:
                 continue
             rows.append(
                 {
-                    "a": tournament.players[i].label,
-                    "b": tournament.players[j].label,
+                    "a": labels[i],
+                    "b": labels[j],
                     "games": int(total),
-                    "tie_rate": float(ties / total),
+                    "tie_rate": float(tied / total),
                     "mean_rating": float((ratings[i] + ratings[j]) / 2.0),
                     "rating_gap": float(abs(ratings[i] - ratings[j])),
                 }
             )
     return rows
+
+
+def _load_stored_result(run_dir: Path) -> dict:
+    """Read a previous calibration's persisted result, or exit with guidance."""
+    path = run_dir / "elo_calibrated.json"
+    if not path.exists():
+        sys.exit(f"Error: no elo_calibrated.json in '{run_dir}'; run without --refit first.")
+    return json.loads(path.read_text())
 
 
 def run_elo_calibrate_mode(
@@ -695,48 +720,81 @@ def run_elo_calibrate_mode(
     config: EloCalibrateConfig,
     checkpoint_dir: str = "checkpoints",
     plot: bool = True,
+    refit: bool = False,
 ) -> dict:
-    """Re-rate a finished run and write calibrated ratings, curve, and plots."""
+    """Re-rate a finished run and write calibrated ratings, curve, and plots.
+
+    With ``refit=True`` no game is played: the raw win/tie matrices persisted by
+    a previous calibration are loaded and refit under the current reporting
+    conventions. Refitting reuses the stored reference gauge, so the underlying
+    fit reproduces the original; only downstream reporting can differ. This is
+    the cheap path for a change of anchor or draw convention.
+    """
     from boost_and_broadside.modes.elo_stats import find_run_dir
 
     progress = Progress()
-    num_envs = config.num_envs
     prior_games = config.prior_games
     run_dir = find_run_dir(run_spec, checkpoint_dir)
-    roster_path = run_dir / "roster.json"
     history_path = run_dir / "elo_history.jsonl"
-    if not roster_path.exists():
-        sys.exit(f"Error: no roster.json in '{run_dir}'; nothing to calibrate.")
 
-    roster = json.loads(roster_path.read_text())
-    env_config, model_config, paradigm = _load_run_config(run_dir)
-    print(f"\n=== ELO calibration: {run_dir.name} ===")
-    print(
-        f"  {env_config.num_ships} ships, {paradigm}, "
-        f"max_episode_steps={env_config.max_episode_steps}"
-    )
+    if refit:
+        stored = _load_stored_result(run_dir)
+        print(f"\n=== Elo refit from stored matrices (no play): {run_dir.name} ===")
+        players = [
+            Player(p["label"], ResolvedAgent("stored", None), p["training_elo"], p["global_step"])
+            for p in stored["players"]
+        ]
+        wins = np.asarray(stored["wins_matrix"], dtype=np.float64)
+        ties = np.asarray(stored["ties_matrix"], dtype=np.float64)
+        directed_outcomes = stored.get("directed_outcomes")
+        stats = [BatchStat(**batch) for batch in stored["batches"]]
+        target_stderr = float(stored["target_stderr"])
+        reference = stored["player_labels"].index(stored["reference"])
+        fit = fit_bradley_terry(
+            effective_wins(wins, ties, config.tie_mode),
+            anchor=reference,
+            prior_games=prior_games,
+        )
+        progress.done(f"refit {len(players)} players from stored matrices")
+    else:
+        num_envs = config.num_envs
+        roster_path = run_dir / "roster.json"
+        if not roster_path.exists():
+            sys.exit(f"Error: no roster.json in '{run_dir}'; nothing to calibrate.")
 
-    ladder_count = sum(1 for e in roster["entries"] if e["kind"] == "checkpoint")
-    progress.stage(f"loading {ladder_count} ladder snapshots...")
-    players = build_players(
-        run_dir, roster, model_config, ship_config, env_config.num_ships, device
-    )
-    progress.done(f"field ({len(players)}): {', '.join(p.label for p in players)}")
-    anchor = next(i for i, p in enumerate(players) if p.label == "random")
+        roster = json.loads(roster_path.read_text())
+        env_config, model_config, paradigm = _load_run_config(run_dir)
+        print(f"\n=== Elo calibration: {run_dir.name} ===")
+        print(
+            f"  {env_config.num_ships} ships, {paradigm}, "
+            f"max_episode_steps={env_config.max_episode_steps}"
+        )
 
-    tournament = Tournament(players, ship_config, env_config, paradigm, num_envs, device)
-    pairs = len(players) * (len(players) - 1) // 2
-    progress.stage(
-        f"{num_envs} games/batch over {pairs} pairs, target +/-{config.target_stderr:.0f} ELO, "
-        f"max {config.max_batches} batches"
-    )
-    fit, stats, reference = run_tournament(tournament, anchor, config, progress)
+        ladder_count = sum(1 for e in roster["entries"] if e["kind"] == "checkpoint")
+        progress.stage(f"loading {ladder_count} ladder snapshots...")
+        players = build_players(
+            run_dir, roster, model_config, ship_config, env_config.num_ships, device
+        )
+        progress.done(f"field ({len(players)}): {', '.join(p.label for p in players)}")
+        anchor = next(i for i, p in enumerate(players) if p.label == "random")
 
-    # Report on the familiar scale (random = 0) while keeping the errors from the
-    # gauge that is actually resolved. The shift is a constant: it moves every
-    # rating together and cancels in any comparison between two of them.
-    anchor_offset = float(fit.ratings[anchor])
-    shifted = fit.ratings - anchor_offset
+        tournament = Tournament(players, ship_config, env_config, paradigm, num_envs, device)
+        pairs = len(players) * (len(players) - 1) // 2
+        progress.stage(
+            f"{num_envs} games/batch over {pairs} pairs, target +/-{config.target_stderr:.0f} "
+            f"Elo, max {config.max_batches} batches"
+        )
+        fit, stats, reference = run_tournament(tournament, anchor, config, progress)
+        wins, ties = tournament.wins, tournament.ties
+        directed_outcomes = tournament.directed_outcomes.tolist()
+        target_stderr = config.target_stderr
+
+    # Report on the scripted-anchored scale (scripted = 1000) while keeping the
+    # errors from the gauge that is actually resolved. The shift is a constant:
+    # it moves every rating together and cancels in any comparison between two
+    # of them.
+    scripted_index = next(i for i, p in enumerate(players) if p.label == "scripted")
+    shifted = fit.ratings - fit.ratings[scripted_index] + SCRIPTED_ANCHOR_ELO
     ratings = {player.label: float(shifted[i]) for i, player in enumerate(players)}
     stderrs = {player.label: float(fit.stderr[i]) for i, player in enumerate(players)}
 
@@ -746,9 +804,9 @@ def run_elo_calibrate_mode(
     # not, so a large disagreement for one agent is that signature.
     alt_mode = next(mode for mode in TIE_MODES if mode != config.tie_mode)
     alt_fit = fit_bradley_terry(
-        tournament.scored_wins(alt_mode), anchor=reference, prior_games=prior_games
+        effective_wins(wins, ties, alt_mode), anchor=reference, prior_games=prior_games
     )
-    alt_shifted = alt_fit.ratings - alt_fit.ratings[anchor]
+    alt_shifted = alt_fit.ratings - alt_fit.ratings[scripted_index] + SCRIPTED_ANCHOR_ELO
     alt_ratings = {player.label: float(alt_shifted[i]) for i, player in enumerate(players)}
 
     history = []
@@ -783,25 +841,29 @@ def run_elo_calibrate_mode(
         ],
         # The raw tally is the expensive artifact — everything else is a refit of
         # it. Persisting it means a new draw convention or estimator can be tried
-        # without replaying a single match.
+        # without replaying a single match (see ``refit``).
         "player_labels": [player.label for player in players],
-        "wins_matrix": tournament.wins.tolist(),
-        "ties_matrix": tournament.ties.tolist(),
-        "directed_outcomes": tournament.directed_outcomes.tolist(),
+        "wins_matrix": np.asarray(wins).tolist(),
+        "ties_matrix": np.asarray(ties).tolist(),
         "curve": curve,
         "batches": [vars(stat) for stat in stats],
-        "tie_rates": tie_rate_table(tournament, shifted),
+        "tie_rates": tie_rate_table([p.label for p in players], wins, ties, shifted),
         "training_tie_rates": training_tie_rates(history, curve, ratings),
-        "converged": bool(stats[-1].max_stderr <= config.target_stderr) if stats else False,
-        "target_stderr": config.target_stderr,
+        "converged": bool(stats[-1].max_stderr <= target_stderr) if stats else False,
+        "target_stderr": target_stderr,
         "reference": players[reference].label,
         "tie_mode": config.tie_mode,
         "tie_mode_alt": alt_mode,
         # Every reported rating is measured relative to the reference and then
-        # shifted so random reads 0. That shift is itself uncertain by this much,
-        # in common across all of them; it cancels between any two ratings.
-        "anchor_offset_stderr": float(fit.stderr[anchor]),
+        # shifted so scripted reads SCRIPTED_ANCHOR_ELO. That shift is itself
+        # uncertain by this much, in common across all of them; it cancels
+        # between any two ratings.
+        "anchor": "scripted",
+        "anchor_elo": SCRIPTED_ANCHOR_ELO,
+        "anchor_offset_stderr": float(fit.stderr[scripted_index]),
     }
+    if directed_outcomes is not None:  # absent from results stored before it existed
+        result["directed_outcomes"] = directed_outcomes
     output = run_dir / "elo_calibrated.json"
     output.write_text(json.dumps(result, indent=2))
     progress.done(f"wrote {output}")
@@ -850,14 +912,21 @@ def _print_summary(result: dict) -> None:
             f"  {player['label']:<20} {player['calibrated_elo']:14.1f} {other:14.1f} "
             f"{player['calibrated_elo'] - other:+12.1f}"
         )
+    random_rating = next(
+        (p["calibrated_elo"] for p in result["players"] if p["label"] == "random"), None
+    )
+    random_text = (
+        f" Random reads {random_rating:.0f} on this scale." if random_rating is not None else ""
+    )
     print(
-        f"\n  Errors are relative to '{result['reference']}'. Shifting the scale so random "
-        f"reads 0\n  adds +/-{result['anchor_offset_stderr']:.0f} in common to every rating "
-        "above, and cancels whenever two are\n  compared. That link is coarse because every "
-        "agent in the field beats random\n  decisively — nothing here plays near its level, so "
-        "those games say little\n  however they are scored. The live curve does not have this "
-        "problem: early in\n  training it drew against random constantly, and draws are "
-        "informative."
+        f"\n  Errors are relative to '{result['reference']}'. Ratings are shifted so the "
+        f"scripted\n  controller reads {result['anchor_elo']:.0f}; that shift is uncertain by "
+        f"+/-{result['anchor_offset_stderr']:.0f} in common across\n  every rating above and "
+        f"cancels whenever two are compared.{random_text}\n  Random's own link to the field is "
+        "coarse because every trained agent beats it\n  decisively — nothing plays near its "
+        "level, so those games say little however\n  they are scored. The live curve does not "
+        "have this problem: early in training\n  it drew against random constantly, and draws "
+        "are informative."
     )
     # Spacing is the part a shared offset cannot flatter, so report it directly.
     # Random is excluded: the step from it to the first rung is the coarse anchor

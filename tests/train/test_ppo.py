@@ -386,7 +386,7 @@ class TestMatchCounts:
         assert sum(sum(wlt) for wlt in second.values()) == 0
 
     def test_ties_are_recorded_separately_from_wins(self, tmp_path):
-        """Tie counts must survive as their own column. The ELO update collapses
+        """Tie counts must survive as their own column. The Elo update collapses
         them into a half-win, but draw frequency here is level-dependent, so the
         post-hoc fit needs the raw three-way split to model it at all."""
         trainer = _make_trainer(checkpoint_dir=str(tmp_path))
