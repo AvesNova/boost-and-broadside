@@ -7,12 +7,12 @@
 *Outnumbered 11 ships to 8, the learned fleet wins with three ships to spare.*
 
 Boost and Broadside is a tensorized 2D dogfighting environment and reinforcement
-learning system built to study coordination at scale. Its central question is simple:
+learning system built to study coordination at scale. The central question is simple:
 can a policy trained with a small team command much larger fleets without retraining?
 
-The landmark policy trained exclusively in **4-vs-4** combat, then transferred zero-shot
-to battles ranging from one to 64 learned ships. A single recurrent network commands the
-learned fleet, producing an action for every ship on each forward pass.
+The reference policy trained exclusively in **4-vs-4** combat, then transferred
+zero-shot to fleets of one to 64 ships. A single recurrent network commands the
+whole fleet, producing an action for every ship on each forward pass.
 
 [Explore the results](docs/evaluation.md) · [Watch more replays](docs/replays.md) ·
 [Understand the architecture](docs/architecture.md) · [Get started](docs/getting-started.md)
@@ -20,9 +20,10 @@ learned fleet, producing an action for every ship on each forward pass.
 ## Zero-shot team-size transfer
 
 Ships and obstacles are represented as entity tokens. Spatial attention coordinates the
-fleet within each timestep, while per-entity Griffin recurrence carries information
-through time. Because the network operates over a variable-length token sequence, the
-same weights can run at fleet sizes never seen during training.
+fleet within each timestep, while per-entity [Griffin-style](https://arxiv.org/abs/2402.19427)
+recurrence carries information through time. Because the network operates over a
+variable-length token sequence, the same weights can run at fleet sizes never seen
+during training.
 
 ![Zero-shot crossover against the scripted controller](docs/results/crossover_phase.png)
 
@@ -33,6 +34,7 @@ Selected results from the [recorded crossover sweep](docs/crossover/crossover.js
 
 | Learned ships | Scripted ships | Win rate |
 |---:|---:|---:|
+| 4 | 5 | **81.6%** |
 | 8 | 11 | **69.5%** |
 | 16 | 24 | **52.7%** |
 | 32 | 47 | **55.9%** |
@@ -43,14 +45,15 @@ sample sizes, raw artifacts, and limitations behind these measurements.
 
 ## Learning progression
 
-A roughly one-billion-step training run completed in 7.5 hours on a single RTX 5090. Post-hoc
-calibration places the final policy at about **2053 ELO**, roughly **813 ELO above** the
-scripted controller.
+A one-billion-step training run completed in 7.5 hours on a single RTX 5090. Post-hoc
+calibration places the final policy at about **1813 Elo** on a scale that fixes the
+scripted controller at 1000 — a lead of roughly **813 points**, where 400 points
+already means ten-to-one odds.
 
-![Post-hoc calibrated ELO over training](docs/results/elo_curve.png)
+![Post-hoc calibrated Elo over training](docs/results/elo_curve.png)
 
-*The broader calibrated rating continues to rise after wins against the scripted
-controller nearly saturate.*
+*The calibrated rating keeps rising long after wins against the scripted controller
+stop being informative.*
 
 See [results and methodology](docs/evaluation.md#post-hoc-elo-calibration) for the rating
 procedure, exact values, and uncertainty.
@@ -72,24 +75,29 @@ procedure, exact values, and uncertainty.
   measurements with qualitative behavior. The crossover evaluator is
   [`crossover.py`](src/boost_and_broadside/modes/crossover.py).
 
-Maintainers can trace headline claims to code and stored artifacts in the
-[evidence map](docs/evidence.md).
+Headline claims are traceable to code and stored artifacts through the
+[evidence map](docs/internal/evidence.md).
 
 ## Quick start
 
-The landmark checkpoints are stored with Git LFS. After cloning:
+Requires [uv](https://docs.astral.sh/uv/) and, for the included reference
+checkpoints, Git LFS — training from scratch works without it. After cloning:
 
 ```bash
-git lfs pull
+git lfs pull   # fetch reference checkpoints (skip if training from scratch)
 uv sync
 
-# Human vs the latest checkpoint (WASD, Shift, Space)
+# Human vs the newest checkpoint (WASD, Shift, Space)
 uv run main.py --mode watch
 
 # Small no-W&B training crash test
 uv run main.py --mode rl --smoke
 ```
 
-Training is designed for CUDA hardware; the simulator and test suite can also exercise
-many paths on CPU. The [setup and usage guide](docs/getting-started.md) covers checkpoints,
-training, evaluation, replay capture, and development checks.
+Training is designed for CUDA hardware; the simulator and test suite also run on CPU.
+The [setup and usage guide](docs/getting-started.md) covers checkpoints, training,
+evaluation, replay capture, and development checks.
+
+## License
+
+[MIT](LICENSE).

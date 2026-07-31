@@ -10,7 +10,8 @@ Ideas under consideration, roughly ordered by interest. None are commitments.
 - **Respawning**: continuous battles instead of elimination rounds.
 - **Head-on damage reduction**: the `bullet_min_damage_frac` mechanic exists in
   the physics engine but is disabled in the training config (see
-  `docs/game_design.md`); evaluate enabling it once the meta stabilizes.
+  [docs/environment.md](docs/environment.md)); evaluate enabling it once the
+  meta stabilizes.
 
 ## Training & performance
 

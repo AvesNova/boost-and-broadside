@@ -68,7 +68,7 @@ REWARDS = RewardConfig(
     closing_speed_weight=0.1,
     shoot_quality_weight=0.1,
     # Per-ship kill credit — self-only (lambda=0 for all other ships).
-    # kill_shot: winner-take-all to the top-damage dealer in the fatal step.
+    # kill_shot: fatal-step credit split in proportion to each ship's damage that step.
     # kill_assist: proportional share based on cumulative episode damage dealt.
     kill_shot_weight=1.0,
     kill_assist_weight=1.0,
@@ -144,7 +144,7 @@ COMPONENT_LAMBDAS: dict[str, float] = {
     "ally_death": 0.95,
     "enemy_death": 0.95,
     "death": 0.95,
-    # kill_shot: winner-take-all is noisy; shorter trace reduces variance
+    # kill_shot: sparse fatal-step credit is noisy; shorter trace reduces variance
     # kill_assist: episode-level cumulative credit needs a longer trace
     "kill_shot": 0.87,
     "kill_assist": 0.97,

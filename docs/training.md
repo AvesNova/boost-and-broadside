@@ -1,13 +1,14 @@
 # Training system
 
-Boost and Broadside trains a recurrent centralized team policy with clipped PPO. The
-training loop combines scripted-opponent bootstrapping, self-play, a running-average
-policy, frozen historical opponents, decomposed rewards, and continuous evaluation.
+Boost and Broadside trains a recurrent centralized team policy with clipped
+[PPO](https://arxiv.org/abs/1707.06347). The training loop combines scripted-opponent
+bootstrapping, self-play, a running-average policy, frozen historical opponents,
+decomposed rewards, and continuous evaluation.
 
-This page explains the current implementation and calls out landmark-run settings where
+This page explains the current implementation and calls out reference-run settings where
 they matter. Exact results and post-hoc methodology are in [evaluation](evaluation.md).
 
-## Landmark experiment at a glance
+## Reference run at a glance
 
 The preserved [run configuration](../checkpoints/resilient-resonance-682/wandb_export/config.json)
 records:
@@ -22,16 +23,18 @@ records:
 | Token width / attention heads / blocks | 128 / 4 / 2 |
 | Episode horizon | 1,024 steps |
 | Opponent paradigm | `ego_pass` |
-| ELO evaluation games per matchup slot | 512 |
+| Elo evaluation games per matchup slot | 512 |
 
 The run logged 999,424,000 steps before finishing. Today's profiles have continued to
-evolve, so use the artifact above—not current constants—for claims about that experiment.
+evolve, so where this page and the export disagree about that run, the export is what
+actually ran.
 
 ## Recurrent PPO lifecycle
 
 [`PPOTrainer`](../src/boost_and_broadside/train/rl/ppo.py) owns environment groups,
-policies, rollout collection, generalized advantage estimation, update-time sequence
-re-evaluation, evaluation, logging, and checkpoints.
+policies, rollout collection, [generalized advantage
+estimation](https://arxiv.org/abs/1506.02438), update-time sequence re-evaluation,
+evaluation, logging, and checkpoints.
 
 A logical update proceeds as follows:
 
@@ -47,10 +50,9 @@ A logical update proceeds as follows:
 
 The buffer stores precision-tolerant leaves in bfloat16 and categorical channels in small
 integer dtypes, while reductions and running statistics use float32. Current profiles can
-also collect multiple fixed-width rollout shards into a host-backed logical batch. That
-newer sharding design is documented in [memory optimization](engineering/memory-optimization.md)
-and should not be retroactively attributed to the landmark run, whose exported config
-predates the setting.
+also collect multiple fixed-width rollout shards into a host-backed logical batch, a
+newer design documented in [memory optimization](engineering/memory-optimization.md);
+the reference run predates it.
 
 ## `ego_pass` and team perspective
 
@@ -78,7 +80,9 @@ The total update combines:
 - behavior cloning from the scripted controller, gated down as scripted win rate rises;
 - one-step next-state prediction error;
 - a cumulative triangle-window position/velocity drift loss;
-- optional SIGReg embedding regularization, disabled in the landmark configuration.
+- optional sketched isotropic Gaussian regularization of the embedding space
+  (SIGReg, from [LeJEPA](https://arxiv.org/abs/2511.08544)), disabled in the
+  reference configuration.
 
 Advantages are scaled per component with running RMS statistics. Returns use a
 per-component percentile scaler in symlog reward space, which keeps critic targets in a
@@ -90,21 +94,22 @@ head. The exact loss assembly and logging proxies live in
 
 Rewards are emitted as named components by [`rewards.py`](../src/boost_and_broadside/env/rewards.py).
 Each active component receives its own critic output and can have its own GAE gamma/lambda
-horizon. The landmark combat policy activated these components:
+horizon. Weights are magnitudes; each component carries its own sign, noted below. The
+reference policy activated these components:
 
 | Component | Weight | Role |
 |---|---:|---|
-| `ally_win` | 4.0 | own-team terminal outcome |
-| `enemy_win` | 4.0 | opponent outcome, aggregated with negative enemy lambda |
-| `facing` | 0.1 | dense aim geometry |
-| `closing_speed` | 0.1 | dense approach geometry |
-| `shoot_quality` | 0.1 | firing opportunity quality |
-| `kill_shot` | 1.0 | fatal-step credit proportional to damage on that step |
-| `kill_assist` | 1.0 | cumulative-damage assist credit |
-| `damage_taken` | 0.5 | local incoming damage accounting |
-| `damage_dealt_enemy` | 0.5 | local hostile damage accounting |
-| `damage_dealt_ally` | 0.5 | local friendly-fire accounting |
-| `death` | 1.0 | local ship death |
+| `ally_win` | 4.0 | +1 to each surviving teammate on a win |
+| `enemy_win` | 4.0 | opponent's win signal, seen as −1 through a negative enemy lambda |
+| `facing` | 0.1 | dense aim geometry (+) |
+| `closing_speed` | 0.1 | dense approach geometry (+) |
+| `shoot_quality` | 0.1 | firing opportunity quality (+) |
+| `kill_shot` | 1.0 | fatal-step credit (+), proportional to that step's damage; killing a friendly earns the negative share |
+| `kill_assist` | 1.0 | assist credit (+), proportional to cumulative episode damage |
+| `damage_taken` | 0.5 | −proportional to incoming damage |
+| `damage_dealt_enemy` | 0.5 | +proportional to damage dealt to enemies |
+| `damage_dealt_ally` | 0.5 | −proportional to friendly fire dealt |
+| `death` | 1.0 | −1 on the step this ship dies |
 
 Weights are normalized by their absolute sum, and the wrapper divides component rewards
 by total ship count for team-size normalization. A lambda aggregation matrix then maps
@@ -115,13 +120,12 @@ local event signals to training targets:
 - selected enemy-perspective components use negative enemy coefficients to recover
   zero-sum outcome structure.
 
-The implementation, not component names alone, defines credit semantics. In particular,
-`kill_shot` is not winner-take-all when multiple ships deal damage on the fatal step;
-credit is proportional to that step's damage. `kill_assist` is proportional to cumulative
-episode damage.
+Note that `kill_shot` is not winner-take-all: when several ships damage a target on its
+fatal step, each earns credit proportional to that step's damage. `kill_assist` is
+proportional to cumulative episode damage.
 
-Available obstacle and behavior-shaping components remain in the registry but had zero
-weight in the landmark combat run. See [`runs/shared.py`](../runs/shared.py) for current
+Additional obstacle and behavior-shaping components exist in the registry but had zero
+weight in the reference run. See [`runs/shared.py`](../runs/shared.py) for current
 component horizons and schedules, and the preserved run config for the historical weights.
 
 ## Opponent curriculum
@@ -139,16 +143,16 @@ The main opponent types are:
   performance cutoff;
 - **league:** frozen historical checkpoint policies sampled near the live rating.
 
-The scripted controller is scheduled directly; it is not currently a sampled roster
-entry. The [`EloRoster`](../src/boost_and_broadside/train/rl/roster.py) retains historical
-entries rather than evicting the weakest. `league_size` controls the GPU-resident LRU
-policy cache. Historical sampling is proportional to
+The scripted controller is scheduled directly; it is not a sampled roster entry. The
+[`EloRoster`](../src/boost_and_broadside/train/rl/roster.py) retains historical entries
+rather than evicting the weakest; `league_size` only bounds the GPU-resident LRU policy
+cache. Historical sampling is proportional to
 `exp(-abs(opponent_elo - live_elo) / temperature)`, excluding the fixed random anchor.
 
 ## Continuous rating and the frozen ladder
 
 [`elo_eval.py`](../src/boost_and_broadside/train/rl/elo_eval.py) advances dedicated
-evaluation environments alongside training. The current evaluator has five logical slots:
+evaluation environments alongside training. The evaluator has five logical slots:
 
 1. live vs fixed anchor;
 2. live vs floating checkpoint;
@@ -156,9 +160,10 @@ evaluation environments alongside training. The current evaluator has five logic
 4. live vs running-average policy;
 5. floating checkpoint vs fixed anchor.
 
-Two newest frozen anchors and information-weighted matchup allocation stabilize the online
-scale. Ties count as half a win for online ELO. These live ratings support opponent
-selection and training decisions, but they remain a filtered online estimate.
+Anchor games use the two newest frozen ladder checkpoints, with per-episode assignment
+weighted toward the matchup that carries the most rating information. Ties count as half
+a win. These live ratings steer opponent selection and training decisions, but they
+remain a filtered online estimate.
 
 At configured rating milestones, the trainer writes unpruned ladder snapshots. After
 training, [`elo_calibrate.py`](../src/boost_and_broadside/modes/elo_calibrate.py) replays
@@ -174,14 +179,14 @@ environment/model/training configuration. Saves are prepared asynchronously and 
 through a temporary file before rename.
 
 The checkpoint subsystem also maintains current average/best snapshots and unpruned
-ladder checkpoints. Refer to [`checkpoint.py`](../src/boost_and_broadside/train/rl/checkpoint.py)
-for current names. The included landmark directory contains `recent_avg.pt` from an older
-convention; it is an artifact, not the current general filename.
+ladder checkpoints; [`checkpoint.py`](../src/boost_and_broadside/train/rl/checkpoint.py)
+defines the current filenames. (The included reference-run directory retains
+`recent_avg.pt` from an older naming convention.)
 
-W&B logging runs off the main training path. The landmark's sampled metric history,
+W&B logging runs off the main training path. The reference run's sampled metric history,
 configuration, summary, and run metadata are exported under
 [`wandb_export/`](../checkpoints/resilient-resonance-682/wandb_export/) so the published
-charts can be rebuilt without relying solely on a hosted dashboard.
+charts can be rebuilt without relying on a hosted dashboard.
 
 ## Engineering validation
 

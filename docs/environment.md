@@ -4,9 +4,10 @@ Boost and Broadside is a two-team, continuous 2D combat environment. Ships maneu
 fire projectiles on a toroidal map until one team is eliminated or the episode horizon is
 reached. Team sizes can be symmetric or asymmetric.
 
-This page separates the reference engine defaults from the configuration used by the
-landmark learning experiment. For the policy's view of the world, see
-[architecture](architecture.md); for experiment settings, see [training](training.md).
+Engine defaults and the configuration of the reference training run differ in a few
+places; both are tabulated [below](#engine-defaults-and-reference-run-overrides). For the
+policy's view of the world, see [architecture](architecture.md); for experiment settings,
+see [training](training.md).
 
 ## Tensorized simulation
 
@@ -29,28 +30,23 @@ The environment layer has a deliberately narrow responsibility:
 
 ## World and episode
 
-The reference [`ShipConfig`](../src/boost_and_broadside/config/core.py) defines a
+The [`ShipConfig`](../src/boost_and_broadside/config/core.py) defaults define a
 1024×1024 continuous world at a 60 Hz simulation timestep. Positions wrap at both map
-boundaries, so there are no walls or corners. Velocity is updated before position, a
+boundaries, so there are no walls or corners. Velocity is updated before position — a
 semi-implicit Euler step.
 
-On reset, `EnvConfig.num_ships` means the **total** number of ships across both teams. A
+On reset, `EnvConfig.num_ships` is the **total** number of ships across both teams. A
 normal reset divides them as evenly as possible; an explicit `(team0, team1)` size tuple
-enables asymmetric evaluation. This is why the landmark run's `num_ships=8` is 4-vs-4,
+enables asymmetric evaluation. The reference run's `num_ships=8` therefore means 4-vs-4,
 not 8-vs-8.
 
 A combat episode ends when either team that existed at reset has no surviving ships. If
-both teams remain at `max_episode_steps`, the episode is truncated and evaluation can
+both teams survive to `max_episode_steps`, the episode is truncated and evaluation can
 record a draw.
 
-## Movement and resources
+## Flight model
 
-Ships combine forward/reverse thrust, drag, and turn-induced lift. Power acts as an energy
-store: forward thrust drains it as kinetic energy rises, reverse thrust recovers it, and a
-passive regeneration term applies each step. Boosting or firing is suppressed when the
-ship cannot pay the associated power cost.
-
-The action for each ship has three independent categorical factors, defined in
+Each ship picks one option per step from three independent action factors, defined in
 [`constants.py`](../src/boost_and_broadside/constants.py):
 
 | Factor | Choices |
@@ -59,13 +55,23 @@ The action for each ship has three independent categorical factors, defined in
 | Turn (7) | straight, left, right, sharp left, sharp right, air brake, sharp air brake |
 | Shoot (2) | hold, fire |
 
-The policy therefore produces 12 logits per ship—3 + 7 + 2—and samples three sub-actions.
-It does not materialize a 42-way Cartesian-product action head.
+The policy therefore produces 12 logits per ship — 3 + 7 + 2 — and samples three
+sub-actions. It does not materialize a 42-way Cartesian-product action head.
 
-The reference turn increments are 5° for a normal turn and 15° for a sharp turn. Air-brake
-actions apply the corresponding higher-drag maneuver without changing attitude. Exact
-force, drag, lift, speed, and power constants remain centralized in
-[`ShipConfig`](../src/boost_and_broadside/config/core.py).
+Ships fly like simplified aircraft. A turn action does not rotate the ship by a fixed
+rate; it holds the attitude at a fixed sideslip angle to the velocity — 5° for a normal
+turn, 15° for a sharp turn. The sideslip induces lift and drag forces proportional to
+speed squared, with per-action coefficients in
+[`ShipConfig`](../src/boost_and_broadside/config/core.py), and it is the lift force that
+curves the flight path — so turn rate rises with speed. Air-brake actions apply the
+turn-level drag without the sideslip or its lift, and below a minimum speed a ship
+stalls, losing turning authority.
+
+Power is potential energy. Ignoring drag, the engine conserves the total
+`½·speed² + c·power`: forward thrust converts power into speed the way an aircraft
+trades altitude for airspeed by pitching down, and reverse thrust converts speed back
+into power. A passive regeneration term adds power each step, and firing spends power
+directly; boosting and firing are suppressed when the ship cannot pay the cost.
 
 ## Projectiles and damage
 
@@ -78,17 +84,17 @@ test. Friendly fire is enabled: a projectile excludes its owner but can damage a
 The hit projectile is consumed and damage is recorded in a source/target matrix used by
 both rewards and kill attribution.
 
-The engine supports an incidence-angle damage multiplier. In the reference defaults, a
-head-on hit can be reduced to a fraction of nominal damage. The landmark run sets
-`bullet_min_damage_frac=1.0`, disabling that reduction, so every hit uses nominal damage.
+The engine supports an incidence-angle damage multiplier that can reduce a head-on hit
+to a fraction of nominal damage. The reference run sets `bullet_min_damage_frac=1.0`,
+disabling the reduction, so every hit deals nominal damage there.
 
-Ship-to-ship collision is **not** implemented in the core physics loop. Ships may pass
-through one another. This is distinct from ship-to-obstacle and projectile collision,
-which are implemented and tested.
+Ship-to-ship collision is **not** implemented in the core physics loop; ships may pass
+through one another. Ship-to-obstacle and projectile collisions are implemented and
+tested.
 
-## Reference defaults and landmark overrides
+## Engine defaults and reference-run overrides
 
-| Setting | Reference engine | Landmark combat run |
+| Setting | Engine default | Reference run |
 |---|---:|---:|
 | World | 1024 × 1024 | 1024 × 1024 |
 | Timestep | 1/60 s | 1/60 s |
@@ -102,10 +108,9 @@ which are implemented and tested.
 | Minimum angular damage fraction | 0.1 | **1.0 (disabled)** |
 | Obstacles | optional | **0** |
 
-The engine values come from [`ShipConfig`](../src/boost_and_broadside/config/core.py). The
-experiment values come from the preserved [W&B configuration
-export](../checkpoints/resilient-resonance-682/wandb_export/config.json). Keeping those two
-columns separate avoids presenting an experiment override as a permanent game rule.
+Engine values come from [`ShipConfig`](../src/boost_and_broadside/config/core.py); run
+values from the preserved [W&B configuration
+export](../checkpoints/resilient-resonance-682/wandb_export/config.json).
 
 ## Optional obstacles
 
@@ -113,14 +118,13 @@ Obstacle-enabled profiles add circles orbiting a per-environment harmonic gravit
 Position-based dynamics resolves obstacle overlap during cache generation; converged maps
 can be cached and sampled so training does not spend its hot loop settling new fields.
 
-The primary combat result in this repository used no obstacles. Obstacle machinery is an
-engine capability and a separate training profile, not part of the zero-shot combat claim.
-See [`runs/rl_obstacles.py`](../runs/rl_obstacles.py) and
+The headline combat results used no obstacles; obstacle support is an engine capability
+with its own training profile. See [`runs/rl_obstacles.py`](../runs/rl_obstacles.py) and
 [`obstacle_cache.py`](../src/boost_and_broadside/env/obstacle_cache.py).
 
 ## Validation
 
-Physical behavior is covered by executable tests rather than inferred from comments:
+Physical behavior is covered by tensor-level tests:
 
 - [`test_physics.py`](../tests/env/test_physics.py) covers motion, power, firing, damage,
   wraparound, and collision invariants;

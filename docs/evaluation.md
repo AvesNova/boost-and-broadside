@@ -6,10 +6,10 @@ ships. Crossover against the scripted controller provides the quantitative view;
 replays show what that transfer looks like in motion.
 
 This page distinguishes stored measurements from interpretations and describes the raw
-artifacts behind every headline. The maintainer-level claim ledger is
-[`evidence.md`](evidence.md).
+artifacts behind every headline number. Known gaps are collected in
+[remaining limitations](#remaining-limitations).
 
-## Landmark run and provenance
+## Reference run and provenance
 
 All headline figures refer to `resilient-resonance-682` (`chpl40cj`). Its preserved
 artifacts include:
@@ -23,9 +23,11 @@ artifacts include:
 - [curated seeded replays](results/replays/).
 
 The run targeted one billion environment steps and logged 999,424,000. The W&B summary
-records 7.50 training hours, a final logged 37,000 environment steps/s and 296,002 ship
-tokens/s; [hardware metadata](../checkpoints/resilient-resonance-682/wandb_export/files/wandb-metadata.json)
-identifies one RTX 5090. These are run-specific measurements.
+records 7.50 training hours at a final logged throughput of about 296,000 ship-tokens/s
+(37,000 environment steps/s at 8 ships per environment);
+[hardware metadata](../checkpoints/resilient-resonance-682/wandb_export/files/wandb-metadata.json)
+identifies one RTX 5090. Ship-tokens/s is the primary throughput measure here because it
+stays comparable when ships-per-environment changes; steps/s does not.
 
 ## Zero-shot crossover
 
@@ -59,72 +61,64 @@ Selected measurements:
 | 32 | 47 | 55.9% | 48 | 47.3% |
 | 64 | 87 | 53.1% | 88 | 46.8% |
 
-The result supports an empirical claim: the 4-vs-4-trained controller remains effective
-without retraining at much larger and asymmetric sizes, and the recorded crossover stays
-above numerical parity.
+This supports an empirical claim: the 4-vs-4-trained controller remains effective without
+retraining at much larger and asymmetric sizes, and the recorded crossover stays above
+numerical parity. It does **not** by itself establish a universal scale-invariance law —
+the scripted controller is one opponent family, individual boundary rates carry binomial
+sampling noise, and the search assumes a locally monotone boundary.
 
-It does **not** by itself establish a universal scale-invariance law. The scripted
-controller is one opponent family, individual boundary rates carry binomial sampling
-noise, and the search assumes a locally monotone boundary even though finite samples can
-fluctuate.
-
-### Sample-size limitation
-
-The included JSON predates count-preserving output: it stores a run-level maximum of 256
-parallel games, not exact per-point wins, losses, and ties. Current evaluator logic uses
-all 256 for the 8-vs-11 matchup and reduces the count for large battles to fit a `B×N²`
-collision-memory budget. New crossover runs store wins, losses, ties, games, win rate, and
-mean episode length for every evaluated cell. The historical artifact cannot be
-retroactively separated into losses and ties from win rate alone.
-
-Checkpoint hash, seed policy, source commit, and confidence intervals also remain absent.
-This documentation therefore reports the stored rates without inventing more precision.
-Those fields remain in the [deferred asset ledger](evidence.md#deferred-asset-and-analysis-ledger).
+The stored sweep predates count-preserving output: it records win rates and a run-level
+maximum of 256 parallel games, not per-point win/loss/tie counts (current evaluator runs
+store all of those per cell, plus mean episode length). The historical rates are
+therefore reported as stored, without inventing more precision.
 
 ![Scripted ships beaten per policy-controlled ship](results/crossover_ratio.png)
 
-The ratio view is useful for describing where the measured numerical advantage is larger,
-but its shape is descriptive. No ablation separates coordination, per-ship tactical skill,
-and weaknesses of the scripted controller.
+The ratio view describes where the measured numerical advantage is larger. Its shape is
+descriptive: no ablation separates coordination, per-ship tactical skill, and weaknesses
+of the scripted controller.
 
 ## Qualitative crossover evidence
 
 ![Eight policy-controlled ships versus eleven scripted-controlled ships](results/replays/vs_scripted_8v11_seed03.gif)
 
 Outnumbered 11 ships to 8, the learned fleet wins with three ships to spare. See
-[replays](replays.md) for larger battles, capture details, and the current provenance
-limitation.
+[replays](replays.md) for larger battles and capture details. A clip is one qualitative
+realization, not the source of the aggregate rates above.
 
-## Post-hoc ELO calibration
+## Post-hoc Elo calibration
 
-![Calibrated live-policy ELO](results/elo_curve.png)
+![Calibrated live-policy Elo](results/elo_curve.png)
 
-Online ELO is useful during training, but its location can drift with sequential K-factor
+Online Elo is useful during training, but its location can drift with sequential K-factor
 updates and changing opponents. [`elo_calibrate.py`](../src/boost_and_broadside/modes/elo_calibrate.py)
 constructs a post-hoc scale in two stages:
 
-1. run an adaptive tournament among stationary players—random, scripted, and frozen
-   ladder checkpoints—until their fitted uncertainty reaches the target;
+1. run an adaptive tournament among stationary players — random, scripted, and frozen
+   ladder checkpoints — until their fitted uncertainty reaches the target;
 2. refit each historical live policy from that update's saved win/loss/tie record against
    the now-calibrated opponents.
 
-The fit uses Bradley-Terry expected scores. The primary convention treats a draw as half a
-win for each side; a decisive-games-only fit is retained as a diagnostic. Ratings are
-shifted so random reads zero.
+The fit uses [Bradley-Terry](https://doi.org/10.2307/2334029) expected scores. The
+primary convention treats a draw as half a win for each side; a decisive-games-only fit
+is retained as a diagnostic. Ratings are reported with the scripted controller fixed at
+1000 — the same convention as the fleet-scale view below. On this scale the random
+baseline reads about −240, and 400 points correspond to ten-to-one odds.
 
 Key values from [`elo_calibrated.json`](../checkpoints/resilient-resonance-682/elo_calibrated.json):
 
-| Measurement | ELO | Conditional SE | Games |
+| Measurement | Elo | Conditional SE | Games |
 |---|---:|---:|---:|
-| Final live policy, 999.424M steps | 2052.95 | 18.41 | 627 recorded games |
-| Last frozen checkpoint, 876.495M steps | 2056.79 | 9.50 | 6,134 tournament games |
-| Scripted controller | 1240.03 | 6.20 | 7,895 tournament games |
+| Final live policy, 999.424M steps | 1812.9 | 18.4 | 627 recorded games |
+| Last frozen checkpoint, 876.495M steps | 1816.8 | 9.5 | 6,134 tournament games |
+| Scripted controller | 1000 (anchor) | 6.2 | 7,895 tournament games |
+| Random baseline | −240.0 | 32.8 | 16,182 tournament games |
 
-The absolute zero point carries an additional ±32.81 ELO uncertainty shared by every
-rating after random is shifted to zero. That common shift cancels when comparing two
-players, so the final live policy's difference from scripted is about 813 ELO. The final
-online training rating was 1547.28; it is a different, drifting estimator and should not
-be mixed with the calibrated curve.
+Pinning the scale to scripted is uncertain by ±6 Elo, shared by every rating; that
+common shift cancels when comparing two players, so the final policy's lead over
+scripted is about 813 points however the scale is pinned. The final *online* training
+rating was 1547.3; it is a different, drifting estimator and should not be mixed with
+the calibrated curve.
 
 The compact plot above omits uncertainty bands. The calibration directory preserves
 methodology plots with error bands and convergence diagnostics under
@@ -134,21 +128,20 @@ methodology plots with error bands and convergence diagnostics under
 
 The frozen training ladder and final checkpoint were replayed in symmetric battles from
 1-vs-1 through 64-vs-64. Each size has its own stationary tournament containing random,
-scripted, 13 frozen checkpoints, and the final checkpoint. The evaluator swaps team roles
-and stores directed win/loss/tie counts in
+scripted, the frozen ladder checkpoints, and the final checkpoint. The evaluator swaps
+team roles and stores directed win/loss/tie counts in
 [`elo_scale.json`](../checkpoints/resilient-resonance-682/elo_scale.json).
 
-The published view fixes the scripted benchmark at 1000. This preserves ordinary ELO
-units and makes the plotted quantity—the checkpoint's advantage over a consistent
-opponent—directly interpretable. The numerical origin is a reporting convention, not an
-intrinsic measure of skill.
+Ratings again fix the scripted controller at 1000, so the plotted quantity — the
+checkpoint's advantage over a consistent opponent — is directly comparable with the
+calibrated training curve above.
 
-![Fleet-scale ELO with scripted anchored at 1000](results/elo_scale_scripted_1000.png)
+![Fleet-scale Elo with scripted anchored at 1000](results/elo_scale_scripted_1000.png)
 
 *The 4-vs-4 checkpoint strengthens as the fleet grows zero-shot, peaking at 16-vs-16 in
 this evaluation. The 32- and 64-ship estimates have visibly wider uncertainty.*
 
-| Ships per team | Checkpoint-tournament games | Final checkpoint ELO (±1 conditional SE) |
+| Ships per team | Checkpoint-tournament games | Final checkpoint Elo (±1 conditional SE) |
 |---:|---:|---:|
 | 1 | 143,488 | 1539 ± 6 |
 | 2 | 270,336 | 1680 ± 5 |
@@ -158,17 +151,18 @@ this evaluation. The 32- and 64-ship estimates have visibly wider uncertainty.*
 | 32 | 5,856 | 2152 ± 49 |
 | 64 | 1,464 | 1923 ± 82 |
 
-The 4-vs-4 result puts the final checkpoint about 822 ELO above scripted, close to the
-existing final-live estimate of about 813. The two measurements use different
-final-policy evidence, so exact equality is not expected.
+At the native 4-vs-4 scale this tournament rates the final checkpoint 1822 ± 4 — within
+uncertainty of the calibrated final-live rating of about 1813 ± 18. The two measurements
+use different final-policy evidence, so exact equality is not expected.
 
 ### Reference-ladder conditioning
 
 Random play is extremely far from scripted play at large fleet sizes, making a direct
-random anchor statistically inefficient. The calibration therefore adds intermediate
-controllers. For each ship on each simulation step, a controller with probability `P`
-uses the complete scripted action; otherwise it samples a complete action uniformly at
-random. The refined ladder uses `P = 0, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100%`.
+random-to-scripted link statistically inefficient. The calibration therefore adds
+intermediate controllers. For each ship on each simulation step, a controller with
+probability `P` uses the complete scripted action; otherwise it samples a complete
+action uniformly at random. The refined ladder uses
+`P = 0, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100%`.
 
 ![Reference-ladder connectivity](results/semi_random_connectivity.png)
 
@@ -179,9 +173,8 @@ close to a deterministic matchup.*
 The saved [reference tournament](../checkpoints/resilient-resonance-682/semi_random_tournament.json)
 contains 128 side-balanced games for every unordered pair at every scale. Its outcome
 matrices are joined to the checkpoint tournament through the shared random and scripted
-endpoints before fitting. This improves graph connectivity without pretending that an
-interpolated controller is a trained checkpoint or replaying matches under a different
-rating convention.
+endpoints before fitting, which improves graph connectivity without treating an
+interpolated controller as a trained checkpoint.
 
 ## Scripted benchmark over training
 
@@ -189,10 +182,10 @@ rating convention.
 
 Across the 999 sampled history points with this metric, the policy first reaches 95% at
 127.9M environment steps and 99% at 221.9M; the final point is 100%. The series is not
-monotone—the minimum sampled value after 200M is 89%—so it is best read as a benchmark
+monotone — the minimum sampled value after 200M is 89% — so it is best read as a benchmark
 becoming a weak discriminator, not permanent saturation at a precise step.
 
-The calibrated ELO continues to improve after the scripted curve becomes less informative.
+The calibrated Elo continues to improve after the scripted curve becomes less informative.
 That is consistent with continued learning from self-play and league opponents, but it
 does not isolate which mechanism caused the improvement.
 
@@ -201,14 +194,14 @@ does not isolate which mechanism caused the improvement.
 ![Normalized next-state prediction error](results/next_state_error.png)
 
 The auxiliary head's normalized errors fall strongly for predictable dynamics channels.
-For example, position-x falls from 1.492 at the first sampled update to 0.00148 at the
-last; velocity-x from 3.042 to 0.0192; power from 1.465 to 0.0186. Health changes much
-less, from 0.570 to 0.487.
+For example, position-x falls from 1.49 at the first sampled update to 0.0015 at the
+last; velocity-x from 3.04 to 0.019; power from 1.47 to 0.019. Health changes much less,
+from 0.57 to 0.49.
 
 These are direct measurements from the W&B history rendered by
-[`scripts/render_charts.py`](../scripts/render_charts.py). The plausible explanation that
-health is dominated by sparse, hard-to-forecast damage events remains an interpretation;
-the repository contains no ablation proving that cause. Deeper sequence behavior is in
+[`scripts/render_charts.py`](../scripts/render_charts.py). A plausible reading is that
+health is dominated by sparse, hard-to-forecast damage events, but that is an
+interpretation — no ablation isolates the cause. Deeper sequence behavior is in
 the [autoregressive reports](ar_report/) and [noise calibration](noise_calibration/).
 
 ## Training health
@@ -216,9 +209,8 @@ the [autoregressive reports](ar_report/) and [noise calibration](noise_calibrati
 ![Training diagnostics](results/training_health.png)
 
 The final aggregate critic explained variance is 0.939, with a sampled maximum of 0.943.
-The panel also exposes reward, KL, and clip-fraction trajectories. These are optimization
-diagnostics rather than headline task-performance measures, so they remain in the deeper
-evaluation page.
+The panel also shows reward, KL, and clip-fraction trajectories. These are optimization
+diagnostics rather than headline task-performance measures.
 
 ## Reproduce the figures
 
@@ -244,21 +236,25 @@ uv run scripts/render_semi_random.py \
   --out docs/results
 ```
 
-The renderer is the source of the axis labels and equal-scale geometry; the tracked raster
-is regenerated from it rather than edited independently.
+The renderer is the source of the axis labels and equal-scale geometry; the tracked
+rasters are regenerated from it rather than edited independently. Refitting the
+calibration itself (for example under a different anchor or draw convention) needs no
+GPU: `uv run main.py --mode elo_calibrate --run resilient-resonance-682 --refit` refits
+the stored win/tie matrices.
 
 To rerun the underlying evaluations, see [getting started](getting-started.md#evaluate).
 They can require substantial GPU time; rendering from included artifacts does not.
 
 ## Remaining limitations
 
-- Crossover lacks per-point provenance and uncertainty fields.
-- The 32- and 64-vs-64 checkpoint ratings remain exploratory and have materially wider
-  uncertainty than the smaller-fleet tournaments.
+- The stored crossover sweep lacks per-point game counts, seeds, checkpoint hash, source
+  commit, and confidence intervals; newer evaluator runs record these.
+- The 32- and 64-vs-64 checkpoint ratings have materially wider uncertainty than the
+  smaller-fleet tournaments.
 - Curated GIFs lack sidecar metadata tying them to an exact checkpoint hash and capture
   command.
-- Results use one landmark training run and one scripted opponent family; no multi-run
-  seed study is included.
+- Results come from one training run against one scripted opponent family; there is no
+  multi-run seed study.
 - The transfer results demonstrate execution and performance across observed sizes, not
   invariance under arbitrary maps, physics, observation changes, or unbounded team size.
 - No causal ablation assigns the observed transfer to attention, recurrence, auxiliary

@@ -7,8 +7,9 @@ learning setup, see [training](training.md).
 ## Requirements
 
 - Python 3.13 or newer;
-- `uv` for environment and dependency management;
-- Git LFS for the included `*.pt` landmark checkpoints;
+- [`uv`](https://docs.astral.sh/uv/) for environment and dependency management;
+- Git LFS for the included reference checkpoints (`*.pt`) — not needed to train from
+  scratch;
 - `ffmpeg` only when generating MP4/GIF replay assets;
 - a CUDA-capable GPU for practical training and large evaluations.
 
@@ -18,8 +19,8 @@ profiles are sized for GPU execution.
 
 ## Install
 
-Install Git LFS before cloning so checkpoint files are materialized as weights rather than
-pointer files. In an existing clone:
+With Git LFS installed before cloning, the checkpoints materialize automatically at
+clone time. In an existing clone:
 
 ```bash
 git lfs install
@@ -43,9 +44,9 @@ uv run pytest -q
 uv run ruff check .
 ```
 
-The documentation audit ran 362 tests successfully; six hardware-specific cases were
-skipped in the CPU-visible test process. A fresh-clone install is not currently exercised
-by repository CI, so treat the commands above as the local verification path.
+The suite passes on CPU; a handful of hardware-specific tests skip when no CUDA device
+is visible. There is no CI workflow yet, so these local commands are the verification
+path.
 
 ## Watch or play
 
@@ -109,9 +110,13 @@ Hyperparameters live in [`runs/`](../runs/). The main combat profile is
 uv run main.py --mode collect_stats \
   --team0 latest --team1 scripted --matchups 4v4 8v11
 
-# Post-hoc ELO calibration for a completed run
+# Post-hoc Elo calibration for a completed run
 uv run main.py --mode elo_calibrate \
   --run resilient-resonance-682
+
+# Refit the stored calibration matrices without replaying (CPU-only)
+uv run main.py --mode elo_calibrate \
+  --run resilient-resonance-682 --refit
 
 # Rate frozen checkpoints across symmetric fleet sizes (resumable)
 uv run main.py --mode elo_scale \
@@ -130,7 +135,7 @@ Calibration writes to `checkpoints/<run>/elo_calibrated.json` and `elo_calibrati
 Scale calibration writes its resumable match matrices to `checkpoints/<run>/elo_scale.json`;
 the reference ladder writes `checkpoints/<run>/semi_random_tournament.json`; crossover
 writes `docs/crossover/crossover.json`. These evaluations can require substantial GPU
-time, and the existing landmark artifacts are already included. Methodology and
+time, and the reference-run artifacts are already included. Methodology and
 interpretation are in [evaluation and results](evaluation.md).
 
 ## Capture replays
@@ -145,21 +150,17 @@ uv run main.py --mode capture \
 ```
 
 Capture mode uses the run's final `step_*.pt` checkpoint, writes seeded MP4 files, and can
-also emit downscaled GIFs. Files go to `gameplay_clips/` by default; curated assets belong
-under `docs/results/replays/` only after their outcome and provenance have been reviewed.
-See the [replay guide](replays.md).
+also emit downscaled GIFs. Files go to `gameplay_clips/` by default; the curated subset
+lives under `docs/results/replays/`. See the [replay guide](replays.md).
 
 ## Checkpoint and result artifacts
 
 Full `step_<N>.pt` checkpoints contain the policy, optimizer, scalers, running-average
-state, ratings, counters, and serialized configuration needed by `--resume`. Current
-training also writes scheduled average/best snapshots and unpruned ladder checkpoints;
-the [checkpoint implementation](../src/boost_and_broadside/train/rl/checkpoint.py) is the
-source of truth for current filenames.
-
-The included landmark directory also contains files from an earlier checkpoint convention,
-including `recent_avg.pt`. Do not use that legacy filename as a general assumption for new
-runs.
+state, ratings, counters, and serialized configuration needed by `--resume`. Training
+also writes scheduled average/best snapshots and unpruned ladder checkpoints; the
+[checkpoint implementation](../src/boost_and_broadside/train/rl/checkpoint.py) defines
+the current filenames. (The included reference-run directory retains files from an
+earlier naming convention, such as `recent_avg.pt`.)
 
 ## Development notes
 
@@ -170,5 +171,5 @@ runs.
 - Memory measurements and the host-backed rollout design are documented in
   [memory optimization](engineering/memory-optimization.md).
 
-The repository does not currently include a license, contribution guide, or CI workflow.
-Those are documentation/infrastructure gaps rather than implicit permissions or guarantees.
+The project is [MIT-licensed](../LICENSE). There is no contribution guide or CI workflow
+yet.

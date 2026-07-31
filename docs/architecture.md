@@ -1,16 +1,17 @@
 # Policy architecture
 
-`YemongPolicy` is a centralized recurrent controller: it reads the full scene, exchanges
-information across entities with spatial attention, carries per-entity memory through
-time, and emits a factored action for every ship in the learned fleet. This
-variable-cardinality design makes zero-shot transfer across team sizes possible.
+`YemongPolicy` — *Yemong*, from the Korean 예몽, a dream that foretells the future — is a
+centralized recurrent controller: it reads the full scene, exchanges information across
+entities with spatial attention, carries per-entity memory through time, and emits a
+factored action for every ship in the learned fleet. The name comes from its auxiliary
+head, which learns to predict the next state of the world. The variable-cardinality
+design is what makes zero-shot transfer across team sizes possible.
 
 ![YemongPolicy architecture](policy_architecture.png)
 
-The existing diagram shows the detailed landmark configuration. The structure is derived
-from [`YemongPolicy`](../src/boost_and_broadside/models/yemong/policy.py); changing component
-counts should be reflected from configuration rather than treated as a permanent property
-of the architecture.
+The diagram shows the reference-run configuration; component counts are set by
+[`ModelConfig`](../src/boost_and_broadside/config/core.py), not fixed properties of the
+architecture.
 
 ## Data flow
 
@@ -30,7 +31,7 @@ ship tokens only
 ```
 
 For a batch `B`, `N` ships, `M` obstacles, and embedding width `D`, the shared trunk works
-on `(B, N+M, D)` entity tokens. Obstacles can participate in attention and retain temporal
+on `(B, N+M, D)` entity tokens. Obstacles participate in attention and retain temporal
 state, but the three output heads slice the first `N` ship tokens.
 
 ## Observation and feature coordination
@@ -51,7 +52,7 @@ channel to:
 | Feature | Network encoding | Auxiliary target |
 |---|---|---|
 | position x/y | four-frequency Fourier features over the toroidal period | phase delta |
-| velocity | direction scaled by symlog speed | additive velocity delta |
+| velocity | direction scaled by [symlog](https://arxiv.org/abs/2301.04104) speed | additive velocity delta |
 | attitude | four-frequency Fourier features | phase delta |
 | angular velocity | symlog scalar | next absolute value |
 | health, power, cooldown | circular bounded encoding | phase delta |
@@ -61,8 +62,8 @@ channel to:
 | radius | normalized scalar | none |
 
 Phase targets make wraparound natural: crossing the map boundary is a small rotation, not
-a large coordinate jump. Feature dimensions and prediction layout are computed from the
-registered features rather than duplicated as constants in model code.
+a large coordinate jump. Feature dimensions and prediction layout are derived from the
+registered features rather than hardcoded in model code.
 
 ## Entity encoder
 
@@ -71,8 +72,8 @@ encoded features and projects each entity independently into `d_model` with a tw
 MLP and RMS normalization. Team and alive information remain part of the token; alive
 masks are also passed to attention so dead entities cannot act as keys.
 
-The landmark policy uses `d_model=128`, four attention heads, and two Yemong blocks, as
-recorded in the [landmark run configuration](../checkpoints/resilient-resonance-682/wandb_export/config.json).
+The reference policy uses `d_model=128`, four attention heads, and two Yemong blocks, as
+recorded in the [reference-run configuration](../checkpoints/resilient-resonance-682/wandb_export/config.json).
 
 ## Spatial attention
 
@@ -84,8 +85,9 @@ Every live ship can therefore condition its action on every other live ship and 
 
 After spatial mixing, [`GriffinTemporalBlock`](../src/boost_and_broadside/models/yemong/griffin.py)
 updates each entity through a causal depthwise convolution and real-gated linear recurrent
-unit (RG-LRU), followed by a gated MLP. Each entity carries its own temporal state, while
-attention supplies current cross-entity context.
+unit, following [Griffin](https://arxiv.org/abs/2402.19427) (De et al., 2024), followed by
+a gated MLP. Each entity carries its own temporal state, while attention supplies current
+cross-entity context.
 
 The implementation supports both execution patterns required by recurrent PPO:
 
@@ -107,19 +109,20 @@ The output shape is `(B, N, 3)` action indices.
 ## Decomposed value head
 
 The critic produces one value per ship and active reward component. Most components use a
-local token projection. Win/loss components instead use TeamPMA: learned seeds attend over
-the live ships of each team and feed a dedicated outcome-value projection. That gives
-global outcome targets an explicitly pooled team representation while retaining per-ship
-critic outputs.
+local token projection. Win/loss components instead use TeamPMA — pooling by multi-head
+attention in the style of the [Set Transformer](https://arxiv.org/abs/1810.00825)
+(Lee et al., 2019): learned seeds attend over the live ships of each team and feed a
+dedicated outcome-value projection. That gives global outcome targets an explicitly
+pooled team representation while retaining per-ship critic outputs.
 
 Returns are normalized per component by the training system before value loss. Reward
 semantics, aggregation, and horizons are documented in [training](training.md#reward-decomposition).
 
 ## Auxiliary next-state head
 
-The next-state head predicts the coordinator's registered target channels for every ship.
-The landmark/current standard layout includes position and attitude phase deltas, velocity
-deltas, resource phase deltas, and absolute angular velocity.
+The next-state head predicts the coordinator's registered target channels for every ship:
+position and attitude phase deltas, velocity deltas, resource phase deltas, and absolute
+angular velocity.
 
 Training applies:
 

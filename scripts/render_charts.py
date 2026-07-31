@@ -48,16 +48,18 @@ def render(run: str, out_dir: Path) -> list[Path]:
     calib_summary = history.load_summary(calib_dir / "summary.json")
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # The scripted controller — the one opponent shared across runs — is a landmark for
-    # reading where the policy actually got to.
+    # The scripted controller — the one opponent shared across runs — is the
+    # reference line for reading where the policy actually got to.
     scripted = calib_summary.get("elo/scripted")
-    elo_landmarks = [("scripted controller", float(scripted))] if history._finite(scripted) else None
+    elo_references = (
+        [("scripted controller", float(scripted))] if history._finite(scripted) else None
+    )
 
     written = [
         charts.trend(
             [_line(calib_rows, "ladder/elo/live", "Elo")], out_dir / "elo_curve.png",
             title="Calibrated Elo over training", ylabel="Elo (scripted = 1000)",
-            reference_lines=elo_landmarks,
+            reference_lines=elo_references,
         ),
         charts.trend(
             [_line(wandb_rows, "overview/win_rate_vs_scripted", "vs scripted")],
