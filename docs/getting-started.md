@@ -117,6 +117,10 @@ uv run main.py --mode elo_calibrate \
 uv run main.py --mode elo_scale \
   --run resilient-resonance-682 --team-counts 1,2,4,8,16,32,64
 
+# Build the random-to-scripted reference ladder used to condition scale ratings
+uv run main.py --mode semi_random \
+  --run resilient-resonance-682 --team-counts 1,2,4,8,16,32,64
+
 # Search the scripted-team crossover for selected learned-team sizes
 uv run main.py --mode crossover \
   --run resilient-resonance-682 --trained-counts 4,8,16,32,64 --eval-envs 256
@@ -124,8 +128,9 @@ uv run main.py --mode crossover \
 
 Calibration writes to `checkpoints/<run>/elo_calibrated.json` and `elo_calibration/`.
 Scale calibration writes its resumable match matrices to `checkpoints/<run>/elo_scale.json`;
-crossover writes `docs/crossover/crossover.json`. These evaluations can require substantial
-GPU time, and the existing landmark artifacts are already included. Methodology and
+the reference ladder writes `checkpoints/<run>/semi_random_tournament.json`; crossover
+writes `docs/crossover/crossover.json`. These evaluations can require substantial GPU
+time, and the existing landmark artifacts are already included. Methodology and
 interpretation are in [evaluation and results](evaluation.md).
 
 ## Capture replays

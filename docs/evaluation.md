@@ -132,48 +132,56 @@ methodology plots with error bands and convergence diagnostics under
 
 ## Symmetric fleet-scale ratings
 
-The frozen ladder and final checkpoint were also replayed in symmetric battles from
+The frozen training ladder and final checkpoint were replayed in symmetric battles from
 1-vs-1 through 64-vs-64. Each size has its own stationary tournament containing random,
-scripted, 13 ladder checkpoints, and the final checkpoint. The evaluator swaps team roles,
-stores directed win/loss/tie counts, and derives every rating view from the same raw
-matrices in [`elo_scale.json`](../checkpoints/resilient-resonance-682/elo_scale.json).
+scripted, 13 frozen checkpoints, and the final checkpoint. The evaluator swaps team roles
+and stores directed win/loss/tie counts in
+[`elo_scale.json`](../checkpoints/resilient-resonance-682/elo_scale.json).
 
-The first pass prioritizes seeing the shape before spending equally at every scale. Small
-fleets have roughly 41,000–49,000 games each; the exploratory 16-, 32-, and 64-vs-64
-points have 23,436, 5,856, and 1,464. Their wider uncertainty bands are retained in the
-plots rather than smoothed away.
-
-![Fleet-scale ELO with random anchored at zero](results/elo_scale_random_zero.png)
-
-With random fixed at zero, both the final and scripted controllers rise strongly with
-fleet size. This view preserves standard ELO units, but the distant random link makes the
-large-scale final rating comparatively uncertain.
+The published view fixes the scripted benchmark at 1000. This preserves ordinary ELO
+units and makes the plotted quantity—the checkpoint's advantage over a consistent
+opponent—directly interpretable. The numerical origin is a reporting convention, not an
+intrinsic measure of skill.
 
 ![Fleet-scale ELO with scripted anchored at 1000](results/elo_scale_scripted_1000.png)
 
-Anchoring scripted at 1000 isolates the benchmark gap. The final checkpoint's advantage
-grows through 16-vs-16, is similar at 32-vs-32, and narrows at 64-vs-64; the last two
-points remain exploratory.
+*The 4-vs-4 checkpoint strengthens as the fleet grows zero-shot, peaking at 16-vs-16 in
+this evaluation. The 32- and 64-ship estimates have visibly wider uncertainty.*
 
-![Fleet-scale rating with random at zero and scripted at 1000](results/elo_scale_dual_anchor.png)
+| Ships per team | Checkpoint-tournament games | Final checkpoint ELO (±1 conditional SE) |
+|---:|---:|---:|
+| 1 | 143,488 | 1539 ± 6 |
+| 2 | 270,336 | 1680 ± 5 |
+| 4 | 507,904 | 1822 ± 4 |
+| 8 | 1,549,152 | 1996 ± 3 |
+| 16 | 1,460,844 | 2173 ± 4 |
+| 32 | 5,856 | 2152 ± 49 |
+| 64 | 1,464 | 1923 ± 82 |
 
-The dual-anchor normalization measures the final checkpoint in random-to-scripted
-intervals. It stays relatively flat through 32-vs-32 before declining at 64-vs-64, but
-the rescaling means it is a normalized index rather than fixed-unit ELO.
+The 4-vs-4 result puts the final checkpoint about 822 ELO above scripted, close to the
+existing final-live estimate of about 813. The two measurements use different
+final-policy evidence, so exact equality is not expected.
 
-| Ships per team | Games | Random = 0 | Scripted = 1000 | Dual anchor |
-|---:|---:|---:|---:|---:|
-| 1 | 45,184 | 1512 ± 22 | 1543 ± 10 | 1559 ± 17 |
-| 2 | 40,960 | 1652 ± 27 | 1658 ± 11 | 1661 ± 22 |
-| 4 | 49,152 | 2124 ± 46 | 1819 ± 12 | 1627 ± 24 |
-| 8 | 49,152 | 2493 ± 67 | 1989 ± 14 | 1658 ± 31 |
-| 16 | 23,436 | 2895 ± 125 | 2182 ± 23 | 1690 ± 52 |
-| 32 | 5,856 | 2980 ± 251 | 2155 ± 49 | 1633 ± 91 |
-| 64 | 1,464 | 2698 ± 265 | 1916 ± 82 | 1514 ± 89 |
+### Reference-ladder conditioning
 
-The 4-vs-4 checkpoint tournament provides a useful cross-check: the final checkpoint is
-819 ELO above scripted, close to the existing final-live estimate of about 813. The two
-measurements use different final-policy evidence, so exact equality is not expected.
+Random play is extremely far from scripted play at large fleet sizes, making a direct
+random anchor statistically inefficient. The calibration therefore adds intermediate
+controllers. For each ship on each simulation step, a controller with probability `P`
+uses the complete scripted action; otherwise it samples a complete action uniformly at
+random. The refined ladder uses `P = 0, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100%`.
+
+![Reference-ladder connectivity](results/semi_random_connectivity.png)
+
+*Across seven fleet sizes, the stronger rung scores between 58.2% and 84.8% against its
+neighbor. Most adjacent comparisons fall in the shaded 20–80% target region; none is
+close to a deterministic matchup.*
+
+The saved [reference tournament](../checkpoints/resilient-resonance-682/semi_random_tournament.json)
+contains 128 side-balanced games for every unordered pair at every scale. Its outcome
+matrices are joined to the checkpoint tournament through the shared random and scripted
+endpoints before fitting. This improves graph connectivity without pretending that an
+interpolated controller is a trained checkpoint or replaying matches under a different
+rating convention.
 
 ## Scripted benchmark over training
 
@@ -228,6 +236,11 @@ uv run scripts/render_crossover.py \
 
 uv run scripts/render_elo_scale.py \
   --data checkpoints/resilient-resonance-682/elo_scale.json \
+  --reference-data checkpoints/resilient-resonance-682/semi_random_tournament.json \
+  --out docs/results
+
+uv run scripts/render_semi_random.py \
+  --data checkpoints/resilient-resonance-682/semi_random_tournament.json \
   --out docs/results
 ```
 
@@ -240,8 +253,8 @@ They can require substantial GPU time; rendering from included artifacts does no
 ## Remaining limitations
 
 - Crossover lacks per-point provenance and uncertainty fields.
-- The 16-, 32-, and 64-vs-64 scale-rating points are exploratory and have materially
-  wider uncertainty than the small-fleet tournaments.
+- The 32- and 64-vs-64 checkpoint ratings remain exploratory and have materially wider
+  uncertainty than the smaller-fleet tournaments.
 - Curated GIFs lack sidecar metadata tying them to an exact checkpoint hash and capture
   command.
 - Results use one landmark training run and one scripted opponent family; no multi-run

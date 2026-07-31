@@ -191,7 +191,8 @@ in a JSON sidecar.
 | [crossover phase plot](results/crossover_phase.png) | README results; evaluation page | Central zero-shot thesis across team sizes | Labels distinguish policy-controlled and scripted-controlled ships; both axes span 0–64 with equal data-unit scales and policy ships on x. Add uncertainty in a later revision. |
 | [crossover ratio plot](results/crossover_ratio.png) | Evaluation page only | Compact view of numerical advantage | Labels now use policy-controlled/scripted-controlled ships. Treat the claimed mid-size peak/easing as descriptive, not a fitted trend. |
 | [calibrated ELO curve](results/elo_curve.png) | README secondary result; evaluation page | Improvement over training and scripted landmark | Underlying values are verified. The simplified README chart omits uncertainty; replace later with a compact uncertainty-aware render or explicitly link to methodology. |
-| [fleet-scale ELO views](results/elo_scale_random_zero.png) | Evaluation page; one candidate may later be promoted | Symmetric zero-shot strength from 1-vs-1 through 64-vs-64 | Generated from saved win/loss/tie matrices for random, scripted, 13 ladder checkpoints, and the final checkpoint. The three anchor conventions remain candidates pending a presentation decision. |
+| [fleet-scale ELO](results/elo_scale_scripted_1000.png) | Evaluation page | Symmetric zero-shot strength from 1-vs-1 through 64-vs-64 | Generated from saved win/loss/tie matrices for random, scripted, 13 frozen checkpoints, the final checkpoint, and the joined semi-random reference ladder. Scripted is the selected 1000-ELO reporting anchor. |
+| [reference-ladder connectivity](results/semi_random_connectivity.png) | Evaluation methodology | Verifies that random and scripted are connected by informative intermediate matchups | Generated from 128 side-balanced games per unordered pair at each fleet size. Seven of 70 adjacent comparisons are slightly above the 80% target; none exceeds 84.8%. |
 | [scripted win-rate curve](results/win_rate_vs_scripted.png) | Evaluation page; optional small README panel | Scripted baseline becomes saturated before training ends | Usable. Caption should avoid implying monotonic saturation. |
 | [policy diagram](policy_architecture.png) | Architecture page; optional compact README overview | Spatial-attention + temporal-recurrence structure and three heads | Existing raster is tall and manually maintained. Regenerate as a wide diagram later and avoid hard-coded reward-component counts. Not blocking. |
 | [next-state error](results/next_state_error.png) | Architecture/evaluation deep section | Auxiliary dynamics learning | Usable with factual channel descriptions; label causal explanations as interpretations. |
@@ -210,7 +211,7 @@ temporary mitigation.
 | High | Replay metadata sidecars and poster frames | Makes outcome/provenance machine-readable and keeps large media lightweight | Replays page and README | No |
 | Medium | Wide, count-agnostic system diagram | Explains simulation → observation → team policy → training/evaluation at a glance | README/architecture | No |
 | Medium | Boundary or failure replay near an empirical crossover | Shows limitations and prevents cherry-picked qualitative storytelling | Replays/evaluation | No |
-| Medium | Compact uncertainty-aware ELO figure | Communicates conditional SE and the shared anchor offset | Evaluation; optional README | No |
+| Medium | Compact uncertainty-aware training-progression ELO figure | Adds uncertainty to the historical curve already used in the README | Evaluation; optional README | No |
 | Low | Confidence intervals or repeated-seed analysis for crossover boundary | Distinguishes sampling noise from a robust scale trend | Evaluation | No for initial docs; needed for stronger analytical claims |
 
 ## Documentation corrections applied
@@ -242,7 +243,7 @@ The Phase 4 rewrite applied these evidence-audit requirements:
 |---|---|---|
 | Supported Python | Python 3.13+ | [package metadata](../pyproject.toml); audit ran on Python 3.13.11. |
 | CLI help | Pass | `main.py --help` imports and lists all current modes. The sandbox required a temporary uv cache because the normal home cache is read-only. |
-| Test suite | Pass | 362 passed, six hardware-specific tests skipped, 72 expected CUDA-autocast warnings on a CPU-visible test process; 17.01 s. |
+| Test suite | Pass | 378 passed, six hardware-specific tests skipped, 72 expected CUDA-autocast warnings on a CPU-visible test process; 19.65 s. |
 | Lint | Pass | `ruff check .` reports “All checks passed.” |
 | Fresh install | Not exercised | `uv sync` may require package/network access and would be better checked in a clean environment or CI. |
 | Training smoke test | Not exercised in this audit | It mutates checkpoint/log output and is more expensive than documentation inspection. Run before publishing setup guarantees. |

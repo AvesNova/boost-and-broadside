@@ -23,6 +23,7 @@ from boost_and_broadside.agents.jinking import JinkingAgent
 from boost_and_broadside.agents.jouster import JousterAgent
 from boost_and_broadside.agents.reverse_turret import ReverseTurretAgent
 from boost_and_broadside.agents.run_away import RunAwayAgent
+from boost_and_broadside.agents.semi_random_scripted import SemiRandomScriptedAgent
 from boost_and_broadside.agents.spiral_evader import SpiralEvaderAgent
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
@@ -84,7 +85,7 @@ class ResolvedAgent:
     """An agent resolved from a spec string, with mutable hidden state for policy agents."""
 
     def __init__(self, kind: str, agent, hidden=None):
-        self.kind = kind  # "null" | "random" | "scripted" | "policy"
+        self.kind = kind  # "null" | "random" | "scripted" | "semi_random" | "policy"
         self.agent = agent  # None | StochasticScriptedAgent | YemongPolicy
         self.hidden = hidden  # (1, B*N, D) float tensor, policy agents only
 
@@ -111,7 +112,8 @@ def resolve_agent_spec(
     """Resolve a spec string to a ResolvedAgent.
 
     Args:
-        spec:           One of: null, random, scripted, latest, or a path ending in .pt.
+        spec:           One of: null, random, scripted, semi_scripted:P, latest, or a
+                        path ending in .pt.
         ship_config:    Physics constants (needed for scripted agent).
         model_config:   Policy architecture (needed for checkpoint agents).
         device:         Torch device string.
@@ -127,6 +129,14 @@ def resolve_agent_spec(
     if spec == "scripted":
         agent = StochasticScriptedAgent(ship_config, StochasticAgentConfig())
         return ResolvedAgent("scripted", agent)
+
+    if spec.startswith("semi_scripted:"):
+        try:
+            probability = float(spec.partition(":")[2])
+        except ValueError as error:
+            raise ValueError(f"invalid semi-scripted probability in {spec!r}") from error
+        agent = SemiRandomScriptedAgent(ship_config, probability)
+        return ResolvedAgent("semi_random", agent)
 
     if spec == "scripted_team":
         agent = StochasticScriptedAgent(
@@ -230,6 +240,11 @@ def get_actions(
         return (action, None) if return_pred_next else action
 
     if agent.kind == "scripted":
+        with torch.no_grad():
+            action = agent.agent.get_actions(state)
+        return (action, None) if return_pred_next else action
+
+    if agent.kind == "semi_random":
         with torch.no_grad():
             action = agent.agent.get_actions(state)
         return (action, None) if return_pred_next else action

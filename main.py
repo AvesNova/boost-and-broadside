@@ -30,7 +30,9 @@ Evaluation:
     uv run main.py --mode elo_calibrate --run vague-lion-678 --target-stderr 5
         writes checkpoints/<run>/elo_calibrated.json and elo_calibration/*.png
     uv run main.py --mode elo_scale --run resilient-resonance-682
-        rates frozen checkpoints at 1v1 through 64v64 and writes three anchor views
+        rates frozen checkpoints at 1v1 through 64v64 and writes the selected ELO view
+    uv run main.py --mode semi_random --run resilient-resonance-682
+        evaluates a random-to-scripted action-mixture ladder across fleet sizes
     uv run main.py --mode ar_report                   # autoregressive prediction report
     uv run main.py --mode noise_calibration           # NextStateHead error statistics
     uv run main.py --mode crossover                   # scripted count to beat T trained
@@ -47,6 +49,7 @@ Agent specs (--team0 / --team1):
     null        human keyboard (watch only)
     random      uniform random actions
     scripted    stochastic scripted agent
+    semi_scripted:P  scripted full action with probability P, otherwise random
     latest      most recently modified checkpoint in checkpoints/
     <path.pt>   specific checkpoint file
     plus named scripted agents: scripted_team, jouster, team_jouster, boom_zoom,
@@ -78,6 +81,10 @@ from boost_and_broadside.modes.elo_stats import run_elo_stats_mode
 from boost_and_broadside.modes.feature_stats import run_feature_stats_mode
 from boost_and_broadside.modes.interactive import run_watch_mode
 from boost_and_broadside.modes.noise_calibration import run_noise_calibration_mode
+from boost_and_broadside.modes.semi_random_tournament import (
+    parse_probabilities,
+    run_semi_random_tournament,
+)
 from boost_and_broadside.train.rl.ppo import PPOTrainer
 from boost_and_broadside.ui.renderer import RenderConfig
 from runs.bc import BC_TRAIN_CONFIG
@@ -105,6 +112,7 @@ def _parse_args() -> argparse.Namespace:
             "elo_stats",
             "elo_calibrate",
             "elo_scale",
+            "semi_random",
             "ar_report",
             "noise_calibration",
             "capture",
@@ -264,7 +272,21 @@ def _parse_args() -> argparse.Namespace:
         "--team-counts",
         type=str,
         default="1,2,4,8,16,32,64",
-        help="(elo_scale) Symmetric ships-per-team sizes: a list '1,2,4' or ranges '1-8'.",
+        help="(elo_scale/semi_random) Symmetric ships-per-team sizes: a list '1,2,4' "
+        "or ranges '1-8'.",
+    )
+    parser.add_argument(
+        "--scripted-probs",
+        type=str,
+        default="0,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,1",
+        help="(semi_random) Probability that each ship uses its complete scripted action. "
+        "The comma-separated ladder must include 0 and 1.",
+    )
+    parser.add_argument(
+        "--games-per-pair",
+        type=int,
+        default=128,
+        help="(semi_random) Side-balanced games for every unordered agent pair and fleet size.",
     )
     parser.add_argument(
         "--trained-counts",
@@ -555,14 +577,27 @@ def main() -> None:
                 },
             )
             run_elo_scale_mode(
-                run_spec=(
-                    args.run if args.run != "none" else "resilient-resonance-682"
-                ),
+                run_spec=(args.run if args.run != "none" else "resilient-resonance-682"),
                 team_sizes=parse_counts(args.team_counts),
                 ship_config=SHIP_CONFIG,
                 device=device,
                 checkpoint_dir="checkpoints",
                 config=calibrate_config,
+                plot=args.plots,
+            )
+
+        case "semi_random":
+            run_semi_random_tournament(
+                run_spec=(args.run if args.run != "none" else "resilient-resonance-682"),
+                team_sizes=parse_counts(args.team_counts),
+                probabilities=parse_probabilities(args.scripted_probs),
+                games_per_pair=args.games_per_pair,
+                max_parallel_envs=(
+                    args.calib_envs if args.calib_envs is not None else ELO_CALIBRATE.num_envs
+                ),
+                ship_config=SHIP_CONFIG,
+                device=device,
+                checkpoint_dir="checkpoints",
                 plot=args.plots,
             )
 

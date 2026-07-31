@@ -354,6 +354,8 @@ class Tournament:
             state = self.env.state
             obs = observation_from_state(state, self.ship_config)
             with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
+                semi_scripted_cache: dict[int, torch.Tensor] = {}
+                semi_random_action: torch.Tensor | None = None
                 for index, player in enumerate(self.players):
                     indices = active[index]
                     if indices.numel() == 0:
@@ -370,6 +372,18 @@ class Tournament:
                             int(indices.numel()),
                             self.num_ships,
                             self.device,
+                        ).long()
+                    elif agent.kind == "semi_random":
+                        cache_key = id(agent.agent.scripted_agent)
+                        if cache_key not in semi_scripted_cache:
+                            semi_scripted_cache[cache_key] = agent.agent.scripted_agent.get_actions(
+                                state
+                            )
+                        scripted_action = semi_scripted_cache[cache_key]
+                        if semi_random_action is None:
+                            semi_random_action = agent.agent.random_actions_like(scripted_action)
+                        actions[index] = agent.agent.mix_actions(
+                            scripted_action, semi_random_action
                         ).long()
                     else:
                         actions[index] = get_actions(

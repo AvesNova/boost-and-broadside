@@ -1,7 +1,7 @@
 # Documentation verification report
 
-- Verification date: 2026-07-28
-- Audited code baseline: `2592ebdce35269c908c191a70725743886f96b93`
+- Verification date: 2026-07-31
+- Review scope: `docs/showcase-redesign`, based on `79b04f8`
 - Landmark result set: `resilient-resonance-682` (`chpl40cj`)
 
 ## Outcome
@@ -34,13 +34,13 @@ was retained under the engineering path.
 | Local Markdown targets | Pass | Every relative Markdown link/image target across repository Markdown resolves to an existing file or directory. Fragment targets in the new stack were also reviewed against their headings. |
 | Referenced media | Pass | All README/supporting-page PNG and GIF paths exist. Curated replay dimensions, durations, and sizes were inspected with `file`/`ffprobe`. |
 | Hero replay outcome | Pass with provenance caveat | The 8-vs-11 terminal frame has three blue learned-policy survivors and no red scripted ships. The GIF lacks a checkpoint/capture sidecar. |
-| Chart reproduction | Pass | The history, crossover, and fleet-scale renderers ran against included artifacts with outputs directed to `/tmp`; all nine regenerated PNGs were byte-identical to the tracked files. |
+| Chart reproduction | Pass | The changed fleet-scale and reference-ladder renderers ran against included artifacts with outputs directed to `/tmp`; both regenerated PNGs were byte-identical to the tracked files. |
 | Crossover numbers | Pass | README/evaluation values were checked against `docs/crossover/crossover.json`, including adjacent winning/losing boundary points. |
 | ELO numbers | Pass | Live, frozen-checkpoint, scripted, standard-error, game-count, tie-convention, and shared-anchor values were checked against `elo_calibrated.json`. |
-| Fleet-scale ratings | Pass | Directed outcomes conserve every completed game at all seven sizes; aggregate win/tie matrices reproduce those outcomes, and all three anchor views derive from the same stored counts. |
+| Fleet-scale ratings | Pass | Directed outcomes conserve every completed game at all seven sizes; the refined reference tournament contains 128 games for every unordered pair, and the published scripted-1000 view is reproduced by joining both raw outcome graphs at their shared endpoints. |
 | Run/configuration numbers | Pass | Training scale, model size, environment count, step target, runtime, throughput, and hardware were checked against the W&B export. |
 | CLI import/help | Pass | `main.py --help` imports and lists the modes and flags documented by the new pages. |
-| Test suite | Pass | 362 passed; six hardware-specific tests skipped; 72 expected CPU-visible CUDA-autocast warnings. |
+| Test suite | Pass | 378 passed; six hardware-specific tests skipped; 72 expected CPU-visible CUDA-autocast warnings. |
 | Ruff | Pass | `ruff check .` reports no issues. |
 | Diff whitespace | Pass | `git diff --check` reports no tracked-file whitespace errors. |
 
@@ -87,7 +87,7 @@ These items do not block the current stack:
 2. add replay JSON sidecars and poster frames;
 3. curate a boundary/failure replay;
 4. replace the tall policy raster with a wide, count-agnostic system diagram;
-5. add a compact uncertainty-aware ELO figure;
+5. add uncertainty to the historical training-progression ELO figure;
 6. add a `LICENSE`, contribution guide, and CI workflow before making corresponding
    open-source/contribution promises.
 

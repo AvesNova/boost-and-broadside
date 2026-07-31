@@ -5,7 +5,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from boost_and_broadside.modes.elo_scale import parallel_envs_for, rating_views
+from boost_and_broadside.modes.elo_scale import (
+    combine_reference_ladder,
+    parallel_envs_for,
+    rating_views,
+)
 from boost_and_broadside.modes.elo_scale_plots import write_scale_plots
 
 
@@ -39,7 +43,7 @@ def test_parallel_width_respects_quadratic_collision_budget() -> None:
     assert parallel_envs_for(total_ships=128, maximum=16_384) == 244
 
 
-def test_scale_plots_write_every_anchor_view(tmp_path: Path) -> None:
+def test_scale_plot_writes_selected_anchor_view(tmp_path: Path) -> None:
     views = _views()
     result = {
         "player_labels": ["random", "scripted", "final"],
@@ -51,5 +55,45 @@ def test_scale_plots_write_every_anchor_view(tmp_path: Path) -> None:
 
     paths = write_scale_plots(result, tmp_path)
 
-    assert len(paths) == 3
+    assert len(paths) == 1
     assert all(path.exists() for path in paths)
+
+
+def test_reference_ladder_is_joined_through_shared_endpoints() -> None:
+    checkpoint_result = {
+        "run": "example",
+        "player_labels": ["random", "scripted", "final"],
+        "scales": {
+            "4": {
+                "team_size": 4,
+                "tie_mode": "half_win",
+                "wins_matrix": [[0, 2, 0], [8, 0, 4], [10, 6, 0]],
+                "ties_matrix": [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
+            }
+        },
+    }
+    reference_result = {
+        "run": "example",
+        "labels": ["random", "semi_scripted_0p5", "scripted"],
+        "probabilities": [0.0, 0.5, 1.0],
+        "games_per_pair": 10,
+        "scales": {
+            "4": {
+                "team_size": 4,
+                "wins_matrix": [[0, 2, 1], [8, 0, 3], [9, 7, 0]],
+                "ties_matrix": [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
+            }
+        },
+    }
+
+    combined = combine_reference_ladder(checkpoint_result, reference_result)
+
+    assert combined["player_labels"] == [
+        "random",
+        "scripted",
+        "final",
+        "semi_scripted_0p5",
+    ]
+    assert combined["scales"]["4"]["reference_ladder_games"] == 30
+    assert combined["scales"]["4"]["ratings"]["scripted_1000"]["ratings"][1] \
+        == pytest.approx(1000.0)

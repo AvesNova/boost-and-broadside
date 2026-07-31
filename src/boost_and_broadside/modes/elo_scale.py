@@ -88,6 +88,81 @@ def rating_views(
     }
 
 
+def combine_reference_ladder(result: dict, reference_result: dict) -> dict:
+    """Refit scale ratings after joining an independently measured reference ladder.
+
+    The checkpoint and reference tournaments share the same random and scripted
+    controllers. Joining their outcome matrices at those players adds intermediate
+    comparisons without replaying checkpoint matches. The returned object is a derived
+    reporting view; both input artifacts remain the sources of raw outcomes.
+    """
+    if result.get("run") != reference_result.get("run"):
+        raise ValueError("checkpoint and reference tournaments belong to different runs")
+
+    checkpoint_labels = list(result["player_labels"])
+    reference_labels = list(reference_result["labels"])
+    for endpoint in ("random", "scripted"):
+        if endpoint not in checkpoint_labels or endpoint not in reference_labels:
+            raise ValueError(f"both tournaments must contain {endpoint!r}")
+
+    labels = checkpoint_labels + [
+        label for label in reference_labels if label not in checkpoint_labels
+    ]
+    label_indices = {label: index for index, label in enumerate(labels)}
+
+    def add_matrix(target: np.ndarray, values: list[list[float]], source_labels: list[str]) -> None:
+        matrix = np.asarray(values, dtype=np.float64)
+        expected = (len(source_labels), len(source_labels))
+        if matrix.shape != expected:
+            raise ValueError("stored tournament matrix does not match its player labels")
+        indices = [label_indices[label] for label in source_labels]
+        target[np.ix_(indices, indices)] += matrix
+
+    scales = {}
+    for key, checkpoint_scale in result.get("scales", {}).items():
+        reference_scale = reference_result.get("scales", {}).get(key)
+        if reference_scale is None:
+            continue
+        if checkpoint_scale["team_size"] != reference_scale["team_size"]:
+            raise ValueError(f"team-size mismatch for scale {key}")
+        if checkpoint_scale.get("tie_mode", "half_win") != "half_win":
+            raise ValueError("reference-ladder reporting requires half-win tie scoring")
+
+        shape = (len(labels), len(labels))
+        wins = np.zeros(shape, dtype=np.float64)
+        ties = np.zeros(shape, dtype=np.float64)
+        add_matrix(wins, checkpoint_scale["wins_matrix"], checkpoint_labels)
+        add_matrix(ties, checkpoint_scale["ties_matrix"], checkpoint_labels)
+        add_matrix(wins, reference_scale["wins_matrix"], reference_labels)
+        add_matrix(ties, reference_scale["ties_matrix"], reference_labels)
+
+        scored_wins = wins + 0.5 * ties
+        pair_games = wins + wins.T + ties + ties.T
+        fit = fit_bradley_terry(
+            scored_wins,
+            anchor=labels.index("scripted"),
+            prior_games=1.0,
+        )
+        scale = dict(checkpoint_scale)
+        scale["ratings"] = rating_views(fit.ratings, pair_games, labels)
+        scale["reference_ladder_games"] = int(
+            np.asarray(reference_scale["wins_matrix"], dtype=float).sum()
+            + np.asarray(reference_scale["ties_matrix"], dtype=float).sum()
+        )
+        scales[key] = scale
+
+    return {
+        "run": result["run"],
+        "player_labels": labels,
+        "team_sizes": sorted(int(key) for key in scales),
+        "reference_ladder": {
+            "probabilities": reference_result["probabilities"],
+            "games_per_pair": reference_result["games_per_pair"],
+        },
+        "scales": scales,
+    }
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -259,6 +334,14 @@ def run_elo_scale_mode(
     labels = [record["label"] for record in metadata]
 
     output = run_dir / "elo_scale.json"
+    reference_output = run_dir / "semi_random_tournament.json"
+
+    def reporting_result(raw_result: dict) -> dict:
+        if not reference_output.exists():
+            return raw_result
+        reference_result = json.loads(reference_output.read_text())
+        return combine_reference_ladder(raw_result, reference_result)
+
     if output.exists():
         result = json.loads(output.read_text())
         if result.get("player_labels") != labels:
@@ -328,7 +411,7 @@ def run_elo_scale_mode(
             )
             _write_result(output, result)
             if plot:
-                write_scale_plots(result, Path(plot_dir))
+                write_scale_plots(reporting_result(result), Path(plot_dir))
 
         fit, stats, reference = run_tournament(
             tournament,
@@ -346,7 +429,7 @@ def run_elo_scale_mode(
             torch.cuda.empty_cache()
 
     if plot:
-        written = write_scale_plots(result, Path(plot_dir))
+        written = write_scale_plots(reporting_result(result), Path(plot_dir))
         print(f"\n  wrote {len(written)} scale charts to {plot_dir}")
     print(f"  wrote {output}")
     return result
