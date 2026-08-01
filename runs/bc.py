@@ -15,6 +15,7 @@ from boost_and_broadside.config import (
     linear,
     stepped,
 )
+from boost_and_broadside.constants import DEFAULT_MAX_BULLETS_PER_SHIP
 from runs.shared import ELO_EVAL, REWARDS
 
 _NUM_BC_ENVS = 480
@@ -47,7 +48,11 @@ BC_TRAIN_CONFIG = TrainConfig(
     paradigm="ego_pass",
     scales=(
         ScaleConfig(
-            env_config=EnvConfig(num_ships=2, max_bullets=20, max_episode_steps=1024),
+            env_config=EnvConfig(
+                num_ships=2,
+                max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
+                max_episode_steps=1024,
+            ),
             num_envs=_NUM_BC_ENVS,
         ),
     ),

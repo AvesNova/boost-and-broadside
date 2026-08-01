@@ -63,6 +63,21 @@ def make_state(
             (num_envs, max_ships, max_bullets), dtype=torch.float32, device=dev
         ),
         bullet_active=torch.zeros((num_envs, max_ships, max_bullets), dtype=torch.bool, device=dev),
+        bullet_remaining_damage=torch.full(
+            (num_envs, max_ships, max_bullets),
+            ship_config.bullet_damage,
+            dtype=torch.float32,
+            device=dev,
+        ),
+        bullet_field_alpha=torch.zeros(
+            (num_envs, max_ships, max_bullets, num_fields), dtype=torch.float32, device=dev
+        ),
+        bullet_local_index=torch.ones(
+            (num_envs, max_ships, max_bullets), dtype=torch.float32, device=dev
+        ),
+        bullet_field_gradient=torch.zeros(
+            (num_envs, max_ships, max_bullets), dtype=torch.complex64, device=dev
+        ),
         bullet_cursor=torch.zeros((num_envs, max_ships), dtype=torch.long, device=dev),
         damage_matrix=torch.zeros(
             (num_envs, max_ships, max_ships), dtype=torch.float32, device=dev

@@ -13,8 +13,9 @@ from boost_and_broadside.config import EnvConfig, ShipConfig
 from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.field_physics import evaluate_fields
 from boost_and_broadside.env.physics import (
+    _combat_damage_tensors,
+    advance_bullets,
     resolve_collisions,
-    update_bullets,
     update_ships,
 )
 from boost_and_broadside.env.state import TensorState
@@ -38,12 +39,18 @@ class TensorEnv:
         env_config: EnvConfig,
         device: str | torch.device,
         field_map: FieldMapCache | None = None,
+        collision_compile_mode: str | None = None,
     ) -> None:
         self.num_envs = num_envs
         self.ship_config = ship_config
         self.env_config = env_config
         self.device = torch.device(device)
         self.field_map = field_map
+        self._combat_damage_fn = (
+            torch.compile(_combat_damage_tensors, mode=collision_compile_mode)
+            if collision_compile_mode is not None and self.device.type == "cuda"
+            else None
+        )
         if env_config.num_fields > 0:
             if field_map is None:
                 raise ValueError("num_fields > 0 requires a precomputed FieldMapCache")
@@ -100,6 +107,10 @@ class TensorEnv:
             bullet_vel=torch.zeros((B, N, K), dtype=torch.complex64, device=dev),
             bullet_time=torch.zeros((B, N, K), dtype=torch.float32, device=dev),
             bullet_active=torch.zeros((B, N, K), dtype=torch.bool, device=dev),
+            bullet_remaining_damage=torch.zeros((B, N, K), dtype=torch.float32, device=dev),
+            bullet_field_alpha=torch.zeros((B, N, K, M), dtype=torch.float32, device=dev),
+            bullet_local_index=torch.ones((B, N, K), dtype=torch.float32, device=dev),
+            bullet_field_gradient=torch.zeros((B, N, K), dtype=torch.complex64, device=dev),
             bullet_cursor=torch.zeros((B, N), dtype=torch.long, device=dev),
             damage_matrix=torch.zeros((B, N, N), dtype=torch.float32, device=dev),
             cumulative_damage_matrix=torch.zeros((B, N, N), dtype=torch.float32, device=dev),
@@ -236,6 +247,14 @@ class TensorEnv:
         m3 = mask.view(B, 1, 1)
         s.bullet_active = s.bullet_active & ~m3
         s.bullet_time = torch.where(m3, 0.0, s.bullet_time)
+        s.bullet_remaining_damage = torch.where(m3, 0.0, s.bullet_remaining_damage)
+        s.bullet_field_alpha = torch.where(
+            mask.view(B, 1, 1, 1),
+            0.0,
+            s.bullet_field_alpha,
+        )
+        s.bullet_local_index = torch.where(m3, 1.0, s.bullet_local_index)
+        s.bullet_field_gradient = torch.where(m3, 0.0, s.bullet_field_gradient)
         s.bullet_cursor = torch.where(m, 0, s.bullet_cursor)
 
         # Clear damage attribution
@@ -292,9 +311,20 @@ class TensorEnv:
 
         self.state.prev_action = actions.float()
         self.state = update_ships(self.state, actions, self.ship_config)
+        bullet_start_pos = None
+        bullet_midpoint_pos = None
         if self.env_config.max_bullets > 0:
-            self.state = update_bullets(self.state, self.ship_config)
-        self.state, dones = resolve_collisions(self.state, self.ship_config)
+            self.state, bullet_start_pos, bullet_midpoint_pos = advance_bullets(
+                self.state,
+                self.ship_config,
+            )
+        self.state, dones = resolve_collisions(
+            self.state,
+            self.ship_config,
+            self._combat_damage_fn,
+            bullet_start_pos,
+            bullet_midpoint_pos,
+        )
 
         if protected_alive is not None:
             self.state.ship_alive |= protected_alive

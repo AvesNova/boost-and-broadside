@@ -322,6 +322,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         if M > 0 and self._field_map is None:
             raise ValueError("field-enabled training requires TrainConfig.field_map")
 
+        collision_compile_mode = (
+            ("max-autotune" if compile_mode == "max-autotune" else "default")
+            if compile_mode is not None
+            else None
+        )
         self.wrapper = YemongEnvWrapper(
             num_envs=train_config.scales[0].num_envs,
             ship_config=ship_config,
@@ -329,6 +334,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             rewards=train_config.rewards,
             device=device,
             field_map=self._field_map,
+            collision_compile_mode=collision_compile_mode,
         )
         K = self.wrapper.num_active_components
         self._active_names = self.wrapper.active_names  # stable ref used throughout
@@ -567,6 +573,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 rewards=train_config.rewards,
                 device=device,
                 field_map=self._field_map,
+                collision_compile_mode=collision_compile_mode,
             )
             aux_sample_obs = aux_w.reset()
             aux_buf = RolloutBuffer(

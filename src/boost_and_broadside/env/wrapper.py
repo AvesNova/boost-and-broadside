@@ -61,8 +61,16 @@ class YemongEnvWrapper:
         rewards: RewardConfig,
         device: str | torch.device,
         field_map: FieldMapCache | None = None,
+        collision_compile_mode: str | None = None,
     ) -> None:
-        self.env = TensorEnv(num_envs, ship_config, env_config, device, field_map)
+        self.env = TensorEnv(
+            num_envs,
+            ship_config,
+            env_config,
+            device,
+            field_map,
+            collision_compile_mode,
+        )
         self.ship_config = ship_config
         self.env_config = env_config
         self.device = torch.device(device)

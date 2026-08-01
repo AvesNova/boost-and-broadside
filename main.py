@@ -71,6 +71,7 @@ import torch
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import EnvConfig, TrainConfig
+from boost_and_broadside.constants import DEFAULT_MAX_BULLETS_PER_SHIP
 from boost_and_broadside.modes.ar_report import run_ar_report_mode
 from boost_and_broadside.modes.capture import run_capture_mode
 from boost_and_broadside.modes.collect import run_collect_stats_mode
@@ -504,7 +505,7 @@ def main() -> None:
                 ship_config=SHIP_CONFIG,
                 env_config=EnvConfig(
                     num_ships=8,
-                    max_bullets=20,
+                    max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
                     max_episode_steps=1024,
                     num_fields=0,
                 ),
@@ -524,7 +525,11 @@ def main() -> None:
                 team1_spec=team1,
                 num_envs=1024,
                 ship_config=SHIP_CONFIG,
-                env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=1024),
+                env_config=EnvConfig(
+                    num_ships=4,
+                    max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
+                    max_episode_steps=1024,
+                ),
                 model_config=MODEL_CONFIG,
                 device=device,
                 checkpoint_dir="checkpoints",
@@ -540,7 +545,11 @@ def main() -> None:
                 num_envs=128,
                 num_steps=1024,
                 ship_config=SHIP_CONFIG,
-                env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=1024),
+                env_config=EnvConfig(
+                    num_ships=4,
+                    max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
+                    max_episode_steps=1024,
+                ),
                 model_config=MODEL_CONFIG,
                 device=device,
                 checkpoint_dir="checkpoints",
@@ -551,7 +560,11 @@ def main() -> None:
                 run_spec=args.run,
                 num_envs=1024 * 4,
                 ship_config=SHIP_CONFIG,
-                env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=1024),
+                env_config=EnvConfig(
+                    num_ships=4,
+                    max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
+                    max_episode_steps=1024,
+                ),
                 model_config=MODEL_CONFIG,
                 device=device,
                 checkpoint_dir="checkpoints",
@@ -633,7 +646,11 @@ def main() -> None:
                 team1_spec=team1,
                 num_steps=512,
                 ship_config=SHIP_CONFIG,
-                env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=512),
+                env_config=EnvConfig(
+                    num_ships=4,
+                    max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
+                    max_episode_steps=512,
+                ),
                 rewards=REWARDS,
                 model_config=MODEL_CONFIG,
                 device=device,
@@ -649,7 +666,11 @@ def main() -> None:
                 team1_spec=team1,
                 num_steps=512,
                 ship_config=SHIP_CONFIG,
-                env_config=EnvConfig(num_ships=2, max_bullets=20, max_episode_steps=512),
+                env_config=EnvConfig(
+                    num_ships=2,
+                    max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
+                    max_episode_steps=512,
+                ),
                 rewards=REWARDS,
                 model_config=MODEL_CONFIG,
                 device=device,
@@ -676,7 +697,11 @@ def main() -> None:
                 num_ar_envs=256,
                 num_ar_windows=20,
                 ship_config=SHIP_CONFIG,
-                env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=1024),
+                env_config=EnvConfig(
+                    num_ships=4,
+                    max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
+                    max_episode_steps=1024,
+                ),
                 model_config=MODEL_CONFIG,
                 device=device,
                 checkpoint_dir="checkpoints",

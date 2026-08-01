@@ -3,12 +3,20 @@
 Tests physical invariants rather than exact floating-point values where possible.
 """
 
+from dataclasses import replace
+
 import pytest
 import torch
 
 from boost_and_broadside.config import ShipConfig
-from boost_and_broadside.constants import PowerActions, ShootActions, TurnActions
+from boost_and_broadside.constants import (
+    DEFAULT_MAX_BULLETS_PER_SHIP,
+    PowerActions,
+    ShootActions,
+    TurnActions,
+)
 from boost_and_broadside.env.physics import (
+    advance_bullets,
     resolve_collisions,
     update_bullets,
     update_ships,
@@ -243,6 +251,32 @@ class TestShooting:
 
         assert not state.bullet_active[0, 0, 0].item()
 
+    def test_default_pool_never_overwrites_a_live_bullet(self):
+        cfg = ShipConfig(bullet_energy_cost=0.0, passive_power_gain=0.0)
+        state = make_state(
+            num_envs=1,
+            max_ships=1,
+            max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
+            ship_config=cfg,
+        )
+        actions = torch.tensor([[[0, 0, int(ShootActions.SHOOT)]]])
+        shots = 0
+        peak_live = 0
+
+        for _ in range(600):
+            cursor_before = state.bullet_cursor.item()
+            cursor_slot_was_live = state.bullet_active[0, 0, cursor_before].item()
+            state = update_ships(state, actions, cfg)
+            fired = state.bullet_cursor.item() != cursor_before
+            if fired:
+                shots += 1
+                assert not cursor_slot_was_live
+            state = update_bullets(state, cfg)
+            peak_live = max(peak_live, int(state.bullet_active.sum().item()))
+
+        assert shots > DEFAULT_MAX_BULLETS_PER_SHIP
+        assert peak_live < DEFAULT_MAX_BULLETS_PER_SHIP
+
 
 class TestBulletLifetime:
     def test_bullet_expires_after_lifetime(self, cfg):
@@ -279,7 +313,8 @@ class TestBulletLifetime:
 
         state = update_bullets(state, cfg)
 
-        expected = init_pos + bullet_vel * cfg.dt
+        half_drag_scale = 1.0 / (1.0 + cfg.bullet_drag_coeff * abs(bullet_vel) * (0.5 * cfg.dt))
+        expected = init_pos + bullet_vel * half_drag_scale * cfg.dt
         # Wrap expected position
         w, h = cfg.world_size
         expected_x = expected.real % w
@@ -288,8 +323,74 @@ class TestBulletLifetime:
         assert abs(state.bullet_pos[0, 0, 0].real - expected_x) < 1e-3
         assert abs(state.bullet_pos[0, 0, 0].imag - expected_y) < 1e-3
 
+    def test_quadratic_drag_uses_exact_speed_solution(self, cfg):
+        state = make_state(num_envs=1, max_ships=1, max_bullets=1, ship_config=cfg)
+        initial_speed = 500.0
+        state.bullet_vel[0, 0, 0] = initial_speed + 0.0j
+        state.bullet_time[0, 0, 0] = cfg.bullet_lifetime
+        state.bullet_active[0, 0, 0] = True
+
+        state = update_bullets(state, cfg)
+
+        expected = initial_speed / (1.0 + cfg.bullet_drag_coeff * initial_speed * cfg.dt)
+        assert state.bullet_vel[0, 0, 0].abs().item() == pytest.approx(expected, rel=1e-6)
+
 
 class TestCollisions:
+    def test_bullet_hit_uses_remaining_damage_potential(self, cfg):
+        cfg = replace(cfg, bullet_min_damage_frac=1.0)
+        state = make_state(num_envs=1, max_ships=2, max_bullets=1, ship_config=cfg)
+        state.ship_pos[0] = torch.tensor([0.0 + 0.0j, 100.0 + 100.0j])
+        state.bullet_pos[0, 0, 0] = 100.0 + 100.0j
+        state.bullet_active[0, 0, 0] = True
+        state.bullet_remaining_damage[0, 0, 0] = 3.0
+
+        health_before = state.ship_health[0, 1].item()
+        state, _ = resolve_collisions(state, cfg)
+
+        assert state.ship_health[0, 1].item() == pytest.approx(health_before - 3.0)
+
+    def test_swept_collision_catches_fast_bullet_between_endpoints(self, cfg):
+        state = make_state(num_envs=1, max_ships=2, max_bullets=1, ship_config=cfg)
+        state.ship_pos[0] = torch.tensor([0.0 + 0.0j, 120.0 + 100.0j])
+        state.bullet_pos[0, 0, 0] = 100.0 + 100.0j
+        state.bullet_vel[0, 0, 0] = 2400.0 + 0.0j
+        state.bullet_time[0, 0, 0] = 1.0
+        state.bullet_active[0, 0, 0] = True
+
+        state, start, midpoint = advance_bullets(state, cfg)
+        assert abs(state.bullet_pos[0, 0, 0] - state.ship_pos[0, 1]) > cfg.collision_radius
+
+        health_before = state.ship_health[0, 1].item()
+        state, _ = resolve_collisions(
+            state,
+            cfg,
+            bullet_start_pos=start,
+            bullet_midpoint_pos=midpoint,
+        )
+
+        assert state.ship_health[0, 1].item() < health_before
+        assert not state.bullet_active[0, 0, 0]
+
+    def test_swept_collision_wraps_across_toroidal_boundary(self, cfg):
+        state = make_state(num_envs=1, max_ships=2, max_bullets=1, ship_config=cfg)
+        state.ship_pos[0] = torch.tensor([500.0 + 500.0j, 2.0 + 100.0j])
+        state.bullet_pos[0, 0, 0] = 1018.0 + 100.0j
+        state.bullet_vel[0, 0, 0] = 1200.0 + 0.0j
+        state.bullet_time[0, 0, 0] = 1.0
+        state.bullet_active[0, 0, 0] = True
+
+        state, start, midpoint = advance_bullets(state, cfg)
+        health_before = state.ship_health[0, 1].item()
+        state, _ = resolve_collisions(
+            state,
+            cfg,
+            bullet_start_pos=start,
+            bullet_midpoint_pos=midpoint,
+        )
+
+        assert state.ship_health[0, 1].item() < health_before
+
     def test_bullet_reduces_target_health(self, cfg):
         """A bullet overlapping a ship must deal damage."""
         # Need 2 ships so own-bullet exclusion doesn't apply

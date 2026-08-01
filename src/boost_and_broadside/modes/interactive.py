@@ -20,7 +20,12 @@ from boost_and_broadside.config import (
     RewardConfig,
     ShipConfig,
 )
-from boost_and_broadside.constants import PowerActions, ShootActions, TurnActions
+from boost_and_broadside.constants import (
+    DEFAULT_MAX_BULLETS_PER_SHIP,
+    PowerActions,
+    ShootActions,
+    TurnActions,
+)
 from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.modes.agent_factory import (
@@ -35,7 +40,7 @@ from boost_and_broadside.ui.renderer import GameRenderer, RenderConfig
 
 PLAY_ENV_CONFIG = EnvConfig(
     num_ships=2,
-    max_bullets=20,
+    max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
     max_episode_steps=None,
     num_fields=4,
 )

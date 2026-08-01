@@ -96,6 +96,12 @@ class ShipConfig:
     bullet_lifetime: float = 1.0  # seconds
     bullet_spread: float = 12.0  # pixels/s of noise added to velocity
     firing_cooldown: float = 0.1  # seconds
+    bullet_drag_coeff: float = 8e-4  # quadratic drag, integrated exactly like ship drag
+    bullet_field_integrator: str = "two_step"  # "two_step" or ship-quality "midpoint"
+    bullet_field_integration_substeps: int = 2
+    # Bullet damage potential lost per point of interface damage crossed.
+    # At 0.1, a 10-damage interface reduces a 10-damage bullet to 9 damage.
+    bullet_field_damage_scale: float = 0.1
 
     # World
     world_size: tuple[float, float] = (1024.0, 1024.0)
@@ -123,6 +129,17 @@ class ShipConfig:
             )
         if self.field_integration_substeps < 1:
             raise ValueError("field_integration_substeps must be positive")
+        if not np.isfinite(self.bullet_drag_coeff) or self.bullet_drag_coeff < 0.0:
+            raise ValueError("bullet_drag_coeff must be non-negative")
+        if self.bullet_field_integrator not in {"two_step", "midpoint"}:
+            raise ValueError("bullet_field_integrator must be 'two_step' or 'midpoint'")
+        if (
+            self.bullet_field_integration_substeps < 2
+            or self.bullet_field_integration_substeps % 2 != 0
+        ):
+            raise ValueError("bullet_field_integration_substeps must be a positive even integer")
+        if not np.isfinite(self.bullet_field_damage_scale) or self.bullet_field_damage_scale < 0.0:
+            raise ValueError("bullet_field_damage_scale must be non-negative")
 
         # A toroidal circle must stay strictly below the nearest antipode. At or
         # beyond half the shorter world dimension its radial contour is ambiguous.

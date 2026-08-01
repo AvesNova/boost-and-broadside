@@ -60,6 +60,10 @@ class TensorState:
     bullet_vel: torch.Tensor  # (B, N, K) complex64
     bullet_time: torch.Tensor  # (B, N, K) float32  — remaining lifetime (s)
     bullet_active: torch.Tensor  # (B, N, K) bool
+    bullet_remaining_damage: torch.Tensor  # (B, N, K) float32
+    bullet_field_alpha: torch.Tensor  # (B, N, K, M) float32
+    bullet_local_index: torch.Tensor  # (B, N, K) float32
+    bullet_field_gradient: torch.Tensor  # (B, N, K) complex64 — grad(n)
 
     # Ring-buffer write cursor
     bullet_cursor: torch.Tensor  # (B, N) int64

@@ -382,18 +382,3 @@ def test_reverse_recovers_only_the_generalized_energy_lost():
     after = _energy(state, config)
     assert after.item() == pytest.approx(before.item(), abs=2e-3)
     assert state.ship_power.item() > 50.0
-
-
-def test_bullets_are_not_absorbed_by_fields():
-    config = _passive_config()
-    state = _single_field_state(config, index=config.field_index_step)
-    # Field transport never touches bullet tensors; a regression here would
-    # recreate the removed solid-obstacle collision path.
-    state.bullet_pos = torch.tensor([[[512.0 + 512.0j]]], dtype=torch.complex64)
-    state.bullet_vel = torch.tensor([[[500.0 + 0.0j]]], dtype=torch.complex64)
-    state.bullet_time = torch.ones((1, 1, 1))
-    state.bullet_active = torch.ones((1, 1, 1), dtype=torch.bool)
-    state.bullet_cursor = torch.zeros((1, 1), dtype=torch.long)
-    actions = _coast_actions()
-    update_ships(state, actions, config)
-    assert state.bullet_active.item()

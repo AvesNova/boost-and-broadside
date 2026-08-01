@@ -25,6 +25,7 @@ from boost_and_broadside.config import (
     stepped,
 )
 from boost_and_broadside.config.schedule import exponential, join
+from boost_and_broadside.constants import DEFAULT_MAX_BULLETS_PER_SHIP
 from runs.shared import COMPONENT_GAMMAS, COMPONENT_LAMBDAS, ELO_EVAL, REWARDS
 
 _MAX_TOKENS = 12_000_000
@@ -75,7 +76,7 @@ RL_TRAIN_CONFIG = TrainConfig(
             env_config=EnvConfig(
                 num_ships=_NUM_SHIPS,
                 num_fields=_NUM_FIELDS,
-                max_bullets=20,
+                max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
                 max_episode_steps=1024,
             ),
             num_envs=_ROLLOUT_TOKENS
