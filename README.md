@@ -60,6 +60,12 @@ procedure, exact values, and uncertainty.
 
 ## Under the hood
 
+![YemongPolicy architecture: entity tokens through spatial attention and temporal recurrence to per-ship heads](docs/policy_architecture.png)
+
+One trunk processes the whole fleet as entity tokens — attention mixes across ships
+within a timestep, Griffin recurrence carries each ship through time — and every head
+emits one output per ship, however many there are.
+
 - The [environment and physics engine](docs/environment.md) runs thousands of tensorized
   battles in parallel, with toroidal movement, projectiles, resources, and orbital
   obstacles. The core simulator lives in

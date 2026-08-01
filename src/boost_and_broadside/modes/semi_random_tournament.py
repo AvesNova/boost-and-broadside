@@ -19,6 +19,7 @@ from boost_and_broadside.modes.elo_calibrate import (
     Progress,
     Tournament,
     _load_run_config,
+    semi_random_label,
 )
 from boost_and_broadside.modes.elo_scale import parallel_envs_for, rating_views
 from boost_and_broadside.modes.elo_stats import find_run_dir
@@ -43,13 +44,9 @@ def parse_probabilities(text: str) -> list[float]:
     return probabilities
 
 
-def _label(probability: float) -> str:
-    if probability == 0.0:
-        return "random"
-    if probability == 1.0:
-        return "scripted"
-    digits = f"{probability:.4f}".rstrip("0").rstrip(".").replace(".", "p")
-    return f"semi_scripted_{digits}"
+# Player naming is shared with the calibration tournament so a rung carries the
+# same label whichever mode rated it.
+_label = semi_random_label
 
 
 def _greatest_divisor_at_most(value: int, maximum: int) -> int:

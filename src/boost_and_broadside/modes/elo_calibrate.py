@@ -44,6 +44,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from boost_and_broadside.agents.semi_random_scripted import SemiRandomScriptedAgent
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import EloCalibrateConfig, EnvConfig, ModelConfig, ShipConfig
@@ -220,6 +221,16 @@ def _load_ladder_policy(
     return policy
 
 
+def semi_random_label(probability: float) -> str:
+    """Canonical player label for a scripted-action mixture probability."""
+    if probability == 0.0:
+        return "random"
+    if probability == 1.0:
+        return "scripted"
+    digits = f"{probability:.4f}".rstrip("0").rstrip(".").replace(".", "p")
+    return f"semi_scripted_{digits}"
+
+
 def build_players(
     run_dir: Path,
     roster: dict,
@@ -227,18 +238,36 @@ def build_players(
     ship_config: ShipConfig,
     num_ships: int,
     device: str,
+    reference_probabilities: tuple[float, ...] = (),
 ) -> list[Player]:
-    """Assemble the tournament field: random, the scripted agent, every ladder snapshot.
+    """Assemble the tournament field.
 
-    The random anchor comes first so it can serve as the rating gauge. Only
-    agents the live policy actually played are included — every extra player
-    dilutes the batch budget without informing the curve being calibrated.
+    The field is random, the scripted controller, optional semi-random reference
+    rungs between them, every ladder snapshot, and the run's final checkpoint.
+    The random anchor comes first so it can serve as the fallback rating gauge.
+    The rungs cost batch budget but repair the field's weakest link: without
+    them, random connects to everything else only through near-certain games.
+    The final checkpoint is included so the endpoint of the calibrated curve is
+    pinned by a full tournament rating rather than only by the last update's
+    online record.
     """
     players = [Player("random", ResolvedAgent("random", None), 0.0, 0)]
     scripted = StochasticScriptedAgent(ship_config, StochasticAgentConfig())
     players.append(Player("scripted", ResolvedAgent("scripted", scripted), None, None))
 
+    # One shared scripted instance lets play_batch compute the scripted action
+    # once per step for every rung.
+    for probability in sorted(reference_probabilities):
+        assert 0.0 < probability < 1.0, (
+            f"reference probability {probability} duplicates the random/scripted endpoints"
+        )
+        agent = SemiRandomScriptedAgent(ship_config, probability, scripted_agent=scripted)
+        players.append(
+            Player(semi_random_label(probability), ResolvedAgent("semi_random", agent), None, None)
+        )
+
     entries = [e for e in roster["entries"] if e["kind"] == "checkpoint"]
+    ladder_steps = set()
     for entry in sorted(entries, key=lambda e: e["global_step"]):
         path = Path(entry["path"])
         if not path.exists():  # roster may outlive a pruned file
@@ -247,11 +276,22 @@ def build_players(
             print(f"  [warn] missing ladder snapshot for {entry['label']}, skipping")
             continue
         policy = _load_ladder_policy(path, model_config, ship_config, num_ships, device)
+        ladder_steps.add(int(entry["global_step"]))
         players.append(
             Player(
                 entry["label"], ResolvedAgent("policy", policy), entry["elo"], entry["global_step"]
             )
         )
+
+    final_checkpoints = sorted(run_dir.glob("step_*.pt"))
+    if final_checkpoints:
+        final_path = final_checkpoints[-1]
+        final_step = int(final_path.stem.removeprefix("step_"))
+        if final_step not in ladder_steps:
+            policy = _load_ladder_policy(final_path, model_config, ship_config, num_ships, device)
+            players.append(
+                Player(f"ckpt_{final_step}", ResolvedAgent("policy", policy), None, final_step)
+            )
     return players
 
 
@@ -773,7 +813,13 @@ def run_elo_calibrate_mode(
         ladder_count = sum(1 for e in roster["entries"] if e["kind"] == "checkpoint")
         progress.stage(f"loading {ladder_count} ladder snapshots...")
         players = build_players(
-            run_dir, roster, model_config, ship_config, env_config.num_ships, device
+            run_dir,
+            roster,
+            model_config,
+            ship_config,
+            env_config.num_ships,
+            device,
+            reference_probabilities=config.reference_probabilities,
         )
         progress.done(f"field ({len(players)}): {', '.join(p.label for p in players)}")
         anchor = next(i for i, p in enumerate(players) if p.label == "random")

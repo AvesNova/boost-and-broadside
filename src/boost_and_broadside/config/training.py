@@ -58,6 +58,11 @@ class EloCalibrateConfig:
     # Virtual decisive games per player, split for and against the anchor.
     # Keeps a player that never loses from having an infinite rating.
     prior_games: float = 1.0
+    # Interior semi-random reference rungs added to the tournament field, as
+    # scripted-action probabilities in (0, 1). They connect random to scripted
+    # through informative matchups instead of one near-deterministic link,
+    # tightening the weak end of the scale. Empty disables the ladder.
+    reference_probabilities: tuple[float, ...] = ()
 
 
 @dataclass(frozen=True)

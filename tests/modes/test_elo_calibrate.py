@@ -227,3 +227,35 @@ class TestRefit:
             by_label = {p["label"]: p["calibrated_elo"] for p in result["players"]}
             gaps.append(by_label["ckpt_100"] - by_label["random"])
         assert gaps[0] == pytest.approx(gaps[1], abs=2.0)
+
+
+class TestBuildPlayersField:
+    def test_reference_rungs_sit_between_the_endpoints(self, tmp_path):
+        """Rungs are sorted, labeled canonically, and never duplicate the
+        random/scripted endpoint players."""
+        from boost_and_broadside.modes.elo_calibrate import build_players
+
+        players = build_players(
+            tmp_path, {"entries": []}, None, ShipConfig(), 8, "cpu",
+            reference_probabilities=(0.5, 0.2),
+        )
+        assert [p.label for p in players] == [
+            "random", "scripted", "semi_scripted_0p2", "semi_scripted_0p5",
+        ]
+        assert all(p.agent.kind == "semi_random" for p in players[2:])
+
+    def test_endpoint_probability_is_rejected(self, tmp_path):
+        from boost_and_broadside.modes.elo_calibrate import build_players
+
+        with pytest.raises(AssertionError):
+            build_players(
+                tmp_path, {"entries": []}, None, ShipConfig(), 8, "cpu",
+                reference_probabilities=(0.0,),
+            )
+
+    def test_rung_labels_match_the_semi_random_mode(self):
+        from boost_and_broadside.modes.elo_calibrate import semi_random_label
+
+        assert semi_random_label(0.0) == "random"
+        assert semi_random_label(1.0) == "scripted"
+        assert semi_random_label(0.95) == "semi_scripted_0p95"

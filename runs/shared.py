@@ -49,6 +49,9 @@ ELO_CALIBRATE = EloCalibrateConfig(
     target_stderr=10.0,
     max_batches=12,
     prior_games=1.0,
+    # Matches the refined semi-random ladder (0 and 1 are the random and
+    # scripted players themselves).
+    reference_probabilities=(0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95),
 )
 
 # Reward weights shared by all training profiles.

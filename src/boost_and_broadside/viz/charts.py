@@ -30,6 +30,22 @@ class Line:
 
 
 @dataclass
+class Points:
+    """Scattered measurements over the same axes: steps, values, ±1 SE, name.
+
+    Drawn as surface-ringed markers with error bars, so precise point
+    measurements (e.g. tournament-rated checkpoints) can sit on top of a
+    continuous estimate of the same quantity. ``yerr`` may contain NaN where no
+    error is known; those points draw without a bar.
+    """
+
+    x: np.ndarray
+    y: np.ndarray
+    yerr: np.ndarray
+    label: str
+
+
+@dataclass
 class Panel:
     """One metric's worth of a grid: its lines and how to scale/label them."""
 
@@ -96,6 +112,7 @@ def trend(
     log_y: bool = False,
     percent: bool = False,
     reference_lines: list[tuple[str, float]] | None = None,
+    points: Points | None = None,
     size: tuple[float, float] = (10.0, 5.8),
 ) -> Path:
     """One metric over training as a standalone figure."""
@@ -105,6 +122,31 @@ def trend(
         axes, lines, title=title, subtitle=subtitle, ylabel=ylabel,
         log_y=log_y, percent=percent, reference_lines=reference_lines,
     )
+    if points is not None and points.x.size:
+        # Same hue family as the single-series line, one lightness step darker;
+        # identity additionally rests on the mark itself (ringed dot + error bar
+        # vs line), and the legend names both series.
+        if len(lines) == 1 and lines[0].label:
+            # The scatter makes this a two-series chart: name both, line first.
+            axes.plot([], [], color=style.BLUE, linewidth=2.0, label=lines[0].label)
+        axes.errorbar(
+            points.x / _MILLION,
+            points.y,
+            yerr=np.where(np.isfinite(points.yerr), points.yerr, 0.0),
+            fmt="o",
+            markersize=6.5,
+            color=style.SHADE_DARK,
+            ecolor=style.SHADE_DARK,
+            elinewidth=1.4,
+            capsize=3.0,
+            markeredgecolor=style.SURFACE,
+            markeredgewidth=1.5,
+            zorder=5,
+            label=points.label,
+        )
+        axes.legend(
+            frameon=False, labelcolor=style.INK_SECONDARY, fontsize=10, loc="lower right"
+        )
     # Place direct labels last, after a draw settles the scale and limits —
     # label_series_ends maps data to axes-fraction, wrong if the y-scale (log) or
     # autoscaled limits are not yet final.
