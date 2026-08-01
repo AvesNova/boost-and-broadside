@@ -1130,6 +1130,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         if getattr(self, "_shutdown_called", False):
             return
         self._shutdown_called = True
+        self._wait_for_checkpoint_saves()
         self.roster.evict_all_checkpoint_policies()
         self._current_league_policy = None
         if self.use_wandb:

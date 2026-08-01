@@ -127,6 +127,18 @@ class TestSavedCheckpointIntegrity:
         trainer.load_checkpoint(str(saved[0]))
         assert all(c.dtype == torch.float32 for c in trainer._avg_param_cumsum)
 
+    def test_shutdown_waits_for_inflight_checkpoint(self, tmp_path):
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        trainer._global_step = 1
+        trainer._save_checkpoint(update=1)
+        trainer.shutdown()
+
+        assert not trainer._active_save_thread.is_alive()
+        assert list(tmp_path.rglob("step_*.pt"))
+        assert not list(tmp_path.rglob("*.tmp"))
+
 
 class TestObservationSchema:
     def test_all_payload_families_are_versioned(self, tmp_path):

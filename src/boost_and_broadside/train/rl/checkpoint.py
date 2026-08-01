@@ -64,6 +64,18 @@ def clone_to_cpu(obj: Any) -> Any:
 class CheckpointMixin:
     """Checkpoint behavior mixed into PPOTrainer to keep trainer state colocated."""
 
+    def _wait_for_checkpoint_saves(self) -> None:
+        """Finish every in-flight writer before trainer shutdown returns."""
+
+        for attr in (
+            "_active_save_thread",
+            "_active_best_thread",
+            "_active_best_avg_thread",
+        ):
+            thread = getattr(self, attr, None)
+            if thread is not None and thread.is_alive():
+                thread.join()
+
     def _save_roster_json(self) -> None:
         """Persist roster metadata alongside the run's checkpoints."""
         ckpt_dir = Path(self.cfg.checkpoint_dir) / self.run_name
