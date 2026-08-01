@@ -1,6 +1,6 @@
-"""Entity token encoder for ships and obstacles.
+"""Entity token encoder for ships and refractive fields.
 
-Encodes each entity (ship or obstacle) into a d_model-dimensional token via
+Encodes each entity (ship or field) into a d_model-dimensional token via
 FeatureCoordinator, which extracts and transforms all raw observation channels.
 """
 

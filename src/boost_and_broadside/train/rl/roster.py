@@ -24,6 +24,7 @@ from pathlib import Path
 import torch
 
 from boost_and_broadside.config import ModelConfig
+from boost_and_broadside.train.rl.checkpoint_schema import require_observation_schema
 from boost_and_broadside.train.rl.features import FeatureCoordinator
 
 _DEFAULT_ELO = 0.0
@@ -58,6 +59,7 @@ def load_checkpoint_policy(
     from boost_and_broadside.models.yemong.policy import YemongPolicy
 
     ckpt = torch.load(path, map_location=device, weights_only=False)
+    require_observation_schema(ckpt, path)
     ckpt_team_pma_k = tuple(ckpt.get("team_pma_k", team_pma_k))
     policy = YemongPolicy(
         model_config,

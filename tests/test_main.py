@@ -63,10 +63,10 @@ def _run_bc_warmstart(monkeypatch, tmp_path, smoke: bool) -> list[SimpleNamespac
 
 
 class TestTrainingModeDispatch:
-    """AUDIT-002: `rl` and `rl_obstacles` share `_run_training_mode`, so resume and
+    """`rl` and `rl_fields` share `_run_training_mode`, so resume and
     pretrain handling must behave identically for both modes."""
 
-    @pytest.mark.parametrize("mode", ["rl", "rl_obstacles"])
+    @pytest.mark.parametrize("mode", ["rl", "rl_fields"])
     def test_resume_flag_loads_checkpoint(self, monkeypatch, mode):
         captured: list[_StubTrainer] = []
 
@@ -84,7 +84,7 @@ class TestTrainingModeDispatch:
         assert captured[0].loaded_checkpoint == "ckpt.pt"
         assert captured[0].loaded_pretrained is None
 
-    @pytest.mark.parametrize("mode", ["rl", "rl_obstacles"])
+    @pytest.mark.parametrize("mode", ["rl", "rl_fields"])
     def test_pretrain_from_flag_loads_pretrained_weights(self, monkeypatch, mode):
         captured: list[_StubTrainer] = []
 

@@ -10,7 +10,7 @@ Training:
     uv run main.py --mode rl --pretrain_from checkpoints/run/best.pt
     uv run main.py --mode rl --resume                 # resume latest checkpoint
     uv run main.py --mode rl --resume checkpoints/run/step_000001000.pt
-    uv run main.py --mode rl_obstacles                # RL with dynamic obstacles
+    uv run main.py --mode rl_fields                   # RL with refractive fields
     uv run main.py --mode bc                          # BC pretraining from scratch
     uv run main.py --mode bc_warmstart                # BC pretrain → RL (one process)
 
@@ -18,7 +18,6 @@ Watch / play:
     uv run main.py --mode watch                       # human vs latest checkpoint
     uv run main.py --mode watch --team0 null --team1 scripted
     uv run main.py --mode watch --team0 latest --team1 latest
-    uv run main.py --mode watch --fast-cache          # skip convergence animation
 
 Evaluation:
     uv run main.py --mode collect_stats               # scripted vs random
@@ -90,7 +89,7 @@ from boost_and_broadside.ui.renderer import RenderConfig
 from runs.bc import BC_TRAIN_CONFIG
 from runs.bc_warmstart import BC_WARMSTART_PRETRAIN_CONFIG, BC_WARMSTART_RL_CONFIG
 from runs.rl import RL_TRAIN_CONFIG
-from runs.rl_obstacles import RL_OBSTACLES_TRAIN_CONFIG
+from runs.rl_fields import RL_FIELDS_TRAIN_CONFIG
 from runs.shared import ELO_CALIBRATE, MODEL_CONFIG, REWARDS, SHIP_CONFIG
 
 
@@ -104,7 +103,7 @@ def _parse_args() -> argparse.Namespace:
         choices=[
             "bc",
             "rl",
-            "rl_obstacles",
+            "rl_fields",
             "bc_warmstart",
             "watch",
             "collect_stats",
@@ -240,8 +239,7 @@ def _parse_args() -> argparse.Namespace:
         "--fast-cache",
         action="store_true",
         default=False,
-        help="(watch mode) Generate obstacle cache headlessly in the background instead of "
-        "rendering the convergence animation. Much faster; shows a loading screen instead.",
+        help="Deprecated no-op retained for watch-mode CLI compatibility; field maps are static.",
     )
     parser.add_argument(
         "--matchups",
@@ -380,9 +378,9 @@ def _apply_smoke(config: TrainConfig) -> TrainConfig:
 
     # num_envs must be divisible by num_minibatches, so use 1 minibatch with 4 envs.
     scales = tuple(replace(s, num_envs=4) for s in config.scales)
-    obstacle_cache = config.obstacle_cache
-    if obstacle_cache is not None:
-        obstacle_cache = replace(obstacle_cache, num_cache_envs=128, cache_size=4, max_steps=6000)
+    field_map = config.field_map
+    if field_map is not None:
+        field_map = replace(field_map, cache_size=4, max_generation_attempts=256)
     schedule = replace(config.schedule, checkpoint_interval=stepped((0, 1)))
     elo_eval = replace(config.elo_eval, envs_per_matchup=4)
     return replace(
@@ -390,7 +388,7 @@ def _apply_smoke(config: TrainConfig) -> TrainConfig:
         scales=scales,
         schedule=schedule,
         elo_eval=elo_eval,
-        obstacle_cache=obstacle_cache,
+        field_map=field_map,
         num_minibatches=1,
         total_timesteps=5_000,
         log_interval=1,
@@ -453,8 +451,8 @@ def main() -> None:
         case "rl":
             _run_training_mode(RL_TRAIN_CONFIG, args)
 
-        case "rl_obstacles":
-            _run_training_mode(RL_OBSTACLES_TRAIN_CONFIG, args)
+        case "rl_fields":
+            _run_training_mode(RL_FIELDS_TRAIN_CONFIG, args)
 
         case "bc_warmstart":
             # --smoke must shrink BOTH stages; forcing it off here (as an earlier
@@ -495,7 +493,7 @@ def main() -> None:
                     num_ships=8,
                     max_bullets=20,
                     max_episode_steps=1024,
-                    num_obstacles=0,
+                    num_fields=0,
                 ),
                 rewards=REWARDS,
                 model_config=MODEL_CONFIG,

@@ -25,10 +25,6 @@ from boost_and_broadside.env.rewards import (
     LocalDamageDealtEnemyReward,
     LocalDamageTakenReward,
     LocalDeathReward,
-    ObstacleClosingSpeedReward,
-    ObstacleDeathReward,
-    ObstacleProximityReward,
-    ObstacleTTIReward,
     ShootingPenaltyReward,
     ShootQualityReward,
     SpeedReward,
@@ -84,8 +80,8 @@ def _make_4ship_state(cfg):
 
 
 class TestRewardComponentNames:
-    def test_k_equals_21(self):
-        assert len(REWARD_COMPONENT_NAMES) == 21
+    def test_k_equals_17(self):
+        assert len(REWARD_COMPONENT_NAMES) == 17
 
     def test_ally_damage_is_index_0(self):
         assert REWARD_COMPONENT_NAMES[0] == "ally_damage"
@@ -582,8 +578,8 @@ class TestLocalDamageTakenReward:
         assert reward[0, 2].item() == pytest.approx(0.0)
         assert reward[0, 3].item() == pytest.approx(0.0)
 
-    def test_dead_ship_gets_zero(self, cfg):
-        """Dead ships receive no reward even if health dropped this step."""
+    def test_fatal_damage_is_counted(self, cfg):
+        """The damage that kills a ship is still attributed on its final live step."""
         prev = _make_4ship_state(cfg)
         next_ = _make_4ship_state(cfg)
         next_.ship_health[0, 0] = 0.0
@@ -592,7 +588,7 @@ class TestLocalDamageTakenReward:
         r = LocalDamageTakenReward(weight=1.0)
         reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
 
-        assert reward[0, 0].item() == pytest.approx(0.0)
+        assert reward[0, 0].item() == pytest.approx(-cfg.max_health)
 
     def test_zero_damage_gives_zero_reward(self, cfg):
         state = _make_4ship_state(cfg)
@@ -850,137 +846,3 @@ class TestSpeedReward:
         reward = r.compute(state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(-0.75)
-
-
-# ---------------------------------------------------------------------------
-# Obstacle avoidance rewards (the sole training signal for rl_obstacles)
-# ---------------------------------------------------------------------------
-
-
-def _obstacle_state(cfg, *, num_ships=2, num_obstacles=1):
-    """State with real obstacle tensors; ships all team 0 at the origin, alive."""
-    state = make_state(num_envs=1, max_ships=num_ships, ship_config=cfg)
-    dev = state.ship_pos.device
-    state.obstacle_pos = torch.zeros((1, num_obstacles), dtype=torch.complex64, device=dev)
-    state.obstacle_vel = torch.zeros((1, num_obstacles), dtype=torch.complex64, device=dev)
-    state.obstacle_radius = torch.zeros((1, num_obstacles), dtype=torch.float32, device=dev)
-    state.obstacle_gcenter = torch.zeros((1, num_obstacles), dtype=torch.complex64, device=dev)
-    return state
-
-
-class TestObstacleDeathReward:
-    def test_death_by_obstacle_gets_penalty(self, cfg):
-        prev = _obstacle_state(cfg)
-        next_ = _obstacle_state(cfg)
-        next_.ship_alive[0, 0] = False
-        next_.ship_hit_obstacle[0, 0] = True
-
-        r = ObstacleDeathReward(weight=1.0)
-        reward = r.compute(prev, torch.zeros(1, 2, 3), next_, torch.zeros(1, dtype=torch.bool))
-
-        assert reward[0, 0].item() == pytest.approx(-1.0)
-
-    def test_death_not_from_obstacle_gets_zero(self, cfg):
-        """A ship that died without hitting an obstacle gets no obstacle-death penalty."""
-        prev = _obstacle_state(cfg)
-        next_ = _obstacle_state(cfg)
-        next_.ship_alive[0, 0] = False
-        next_.ship_hit_obstacle[0, 0] = False
-
-        r = ObstacleDeathReward(weight=1.0)
-        reward = r.compute(prev, torch.zeros(1, 2, 3), next_, torch.zeros(1, dtype=torch.bool))
-
-        assert reward[0, 0].item() == pytest.approx(0.0)
-
-
-class TestObstacleProximityReward:
-    def test_ship_near_obstacle_gets_penalty(self, cfg):
-        state = _obstacle_state(cfg)
-        state.ship_pos[0, 0] = 0.0 + 0j
-        state.obstacle_pos[0, 0] = 30.0 + 0j  # inside the 80-unit proximity radius
-
-        r = ObstacleProximityReward(weight=1.0, proximity_radius=80.0, world_size=cfg.world_size)
-        reward = r.compute(state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool))
-
-        assert reward[0, 0].item() < 0
-
-    def test_ship_far_from_obstacle_gets_zero(self, cfg):
-        state = _obstacle_state(cfg)
-        state.ship_pos[0, 0] = 0.0 + 0j
-        state.obstacle_pos[0, 0] = 200.0 + 0j  # beyond the proximity radius
-
-        r = ObstacleProximityReward(weight=1.0, proximity_radius=80.0, world_size=cfg.world_size)
-        reward = r.compute(state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool))
-
-        assert reward[0, 0].item() == pytest.approx(0.0)
-
-
-class TestObstacleClosingSpeedReward:
-    def test_moving_toward_obstacle_gets_penalty(self, cfg):
-        state = _obstacle_state(cfg)
-        state.ship_pos[0, 0] = 0.0 + 0j
-        state.obstacle_pos[0, 0] = 100.0 + 0j
-        state.ship_vel[0, 0] = 50.0 + 0j  # heading east, straight at the obstacle
-
-        r = ObstacleClosingSpeedReward(
-            weight=1.0, max_speed=cfg.max_speed, world_size=cfg.world_size
-        )
-        reward = r.compute(state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool))
-
-        assert reward[0, 0].item() < 0
-
-    def test_moving_away_from_obstacle_gets_zero(self, cfg):
-        state = _obstacle_state(cfg)
-        state.ship_pos[0, 0] = 0.0 + 0j
-        state.obstacle_pos[0, 0] = 100.0 + 0j
-        state.ship_vel[0, 0] = -50.0 + 0j  # heading away from the obstacle
-
-        r = ObstacleClosingSpeedReward(
-            weight=1.0, max_speed=cfg.max_speed, world_size=cfg.world_size
-        )
-        reward = r.compute(state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool))
-
-        assert reward[0, 0].item() == pytest.approx(0.0)
-
-
-class TestObstacleTTIReward:
-    def test_collision_course_penalised_more_than_near_miss(self, cfg):
-        """Ship 0 heads straight into the obstacle; ship 1 passes well clear of it.
-        A shorter time-to-intersection must produce a stronger (more negative) penalty."""
-        state = _obstacle_state(cfg, num_ships=2)
-        state.obstacle_pos[0, 0] = 50.0 + 0j
-        state.obstacle_radius[0, 0] = 10.0
-
-        state.ship_pos[0, 0] = 0.0 + 0j
-        state.ship_vel[0, 0] = 50.0 + 0j  # direct collision course
-
-        state.ship_pos[0, 1] = 0.0 + 40j  # offset far in y
-        state.ship_vel[0, 1] = 50.0 + 0j  # passes clear of the obstacle
-
-        r = ObstacleTTIReward(
-            weight=1.0,
-            tti_max=3.0,
-            ship_collision_radius=cfg.obstacle_collision_radius,
-            world_size=cfg.world_size,
-        )
-        reward = r.compute(state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool))
-
-        assert reward[0, 0].item() < reward[0, 1].item()
-
-    def test_no_collision_course_gets_zero(self, cfg):
-        """A ship whose trajectory never intersects the obstacle gets no penalty."""
-        state = _obstacle_state(cfg)
-        state.obstacle_pos[0, 0] = 50.0 + 0j
-        state.obstacle_radius[0, 0] = 10.0
-        state.ship_pos[0, 0] = 0.0 + 40j  # far off-axis
-        state.ship_vel[0, 0] = 50.0 + 0j
-
-        r = ObstacleTTIReward(
-            weight=1.0,
-            tti_max=3.0,
-            ship_collision_radius=cfg.obstacle_collision_radius,
-            world_size=cfg.world_size,
-        )
-        reward = r.compute(state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool))
-
-        assert reward[0, 0].item() == pytest.approx(0.0)

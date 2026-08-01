@@ -663,7 +663,7 @@ class TestWinComponentLambdaMatrix:
         assert lam[0, :, k_enemy].tolist() == [0.0, 0.0, -1.0, -1.0]
 
     def test_production_config_win_lambda_sets(self):
-        """runs/shared.py must agree with rl_obstacles.py and the test configs on
+        """runs/shared.py must agree with the field profile and test configs on
         which win components are zero-sum (enemy_win) vs ally-shared (ally_win)."""
         from runs.shared import REWARDS
 

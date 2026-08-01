@@ -8,25 +8,17 @@ Agent specs (--team0 / --team1) are resolved by modes/agent_factory.py —
 Space to shoot); see that module for the full spec list.
 """
 
-import threading
-
 import torch
 
 from boost_and_broadside.config import (
     EnvConfig,
+    FieldMapConfig,
     ModelConfig,
-    ObstacleCacheConfig,
     RewardConfig,
     ShipConfig,
 )
 from boost_and_broadside.constants import PowerActions, ShootActions, TurnActions
-from boost_and_broadside.env.obstacle_cache import ObstacleCache, _make_obstacle_state
-from boost_and_broadside.env.obstacle_physics import (
-    check_convergence,
-    convergence_period_steps,
-    init_obstacles_orbital,
-    step_obstacles_harmonic,
-)
+from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.modes.agent_factory import (
     ResolvedAgent,
@@ -83,19 +75,17 @@ def run_watch_mode(
 
     renderer = GameRenderer(ship_config, render_config)
 
-    obstacle_cache = None
-    if env_config.num_obstacles > 0:
-        if fast_cache:
-            obstacle_cache = _run_convergence_background(
-                ship_config, env_config, renderer, torch.device(device)
-            )
-        else:
-            obstacle_cache = _run_convergence_phase(
-                ship_config, env_config, renderer, torch.device(device)
-            )
-        if obstacle_cache is None:
-            renderer.close()
-            return
+    # Static maps need no orbital settling phase. ``fast_cache`` is retained in
+    # the watch-mode signature for CLI compatibility but no longer changes map
+    # construction.
+    field_map = None
+    if env_config.num_fields > 0:
+        field_map = FieldMapCache.generate(
+            ship_config,
+            env_config,
+            FieldMapConfig(cache_size=1, max_generation_attempts=256),
+            torch.device(device),
+        )
 
     wrapper = YemongEnvWrapper(
         num_envs=1,
@@ -103,113 +93,13 @@ def run_watch_mode(
         env_config=env_config,
         rewards=rewards,
         device=device,
-        obstacle_cache=obstacle_cache,
+        field_map=field_map,
     )
 
     try:
         _run_interactive_loop(wrapper, agent0, agent1, renderer, torch.device(device))
     finally:
         renderer.close()
-
-
-def _run_convergence_background(
-    ship_config: ShipConfig,
-    env_config: EnvConfig,
-    renderer: GameRenderer,
-    device: torch.device,
-) -> ObstacleCache | None:
-    """Generate obstacle cache headlessly in a background thread.
-
-    The main thread keeps the pygame window alive with a loading label while
-    ObstacleCache.generate() runs on the GPU. Returns None if the window is closed.
-    """
-    result: list[ObstacleCache] = []
-    error: list[Exception] = []
-
-    def _worker() -> None:
-        try:
-            cfg = ObstacleCacheConfig(num_cache_envs=512, cache_size=1, max_steps=6000)
-            result.append(ObstacleCache.generate(ship_config, env_config, cfg, device))
-        except Exception as e:
-            error.append(e)
-
-    thread = threading.Thread(target=_worker, daemon=True)
-    thread.start()
-
-    dots = 0
-    tick = 0
-    while thread.is_alive():
-        tick += 1
-        if tick % 20 == 0:
-            dots = (dots + 1) % 4
-        label = "Generating obstacles" + "." * dots
-        if not renderer.render_with_label(None, label):
-            return None
-        renderer.tick()
-
-    thread.join()
-
-    if error:
-        raise error[0]
-
-    return result[0] if result else None
-
-
-def _run_convergence_phase(
-    ship_config: ShipConfig,
-    env_config: EnvConfig,
-    renderer: GameRenderer,
-    device: torch.device,
-) -> ObstacleCache | None:
-    """Simulate obstacle convergence live, rendering every step.
-
-    Phase 1 — PBD active: obstacles orbit and jostle until stable for 2 full
-               harmonic periods with no inter-obstacle overlaps.
-    Phase 2 — Freeze: hold the converged state for 1 second so the user can
-               see the saved snapshot before the match loads.
-
-    Returns:
-        ObstacleCache with one converged map, or None if the window was closed.
-    """
-    M = env_config.num_obstacles
-    pos, vel, radius, gcenter = init_obstacles_orbital(1, M, ship_config, device)
-    collision_free = torch.zeros(1, dtype=torch.int32, device=device)
-    period = convergence_period_steps(ship_config)
-    state = _make_obstacle_state(pos, vel, radius, gcenter, ship_config, device)
-
-    # Phase 1: run until converged
-    while True:
-        state.obstacle_pos, state.obstacle_vel = step_obstacles_harmonic(
-            state.obstacle_pos,
-            state.obstacle_vel,
-            state.obstacle_radius,
-            state.obstacle_gcenter,
-            ship_config,
-            enable_pbd=True,
-        )
-        converged, collision_free = check_convergence(
-            state.obstacle_pos, state.obstacle_radius, collision_free, period, ship_config
-        )
-        if not renderer.render_with_label(state, "Converging obstacles..."):
-            return None
-        renderer.tick()
-        if converged.all():
-            break
-
-    # Phase 2: freeze for 1 second to show the saved snapshot
-    for _ in range(renderer._render_config.fps):
-        if not renderer.render_with_label(
-            state, "Converged — saving snapshot", color=(100, 255, 100)
-        ):
-            return None
-        renderer.tick()
-
-    return ObstacleCache(
-        state.obstacle_pos,  # (1, M) complex64
-        state.obstacle_vel,  # (1, M) complex64
-        state.obstacle_radius,  # (1, M) float32
-        state.obstacle_gcenter,  # (1,) complex64
-    )
 
 
 def _run_interactive_loop(
@@ -231,7 +121,7 @@ def _run_interactive_loop(
     N_IMAGINE_STEPS = 12
 
     N = wrapper.num_ships
-    M = wrapper.env_config.num_obstacles
+    M = wrapper.env_config.num_fields
     num_tokens = N + M
 
     first_episode = True
@@ -264,7 +154,7 @@ def _run_interactive_loop(
                 action1, _ = get_actions(agent1, obs, state, 1, N, device, return_pred_next=True)
 
                 # Select each agent's actions for their respective team (ship tokens only)
-                team_id = obs["team_id"][:, :N]  # (1, N) — exclude obstacle tokens
+                team_id = obs["team_id"][:, :N]  # (1, N) — exclude field tokens
                 action = torch.where((team_id == 0).unsqueeze(-1), action0, action1)
 
                 # Merge imagined trajectories by team into a single list of per-step tensors.

@@ -540,6 +540,12 @@ class FeatureCoordinator:
                 ObsKey.ALIVE: torch.zeros((1, 1), dtype=torch.bool),
                 ObsKey.RADIUS: torch.zeros((1, 1, 1)),
                 ObsKey.PREVIOUS_ACTION: torch.zeros((1, 1, 3), dtype=torch.long),
+                ObsKey.LOCAL_LOG_INDEX: torch.zeros((1, 1, 1)),
+                ObsKey.FIELD_TRANSITION_WIDTH: torch.zeros((1, 1, 1)),
+                ObsKey.FIELD_INSIDE_LOG_INDEX: torch.zeros((1, 1, 1)),
+                ObsKey.FIELD_OUTSIDE_LOG_INDEX: torch.zeros((1, 1, 1)),
+                ObsKey.FIELD_LOG_INDEX_RATIO: torch.zeros((1, 1, 1)),
+                ObsKey.FIELD_DAMAGE: torch.zeros((1, 1, 1)),
             }
         )
 
@@ -696,10 +702,11 @@ class FeatureCoordinator:
 def build_standard_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
     """Standard feature pipeline matching the current game's physics.
 
-    Prediction layout (9 dims total):
+    Prediction layout (10 dims total):
       pos_x phase delta (1) | pos_y phase delta (1) | vel Δ(vx_norm, vy_norm) (2)
       att phase delta (1)   | ang_vel absolute (1)
       health phase delta (1) | power phase delta (1) | cooldown phase delta (1)
+      local encoded log-index delta (1)
 
     label_scale values are 1/std(raw label) estimates so all scaled labels are O(1).
     These are rough estimates derived from old calibration weights and will tighten
@@ -807,6 +814,41 @@ def build_standard_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
             Identity(),
         ),
         Feature("radius", Accessor(ObsKey.RADIUS), Normalize(40.0), Identity()),
+        # Field material features are numeric physical quantities. Ship slots are
+        # zero for field-only channels; field slots are zero for ship-local index.
+        Feature(
+            "field_transition_width",
+            Accessor(ObsKey.FIELD_TRANSITION_WIDTH),
+            Normalize(ship_config.field_transition_width_max),
+            Identity(),
+        ),
+        Feature(
+            "field_inside_log_index",
+            Accessor(ObsKey.FIELD_INSIDE_LOG_INDEX),
+            Identity(),
+            Identity(),
+        ),
+        Feature(
+            "field_outside_log_index",
+            Accessor(ObsKey.FIELD_OUTSIDE_LOG_INDEX),
+            Identity(),
+            Identity(),
+        ),
+        Feature(
+            "field_log_index_ratio",
+            Accessor(ObsKey.FIELD_LOG_INDEX_RATIO),
+            Identity(),
+            Identity(),
+        ),
+        Feature("field_damage", Accessor(ObsKey.FIELD_DAMAGE), Identity(), Identity()),
+        Feature(
+            name="local_log_index",
+            accessor=Accessor(ObsKey.LOCAL_LOG_INDEX),
+            input_encoder=Identity(),
+            target_encoder=Identity(),
+            predictor=AdditivePredictor(),
+            label_scale=10.0,
+        ),
     ]
 
     return FeatureCoordinator(features)

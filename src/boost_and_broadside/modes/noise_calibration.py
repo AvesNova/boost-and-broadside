@@ -101,7 +101,7 @@ def run_noise_calibration_mode(
 ) -> None:
     dev = torch.device(device)
     N = env_config.num_ships
-    num_tokens = N + env_config.num_obstacles
+    num_tokens = N + env_config.num_fields
 
     print("Resolving agents...")
     agent0 = resolve_agent_spec(

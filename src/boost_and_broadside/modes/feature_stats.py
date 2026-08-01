@@ -39,7 +39,7 @@ def run_feature_stats_mode(
 ) -> None:
     B = num_envs
     N = env_config.num_ships
-    num_tokens = N + env_config.num_obstacles
+    num_tokens = N + env_config.num_fields
     dev = torch.device(device)
 
     coordinator = build_standard_coordinator(ship_config)

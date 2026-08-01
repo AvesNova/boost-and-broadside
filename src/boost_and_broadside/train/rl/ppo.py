@@ -38,8 +38,8 @@ from boost_and_broadside.config import (
     TrainingSchedule,
 )
 from boost_and_broadside.constants import POWER_SLICE, SHOOT_SLICE, TURN_SLICE
+from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.observation import ObsKey, YemongObservation
-from boost_and_broadside.env.obstacle_cache import ObstacleCache
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.models.yemong.policy import YemongPolicy
 from boost_and_broadside.train.rl.buffer import (
@@ -115,10 +115,6 @@ _GROUP: dict[str, str] = {
     "damage_dealt_enemy": "local_scale",
     "damage_dealt_ally": "local_scale",
     "death": "local_scale",
-    "obstacle_death": "local_scale",
-    "obstacle_proximity": "local_scale",
-    "obstacle_closing_speed": "local_scale",
-    "obstacle_tti": "local_scale",
     "shooting_penalty": "local_scale",
     "speed": "local_scale",
 }
@@ -305,25 +301,26 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         if base_state.policy_gradient_coef == 0.0 and scripted_agent is None:
             raise ValueError("policy_gradient_coef=0.0 (BC mode) requires a scripted_agent.")
 
-        # Generate converged obstacle maps before training begins.
-        # The cache is shared across all wrappers (primary + aux scales).
-        M = train_config.scales[0].env_config.num_obstacles
-        if M > 0 and train_config.obstacle_cache is not None:
-            cache_cfg = train_config.obstacle_cache
+        # Generate valid static field maps before training begins. The cache is
+        # shared across all wrappers (primary + auxiliary scales).
+        M = train_config.scales[0].env_config.num_fields
+        if M > 0 and train_config.field_map is not None:
+            cache_cfg = train_config.field_map
             print(
-                f"[PPOTrainer] Generating obstacle cache "
-                f"({cache_cfg.num_cache_envs} envs, "
-                f"target {cache_cfg.cache_size} maps)..."
+                f"[PPOTrainer] Generating refractive-field map cache "
+                f"({cache_cfg.cache_size} maps)..."
             )
-            self._obstacle_cache = ObstacleCache.generate(
+            self._field_map = FieldMapCache.generate(
                 ship_config,
                 train_config.scales[0].env_config,
                 cache_cfg,
                 self.device,
             )
-            print(f"[PPOTrainer] Obstacle cache ready: {len(self._obstacle_cache)} maps")
+            print(f"[PPOTrainer] Field map cache ready: {len(self._field_map)} maps")
         else:
-            self._obstacle_cache = None
+            self._field_map = None
+        if M > 0 and self._field_map is None:
+            raise ValueError("field-enabled training requires TrainConfig.field_map")
 
         self.wrapper = YemongEnvWrapper(
             num_envs=train_config.scales[0].num_envs,
@@ -331,7 +328,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             env_config=train_config.scales[0].env_config,
             rewards=train_config.rewards,
             device=device,
-            obstacle_cache=self._obstacle_cache,
+            field_map=self._field_map,
         )
         K = self.wrapper.num_active_components
         self._active_names = self.wrapper.active_names  # stable ref used throughout
@@ -516,12 +513,12 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # Cumulative counters persisted across checkpoint resumes so throughput
         # metrics behave as if training never stopped.
         self._ship_steps = 0  # ship tokens (all teams, all envs, all scales)
-        # Entity tokens (ships + obstacles) the update phase processes per epoch —
+        # Entity tokens (ships + fields) the update phase processes per epoch —
         # one full pass over all scales' rollouts.
         self._entity_tokens_per_epoch = (
             train_config.num_steps
             * sum(
-                sc.num_envs * (sc.env_config.num_ships + sc.env_config.num_obstacles)
+                sc.num_envs * (sc.env_config.num_ships + sc.env_config.num_fields)
                 for sc in train_config.scales
             )
             * train_config.rollouts_per_update
@@ -569,7 +566,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 env_config=sc.env_config,
                 rewards=train_config.rewards,
                 device=device,
-                obstacle_cache=self._obstacle_cache,
+                field_map=self._field_map,
             )
             aux_sample_obs = aux_w.reset()
             aux_buf = RolloutBuffer(
@@ -581,7 +578,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 gamma=self._gamma_t,
                 gae_lambda=self._lambda_t,
                 device=self.device,
-                num_tokens=sc.env_config.num_ships + sc.env_config.num_obstacles,
+                num_tokens=sc.env_config.num_ships + sc.env_config.num_fields,
             )
             self.aux_wrappers.append(aux_w)
             self.aux_buffers.append(aux_buf)
@@ -702,7 +699,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             zip(self.cfg.scales[1:], self.aux_wrappers, self.aux_buffers)
         ):
             aux_N = sc.env_config.num_ships
-            aux_num_tokens = aux_N + sc.env_config.num_obstacles
+            aux_num_tokens = aux_N + sc.env_config.num_fields
             with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
                 (
                     aux_action_t0,
@@ -754,7 +751,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         """Initialize persistent primary, auxiliary, and evaluation rollout state."""
         num_envs = self.cfg.scales[0].num_envs
         num_ships = self.wrapper.num_ships
-        num_tokens = num_ships + self.env_config.num_obstacles
+        num_tokens = num_ships + self.env_config.num_fields
         scripted_start = self.B_self
         scripted_end = scripted_start + self.B_sc
         avg_start = scripted_end
@@ -784,7 +781,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         for scale, wrapper in zip(self.cfg.scales[1:], self.aux_wrappers):
             aux_obs.append(wrapper.reset())
             wrapper.env.state.step_count.random_(0, scale.env_config.max_episode_steps)
-            aux_tokens = scale.env_config.num_ships + scale.env_config.num_obstacles
+            aux_tokens = scale.env_config.num_ships + scale.env_config.num_fields
             aux_hiddens.append(self.policy.initial_hidden(scale.num_envs, aux_tokens, self.device))
             aux_hidden_t1s.append(
                 self.policy.initial_hidden(scale.num_envs, aux_tokens, self.device)
@@ -818,7 +815,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 ship_config=self.ship_config,
                 env_config=self.env_config,
                 device=self.device,
-                obstacle_cache=self._obstacle_cache,
+                field_map=self._field_map,
                 live_policy=self.policy,
                 avg_policy=self.avg_policy,
                 scripted_agent=self.scripted_agent,
@@ -1321,7 +1318,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         need_sigreg = self._schedule_state.sigreg_coef > 0.0
         # evaluate_actions needs the full (T, B, N+M) alive mask so Yemong layers
-        # can attend to obstacle tokens; mb_alive is ships-only and used for loss masking.
+        # can attend to field tokens; mb_alive is ships-only and used for loss masking.
         alive_mask_full = curr_mb_obs["alive"].bool()  # (T, B_mb, N+M)
         with torch.autocast("cuda", dtype=torch.bfloat16):
             logprob, entropy, new_value, policy_logits, z, pred_next = self.policy.evaluate_actions(

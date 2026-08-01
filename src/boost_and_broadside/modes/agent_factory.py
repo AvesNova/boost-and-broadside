@@ -36,6 +36,7 @@ from boost_and_broadside.constants import (
 )
 from boost_and_broadside.env.observation import ObsKey, YemongObservation
 from boost_and_broadside.env.state import TensorState
+from boost_and_broadside.train.rl.checkpoint_schema import require_observation_schema
 
 
 def infer_num_value_components(ckpt: dict) -> int:
@@ -182,6 +183,7 @@ def resolve_agent_spec(
     from boost_and_broadside.train.rl.features import build_standard_coordinator
 
     ckpt = torch.load(path, map_location=device, weights_only=False)
+    require_observation_schema(ckpt, path)
     coordinator = build_standard_coordinator(ship_config)
     K = infer_num_value_components(ckpt)
     team_pma_k = infer_team_pma_k(ckpt)
@@ -285,10 +287,10 @@ def _decode_targets_to_obs(
 
     Per-feature target encodings are inverted by the coordinator — each feature's
     target Transform owns its own inverse — so this function only reassembles the
-    raw values into an YemongObservation: obstacle tokens (N:) are copied unchanged,
+    raw values into an YemongObservation: field tokens (N:) are copied unchanged,
     `alive` is derived from decoded health, and `action` becomes PREVIOUS_ACTION.
 
-    prev_obs: previous YemongObservation — obstacle tokens (N:) are copied unchanged
+    prev_obs: previous YemongObservation — field tokens (N:) are copied unchanged
     action:   (B, N, 3) int — stored as PREVIOUS_ACTION for next step
     """
     raw = coordinator.decode_targets(targets)
@@ -300,6 +302,7 @@ def _decode_targets_to_obs(
     health = raw["health"]  # (B, N, 1)
     power = raw["power"]  # (B, N, 1)
     cooldown = raw["cooldown"]  # (B, N, 1)
+    local_log_index = raw["local_log_index"]  # (B, N, 1), normalized log(n)
 
     alive = health.squeeze(-1) > ALIVE_HEALTH_EPS
 
@@ -311,6 +314,9 @@ def _decode_targets_to_obs(
     new_data[ObsKey.HEALTH] = torch.cat([health, prev_obs[ObsKey.HEALTH][:, N:]], dim=1)
     new_data[ObsKey.POWER] = torch.cat([power, prev_obs[ObsKey.POWER][:, N:]], dim=1)
     new_data[ObsKey.COOLDOWN] = torch.cat([cooldown, prev_obs[ObsKey.COOLDOWN][:, N:]], dim=1)
+    new_data[ObsKey.LOCAL_LOG_INDEX] = torch.cat(
+        [local_log_index, prev_obs[ObsKey.LOCAL_LOG_INDEX][:, N:]], dim=1
+    )
     new_data[ObsKey.ALIVE] = torch.cat([alive, prev_obs[ObsKey.ALIVE][:, N:]], dim=1)
     new_data[ObsKey.PREVIOUS_ACTION] = torch.cat(
         [action, prev_obs[ObsKey.PREVIOUS_ACTION][:, N:]], dim=1

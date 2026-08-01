@@ -37,8 +37,8 @@ import torch
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import EloEvalConfig, EnvConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
+from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.observation import YemongObservation, observation_from_state
-from boost_and_broadside.env.obstacle_cache import ObstacleCache
 from boost_and_broadside.models.yemong.policy import YemongPolicy
 from boost_and_broadside.modes.agent_factory import (
     ResolvedAgent,
@@ -139,7 +139,7 @@ class EloEvaluator:
         ship_config: ShipConfig,
         env_config: EnvConfig,
         device: torch.device,
-        obstacle_cache: ObstacleCache | None,
+        field_map: FieldMapCache | None,
         live_policy: YemongPolicy,
         avg_policy: YemongPolicy,
         scripted_agent: StochasticScriptedAgent | None,
@@ -187,7 +187,7 @@ class EloEvaluator:
             ship_config,
             env_config,
             device,
-            obstacle_cache,
+            field_map,
         )
         self.env.reset()
         self.env.state.step_count.random_(0, env_config.max_episode_steps)

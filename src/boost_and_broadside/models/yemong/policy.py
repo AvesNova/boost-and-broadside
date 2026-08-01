@@ -1,7 +1,7 @@
 """YemongPolicy: the full per-ship actor-critic policy.
 
 Architecture (per timestep):
-    obs → EntityEncoder → (B, N+M, D)     [ships N then obstacles M]
+    obs → EntityEncoder → (B, N+M, D)     [ships N then fields M]
          → N+M x YemongBlock → (B, N+M, D)   [spatial + temporal over all tokens]
          → slice [:N]                    → (B, N, D)    [ship tokens only]
          → ActionHead                   → (B, N, 12)   [logits: power|turn|shoot]
@@ -9,7 +9,7 @@ Architecture (per timestep):
          → TeamPMA                      → (B, N, D)    [pool per team, broadcast back]
          → ValueHead                    → (B, N, K)    [MSE critic: K components]
 
-Obstacle tokens (team_id=2) participate in attention and carry temporal hidden
+Field tokens (team_id=2) participate in attention and carry temporal hidden
 state, but receive no action or value heads.
 
 K = num_value_components (one head per reward component).
@@ -127,7 +127,7 @@ class YemongPolicy(nn.Module):
         model_config:  Architecture hyperparameters.
         coordinator:   Feature pipeline; drives encoder input dim and aux pred dim.
         num_value_components: K — one value head output per reward component.
-        num_ships:     N — first N tokens are ships; rest are obstacles.
+        num_ships:     N — first N tokens are ships; rest are fields.
     """
 
     def __init__(
@@ -142,7 +142,7 @@ class YemongPolicy(nn.Module):
         D = model_config.d_model
         self._d_model = D
         self._K = num_value_components
-        self._num_ships = num_ships  # N — first N tokens are ships; rest are obstacles
+        self._num_ships = num_ships  # N — first N tokens are ships; rest are fields
         self._team_pma_k = team_pma_k  # K indices that use TeamPMA path for value
         self._team_pma_k_set = set(team_pma_k)
         self.coordinator = coordinator
@@ -200,7 +200,7 @@ class YemongPolicy(nn.Module):
         """Return zeroed hidden states for all Yemong layers.
 
         Args:
-            num_tokens: N+M (ships + obstacles) — all entity tokens carry hidden state.
+            num_tokens: N+M (ships + fields) — all entity tokens carry hidden state.
 
         Returns:
             (n_layers, B*(N+M), CONV_KERNEL*D) float32 — packed RG-LRU state + conv buffer.
@@ -253,7 +253,7 @@ class YemongPolicy(nn.Module):
             pred_next:  (B, N, pred_dim) float — predicted next-state deltas/phase shifts.
             new_hidden: (n_layers, B*(N+M), CONV_KERNEL*D) updated packed state.
         """
-        alive = obs["alive"]  # (B, N+M) bool — ships then obstacles
+        alive = obs["alive"]  # (B, N+M) bool — ships then fields
         x = self.encoder(obs)  # (B, N+M, D)
 
         B, NM, D = x.shape
@@ -280,7 +280,7 @@ class YemongPolicy(nn.Module):
         N = self._num_ships
         x_ships = x[:, :N, :]  # (B, N, D)
         alive_ships = alive[:, :N]  # (B, N)
-        team_id_ships = obs["team_id"][:, :N]  # (B, N) — obstacles (team_id=2) excluded by TeamPMA
+        team_id_ships = obs["team_id"][:, :N]  # (B, N) — fields excluded by TeamPMA
 
         logits = self.action_head(x_ships)  # (B, N, 12)
         pred_next = self.next_state_head(x_ships)  # (B, N, AUX_PRED_DIM)

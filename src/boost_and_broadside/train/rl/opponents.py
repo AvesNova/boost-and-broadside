@@ -67,7 +67,7 @@ def slice_state(state: TensorState, start: int, end: int) -> TensorState:
 
 
 def flip_team_obs(obs: YemongObservation, num_ships: int) -> YemongObservation:
-    """Flip ship team IDs while leaving obstacle team IDs unchanged."""
+    """Flip ship team IDs while leaving field team IDs unchanged."""
     return obs.flip_team(num_ships)
 
 

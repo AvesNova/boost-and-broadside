@@ -11,6 +11,10 @@ from typing import Any
 
 import torch
 
+from boost_and_broadside.train.rl.checkpoint_schema import (
+    OBSERVATION_SCHEMA,
+    require_observation_schema,
+)
 from boost_and_broadside.train.rl.elo_eval import EloEvaluator
 
 # Rolling window of full-resume (step_*.pt) and avg (avg_step_*.pt) checkpoints
@@ -114,6 +118,7 @@ class CheckpointMixin:
         path = ckpt_dir / f"ladder_step_{self._global_step:012d}.pt"
         payload = clone_to_cpu(
             {
+                "observation_schema": OBSERVATION_SCHEMA,
                 "policy_state_dict": self._policy_module.state_dict(),
                 "team_pma_k": self._win_k,
                 "num_value_components": self.wrapper.num_active_components,
@@ -174,6 +179,7 @@ class CheckpointMixin:
     def checkpoint_payload(self, update: int) -> dict:
         """Build the data dict shared by all checkpoint saves."""
         return {
+            "observation_schema": OBSERVATION_SCHEMA,
             "policy_state_dict": self._policy_module.state_dict(),
             "num_value_components": self.wrapper.num_active_components,
             "optimizer_state_dict": self.optim.state_dict(),
@@ -295,6 +301,7 @@ class CheckpointMixin:
     def _checkpoint_payload_lightweight(self, update: int) -> dict:
         """Build a best-model payload without heavy optimizer and average states."""
         return {
+            "observation_schema": OBSERVATION_SCHEMA,
             "policy_state_dict": self._policy_module.state_dict(),
             "num_value_components": self.wrapper.num_active_components,
             "scaler_state_dict": self.scaler.state_dict(),
@@ -366,6 +373,7 @@ class CheckpointMixin:
             path: Path to any .pt checkpoint (step_*.pt or best_*.pt).
         """
         ckpt = torch.load(path, map_location=self.device, weights_only=False)
+        require_observation_schema(ckpt, path)
         self._policy_module.load_state_dict(ckpt["policy_state_dict"])
         self._avg_policy_module.load_state_dict(ckpt["policy_state_dict"])
         # fp32 regardless of parameter dtype: this is a running sum over every
@@ -397,6 +405,7 @@ class CheckpointMixin:
                 other (ego_pass policies only ever act as team 0).
         """
         ckpt = torch.load(path, map_location=self.device, weights_only=False)
+        require_observation_schema(ckpt, path)
         ckpt_paradigm = ckpt.get("train_config", {}).get("paradigm")
         if ckpt_paradigm is not None and ckpt_paradigm != self.cfg.paradigm:
             raise ValueError(

@@ -88,14 +88,6 @@ class StochasticAgentConfig:
         0.0,
     )  # disabled by default; use scripted_team spec to enable
 
-    # Obstacle avoidance (potential field)
-    # obstacle_tti_max:        TTI (seconds) beyond which an obstacle is not a threat.
-    # obstacle_repulsion_scale: multiplier on the repulsion vector before adding to combat dir.
-    # obstacle_boost_suppress:  fraction of boost probability redirected to coast under full danger.
-    obstacle_tti_max: float = 3.0
-    obstacle_repulsion_scale: float = 2.0
-    obstacle_boost_suppress: float = 1.0
-
     # ---------------------------------------------------------------------------
     # Flat-vector interface for hyperparameter search
     # ---------------------------------------------------------------------------
