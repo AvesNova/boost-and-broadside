@@ -272,6 +272,9 @@ class TensorEnv:
         self.state, dones = resolve_collisions(self.state, self.ship_config)
 
         self.state.step_count += 1
-        truncated = self.state.step_count >= self.env_config.max_episode_steps
+        if self.env_config.max_episode_steps is None:
+            truncated = torch.zeros_like(dones)
+        else:
+            truncated = self.state.step_count >= self.env_config.max_episode_steps
 
         return dones, truncated

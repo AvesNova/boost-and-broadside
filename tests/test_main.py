@@ -122,6 +122,19 @@ class TestTrainingModeDispatch:
         assert captured[0].config is RL_TRAIN_CONFIG
 
 
+def test_play_mode_dispatches_fixed_interactive_preset(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(sys, "argv", ["main.py", "--mode", "play"])
+    monkeypatch.setattr(main, "run_play_mode", lambda **kwargs: captured.update(kwargs))
+
+    main.main()
+
+    assert captured["ship_config"] is main.SHIP_CONFIG
+    assert captured["rewards"] is main.REWARDS
+    assert captured["model_config"] is main.MODEL_CONFIG
+    assert captured["checkpoint_dir"] == "checkpoints"
+
+
 class TestBcWarmstartSmoke:
     def test_smoke_shrinks_both_stages(self, monkeypatch, tmp_path):
         """--smoke must reach both warmstart stages (AUDIT-001): each config is

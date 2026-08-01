@@ -141,11 +141,15 @@ class EnvConfig:
 
     num_ships: int  # total ships per env (both teams combined)
     max_bullets: int  # bullet ring-buffer size per ship (0 = no bullets, skips all bullet physics)
-    max_episode_steps: int  # truncation horizon
+    max_episode_steps: int | None  # truncation horizon; None disables time-based truncation
     num_fields: int = 0  # static refractive fields per env (0 = ambient-only baseline)
     single_team: bool = False  # all ships share one randomly-chosen team id (no opponents)
 
     def __post_init__(self) -> None:
+        if self.max_episode_steps is not None and self.max_episode_steps < 1:
+            raise ValueError(
+                f"max_episode_steps must be positive or None, got {self.max_episode_steps}"
+            )
         if self.num_fields < 0:
             raise ValueError(f"num_fields must be non-negative, got {self.num_fields}")
 

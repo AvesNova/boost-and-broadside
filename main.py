@@ -15,6 +15,7 @@ Training:
     uv run main.py --mode bc_warmstart                # BC pretrain → RL (one process)
 
 Watch / play:
+    uv run main.py --mode play                        # 1v1 player vs null, four fields
     uv run main.py --mode watch                       # human vs latest checkpoint
     uv run main.py --mode watch --team0 null --team1 scripted
     uv run main.py --mode watch --team0 latest --team1 latest
@@ -78,7 +79,7 @@ from boost_and_broadside.modes.elo_calibrate import run_elo_calibrate_mode
 from boost_and_broadside.modes.elo_scale import run_elo_scale_mode
 from boost_and_broadside.modes.elo_stats import run_elo_stats_mode
 from boost_and_broadside.modes.feature_stats import run_feature_stats_mode
-from boost_and_broadside.modes.interactive import run_watch_mode
+from boost_and_broadside.modes.interactive import run_play_mode, run_watch_mode
 from boost_and_broadside.modes.noise_calibration import run_noise_calibration_mode
 from boost_and_broadside.modes.semi_random_tournament import (
     parse_probabilities,
@@ -105,6 +106,7 @@ def _parse_args() -> argparse.Namespace:
             "rl",
             "rl_fields",
             "bc_warmstart",
+            "play",
             "watch",
             "collect_stats",
             "feature_stats",
@@ -122,7 +124,8 @@ def _parse_args() -> argparse.Namespace:
             "Operating mode. "
             "'bc': BC-only pretraining, no RL gradient. "
             "'rl': RL run, optionally loading pretrained weights via --pretrain_from. "
-            "'bc_warmstart': run BC pretraining then immediately start RL from those weights."
+            "'bc_warmstart': run BC pretraining then immediately start RL from those weights. "
+            "'play': control one ship against a null ship in four refractive fields."
         ),
     )
     parser.add_argument(
@@ -481,6 +484,16 @@ def main() -> None:
             rl_trainer = _make_trainer(rl_config, args)
             rl_trainer.load_pretrained_weights(str(pretrain_path))
             _run_trainer(rl_trainer)
+
+        case "play":
+            run_play_mode(
+                ship_config=SHIP_CONFIG,
+                rewards=REWARDS,
+                model_config=MODEL_CONFIG,
+                render_config=RenderConfig(),
+                device=device,
+                checkpoint_dir="checkpoints",
+            )
 
         case "watch":
             team0 = args.team0 if args.team0 is not None else "null"

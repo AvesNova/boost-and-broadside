@@ -158,6 +158,18 @@ class TestTensorEnvStep:
         _, truncated = env.step(actions)
         assert truncated[0].item()
 
+    def test_none_max_episode_steps_disables_time_truncation(self, ship_cfg):
+        env_cfg = EnvConfig(num_ships=1, max_bullets=0, max_episode_steps=None)
+        env = TensorEnv(num_envs=1, ship_config=ship_cfg, env_config=env_cfg, device="cpu")
+        env.reset()
+
+        actions = torch.zeros((1, 1, 3), dtype=torch.long)
+        for _ in range(10):
+            _, truncated = env.step(actions)
+            assert not truncated.item()
+
+        assert env.state.step_count.item() == 10
+
     def test_ships_move_when_coasting(self, ship_cfg, env_cfg):
         """COAST action with initial velocity should move ships (non-zero position change)."""
         env = TensorEnv(num_envs=1, ship_config=ship_cfg, env_config=env_cfg, device="cpu")
@@ -318,3 +330,24 @@ class TestYemongEnvWrapper:
         # Accumulators must be cleared by the pop
         stats_after = wrapper.pop_episode_stats()
         assert stats_after["episodes"].item() == 0
+
+    def test_death_auto_resets_an_unlimited_episode(self, ship_cfg, reward_cfg):
+        env_cfg = EnvConfig(num_ships=2, max_bullets=0, max_episode_steps=None)
+        wrapper = YemongEnvWrapper(
+            num_envs=1,
+            ship_config=ship_cfg,
+            env_config=env_cfg,
+            rewards=reward_cfg,
+            device="cpu",
+        )
+        wrapper.reset(options={"team_sizes": (1, 1)})
+        wrapper.state.ship_alive[0, 0] = False
+        wrapper.state.ship_health[0, 0] = 0.0
+
+        actions = torch.zeros((1, 2, 3), dtype=torch.long)
+        _, _, done, truncated, _ = wrapper.step(actions)
+
+        assert done.item()
+        assert not truncated.item()
+        assert wrapper.state.ship_alive.all()
+        assert wrapper.state.step_count.item() == 0

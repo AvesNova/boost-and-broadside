@@ -1,6 +1,7 @@
 """Interactive game modes: watch and human play.
 
-Entry point:
+Entry points:
+  - run_play_mode: fixed 1v1 player-vs-null match with four fields.
   - run_watch_mode: render live gameplay between two specified agents at 60fps.
 
 Agent specs (--team0 / --team1) are resolved by modes/agent_factory.py —
@@ -29,6 +30,55 @@ from boost_and_broadside.modes.agent_factory import (
     resolve_agent_spec,
 )
 from boost_and_broadside.ui.renderer import GameRenderer, RenderConfig
+
+PLAY_ENV_CONFIG = EnvConfig(
+    num_ships=2,
+    max_bullets=20,
+    max_episode_steps=None,
+    num_fields=4,
+)
+
+
+def run_play_mode(
+    ship_config: ShipConfig,
+    rewards: RewardConfig,
+    model_config: ModelConfig,
+    render_config: RenderConfig,
+    device: str,
+    checkpoint_dir: str = "checkpoints",
+) -> None:
+    """Run the fixed player-vs-null game preset.
+
+    The player controls the blue team-0 ship. The red team-1 ship receives the
+    null (all-zero) action. Matches contain four static refractive fields, have
+    no time horizon, and restart automatically as soon as either ship dies.
+    """
+    agent0 = resolve_agent_spec(
+        "null",
+        ship_config,
+        model_config,
+        device,
+        checkpoint_dir,
+        num_ships=PLAY_ENV_CONFIG.num_ships,
+    )
+    agent1 = resolve_agent_spec(
+        "null",
+        ship_config,
+        model_config,
+        device,
+        checkpoint_dir,
+        num_ships=PLAY_ENV_CONFIG.num_ships,
+    )
+    _run_resolved_interactive_mode(
+        agent0,
+        agent1,
+        ship_config,
+        PLAY_ENV_CONFIG,
+        rewards,
+        render_config,
+        device,
+        keyboard_teams=frozenset({0}),
+    )
 
 
 def run_watch_mode(
@@ -73,6 +123,33 @@ def run_watch_mode(
         num_ships=env_config.num_ships,
     )
 
+    keyboard_teams = frozenset(
+        team for team, agent in enumerate((agent0, agent1)) if agent.kind == "null"
+    )
+    _run_resolved_interactive_mode(
+        agent0,
+        agent1,
+        ship_config,
+        env_config,
+        rewards,
+        render_config,
+        device,
+        keyboard_teams=keyboard_teams,
+    )
+
+
+def _run_resolved_interactive_mode(
+    agent0: ResolvedAgent,
+    agent1: ResolvedAgent,
+    ship_config: ShipConfig,
+    env_config: EnvConfig,
+    rewards: RewardConfig,
+    render_config: RenderConfig,
+    device: str,
+    keyboard_teams: frozenset[int],
+) -> None:
+    """Build the single environment and render two already-resolved agents."""
+
     renderer = GameRenderer(ship_config, render_config)
 
     # Static maps need no orbital settling phase. ``fast_cache`` is retained in
@@ -97,7 +174,14 @@ def run_watch_mode(
     )
 
     try:
-        _run_interactive_loop(wrapper, agent0, agent1, renderer, torch.device(device))
+        _run_interactive_loop(
+            wrapper,
+            agent0,
+            agent1,
+            renderer,
+            torch.device(device),
+            keyboard_teams,
+        )
     finally:
         renderer.close()
 
@@ -108,6 +192,7 @@ def _run_interactive_loop(
     agent1: ResolvedAgent,
     renderer: GameRenderer,
     device: torch.device,
+    keyboard_teams: frozenset[int],
 ) -> None:
     """Core render loop.  Runs episodes back-to-back until the window is closed.
 
@@ -117,6 +202,7 @@ def _run_interactive_loop(
         agent1:   Agent controlling team-1 ships.
         renderer: Pygame renderer.
         device:   Torch device.
+        keyboard_teams: Team IDs whose selected actions are replaced by keyboard input.
     """
     N_IMAGINE_STEPS = 12
 
@@ -177,26 +263,34 @@ def _run_interactive_loop(
                         merged.append(torch.where(mask, pn0, pn1))
                     pred_nexts = merged
 
-                # Human keyboard overrides for null agents
-                if agent0.kind == "null" or agent1.kind == "null":
+                if keyboard_teams:
                     keyboard = _decode_keyboard().to(device)
-                    for ship_idx in range(N):
-                        t = int(team_id[0, ship_idx].item())
-                        if (t == 0 and agent0.kind == "null") or (t == 1 and agent1.kind == "null"):
-                            action[0, ship_idx] = keyboard
+                    action = _apply_keyboard_override(action, team_id, keyboard, keyboard_teams)
 
                 obs, _, dones, truncated, _ = wrapper.step(action)
 
                 if (dones | truncated).any():
                     reset_done_envs(agent0, dones | truncated, num_tokens)
                     reset_done_envs(agent1, dones | truncated, num_tokens)
-                    obs = wrapper.reset()
                     pred_nexts = None
 
             running = renderer.render(wrapper.state, pred_nexts=pred_nexts)
             if not running:
                 return
             renderer.tick()
+
+
+def _apply_keyboard_override(
+    action: torch.Tensor,
+    team_id: torch.Tensor,
+    keyboard: torch.Tensor,
+    keyboard_teams: frozenset[int],
+) -> torch.Tensor:
+    """Replace actions for only the explicitly player-controlled teams."""
+    keyboard_mask = torch.zeros_like(team_id, dtype=torch.bool)
+    for team in keyboard_teams:
+        keyboard_mask |= team_id == team
+    return torch.where(keyboard_mask.unsqueeze(-1), keyboard.view(1, 1, 3), action)
 
 
 def _decode_keyboard() -> torch.Tensor:

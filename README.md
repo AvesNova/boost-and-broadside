@@ -100,6 +100,9 @@ uv run main.py --mode rl --smoke
 # The same end-to-end crash test with four refractive fields
 uv run main.py --mode rl_fields --smoke
 
+# Play a 1v1 match against a null ship in four refractive fields
+uv run main.py --mode play
+
 # Human vs a newly trained current-schema checkpoint (WASD, Shift, Space)
 uv run main.py --mode watch --team1 checkpoints/<run>/<checkpoint>.pt
 ```

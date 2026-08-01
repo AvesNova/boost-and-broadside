@@ -52,6 +52,9 @@ path.
 ## Watch or play
 
 ```bash
+# Fixed play mode: one player ship vs one null ship, with four fields
+uv run main.py --mode play
+
 # Human team 0 vs a newly trained current-schema checkpoint
 uv run main.py --mode watch --team1 checkpoints/<run>/<checkpoint>.pt
 
@@ -62,7 +65,8 @@ uv run main.py --mode watch --team0 latest --team1 scripted
 uv run main.py --mode watch --team0 latest --team1 latest
 ```
 
-Human controls are WASD for flight, Shift for sharp turns, and Space to shoot. Agent specs
+Play mode has no match timer and starts a new match as soon as either ship dies. Human
+controls are WASD for flight, Shift for sharp turns, and Space to shoot. Agent specs
 accepted by `--team0` and `--team1` include `null` (human in watch mode), `random`,
 `scripted`, `latest`, a checkpoint path, and the named scripted controllers listed by
 `main.py --help`.
