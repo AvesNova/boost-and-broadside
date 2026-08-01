@@ -7,7 +7,7 @@ Collision detection and bullet deactivation still run normally.
 Example production-shape baseline:
     uv run python benchmarks/bullet_throughput.py \
         --device cuda --num-envs 3904 --num-ships 8 --num-fields 4 \
-        --max-bullets 20 --workload saturated
+        --max-bullets 10 --workload saturated
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from dataclasses import fields, replace
 import torch
 
 from boost_and_broadside.config import EnvConfig, FieldMapConfig, ShipConfig
-from boost_and_broadside.constants import ShootActions
+from boost_and_broadside.constants import DEFAULT_MAX_BULLETS_PER_SHIP, ShootActions
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.field_cache import FieldMapCache
 
@@ -141,7 +141,7 @@ def main() -> None:
     parser.add_argument("--num-envs", type=int, default=3904)
     parser.add_argument("--num-ships", type=int, default=8)
     parser.add_argument("--num-fields", type=int, default=4)
-    parser.add_argument("--max-bullets", type=int, default=20)
+    parser.add_argument("--max-bullets", type=int, default=DEFAULT_MAX_BULLETS_PER_SHIP)
     parser.add_argument("--bullet-drag-coeff", type=float, default=8e-4)
     parser.add_argument(
         "--bullet-field-integrator",
