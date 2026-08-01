@@ -46,8 +46,8 @@ sample sizes, raw artifacts, and limitations behind these measurements.
 ## Learning progression
 
 A one-billion-step training run completed in 7.5 hours on a single RTX 5090. Post-hoc
-calibration places the final policy at about **1813 Elo** on a scale that fixes the
-scripted controller at 1000 — a lead of roughly **813 points**, where 400 points
+calibration places the final checkpoint at about **1826 Elo** on a scale that fixes the
+scripted controller at 1000 — a lead of roughly **826 points**, where 400 points
 already means ten-to-one odds.
 
 ![Post-hoc calibrated Elo over training](docs/results/elo_curve.png)

@@ -90,38 +90,58 @@ realization, not the source of the aggregate rates above.
 
 ![Calibrated live-policy Elo](results/elo_curve.png)
 
+*Tournament-rated checkpoints (dots, ±1 SE) sit on the refit curve; the final dot pins
+the endpoint.*
+
 Online Elo is useful during training, but its location can drift with sequential K-factor
 updates and changing opponents. [`elo_calibrate.py`](../src/boost_and_broadside/modes/elo_calibrate.py)
 constructs a post-hoc scale in two stages:
 
-1. run an adaptive tournament among stationary players — random, scripted, and frozen
-   ladder checkpoints — until their fitted uncertainty reaches the target;
+1. run an adaptive tournament among stationary players — random, the scripted
+   controller, semi-random rungs between them, the frozen ladder checkpoints, and the
+   final checkpoint — until every fitted rating reaches the target uncertainty;
 2. refit each historical live policy from that update's saved win/loss/tie record against
    the now-calibrated opponents.
+
+The rungs (the same mixture controllers as the
+[reference ladder](#reference-ladder-conditioning) below) give the random baseline
+informative matchups instead of one near-certain link, and the final checkpoint plays so
+the curve's endpoint carries a full tournament rating rather than only the last update's
+online record. The stored tournament converged to its ±10 target in 11 adaptive batches
+and 180,224 games.
 
 The fit uses [Bradley-Terry](https://doi.org/10.2307/2334029) expected scores. The
 primary convention treats a draw as half a win for each side; a decisive-games-only fit
 is retained as a diagnostic. Ratings are reported with the scripted controller fixed at
-1000 — the same convention as the fleet-scale view below. On this scale the random
-baseline reads about −240, and 400 points correspond to ten-to-one odds.
+1000 — the same convention as the fleet-scale view below — and 400 points correspond to
+ten-to-one odds.
 
 Key values from [`elo_calibrated.json`](../checkpoints/resilient-resonance-682/elo_calibrated.json):
 
 | Measurement | Elo | Conditional SE | Games |
 |---|---:|---:|---:|
-| Final live policy, 999.424M steps | 1812.9 | 18.4 | 627 recorded games |
-| Last frozen checkpoint, 876.495M steps | 1816.8 | 9.5 | 6,134 tournament games |
-| Scripted controller | 1000 (anchor) | 6.2 | 7,895 tournament games |
-| Random baseline | −240.0 | 32.8 | 16,182 tournament games |
+| Final checkpoint, 999.424M steps | 1825.5 | 7.4 | 10,046 tournament games |
+| Final live policy (refit), 999.424M steps | 1802.1 | 18.4 | 627 recorded games |
+| Last frozen ladder checkpoint, 876.495M steps | 1806.3 | 7.3 | 10,212 tournament games |
+| Scripted controller | 1000 (anchor) | 4.5 | 14,173 tournament games |
+| Random baseline | −426.0 | 10.4 | 8,841 tournament games |
 
-Pinning the scale to scripted is uncertain by ±6 Elo, shared by every rating; that
-common shift cancels when comparing two players, so the final policy's lead over
-scripted is about 813 points however the scale is pinned. The final *online* training
-rating was 1547.3; it is a different, drifting estimator and should not be mixed with
-the calibrated curve.
+Pinning the scale to scripted is uncertain by ±4.5 Elo, shared by every rating; that
+common shift cancels when comparing two players, so the final checkpoint's lead over
+scripted is about 826 points however the scale is pinned. The independent
+[fleet-scale tournament](#symmetric-fleet-scale-ratings) below rates the same checkpoint
+1822 ± 4 in its own 4-vs-4 bracket — the two measurements agree within uncertainty.
 
-The compact plot above omits uncertainty bands. The calibration directory preserves
-methodology plots with error bands and convergence diagnostics under
+Two earlier estimates are superseded by this tournament and worth distinguishing. The
+final *online* training rating (1547.3) is a drifting sequential estimator and should
+not be mixed with the calibrated curve. And before the rungs were added, random's
+position was measured only through near-certain games and read about −240 ± 33; the
+conditioned tournament places it at −426 ± 10, a reminder that saturated matchups carry
+almost no rating information.
+
+The compact plot above carries ±1 SE bars on the checkpoint dots but omits the refit
+curve's own band. The calibration directory preserves methodology plots with error bands
+and convergence diagnostics under
 [`checkpoints/resilient-resonance-682/elo_calibration/`](../checkpoints/resilient-resonance-682/elo_calibration/).
 
 ## Symmetric fleet-scale ratings
@@ -151,17 +171,16 @@ this evaluation. The 32- and 64-ship estimates have visibly wider uncertainty.*
 | 32 | 5,856 | 2152 ± 49 |
 | 64 | 1,464 | 1923 ± 82 |
 
-At the native 4-vs-4 scale this tournament rates the final checkpoint 1822 ± 4 — within
-uncertainty of the calibrated final-live rating of about 1813 ± 18. The two measurements
-use different final-policy evidence, so exact equality is not expected.
+At the native 4-vs-4 scale this tournament rates the final checkpoint 1822 ± 4,
+consistent with the calibration tournament's independent 1825.5 ± 7.4 above.
 
 ### Reference-ladder conditioning
 
-Random play is extremely far from scripted play at large fleet sizes, making a direct
-random-to-scripted link statistically inefficient. The calibration therefore adds
-intermediate controllers. For each ship on each simulation step, a controller with
-probability `P` uses the complete scripted action; otherwise it samples a complete
-action uniformly at random. The refined ladder uses
+Random play is extremely far from scripted play, making a direct random-to-scripted
+link statistically inefficient; both the fleet-scale tournaments and the training-curve
+calibration therefore add intermediate controllers. For each ship on each simulation
+step, a controller with probability `P` uses the complete scripted action; otherwise it
+samples a complete action uniformly at random. The refined ladder uses
 `P = 0, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100%`.
 
 ![Reference-ladder connectivity](results/semi_random_connectivity.png)
