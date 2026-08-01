@@ -196,6 +196,8 @@ class YemongEnvWrapper:
     def step(
         self,
         actions: torch.Tensor,
+        *,
+        unlimited_resources: bool = False,
     ) -> tuple[YemongObservation, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
         """Advance all environments and return (obs, rewards, dones, truncated, info).
 
@@ -208,6 +210,7 @@ class YemongEnvWrapper:
 
         Args:
             actions: (B, N, 3) int tensor — [power, turn, shoot].
+            unlimited_resources: Protect and refill alive ships for interactive play.
 
         Returns:
             obs:          dict of (B, N, ...) tensors.
@@ -222,7 +225,10 @@ class YemongEnvWrapper:
         prev_state = _make_prev_state_proxy(self.env.state, prev_health, prev_alive)
 
         # Physics step (no auto-reset)
-        dones, truncated = self.env.step(actions)
+        dones, truncated = self.env.step(
+            actions,
+            unlimited_resources=unlimited_resources,
+        )
 
         # Compute rewards for active components only — (B, N, K_active)
         B, N = self.env.state.ship_health.shape

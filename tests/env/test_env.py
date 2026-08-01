@@ -182,6 +182,34 @@ class TestTensorEnvStep:
         # Ships have default_speed velocity, so position changes
         assert not torch.allclose(env.state.ship_pos, pos_before)
 
+    def test_unlimited_resources_survive_lethal_hit_and_refill_power(self, ship_cfg):
+        env_cfg = EnvConfig(num_ships=2, max_bullets=1, max_episode_steps=100)
+        env = TensorEnv(num_envs=1, ship_config=ship_cfg, env_config=env_cfg, device="cpu")
+        env.reset(options={"team_sizes": (1, 1)})
+
+        env.state.ship_pos[0] = torch.tensor([100.0 + 100.0j, 200.0 + 200.0j])
+        env.state.ship_health[0, 1] = 1.0
+        env.state.ship_power.zero_()
+        env.state.bullet_pos[0, 0, 0] = env.state.ship_pos[0, 1]
+        env.state.bullet_vel[0, 0, 0] = 0.0
+        env.state.bullet_time[0, 0, 0] = 1.0
+        env.state.bullet_active[0, 0, 0] = True
+
+        actions = torch.zeros((1, 2, 3), dtype=torch.long)
+        dones, _ = env.step(actions, unlimited_resources=True)
+
+        assert not env.state.bullet_active[0, 0, 0]
+        assert not dones.item()
+        assert env.state.ship_alive.all()
+        assert torch.equal(
+            env.state.ship_health,
+            torch.full_like(env.state.ship_health, ship_cfg.max_health),
+        )
+        assert torch.equal(
+            env.state.ship_power,
+            torch.full_like(env.state.ship_power, ship_cfg.max_power),
+        )
+
 
 class TestYemongEnvWrapper:
     def test_reset_returns_obs_dict(self, ship_cfg, env_cfg, reward_cfg):

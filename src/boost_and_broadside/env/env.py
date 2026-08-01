@@ -252,7 +252,12 @@ class TensorEnv:
     # Step
     # ------------------------------------------------------------------
 
-    def step(self, actions: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def step(
+        self,
+        actions: torch.Tensor,
+        *,
+        unlimited_resources: bool = False,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Advance all environments by one physics tick.
 
         The caller (wrapper) is responsible for:
@@ -261,15 +266,49 @@ class TensorEnv:
 
         Args:
             actions: (B, N, 3) int tensor — [power, turn, shoot].
+            unlimited_resources: Protect currently alive ships from damage and
+                refill their power. Used only by the interactive play toggle.
 
         Returns:
             (dones, truncated) — each is a (B,) bool tensor.
         """
+        protected_alive = self.state.ship_alive.clone() if unlimited_resources else None
+        if protected_alive is not None:
+            # A very large temporary health value prevents a lethal field or
+            # bullet hit from setting ``alive=False`` before game-over is
+            # checked. The user-visible value is restored to max_health below.
+            protected_health = torch.full_like(
+                self.state.ship_health,
+                torch.finfo(self.state.ship_health.dtype).max,
+            )
+            self.state.ship_health = torch.where(
+                protected_alive, protected_health, self.state.ship_health
+            )
+            self.state.ship_power = torch.where(
+                protected_alive,
+                torch.full_like(self.state.ship_power, self.ship_config.max_power),
+                self.state.ship_power,
+            )
+
         self.state.prev_action = actions.float()
         self.state = update_ships(self.state, actions, self.ship_config)
         if self.env_config.max_bullets > 0:
             self.state = update_bullets(self.state, self.ship_config)
         self.state, dones = resolve_collisions(self.state, self.ship_config)
+
+        if protected_alive is not None:
+            self.state.ship_alive |= protected_alive
+            self.state.ship_health = torch.where(
+                protected_alive,
+                torch.full_like(self.state.ship_health, self.ship_config.max_health),
+                self.state.ship_health,
+            )
+            self.state.ship_power = torch.where(
+                protected_alive,
+                torch.full_like(self.state.ship_power, self.ship_config.max_power),
+                self.state.ship_power,
+            )
+            dones &= ~protected_alive.any(dim=1)
 
         self.state.step_count += 1
         if self.env_config.max_episode_steps is None:

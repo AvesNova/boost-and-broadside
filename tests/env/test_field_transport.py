@@ -74,9 +74,15 @@ def test_passive_entry_exit_restores_speed_and_preserves_long_run_energy():
     initial_h = 0.5 * state.ship_local_index.square() * state.ship_vel.abs().square()
 
     min_speed = float("inf")
-    for _ in range(220):
+    entered_core = False
+    for _ in range(800):
         state = update_ships(state, _coast_actions(), config)
         min_speed = min(min_speed, state.ship_vel.abs().item())
+        entered_core |= state.ship_field_alpha.item() > 0.999
+        if entered_core and state.ship_local_index.item() == pytest.approx(1.0, abs=1e-5):
+            break
+    else:
+        pytest.fail("ship did not complete a field entry and exit")
 
     final_h = 0.5 * state.ship_local_index.square() * state.ship_vel.abs().square()
     assert min_speed < 100.0 / config.field_index_step

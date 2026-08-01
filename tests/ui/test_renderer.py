@@ -7,6 +7,7 @@ from boost_and_broadside.ui.renderer import (
     _GHOST_DPHI_X,
     _GHOST_DPHI_Y,
     GameRenderer,
+    RenderConfig,
     field_border_pattern,
     field_color,
     wrapped_field_centers,
@@ -59,3 +60,19 @@ def test_field_outline_patterns_leave_the_interior_unfilled():
         surface.fill(background)
         GameRenderer._draw_field_outline(surface, (40, 40), 25, color, pattern, width)
         assert surface.get_at((40, 40))[:3] == background
+
+
+def test_play_resource_button_toggles_unlimited_health_and_power(monkeypatch):
+    monkeypatch.setenv("HEADLESS", "1")
+    renderer = GameRenderer(
+        ShipConfig(),
+        RenderConfig(show_unlimited_button=True),
+    )
+    try:
+        assert not renderer.unlimited_resources
+        renderer._handle_left_click(renderer._unlimited_rect.center)
+        assert renderer.unlimited_resources
+        renderer._handle_left_click(renderer._unlimited_rect.center)
+        assert not renderer.unlimited_resources
+    finally:
+        renderer.close()

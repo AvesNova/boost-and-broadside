@@ -85,6 +85,7 @@ class RenderConfig:
     window_size: int = 900
     fps: int = 60
     show_ui: bool = True  # pause button + FPS slider; off for clean video capture
+    show_unlimited_button: bool = False  # play-only health/power toggle
     team_colors: tuple[tuple[int, int, int], tuple[int, int, int]] = (
         (100, 180, 255),  # team 0: blue
         (255, 120, 80),  # team 1: red
@@ -120,6 +121,7 @@ class GameRenderer:
 
         # UI state
         self.paused = False
+        self.unlimited_resources = False
         self.target_fps = render_config.fps
         self.slider_dragging = False
 
@@ -127,6 +129,7 @@ class GameRenderer:
         H = s
         self._pause_rect = pygame.Rect(W - 200, H - 40, 60, 30)
         self._slider_track_rect = pygame.Rect(W - 120, H - 30, 100, 10)
+        self._unlimited_rect = pygame.Rect(W - 220, 10, 200, 30)
 
     def render(
         self,
@@ -149,11 +152,7 @@ class GameRenderer:
                 return False
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
-                    if self._pause_rect.collidepoint(event.pos):
-                        self.paused = not self.paused
-                    elif self._slider_track_rect.inflate(10, 20).collidepoint(event.pos):
-                        self.slider_dragging = True
-                        self._update_slider(event.pos[0])
+                    self._handle_left_click(event.pos)
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1:
                     self.slider_dragging = False
@@ -201,6 +200,20 @@ class GameRenderer:
         frac = max(0.0, min(1.0, rel_x / self._slider_track_rect.width))
         # Map frac to FPS (e.g. 1 to 120)
         self.target_fps = int(1 + frac * 119)
+
+    def _handle_left_click(self, position: tuple[int, int]) -> None:
+        """Apply one UI click, including the play-only unlimited toggle."""
+        if (
+            self._render_config.show_ui
+            and self._render_config.show_unlimited_button
+            and self._unlimited_rect.collidepoint(position)
+        ):
+            self.unlimited_resources = not self.unlimited_resources
+        elif self._pause_rect.collidepoint(position):
+            self.paused = not self.paused
+        elif self._slider_track_rect.inflate(10, 20).collidepoint(position):
+            self.slider_dragging = True
+            self._update_slider(position[0])
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -254,6 +267,22 @@ class GameRenderer:
         # Draw FPS text
         fps_label = self._font.render(f"{self.target_fps} FPS", True, (200, 200, 200))
         surf.blit(fps_label, (self._slider_track_rect.x, self._slider_track_rect.y - 20))
+
+        if self._render_config.show_unlimited_button:
+            resource_color = (80, 220, 120) if self.unlimited_resources else (110, 110, 125)
+            pygame.draw.rect(surf, resource_color, self._unlimited_rect)
+            resource_label = self._font.render(
+                f"Unlimited HP/PW: {'ON' if self.unlimited_resources else 'OFF'}",
+                True,
+                (0, 0, 0),
+            )
+            surf.blit(
+                resource_label,
+                (
+                    self._unlimited_rect.centerx - resource_label.get_width() // 2,
+                    self._unlimited_rect.centery - resource_label.get_height() // 2,
+                ),
+            )
 
         # Interface legend: color carries index, pattern carries damage. In
         # particular, a solid outline means severe damage—not impermeability.

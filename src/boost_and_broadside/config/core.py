@@ -60,8 +60,8 @@ class ShipConfig:
 
     # Static refractive fields. ``transition_width`` is the complete interface
     # band, extending half the width to either side of the nominal radius.
-    field_index_step: float = 1.12
-    field_interface_damage: float = 20.0
+    field_index_step: float = float(np.sqrt(2.0))  # levels span n=1/2 through n=2
+    field_interface_damage: float = 10.0
     field_radius_min: float = 30.0
     field_radius_max: float = 160.0
     field_transition_width_min: float = 40.0

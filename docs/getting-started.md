@@ -65,8 +65,9 @@ uv run main.py --mode watch --team0 latest --team1 scripted
 uv run main.py --mode watch --team0 latest --team1 latest
 ```
 
-Play mode has no match timer and starts a new match as soon as either ship dies. Human
-controls are WASD for flight, Shift for sharp turns, and Space to shoot. Agent specs
+Play mode has no match timer and starts a new match as soon as either ship dies. The
+`Unlimited HP/PW` button in the upper-right corner toggles full health and power for both
+ships. Human controls are WASD for flight, Shift for sharp turns, and Space to shoot. Agent specs
 accepted by `--team0` and `--team1` include `null` (human in watch mode), `random`,
 `scripted`, `latest`, a checkpoint path, and the named scripted controllers listed by
 `main.py --help`.
@@ -103,7 +104,10 @@ uv run main.py --mode bc
 uv run main.py --mode bc_warmstart
 ```
 
-Hyperparameters live in [`runs/`](../runs/). The main combat profile is
+Hyperparameters live in [`runs/`](../runs/). Global ship and field defaults—including
+`field_index_step` and `field_interface_damage`—are defined on `ShipConfig` in
+[`src/boost_and_broadside/config/core.py`](../src/boost_and_broadside/config/core.py).
+The main combat profile is
 [`runs/rl.py`](../runs/rl.py), shared model/physics/reward definitions are in
 [`runs/shared.py`](../runs/shared.py), and configuration types are frozen dataclasses in
 [`src/boost_and_broadside/config/`](../src/boost_and_broadside/config/).

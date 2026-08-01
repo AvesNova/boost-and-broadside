@@ -79,7 +79,7 @@ def test_direct_parent_and_telescoping_root_child_grandchild():
     config = ShipConfig(world_size=(512.0, 512.0))
     center, radius, width, parent, index, crossing_damage, delta = _nested_materials(config)
     assert parent.tolist() == [[-1, 0, 1]]
-    assert crossing_damage.tolist() == [[0.0, 20.0, 40.0]]
+    assert crossing_damage.tolist() == [[0.0, 10.0, 20.0]]
 
     points = torch.tensor([[376.0 + 256.0j, 316.0 + 256.0j, 256.0 + 256.0j]])
     evaluation = evaluate_fields(points, center, radius, width, delta, config.world_size)
@@ -220,8 +220,11 @@ def test_log_symmetric_index_levels_are_reciprocal():
     config = ShipConfig()
     levels = torch.tensor([[-2, -1, 1, 2]], dtype=torch.int8)
     parents = torch.full_like(levels, -1, dtype=torch.long)
-    damage = torch.zeros_like(levels)
-    index, _, _ = material_tensors(levels, damage, parents, config)
+    damage = torch.tensor([[0, 1, 1, 2]], dtype=torch.int8)
+    index, crossing_damage, _ = material_tensors(levels, damage, parents, config)
+    expected_index = torch.tensor([[0.5, 2.0**-0.5, 2.0**0.5, 2.0]])
+    assert torch.allclose(index, expected_index)
+    assert torch.equal(crossing_damage, torch.tensor([[0.0, 10.0, 10.0, 20.0]]))
     assert index[0, 0] * index[0, 3] == pytest.approx(1.0, rel=1e-6)
     assert index[0, 1] * index[0, 2] == pytest.approx(1.0, rel=1e-6)
     assert math.isclose(index[0, 2].item(), config.field_index_step, rel_tol=1e-6)

@@ -82,14 +82,14 @@ alpha = 6z^5 - 15z^4 + 10z^3.
 
 The analytic gradient is used. Both derivatives are flat at the band edges and the
 gradient is explicitly finite at the center. The four non-ambient material levels use one
-configurable log step `s` (default 1.12):
+configurable log step `s` (default `sqrt(2)`):
 
 | Level | Exponent | Index | Passive world-speed factor |
 |---|---:|---:|---:|
-| `VERY_LOW` | -2 | `s^-2` ≈ 0.797 | `s^2` ≈ 1.254 |
-| `LOW` | -1 | `s^-1` ≈ 0.893 | `s` ≈ 1.120 |
-| `HIGH` | +1 | `s` ≈ 1.120 | `s^-1` ≈ 0.893 |
-| `VERY_HIGH` | +2 | `s^2` ≈ 1.254 | `s^-2` ≈ 0.797 |
+| `VERY_LOW` | -2 | `s^-2` = 0.5 | `s^2` = 2 |
+| `LOW` | -1 | `s^-1` ≈ 0.707 | `s` ≈ 1.414 |
+| `HIGH` | +1 | `s` ≈ 1.414 | `s^-1` ≈ 0.707 |
+| `VERY_HIGH` | +2 | `s^2` = 2 | `s^-2` = 0.5 |
 
 The ambient `AMBIENT=0` level is not sampled as a field. Smooth refraction, including
 total internal reflection when transmission is impossible, emerges from the same force;
@@ -114,7 +114,7 @@ point in the projectile update, and fields never absorb bullets.
 ## Smooth interface damage
 
 Index and interface damage are independent. The three levels are `NONE=0`,
-`STANDARD=D`, and `SEVERE=2D`, with default `D=20`. For cached previous and newly
+`STANDARD=D`, and `SEVERE=2D`, with default `D=10`. For cached previous and newly
 evaluated alpha values, each field contributes
 
 ```text

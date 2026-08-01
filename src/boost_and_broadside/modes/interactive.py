@@ -9,6 +9,8 @@ Agent specs (--team0 / --team1) are resolved by modes/agent_factory.py —
 Space to shoot); see that module for the full spec list.
 """
 
+from dataclasses import replace
+
 import torch
 
 from boost_and_broadside.config import (
@@ -52,7 +54,9 @@ def run_play_mode(
     The player controls the blue team-0 ship. The red team-1 ship receives the
     null (all-zero) action. Matches contain four static refractive fields, have
     no time horizon, and restart automatically as soon as either ship dies.
+    An on-screen button toggles unlimited health and power for both ships.
     """
+    render_config = replace(render_config, show_unlimited_button=True)
     agent0 = resolve_agent_spec(
         "null",
         ship_config,
@@ -267,7 +271,10 @@ def _run_interactive_loop(
                     keyboard = _decode_keyboard().to(device)
                     action = _apply_keyboard_override(action, team_id, keyboard, keyboard_teams)
 
-                obs, _, dones, truncated, _ = wrapper.step(action)
+                obs, _, dones, truncated, _ = wrapper.step(
+                    action,
+                    unlimited_resources=renderer.unlimited_resources,
+                )
 
                 if (dones | truncated).any():
                     reset_done_envs(agent0, dones | truncated, num_tokens)

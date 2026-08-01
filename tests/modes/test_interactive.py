@@ -2,10 +2,7 @@
 
 import torch
 
-from boost_and_broadside.modes.interactive import (
-    PLAY_ENV_CONFIG,
-    _apply_keyboard_override,
-)
+from boost_and_broadside.modes.interactive import PLAY_ENV_CONFIG, _apply_keyboard_override
 
 
 def test_play_preset_is_unlimited_one_vs_one_with_four_fields() -> None:
