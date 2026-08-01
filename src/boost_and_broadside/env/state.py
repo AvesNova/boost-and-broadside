@@ -10,10 +10,12 @@ class TensorState:
     """Complete state of all parallel environments as GPU tensors.
 
     All tensors share the same device. Shape notation:
-      B = num_envs, N = max_ships, K = max_bullets per ship.
+      B = num_envs, N = max_ships, K = max_bullets per ship,
+      M = num_fields.
 
-    The dataclass is NOT frozen so physics functions can advance fields between
-    steps. The load-bearing convention is that they do so by *reassignment*
+    The dataclass is NOT frozen so physics functions can advance state between
+    steps (the refractive-field map itself remains static). The load-bearing
+    convention is that they do so by *reassignment*
     (`state.x = f(state.x)`), not in-place mutation of the existing tensor. This
     is what lets a snapshot alias the pre-step tensors cheaply: a later
     reassignment on the live state rebinds the attribute and leaves the aliased
@@ -28,7 +30,7 @@ class TensorState:
     Converting a physics field's advance to in-place mutation (e.g. for the
     allocation win STYLE_GUIDE §6.5 favors) would silently break that proxy — so
     it is deliberately reassignment. The few in-place writes on state fields
-    (`damage_matrix`, `ship_hit_obstacle`) are per-step scratch/outputs that
+    (`damage_matrix`) are per-step scratch/outputs that
     nothing snapshots, which is why they are exempt.
     """
 
@@ -68,14 +70,24 @@ class TensorState:
         torch.Tensor
     )  # (B, N, N) float32  — accumulated this episode; zeroed on reset
 
-    # Obstacle state (M = num_obstacles per env)
-    obstacle_pos: torch.Tensor  # (B, M) complex64  — world position
-    obstacle_vel: torch.Tensor  # (B, M) complex64  — velocity
-    obstacle_radius: torch.Tensor  # (B, M) float32    — circle radius
-    obstacle_gcenter: torch.Tensor  # (B, M) complex64  — per-obstacle harmonic gravity center
+    # Static refractive-field map. Parent and delta-index values are computed
+    # during map construction and never discovered in the per-step hot path.
+    field_pos: torch.Tensor  # (B, M) complex64
+    field_radius: torch.Tensor  # (B, M) float32 — nominal interface radius
+    field_transition_width: torch.Tensor  # (B, M) float32 — complete interface band
+    field_index_level: torch.Tensor  # (B, M) int8 — {-2, -1, +1, +2}
+    field_index: torch.Tensor  # (B, M) float32 — absolute interior n
+    field_damage_level: torch.Tensor  # (B, M) int8 — {0, 1, 2}
+    field_damage: torch.Tensor  # (B, M) float32 — damage per complete crossing
+    field_parent: torch.Tensor  # (B, M) int64 — direct parent, -1 for roots
+    field_delta_index: torch.Tensor  # (B, M) float32 — n_inside - n_parent
 
-    # Per-step flag: True for ships that were killed by an obstacle this step
-    ship_hit_obstacle: torch.Tensor  # (B, N) bool
+    # Cached ship-field evaluation. The alpha cache is also the previous alpha
+    # used by smooth total-variation interface damage.
+    ship_field_alpha: torch.Tensor  # (B, N, M) float32
+    ship_local_index: torch.Tensor  # (B, N) float32
+    ship_field_gradient: torch.Tensor  # (B, N) complex64 — grad(n)
+    ship_field_damage: torch.Tensor  # (B, N) float32 — interface damage this step
 
     # ------------------------------------------------------------------
     # Convenience properties
@@ -94,8 +106,14 @@ class TensorState:
         return self.bullet_pos.shape[2]
 
     @property
+    def num_fields(self) -> int:
+        return self.field_pos.shape[1]
+
+    @property
     def num_obstacles(self) -> int:
-        return self.obstacle_pos.shape[1]
+        """Deprecated read-only alias for pre-field integrations."""
+
+        return self.num_fields
 
     @property
     def device(self) -> torch.device:

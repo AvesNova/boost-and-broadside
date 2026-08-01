@@ -34,6 +34,7 @@ def make_state(
     max_bullets: int = 5,
     device: str = "cpu",
     ship_config: ShipConfig | None = None,
+    num_fields: int = 0,
 ) -> TensorState:
     """Build a TensorState with sane initial values for unit testing."""
     if ship_config is None:
@@ -69,9 +70,19 @@ def make_state(
         cumulative_damage_matrix=torch.zeros(
             (num_envs, max_ships, max_ships), dtype=torch.float32, device=dev
         ),
-        obstacle_pos=torch.zeros((num_envs, 0), dtype=torch.complex64, device=dev),
-        obstacle_vel=torch.zeros((num_envs, 0), dtype=torch.complex64, device=dev),
-        obstacle_radius=torch.zeros((num_envs, 0), dtype=torch.float32, device=dev),
-        obstacle_gcenter=torch.zeros((num_envs,), dtype=torch.complex64, device=dev),
-        ship_hit_obstacle=torch.zeros((num_envs, max_ships), dtype=torch.bool, device=dev),
+        field_pos=torch.zeros((num_envs, num_fields), dtype=torch.complex64, device=dev),
+        field_radius=torch.zeros((num_envs, num_fields), dtype=torch.float32, device=dev),
+        field_transition_width=torch.zeros((num_envs, num_fields), dtype=torch.float32, device=dev),
+        field_index_level=torch.zeros((num_envs, num_fields), dtype=torch.int8, device=dev),
+        field_index=torch.ones((num_envs, num_fields), dtype=torch.float32, device=dev),
+        field_damage_level=torch.zeros((num_envs, num_fields), dtype=torch.int8, device=dev),
+        field_damage=torch.zeros((num_envs, num_fields), dtype=torch.float32, device=dev),
+        field_parent=torch.full((num_envs, num_fields), -1, dtype=torch.long, device=dev),
+        field_delta_index=torch.zeros((num_envs, num_fields), dtype=torch.float32, device=dev),
+        ship_field_alpha=torch.zeros(
+            (num_envs, max_ships, num_fields), dtype=torch.float32, device=dev
+        ),
+        ship_local_index=torch.ones((num_envs, max_ships), dtype=torch.float32, device=dev),
+        ship_field_gradient=torch.zeros((num_envs, max_ships), dtype=torch.complex64, device=dev),
+        ship_field_damage=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
     )
