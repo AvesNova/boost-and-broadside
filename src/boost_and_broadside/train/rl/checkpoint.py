@@ -75,7 +75,7 @@ class CheckpointMixin:
         self._save_roster_json()
 
     def _maybe_save_best_checkpoints(self, random_elo: float) -> None:
-        """Overwrite the best-model checkpoints (live, then avg) when normalized ELO improves.
+        """Overwrite the best-model checkpoints (live, then avg) when normalized Elo improves.
 
         Each family (live/avg) tracks its own high-water mark independently, so
         the two files can lag different updates — e.g. the avg policy may still
@@ -100,7 +100,7 @@ class CheckpointMixin:
                 self._best_avg_elo_norm = avg_elo_norm
 
     # ------------------------------------------------------------------
-    # ELO measurement ladder
+    # Elo measurement ladder
     # ------------------------------------------------------------------
 
     def _save_ladder_snapshot(self) -> Path:
@@ -135,7 +135,7 @@ class CheckpointMixin:
         checkpoint has fewer than ``min_games_to_freeze`` rated games.
 
         Milestones sit on an absolute grid — multiples of ``elo_milestone_gap``,
-        so snapshots land near 200, 400, 600 ELO and so on. Measuring the gap
+        so snapshots land near 200, 400, 600 Elo and so on. Measuring the gap
         from the previous snapshot's actual rating instead would let the grid
         ratchet upward: a snapshot deferred to 250 pushes the next to 450, and
         the drift compounds for the rest of the run, leaving the ladder's rungs

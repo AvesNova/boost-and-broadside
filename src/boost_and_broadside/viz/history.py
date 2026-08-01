@@ -92,7 +92,7 @@ def checkpoint_points(summary: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray
 
     Reads the ``ladder/elo/ckpt_<step>`` keys (and their ``_stderr`` companions)
     that both W&B and the calibration summary expose, so a run's frozen ladder
-    can be scattered as points on the ELO curve. ``stderr`` is NaN where absent.
+    can be scattered as points on the Elo curve. ``stderr`` is NaN where absent.
     """
     steps, ratings, errs = [], [], []
     for key, value in summary.items():

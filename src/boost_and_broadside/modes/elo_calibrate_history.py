@@ -62,9 +62,11 @@ def to_history_rows(result: dict) -> list[dict]:
 
     for player in result.get("players", []):
         step = player.get("global_step")
-        # Random is the zero anchor, not a ladder rung; scripted and other
-        # non-timeline agents have no step. Neither belongs on the step axis.
-        if step is None or player.get("training_elo") is None or player["label"] == "random":
+        # Random is a fixed reference player, not a ladder rung; scripted and
+        # the semi-random rungs have no step. None belongs on the step axis.
+        # The run's final checkpoint has a step but no training rating (it was
+        # never a roster entry), and does belong: it pins the curve's endpoint.
+        if step is None or player["label"] == "random":
             continue
         row = row_at(step)
         _put(row, f"ladder/elo/ckpt_{int(step)}", player.get("calibrated_elo"))
@@ -91,7 +93,7 @@ def to_summary(result: dict) -> dict:
             _put(summary, "elo/scripted", calibrated)
             continue
         step = player.get("global_step")
-        if step is None or player.get("training_elo") is None or label == "random":
+        if step is None or label == "random":
             continue
         _put(summary, f"ladder/elo/ckpt_{int(step)}", calibrated)
         _put(summary, f"ladder/elo/ckpt_{int(step)}_stderr", player.get("stderr"))
@@ -105,10 +107,10 @@ def to_summary(result: dict) -> dict:
         final_step = max(final_step, int(last.get("global_step") or 0))
 
     summary["_step"] = final_step
-    for key in ("reference", "tie_mode", "tie_mode_alt", "converged", "run"):
+    for key in ("reference", "tie_mode", "tie_mode_alt", "converged", "run", "anchor"):
         if key in result:
             summary[key] = result[key]
-    for key in ("target_stderr", "anchor_offset_stderr"):
+    for key in ("target_stderr", "anchor_offset_stderr", "anchor_elo"):
         if _finite(result.get(key)):
             summary[key] = float(result[key])
     return summary

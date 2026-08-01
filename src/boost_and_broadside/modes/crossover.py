@@ -1,4 +1,4 @@
-"""crossover mode: how many scripted agents does it take to beat the trained team?
+"""crossover mode: how many scripted-controlled ships beat the learned team?
 
 For each trained-team size T, the trained policy (team 0) plays the scripted agent
 (team 1) at growing scripted counts S, and the trained win rate is measured over a
@@ -10,7 +10,7 @@ The same trained weights play every size — the model is token-based and scale-
 invariant — so this is one checkpoint measured across a grid of matchups. An
 exponential-then-bisection search over S keeps it to ~log(range) batches per T.
 
-Writes ``<output_dir>/crossover.json`` (full win-rate curves) and prints a table.
+Writes ``<output_dir>/crossover.json`` (full outcome-count curves) and prints a table.
 """
 
 import json
@@ -28,6 +28,7 @@ from boost_and_broadside.modes.collect import evaluate_matchup
 # batch for big battles; a floor keeps the win-rate estimate meaningful.
 _COLLISION_BUDGET = 4_000_000
 _MIN_ENVS = 48
+_SCHEMA_VERSION = 2
 
 
 def _envs_for(n_ships: int, max_envs: int) -> int:
@@ -45,6 +46,30 @@ def parse_counts(spec: str) -> list[int]:
         elif token:
             out.append(int(token))
     return out
+
+
+def _outcome_record(
+    wins: int, losses: int, ties: int, games: int, mean_episode_steps: float
+) -> dict[str, int | float | bool]:
+    """Lossless per-matchup result stored in the crossover curve."""
+    if wins + losses + ties != games:
+        raise ValueError(
+            f"outcome counts ({wins}+{losses}+{ties}) do not match games={games}"
+        )
+    return {
+        "counts_available": True,
+        "wins": wins,
+        "losses": losses,
+        "ties": ties,
+        "games": games,
+        "win_rate": wins / games,
+        "mean_episode_steps": mean_episode_steps,
+    }
+
+
+def _curve_rate(record: float | dict) -> float:
+    """Read a win rate from current count records or the legacy rate-only artifact."""
+    return float(record["win_rate"] if isinstance(record, dict) else record)
 
 
 def run_crossover_mode(
@@ -82,7 +107,7 @@ def run_crossover_mode(
         if trained_n in by_trained:
             hint = by_trained[trained_n]["crossover"] or hint
             continue
-        curve: dict[int, float] = {}
+        curve: dict[int, dict[str, int | float | bool]] = {}
 
         def win_rate(scripted_n: int, trained_n: int = trained_n, curve=curve) -> float:
             """Trained-team win fraction at T vs S (ties count against trained)."""
@@ -92,16 +117,21 @@ def run_crossover_mode(
                 total = trained_n + scripted_n
                 trained.agent._num_ships = total
                 games = _envs_for(total, num_envs)
-                t0_wins, _, _, _ = evaluate_matchup(
+                t0_wins, t1_wins, ties, mean_episode_steps = evaluate_matchup(
                     trained, scripted, trained_n, scripted_n, games, ship_config,
                     base_env, device,
                 )
-                curve[scripted_n] = t0_wins / games
+                curve[scripted_n] = _outcome_record(
+                    t0_wins, t1_wins, ties, games, mean_episode_steps
+                )
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
-                print(f"  {trained_n:>3}v{scripted_n:<4} trained wins {curve[scripted_n]:6.1%}"
-                      f"  ({games} games)")
-            return curve[scripted_n]
+                print(
+                    f"  {trained_n:>3}v{scripted_n:<4} policy wins "
+                    f"{_curve_rate(curve[scripted_n]):6.1%}  "
+                    f"({t0_wins}W/{t1_wins}L/{ties}T, {games} games)"
+                )
+            return _curve_rate(curve[scripted_n])
 
         # Warm start from the previous size's crossover (monotonic in T); the very
         # first size has no hint and falls back to an exponential bracket.
@@ -112,8 +142,12 @@ def run_crossover_mode(
             "crossover": crossover,  # first scripted count with trained < 50%
             "beats_up_to": beats_up_to,  # largest scripted team still beaten
             "capped": crossover is None,
-            "win_rate_at_beats_up_to": curve.get(beats_up_to) if beats_up_to else None,
-            "win_rate_at_crossover": curve.get(crossover) if crossover else None,
+            "win_rate_at_beats_up_to": (
+                _curve_rate(curve[beats_up_to]) if beats_up_to in curve else None
+            ),
+            "win_rate_at_crossover": (
+                _curve_rate(curve[crossover]) if crossover in curve else None
+            ),
             "curve": {str(k): v for k, v in sorted(curve.items())},
         }
         if crossover is not None:
@@ -123,21 +157,42 @@ def run_crossover_mode(
     rows = [by_trained[t] for t in sorted(by_trained)]
     _print_table(rows, max_total_ships)
     print(f"\n  wrote {out_json}")
-    return {"run": run_dir.name, "num_envs": num_envs, "max_total_ships": max_total_ships,
-            "rows": rows}
+    return {
+        "schema_version": _SCHEMA_VERSION,
+        "run": run_dir.name,
+        "num_envs": num_envs,
+        "max_total_ships": max_total_ships,
+        "rows": rows,
+    }
 
 
 def _load_progress(path: Path) -> dict[int, dict]:
     """Rows already computed, keyed by trained-team size (empty if none)."""
     if not path.exists():
         return {}
-    return {r["trained"]: r for r in json.loads(path.read_text()).get("rows", [])}
+    rows = json.loads(path.read_text()).get("rows", [])
+    for row in rows:
+        row["curve"] = {
+            scripted_n: (
+                record
+                if isinstance(record, dict)
+                else {"counts_available": False, "win_rate": float(record)}
+            )
+            for scripted_n, record in row.get("curve", {}).items()
+        }
+    return {r["trained"]: r for r in rows}
 
 
 def _save(path: Path, run: str, num_envs: int, max_total_ships: int, by_trained: dict) -> None:
     rows = [by_trained[t] for t in sorted(by_trained)]
     path.write_text(json.dumps(
-        {"run": run, "num_envs": num_envs, "max_total_ships": max_total_ships, "rows": rows},
+        {
+            "schema_version": _SCHEMA_VERSION,
+            "run": run,
+            "num_envs": num_envs,
+            "max_total_ships": max_total_ships,
+            "rows": rows,
+        },
         indent=2,
     ))
 
@@ -197,7 +252,7 @@ def _find_crossover(
 
 
 def _print_table(rows: list[dict], max_total_ships: int) -> None:
-    print(f"\n  {'trained':>8} {'beats up to':>12} {'crossover':>10} "
+    print(f"\n  {'policy':>8} {'beats up to':>12} {'crossover':>10} "
           f"{'win@beats':>10} {'win@cross':>10}")
     print(f"  {'-' * 54}")
     for row in rows:
@@ -207,6 +262,14 @@ def _print_table(rows: list[dict], max_total_ships: int) -> None:
         else:
             beats = f"{row['beats_up_to']} scripted"
             cross = str(row["crossover"])
-            wb = f"{row['win_rate_at_beats_up_to']:.0%}" if row["win_rate_at_beats_up_to"] else "—"
-            wc = f"{row['win_rate_at_crossover']:.0%}" if row["win_rate_at_crossover"] else "—"
+            wb = (
+                f"{row['win_rate_at_beats_up_to']:.0%}"
+                if row["win_rate_at_beats_up_to"] is not None
+                else "—"
+            )
+            wc = (
+                f"{row['win_rate_at_crossover']:.0%}"
+                if row["win_rate_at_crossover"] is not None
+                else "—"
+            )
         print(f"  {row['trained']:>8} {beats:>12} {cross:>10} {wb:>10} {wc:>10}")

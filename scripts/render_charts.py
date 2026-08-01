@@ -5,15 +5,17 @@ Reads the two W&B-format sources a run leaves behind — the in-training archive
 the one ``viz.history`` reader, and paints each figure with ``viz.charts``.
 
 Usage:
-    uv run --no-sync scripts/render_charts.py            # run 682 -> docs/results/
-    uv run --no-sync scripts/render_charts.py --run <name> --out <dir>
+    uv run scripts/render_charts.py            # run 682 -> docs/results/
+    uv run scripts/render_charts.py --run <name> --out <dir>
 """
 
 import argparse
 from pathlib import Path
 
+import numpy as np
+
 from boost_and_broadside.viz import charts, history
-from boost_and_broadside.viz.charts import Line, Panel
+from boost_and_broadside.viz.charts import Line, Panel, Points
 
 DEFAULT_RUN = "resilient-resonance-682"
 
@@ -48,21 +50,31 @@ def render(run: str, out_dir: Path) -> list[Path]:
     calib_summary = history.load_summary(calib_dir / "summary.json")
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # The scripted agent — the one opponent shared across runs — is a landmark for
-    # reading where the policy actually got to.
+    # The scripted controller — the one opponent shared across runs — is the
+    # reference line for reading where the policy actually got to.
     scripted = calib_summary.get("elo/scripted")
-    elo_landmarks = [("scripted agent", float(scripted))] if history._finite(scripted) else None
+    elo_references = (
+        [("scripted controller", float(scripted))] if history._finite(scripted) else None
+    )
+    # Tournament-rated checkpoints sit on the refit curve as precise points;
+    # the last one pins the curve's endpoint.
+    ckpt_steps, ckpt_ratings, ckpt_stderr = history.checkpoint_points(calib_summary)
+    checkpoints = Points(
+        np.asarray(ckpt_steps), np.asarray(ckpt_ratings), np.asarray(ckpt_stderr),
+        "tournament-rated checkpoints (±1 SE)",
+    )
 
     written = [
         charts.trend(
-            [_line(calib_rows, "ladder/elo/live", "ELO")], out_dir / "elo_curve.png",
-            title="Calibrated ELO over training", ylabel="ELO vs random anchor",
-            reference_lines=elo_landmarks,
+            [_line(calib_rows, "ladder/elo/live", "live policy (refit)")],
+            out_dir / "elo_curve.png",
+            title="Calibrated Elo over training", ylabel="Elo (scripted = 1000)",
+            reference_lines=elo_references, points=checkpoints,
         ),
         charts.trend(
             [_line(wandb_rows, "overview/win_rate_vs_scripted", "vs scripted")],
             out_dir / "win_rate_vs_scripted.png",
-            title="Win rate vs the scripted agent", ylabel="win rate", percent=True,
+            title="Win rate vs the scripted controller", ylabel="win rate", percent=True,
         ),
         charts.grid(
             [

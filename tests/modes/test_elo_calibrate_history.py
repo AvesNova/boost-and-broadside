@@ -97,3 +97,19 @@ class TestToSummary:
         assert summary["converged"] is True
         assert summary["target_stderr"] == 10.0
         assert summary["anchor_offset_stderr"] == 42.0
+
+
+class TestFinalCheckpointInclusion:
+    def test_step_bearing_player_without_training_rating_lands_on_the_axis(self):
+        """The run's final checkpoint was never a roster entry, so it has no
+        training rating — but its tournament rating pins the curve's endpoint."""
+        result = _result()
+        result["players"].append(
+            {"label": "ckpt_999", "training_elo": None, "calibrated_elo": 1810.0,
+             "stderr": 4.0, "global_step": 999}
+        )
+        row = next(r for r in to_history_rows(result) if r["_step"] == 999)
+        assert row["ladder/elo/ckpt_999"] == 1810.0
+        summary = to_summary(result)
+        assert summary["ladder/elo/ckpt_999"] == 1810.0
+        assert summary["_step"] == 999

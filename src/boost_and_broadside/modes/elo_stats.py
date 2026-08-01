@@ -1,8 +1,8 @@
-"""elo_stats mode: run every agent pair simultaneously and compute ELO ratings.
+"""elo_stats mode: run every agent pair simultaneously and compute Elo ratings.
 
 Loads all checkpoints from a training run plus scripted and random agents,
 distributes B parallel environments across all directed matchups, runs them
-simultaneously, and reports per-agent ELO, win rates, and episode lengths.
+simultaneously, and reports per-agent Elo, win rates, and episode lengths.
 """
 
 import sys
@@ -101,7 +101,7 @@ def run_elo_stats_mode(
     matchups: list[str] | None = None,
     custom_agents: list[str] | None = None,
 ) -> None:
-    """Run all-vs-all parallel matchups and report ELO ratings."""
+    """Run all-vs-all parallel matchups and report Elo ratings."""
 
     if not matchups:
         matchups = ["2v2"]
@@ -119,7 +119,7 @@ def run_elo_stats_mode(
         B = num_envs
 
         print(f"\n{'=' * 60}")
-        print(f"=== ELO Matchup: {matchup} (Team0: {n0}, Team1: {n1}) ===")
+        print(f"=== Elo Matchup: {matchup} (Team0: {n0}, Team1: {n1}) ===")
         print(f"{'=' * 60}")
 
         # ------------------------------------------------------------------ #
@@ -320,7 +320,7 @@ def run_elo_stats_mode(
         elapsed = time.perf_counter() - t0
 
         # ------------------------------------------------------------------ #
-        # Step 5 — ELO computation (iterative convergence)                   #
+        # Step 5 — Elo computation (iterative convergence)                   #
         # ------------------------------------------------------------------ #
         elo = [0.0] * K
         a_wins_cpu = matchup_a_wins.cpu().tolist()
@@ -393,7 +393,7 @@ def run_elo_stats_mode(
         sim_fps = 1.0 / ship_config.dt
         sps = total_steps / elapsed
 
-        # Sort agents by ELO descending for display
+        # Sort agents by Elo descending for display
         order = sorted(range(K), key=lambda a: elo[a], reverse=True)
 
         label_w = max(len(lb) for lb in labels)
@@ -401,7 +401,7 @@ def run_elo_stats_mode(
 
         # Build header columns
         cols = [
-            ("ELO", 6),
+            ("Elo", 6),
         ]
         if random_idx >= 0:
             cols.append(("vs random", 10))
@@ -428,7 +428,7 @@ def run_elo_stats_mode(
             else "scripted-only"
         )
         print(f"\n{sep}")
-        print(f"  ELO Stats: {title}")
+        print(f"  Elo Stats: {title}")
         envs_per_matchup = B // M if M > 0 else B
         print(
             f"  {K} agents  |  {B:,} total envs  |  {M} directed matchups  |  "

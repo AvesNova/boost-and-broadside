@@ -2,11 +2,13 @@
 
 import math
 
+import pytest
 import torch
 
+from boost_and_broadside.agents.semi_random_scripted import SemiRandomScriptedAgent
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.env.observation import ObsKey, YemongObservation
-from boost_and_broadside.modes.agent_factory import _decode_targets_to_obs
+from boost_and_broadside.modes.agent_factory import _decode_targets_to_obs, resolve_agent_spec
 from boost_and_broadside.train.rl.features import build_standard_coordinator
 
 
@@ -60,3 +62,22 @@ class TestDecodeTargetsToObs:
 
         decoded = obs[ObsKey.POS][0, 0]
         assert torch.allclose(decoded, torch.tensor([x, y]), atol=1e-3)
+
+
+def test_semi_scripted_agent_spec_resolves_probability() -> None:
+    resolved = resolve_agent_spec(
+        "semi_scripted:0.35",
+        ShipConfig(),
+        None,  # type: ignore[arg-type]
+        "cpu",
+    )
+
+    assert resolved.kind == "semi_random"
+    assert isinstance(resolved.agent, SemiRandomScriptedAgent)
+    assert resolved.agent.p_scripted == pytest.approx(0.35)
+
+
+@pytest.mark.parametrize("spec", ["semi_scripted:nope", "semi_scripted:-0.1", "semi_scripted:1.1"])
+def test_semi_scripted_agent_spec_rejects_invalid_probability(spec: str) -> None:
+    with pytest.raises(ValueError):
+        resolve_agent_spec(spec, ShipConfig(), None, "cpu")  # type: ignore[arg-type]

@@ -1,4 +1,4 @@
-"""Unit tests for the ELO league roster: sampling, ladder, policy cache, persistence."""
+"""Unit tests for the Elo league roster: sampling, ladder, policy cache, persistence."""
 
 import pytest
 import torch
@@ -50,8 +50,8 @@ class TestSampling:
         assert sampled == {"ckpt_1", "ckpt_2"}
 
     def test_proximity_sampling_prefers_near_elo_entries(self):
-        """With a huge ELO gap the far entry's weight underflows to ~0, so the
-        near-ELO entry is sampled every time."""
+        """With a huge Elo gap the far entry's weight underflows to ~0, so the
+        near-Elo entry is sampled every time."""
         torch.manual_seed(0)
         roster = _make_roster()
         _add_frozen_checkpoint(roster, step=1, elo=1000.0)

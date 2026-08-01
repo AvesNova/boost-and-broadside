@@ -28,7 +28,7 @@ class ObstacleCacheConfig:
 
 @dataclass(frozen=True)
 class EloCalibrateConfig:
-    """Configuration for the post-training ELO calibration tournament.
+    """Configuration for the post-training Elo calibration tournament.
 
     Used by ``--mode elo_calibrate`` to re-rate a finished run. Unlike
     EloEvalConfig this costs nothing during training — it runs once afterwards,
@@ -58,11 +58,16 @@ class EloCalibrateConfig:
     # Virtual decisive games per player, split for and against the anchor.
     # Keeps a player that never loses from having an infinite rating.
     prior_games: float = 1.0
+    # Interior semi-random reference rungs added to the tournament field, as
+    # scripted-action probabilities in (0, 1). They connect random to scripted
+    # through informative matchups instead of one near-deterministic link,
+    # tightening the weak end of the scale. Empty disables the ladder.
+    reference_probabilities: tuple[float, ...] = ()
 
 
 @dataclass(frozen=True)
 class EloEvalConfig:
-    """Configuration for continuous in-training ELO ladder evaluation.
+    """Configuration for continuous in-training Elo ladder evaluation.
 
     envs_per_matchup and step_interval trade against each other at fixed cost.
     The eval env advances num_steps / step_interval steps per update, so with
@@ -76,7 +81,7 @@ class EloEvalConfig:
 
     Episode span is the lag between the live policy and what its rating
     reflects, since the evaluator holds a live reference to the policy and its
-    weights change mid-episode. Span also sets how long live ELO stays flat
+    weights change mid-episode. Span also sets how long live Elo stays flat
     after a milestone, because promotion reseeds both slots that feed it.
 
     The floor is kernel efficiency: each eval step fires up to eight separate
@@ -122,7 +127,7 @@ class TrainConfig:
         schedule  — all time-varying parameters (LR, loss coefficients, fractions).
         rewards   — static reward weights and geometry params.
         ppo       — static PPO hyperparameters.
-        league    — league play and ELO tournament parameters.
+        league    — league play and Elo tournament parameters.
 
     All scalar values that vary over training live in ``schedule``.
     Everything here is fixed for the entire run. Core training values are
@@ -167,13 +172,13 @@ class TrainConfig:
     return_min_span: float  # minimum p95-p5 span (symlog-space) — guards disabled components
     checkpoint_dir: str  # directory to write .pt files
 
-    # --- League play + ELO (static tournament parameters) ---
+    # --- League play + Elo (static tournament parameters) ---
     league_size: int  # max number of checkpoint policies kept loaded for league play
-    # Ladder-snapshot grid spacing: snapshots are taken as normalized ELO crosses
+    # Ladder-snapshot grid spacing: snapshots are taken as normalized Elo crosses
     # each multiple of this value, so rungs land at absolute heights (200, 400, …)
     # that are comparable across runs rather than drifting from run history.
     elo_milestone_gap: float
-    elo_temperature: float  # ELO bandwidth for proximity-weighted sampling
+    elo_temperature: float  # Elo bandwidth for proximity-weighted sampling
     league_uniform_sampling: bool  # if True, sample league opponents uniformly
     elo_eval: EloEvalConfig  # continuous evaluation batch and rating parameters
     bc_winrate_target: float  # win rate vs scripted at which the BC aux loss reaches zero

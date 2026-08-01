@@ -160,10 +160,26 @@ def _reduced_covariance(
 
 def rating_stderr(pair_games: np.ndarray, ratings: np.ndarray, anchor: int) -> np.ndarray:
     """Standard error of each rating, in rating points. The anchor's is 0."""
-    covariance, kept = _reduced_covariance(pair_games, ratings, anchor)
+    covariance = rating_covariance(pair_games, ratings, anchor)
     stderr = np.zeros_like(ratings)
-    stderr[kept] = np.sqrt(np.clip(np.diag(covariance), 0.0, None))
+    stderr[:] = np.sqrt(np.clip(np.diag(covariance), 0.0, None))
     return stderr
+
+
+def rating_covariance(
+    pair_games: np.ndarray, ratings: np.ndarray, anchor: int
+) -> np.ndarray:
+    """Full rating covariance matrix in a gauge where ``anchor`` is fixed.
+
+    Returning the full matrix makes uncertainty transformable along with the
+    ratings. In particular, a two-landmark normalization depends on correlated
+    differences and cannot be assigned an honest error bar from marginal
+    standard errors alone.
+    """
+    reduced, kept = _reduced_covariance(pair_games, ratings, anchor)
+    covariance = np.zeros((ratings.size, ratings.size), dtype=np.float64)
+    covariance[np.ix_(kept, kept)] = reduced
+    return covariance
 
 
 def allocation_value(pair_games: np.ndarray, ratings: np.ndarray, anchor: int) -> np.ndarray:

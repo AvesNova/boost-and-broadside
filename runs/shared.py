@@ -40,7 +40,7 @@ ELO_EVAL = EloEvalConfig(
 # finishes, so this budget costs nothing during training.
 #
 # Measured on vague-lion-678 (7-player field): 4096 envs took ~2 min per batch
-# and reached +/-9.7 ELO after 8 batches. At 16384 a batch carries four times the
+# and reached +/-9.7 Elo after 8 batches. At 16384 a batch carries four times the
 # games, so the target should fall inside the first two or three; max_batches is
 # left generous as a cap rather than an expectation. Precision goes as
 # 1/sqrt(games), so halving target_stderr costs roughly four times the games.
@@ -49,6 +49,9 @@ ELO_CALIBRATE = EloCalibrateConfig(
     target_stderr=10.0,
     max_batches=12,
     prior_games=1.0,
+    # Matches the refined semi-random ladder (0 and 1 are the random and
+    # scripted players themselves).
+    reference_probabilities=(0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95),
 )
 
 # Reward weights shared by all training profiles.
@@ -68,7 +71,7 @@ REWARDS = RewardConfig(
     closing_speed_weight=0.1,
     shoot_quality_weight=0.1,
     # Per-ship kill credit — self-only (lambda=0 for all other ships).
-    # kill_shot: winner-take-all to the top-damage dealer in the fatal step.
+    # kill_shot: fatal-step credit split in proportion to each ship's damage that step.
     # kill_assist: proportional share based on cumulative episode damage dealt.
     kill_shot_weight=1.0,
     kill_assist_weight=1.0,
@@ -144,7 +147,7 @@ COMPONENT_LAMBDAS: dict[str, float] = {
     "ally_death": 0.95,
     "enemy_death": 0.95,
     "death": 0.95,
-    # kill_shot: winner-take-all is noisy; shorter trace reduces variance
+    # kill_shot: sparse fatal-step credit is noisy; shorter trace reduces variance
     # kill_assist: episode-level cumulative credit needs a longer trace
     "kill_shot": 0.87,
     "kill_assist": 0.97,

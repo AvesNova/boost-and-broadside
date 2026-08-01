@@ -1,4 +1,4 @@
-"""Tests for shared ELO rating math."""
+"""Tests for shared Elo rating math."""
 
 import pytest
 import torch

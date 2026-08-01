@@ -51,14 +51,14 @@ def _measured(values: np.ndarray, stderr: np.ndarray) -> np.ndarray:
 def _reference_lines(result: dict, key: str = "calibrated_elo") -> list[tuple[str, float]]:
     """Fixed opponents worth drawing as a rule across a curve.
 
-    The scripted agent is the one rating on the ladder with meaning outside this
+    The scripted controller is the one rating on the ladder with meaning outside this
     run — it is the same opponent in every run — so it doubles as the landmark
     for reading where a policy actually got to.
     """
     lines = []
     for player in result.get("players", []):
         if player["label"] == "scripted" and np.isfinite(player.get(key, float("nan"))):
-            lines.append(("scripted agent", float(player[key])))
+            lines.append(("scripted controller", float(player[key])))
     return lines
 
 
@@ -83,7 +83,7 @@ def plot_live_curve(result: dict, path: Path) -> Path:
 
     _style_axes(
         axes,
-        f"Live ELO: in-training estimate vs calibrated  —  {result['run']}",
+        f"Live Elo: in-training estimate vs calibrated  —  {result['run']}",
         "Each update's rating refit from its own win/loss record against "
         f"post-hoc measured opponents (reference: {result.get('reference', 'n/a')})",
     )
@@ -106,7 +106,7 @@ def plot_live_curve(result: dict, path: Path) -> Path:
         zorder=4,
         label="Calibrated (±1 SE)",
     )
-    axes.set_ylabel("ELO vs random anchor", color=INK_SECONDARY, fontsize=10)
+    axes.set_ylabel("Elo (scripted = 1000)", color=INK_SECONDARY, fontsize=10)
     axes.legend(frameon=False, labelcolor=INK_SECONDARY, fontsize=10, loc="lower right")
     # Direct labels at the right edge, so identity survives without the legend.
     ends = []
@@ -125,7 +125,7 @@ def plot_live_curve(result: dict, path: Path) -> Path:
     _style_axes(
         lower,
         subtitle="Gap between the two curves — a near-constant offset means the shape is right "
-        + (f"(the scale's zero carries ±{offset:.0f} in common)" if offset else ""),
+        + (f"(the anchor shift carries ±{offset:.0f} in common)" if offset else ""),
     )
     drift = np.where(good, calibrated - training, np.nan)
     lower.axhline(0.0, color=INK_MUTED, linewidth=1.0, zorder=2)
@@ -162,7 +162,7 @@ def plot_avg_curve(result: dict, path: Path) -> Path:
     axes = figure.add_subplot(111)
     _style_axes(
         axes,
-        f"Averaged-policy ELO: in-training vs calibrated  —  {result['run']}",
+        f"Averaged-policy Elo: in-training vs calibrated  —  {result['run']}",
         "Rated through the live policy it plays, so its error is the live curve's plus its own",
     )
     _draw_reference_lines(axes, _reference_lines(result))
@@ -200,7 +200,7 @@ def plot_avg_curve(result: dict, path: Path) -> Path:
     ends.append((steps[good][-1], calibrated[good][-1], CALIBRATED, "calibrated"))
     _label_series_ends(axes, ends)
     axes.set_xlabel("environment steps (millions)", color=INK_SECONDARY, fontsize=10)
-    axes.set_ylabel("ELO vs random anchor", color=INK_SECONDARY, fontsize=10)
+    axes.set_ylabel("Elo (scripted = 1000)", color=INK_SECONDARY, fontsize=10)
     axes.legend(frameon=False, labelcolor=INK_SECONDARY, fontsize=10, loc="lower right")
     axes.margins(x=0.06)
 
@@ -242,7 +242,7 @@ def plot_live_and_avg(result: dict, path: Path) -> Path:
     axes = figure.add_subplot(111)
     _style_axes(
         axes,
-        f"Calibrated ELO: live vs averaged policy  —  {result['run']}",
+        f"Calibrated Elo: live vs averaged policy  —  {result['run']}",
         f"Both refit from their own records ({_TIE_LABEL.get(result.get('tie_mode', ''), '')})",
     )
     _draw_reference_lines(axes, _reference_lines(result))
@@ -264,7 +264,7 @@ def plot_live_and_avg(result: dict, path: Path) -> Path:
         ends.append((steps[good][-1], values[good][-1], color, short))
     _label_series_ends(axes, ends)
     axes.set_xlabel("environment steps (millions)", color=INK_SECONDARY, fontsize=10)
-    axes.set_ylabel("ELO vs random anchor", color=INK_SECONDARY, fontsize=10)
+    axes.set_ylabel("Elo (scripted = 1000)", color=INK_SECONDARY, fontsize=10)
     axes.legend(frameon=False, labelcolor=INK_SECONDARY, fontsize=10, loc="lower right")
     axes.margins(x=0.06)
 
@@ -324,7 +324,7 @@ def plot_tie_conventions(result: dict, path: Path) -> Path:
     axes = figure.add_subplot(111)
     _style_axes(
         axes,
-        f"Calibrated ELO under both draw conventions  —  {result['run']}",
+        f"Calibrated Elo under both draw conventions  —  {result['run']}",
         "Ties as half a win puts the calibrated curve on the same scale the run "
         "itself used; dropping them rescales the anchor",
     )
@@ -336,7 +336,7 @@ def plot_tie_conventions(result: dict, path: Path) -> Path:
             ends.append((steps[good][-1], values[good][-1], color, short))
     _label_series_ends(axes, ends)
     axes.set_xlabel("environment steps (millions)", color=INK_SECONDARY, fontsize=10)
-    axes.set_ylabel("ELO vs random anchor", color=INK_SECONDARY, fontsize=10)
+    axes.set_ylabel("Elo (scripted = 1000)", color=INK_SECONDARY, fontsize=10)
     axes.legend(frameon=False, labelcolor=INK_SECONDARY, fontsize=10, loc="lower right")
     axes.margins(x=0.1)
 
@@ -370,7 +370,7 @@ def plot_calibrated_only(result: dict, path: Path, tie_mode: str) -> Path:
     axes = figure.add_subplot(111)
     _style_axes(
         axes,
-        f"Calibrated ELO — {_TIE_LABEL.get(tie_mode, tie_mode)}  —  {result['run']}",
+        f"Calibrated Elo — {_TIE_LABEL.get(tie_mode, tie_mode)}  —  {result['run']}",
         f"Refit from each update's own record; shaded band is ±1 SE "
         f"(ratings pinned to ±{result['target_stderr']:.0f} against "
         f"{result.get('reference', 'the reference')})",
@@ -389,7 +389,7 @@ def plot_calibrated_only(result: dict, path: Path, tie_mode: str) -> Path:
     )
     axes.plot(steps[good], values[good], color=color, linewidth=2.0, zorder=4)
     axes.set_xlabel("environment steps (millions)", color=INK_SECONDARY, fontsize=10)
-    axes.set_ylabel("ELO vs random anchor", color=INK_SECONDARY, fontsize=10)
+    axes.set_ylabel("Elo (scripted = 1000)", color=INK_SECONDARY, fontsize=10)
     axes.margins(x=0.02)
 
     figure.tight_layout()
@@ -462,7 +462,7 @@ def plot_checkpoint_ratings(result: dict, path: Path) -> Path:
         )
     axes.set_yticks(positions)
     axes.set_yticklabels(labels, color=INK_SECONDARY, fontsize=10)
-    axes.set_xlabel("ELO vs random anchor", color=INK_SECONDARY, fontsize=10)
+    axes.set_xlabel("Elo (scripted = 1000)", color=INK_SECONDARY, fontsize=10)
     axes.legend(
         frameon=False,
         labelcolor=INK_SECONDARY,
@@ -542,7 +542,7 @@ def plot_convergence(result: dict, path: Path) -> Path:
             fontweight="medium",
         )
     axes.set_xlabel("cumulative games played", color=INK_SECONDARY, fontsize=10)
-    axes.set_ylabel("standard error (ELO)", color=INK_SECONDARY, fontsize=10)
+    axes.set_ylabel("standard error (Elo)", color=INK_SECONDARY, fontsize=10)
     axes.set_yscale("log")
     axes.legend(frameon=False, labelcolor=INK_SECONDARY, fontsize=10, loc="upper right")
     axes.margins(x=0.12)
@@ -606,9 +606,9 @@ def plot_tie_rates(result: dict, path: Path) -> Path:
                 zorder=3,
                 label=name,
             )
-    left.set_xlabel("mean rating of the pair (ELO)", color=INK_SECONDARY, fontsize=10)
+    left.set_xlabel("mean rating of the pair (Elo)", color=INK_SECONDARY, fontsize=10)
     left.set_ylabel("draws (% of games)", color=INK_SECONDARY, fontsize=10)
-    right.set_xlabel("rating gap within the pair (ELO)", color=INK_SECONDARY, fontsize=10)
+    right.set_xlabel("rating gap within the pair (Elo)", color=INK_SECONDARY, fontsize=10)
     if rows and training_rows:
         left.legend(
             frameon=False,

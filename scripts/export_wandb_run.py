@@ -1,7 +1,7 @@
 """Export a W&B run's config, summary, history, and files for in-repo archival.
 
 Usage:
-    uv run --no-sync scripts/export_wandb_run.py \
+    uv run scripts/export_wandb_run.py \
         --run vizia128/boost-and-broadside/chpl40cj \
         --out checkpoints/resilient-resonance-682/wandb_export
 """

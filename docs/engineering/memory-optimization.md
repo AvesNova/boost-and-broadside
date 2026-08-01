@@ -1,4 +1,4 @@
-# Memory-footprint reduction: measured savings & drawbacks
+# Memory optimization and measured tradeoffs
 
 Goal: fit **more backbone blocks** and/or **larger batch (`_MAX_TOKENS`)** without a bigger
 (24 GB) GPU. Three independent changes contribute, each targeting a different pool:
@@ -83,7 +83,7 @@ Recompute each Yemong block's activations in the backward pass (`torch.utils.che
 > target card before relying on absolutes:
 
 ```bash
-uv run --no-sync python scripts/bench_mem.py --blocks <N> \
+uv run python scripts/bench_mem.py --blocks <N> \
     --num-envs <full> --minibatches 32 --microbatch-tokens 37500 \
     --compile max-autotune --grad-checkpoint
 ```
@@ -95,10 +95,10 @@ activation, hold `_MICROBATCH_TOKENS` fixed while raising `num_envs`.
 
 ## Recommendation
 
-Adopt all three — they stack (activation vs buffer are different pools; the SDPA fix and
-checkpointing both cut activation but compose). Set
-`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`, `ModelConfig.grad_checkpoint=True`, and keep
-the bf16/uint8 buffer. Budget ~20–30% update-phase SPS for the depth checkpointing buys you.
+The SDPA dtype fix and reduced-precision buffer are baseline improvements. Keep the
+bf16/uint8 buffer and set `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`. Enable
+`ModelConfig.grad_checkpoint` when the desired model/batch does not otherwise fit; budget
+~20–30% update-phase SPS when depth checkpointing is enabled.
 
 ## Measured frontier: RTX 4070 Laptop 8GB (Jul 2026)
 
@@ -110,8 +110,8 @@ knobs are independent, each axis varies alone against a shared baseline (`blocks
 `num_envs` computed from the real `rl.py` formula, 1 PPO epoch measured — production runs 4, so
 scale `update_ms` ×4 for real per-update cost). 21 configs, ~35 min total.
 
-**⚠ The microbatch divisor currently in `runs/rl.py` (uncommitted: `_MAX_TOKENS=5_000_000 //
-_NUM_MINIBATCHES // 1`, i.e. `microbatch_tokens=156250`) OOMs on this card even with
+**⚠ A tested temporary microbatch divisor of 1 (`_MAX_TOKENS=5_000_000 //
+_NUM_MINIBATCHES // 1`, i.e. `microbatch_tokens=156250`) OOMed on this card even with
 `grad_checkpoint=True`** — confirmed directly (`microbatch_d1` row below). Divisor **5**
 (`microbatch_tokens=31250`, the previously-committed value) is the largest that fits and is used
 as the baseline below.
@@ -179,9 +179,9 @@ the divisor sets how finely that gets split for the backward pass.
 
 Smaller microbatches are both smaller **and faster** here (activation 2767→989 MB and update time
 26484→23181 ms from divisor 2→6) — on this VRAM-constrained 8GB card, finer chunking avoids
-allocator/fragmentation pressure near the ceiling. This ordering likely reverses on a GPU with
-slack VRAM (per-chunk kernel-launch overhead would then dominate instead). Divisor 1 (the
-uncommitted `rl.py` value) is the exact OOM boundary — confirms the divisor must be ≥2 on this card.
+allocator/fragmentation pressure near the ceiling. This ordering may reverse on a GPU with
+slack VRAM (per-chunk kernel-launch overhead would then dominate instead). Divisor 1 is the
+measured OOM boundary for this sweep, confirming that the divisor had to be ≥2 on this card.
 
 ### 5. `grad_checkpoint` (tokens=5M, ships=8, mb=32, microbatch=31250, compile=none)
 
