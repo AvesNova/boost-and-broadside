@@ -18,7 +18,7 @@ architecture.
 ```text
 global tensor state
     ↓
-ship + obstacle entity tokens
+ship + refractive-field entity tokens
     ↓
 FeatureCoordinator → encoder MLP
     ↓
@@ -30,16 +30,19 @@ ship tokens only
     └── next-state predictions (per ship)
 ```
 
-For a batch `B`, `N` ships, `M` obstacles, and embedding width `D`, the shared trunk works
-on `(B, N+M, D)` entity tokens. Obstacles participate in attention and retain temporal
+For a batch `B`, `N` ships, `M` fields, and embedding width `D`, the shared trunk works
+on `(B, N+M, D)` entity tokens. Fields participate in attention and retain temporal
 state, but the three output heads slice the first `N` ship tokens.
 
 ## Observation and feature coordination
 
 [`observation_from_state`](../src/boost_and_broadside/env/observation.py) exposes global
 position, velocity, attitude, angular velocity, health, power, cooldown, team identity,
-alive state, radius, and previous action. Obstacles are appended as entity tokens with a
-separate team ID.
+alive state, radius, previous action, and ship-local encoded log index. Fields are appended
+as always-alive entity tokens with team ID 2, zero motion/action channels, and numeric
+physical features: transition width, absolute inside and parent/outside log index, log
+index ratio, and normalized interface damage. Field properties are unchanged by team
+flipping.
 
 The policy does not hand-encode those channels. The canonical
 [`FeatureCoordinator`](../src/boost_and_broadside/train/rl/features.py) binds each raw
@@ -60,6 +63,10 @@ channel to:
 | alive state | scalar | none |
 | previous power/turn/shoot | categorical one-hot | none |
 | radius | normalized scalar | none |
+| field width | normalized scalar | none |
+| field inside/outside log index and ratio | normalized physical scalars | none |
+| interface damage | normalized scalar | none |
+| ship-local log index | `log(n)/(2 log(s))` | additive next-step delta |
 
 Phase targets make wraparound natural: crossing the map boundary is a small rotation, not
 a large coordinate jump. Feature dimensions and prediction layout are derived from the
@@ -79,7 +86,7 @@ recorded in the [reference-run configuration](../checkpoints/resilient-resonance
 
 Within each timestep, [`TransformerBlock`](../src/boost_and_broadside/models/yemong/attention.py)
 applies pre-normalized multi-head self-attention and a gated MLP with residual connections.
-Every live ship can therefore condition its action on every other live ship and obstacle.
+Every live ship can therefore condition its action on every other live ship and field.
 
 ## Temporal recurrence
 
@@ -121,8 +128,10 @@ semantics, aggregation, and horizons are documented in [training](training.md#re
 ## Auxiliary next-state head
 
 The next-state head predicts the coordinator's registered target channels for every ship:
-position and attitude phase deltas, velocity deltas, resource phase deltas, and absolute
-angular velocity.
+position and attitude phase deltas, velocity deltas, resource phase deltas, absolute
+angular velocity, and ship-local log-index delta. Static field material channels are
+inputs, not prediction targets; the local index target makes entering and leaving a
+medium visible to the learned dynamics model.
 
 Training applies:
 

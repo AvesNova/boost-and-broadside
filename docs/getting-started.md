@@ -8,8 +8,9 @@ learning setup, see [training](training.md).
 
 - Python 3.13 or newer;
 - [`uv`](https://docs.astral.sh/uv/) for environment and dependency management;
-- Git LFS for the included reference checkpoints (`*.pt`) — not needed to train from
-  scratch;
+- Git LFS for historical reference checkpoints (`*.pt`) — not needed to train from
+  scratch. These weights predate the refractive-field observation schema and are retained
+  as result artifacts, not as loadable weights for the current encoder;
 - `ffmpeg` only when generating MP4/GIF replay assets;
 - a CUDA-capable GPU for practical training and large evaluations.
 
@@ -19,8 +20,8 @@ profiles are sized for GPU execution.
 
 ## Install
 
-With Git LFS installed before cloning, the checkpoints materialize automatically at
-clone time. In an existing clone:
+With Git LFS installed before cloning, the historical checkpoints materialize
+automatically at clone time. In an existing clone:
 
 ```bash
 git lfs install
@@ -51,8 +52,8 @@ path.
 ## Watch or play
 
 ```bash
-# Human team 0 vs the newest available checkpoint
-uv run main.py --mode watch
+# Human team 0 vs a newly trained current-schema checkpoint
+uv run main.py --mode watch --team1 checkpoints/<run>/<checkpoint>.pt
 
 # Learned policy vs scripted controller
 uv run main.py --mode watch --team0 latest --team1 scripted

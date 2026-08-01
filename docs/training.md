@@ -124,9 +124,32 @@ Note that `kill_shot` is not winner-take-all: when several ships damage a target
 fatal step, each earns credit proportional to that step's damage. `kill_assist` is
 proportional to cumulative episode damage.
 
-Additional obstacle and behavior-shaping components exist in the registry but had zero
-weight in the reference run. See [`runs/shared.py`](../runs/shared.py) for current
-component horizons and schedules, and the preserved run config for the historical weights.
+The former solid-obstacle death, proximity, closing-speed, and time-to-impact components
+have been removed: refractive interfaces are traversable and should not receive universal
+wall-avoidance shaping. Smooth interface damage is included in ordinary health-loss and
+fatal-damage accounting. See [`runs/shared.py`](../runs/shared.py) for current component
+horizons and schedules, and the preserved run config for historical weights.
+
+## Field training profile
+
+The primary [`runs/rl.py`](../runs/rl.py) profile remains an exact zero-field combat
+baseline. [`runs/rl_fields.py`](../runs/rl_fields.py) adds four cached static fields to the
+same two-team combat objective and reduces environment count to offset the extra attention
+tokens. The scripted controller intentionally ignores fields initially; it experiences
+their physics and damage but supplies no behavior-cloning target that treats every
+interface as impassable.
+
+A recommended curriculum for a dedicated field run is:
+
+1. low/high index with no interface damage;
+2. all four log-symmetric index levels with no damage;
+3. add standard damage;
+4. add severe damage;
+5. enable nesting and larger parent/child index ratios.
+
+The current profile samples all index and damage combinations and nested maps directly;
+the staged curriculum is guidance, not a separate navigation-task implementation. Field
+utility is learned from combat outcome, navigation, speed, handling, and health tradeoffs.
 
 ## Opponent curriculum
 
@@ -182,6 +205,12 @@ The checkpoint subsystem also maintains current average/best snapshots and unpru
 ladder checkpoints; [`checkpoint.py`](../src/boost_and_broadside/train/rl/checkpoint.py)
 defines the current filenames. (The included reference-run directory retains
 `recent_avg.pt` from an older naming convention.)
+
+The refractive-field observation contract adds encoder inputs and a local-index auxiliary
+target. New checkpoint payloads carry `observation_schema=refractive_fields_v1`. Older
+solid-obstacle checkpoints have no faithful weight-only migration and are rejected with a
+clear incompatibility error; retraining is required. This applies even to old runs that
+used zero obstacles, while newly trained zero-field checkpoints remain fully supported.
 
 W&B logging runs off the main training path. The reference run's sampled metric history,
 configuration, summary, and run metadata are exported under
