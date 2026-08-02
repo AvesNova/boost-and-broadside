@@ -20,6 +20,11 @@ MODEL_CONFIG = ModelConfig(
     d_model=128,
     n_heads=4,
     n_yemong_blocks=2,
+    # 2 spatial : 1 temporal. A spatial sublayer measures ~4x cheaper than a
+    # temporal one at these token counts, so the second spatial layer buys a
+    # round of relational depth for a fraction of what a temporal layer costs.
+    n_spatial_per_block=2,
+    n_temporal_per_block=1,
     grad_checkpoint=False,
 )
 
