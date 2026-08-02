@@ -13,8 +13,8 @@ from boost_and_broadside.env.field_physics import (
     refresh_ship_field_cache,
     wrap_displacement,
 )
-from boost_and_broadside.env.physics import update_bullets, update_ships
-from tests.conftest import make_state
+from boost_and_broadside.env.physics import advance_bullets, update_ships
+from tests.conftest import activate_bullet, make_state
 
 
 def _bullet_config(**overrides) -> ShipConfig:
@@ -49,10 +49,7 @@ def _single_field_bullet_state(
     state.field_transition_width[:] = width
     state.field_index[:] = index
     state.field_delta_index[:] = index - 1.0
-    state.bullet_pos[:] = position
-    state.bullet_vel[:] = velocity
-    state.bullet_time[:] = config.bullet_lifetime
-    state.bullet_active[:] = True
+    activate_bullet(state, config, position=position, velocity=velocity)
     _refresh_bullet_cache(state, config)
     return state
 
@@ -92,7 +89,7 @@ def test_bullet_field_transport_preserves_proper_speed(integrator: str):
     initial_proper_speed = (state.bullet_local_index * state.bullet_vel.abs()).item()
 
     for _ in range(48):
-        state = update_bullets(state, config)
+        state, _ = advance_bullets(state, config)
         proper_speed = (state.bullet_local_index * state.bullet_vel.abs()).item()
         assert proper_speed == pytest.approx(initial_proper_speed, rel=3e-6)
 
@@ -138,7 +135,7 @@ def test_high_index_field_bends_bullet_toward_center(integrator: str):
 
     core_angle = None
     for _ in range(80):
-        state = update_bullets(state, config)
+        state, _ = advance_bullets(state, config)
         if state.bullet_field_alpha.item() > 0.999:
             core_angle = abs(torch.angle(state.bullet_vel).item())
             break
@@ -164,7 +161,7 @@ def test_low_index_high_incidence_bullet_reflects(integrator: str):
     inward_speeds = []
 
     for _ in range(64):
-        state = update_bullets(state, config)
+        state, _ = advance_bullets(state, config)
         max_alpha = max(max_alpha, state.bullet_field_alpha.item())
         inward = wrap_displacement(
             state.field_pos[:, 0] - state.bullet_pos[:, 0, 0],
@@ -190,7 +187,7 @@ def _trajectory(integrator: str, substeps: int) -> complex:
         velocity=velocity,
     )
     for _ in range(42):
-        state = update_bullets(state, config)
+        state, _ = advance_bullets(state, config)
     return complex(state.bullet_pos.item())
 
 
@@ -219,18 +216,19 @@ def _two_damage_field_state(config: ShipConfig):
     state.field_index[:] = 1.0
     state.field_delta_index[:] = 0.0
     state.field_damage[:] = torch.tensor([[10.0, 20.0]])
-    state.bullet_pos[:] = 220.0 + 512.0j
-    state.bullet_vel[:] = 500.0 + 0.0j
-    state.bullet_time[:] = config.bullet_lifetime
-    state.bullet_active[:] = True
-    state.bullet_remaining_damage[:] = config.bullet_damage
+    activate_bullet(
+        state,
+        config,
+        position=220.0 + 512.0j,
+        velocity=500.0 + 0.0j,
+    )
     _refresh_bullet_cache(state, config)
     return state
 
 
 def _advance_to_field_core(state, config: ShipConfig, field_index: int) -> None:
     for _ in range(20):
-        update_bullets(state, config)
+        advance_bullets(state, config)
         if state.bullet_field_alpha[0, 0, 0, field_index].item() > 0.999999:
             return
     pytest.fail(f"bullet did not enter field {field_index} core")
@@ -268,7 +266,7 @@ def test_partial_reflection_charges_total_interface_variation(integrator: str):
     max_alpha = 0.0
 
     for _ in range(64):
-        update_bullets(state, config)
+        advance_bullets(state, config)
         max_alpha = max(max_alpha, state.bullet_field_alpha.item())
 
     expected = config.bullet_damage - 2.0 * max_alpha
@@ -281,7 +279,7 @@ def test_fully_depleted_bullet_deactivates():
     state.field_damage[:, 0] = 20.0
 
     for _ in range(20):
-        update_bullets(state, config)
+        advance_bullets(state, config)
         if not state.bullet_active.item():
             break
 
@@ -293,6 +291,7 @@ def test_fully_depleted_bullet_deactivates():
     ("overrides", "message"),
     [
         ({"bullet_drag_coeff": -1.0}, "bullet_drag_coeff"),
+        ({"field_integrator": "bad"}, "field_integrator"),
         ({"bullet_field_integrator": "bad"}, "bullet_field_integrator"),
         ({"bullet_field_integration_substeps": 3}, "positive even"),
         ({"bullet_field_damage_scale": -0.1}, "bullet_field_damage_scale"),

@@ -64,8 +64,9 @@ def _coast_actions():
     return torch.zeros((1, 1, 3), dtype=torch.long)
 
 
-def test_passive_entry_exit_restores_speed_and_preserves_long_run_energy():
-    config = _passive_config()
+@pytest.mark.parametrize("integrator", ["two_step", "midpoint"])
+def test_passive_entry_exit_restores_speed_and_preserves_long_run_energy(integrator: str):
+    config = _passive_config(field_integrator=integrator)
     state = _single_field_state(config, index=config.field_index_step**2)
     state.ship_pos[:] = 350.0 + 512.0j
     state.ship_vel[:] = 100.0 + 0.0j

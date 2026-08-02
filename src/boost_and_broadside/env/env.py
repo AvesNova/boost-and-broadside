@@ -311,10 +311,9 @@ class TensorEnv:
 
         self.state.prev_action = actions.float()
         self.state = update_ships(self.state, actions, self.ship_config)
-        bullet_start_pos = None
-        bullet_midpoint_pos = None
+        bullet_trajectory = None
         if self.env_config.max_bullets > 0:
-            self.state, bullet_start_pos, bullet_midpoint_pos = advance_bullets(
+            self.state, bullet_trajectory = advance_bullets(
                 self.state,
                 self.ship_config,
             )
@@ -322,8 +321,7 @@ class TensorEnv:
             self.state,
             self.ship_config,
             self._combat_damage_fn,
-            bullet_start_pos,
-            bullet_midpoint_pos,
+            bullet_trajectory,
         )
 
         if protected_alive is not None:

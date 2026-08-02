@@ -5,13 +5,14 @@ No Python loops over batch or ship dimensions.
 """
 
 from collections.abc import Callable
+from typing import NamedTuple
 
 import torch
 import torch.nn.functional as F
 
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.constants import EPS, ShootActions
-from boost_and_broadside.env.field_physics import evaluate_fields
+from boost_and_broadside.env.field_physics import FieldEvaluation, evaluate_fields
 from boost_and_broadside.env.state import TensorState
 
 # ---------------------------------------------------------------------------
@@ -233,6 +234,177 @@ def _field_optical_acceleration(
     return speed_sq * grad_log_n - 2.0 * directional * velocity
 
 
+def _wrap_positions(
+    position: torch.Tensor,
+    world_size: tuple[float, float],
+) -> torch.Tensor:
+    """Wrap complex positions onto the toroidal world."""
+    world_w, world_h = world_size
+    return torch.complex(position.real % world_w, position.imag % world_h)
+
+
+def _quadratic_drag_scale(
+    velocity: torch.Tensor,
+    coefficient: float | torch.Tensor,
+    duration: float,
+) -> torch.Tensor:
+    """Return the exact multiplicative speed change for quadratic drag."""
+    return 1.0 / (1.0 + coefficient * velocity.abs() * duration)
+
+
+class _FieldTransportResult(NamedTuple):
+    position: torch.Tensor
+    velocity: torch.Tensor
+    alpha: torch.Tensor
+    index: torch.Tensor
+    grad_index: torch.Tensor
+    interface_variation: torch.Tensor
+    half_tick_position: torch.Tensor
+
+
+class BulletTrajectory(NamedTuple):
+    """Ephemeral points defining two swept bullet-collision segments."""
+
+    start: torch.Tensor
+    midpoint: torch.Tensor
+
+
+def _evaluate_state_fields(
+    points: torch.Tensor,
+    state: TensorState,
+    world_size: tuple[float, float],
+) -> FieldEvaluation:
+    return evaluate_fields(
+        points,
+        state.field_pos,
+        state.field_radius,
+        state.field_transition_width,
+        state.field_delta_index,
+        world_size,
+    )
+
+
+def _two_step_field_substep(
+    position: torch.Tensor,
+    velocity: torch.Tensor,
+    alpha: torch.Tensor,
+    index: torch.Tensor,
+    grad_index: torch.Tensor,
+    step_dt: float,
+    state: TensorState,
+    world_size: tuple[float, float],
+) -> tuple[torch.Tensor, torch.Tensor, FieldEvaluation, torch.Tensor]:
+    """Fast explicit optical kick followed by drift and endpoint evaluation."""
+    acceleration = _field_optical_acceleration(velocity, index, grad_index)
+    direction_velocity = velocity + acceleration * step_dt
+    next_position = _wrap_positions(
+        position + direction_velocity * step_dt,
+        world_size,
+    )
+    next_eval = _evaluate_state_fields(next_position, state, world_size)
+    variation = (next_eval.alpha - alpha).abs()
+    return next_position, direction_velocity, next_eval, variation
+
+
+def _midpoint_field_substep(
+    position: torch.Tensor,
+    velocity: torch.Tensor,
+    alpha: torch.Tensor,
+    index: torch.Tensor,
+    grad_index: torch.Tensor,
+    step_dt: float,
+    state: TensorState,
+    world_size: tuple[float, float],
+) -> tuple[torch.Tensor, torch.Tensor, FieldEvaluation, torch.Tensor]:
+    """Midpoint optical integration with midpoint-aware interface variation."""
+    acceleration = _field_optical_acceleration(velocity, index, grad_index)
+    midpoint_velocity = velocity + 0.5 * acceleration * step_dt
+    midpoint_position = _wrap_positions(
+        position + 0.5 * velocity * step_dt + 0.125 * acceleration * step_dt**2,
+        world_size,
+    )
+    midpoint_eval = _evaluate_state_fields(midpoint_position, state, world_size)
+    midpoint_acceleration = _field_optical_acceleration(
+        midpoint_velocity,
+        midpoint_eval.index,
+        midpoint_eval.grad_index,
+    )
+    direction_velocity = velocity + midpoint_acceleration * step_dt
+    next_position = _wrap_positions(
+        position + 0.5 * (velocity + direction_velocity) * step_dt,
+        world_size,
+    )
+    next_eval = _evaluate_state_fields(next_position, state, world_size)
+    variation = (midpoint_eval.alpha - alpha).abs() + (next_eval.alpha - midpoint_eval.alpha).abs()
+    return next_position, direction_velocity, next_eval, variation
+
+
+_FIELD_INTEGRATORS = {
+    "two_step": _two_step_field_substep,
+    "midpoint": _midpoint_field_substep,
+}
+
+
+def _transport_field_points(
+    position: torch.Tensor,
+    velocity: torch.Tensor,
+    alpha: torch.Tensor,
+    index: torch.Tensor,
+    grad_index: torch.Tensor,
+    state: TensorState,
+    world_size: tuple[float, float],
+    integrator_name: str,
+    substeps: int,
+    duration: float,
+    fallback_direction: torch.Tensor | None = None,
+) -> _FieldTransportResult:
+    """Transport arbitrary batched points using one selectable optical integrator."""
+    integrator = _FIELD_INTEGRATORS[integrator_name]
+    step_dt = duration / substeps
+    half_tick_position = position
+    total_variation = None
+
+    for substep in range(substeps):
+        next_position, direction_velocity, next_eval, variation = integrator(
+            position,
+            velocity,
+            alpha,
+            index,
+            grad_index,
+            step_dt,
+            state,
+            world_size,
+        )
+        proper_speed = index * velocity.abs()
+        direction_speed = direction_velocity.abs()
+        direction = direction_velocity / direction_speed.clamp(min=EPS)
+        if fallback_direction is not None:
+            direction = torch.where(
+                direction_speed > EPS,
+                direction,
+                fallback_direction,
+            )
+        velocity = direction * (proper_speed / next_eval.index)
+        position = next_position
+        total_variation = variation if total_variation is None else total_variation + variation
+        alpha = next_eval.alpha
+        index = next_eval.index
+        grad_index = next_eval.grad_index
+
+        if substep + 1 == max(1, substeps // 2):
+            half_tick_position = position
+
+    return _FieldTransportResult(
+        position,
+        velocity,
+        alpha,
+        index,
+        grad_index,
+        total_variation,
+        half_tick_position,
+    )
+
+
 def _apply_thrust_impulse_with_power(
     state: TensorState,
     thrust_mag: torch.Tensor,
@@ -321,7 +493,7 @@ def _apply_field_flight_half_step(
     # Proper-speed force magnitude is c*(n|v|)^2. Division by m=n² yields
     # dv/dt=-c|v|v. Integrating its scalar speed ODE exactly guarantees drag
     # dissipates rather than gaining energy through an Euler overshoot.
-    dragged_speed = speed / (1.0 + drag_coeff * speed * duration)
+    dragged_speed = speed * _quadratic_drag_scale(state.ship_vel, drag_coeff, duration)
 
     # Lift is perpendicular work-free rotation. At a fixed proper speed its
     # world turn rate is reciprocal in n, matching faster/slower local handling.
@@ -356,70 +528,32 @@ def _apply_field_flight_half_step(
 
 
 def _transport_through_fields(state: TensorState, config: ShipConfig) -> TensorState:
-    """Midpoint passive optical transport with generalized-energy projection."""
+    """Passive optical ship transport with generalized-energy projection."""
 
-    world_w, world_h = config.world_size
-    step_dt = config.dt / config.field_integration_substeps
-    alpha = state.ship_field_alpha
-    index = state.ship_local_index
-    grad_index = state.ship_field_gradient
-    total_damage = torch.zeros_like(state.ship_health)
-
-    for _ in range(config.field_integration_substeps):
-        velocity = state.ship_vel
-        acceleration = _field_optical_acceleration(velocity, index, grad_index)
-        midpoint_velocity = velocity + 0.5 * acceleration * step_dt
-        midpoint_pos = state.ship_pos + 0.5 * velocity * step_dt + 0.125 * acceleration * step_dt**2
-        midpoint_pos = torch.complex(midpoint_pos.real % world_w, midpoint_pos.imag % world_h)
-        midpoint = evaluate_fields(
-            midpoint_pos,
-            state.field_pos,
-            state.field_radius,
-            state.field_transition_width,
-            state.field_delta_index,
-            config.world_size,
-        )
-        midpoint_acceleration = _field_optical_acceleration(
-            midpoint_velocity, midpoint.index, midpoint.grad_index
-        )
-        direction_velocity = velocity + midpoint_acceleration * step_dt
-        next_pos = state.ship_pos + 0.5 * (velocity + direction_velocity) * step_dt
-        next_pos = torch.complex(next_pos.real % world_w, next_pos.imag % world_h)
-        next_eval = evaluate_fields(
-            next_pos,
-            state.field_pos,
-            state.field_radius,
-            state.field_transition_width,
-            state.field_delta_index,
-            config.world_size,
-        )
-
-        # Project only the passive substep: n|v| is held exactly while the
-        # midpoint force determines direction. Powered work is applied outside
-        # this function and is never erased by the projection.
-        proper_speed = index * velocity.abs()
-        direction = direction_velocity / direction_velocity.abs().clamp(min=EPS)
-        direction = torch.where(
-            direction_velocity.abs() > EPS,
-            direction,
-            state.ship_attitude,
-        )
-        state.ship_vel = direction * (proper_speed / next_eval.index)
-        state.ship_pos = next_pos
-
-        variation = (midpoint.alpha - alpha).abs() + (next_eval.alpha - midpoint.alpha).abs()
-        total_damage = total_damage + (variation * state.field_damage.unsqueeze(1)).sum(dim=2)
-        alpha = next_eval.alpha
-        index = next_eval.index
-        grad_index = next_eval.grad_index
+    result = _transport_field_points(
+        state.ship_pos,
+        state.ship_vel,
+        state.ship_field_alpha,
+        state.ship_local_index,
+        state.ship_field_gradient,
+        state,
+        config.world_size,
+        config.field_integrator,
+        config.field_integration_substeps,
+        config.dt,
+        state.ship_attitude,
+    )
+    total_damage = (result.interface_variation * state.field_damage.unsqueeze(1)).sum(dim=2)
 
     alive_before = state.ship_alive
     state.ship_field_damage = total_damage * alive_before.float()
     state.ship_health = (state.ship_health - state.ship_field_damage).clamp(min=0.0)
     state.ship_alive = state.ship_alive & (state.ship_health > 0.0)
-    state.ship_field_alpha = alpha
-    state.ship_local_index = index
-    state.ship_field_gradient = grad_index
+    state.ship_pos = result.position
+    state.ship_vel = result.velocity
+    state.ship_field_alpha = result.alpha
+    state.ship_local_index = result.index
+    state.ship_field_gradient = result.grad_index
     return state
 
 
@@ -575,15 +709,6 @@ def update_ships(state: TensorState, actions: torch.Tensor, config: ShipConfig) 
     return state
 
 
-def _wrap_positions(
-    position: torch.Tensor,
-    world_size: tuple[float, float],
-) -> torch.Tensor:
-    """Wrap complex positions onto the toroidal world."""
-    world_w, world_h = world_size
-    return torch.complex(position.real % world_w, position.imag % world_h)
-
-
 def _transport_bullets_through_fields(
     state: TensorState,
     transport_vel: torch.Tensor,
@@ -592,86 +717,29 @@ def _transport_bullets_through_fields(
     """Continuously refract bullets and return final velocity/position and half-tick position."""
     batch_size, num_ships, num_bullets = state.bullet_pos.shape
     num_flat_bullets = num_ships * num_bullets
-    step_dt = config.dt / config.bullet_field_integration_substeps
-    position = state.bullet_pos.view(batch_size, num_flat_bullets)
-    velocity = transport_vel.view(batch_size, num_flat_bullets)
-    alpha = state.bullet_field_alpha.view(batch_size, num_flat_bullets, state.num_fields)
-    index = state.bullet_local_index.view(batch_size, num_flat_bullets)
-    grad_index = state.bullet_field_gradient.view(batch_size, num_flat_bullets)
-    half_tick_position = position
-    total_variation = None
+    result = _transport_field_points(
+        state.bullet_pos.view(batch_size, num_flat_bullets),
+        transport_vel.view(batch_size, num_flat_bullets),
+        state.bullet_field_alpha.view(batch_size, num_flat_bullets, state.num_fields),
+        state.bullet_local_index.view(batch_size, num_flat_bullets),
+        state.bullet_field_gradient.view(batch_size, num_flat_bullets),
+        state,
+        config.world_size,
+        config.bullet_field_integrator,
+        config.bullet_field_integration_substeps,
+        config.dt,
+    )
 
-    for substep in range(config.bullet_field_integration_substeps):
-        acceleration = _field_optical_acceleration(velocity, index, grad_index)
-        if config.bullet_field_integrator == "midpoint":
-            midpoint_velocity = velocity + 0.5 * acceleration * step_dt
-            integration_midpoint = _wrap_positions(
-                position + 0.5 * velocity * step_dt + 0.125 * acceleration * step_dt**2,
-                config.world_size,
-            )
-            midpoint_eval = evaluate_fields(
-                integration_midpoint,
-                state.field_pos,
-                state.field_radius,
-                state.field_transition_width,
-                state.field_delta_index,
-                config.world_size,
-            )
-            midpoint_acceleration = _field_optical_acceleration(
-                midpoint_velocity,
-                midpoint_eval.index,
-                midpoint_eval.grad_index,
-            )
-            direction_velocity = velocity + midpoint_acceleration * step_dt
-            next_position = _wrap_positions(
-                position + 0.5 * (velocity + direction_velocity) * step_dt,
-                config.world_size,
-            )
-            midpoint_alpha = midpoint_eval.alpha
-        else:
-            direction_velocity = velocity + acceleration * step_dt
-            next_position = _wrap_positions(
-                position + direction_velocity * step_dt,
-                config.world_size,
-            )
-
-        next_eval = evaluate_fields(
-            next_position,
-            state.field_pos,
-            state.field_radius,
-            state.field_transition_width,
-            state.field_delta_index,
-            config.world_size,
-        )
-        proper_speed = index * velocity.abs()
-        direction = direction_velocity / direction_velocity.abs().clamp(min=EPS)
-        velocity = direction * (proper_speed / next_eval.index)
-        position = next_position
-        if config.bullet_field_damage_scale != 0.0:
-            if config.bullet_field_integrator == "midpoint":
-                variation = (midpoint_alpha - alpha).abs() + (
-                    next_eval.alpha - midpoint_alpha
-                ).abs()
-            else:
-                variation = (next_eval.alpha - alpha).abs()
-            total_variation = variation if total_variation is None else total_variation + variation
-        alpha = next_eval.alpha
-        index = next_eval.index
-        grad_index = next_eval.grad_index
-
-        if substep + 1 == config.bullet_field_integration_substeps // 2:
-            half_tick_position = position
-
-    state.bullet_field_alpha = alpha.view(
+    state.bullet_field_alpha = result.alpha.view(
         batch_size,
         num_ships,
         num_bullets,
         state.num_fields,
     )
-    state.bullet_local_index = index.view(batch_size, num_ships, num_bullets)
-    state.bullet_field_gradient = grad_index.view(batch_size, num_ships, num_bullets)
+    state.bullet_local_index = result.index.view(batch_size, num_ships, num_bullets)
+    state.bullet_field_gradient = result.grad_index.view(batch_size, num_ships, num_bullets)
     if config.bullet_field_damage_scale != 0.0:
-        damage_loss = (total_variation * state.field_damage.unsqueeze(1)).sum(dim=2)
+        damage_loss = (result.interface_variation * state.field_damage.unsqueeze(1)).sum(dim=2)
         remaining_damage = state.bullet_remaining_damage.view(batch_size, num_flat_bullets)
         active = state.bullet_active.view(batch_size, num_flat_bullets)
         next_remaining_damage = (
@@ -685,16 +753,16 @@ def _transport_bullets_through_fields(
         ).view(batch_size, num_ships, num_bullets)
         state.bullet_active = (active & ~depleted).view(batch_size, num_ships, num_bullets)
     return (
-        velocity.view(batch_size, num_ships, num_bullets),
-        position.view(batch_size, num_ships, num_bullets),
-        half_tick_position.view(batch_size, num_ships, num_bullets),
+        result.velocity.view(batch_size, num_ships, num_bullets),
+        result.position.view(batch_size, num_ships, num_bullets),
+        result.half_tick_position.view(batch_size, num_ships, num_bullets),
     )
 
 
 def advance_bullets(
     state: TensorState,
     config: ShipConfig,
-) -> tuple[TensorState, torch.Tensor, torch.Tensor]:
+) -> tuple[TensorState, BulletTrajectory]:
     """Advance bullets and return the start and midpoint of each trajectory.
 
     Args:
@@ -702,18 +770,18 @@ def advance_bullets(
         config: Physics configuration.
 
     Returns:
-        ``(state, start_pos, midpoint_pos)``. Together with the final
-        ``state.bullet_pos``, these define two swept collision segments without
-        retaining another full bullet tensor in persistent environment state.
+        The state and ephemeral points defining two swept collision segments.
     """
     start_pos = state.bullet_pos
     state.bullet_time = state.bullet_time - config.dt
     state.bullet_active = state.bullet_active & (state.bullet_time > 0)
     transport_vel = state.bullet_vel
     if config.bullet_drag_coeff != 0.0:
-        speed = transport_vel.abs()
-        half_drag_scale = 1.0 / (1.0 + config.bullet_drag_coeff * speed * (0.5 * config.dt))
-        transport_vel = transport_vel * half_drag_scale
+        transport_vel = transport_vel * _quadratic_drag_scale(
+            transport_vel,
+            config.bullet_drag_coeff,
+            0.5 * config.dt,
+        )
     if state.num_fields:
         transport_vel, state.bullet_pos, midpoint_pos = _transport_bullets_through_fields(
             state,
@@ -730,25 +798,20 @@ def advance_bullets(
             config.world_size,
         )
     if config.bullet_drag_coeff != 0.0:
-        speed = transport_vel.abs()
-        half_drag_scale = 1.0 / (1.0 + config.bullet_drag_coeff * speed * (0.5 * config.dt))
-        transport_vel = transport_vel * half_drag_scale
+        transport_vel = transport_vel * _quadratic_drag_scale(
+            transport_vel,
+            config.bullet_drag_coeff,
+            0.5 * config.dt,
+        )
     state.bullet_vel = transport_vel
-    return state, start_pos, midpoint_pos
-
-
-def update_bullets(state: TensorState, config: ShipConfig) -> TensorState:
-    """Compatibility wrapper that advances bullets without exposing segments."""
-    state, _, _ = advance_bullets(state, config)
-    return state
+    return state, BulletTrajectory(start_pos, midpoint_pos)
 
 
 def resolve_collisions(
     state: TensorState,
     config: ShipConfig,
     combat_damage_fn: Callable[..., tuple[torch.Tensor, torch.Tensor, torch.Tensor]] | None = None,
-    bullet_start_pos: torch.Tensor | None = None,
-    bullet_midpoint_pos: torch.Tensor | None = None,
+    trajectory: BulletTrajectory | None = None,
 ) -> tuple[TensorState, torch.Tensor]:
     """Detect bullet-ship collisions, apply damage, and check game-over.
 
@@ -763,8 +826,7 @@ def resolve_collisions(
         state,
         config,
         combat_damage_fn,
-        bullet_start_pos,
-        bullet_midpoint_pos,
+        trajectory,
     )
     dones = _check_game_over(state)
     return state, dones
@@ -853,8 +915,7 @@ def _apply_combat_damage(
     state: TensorState,
     config: ShipConfig,
     combat_damage_fn: Callable[..., tuple[torch.Tensor, torch.Tensor, torch.Tensor]] | None = None,
-    bullet_start_pos: torch.Tensor | None = None,
-    bullet_midpoint_pos: torch.Tensor | None = None,
+    trajectory: BulletTrajectory | None = None,
 ) -> TensorState:
     """Apply vectorized bullet damage and attribution to mutable state.
 
@@ -874,18 +935,16 @@ def _apply_combat_damage(
     if num_bullets == 0:
         return state
 
-    if bullet_start_pos is None:
-        bullet_start_pos = state.bullet_pos
-    if bullet_midpoint_pos is None:
-        bullet_midpoint_pos = state.bullet_pos
+    if trajectory is None:
+        trajectory = BulletTrajectory(state.bullet_pos, state.bullet_pos)
 
     damage_fn = combat_damage_fn or _combat_damage_tensors
     total_damage, per_shooter, next_bullet_active = damage_fn(
         state.ship_pos,
         state.ship_attitude,
         state.ship_alive,
-        bullet_start_pos,
-        bullet_midpoint_pos,
+        trajectory.start,
+        trajectory.midpoint,
         state.bullet_pos,
         state.bullet_vel,
         state.bullet_active,

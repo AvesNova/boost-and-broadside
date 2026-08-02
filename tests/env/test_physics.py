@@ -18,10 +18,9 @@ from boost_and_broadside.constants import (
 from boost_and_broadside.env.physics import (
     advance_bullets,
     resolve_collisions,
-    update_bullets,
     update_ships,
 )
-from tests.conftest import make_state
+from tests.conftest import activate_bullet, make_state
 
 
 @pytest.fixture
@@ -271,7 +270,7 @@ class TestShooting:
             if fired:
                 shots += 1
                 assert not cursor_slot_was_live
-            state = update_bullets(state, cfg)
+            state, _ = advance_bullets(state, cfg)
             peak_live = max(peak_live, int(state.bullet_active.sum().item()))
 
         assert shots > DEFAULT_MAX_BULLETS_PER_SHIP
@@ -282,21 +281,18 @@ class TestBulletLifetime:
     def test_bullet_expires_after_lifetime(self, cfg):
         """A bullet with bullet_time=0 after dt should be deactivated."""
         state = make_state(num_envs=1, max_ships=1, max_bullets=2, ship_config=cfg)
-        # Manually place a bullet with lifetime just under dt — will expire next step
-        state.bullet_active[0, 0, 0] = True
-        state.bullet_time[0, 0, 0] = cfg.dt * 0.5  # less than one step
+        activate_bullet(state, cfg, lifetime=cfg.dt * 0.5)
 
-        state = update_bullets(state, cfg)
+        state, _ = advance_bullets(state, cfg)
 
         assert not state.bullet_active[0, 0, 0].item()
 
     def test_bullet_with_long_lifetime_remains_active(self, cfg):
         """A bullet with ample lifetime must stay active after one step."""
         state = make_state(num_envs=1, max_ships=1, max_bullets=2, ship_config=cfg)
-        state.bullet_active[0, 0, 0] = True
-        state.bullet_time[0, 0, 0] = cfg.bullet_lifetime
+        activate_bullet(state, cfg)
 
-        state = update_bullets(state, cfg)
+        state, _ = advance_bullets(state, cfg)
 
         assert state.bullet_active[0, 0, 0].item()
 
@@ -306,12 +302,9 @@ class TestBulletLifetime:
         init_pos = 100.0 + 200.0j
         bullet_vel = 500.0 + 0j
 
-        state.bullet_active[0, 0, 0] = True
-        state.bullet_pos[0, 0, 0] = init_pos
-        state.bullet_vel[0, 0, 0] = bullet_vel
-        state.bullet_time[0, 0, 0] = cfg.bullet_lifetime
+        activate_bullet(state, cfg, position=init_pos, velocity=bullet_vel)
 
-        state = update_bullets(state, cfg)
+        state, _ = advance_bullets(state, cfg)
 
         half_drag_scale = 1.0 / (1.0 + cfg.bullet_drag_coeff * abs(bullet_vel) * (0.5 * cfg.dt))
         expected = init_pos + bullet_vel * half_drag_scale * cfg.dt
@@ -326,11 +319,9 @@ class TestBulletLifetime:
     def test_quadratic_drag_uses_exact_speed_solution(self, cfg):
         state = make_state(num_envs=1, max_ships=1, max_bullets=1, ship_config=cfg)
         initial_speed = 500.0
-        state.bullet_vel[0, 0, 0] = initial_speed + 0.0j
-        state.bullet_time[0, 0, 0] = cfg.bullet_lifetime
-        state.bullet_active[0, 0, 0] = True
+        activate_bullet(state, cfg, velocity=initial_speed + 0.0j)
 
-        state = update_bullets(state, cfg)
+        state, _ = advance_bullets(state, cfg)
 
         expected = initial_speed / (1.0 + cfg.bullet_drag_coeff * initial_speed * cfg.dt)
         assert state.bullet_vel[0, 0, 0].abs().item() == pytest.approx(expected, rel=1e-6)
@@ -341,9 +332,7 @@ class TestCollisions:
         cfg = replace(cfg, bullet_min_damage_frac=1.0)
         state = make_state(num_envs=1, max_ships=2, max_bullets=1, ship_config=cfg)
         state.ship_pos[0] = torch.tensor([0.0 + 0.0j, 100.0 + 100.0j])
-        state.bullet_pos[0, 0, 0] = 100.0 + 100.0j
-        state.bullet_active[0, 0, 0] = True
-        state.bullet_remaining_damage[0, 0, 0] = 3.0
+        activate_bullet(state, cfg, position=100.0 + 100.0j, damage=3.0)
 
         health_before = state.ship_health[0, 1].item()
         state, _ = resolve_collisions(state, cfg)
@@ -353,20 +342,22 @@ class TestCollisions:
     def test_swept_collision_catches_fast_bullet_between_endpoints(self, cfg):
         state = make_state(num_envs=1, max_ships=2, max_bullets=1, ship_config=cfg)
         state.ship_pos[0] = torch.tensor([0.0 + 0.0j, 120.0 + 100.0j])
-        state.bullet_pos[0, 0, 0] = 100.0 + 100.0j
-        state.bullet_vel[0, 0, 0] = 2400.0 + 0.0j
-        state.bullet_time[0, 0, 0] = 1.0
-        state.bullet_active[0, 0, 0] = True
+        activate_bullet(
+            state,
+            cfg,
+            position=100.0 + 100.0j,
+            velocity=2400.0 + 0.0j,
+            lifetime=1.0,
+        )
 
-        state, start, midpoint = advance_bullets(state, cfg)
+        state, trajectory = advance_bullets(state, cfg)
         assert abs(state.bullet_pos[0, 0, 0] - state.ship_pos[0, 1]) > cfg.collision_radius
 
         health_before = state.ship_health[0, 1].item()
         state, _ = resolve_collisions(
             state,
             cfg,
-            bullet_start_pos=start,
-            bullet_midpoint_pos=midpoint,
+            trajectory=trajectory,
         )
 
         assert state.ship_health[0, 1].item() < health_before
@@ -375,18 +366,20 @@ class TestCollisions:
     def test_swept_collision_wraps_across_toroidal_boundary(self, cfg):
         state = make_state(num_envs=1, max_ships=2, max_bullets=1, ship_config=cfg)
         state.ship_pos[0] = torch.tensor([500.0 + 500.0j, 2.0 + 100.0j])
-        state.bullet_pos[0, 0, 0] = 1018.0 + 100.0j
-        state.bullet_vel[0, 0, 0] = 1200.0 + 0.0j
-        state.bullet_time[0, 0, 0] = 1.0
-        state.bullet_active[0, 0, 0] = True
+        activate_bullet(
+            state,
+            cfg,
+            position=1018.0 + 100.0j,
+            velocity=1200.0 + 0.0j,
+            lifetime=1.0,
+        )
 
-        state, start, midpoint = advance_bullets(state, cfg)
+        state, trajectory = advance_bullets(state, cfg)
         health_before = state.ship_health[0, 1].item()
         state, _ = resolve_collisions(
             state,
             cfg,
-            bullet_start_pos=start,
-            bullet_midpoint_pos=midpoint,
+            trajectory=trajectory,
         )
 
         assert state.ship_health[0, 1].item() < health_before
@@ -403,10 +396,14 @@ class TestCollisions:
         state.ship_pos[0, 1] = 0.0 + 0j
 
         # Ship 1 fires a bullet at ship 0 (place it on top of ship 0)
-        state.bullet_pos[0, 1, 0] = target_pos
-        state.bullet_vel[0, 1, 0] = 500.0 + 0j
-        state.bullet_active[0, 1, 0] = True
-        state.bullet_time[0, 1, 0] = 1.0
+        activate_bullet(
+            state,
+            cfg,
+            owner=1,
+            position=target_pos,
+            velocity=500.0 + 0j,
+            lifetime=1.0,
+        )
 
         initial_health = state.ship_health[0, 0].item()
         state, _ = resolve_collisions(state, cfg)
@@ -425,10 +422,15 @@ class TestCollisions:
 
         # Enough bullets to kill
         for k in range(5):
-            state.bullet_pos[0, 1, k] = target_pos
-            state.bullet_vel[0, 1, k] = 500.0 + 0j
-            state.bullet_active[0, 1, k] = True
-            state.bullet_time[0, 1, k] = 1.0
+            activate_bullet(
+                state,
+                cfg,
+                owner=1,
+                slot=k,
+                position=target_pos,
+                velocity=500.0 + 0j,
+                lifetime=1.0,
+            )
 
         state, _ = resolve_collisions(state, cfg)
 
@@ -445,10 +447,13 @@ class TestCollisions:
         state.ship_pos[0, 0] = target_pos
 
         # Ship 0's OWN bullet overlapping ship 0
-        state.bullet_pos[0, 0, 0] = target_pos
-        state.bullet_vel[0, 0, 0] = 500.0 + 0j
-        state.bullet_active[0, 0, 0] = True
-        state.bullet_time[0, 0, 0] = 1.0
+        activate_bullet(
+            state,
+            cfg,
+            position=target_pos,
+            velocity=500.0 + 0j,
+            lifetime=1.0,
+        )
 
         initial_health = state.ship_health[0, 0].item()
         state, _ = resolve_collisions(state, cfg)
@@ -493,16 +498,24 @@ class TestApplyCombatDamage:
         state.ship_pos[0, 2] = 0.0 + 0j
 
         # Ship 1 fires bullet at ship 0
-        state.bullet_pos[0, 1, 0] = target_pos
-        state.bullet_vel[0, 1, 0] = 500.0 + 0j
-        state.bullet_active[0, 1, 0] = True
-        state.bullet_time[0, 1, 0] = 1.0
+        activate_bullet(
+            state,
+            cfg,
+            owner=1,
+            position=target_pos,
+            velocity=500.0 + 0j,
+            lifetime=1.0,
+        )
 
         # Ship 2 fires bullet at ship 0
-        state.bullet_pos[0, 2, 0] = target_pos
-        state.bullet_vel[0, 2, 0] = 500.0 + 0j
-        state.bullet_active[0, 2, 0] = True
-        state.bullet_time[0, 2, 0] = 1.0
+        activate_bullet(
+            state,
+            cfg,
+            owner=2,
+            position=target_pos,
+            velocity=500.0 + 0j,
+            lifetime=1.0,
+        )
 
         initial_health = state.ship_health[0, 0].item()
 

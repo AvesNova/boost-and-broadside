@@ -14,6 +14,7 @@ from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.observation import observation_from_state
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
+from tests.conftest import activate_bullet
 
 
 @pytest.fixture
@@ -190,10 +191,13 @@ class TestTensorEnvStep:
         env.state.ship_pos[0] = torch.tensor([100.0 + 100.0j, 200.0 + 200.0j])
         env.state.ship_health[0, 1] = 1.0
         env.state.ship_power.zero_()
-        env.state.bullet_pos[0, 0, 0] = env.state.ship_pos[0, 1]
-        env.state.bullet_vel[0, 0, 0] = 0.0
-        env.state.bullet_time[0, 0, 0] = 1.0
-        env.state.bullet_active[0, 0, 0] = True
+        activate_bullet(
+            env.state,
+            ship_cfg,
+            position=env.state.ship_pos[0, 1],
+            lifetime=1.0,
+            damage=ship_cfg.max_health,
+        )
 
         actions = torch.zeros((1, 2, 3), dtype=torch.long)
         dones, _ = env.step(actions, unlimited_resources=True)

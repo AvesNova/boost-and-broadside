@@ -66,6 +66,8 @@ def benchmark(args: argparse.Namespace) -> dict[str, float]:
         bullet_damage=0.0,
         bullet_energy_cost=0.0,
         bullet_drag_coeff=args.bullet_drag_coeff,
+        field_integrator=args.ship_field_integrator,
+        field_integration_substeps=args.ship_field_substeps,
         bullet_field_integrator=args.bullet_field_integrator,
         bullet_field_integration_substeps=args.bullet_field_substeps,
         bullet_field_damage_scale=args.bullet_field_damage_scale,
@@ -144,6 +146,12 @@ def main() -> None:
     parser.add_argument("--max-bullets", type=int, default=DEFAULT_MAX_BULLETS_PER_SHIP)
     parser.add_argument("--bullet-drag-coeff", type=float, default=8e-4)
     parser.add_argument(
+        "--ship-field-integrator",
+        choices=("two_step", "midpoint"),
+        default="midpoint",
+    )
+    parser.add_argument("--ship-field-substeps", type=int, default=2)
+    parser.add_argument(
         "--bullet-field-integrator",
         choices=("two_step", "midpoint"),
         default="two_step",
@@ -171,8 +179,10 @@ def main() -> None:
     print(
         f"device={device_label} envs={args.num_envs} ships={args.num_ships} "
         f"fields={args.num_fields} slots={args.max_bullets} workload={args.workload} "
-        f"drag={args.bullet_drag_coeff:g} integrator={args.bullet_field_integrator} "
-        f"substeps={args.bullet_field_substeps} "
+        f"drag={args.bullet_drag_coeff:g} ship_integrator={args.ship_field_integrator} "
+        f"ship_substeps={args.ship_field_substeps} "
+        f"bullet_integrator={args.bullet_field_integrator} "
+        f"bullet_substeps={args.bullet_field_substeps} "
         f"damage_scale={args.bullet_field_damage_scale:g} compile={args.compile_mode} "
         f"warmup={args.warmup_steps} timed={args.timed_steps} repeats={args.repeats}"
     )

@@ -66,8 +66,9 @@ class ShipConfig:
     field_radius_max: float = 160.0
     field_transition_width_min: float = 40.0
     field_transition_width_max: float = 40.0
-    # Fixed midpoint substeps keep the hot path static-shaped and make interface
+    # Fixed substeps keep the hot path static-shaped and make interface
     # total-variation damage robust at the configured ship speeds.
+    field_integrator: str = "midpoint"  # "two_step" or "midpoint"
     field_integration_substeps: int = 2
 
     # Power exchange: E = ½n²|v|² + power_speed_constant*power is conserved
@@ -129,6 +130,8 @@ class ShipConfig:
             )
         if self.field_integration_substeps < 1:
             raise ValueError("field_integration_substeps must be positive")
+        if self.field_integrator not in {"two_step", "midpoint"}:
+            raise ValueError("field_integrator must be 'two_step' or 'midpoint'")
         if not np.isfinite(self.bullet_drag_coeff) or self.bullet_drag_coeff < 0.0:
             raise ValueError("bullet_drag_coeff must be non-negative")
         if self.bullet_field_integrator not in {"two_step", "midpoint"}:

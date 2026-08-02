@@ -63,9 +63,8 @@ def make_state(
             (num_envs, max_ships, max_bullets), dtype=torch.float32, device=dev
         ),
         bullet_active=torch.zeros((num_envs, max_ships, max_bullets), dtype=torch.bool, device=dev),
-        bullet_remaining_damage=torch.full(
+        bullet_remaining_damage=torch.zeros(
             (num_envs, max_ships, max_bullets),
-            ship_config.bullet_damage,
             dtype=torch.float32,
             device=dev,
         ),
@@ -101,3 +100,27 @@ def make_state(
         ship_field_gradient=torch.zeros((num_envs, max_ships), dtype=torch.complex64, device=dev),
         ship_field_damage=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
     )
+
+
+def activate_bullet(
+    state: TensorState,
+    config: ShipConfig,
+    *,
+    env: int = 0,
+    owner: int = 0,
+    slot: int = 0,
+    position: complex | torch.Tensor = 0.0j,
+    velocity: complex | torch.Tensor = 0.0j,
+    lifetime: float | None = None,
+    damage: float | None = None,
+) -> None:
+    """Activate one internally consistent test bullet.
+
+    Field-enabled tests should refresh the bullet's field cache after placement.
+    """
+    key = (env, owner, slot)
+    state.bullet_pos[key] = position
+    state.bullet_vel[key] = velocity
+    state.bullet_time[key] = config.bullet_lifetime if lifetime is None else lifetime
+    state.bullet_remaining_damage[key] = config.bullet_damage if damage is None else damage
+    state.bullet_active[key] = True
