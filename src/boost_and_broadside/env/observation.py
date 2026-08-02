@@ -22,11 +22,17 @@ class ObsKey(StrEnum):
     RADIUS = "radius"
     PREVIOUS_ACTION = "previous_action"
     LOCAL_LOG_INDEX = "local_log_index"
+    LOCAL_INDEX_GRADIENT = "local_index_gradient"
     FIELD_TRANSITION_WIDTH = "field_transition_width"
     FIELD_INSIDE_LOG_INDEX = "field_inside_log_index"
     FIELD_OUTSIDE_LOG_INDEX = "field_outside_log_index"
     FIELD_LOG_INDEX_RATIO = "field_log_index_ratio"
     FIELD_DAMAGE = "field_damage"
+
+
+# Channels whose last axis IS the token axis — everything else has a trailing
+# feature dim. Used by YemongObservation.slice_tokens.
+_TOKEN_LAST_KEYS = frozenset({ObsKey.TEAM_ID, ObsKey.ALIVE})
 
 
 @dataclass(frozen=True)
@@ -137,6 +143,19 @@ class YemongObservation:
     def slice_time(self, start: int, end: int) -> "YemongObservation":
         return YemongObservation(data={k: v[start:end] for k, v in self.data.items()})
 
+    def slice_tokens(self, start: int, end: int) -> "YemongObservation":
+        """Slice the entity-token axis, which is always the last non-feature dim.
+
+        ``team_id`` and ``alive`` end at the token axis while every other channel
+        carries a trailing feature dim, so the axis is addressed from the right.
+        """
+        return YemongObservation(
+            data={
+                k: (v[..., start:end] if k in _TOKEN_LAST_KEYS else v[..., start:end, :])
+                for k, v in self.data.items()
+            }
+        )
+
     def concat_batch(self, other: "YemongObservation") -> "YemongObservation":
         """Concatenate two observations along the batch (env) dimension (dim 0)."""
         return YemongObservation(
@@ -201,6 +220,24 @@ class ObservationBuffers:
         """Compatibility no-op: field geometry is read directly from state."""
 
 
+def index_gradient_scale(ship_config: ShipConfig) -> float:
+    """Normalising scale for grad(n), so the encoded channel lands near [-1, 1].
+
+    The interface profile is the quintic smoothstep ``alpha = 6z^5 - 15z^4 + 10z^3``
+    with ``z = clamp(0.5 - d/w, 0, 1)``. Its slope ``30z^2(z-1)^2`` peaks at 15/8
+    when ``z = 1/2``, so ``|d alpha/d d| <= 1.875/w``. Composition telescopes as
+    ``grad(n) = sum(delta_n_i grad(alpha_i))``, and the widest index span a single
+    interface can carry is ``s^2 - s^-2``. The narrowest configured band therefore
+    bounds the whole map's gradient.
+    """
+    step = ship_config.field_index_step
+    max_delta_index = step**2 - step**-2
+    return max(
+        1.875 * max_delta_index / ship_config.field_transition_width_min,
+        EPS,
+    )
+
+
 def observation_from_state(
     state: TensorState,
     ship_config: ShipConfig,
@@ -236,6 +273,14 @@ def observation_from_state(
     )
     ship_local_log_index = torch.log(state.ship_local_index).unsqueeze(-1) / log_scale
 
+    # grad(n) at the ship. This is the direction the medium is changing, and it is
+    # the force term in a = F/m + 0.5|v|^2 grad(log m) - (v.grad(log m))v — so
+    # without it a ship feels an acceleration whose source it cannot see.
+    ship_index_gradient = torch.stack(
+        [state.ship_field_gradient.real, state.ship_field_gradient.imag],
+        dim=-1,
+    ) / index_gradient_scale(ship_config)
+
     if state.num_fields == 0:
         zeros = torch.zeros_like(ship_local_log_index)
         return YemongObservation(
@@ -252,6 +297,7 @@ def observation_from_state(
                 ObsKey.PREVIOUS_ACTION: ship_prev_action,
                 ObsKey.RADIUS: buffers.ship_radius,
                 ObsKey.LOCAL_LOG_INDEX: ship_local_log_index,
+                ObsKey.LOCAL_INDEX_GRADIENT: ship_index_gradient,
                 ObsKey.FIELD_TRANSITION_WIDTH: zeros,
                 ObsKey.FIELD_INSIDE_LOG_INDEX: zeros,
                 ObsKey.FIELD_OUTSIDE_LOG_INDEX: zeros,
@@ -298,6 +344,9 @@ def observation_from_state(
             ),
             ObsKey.LOCAL_LOG_INDEX: torch.cat(
                 [ship_local_log_index, buffers.field_zero_scalar], dim=1
+            ),
+            ObsKey.LOCAL_INDEX_GRADIENT: torch.cat(
+                [ship_index_gradient, buffers.field_zero_vec], dim=1
             ),
             ObsKey.FIELD_TRANSITION_WIDTH: torch.cat(
                 [ship_zero, state.field_transition_width.unsqueeze(-1)], dim=1

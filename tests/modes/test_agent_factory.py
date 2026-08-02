@@ -24,6 +24,7 @@ def _make_prev_obs(B: int, N: int) -> YemongObservation:
             ObsKey.POWER: torch.zeros(B, N, 1),
             ObsKey.COOLDOWN: torch.zeros(B, N, 1),
             ObsKey.LOCAL_LOG_INDEX: torch.zeros(B, N, 1),
+            ObsKey.LOCAL_INDEX_GRADIENT: torch.zeros(B, N, 2),
             ObsKey.ALIVE: torch.ones(B, N, dtype=torch.bool),
             ObsKey.PREVIOUS_ACTION: torch.zeros(B, N, 3, dtype=torch.long),
         }

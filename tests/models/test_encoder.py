@@ -48,6 +48,7 @@ def _make_obs(B: int, N: int) -> YemongObservation:
             ObsKey.PREVIOUS_ACTION: torch.zeros(B, N, 3, dtype=torch.long),
             ObsKey.RADIUS: torch.rand(B, N, 1),
             ObsKey.LOCAL_LOG_INDEX: torch.zeros(B, N, 1),
+            ObsKey.LOCAL_INDEX_GRADIENT: torch.zeros(B, N, 2),
             ObsKey.FIELD_TRANSITION_WIDTH: torch.zeros(B, N, 1),
             ObsKey.FIELD_INSIDE_LOG_INDEX: torch.zeros(B, N, 1),
             ObsKey.FIELD_OUTSIDE_LOG_INDEX: torch.zeros(B, N, 1),
@@ -507,6 +508,134 @@ class TestYemongBlockStructure:
         kwargs.setdefault("n_yemong_blocks", 2)
         with pytest.raises(ValueError):
             ModelConfig(d_model=64, n_heads=4, **kwargs)
+
+
+class TestEncoderSplit:
+    """Per-type first projection with a shared second layer."""
+
+    @staticmethod
+    def _cfg(split: bool) -> ModelConfig:
+        return ModelConfig(
+            d_model=64,
+            n_heads=4,
+            n_yemong_blocks=2,
+            n_spatial_per_block=2,
+            n_temporal_per_block=1,
+            encoder_split=split,
+        )
+
+    def test_default_is_shared_encoder(self):
+        assert self._cfg(False).encoder_split is False
+
+    def test_split_encoder_output_shape_matches_shared(self, coordinator):
+        B, N, M = 2, 3, 2
+        obs = _make_obs(B, N + M)
+        obs.data[ObsKey.TEAM_ID][:, N:] = 2
+
+        shared = ShipEncoder(self._cfg(False), coordinator, num_ships=N)
+        split = ShipEncoder(self._cfg(True), coordinator, num_ships=N)
+
+        assert shared(obs).shape == split(obs).shape == (B, N + M, 64)
+
+    def test_split_projections_see_only_their_own_channels(self, coordinator):
+        """Each per-type projection is narrower than the full shared vector."""
+        from boost_and_broadside.train.rl.features import FeatureScope
+
+        ship_dim = coordinator.scoped_input_dimension(FeatureScope.SHIP)
+        field_dim = coordinator.scoped_input_dimension(FeatureScope.FIELD)
+        total = coordinator.total_input_dimension
+
+        assert ship_dim < total
+        assert field_dim < total
+        # Shared channels are counted in both, so the two overlap rather than sum.
+        assert ship_dim + field_dim > total
+
+        encoder = ShipEncoder(self._cfg(True), coordinator, num_ships=3)
+        assert encoder.ship_proj[0].in_features == ship_dim
+        assert encoder.field_proj[0].in_features == field_dim
+
+    def test_split_field_tokens_ignore_ship_only_channels(self, coordinator):
+        """Ship-only channels are zeros on field tokens and must not reach them."""
+        B, N, M = 2, 3, 2
+        encoder = ShipEncoder(self._cfg(True), coordinator, num_ships=N).eval()
+
+        obs = _make_obs(B, N + M)
+        obs.data[ObsKey.TEAM_ID][:, N:] = 2
+        perturbed = YemongObservation(data={k: v.clone() for k, v in obs.data.items()})
+        # Write nonsense into a ship-only channel on the field slots only.
+        perturbed.data[ObsKey.ANG_VEL][:, N:] = 12.5
+        perturbed.data[ObsKey.POWER][:, N:] = 77.0
+
+        with torch.no_grad():
+            base, moved = encoder(obs), encoder(perturbed)
+
+        assert torch.allclose(base, moved, atol=1e-6)
+
+    def test_split_requires_num_ships(self, coordinator):
+        with pytest.raises(ValueError, match="num_ships"):
+            ShipEncoder(self._cfg(True), coordinator)
+
+    def test_policy_runs_end_to_end_with_split_encoder(self, coordinator):
+        B, N, M = 2, 3, 2
+        torch.manual_seed(0)
+        policy = YemongPolicy(
+            self._cfg(True), coordinator, num_value_components=NUM_VALUE_COMPONENTS, num_ships=N
+        ).eval()
+        obs = _make_obs(B, N + M)
+        obs.data[ObsKey.TEAM_ID][:, N:] = 2
+        hidden = policy.initial_hidden(B, N, torch.device("cpu"))
+
+        action, _, value, _, _ = policy.get_action_and_value(obs, hidden)
+
+        assert action.shape == (B, N, 3)
+        assert torch.isfinite(value).all()
+
+    def test_slice_tokens_handles_both_channel_layouts(self):
+        """team_id/alive end at the token axis; every other channel has a feature dim."""
+        B, N, M = 2, 3, 2
+        obs = _make_obs(B, N + M)
+
+        ships = obs.slice_tokens(0, N)
+        fields = obs.slice_tokens(N, N + M)
+
+        assert ships.data[ObsKey.TEAM_ID].shape == (B, N)
+        assert ships.data[ObsKey.POS].shape == (B, N, 2)
+        assert fields.data[ObsKey.ALIVE].shape == (B, M)
+        assert fields.data[ObsKey.VEL].shape == (B, M, 2)
+        assert torch.equal(fields.data[ObsKey.POS], obs.data[ObsKey.POS][:, N:])
+
+
+class TestLocalIndexGradientObservation:
+    """grad(n) at the ship is a physics term the policy previously could not see."""
+
+    def test_gradient_channel_is_present_and_normalised(self, ship_cfg):
+        from boost_and_broadside.env.observation import index_gradient_scale
+
+        scale = index_gradient_scale(ship_cfg)
+        assert scale > 0.0
+        # Quintic smoothstep peak slope 15/8, widest single-interface index span.
+        step = ship_cfg.field_index_step
+        expected = 1.875 * (step**2 - step**-2) / ship_cfg.field_transition_width_min
+        assert scale == pytest.approx(expected)
+
+    def test_feature_is_registered_as_input_only(self, ship_cfg):
+        coordinator = build_standard_coordinator(ship_cfg)
+        feature = next(f for f in coordinator.features if f.name == "local_index_gradient")
+        assert feature.predictor is None, "gradient is a deterministic function of position"
+
+    def test_gradient_reaches_the_encoder_input(self, ship_cfg):
+        """Perturbing the channel must move the encoded token."""
+        coordinator = build_standard_coordinator(ship_cfg)
+        B, N = 1, 2
+        obs = _make_obs(B, N)
+        moved = YemongObservation(data={k: v.clone() for k, v in obs.data.items()})
+        moved.data[ObsKey.LOCAL_INDEX_GRADIENT][0, 0] = torch.tensor([0.8, -0.4])
+
+        base_vec = coordinator.get_input_vector(obs)
+        moved_vec = coordinator.get_input_vector(moved)
+
+        assert not torch.allclose(base_vec[0, 0], moved_vec[0, 0])
+        assert torch.allclose(base_vec[0, 1], moved_vec[0, 1])
 
 
 class TestNonRecurrentFieldPath:

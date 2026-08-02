@@ -198,6 +198,11 @@ class ModelConfig:
     # count is the cheap way to buy relational depth.
     n_spatial_per_block: int = 1
     n_temporal_per_block: int = 1
+    # Per-entity-type first projection in the encoder, with a shared second layer.
+    # A field token otherwise spends most of its input width on ship-only channels
+    # that are hard zeros for it. The shared output layer is what keeps both token
+    # types in one latent space, which the single spatial W_qkv depends on.
+    encoder_split: bool = False
     # Recompute each Yemong block's activations during the PPO backward pass instead
     # of storing them (torch.utils.checkpoint). Trades ~one extra forward per block
     # in backward for activation memory that no longer scales with depth — set True

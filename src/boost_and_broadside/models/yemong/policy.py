@@ -150,7 +150,7 @@ class YemongPolicy(nn.Module):
         self._team_pma_k_set = set(team_pma_k)
         self.coordinator = coordinator
 
-        self.encoder = ShipEncoder(model_config, coordinator)
+        self.encoder = ShipEncoder(model_config, coordinator, num_ships=num_ships)
         self.yemong_layers = nn.ModuleList(
             [YemongBlock(model_config) for _ in range(model_config.n_yemong_blocks)]
         )
