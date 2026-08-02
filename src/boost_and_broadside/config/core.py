@@ -190,18 +190,35 @@ class ModelConfig:
 
     d_model: int  # token embedding dimension
     n_heads: int  # attention heads (must divide d_model)
-    n_transformer_blocks: int  # number of pre-norm transformer blocks before the GRU
+    n_yemong_blocks: int  # number of Yemong blocks in the trunk
+    # Sublayers inside every Yemong block. All blocks share one structure, so the
+    # trunk is n_yemong_blocks repetitions of (n_spatial_per_block spatial layers
+    # followed by n_temporal_per_block temporal layers). Spatial layers cost roughly
+    # a quarter of a temporal layer at these token counts, so raising the spatial
+    # count is the cheap way to buy relational depth.
+    n_spatial_per_block: int = 1
+    n_temporal_per_block: int = 1
     # Recompute each Yemong block's activations during the PPO backward pass instead
     # of storing them (torch.utils.checkpoint). Trades ~one extra forward per block
     # in backward for activation memory that no longer scales with depth — set True
     # to fit deeper networks. Only affects the update-time re-evaluation path.
     grad_checkpoint: bool = False
 
+    @property
+    def n_hidden_layers(self) -> int:
+        """Recurrent state slots in the trunk — one per temporal sublayer."""
+
+        return self.n_yemong_blocks * self.n_temporal_per_block
+
     def __post_init__(self) -> None:
         if self.d_model % self.n_heads != 0:
             raise ValueError(f"d_model={self.d_model} must be divisible by n_heads={self.n_heads}")
-        if self.n_transformer_blocks < 0:
-            raise ValueError(f"n_transformer_blocks must be >= 0, got {self.n_transformer_blocks}")
+        if self.n_yemong_blocks < 0:
+            raise ValueError(f"n_yemong_blocks must be >= 0, got {self.n_yemong_blocks}")
+        if self.n_spatial_per_block < 0:
+            raise ValueError(f"n_spatial_per_block must be >= 0, got {self.n_spatial_per_block}")
+        if self.n_temporal_per_block < 0:
+            raise ValueError(f"n_temporal_per_block must be >= 0, got {self.n_temporal_per_block}")
 
 
 @dataclass(frozen=True)

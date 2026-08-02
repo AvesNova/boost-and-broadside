@@ -177,7 +177,7 @@ def _make_trainer(
         model_config=ModelConfig(
             d_model=32,
             n_heads=4,
-            n_transformer_blocks=1,
+            n_yemong_blocks=1,
         ),
         ship_config=ship_config,
         device=device,
@@ -639,7 +639,7 @@ class TestSchedulePrimitives:
                 bc_winrate_target=0.9,
                 histogram_interval=10,
             ),
-            model_config=ModelConfig(d_model=32, n_heads=4, n_transformer_blocks=1),
+            model_config=ModelConfig(d_model=32, n_heads=4, n_yemong_blocks=1),
             ship_config=ShipConfig(),
             device="cpu",
             use_wandb=False,

@@ -162,7 +162,7 @@ def main() -> None:
 
     device = "cuda"
     compile_mode = None if args.compile == "none" else args.compile
-    model_kwargs = {"n_transformer_blocks": args.blocks}
+    model_kwargs = {"n_yemong_blocks": args.blocks}
     if args.grad_checkpoint:
         model_kwargs["grad_checkpoint"] = True  # field only exists where the feature is present
     model_cfg = replace(MODEL_CONFIG, **model_kwargs)

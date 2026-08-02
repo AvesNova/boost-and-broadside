@@ -19,7 +19,7 @@ SHIP_CONFIG = ShipConfig(bullet_energy_cost=2, bullet_min_damage_frac=1.0)
 MODEL_CONFIG = ModelConfig(
     d_model=128,
     n_heads=4,
-    n_transformer_blocks=2,
+    n_yemong_blocks=2,
     grad_checkpoint=False,
 )
 

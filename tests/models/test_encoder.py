@@ -20,7 +20,7 @@ def ship_cfg() -> ShipConfig:
 
 @pytest.fixture
 def model_cfg() -> ModelConfig:
-    return ModelConfig(d_model=64, n_heads=4, n_transformer_blocks=2)
+    return ModelConfig(d_model=64, n_heads=4, n_yemong_blocks=2)
 
 
 @pytest.fixture
@@ -288,7 +288,7 @@ class TestYemongPolicy:
         assert value.shape == (B, N, NUM_VALUE_COMPONENTS)
         assert pred_next.shape[:2] == (B, N)
         assert new_hidden.shape == (
-            model_cfg.n_transformer_blocks,
+            model_cfg.n_yemong_blocks,
             B * (N + M),
             CONV_KERNEL * model_cfg.d_model,
         )
@@ -311,7 +311,7 @@ class TestYemongPolicy:
         from boost_and_broadside.models.yemong.griffin import CONV_KERNEL
 
         assert new_hidden.shape == (
-            model_cfg.n_transformer_blocks,
+            model_cfg.n_yemong_blocks,
             B * N,
             CONV_KERNEL * model_cfg.d_model,
         )
@@ -368,7 +368,7 @@ class TestYemongPolicy:
         )
         from boost_and_broadside.models.yemong.griffin import CONV_KERNEL
 
-        hidden = torch.ones(model_cfg.n_transformer_blocks, B * N, CONV_KERNEL * model_cfg.d_model)
+        hidden = torch.ones(model_cfg.n_yemong_blocks, B * N, CONV_KERNEL * model_cfg.d_model)
         done = torch.tensor([True, False, True])
 
         new_hidden = policy.reset_hidden_for_envs(hidden, done, N)
@@ -378,6 +378,131 @@ class TestYemongPolicy:
             assert (new_hidden[0, ship, :] == 0).all()  # env 0
             assert (new_hidden[0, N + ship, :] != 0).any()  # env 1 unchanged
             assert (new_hidden[0, 2 * N + ship, :] == 0).all()  # env 2
+
+
+class TestYemongBlockStructure:
+    """Configurable spatial/temporal sublayer counts inside each Yemong block."""
+
+    @staticmethod
+    def _policy(coordinator, n_blocks: int, n_spatial: int, n_temporal: int, num_ships: int):
+        cfg = ModelConfig(
+            d_model=64,
+            n_heads=4,
+            n_yemong_blocks=n_blocks,
+            n_spatial_per_block=n_spatial,
+            n_temporal_per_block=n_temporal,
+        )
+        torch.manual_seed(0)
+        policy = YemongPolicy(
+            cfg, coordinator, num_value_components=NUM_VALUE_COMPONENTS, num_ships=num_ships
+        )
+        return cfg, policy.eval()
+
+    @pytest.mark.parametrize(
+        ("n_blocks", "n_spatial", "n_temporal"),
+        [(2, 1, 1), (2, 2, 1), (1, 4, 2), (3, 2, 1), (2, 2, 0)],
+    )
+    def test_sublayer_counts_match_config(self, coordinator, n_blocks, n_spatial, n_temporal):
+        _, policy = self._policy(coordinator, n_blocks, n_spatial, n_temporal, num_ships=3)
+        assert len(policy.yemong_layers) == n_blocks
+        for block in policy.yemong_layers:
+            assert len(block.spatial) == n_spatial
+            assert len(block.temporal) == n_temporal
+
+    @pytest.mark.parametrize(
+        ("n_blocks", "n_temporal"),
+        [(2, 1), (2, 2), (1, 3), (3, 1), (2, 0)],
+    )
+    def test_hidden_state_has_one_slot_per_temporal_sublayer(
+        self, coordinator, n_blocks, n_temporal
+    ):
+        from boost_and_broadside.models.yemong.griffin import CONV_KERNEL
+
+        B, N, M = 2, 3, 2
+        cfg, policy = self._policy(coordinator, n_blocks, 2, n_temporal, num_ships=N)
+        hidden = policy.initial_hidden(B, N + M, torch.device("cpu"))
+
+        assert hidden.shape == (
+            n_blocks * n_temporal,
+            B * (N + M),
+            CONV_KERNEL * cfg.d_model,
+        )
+        assert cfg.n_hidden_layers == n_blocks * n_temporal
+
+        obs = _make_obs(B, N + M)
+        obs.data[ObsKey.TEAM_ID][:, N:] = 2
+        _, _, _, _, new_hidden = policy.get_action_and_value(obs, hidden)
+        assert new_hidden.shape == hidden.shape
+
+    @pytest.mark.parametrize(
+        ("n_blocks", "n_spatial", "n_temporal"),
+        [(2, 1, 1), (2, 2, 1), (1, 3, 2)],
+    )
+    def test_step_matches_sequence(self, coordinator, n_blocks, n_spatial, n_temporal):
+        """Rollout stepping and full-sequence re-evaluation must agree.
+
+        This is the load-bearing property of the trunk: PPO collects with
+        ``get_action_and_value`` one step at a time, then re-evaluates the whole
+        rollout with ``evaluate_actions``. If the two paths diverge, the ratio
+        ``exp(new_logprob - old_logprob)`` is wrong and the update is silently
+        corrupted, so it is pinned across sublayer configurations.
+        """
+        B, N, M, T = 2, 3, 2, 6
+        _, policy = self._policy(coordinator, n_blocks, n_spatial, n_temporal, num_ships=N)
+
+        torch.manual_seed(7)
+        obs_seq = []
+        for _ in range(T):
+            obs = _make_obs(B, N + M)
+            obs.data[ObsKey.TEAM_ID][:, N:] = 2
+            obs_seq.append(obs)
+
+        initial_hidden = policy.initial_hidden(B, N + M, torch.device("cpu"))
+
+        # Step path: advance one timestep at a time, carrying hidden forward.
+        hidden = initial_hidden
+        step_values, actions = [], []
+        for obs in obs_seq:
+            action, _, value, _, hidden = policy.get_action_and_value(obs, hidden)
+            step_values.append(value)
+            actions.append(action)
+        step_value = torch.stack(step_values, dim=0)  # (T, B, N, K)
+
+        # Sequence path: one parallel re-evaluation from the same initial state.
+        stacked = YemongObservation(
+            data={
+                key: torch.stack([o.data[key] for o in obs_seq], dim=0) for key in obs_seq[0].data
+            }
+        )
+        alive_mask = stacked.data[ObsKey.ALIVE]  # (T, B, N+M)
+        with torch.no_grad():
+            _, _, seq_value, _, _, _ = policy.evaluate_actions(
+                stacked, torch.stack(actions, dim=0), initial_hidden, alive_mask
+            )
+
+        assert torch.allclose(step_value, seq_value, atol=1e-5), (
+            f"max diff: {(step_value - seq_value).abs().max().item()}"
+        )
+
+    def test_defaults_reproduce_single_sublayer_trunk(self, coordinator):
+        """Omitting the new knobs must give the pre-refactor 1S+1T structure."""
+        cfg = ModelConfig(d_model=64, n_heads=4, n_yemong_blocks=2)
+        assert cfg.n_spatial_per_block == 1
+        assert cfg.n_temporal_per_block == 1
+        assert cfg.n_hidden_layers == 2
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"n_yemong_blocks": -1},
+            {"n_yemong_blocks": 2, "n_spatial_per_block": -1},
+            {"n_yemong_blocks": 2, "n_temporal_per_block": -1},
+        ],
+    )
+    def test_rejects_negative_sublayer_counts(self, kwargs):
+        kwargs.setdefault("n_yemong_blocks", 2)
+        with pytest.raises(ValueError):
+            ModelConfig(d_model=64, n_heads=4, **kwargs)
 
 
 class TestOrthogonalHeadInit:
@@ -526,7 +651,7 @@ class TestGradCheckpoint:
         # Gradients must match exactly — checkpointing recomputes the same forward.
         (lp0.sum() + val0.sum() + pn0.sum()).backward()
         (lp1.sum() + val1.sum() + pn1.sum()).backward()
-        g0 = base.yemong_layers[0].temporal.linear1.weight.grad
-        g1 = ckpt.yemong_layers[0].temporal.linear1.weight.grad
+        g0 = base.yemong_layers[0].temporal[0].linear1.weight.grad
+        g1 = ckpt.yemong_layers[0].temporal[0].linear1.weight.grad
         assert g0 is not None and g1 is not None
         assert torch.allclose(g0, g1, atol=1e-5)

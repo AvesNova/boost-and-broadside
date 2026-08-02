@@ -19,6 +19,9 @@ between symlog-reward space (GAE) and normalized space (value head I/O).
 Hidden state shape: (n_layers, B*(N+M), CONV_KERNEL * D), packed as:
   hidden[:, :, :D]   -- RG-LRU recurrent state
   hidden[:, :, D:]   -- causal conv buffer (CONV_KERNEL-1 past linear1 outputs, flattened)
+
+n_layers is n_yemong_blocks * n_temporal_per_block: every temporal sublayer owns
+one slot, and block i's slots are the contiguous run [i*n_temporal, (i+1)*n_temporal).
 """
 
 import math
@@ -149,8 +152,11 @@ class YemongPolicy(nn.Module):
 
         self.encoder = ShipEncoder(model_config, coordinator)
         self.yemong_layers = nn.ModuleList(
-            [YemongBlock(model_config) for _ in range(model_config.n_transformer_blocks)]
+            [YemongBlock(model_config) for _ in range(model_config.n_yemong_blocks)]
         )
+        # Hidden-state slots per block — the trunk's recurrent state is indexed
+        # [block * n_temporal + sublayer], so this stride is load-bearing.
+        self._n_temporal = model_config.n_temporal_per_block
         self._grad_checkpoint = model_config.grad_checkpoint
 
         hidden_dim = D * 2
@@ -203,12 +209,21 @@ class YemongPolicy(nn.Module):
             num_tokens: N+M (ships + fields) — all entity tokens carry hidden state.
 
         Returns:
-            (n_layers, B*(N+M), CONV_KERNEL*D) float32 — packed RG-LRU state + conv buffer.
+            (n_layers, B*(N+M), CONV_KERNEL*D) float32 — packed RG-LRU state + conv buffer,
+            where n_layers is n_yemong_blocks * n_temporal_per_block.
         """
-        n_layers = len(self.yemong_layers)
         return torch.zeros(
-            n_layers, num_envs * num_tokens, CONV_KERNEL * self._d_model, device=device
+            self.n_hidden_layers,
+            num_envs * num_tokens,
+            CONV_KERNEL * self._d_model,
+            device=device,
         )
+
+    @property
+    def n_hidden_layers(self) -> int:
+        """Recurrent state slots — one per temporal sublayer across the trunk."""
+
+        return len(self.yemong_layers) * self._n_temporal
 
     def reset_hidden_for_envs(
         self,
@@ -258,20 +273,31 @@ class YemongPolicy(nn.Module):
 
         B, NM, D = x.shape
         BNM = B * NM
-        n_layers = len(self.yemong_layers)
+        n_layers = hidden.shape[0]
+        n_temporal = self._n_temporal
         rglru_states = hidden[:, :, :D]  # (n_layers, B*(N+M), D)
         conv_bufs = hidden[:, :, D:].reshape(n_layers, BNM, CONV_KERNEL - 1, D)
 
         new_rglru, new_cbs = [], []
         for i, layer in enumerate(self.yemong_layers):
-            x, new_h, new_cb = layer.step(x, alive, rglru_states[i], conv_bufs[i])
+            # Each block owns a contiguous run of n_temporal hidden slots.
+            block_slice = slice(i * n_temporal, (i + 1) * n_temporal)
+            x, new_h, new_cb = layer.step(
+                x, alive, rglru_states[block_slice], conv_bufs[block_slice]
+            )
             new_rglru.append(new_h)
             new_cbs.append(new_cb)
 
-        new_rglru_t = torch.stack(new_rglru, dim=0)  # (n_layers, B*(N+M), D)
-        new_cbs_t = torch.stack(new_cbs, dim=0).reshape(
-            n_layers, BNM, -1
-        )  # (n_layers, B*(N+M), (CONV_KERNEL-1)*D)
+        # cat, not stack: each entry already carries this block's n_temporal slots.
+        # The conv-buffer width is spelled out rather than inferred with -1, which is
+        # ambiguous when n_layers is 0 (a purely spatial trunk).
+        conv_width = (CONV_KERNEL - 1) * D
+        new_rglru_t = torch.cat(new_rglru, dim=0) if new_rglru else rglru_states
+        new_cbs_t = (
+            torch.cat(new_cbs, dim=0).reshape(n_layers, BNM, conv_width)
+            if new_cbs
+            else conv_bufs.reshape(n_layers, BNM, conv_width)
+        )
         new_hidden = torch.cat(
             [new_rglru_t, new_cbs_t], dim=-1
         )  # (n_layers, B*(N+M), CONV_KERNEL*D)
@@ -344,7 +370,8 @@ class YemongPolicy(nn.Module):
         """
         T, B, N = actions.shape[:3]  # N = num_ships (actions only for ships)
         D = self._d_model
-        n_layers = len(self.yemong_layers)
+        n_layers = initial_hidden.shape[0]
+        n_temporal = self._n_temporal
         BNM = initial_hidden.shape[1]  # B*(N+M)
 
         rglru_states = initial_hidden[:, :, :D]  # (n_layers, B*(N+M), D)
@@ -361,6 +388,8 @@ class YemongPolicy(nn.Module):
         z = x if return_encoder_output else None
 
         for i, layer in enumerate(self.yemong_layers):
+            # Each block owns a contiguous run of n_temporal hidden slots.
+            block_slice = slice(i * n_temporal, (i + 1) * n_temporal)
             if self._grad_checkpoint and torch.is_grad_enabled():
                 # Recompute this block's activations in backward instead of storing
                 # them: activation memory stops scaling with depth. use_reentrant=False
@@ -370,13 +399,15 @@ class YemongPolicy(nn.Module):
                     layer,
                     x,
                     alive_mask,
-                    rglru_states[i],
-                    conv_bufs[i],
+                    rglru_states[block_slice],
+                    conv_bufs[block_slice],
                     done_mask,
                     use_reentrant=False,
                 )
             else:
-                x, _, _ = layer.sequence(x, alive_mask, rglru_states[i], conv_bufs[i], done_mask)
+                x, _, _ = layer.sequence(
+                    x, alive_mask, rglru_states[block_slice], conv_bufs[block_slice], done_mask
+                )
 
         # Slice ship tokens for heads
         x_ships = x[:, :, :N, :]  # (T, B, N, D)
