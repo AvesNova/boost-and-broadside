@@ -3,6 +3,8 @@
 Responsibilities:
   - Convert TensorState into the raw obs dict consumed by YemongPolicy.
   - Concatenate ship and refractive-field tokens into one (B, N+M, ...) obs dict.
+  - Optionally attach the bullet cross-attention axis, (B, N*K, ...), when the
+    policy reads it (include_bullets).
   - Compute per-ship per-component rewards via the reward components
     (zero-sum accounting happens later, in PPO's lambda aggregation).
   - Reset done / truncated environments and zero GRU hidden states.
@@ -48,6 +50,7 @@ class YemongEnvWrapper:
         "alive"           (B, N+M)     — bool; fields are always True
         "previous_action" (B, N+M, 3)  — int actions; zero for fields
         "radius"          (B, N+M, 1)  — raw px; ship collision or nominal field radius
+        "local_index_gradient" (B, N+M, 2) — normalized grad(n); zero for fields
         field material     (B, N+M, 1)  — numeric width/index-ratio/damage channels
 
     All reward computations remain (B, N) — field tokens are never reward recipients.

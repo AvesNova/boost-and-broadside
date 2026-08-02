@@ -2,26 +2,36 @@
 
 Architecture (per timestep):
     obs → EntityEncoder → (B, N+M, D)     [ships N then fields M]
-         → N+M x YemongBlock → (B, N+M, D)   [spatial + temporal over all tokens]
+    bullets → BulletEncoder → (B, N*K, D) [key/value only; optional]
+         → n_yemong_blocks x YemongBlock → (B, N+M, D)
+              [n_spatial_per_block spatial sublayers, the first
+               n_bullet_cross_per_block of which cross-attend to bullets,
+               then n_temporal_per_block temporal sublayers]
          → slice [:N]                    → (B, N, D)    [ship tokens only]
          → ActionHead                   → (B, N, 12)   [logits: power|turn|shoot]
          → NextStateHead                → (B, N, P)    [aux: pred next state deltas; P from coord.]
          → TeamPMA                      → (B, N, D)    [pool per team, broadcast back]
          → ValueHead                    → (B, N, K)    [MSE critic: K components]
 
-Field tokens (team_id=2) participate in attention and carry temporal hidden
-state, but receive no action or value heads.
+Three entity kinds, three levels of participation:
+  ships  (team_id 0/1) — attention, recurrence, and all three heads.
+  fields (team_id 2)   — attention only. Static within an episode, so they take
+                         the non-recurrent Griffin path and receive no heads.
+  bullets              — key/value only. Never queried, never recurrent, never
+                         updated; they exist solely as things ships can look at.
 
 K = num_value_components (one head per reward component).
 Value head outputs in normalized space. The ReturnScaler in PPOTrainer maps
 between symlog-reward space (GAE) and normalized space (value head I/O).
 
-Hidden state shape: (n_layers, B*(N+M), CONV_KERNEL * D), packed as:
+Hidden state shape: (n_layers, B*N, CONV_KERNEL * D) — ships only — packed as:
   hidden[:, :, :D]   -- RG-LRU recurrent state
   hidden[:, :, D:]   -- causal conv buffer (CONV_KERNEL-1 past linear1 outputs, flattened)
 
 n_layers is n_yemong_blocks * n_temporal_per_block: every temporal sublayer owns
 one slot, and block i's slots are the contiguous run [i*n_temporal, (i+1)*n_temporal).
+The trunk reads its ship/field split off this tensor's width rather than tracking
+it separately, so sizing and splitting cannot disagree.
 """
 
 import math

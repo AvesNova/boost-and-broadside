@@ -33,6 +33,11 @@ uses eight ships (4-vs-4) and zero fields, preserving the original ambient-only 
 exactly. `runs/rl_fields.py` is a four-field combat profile for smoke tests and future
 training.
 
+Ships also observe `grad(n)` at their own position. It was computed and consumed by the
+physics well before it reached the observation — the force term in
+`a = F/m + 0.5|v|^2 grad(log m) - (v.grad(log m))v` — so a ship could see which medium it
+occupied but not which way that medium was changing.
+
 ## Flight, proper speed, and power
 
 Actions factor into power (coast/base thrust, boost, reverse), turn (straight, normal or
@@ -186,6 +191,13 @@ by the local index before adding ship velocity and spread. Projectiles continuou
 refract, experience quadratic drag, wrap, and expire through a fixed per-ship ring buffer.
 The production pool uses ten slots, sufficient for the default one-second lifetime and
 0.1-second cooldown without overwriting a live projectile.
+
+Projectiles are also observable by the policy. `observation_from_state(...,
+include_bullets=True)` flattens the per-ship ring buffers into one `(B, N*K, ...)` axis
+carrying position, velocity, remaining damage, remaining lifetime, local index and index
+gradient, and the shooter's team. Every slot is emitted; inactive ones are masked out of
+attention rather than compacted, so the shape stays static. See
+[architecture](architecture.md#bullet-cross-attention) for how the policy reads them.
 
 Each tick retains start, half-tick, and final positions ephemerally and tests both swept
 segments against ships, preventing fast projectiles from tunneling between endpoints.
