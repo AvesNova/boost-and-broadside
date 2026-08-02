@@ -127,6 +127,9 @@ class TensorEnv:
             ship_local_index=torch.ones((B, N), dtype=torch.float32, device=dev),
             ship_field_gradient=torch.zeros((B, N), dtype=torch.complex64, device=dev),
             ship_field_damage=torch.zeros((B, N), dtype=torch.float32, device=dev),
+            ship_combat_damage=torch.zeros((B, N), dtype=torch.float32, device=dev),
+            ship_field_death=torch.zeros((B, N), dtype=torch.bool, device=dev),
+            ship_combat_death=torch.zeros((B, N), dtype=torch.bool, device=dev),
         )
 
     def reset_envs(
@@ -266,6 +269,9 @@ class TensorEnv:
         # Resetting/spawning initializes alpha rather than comparing against
         # ambient, so it cannot cause artificial crossing damage.
         s.ship_field_damage = torch.where(m, 0.0, s.ship_field_damage)
+        s.ship_combat_damage = torch.where(m, 0.0, s.ship_combat_damage)
+        s.ship_field_death = s.ship_field_death & ~m
+        s.ship_combat_death = s.ship_combat_death & ~m
 
     # ------------------------------------------------------------------
     # Step
@@ -336,6 +342,14 @@ class TensorEnv:
                 torch.full_like(self.state.ship_power, self.ship_config.max_power),
                 self.state.ship_power,
             )
+            self.state.ship_field_damage = torch.where(
+                protected_alive, 0.0, self.state.ship_field_damage
+            )
+            self.state.ship_combat_damage = torch.where(
+                protected_alive, 0.0, self.state.ship_combat_damage
+            )
+            self.state.ship_field_death &= ~protected_alive
+            self.state.ship_combat_death &= ~protected_alive
             dones &= ~protected_alive.any(dim=1)
 
         self.state.step_count += 1

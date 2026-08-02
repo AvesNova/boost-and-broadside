@@ -102,19 +102,25 @@ _BC_CUTOFF_UPDATES = 3
 _GROUP: dict[str, str] = {
     "ally_win": "true_reward_scale",
     "enemy_win": "true_reward_scale",
-    "ally_damage": "global_scale",
-    "enemy_damage": "global_scale",
-    "ally_death": "global_scale",
-    "enemy_death": "global_scale",
+    "ally_combat_damage": "global_scale",
+    "enemy_combat_damage": "global_scale",
+    "ally_field_damage": "global_scale",
+    "enemy_field_damage": "global_scale",
+    "ally_combat_death": "global_scale",
+    "enemy_combat_death": "global_scale",
+    "ally_field_death": "global_scale",
+    "enemy_field_death": "global_scale",
     "facing": "local_scale",
     "closing_speed": "local_scale",
     "shoot_quality": "local_scale",
     "kill_shot": "local_scale",
     "kill_assist": "local_scale",
-    "damage_taken": "local_scale",
+    "combat_damage_taken": "local_scale",
+    "field_damage_taken": "local_scale",
     "damage_dealt_enemy": "local_scale",
     "damage_dealt_ally": "local_scale",
-    "death": "local_scale",
+    "combat_death": "local_scale",
+    "field_death": "local_scale",
     "shooting_penalty": "local_scale",
     "speed": "local_scale",
 }
@@ -609,7 +615,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
     def _make_ally_zero_k(self, ally_zero_set: frozenset[str]) -> torch.Tensor:
         """Build the (K,) bool tensor marking components where same-team lambda=0.
 
-        Used for enemy-perspective components (enemy_damage, enemy_death, enemy_win)
+        Used for enemy-perspective source-split damage/death components and enemy_win,
         where allies should not contribute their own signal to the aggregated advantage.
         """
         return torch.tensor(

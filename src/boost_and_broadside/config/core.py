@@ -228,16 +228,20 @@ class RewardConfig:
     Group scales (applied as a multiplier on top of individual weights; the
     authoritative component → group mapping is _GROUP in train/rl/ppo.py):
         true_reward  → win components (ally_win, enemy_win)
-        global       → team outcome rewards (ally/enemy damage and death)
+        global       → team outcome rewards (ally/enemy source-split damage and death)
         local        → self-only per-ship rewards (shaping, kill credit,
                        per-ship damage/death)
     """
 
     # --- Global outcome rewards (lambda-aggregated across ships) ---
-    ally_damage_weight: float  # damage taken by this ship (negative; enemies zero-sum via lambda)
-    enemy_damage_weight: float  # same signal, enemy-team perspective (pair with ally_damage)
-    ally_death_weight: float  # -1 on death of this ship
-    enemy_death_weight: float  # same signal, enemy-team perspective (pair with ally_death)
+    ally_combat_damage_weight: float  # applied projectile damage to this ship
+    enemy_combat_damage_weight: float  # enemy-perspective projectile damage pair
+    ally_field_damage_weight: float  # applied boundary damage to this ship
+    enemy_field_damage_weight: float  # enemy-perspective boundary damage pair
+    ally_combat_death_weight: float  # projectile-caused death of this ship
+    enemy_combat_death_weight: float  # enemy-perspective projectile death pair
+    ally_field_death_weight: float  # boundary-caused death of this ship
+    enemy_field_death_weight: float  # enemy-perspective boundary death pair
     ally_win_weight: float  # +1 when this ship's team wins
     enemy_win_weight: float  # same signal, enemy-team perspective (pair with ally_win)
 
@@ -247,10 +251,12 @@ class RewardConfig:
     shoot_quality_weight: float  # shot quality when firing (shaping)
     kill_shot_weight: float  # proportional share of +1.0 per kill, weighted by step damage
     kill_assist_weight: float  # proportional share of +1.0 per kill, weighted by episode damage
-    damage_taken_weight: float  # damage received by this ship this step (negative reward)
+    combat_damage_taken_weight: float  # applied projectile health loss (negative reward)
+    field_damage_taken_weight: float  # applied boundary health loss (negative reward)
     damage_dealt_enemy_weight: float  # damage dealt to enemies this step (positive reward)
     damage_dealt_ally_weight: float  # damage dealt to allies this step (friendly-fire penalty)
-    death_weight: float  # -1 on the step this ship dies; fires via just_died, not alive mask
+    combat_death_weight: float  # -1 when projectile damage kills this ship
+    field_death_weight: float  # -1 when boundary damage kills this ship
 
     # --- Geometry params ---
     proximity_radius: float  # falloff radius used by FacingReward

@@ -167,6 +167,9 @@ class YemongEnvWrapper:
         self._acc_comp_scaled_sum = torch.zeros((K,), device=d)
         self._acc_wins_sum = torch.zeros((), device=d)
         self._acc_lifespan_sum = torch.zeros((), device=d)
+        # field damage, combat damage, field deaths, combat deaths,
+        # field-damage steps, non-ambient live steps, total live steps.
+        self._acc_source_stats = torch.zeros((7,), device=d)
 
     def pop_episode_stats(self) -> dict[str, torch.Tensor]:
         """Return finished-episode stats accumulated since the last call, and reset.
@@ -193,6 +196,7 @@ class YemongEnvWrapper:
             "comp_scaled_sum": self._acc_comp_scaled_sum,
             "wins_sum": self._acc_wins_sum,
             "lifespan_sum": self._acc_lifespan_sum,
+            "source_stats": self._acc_source_stats,
         }
         self._zero_stat_accumulators()
         return stats
@@ -236,6 +240,19 @@ class YemongEnvWrapper:
         dones, truncated = self.env.step(
             actions,
             unlimited_resources=unlimited_resources,
+        )
+
+        source_state = self.env.state
+        self._acc_source_stats += torch.stack(
+            [
+                source_state.ship_field_damage.sum(),
+                source_state.ship_combat_damage.sum(),
+                source_state.ship_field_death.sum(),
+                source_state.ship_combat_death.sum(),
+                (source_state.ship_field_damage > 0.0).sum(),
+                ((source_state.ship_local_index - 1.0).abs() > 1e-6).logical_and(prev_alive).sum(),
+                prev_alive.sum(),
+            ]
         )
 
         # Compute rewards for active components only — (B, N, K_active)

@@ -10,8 +10,12 @@ import math
 import pytest
 import torch
 
-from boost_and_broadside.agents.scripted_utils import turn_toward
+from boost_and_broadside.agents.scripted_utils import compute_field_steering, turn_toward
+from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
+from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
+from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.constants import TurnActions
+from tests.conftest import make_state
 
 _EPS_DEG = 0.01
 
@@ -63,3 +67,47 @@ def test_turn_toward_preserves_shape_and_dtype() -> None:
 
     assert turn.shape == (2, 3)
     assert turn.dtype == torch.int32
+
+
+def _field_steering_state(*, num_fields: int):
+    config = ShipConfig()
+    state = make_state(
+        num_envs=1,
+        max_ships=2,
+        max_bullets=0,
+        ship_config=config,
+        num_fields=num_fields,
+    )
+    state.ship_team_id[0] = torch.tensor([0, 1], dtype=torch.int32)
+    state.ship_pos[0] = torch.tensor([100.0 + 100.0j, 300.0 + 100.0j])
+    state.ship_attitude[0] = 1.0 + 0.0j
+    if num_fields:
+        state.field_pos[0, 0] = 100.0 + 55.0j
+        state.field_radius[0, 0] = 40.0
+        state.field_transition_width[0, 0] = 40.0
+        state.field_index[0, 0] = 2.0
+        state.field_delta_index[0, 0] = 1.0
+        state.field_damage[0, 0] = 20.0
+    return config, state
+
+
+def test_field_steering_biases_ship_away_from_nearby_material_boundary() -> None:
+    config, state = _field_steering_state(num_fields=1)
+
+    bearing, strength = compute_field_steering(state, config)
+
+    assert torch.angle(bearing[0, 0]).item() == pytest.approx(math.pi / 2)
+    assert 0.0 < strength[0, 0].item() <= 0.35
+
+
+def test_scripted_turn_targets_change_when_a_field_is_nearby() -> None:
+    config, ambient = _field_steering_state(num_fields=0)
+    _, fielded = _field_steering_state(num_fields=1)
+    agent = StochasticScriptedAgent(config, StochasticAgentConfig())
+
+    torch.manual_seed(0)
+    _, ambient_probs = agent.get_actions_and_probs(ambient)
+    torch.manual_seed(0)
+    _, field_probs = agent.get_actions_and_probs(fielded)
+
+    assert not torch.allclose(ambient_probs[0, 0, 3:10], field_probs[0, 0, 3:10])

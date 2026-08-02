@@ -91,7 +91,13 @@ class TensorState:
     ship_field_alpha: torch.Tensor  # (B, N, M) float32
     ship_local_index: torch.Tensor  # (B, N) float32
     ship_field_gradient: torch.Tensor  # (B, N) complex64 — grad(n)
-    ship_field_damage: torch.Tensor  # (B, N) float32 — interface damage this step
+    # Per-step source bookkeeping uses applied health loss, after clamping to
+    # the ship's remaining health. Death flags are mutually exclusive because
+    # field transport resolves before projectile collisions.
+    ship_field_damage: torch.Tensor  # (B, N) float32 — applied interface health loss
+    ship_combat_damage: torch.Tensor  # (B, N) float32 — applied projectile health loss
+    ship_field_death: torch.Tensor  # (B, N) bool — field damage killed this ship this step
+    ship_combat_death: torch.Tensor  # (B, N) bool — projectile damage killed this ship this step
 
     # ------------------------------------------------------------------
     # Convenience properties

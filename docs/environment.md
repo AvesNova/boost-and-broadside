@@ -148,7 +148,7 @@ The default scale is `0.1`, so entering a standard 10-damage interface changes a
 10-damage projectile to 9 damage; a subsequent 20-damage interface changes it to 7.
 A projectile deactivates when its positive damage potential is fully depleted. Barrier
 loss is not attributed to a ship, while projectile damage that reaches a target continues
-through normal combat attribution and health-loss rewards.
+through normal combat attribution and the projectile-specific health-loss reward.
 
 ## Nesting and map validity
 

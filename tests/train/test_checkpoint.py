@@ -153,7 +153,7 @@ class TestObservationSchema:
         assert ladder["observation_schema"] == OBSERVATION_SCHEMA
 
     def test_legacy_obstacle_checkpoint_fails_clearly(self):
-        with pytest.raises(ValueError, match="solid-obstacle encoder"):
+        with pytest.raises(ValueError, match="Observation feature semantics are incompatible"):
             require_observation_schema({"policy_state_dict": {}}, "legacy.pt")
 
 

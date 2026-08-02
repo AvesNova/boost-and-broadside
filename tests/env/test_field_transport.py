@@ -210,6 +210,33 @@ def test_monotonic_interface_damage_is_speed_and_width_invariant(speed: float, w
     )
 
 
+def test_field_source_bookkeeping_caps_lethal_overkill():
+    config = _passive_config()
+    state = _single_field_state(
+        config,
+        index=config.field_index_step,
+        damage=config.field_interface_damage,
+        width=40.0,
+    )
+    state.ship_health[:] = 3.0
+    state.ship_pos[:] = 387.0 + 512.0j
+    state.ship_vel[:] = 140.0 + 0.0j
+    state.ship_attitude[:] = 1.0 + 0.0j
+    refresh_ship_field_cache(state, config)
+
+    applied = 0.0
+    for _ in range(120):
+        state = update_ships(state, _coast_actions(), config)
+        applied += state.ship_field_damage.item()
+        if not state.ship_alive.item():
+            break
+
+    assert applied == pytest.approx(3.0, abs=1e-6)
+    assert state.ship_field_death.item()
+    assert not state.ship_combat_death.item()
+    assert state.ship_health.item() == 0.0
+
+
 def test_stationary_ship_in_interface_takes_no_repeated_damage():
     config = _passive_config()
     state = _single_field_state(

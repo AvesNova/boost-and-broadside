@@ -62,7 +62,7 @@ channel to:
 | team identity | three-way one-hot | none |
 | alive state | scalar | none |
 | previous power/turn/shoot | categorical one-hot | none |
-| radius | normalized scalar | none |
+| radius | shared ship/field scalar divided by half the shorter world dimension | none |
 | field width | normalized scalar | none |
 | field inside/outside log index and ratio | normalized physical scalars | none |
 | interface damage | normalized scalar | none |

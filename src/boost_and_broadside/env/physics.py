@@ -546,9 +546,12 @@ def _transport_through_fields(state: TensorState, config: ShipConfig) -> TensorS
     total_damage = (result.interface_variation * state.field_damage.unsqueeze(1)).sum(dim=2)
 
     alive_before = state.ship_alive
-    state.ship_field_damage = total_damage * alive_before.float()
-    state.ship_health = (state.ship_health - state.ship_field_damage).clamp(min=0.0)
-    state.ship_alive = state.ship_alive & (state.ship_health > 0.0)
+    health_before = state.ship_health
+    health_after = (health_before - total_damage * alive_before.float()).clamp(min=0.0)
+    state.ship_field_damage.copy_(health_before - health_after)
+    state.ship_field_death.copy_(alive_before & (health_after <= 0.0))
+    state.ship_health = health_after
+    state.ship_alive = alive_before & ~state.ship_field_death
     state.ship_pos = result.position
     state.ship_vel = result.velocity
     state.ship_field_alpha = result.alpha
@@ -589,7 +592,6 @@ def _update_kinematics_in_fields(
     state.ship_attitude = base_attitude * torch.polar(torch.ones_like(turn_offset), turn_offset)
     state.ship_ang_vel = turn_offset / config.dt
 
-    state.ship_field_damage = torch.zeros_like(state.ship_field_damage)
     state = _apply_field_flight_half_step(state, thrust_mag, drag_coeff, lift_coeff, config)
     state = _transport_through_fields(state, config)
     state = _apply_field_flight_half_step(state, thrust_mag, drag_coeff, lift_coeff, config)
@@ -699,6 +701,8 @@ def update_ships(state: TensorState, actions: torch.Tensor, config: ShipConfig) 
     Returns:
         The mutated state.
     """
+    state.ship_field_damage.zero_()
+    state.ship_field_death.zero_()
     tables = _get_lookup_tables(config, state.device)
     if state.num_fields == 0:
         # Preserve the exact ambient-only baseline and its cheap hot path.
@@ -931,6 +935,8 @@ def _apply_combat_damage(
 
     # Reset per-step attribution; cumulative is carried forward across steps.
     state.damage_matrix.zero_()
+    state.ship_combat_damage.zero_()
+    state.ship_combat_death.zero_()
 
     if num_bullets == 0:
         return state
@@ -956,11 +962,16 @@ def _apply_combat_damage(
     state.damage_matrix.copy_(per_shooter)
     state.cumulative_damage_matrix += per_shooter
 
-    # Apply health reduction. Death is monotone (alive &= health > 0) so ships
-    # flagged dead by other systems are never resurrected by the alive refresh.
-    state.ship_health = state.ship_health - total_damage
-    state.ship_alive = state.ship_alive & (state.ship_health > 0)
-    state.ship_health = torch.clamp(state.ship_health, min=0.0)
+    # Record only applied health loss: simultaneous hits and overkill cannot
+    # inflate source-specific damage rewards. Ships killed by fields earlier in
+    # the tick are excluded by the collision mask and remain field deaths.
+    alive_before = state.ship_alive
+    health_before = state.ship_health
+    health_after = (health_before - total_damage).clamp(min=0.0)
+    state.ship_combat_damage.copy_(health_before - health_after)
+    state.ship_combat_death.copy_(alive_before & (health_after <= 0.0))
+    state.ship_health = health_after
+    state.ship_alive = alive_before & ~state.ship_combat_death
 
     state.bullet_active = next_bullet_active
 

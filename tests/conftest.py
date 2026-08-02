@@ -99,6 +99,9 @@ def make_state(
         ship_local_index=torch.ones((num_envs, max_ships), dtype=torch.float32, device=dev),
         ship_field_gradient=torch.zeros((num_envs, max_ships), dtype=torch.complex64, device=dev),
         ship_field_damage=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
+        ship_combat_damage=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
+        ship_field_death=torch.zeros((num_envs, max_ships), dtype=torch.bool, device=dev),
+        ship_combat_death=torch.zeros((num_envs, max_ships), dtype=torch.bool, device=dev),
     )
 
 

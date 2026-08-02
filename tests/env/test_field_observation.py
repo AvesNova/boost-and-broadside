@@ -53,9 +53,22 @@ def test_field_material_features_and_ship_local_index_are_numeric_and_bounded():
     assert obs[ObsKey.FIELD_DAMAGE][0, 2:, 0].tolist() == pytest.approx([0.5, 1.0])
     assert obs.local_log_index[0, :, 0].tolist() == pytest.approx([-1.0, 0.0, 0.0, 0.0])
 
-    encoded = build_standard_coordinator(config).get_input_vector(obs)
+    coordinator = build_standard_coordinator(config)
+    encoded = coordinator.get_input_vector(obs)
     assert encoded.shape[:2] == (1, 4)
     assert torch.isfinite(encoded).all()
+
+    radius_feature = next(feature for feature in coordinator.features if feature.name == "radius")
+    encoded_radius = radius_feature.get_input(obs)
+    expected_scale = min(config.world_size) / 2.0
+    assert encoded_radius[0, :, 0].tolist() == pytest.approx(
+        [
+            config.collision_radius / expected_scale,
+            config.collision_radius / expected_scale,
+            140.0 / expected_scale,
+            50.0 / expected_scale,
+        ]
+    )
 
 
 def test_team_flip_changes_only_ship_team_ids_and_preserves_field_properties():

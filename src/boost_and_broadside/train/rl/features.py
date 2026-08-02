@@ -813,7 +813,12 @@ def build_standard_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
             OneHot(2),
             Identity(),
         ),
-        Feature("radius", Accessor(ObsKey.RADIUS), Normalize(40.0), Identity()),
+        Feature(
+            "radius",
+            Accessor(ObsKey.RADIUS),
+            Normalize(0.5 * min(ship_config.world_size)),
+            Identity(),
+        ),
         # Field material features are numeric physical quantities. Ship slots are
         # zero for field-only channels; field slots are zero for ship-local index.
         Feature(

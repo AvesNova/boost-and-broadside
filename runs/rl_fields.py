@@ -9,6 +9,7 @@ from dataclasses import replace
 
 from boost_and_broadside.config import FieldMapConfig, ScaleConfig
 from runs.rl import RL_TRAIN_CONFIG
+from runs.shared import FIELD_REWARDS
 
 _NUM_FIELDS = 4
 _NUM_SHIPS = RL_TRAIN_CONFIG.scales[0].env_config.num_ships
@@ -20,6 +21,7 @@ _NUM_ENVS = (
 
 RL_FIELDS_TRAIN_CONFIG = replace(
     RL_TRAIN_CONFIG,
+    rewards=FIELD_REWARDS,
     scales=(
         ScaleConfig(
             env_config=replace(

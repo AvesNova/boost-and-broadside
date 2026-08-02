@@ -149,6 +149,7 @@ def refresh_ship_field_cache(state, config: ShipConfig) -> None:
     state.ship_local_index = evaluation.index
     state.ship_field_gradient = evaluation.grad_index
     state.ship_field_damage = torch.zeros_like(state.ship_field_damage)
+    state.ship_field_death = torch.zeros_like(state.ship_field_death)
 
 
 def index_from_level(level: torch.Tensor, index_step: float) -> torch.Tensor:

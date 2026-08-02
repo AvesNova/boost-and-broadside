@@ -97,7 +97,7 @@ Each active component receives its own critic output and can have its own GAE ga
 horizon. Weights are magnitudes; each component carries its own sign, noted below. The
 reference policy activated these components:
 
-| Component | Weight | Role |
+| Component | RL / fields weight | Role |
 |---|---:|---|
 | `ally_win` | 4.0 | +1 to each surviving teammate on a win |
 | `enemy_win` | 4.0 | opponent's win signal, seen as −1 through a negative enemy lambda |
@@ -106,10 +106,12 @@ reference policy activated these components:
 | `shoot_quality` | 0.1 | firing opportunity quality (+) |
 | `kill_shot` | 1.0 | fatal-step credit (+), proportional to that step's damage; killing a friendly earns the negative share |
 | `kill_assist` | 1.0 | assist credit (+), proportional to cumulative episode damage |
-| `damage_taken` | 0.5 | −proportional to incoming damage |
+| `combat_damage_taken` | 0.5 / 0.5 | −applied projectile health loss |
+| `field_damage_taken` | off / 0.5 | −applied boundary health loss |
 | `damage_dealt_enemy` | 0.5 | +proportional to damage dealt to enemies |
 | `damage_dealt_ally` | 0.5 | −proportional to friendly fire dealt |
-| `death` | 1.0 | −1 on the step this ship dies |
+| `combat_death` | 1.0 / 1.0 | −1 when projectile damage kills this ship |
+| `field_death` | off / 1.0 | −1 when boundary damage kills this ship |
 
 Weights are normalized by their absolute sum, and the wrapper divides component rewards
 by total ship count for team-size normalization. A lambda aggregation matrix then maps
@@ -121,13 +123,15 @@ local event signals to training targets:
   zero-sum outcome structure.
 
 Note that `kill_shot` is not winner-take-all: when several ships damage a target on its
-fatal step, each earns credit proportional to that step's damage. `kill_assist` is
-proportional to cumulative episode damage.
+fatal step, each earns credit proportional to that step's damage. `kill_assist` remains
+proportional to cumulative episode damage even when a field delivers the final blow;
+that preserves partial credit for attacks that force a dangerous navigation choice.
 
 The former solid-obstacle death, proximity, closing-speed, and time-to-impact components
 have been removed: refractive interfaces are traversable and should not receive universal
-wall-avoidance shaping. Smooth interface damage is included in ordinary health-loss and
-fatal-damage accounting. Interfaces also reduce projectile damage potential, but that
+wall-avoidance shaping. Applied interface and projectile health loss, plus their exclusive
+death causes, are recorded separately so neither source can double-count overkill.
+Interfaces also reduce projectile damage potential, but that
 barrier loss is not credited to a ship; only damage that reaches a target enters combat
 attribution. See [`runs/shared.py`](../runs/shared.py) for current component horizons and
 schedules, and the preserved run config for historical weights.
@@ -135,11 +139,16 @@ schedules, and the preserved run config for historical weights.
 ## Field training profile
 
 The primary [`runs/rl.py`](../runs/rl.py) profile remains an exact zero-field combat
-baseline. [`runs/rl_fields.py`](../runs/rl_fields.py) adds four cached static fields to the
-same two-team combat objective and reduces environment count to offset the extra attention
-tokens. The scripted controller intentionally ignores fields initially; it experiences
-their ship and projectile physics and damage but supplies no behavior-cloning target that
-treats every interface as impassable.
+baseline. [`runs/rl_fields.py`](../runs/rl_fields.py) adds four cached static fields,
+activates the two local field reward heads, and reduces environment count to offset the
+extra attention tokens. The scripted controller applies a mild material-aware steering
+bias near an interface. It favors remaining on the current side, with stronger influence
+from index contrast and boundary damage, but caps the blend at 35% so fields do not become
+impenetrable walls in behavior-cloning targets.
+
+Per-update physics diagnostics report field/combat damage per live ship-step, source death
+rates, the fraction of steps taking boundary damage, time in non-ambient media, and the
+field share of total applied damage. These metrics are independent of reward weights.
 
 A recommended curriculum for a dedicated field run is:
 
@@ -209,10 +218,10 @@ defines the current filenames. (The included reference-run directory retains
 `recent_avg.pt` from an older naming convention.)
 
 The refractive-field observation contract adds encoder inputs and a local-index auxiliary
-target. New checkpoint payloads carry `observation_schema=refractive_fields_v1`. Older
-solid-obstacle checkpoints have no faithful weight-only migration and are rejected with a
-clear incompatibility error; retraining is required. This applies even to old runs that
-used zero obstacles, while newly trained zero-field checkpoints remain fully supported.
+target. Radius is shared by ship and field tokens and normalized by half the shorter world
+dimension. New checkpoint payloads carry `observation_schema=refractive_fields_v2`.
+Earlier schemas have no faithful weight-only migration because their radius semantics
+differ, so they are rejected clearly and retraining is required.
 
 W&B logging runs off the main training path. The reference run's sampled metric history,
 configuration, summary, and run metadata are exported under

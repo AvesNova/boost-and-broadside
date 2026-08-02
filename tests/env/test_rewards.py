@@ -11,20 +11,26 @@ import torch
 from boost_and_broadside.config import RewardConfig, ShipConfig
 from boost_and_broadside.env.rewards import (
     REWARD_COMPONENT_NAMES,
-    AllyDamageReward,
-    AllyDeathReward,
+    AllyCombatDamageReward,
+    AllyCombatDeathReward,
+    AllyFieldDamageReward,
+    AllyFieldDeathReward,
     AllyWinReward,
     ClosingSpeedReward,
-    EnemyDamageReward,
-    EnemyDeathReward,
+    EnemyCombatDamageReward,
+    EnemyCombatDeathReward,
+    EnemyFieldDamageReward,
+    EnemyFieldDeathReward,
     EnemyWinReward,
     FacingReward,
     KillAssistReward,
     KillShotReward,
+    LocalCombatDamageTakenReward,
+    LocalCombatDeathReward,
     LocalDamageDealtAllyReward,
     LocalDamageDealtEnemyReward,
-    LocalDamageTakenReward,
-    LocalDeathReward,
+    LocalFieldDamageTakenReward,
+    LocalFieldDeathReward,
     ShootingPenaltyReward,
     ShootQualityReward,
     SpeedReward,
@@ -42,10 +48,14 @@ def cfg() -> ShipConfig:
 @pytest.fixture
 def reward_cfg() -> RewardConfig:
     return RewardConfig(
-        ally_damage_weight=0.1,
-        enemy_damage_weight=0.1,
-        ally_death_weight=0.5,
-        enemy_death_weight=0.5,
+        ally_combat_damage_weight=0.1,
+        enemy_combat_damage_weight=0.1,
+        ally_field_damage_weight=0.1,
+        enemy_field_damage_weight=0.1,
+        ally_combat_death_weight=0.5,
+        enemy_combat_death_weight=0.5,
+        ally_field_death_weight=0.5,
+        enemy_field_death_weight=0.5,
         ally_win_weight=1.0,
         enemy_win_weight=1.0,
         facing_weight=1.0,
@@ -53,14 +63,32 @@ def reward_cfg() -> RewardConfig:
         shoot_quality_weight=1.0,
         kill_shot_weight=1.0,
         kill_assist_weight=1.0,
-        damage_taken_weight=1.0,
+        combat_damage_taken_weight=1.0,
+        field_damage_taken_weight=1.0,
         damage_dealt_enemy_weight=1.0,
         damage_dealt_ally_weight=1.0,
-        death_weight=1.0,
+        combat_death_weight=1.0,
+        field_death_weight=1.0,
         proximity_radius=500.0,
         shoot_quality_radius=200.0,
-        enemy_neg_lambda_components=frozenset({"enemy_damage", "enemy_death", "enemy_win"}),
-        ally_zero_components=frozenset({"enemy_damage", "enemy_death", "enemy_win"}),
+        enemy_neg_lambda_components=frozenset(
+            {
+                "enemy_combat_damage",
+                "enemy_field_damage",
+                "enemy_combat_death",
+                "enemy_field_death",
+                "enemy_win",
+            }
+        ),
+        ally_zero_components=frozenset(
+            {
+                "enemy_combat_damage",
+                "enemy_field_damage",
+                "enemy_combat_death",
+                "enemy_field_death",
+                "enemy_win",
+            }
+        ),
     )
 
 
@@ -80,32 +108,41 @@ def _make_4ship_state(cfg):
 
 
 class TestRewardComponentNames:
-    def test_k_equals_17(self):
-        assert len(REWARD_COMPONENT_NAMES) == 17
+    def test_k_equals_23(self):
+        assert len(REWARD_COMPONENT_NAMES) == 23
 
-    def test_ally_damage_is_index_0(self):
-        assert REWARD_COMPONENT_NAMES[0] == "ally_damage"
+    def test_source_split_starts_the_registry(self):
+        assert REWARD_COMPONENT_NAMES[:8] == (
+            "ally_combat_damage",
+            "enemy_combat_damage",
+            "ally_field_damage",
+            "enemy_field_damage",
+            "ally_combat_death",
+            "enemy_combat_death",
+            "ally_field_death",
+            "enemy_field_death",
+        )
 
-    def test_enemy_damage_is_index_1(self):
-        assert REWARD_COMPONENT_NAMES[1] == "enemy_damage"
+    def test_kill_shot_is_index_13(self):
+        assert REWARD_COMPONENT_NAMES[13] == "kill_shot"
 
-    def test_kill_shot_is_index_9(self):
-        assert REWARD_COMPONENT_NAMES[9] == "kill_shot"
+    def test_kill_assist_is_index_14(self):
+        assert REWARD_COMPONENT_NAMES[14] == "kill_assist"
 
-    def test_kill_assist_is_index_10(self):
-        assert REWARD_COMPONENT_NAMES[10] == "kill_assist"
+    def test_source_split_local_damage_is_registered(self):
+        assert REWARD_COMPONENT_NAMES[15:17] == (
+            "combat_damage_taken",
+            "field_damage_taken",
+        )
 
-    def test_damage_taken_is_index_11(self):
-        assert REWARD_COMPONENT_NAMES[11] == "damage_taken"
+    def test_damage_dealt_enemy_is_index_17(self):
+        assert REWARD_COMPONENT_NAMES[17] == "damage_dealt_enemy"
 
-    def test_damage_dealt_enemy_is_index_12(self):
-        assert REWARD_COMPONENT_NAMES[12] == "damage_dealt_enemy"
+    def test_damage_dealt_ally_is_index_18(self):
+        assert REWARD_COMPONENT_NAMES[18] == "damage_dealt_ally"
 
-    def test_damage_dealt_ally_is_index_13(self):
-        assert REWARD_COMPONENT_NAMES[13] == "damage_dealt_ally"
-
-    def test_death_is_index_14(self):
-        assert REWARD_COMPONENT_NAMES[14] == "death"
+    def test_source_split_local_death_is_registered(self):
+        assert REWARD_COMPONENT_NAMES[19:21] == ("combat_death", "field_death")
 
     def test_no_duplicates(self):
         assert len(set(REWARD_COMPONENT_NAMES)) == len(REWARD_COMPONENT_NAMES)
@@ -127,129 +164,52 @@ class TestComputePerComponentRewards:
 
 
 # ---------------------------------------------------------------------------
-# Damage rewards (ally/enemy split)
+# Source-split global damage/death rewards
 # ---------------------------------------------------------------------------
 
 
-class TestAllyDamageReward:
-    def test_damaged_ship_gets_negative_reward(self, cfg):
-        prev = _make_4ship_state(cfg)
-        next_ = _make_4ship_state(cfg)
-        next_.ship_health[0, 0] = prev.ship_health[0, 0] - 10.0
+@pytest.mark.parametrize(
+    ("component_cls", "source_attr"),
+    [
+        (AllyCombatDamageReward, "ship_combat_damage"),
+        (EnemyCombatDamageReward, "ship_combat_damage"),
+        (AllyFieldDamageReward, "ship_field_damage"),
+        (EnemyFieldDamageReward, "ship_field_damage"),
+    ],
+)
+def test_source_damage_rewards_read_only_their_applied_source(cfg, component_cls, source_attr):
+    prev = _make_4ship_state(cfg)
+    next_ = _make_4ship_state(cfg)
+    getattr(next_, source_attr)[0, 2] = 15.0
 
-        r = AllyDamageReward(weight=1.0)
-        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
+    reward = component_cls(weight=1.0).compute(
+        prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
+    )
 
-        assert reward[0, 0].item() < 0
-
-    def test_undamaged_ships_get_zero_reward(self, cfg):
-        prev = _make_4ship_state(cfg)
-        next_ = _make_4ship_state(cfg)
-        next_.ship_health[0, 0] = prev.ship_health[0, 0] - 10.0
-
-        r = AllyDamageReward(weight=1.0)
-        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
-
-        assert reward[0, 1].item() == pytest.approx(0.0)
-        assert reward[0, 2].item() == pytest.approx(0.0)
-        assert reward[0, 3].item() == pytest.approx(0.0)
-
-    def test_zero_damage_gives_zero_reward(self, cfg):
-        state = _make_4ship_state(cfg)
-
-        r = AllyDamageReward(weight=1.0)
-        reward = r.compute(state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool))
-
-        assert reward.abs().max().item() == 0.0
+    assert reward[0, 2].item() == pytest.approx(-15.0)
+    assert reward[0, [0, 1, 3]].abs().sum().item() == 0.0
 
 
-class TestEnemyDamageReward:
-    def test_damaged_ship_gets_negative_reward(self, cfg):
-        """EnemyDamageReward also returns negative for the damaged ship.
-        Zero-sum inversion (lambda=-1) happens at PPO aggregation time."""
-        prev = _make_4ship_state(cfg)
-        next_ = _make_4ship_state(cfg)
-        next_.ship_health[0, 2] = prev.ship_health[0, 2] - 15.0
+@pytest.mark.parametrize(
+    ("component_cls", "source_attr"),
+    [
+        (AllyCombatDeathReward, "ship_combat_death"),
+        (EnemyCombatDeathReward, "ship_combat_death"),
+        (AllyFieldDeathReward, "ship_field_death"),
+        (EnemyFieldDeathReward, "ship_field_death"),
+    ],
+)
+def test_source_death_rewards_read_only_their_exact_source(cfg, component_cls, source_attr):
+    prev = _make_4ship_state(cfg)
+    next_ = _make_4ship_state(cfg)
+    getattr(next_, source_attr)[0, 2] = True
 
-        r = EnemyDamageReward(weight=1.0)
-        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
+    reward = component_cls(weight=1.0).compute(
+        prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
+    )
 
-        assert reward[0, 2].item() < 0
-
-    def test_other_ships_unaffected(self, cfg):
-        prev = _make_4ship_state(cfg)
-        next_ = _make_4ship_state(cfg)
-        next_.ship_health[0, 2] = prev.ship_health[0, 2] - 15.0
-
-        r = EnemyDamageReward(weight=1.0)
-        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
-
-        assert reward[0, 0].item() == pytest.approx(0.0)
-        assert reward[0, 1].item() == pytest.approx(0.0)
-        assert reward[0, 3].item() == pytest.approx(0.0)
-
-
-# ---------------------------------------------------------------------------
-# Death rewards (ally/enemy split)
-# ---------------------------------------------------------------------------
-
-
-class TestAllyDeathReward:
-    def test_dying_ship_gets_penalty(self, cfg):
-        prev = _make_4ship_state(cfg)
-        next_ = _make_4ship_state(cfg)
-        next_.ship_alive[0, 0] = False
-
-        r = AllyDeathReward(weight=5.0)
-        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
-
-        assert reward[0, 0].item() == pytest.approx(-1.0, rel=1e-5)
-
-    def test_surviving_ships_get_zero(self, cfg):
-        prev = _make_4ship_state(cfg)
-        next_ = _make_4ship_state(cfg)
-        next_.ship_alive[0, 0] = False
-
-        r = AllyDeathReward(weight=5.0)
-        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
-
-        assert reward[0, 1].item() == pytest.approx(0.0)
-        assert reward[0, 2].item() == pytest.approx(0.0)
-        assert reward[0, 3].item() == pytest.approx(0.0)
-
-    def test_no_death_gives_zero_reward(self, cfg):
-        state = _make_4ship_state(cfg)
-
-        r = AllyDeathReward(weight=5.0)
-        reward = r.compute(state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool))
-
-        assert reward.abs().max().item() == 0.0
-
-
-class TestEnemyDeathReward:
-    def test_dying_enemy_gets_negative_own_reward(self, cfg):
-        """EnemyDeathReward returns -1 for the dying ship itself.
-        Lambda=-1 at PPO time inverts this to +1 benefit for enemies."""
-        prev = _make_4ship_state(cfg)
-        next_ = _make_4ship_state(cfg)
-        next_.ship_alive[0, 2] = False
-
-        r = EnemyDeathReward(weight=5.0)
-        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
-
-        assert reward[0, 2].item() == pytest.approx(-1.0, rel=1e-5)
-
-    def test_other_ships_get_zero(self, cfg):
-        prev = _make_4ship_state(cfg)
-        next_ = _make_4ship_state(cfg)
-        next_.ship_alive[0, 2] = False
-
-        r = EnemyDeathReward(weight=5.0)
-        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
-
-        assert reward[0, 0].item() == pytest.approx(0.0)
-        assert reward[0, 1].item() == pytest.approx(0.0)
-        assert reward[0, 3].item() == pytest.approx(0.0)
+    assert reward[0, 2].item() == pytest.approx(-1.0)
+    assert reward[0, [0, 1, 3]].abs().sum().item() == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -549,54 +509,45 @@ class TestKillAssistReward:
 
         assert reward[0, 0].item() == pytest.approx(2.0)  # 1.0 per kill
 
+    def test_field_final_blow_keeps_cumulative_combat_credit(self, cfg):
+        prev = _kill_state(cfg)
+        next_ = _kill_state(cfg)
+        next_.ship_alive[0, 2] = False
+        next_.ship_field_death[0, 2] = True
+        next_.cumulative_damage_matrix[0, 0, 2] = 30.0
+        next_.cumulative_damage_matrix[0, 1, 2] = 10.0
+
+        reward = KillAssistReward(weight=1.0).compute(
+            prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool)
+        )
+
+        assert reward[0, 0].item() == pytest.approx(0.75)
+        assert reward[0, 1].item() == pytest.approx(0.25)
+
 
 # ---------------------------------------------------------------------------
 # Local damage rewards
 # ---------------------------------------------------------------------------
 
 
-class TestLocalDamageTakenReward:
-    def test_damaged_ship_gets_negative_reward(self, cfg):
-        prev = _make_4ship_state(cfg)
-        next_ = _make_4ship_state(cfg)
-        next_.ship_health[0, 0] = prev.ship_health[0, 0] - 10.0
+@pytest.mark.parametrize(
+    ("component_cls", "source_attr"),
+    [
+        (LocalCombatDamageTakenReward, "ship_combat_damage"),
+        (LocalFieldDamageTakenReward, "ship_field_damage"),
+    ],
+)
+def test_local_source_damage_rewards_are_exact(cfg, component_cls, source_attr):
+    prev = _make_4ship_state(cfg)
+    next_ = _make_4ship_state(cfg)
+    getattr(next_, source_attr)[0, 0] = 10.0
 
-        r = LocalDamageTakenReward(weight=1.0)
-        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
+    reward = component_cls(weight=1.0).compute(
+        prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
+    )
 
-        assert reward[0, 0].item() == pytest.approx(-10.0)
-
-    def test_undamaged_ships_get_zero(self, cfg):
-        prev = _make_4ship_state(cfg)
-        next_ = _make_4ship_state(cfg)
-        next_.ship_health[0, 0] = prev.ship_health[0, 0] - 10.0
-
-        r = LocalDamageTakenReward(weight=1.0)
-        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
-
-        assert reward[0, 1].item() == pytest.approx(0.0)
-        assert reward[0, 2].item() == pytest.approx(0.0)
-        assert reward[0, 3].item() == pytest.approx(0.0)
-
-    def test_fatal_damage_is_counted(self, cfg):
-        """The damage that kills a ship is still attributed on its final live step."""
-        prev = _make_4ship_state(cfg)
-        next_ = _make_4ship_state(cfg)
-        next_.ship_health[0, 0] = 0.0
-        next_.ship_alive[0, 0] = False
-
-        r = LocalDamageTakenReward(weight=1.0)
-        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
-
-        assert reward[0, 0].item() == pytest.approx(-cfg.max_health)
-
-    def test_zero_damage_gives_zero_reward(self, cfg):
-        state = _make_4ship_state(cfg)
-
-        r = LocalDamageTakenReward(weight=1.0)
-        reward = r.compute(state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool))
-
-        assert reward.abs().max().item() == 0.0
+    assert reward[0, 0].item() == pytest.approx(-10.0)
+    assert reward[0, 1:].abs().sum().item() == 0.0
 
 
 class TestLocalDamageDealtEnemyReward:
@@ -693,49 +644,24 @@ class TestLocalDamageDealtAllyReward:
         assert reward[0, 0].item() == pytest.approx(0.0)
 
 
-class TestLocalDeathReward:
-    def test_dying_ship_gets_minus_one(self, cfg):
-        """Fires on the exact step of death using just_died, not next_state.ship_alive."""
-        prev = _make_4ship_state(cfg)
-        next_ = _make_4ship_state(cfg)
-        next_.ship_alive[0, 0] = False
+@pytest.mark.parametrize(
+    ("component_cls", "source_attr"),
+    [
+        (LocalCombatDeathReward, "ship_combat_death"),
+        (LocalFieldDeathReward, "ship_field_death"),
+    ],
+)
+def test_local_source_death_rewards_are_exact(cfg, component_cls, source_attr):
+    prev = _make_4ship_state(cfg)
+    next_ = _make_4ship_state(cfg)
+    getattr(next_, source_attr)[0, 0] = True
 
-        r = LocalDeathReward(weight=1.0)
-        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
+    reward = component_cls(weight=1.0).compute(
+        prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool)
+    )
 
-        assert reward[0, 0].item() == pytest.approx(-1.0)
-
-    def test_surviving_ships_get_zero(self, cfg):
-        prev = _make_4ship_state(cfg)
-        next_ = _make_4ship_state(cfg)
-        next_.ship_alive[0, 0] = False
-
-        r = LocalDeathReward(weight=1.0)
-        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
-
-        assert reward[0, 1].item() == pytest.approx(0.0)
-        assert reward[0, 2].item() == pytest.approx(0.0)
-        assert reward[0, 3].item() == pytest.approx(0.0)
-
-    def test_already_dead_ship_does_not_fire_again(self, cfg):
-        """A ship dead in both prev and next (subsequent steps) must not re-trigger."""
-        prev = _make_4ship_state(cfg)
-        next_ = _make_4ship_state(cfg)
-        prev.ship_alive[0, 0] = False  # already dead last step
-        next_.ship_alive[0, 0] = False  # still dead
-
-        r = LocalDeathReward(weight=1.0)
-        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, torch.zeros(2, dtype=torch.bool))
-
-        assert reward[0, 0].item() == pytest.approx(0.0)
-
-    def test_no_deaths_gives_zero_reward(self, cfg):
-        state = _make_4ship_state(cfg)
-
-        r = LocalDeathReward(weight=1.0)
-        reward = r.compute(state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool))
-
-        assert reward.abs().max().item() == 0.0
+    assert reward[0, 0].item() == pytest.approx(-1.0)
+    assert reward[0, 1:].abs().sum().item() == 0.0
 
 
 # ---------------------------------------------------------------------------

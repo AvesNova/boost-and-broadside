@@ -4,6 +4,8 @@ Import these into individual profiles rather than duplicating values.
 Override in a profile only when the run genuinely needs a different value.
 """
 
+from dataclasses import replace
+
 from boost_and_broadside.config import (
     EloCalibrateConfig,
     EloEvalConfig,
@@ -60,10 +62,14 @@ REWARDS = RewardConfig(
     # Outcome rewards — ally/enemy split so the critic distinguishes symmetric
     # from asymmetric outcomes (e.g. mutual damage vs no damage, standoff vs
     # close fight).
-    ally_damage_weight=0.0,
-    enemy_damage_weight=0.0,
-    ally_death_weight=0.0,
-    enemy_death_weight=0.0,
+    ally_combat_damage_weight=0.0,
+    enemy_combat_damage_weight=0.0,
+    ally_field_damage_weight=0.0,
+    enemy_field_damage_weight=0.0,
+    ally_combat_death_weight=0.0,
+    enemy_combat_death_weight=0.0,
+    ally_field_death_weight=0.0,
+    enemy_field_death_weight=0.0,
     ally_win_weight=4.0,
     enemy_win_weight=4.0,
     # Dense shaping rewards — prevent passive collapse during early RL.
@@ -75,11 +81,13 @@ REWARDS = RewardConfig(
     # kill_assist: proportional share based on cumulative episode damage dealt.
     kill_shot_weight=1.0,
     kill_assist_weight=1.0,
-    death_weight=1.0,
+    combat_death_weight=1.0,
+    field_death_weight=0.0,
     # Per-ship local combat credit — self-only (lambda=0 for all other ships).
-    # damage_taken: negative reward proportional to health lost this step.
+    # Source-split damage_taken: negative reward proportional to applied health loss.
     # damage_dealt: positive reward proportional to enemy health removed this step.
-    damage_taken_weight=0.5,
+    combat_damage_taken_weight=0.5,
+    field_damage_taken_weight=0.0,
     damage_dealt_enemy_weight=0.5,
     damage_dealt_ally_weight=0.5,
     # Geometry params
@@ -90,12 +98,36 @@ REWARDS = RewardConfig(
     #   ally_zero_components        → ally ships get lambda=0 (enemy-perspective only)
     # enemy_win is zero-sum: allies see -1 when the enemy team wins, letting the
     # critic distinguish win / draw / loss when paired with ally_win.
-    enemy_neg_lambda_components=frozenset({"enemy_damage", "enemy_death", "enemy_win"}),
-    ally_zero_components=frozenset({"enemy_damage", "enemy_death", "enemy_win"}),
+    enemy_neg_lambda_components=frozenset(
+        {
+            "enemy_combat_damage",
+            "enemy_field_damage",
+            "enemy_combat_death",
+            "enemy_field_death",
+            "enemy_win",
+        }
+    ),
+    ally_zero_components=frozenset(
+        {
+            "enemy_combat_damage",
+            "enemy_field_damage",
+            "enemy_combat_death",
+            "enemy_field_death",
+            "enemy_win",
+        }
+    ),
     # Behaviour shaping — off by default in combat mode
     shooting_penalty_weight=0.0,
     speed_weight=0.0,
     speed_penalty_min=10.0,
+)
+
+# The zero-field baseline carries no constant-zero field value heads. Field
+# training activates those two local signals without changing combat weights.
+FIELD_REWARDS = replace(
+    REWARDS,
+    field_damage_taken_weight=0.5,
+    field_death_weight=1.0,
 )
 
 # Per-component GAE discount factors.
@@ -109,15 +141,21 @@ COMPONENT_GAMMAS: dict[str, float] = {
     "ally_win": 0.999,
     "enemy_win": 0.999,
     # Kill/death
-    "ally_death": 0.995,
-    "enemy_death": 0.995,
-    "death": 0.995,
+    "ally_combat_death": 0.995,
+    "enemy_combat_death": 0.995,
+    "ally_field_death": 0.995,
+    "enemy_field_death": 0.995,
+    "combat_death": 0.995,
+    "field_death": 0.995,
     "kill_shot": 0.995,
     "kill_assist": 0.995,
     # Damage
-    "ally_damage": 0.991,
-    "enemy_damage": 0.991,
-    "damage_taken": 0.991,
+    "ally_combat_damage": 0.991,
+    "enemy_combat_damage": 0.991,
+    "ally_field_damage": 0.991,
+    "enemy_field_damage": 0.991,
+    "combat_damage_taken": 0.991,
+    "field_damage_taken": 0.991,
     "damage_dealt_enemy": 0.991,
     "damage_dealt_ally": 0.991,
     # Shaping
@@ -133,17 +171,23 @@ COMPONENT_LAMBDAS: dict[str, float] = {
     "ally_win": 0.97,
     "enemy_win": 0.97,
     # Kill/death
-    "ally_death": 0.95,
-    "enemy_death": 0.95,
-    "death": 0.95,
+    "ally_combat_death": 0.95,
+    "enemy_combat_death": 0.95,
+    "ally_field_death": 0.95,
+    "enemy_field_death": 0.95,
+    "combat_death": 0.95,
+    "field_death": 0.95,
     # kill_shot: sparse fatal-step credit is noisy; shorter trace reduces variance
     # kill_assist: episode-level cumulative credit needs a longer trace
     "kill_shot": 0.87,
     "kill_assist": 0.97,
     # Damage — slightly lower; semi-dense rewards make TD errors more informative
-    "ally_damage": 0.90,
-    "enemy_damage": 0.90,
-    "damage_taken": 0.90,
+    "ally_combat_damage": 0.90,
+    "enemy_combat_damage": 0.90,
+    "ally_field_damage": 0.90,
+    "enemy_field_damage": 0.90,
+    "combat_damage_taken": 0.90,
+    "field_damage_taken": 0.90,
     "damage_dealt_enemy": 0.90,
     "damage_dealt_ally": 0.90,
     # Shaping — low λ: dense rewards → low-variance TD; prevents "style over substance" compounding

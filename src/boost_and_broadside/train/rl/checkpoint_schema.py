@@ -3,11 +3,11 @@
 from collections.abc import Mapping
 from typing import Any
 
-OBSERVATION_SCHEMA = "refractive_fields_v1"
+OBSERVATION_SCHEMA = "refractive_fields_v2"
 
 
 def require_observation_schema(checkpoint: Mapping[str, Any], path: str | None = None) -> None:
-    """Reject weights whose encoder predates the numeric field features.
+    """Reject weights whose encoder uses a different observation contract.
 
     The new encoder adds ship-local index and field material inputs, plus a
     local-index auxiliary target. There is no faithful tensor-only migration
@@ -22,6 +22,6 @@ def require_observation_schema(checkpoint: Mapping[str, Any], path: str | None =
     found = "missing" if schema is None else repr(schema)
     raise ValueError(
         f"Checkpoint{location} uses observation schema {found}; expected "
-        f"{OBSERVATION_SCHEMA!r}. Checkpoints from the solid-obstacle encoder "
-        "are incompatible with refractive-field observations and must be retrained."
+        f"{OBSERVATION_SCHEMA!r}. Observation feature semantics are incompatible "
+        "and the policy must be retrained."
     )

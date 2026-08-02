@@ -116,37 +116,10 @@ def _valid_enemy_pairs(teams: torch.Tensor, alive: torch.Tensor) -> torch.Tensor
 # ---------------------------------------------------------------------------
 
 
-class AllyDamageReward(RewardComponent):
-    """Damage taken by this ship. Lambda=0 for enemies so only ally damage
-    aggregates into the advantage. Critic learns expected ally damage taken."""
+class _DamageTakenReward(RewardComponent):
+    """Negative applied health loss from one exact physics source."""
 
-    name = "ally_damage"
-
-    def compute(
-        self,
-        prev_state: TensorState,
-        actions: torch.Tensor,
-        next_state: TensorState,
-        dones: torch.Tensor,
-    ) -> torch.Tensor:
-        delta = (prev_state.ship_health - next_state.ship_health).clamp(min=0.0)  # (B, N)
-        # Count the fatal step as damage taken. ``prev_state.ship_alive`` also
-        # prevents already-dead slots from emitting repeated health-loss reward.
-        return -delta * prev_state.ship_alive.float()
-
-
-class EnemyDamageReward(AllyDamageReward):
-    """Same compute as AllyDamageReward. Lambda=-1 for enemies inverts sign so allies
-    benefit when enemies take damage. Critic learns expected enemy damage taken."""
-
-    name = "enemy_damage"
-
-
-class AllyDeathReward(RewardComponent):
-    """Death penalty (-1) for this ship. Lambda=0 for enemies so only ally deaths
-    aggregate. Critic learns expected ally death count (negative)."""
-
-    name = "ally_death"
+    source_attr: str
 
     def compute(
         self,
@@ -155,17 +128,59 @@ class AllyDeathReward(RewardComponent):
         next_state: TensorState,
         dones: torch.Tensor,
     ) -> torch.Tensor:
-        just_died = prev_state.ship_alive & ~next_state.ship_alive  # (B, N)
-        reward = torch.zeros_like(next_state.ship_health)
-        reward[just_died] = -1.0
-        return reward
+        damage = getattr(next_state, self.source_attr)  # (B, N)
+        return -damage * prev_state.ship_alive.float()
 
 
-class EnemyDeathReward(AllyDeathReward):
-    """Same compute as AllyDeathReward. Lambda=-1 for enemies so allies benefit when
-    enemies die. Critic learns expected enemy death count (positive for allies)."""
+class AllyCombatDamageReward(_DamageTakenReward):
+    name = "ally_combat_damage"
+    source_attr = "ship_combat_damage"
 
-    name = "enemy_death"
+
+class EnemyCombatDamageReward(AllyCombatDamageReward):
+    name = "enemy_combat_damage"
+
+
+class AllyFieldDamageReward(_DamageTakenReward):
+    name = "ally_field_damage"
+    source_attr = "ship_field_damage"
+
+
+class EnemyFieldDamageReward(AllyFieldDamageReward):
+    name = "enemy_field_damage"
+
+
+class _DeathReward(RewardComponent):
+    """Negative one on a death attributed to one exact physics source."""
+
+    source_attr: str
+
+    def compute(
+        self,
+        prev_state: TensorState,
+        actions: torch.Tensor,
+        next_state: TensorState,
+        dones: torch.Tensor,
+    ) -> torch.Tensor:
+        return -getattr(next_state, self.source_attr).float()
+
+
+class AllyCombatDeathReward(_DeathReward):
+    name = "ally_combat_death"
+    source_attr = "ship_combat_death"
+
+
+class EnemyCombatDeathReward(AllyCombatDeathReward):
+    name = "enemy_combat_death"
+
+
+class AllyFieldDeathReward(_DeathReward):
+    name = "ally_field_death"
+    source_attr = "ship_field_death"
+
+
+class EnemyFieldDeathReward(AllyFieldDeathReward):
+    name = "enemy_field_death"
 
 
 class KillShotReward(RewardComponent):
@@ -300,31 +315,28 @@ class EnemyWinReward(AllyWinReward):
 # ---------------------------------------------------------------------------
 
 
-class LocalDeathReward(AllyDeathReward):
-    """Penalty of -1 on the step this ship dies (same compute as AllyDeathReward).
+class LocalCombatDeathReward(AllyCombatDeathReward):
+    """Self-only projectile death penalty."""
 
-    Uses just_died = prev_state.ship_alive & ~next_state.ship_alive so the
-    reward fires on the exact step of death, before the ship is masked out.
-    Never multiplied by next_state.ship_alive — the ship is dead there by
-    definition and would always produce zero.
-
-    Unlike ally_death (which propagates to teammates via lambda=1), this is
-    self-only: lambda=0 for all other ships.
-    """
-
-    name = "death"
+    name = "combat_death"
 
 
-class LocalDamageTakenReward(AllyDamageReward):
-    """Damage received by this ship this step (same compute as AllyDamageReward).
+class LocalFieldDeathReward(AllyFieldDeathReward):
+    """Self-only field-boundary death penalty."""
 
-    Negative reward proportional to health lost. Unlike ally_damage, this is
-    self-only (lambda=0 for all other ships) so the signal is never shared with
-    or aggregated across teammates. Gives the critic a separate head to estimate
-    individual survivability independent of team-wide damage accounting.
-    """
+    name = "field_death"
 
-    name = "damage_taken"
+
+class LocalCombatDamageTakenReward(AllyCombatDamageReward):
+    """Self-only applied projectile health-loss penalty."""
+
+    name = "combat_damage_taken"
+
+
+class LocalFieldDamageTakenReward(AllyFieldDamageReward):
+    """Self-only applied field-boundary health-loss penalty."""
+
+    name = "field_damage_taken"
 
 
 class LocalDamageDealtEnemyReward(RewardComponent):
@@ -604,23 +616,29 @@ class SpeedReward(RewardComponent):
 # ---------------------------------------------------------------------------
 
 REWARD_COMPONENT_NAMES: tuple[str, ...] = (
-    "ally_damage",  #  0 — damage taken by allies (negative)
-    "enemy_damage",  #  1 — damage taken by enemies (positive for allies via lambda)
-    "ally_death",  #  2 — ally ship deaths (negative)
-    "enemy_death",  #  3 — enemy ship deaths (positive for allies via lambda)
-    "ally_win",  #  4 — ally team wins (positive)
-    "enemy_win",  #  5 — enemy team wins (negative for allies via lambda)
-    "facing",  #  6 — pointing at nearest enemy (shaping, self only)
-    "closing_speed",  #  7 — velocity toward nearest enemy (shaping, self only)
-    "shoot_quality",  #  8 — shot quality when firing (shaping, self only)
-    "kill_shot",  #  9 — proportional kill credit from step-level damage (self only)
-    "kill_assist",  # 10 — proportional kill credit from episode-level damage (self only)
-    "damage_taken",  # 11 — damage received by this ship this step (self only)
-    "damage_dealt_enemy",  # 12 — damage dealt to enemies this step (self only)
-    "damage_dealt_ally",  # 13 — damage dealt to allies — friendly-fire penalty (self only)
-    "death",  # 14 — -1 on the step this ship dies (self only)
-    "shooting_penalty",  # 15 — negative reward on every step this ship fires (self only)
-    "speed",  # 16 — penalty when proper speed < min_speed (self only)
+    "ally_combat_damage",  #  0 — applied projectile damage to allies
+    "enemy_combat_damage",  #  1 — applied projectile damage to enemies
+    "ally_field_damage",  #  2 — applied boundary damage to allies
+    "enemy_field_damage",  #  3 — applied boundary damage to enemies
+    "ally_combat_death",  #  4 — ally projectile deaths
+    "enemy_combat_death",  #  5 — enemy projectile deaths
+    "ally_field_death",  #  6 — ally boundary deaths
+    "enemy_field_death",  #  7 — enemy boundary deaths
+    "ally_win",  #  8 — ally team wins (positive)
+    "enemy_win",  #  9 — enemy team wins (negative for allies via lambda)
+    "facing",  # 10 — pointing at nearest enemy (shaping, self only)
+    "closing_speed",  # 11 — velocity toward nearest enemy (shaping, self only)
+    "shoot_quality",  # 12 — shot quality when firing (shaping, self only)
+    "kill_shot",  # 13 — proportional kill credit from step-level damage (self only)
+    "kill_assist",  # 14 — cumulative combat credit, including field-finished kills
+    "combat_damage_taken",  # 15 — applied projectile damage to this ship
+    "field_damage_taken",  # 16 — applied boundary damage to this ship
+    "damage_dealt_enemy",  # 17 — damage dealt to enemies this step (self only)
+    "damage_dealt_ally",  # 18 — damage dealt to allies — friendly-fire penalty
+    "combat_death",  # 19 — projectile death of this ship (self only)
+    "field_death",  # 20 — boundary death of this ship (self only)
+    "shooting_penalty",  # 21 — negative reward on every shot (self only)
+    "speed",  # 22 — penalty when proper speed < min_speed (self only)
 )
 
 _NAME_TO_K: dict[str, int] = {name: k for k, name in enumerate(REWARD_COMPONENT_NAMES)}
@@ -643,10 +661,14 @@ def build_reward_components(
         One RewardComponent per entry in REWARD_COMPONENT_NAMES, in order.
     """
     return [
-        AllyDamageReward(weight=rewards.ally_damage_weight),
-        EnemyDamageReward(weight=rewards.enemy_damage_weight),
-        AllyDeathReward(weight=rewards.ally_death_weight),
-        EnemyDeathReward(weight=rewards.enemy_death_weight),
+        AllyCombatDamageReward(weight=rewards.ally_combat_damage_weight),
+        EnemyCombatDamageReward(weight=rewards.enemy_combat_damage_weight),
+        AllyFieldDamageReward(weight=rewards.ally_field_damage_weight),
+        EnemyFieldDamageReward(weight=rewards.enemy_field_damage_weight),
+        AllyCombatDeathReward(weight=rewards.ally_combat_death_weight),
+        EnemyCombatDeathReward(weight=rewards.enemy_combat_death_weight),
+        AllyFieldDeathReward(weight=rewards.ally_field_death_weight),
+        EnemyFieldDeathReward(weight=rewards.enemy_field_death_weight),
         AllyWinReward(weight=rewards.ally_win_weight),
         EnemyWinReward(weight=rewards.enemy_win_weight),
         FacingReward(
@@ -666,10 +688,12 @@ def build_reward_components(
         ),
         KillShotReward(weight=rewards.kill_shot_weight),
         KillAssistReward(weight=rewards.kill_assist_weight),
-        LocalDamageTakenReward(weight=rewards.damage_taken_weight),
+        LocalCombatDamageTakenReward(weight=rewards.combat_damage_taken_weight),
+        LocalFieldDamageTakenReward(weight=rewards.field_damage_taken_weight),
         LocalDamageDealtEnemyReward(weight=rewards.damage_dealt_enemy_weight),
         LocalDamageDealtAllyReward(weight=rewards.damage_dealt_ally_weight),
-        LocalDeathReward(weight=rewards.death_weight),
+        LocalCombatDeathReward(weight=rewards.combat_death_weight),
+        LocalFieldDeathReward(weight=rewards.field_death_weight),
         ShootingPenaltyReward(weight=rewards.shooting_penalty_weight),
         SpeedReward(weight=rewards.speed_weight, min_speed=rewards.speed_penalty_min),
     ]
