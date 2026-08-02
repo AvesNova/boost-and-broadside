@@ -38,8 +38,8 @@ from boost_and_broadside.constants import (
     TOTAL_ACTION_LOGITS,
     TURN_SLICE,
 )
-from boost_and_broadside.env.observation import YemongObservation
-from boost_and_broadside.models.yemong.encoder import ShipEncoder
+from boost_and_broadside.env.observation import BulletObsKey, YemongObservation
+from boost_and_broadside.models.yemong.encoder import BulletEncoder, ShipEncoder
 from boost_and_broadside.models.yemong.griffin import CONV_KERNEL, YemongBlock
 from boost_and_broadside.train.rl.features import FeatureCoordinator
 
@@ -131,6 +131,8 @@ class YemongPolicy(nn.Module):
         coordinator:   Feature pipeline; drives encoder input dim and aux pred dim.
         num_value_components: K — one value head output per reward component.
         num_ships:     N — first N tokens are ships; rest are fields.
+        bullet_coordinator: Bullet feature pipeline; required when the model
+            config enables bullet cross-attention.
     """
 
     def __init__(
@@ -140,6 +142,7 @@ class YemongPolicy(nn.Module):
         num_value_components: int,
         num_ships: int,
         team_pma_k: tuple[int, ...] = (),
+        bullet_coordinator: FeatureCoordinator | None = None,
     ) -> None:
         super().__init__()
         D = model_config.d_model
@@ -151,6 +154,14 @@ class YemongPolicy(nn.Module):
         self.coordinator = coordinator
 
         self.encoder = ShipEncoder(model_config, coordinator, num_ships=num_ships)
+        # Bullets are encoded once per timestep and reused by every spatial
+        # sublayer that reads them — re-encoding per layer would multiply the
+        # dominant encoder cost for identical data.
+        self.bullet_encoder = (
+            BulletEncoder(model_config, bullet_coordinator)
+            if model_config.reads_bullets and bullet_coordinator is not None
+            else None
+        )
         self.yemong_layers = nn.ModuleList(
             [YemongBlock(model_config) for _ in range(model_config.n_yemong_blocks)]
         )
@@ -197,6 +208,14 @@ class YemongPolicy(nn.Module):
             nn.init.normal_(self.team_pma.seeds, mean=0.0, std=0.02)
             nn.init.orthogonal_(self.team_pma.attn.in_proj_weight, gain=math.sqrt(2))
             nn.init.orthogonal_(self.team_pma.attn.out_proj.weight, gain=1.0)
+
+    def _encode_bullets(
+        self, obs: YemongObservation
+    ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+        """Encode the bullet axis once, returning tokens and their active mask."""
+        if self.bullet_encoder is None or obs.bullets is None:
+            return None, None
+        return self.bullet_encoder(obs), obs.bullets[BulletObsKey.ACTIVE]
 
     # ------------------------------------------------------------------
     # Hidden state management
@@ -281,6 +300,7 @@ class YemongPolicy(nn.Module):
         """
         alive = obs["alive"]  # (B, N+M) bool — ships then fields
         x = self.encoder(obs)  # (B, N+M, D)
+        bullets, bullet_mask = self._encode_bullets(obs)  # (B, N*K, D), (B, N*K)
 
         B, NM, D = x.shape
         n_layers = hidden.shape[0]
@@ -298,7 +318,13 @@ class YemongPolicy(nn.Module):
             # Each block owns a contiguous run of n_temporal hidden slots.
             block_slice = slice(i * n_temporal, (i + 1) * n_temporal)
             x, new_h, new_cb = layer.step(
-                x, alive, rglru_states[block_slice], conv_bufs[block_slice], n_rec
+                x,
+                alive,
+                rglru_states[block_slice],
+                conv_bufs[block_slice],
+                n_rec,
+                bullets,
+                bullet_mask,
             )
             new_rglru.append(new_h)
             new_cbs.append(new_cb)
@@ -396,11 +422,17 @@ class YemongPolicy(nn.Module):
         # obs has (T, B, N+M, ...) — flatten T into B for encoder
         NM = obs["pos"].shape[2]  # N+M total tokens
         flat_obs = YemongObservation(
-            data={k: v.reshape(T * B, *v.shape[2:]) for k, v in obs.items()}
+            data={k: v.reshape(T * B, *v.shape[2:]) for k, v in obs.items()},
+            bullets=(
+                None
+                if obs.bullets is None
+                else {k: v.reshape(T * B, *v.shape[2:]) for k, v in obs.bullets.items()}
+            ),
         )
 
         x = self.encoder(flat_obs)  # (T*B, N+M, D)
         x = x.reshape(T, B, NM, D)  # (T, B, N+M, D)
+        bullets, bullet_mask = self._encode_bullets(flat_obs)  # (T*B, N*K, D)
         z = x if return_encoder_output else None
 
         for i, layer in enumerate(self.yemong_layers):
@@ -419,6 +451,8 @@ class YemongPolicy(nn.Module):
                     conv_bufs[block_slice],
                     done_mask,
                     n_rec,
+                    bullets,
+                    bullet_mask,
                     use_reentrant=False,
                 )
             else:
@@ -429,6 +463,8 @@ class YemongPolicy(nn.Module):
                     conv_bufs[block_slice],
                     done_mask,
                     n_rec,
+                    bullets,
+                    bullet_mask,
                 )
 
         # Slice ship tokens for heads
@@ -483,13 +519,17 @@ def _yemong_forward(
     conv_buf0: torch.Tensor,
     done_mask: torch.Tensor | None,
     num_recurrent: int,
+    bullets: torch.Tensor | None,
+    bullet_mask: torch.Tensor | None,
 ) -> torch.Tensor:
     """Run one Yemong block's full-sequence forward, returning only the output.
 
     Module-level (no ``self`` capture) so ``torch.utils.checkpoint`` can rematerialize
     it cleanly. The final hidden/conv states are unused by the update-time re-evaluation.
     """
-    out, _, _ = layer.sequence(x, alive_mask, h0, conv_buf0, done_mask, num_recurrent)
+    out, _, _ = layer.sequence(
+        x, alive_mask, h0, conv_buf0, done_mask, num_recurrent, bullets, bullet_mask
+    )
     return out
 
 

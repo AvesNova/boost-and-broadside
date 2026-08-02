@@ -510,6 +510,293 @@ class TestYemongBlockStructure:
             ModelConfig(d_model=64, n_heads=4, **kwargs)
 
 
+def _make_bullets(B: int, NB: int, active: bool = True) -> dict:
+    """Random bullet-axis channels matching bullet_observation_from_state output."""
+    from boost_and_broadside.env.observation import BulletObsKey
+
+    return {
+        BulletObsKey.POS: torch.rand(B, NB, 2) * 1024.0,
+        BulletObsKey.VEL: torch.randn(B, NB, 2) * 400.0,
+        BulletObsKey.DAMAGE: torch.rand(B, NB, 1),
+        BulletObsKey.LIFETIME: torch.rand(B, NB, 1),
+        BulletObsKey.LOCAL_LOG_INDEX: torch.randn(B, NB, 1) * 0.1,
+        BulletObsKey.LOCAL_INDEX_GRADIENT: torch.randn(B, NB, 2) * 0.1,
+        BulletObsKey.TEAM_ID: torch.randint(0, 2, (B, NB)),
+        BulletObsKey.ACTIVE: torch.full((B, NB), active, dtype=torch.bool),
+    }
+
+
+class TestBulletCrossAttention:
+    """Bullets are key/value-only tokens: never queried, never recurrent."""
+
+    @staticmethod
+    def _cfg(n_cross: int, n_spatial: int = 2) -> ModelConfig:
+        return ModelConfig(
+            d_model=64,
+            n_heads=4,
+            n_yemong_blocks=2,
+            n_spatial_per_block=n_spatial,
+            n_temporal_per_block=1,
+            n_bullet_cross_per_block=n_cross,
+        )
+
+    def _policy(self, ship_cfg, coordinator, n_cross, N):
+        from boost_and_broadside.train.rl.features import build_bullet_coordinator
+
+        torch.manual_seed(0)
+        return YemongPolicy(
+            self._cfg(n_cross),
+            coordinator,
+            num_value_components=NUM_VALUE_COMPONENTS,
+            num_ships=N,
+            bullet_coordinator=build_bullet_coordinator(ship_cfg) if n_cross else None,
+        ).eval()
+
+    def _obs(self, B, N, M, NB, active=True):
+        obs = _make_obs(B, N + M)
+        obs.data[ObsKey.TEAM_ID][:, N:] = 2
+        return YemongObservation(data=obs.data, bullets=_make_bullets(B, NB, active))
+
+    def test_bullet_observation_flattens_the_ring_buffer(self, ship_cfg):
+        """Every slot is emitted; inactive ones are masked, not compacted."""
+        from boost_and_broadside.config import EnvConfig
+        from boost_and_broadside.env.observation import BulletObsKey, observation_from_state
+        from boost_and_broadside.env.wrapper import YemongEnvWrapper
+        from runs.shared import REWARDS
+
+        B, N, K = 2, 4, 10
+        env_cfg = EnvConfig(num_ships=N, max_bullets=K, max_episode_steps=32)
+        wrapper = YemongEnvWrapper(B, ship_cfg, env_cfg, REWARDS, "cpu")
+        wrapper.reset()
+
+        obs = observation_from_state(wrapper.env.state, ship_cfg, include_bullets=True)
+
+        assert obs.bullets is not None
+        assert obs.bullets[BulletObsKey.POS].shape == (B, N * K, 2)
+        assert obs.bullets[BulletObsKey.ACTIVE].shape == (B, N * K)
+        # Ring-buffer slots start empty, and log(0) must not leak a -inf.
+        assert torch.isfinite(obs.bullets[BulletObsKey.LOCAL_LOG_INDEX]).all()
+
+    def test_bullet_position_shares_the_ship_frequency_basis(self, ship_cfg):
+        """Attention computes relative geometry only if both bases match.
+
+        ``q.k`` over Fourier features reduces to a function of the displacement
+        only when ship and bullet positions expand on one shared basis. Mismatched
+        frequencies leave cross terms that never form relative geometry.
+        """
+        from boost_and_broadside.train.rl.features import (
+            build_bullet_coordinator,
+            build_standard_coordinator,
+        )
+
+        ship_feats = {f.name: f for f in build_standard_coordinator(ship_cfg).features}
+        bullet_feats = {f.name: f for f in build_bullet_coordinator(ship_cfg).features}
+
+        for ship_name, bullet_name in [
+            ("position_x", "bullet_position_x"),
+            ("position_y", "bullet_position_y"),
+        ]:
+            ship_enc = ship_feats[ship_name].input_encoder
+            bullet_enc = bullet_feats[bullet_name].input_encoder
+            assert ship_enc.n_freqs == bullet_enc.n_freqs
+            assert ship_enc.periods == bullet_enc.periods
+
+        # Velocity is compared against the ship's own in the FFN, so it matches too.
+        assert type(ship_feats["velocity"].input_encoder) is type(
+            bullet_feats["bullet_velocity"].input_encoder
+        )
+
+    def test_no_ship_index_onehot_in_bullet_features(self, ship_cfg):
+        """A per-ship one-hot would fix N in the weights and kill zero-shot transfer."""
+        from boost_and_broadside.train.rl.features import OneHot, build_bullet_coordinator
+
+        for feature in build_bullet_coordinator(ship_cfg).features:
+            if isinstance(feature.input_encoder, OneHot):
+                assert feature.input_encoder.n <= 3, (
+                    f"{feature.name} one-hot of width {feature.input_encoder.n} looks "
+                    "like a per-ship index — that would fix the fleet size"
+                )
+
+    def test_inactive_bullets_do_not_influence_output(self, ship_cfg, coordinator):
+        """Masked ring-buffer slots must contribute nothing, whatever they contain."""
+        B, N, M, NB = 2, 3, 2, 12
+        policy = self._policy(ship_cfg, coordinator, n_cross=1, N=N)
+
+        torch.manual_seed(5)
+        obs = self._obs(B, N, M, NB, active=False)
+        hidden = policy.initial_hidden(B, N, torch.device("cpu"))
+        _, _, base_value, _, _ = policy.get_action_and_value(obs, hidden)
+
+        # Same masked-out slots, wildly different contents.
+        garbled = dict(obs.bullets)
+        for key, val in garbled.items():
+            if val.dtype.is_floating_point:
+                garbled[key] = val + 500.0
+        moved = YemongObservation(data=obs.data, bullets=garbled)
+        _, _, moved_value, _, _ = policy.get_action_and_value(moved, hidden)
+
+        assert torch.allclose(base_value, moved_value, atol=1e-5)
+
+    def test_partially_masked_bullets_ignore_only_the_dead_slots(self, ship_cfg, coordinator):
+        """Perturbing masked slots must not move the output when others are live.
+
+        The all-masked case is handled by an explicit gate; this covers the path
+        where the softmax genuinely runs and the bias must suppress dead keys.
+        """
+        from boost_and_broadside.env.observation import BulletObsKey
+
+        B, N, M, NB = 2, 3, 2, 12
+        policy = self._policy(ship_cfg, coordinator, n_cross=1, N=N)
+
+        torch.manual_seed(5)
+        obs = self._obs(B, N, M, NB, active=True)
+        active = obs.bullets[BulletObsKey.ACTIVE].clone()
+        active[:, NB // 2 :] = False  # second half dead
+        base_bullets = dict(obs.bullets)
+        base_bullets[BulletObsKey.ACTIVE] = active
+        base = YemongObservation(data=obs.data, bullets=base_bullets)
+
+        garbled = dict(base_bullets)
+        for key, val in garbled.items():
+            if val.dtype.is_floating_point:
+                val = val.clone()
+                val[:, NB // 2 :] += 500.0  # only the dead half
+                garbled[key] = val
+        moved = YemongObservation(data=obs.data, bullets=garbled)
+
+        hidden = policy.initial_hidden(B, N, torch.device("cpu"))
+        _, _, base_value, _, _ = policy.get_action_and_value(base, hidden)
+        _, _, moved_value, _, _ = policy.get_action_and_value(moved, hidden)
+
+        assert torch.allclose(base_value, moved_value, atol=1e-5)
+
+    def test_active_bullets_do_influence_output(self, ship_cfg, coordinator):
+        """The mask test is only meaningful if active bullets actually matter."""
+        B, N, M, NB = 2, 3, 2, 12
+        policy = self._policy(ship_cfg, coordinator, n_cross=1, N=N)
+
+        torch.manual_seed(5)
+        obs = self._obs(B, N, M, NB, active=True)
+        hidden = policy.initial_hidden(B, N, torch.device("cpu"))
+        _, _, base_value, _, _ = policy.get_action_and_value(obs, hidden)
+
+        moved_bullets = dict(obs.bullets)
+        moved_bullets[list(moved_bullets)[0]] = moved_bullets[list(moved_bullets)[0]] + 300.0
+        moved = YemongObservation(data=obs.data, bullets=moved_bullets)
+        _, _, moved_value, _, _ = policy.get_action_and_value(moved, hidden)
+
+        assert not torch.allclose(base_value, moved_value, atol=1e-5)
+
+    def test_bullets_add_no_recurrent_state(self, ship_cfg, coordinator):
+        B, N, M, NB = 2, 3, 2, 12
+        policy = self._policy(ship_cfg, coordinator, n_cross=1, N=N)
+        hidden = policy.initial_hidden(B, N, torch.device("cpu"))
+        obs = self._obs(B, N, M, NB)
+
+        _, _, _, _, new_hidden = policy.get_action_and_value(obs, hidden)
+
+        assert new_hidden.shape == hidden.shape
+        assert hidden.shape[1] == B * N  # not B*(N+M), and not B*(N+M+NB)
+
+    @pytest.mark.parametrize("n_cross", [1, 2])
+    def test_step_matches_sequence_with_bullets(self, ship_cfg, coordinator, n_cross):
+        B, N, M, NB, T = 2, 3, 2, 12, 5
+        policy = self._policy(ship_cfg, coordinator, n_cross=n_cross, N=N)
+
+        torch.manual_seed(9)
+        obs_seq = [self._obs(B, N, M, NB) for _ in range(T)]
+        initial_hidden = policy.initial_hidden(B, N, torch.device("cpu"))
+
+        hidden = initial_hidden
+        step_values, actions = [], []
+        for obs in obs_seq:
+            action, _, value, _, hidden = policy.get_action_and_value(obs, hidden)
+            step_values.append(value)
+            actions.append(action)
+
+        stacked = YemongObservation(
+            data={
+                key: torch.stack([o.data[key] for o in obs_seq], dim=0) for key in obs_seq[0].data
+            },
+            bullets={
+                key: torch.stack([o.bullets[key] for o in obs_seq], dim=0)
+                for key in obs_seq[0].bullets
+            },
+        )
+        with torch.no_grad():
+            _, _, seq_value, _, _, _ = policy.evaluate_actions(
+                stacked,
+                torch.stack(actions, dim=0),
+                initial_hidden,
+                stacked.data[ObsKey.ALIVE],
+            )
+
+        assert torch.allclose(torch.stack(step_values, dim=0), seq_value, atol=1e-5)
+
+    def test_flip_team_flips_bullet_teams(self):
+        from boost_and_broadside.env.observation import BulletObsKey
+
+        B, N, M, NB = 2, 3, 2, 6
+        obs = _make_obs(B, N + M)
+        obs.data[ObsKey.TEAM_ID][:, N:] = 2
+        bullets = _make_bullets(B, NB)
+        bullets[BulletObsKey.TEAM_ID] = torch.tensor([[0, 1, 0, 1, 0, 1]] * B)
+        obs = YemongObservation(data=obs.data, bullets=bullets)
+
+        flipped = obs.flip_team(N)
+
+        assert torch.equal(
+            flipped.bullets[BulletObsKey.TEAM_ID], torch.tensor([[1, 0, 1, 0, 1, 0]] * B)
+        )
+        # Field tokens keep team 2 through the flip.
+        assert (flipped.data[ObsKey.TEAM_ID][:, N:] == 2).all()
+
+    def test_structural_ops_carry_bullets(self):
+        B, N, M, NB = 4, 3, 2, 6
+        obs = YemongObservation(data=_make_obs(B, N + M).data, bullets=_make_bullets(B, NB))
+
+        assert obs.slice_envs(slice(0, 2)).bullets[list(obs.bullets)[0]].shape[0] == 2
+        assert obs.concat_batch(obs).bullets[list(obs.bullets)[0]].shape[0] == 2 * B
+        assert obs.map(lambda t: t).bullets is not None
+        # Bullets are not on the entity-token axis, so token slicing leaves them alone.
+        assert obs.slice_tokens(0, N).bullets is obs.bullets
+
+    def test_zero_bullet_cross_builds_no_bullet_encoder(self, ship_cfg, coordinator):
+        policy = self._policy(ship_cfg, coordinator, n_cross=0, N=3)
+        assert policy.bullet_encoder is None
+        for block in policy.yemong_layers:
+            assert not any(layer.reads_bullets for layer in block.spatial)
+
+    def test_bullet_reads_are_counted_from_the_first_spatial_layer(self, ship_cfg, coordinator):
+        """A read must precede a later spatial layer, or ships can only see fire
+        aimed at themselves — never fire aimed at an ally they might support."""
+        policy = self._policy(ship_cfg, coordinator, n_cross=1, N=3)
+        for block in policy.yemong_layers:
+            assert block.spatial[0].reads_bullets
+            assert not block.spatial[1].reads_bullets
+
+    def test_runs_at_unseen_fleet_sizes(self, ship_cfg, coordinator):
+        """Zero-shot transfer: nothing in the bullet path may fix N or N*K."""
+        from boost_and_broadside.train.rl.features import build_bullet_coordinator
+
+        torch.manual_seed(0)
+        policy = YemongPolicy(
+            self._cfg(1),
+            coordinator,
+            num_value_components=NUM_VALUE_COMPONENTS,
+            num_ships=4,
+            bullet_coordinator=build_bullet_coordinator(ship_cfg),
+        ).eval()
+
+        for N, M, NB in [(4, 2, 40), (16, 2, 160), (1, 0, 10)]:
+            policy._num_ships = N
+            obs = self._obs(1, N, M, NB)
+            hidden = policy.initial_hidden(1, N, torch.device("cpu"))
+            action, _, value, _, _ = policy.get_action_and_value(obs, hidden)
+            assert action.shape == (1, N, 3)
+            assert torch.isfinite(value).all()
+
+
 class TestEncoderSplit:
     """Per-type first projection with a shared second layer."""
 

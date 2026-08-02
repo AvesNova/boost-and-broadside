@@ -52,7 +52,11 @@ from boost_and_broadside.train.rl.buffer import (
 )
 from boost_and_broadside.train.rl.checkpoint import CheckpointMixin
 from boost_and_broadside.train.rl.elo_eval import MAX_ANCHORS, EloEvaluator, LadderOpponent
-from boost_and_broadside.train.rl.features import FeatureCoordinator, build_standard_coordinator
+from boost_and_broadside.train.rl.features import (
+    FeatureCoordinator,
+    build_bullet_coordinator,
+    build_standard_coordinator,
+)
 from boost_and_broadside.train.rl.logging import LoggingMixin
 from boost_and_broadside.train.rl.opponents import (
     OpponentMixin,
@@ -266,6 +270,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # "shared_pass" (single pass, both teams train). See TrainConfig docstring.
         self._ego_pass = train_config.paradigm == "ego_pass"
         self.coordinator: FeatureCoordinator = build_standard_coordinator(ship_config)
+        # Built only when the trunk reads bullets; None keeps the bullet axis off
+        # the observation, out of the rollout buffer, and out of the model.
+        self.bullet_coordinator: FeatureCoordinator | None = (
+            build_bullet_coordinator(ship_config) if model_config.reads_bullets else None
+        )
         self.env_config = train_config.scales[0].env_config
         self.device = torch.device(device)
         self._zero_tensor = torch.zeros((), device=self.device)
@@ -343,6 +352,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             device=device,
             field_map=self._field_map,
             collision_compile_mode=collision_compile_mode,
+            include_bullets=model_config.reads_bullets,
         )
         K = self.wrapper.num_active_components
         self._active_names = self.wrapper.active_names  # stable ref used throughout
@@ -368,6 +378,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             num_value_components=K,
             num_ships=N,
             team_pma_k=self._win_k,
+            bullet_coordinator=self.bullet_coordinator,
         ).to(self.device)
         self.sigreg = SIGReg(d_model=model_config.d_model, num_proj=64).to(self.device)
         self.policy = (
@@ -429,6 +440,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             num_value_components=K,
             num_ships=N,
             team_pma_k=self._win_k,
+            bullet_coordinator=self.bullet_coordinator,
         ).to(self.device)
         self.avg_policy = (
             torch.compile(self._avg_policy_module, mode=compile_mode)
@@ -583,6 +595,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 device=device,
                 field_map=self._field_map,
                 collision_compile_mode=collision_compile_mode,
+                include_bullets=model_config.reads_bullets,
             )
             aux_sample_obs = aux_w.reset()
             aux_buf = RolloutBuffer(

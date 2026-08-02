@@ -258,8 +258,17 @@ class YemongBlock(nn.Module):
 
     def __init__(self, model_config: ModelConfig) -> None:
         super().__init__()
+        # Bullet reads are counted from the first spatial sublayer: a ship can only
+        # reason about fire aimed at *another* ship if that ship's own bullet read
+        # happens before a later entity-to-entity layer.
         self.spatial = nn.ModuleList(
-            [TransformerBlock(model_config) for _ in range(model_config.n_spatial_per_block)]
+            [
+                TransformerBlock(
+                    model_config,
+                    reads_bullets=i < model_config.n_bullet_cross_per_block,
+                )
+                for i in range(model_config.n_spatial_per_block)
+            ]
         )
         self.temporal = nn.ModuleList(
             [
@@ -295,6 +304,8 @@ class YemongBlock(nn.Module):
         h: torch.Tensor,  # (n_temporal, B*N, D)
         conv_buf: torch.Tensor,  # (n_temporal, B*N, CONV_KERNEL-1, D)
         num_recurrent: int | None = None,
+        bullets: torch.Tensor | None = None,  # (B, NB, D)
+        bullet_mask: torch.Tensor | None = None,  # (B, NB) bool
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Single-step forward for rollout inference.
 
@@ -311,7 +322,7 @@ class YemongBlock(nn.Module):
         B, NM, D = x.shape
         n_rec = NM if num_recurrent is None else num_recurrent
         for spatial in self.spatial:
-            x = spatial(x, alive)  # (B, N+M, D)
+            x = spatial(x, alive, bullets, bullet_mask)  # (B, N+M, D)
 
         new_hs: list[torch.Tensor] = []
         new_cbs: list[torch.Tensor] = []
@@ -337,6 +348,8 @@ class YemongBlock(nn.Module):
         conv_buf0: torch.Tensor,  # (n_temporal, B*N, CONV_KERNEL-1, D)
         done_mask: torch.Tensor | None = None,  # (T, B) bool
         num_recurrent: int | None = None,
+        bullets: torch.Tensor | None = None,  # (T*B, NB, D)
+        bullet_mask: torch.Tensor | None = None,  # (T*B, NB) bool
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Full-sequence forward for PPO re-evaluation.
 
@@ -352,7 +365,12 @@ class YemongBlock(nn.Module):
 
         # Spatial: fold T into batch for parallel cross-entity attention
         for spatial in self.spatial:
-            x = spatial(x.reshape(T * B, NM, D), alive_mask.reshape(T * B, NM)).reshape(T, B, NM, D)
+            x = spatial(
+                x.reshape(T * B, NM, D),
+                alive_mask.reshape(T * B, NM),
+                bullets,
+                bullet_mask,
+            ).reshape(T, B, NM, D)
 
         done_mask_bn = (
             done_mask.permute(1, 0).repeat_interleave(n_rec, dim=0)  # (B*N, T)

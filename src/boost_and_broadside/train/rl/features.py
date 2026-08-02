@@ -22,7 +22,7 @@ import torch
 import torch.nn.functional as F
 
 from boost_and_broadside.config import ShipConfig
-from boost_and_broadside.env.observation import ObsKey, YemongObservation
+from boost_and_broadside.env.observation import BulletObsKey, ObsKey, YemongObservation
 
 # ---------------------------------------------------------------------------
 # Math helpers
@@ -491,8 +491,11 @@ class _PredictorSpec:
 class FeatureCoordinator:
     """Integrates a list of Features into cohesive input/target vectors."""
 
-    def __init__(self, features: list[Feature]):
+    def __init__(self, features: list[Feature], dummy_obs: YemongObservation | None = None):
         self.features = features
+        # Bullet features read a different observation axis, so their coordinator
+        # supplies its own probe rather than the ship/field one.
+        self._dummy_override = dummy_obs
         self._init_dims()
 
     def _init_dims(self) -> None:
@@ -543,6 +546,9 @@ class FeatureCoordinator:
 
     def _dummy_obs(self) -> YemongObservation:
         from boost_and_broadside.env.observation import ObsKey, YemongObservation
+
+        if self._dummy_override is not None:
+            return self._dummy_override
 
         return YemongObservation(
             data={
@@ -931,3 +937,115 @@ def build_standard_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
     ]
 
     return FeatureCoordinator(features)
+
+
+# ---------------------------------------------------------------------------
+# Bullet coordinator
+# ---------------------------------------------------------------------------
+
+
+class BulletAccessor(Accessor):
+    """Reads a channel from the bullet axis instead of the entity-token axis."""
+
+    def get(self, obs: YemongObservation) -> torch.Tensor:
+        assert obs.bullets is not None, "observation carries no bullet channels"
+        val = obs.bullets[self.key]
+        if self.channels is not None:
+            return val[..., self.channels]
+        return val
+
+
+def build_bullet_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
+    """Feature pipeline for key/value-only bullet tokens.
+
+    Position and velocity use the *same* encodings as ships. This is required,
+    not stylistic: a ship's query and a bullet's key meet in a bilinear form, and
+    ``q.k`` only reduces to a function of their displacement when both sides
+    expand position on one shared Fourier basis. Mismatched frequencies leave
+    cross terms that never combine into relative geometry, and the ship could not
+    compute "how far away is that bullet" at all.
+
+    Damage and lifetime are plain normalised scalars rather than the quarter-wave
+    encoding ships use for bounded resources: that encoding exists to give smooth
+    phase-delta prediction targets, and bullets are never predicted.
+
+    Shooter identity is carried as a team one-hot and never as an index over
+    ships — a per-ship one-hot would fix N in the weights and destroy zero-shot
+    transfer to other fleet sizes.
+    """
+    world_w, world_h = ship_config.world_size
+
+    features = [
+        Feature(
+            name="bullet_position_x",
+            accessor=BulletAccessor(BulletObsKey.POS, channels=[0]),
+            input_encoder=Fourier(n_freqs=4, periods=world_w),
+            target_encoder=Identity(),
+        ),
+        Feature(
+            name="bullet_position_y",
+            accessor=BulletAccessor(BulletObsKey.POS, channels=[1]),
+            input_encoder=Fourier(n_freqs=4, periods=world_h),
+            target_encoder=Identity(),
+        ),
+        Feature(
+            name="bullet_velocity",
+            accessor=BulletAccessor(BulletObsKey.VEL),
+            input_encoder=SymlogVelocity(),
+            target_encoder=Identity(),
+        ),
+        Feature(
+            name="bullet_damage",
+            accessor=BulletAccessor(BulletObsKey.DAMAGE),
+            input_encoder=Identity(),
+            target_encoder=Identity(),
+        ),
+        Feature(
+            name="bullet_lifetime",
+            accessor=BulletAccessor(BulletObsKey.LIFETIME),
+            input_encoder=Identity(),
+            target_encoder=Identity(),
+        ),
+        Feature(
+            name="bullet_local_log_index",
+            accessor=BulletAccessor(BulletObsKey.LOCAL_LOG_INDEX),
+            input_encoder=Identity(),
+            target_encoder=Identity(),
+        ),
+        Feature(
+            name="bullet_local_index_gradient",
+            accessor=BulletAccessor(BulletObsKey.LOCAL_INDEX_GRADIENT),
+            input_encoder=Identity(),
+            target_encoder=Identity(),
+        ),
+        Feature(
+            name="bullet_team_id",
+            accessor=BulletAccessor(BulletObsKey.TEAM_ID),
+            input_encoder=OneHot(2),
+            target_encoder=Identity(),
+        ),
+        Feature(
+            name="bullet_active",
+            accessor=BulletAccessor(BulletObsKey.ACTIVE),
+            input_encoder=Identity(),
+            target_encoder=Identity(),
+        ),
+    ]
+    return FeatureCoordinator(features, dummy_obs=_dummy_bullet_obs())
+
+
+def _dummy_bullet_obs() -> YemongObservation:
+    """Minimal observation used to derive bullet channel widths."""
+    return YemongObservation(
+        data={},
+        bullets={
+            BulletObsKey.POS: torch.zeros((1, 1, 2)),
+            BulletObsKey.VEL: torch.zeros((1, 1, 2)),
+            BulletObsKey.DAMAGE: torch.zeros((1, 1, 1)),
+            BulletObsKey.LIFETIME: torch.zeros((1, 1, 1)),
+            BulletObsKey.LOCAL_LOG_INDEX: torch.zeros((1, 1, 1)),
+            BulletObsKey.LOCAL_INDEX_GRADIENT: torch.zeros((1, 1, 2)),
+            BulletObsKey.TEAM_ID: torch.zeros((1, 1), dtype=torch.long),
+            BulletObsKey.ACTIVE: torch.zeros((1, 1), dtype=torch.bool),
+        },
+    )

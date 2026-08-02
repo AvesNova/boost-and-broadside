@@ -62,6 +62,7 @@ class YemongEnvWrapper:
         device: str | torch.device,
         field_map: FieldMapCache | None = None,
         collision_compile_mode: str | None = None,
+        include_bullets: bool = False,
     ) -> None:
         self.env = TensorEnv(
             num_envs,
@@ -74,6 +75,10 @@ class YemongEnvWrapper:
         self.ship_config = ship_config
         self.env_config = env_config
         self.device = torch.device(device)
+        # Attach the bullet cross-attention axis only when the policy reads it —
+        # otherwise the profile pays the reduction and the rollout storage for
+        # channels nothing consumes.
+        self.include_bullets = include_bullets
 
         # All components (group-scale multipliers update individual weights each training step).
         self._all_components: list[RewardComponent] = build_reward_components(rewards, ship_config)
@@ -330,7 +335,12 @@ class YemongEnvWrapper:
         All values are in native units — no normalization. Feature chains in
         FeatureCoordinator handle all encoding (Fourier, symlog, one-hot, etc.).
         """
-        return observation_from_state(self.env.state, self.ship_config, self._obs_buffers)
+        return observation_from_state(
+            self.env.state,
+            self.ship_config,
+            self._obs_buffers,
+            include_bullets=self.include_bullets,
+        )
 
     # ------------------------------------------------------------------
     # Helpers

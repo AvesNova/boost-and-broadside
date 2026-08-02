@@ -203,6 +203,14 @@ class ModelConfig:
     # that are hard zeros for it. The shared output layer is what keeps both token
     # types in one latent space, which the single spatial W_qkv depends on.
     encoder_split: bool = False
+    # Spatial sublayers per block that cross-attend to bullets, counted from the
+    # first. 0 disables bullet observation entirely. The read must precede at
+    # least one further spatial layer for a ship to reason about fire aimed at
+    # *another* ship, so it is counted from the front rather than the back.
+    n_bullet_cross_per_block: int = 0
+    # Bullet encoder hidden width. Deliberately narrow: it runs over N*K entities
+    # rather than N+M, so it, not the entity encoder, sets encoder cost.
+    bullet_encoder_hidden: int = 64
     # Recompute each Yemong block's activations during the PPO backward pass instead
     # of storing them (torch.utils.checkpoint). Trades ~one extra forward per block
     # in backward for activation memory that no longer scales with depth — set True
@@ -215,6 +223,12 @@ class ModelConfig:
 
         return self.n_yemong_blocks * self.n_temporal_per_block
 
+    @property
+    def reads_bullets(self) -> bool:
+        """Whether any spatial sublayer cross-attends to bullets."""
+
+        return self.n_bullet_cross_per_block > 0 and self.n_yemong_blocks > 0
+
     def __post_init__(self) -> None:
         if self.d_model % self.n_heads != 0:
             raise ValueError(f"d_model={self.d_model} must be divisible by n_heads={self.n_heads}")
@@ -224,6 +238,11 @@ class ModelConfig:
             raise ValueError(f"n_spatial_per_block must be >= 0, got {self.n_spatial_per_block}")
         if self.n_temporal_per_block < 0:
             raise ValueError(f"n_temporal_per_block must be >= 0, got {self.n_temporal_per_block}")
+        if not 0 <= self.n_bullet_cross_per_block <= self.n_spatial_per_block:
+            raise ValueError(
+                "n_bullet_cross_per_block must be between 0 and n_spatial_per_block "
+                f"({self.n_spatial_per_block}), got {self.n_bullet_cross_per_block}"
+            )
 
 
 @dataclass(frozen=True)
