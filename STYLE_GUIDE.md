@@ -130,7 +130,7 @@ cfg = TrainConfig(learning_rate=3e-4, num_envs=64, gamma=0.99)
 Every non-trivial tensor must have a shape comment on the line it is created or transformed. Use the `(dim0, dim1, ...)` format with named dimensions.
 
 *   Use single letters for common dims: `B` = batch/num_envs, `N` = num_ships,
-    `M` = num_obstacles (entity tokens are `N+M`), `T` = time/steps, `D` = feature dim,
+    `M` = num_fields (entity tokens are `N+M`), `T` = time/steps, `D` = feature dim,
     `H` = heads, `K` = bullets in `env/`, reward components in `train/`.
 *   The rollout buffer stores `T+1` observation steps (the extra final observation feeds
     aux-loss label computation) — annotate those tensors as `(T+1, B, ...)`.

@@ -38,7 +38,10 @@ class TestDecodeTargetsToObs:
         wrong coordinate; encode (x, y) exactly as the feature pipeline does
         (Fourier(1, period) → (sin, cos)) and expect the round-trip identity.
         """
-        ship_config = ShipConfig(world_size=(1024.0, 512.0))
+        ship_config = ShipConfig(
+            world_size=(1024.0, 512.0),
+            field_radius_max=200.0,
+        )
         coordinator = build_standard_coordinator(ship_config)
         target_slices = coordinator.target_slices()
         W, H = ship_config.world_size

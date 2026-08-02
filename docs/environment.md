@@ -2,23 +2,25 @@
 
 Boost and Broadside is a two-team, continuous 2D combat environment. Ships maneuver and
 fire projectiles on a 1024×1024 toroidal map at 60 Hz until one team is eliminated or the
-episode horizon is reached. Optional static circular refractive fields change ship motion
-without becoming solid walls.
+configured episode horizon is reached, when enabled. Optional static circular refractive
+fields continuously change ship and projectile motion without becoming solid walls.
 
 ## Tensorized simulation
 
 [`TensorState`](../src/boost_and_broadside/env/state.py) stores batched ships, projectiles,
 and fields as fixed-shape tensors. [`TensorEnv`](../src/boost_and_broadside/env/env.py)
 advances thousands of environments without Python loops over environments or ships.
-Field evaluation is an `O(B*N*M)` reduction over `(environment, ship, field)`; hierarchy
+Ship field evaluation is an `O(B*N*M)` reduction over `(environment, ship, field)`.
+Projectile transport applies the same fixed-shape reduction to the `N*K` ring-buffer
+slots; inactive slots remain masked rather than being dynamically compacted. Hierarchy
 and material deltas are precomputed by
 [`FieldMapCache`](../src/boost_and_broadside/env/field_cache.py), so stepping performs no
 sorting, region selection, rejection sampling, or host synchronization.
 
 The main layers are:
 
-- [`physics.py`](../src/boost_and_broadside/env/physics.py): ship control, effective-mass
-  transport, power, firing, and projectile collisions;
+- [`physics.py`](../src/boost_and_broadside/env/physics.py): shared ship/projectile
+  effective-mass transport, control, power, firing, drag, and swept collisions;
 - [`field_physics.py`](../src/boost_and_broadside/env/field_physics.py): toroidal field
   profiles, hierarchy validation, and telescoping index composition;
 - [`env.py`](../src/boost_and_broadside/env/env.py): reset, teams, stepping, and episode
@@ -97,7 +99,9 @@ there is no collision, random branch, breakthrough speed, or force clamp.
 
 ### Integration order
 
-Each field step uses a symmetric split:
+Ships and projectiles use the same passive field-transport driver and choose either the
+`two_step` or `midpoint` integrator independently. The default ship path remains midpoint
+with two substeps. Each ship field step uses a symmetric split:
 
 1. half control/thrust work, exact scalar drag, and work-free lift rotation;
 2. fixed-count midpoint passive transport substeps;
@@ -107,9 +111,14 @@ Each field step uses a symmetric split:
 The midpoint force determines direction, so energy projection cannot substitute for the
 correct refractive curvature. Projection is confined to the passive split and cannot
 erase powered work. Two substeps at the configured 60 Hz, speeds, and minimum 40-pixel
-band keep each ordinary step far narrower than an interface. Bullets deliberately remain
-on their existing straight toroidal trajectories: bullet refraction is a future extension
-point in the projectile update, and fields never absorb bullets.
+band keep each ordinary step far narrower than an interface.
+
+Projectile transport uses exact quadratic-drag half-steps around the passive field step.
+Its default `two_step` integrator uses an optical acceleration kick, drift, endpoint field
+evaluation, and the same projection that preserves `n*|v|`. The selectable `midpoint`
+integrator uses the ship-quality midpoint force at additional cost. Both paths retain the
+half-tick position needed for two-segment swept collision detection. Integrator selection
+is static Python configuration; it does not read tensor values or synchronize the GPU.
 
 ## Smooth interface damage
 
@@ -125,9 +134,21 @@ Midpoint total variation also accounts for an approach and reflection within one
 A complete monotonic crossing therefore costs exactly `D_i`, independent of speed and
 band width; remaining still costs nothing, partial reflection costs proportionally, and
 oscillation accumulates its traveled alpha variation. Reset initializes cached alpha at
-the spawn point, so spawning inside a field does no artificial damage. Field damage is a
-health mechanic and flows through normal health-loss and death rewards, not mechanical
-energy or projectile-source attribution.
+the spawn point, so spawning inside a field does no artificial damage.
+
+Ships subtract this exposure from health. Projectiles instead subtract it from remaining
+damage potential:
+
+```text
+bullet_damage_next = max(0, bullet_damage_previous
+                            - bullet_field_damage_scale * sum(D_i * variation_i)).
+```
+
+The default scale is `0.1`, so entering a standard 10-damage interface changes a
+10-damage projectile to 9 damage; a subsequent 20-damage interface changes it to 7.
+A projectile deactivates when its positive damage potential is fully depleted. Barrier
+loss is not attributed to a ship, while projectile damage that reaches a target continues
+through normal combat attribution and health-loss rewards.
 
 ## Nesting and map validity
 
@@ -141,7 +162,9 @@ distance(c,p) + r_c + w_c/2 <= r_p - w_p/2.
 Disjoint bands require `distance(i,j) >= r_i+r_j+w_i/2+w_j/2`. All distances use the
 same minimum-image toroidal geometry as runtime evaluation and rendering. Outer extent
 `r+w/2` must be strictly less than half the shorter world dimension, avoiding ambiguous
-antipodal circle topology.
+antipodal circle topology. For the default 1024×1024 world and 40-pixel transition width,
+this requires `r < 492`; changing the maximum radius beyond that requires a larger world
+or a different field-topology definition.
 
 Construction selects the smallest direct enclosing parent. Each cached field stores
 `delta_n = n_child - n_parent` (roots subtract ambient 1), and runtime composes
@@ -158,10 +181,17 @@ and fails clearly when requested geometry cannot be packed.
 
 ## Projectiles, collisions, and rendering
 
-Projectile velocity is ship velocity plus configured muzzle velocity and spread. Bullets
-wrap, expire through a per-ship ring buffer, and use continuous segment collision against
-ships. Friendly fire is enabled. Ship-to-ship collision is not implemented, and fields
-are always traversable.
+The configured muzzle speed is a proper speed relative to the firing ship: it is divided
+by the local index before adding ship velocity and spread. Projectiles continuously
+refract, experience quadratic drag, wrap, and expire through a fixed per-ship ring buffer.
+The production pool uses ten slots, sufficient for the default one-second lifetime and
+0.1-second cooldown without overwriting a live projectile.
+
+Each tick retains start, half-tick, and final positions ephemerally and tests both swept
+segments against ships, preventing fast projectiles from tunneling between endpoints.
+On impact, incidence scaling is applied to the projectile's remaining damage potential.
+Friendly fire is enabled. Ship-to-ship collision is not implemented, and fields remain
+traversable rather than absorbing projectiles as solid obstacles.
 
 Fields render as unfilled outlines with toroidal edge copies. Cyan/blue means lower/faster
 index; violet means higher/slower index, with stronger levels brighter and more saturated.
@@ -196,11 +226,16 @@ depend on hardware and clocks; reproduce them with `benchmarks/field_throughput.
 - [`test_field_physics.py`](../tests/env/test_field_physics.py): profile gradients,
   toroidal geometry, hierarchy, materials, generation, and reset;
 - [`test_field_transport.py`](../tests/env/test_field_transport.py): long-run energy,
-  refraction/TIR, power exchange, smooth damage, and bullet non-absorption;
+  refraction/TIR, power exchange, and smooth ship damage;
+- [`test_bullet_fields.py`](../tests/env/test_bullet_fields.py): selectable projectile
+  integrators, refraction/TIR, proper-speed conservation, barrier depletion, and
+  high-resolution trajectory comparisons;
 - [`test_env.py`](../tests/env/test_env.py),
   [`test_rewards.py`](../tests/env/test_rewards.py), and
   [`test_renderer.py`](../tests/ui/test_renderer.py): integration, attribution, numeric
   observations, and outline rendering.
 
 The zero/one/two/four-field environment benchmark is in
-[`benchmarks/field_throughput.py`](../benchmarks/field_throughput.py).
+[`benchmarks/field_throughput.py`](../benchmarks/field_throughput.py). Saturated projectile
+storage, drag, integrator, damage-depletion, compilation, and capacity comparisons are in
+[`benchmarks/bullet_throughput.py`](../benchmarks/bullet_throughput.py).

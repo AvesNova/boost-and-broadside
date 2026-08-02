@@ -11,7 +11,7 @@ from tests.conftest import make_state
 
 
 def _nested_observation():
-    config = ShipConfig(world_size=(512.0, 512.0))
+    config = ShipConfig(world_size=(512.0, 512.0), field_radius_max=200.0)
     state = make_state(
         num_envs=1,
         max_ships=2,

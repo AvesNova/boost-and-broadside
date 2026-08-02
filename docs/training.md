@@ -127,8 +127,10 @@ proportional to cumulative episode damage.
 The former solid-obstacle death, proximity, closing-speed, and time-to-impact components
 have been removed: refractive interfaces are traversable and should not receive universal
 wall-avoidance shaping. Smooth interface damage is included in ordinary health-loss and
-fatal-damage accounting. See [`runs/shared.py`](../runs/shared.py) for current component
-horizons and schedules, and the preserved run config for historical weights.
+fatal-damage accounting. Interfaces also reduce projectile damage potential, but that
+barrier loss is not credited to a ship; only damage that reaches a target enters combat
+attribution. See [`runs/shared.py`](../runs/shared.py) for current component horizons and
+schedules, and the preserved run config for historical weights.
 
 ## Field training profile
 
@@ -136,8 +138,8 @@ The primary [`runs/rl.py`](../runs/rl.py) profile remains an exact zero-field co
 baseline. [`runs/rl_fields.py`](../runs/rl_fields.py) adds four cached static fields to the
 same two-team combat objective and reduces environment count to offset the extra attention
 tokens. The scripted controller intentionally ignores fields initially; it experiences
-their physics and damage but supplies no behavior-cloning target that treats every
-interface as impassable.
+their ship and projectile physics and damage but supplies no behavior-cloning target that
+treats every interface as impassable.
 
 A recommended curriculum for a dedicated field run is:
 

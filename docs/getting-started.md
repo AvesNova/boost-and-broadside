@@ -104,13 +104,35 @@ uv run main.py --mode bc
 uv run main.py --mode bc_warmstart
 ```
 
-Hyperparameters live in [`runs/`](../runs/). Global ship and field defaults—including
-`field_index_step` and `field_interface_damage`—are defined on `ShipConfig` in
+Hyperparameters live in [`runs/`](../runs/). Global ship, field, and projectile defaults
+are defined on `ShipConfig` in
 [`src/boost_and_broadside/config/core.py`](../src/boost_and_broadside/config/core.py).
+The most relevant field/projectile controls are:
+
+| Setting | Default | Meaning |
+|---|---:|---|
+| `field_index_step` | `sqrt(2)` | Four sampled levels span index 0.5 through 2 |
+| `field_interface_damage` | `10` | Base health exposure of a standard interface |
+| `field_integrator` | `midpoint` | Ship passive-field integrator |
+| `field_integration_substeps` | `2` | Ship field substeps per 60 Hz tick |
+| `bullet_field_integrator` | `two_step` | Projectile passive-field integrator |
+| `bullet_field_integration_substeps` | `2` | Projectile field substeps per tick |
+| `bullet_drag_coeff` | `8e-4` | Quadratic projectile drag coefficient |
+| `bullet_field_damage_scale` | `0.1` | Projectile potential lost per interface-damage point |
+
+Field geometry must satisfy
+`field_radius_max + field_transition_width_max/2 < min(world_size)/2`. With the default
+1024×1024 world and 40-pixel transition width, `field_radius_max` must be below 492.
 The main combat profile is
 [`runs/rl.py`](../runs/rl.py), shared model/physics/reward definitions are in
 [`runs/shared.py`](../runs/shared.py), and configuration types are frozen dataclasses in
 [`src/boost_and_broadside/config/`](../src/boost_and_broadside/config/).
+
+The production projectile pool is
+`DEFAULT_MAX_BULLETS_PER_SHIP=10` in
+[`src/boost_and_broadside/constants.py`](../src/boost_and_broadside/constants.py). The
+fixed pool keeps GPU shapes static; changing lifetime or firing cooldown may require
+rechecking capacity with [`benchmarks/bullet_throughput.py`](../benchmarks/bullet_throughput.py).
 
 ## Evaluate
 

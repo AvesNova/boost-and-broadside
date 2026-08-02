@@ -76,7 +76,7 @@ def _nested_materials(config: ShipConfig):
 
 
 def test_direct_parent_and_telescoping_root_child_grandchild():
-    config = ShipConfig(world_size=(512.0, 512.0))
+    config = ShipConfig(world_size=(512.0, 512.0), field_radius_max=200.0)
     center, radius, width, parent, index, crossing_damage, delta = _nested_materials(config)
     assert parent.tolist() == [[-1, 0, 1]]
     assert crossing_damage.tolist() == [[0.0, 10.0, 20.0]]

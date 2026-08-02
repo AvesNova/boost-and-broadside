@@ -68,7 +68,8 @@ emits one output per ship, however many there are.
 
 - The [environment and physics engine](docs/environment.md) runs thousands of tensorized
   battles in parallel, with toroidal movement, projectiles, resources, and optional
-  static refractive fields. The core simulator lives in
+  static refractive fields that continuously affect both ships and projectiles. The core
+  simulator lives in
   [`env.py`](src/boost_and_broadside/env/env.py).
 - The [policy architecture](docs/architecture.md) combines spatial attention, Griffin
   recurrence, factored action heads, decomposed value estimates, and auxiliary dynamics

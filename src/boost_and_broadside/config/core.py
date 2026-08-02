@@ -63,7 +63,7 @@ class ShipConfig:
     field_index_step: float = float(np.sqrt(2.0))  # levels span n=1/2 through n=2
     field_interface_damage: float = 10.0
     field_radius_min: float = 30.0
-    field_radius_max: float = 160.0
+    field_radius_max: float = 490.0
     field_transition_width_min: float = 40.0
     field_transition_width_max: float = 40.0
     # Fixed substeps keep the hot path static-shaped and make interface
