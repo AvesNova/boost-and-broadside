@@ -34,6 +34,7 @@ from boost_and_broadside.modes.agent_factory import (
     init_hidden,
     resolve_agent_spec,
 )
+from boost_and_broadside.train.rl.checkpoint_schema import require_observation_schema
 from boost_and_broadside.ui.renderer import GameRenderer, RenderConfig
 
 SCENARIOS = ("self", "vs_scripted")
@@ -84,10 +85,30 @@ def _final_checkpoint(run_dir: Path) -> Path:
 def _open_encoder(out: Path, size: int, fps: int) -> subprocess.Popen:
     """Start an ffmpeg process reading raw rgb24 frames on stdin."""
     cmd = [
-        "ffmpeg", "-y", "-loglevel", "error",
-        "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{size}x{size}", "-r", str(fps),
-        "-i", "-", "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20",
-        "-preset", "medium", str(out),
+        "ffmpeg",
+        "-y",
+        "-loglevel",
+        "error",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "rgb24",
+        "-s",
+        f"{size}x{size}",
+        "-r",
+        str(fps),
+        "-i",
+        "-",
+        "-an",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-crf",
+        "20",
+        "-preset",
+        "medium",
+        str(out),
     ]
     return subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
 
@@ -122,7 +143,7 @@ def _capture_match(
     torch.cuda.manual_seed_all(seed)
 
     N = env_config.num_ships
-    num_tokens = N + env_config.num_obstacles
+    num_tokens = N + env_config.num_fields
     env = TensorEnv(1, ship_config, env_config, device)
     agent0 = policy
     agent1 = ResolvedAgent("policy", policy.agent) if scenario == "self" else scripted
@@ -189,7 +210,8 @@ def _write_gif(mp4: Path, fps: int, width: int) -> Path:
     )
     result = subprocess.run(
         ["ffmpeg", "-y", "-loglevel", "error", "-i", str(mp4), "-vf", vf, str(gif)],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if result.returncode != 0:
         sys.exit(f"ffmpeg gif failed for {mp4}:\n{result.stderr}")
@@ -226,9 +248,9 @@ def run_capture_mode(
 
     run_dir = _find_run_dir(run_spec, checkpoint_dir)
     checkpoint = _final_checkpoint(run_dir)
-    base_env = EnvConfig(**torch.load(str(checkpoint), map_location="cpu", weights_only=False)[
-        "env_config"
-    ])
+    checkpoint_data = torch.load(str(checkpoint), map_location="cpu", weights_only=False)
+    require_observation_schema(checkpoint_data, str(checkpoint))
+    base_env = EnvConfig(**checkpoint_data["env_config"])
     native = base_env.num_ships // 2
     matchups = [parse_matchup(s) for s in sizes] if sizes else [(native, native)]
     torch_device = torch.device(device)
@@ -257,8 +279,20 @@ def run_capture_mode(
                 for seed in seed_list:
                     out = out_dir / f"{scenario}_{n0}v{n1}_seed{seed:02d}.mp4"
                     frames, winner = _capture_match(
-                        scenario, seed, n0, n1, policy, scripted, ship_config, env_config,
-                        renderer, torch_device, out, max_steps, fps, hold_ms,
+                        scenario,
+                        seed,
+                        n0,
+                        n1,
+                        policy,
+                        scripted,
+                        ship_config,
+                        env_config,
+                        renderer,
+                        torch_device,
+                        out,
+                        max_steps,
+                        fps,
+                        hold_ms,
                     )
                     written.append(out)
                     if gif:

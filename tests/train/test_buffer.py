@@ -240,7 +240,7 @@ class TestStoragePrecision:
         from boost_and_broadside.env.observation import ObsKey, YemongObservation
 
         buf = self._make_typed_buffer(T=3, B=2, N=2)
-        team = torch.tensor([[0, 1], [2, 0]], dtype=torch.int32)  # ships + obstacle id 2
+        team = torch.tensor([[0, 1], [2, 0]], dtype=torch.int32)  # ships + field id 2
         prev = torch.randint(0, 7, (2, 2, 3), dtype=torch.int64)  # OneHot(3/7/2) indices
         obs = YemongObservation(
             data={

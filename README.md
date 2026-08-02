@@ -19,7 +19,7 @@ whole fleet, producing an action for every ship on each forward pass.
 
 ## Zero-shot team-size transfer
 
-Ships and obstacles are represented as entity tokens. Spatial attention coordinates the
+Ships and optional refractive fields are represented as entity tokens. Spatial attention coordinates the
 fleet within each timestep, while per-entity [Griffin-style](https://arxiv.org/abs/2402.19427)
 recurrence carries information through time. Because the network operates over a
 variable-length token sequence, the same weights can run at fleet sizes never seen
@@ -67,8 +67,9 @@ within a timestep, Griffin recurrence carries each ship through time — and eve
 emits one output per ship, however many there are.
 
 - The [environment and physics engine](docs/environment.md) runs thousands of tensorized
-  battles in parallel, with toroidal movement, projectiles, resources, and orbital
-  obstacles. The core simulator lives in
+  battles in parallel, with toroidal movement, projectiles, resources, and optional
+  static refractive fields that continuously affect both ships and projectiles. The core
+  simulator lives in
   [`env.py`](src/boost_and_broadside/env/env.py).
 - The [policy architecture](docs/architecture.md) combines spatial attention, Griffin
   recurrence, factored action heads, decomposed value estimates, and auxiliary dynamics
@@ -86,18 +87,25 @@ Headline claims are traceable to code and stored artifacts through the
 
 ## Quick start
 
-Requires [uv](https://docs.astral.sh/uv/) and, for the included reference
-checkpoints, Git LFS — training from scratch works without it. After cloning:
+Requires [uv](https://docs.astral.sh/uv/). Git LFS is only needed for the historical
+reference artifacts; those weights predate the current refractive-field observation
+schema and are not loadable by this version. After cloning:
 
 ```bash
 git lfs pull   # fetch reference checkpoints (skip if training from scratch)
 uv sync
 
-# Human vs the newest checkpoint (WASD, Shift, Space)
-uv run main.py --mode watch
-
 # Small no-W&B training crash test
 uv run main.py --mode rl --smoke
+
+# The same end-to-end crash test with four refractive fields
+uv run main.py --mode rl_fields --smoke
+
+# Play a 1v1 match against a null ship in four refractive fields
+uv run main.py --mode play
+
+# Human vs a newly trained current-schema checkpoint (WASD, Shift, Space)
+uv run main.py --mode watch --team1 checkpoints/<run>/<checkpoint>.pt
 ```
 
 Training is designed for CUDA hardware; the simulator and test suite also run on CPU.

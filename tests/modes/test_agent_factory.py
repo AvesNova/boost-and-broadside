@@ -23,6 +23,7 @@ def _make_prev_obs(B: int, N: int) -> YemongObservation:
             ObsKey.HEALTH: torch.zeros(B, N, 1),
             ObsKey.POWER: torch.zeros(B, N, 1),
             ObsKey.COOLDOWN: torch.zeros(B, N, 1),
+            ObsKey.LOCAL_LOG_INDEX: torch.zeros(B, N, 1),
             ObsKey.ALIVE: torch.ones(B, N, dtype=torch.bool),
             ObsKey.PREVIOUS_ACTION: torch.zeros(B, N, 3, dtype=torch.long),
         }
@@ -37,7 +38,10 @@ class TestDecodeTargetsToObs:
         wrong coordinate; encode (x, y) exactly as the feature pipeline does
         (Fourier(1, period) → (sin, cos)) and expect the round-trip identity.
         """
-        ship_config = ShipConfig(world_size=(1024.0, 512.0))
+        ship_config = ShipConfig(
+            world_size=(1024.0, 512.0),
+            field_radius_max=200.0,
+        )
         coordinator = build_standard_coordinator(ship_config)
         target_slices = coordinator.target_slices()
         W, H = ship_config.world_size

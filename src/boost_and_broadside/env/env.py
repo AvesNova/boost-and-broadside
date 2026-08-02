@@ -10,12 +10,12 @@ import numpy as np
 import torch
 
 from boost_and_broadside.config import EnvConfig, ShipConfig
-from boost_and_broadside.env.obstacle_cache import ObstacleCache
-from boost_and_broadside.env.obstacle_physics import step_obstacles_harmonic
+from boost_and_broadside.env.field_cache import FieldMapCache
+from boost_and_broadside.env.field_physics import evaluate_fields
 from boost_and_broadside.env.physics import (
+    _combat_damage_tensors,
+    advance_bullets,
     resolve_collisions,
-    resolve_obstacle_collisions,
-    update_bullets,
     update_ships,
 )
 from boost_and_broadside.env.state import TensorState
@@ -38,13 +38,26 @@ class TensorEnv:
         ship_config: ShipConfig,
         env_config: EnvConfig,
         device: str | torch.device,
-        obstacle_cache: ObstacleCache | None = None,
+        field_map: FieldMapCache | None = None,
+        collision_compile_mode: str | None = None,
     ) -> None:
         self.num_envs = num_envs
         self.ship_config = ship_config
         self.env_config = env_config
         self.device = torch.device(device)
-        self.obstacle_cache = obstacle_cache
+        self.field_map = field_map
+        self._combat_damage_fn = (
+            torch.compile(_combat_damage_tensors, mode=collision_compile_mode)
+            if collision_compile_mode is not None and self.device.type == "cuda"
+            else None
+        )
+        if env_config.num_fields > 0:
+            if field_map is None:
+                raise ValueError("num_fields > 0 requires a precomputed FieldMapCache")
+            if field_map.num_fields != env_config.num_fields:
+                raise ValueError(
+                    f"field map has {field_map.num_fields} fields, expected {env_config.num_fields}"
+                )
         self.state: TensorState | None = None
 
     # ------------------------------------------------------------------
@@ -74,7 +87,7 @@ class TensorEnv:
         B = self.num_envs
         N = self.env_config.num_ships
         K = self.env_config.max_bullets
-        M = self.env_config.num_obstacles
+        M = self.env_config.num_fields
         dev = self.device
 
         self.state = TensorState(
@@ -94,14 +107,29 @@ class TensorEnv:
             bullet_vel=torch.zeros((B, N, K), dtype=torch.complex64, device=dev),
             bullet_time=torch.zeros((B, N, K), dtype=torch.float32, device=dev),
             bullet_active=torch.zeros((B, N, K), dtype=torch.bool, device=dev),
+            bullet_remaining_damage=torch.zeros((B, N, K), dtype=torch.float32, device=dev),
+            bullet_field_alpha=torch.zeros((B, N, K, M), dtype=torch.float32, device=dev),
+            bullet_local_index=torch.ones((B, N, K), dtype=torch.float32, device=dev),
+            bullet_field_gradient=torch.zeros((B, N, K), dtype=torch.complex64, device=dev),
             bullet_cursor=torch.zeros((B, N), dtype=torch.long, device=dev),
             damage_matrix=torch.zeros((B, N, N), dtype=torch.float32, device=dev),
             cumulative_damage_matrix=torch.zeros((B, N, N), dtype=torch.float32, device=dev),
-            obstacle_pos=torch.zeros((B, M), dtype=torch.complex64, device=dev),
-            obstacle_vel=torch.zeros((B, M), dtype=torch.complex64, device=dev),
-            obstacle_radius=torch.zeros((B, M), dtype=torch.float32, device=dev),
-            obstacle_gcenter=torch.zeros((B, M), dtype=torch.complex64, device=dev),
-            ship_hit_obstacle=torch.zeros((B, N), dtype=torch.bool, device=dev),
+            field_pos=torch.zeros((B, M), dtype=torch.complex64, device=dev),
+            field_radius=torch.zeros((B, M), dtype=torch.float32, device=dev),
+            field_transition_width=torch.zeros((B, M), dtype=torch.float32, device=dev),
+            field_index_level=torch.zeros((B, M), dtype=torch.int8, device=dev),
+            field_index=torch.ones((B, M), dtype=torch.float32, device=dev),
+            field_damage_level=torch.zeros((B, M), dtype=torch.int8, device=dev),
+            field_damage=torch.zeros((B, M), dtype=torch.float32, device=dev),
+            field_parent=torch.full((B, M), -1, dtype=torch.long, device=dev),
+            field_delta_index=torch.zeros((B, M), dtype=torch.float32, device=dev),
+            ship_field_alpha=torch.zeros((B, N, M), dtype=torch.float32, device=dev),
+            ship_local_index=torch.ones((B, N), dtype=torch.float32, device=dev),
+            ship_field_gradient=torch.zeros((B, N), dtype=torch.complex64, device=dev),
+            ship_field_damage=torch.zeros((B, N), dtype=torch.float32, device=dev),
+            ship_combat_damage=torch.zeros((B, N), dtype=torch.float32, device=dev),
+            ship_field_death=torch.zeros((B, N), dtype=torch.bool, device=dev),
+            ship_combat_death=torch.zeros((B, N), dtype=torch.bool, device=dev),
         )
 
     def reset_envs(
@@ -135,7 +163,7 @@ class TensorEnv:
                 )
 
         s = self.state
-        m = mask.unsqueeze(1)  # (B, 1) — broadcasts over ships/obstacles
+        m = mask.unsqueeze(1)  # (B, 1) — broadcasts over ships/fields
 
         s.step_count = torch.where(mask, 0, s.step_count)
 
@@ -149,14 +177,47 @@ class TensorEnv:
         att = torch.polar(torch.ones_like(rand_angle), rand_angle)
         s.ship_attitude = torch.where(m, att, s.ship_attitude)
 
-        # Velocity — along attitude at configured speed
+        # Static field map. Sampling gathers fixed-shape cached maps and applies
+        # only a toroidal translation; hierarchy/material values stay unchanged.
+        if self.field_map is not None:
+            sampled = self.field_map.sample(B, self.ship_config.world_size, self.device)
+            field_names = (
+                "field_pos",
+                "field_radius",
+                "field_transition_width",
+                "field_index_level",
+                "field_index",
+                "field_damage_level",
+                "field_damage",
+                "field_parent",
+                "field_delta_index",
+            )
+            for name, value in zip(field_names, sampled, strict=True):
+                setattr(s, name, torch.where(m, value, getattr(s, name)))
+
+        field_eval = evaluate_fields(
+            s.ship_pos,
+            s.field_pos,
+            s.field_radius,
+            s.field_transition_width,
+            s.field_delta_index,
+            self.ship_config.world_size,
+        )
+        field_mask = mask.view(B, 1, 1)
+        s.ship_field_alpha = torch.where(field_mask, field_eval.alpha, s.ship_field_alpha)
+        s.ship_local_index = torch.where(m, field_eval.index, s.ship_local_index)
+        s.ship_field_gradient = torch.where(m, field_eval.grad_index, s.ship_field_gradient)
+
+        # Configured speeds are proper speeds u=n*v_world. Spawning in a medium
+        # therefore never injects generalized kinetic energy.
         if self.ship_config.random_speed:
-            speed = self.ship_config.min_speed + torch.rand((B, N), device=self.device) * (
+            proper_speed = self.ship_config.min_speed + torch.rand((B, N), device=self.device) * (
                 self.ship_config.max_speed - self.ship_config.min_speed
             )
         else:
-            speed = torch.full((B, N), self.ship_config.default_speed, device=self.device)
-        s.ship_vel = torch.where(m, speed * att, s.ship_vel)
+            proper_speed = torch.full((B, N), self.ship_config.default_speed, device=self.device)
+        world_speed = proper_speed / field_eval.index
+        s.ship_vel = torch.where(m, world_speed * att, s.ship_vel)
 
         # Resources
         s.ship_health = torch.where(m, self.ship_config.max_health, s.ship_health)
@@ -189,6 +250,14 @@ class TensorEnv:
         m3 = mask.view(B, 1, 1)
         s.bullet_active = s.bullet_active & ~m3
         s.bullet_time = torch.where(m3, 0.0, s.bullet_time)
+        s.bullet_remaining_damage = torch.where(m3, 0.0, s.bullet_remaining_damage)
+        s.bullet_field_alpha = torch.where(
+            mask.view(B, 1, 1, 1),
+            0.0,
+            s.bullet_field_alpha,
+        )
+        s.bullet_local_index = torch.where(m3, 1.0, s.bullet_local_index)
+        s.bullet_field_gradient = torch.where(m3, 0.0, s.bullet_field_gradient)
         s.bullet_cursor = torch.where(m, 0, s.bullet_cursor)
 
         # Clear damage attribution
@@ -197,24 +266,23 @@ class TensorEnv:
         # Clear previous action
         s.prev_action = torch.where(m3, 0.0, s.prev_action)
 
-        # Inject obstacle snapshot from cache (rotation + translation applied inside)
-        if self.obstacle_cache is not None:
-            obs_pos, obs_vel, obs_radius, obs_gcenter = self.obstacle_cache.sample(
-                B, self.ship_config.world_size, self.device
-            )
-            s.obstacle_pos = torch.where(m, obs_pos, s.obstacle_pos)
-            s.obstacle_vel = torch.where(m, obs_vel, s.obstacle_vel)
-            s.obstacle_radius = torch.where(m, obs_radius, s.obstacle_radius)
-            s.obstacle_gcenter = torch.where(m, obs_gcenter, s.obstacle_gcenter)
-
-        # Clear obstacle death flag
-        s.ship_hit_obstacle = s.ship_hit_obstacle & ~m
+        # Resetting/spawning initializes alpha rather than comparing against
+        # ambient, so it cannot cause artificial crossing damage.
+        s.ship_field_damage = torch.where(m, 0.0, s.ship_field_damage)
+        s.ship_combat_damage = torch.where(m, 0.0, s.ship_combat_damage)
+        s.ship_field_death = s.ship_field_death & ~m
+        s.ship_combat_death = s.ship_combat_death & ~m
 
     # ------------------------------------------------------------------
     # Step
     # ------------------------------------------------------------------
 
-    def step(self, actions: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def step(
+        self,
+        actions: torch.Tensor,
+        *,
+        unlimited_resources: bool = False,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Advance all environments by one physics tick.
 
         The caller (wrapper) is responsible for:
@@ -223,28 +291,71 @@ class TensorEnv:
 
         Args:
             actions: (B, N, 3) int tensor — [power, turn, shoot].
+            unlimited_resources: Protect currently alive ships from damage and
+                refill their power. Used only by the interactive play toggle.
 
         Returns:
             (dones, truncated) — each is a (B,) bool tensor.
         """
-        self.state.prev_action = actions.float()
-        self.state.ship_hit_obstacle.zero_()
+        protected_alive = self.state.ship_alive.clone() if unlimited_resources else None
+        if protected_alive is not None:
+            # A very large temporary health value prevents a lethal field or
+            # bullet hit from setting ``alive=False`` before game-over is
+            # checked. The user-visible value is restored to max_health below.
+            protected_health = torch.full_like(
+                self.state.ship_health,
+                torch.finfo(self.state.ship_health.dtype).max,
+            )
+            self.state.ship_health = torch.where(
+                protected_alive, protected_health, self.state.ship_health
+            )
+            self.state.ship_power = torch.where(
+                protected_alive,
+                torch.full_like(self.state.ship_power, self.ship_config.max_power),
+                self.state.ship_power,
+            )
 
+        self.state.prev_action = actions.float()
         self.state = update_ships(self.state, actions, self.ship_config)
+        bullet_trajectory = None
         if self.env_config.max_bullets > 0:
-            self.state = update_bullets(self.state, self.ship_config)
-        self.state.obstacle_pos, self.state.obstacle_vel = step_obstacles_harmonic(
-            self.state.obstacle_pos,
-            self.state.obstacle_vel,
-            self.state.obstacle_radius,
-            self.state.obstacle_gcenter,
+            self.state, bullet_trajectory = advance_bullets(
+                self.state,
+                self.ship_config,
+            )
+        self.state, dones = resolve_collisions(
+            self.state,
             self.ship_config,
-            enable_pbd=False,
+            self._combat_damage_fn,
+            bullet_trajectory,
         )
-        self.state = resolve_obstacle_collisions(self.state, self.ship_config)
-        self.state, dones = resolve_collisions(self.state, self.ship_config)
+
+        if protected_alive is not None:
+            self.state.ship_alive |= protected_alive
+            self.state.ship_health = torch.where(
+                protected_alive,
+                torch.full_like(self.state.ship_health, self.ship_config.max_health),
+                self.state.ship_health,
+            )
+            self.state.ship_power = torch.where(
+                protected_alive,
+                torch.full_like(self.state.ship_power, self.ship_config.max_power),
+                self.state.ship_power,
+            )
+            self.state.ship_field_damage = torch.where(
+                protected_alive, 0.0, self.state.ship_field_damage
+            )
+            self.state.ship_combat_damage = torch.where(
+                protected_alive, 0.0, self.state.ship_combat_damage
+            )
+            self.state.ship_field_death &= ~protected_alive
+            self.state.ship_combat_death &= ~protected_alive
+            dones &= ~protected_alive.any(dim=1)
 
         self.state.step_count += 1
-        truncated = self.state.step_count >= self.env_config.max_episode_steps
+        if self.env_config.max_episode_steps is None:
+            truncated = torch.zeros_like(dones)
+        else:
+            truncated = self.state.step_count >= self.env_config.max_episode_steps
 
         return dones, truncated

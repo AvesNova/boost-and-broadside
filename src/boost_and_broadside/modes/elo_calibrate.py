@@ -65,6 +65,7 @@ from boost_and_broadside.train.rl.bradley_terry import (
     fit_bradley_terry,
     fit_single_rating,
 )
+from boost_and_broadside.train.rl.checkpoint_schema import require_observation_schema
 
 # Opponents that are not stationary and so cannot be tournament players. "avg"
 # changes every update, exactly like the live policy it is measured against.
@@ -192,6 +193,7 @@ def _load_run_config(run_dir: Path) -> tuple[EnvConfig, ModelConfig, str]:
     if not candidates:
         sys.exit(f"Error: no step_*.pt or best_*.pt in '{run_dir}' to read the run config from.")
     checkpoint = torch.load(str(candidates[-1]), map_location="cpu", weights_only=False)
+    require_observation_schema(checkpoint, str(candidates[-1]))
     env_config = EnvConfig(**checkpoint["env_config"])
     model_config = ModelConfig(**checkpoint["model_config"])
     paradigm = checkpoint.get("train_config", {}).get("paradigm", "ego_pass")
@@ -206,6 +208,7 @@ def _load_ladder_policy(
     from boost_and_broadside.train.rl.features import build_standard_coordinator
 
     checkpoint = torch.load(str(path), map_location=device, weights_only=False)
+    require_observation_schema(checkpoint, str(path))
     coordinator = build_standard_coordinator(ship_config)
     num_components = infer_num_value_components(checkpoint)
     policy = YemongPolicy(
@@ -315,7 +318,7 @@ class Tournament:
         self.num_envs = num_envs
         self.device = torch.device(device)
         self.num_ships = env_config.num_ships
-        self.num_tokens = env_config.num_ships + env_config.num_obstacles
+        self.num_tokens = env_config.num_ships + env_config.num_fields
         self.max_steps = env_config.max_episode_steps
         self.team_sizes = (self.num_ships // 2, self.num_ships - self.num_ships // 2)
 

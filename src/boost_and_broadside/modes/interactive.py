@@ -1,6 +1,7 @@
 """Interactive game modes: watch and human play.
 
-Entry point:
+Entry points:
+  - run_play_mode: fixed 1v1 player-vs-null match with four fields.
   - run_watch_mode: render live gameplay between two specified agents at 60fps.
 
 Agent specs (--team0 / --team1) are resolved by modes/agent_factory.py —
@@ -8,25 +9,24 @@ Agent specs (--team0 / --team1) are resolved by modes/agent_factory.py —
 Space to shoot); see that module for the full spec list.
 """
 
-import threading
+from dataclasses import replace
 
 import torch
 
 from boost_and_broadside.config import (
     EnvConfig,
+    FieldMapConfig,
     ModelConfig,
-    ObstacleCacheConfig,
     RewardConfig,
     ShipConfig,
 )
-from boost_and_broadside.constants import PowerActions, ShootActions, TurnActions
-from boost_and_broadside.env.obstacle_cache import ObstacleCache, _make_obstacle_state
-from boost_and_broadside.env.obstacle_physics import (
-    check_convergence,
-    convergence_period_steps,
-    init_obstacles_orbital,
-    step_obstacles_harmonic,
+from boost_and_broadside.constants import (
+    DEFAULT_MAX_BULLETS_PER_SHIP,
+    PowerActions,
+    ShootActions,
+    TurnActions,
 )
+from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.modes.agent_factory import (
     ResolvedAgent,
@@ -37,6 +37,57 @@ from boost_and_broadside.modes.agent_factory import (
     resolve_agent_spec,
 )
 from boost_and_broadside.ui.renderer import GameRenderer, RenderConfig
+
+PLAY_ENV_CONFIG = EnvConfig(
+    num_ships=2,
+    max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
+    max_episode_steps=None,
+    num_fields=4,
+)
+
+
+def run_play_mode(
+    ship_config: ShipConfig,
+    rewards: RewardConfig,
+    model_config: ModelConfig,
+    render_config: RenderConfig,
+    device: str,
+    checkpoint_dir: str = "checkpoints",
+) -> None:
+    """Run the fixed player-vs-null game preset.
+
+    The player controls the blue team-0 ship. The red team-1 ship receives the
+    null (all-zero) action. Matches contain four static refractive fields, have
+    no time horizon, and restart automatically as soon as either ship dies.
+    An on-screen button toggles unlimited health and power for both ships.
+    """
+    render_config = replace(render_config, show_unlimited_button=True)
+    agent0 = resolve_agent_spec(
+        "null",
+        ship_config,
+        model_config,
+        device,
+        checkpoint_dir,
+        num_ships=PLAY_ENV_CONFIG.num_ships,
+    )
+    agent1 = resolve_agent_spec(
+        "null",
+        ship_config,
+        model_config,
+        device,
+        checkpoint_dir,
+        num_ships=PLAY_ENV_CONFIG.num_ships,
+    )
+    _run_resolved_interactive_mode(
+        agent0,
+        agent1,
+        ship_config,
+        PLAY_ENV_CONFIG,
+        rewards,
+        render_config,
+        device,
+        keyboard_teams=frozenset({0}),
+    )
 
 
 def run_watch_mode(
@@ -81,21 +132,46 @@ def run_watch_mode(
         num_ships=env_config.num_ships,
     )
 
+    keyboard_teams = frozenset(
+        team for team, agent in enumerate((agent0, agent1)) if agent.kind == "null"
+    )
+    _run_resolved_interactive_mode(
+        agent0,
+        agent1,
+        ship_config,
+        env_config,
+        rewards,
+        render_config,
+        device,
+        keyboard_teams=keyboard_teams,
+    )
+
+
+def _run_resolved_interactive_mode(
+    agent0: ResolvedAgent,
+    agent1: ResolvedAgent,
+    ship_config: ShipConfig,
+    env_config: EnvConfig,
+    rewards: RewardConfig,
+    render_config: RenderConfig,
+    device: str,
+    keyboard_teams: frozenset[int],
+) -> None:
+    """Build the single environment and render two already-resolved agents."""
+
     renderer = GameRenderer(ship_config, render_config)
 
-    obstacle_cache = None
-    if env_config.num_obstacles > 0:
-        if fast_cache:
-            obstacle_cache = _run_convergence_background(
-                ship_config, env_config, renderer, torch.device(device)
-            )
-        else:
-            obstacle_cache = _run_convergence_phase(
-                ship_config, env_config, renderer, torch.device(device)
-            )
-        if obstacle_cache is None:
-            renderer.close()
-            return
+    # Static maps need no orbital settling phase. ``fast_cache`` is retained in
+    # the watch-mode signature for CLI compatibility but no longer changes map
+    # construction.
+    field_map = None
+    if env_config.num_fields > 0:
+        field_map = FieldMapCache.generate(
+            ship_config,
+            env_config,
+            FieldMapConfig(cache_size=1, max_generation_attempts=256),
+            torch.device(device),
+        )
 
     wrapper = YemongEnvWrapper(
         num_envs=1,
@@ -103,113 +179,20 @@ def run_watch_mode(
         env_config=env_config,
         rewards=rewards,
         device=device,
-        obstacle_cache=obstacle_cache,
+        field_map=field_map,
     )
 
     try:
-        _run_interactive_loop(wrapper, agent0, agent1, renderer, torch.device(device))
+        _run_interactive_loop(
+            wrapper,
+            agent0,
+            agent1,
+            renderer,
+            torch.device(device),
+            keyboard_teams,
+        )
     finally:
         renderer.close()
-
-
-def _run_convergence_background(
-    ship_config: ShipConfig,
-    env_config: EnvConfig,
-    renderer: GameRenderer,
-    device: torch.device,
-) -> ObstacleCache | None:
-    """Generate obstacle cache headlessly in a background thread.
-
-    The main thread keeps the pygame window alive with a loading label while
-    ObstacleCache.generate() runs on the GPU. Returns None if the window is closed.
-    """
-    result: list[ObstacleCache] = []
-    error: list[Exception] = []
-
-    def _worker() -> None:
-        try:
-            cfg = ObstacleCacheConfig(num_cache_envs=512, cache_size=1, max_steps=6000)
-            result.append(ObstacleCache.generate(ship_config, env_config, cfg, device))
-        except Exception as e:
-            error.append(e)
-
-    thread = threading.Thread(target=_worker, daemon=True)
-    thread.start()
-
-    dots = 0
-    tick = 0
-    while thread.is_alive():
-        tick += 1
-        if tick % 20 == 0:
-            dots = (dots + 1) % 4
-        label = "Generating obstacles" + "." * dots
-        if not renderer.render_with_label(None, label):
-            return None
-        renderer.tick()
-
-    thread.join()
-
-    if error:
-        raise error[0]
-
-    return result[0] if result else None
-
-
-def _run_convergence_phase(
-    ship_config: ShipConfig,
-    env_config: EnvConfig,
-    renderer: GameRenderer,
-    device: torch.device,
-) -> ObstacleCache | None:
-    """Simulate obstacle convergence live, rendering every step.
-
-    Phase 1 — PBD active: obstacles orbit and jostle until stable for 2 full
-               harmonic periods with no inter-obstacle overlaps.
-    Phase 2 — Freeze: hold the converged state for 1 second so the user can
-               see the saved snapshot before the match loads.
-
-    Returns:
-        ObstacleCache with one converged map, or None if the window was closed.
-    """
-    M = env_config.num_obstacles
-    pos, vel, radius, gcenter = init_obstacles_orbital(1, M, ship_config, device)
-    collision_free = torch.zeros(1, dtype=torch.int32, device=device)
-    period = convergence_period_steps(ship_config)
-    state = _make_obstacle_state(pos, vel, radius, gcenter, ship_config, device)
-
-    # Phase 1: run until converged
-    while True:
-        state.obstacle_pos, state.obstacle_vel = step_obstacles_harmonic(
-            state.obstacle_pos,
-            state.obstacle_vel,
-            state.obstacle_radius,
-            state.obstacle_gcenter,
-            ship_config,
-            enable_pbd=True,
-        )
-        converged, collision_free = check_convergence(
-            state.obstacle_pos, state.obstacle_radius, collision_free, period, ship_config
-        )
-        if not renderer.render_with_label(state, "Converging obstacles..."):
-            return None
-        renderer.tick()
-        if converged.all():
-            break
-
-    # Phase 2: freeze for 1 second to show the saved snapshot
-    for _ in range(renderer._render_config.fps):
-        if not renderer.render_with_label(
-            state, "Converged — saving snapshot", color=(100, 255, 100)
-        ):
-            return None
-        renderer.tick()
-
-    return ObstacleCache(
-        state.obstacle_pos,  # (1, M) complex64
-        state.obstacle_vel,  # (1, M) complex64
-        state.obstacle_radius,  # (1, M) float32
-        state.obstacle_gcenter,  # (1,) complex64
-    )
 
 
 def _run_interactive_loop(
@@ -218,6 +201,7 @@ def _run_interactive_loop(
     agent1: ResolvedAgent,
     renderer: GameRenderer,
     device: torch.device,
+    keyboard_teams: frozenset[int],
 ) -> None:
     """Core render loop.  Runs episodes back-to-back until the window is closed.
 
@@ -227,11 +211,12 @@ def _run_interactive_loop(
         agent1:   Agent controlling team-1 ships.
         renderer: Pygame renderer.
         device:   Torch device.
+        keyboard_teams: Team IDs whose selected actions are replaced by keyboard input.
     """
     N_IMAGINE_STEPS = 12
 
     N = wrapper.num_ships
-    M = wrapper.env_config.num_obstacles
+    M = wrapper.env_config.num_fields
     num_tokens = N + M
 
     first_episode = True
@@ -264,7 +249,7 @@ def _run_interactive_loop(
                 action1, _ = get_actions(agent1, obs, state, 1, N, device, return_pred_next=True)
 
                 # Select each agent's actions for their respective team (ship tokens only)
-                team_id = obs["team_id"][:, :N]  # (1, N) — exclude obstacle tokens
+                team_id = obs["team_id"][:, :N]  # (1, N) — exclude field tokens
                 action = torch.where((team_id == 0).unsqueeze(-1), action0, action1)
 
                 # Merge imagined trajectories by team into a single list of per-step tensors.
@@ -287,26 +272,37 @@ def _run_interactive_loop(
                         merged.append(torch.where(mask, pn0, pn1))
                     pred_nexts = merged
 
-                # Human keyboard overrides for null agents
-                if agent0.kind == "null" or agent1.kind == "null":
+                if keyboard_teams:
                     keyboard = _decode_keyboard().to(device)
-                    for ship_idx in range(N):
-                        t = int(team_id[0, ship_idx].item())
-                        if (t == 0 and agent0.kind == "null") or (t == 1 and agent1.kind == "null"):
-                            action[0, ship_idx] = keyboard
+                    action = _apply_keyboard_override(action, team_id, keyboard, keyboard_teams)
 
-                obs, _, dones, truncated, _ = wrapper.step(action)
+                obs, _, dones, truncated, _ = wrapper.step(
+                    action,
+                    unlimited_resources=renderer.unlimited_resources,
+                )
 
                 if (dones | truncated).any():
                     reset_done_envs(agent0, dones | truncated, num_tokens)
                     reset_done_envs(agent1, dones | truncated, num_tokens)
-                    obs = wrapper.reset()
                     pred_nexts = None
 
             running = renderer.render(wrapper.state, pred_nexts=pred_nexts)
             if not running:
                 return
             renderer.tick()
+
+
+def _apply_keyboard_override(
+    action: torch.Tensor,
+    team_id: torch.Tensor,
+    keyboard: torch.Tensor,
+    keyboard_teams: frozenset[int],
+) -> torch.Tensor:
+    """Replace actions for only the explicitly player-controlled teams."""
+    keyboard_mask = torch.zeros_like(team_id, dtype=torch.bool)
+    for team in keyboard_teams:
+        keyboard_mask |= team_id == team
+    return torch.where(keyboard_mask.unsqueeze(-1), keyboard.view(1, 1, 3), action)
 
 
 def _decode_keyboard() -> torch.Tensor:

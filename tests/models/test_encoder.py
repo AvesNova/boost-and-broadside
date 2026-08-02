@@ -47,6 +47,12 @@ def _make_obs(B: int, N: int) -> YemongObservation:
             ObsKey.ALIVE: torch.ones(B, N, dtype=torch.bool),
             ObsKey.PREVIOUS_ACTION: torch.zeros(B, N, 3, dtype=torch.long),
             ObsKey.RADIUS: torch.rand(B, N, 1),
+            ObsKey.LOCAL_LOG_INDEX: torch.zeros(B, N, 1),
+            ObsKey.FIELD_TRANSITION_WIDTH: torch.zeros(B, N, 1),
+            ObsKey.FIELD_INSIDE_LOG_INDEX: torch.zeros(B, N, 1),
+            ObsKey.FIELD_OUTSIDE_LOG_INDEX: torch.zeros(B, N, 1),
+            ObsKey.FIELD_LOG_INDEX_RATIO: torch.zeros(B, N, 1),
+            ObsKey.FIELD_DAMAGE: torch.zeros(B, N, 1),
         }
     )
 
@@ -262,6 +268,31 @@ class TestRGLRU:
 
 
 class TestYemongPolicy:
+    def test_field_tokens_carry_hidden_state_but_heads_emit_ships_only(
+        self, model_cfg, coordinator
+    ):
+        B, N, M = 2, 3, 2
+        policy = YemongPolicy(
+            model_cfg, coordinator, num_value_components=NUM_VALUE_COMPONENTS, num_ships=N
+        )
+        obs = _make_obs(B, N + M)
+        obs.data[ObsKey.TEAM_ID][:, N:] = 2
+        hidden = policy.initial_hidden(B, N + M, torch.device("cpu"))
+
+        action, logprob, value, pred_next, new_hidden = policy.get_action_and_value(obs, hidden)
+
+        from boost_and_broadside.models.yemong.griffin import CONV_KERNEL
+
+        assert action.shape == (B, N, 3)
+        assert logprob.shape == (B, N)
+        assert value.shape == (B, N, NUM_VALUE_COMPONENTS)
+        assert pred_next.shape[:2] == (B, N)
+        assert new_hidden.shape == (
+            model_cfg.n_transformer_blocks,
+            B * (N + M),
+            CONV_KERNEL * model_cfg.d_model,
+        )
+
     def test_get_action_and_value_shapes(self, model_cfg, coordinator):
         """get_action_and_value must return correct tensor shapes."""
         B, N = 2, 8
@@ -445,6 +476,7 @@ class TestFeatureCoordinatorDecode:
                 ObsKey.HEALTH: torch.tensor([[[0.4 * ship_cfg.max_health]]]),
                 ObsKey.POWER: torch.tensor([[[0.6 * ship_cfg.max_power]]]),
                 ObsKey.COOLDOWN: torch.tensor([[[0.5 * ship_cfg.firing_cooldown]]]),
+                ObsKey.LOCAL_LOG_INDEX: torch.tensor([[[0.25]]]),
             }
         )
 

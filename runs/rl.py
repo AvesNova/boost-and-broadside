@@ -17,7 +17,6 @@ Phase structure:
 
 from boost_and_broadside.config import (
     EnvConfig,
-    ObstacleCacheConfig,
     ScaleConfig,
     TrainConfig,
     TrainingSchedule,
@@ -26,12 +25,13 @@ from boost_and_broadside.config import (
     stepped,
 )
 from boost_and_broadside.config.schedule import exponential, join
+from boost_and_broadside.constants import DEFAULT_MAX_BULLETS_PER_SHIP
 from runs.shared import COMPONENT_GAMMAS, COMPONENT_LAMBDAS, ELO_EVAL, REWARDS
 
 _MAX_TOKENS = 12_000_000
 _ROLLOUT_TOKENS = 6_000_000
 _NUM_SHIPS = 8
-_NUM_OBSTACLES = 0
+_NUM_FIELDS = 0
 _NUM_STEPS = 128
 _NUM_MINIBATCHES = 32
 # // 5: split each minibatch into 5 gradient-accumulation micro-batches — the
@@ -75,12 +75,12 @@ RL_TRAIN_CONFIG = TrainConfig(
         ScaleConfig(
             env_config=EnvConfig(
                 num_ships=_NUM_SHIPS,
-                num_obstacles=_NUM_OBSTACLES,
-                max_bullets=20,
+                num_fields=_NUM_FIELDS,
+                max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
                 max_episode_steps=1024,
             ),
             num_envs=_ROLLOUT_TOKENS
-            // (_NUM_SHIPS + _NUM_OBSTACLES)
+            // (_NUM_SHIPS + _NUM_FIELDS)
             // _NUM_STEPS
             // _NUM_MINIBATCHES
             * _NUM_MINIBATCHES,
@@ -111,9 +111,4 @@ RL_TRAIN_CONFIG = TrainConfig(
     elo_eval=ELO_EVAL,
     bc_winrate_target=0.45,
     histogram_interval=10,
-    obstacle_cache=ObstacleCacheConfig(
-        num_cache_envs=4096,
-        cache_size=512,
-        max_steps=6000,
-    ),
 )

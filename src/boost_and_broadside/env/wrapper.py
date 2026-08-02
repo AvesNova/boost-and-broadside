@@ -2,7 +2,7 @@
 
 Responsibilities:
   - Convert TensorState into the raw obs dict consumed by YemongPolicy.
-  - Concatenate ship and obstacle tokens into a single (B, N+M, ...) obs dict.
+  - Concatenate ship and refractive-field tokens into one (B, N+M, ...) obs dict.
   - Compute per-ship per-component rewards via the reward components
     (zero-sum accounting happens later, in PPO's lambda aggregation).
   - Reset done / truncated environments and zero GRU hidden states.
@@ -16,12 +16,12 @@ import torch
 
 from boost_and_broadside.config import EnvConfig, RewardConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
+from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.observation import (
     ObservationBuffers,
     YemongObservation,
     observation_from_state,
 )
-from boost_and_broadside.env.obstacle_cache import ObstacleCache
 from boost_and_broadside.env.rewards import (
     REWARD_COMPONENT_NAMES,
     RewardComponent,
@@ -33,23 +33,24 @@ from boost_and_broadside.env.state import TensorState
 class YemongEnvWrapper:
     """Wraps TensorEnv to produce policy-ready observations and zero-sum rewards.
 
-    YemongObservation keys and shapes (B = num_envs, N = num_ships, M = num_obstacles).
+    YemongObservation keys and shapes (B = num_envs, N = num_ships, M = num_fields).
     All values are RAW — no normalization applied. All encoding decisions
     (Fourier expand, symlog, normalize, one-hot) live in FeatureCoordinator feature chains.
 
         "pos"             (B, N+M, 2)  — [x, y] raw pixels
         "vel"             (B, N+M, 2)  — [vx, vy] raw px/s
-        "att"             (B, N+M, 2)  — [cos θ, sin θ] unit heading; vel_dir for obstacles
-        "ang_vel"         (B, N+M, 1)  — rad/s; zeroed for obstacles
-        "health"          (B, N+M, 1)  — raw [0, max_health]; obstacles = max_health
-        "power"           (B, N+M, 1)  — raw [0, max_power]; obstacles = 0
-        "cooldown"        (B, N+M, 1)  — raw [0, firing_cooldown]; obstacles = 0
-        "team_id"         (B, N+M)     — int32; 0/1 for ships, 2 for obstacles
-        "alive"           (B, N+M)     — bool; obstacles are always True
-        "previous_action" (B, N+M, 3)  — int [power, turn, shoot]; zeroed for obstacles
-        "radius"          (B, N+M, 1)  — raw px; collision_radius for ships, actual for obstacles
+        "att"             (B, N+M, 2)  — [cos θ, sin θ]; zero for fields
+        "ang_vel"         (B, N+M, 1)  — rad/s; zero for fields
+        "health"          (B, N+M, 1)  — raw [0, max_health]; fields = max_health
+        "power"           (B, N+M, 1)  — raw [0, max_power]; fields = 0
+        "cooldown"        (B, N+M, 1)  — raw seconds; fields = 0
+        "team_id"         (B, N+M)     — int32; 0/1 for ships, 2 for fields
+        "alive"           (B, N+M)     — bool; fields are always True
+        "previous_action" (B, N+M, 3)  — int actions; zero for fields
+        "radius"          (B, N+M, 1)  — raw px; ship collision or nominal field radius
+        field material     (B, N+M, 1)  — numeric width/index-ratio/damage channels
 
-    All reward computations remain (B, N) — obstacle tokens are never in the reward signal.
+    All reward computations remain (B, N) — field tokens are never reward recipients.
     """
 
     def __init__(
@@ -59,9 +60,17 @@ class YemongEnvWrapper:
         env_config: EnvConfig,
         rewards: RewardConfig,
         device: str | torch.device,
-        obstacle_cache: ObstacleCache | None = None,
+        field_map: FieldMapCache | None = None,
+        collision_compile_mode: str | None = None,
     ) -> None:
-        self.env = TensorEnv(num_envs, ship_config, env_config, device, obstacle_cache)
+        self.env = TensorEnv(
+            num_envs,
+            ship_config,
+            env_config,
+            device,
+            field_map,
+            collision_compile_mode,
+        )
         self.ship_config = ship_config
         self.env_config = env_config
         self.device = torch.device(device)
@@ -84,7 +93,7 @@ class YemongEnvWrapper:
         self._obs_buffers = ObservationBuffers.allocate(
             num_envs,
             env_config.num_ships,
-            env_config.num_obstacles,
+            env_config.num_fields,
             ship_config,
             self.device,
         )
@@ -120,7 +129,7 @@ class YemongEnvWrapper:
     ) -> YemongObservation:
         """Reset all environments and return initial observations."""
         self.env.reset(options=options, seed=seed)
-        self._refresh_obs_radius_all()
+        self._refresh_field_obs_all()
         self._ep_reward.zero_()
         self._ep_length.zero_()
         self._ep_comp.zero_()
@@ -158,6 +167,9 @@ class YemongEnvWrapper:
         self._acc_comp_scaled_sum = torch.zeros((K,), device=d)
         self._acc_wins_sum = torch.zeros((), device=d)
         self._acc_lifespan_sum = torch.zeros((), device=d)
+        # field damage, combat damage, field deaths, combat deaths,
+        # field-damage steps, non-ambient live steps, total live steps.
+        self._acc_source_stats = torch.zeros((7,), device=d)
 
     def pop_episode_stats(self) -> dict[str, torch.Tensor]:
         """Return finished-episode stats accumulated since the last call, and reset.
@@ -184,6 +196,7 @@ class YemongEnvWrapper:
             "comp_scaled_sum": self._acc_comp_scaled_sum,
             "wins_sum": self._acc_wins_sum,
             "lifespan_sum": self._acc_lifespan_sum,
+            "source_stats": self._acc_source_stats,
         }
         self._zero_stat_accumulators()
         return stats
@@ -195,6 +208,8 @@ class YemongEnvWrapper:
     def step(
         self,
         actions: torch.Tensor,
+        *,
+        unlimited_resources: bool = False,
     ) -> tuple[YemongObservation, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
         """Advance all environments and return (obs, rewards, dones, truncated, info).
 
@@ -207,6 +222,7 @@ class YemongEnvWrapper:
 
         Args:
             actions: (B, N, 3) int tensor — [power, turn, shoot].
+            unlimited_resources: Protect and refill alive ships for interactive play.
 
         Returns:
             obs:          dict of (B, N, ...) tensors.
@@ -221,7 +237,23 @@ class YemongEnvWrapper:
         prev_state = _make_prev_state_proxy(self.env.state, prev_health, prev_alive)
 
         # Physics step (no auto-reset)
-        dones, truncated = self.env.step(actions)
+        dones, truncated = self.env.step(
+            actions,
+            unlimited_resources=unlimited_resources,
+        )
+
+        source_state = self.env.state
+        self._acc_source_stats += torch.stack(
+            [
+                source_state.ship_field_damage.sum(),
+                source_state.ship_combat_damage.sum(),
+                source_state.ship_field_death.sum(),
+                source_state.ship_combat_death.sum(),
+                (source_state.ship_field_damage > 0.0).sum(),
+                ((source_state.ship_local_index - 1.0).abs() > 1e-6).logical_and(prev_alive).sum(),
+                prev_alive.sum(),
+            ]
+        )
 
         # Compute rewards for active components only — (B, N, K_active)
         B, N = self.env.state.ship_health.shape
@@ -278,7 +310,7 @@ class YemongEnvWrapper:
 
         # Reset done environments (state mutated in-place) and their trackers
         self.env.reset_envs(done_mask)
-        self._refresh_obs_radius(done_mask)
+        self._refresh_field_obs(done_mask)
         self._ep_reward.masked_fill_(done_n, 0.0)
         self._ep_length.masked_fill_(done_mask, 0)
         self._ep_comp.masked_fill_(done_mask.view(B, 1, 1), 0.0)
@@ -293,7 +325,7 @@ class YemongEnvWrapper:
     # ------------------------------------------------------------------
 
     def _get_obs(self) -> YemongObservation:
-        """Build the combined (ship + obstacle) raw observation as YemongObservation.
+        """Build the combined (ship + field) raw observation as YemongObservation.
 
         All values are in native units — no normalization. Feature chains in
         FeatureCoordinator handle all encoding (Fourier, symlog, one-hot, etc.).
@@ -304,11 +336,11 @@ class YemongEnvWrapper:
     # Helpers
     # ------------------------------------------------------------------
 
-    def _refresh_obs_radius_all(self) -> None:
-        self._obs_buffers.refresh_obstacle_radius_all(self.env.state)
+    def _refresh_field_obs_all(self) -> None:
+        self._obs_buffers.refresh_field_state_all(self.env.state)
 
-    def _refresh_obs_radius(self, mask: torch.Tensor) -> None:
-        self._obs_buffers.refresh_obstacle_radius(self.env.state, mask)
+    def _refresh_field_obs(self, mask: torch.Tensor) -> None:
+        self._obs_buffers.refresh_field_state(self.env.state, mask)
 
     @property
     def state(self) -> TensorState:

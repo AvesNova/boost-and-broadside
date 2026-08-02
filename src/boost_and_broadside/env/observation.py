@@ -21,6 +21,12 @@ class ObsKey(StrEnum):
     ALIVE = "alive"
     RADIUS = "radius"
     PREVIOUS_ACTION = "previous_action"
+    LOCAL_LOG_INDEX = "local_log_index"
+    FIELD_TRANSITION_WIDTH = "field_transition_width"
+    FIELD_INSIDE_LOG_INDEX = "field_inside_log_index"
+    FIELD_OUTSIDE_LOG_INDEX = "field_outside_log_index"
+    FIELD_LOG_INDEX_RATIO = "field_log_index_ratio"
+    FIELD_DAMAGE = "field_damage"
 
 
 @dataclass(frozen=True)
@@ -29,7 +35,7 @@ class YemongObservation:
 
     data: maps ObsKey → tensor of shape (B, N+M, ...) or (T, B, N+M, ...) etc.
 
-    team_id:  (B, N+M)   int32 — 0/1 ships, 2 obstacles
+    team_id:  (B, N+M)   int32 — 0/1 ships, 2 fields
     alive:    (B, N+M)   bool
     all others have a trailing feature dimension.
     """
@@ -104,6 +110,10 @@ class YemongObservation:
     def previous_action(self) -> torch.Tensor:
         return self.data[ObsKey.PREVIOUS_ACTION]
 
+    @property
+    def local_log_index(self) -> torch.Tensor:
+        return self.data[ObsKey.LOCAL_LOG_INDEX]
+
     # ------------------------------------------------------------------
     # Immutable update / structural ops
     # ------------------------------------------------------------------
@@ -144,21 +154,20 @@ class ObservationBuffers:
     """
 
     ship_radius: torch.Tensor
-    obstacle_ang_vel: torch.Tensor | None = None
-    obstacle_health: torch.Tensor | None = None
-    obstacle_power: torch.Tensor | None = None
-    obstacle_cooldown: torch.Tensor | None = None
-    obstacle_team_id: torch.Tensor | None = None
-    obstacle_alive: torch.Tensor | None = None
-    obstacle_prev_action: torch.Tensor | None = None
-    obstacle_radius: torch.Tensor | None = None
+    field_zero_vec: torch.Tensor | None = None
+    field_zero_scalar: torch.Tensor | None = None
+    field_health: torch.Tensor | None = None
+    field_team_id: torch.Tensor | None = None
+    field_alive: torch.Tensor | None = None
+    field_prev_action: torch.Tensor | None = None
+    ship_field_feature_zeros: torch.Tensor | None = None
 
     @classmethod
     def allocate(
         cls,
         num_envs: int,
         num_ships: int,
-        num_obstacles: int,
+        num_fields: int,
         ship_config: ShipConfig,
         device: torch.device,
     ) -> "ObservationBuffers":
@@ -169,42 +178,27 @@ class ObservationBuffers:
             device=device,
             dtype=torch.float32,
         )
-        if num_obstacles == 0:
+        if num_fields == 0:
             return cls(ship_radius=ship_radius)
 
         return cls(
             ship_radius=ship_radius,
-            obstacle_ang_vel=torch.zeros(num_envs, num_obstacles, 1, device=device),
-            obstacle_health=torch.full(
-                (num_envs, num_obstacles, 1), ship_config.max_health, device=device
+            field_zero_vec=torch.zeros(num_envs, num_fields, 2, device=device),
+            field_zero_scalar=torch.zeros(num_envs, num_fields, 1, device=device),
+            field_health=torch.full(
+                (num_envs, num_fields, 1), ship_config.max_health, device=device
             ),
-            obstacle_power=torch.zeros(num_envs, num_obstacles, 1, device=device),
-            obstacle_cooldown=torch.zeros(num_envs, num_obstacles, 1, device=device),
-            obstacle_team_id=torch.full(
-                (num_envs, num_obstacles), 2, device=device, dtype=torch.int32
-            ),
-            obstacle_alive=torch.ones(num_envs, num_obstacles, device=device, dtype=torch.bool),
-            obstacle_prev_action=torch.zeros(
-                num_envs, num_obstacles, 3, device=device, dtype=torch.long
-            ),
-            obstacle_radius=torch.zeros(num_envs, num_obstacles, 1, device=device),
+            field_team_id=torch.full((num_envs, num_fields), 2, device=device, dtype=torch.int32),
+            field_alive=torch.ones(num_envs, num_fields, device=device, dtype=torch.bool),
+            field_prev_action=torch.zeros(num_envs, num_fields, 3, device=device, dtype=torch.long),
+            ship_field_feature_zeros=torch.zeros(num_envs, num_ships, 1, device=device),
         )
 
-    def refresh_obstacle_radius_all(self, state: TensorState) -> None:
-        """Copy every obstacle radius from ``state`` into the reusable buffer."""
-        if self.obstacle_radius is not None:
-            self.obstacle_radius.copy_(state.obstacle_radius.unsqueeze(-1))
+    def refresh_field_state_all(self, state: TensorState) -> None:
+        """Compatibility no-op: field geometry is read directly from state."""
 
-    def refresh_obstacle_radius(self, state: TensorState, mask: torch.Tensor) -> None:
-        """Refresh obstacle radii for reset environments selected by ``mask``."""
-        if self.obstacle_radius is not None:
-            self.obstacle_radius.copy_(
-                torch.where(
-                    mask.view(-1, 1, 1),
-                    state.obstacle_radius.unsqueeze(-1),
-                    self.obstacle_radius,
-                )
-            )
+    def refresh_field_state(self, state: TensorState, mask: torch.Tensor) -> None:
+        """Compatibility no-op: field geometry is read directly from state."""
 
 
 def observation_from_state(
@@ -214,7 +208,7 @@ def observation_from_state(
 ) -> YemongObservation:
     """Build the raw policy observation for the supplied environment state.
 
-    Obstacles are represented as always-alive team-2 tokens. Passing reusable
+    Fields are represented as always-alive team-2 tokens. Passing reusable
     ``buffers`` keeps the training step path allocation-free; callers outside
     training may omit them.
     """
@@ -222,11 +216,11 @@ def observation_from_state(
         buffers = ObservationBuffers.allocate(
             state.num_envs,
             state.max_ships,
-            state.num_obstacles,
+            state.num_fields,
             ship_config,
             state.device,
         )
-        buffers.refresh_obstacle_radius_all(state)
+        buffers.refresh_field_state_all(state)
 
     ship_pos = torch.stack([state.ship_pos.real, state.ship_pos.imag], dim=-1)
     ship_vel = torch.stack([state.ship_vel.real, state.ship_vel.imag], dim=-1)
@@ -237,7 +231,13 @@ def observation_from_state(
     ship_cooldown = state.ship_cooldown.unsqueeze(-1)
     ship_prev_action = state.prev_action.long()
 
-    if state.num_obstacles == 0:
+    log_scale = 2.0 * torch.log(
+        torch.tensor(ship_config.field_index_step, device=state.device, dtype=torch.float32)
+    )
+    ship_local_log_index = torch.log(state.ship_local_index).unsqueeze(-1) / log_scale
+
+    if state.num_fields == 0:
+        zeros = torch.zeros_like(ship_local_log_index)
         return YemongObservation(
             data={
                 ObsKey.POS: ship_pos,
@@ -251,36 +251,60 @@ def observation_from_state(
                 ObsKey.ALIVE: state.ship_alive,
                 ObsKey.PREVIOUS_ACTION: ship_prev_action,
                 ObsKey.RADIUS: buffers.ship_radius,
+                ObsKey.LOCAL_LOG_INDEX: ship_local_log_index,
+                ObsKey.FIELD_TRANSITION_WIDTH: zeros,
+                ObsKey.FIELD_INSIDE_LOG_INDEX: zeros,
+                ObsKey.FIELD_OUTSIDE_LOG_INDEX: zeros,
+                ObsKey.FIELD_LOG_INDEX_RATIO: zeros,
+                ObsKey.FIELD_DAMAGE: zeros,
             }
         )
 
-    assert buffers.obstacle_ang_vel is not None
-    assert buffers.obstacle_health is not None
-    assert buffers.obstacle_power is not None
-    assert buffers.obstacle_cooldown is not None
-    assert buffers.obstacle_team_id is not None
-    assert buffers.obstacle_alive is not None
-    assert buffers.obstacle_prev_action is not None
-    assert buffers.obstacle_radius is not None
+    assert buffers.field_zero_vec is not None
+    assert buffers.field_zero_scalar is not None
+    assert buffers.field_health is not None
+    assert buffers.field_team_id is not None
+    assert buffers.field_alive is not None
+    assert buffers.field_prev_action is not None
+    assert buffers.ship_field_feature_zeros is not None
 
-    obstacle_pos = torch.stack([state.obstacle_pos.real, state.obstacle_pos.imag], dim=-1)
-    obstacle_vel = torch.stack([state.obstacle_vel.real, state.obstacle_vel.imag], dim=-1)
-    obstacle_speed = torch.norm(obstacle_vel, dim=-1, keepdim=True).clamp(min=EPS)
-    obstacle_att = obstacle_vel / obstacle_speed
+    field_pos = torch.stack([state.field_pos.real, state.field_pos.imag], dim=-1)
+    field_inside = torch.log(state.field_index).unsqueeze(-1) / log_scale
+    parent_index = state.field_index - state.field_delta_index
+    field_outside = torch.log(parent_index).unsqueeze(-1) / log_scale
+    # Absolute encodings use ±2 levels. A parent/child interface can span four
+    # levels, so ratio encoding uses 4*log(step) to retain [-1, 1].
+    ratio_scale = 4.0 * torch.log(
+        torch.tensor(ship_config.field_index_step, device=state.device, dtype=torch.float32)
+    )
+    field_ratio = torch.log(state.field_index / parent_index).unsqueeze(-1) / ratio_scale
+    max_damage = max(2.0 * ship_config.field_interface_damage, EPS)
+    field_damage = state.field_damage.unsqueeze(-1) / max_damage
+    ship_zero = buffers.ship_field_feature_zeros
     return YemongObservation(
         data={
-            ObsKey.POS: torch.cat([ship_pos, obstacle_pos], dim=1),
-            ObsKey.VEL: torch.cat([ship_vel, obstacle_vel], dim=1),
-            ObsKey.ATT: torch.cat([ship_att, obstacle_att], dim=1),
-            ObsKey.ANG_VEL: torch.cat([ship_ang, buffers.obstacle_ang_vel], dim=1),
-            ObsKey.HEALTH: torch.cat([ship_health, buffers.obstacle_health], dim=1),
-            ObsKey.POWER: torch.cat([ship_power, buffers.obstacle_power], dim=1),
-            ObsKey.COOLDOWN: torch.cat([ship_cooldown, buffers.obstacle_cooldown], dim=1),
-            ObsKey.TEAM_ID: torch.cat([state.ship_team_id, buffers.obstacle_team_id], dim=1),
-            ObsKey.ALIVE: torch.cat([state.ship_alive, buffers.obstacle_alive], dim=1),
-            ObsKey.PREVIOUS_ACTION: torch.cat(
-                [ship_prev_action, buffers.obstacle_prev_action], dim=1
+            ObsKey.POS: torch.cat([ship_pos, field_pos], dim=1),
+            ObsKey.VEL: torch.cat([ship_vel, buffers.field_zero_vec], dim=1),
+            ObsKey.ATT: torch.cat([ship_att, buffers.field_zero_vec], dim=1),
+            ObsKey.ANG_VEL: torch.cat([ship_ang, buffers.field_zero_scalar], dim=1),
+            ObsKey.HEALTH: torch.cat([ship_health, buffers.field_health], dim=1),
+            ObsKey.POWER: torch.cat([ship_power, buffers.field_zero_scalar], dim=1),
+            ObsKey.COOLDOWN: torch.cat([ship_cooldown, buffers.field_zero_scalar], dim=1),
+            ObsKey.TEAM_ID: torch.cat([state.ship_team_id, buffers.field_team_id], dim=1),
+            ObsKey.ALIVE: torch.cat([state.ship_alive, buffers.field_alive], dim=1),
+            ObsKey.PREVIOUS_ACTION: torch.cat([ship_prev_action, buffers.field_prev_action], dim=1),
+            ObsKey.RADIUS: torch.cat(
+                [buffers.ship_radius, state.field_radius.unsqueeze(-1)], dim=1
             ),
-            ObsKey.RADIUS: torch.cat([buffers.ship_radius, buffers.obstacle_radius], dim=1),
+            ObsKey.LOCAL_LOG_INDEX: torch.cat(
+                [ship_local_log_index, buffers.field_zero_scalar], dim=1
+            ),
+            ObsKey.FIELD_TRANSITION_WIDTH: torch.cat(
+                [ship_zero, state.field_transition_width.unsqueeze(-1)], dim=1
+            ),
+            ObsKey.FIELD_INSIDE_LOG_INDEX: torch.cat([ship_zero, field_inside], dim=1),
+            ObsKey.FIELD_OUTSIDE_LOG_INDEX: torch.cat([ship_zero, field_outside], dim=1),
+            ObsKey.FIELD_LOG_INDEX_RATIO: torch.cat([ship_zero, field_ratio], dim=1),
+            ObsKey.FIELD_DAMAGE: torch.cat([ship_zero, field_damage], dim=1),
         }
     )

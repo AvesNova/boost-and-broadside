@@ -3,10 +3,18 @@
 import pytest
 import torch
 
-from boost_and_broadside.config import EnvConfig, RewardConfig, ShipConfig
+from boost_and_broadside.config import (
+    EnvConfig,
+    InterfaceDamageLevel,
+    RefractiveIndexLevel,
+    RewardConfig,
+    ShipConfig,
+)
 from boost_and_broadside.env.env import TensorEnv
+from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.observation import observation_from_state
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
+from tests.conftest import activate_bullet
 
 
 @pytest.fixture
@@ -22,10 +30,14 @@ def env_cfg() -> EnvConfig:
 @pytest.fixture
 def reward_cfg() -> RewardConfig:
     return RewardConfig(
-        ally_damage_weight=0.01,
-        enemy_damage_weight=0.01,
-        ally_death_weight=0.5,
-        enemy_death_weight=0.5,
+        ally_combat_damage_weight=0.01,
+        enemy_combat_damage_weight=0.01,
+        ally_field_damage_weight=0.01,
+        enemy_field_damage_weight=0.01,
+        ally_combat_death_weight=0.5,
+        enemy_combat_death_weight=0.5,
+        ally_field_death_weight=0.5,
+        enemy_field_death_weight=0.5,
         ally_win_weight=1.0,
         enemy_win_weight=1.0,
         facing_weight=0.01,
@@ -33,14 +45,32 @@ def reward_cfg() -> RewardConfig:
         shoot_quality_weight=0.01,
         kill_shot_weight=0.5,
         kill_assist_weight=0.5,
-        damage_taken_weight=0.1,
+        combat_damage_taken_weight=0.1,
+        field_damage_taken_weight=0.1,
         damage_dealt_enemy_weight=0.1,
         damage_dealt_ally_weight=0.1,
-        death_weight=0.5,
+        combat_death_weight=0.5,
+        field_death_weight=0.5,
         proximity_radius=300.0,
         shoot_quality_radius=200.0,
-        enemy_neg_lambda_components=frozenset({"enemy_damage", "enemy_death", "enemy_win"}),
-        ally_zero_components=frozenset({"enemy_damage", "enemy_death", "enemy_win"}),
+        enemy_neg_lambda_components=frozenset(
+            {
+                "enemy_combat_damage",
+                "enemy_field_damage",
+                "enemy_combat_death",
+                "enemy_field_death",
+                "enemy_win",
+            }
+        ),
+        ally_zero_components=frozenset(
+            {
+                "enemy_combat_damage",
+                "enemy_field_damage",
+                "enemy_combat_death",
+                "enemy_field_death",
+                "enemy_win",
+            }
+        ),
     )
 
 
@@ -151,6 +181,18 @@ class TestTensorEnvStep:
         _, truncated = env.step(actions)
         assert truncated[0].item()
 
+    def test_none_max_episode_steps_disables_time_truncation(self, ship_cfg):
+        env_cfg = EnvConfig(num_ships=1, max_bullets=0, max_episode_steps=None)
+        env = TensorEnv(num_envs=1, ship_config=ship_cfg, env_config=env_cfg, device="cpu")
+        env.reset()
+
+        actions = torch.zeros((1, 1, 3), dtype=torch.long)
+        for _ in range(10):
+            _, truncated = env.step(actions)
+            assert not truncated.item()
+
+        assert env.state.step_count.item() == 10
+
     def test_ships_move_when_coasting(self, ship_cfg, env_cfg):
         """COAST action with initial velocity should move ships (non-zero position change)."""
         env = TensorEnv(num_envs=1, ship_config=ship_cfg, env_config=env_cfg, device="cpu")
@@ -162,6 +204,64 @@ class TestTensorEnvStep:
 
         # Ships have default_speed velocity, so position changes
         assert not torch.allclose(env.state.ship_pos, pos_before)
+
+    def test_unlimited_resources_survive_lethal_hit_and_refill_power(self, ship_cfg):
+        env_cfg = EnvConfig(num_ships=2, max_bullets=1, max_episode_steps=100)
+        env = TensorEnv(num_envs=1, ship_config=ship_cfg, env_config=env_cfg, device="cpu")
+        env.reset(options={"team_sizes": (1, 1)})
+
+        env.state.ship_pos[0] = torch.tensor([100.0 + 100.0j, 200.0 + 200.0j])
+        env.state.ship_health[0, 1] = 1.0
+        env.state.ship_power.zero_()
+        activate_bullet(
+            env.state,
+            ship_cfg,
+            position=env.state.ship_pos[0, 1],
+            velocity=-env.state.ship_attitude[0, 1],
+            lifetime=1.0,
+            damage=ship_cfg.max_health,
+        )
+
+        actions = torch.zeros((1, 2, 3), dtype=torch.long)
+        dones, _ = env.step(actions, unlimited_resources=True)
+
+        assert not env.state.bullet_active[0, 0, 0]
+        assert not dones.item()
+        assert env.state.ship_alive.all()
+        assert torch.equal(
+            env.state.ship_health,
+            torch.full_like(env.state.ship_health, ship_cfg.max_health),
+        )
+        assert torch.equal(
+            env.state.ship_power,
+            torch.full_like(env.state.ship_power, ship_cfg.max_power),
+        )
+        assert not env.state.ship_field_damage.any()
+        assert not env.state.ship_combat_damage.any()
+        assert not env.state.ship_field_death.any()
+        assert not env.state.ship_combat_death.any()
+
+    def test_combat_source_bookkeeping_caps_lethal_overkill(self, ship_cfg):
+        env_cfg = EnvConfig(num_ships=2, max_bullets=1, max_episode_steps=100)
+        env = TensorEnv(num_envs=1, ship_config=ship_cfg, env_config=env_cfg, device="cpu")
+        env.reset(options={"team_sizes": (1, 1)})
+        env.state.ship_pos[0] = torch.tensor([100.0 + 100.0j, 200.0 + 200.0j])
+        env.state.ship_vel.zero_()
+        activate_bullet(
+            env.state,
+            ship_cfg,
+            position=env.state.ship_pos[0, 1],
+            velocity=-env.state.ship_attitude[0, 1],
+            lifetime=1.0,
+            damage=2.0 * ship_cfg.max_health / ship_cfg.bullet_min_damage_frac,
+        )
+
+        env.step(torch.zeros((1, 2, 3), dtype=torch.long))
+
+        assert env.state.ship_combat_damage[0, 1].item() == ship_cfg.max_health
+        assert env.state.ship_combat_death[0, 1].item()
+        assert not env.state.ship_field_death.any()
+        assert env.state.ship_health[0, 1].item() == 0.0
 
 
 class TestYemongEnvWrapper:
@@ -224,8 +324,16 @@ class TestYemongEnvWrapper:
             torch.equal(wrapper_obs[key], standalone_obs[key]) for key in standalone_obs.data
         )
 
-    def test_observation_from_state_copies_obstacle_radius(self, ship_cfg):
-        """The standalone builder must retain dynamic obstacle geometry."""
+    def test_observation_from_state_copies_field_geometry(self, ship_cfg):
+        """The standalone builder retains static field radius and transition width."""
+        field_map = FieldMapCache(
+            pos=torch.tensor([[100.0 + 100.0j]]),
+            radius=torch.tensor([[42.0]]),
+            transition_width=torch.tensor([[20.0]]),
+            index_level=torch.tensor([[RefractiveIndexLevel.HIGH]], dtype=torch.int8),
+            damage_level=torch.tensor([[InterfaceDamageLevel.NONE]], dtype=torch.int8),
+            ship_config=ship_cfg,
+        )
         env = TensorEnv(
             num_envs=2,
             ship_config=ship_cfg,
@@ -233,15 +341,16 @@ class TestYemongEnvWrapper:
                 num_ships=2,
                 max_bullets=20,
                 max_episode_steps=100,
-                num_obstacles=1,
+                num_fields=1,
             ),
             device="cpu",
+            field_map=field_map,
         )
         env.reset(options={"team_sizes": (1, 1)})
-        env.state.obstacle_radius.fill_(42.0)
         obs = observation_from_state(env.state, ship_cfg)
 
         assert torch.equal(obs.radius[:, -1, 0], torch.full((2,), 42.0))
+        assert torch.equal(obs["field_transition_width"][:, -1, 0], torch.full((2,), 20.0))
 
     def test_step_returns_correct_shapes(self, ship_cfg, env_cfg, reward_cfg):
         B, N = 2, env_cfg.num_ships
@@ -302,3 +411,53 @@ class TestYemongEnvWrapper:
         # Accumulators must be cleared by the pop
         stats_after = wrapper.pop_episode_stats()
         assert stats_after["episodes"].item() == 0
+        assert not stats_after["source_stats"].any()
+
+    def test_source_metrics_accumulate_without_waiting_for_episode_end(self, ship_cfg, reward_cfg):
+        env_cfg = EnvConfig(num_ships=2, max_bullets=1, max_episode_steps=100)
+        wrapper = YemongEnvWrapper(
+            num_envs=1,
+            ship_config=ship_cfg,
+            env_config=env_cfg,
+            rewards=reward_cfg,
+            device="cpu",
+        )
+        wrapper.reset(options={"team_sizes": (1, 1)})
+        wrapper.state.ship_pos[0] = torch.tensor([100.0 + 100.0j, 200.0 + 200.0j])
+        wrapper.state.ship_vel.zero_()
+        activate_bullet(
+            wrapper.state,
+            ship_cfg,
+            position=wrapper.state.ship_pos[0, 1],
+            velocity=-wrapper.state.ship_attitude[0, 1],
+            lifetime=1.0,
+            damage=10.0 / ship_cfg.bullet_min_damage_frac,
+        )
+
+        wrapper.step(torch.zeros((1, 2, 3), dtype=torch.long))
+        source = wrapper.pop_episode_stats()["source_stats"]
+
+        assert source[0].item() == 0.0
+        assert source[1].item() == pytest.approx(10.0)
+        assert source[6].item() == 2.0
+
+    def test_death_auto_resets_an_unlimited_episode(self, ship_cfg, reward_cfg):
+        env_cfg = EnvConfig(num_ships=2, max_bullets=0, max_episode_steps=None)
+        wrapper = YemongEnvWrapper(
+            num_envs=1,
+            ship_config=ship_cfg,
+            env_config=env_cfg,
+            rewards=reward_cfg,
+            device="cpu",
+        )
+        wrapper.reset(options={"team_sizes": (1, 1)})
+        wrapper.state.ship_alive[0, 0] = False
+        wrapper.state.ship_health[0, 0] = 0.0
+
+        actions = torch.zeros((1, 2, 3), dtype=torch.long)
+        _, _, done, truncated, _ = wrapper.step(actions)
+
+        assert done.item()
+        assert not truncated.item()
+        assert wrapper.state.ship_alive.all()
+        assert wrapper.state.step_count.item() == 0

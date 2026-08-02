@@ -5,13 +5,14 @@ bars at a fixed frame rate. All tensor reads call .cpu() after slicing —
 acceptable overhead at 60fps on a single interactive environment.
 """
 
+import math
 import os
 from dataclasses import dataclass
 
 import pygame
 import torch
 
-from boost_and_broadside.config import ShipConfig
+from boost_and_broadside.config import InterfaceDamageLevel, ShipConfig
 from boost_and_broadside.env.state import TensorState
 
 # Prediction-vector channel indices used to decode ghost trajectories: the
@@ -25,6 +26,55 @@ _GHOST_DPHI_Y = 1
 _GHOST_DPHI_ATT = 4
 
 
+def field_color(index_level: int) -> tuple[int, int, int]:
+    """Map log-index level to a magnitude-aware fast/slow color."""
+
+    colors = {
+        -2: (40, 225, 255),  # very low: bright saturated cyan
+        -1: (65, 155, 195),  # low: dimmer blue-cyan
+        1: (150, 95, 195),  # high: dim violet
+        2: (220, 105, 255),  # very high: bright saturated violet
+    }
+    try:
+        return colors[int(index_level)]
+    except KeyError as error:
+        raise ValueError(f"invalid non-ambient field index level {index_level}") from error
+
+
+def field_border_pattern(damage_level: int) -> tuple[str, int]:
+    """Return orthogonal border pattern and line width for interface damage."""
+
+    patterns = {
+        int(InterfaceDamageLevel.NONE): ("dotted", 1),
+        int(InterfaceDamageLevel.STANDARD): ("dashed", 2),
+        int(InterfaceDamageLevel.SEVERE): ("solid", 3),
+    }
+    try:
+        return patterns[int(damage_level)]
+    except KeyError as error:
+        raise ValueError(f"invalid field damage level {damage_level}") from error
+
+
+def wrapped_field_centers(
+    center: complex,
+    outer_radius: float,
+    world_size: tuple[float, float],
+) -> list[complex]:
+    """Return visible toroidal copies for a circle near world boundaries."""
+
+    world_w, world_h = world_size
+    result = []
+    for offset_x in (-world_w, 0.0, world_w):
+        for offset_y in (-world_h, 0.0, world_h):
+            candidate = center + complex(offset_x, offset_y)
+            if (
+                -outer_radius <= candidate.real <= world_w + outer_radius
+                and -outer_radius <= candidate.imag <= world_h + outer_radius
+            ):
+                result.append(candidate)
+    return result
+
+
 @dataclass(frozen=True)
 class RenderConfig:
     """Display settings for the pygame renderer.
@@ -35,6 +85,7 @@ class RenderConfig:
     window_size: int = 900
     fps: int = 60
     show_ui: bool = True  # pause button + FPS slider; off for clean video capture
+    show_unlimited_button: bool = False  # play-only health/power toggle
     team_colors: tuple[tuple[int, int, int], tuple[int, int, int]] = (
         (100, 180, 255),  # team 0: blue
         (255, 120, 80),  # team 1: red
@@ -70,6 +121,7 @@ class GameRenderer:
 
         # UI state
         self.paused = False
+        self.unlimited_resources = False
         self.target_fps = render_config.fps
         self.slider_dragging = False
 
@@ -77,6 +129,7 @@ class GameRenderer:
         H = s
         self._pause_rect = pygame.Rect(W - 200, H - 40, 60, 30)
         self._slider_track_rect = pygame.Rect(W - 120, H - 30, 100, 10)
+        self._unlimited_rect = pygame.Rect(W - 220, 10, 200, 30)
 
     def render(
         self,
@@ -99,11 +152,7 @@ class GameRenderer:
                 return False
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
-                    if self._pause_rect.collidepoint(event.pos):
-                        self.paused = not self.paused
-                    elif self._slider_track_rect.inflate(10, 20).collidepoint(event.pos):
-                        self.slider_dragging = True
-                        self._update_slider(event.pos[0])
+                    self._handle_left_click(event.pos)
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1:
                     self.slider_dragging = False
@@ -152,6 +201,20 @@ class GameRenderer:
         # Map frac to FPS (e.g. 1 to 120)
         self.target_fps = int(1 + frac * 119)
 
+    def _handle_left_click(self, position: tuple[int, int]) -> None:
+        """Apply one UI click, including the play-only unlimited toggle."""
+        if (
+            self._render_config.show_ui
+            and self._render_config.show_unlimited_button
+            and self._unlimited_rect.collidepoint(position)
+        ):
+            self.unlimited_resources = not self.unlimited_resources
+        elif self._pause_rect.collidepoint(position):
+            self.paused = not self.paused
+        elif self._slider_track_rect.inflate(10, 20).collidepoint(position):
+            self.slider_dragging = True
+            self._update_slider(position[0])
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -159,7 +222,7 @@ class GameRenderer:
     def _draw_frame(self, state: TensorState, pred_nexts: list[torch.Tensor] | None = None) -> None:
         surf = self._screen
         surf.fill(self._render_config.background_color)
-        self._draw_obstacles(state, surf)
+        self._draw_fields(state, surf)
         self._draw_bullets(state, surf)
         if pred_nexts is not None:
             self._draw_ghost_ships(state, pred_nexts, surf)
@@ -204,6 +267,31 @@ class GameRenderer:
         # Draw FPS text
         fps_label = self._font.render(f"{self.target_fps} FPS", True, (200, 200, 200))
         surf.blit(fps_label, (self._slider_track_rect.x, self._slider_track_rect.y - 20))
+
+        if self._render_config.show_unlimited_button:
+            resource_color = (80, 220, 120) if self.unlimited_resources else (110, 110, 125)
+            pygame.draw.rect(surf, resource_color, self._unlimited_rect)
+            resource_label = self._font.render(
+                f"Unlimited HP/PW: {'ON' if self.unlimited_resources else 'OFF'}",
+                True,
+                (0, 0, 0),
+            )
+            surf.blit(
+                resource_label,
+                (
+                    self._unlimited_rect.centerx - resource_label.get_width() // 2,
+                    self._unlimited_rect.centery - resource_label.get_height() // 2,
+                ),
+            )
+
+        # Interface legend: color carries index, pattern carries damage. In
+        # particular, a solid outline means severe damage—not impermeability.
+        legend = self._font.render(
+            "Fields: cyan fast | violet slow | · none  -- standard  — severe (traversable)",
+            True,
+            (175, 175, 190),
+        )
+        surf.blit(legend, (12, surf.get_height() - legend.get_height() - 10))
 
     def close(self) -> None:
         """Tear down the pygame window."""
@@ -367,16 +455,71 @@ class GameRenderer:
                 (bar_x, pw_bar_y, int(bar_w * pw_frac), cfg.power_bar_height),
             )
 
-    def _draw_obstacles(self, state: TensorState, surf: pygame.Surface) -> None:
-        """Draw all obstacles in env 0 as filled white circles."""
-        if state.num_obstacles == 0:
+    def _draw_fields(self, state: TensorState, surf: pygame.Surface) -> None:
+        """Draw refractive fields as patterned, unfilled toroidal outlines."""
+        if state.num_fields == 0:
             return
-        obs_pos = state.obstacle_pos[0].cpu()  # (M,) complex64
-        obs_rad = state.obstacle_radius[0].cpu()  # (M,) float32
-        for m in range(obs_pos.shape[0]):
-            cx, cy = self._world_to_screen(complex(obs_pos[m].item()))
-            r = max(1, int(obs_rad[m].item() * self._scale))
-            pygame.draw.circle(surf, (255, 255, 255), (cx, cy), r)
+        positions = state.field_pos[0].cpu()
+        radii = state.field_radius[0].cpu()
+        widths = state.field_transition_width[0].cpu()
+        index_levels = state.field_index_level[0].cpu()
+        damage_levels = state.field_damage_level[0].cpu()
+
+        # Larger parents first; child interfaces remain crisp on top.
+        order = sorted(range(positions.shape[0]), key=lambda i: radii[i].item(), reverse=True)
+        for field_idx in order:
+            center = complex(positions[field_idx].item())
+            radius_world = float(radii[field_idx].item())
+            outer = radius_world + 0.5 * float(widths[field_idx].item())
+            radius_px = max(1, int(round(radius_world * self._scale)))
+            color = field_color(int(index_levels[field_idx].item()))
+            pattern, line_width = field_border_pattern(int(damage_levels[field_idx].item()))
+            for wrapped_center in wrapped_field_centers(
+                center, outer, self._ship_config.world_size
+            ):
+                self._draw_field_outline(
+                    surf,
+                    self._world_to_screen(wrapped_center),
+                    radius_px,
+                    color,
+                    pattern,
+                    line_width,
+                )
+
+    @staticmethod
+    def _draw_field_outline(
+        surf: pygame.Surface,
+        center: tuple[int, int],
+        radius: int,
+        color: tuple[int, int, int],
+        pattern: str,
+        line_width: int,
+    ) -> None:
+        """Draw one unfilled patterned circle copy."""
+
+        if pattern == "solid":
+            pygame.draw.circle(surf, color, center, radius, width=line_width)
+            return
+        if pattern == "dotted":
+            circumference = max(1.0, 2.0 * math.pi * radius)
+            num_dots = max(12, int(circumference / 9.0))
+            dot_radius = max(1, line_width)
+            for dot_idx in range(num_dots):
+                angle = 2.0 * math.pi * dot_idx / num_dots
+                point = (
+                    round(center[0] + radius * math.cos(angle)),
+                    round(center[1] + radius * math.sin(angle)),
+                )
+                pygame.draw.circle(surf, color, point, dot_radius)
+            return
+        if pattern != "dashed":
+            raise ValueError(f"unknown field border pattern {pattern!r}")
+        rect = pygame.Rect(center[0] - radius, center[1] - radius, 2 * radius, 2 * radius)
+        num_dashes = max(12, int(2.0 * math.pi * radius / 24.0))
+        step = 2.0 * math.pi / num_dashes
+        for dash_idx in range(num_dashes):
+            start = dash_idx * step
+            pygame.draw.arc(surf, color, rect, start, start + 0.55 * step, line_width)
 
     def _draw_bullets(self, state: TensorState, surf: pygame.Surface) -> None:
         """Draw all active bullets in env 0 as small rectangles."""

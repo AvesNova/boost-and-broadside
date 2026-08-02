@@ -10,15 +10,15 @@ Training:
     uv run main.py --mode rl --pretrain_from checkpoints/run/best.pt
     uv run main.py --mode rl --resume                 # resume latest checkpoint
     uv run main.py --mode rl --resume checkpoints/run/step_000001000.pt
-    uv run main.py --mode rl_obstacles                # RL with dynamic obstacles
+    uv run main.py --mode rl_fields                   # RL with refractive fields
     uv run main.py --mode bc                          # BC pretraining from scratch
     uv run main.py --mode bc_warmstart                # BC pretrain → RL (one process)
 
 Watch / play:
+    uv run main.py --mode play                        # 1v1 player vs null, four fields
     uv run main.py --mode watch                       # human vs latest checkpoint
     uv run main.py --mode watch --team0 null --team1 scripted
     uv run main.py --mode watch --team0 latest --team1 latest
-    uv run main.py --mode watch --fast-cache          # skip convergence animation
 
 Evaluation:
     uv run main.py --mode collect_stats               # scripted vs random
@@ -71,6 +71,7 @@ import torch
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import EnvConfig, TrainConfig
+from boost_and_broadside.constants import DEFAULT_MAX_BULLETS_PER_SHIP
 from boost_and_broadside.modes.ar_report import run_ar_report_mode
 from boost_and_broadside.modes.capture import run_capture_mode
 from boost_and_broadside.modes.collect import run_collect_stats_mode
@@ -79,7 +80,7 @@ from boost_and_broadside.modes.elo_calibrate import run_elo_calibrate_mode
 from boost_and_broadside.modes.elo_scale import run_elo_scale_mode
 from boost_and_broadside.modes.elo_stats import run_elo_stats_mode
 from boost_and_broadside.modes.feature_stats import run_feature_stats_mode
-from boost_and_broadside.modes.interactive import run_watch_mode
+from boost_and_broadside.modes.interactive import run_play_mode, run_watch_mode
 from boost_and_broadside.modes.noise_calibration import run_noise_calibration_mode
 from boost_and_broadside.modes.semi_random_tournament import (
     parse_probabilities,
@@ -90,7 +91,7 @@ from boost_and_broadside.ui.renderer import RenderConfig
 from runs.bc import BC_TRAIN_CONFIG
 from runs.bc_warmstart import BC_WARMSTART_PRETRAIN_CONFIG, BC_WARMSTART_RL_CONFIG
 from runs.rl import RL_TRAIN_CONFIG
-from runs.rl_obstacles import RL_OBSTACLES_TRAIN_CONFIG
+from runs.rl_fields import RL_FIELDS_TRAIN_CONFIG
 from runs.shared import ELO_CALIBRATE, MODEL_CONFIG, REWARDS, SHIP_CONFIG
 
 
@@ -104,8 +105,9 @@ def _parse_args() -> argparse.Namespace:
         choices=[
             "bc",
             "rl",
-            "rl_obstacles",
+            "rl_fields",
             "bc_warmstart",
+            "play",
             "watch",
             "collect_stats",
             "feature_stats",
@@ -123,7 +125,8 @@ def _parse_args() -> argparse.Namespace:
             "Operating mode. "
             "'bc': BC-only pretraining, no RL gradient. "
             "'rl': RL run, optionally loading pretrained weights via --pretrain_from. "
-            "'bc_warmstart': run BC pretraining then immediately start RL from those weights."
+            "'bc_warmstart': run BC pretraining then immediately start RL from those weights. "
+            "'play': control one ship against a null ship in four refractive fields."
         ),
     )
     parser.add_argument(
@@ -240,8 +243,7 @@ def _parse_args() -> argparse.Namespace:
         "--fast-cache",
         action="store_true",
         default=False,
-        help="(watch mode) Generate obstacle cache headlessly in the background instead of "
-        "rendering the convergence animation. Much faster; shows a loading screen instead.",
+        help="Deprecated no-op retained for watch-mode CLI compatibility; field maps are static.",
     )
     parser.add_argument(
         "--matchups",
@@ -380,9 +382,9 @@ def _apply_smoke(config: TrainConfig) -> TrainConfig:
 
     # num_envs must be divisible by num_minibatches, so use 1 minibatch with 4 envs.
     scales = tuple(replace(s, num_envs=4) for s in config.scales)
-    obstacle_cache = config.obstacle_cache
-    if obstacle_cache is not None:
-        obstacle_cache = replace(obstacle_cache, num_cache_envs=128, cache_size=4, max_steps=6000)
+    field_map = config.field_map
+    if field_map is not None:
+        field_map = replace(field_map, cache_size=4, max_generation_attempts=256)
     schedule = replace(config.schedule, checkpoint_interval=stepped((0, 1)))
     elo_eval = replace(config.elo_eval, envs_per_matchup=4)
     return replace(
@@ -390,7 +392,7 @@ def _apply_smoke(config: TrainConfig) -> TrainConfig:
         scales=scales,
         schedule=schedule,
         elo_eval=elo_eval,
-        obstacle_cache=obstacle_cache,
+        field_map=field_map,
         num_minibatches=1,
         total_timesteps=5_000,
         log_interval=1,
@@ -453,8 +455,8 @@ def main() -> None:
         case "rl":
             _run_training_mode(RL_TRAIN_CONFIG, args)
 
-        case "rl_obstacles":
-            _run_training_mode(RL_OBSTACLES_TRAIN_CONFIG, args)
+        case "rl_fields":
+            _run_training_mode(RL_FIELDS_TRAIN_CONFIG, args)
 
         case "bc_warmstart":
             # --smoke must shrink BOTH stages; forcing it off here (as an earlier
@@ -484,6 +486,16 @@ def main() -> None:
             rl_trainer.load_pretrained_weights(str(pretrain_path))
             _run_trainer(rl_trainer)
 
+        case "play":
+            run_play_mode(
+                ship_config=SHIP_CONFIG,
+                rewards=REWARDS,
+                model_config=MODEL_CONFIG,
+                render_config=RenderConfig(),
+                device=device,
+                checkpoint_dir="checkpoints",
+            )
+
         case "watch":
             team0 = args.team0 if args.team0 is not None else "null"
             team1 = args.team1 if args.team1 is not None else "latest"
@@ -493,9 +505,9 @@ def main() -> None:
                 ship_config=SHIP_CONFIG,
                 env_config=EnvConfig(
                     num_ships=8,
-                    max_bullets=20,
+                    max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
                     max_episode_steps=1024,
-                    num_obstacles=0,
+                    num_fields=0,
                 ),
                 rewards=REWARDS,
                 model_config=MODEL_CONFIG,
@@ -513,7 +525,11 @@ def main() -> None:
                 team1_spec=team1,
                 num_envs=1024,
                 ship_config=SHIP_CONFIG,
-                env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=1024),
+                env_config=EnvConfig(
+                    num_ships=4,
+                    max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
+                    max_episode_steps=1024,
+                ),
                 model_config=MODEL_CONFIG,
                 device=device,
                 checkpoint_dir="checkpoints",
@@ -529,7 +545,11 @@ def main() -> None:
                 num_envs=128,
                 num_steps=1024,
                 ship_config=SHIP_CONFIG,
-                env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=1024),
+                env_config=EnvConfig(
+                    num_ships=4,
+                    max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
+                    max_episode_steps=1024,
+                ),
                 model_config=MODEL_CONFIG,
                 device=device,
                 checkpoint_dir="checkpoints",
@@ -540,7 +560,11 @@ def main() -> None:
                 run_spec=args.run,
                 num_envs=1024 * 4,
                 ship_config=SHIP_CONFIG,
-                env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=1024),
+                env_config=EnvConfig(
+                    num_ships=4,
+                    max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
+                    max_episode_steps=1024,
+                ),
                 model_config=MODEL_CONFIG,
                 device=device,
                 checkpoint_dir="checkpoints",
@@ -622,7 +646,11 @@ def main() -> None:
                 team1_spec=team1,
                 num_steps=512,
                 ship_config=SHIP_CONFIG,
-                env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=512),
+                env_config=EnvConfig(
+                    num_ships=4,
+                    max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
+                    max_episode_steps=512,
+                ),
                 rewards=REWARDS,
                 model_config=MODEL_CONFIG,
                 device=device,
@@ -638,7 +666,11 @@ def main() -> None:
                 team1_spec=team1,
                 num_steps=512,
                 ship_config=SHIP_CONFIG,
-                env_config=EnvConfig(num_ships=2, max_bullets=20, max_episode_steps=512),
+                env_config=EnvConfig(
+                    num_ships=2,
+                    max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
+                    max_episode_steps=512,
+                ),
                 rewards=REWARDS,
                 model_config=MODEL_CONFIG,
                 device=device,
@@ -665,7 +697,11 @@ def main() -> None:
                 num_ar_envs=256,
                 num_ar_windows=20,
                 ship_config=SHIP_CONFIG,
-                env_config=EnvConfig(num_ships=4, max_bullets=20, max_episode_steps=1024),
+                env_config=EnvConfig(
+                    num_ships=4,
+                    max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
+                    max_episode_steps=1024,
+                ),
                 model_config=MODEL_CONFIG,
                 device=device,
                 checkpoint_dir="checkpoints",

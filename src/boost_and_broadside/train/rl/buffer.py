@@ -495,7 +495,7 @@ class RolloutBuffer:
         gamma:           Discount factor.
         gae_lambda:      GAE lambda.
         device:          GPU device for all storage.
-        num_tokens:      N+M total entity tokens (ships + obstacles).
+        num_tokens:      N+M total entity tokens (ships + fields).
     """
 
     def __init__(

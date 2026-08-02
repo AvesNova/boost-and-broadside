@@ -5,8 +5,27 @@ no defaults; all values must be set explicitly so nothing is ever silently wrong
 """
 
 from dataclasses import dataclass
+from enum import IntEnum
 
 import numpy as np
+
+
+class RefractiveIndexLevel(IntEnum):
+    """Absolute refractive-index exponent relative to ambient ``n=1``."""
+
+    VERY_LOW = -2
+    LOW = -1
+    AMBIENT = 0
+    HIGH = 1
+    VERY_HIGH = 2
+
+
+class InterfaceDamageLevel(IntEnum):
+    """Interface damage multiplier; independent from refractive index."""
+
+    NONE = 0
+    STANDARD = 1
+    SEVERE = 2
 
 
 @dataclass(frozen=True)
@@ -39,16 +58,21 @@ class ShipConfig:
     gravity_factor: float = 0.0  # 5.0
     gravity_eps: float = 10000.0
 
-    # Obstacle physics
-    obstacle_gravity_harmonic: float = 0.2  # spring constant G
-    obstacle_radius_min: float = 5.0
-    obstacle_radius_max: float = 40.0
-    obstacle_collision_radius: float = 3.0  # ship-to-obstacle hitbox
-    bullet_collision_radius: float = 10.0  # bullet-to-obstacle hitbox (matches collision_radius)
+    # Static refractive fields. ``transition_width`` is the complete interface
+    # band, extending half the width to either side of the nominal radius.
+    field_index_step: float = float(np.sqrt(2.0))  # levels span n=1/2 through n=2
+    field_interface_damage: float = 10.0
+    field_radius_min: float = 30.0
+    field_radius_max: float = 490.0
+    field_transition_width_min: float = 40.0
+    field_transition_width_max: float = 40.0
+    # Fixed substeps keep the hot path static-shaped and make interface
+    # total-variation damage robust at the configured ship speeds.
+    field_integrator: str = "midpoint"  # "two_step" or "midpoint"
+    field_integration_substeps: int = 2
 
-    # Power exchange: TE = ½|vel|² + power_speed_constant * power is conserved (ignoring drag).
-    # Forward thrust drains power at (thrust / power_speed_constant) * speed per second.
-    # Reverse thrust gains power at the same rate (equal and opposite).
+    # Power exchange: E = ½n²|v|² + power_speed_constant*power is conserved
+    # across thrust/reverse (ignoring drag and explicit passive regeneration).
     # Calibrated so boost at cruise speed (~100 px/s) drains ~40 power/s.
     power_speed_constant: float = 200.0
     # Passive power regen added every step regardless of action (like a slow engine recharge).
@@ -73,12 +97,62 @@ class ShipConfig:
     bullet_lifetime: float = 1.0  # seconds
     bullet_spread: float = 12.0  # pixels/s of noise added to velocity
     firing_cooldown: float = 0.1  # seconds
+    bullet_drag_coeff: float = 8e-4  # quadratic drag, integrated exactly like ship drag
+    bullet_field_integrator: str = "two_step"  # "two_step" or ship-quality "midpoint"
+    bullet_field_integration_substeps: int = 2
+    # Bullet damage potential lost per point of interface damage crossed.
+    # At 0.1, a 10-damage interface reduces a 10-damage bullet to 9 damage.
+    bullet_field_damage_scale: float = 0.1
 
     # World
     world_size: tuple[float, float] = (1024.0, 1024.0)
 
     # Simulation timestep
     dt: float = 1.0 / 60.0
+
+    def __post_init__(self) -> None:
+        if not np.isfinite(self.field_index_step) or self.field_index_step <= 1.0:
+            raise ValueError("field_index_step must be greater than 1")
+        if not np.isfinite(self.field_interface_damage) or self.field_interface_damage < 0.0:
+            raise ValueError("field_interface_damage must be non-negative")
+        if len(self.world_size) != 2 or not all(
+            np.isfinite(side) and side > 0.0 for side in self.world_size
+        ):
+            raise ValueError("world_size must contain two positive finite dimensions")
+        if not 0.0 < self.field_radius_min <= self.field_radius_max:
+            raise ValueError("field radii must satisfy 0 < min <= max")
+        if not 0.0 < self.field_transition_width_min <= self.field_transition_width_max:
+            raise ValueError("field transition widths must satisfy 0 < min <= max")
+        if self.field_radius_min <= 0.5 * self.field_transition_width_max:
+            raise ValueError(
+                "field_radius_min must exceed field_transition_width_max/2 so every "
+                "field has a non-empty flat core"
+            )
+        if self.field_integration_substeps < 1:
+            raise ValueError("field_integration_substeps must be positive")
+        if self.field_integrator not in {"two_step", "midpoint"}:
+            raise ValueError("field_integrator must be 'two_step' or 'midpoint'")
+        if not np.isfinite(self.bullet_drag_coeff) or self.bullet_drag_coeff < 0.0:
+            raise ValueError("bullet_drag_coeff must be non-negative")
+        if self.bullet_field_integrator not in {"two_step", "midpoint"}:
+            raise ValueError("bullet_field_integrator must be 'two_step' or 'midpoint'")
+        if (
+            self.bullet_field_integration_substeps < 2
+            or self.bullet_field_integration_substeps % 2 != 0
+        ):
+            raise ValueError("bullet_field_integration_substeps must be a positive even integer")
+        if not np.isfinite(self.bullet_field_damage_scale) or self.bullet_field_damage_scale < 0.0:
+            raise ValueError("bullet_field_damage_scale must be non-negative")
+
+        # A toroidal circle must stay strictly below the nearest antipode. At or
+        # beyond half the shorter world dimension its radial contour is ambiguous.
+        safe_limit = 0.5 * min(self.world_size)
+        outer_extent = self.field_radius_max + 0.5 * self.field_transition_width_max
+        if outer_extent >= safe_limit:
+            raise ValueError(
+                "field_radius_max + field_transition_width_max/2 must be below "
+                f"the toroidal limit {safe_limit:g}, got {outer_extent:g}"
+            )
 
 
 @dataclass(frozen=True)
@@ -87,9 +161,23 @@ class EnvConfig:
 
     num_ships: int  # total ships per env (both teams combined)
     max_bullets: int  # bullet ring-buffer size per ship (0 = no bullets, skips all bullet physics)
-    max_episode_steps: int  # truncation horizon
-    num_obstacles: int = 0  # dynamic obstacle circles per env (0 = no obstacles)
+    max_episode_steps: int | None  # truncation horizon; None disables time-based truncation
+    num_fields: int = 0  # static refractive fields per env (0 = ambient-only baseline)
     single_team: bool = False  # all ships share one randomly-chosen team id (no opponents)
+
+    def __post_init__(self) -> None:
+        if self.max_episode_steps is not None and self.max_episode_steps < 1:
+            raise ValueError(
+                f"max_episode_steps must be positive or None, got {self.max_episode_steps}"
+            )
+        if self.num_fields < 0:
+            raise ValueError(f"num_fields must be non-negative, got {self.num_fields}")
+
+    @property
+    def num_obstacles(self) -> int:
+        """Deprecated read-only alias for pre-field integrations."""
+
+        return self.num_fields
 
 
 @dataclass(frozen=True)
@@ -121,7 +209,7 @@ class RewardConfig:
     """Reward weights and geometry parameters for the decomposed critic.
 
     Core reward weights and geometry must be set explicitly at the call site.
-    Optional obstacle and behavior-shaping rewards default to disabled values.
+    Optional behavior-shaping rewards default to disabled values.
     Reward group scales (true_reward_scale, global_scale, local_scale) live in
     TrainingSchedule since they vary over the course of a run.
 
@@ -140,16 +228,20 @@ class RewardConfig:
     Group scales (applied as a multiplier on top of individual weights; the
     authoritative component → group mapping is _GROUP in train/rl/ppo.py):
         true_reward  → win components (ally_win, enemy_win)
-        global       → team outcome rewards (ally/enemy damage and death)
+        global       → team outcome rewards (ally/enemy source-split damage and death)
         local        → self-only per-ship rewards (shaping, kill credit,
-                       per-ship damage/death, obstacle penalties)
+                       per-ship damage/death)
     """
 
     # --- Global outcome rewards (lambda-aggregated across ships) ---
-    ally_damage_weight: float  # damage taken by this ship (negative; enemies zero-sum via lambda)
-    enemy_damage_weight: float  # same signal, enemy-team perspective (pair with ally_damage)
-    ally_death_weight: float  # -1 on death of this ship
-    enemy_death_weight: float  # same signal, enemy-team perspective (pair with ally_death)
+    ally_combat_damage_weight: float  # applied projectile damage to this ship
+    enemy_combat_damage_weight: float  # enemy-perspective projectile damage pair
+    ally_field_damage_weight: float  # applied boundary damage to this ship
+    enemy_field_damage_weight: float  # enemy-perspective boundary damage pair
+    ally_combat_death_weight: float  # projectile-caused death of this ship
+    enemy_combat_death_weight: float  # enemy-perspective projectile death pair
+    ally_field_death_weight: float  # boundary-caused death of this ship
+    enemy_field_death_weight: float  # enemy-perspective boundary death pair
     ally_win_weight: float  # +1 when this ship's team wins
     enemy_win_weight: float  # same signal, enemy-team perspective (pair with ally_win)
 
@@ -159,10 +251,12 @@ class RewardConfig:
     shoot_quality_weight: float  # shot quality when firing (shaping)
     kill_shot_weight: float  # proportional share of +1.0 per kill, weighted by step damage
     kill_assist_weight: float  # proportional share of +1.0 per kill, weighted by episode damage
-    damage_taken_weight: float  # damage received by this ship this step (negative reward)
+    combat_damage_taken_weight: float  # applied projectile health loss (negative reward)
+    field_damage_taken_weight: float  # applied boundary health loss (negative reward)
     damage_dealt_enemy_weight: float  # damage dealt to enemies this step (positive reward)
     damage_dealt_ally_weight: float  # damage dealt to allies this step (friendly-fire penalty)
-    death_weight: float  # -1 on the step this ship dies; fires via just_died, not alive mask
+    combat_death_weight: float  # -1 when projectile damage kills this ship
+    field_death_weight: float  # -1 when boundary damage kills this ship
 
     # --- Geometry params ---
     proximity_radius: float  # falloff radius used by FacingReward
@@ -171,14 +265,6 @@ class RewardConfig:
     # --- Lambda configuration ---
     enemy_neg_lambda_components: frozenset[str]  # enemies get lambda=-1 (zero-sum)
     ally_zero_components: frozenset[str]  # allies get lambda=0 (enemy-perspective only)
-
-    # --- Obstacle rewards (local, self-only; 0.0 = disabled) ---
-    obstacle_death_weight: float = 0.0
-    obstacle_proximity_weight: float = 0.0
-    obstacle_closing_speed_weight: float = 0.0
-    obstacle_tti_weight: float = 0.0
-    obstacle_proximity_radius: float = 80.0
-    obstacle_tti_max: float = 3.0
 
     # --- Behaviour shaping (local, self-only; 0.0 = disabled) ---
     shooting_penalty_weight: float = 0.0  # negative reward each step this ship fires

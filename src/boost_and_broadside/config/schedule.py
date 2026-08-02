@@ -218,8 +218,8 @@ class TrainingSchedule:
 
     # --- Reward group scales (component → group mapping: _GROUP in train/rl/ppo.py) ---
     true_reward_scale: Callable[[int], float]  # win components (ally_win, enemy_win)
-    global_scale: Callable[[int], float]  # team outcome rewards (ally/enemy damage, death)
-    local_scale: Callable[[int], float]  # self-only rewards (shaping, kill credit, obstacles, ...)
+    global_scale: Callable[[int], float]  # team source-split damage/death rewards
+    local_scale: Callable[[int], float]  # self-only rewards (shaping, kill credit, ...)
 
     # --- Opponents ---
     scripted_fraction: Callable[[int], float]

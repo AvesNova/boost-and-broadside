@@ -22,6 +22,7 @@ from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.modes.agent_factory import resolve_agent_spec
 from boost_and_broadside.modes.capture import _final_checkpoint, _find_run_dir
 from boost_and_broadside.modes.collect import evaluate_matchup
+from boost_and_broadside.train.rl.checkpoint_schema import require_observation_schema
 
 # Collision physics allocates a (B, N*bullets, N) tensor, so peak memory grows as
 # B*N^2. Hold B*N^2 under this budget (tuned for an 8 GB GPU) by shrinking the
@@ -53,9 +54,7 @@ def _outcome_record(
 ) -> dict[str, int | float | bool]:
     """Lossless per-matchup result stored in the crossover curve."""
     if wins + losses + ties != games:
-        raise ValueError(
-            f"outcome counts ({wins}+{losses}+{ties}) do not match games={games}"
-        )
+        raise ValueError(f"outcome counts ({wins}+{losses}+{ties}) do not match games={games}")
     return {
         "counts_available": True,
         "wins": wins,
@@ -86,9 +85,9 @@ def run_crossover_mode(
     """Find, per trained-team size, the scripted count that tips wins below 50%."""
     run_dir = _find_run_dir(run_spec, checkpoint_dir)
     checkpoint = _final_checkpoint(run_dir)
-    base_env = EnvConfig(**torch.load(str(checkpoint), map_location="cpu", weights_only=False)[
-        "env_config"
-    ])
+    checkpoint_data = torch.load(str(checkpoint), map_location="cpu", weights_only=False)
+    require_observation_schema(checkpoint_data, str(checkpoint))
+    base_env = EnvConfig(**checkpoint_data["env_config"])
 
     trained = resolve_agent_spec(str(checkpoint), ship_config, model_config, device, num_ships=2)
     scripted = resolve_agent_spec("scripted", ship_config, model_config, device)
@@ -118,8 +117,14 @@ def run_crossover_mode(
                 trained.agent._num_ships = total
                 games = _envs_for(total, num_envs)
                 t0_wins, t1_wins, ties, mean_episode_steps = evaluate_matchup(
-                    trained, scripted, trained_n, scripted_n, games, ship_config,
-                    base_env, device,
+                    trained,
+                    scripted,
+                    trained_n,
+                    scripted_n,
+                    games,
+                    ship_config,
+                    base_env,
+                    device,
                 )
                 curve[scripted_n] = _outcome_record(
                     t0_wins, t1_wins, ties, games, mean_episode_steps
@@ -185,16 +190,18 @@ def _load_progress(path: Path) -> dict[int, dict]:
 
 def _save(path: Path, run: str, num_envs: int, max_total_ships: int, by_trained: dict) -> None:
     rows = [by_trained[t] for t in sorted(by_trained)]
-    path.write_text(json.dumps(
-        {
-            "schema_version": _SCHEMA_VERSION,
-            "run": run,
-            "num_envs": num_envs,
-            "max_total_ships": max_total_ships,
-            "rows": rows,
-        },
-        indent=2,
-    ))
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": _SCHEMA_VERSION,
+                "run": run,
+                "num_envs": num_envs,
+                "max_total_ships": max_total_ships,
+                "rows": rows,
+            },
+            indent=2,
+        )
+    )
 
 
 def _find_crossover(
@@ -252,8 +259,10 @@ def _find_crossover(
 
 
 def _print_table(rows: list[dict], max_total_ships: int) -> None:
-    print(f"\n  {'policy':>8} {'beats up to':>12} {'crossover':>10} "
-          f"{'win@beats':>10} {'win@cross':>10}")
+    print(
+        f"\n  {'policy':>8} {'beats up to':>12} {'crossover':>10} "
+        f"{'win@beats':>10} {'win@cross':>10}"
+    )
     print(f"  {'-' * 54}")
     for row in rows:
         if row["capped"]:

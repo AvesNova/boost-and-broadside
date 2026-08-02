@@ -116,35 +116,10 @@ def _valid_enemy_pairs(teams: torch.Tensor, alive: torch.Tensor) -> torch.Tensor
 # ---------------------------------------------------------------------------
 
 
-class AllyDamageReward(RewardComponent):
-    """Damage taken by this ship. Lambda=0 for enemies so only ally damage
-    aggregates into the advantage. Critic learns expected ally damage taken."""
+class _DamageTakenReward(RewardComponent):
+    """Negative applied health loss from one exact physics source."""
 
-    name = "ally_damage"
-
-    def compute(
-        self,
-        prev_state: TensorState,
-        actions: torch.Tensor,
-        next_state: TensorState,
-        dones: torch.Tensor,
-    ) -> torch.Tensor:
-        delta = (prev_state.ship_health - next_state.ship_health).clamp(min=0.0)  # (B, N)
-        return -delta * next_state.ship_alive.float()
-
-
-class EnemyDamageReward(AllyDamageReward):
-    """Same compute as AllyDamageReward. Lambda=-1 for enemies inverts sign so allies
-    benefit when enemies take damage. Critic learns expected enemy damage taken."""
-
-    name = "enemy_damage"
-
-
-class AllyDeathReward(RewardComponent):
-    """Death penalty (-1) for this ship. Lambda=0 for enemies so only ally deaths
-    aggregate. Critic learns expected ally death count (negative)."""
-
-    name = "ally_death"
+    source_attr: str
 
     def compute(
         self,
@@ -153,17 +128,59 @@ class AllyDeathReward(RewardComponent):
         next_state: TensorState,
         dones: torch.Tensor,
     ) -> torch.Tensor:
-        just_died = prev_state.ship_alive & ~next_state.ship_alive  # (B, N)
-        reward = torch.zeros_like(next_state.ship_health)
-        reward[just_died] = -1.0
-        return reward
+        damage = getattr(next_state, self.source_attr)  # (B, N)
+        return -damage * prev_state.ship_alive.float()
 
 
-class EnemyDeathReward(AllyDeathReward):
-    """Same compute as AllyDeathReward. Lambda=-1 for enemies so allies benefit when
-    enemies die. Critic learns expected enemy death count (positive for allies)."""
+class AllyCombatDamageReward(_DamageTakenReward):
+    name = "ally_combat_damage"
+    source_attr = "ship_combat_damage"
 
-    name = "enemy_death"
+
+class EnemyCombatDamageReward(AllyCombatDamageReward):
+    name = "enemy_combat_damage"
+
+
+class AllyFieldDamageReward(_DamageTakenReward):
+    name = "ally_field_damage"
+    source_attr = "ship_field_damage"
+
+
+class EnemyFieldDamageReward(AllyFieldDamageReward):
+    name = "enemy_field_damage"
+
+
+class _DeathReward(RewardComponent):
+    """Negative one on a death attributed to one exact physics source."""
+
+    source_attr: str
+
+    def compute(
+        self,
+        prev_state: TensorState,
+        actions: torch.Tensor,
+        next_state: TensorState,
+        dones: torch.Tensor,
+    ) -> torch.Tensor:
+        return -getattr(next_state, self.source_attr).float()
+
+
+class AllyCombatDeathReward(_DeathReward):
+    name = "ally_combat_death"
+    source_attr = "ship_combat_death"
+
+
+class EnemyCombatDeathReward(AllyCombatDeathReward):
+    name = "enemy_combat_death"
+
+
+class AllyFieldDeathReward(_DeathReward):
+    name = "ally_field_death"
+    source_attr = "ship_field_death"
+
+
+class EnemyFieldDeathReward(AllyFieldDeathReward):
+    name = "enemy_field_death"
 
 
 class KillShotReward(RewardComponent):
@@ -298,31 +315,28 @@ class EnemyWinReward(AllyWinReward):
 # ---------------------------------------------------------------------------
 
 
-class LocalDeathReward(AllyDeathReward):
-    """Penalty of -1 on the step this ship dies (same compute as AllyDeathReward).
+class LocalCombatDeathReward(AllyCombatDeathReward):
+    """Self-only projectile death penalty."""
 
-    Uses just_died = prev_state.ship_alive & ~next_state.ship_alive so the
-    reward fires on the exact step of death, before the ship is masked out.
-    Never multiplied by next_state.ship_alive — the ship is dead there by
-    definition and would always produce zero.
-
-    Unlike ally_death (which propagates to teammates via lambda=1), this is
-    self-only: lambda=0 for all other ships.
-    """
-
-    name = "death"
+    name = "combat_death"
 
 
-class LocalDamageTakenReward(AllyDamageReward):
-    """Damage received by this ship this step (same compute as AllyDamageReward).
+class LocalFieldDeathReward(AllyFieldDeathReward):
+    """Self-only field-boundary death penalty."""
 
-    Negative reward proportional to health lost. Unlike ally_damage, this is
-    self-only (lambda=0 for all other ships) so the signal is never shared with
-    or aggregated across teammates. Gives the critic a separate head to estimate
-    individual survivability independent of team-wide damage accounting.
-    """
+    name = "field_death"
 
-    name = "damage_taken"
+
+class LocalCombatDamageTakenReward(AllyCombatDamageReward):
+    """Self-only applied projectile health-loss penalty."""
+
+    name = "combat_damage_taken"
+
+
+class LocalFieldDamageTakenReward(AllyFieldDamageReward):
+    """Self-only applied field-boundary health-loss penalty."""
+
+    name = "field_damage_taken"
 
 
 class LocalDamageDealtEnemyReward(RewardComponent):
@@ -558,206 +572,6 @@ class ShootQualityReward(RewardComponent):
         return shooting * best_quality * alive.float()
 
 
-# ---------------------------------------------------------------------------
-# Obstacle reward components (local, self-only)
-# ---------------------------------------------------------------------------
-
-
-class ObstacleDeathReward(RewardComponent):
-    """-1 on the step a ship is killed by an obstacle collision."""
-
-    name = "obstacle_death"
-
-    def compute(
-        self,
-        prev_state: TensorState,
-        actions: torch.Tensor,
-        next_state: TensorState,
-        dones: torch.Tensor,
-    ) -> torch.Tensor:
-        just_died_from_obs = (
-            prev_state.ship_alive & ~next_state.ship_alive & next_state.ship_hit_obstacle
-        )  # (B, N)
-        return -just_died_from_obs.float()
-
-
-class ObstacleProximityReward(RewardComponent):
-    """Penalty proportional to nearness to the closest obstacle.
-
-    Penalty = -(1 - dist_to_nearest / obstacle_proximity_radius).clamp(0, 1)
-    Zero penalty when the nearest obstacle is farther than proximity_radius.
-    """
-
-    name = "obstacle_proximity"
-
-    def __init__(
-        self,
-        weight: float,
-        proximity_radius: float,
-        world_size: tuple[float, float],
-    ) -> None:
-        super().__init__(weight)
-        self.proximity_radius = proximity_radius
-        self.world_size = world_size
-
-    def compute(
-        self,
-        prev_state: TensorState,
-        actions: torch.Tensor,
-        next_state: TensorState,
-        dones: torch.Tensor,
-    ) -> torch.Tensor:
-        if next_state.num_obstacles == 0:
-            return torch.zeros_like(next_state.ship_health)
-
-        pos = next_state.ship_pos  # (B, N) complex64
-        obs = next_state.obstacle_pos  # (B, M) complex64
-        alive = next_state.ship_alive  # (B, N) bool
-
-        # (B, N, M) toroidal distances
-        d = _toroidal_wrap(pos.unsqueeze(2) - obs.unsqueeze(1), self.world_size)
-        dist = d.abs()  # (B, N, M)
-
-        # Account for obstacle radii: effective distance is surface-to-surface
-        dist = (dist - next_state.obstacle_radius.unsqueeze(1)).clamp(min=0.0)
-
-        min_dist = dist.min(dim=2).values  # (B, N) nearest obstacle surface
-        penalty = 1.0 - (min_dist / self.proximity_radius).clamp(0.0, 1.0)
-
-        return -penalty * alive.float()
-
-
-class ObstacleClosingSpeedReward(RewardComponent):
-    """Penalty for velocity component directed toward the nearest obstacle."""
-
-    name = "obstacle_closing_speed"
-
-    def __init__(
-        self,
-        weight: float,
-        max_speed: float,
-        world_size: tuple[float, float],
-    ) -> None:
-        super().__init__(weight)
-        self.max_speed = max_speed
-        self.world_size = world_size
-
-    def compute(
-        self,
-        prev_state: TensorState,
-        actions: torch.Tensor,
-        next_state: TensorState,
-        dones: torch.Tensor,
-    ) -> torch.Tensor:
-        if next_state.num_obstacles == 0:
-            return torch.zeros_like(next_state.ship_health)
-
-        pos = next_state.ship_pos  # (B, N) complex64
-        vel = next_state.ship_vel  # (B, N) complex64
-        obs = next_state.obstacle_pos  # (B, M) complex64
-        alive = next_state.ship_alive  # (B, N) bool
-
-        # Toroidal diff from ship to obstacle: (B, N, M)
-        d = _toroidal_wrap(obs.unsqueeze(1) - pos.unsqueeze(2), self.world_size)
-        dist = d.abs().clamp(min=EPS)  # (B, N, M)
-
-        # Unit direction ship → obstacle
-        dir_to_obs = d / dist
-
-        # Closing speed = vel · direction (positive = heading toward obstacle)
-        closing = (vel.unsqueeze(2) * torch.conj(dir_to_obs)).real  # (B, N, M)
-
-        # Find nearest obstacle for each ship
-        nearest_idx = dist.argmin(dim=2, keepdim=True)  # (B, N, 1)
-        best_closing = closing.gather(2, nearest_idx).squeeze(2)  # (B, N)
-
-        penalty = best_closing.clamp(min=0.0) / self.max_speed
-
-        return -penalty * alive.float()
-
-
-class ObstacleTTIReward(RewardComponent):
-    """Penalty based on time-to-intersection (TTI) with the nearest obstacle.
-
-    TTI = estimated time until the ship's current trajectory intersects an
-    obstacle, treating both as moving linearly. Solved as a quadratic:
-        a*t^2 + b*t + c = 0
-        a = |v_rel|^2
-        b = 2 * (d . v_rel)
-        c = |d|^2 - (r_obs + r_ship)^2
-
-    Penalty = (1 - TTI/tti_max).clamp(0,1). Zero when min TTI > tti_max.
-    """
-
-    name = "obstacle_tti"
-
-    def __init__(
-        self,
-        weight: float,
-        tti_max: float,
-        ship_collision_radius: float,
-        world_size: tuple[float, float],
-    ) -> None:
-        super().__init__(weight)
-        self.tti_max = tti_max
-        self.ship_collision_radius = ship_collision_radius
-        self.world_size = world_size
-
-    def compute(
-        self,
-        prev_state: TensorState,
-        actions: torch.Tensor,
-        next_state: TensorState,
-        dones: torch.Tensor,
-    ) -> torch.Tensor:
-        if next_state.num_obstacles == 0:
-            return torch.zeros_like(next_state.ship_health)
-
-        pos = next_state.ship_pos  # (B, N) complex64
-        vel = next_state.ship_vel  # (B, N) complex64
-        obs_pos = next_state.obstacle_pos  # (B, M) complex64
-        obs_vel = next_state.obstacle_vel  # (B, M) complex64
-        obs_r = next_state.obstacle_radius  # (B, M) float32
-        alive = next_state.ship_alive  # (B, N) bool
-
-        # Relative position d = ship - obs, wrapped: (B, N, M)
-        d = _toroidal_wrap(pos.unsqueeze(2) - obs_pos.unsqueeze(1), self.world_size)
-        d_r, d_i = d.real, d.imag
-
-        # Relative velocity v_rel = ship_vel - obs_vel: (B, N, M)
-        vr_r = vel.real.unsqueeze(2) - obs_vel.real.unsqueeze(1)
-        vr_i = vel.imag.unsqueeze(2) - obs_vel.imag.unsqueeze(1)
-
-        # Combined hitbox radius: (B, N, M)
-        hit_r = obs_r.unsqueeze(1) + self.ship_collision_radius  # (B, 1, M) → broadcast
-
-        # Quadratic coefficients
-        a = vr_r**2 + vr_i**2  # (B, N, M)
-        b = 2.0 * (d_r * vr_r + d_i * vr_i)  # (B, N, M)
-        c = d_r**2 + d_i**2 - hit_r**2  # (B, N, M)
-
-        disc = b**2 - 4.0 * a * c  # (B, N, M)
-
-        # TTI: smallest positive root of quadratic; inf if no real positive root
-        safe_a = a.clamp(min=1e-12)
-        sqrt_disc = torch.sqrt(disc.clamp(min=0.0))
-        t1 = (-b - sqrt_disc) / (2.0 * safe_a)
-        t2 = (-b + sqrt_disc) / (2.0 * safe_a)
-
-        # Take smallest positive root; fallback to tti_max when no collision
-        t_min = torch.where(t1 > 0, t1, t2)
-        tti = torch.where(
-            (disc >= 0) & (t_min > 0),
-            t_min.clamp(max=self.tti_max),
-            torch.full_like(t_min, self.tti_max),
-        )
-
-        min_tti = tti.min(dim=2).values  # (B, N)
-        penalty = 1.0 - (min_tti / self.tti_max).clamp(0.0, 1.0)
-
-        return -penalty * alive.float()
-
-
 class ShootingPenaltyReward(RewardComponent):
     """Negative reward on every step this ship fires."""
 
@@ -792,7 +606,7 @@ class SpeedReward(RewardComponent):
         next_state: TensorState,
         dones: torch.Tensor,
     ) -> torch.Tensor:
-        speed = next_state.ship_vel.abs()  # (B, N)
+        speed = next_state.ship_local_index * next_state.ship_vel.abs()  # proper speed
         penalty = ((speed - self.min_speed) / self.min_speed).clamp(min=-1.0, max=0.0)
         return penalty * next_state.ship_alive.float()
 
@@ -802,27 +616,29 @@ class SpeedReward(RewardComponent):
 # ---------------------------------------------------------------------------
 
 REWARD_COMPONENT_NAMES: tuple[str, ...] = (
-    "ally_damage",  #  0 — damage taken by allies (negative)
-    "enemy_damage",  #  1 — damage taken by enemies (positive for allies via lambda)
-    "ally_death",  #  2 — ally ship deaths (negative)
-    "enemy_death",  #  3 — enemy ship deaths (positive for allies via lambda)
-    "ally_win",  #  4 — ally team wins (positive)
-    "enemy_win",  #  5 — enemy team wins (negative for allies via lambda)
-    "facing",  #  6 — pointing at nearest enemy (shaping, self only)
-    "closing_speed",  #  7 — velocity toward nearest enemy (shaping, self only)
-    "shoot_quality",  #  8 — shot quality when firing (shaping, self only)
-    "kill_shot",  #  9 — proportional kill credit from step-level damage (self only)
-    "kill_assist",  # 10 — proportional kill credit from episode-level damage (self only)
-    "damage_taken",  # 11 — damage received by this ship this step (self only)
-    "damage_dealt_enemy",  # 12 — damage dealt to enemies this step (self only)
-    "damage_dealt_ally",  # 13 — damage dealt to allies — friendly-fire penalty (self only)
-    "death",  # 14 — -1 on the step this ship dies (self only)
-    "obstacle_death",  # 15 — -1 on the step this ship is killed by an obstacle (self only)
-    "obstacle_proximity",  # 16 — penalty proportional to nearness to closest obstacle (self only)
-    "obstacle_closing_speed",  # 17 — penalty for velocity toward nearest obstacle (self only)
-    "obstacle_tti",  # 18 — penalty based on time-to-intersection with nearest obstacle (self only)
-    "shooting_penalty",  # 19 — negative reward on every step this ship fires (self only)
-    "speed",  # 20 — penalty when speed < min_speed (self only)
+    "ally_combat_damage",  #  0 — applied projectile damage to allies
+    "enemy_combat_damage",  #  1 — applied projectile damage to enemies
+    "ally_field_damage",  #  2 — applied boundary damage to allies
+    "enemy_field_damage",  #  3 — applied boundary damage to enemies
+    "ally_combat_death",  #  4 — ally projectile deaths
+    "enemy_combat_death",  #  5 — enemy projectile deaths
+    "ally_field_death",  #  6 — ally boundary deaths
+    "enemy_field_death",  #  7 — enemy boundary deaths
+    "ally_win",  #  8 — ally team wins (positive)
+    "enemy_win",  #  9 — enemy team wins (negative for allies via lambda)
+    "facing",  # 10 — pointing at nearest enemy (shaping, self only)
+    "closing_speed",  # 11 — velocity toward nearest enemy (shaping, self only)
+    "shoot_quality",  # 12 — shot quality when firing (shaping, self only)
+    "kill_shot",  # 13 — proportional kill credit from step-level damage (self only)
+    "kill_assist",  # 14 — cumulative combat credit, including field-finished kills
+    "combat_damage_taken",  # 15 — applied projectile damage to this ship
+    "field_damage_taken",  # 16 — applied boundary damage to this ship
+    "damage_dealt_enemy",  # 17 — damage dealt to enemies this step (self only)
+    "damage_dealt_ally",  # 18 — damage dealt to allies — friendly-fire penalty
+    "combat_death",  # 19 — projectile death of this ship (self only)
+    "field_death",  # 20 — boundary death of this ship (self only)
+    "shooting_penalty",  # 21 — negative reward on every shot (self only)
+    "speed",  # 22 — penalty when proper speed < min_speed (self only)
 )
 
 _NAME_TO_K: dict[str, int] = {name: k for k, name in enumerate(REWARD_COMPONENT_NAMES)}
@@ -845,10 +661,14 @@ def build_reward_components(
         One RewardComponent per entry in REWARD_COMPONENT_NAMES, in order.
     """
     return [
-        AllyDamageReward(weight=rewards.ally_damage_weight),
-        EnemyDamageReward(weight=rewards.enemy_damage_weight),
-        AllyDeathReward(weight=rewards.ally_death_weight),
-        EnemyDeathReward(weight=rewards.enemy_death_weight),
+        AllyCombatDamageReward(weight=rewards.ally_combat_damage_weight),
+        EnemyCombatDamageReward(weight=rewards.enemy_combat_damage_weight),
+        AllyFieldDamageReward(weight=rewards.ally_field_damage_weight),
+        EnemyFieldDamageReward(weight=rewards.enemy_field_damage_weight),
+        AllyCombatDeathReward(weight=rewards.ally_combat_death_weight),
+        EnemyCombatDeathReward(weight=rewards.enemy_combat_death_weight),
+        AllyFieldDeathReward(weight=rewards.ally_field_death_weight),
+        EnemyFieldDeathReward(weight=rewards.enemy_field_death_weight),
         AllyWinReward(weight=rewards.ally_win_weight),
         EnemyWinReward(weight=rewards.enemy_win_weight),
         FacingReward(
@@ -868,27 +688,12 @@ def build_reward_components(
         ),
         KillShotReward(weight=rewards.kill_shot_weight),
         KillAssistReward(weight=rewards.kill_assist_weight),
-        LocalDamageTakenReward(weight=rewards.damage_taken_weight),
+        LocalCombatDamageTakenReward(weight=rewards.combat_damage_taken_weight),
+        LocalFieldDamageTakenReward(weight=rewards.field_damage_taken_weight),
         LocalDamageDealtEnemyReward(weight=rewards.damage_dealt_enemy_weight),
         LocalDamageDealtAllyReward(weight=rewards.damage_dealt_ally_weight),
-        LocalDeathReward(weight=rewards.death_weight),
-        ObstacleDeathReward(weight=rewards.obstacle_death_weight),
-        ObstacleProximityReward(
-            weight=rewards.obstacle_proximity_weight,
-            proximity_radius=rewards.obstacle_proximity_radius,
-            world_size=ship_config.world_size,
-        ),
-        ObstacleClosingSpeedReward(
-            weight=rewards.obstacle_closing_speed_weight,
-            max_speed=ship_config.max_speed,
-            world_size=ship_config.world_size,
-        ),
-        ObstacleTTIReward(
-            weight=rewards.obstacle_tti_weight,
-            tti_max=rewards.obstacle_tti_max,
-            ship_collision_radius=ship_config.obstacle_collision_radius,
-            world_size=ship_config.world_size,
-        ),
+        LocalCombatDeathReward(weight=rewards.combat_death_weight),
+        LocalFieldDeathReward(weight=rewards.field_death_weight),
         ShootingPenaltyReward(weight=rewards.shooting_penalty_weight),
         SpeedReward(weight=rewards.speed_weight, min_speed=rewards.speed_penalty_min),
     ]

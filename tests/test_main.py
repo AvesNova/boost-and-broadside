@@ -63,10 +63,10 @@ def _run_bc_warmstart(monkeypatch, tmp_path, smoke: bool) -> list[SimpleNamespac
 
 
 class TestTrainingModeDispatch:
-    """AUDIT-002: `rl` and `rl_obstacles` share `_run_training_mode`, so resume and
+    """`rl` and `rl_fields` share `_run_training_mode`, so resume and
     pretrain handling must behave identically for both modes."""
 
-    @pytest.mark.parametrize("mode", ["rl", "rl_obstacles"])
+    @pytest.mark.parametrize("mode", ["rl", "rl_fields"])
     def test_resume_flag_loads_checkpoint(self, monkeypatch, mode):
         captured: list[_StubTrainer] = []
 
@@ -84,7 +84,7 @@ class TestTrainingModeDispatch:
         assert captured[0].loaded_checkpoint == "ckpt.pt"
         assert captured[0].loaded_pretrained is None
 
-    @pytest.mark.parametrize("mode", ["rl", "rl_obstacles"])
+    @pytest.mark.parametrize("mode", ["rl", "rl_fields"])
     def test_pretrain_from_flag_loads_pretrained_weights(self, monkeypatch, mode):
         captured: list[_StubTrainer] = []
 
@@ -120,6 +120,19 @@ class TestTrainingModeDispatch:
         assert captured[0].args.no_wandb is True
         assert captured[0].args.smoke is False
         assert captured[0].config is RL_TRAIN_CONFIG
+
+
+def test_play_mode_dispatches_fixed_interactive_preset(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(sys, "argv", ["main.py", "--mode", "play"])
+    monkeypatch.setattr(main, "run_play_mode", lambda **kwargs: captured.update(kwargs))
+
+    main.main()
+
+    assert captured["ship_config"] is main.SHIP_CONFIG
+    assert captured["rewards"] is main.REWARDS
+    assert captured["model_config"] is main.MODEL_CONFIG
+    assert captured["checkpoint_dir"] == "checkpoints"
 
 
 class TestBcWarmstartSmoke:

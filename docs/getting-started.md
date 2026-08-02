@@ -8,8 +8,9 @@ learning setup, see [training](training.md).
 
 - Python 3.13 or newer;
 - [`uv`](https://docs.astral.sh/uv/) for environment and dependency management;
-- Git LFS for the included reference checkpoints (`*.pt`) — not needed to train from
-  scratch;
+- Git LFS for historical reference checkpoints (`*.pt`) — not needed to train from
+  scratch. These weights predate the refractive-field observation schema and are retained
+  as result artifacts, not as loadable weights for the current encoder;
 - `ffmpeg` only when generating MP4/GIF replay assets;
 - a CUDA-capable GPU for practical training and large evaluations.
 
@@ -19,8 +20,8 @@ profiles are sized for GPU execution.
 
 ## Install
 
-With Git LFS installed before cloning, the checkpoints materialize automatically at
-clone time. In an existing clone:
+With Git LFS installed before cloning, the historical checkpoints materialize
+automatically at clone time. In an existing clone:
 
 ```bash
 git lfs install
@@ -51,8 +52,11 @@ path.
 ## Watch or play
 
 ```bash
-# Human team 0 vs the newest available checkpoint
-uv run main.py --mode watch
+# Fixed play mode: one player ship vs one null ship, with four fields
+uv run main.py --mode play
+
+# Human team 0 vs a newly trained current-schema checkpoint
+uv run main.py --mode watch --team1 checkpoints/<run>/<checkpoint>.pt
 
 # Learned policy vs scripted controller
 uv run main.py --mode watch --team0 latest --team1 scripted
@@ -61,7 +65,9 @@ uv run main.py --mode watch --team0 latest --team1 scripted
 uv run main.py --mode watch --team0 latest --team1 latest
 ```
 
-Human controls are WASD for flight, Shift for sharp turns, and Space to shoot. Agent specs
+Play mode has no match timer and starts a new match as soon as either ship dies. The
+`Unlimited HP/PW` button in the upper-right corner toggles full health and power for both
+ships. Human controls are WASD for flight, Shift for sharp turns, and Space to shoot. Agent specs
 accepted by `--team0` and `--team1` include `null` (human in watch mode), `random`,
 `scripted`, `latest`, a checkpoint path, and the named scripted controllers listed by
 `main.py --help`.
@@ -98,10 +104,35 @@ uv run main.py --mode bc
 uv run main.py --mode bc_warmstart
 ```
 
-Hyperparameters live in [`runs/`](../runs/). The main combat profile is
+Hyperparameters live in [`runs/`](../runs/). Global ship, field, and projectile defaults
+are defined on `ShipConfig` in
+[`src/boost_and_broadside/config/core.py`](../src/boost_and_broadside/config/core.py).
+The most relevant field/projectile controls are:
+
+| Setting | Default | Meaning |
+|---|---:|---|
+| `field_index_step` | `sqrt(2)` | Four sampled levels span index 0.5 through 2 |
+| `field_interface_damage` | `10` | Base health exposure of a standard interface |
+| `field_integrator` | `midpoint` | Ship passive-field integrator |
+| `field_integration_substeps` | `2` | Ship field substeps per 60 Hz tick |
+| `bullet_field_integrator` | `two_step` | Projectile passive-field integrator |
+| `bullet_field_integration_substeps` | `2` | Projectile field substeps per tick |
+| `bullet_drag_coeff` | `8e-4` | Quadratic projectile drag coefficient |
+| `bullet_field_damage_scale` | `0.1` | Projectile potential lost per interface-damage point |
+
+Field geometry must satisfy
+`field_radius_max + field_transition_width_max/2 < min(world_size)/2`. With the default
+1024×1024 world and 40-pixel transition width, `field_radius_max` must be below 492.
+The main combat profile is
 [`runs/rl.py`](../runs/rl.py), shared model/physics/reward definitions are in
 [`runs/shared.py`](../runs/shared.py), and configuration types are frozen dataclasses in
 [`src/boost_and_broadside/config/`](../src/boost_and_broadside/config/).
+
+The production projectile pool is
+`DEFAULT_MAX_BULLETS_PER_SHIP=10` in
+[`src/boost_and_broadside/constants.py`](../src/boost_and_broadside/constants.py). The
+fixed pool keeps GPU shapes static; changing lifetime or firing cooldown may require
+rechecking capacity with [`benchmarks/bullet_throughput.py`](../benchmarks/bullet_throughput.py).
 
 ## Evaluate
 

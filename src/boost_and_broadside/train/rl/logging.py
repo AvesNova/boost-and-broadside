@@ -38,6 +38,27 @@ class LoggingMixin:
         for aux_w in self.aux_wrappers:
             aux_w.pop_episode_stats()  # discarded, but keeps accumulators bounded
         n_eps = ep_stats["episodes"].item()
+        source_stats = ep_stats["source_stats"].cpu()
+        live_ship_steps = source_stats[6].item()
+        if live_ship_steps > 0:
+            field_damage = source_stats[0].item()
+            combat_damage = source_stats[1].item()
+            total_damage = field_damage + combat_damage
+            metrics["physics/field_damage_per_live_ship_step"] = field_damage / live_ship_steps
+            metrics["physics/combat_damage_per_live_ship_step"] = combat_damage / live_ship_steps
+            metrics["physics/field_deaths_per_million_live_ship_steps"] = (
+                source_stats[2].item() * 1_000_000.0 / live_ship_steps
+            )
+            metrics["physics/combat_deaths_per_million_live_ship_steps"] = (
+                source_stats[3].item() * 1_000_000.0 / live_ship_steps
+            )
+            metrics["physics/field_damage_step_fraction"] = source_stats[4].item() / live_ship_steps
+            metrics["physics/nonambient_live_ship_fraction"] = (
+                source_stats[5].item() / live_ship_steps
+            )
+            metrics["physics/field_damage_fraction"] = (
+                field_damage / total_damage if total_damage > 0.0 else 0.0
+            )
         if n_eps > 0:
             n_ship_eps = n_eps * self.wrapper.num_ships
             comp_sum = ep_stats["comp_sum"].cpu()
@@ -196,6 +217,14 @@ class LoggingMixin:
             if "episode/lifespan_mean" in metrics
             else ""
         )
+        field_sources = (
+            "  "
+            f"field_dmg={metrics['physics/field_damage_per_live_ship_step']:.4f}  "
+            "field_deaths/M="
+            f"{metrics['physics/field_deaths_per_million_live_ship_steps']:.1f}"
+            if "physics/field_damage_per_live_ship_step" in metrics
+            else ""
+        )
         print(
             f"update={update}/{self._num_updates}  "
             f"step={self._global_step:,}  "
@@ -204,6 +233,7 @@ class LoggingMixin:
             f"loss={metrics.get('loss/total', 0.0):.4f}"
             f"  elo={self._training_elo:.0f}"
             f"{lifespan}"
+            f"{field_sources}"
         )
 
     def _init_wandb(

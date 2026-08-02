@@ -2,7 +2,9 @@
 
 from boost_and_broadside.config.core import (
     EnvConfig,
+    InterfaceDamageLevel,
     ModelConfig,
+    RefractiveIndexLevel,
     RewardConfig,
     ShipConfig,
 )
@@ -19,6 +21,7 @@ from boost_and_broadside.config.schedule import (
 from boost_and_broadside.config.training import (
     EloCalibrateConfig,
     EloEvalConfig,
+    FieldMapConfig,
     ObstacleCacheConfig,
     ScaleConfig,
     TrainConfig,
@@ -27,6 +30,8 @@ from boost_and_broadside.config.training import (
 __all__ = [
     "ShipConfig",
     "EnvConfig",
+    "RefractiveIndexLevel",
+    "InterfaceDamageLevel",
     "EloCalibrateConfig",
     "EloEvalConfig",
     "ModelConfig",
@@ -40,6 +45,7 @@ __all__ = [
     "cosine_anneal",
     "join",
     "ObstacleCacheConfig",
+    "FieldMapConfig",
     "ScaleConfig",
     "TrainConfig",
 ]

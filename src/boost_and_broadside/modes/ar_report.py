@@ -75,11 +75,11 @@ def run_ar_report_mode(
         env_config=env_config,
         rewards=rewards,
         device=device,
-        obstacle_cache=None,
+        field_map=None,
     )
 
     N = wrapper.num_ships
-    num_tokens = N + env_config.num_obstacles
+    num_tokens = N + env_config.num_fields
 
     print("Running ground truth simulation...")
     obs = wrapper.reset()

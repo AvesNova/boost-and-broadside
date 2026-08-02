@@ -5,11 +5,68 @@ import math
 import torch
 
 from boost_and_broadside.config import ShipConfig
-from boost_and_broadside.constants import TurnActions
+from boost_and_broadside.constants import EPS, TurnActions
 from boost_and_broadside.env.state import TensorState
 
 TURN_NORMAL_ANGLE = math.radians(5)
 TURN_SHARP_ANGLE = math.radians(15)
+
+
+def compute_field_steering(
+    state: TensorState,
+    ship_config: ShipConfig,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return a mild direction/strength bias away from nearby interfaces.
+
+    The heuristic keeps a ship on its current side of an interface: outside
+    ships bias farther outward while inside ships bias toward the field core.
+    Refractive contrast and boundary damage both increase the influence, so BC
+    targets depend on every material channel without treating fields as solid
+    walls. The maximum blend is deliberately limited to 35% of turn intent.
+
+    Returns:
+        bearing:  (B, N) complex64 unit direction, zero when no field is near.
+        strength: (B, N) float32 blend coefficient in [0, 0.35].
+    """
+    batch_size, num_ships = state.ship_pos.shape
+    if state.num_fields == 0:
+        return (
+            torch.zeros((batch_size, num_ships), dtype=state.ship_pos.dtype, device=state.device),
+            torch.zeros((batch_size, num_ships), dtype=torch.float32, device=state.device),
+        )
+
+    world_w, world_h = ship_config.world_size
+    delta = state.ship_pos.unsqueeze(2) - state.field_pos.unsqueeze(1)  # (B, N, M)
+    delta = torch.complex(
+        (delta.real + world_w / 2) % world_w - world_w / 2,
+        (delta.imag + world_h / 2) % world_h - world_h / 2,
+    )
+    distance = delta.abs()  # (B, N, M)
+    radial = delta / distance.clamp(min=EPS)
+    radius = state.field_radius.unsqueeze(1)
+    current_side = torch.where(distance >= radius, 1.0, -1.0)
+    stay_direction = radial * current_side
+
+    boundary_distance = (distance - radius).abs()
+    interaction_range = (
+        2.0 * state.field_transition_width.unsqueeze(1) + 4.0 * ship_config.collision_radius
+    )
+    proximity = (1.0 - boundary_distance / interaction_range.clamp(min=EPS)).clamp(0.0, 1.0)
+
+    parent_index = (state.field_index - state.field_delta_index).clamp(min=EPS)
+    ratio_scale = 4.0 * math.log(ship_config.field_index_step)
+    contrast = (torch.log(state.field_index / parent_index).abs() / ratio_scale).clamp(0.0, 1.0)
+    damage_scale = max(2.0 * ship_config.field_interface_damage, EPS)
+    damage = (state.field_damage / damage_scale).clamp(0.0, 1.0)
+    material = 0.2 + 0.4 * contrast + 0.4 * damage
+    weight = proximity * material.unsqueeze(1)  # (B, N, M)
+
+    vector = (stay_direction * weight).sum(dim=2)  # (B, N)
+    magnitude = vector.abs()
+    bearing = torch.where(magnitude > EPS, vector / magnitude.clamp(min=EPS), 0.0)
+    strength = 0.35 * weight.max(dim=2).values
+    strength = torch.where(magnitude > EPS, strength, 0.0)
+    return bearing, strength
 
 
 def turn_toward(rel_angle: torch.Tensor) -> torch.Tensor:
@@ -42,83 +99,6 @@ def turn_toward(rel_angle: torch.Tensor) -> torch.Tensor:
         sharp & (rel_angle < 0), torch.tensor(TurnActions.SHARP_LEFT, device=device), turn
     )
     return turn
-
-
-def compute_obstacle_repulsion(
-    state: TensorState,
-    ship_config: ShipConfig,
-    tti_max: float,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Compute potential-field repulsion vectors from all obstacles.
-
-    For each ship, computes the TTI to every obstacle via the quadratic
-    constant-velocity approximation, then sums weighted unit vectors pointing
-    away from each obstacle.  Weight = (1 - TTI/tti_max)^2, so repulsion grows
-    sharply as a collision becomes imminent.
-
-    Returns:
-        repulsion: (B, N) complex64 — summed repulsion vectors (unnormalized magnitude)
-        min_tti:   (B, N) float32  — TTI to nearest obstacle (inf = no threat)
-    """
-    B, N = state.ship_pos.shape
-    M = state.num_obstacles
-    device = state.device
-    W, H = ship_config.world_size
-
-    if M == 0:
-        return (
-            torch.zeros(B, N, dtype=state.ship_pos.dtype, device=device),
-            torch.full((B, N), float("inf"), device=device),
-        )
-
-    # Relative position ship − obstacle, toroidal wrapped  (B, N, M)
-    rel_r = state.ship_pos.real.unsqueeze(2) - state.obstacle_pos.real.unsqueeze(1)
-    rel_i = state.ship_pos.imag.unsqueeze(2) - state.obstacle_pos.imag.unsqueeze(1)
-    rel_r = (rel_r + W / 2) % W - W / 2
-    rel_i = (rel_i + H / 2) % H - H / 2
-
-    # Relative velocity  (B, N, M)
-    vel_r = state.ship_vel.real.unsqueeze(2) - state.obstacle_vel.real.unsqueeze(1)
-    vel_i = state.ship_vel.imag.unsqueeze(2) - state.obstacle_vel.imag.unsqueeze(1)
-
-    # Combined hitbox radius per obstacle  (B, 1, M)
-    hit_r = (ship_config.obstacle_collision_radius + state.obstacle_radius).unsqueeze(1)
-
-    # Quadratic TTI: |vel|²t² + 2·dot(rel,vel)·t + |rel|² − r² = 0
-    a = vel_r * vel_r + vel_i * vel_i  # (B, N, M)
-    b = rel_r * vel_r + rel_i * vel_i
-    c = rel_r * rel_r + rel_i * rel_i - hit_r * hit_r
-
-    disc = b * b - a * c
-    sqrt_disc = disc.clamp(min=0.0).sqrt()
-    tti_raw = (-b - sqrt_disc) / (a + 1e-8)
-    tti_raw = tti_raw.clamp(min=0.0)
-
-    already_inside = c < 0
-    no_future_collision = (disc < 0) | (a < 1e-8)
-
-    tti = torch.where(already_inside, torch.zeros_like(tti_raw), tti_raw)
-    tti = torch.where(
-        no_future_collision & ~already_inside,
-        torch.full_like(tti, float("inf")),
-        tti,
-    )
-
-    # Repulsion weight: (1 − TTI/tti_max)²
-    weight = (1.0 - tti / tti_max).clamp(0.0, 1.0) ** 2  # (B, N, M)
-
-    # Repulsion direction: unit vector from obstacle toward ship
-    dist = (rel_r * rel_r + rel_i * rel_i).sqrt() + 1e-8
-    dir_r = rel_r / dist
-    dir_i = rel_i / dist
-
-    # Weighted sum across obstacles
-    rep_r = (weight * dir_r).sum(dim=2)  # (B, N)
-    rep_i = (weight * dir_i).sum(dim=2)
-    repulsion = torch.complex(rep_r, rep_i)
-
-    min_tti = tti.min(dim=2).values  # (B, N)
-    return repulsion, min_tti
 
 
 def predict_interception(

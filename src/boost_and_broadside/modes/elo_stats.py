@@ -26,6 +26,7 @@ from boost_and_broadside.modes.agent_factory import (
     infer_team_pma_k,
     resolve_agent_spec,
 )
+from boost_and_broadside.train.rl.checkpoint_schema import require_observation_schema
 from boost_and_broadside.train.rl.elo_eval import expected_score
 
 # All scripted agents, in display order. "scripted" (stochastic) is kept first
@@ -72,6 +73,7 @@ def _load_checkpoint_agent(
     from boost_and_broadside.train.rl.features import build_standard_coordinator
 
     ckpt = torch.load(str(path), map_location=device, weights_only=False)
+    require_observation_schema(ckpt, str(path))
     coordinator = build_standard_coordinator(ship_config)
     K = infer_num_value_components(ckpt)
     team_pma_k = infer_team_pma_k(ckpt)
@@ -114,7 +116,7 @@ def run_elo_stats_mode(
         n0, n1 = int(parts[0]), int(parts[1])
         N = n0 + n1
         curr_env_config = replace(env_config, num_ships=N)
-        num_tokens = N + curr_env_config.num_obstacles
+        num_tokens = N + curr_env_config.num_fields
         dev = torch.device(device)
         B = num_envs
 

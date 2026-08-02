@@ -34,7 +34,7 @@ def evaluate_matchup(
     Returns ``(team0_wins, team1_wins, ties, mean_episode_steps)``.
     """
     N = n0 + n1
-    num_tokens = N + env_config.num_obstacles
+    num_tokens = N + env_config.num_fields
     dev = torch.device(device)
     env = TensorEnv(num_envs, ship_config, replace(env_config, num_ships=N), dev)
 

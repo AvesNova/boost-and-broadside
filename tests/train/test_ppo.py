@@ -28,10 +28,14 @@ from boost_and_broadside.train.rl.ppo import _GROUP, _LOCAL_COMPONENTS, PPOTrain
 
 def _make_rewards(**overrides) -> RewardConfig:
     defaults = dict(
-        ally_damage_weight=0.01,
-        enemy_damage_weight=0.01,
-        ally_death_weight=0.5,
-        enemy_death_weight=0.5,
+        ally_combat_damage_weight=0.01,
+        enemy_combat_damage_weight=0.01,
+        ally_field_damage_weight=0.01,
+        enemy_field_damage_weight=0.01,
+        ally_combat_death_weight=0.5,
+        enemy_combat_death_weight=0.5,
+        ally_field_death_weight=0.5,
+        enemy_field_death_weight=0.5,
         ally_win_weight=1.0,
         enemy_win_weight=1.0,
         facing_weight=0.01,
@@ -39,14 +43,32 @@ def _make_rewards(**overrides) -> RewardConfig:
         shoot_quality_weight=0.01,
         kill_shot_weight=0.5,
         kill_assist_weight=0.5,
-        damage_taken_weight=0.1,
+        combat_damage_taken_weight=0.1,
+        field_damage_taken_weight=0.1,
         damage_dealt_enemy_weight=0.1,
         damage_dealt_ally_weight=0.1,
-        death_weight=0.5,
+        combat_death_weight=0.5,
+        field_death_weight=0.5,
         proximity_radius=300.0,
         shoot_quality_radius=200.0,
-        enemy_neg_lambda_components=frozenset({"enemy_damage", "enemy_death", "enemy_win"}),
-        ally_zero_components=frozenset({"enemy_damage", "enemy_death", "enemy_win"}),
+        enemy_neg_lambda_components=frozenset(
+            {
+                "enemy_combat_damage",
+                "enemy_field_damage",
+                "enemy_combat_death",
+                "enemy_field_death",
+                "enemy_win",
+            }
+        ),
+        ally_zero_components=frozenset(
+            {
+                "enemy_combat_damage",
+                "enemy_field_damage",
+                "enemy_combat_death",
+                "enemy_field_death",
+                "enemy_win",
+            }
+        ),
     )
     defaults.update(overrides)
     return RewardConfig(**defaults)
@@ -663,7 +685,7 @@ class TestWinComponentLambdaMatrix:
         assert lam[0, :, k_enemy].tolist() == [0.0, 0.0, -1.0, -1.0]
 
     def test_production_config_win_lambda_sets(self):
-        """runs/shared.py must agree with rl_obstacles.py and the test configs on
+        """runs/shared.py must agree with the field profile and test configs on
         which win components are zero-sum (enemy_win) vs ally-shared (ally_win)."""
         from runs.shared import REWARDS
 
