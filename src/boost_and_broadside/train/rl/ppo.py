@@ -166,7 +166,9 @@ class _RolloutRuntime:
 
     num_envs: int
     num_ships: int
-    num_tokens: int
+    # Recurrent tokens per env (ships). Fields are non-recurrent, so this is
+    # deliberately not N+M — it is the stride for every hidden-state operation.
+    num_recurrent: int
     scripted_start: int
     scripted_end: int
     avg_start: int
@@ -447,7 +449,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # Without this the internal fake-tensor trace runs in fp32 and compiles
         # a graph the first real autocast call immediately invalidates.
         if compile_mode is not None and self.device.type == "cuda":
-            _nt = N + M
+            # Hidden state covers ship tokens only; fields are non-recurrent.
+            _nt = N
             with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
                 _h = self._policy_module.initial_hidden(B, _nt, self.device)
                 self.policy.get_action_and_value(sample_obs, _h)
@@ -642,7 +645,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         hidden: torch.Tensor,
         hidden_t1: torch.Tensor | None,
         num_ships: int,
-        num_tokens: int,
+        num_recurrent: int,
     ) -> tuple[
         torch.Tensor,
         torch.Tensor | None,
@@ -661,10 +664,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         Args:
             obs:        YemongObservation with (B, N+M, ...) tensors (raw team IDs).
-            hidden:     (n_layers, B*(N+M), CONV_KERNEL*D) raw-perspective hidden state.
+            hidden:     (n_layers, B*N, CONV_KERNEL*D) raw-perspective hidden state.
             hidden_t1:  Flipped-perspective hidden state; None in shared_pass.
             num_ships:  N — ship token count for team flipping.
-            num_tokens: N+M — used to split the 2B hidden state.
+            num_recurrent: N — recurrent tokens per env, used to split the 2B hidden
+                state. Fields are non-recurrent, so this is ships, not N+M.
 
         Returns:
             action_t0:  (B, N, 3) raw-perspective actions.
@@ -681,10 +685,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             )
             return action, None, logprob, value_norm, pred_next, hidden, None
 
-        batch = hidden.shape[1] // num_tokens
+        batch = hidden.shape[1] // num_recurrent
         obs_t1 = flip_team_obs(obs, num_ships)
         obs_both = obs.concat_batch(obs_t1)
-        hidden_both = torch.cat([hidden, hidden_t1], dim=1)  # (n_layers, 2B*(N+M), CONV_KERNEL*D)
+        hidden_both = torch.cat([hidden, hidden_t1], dim=1)  # (n_layers, 2B*N, CONV_KERNEL*D)
         action_both, logprob_both, value_both, pred_next_both, hidden_out = (
             self.policy.get_action_and_value(obs_both, hidden_both)
         )
@@ -694,8 +698,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             logprob_both[:batch],  # (B, N)
             value_both[:batch],  # (B, N, K)
             pred_next_both[:batch],  # (B, N, pred_dim)
-            hidden_out[:, : batch * num_tokens, :],  # (n_layers, B*(N+M), CONV_KERNEL*D)
-            hidden_out[:, batch * num_tokens :, :],  # (n_layers, B*(N+M), CONV_KERNEL*D)
+            hidden_out[:, : batch * num_recurrent, :],  # (n_layers, B*N, CONV_KERNEL*D)
+            hidden_out[:, batch * num_recurrent :, :],  # (n_layers, B*N, CONV_KERNEL*D)
         )
 
     def _collect_aux_steps(
@@ -712,7 +716,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             zip(self.cfg.scales[1:], self.aux_wrappers, self.aux_buffers)
         ):
             aux_N = sc.env_config.num_ships
-            aux_num_tokens = aux_N + sc.env_config.num_fields
             with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
                 (
                     aux_action_t0,
@@ -723,7 +726,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     aux_hiddens[i],
                     aux_hidden_t1s[i],
                 ) = self._rollout_policy_pass(
-                    aux_obs[i], aux_hiddens[i], aux_hidden_t1s[i], aux_N, aux_num_tokens
+                    aux_obs[i], aux_hiddens[i], aux_hidden_t1s[i], aux_N, aux_N
                 )
             aux_team_id = aux_obs[i]["team_id"][:, :aux_N]  # (B_aux, N_aux)
             aux_action, aux_actor_mask = self._combine_actions(
@@ -747,12 +750,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 expert_probs=None,
                 terminated=aux_done_any,
             )
-            aux_hiddens[i] = self.policy.reset_hidden_for_envs(
-                aux_hiddens[i], aux_done_any, aux_num_tokens
-            )
+            aux_hiddens[i] = self.policy.reset_hidden_for_envs(aux_hiddens[i], aux_done_any, aux_N)
             if self._ego_pass:
                 aux_hidden_t1s[i] = self.policy.reset_hidden_for_envs(
-                    aux_hidden_t1s[i], aux_done_any, aux_num_tokens
+                    aux_hidden_t1s[i], aux_done_any, aux_N
                 )
             aux_action_buffers[i] = aux_action.detach().clone()
             aux_action_buffers[i][aux_done_any] = 0
@@ -764,7 +765,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         """Initialize persistent primary, auxiliary, and evaluation rollout state."""
         num_envs = self.cfg.scales[0].num_envs
         num_ships = self.wrapper.num_ships
-        num_tokens = num_ships + self.env_config.num_fields
+        # Only ships carry recurrent state; field tokens take the non-recurrent path.
+        num_recurrent = num_ships
         scripted_start = self.B_self
         scripted_end = scripted_start + self.B_sc
         avg_start = scripted_end
@@ -773,14 +775,14 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         obs = self.wrapper.reset()
         self.wrapper.env.state.step_count.random_(0, self.env_config.max_episode_steps)
-        hidden = self.policy.initial_hidden(num_envs, num_tokens, self.device)
+        hidden = self.policy.initial_hidden(num_envs, num_recurrent, self.device)
         hidden_t1 = (
-            self.policy.initial_hidden(num_envs, num_tokens, self.device)
+            self.policy.initial_hidden(num_envs, num_recurrent, self.device)
             if self._ego_pass
             else None
         )
         avg_hidden = (
-            self.avg_policy.initial_hidden(self.B_avg, num_tokens, self.device)
+            self.avg_policy.initial_hidden(self.B_avg, num_recurrent, self.device)
             if self.B_avg > 0
             else None
         )
@@ -794,7 +796,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         for scale, wrapper in zip(self.cfg.scales[1:], self.aux_wrappers):
             aux_obs.append(wrapper.reset())
             wrapper.env.state.step_count.random_(0, scale.env_config.max_episode_steps)
-            aux_tokens = scale.env_config.num_ships + scale.env_config.num_fields
+            aux_tokens = scale.env_config.num_ships  # recurrent tokens: ships only
             aux_hiddens.append(self.policy.initial_hidden(scale.num_envs, aux_tokens, self.device))
             aux_hidden_t1s.append(
                 self.policy.initial_hidden(scale.num_envs, aux_tokens, self.device)
@@ -816,7 +818,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         return _RolloutRuntime(
             num_envs=num_envs,
             num_ships=num_ships,
-            num_tokens=num_tokens,
+            num_recurrent=num_recurrent,
             scripted_start=scripted_start,
             scripted_end=scripted_end,
             avg_start=avg_start,
@@ -833,7 +835,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 avg_policy=self.avg_policy,
                 scripted_agent=self.scripted_agent,
                 num_ships=num_ships,
-                num_tokens=num_tokens,
+                num_tokens=num_recurrent,
                 ego_pass=self._ego_pass,
                 live_elo=self._training_elo,
                 avg_elo=self._avg_training_elo,
@@ -872,7 +874,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             aux_buffer.reset()
             aux_buffer.store_initial_hidden(aux_hidden)
 
-        league_hidden = self._prepare_league_opponent(runtime.num_tokens)
+        league_hidden = self._prepare_league_opponent(runtime.num_recurrent)
         for rollout_step in range(self.cfg.num_steps):
             primary = self._collect_primary_step(
                 obs=runtime.obs,
@@ -883,7 +885,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 action_buffer=runtime.action_buffer,
                 num_envs=runtime.num_envs,
                 num_ships=runtime.num_ships,
-                num_tokens=runtime.num_tokens,
+                num_recurrent=runtime.num_recurrent,
                 scripted_start=runtime.scripted_start,
                 scripted_end=runtime.scripted_end,
                 avg_start=runtime.avg_start,
@@ -1200,7 +1202,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         if self.device.type != "cuda":
             for chunk in chunks:
-                for microbatch in chunk.split_envs(split_count(chunk), buffer.num_tokens):
+                for microbatch in chunk.split_envs(split_count(chunk), buffer.num_ships):
                     yield microbatch, microbatch
             return
 
@@ -1212,10 +1214,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             next_staged = (
                 self._stage_microbatch(chunks[index + 1]) if index + 1 < len(chunks) else None
             )
-            source_microbatches = source.split_envs(split_count(source), buffer.num_tokens)
+            source_microbatches = source.split_envs(split_count(source), buffer.num_ships)
             device_microbatches = staged.device.split_envs(
                 split_count(source),
-                buffer.num_tokens,
+                buffer.num_ships,
             )
             yield from zip(source_microbatches, device_microbatches, strict=True)
             if next_staged is not None:

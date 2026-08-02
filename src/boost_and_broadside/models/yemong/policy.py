@@ -202,19 +202,24 @@ class YemongPolicy(nn.Module):
     # Hidden state management
     # ------------------------------------------------------------------
 
-    def initial_hidden(self, num_envs: int, num_tokens: int, device: torch.device) -> torch.Tensor:
-        """Return zeroed hidden states for all Yemong layers.
+    def initial_hidden(
+        self, num_envs: int, num_recurrent_tokens: int, device: torch.device
+    ) -> torch.Tensor:
+        """Return zeroed hidden states for all temporal sublayers.
 
         Args:
-            num_tokens: N+M (ships + fields) — all entity tokens carry hidden state.
+            num_recurrent_tokens: N — only ship tokens carry recurrent state. Field
+                tokens are static within an episode and take the non-recurrent path
+                (see ``GriffinTemporalBlock.forward_nonrecurrent``), so passing N+M
+                here would allocate a third more state than the trunk consumes.
 
         Returns:
-            (n_layers, B*(N+M), CONV_KERNEL*D) float32 — packed RG-LRU state + conv buffer,
-            where n_layers is n_yemong_blocks * n_temporal_per_block.
+            (n_layers, B*N, CONV_KERNEL*D) float32 — packed RG-LRU state + conv
+            buffer, where n_layers is n_yemong_blocks * n_temporal_per_block.
         """
         return torch.zeros(
             self.n_hidden_layers,
-            num_envs * num_tokens,
+            num_envs * num_recurrent_tokens,
             CONV_KERNEL * self._d_model,
             device=device,
         )
@@ -225,23 +230,29 @@ class YemongPolicy(nn.Module):
 
         return len(self.yemong_layers) * self._n_temporal
 
+    @property
+    def num_recurrent_tokens(self) -> int:
+        """Tokens carrying recurrent state — ships only; fields are static."""
+
+        return self._num_ships
+
     def reset_hidden_for_envs(
         self,
         hidden: torch.Tensor,
         done_mask: torch.Tensor,
-        num_tokens: int,
+        num_recurrent_tokens: int,
     ) -> torch.Tensor:
-        """Zero hidden states for all tokens in done environments.
+        """Zero hidden states for all recurrent tokens in done environments.
 
         Args:
-            hidden:     (n_layers, B*(N+M), CONV_KERNEL*D) current hidden state.
+            hidden:     (n_layers, B*N, CONV_KERNEL*D) current hidden state.
             done_mask:  (B,) bool — True for envs that finished.
-            num_tokens: N+M.
+            num_recurrent_tokens: N — must match what ``initial_hidden`` was given.
 
         Returns:
             Updated hidden state with done envs zeroed.
         """
-        token_keep = (~done_mask.repeat_interleave(num_tokens)).to(hidden.dtype)
+        token_keep = (~done_mask.repeat_interleave(num_recurrent_tokens)).to(hidden.dtype)
         return hidden * token_keep[None, :, None]
 
     # ------------------------------------------------------------------
@@ -272,18 +283,22 @@ class YemongPolicy(nn.Module):
         x = self.encoder(obs)  # (B, N+M, D)
 
         B, NM, D = x.shape
-        BNM = B * NM
         n_layers = hidden.shape[0]
         n_temporal = self._n_temporal
-        rglru_states = hidden[:, :, :D]  # (n_layers, B*(N+M), D)
-        conv_bufs = hidden[:, :, D:].reshape(n_layers, BNM, CONV_KERNEL - 1, D)
+        # Recurrent token count is read off the hidden tensor rather than tracked
+        # separately, so the split can never disagree with how the caller sized it.
+        # A caller that still allocates B*(N+M) therefore keeps every token recurrent.
+        B_rec = hidden.shape[1]  # B*N — recurrent (ship) tokens only
+        n_rec = B_rec // B
+        rglru_states = hidden[:, :, :D]  # (n_layers, B*N, D)
+        conv_bufs = hidden[:, :, D:].reshape(n_layers, B_rec, CONV_KERNEL - 1, D)
 
         new_rglru, new_cbs = [], []
         for i, layer in enumerate(self.yemong_layers):
             # Each block owns a contiguous run of n_temporal hidden slots.
             block_slice = slice(i * n_temporal, (i + 1) * n_temporal)
             x, new_h, new_cb = layer.step(
-                x, alive, rglru_states[block_slice], conv_bufs[block_slice]
+                x, alive, rglru_states[block_slice], conv_bufs[block_slice], n_rec
             )
             new_rglru.append(new_h)
             new_cbs.append(new_cb)
@@ -294,9 +309,9 @@ class YemongPolicy(nn.Module):
         conv_width = (CONV_KERNEL - 1) * D
         new_rglru_t = torch.cat(new_rglru, dim=0) if new_rglru else rglru_states
         new_cbs_t = (
-            torch.cat(new_cbs, dim=0).reshape(n_layers, BNM, conv_width)
+            torch.cat(new_cbs, dim=0).reshape(n_layers, B_rec, conv_width)
             if new_cbs
-            else conv_bufs.reshape(n_layers, BNM, conv_width)
+            else conv_bufs.reshape(n_layers, B_rec, conv_width)
         )
         new_hidden = torch.cat(
             [new_rglru_t, new_cbs_t], dim=-1
@@ -372,10 +387,11 @@ class YemongPolicy(nn.Module):
         D = self._d_model
         n_layers = initial_hidden.shape[0]
         n_temporal = self._n_temporal
-        BNM = initial_hidden.shape[1]  # B*(N+M)
+        B_rec = initial_hidden.shape[1]  # B*N — recurrent (ship) tokens only
+        n_rec = B_rec // B  # see get_action_and_value: split follows hidden sizing
 
         rglru_states = initial_hidden[:, :, :D]  # (n_layers, B*(N+M), D)
-        conv_bufs = initial_hidden[:, :, D:].reshape(n_layers, BNM, CONV_KERNEL - 1, D)
+        conv_bufs = initial_hidden[:, :, D:].reshape(n_layers, B_rec, CONV_KERNEL - 1, D)
 
         # obs has (T, B, N+M, ...) — flatten T into B for encoder
         NM = obs["pos"].shape[2]  # N+M total tokens
@@ -402,11 +418,17 @@ class YemongPolicy(nn.Module):
                     rglru_states[block_slice],
                     conv_bufs[block_slice],
                     done_mask,
+                    n_rec,
                     use_reentrant=False,
                 )
             else:
                 x, _, _ = layer.sequence(
-                    x, alive_mask, rglru_states[block_slice], conv_bufs[block_slice], done_mask
+                    x,
+                    alive_mask,
+                    rglru_states[block_slice],
+                    conv_bufs[block_slice],
+                    done_mask,
+                    n_rec,
                 )
 
         # Slice ship tokens for heads
@@ -460,13 +482,14 @@ def _yemong_forward(
     h0: torch.Tensor,
     conv_buf0: torch.Tensor,
     done_mask: torch.Tensor | None,
+    num_recurrent: int,
 ) -> torch.Tensor:
     """Run one Yemong block's full-sequence forward, returning only the output.
 
     Module-level (no ``self`` capture) so ``torch.utils.checkpoint`` can rematerialize
     it cleanly. The final hidden/conv states are unused by the update-time re-evaluation.
     """
-    out, _, _ = layer.sequence(x, alive_mask, h0, conv_buf0, done_mask)
+    out, _, _ = layer.sequence(x, alive_mask, h0, conv_buf0, done_mask, num_recurrent)
     return out
 
 

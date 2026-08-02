@@ -268,28 +268,32 @@ class TestRGLRU:
 
 
 class TestYemongPolicy:
-    def test_field_tokens_carry_hidden_state_but_heads_emit_ships_only(
-        self, model_cfg, coordinator
-    ):
+    def test_only_ships_carry_hidden_state_and_heads_emit_ships_only(self, model_cfg, coordinator):
+        """Fields participate in attention but take the non-recurrent path.
+
+        Their state is static within an episode, so allocating recurrent slots for
+        them would cost a third of the hidden tensor for nothing.
+        """
         B, N, M = 2, 3, 2
         policy = YemongPolicy(
             model_cfg, coordinator, num_value_components=NUM_VALUE_COMPONENTS, num_ships=N
         )
         obs = _make_obs(B, N + M)
         obs.data[ObsKey.TEAM_ID][:, N:] = 2
-        hidden = policy.initial_hidden(B, N + M, torch.device("cpu"))
+        hidden = policy.initial_hidden(B, policy.num_recurrent_tokens, torch.device("cpu"))
 
         action, logprob, value, pred_next, new_hidden = policy.get_action_and_value(obs, hidden)
 
         from boost_and_broadside.models.yemong.griffin import CONV_KERNEL
 
+        assert policy.num_recurrent_tokens == N
         assert action.shape == (B, N, 3)
         assert logprob.shape == (B, N)
         assert value.shape == (B, N, NUM_VALUE_COMPONENTS)
         assert pred_next.shape[:2] == (B, N)
         assert new_hidden.shape == (
             model_cfg.n_yemong_blocks,
-            B * (N + M),
+            B * N,  # ships only — not B*(N+M)
             CONV_KERNEL * model_cfg.d_model,
         )
 
@@ -503,6 +507,167 @@ class TestYemongBlockStructure:
         kwargs.setdefault("n_yemong_blocks", 2)
         with pytest.raises(ValueError):
             ModelConfig(d_model=64, n_heads=4, **kwargs)
+
+
+class TestNonRecurrentFieldPath:
+    """Field tokens skip the causal conv and RG-LRU but keep the rest of the block."""
+
+    @staticmethod
+    def _policy(coordinator, num_ships, n_spatial=2, n_temporal=1, n_blocks=2):
+        cfg = ModelConfig(
+            d_model=64,
+            n_heads=4,
+            n_yemong_blocks=n_blocks,
+            n_spatial_per_block=n_spatial,
+            n_temporal_per_block=n_temporal,
+        )
+        torch.manual_seed(0)
+        return YemongPolicy(
+            cfg, coordinator, num_value_components=NUM_VALUE_COMPONENTS, num_ships=num_ships
+        ).eval()
+
+    def test_field_sub_is_identity_initialised(self, coordinator):
+        """Zero init would null b1_out and erase the whole gated branch for fields."""
+        policy = self._policy(coordinator, num_ships=3, n_temporal=2)
+        for block in policy.yemong_layers:
+            assert len(block.field_sub) == len(block.temporal)
+            for sub in block.field_sub:
+                assert torch.equal(sub.weight, torch.eye(policy._d_model))
+
+    def test_forward_nonrecurrent_matches_manual_composition(self):
+        """The field path must be the Griffin block with only the scan swapped out."""
+        from boost_and_broadside.models.yemong.griffin import GriffinTemporalBlock
+
+        D = 32
+        torch.manual_seed(0)
+        block = GriffinTemporalBlock(D).eval()
+        sub = torch.nn.Linear(D, D, bias=False)
+        torch.nn.init.eye_(sub.weight)
+        x = torch.randn(2, 5, D)
+
+        with torch.no_grad():
+            got = block.forward_nonrecurrent(x, sub)
+
+            normed = block.norm1(x)
+            b1 = sub(block.linear1(normed))
+            b2 = torch.nn.functional.gelu(block.linear2(normed))
+            x1 = x + block.linear_out(b1 * b2)
+            want = x1 + block.gated_mlp(block.norm2(x1))
+
+        assert torch.allclose(got, want, atol=1e-6)
+
+    @staticmethod
+    def _run_trunk(policy, obs, hidden, B, N):
+        """Run the trunk directly — heads emit ship tokens, so fields aren't visible."""
+        from boost_and_broadside.models.yemong.griffin import CONV_KERNEL
+
+        D = policy._d_model
+        n_layers = hidden.shape[0]
+        rg = hidden[:, :, :D]
+        cb = hidden[:, :, D:].reshape(n_layers, B * N, CONV_KERNEL - 1, D)
+        x = policy.encoder(obs)
+        for i, layer in enumerate(policy.yemong_layers):
+            sl = slice(i * policy._n_temporal, (i + 1) * policy._n_temporal)
+            x, _, _ = layer.step(x, obs.data[ObsKey.ALIVE], rg[sl], cb[sl], N)
+        return x
+
+    def test_single_block_field_tokens_ignore_recurrent_state(self, coordinator):
+        """The defining property: the field path never reads recurrent state.
+
+        Checked with one block, where no later attention can reintroduce it. Ship
+        tokens in the same trunk must still move, or the test proves nothing.
+        """
+        B, N, M = 2, 3, 2
+        policy = self._policy(coordinator, num_ships=N, n_blocks=1)
+        obs = _make_obs(B, N + M)
+        obs.data[ObsKey.TEAM_ID][:, N:] = 2
+
+        zero_hidden = policy.initial_hidden(B, N, torch.device("cpu"))
+        torch.manual_seed(3)
+        big_hidden = torch.randn_like(zero_hidden) * 5.0
+
+        with torch.no_grad():
+            out_zero = self._run_trunk(policy, obs, zero_hidden, B, N)
+            out_big = self._run_trunk(policy, obs, big_hidden, B, N)
+
+        assert torch.allclose(out_zero[:, N:], out_big[:, N:], atol=1e-6), (
+            "field tokens moved with the recurrent state"
+        )
+        assert not torch.allclose(out_zero[:, :N], out_big[:, :N], atol=1e-4), (
+            "ship tokens should still depend on the recurrent state"
+        )
+
+    def test_later_blocks_relay_recurrent_state_into_fields(self, coordinator):
+        """Fields still see ship history indirectly, via attention in a later block.
+
+        This is intentional and is what makes keeping fields in full attention worth
+        the cost: a field token aggregates 'which ships are near me' in one block and
+        other ships can read that back in the next.
+        """
+        B, N, M = 2, 3, 2
+        policy = self._policy(coordinator, num_ships=N, n_blocks=2)
+        obs = _make_obs(B, N + M)
+        obs.data[ObsKey.TEAM_ID][:, N:] = 2
+
+        zero_hidden = policy.initial_hidden(B, N, torch.device("cpu"))
+        torch.manual_seed(3)
+        big_hidden = torch.randn_like(zero_hidden) * 5.0
+
+        with torch.no_grad():
+            out_zero = self._run_trunk(policy, obs, zero_hidden, B, N)
+            out_big = self._run_trunk(policy, obs, big_hidden, B, N)
+
+        assert not torch.allclose(out_zero[:, N:], out_big[:, N:], atol=1e-4), (
+            "second-block attention should carry ship history into field tokens"
+        )
+
+    @pytest.mark.parametrize("n_temporal", [1, 2])
+    def test_step_matches_sequence_with_fields(self, coordinator, n_temporal):
+        """Step/sequence equivalence must survive the ship/field split."""
+        B, N, M, T = 2, 3, 2, 5
+        policy = self._policy(coordinator, num_ships=N, n_temporal=n_temporal)
+
+        torch.manual_seed(11)
+        obs_seq = []
+        for _ in range(T):
+            obs = _make_obs(B, N + M)
+            obs.data[ObsKey.TEAM_ID][:, N:] = 2
+            obs_seq.append(obs)
+
+        initial_hidden = policy.initial_hidden(B, N, torch.device("cpu"))
+        hidden = initial_hidden
+        step_values, actions = [], []
+        for obs in obs_seq:
+            action, _, value, _, hidden = policy.get_action_and_value(obs, hidden)
+            step_values.append(value)
+            actions.append(action)
+
+        stacked = YemongObservation(
+            data={
+                key: torch.stack([o.data[key] for o in obs_seq], dim=0) for key in obs_seq[0].data
+            }
+        )
+        with torch.no_grad():
+            _, _, seq_value, _, _, _ = policy.evaluate_actions(
+                stacked,
+                torch.stack(actions, dim=0),
+                initial_hidden,
+                stacked.data[ObsKey.ALIVE],
+            )
+
+        assert torch.allclose(torch.stack(step_values, dim=0), seq_value, atol=1e-5)
+
+    def test_zero_field_profile_is_unaffected(self, coordinator):
+        """With M=0 every token is a ship and the split is a no-op."""
+        B, N = 2, 4
+        policy = self._policy(coordinator, num_ships=N)
+        obs = _make_obs(B, N)
+        hidden = policy.initial_hidden(B, N, torch.device("cpu"))
+
+        action, _, _, _, new_hidden = policy.get_action_and_value(obs, hidden)
+
+        assert action.shape == (B, N, 3)
+        assert new_hidden.shape == hidden.shape
 
 
 class TestOrthogonalHeadInit:

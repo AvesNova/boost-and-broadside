@@ -116,13 +116,14 @@ class MicroBatch(NamedTuple):
             if isinstance(value, torch.Tensor):
                 value.record_stream(stream)
 
-    def slice_envs(self, start: int, end: int, num_tokens: int) -> "MicroBatch":
+    def slice_envs(self, start: int, end: int, num_recurrent: int) -> "MicroBatch":
         """Slice a contiguous environment range from a staged shard minibatch.
 
         Args:
             start: Inclusive environment offset.
             end: Exclusive environment offset.
-            num_tokens: Entity tokens per environment, used to reshape hidden state.
+            num_recurrent: Recurrent tokens per environment (ships), used to reshape
+                hidden state. Fields are non-recurrent, so this is not N+M.
 
         Returns:
             A view-only micro-batch over ``[start:end]``.
@@ -132,7 +133,7 @@ class MicroBatch(NamedTuple):
         hidden = self.hidden.reshape(
             n_layers,
             batch_envs,
-            num_tokens,
+            num_recurrent,
             hidden_width,
         )[:, start:end]
         return MicroBatch(
@@ -144,7 +145,7 @@ class MicroBatch(NamedTuple):
             advantages=self.advantages[:, start:end],
             returns=self.returns[:, start:end],
             alive=self.alive[:, start:end],
-            hidden=hidden.reshape(n_layers, (end - start) * num_tokens, hidden_width),
+            hidden=hidden.reshape(n_layers, (end - start) * num_recurrent, hidden_width),
             actor_mask=self.actor_mask[:, start:end],
             expert_probs=self.expert_probs[:, start:end],
             terminated=self.terminated[:, start:end],
@@ -153,7 +154,7 @@ class MicroBatch(NamedTuple):
             ns_labels=self.ns_labels[:, start:end] if self.ns_labels is not None else None,
         )
 
-    def split_envs(self, num_chunks: int, num_tokens: int) -> list["MicroBatch"]:
+    def split_envs(self, num_chunks: int, num_recurrent: int) -> list["MicroBatch"]:
         """Split a staged shard minibatch into near-even contiguous views."""
         batch_envs = self.actions.shape[1]
         base, remainder = divmod(batch_envs, num_chunks)
@@ -161,7 +162,7 @@ class MicroBatch(NamedTuple):
         start = 0
         for index in range(num_chunks):
             width = base + (1 if index < remainder else 0)
-            chunks.append(self.slice_envs(start, start + width, num_tokens))
+            chunks.append(self.slice_envs(start, start + width, num_recurrent))
             start += width
         return chunks
 
@@ -742,7 +743,7 @@ class RolloutBuffer:
             n_micro = min(max(n_micro, 1), envs_per_batch)
 
         n_layers = self.initial_hidden.shape[0]
-        hidden_full = self.initial_hidden.reshape(n_layers, self.num_envs, self.num_tokens, D)
+        hidden_full = self.initial_hidden.reshape(n_layers, self.num_envs, self.num_ships, D)
 
         for start in range(0, self.num_envs, envs_per_batch):
             end = start + envs_per_batch
@@ -751,9 +752,9 @@ class RolloutBuffer:
                 # T+1 obs for this micro-batch
                 mb_obs = YemongObservation(data={k: v[:, idx] for k, v in self.obs.items()})
 
-                # Reconstruct initial hidden: (n_layers, B_mb*num_tokens, H)
+                # Reconstruct initial hidden: (n_layers, B_mb*N, H) — ships only
                 mb_hidden = hidden_full[:, idx, :, :].reshape(
-                    n_layers, len(idx) * self.num_tokens, D
+                    n_layers, len(idx) * self.num_ships, D
                 )
 
                 chunks.append(
@@ -863,7 +864,7 @@ class StoredRollout:
         hidden_full = self.initial_hidden.reshape(
             n_layers,
             self.num_envs,
-            self.num_tokens,
+            self.num_ships,
             hidden_width,
         )
 
@@ -874,7 +875,7 @@ class StoredRollout:
             )
             hidden = hidden_full[:, indices].reshape(
                 n_layers,
-                len(indices) * self.num_tokens,
+                len(indices) * self.num_ships,
                 hidden_width,
             )
             yield [
