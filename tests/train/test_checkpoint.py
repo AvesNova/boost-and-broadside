@@ -307,6 +307,69 @@ class TestBulletReadingCheckpoints:
         assert runtime.elo_eval.include_bullets is True
 
 
+class TestHeterogeneousLeague:
+    """A roster spans a run's history, and a run's architecture can change.
+
+    Nothing in the policy is sized by ship count and every entry is rebuilt from
+    its own recorded config, so an opponent need not share the live policy's
+    shape. Each carries its own recurrent width, which is what makes this work at
+    all — the trainer never allocates hidden state on an opponent's behalf.
+    """
+
+    @staticmethod
+    def _config(d_model: int, blocks: int = 1):
+        from boost_and_broadside.config import ModelConfig
+
+        return ModelConfig(d_model=d_model, n_heads=4, n_yemong_blocks=blocks)
+
+    def test_a_narrower_opponent_plays_a_wider_trainee(self, tmp_path):
+        from tests.train.test_ppo import _make_trainer
+
+        older = _make_trainer(
+            checkpoint_dir=str(tmp_path / "old"), model_config=self._config(d_model=32)
+        )
+        snapshot = older._save_ladder_snapshot()
+
+        trainer = _make_trainer(
+            checkpoint_dir=str(tmp_path / "new"),
+            league_fraction=0.5,
+            model_config=self._config(d_model=64, blocks=2),
+        )
+        trainer.roster.add_checkpoint(
+            path=str(snapshot), global_step=1, update=1, initial_elo=trainer._training_elo
+        )
+
+        hidden = trainer._prepare_league_opponent(trainer.wrapper.num_ships)
+
+        assert trainer._current_league_entry.bundle.model_config.d_model == 32
+        # The opponent's hidden state is its own width, not the trainee's.
+        assert hidden.shape[0] == 1  # one temporal sublayer, from *its* config
+        trainer.train()  # a full update with the two architectures interleaved
+
+    def test_a_bullet_reading_opponent_in_a_bullet_free_run_is_refused(self, tmp_path):
+        """The rollout observation is shaped once and cannot widen to suit an
+        opponent, so the alternative is an opponent silently playing blind."""
+        from tests.train.test_ppo import _make_trainer
+
+        reader = _make_trainer(
+            checkpoint_dir=str(tmp_path / "old"),
+            model_config=dataclasses.replace(self._config(d_model=32), n_bullet_cross_per_block=1),
+        )
+        snapshot = reader._save_ladder_snapshot()
+
+        trainer = _make_trainer(
+            checkpoint_dir=str(tmp_path / "new"),
+            league_fraction=0.5,
+            model_config=self._config(d_model=32),
+        )
+        trainer.roster.add_checkpoint(
+            path=str(snapshot), global_step=1, update=1, initial_elo=trainer._training_elo
+        )
+
+        with pytest.raises(ValueError, match="reads bullets"):
+            trainer._prepare_league_opponent(trainer.wrapper.num_ships)
+
+
 def _save_checkpoint_and_join(trainer, update: int) -> None:
     trainer._save_checkpoint(update=update)
     trainer._active_save_thread.join(timeout=60)

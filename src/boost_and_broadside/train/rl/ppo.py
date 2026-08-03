@@ -827,6 +827,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             aux_last_dones.append(torch.zeros(scale.num_envs, dtype=torch.bool, device=self.device))
 
         anchors, floating = self._ladder_eval_state()
+        # The ladder can hold entries from before the live architecture, so the
+        # bullet axis follows the union: a policy that ignores bullets is
+        # unaffected by their presence, one that reads them and is handed an
+        # observation without them plays blind.
+        eval_reads_bullets = self.model_config.reads_bullets or any(
+            opponent.reads_bullets for opponent in [*anchors, floating] if opponent is not None
+        )
         return _RolloutRuntime(
             num_envs=num_envs,
             num_ships=num_ships,
@@ -860,7 +867,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 floating_window=self._eval_window_floating,
                 scripted_window=self._eval_window_sc,
                 live_vs_avg_window=self._eval_window_live_vs_avg,
-                include_bullets=self.model_config.reads_bullets,
+                include_bullets=eval_reads_bullets,
             ),
             obs=obs,
             hidden=hidden,
@@ -2027,7 +2034,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         a None policy stands for the random agent.
         """
 
-        def _load(entry: RosterEntry) -> YemongPolicy:
+        def _opponent(entry: RosterEntry) -> LadderOpponent:
+            if entry.kind == "random":
+                return LadderOpponent(policy=None, elo=entry.elo, label=entry.label)
             self.roster.load_policy(
                 entry,
                 self.ship_config,
@@ -2037,24 +2046,18 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 compile_mode=self._compile_mode,
                 team_pma_k=self._win_k,
             )
-            return entry.policy
-
-        anchors = [
-            LadderOpponent(
-                policy=None if entry.kind == "random" else _load(entry),
+            return LadderOpponent(
+                policy=entry.policy,
                 elo=entry.elo,
                 label=entry.label,
+                reads_bullets=entry.bundle.reads_bullets,
             )
-            for entry in self.roster.ladder_anchors(MAX_ANCHORS)
-        ]
+
+        anchors = [_opponent(entry) for entry in self.roster.ladder_anchors(MAX_ANCHORS)]
         floating_entry = self.roster.floating_checkpoint()
         if floating_entry is None:
             return anchors, None
-        return anchors, LadderOpponent(
-            policy=_load(floating_entry),
-            elo=floating_entry.elo,
-            label=floating_entry.label,
-        )
+        return anchors, _opponent(floating_entry)
 
     def _effective_target_kl(self) -> float | None:
         """Resolve the Elo-gated target KL from the current schedule snapshot."""

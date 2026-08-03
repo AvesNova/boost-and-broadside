@@ -249,7 +249,11 @@ def load_policy_bundle(
                             the checkpoint's own are checked against.
         model_config:       Fallback architecture.
         team_pma_k:         Fallback win-component indices.
-        compile_mode:       torch.compile mode; None loads uncompiled.
+        compile_mode:       torch.compile mode; None loads uncompiled. Applied
+                            only when the checkpoint's architecture matches
+                            ``model_config`` — a roster spanning architectures
+                            would otherwise pay a fresh compile per entry, which
+                            under max-autotune costs minutes each.
         allow_config_drift: Downgrade a physics mismatch from an error to a warning.
         freeze:             Put the policy in eval mode with gradients off.
     """
@@ -301,8 +305,13 @@ def load_policy_bundle(
         policy.eval()
         policy.requires_grad_(False)
 
+    # Compiling an architecture the live run does not share buys one graph that
+    # nothing else can reuse, so an odd entry in the roster runs eager instead.
+    compile_it = compile_mode is not None and (
+        model_config is None or checkpoint_model_config == model_config
+    )
     return PolicyBundle(
-        policy=torch.compile(policy, mode=compile_mode) if compile_mode is not None else policy,
+        policy=torch.compile(policy, mode=compile_mode) if compile_it else policy,
         model_config=checkpoint_model_config,
         ship_config=checkpoint_ship_config,
         env_config=env_config,

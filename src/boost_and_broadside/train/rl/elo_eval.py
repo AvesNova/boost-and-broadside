@@ -86,6 +86,9 @@ class LadderOpponent:
     policy: "YemongPolicy | None"  # None stands for the random agent
     elo: float
     label: str  # roster label; the key match counts are recorded under
+    # An anchor may predate the live architecture, so it says for itself whether
+    # the observation it is rated on has to carry the bullet axis.
+    reads_bullets: bool = False
 
 
 def expected_score(

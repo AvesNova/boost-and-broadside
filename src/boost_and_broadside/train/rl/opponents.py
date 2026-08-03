@@ -147,6 +147,16 @@ class OpponentMixin:
                 compile_mode=self._compile_mode,
                 team_pma_k=self._win_k,
             )
+            # The rollout observation's shape is fixed when the wrapper is built,
+            # so unlike the eval battery it cannot widen to suit an opponent. An
+            # opponent that reads bullets would simply not see them, and would
+            # play — and be rated — as a weaker agent than it is.
+            if entry.bundle.reads_bullets and not self.model_config.reads_bullets:
+                raise ValueError(
+                    f"league entry {entry.label!r} reads bullets but this run's "
+                    "observation carries none. Train with n_bullet_cross_per_block > 0 "
+                    "to face it, or drop it from the roster."
+                )
             self._current_league_policy = entry.policy
         elif entry.kind == "avg":
             self._current_league_policy = self.avg_policy
