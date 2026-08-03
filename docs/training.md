@@ -207,30 +207,46 @@ the two rating series differ.
 
 ## Checkpoints and reproducibility
 
-Full scheduled `step_<N>.pt` checkpoints contain policy and optimizer state, return and
-advantage scalers, average-policy state, rating/evaluation state, counters, and serialized
-environment/model/training configuration. Saves are prepared asynchronously and written
-through a temporary file before rename.
+Every payload family — full `step_<N>.pt` resumes, best-model snapshots, and the ladder
+snapshots the league and calibrator reload — carries the same provenance block: the
+observation schema, the weights, critic width, `team_pma_k`, step and rating, the training
+paradigm, and the model, environment, and ship configs it was trained under. Full
+checkpoints add optimizer, scaler and averaging state on top; ladder snapshots add nothing.
+Saves are prepared asynchronously and written through a temporary file before rename.
+[`checkpoint.py`](../src/boost_and_broadside/train/rl/checkpoint.py) defines the filenames.
+(The included reference-run directory retains `recent_avg.pt` from an older naming
+convention.)
 
-The checkpoint subsystem also maintains current average/best snapshots and unpruned
-ladder checkpoints; [`checkpoint.py`](../src/boost_and_broadside/train/rl/checkpoint.py)
-defines the current filenames. (The included reference-run directory retains
-`recent_avg.pt` from an older naming convention.)
+Checkpoints are rebuilt from their own recorded configs rather than from whatever the
+reader is running, by
+[`policy_io.load_policy_bundle`](../src/boost_and_broadside/train/rl/policy_io.py) — the
+single loading path behind the league roster, the ladder evaluator, and every eval mode.
+`build_policy` derives the feature pipelines from `ship_config` instead of accepting them,
+so a bullet-reading config always gets its bullet encoder and there is no argument a caller
+can omit to produce a policy whose inputs disagree with its weights.
 
-The refractive-field observation contract adds encoder inputs and a local-index auxiliary
-target. Radius is shared by ship and field tokens and normalized by half the shorter world
-dimension, and the ship's local `grad(n)` widens the encoder's first projection. New
-checkpoint payloads carry `observation_schema=refractive_fields_v3`. Earlier schemas have
-no faithful weight-only migration because their feature semantics differ, so they are
-rejected clearly and retraining is required.
+Three compatibility rules follow from that:
 
-Architecture flags are a separate contract, not covered by that schema. A run with
-`n_bullet_cross_per_block > 0` saves bullet-encoder weights, so every path that rebuilds a
-policy from a checkpoint — the league roster, the ladder evaluator, and the mode-level
-agent factory — constructs it with the same bullet coordinator, and every observation
-handed to a restored policy is built with `include_bullets=True`. The two failures are not
-equally visible: omitting the coordinator raises on unexpected state-dict keys, while
-omitting the bullets is silent and the policy simply plays without seeing fire in flight.
+- **Observation schema.** The refractive-field contract adds encoder inputs and a
+  local-index auxiliary target; radius is shared by ship and field tokens and normalized by
+  half the shorter world dimension, and the ship's local `grad(n)` widens the encoder's
+  first projection. Payloads carry `observation_schema=refractive_fields_v3`. Earlier
+  schemas have no faithful weight-only migration, so they are rejected and retraining is
+  required.
+- **Physics constants.** Eleven `ShipConfig` fields set the encoders' normalizers, so
+  weights trained under different ones were fitted to differently-scaled inputs. A
+  mismatch is refused by name; `--allow-config-drift` downgrades it to a warning, and the
+  policy then reads the world through the constants it trained on.
+- **Architecture.** Nothing needs to match. Nothing in the policy is sized by ship count,
+  and each entry is rebuilt from its own config, so a league or rating field can hold
+  checkpoints of different widths and depths — an entry whose architecture differs from the
+  live run's simply runs eager rather than claiming a compiled graph nothing else reuses.
+  The one exception is the training rollout, whose observation shape is fixed when the
+  wrapper is built: a bullet-reading opponent in a bullet-free run is refused rather than
+  left to play blind.
+
+Payloads written before provenance existed still load; the loader falls back to the
+caller's configs and warns, naming what it assumed.
 
 W&B logging runs off the main training path. The reference run's sampled metric history,
 configuration, summary, and run metadata are exported under
@@ -246,6 +262,11 @@ Training behavior is covered across:
   sharding, and scalers;
 - [`test_roster.py`](../tests/train/test_roster.py) and
   [`test_elo_eval.py`](../tests/train/test_elo_eval.py) for opponent/rating behavior;
-- [`test_checkpoint.py`](../tests/train/test_checkpoint.py) for save/resume state;
+- [`test_checkpoint.py`](../tests/train/test_checkpoint.py) for save/resume state and
+  mixed-architecture league play;
+- [`test_policy_io.py`](../tests/train/test_policy_io.py) for construction, provenance, and
+  the physics-drift check;
+- [`test_match.py`](../tests/modes/test_match.py) for perspective, the bullet axis, and side
+  assignment in the shared match loop;
 - [`test_bradley_terry.py`](../tests/train/test_bradley_terry.py) for calibrated fitting and
   uncertainty.

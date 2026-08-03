@@ -115,6 +115,12 @@ Bullets have their own feature set on a separate axis, built by `build_bullet_co
 | shooter team | two-way one-hot — never a per-ship index |
 | active | key-padding mask, not a feature |
 
+Both pipelines are derived from `ShipConfig` by
+[`policy_io.build_policy`](../src/boost_and_broadside/train/rl/policy_io.py), the single
+path that constructs a policy. Which encoders exist therefore follows from the config
+rather than from what a call site remembered to pass, and the bullet encoder exists exactly
+when `n_bullet_cross_per_block > 0`.
+
 ## Entity encoder
 
 [`ShipEncoder`](../src/boost_and_broadside/models/yemong/encoder.py) concatenates the

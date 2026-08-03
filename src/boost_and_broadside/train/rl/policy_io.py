@@ -49,6 +49,20 @@ FEATURE_SHIP_CONFIG_FIELDS = (
 )
 
 
+# Process-wide escape hatch, set once by the CLI's --allow-config-drift. It can
+# only loosen the per-call argument, never tighten it: the flag says "this
+# invocation accepts checkpoints from before a physics change", which is a
+# property of the session rather than of any one load, and threading it through
+# ten mode signatures that do nothing else with it would only hide that.
+_CONFIG_DRIFT_ALLOWED = False
+
+
+def set_config_drift_allowed(allowed: bool = True) -> None:
+    """Allow every load in this process to cross a physics change, with warnings."""
+    global _CONFIG_DRIFT_ALLOWED
+    _CONFIG_DRIFT_ALLOWED = allowed
+
+
 class CheckpointProvenanceWarning(UserWarning):
     """A checkpoint did not record a config, so the caller's was assumed."""
 
@@ -207,7 +221,7 @@ def _check_config_drift(
     if not differing:
         return
     detail = ", ".join(f"{k}: checkpoint={v[0]!r} runtime={v[1]!r}" for k, v in differing.items())
-    if not allow_config_drift:
+    if not (allow_config_drift or _CONFIG_DRIFT_ALLOWED):
         raise ConfigDriftError(
             f"checkpoint {path!r} trained under different physics constants than the "
             f"current run ({detail}). Its weights were fitted to differently-scaled "
