@@ -151,23 +151,35 @@ class YemongObservation:
         new_data[key] = value
         return YemongObservation(data=new_data, bullets=self.bullets)
 
-    def flip_team(self, num_ships: int) -> "YemongObservation":
-        """Swap team IDs 0 and 1 for the first num_ships entity slots."""
+    def flip_team(
+        self, num_ships: int, mask: "torch.Tensor | None" = None
+    ) -> "YemongObservation":
+        """Swap team IDs 0 and 1 for the first num_ships entity slots.
+
+        Ship and bullet team IDs flip *together*. A bullet's team is its
+        shooter's, so mirroring one without the other shows a policy its own
+        fire as the enemy's. Inactive bullet slots flip too, which is harmless —
+        they are masked out of attention. Field tokens keep their own team.
+
+        ``mask`` selects which environments flip; None flips all of them. It must
+        broadcast against the leading (batch) dims — an ``(B,)`` bool for a
+        ``(B, tokens)`` observation. Per-env selection exists because an ego_pass
+        policy plays team 1 in only some environments and carries one recurrent
+        state, so it cannot be run twice to cover both perspectives.
+        """
+        selector = None if mask is None else mask.unsqueeze(-1)
+
+        def swap(values: torch.Tensor) -> torch.Tensor:
+            swapped = torch.where(values == 0, 1, torch.where(values == 1, 0, values))
+            return swapped if selector is None else torch.where(selector, swapped, values)
+
         team_id = self.data[ObsKey.TEAM_ID].clone()
-        ship_slice = team_id[..., :num_ships]
-        flipped = torch.where(ship_slice == 0, 1, torch.where(ship_slice == 1, 0, ship_slice))
-        team_id[..., :num_ships] = flipped
+        team_id[..., :num_ships] = swap(team_id[..., :num_ships])
         flipped_obs = self.update(ObsKey.TEAM_ID, team_id)
         if self.bullets is None:
             return flipped_obs
-        # A bullet's team is its shooter's, so it flips with the ships. Inactive
-        # slots flip too, which is harmless — they are masked out of attention.
-        bullet_team = self.bullets[BulletObsKey.TEAM_ID].clone()
-        bullet_team = torch.where(
-            bullet_team == 0, 1, torch.where(bullet_team == 1, 0, bullet_team)
-        )
         new_bullets = dict(self.bullets)
-        new_bullets[BulletObsKey.TEAM_ID] = bullet_team
+        new_bullets[BulletObsKey.TEAM_ID] = swap(self.bullets[BulletObsKey.TEAM_ID])
         return YemongObservation(data=flipped_obs.data, bullets=new_bullets)
 
     def map(self, fn: "Callable[[torch.Tensor], torch.Tensor]") -> "YemongObservation":

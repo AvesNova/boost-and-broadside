@@ -49,7 +49,7 @@ from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import EloCalibrateConfig, EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
-from boost_and_broadside.env.observation import ObsKey, observation_from_state
+from boost_and_broadside.env.observation import observation_from_state
 from boost_and_broadside.modes.agent_factory import (
     ResolvedAgent,
     get_actions,
@@ -482,19 +482,11 @@ class Tournament:
         """Return each env's observation from the acting agent's own side.
 
         An ego_pass policy only ever learned to act as team 0, so in envs where
-        it is playing team 1 it must see mirrored team IDs. The selection is
-        done inside a single observation rather than by running the policy twice
-        because the agent carries one recurrent state: a second forward pass per
-        step would advance that state twice and corrupt it.
+        it is playing team 1 it must see mirrored team IDs.
         """
         if not self.ego_pass:
             return sliced
-        team_id = sliced[ObsKey.TEAM_ID]
-        ships = team_id[..., : self.num_ships]
-        mirrored = torch.where(ships == 0, 1, torch.where(ships == 1, 0, ships))
-        merged = team_id.clone()
-        merged[..., : self.num_ships] = torch.where(as_team1.view(-1, 1), mirrored, ships)
-        return sliced.update(ObsKey.TEAM_ID, merged)
+        return sliced.flip_team(self.num_ships, mask=as_team1)
 
     def _tally(
         self, newly_done: torch.Tensor, env_team0: torch.Tensor, env_team1: torch.Tensor

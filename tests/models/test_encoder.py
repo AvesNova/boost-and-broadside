@@ -751,6 +751,34 @@ class TestBulletCrossAttention:
         # Field tokens keep team 2 through the flip.
         assert (flipped.data[ObsKey.TEAM_ID][:, N:] == 2).all()
 
+    def test_masked_flip_team_flips_ships_and_bullets_in_the_same_envs(self):
+        """Per-env perspective: the flip must reach the bullet axis too.
+
+        Post-hoc calibration mirrors team IDs only in the envs where a policy
+        plays team 1. Flipping ships there without flipping bullet shooter teams
+        shows that policy its own fire as the enemy's — silently, since a bullet
+        carries no other identity.
+        """
+        from boost_and_broadside.env.observation import BulletObsKey
+
+        B, N, M, NB = 2, 3, 2, 4
+        obs = _make_obs(B, N + M)
+        obs.data[ObsKey.TEAM_ID][:, :N] = torch.tensor([[0, 1, 0]] * B)
+        obs.data[ObsKey.TEAM_ID][:, N:] = 2
+        bullets = _make_bullets(B, NB)
+        bullets[BulletObsKey.TEAM_ID] = torch.tensor([[0, 1, 0, 1]] * B)
+        obs = YemongObservation(data=obs.data, bullets=bullets)
+
+        # Env 0 flips, env 1 does not.
+        flipped = obs.flip_team(N, mask=torch.tensor([True, False]))
+
+        assert torch.equal(flipped.data[ObsKey.TEAM_ID][0, :N], torch.tensor([1, 0, 1]))
+        assert torch.equal(flipped.data[ObsKey.TEAM_ID][1, :N], torch.tensor([0, 1, 0]))
+        assert torch.equal(flipped.bullets[BulletObsKey.TEAM_ID][0], torch.tensor([1, 0, 1, 0]))
+        assert torch.equal(flipped.bullets[BulletObsKey.TEAM_ID][1], torch.tensor([0, 1, 0, 1]))
+        # Field tokens keep team 2 in both.
+        assert (flipped.data[ObsKey.TEAM_ID][:, N:] == 2).all()
+
     def test_structural_ops_carry_bullets(self):
         B, N, M, NB = 4, 3, 2, 6
         obs = YemongObservation(data=_make_obs(B, N + M).data, bullets=_make_bullets(B, NB))
