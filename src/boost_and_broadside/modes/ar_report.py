@@ -26,6 +26,7 @@ from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.modes.agent_factory import (
     ResolvedAgent,
     _decode_targets_to_obs,
+    agents_read_bullets,
     get_actions,
     init_hidden,
     resolve_agent_spec,
@@ -76,6 +77,7 @@ def run_ar_report_mode(
         rewards=rewards,
         device=device,
         field_map=None,
+        include_bullets=agents_read_bullets(agent0, agent1),
     )
 
     N = wrapper.num_ships

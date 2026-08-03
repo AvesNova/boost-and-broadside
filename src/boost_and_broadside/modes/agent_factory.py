@@ -94,6 +94,22 @@ class ResolvedAgent:
         return f"ResolvedAgent(kind={self.kind!r})"
 
 
+def agents_read_bullets(*agents: "ResolvedAgent | None") -> bool:
+    """Whether any resolved policy carries a bullet encoder.
+
+    Modes decide ``include_bullets`` from the loaded weights rather than from
+    ModelConfig: a policy trained with bullet cross-attention accepts a bullet-free
+    observation without complaint and simply plays blind to every shot in flight,
+    so the observation must follow what actually loaded.
+    """
+    return any(
+        agent is not None
+        and agent.kind == "policy"
+        and getattr(agent.agent, "bullet_encoder", None) is not None
+        for agent in agents
+    )
+
+
 def find_latest_checkpoint(checkpoint_dir: str = "checkpoints") -> str:
     """Return the path to the most recently modified .pt file under checkpoint_dir."""
     pts = sorted(Path(checkpoint_dir).glob("**/*.pt"), key=lambda p: p.stat().st_mtime)
@@ -180,7 +196,10 @@ def resolve_agent_spec(
 
     # Deferred import to avoid circular dependency
     from boost_and_broadside.models.yemong.policy import YemongPolicy
-    from boost_and_broadside.train.rl.features import build_standard_coordinator
+    from boost_and_broadside.train.rl.features import (
+        build_bullet_coordinator,
+        build_standard_coordinator,
+    )
 
     ckpt = torch.load(path, map_location=device, weights_only=False)
     require_observation_schema(ckpt, path)
@@ -193,6 +212,9 @@ def resolve_agent_spec(
         num_value_components=K,
         num_ships=num_ships,
         team_pma_k=team_pma_k,
+        bullet_coordinator=(
+            build_bullet_coordinator(ship_config) if model_config.reads_bullets else None
+        ),
     ).to(device)
     policy.load_state_dict(ckpt["policy_state_dict"])
     policy.eval()
@@ -306,6 +328,10 @@ def _decode_targets_to_obs(
 
     prev_obs: previous YemongObservation — field tokens (N:) are copied unchanged
     action:   (B, N, 3) int — stored as PREVIOUS_ACTION for next step
+
+    Bullets are not part of the predicted state, so the decoded observation carries
+    none: an imagined rollout runs the policy blind to fire in flight, which is a
+    property of the probe rather than of the policy.
     """
     raw = coordinator.decode_targets(targets)
 

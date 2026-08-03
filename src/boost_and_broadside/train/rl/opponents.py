@@ -147,6 +147,7 @@ class OpponentMixin:
                 self.device,
                 self._compile_mode,
                 team_pma_k=self._win_k,
+                bullet_coordinator=self.bullet_coordinator,
             )
             self._current_league_policy = entry.policy
         elif entry.kind == "avg":

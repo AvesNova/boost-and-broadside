@@ -30,6 +30,7 @@ from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.modes.agent_factory import (
     ResolvedAgent,
+    agents_read_bullets,
     get_actions,
     imagine_trajectory,
     init_hidden,
@@ -180,6 +181,7 @@ def _run_resolved_interactive_mode(
         rewards=rewards,
         device=device,
         field_map=field_map,
+        include_bullets=agents_read_bullets(agent0, agent1),
     )
 
     try:

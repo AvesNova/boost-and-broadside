@@ -39,6 +39,7 @@ def load_checkpoint_policy(
     device: str | torch.device,
     compile_mode: str | None = None,
     team_pma_k: tuple[int, ...] = (),
+    bullet_coordinator: FeatureCoordinator | None = None,
 ):
     """Construct an eval-mode YemongPolicy from a saved checkpoint file.
 
@@ -52,6 +53,10 @@ def load_checkpoint_policy(
         compile_mode:         Optional torch.compile mode; None loads uncompiled.
         team_pma_k:           Fallback win-component indices for checkpoints
                               saved before "team_pma_k" was stored.
+        bullet_coordinator:   Bullet feature pipeline; required whenever the model
+                              config reads bullets, since the saved weights then
+                              carry a bullet encoder that has nowhere to load
+                              without it.
 
     Returns:
         The loaded policy in eval mode (compiled when compile_mode is set).
@@ -67,6 +72,7 @@ def load_checkpoint_policy(
         num_value_components=num_value_components,
         num_ships=num_ships,
         team_pma_k=ckpt_team_pma_k,
+        bullet_coordinator=bullet_coordinator,
     )
     policy.load_state_dict(ckpt["policy_state_dict"])
     policy.eval()
@@ -297,6 +303,7 @@ class EloRoster:
         device: str | torch.device,
         compile_mode: str | None = None,
         team_pma_k: tuple[int, ...] = (),
+        bullet_coordinator: FeatureCoordinator | None = None,
     ) -> None:
         """Load checkpoint weights into entry.policy (no-op if already loaded).
 
@@ -315,6 +322,7 @@ class EloRoster:
                 device,
                 compile_mode,
                 team_pma_k,
+                bullet_coordinator,
             )
         if entry in self._load_order:
             self._load_order.remove(entry)

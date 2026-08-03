@@ -30,6 +30,7 @@ from boost_and_broadside.env.observation import YemongObservation, observation_f
 from boost_and_broadside.modes.agent_factory import (
     ResolvedAgent,
     _decode_targets_to_obs,
+    agents_read_bullets,
     get_actions,
     init_hidden,
     reset_done_envs,
@@ -191,6 +192,7 @@ def _run_phase1(
     dev: torch.device,
     coordinator,
 ) -> dict:
+    include_bullets = agents_read_bullets(agent0, agent1)
     env = TensorEnv(B, ship_config, env_config, dev)
     init_hidden(agent0, B, num_tokens, dev)
     init_hidden(agent1, B, num_tokens, dev)
@@ -215,7 +217,7 @@ def _run_phase1(
     print(f"Collecting {num_steps} steps across {B} envs...")
 
     for step in range(num_steps):
-        obs = observation_from_state(env.state, ship_config)
+        obs = observation_from_state(env.state, ship_config, include_bullets=include_bullets)
 
         # Capture combat flag before step
         combat = (env.state.prev_action[:, :N, 2] > 0.5).any(dim=1)  # (B,)
@@ -234,7 +236,7 @@ def _run_phase1(
         dones, truncated = env.step(action)
         done_any = dones | truncated  # (B,)
 
-        next_obs = observation_from_state(env.state, ship_config)
+        next_obs = observation_from_state(env.state, ship_config, include_bullets=include_bullets)
         next_alive = env.state.ship_alive  # (B, N) bool, after step
 
         if pred_next_scaled is not None:
@@ -327,6 +329,7 @@ def _run_phase2(
     dev: torch.device,
     coordinator,
 ) -> dict:
+    include_bullets = agents_read_bullets(agent0, warmup_agent1)
     env = TensorEnv(B, ship_config, env_config, dev)
     init_hidden(agent0, B, num_tokens, dev)
     init_hidden(warmup_agent1, B, num_tokens, dev)
@@ -340,7 +343,7 @@ def _run_phase2(
     for window in range(num_windows):
         # --- Warmup ---
         for _ in range(_WARMUP_STEPS):
-            obs = observation_from_state(env.state, ship_config)
+            obs = observation_from_state(env.state, ship_config, include_bullets=include_bullets)
             action0 = get_actions(agent0, obs, env.state, B, N, dev)
             action1 = get_actions(warmup_agent1, obs, env.state, B, N, dev)
             team_id = env.state.ship_team_id
@@ -353,7 +356,9 @@ def _run_phase2(
                 reset_done_envs(warmup_agent1, done_any, num_tokens)
 
         # --- Snapshot after warmup ---
-        ar_start_obs = observation_from_state(env.state, ship_config)
+        ar_start_obs = observation_from_state(
+            env.state, ship_config, include_bullets=include_bullets
+        )
         ar_start_hidden = agent0.hidden.clone()
         ar_start_targets = coordinator.get_target_vector(ar_start_obs)[:, :N]
 
@@ -364,7 +369,7 @@ def _run_phase2(
         window_valid = torch.ones(B, dtype=torch.bool, device=dev)
 
         for k in range(_AR_WINDOW):
-            obs = observation_from_state(env.state, ship_config)
+            obs = observation_from_state(env.state, ship_config, include_bullets=include_bullets)
             action0 = get_actions(agent0, obs, env.state, B, N, dev)
             action1 = get_actions(warmup_agent1, obs, env.state, B, N, dev)
             team_id = env.state.ship_team_id
@@ -375,7 +380,9 @@ def _run_phase2(
             done_any = dones | truncated
             window_valid &= ~done_any
 
-            next_obs = observation_from_state(env.state, ship_config)
+            next_obs = observation_from_state(
+                env.state, ship_config, include_bullets=include_bullets
+            )
             stored_true_targets.append(coordinator.get_target_vector(next_obs)[:, :N].clone())
             stored_alive.append(env.state.ship_alive.clone())
 

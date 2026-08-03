@@ -69,6 +69,78 @@ class TestDecodeTargetsToObs:
         assert torch.allclose(decoded, torch.tensor([x, y]), atol=1e-3)
 
 
+class TestBulletReadingAgents:
+    """Modes must rebuild — and then feed — a bullet-reading checkpoint.
+
+    A policy trained with bullet cross-attention accepts a bullet-free
+    observation without complaint and plays blind to every shot in flight, so
+    both halves are silent when wrong: the encoder must be rebuilt from the
+    weights, and the observation must carry the bullet axis.
+    """
+
+    @staticmethod
+    def _bullet_checkpoint(tmp_path):
+        from boost_and_broadside.config import ModelConfig
+        from tests.train.test_ppo import _make_trainer
+
+        model_config = ModelConfig(
+            d_model=32, n_heads=4, n_yemong_blocks=1, n_bullet_cross_per_block=1
+        )
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path), model_config=model_config)
+        return str(trainer._save_ladder_snapshot()), model_config, trainer.wrapper.num_ships
+
+    def test_resolved_checkpoint_agent_keeps_its_bullet_encoder(self, tmp_path):
+        from boost_and_broadside.modes.agent_factory import ResolvedAgent, agents_read_bullets
+
+        path, model_config, num_ships = self._bullet_checkpoint(tmp_path)
+
+        resolved = resolve_agent_spec(path, ShipConfig(), model_config, "cpu", num_ships=num_ships)
+
+        assert resolved.kind == "policy"
+        assert resolved.agent.bullet_encoder is not None
+        assert agents_read_bullets(resolved)
+        assert not agents_read_bullets(ResolvedAgent("scripted", None), None)
+
+    def test_matchup_feeds_bullets_to_a_bullet_reading_policy(self, tmp_path):
+        """End-to-end through a mode: the observation must reach the policy with
+        its bullet axis attached, on both the ego and the team-flipped side."""
+        from boost_and_broadside.config import EnvConfig
+        from boost_and_broadside.modes.collect import evaluate_matchup
+
+        path, model_config, num_ships = self._bullet_checkpoint(tmp_path)
+        agent0 = resolve_agent_spec(path, ShipConfig(), model_config, "cpu", num_ships=num_ships)
+        agent1 = resolve_agent_spec(path, ShipConfig(), model_config, "cpu", num_ships=num_ships)
+
+        seen: dict[str, list[bool]] = {"ego": [], "flipped": []}
+
+        def watch(agent, side: str) -> None:
+            encoder = agent.agent.bullet_encoder
+            original = encoder.forward
+
+            def record(obs):
+                seen[side].append(obs.bullets is not None)
+                return original(obs)
+
+            encoder.forward = record
+
+        watch(agent0, "ego")
+        watch(agent1, "flipped")
+
+        evaluate_matchup(
+            agent0,
+            agent1,
+            2,
+            2,
+            2,
+            ShipConfig(),
+            EnvConfig(num_ships=num_ships, max_bullets=8, max_episode_steps=8),
+            "cpu",
+        )
+
+        assert seen["ego"] and all(seen["ego"])
+        assert seen["flipped"] and all(seen["flipped"])
+
+
 def test_semi_scripted_agent_spec_resolves_probability() -> None:
     resolved = resolve_agent_spec(
         "semi_scripted:0.35",

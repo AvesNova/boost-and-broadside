@@ -7,9 +7,10 @@ import torch
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
-from boost_and_broadside.env.observation import ObsKey, YemongObservation, observation_from_state
+from boost_and_broadside.env.observation import observation_from_state
 from boost_and_broadside.modes.agent_factory import (
     ResolvedAgent,
+    agents_read_bullets,
     get_actions,
     init_hidden,
     reset_done_envs,
@@ -42,20 +43,20 @@ def evaluate_matchup(
     ep_lengths = torch.zeros(num_envs, dtype=torch.int64, device=dev)
     finished = torch.zeros(num_envs, dtype=torch.bool, device=dev)
 
+    include_bullets = agents_read_bullets(agent0, agent1)
     init_hidden(agent0, num_envs, num_tokens, dev)
     init_hidden(agent1, num_envs, num_tokens, dev)
     env.reset(options={"team_sizes": (n0, n1)})
 
     while not finished.all():
         state = env.state
-        obs = observation_from_state(state, ship_config)
+        obs = observation_from_state(state, ship_config, include_bullets=include_bullets)
 
         action0 = get_actions(agent0, obs, state, num_envs, N, dev)
-        # Team 1 agent sees itself as team 0 (flipped team IDs).
-        obs_t1_data = {k: v for k, v in obs.data.items()}
-        obs_t1_data[ObsKey.TEAM_ID] = obs_t1_data[ObsKey.TEAM_ID].clone()
-        obs_t1_data[ObsKey.TEAM_ID][..., :N] = 1 - obs_t1_data[ObsKey.TEAM_ID][..., :N]
-        action1 = get_actions(agent1, YemongObservation(data=obs_t1_data), state, num_envs, N, dev)
+        # Team 1 agent sees itself as team 0 (flipped team IDs). flip_team also
+        # flips each bullet's shooter team, which a hand-rolled data-only copy
+        # would drop along with the bullet axis itself.
+        action1 = get_actions(agent1, obs.flip_team(N), state, num_envs, N, dev)
 
         team_id = state.ship_team_id
         action = torch.where((team_id == 0).unsqueeze(-1), action0, action1)

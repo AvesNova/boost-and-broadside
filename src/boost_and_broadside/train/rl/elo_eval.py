@@ -157,6 +157,7 @@ class EloEvaluator:
         floating_window: deque[float],
         scripted_window: deque[float],
         live_vs_avg_window: deque[float],
+        include_bullets: bool = False,
     ) -> None:
         """Build the eval battery from the current ladder state.
 
@@ -167,6 +168,9 @@ class EloEvaluator:
                       milestone (then anchors must be just random).
             floating_games: Rated games already accumulated by the floating
                       checkpoint (restored on resume).
+            include_bullets: Whether the rated policies read bullets. Rating
+                      them on an observation that omits an input they were
+                      trained on would measure a different agent.
         """
         assert 1 <= len(anchors) <= MAX_ANCHORS, f"expected 1-{MAX_ANCHORS} anchors, got {anchors}"
         assert floating is not None or (len(anchors) == 1 and anchors[0].policy is None), (
@@ -175,6 +179,7 @@ class EloEvaluator:
         self.config = config
         self.device = device
         self.ship_config = ship_config
+        self.include_bullets = include_bullets
         self.num_ships = num_ships
         self.num_tokens = num_tokens
         self.ego_pass = ego_pass
@@ -494,7 +499,9 @@ class EloEvaluator:
 
         with torch.no_grad():
             state = self.env.state
-            obs = observation_from_state(state, self.ship_config)
+            obs = observation_from_state(
+                state, self.ship_config, include_bullets=self.include_bullets
+            )
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 action_team0, action_team1 = self._compute_team_actions(obs)
                 action = torch.where(

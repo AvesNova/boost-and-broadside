@@ -861,6 +861,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 floating_window=self._eval_window_floating,
                 scripted_window=self._eval_window_sc,
                 live_vs_avg_window=self._eval_window_live_vs_avg,
+                include_bullets=self.model_config.reads_bullets,
             ),
             obs=obs,
             hidden=hidden,
@@ -2037,6 +2038,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 self.device,
                 self._compile_mode,
                 team_pma_k=self._win_k,
+                bullet_coordinator=self.bullet_coordinator,
             )
             return entry.policy
 

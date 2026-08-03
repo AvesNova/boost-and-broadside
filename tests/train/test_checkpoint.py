@@ -193,6 +193,103 @@ class TestNumValueComponents:
         assert infer_num_value_components(ckpt) == 5
 
 
+class TestBulletReadingCheckpoints:
+    """A checkpoint's weights and the policy rebuilt to hold them must agree.
+
+    Bullet cross-attention adds a ``bullet_encoder`` submodule that exists only
+    when the loader is handed a bullet coordinator. Every checkpoint written by a
+    bullet-reading run carries those tensors, so a loader that omits the
+    coordinator builds a policy with nowhere to put them and the load fails on
+    unexpected keys — mid-run, the first time a league opponent is sampled.
+    """
+
+    @staticmethod
+    def _bullet_model_config():
+        from boost_and_broadside.config import ModelConfig
+
+        return ModelConfig(d_model=32, n_heads=4, n_yemong_blocks=1, n_bullet_cross_per_block=1)
+
+    def test_league_loader_round_trips_a_bullet_reading_snapshot(self, tmp_path):
+        from boost_and_broadside.train.rl.roster import load_checkpoint_policy
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(
+            checkpoint_dir=str(tmp_path), model_config=self._bullet_model_config()
+        )
+        assert trainer.bullet_coordinator is not None
+        path = trainer._save_ladder_snapshot()
+
+        policy = load_checkpoint_policy(
+            str(path),
+            trainer.model_config,
+            trainer.coordinator,
+            trainer.wrapper.num_active_components,
+            trainer.wrapper.num_ships,
+            trainer.device,
+            None,
+            trainer._win_k,
+            trainer.bullet_coordinator,
+        )
+
+        assert policy.bullet_encoder is not None
+        saved = torch.load(path, map_location="cpu", weights_only=False)["policy_state_dict"]
+        assert set(saved) == set(policy.state_dict())
+
+    def test_league_loader_without_a_bullet_coordinator_fails_loudly(self, tmp_path):
+        """Documents the failure this loader path is threaded to avoid."""
+        from boost_and_broadside.train.rl.roster import load_checkpoint_policy
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(
+            checkpoint_dir=str(tmp_path), model_config=self._bullet_model_config()
+        )
+        path = trainer._save_ladder_snapshot()
+
+        with pytest.raises(RuntimeError, match="bullet_encoder"):
+            load_checkpoint_policy(
+                str(path),
+                trainer.model_config,
+                trainer.coordinator,
+                trainer.wrapper.num_active_components,
+                trainer.wrapper.num_ships,
+                trainer.device,
+                None,
+                trainer._win_k,
+                None,
+            )
+
+    def test_sampled_league_opponent_reads_bullets(self, tmp_path):
+        """The crash path itself: sample a checkpoint opponent mid-rollout."""
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(
+            checkpoint_dir=str(tmp_path),
+            league_fraction=0.5,
+            model_config=self._bullet_model_config(),
+        )
+        path = trainer._save_ladder_snapshot()
+        trainer.roster.add_checkpoint(
+            path=str(path), global_step=1, update=1, initial_elo=trainer._training_elo
+        )
+
+        hidden = trainer._prepare_league_opponent(trainer.wrapper.num_ships)
+
+        assert hidden is not None
+        assert trainer._current_league_policy.bullet_encoder is not None
+
+    def test_elo_evaluator_observes_bullets_when_the_policy_reads_them(self, tmp_path):
+        """Rating a bullet-reading policy on a bullet-free observation would
+        measure a blindfolded agent and report it as the run's Elo."""
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(
+            checkpoint_dir=str(tmp_path), model_config=self._bullet_model_config()
+        )
+        runtime = trainer._initialize_rollout_runtime()
+
+        assert runtime.elo_eval.include_bullets is True
+
+
 def _save_checkpoint_and_join(trainer, update: int) -> None:
     trainer._save_checkpoint(update=update)
     trainer._active_save_thread.join(timeout=60)

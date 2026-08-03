@@ -70,7 +70,10 @@ def _load_checkpoint_agent(
 ) -> ResolvedAgent:
     """Load a .pt checkpoint and return a ResolvedAgent."""
     from boost_and_broadside.models.yemong.policy import YemongPolicy
-    from boost_and_broadside.train.rl.features import build_standard_coordinator
+    from boost_and_broadside.train.rl.features import (
+        build_bullet_coordinator,
+        build_standard_coordinator,
+    )
 
     ckpt = torch.load(str(path), map_location=device, weights_only=False)
     require_observation_schema(ckpt, str(path))
@@ -83,10 +86,18 @@ def _load_checkpoint_agent(
         num_value_components=K,
         num_ships=num_ships,
         team_pma_k=team_pma_k,
+        bullet_coordinator=(
+            build_bullet_coordinator(ship_config) if model_config.reads_bullets else None
+        ),
     ).to(device)
     result = policy.load_state_dict(ckpt["policy_state_dict"], strict=False)
     if result.missing_keys:
         print(f"    [warn] missing keys in {path.name}: {result.missing_keys}")
+    # Unexpected keys mean the checkpoint was trained with a module this config
+    # does not build (e.g. bullet cross-attention) — the loaded agent then plays
+    # a different game than the one it was rated in.
+    if result.unexpected_keys:
+        print(f"    [warn] unexpected keys in {path.name}: {result.unexpected_keys}")
     policy.eval()
     return ResolvedAgent("policy", policy)
 
@@ -243,7 +254,9 @@ def run_elo_stats_mode(
         # ------------------------------------------------------------------ #
         while not finished.all():
             state = env.state
-            obs = observation_from_state(state, ship_config)
+            obs = observation_from_state(
+                state, ship_config, include_bullets=model_config.reads_bullets
+            )
 
             # Compute each agent's actions for its active envs
             for a_idx, agent in enumerate(agents):
@@ -266,7 +279,9 @@ def run_elo_stats_mode(
                         all_acts[a_idx] = agent.agent.get_actions(state)
 
                 else:  # policy
-                    obs_a = {k: v[active] for k, v in obs.items()}
+                    # slice_envs, not a dict comprehension over items(): the
+                    # bullet channels live outside .data and would be dropped.
+                    obs_a = obs.slice_envs(active)
                     with torch.no_grad():
                         acts_a, _, _, _, agent.hidden = agent.agent.get_action_and_value(
                             obs_a, agent.hidden

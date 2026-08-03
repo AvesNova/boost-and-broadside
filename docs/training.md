@@ -219,9 +219,18 @@ defines the current filenames. (The included reference-run directory retains
 
 The refractive-field observation contract adds encoder inputs and a local-index auxiliary
 target. Radius is shared by ship and field tokens and normalized by half the shorter world
-dimension. New checkpoint payloads carry `observation_schema=refractive_fields_v2`.
-Earlier schemas have no faithful weight-only migration because their radius semantics
-differ, so they are rejected clearly and retraining is required.
+dimension, and the ship's local `grad(n)` widens the encoder's first projection. New
+checkpoint payloads carry `observation_schema=refractive_fields_v3`. Earlier schemas have
+no faithful weight-only migration because their feature semantics differ, so they are
+rejected clearly and retraining is required.
+
+Architecture flags are a separate contract, not covered by that schema. A run with
+`n_bullet_cross_per_block > 0` saves bullet-encoder weights, so every path that rebuilds a
+policy from a checkpoint — the league roster, the ladder evaluator, and the mode-level
+agent factory — constructs it with the same bullet coordinator, and every observation
+handed to a restored policy is built with `include_bullets=True`. The two failures are not
+equally visible: omitting the coordinator raises on unexpected state-dict keys, while
+omitting the bullets is silent and the policy simply plays without seeing fire in flight.
 
 W&B logging runs off the main training path. The reference run's sampled metric history,
 configuration, summary, and run metadata are exported under

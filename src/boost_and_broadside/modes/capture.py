@@ -30,6 +30,7 @@ from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.observation import observation_from_state
 from boost_and_broadside.modes.agent_factory import (
     ResolvedAgent,
+    agents_read_bullets,
     get_actions,
     init_hidden,
     resolve_agent_spec,
@@ -147,6 +148,7 @@ def _capture_match(
     env = TensorEnv(1, ship_config, env_config, device)
     agent0 = policy
     agent1 = ResolvedAgent("policy", policy.agent) if scenario == "self" else scripted
+    include_bullets = agents_read_bullets(agent0, agent1)
 
     env.reset(options={"team_sizes": (n0, n1)}, seed=seed)
     init_hidden(agent0, 1, num_tokens, device)
@@ -160,7 +162,7 @@ def _capture_match(
     try:
         for step in range(max_steps + hold_frames):
             state = env.state
-            obs = observation_from_state(state, ship_config)
+            obs = observation_from_state(state, ship_config, include_bullets=include_bullets)
             action0 = get_actions(agent0, obs, state, 1, N, device)
             if scenario == "self":
                 action1 = get_actions(agent1, obs.flip_team(N), state, 1, N, device)

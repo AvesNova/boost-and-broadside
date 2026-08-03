@@ -205,7 +205,10 @@ def _load_ladder_policy(
 ):
     """Build an eval-mode policy from a ladder snapshot."""
     from boost_and_broadside.models.yemong.policy import YemongPolicy
-    from boost_and_broadside.train.rl.features import build_standard_coordinator
+    from boost_and_broadside.train.rl.features import (
+        build_bullet_coordinator,
+        build_standard_coordinator,
+    )
 
     checkpoint = torch.load(str(path), map_location=device, weights_only=False)
     require_observation_schema(checkpoint, str(path))
@@ -217,6 +220,9 @@ def _load_ladder_policy(
         num_value_components=num_components,
         num_ships=num_ships,
         team_pma_k=infer_team_pma_k(checkpoint),
+        bullet_coordinator=(
+            build_bullet_coordinator(ship_config) if model_config.reads_bullets else None
+        ),
     ).to(device)
     policy.load_state_dict(checkpoint["policy_state_dict"], strict=False)
     policy.eval()
@@ -309,10 +315,14 @@ class Tournament:
         paradigm: str,
         num_envs: int,
         device: str,
+        include_bullets: bool = False,
     ) -> None:
         self.players = players
         self.size = len(players)
         self.ship_config = ship_config
+        # Whether the field's policies read bullets; ratings measured without an
+        # input the policies trained on would describe a different agent.
+        self.include_bullets = include_bullets
         self.env_config = env_config
         self.ego_pass = paradigm == "ego_pass"
         self.num_envs = num_envs
@@ -408,7 +418,9 @@ class Tournament:
                     games, self.num_envs, "playing", f"episodes   step {step}/{self.max_steps}"
                 )
             state = self.env.state
-            obs = observation_from_state(state, self.ship_config)
+            obs = observation_from_state(
+                state, self.ship_config, include_bullets=self.include_bullets
+            )
             with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
                 semi_scripted_cache: dict[int, torch.Tensor] = {}
                 semi_random_action: torch.Tensor | None = None
@@ -827,7 +839,15 @@ def run_elo_calibrate_mode(
         progress.done(f"field ({len(players)}): {', '.join(p.label for p in players)}")
         anchor = next(i for i, p in enumerate(players) if p.label == "random")
 
-        tournament = Tournament(players, ship_config, env_config, paradigm, num_envs, device)
+        tournament = Tournament(
+            players,
+            ship_config,
+            env_config,
+            paradigm,
+            num_envs,
+            device,
+            include_bullets=model_config.reads_bullets,
+        )
         pairs = len(players) * (len(players) - 1) // 2
         progress.stage(
             f"{num_envs} games/batch over {pairs} pairs, target +/-{config.target_stderr:.0f} "
