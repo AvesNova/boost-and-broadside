@@ -5,17 +5,18 @@ tensor has the right shape and dtype, and the values look plausible. The damage
 only surfaces later as a diverged resume or a NaN with no traceable origin.
 """
 
+import dataclasses
 from pathlib import Path
 
 import pytest
 import torch
 
-from boost_and_broadside.modes.agent_factory import infer_num_value_components
 from boost_and_broadside.train.rl.checkpoint import clone_to_cpu
 from boost_and_broadside.train.rl.checkpoint_schema import (
     OBSERVATION_SCHEMA,
     require_observation_schema,
 )
+from boost_and_broadside.train.rl.policy_io import infer_num_value_components
 
 requires_cuda = pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
 
@@ -196,11 +197,11 @@ class TestNumValueComponents:
 class TestBulletReadingCheckpoints:
     """A checkpoint's weights and the policy rebuilt to hold them must agree.
 
-    Bullet cross-attention adds a ``bullet_encoder`` submodule that exists only
-    when the loader is handed a bullet coordinator. Every checkpoint written by a
-    bullet-reading run carries those tensors, so a loader that omits the
-    coordinator builds a policy with nowhere to put them and the load fails on
-    unexpected keys — mid-run, the first time a league opponent is sampled.
+    Bullet cross-attention adds a ``bullet_encoder`` submodule. Every checkpoint
+    written by a bullet-reading run carries those tensors, and a policy built
+    without the matching feature pipeline has nowhere to put them — the load then
+    fails mid-run, the first time a league opponent is sampled. ``build_policy``
+    derives the pipeline from the config, so the two cannot disagree.
     """
 
     @staticmethod
@@ -210,53 +211,50 @@ class TestBulletReadingCheckpoints:
         return ModelConfig(d_model=32, n_heads=4, n_yemong_blocks=1, n_bullet_cross_per_block=1)
 
     def test_league_loader_round_trips_a_bullet_reading_snapshot(self, tmp_path):
-        from boost_and_broadside.train.rl.roster import load_checkpoint_policy
+        from boost_and_broadside.train.rl.policy_io import load_policy_bundle
         from tests.train.test_ppo import _make_trainer
 
         trainer = _make_trainer(
             checkpoint_dir=str(tmp_path), model_config=self._bullet_model_config()
         )
-        assert trainer.bullet_coordinator is not None
         path = trainer._save_ladder_snapshot()
 
-        policy = load_checkpoint_policy(
+        bundle = load_policy_bundle(
             str(path),
-            trainer.model_config,
-            trainer.coordinator,
-            trainer.wrapper.num_active_components,
-            trainer.wrapper.num_ships,
-            trainer.device,
-            None,
-            trainer._win_k,
-            trainer.bullet_coordinator,
+            device=trainer.device,
+            num_ships=trainer.wrapper.num_ships,
+            ship_config=trainer.ship_config,
+            model_config=trainer.model_config,
+            team_pma_k=trainer._win_k,
         )
 
-        assert policy.bullet_encoder is not None
+        assert bundle.policy.bullet_encoder is not None
+        assert bundle.reads_bullets
         saved = torch.load(path, map_location="cpu", weights_only=False)["policy_state_dict"]
-        assert set(saved) == set(policy.state_dict())
+        assert set(saved) == set(bundle.policy.state_dict())
 
-    def test_league_loader_without_a_bullet_coordinator_fails_loudly(self, tmp_path):
-        """Documents the failure this loader path is threaded to avoid."""
-        from boost_and_broadside.train.rl.roster import load_checkpoint_policy
-        from tests.train.test_ppo import _make_trainer
+    def test_a_bullet_reading_config_always_gets_its_encoder(self):
+        """The invariant that replaced the bug: the pipeline is derived, not passed.
 
-        trainer = _make_trainer(
-            checkpoint_dir=str(tmp_path), model_config=self._bullet_model_config()
+        There is no argument a caller can omit to produce a bullet-reading policy
+        without a bullet encoder, which is exactly how the league loader ended up
+        building one that could not hold the weights it was about to load.
+        """
+        from boost_and_broadside.config import ShipConfig
+        from boost_and_broadside.train.rl.policy_io import build_policy
+
+        reads = build_policy(
+            self._bullet_model_config(), ShipConfig(), num_value_components=3, num_ships=4
         )
-        path = trainer._save_ladder_snapshot()
+        silent = build_policy(
+            dataclasses.replace(self._bullet_model_config(), n_bullet_cross_per_block=0),
+            ShipConfig(),
+            num_value_components=3,
+            num_ships=4,
+        )
 
-        with pytest.raises(RuntimeError, match="bullet_encoder"):
-            load_checkpoint_policy(
-                str(path),
-                trainer.model_config,
-                trainer.coordinator,
-                trainer.wrapper.num_active_components,
-                trainer.wrapper.num_ships,
-                trainer.device,
-                None,
-                trainer._win_k,
-                None,
-            )
+        assert reads.bullet_encoder is not None
+        assert silent.bullet_encoder is None
 
     def test_sampled_league_opponent_reads_bullets(self, tmp_path):
         """The crash path itself: sample a checkpoint opponent mid-rollout."""

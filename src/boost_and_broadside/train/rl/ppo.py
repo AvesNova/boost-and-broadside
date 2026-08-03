@@ -62,6 +62,7 @@ from boost_and_broadside.train.rl.opponents import (
     OpponentMixin,
     flip_team_obs,
 )
+from boost_and_broadside.train.rl.policy_io import build_policy
 from boost_and_broadside.train.rl.roster import EloRoster, RosterEntry
 from boost_and_broadside.train.rl.sigreg import SIGReg
 
@@ -372,13 +373,12 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         N = train_config.scales[0].env_config.num_ships
         self._compile_mode = compile_mode
-        self._policy_module = YemongPolicy(
+        self._policy_module = build_policy(
             model_config,
-            self.coordinator,
+            ship_config,
             num_value_components=K,
             num_ships=N,
             team_pma_k=self._win_k,
-            bullet_coordinator=self.bullet_coordinator,
         ).to(self.device)
         self.sigreg = SIGReg(d_model=model_config.d_model, num_proj=64).to(self.device)
         self.policy = (
@@ -434,13 +434,12 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # Weights initialized as a copy of the training policy.
         # Accumulation starts when the BC aux loss decays to zero (scripted win
         # rate reaches cfg.bc_winrate_target); once started it never stops.
-        self._avg_policy_module = YemongPolicy(
+        self._avg_policy_module = build_policy(
             model_config,
-            self.coordinator,
+            ship_config,
             num_value_components=K,
             num_ships=N,
             team_pma_k=self._win_k,
-            bullet_coordinator=self.bullet_coordinator,
         ).to(self.device)
         self.avg_policy = (
             torch.compile(self._avg_policy_module, mode=compile_mode)
@@ -2031,14 +2030,12 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         def _load(entry: RosterEntry) -> YemongPolicy:
             self.roster.load_policy(
                 entry,
-                self.model_config,
-                self.coordinator,
-                self.wrapper.num_active_components,
+                self.ship_config,
                 self.wrapper.num_ships,
                 self.device,
-                self._compile_mode,
+                model_config=self.model_config,
+                compile_mode=self._compile_mode,
                 team_pma_k=self._win_k,
-                bullet_coordinator=self.bullet_coordinator,
             )
             return entry.policy
 

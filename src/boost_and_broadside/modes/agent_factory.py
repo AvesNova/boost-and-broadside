@@ -36,59 +36,19 @@ from boost_and_broadside.constants import (
 )
 from boost_and_broadside.env.observation import ObsKey, YemongObservation
 from boost_and_broadside.env.state import TensorState
-from boost_and_broadside.train.rl.checkpoint_schema import require_observation_schema
-
-
-def infer_num_value_components(ckpt: dict) -> int:
-    """Return the critic width K (number of value components) for a checkpoint.
-
-    Newer checkpoints store this directly under "num_value_components". Older ones
-    predate the field, so fall back to reading the final value-head Linear's output
-    width straight from the state dict — the same shape introspection every loader
-    used before the field existed.
-    """
-    if "num_value_components" in ckpt:
-        return int(ckpt["num_value_components"])
-    return ckpt["policy_state_dict"]["value_head_local.3.weight"].shape[0]
-
-
-def infer_team_pma_k(ckpt: dict) -> tuple[int, ...]:
-    """Return the win/loss value-component indices for a checkpoint.
-
-    Newer checkpoints store this directly under "team_pma_k". Older ones
-    (e.g. avg-model saves from before the key was added) only carry the
-    team_pma weights in the state_dict, so reconstruct the active-component
-    ordering from the stored reward weights — the same filter the reward
-    wrapper applies at training time.
-    """
-    if "team_pma_k" in ckpt:
-        return tuple(ckpt["team_pma_k"])
-    if "team_pma.seeds" not in ckpt["policy_state_dict"]:
-        return ()
-
-    from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
-
-    reward_weights = ckpt["train_config"]["rewards"]
-    active = [
-        name for name in REWARD_COMPONENT_NAMES if reward_weights.get(f"{name}_weight", 0.0) != 0.0
-    ]
-    win_k = tuple(i for i, name in enumerate(active) if name in ("ally_win", "enemy_win"))
-    n_win = ckpt["policy_state_dict"]["value_head_win.3.weight"].shape[0]
-    if len(win_k) != n_win:
-        sys.exit(
-            f"Error: inferred {len(win_k)} win components from checkpoint "
-            f"train_config but value_head_win outputs {n_win}."
-        )
-    return win_k
+from boost_and_broadside.train.rl.policy_io import load_policy_bundle
 
 
 class ResolvedAgent:
     """An agent resolved from a spec string, with mutable hidden state for policy agents."""
 
-    def __init__(self, kind: str, agent, hidden=None):
+    def __init__(self, kind: str, agent, hidden=None, bundle=None):
         self.kind = kind  # "null" | "random" | "scripted" | "semi_random" | "policy"
         self.agent = agent  # None | StochasticScriptedAgent | YemongPolicy
         self.hidden = hidden  # (1, B*N, D) float tensor, policy agents only
+        # PolicyBundle for checkpoint agents: the configs these weights were
+        # trained under, which need not be the ones the current run uses.
+        self.bundle = bundle
 
     def __repr__(self) -> str:
         return f"ResolvedAgent(kind={self.kind!r})"
@@ -125,17 +85,22 @@ def resolve_agent_spec(
     device: str,
     checkpoint_dir: str = "checkpoints",
     num_ships: int = 4,
+    allow_config_drift: bool = False,
 ) -> ResolvedAgent:
     """Resolve a spec string to a ResolvedAgent.
 
     Args:
         spec:           One of: null, random, scripted, semi_scripted:P, latest, or a
                         path ending in .pt.
-        ship_config:    Physics constants (needed for scripted agent).
-        model_config:   Policy architecture (needed for checkpoint agents).
+        ship_config:    Physics constants (needed for scripted agent), and the
+                        fallback for checkpoints that record none of their own.
+        model_config:   Fallback policy architecture, likewise. A checkpoint that
+                        records its own is rebuilt from that instead.
         device:         Torch device string.
         checkpoint_dir: Root directory searched when spec is "latest".
-        num_ships:      Number of ships (N) — required to size the policy's action/value heads.
+        num_ships:      Ships (N) in the environment this agent will play in.
+        allow_config_drift: Load even when the checkpoint's physics constants differ
+                        from ``ship_config``.
     """
     if spec == "null":
         return ResolvedAgent("null", None)
@@ -194,36 +159,19 @@ def resolve_agent_spec(
         if not Path(path).exists():
             sys.exit(f"Error: checkpoint not found: {path!r}")
 
-    # Deferred import to avoid circular dependency
-    from boost_and_broadside.models.yemong.policy import YemongPolicy
-    from boost_and_broadside.train.rl.features import (
-        build_bullet_coordinator,
-        build_standard_coordinator,
-    )
-
-    ckpt = torch.load(path, map_location=device, weights_only=False)
-    require_observation_schema(ckpt, path)
-    coordinator = build_standard_coordinator(ship_config)
-    K = infer_num_value_components(ckpt)
-    team_pma_k = infer_team_pma_k(ckpt)
-    policy = YemongPolicy(
-        model_config,
-        coordinator,
-        num_value_components=K,
+    bundle = load_policy_bundle(
+        path,
+        device=device,
         num_ships=num_ships,
-        team_pma_k=team_pma_k,
-        bullet_coordinator=(
-            build_bullet_coordinator(ship_config) if model_config.reads_bullets else None
-        ),
-    ).to(device)
-    policy.load_state_dict(ckpt["policy_state_dict"])
-    policy.eval()
-
-    update = ckpt.get("update", "?")
-    step = ckpt.get("global_step", "?")
+        ship_config=ship_config,
+        model_config=model_config,
+        allow_config_drift=allow_config_drift,
+    )
+    update = "?" if bundle.update is None else bundle.update
+    step = "?" if bundle.global_step is None else bundle.global_step
     print(f"Loaded checkpoint: update={update}  step={step}  path={path}")
 
-    return ResolvedAgent("policy", policy)
+    return ResolvedAgent("policy", bundle.policy, bundle=bundle)
 
 
 def init_hidden(agent: ResolvedAgent, num_envs: int, num_tokens: int, device) -> None:

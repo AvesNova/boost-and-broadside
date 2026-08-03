@@ -53,8 +53,6 @@ from boost_and_broadside.env.observation import observation_from_state
 from boost_and_broadside.modes.agent_factory import (
     ResolvedAgent,
     get_actions,
-    infer_num_value_components,
-    infer_team_pma_k,
     init_hidden,
     reset_done_envs,
 )
@@ -66,6 +64,7 @@ from boost_and_broadside.train.rl.bradley_terry import (
     fit_single_rating,
 )
 from boost_and_broadside.train.rl.checkpoint_schema import require_observation_schema
+from boost_and_broadside.train.rl.policy_io import load_policy_bundle
 
 # Opponents that are not stationary and so cannot be tournament players. "avg"
 # changes every update, exactly like the live policy it is measured against.
@@ -203,31 +202,19 @@ def _load_run_config(run_dir: Path) -> tuple[EnvConfig, ModelConfig, str]:
 def _load_ladder_policy(
     path: Path, model_config: ModelConfig, ship_config: ShipConfig, num_ships: int, device: str
 ):
-    """Build an eval-mode policy from a ladder snapshot."""
-    from boost_and_broadside.models.yemong.policy import YemongPolicy
-    from boost_and_broadside.train.rl.features import (
-        build_bullet_coordinator,
-        build_standard_coordinator,
-    )
+    """Build an eval-mode policy from a ladder snapshot.
 
-    checkpoint = torch.load(str(path), map_location=device, weights_only=False)
-    require_observation_schema(checkpoint, str(path))
-    coordinator = build_standard_coordinator(ship_config)
-    num_components = infer_num_value_components(checkpoint)
-    policy = YemongPolicy(
-        model_config,
-        coordinator,
-        num_value_components=num_components,
+    Snapshots span a run's history, so each is rebuilt from the configs it
+    recorded; the run's own configs are the fallback for snapshots written before
+    checkpoints carried provenance.
+    """
+    return load_policy_bundle(
+        str(path),
+        device=device,
         num_ships=num_ships,
-        team_pma_k=infer_team_pma_k(checkpoint),
-        bullet_coordinator=(
-            build_bullet_coordinator(ship_config) if model_config.reads_bullets else None
-        ),
-    ).to(device)
-    policy.load_state_dict(checkpoint["policy_state_dict"], strict=False)
-    policy.eval()
-    policy.requires_grad_(False)
-    return policy
+        ship_config=ship_config,
+        model_config=model_config,
+    ).policy
 
 
 def semi_random_label(probability: float) -> str:

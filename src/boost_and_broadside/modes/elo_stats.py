@@ -20,14 +20,9 @@ from boost_and_broadside.constants import (
 )
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.observation import observation_from_state
-from boost_and_broadside.modes.agent_factory import (
-    ResolvedAgent,
-    infer_num_value_components,
-    infer_team_pma_k,
-    resolve_agent_spec,
-)
-from boost_and_broadside.train.rl.checkpoint_schema import require_observation_schema
+from boost_and_broadside.modes.agent_factory import ResolvedAgent, resolve_agent_spec
 from boost_and_broadside.train.rl.elo_eval import expected_score
+from boost_and_broadside.train.rl.policy_io import load_policy_bundle
 
 # All scripted agents, in display order. "scripted" (stochastic) is kept first
 # so scripted_idx == num_checkpoints regardless of list length.
@@ -68,38 +63,19 @@ def find_run_dir(run_spec: str, checkpoint_dir: str) -> Path:
 def _load_checkpoint_agent(
     path: Path, model_config: ModelConfig, ship_config: ShipConfig, num_ships: int, device: str
 ) -> ResolvedAgent:
-    """Load a .pt checkpoint and return a ResolvedAgent."""
-    from boost_and_broadside.models.yemong.policy import YemongPolicy
-    from boost_and_broadside.train.rl.features import (
-        build_bullet_coordinator,
-        build_standard_coordinator,
-    )
+    """Load a .pt checkpoint and return a ResolvedAgent.
 
-    ckpt = torch.load(str(path), map_location=device, weights_only=False)
-    require_observation_schema(ckpt, str(path))
-    coordinator = build_standard_coordinator(ship_config)
-    K = infer_num_value_components(ckpt)
-    team_pma_k = infer_team_pma_k(ckpt)
-    policy = YemongPolicy(
-        model_config,
-        coordinator,
-        num_value_components=K,
+    The field can span runs, so each checkpoint is rebuilt from the configs it
+    recorded rather than from the ones this invocation happens to be running.
+    """
+    bundle = load_policy_bundle(
+        str(path),
+        device=device,
         num_ships=num_ships,
-        team_pma_k=team_pma_k,
-        bullet_coordinator=(
-            build_bullet_coordinator(ship_config) if model_config.reads_bullets else None
-        ),
-    ).to(device)
-    result = policy.load_state_dict(ckpt["policy_state_dict"], strict=False)
-    if result.missing_keys:
-        print(f"    [warn] missing keys in {path.name}: {result.missing_keys}")
-    # Unexpected keys mean the checkpoint was trained with a module this config
-    # does not build (e.g. bullet cross-attention) — the loaded agent then plays
-    # a different game than the one it was rated in.
-    if result.unexpected_keys:
-        print(f"    [warn] unexpected keys in {path.name}: {result.unexpected_keys}")
-    policy.eval()
-    return ResolvedAgent("policy", policy)
+        ship_config=ship_config,
+        model_config=model_config,
+    )
+    return ResolvedAgent("policy", bundle.policy, bundle=bundle)
 
 
 def run_elo_stats_mode(

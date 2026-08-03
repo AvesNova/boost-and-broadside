@@ -140,14 +140,12 @@ class OpponentMixin:
         if entry.kind == "checkpoint":
             self.roster.load_policy(
                 entry,
-                self.model_config,
-                self.coordinator,
-                self.wrapper.num_active_components,
+                self.ship_config,
                 self.wrapper.num_ships,
                 self.device,
-                self._compile_mode,
+                model_config=self.model_config,
+                compile_mode=self._compile_mode,
                 team_pma_k=self._win_k,
-                bullet_coordinator=self.bullet_coordinator,
             )
             self._current_league_policy = entry.policy
         elif entry.kind == "avg":

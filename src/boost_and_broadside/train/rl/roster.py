@@ -23,61 +23,10 @@ from pathlib import Path
 
 import torch
 
-from boost_and_broadside.config import ModelConfig
-from boost_and_broadside.train.rl.checkpoint_schema import require_observation_schema
-from boost_and_broadside.train.rl.features import FeatureCoordinator
+from boost_and_broadside.config import ModelConfig, ShipConfig
+from boost_and_broadside.train.rl.policy_io import PolicyBundle, load_policy_bundle
 
 _DEFAULT_ELO = 0.0
-
-
-def load_checkpoint_policy(
-    path: str,
-    model_config: ModelConfig,
-    coordinator: FeatureCoordinator,
-    num_value_components: int,
-    num_ships: int,
-    device: str | torch.device,
-    compile_mode: str | None = None,
-    team_pma_k: tuple[int, ...] = (),
-    bullet_coordinator: FeatureCoordinator | None = None,
-):
-    """Construct an eval-mode YemongPolicy from a saved checkpoint file.
-
-    Args:
-        path:                 Path to a .pt file containing "policy_state_dict".
-        model_config:         Policy architecture config.
-        coordinator:          Feature coordinator shared with the trainer.
-        num_value_components: Number of critic output components.
-        num_ships:            Ship count (N) the policy heads are sized for.
-        device:               Target device.
-        compile_mode:         Optional torch.compile mode; None loads uncompiled.
-        team_pma_k:           Fallback win-component indices for checkpoints
-                              saved before "team_pma_k" was stored.
-        bullet_coordinator:   Bullet feature pipeline; required whenever the model
-                              config reads bullets, since the saved weights then
-                              carry a bullet encoder that has nowhere to load
-                              without it.
-
-    Returns:
-        The loaded policy in eval mode (compiled when compile_mode is set).
-    """
-    from boost_and_broadside.models.yemong.policy import YemongPolicy
-
-    ckpt = torch.load(path, map_location=device, weights_only=False)
-    require_observation_schema(ckpt, path)
-    ckpt_team_pma_k = tuple(ckpt.get("team_pma_k", team_pma_k))
-    policy = YemongPolicy(
-        model_config,
-        coordinator,
-        num_value_components=num_value_components,
-        num_ships=num_ships,
-        team_pma_k=ckpt_team_pma_k,
-        bullet_coordinator=bullet_coordinator,
-    )
-    policy.load_state_dict(ckpt["policy_state_dict"])
-    policy.eval()
-    policy.to(device)
-    return torch.compile(policy, mode=compile_mode) if compile_mode is not None else policy
 
 
 @dataclass
@@ -92,6 +41,10 @@ class RosterEntry:
     path: str | None = None  # .pt file path; None for all non-checkpoint kinds
     fixed: bool = False  # If True, the rating is frozen forever (ladder anchor)
     policy: object = field(default=None, repr=False)  # Loaded YemongPolicy; None if unloaded
+    # The configs this entry's weights were trained under. Held because a roster
+    # spans a run's history: an entry need not share the live policy's architecture
+    # or physics, and each one plays as whatever it was.
+    bundle: PolicyBundle | None = field(default=None, repr=False)
 
 
 class EloRoster:
@@ -296,16 +249,20 @@ class EloRoster:
     def load_policy(
         self,
         entry: RosterEntry,
-        model_config: ModelConfig,
-        coordinator: FeatureCoordinator,
-        num_value_components: int,
+        ship_config: ShipConfig,
         num_ships: int,
         device: str | torch.device,
+        *,
+        model_config: ModelConfig | None = None,
         compile_mode: str | None = None,
         team_pma_k: tuple[int, ...] = (),
-        bullet_coordinator: FeatureCoordinator | None = None,
     ) -> None:
         """Load checkpoint weights into entry.policy (no-op if already loaded).
+
+        The entry is rebuilt from the configs its own file records; ``model_config``
+        and ``ship_config`` are fallbacks for snapshots written before checkpoints
+        carried provenance. ``num_ships`` is the live environment's, since that is
+        the game the opponent will actually play.
 
         At most ``max_size`` checkpoint policies stay loaded; the least
         recently used beyond that are unloaded to reclaim device memory.
@@ -313,28 +270,32 @@ class EloRoster:
         if entry.kind != "checkpoint":
             return
         if entry.policy is None:
-            entry.policy = load_checkpoint_policy(
+            entry.bundle = load_policy_bundle(
                 entry.path,
-                model_config,
-                coordinator,
-                num_value_components,
-                num_ships,
-                device,
-                compile_mode,
-                team_pma_k,
-                bullet_coordinator,
+                device=device,
+                num_ships=num_ships,
+                ship_config=ship_config,
+                model_config=model_config,
+                team_pma_k=team_pma_k,
+                compile_mode=compile_mode,
             )
+            entry.policy = entry.bundle.policy
         if entry in self._load_order:
             self._load_order.remove(entry)
         self._load_order.append(entry)
         while len(self._load_order) > self.max_size:
-            self._load_order.pop(0).policy = None
+            self._unload(self._load_order.pop(0))
+
+    @staticmethod
+    def _unload(entry: RosterEntry) -> None:
+        entry.policy = None
+        entry.bundle = None
 
     def evict_all_checkpoint_policies(self) -> None:
         """Free loaded weights from all checkpoint entries to reclaim GPU memory."""
         for entry in self.entries:
             if entry.kind == "checkpoint":
-                entry.policy = None
+                self._unload(entry)
         self._load_order.clear()
 
     # ------------------------------------------------------------------

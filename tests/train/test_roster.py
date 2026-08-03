@@ -3,15 +3,12 @@
 import pytest
 import torch
 
+from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.train.rl.roster import EloRoster
 
-_LOAD_ARGS = dict(
-    model_config=None,
-    coordinator=None,
-    num_value_components=1,
-    num_ships=4,
-    device="cpu",
-)
+# The cache tests pre-set entry.policy, so no file is ever read; these only have
+# to satisfy the signature.
+_LOAD_ARGS = dict(ship_config=ShipConfig(), num_ships=4, device="cpu")
 
 
 def _make_roster(max_size: int = 3, **overrides) -> EloRoster:
