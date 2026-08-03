@@ -102,6 +102,7 @@ def _make_train_config(
     paradigm: str = "ego_pass",
     scripted_fraction: float = 0.0,
     avg_model_fraction: float = 0.0,
+    league_fraction: float = 0.0,
     checkpoint_dir: str = "checkpoints",
     min_games_to_freeze: int = 0,
     rollouts_per_update: int = 1,
@@ -118,6 +119,7 @@ def _make_train_config(
         schedule=_make_schedule(
             scripted_fraction=constant(scripted_fraction),
             avg_model_fraction=constant(avg_model_fraction),
+            league_fraction=constant(league_fraction),
         ),
         rewards=_make_rewards(**reward_overrides),
         num_steps=16,
@@ -152,6 +154,7 @@ def _make_trainer(
     paradigm: str = "ego_pass",
     scripted_fraction: float = 0.0,
     avg_model_fraction: float = 0.0,
+    league_fraction: float = 0.0,
     checkpoint_dir: str = "checkpoints",
     min_games_to_freeze: int = 0,
     rollouts_per_update: int = 1,
@@ -169,6 +172,7 @@ def _make_trainer(
             paradigm=paradigm,
             scripted_fraction=scripted_fraction,
             avg_model_fraction=avg_model_fraction,
+            league_fraction=league_fraction,
             checkpoint_dir=checkpoint_dir,
             min_games_to_freeze=min_games_to_freeze,
             rollouts_per_update=rollouts_per_update,
@@ -951,3 +955,44 @@ class TestUpdateEpochsMetricKeys:
         assert self._EXPECTED_KEYS <= metrics.keys()
         for key in self._EXPECTED_KEYS:
             assert math.isfinite(metrics[key]), f"{key} is not finite: {metrics[key]}"
+
+
+class TestLeagueOpponentResilience:
+    """A stale league snapshot must not take the training run down with it.
+
+    Regression: a roster entry whose file was written by a different model
+    version raised out of ``load_state_dict``, up through
+    ``_prepare_league_opponent`` and ``_collect_rollout``, killing a run that
+    had been training for hours. The opponent is optional; the run is not.
+    """
+
+    def test_unloadable_snapshot_falls_back_to_self_play(self, tmp_path):
+        trainer = _make_trainer(league_fraction=0.5, checkpoint_dir=str(tmp_path))
+        assert trainer.B_league > 0, "league slots are needed to exercise this path"
+        entry = trainer.roster.add_checkpoint(
+            path=str(tmp_path / "written_by_another_architecture.pt"),
+            global_step=1,
+            update=1,
+            initial_elo=trainer._training_elo,
+        )
+
+        hidden = trainer._prepare_league_opponent(trainer.wrapper.num_ships)
+
+        assert hidden is None
+        assert entry.unusable
+        assert trainer._current_league_entry is None
+        assert trainer._current_league_policy is None
+
+    def test_rollout_completes_with_only_an_unloadable_snapshot(self, tmp_path):
+        trainer = _make_trainer(league_fraction=0.5, checkpoint_dir=str(tmp_path))
+        trainer.roster.add_checkpoint(
+            path=str(tmp_path / "written_by_another_architecture.pt"),
+            global_step=1,
+            update=1,
+            initial_elo=trainer._training_elo,
+        )
+        runtime = trainer._initialize_rollout_runtime()
+
+        dones = trainer._collect_rollout(runtime, False)
+
+        assert dones.shape[0] == runtime.num_envs

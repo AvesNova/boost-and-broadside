@@ -14,6 +14,9 @@ from boost_and_broadside.modes.agent_factory import infer_num_value_components
 from boost_and_broadside.train.rl.checkpoint import clone_to_cpu
 from boost_and_broadside.train.rl.checkpoint_schema import (
     OBSERVATION_SCHEMA,
+    IncompatibleCheckpointError,
+    describe_state_dict_mismatch,
+    load_policy_weights,
     require_observation_schema,
 )
 
@@ -155,6 +158,58 @@ class TestObservationSchema:
     def test_legacy_obstacle_checkpoint_fails_clearly(self):
         with pytest.raises(ValueError, match="Observation feature semantics are incompatible"):
             require_observation_schema({"policy_state_dict": {}}, "legacy.pt")
+
+
+class TestArchitectureMismatch:
+    """The observation schema pins the input contract, not the layers above it.
+
+    Weights from a model version whose submodules differ pass the schema check
+    and then fail inside ``load_state_dict``, whose message names the offending
+    keys but not the file they came from — which, in the league loader, is the
+    only thing that identifies which of a run's snapshots went stale.
+    """
+
+    @staticmethod
+    def _module() -> torch.nn.Module:
+        return torch.nn.Sequential(torch.nn.Linear(4, 3))
+
+    def test_matching_weights_report_no_mismatch(self):
+        module = self._module()
+        assert describe_state_dict_mismatch(module, module.state_dict()) is None
+
+    def test_extra_submodule_is_reported_as_unexpected(self):
+        module = self._module()
+        saved = dict(module.state_dict())
+        saved["bullet_encoder.net.0.weight"] = torch.zeros(3, 4)
+        mismatch = describe_state_dict_mismatch(module, saved)
+        assert "unexpected in checkpoint (1)" in mismatch
+        assert "bullet_encoder.net.0.weight" in mismatch
+
+    def test_dropped_submodule_is_reported_as_missing(self):
+        module = self._module()
+        saved = {k: v for k, v in module.state_dict().items() if not k.endswith("bias")}
+        assert "missing from checkpoint (1)" in describe_state_dict_mismatch(module, saved)
+
+    def test_resized_layer_is_reported_with_both_shapes(self):
+        module = self._module()
+        saved = dict(module.state_dict())
+        saved["0.weight"] = torch.zeros(3, 9)
+        mismatch = describe_state_dict_mismatch(module, saved)
+        assert "shape mismatch (1)" in mismatch
+        assert "checkpoint (3, 9) vs model (3, 4)" in mismatch
+
+    def test_load_names_the_offending_file(self):
+        module = self._module()
+        saved = dict(module.state_dict())
+        saved["bullet_encoder.net.0.weight"] = torch.zeros(3, 4)
+        with pytest.raises(IncompatibleCheckpointError, match="ladder_step_42.pt"):
+            load_policy_weights(module, saved, "ladder_step_42.pt")
+
+    def test_load_succeeds_for_matching_weights(self):
+        module = self._module()
+        saved = {k: torch.full_like(v, 0.5) for k, v in module.state_dict().items()}
+        load_policy_weights(module, saved, "ok.pt")
+        assert (module[0].weight == 0.5).all()
 
 
 class TestNumValueComponents:

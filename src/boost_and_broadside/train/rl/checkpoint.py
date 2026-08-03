@@ -13,6 +13,7 @@ import torch
 
 from boost_and_broadside.train.rl.checkpoint_schema import (
     OBSERVATION_SCHEMA,
+    load_policy_weights,
     require_observation_schema,
 )
 from boost_and_broadside.train.rl.elo_eval import EloEvaluator
@@ -165,7 +166,13 @@ class CheckpointMixin:
         if elo_norm < self._elo_milestone + gap:
             return
         floating = self.roster.floating_checkpoint()
-        if floating is not None and self._floating_games < self.cfg.elo_eval.min_games_to_freeze:
+        # A retired floating entry plays no eval games, so waiting on its game
+        # count would stall the ladder for the rest of the run.
+        if (
+            floating is not None
+            and not floating.unusable
+            and self._floating_games < self.cfg.elo_eval.min_games_to_freeze
+        ):
             return
 
         self.roster.freeze_floating()
@@ -383,11 +390,15 @@ class CheckpointMixin:
 
         Args:
             path: Path to any .pt checkpoint (step_*.pt or best_*.pt).
+
+        Raises:
+            IncompatibleCheckpointError: If the weights do not fit the policy
+                this run builds.
         """
         ckpt = torch.load(path, map_location=self.device, weights_only=False)
         require_observation_schema(ckpt, path)
-        self._policy_module.load_state_dict(ckpt["policy_state_dict"])
-        self._avg_policy_module.load_state_dict(ckpt["policy_state_dict"])
+        load_policy_weights(self._policy_module, ckpt["policy_state_dict"], path)
+        load_policy_weights(self._avg_policy_module, ckpt["policy_state_dict"], path)
         # fp32 regardless of parameter dtype: this is a running sum over every
         # snapshot, so accumulating it in a narrower dtype lets each += round
         # away and the mean drifts without bound. Mirrors the fresh-init path.
@@ -415,6 +426,8 @@ class CheckpointMixin:
             ValueError: If the checkpoint was trained under a different paradigm —
                 a policy trained in one paradigm misbehaves when resumed in the
                 other (ego_pass policies only ever act as team 0).
+            IncompatibleCheckpointError: If the weights do not fit the policy
+                this run builds.
         """
         ckpt = torch.load(path, map_location=self.device, weights_only=False)
         require_observation_schema(ckpt, path)
@@ -425,14 +438,14 @@ class CheckpointMixin:
                 f"run uses paradigm={self.cfg.paradigm!r}. Resuming across "
                 f"paradigms is not supported."
             )
-        self._policy_module.load_state_dict(ckpt["policy_state_dict"])
+        load_policy_weights(self._policy_module, ckpt["policy_state_dict"], path)
         self.optim.load_state_dict(ckpt["optimizer_state_dict"])
         if "scaler_state_dict" in ckpt:
             self.scaler.load_state_dict(ckpt["scaler_state_dict"])
         if "adv_scaler_state_dict" in ckpt:
             self.adv_scaler.load_state_dict(ckpt["adv_scaler_state_dict"])
         if "avg_policy_state_dict" in ckpt:
-            self._avg_policy_module.load_state_dict(ckpt["avg_policy_state_dict"])
+            load_policy_weights(self._avg_policy_module, ckpt["avg_policy_state_dict"], path)
             self._avg_param_cumsum = [
                 c.to(self.device, torch.float32) for c in ckpt["avg_param_cumsum"]
             ]

@@ -24,7 +24,11 @@ from pathlib import Path
 import torch
 
 from boost_and_broadside.config import ModelConfig
-from boost_and_broadside.train.rl.checkpoint_schema import require_observation_schema
+from boost_and_broadside.train.rl.checkpoint_schema import (
+    IncompatibleCheckpointError,
+    load_policy_weights,
+    require_observation_schema,
+)
 from boost_and_broadside.train.rl.features import FeatureCoordinator
 
 _DEFAULT_ELO = 0.0
@@ -55,6 +59,10 @@ def load_checkpoint_policy(
 
     Returns:
         The loaded policy in eval mode (compiled when compile_mode is set).
+
+    Raises:
+        IncompatibleCheckpointError: If the file uses a different observation
+            contract or was written by a different model architecture.
     """
     from boost_and_broadside.models.yemong.policy import YemongPolicy
 
@@ -68,7 +76,7 @@ def load_checkpoint_policy(
         num_ships=num_ships,
         team_pma_k=ckpt_team_pma_k,
     )
-    policy.load_state_dict(ckpt["policy_state_dict"])
+    load_policy_weights(policy, ckpt["policy_state_dict"], path)
     policy.eval()
     policy.to(device)
     return torch.compile(policy, mode=compile_mode) if compile_mode is not None else policy
@@ -86,6 +94,9 @@ class RosterEntry:
     path: str | None = None  # .pt file path; None for all non-checkpoint kinds
     fixed: bool = False  # If True, the rating is frozen forever (ladder anchor)
     policy: object = field(default=None, repr=False)  # Loaded YemongPolicy; None if unloaded
+    # Set when the file is missing or its weights do not fit the current model.
+    # Runtime-only (never serialized): the next run re-derives it from disk.
+    unusable: bool = field(default=False, repr=False)
 
 
 class EloRoster:
@@ -245,11 +256,12 @@ class EloRoster:
 
         The ladder is the random anchor followed by every frozen checkpoint in
         snapshot order; its tail holds the calibration anchors the continuous
-        evaluator rates the live policy against.
+        evaluator rates the live policy against. Retired entries are skipped so
+        an unloadable snapshot does not consume one of the ``count`` slots.
         """
         random_entry = next(e for e in self.entries if e.kind == "random")
         frozen = sorted(
-            (e for e in self.entries if e.kind == "checkpoint" and e.fixed),
+            (e for e in self.entries if e.kind == "checkpoint" and e.fixed and not e.unusable),
             key=lambda e: e.global_step,
         )
         ladder = [random_entry] + frozen
@@ -263,9 +275,11 @@ class EloRoster:
         """Sample one entry, either uniformly or weighted by Elo proximity.
 
         The random anchor is excluded (eval-only reference); frozen checkpoints
-        remain valid league opponents. Returns None if no candidates exist.
+        remain valid league opponents. Entries whose weights failed to load are
+        excluded too, so a retired snapshot is not re-tried every rollout.
+        Returns None if no candidates exist.
         """
-        candidates = [e for e in self.entries if e.kind != "random"]
+        candidates = [e for e in self.entries if e.kind != "random" and not e.unusable]
         if not candidates:
             return None
 
@@ -297,30 +311,53 @@ class EloRoster:
         device: str | torch.device,
         compile_mode: str | None = None,
         team_pma_k: tuple[int, ...] = (),
-    ) -> None:
+    ) -> bool:
         """Load checkpoint weights into entry.policy (no-op if already loaded).
 
         At most ``max_size`` checkpoint policies stay loaded; the least
         recently used beyond that are unloaded to reclaim device memory.
+
+        A snapshot that cannot be read — the file is gone, or its weights were
+        written by a different architecture — retires the entry rather than
+        raising. League opponents are an optimization, not a correctness
+        requirement, and aborting a multi-hour run over one stale roster entry
+        loses far more than dropping that opponent does. Failures the caller
+        asked for explicitly (resume, ``--pretrain_from``) still raise.
+
+        Returns:
+            True if ``entry.policy`` holds usable weights afterwards. Always
+            True for non-checkpoint kinds, which own no file.
         """
         if entry.kind != "checkpoint":
-            return
+            return True
+        if entry.unusable:
+            return False
         if entry.policy is None:
-            entry.policy = load_checkpoint_policy(
-                entry.path,
-                model_config,
-                coordinator,
-                num_value_components,
-                num_ships,
-                device,
-                compile_mode,
-                team_pma_k,
-            )
+            try:
+                entry.policy = load_checkpoint_policy(
+                    entry.path,
+                    model_config,
+                    coordinator,
+                    num_value_components,
+                    num_ships,
+                    device,
+                    compile_mode,
+                    team_pma_k,
+                )
+            except (IncompatibleCheckpointError, OSError) as exc:
+                entry.unusable = True
+                print(
+                    f"[EloRoster] Warning: retiring roster entry {entry.label!r} — its "
+                    f"snapshot could not be loaded and it will not be used again this "
+                    f"run.\n{exc}"
+                )
+                return False
         if entry in self._load_order:
             self._load_order.remove(entry)
         self._load_order.append(entry)
         while len(self._load_order) > self.max_size:
             self._load_order.pop(0).policy = None
+        return True
 
     def evict_all_checkpoint_policies(self) -> None:
         """Free loaded weights from all checkpoint entries to reclaim GPU memory."""

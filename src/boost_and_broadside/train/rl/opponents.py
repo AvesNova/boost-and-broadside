@@ -138,7 +138,7 @@ class OpponentMixin:
             self._current_league_policy = None
             return None
         if entry.kind == "checkpoint":
-            self.roster.load_policy(
+            loaded = self.roster.load_policy(
                 entry,
                 self.model_config,
                 self.coordinator,
@@ -148,6 +148,12 @@ class OpponentMixin:
                 self._compile_mode,
                 team_pma_k=self._win_k,
             )
+            if not loaded:
+                # The entry is retired for the rest of the run; sit this rollout
+                # out on self-play and sample from the reduced pool next time.
+                self._current_league_entry = None
+                self._current_league_policy = None
+                return None
             self._current_league_policy = entry.policy
         elif entry.kind == "avg":
             self._current_league_policy = self.avg_policy

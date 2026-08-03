@@ -141,6 +141,48 @@ class TestPolicyCache:
         assert entries[0].policy is not None
         assert entries[1].policy is None
 
+    def test_unloadable_snapshot_retires_the_entry_instead_of_raising(self, tmp_path):
+        """A stale roster entry must not abort a run mid-rollout.
+
+        League opponents are an optimization; a snapshot whose file is gone (or
+        whose weights predate an architecture change) costs one opponent, not
+        the hours of training that an exception during rollout collection
+        throws away.
+        """
+        roster = _make_roster()
+        entry = _add_frozen_checkpoint(roster, step=1, elo=100.0)
+        entry.path = str(tmp_path / "vanished.pt")
+
+        assert roster.load_policy(entry, **_LOAD_ARGS) is False
+        assert entry.unusable
+        assert entry.policy is None
+
+    def test_retired_entries_are_never_sampled_or_retried(self, tmp_path):
+        roster = _make_roster(uniform_sampling=True)
+        gone = _add_frozen_checkpoint(roster, step=1, elo=100.0)
+        gone.path = str(tmp_path / "vanished.pt")
+        live = _add_frozen_checkpoint(roster, step=2, elo=100.0)
+        live.policy = object()
+
+        roster.load_policy(gone, **_LOAD_ARGS)
+        assert {roster.sample(training_elo=100.0).label for _ in range(50)} == {"ckpt_2"}
+        # A second load attempt short-circuits rather than touching the disk again.
+        assert roster.load_policy(gone, **_LOAD_ARGS) is False
+
+    def test_retired_entries_do_not_consume_ladder_anchor_slots(self, tmp_path):
+        roster = _make_roster()
+        for step in (1, 2, 3):
+            _add_frozen_checkpoint(roster, step=step, elo=100.0 * step)
+        newest = roster.entries[-1]
+        newest.path = str(tmp_path / "vanished.pt")
+        roster.load_policy(newest, **_LOAD_ARGS)
+
+        assert [e.label for e in roster.ladder_anchors(2)] == ["ckpt_1", "ckpt_2"]
+
+    def test_load_policy_reports_success_for_special_entries(self):
+        roster = _make_roster()
+        assert roster.load_policy(roster.add_special("avg"), **_LOAD_ARGS) is True
+
     def test_evict_all_checkpoint_policies_clears_cache(self):
         roster = _make_roster()
         entry = _add_frozen_checkpoint(roster, step=1, elo=100.0)

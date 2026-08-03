@@ -2009,11 +2009,17 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         """Build the evaluator's (anchors, floating) ladder state from the roster.
 
         Loads anchor and floating checkpoint policies from disk (resume path);
-        a None policy stands for the random agent.
+        a None policy stands for the random agent. Snapshots that fail to load
+        are retired by the roster and dropped from the ladder — the remaining
+        anchors (the random agent among them) still calibrate the live rating.
+        An unloadable *floating* snapshot collapses the ladder to the random
+        anchor: the evaluator rates frozen anchors only through the floating
+        entry, so keeping them without it would measure nothing. The next
+        milestone snapshot, written by this process, restores the full ladder.
         """
 
-        def _load(entry: RosterEntry) -> YemongPolicy:
-            self.roster.load_policy(
+        def _load(entry: RosterEntry) -> YemongPolicy | None:
+            loaded = self.roster.load_policy(
                 entry,
                 self.model_config,
                 self.coordinator,
@@ -2023,21 +2029,32 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 self._compile_mode,
                 team_pma_k=self._win_k,
             )
-            return entry.policy
+            return entry.policy if loaded else None
 
-        anchors = [
-            LadderOpponent(
-                policy=None if entry.kind == "random" else _load(entry),
-                elo=entry.elo,
-                label=entry.label,
-            )
-            for entry in self.roster.ladder_anchors(MAX_ANCHORS)
-        ]
+        anchors = []
+        for entry in self.roster.ladder_anchors(MAX_ANCHORS):
+            if entry.kind == "random":
+                anchors.append(LadderOpponent(policy=None, elo=entry.elo, label=entry.label))
+                continue
+            policy = _load(entry)
+            if policy is not None:
+                anchors.append(LadderOpponent(policy=policy, elo=entry.elo, label=entry.label))
+
         floating_entry = self.roster.floating_checkpoint()
         if floating_entry is None:
             return anchors, None
+        floating_policy = _load(floating_entry)
+        if floating_policy is None:
+            # The random anchor is not always inside the anchor window — once
+            # MAX_ANCHORS checkpoints are frozen the window is all checkpoints —
+            # so rebuild it from the roster rather than filtering the slice.
+            random_entry = next(e for e in self.roster.entries if e.kind == "random")
+            random_anchor = LadderOpponent(
+                policy=None, elo=random_entry.elo, label=random_entry.label
+            )
+            return [random_anchor], None
         return anchors, LadderOpponent(
-            policy=_load(floating_entry),
+            policy=floating_policy,
             elo=floating_entry.elo,
             label=floating_entry.label,
         )

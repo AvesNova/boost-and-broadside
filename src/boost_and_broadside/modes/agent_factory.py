@@ -36,7 +36,10 @@ from boost_and_broadside.constants import (
 )
 from boost_and_broadside.env.observation import ObsKey, YemongObservation
 from boost_and_broadside.env.state import TensorState
-from boost_and_broadside.train.rl.checkpoint_schema import require_observation_schema
+from boost_and_broadside.train.rl.checkpoint_schema import (
+    load_policy_weights,
+    require_observation_schema,
+)
 
 
 def infer_num_value_components(ckpt: dict) -> int:
@@ -194,7 +197,7 @@ def resolve_agent_spec(
         num_ships=num_ships,
         team_pma_k=team_pma_k,
     ).to(device)
-    policy.load_state_dict(ckpt["policy_state_dict"])
+    load_policy_weights(policy, ckpt["policy_state_dict"], path)
     policy.eval()
 
     update = ckpt.get("update", "?")

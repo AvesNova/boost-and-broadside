@@ -223,6 +223,14 @@ dimension. New checkpoint payloads carry `observation_schema=refractive_fields_v
 Earlier schemas have no faithful weight-only migration because their radius semantics
 differ, so they are rejected clearly and retraining is required.
 
+The schema pins the observation contract, not the layers above it, so weights written by
+a different model architecture pass that check and fail on load instead. Those failures
+name the offending file and the differing parameter keys. Where the caller asked for a
+specific file — resume, `--pretrain_from`, an explicit evaluation checkpoint — the failure
+is fatal. Where the file is only a league opponent or ladder anchor, typically a roster
+restored from an earlier run, the entry is retired for the remainder of the run with a
+warning and training continues against the rest of the pool.
+
 W&B logging runs off the main training path. The reference run's sampled metric history,
 configuration, summary, and run metadata are exported under
 [`wandb_export/`](../checkpoints/resilient-resonance-682/wandb_export/) so the published
