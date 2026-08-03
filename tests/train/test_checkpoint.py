@@ -153,6 +153,25 @@ class TestObservationSchema:
         ladder = torch.load(trainer._save_ladder_snapshot(), map_location="cpu", weights_only=False)
         assert ladder["observation_schema"] == OBSERVATION_SCHEMA
 
+    def test_every_payload_family_records_what_it_was_trained_under(self, tmp_path):
+        """Including the ladder snapshots, which are the files most often reloaded
+        and were the ones carrying the least about themselves."""
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        ladder = torch.load(trainer._save_ladder_snapshot(), map_location="cpu", weights_only=False)
+        families = [
+            trainer.checkpoint_payload(0),
+            trainer._checkpoint_payload_lightweight(0),
+            trainer._avg_checkpoint_payload_lightweight(0),
+            ladder,
+        ]
+
+        for payload in families:
+            for key in ("model_config", "env_config", "ship_config", "team_pma_k"):
+                assert key in payload, f"payload family is missing {key}"
+            assert payload["ship_config"] == dataclasses.asdict(trainer.ship_config)
+
     def test_legacy_obstacle_checkpoint_fails_clearly(self):
         with pytest.raises(ValueError, match="Observation feature semantics are incompatible"):
             require_observation_schema({"policy_state_dict": {}}, "legacy.pt")
