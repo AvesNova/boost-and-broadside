@@ -27,14 +27,8 @@ import torch
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
-from boost_and_broadside.env.observation import observation_from_state
-from boost_and_broadside.modes.agent_factory import (
-    ResolvedAgent,
-    agents_read_bullets,
-    get_actions,
-    init_hidden,
-    resolve_agent_spec,
-)
+from boost_and_broadside.modes.agent_factory import ResolvedAgent, resolve_agent_spec
+from boost_and_broadside.modes.match import MatchRunner
 from boost_and_broadside.train.rl.checkpoint_schema import require_observation_schema
 from boost_and_broadside.ui.renderer import GameRenderer, RenderConfig
 
@@ -144,15 +138,26 @@ def _capture_match(
     torch.cuda.manual_seed_all(seed)
 
     N = env_config.num_ships
-    num_tokens = N + env_config.num_fields
     env = TensorEnv(1, ship_config, env_config, device)
     agent0 = policy
-    agent1 = ResolvedAgent("policy", policy.agent) if scenario == "self" else scripted
-    include_bullets = agents_read_bullets(agent0, agent1)
+    agent1 = (
+        ResolvedAgent("policy", policy.agent, bundle=policy.bundle)
+        if scenario == "self"
+        else scripted
+    )
+    # Finished environments are deliberately never reset: the match holds its
+    # terminal state on screen so a viewer can see who won.
+    runner = MatchRunner(
+        env,
+        [agent0, agent1],
+        team0_index=torch.zeros(1, dtype=torch.long, device=device),
+        team1_index=torch.ones(1, dtype=torch.long, device=device),
+        ship_config=ship_config,
+        num_ships=N,
+    )
 
     env.reset(options={"team_sizes": (n0, n1)}, seed=seed)
-    init_hidden(agent0, 1, num_tokens, device)
-    init_hidden(agent1, 1, num_tokens, device)
+    runner.init_hidden()
 
     hold_frames = round(hold_ms / 1000 * fps)
     encoder = _open_encoder(out, renderer._render_config.window_size, fps)
@@ -161,16 +166,7 @@ def _capture_match(
     winner = "tie"
     try:
         for step in range(max_steps + hold_frames):
-            state = env.state
-            obs = observation_from_state(state, ship_config, include_bullets=include_bullets)
-            action0 = get_actions(agent0, obs, state, 1, N, device)
-            if scenario == "self":
-                action1 = get_actions(agent1, obs.flip_team(N), state, 1, N, device)
-            else:
-                action1 = get_actions(agent1, None, state, 1, N, device)
-
-            action = torch.where((state.ship_team_id == 0).unsqueeze(-1), action0, action1)
-            dones, truncated = env.step(action)
+            dones, truncated = runner.step()
 
             renderer._draw_frame(env.state)  # no UI, no ghost trajectories
             encoder.stdin.write(pygame.image.tostring(renderer._screen, "RGB"))

@@ -7,15 +7,8 @@ import torch
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
-from boost_and_broadside.env.observation import observation_from_state
-from boost_and_broadside.modes.agent_factory import (
-    ResolvedAgent,
-    agents_read_bullets,
-    get_actions,
-    init_hidden,
-    reset_done_envs,
-    resolve_agent_spec,
-)
+from boost_and_broadside.modes.agent_factory import ResolvedAgent, resolve_agent_spec
+from boost_and_broadside.modes.match import MatchRunner
 
 
 def evaluate_matchup(
@@ -35,7 +28,6 @@ def evaluate_matchup(
     Returns ``(team0_wins, team1_wins, ties, mean_episode_steps)``.
     """
     N = n0 + n1
-    num_tokens = N + env_config.num_fields
     dev = torch.device(device)
     env = TensorEnv(num_envs, ship_config, replace(env_config, num_ships=N), dev)
 
@@ -43,25 +35,19 @@ def evaluate_matchup(
     ep_lengths = torch.zeros(num_envs, dtype=torch.int64, device=dev)
     finished = torch.zeros(num_envs, dtype=torch.bool, device=dev)
 
-    include_bullets = agents_read_bullets(agent0, agent1)
-    init_hidden(agent0, num_envs, num_tokens, dev)
-    init_hidden(agent1, num_envs, num_tokens, dev)
+    runner = MatchRunner(
+        env,
+        [agent0, agent1],
+        team0_index=torch.zeros(num_envs, dtype=torch.long, device=dev),
+        team1_index=torch.ones(num_envs, dtype=torch.long, device=dev),
+        ship_config=ship_config,
+        num_ships=N,
+    )
+    runner.init_hidden()
     env.reset(options={"team_sizes": (n0, n1)})
 
     while not finished.all():
-        state = env.state
-        obs = observation_from_state(state, ship_config, include_bullets=include_bullets)
-
-        action0 = get_actions(agent0, obs, state, num_envs, N, dev)
-        # Team 1 agent sees itself as team 0 (flipped team IDs). flip_team also
-        # flips each bullet's shooter team, which a hand-rolled data-only copy
-        # would drop along with the bullet axis itself.
-        action1 = get_actions(agent1, obs.flip_team(N), state, num_envs, N, dev)
-
-        team_id = state.ship_team_id
-        action = torch.where((team_id == 0).unsqueeze(-1), action0, action1)
-
-        dones, truncated = env.step(action)
+        dones, truncated = runner.step()
         done_any = dones | truncated
         new_done = done_any & ~finished
         if new_done.any():
@@ -76,10 +62,7 @@ def evaluate_matchup(
             results[team1_won] = 1
             results[new_done & ~team0_won & ~team1_won] = 2
             finished |= new_done
-        if done_any.any():
-            env.reset_envs(done_any, options={"team_sizes": (n0, n1)})
-            reset_done_envs(agent0, done_any, num_tokens)
-            reset_done_envs(agent1, done_any, num_tokens)
+        runner.reset_finished(done_any, options={"team_sizes": (n0, n1)})
 
     results_cpu = results.cpu()
     return (

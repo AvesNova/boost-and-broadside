@@ -69,6 +69,10 @@ class PolicyBundle:
     team_pma_k: tuple[int, ...]
     global_step: int | None = None
     update: int | None = None
+    # "ego_pass" | "shared_pass" — which perspectives these weights ever acted
+    # from. Replaying an ego_pass policy as team 1 without mirroring its view
+    # measures a policy playing the wrong side of the game.
+    paradigm: str = "ego_pass"
 
     @property
     def reads_bullets(self) -> bool:
@@ -163,6 +167,18 @@ def infer_team_pma_k(ckpt: dict, fallback: tuple[int, ...] | None = None) -> tup
             f"value_head_win outputs {n_win}."
         )
     return win_k
+
+
+def _resolve_paradigm(checkpoint: dict) -> str:
+    """Which perspectives the weights acted from, defaulting to ego_pass.
+
+    Recorded directly by current payloads; older full checkpoints carry it inside
+    train_config, and older ladder snapshots not at all. Every run in this
+    project's history has been ego_pass, so that is the fallback.
+    """
+    if "paradigm" in checkpoint:
+        return checkpoint["paradigm"]
+    return checkpoint.get("train_config", {}).get("paradigm", "ego_pass")
 
 
 def _rebuild_config(stored: dict, cls, path: str):
@@ -294,4 +310,5 @@ def load_policy_bundle(
         team_pma_k=checkpoint_team_pma_k,
         global_step=checkpoint.get("global_step"),
         update=checkpoint.get("update"),
+        paradigm=_resolve_paradigm(checkpoint),
     )

@@ -36,6 +36,7 @@ from boost_and_broadside.modes.agent_factory import (
     reset_done_envs,
     resolve_agent_spec,
 )
+from boost_and_broadside.modes.match import merge_team_actions
 from boost_and_broadside.train.rl.features import FeatureCoordinator, build_standard_coordinator
 
 _AR_WINDOW = 20
@@ -228,7 +229,7 @@ def _run_phase1(
         action1 = get_actions(agent1, obs, env.state, B, N, dev)
 
         team_id = env.state.ship_team_id  # (B, N) int32
-        action = torch.where((team_id == 0).unsqueeze(-1), action0, action1)
+        action = merge_team_actions(action0, action1, team_id)
 
         curr_alive = obs["alive"][:, :N].clone()  # (B, N) bool, before step
         curr_targets = coordinator.get_target_vector(obs)[:, :N]  # (B, N, target_dim)
@@ -347,7 +348,7 @@ def _run_phase2(
             action0 = get_actions(agent0, obs, env.state, B, N, dev)
             action1 = get_actions(warmup_agent1, obs, env.state, B, N, dev)
             team_id = env.state.ship_team_id
-            action = torch.where((team_id == 0).unsqueeze(-1), action0, action1)
+            action = merge_team_actions(action0, action1, team_id)
             dones, truncated = env.step(action)
             done_any = dones | truncated
             if done_any.any():
@@ -373,7 +374,7 @@ def _run_phase2(
             action0 = get_actions(agent0, obs, env.state, B, N, dev)
             action1 = get_actions(warmup_agent1, obs, env.state, B, N, dev)
             team_id = env.state.ship_team_id
-            action = torch.where((team_id == 0).unsqueeze(-1), action0, action1)
+            action = merge_team_actions(action0, action1, team_id)
             stored_actions.append(action.clone())
 
             dones, truncated = env.step(action)

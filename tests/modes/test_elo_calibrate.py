@@ -188,67 +188,6 @@ def _run_refit(tmp_path, reference: str = "scripted") -> dict:
     )
 
 
-class TestTournamentPerspective:
-    """The per-env team mirror must reach the bullet axis.
-
-    A calibration field is where a bullet-reading policy plays team 1 half the
-    time. Mirroring ship team IDs without mirroring bullet shooter teams would
-    show it its own fire as the enemy's, and would bias every rating the mode
-    reports with nothing in the output to show for it.
-    """
-
-    @staticmethod
-    def _tournament(num_envs: int):
-        import torch
-
-        from boost_and_broadside.config import EnvConfig
-        from boost_and_broadside.modes.agent_factory import ResolvedAgent
-        from boost_and_broadside.modes.elo_calibrate import Player, Tournament
-
-        players = [Player("random", ResolvedAgent("random", None), 0.0, 0)]
-        env_config = EnvConfig(num_ships=4, max_bullets=4, max_episode_steps=8)
-        tournament = Tournament(
-            players, ShipConfig(), env_config, "ego_pass", num_envs, "cpu", include_bullets=True
-        )
-        return tournament, torch
-
-    def test_team1_envs_flip_ships_and_bullets_together(self):
-        from boost_and_broadside.env.observation import (
-            BulletObsKey,
-            ObsKey,
-            observation_from_state,
-        )
-
-        tournament, torch = self._tournament(num_envs=2)
-        tournament.env.reset()
-        obs = observation_from_state(
-            tournament.env.state, tournament.ship_config, include_bullets=True
-        )
-        as_team1 = torch.tensor([True, False])
-
-        view = tournament._perspective_obs(obs, as_team1)
-
-        N = tournament.num_ships
-        ships = obs[ObsKey.TEAM_ID][:, :N]
-        bullets = obs.bullets[BulletObsKey.TEAM_ID]
-        assert torch.equal(view[ObsKey.TEAM_ID][0, :N], 1 - ships[0])
-        assert torch.equal(view[ObsKey.TEAM_ID][1, :N], ships[1])
-        assert torch.equal(view.bullets[BulletObsKey.TEAM_ID][0], 1 - bullets[0])
-        assert torch.equal(view.bullets[BulletObsKey.TEAM_ID][1], bullets[1])
-
-    def test_shared_pass_leaves_the_observation_alone(self):
-        from boost_and_broadside.env.observation import observation_from_state
-
-        tournament, torch = self._tournament(num_envs=2)
-        tournament.ego_pass = False
-        tournament.env.reset()
-        obs = observation_from_state(
-            tournament.env.state, tournament.ship_config, include_bullets=True
-        )
-
-        assert tournament._perspective_obs(obs, torch.tensor([True, True])) is obs
-
-
 class TestRefit:
     def test_refit_pins_scripted_to_the_anchor_rating(self, tmp_path):
         """Refit plays nothing; it refits stored matrices and reports on the

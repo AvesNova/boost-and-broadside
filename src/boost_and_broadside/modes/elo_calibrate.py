@@ -49,13 +49,8 @@ from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import EloCalibrateConfig, EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
-from boost_and_broadside.env.observation import observation_from_state
-from boost_and_broadside.modes.agent_factory import (
-    ResolvedAgent,
-    get_actions,
-    init_hidden,
-    reset_done_envs,
-)
+from boost_and_broadside.modes.agent_factory import ResolvedAgent
+from boost_and_broadside.modes.match import MatchRunner
 from boost_and_broadside.train.rl.bradley_terry import (
     RatingFit,
     allocate_games,
@@ -379,20 +374,18 @@ class Tournament:
         mix toward decisive games.
         """
         env_team0, env_team1 = self._assign(allocation)
-        active: list[torch.Tensor] = []
-        for index, player in enumerate(self.players):
-            mask = (env_team0 == index) | (env_team1 == index)
-            indices = mask.nonzero(as_tuple=True)[0]
-            active.append(indices)
-            if player.agent.kind == "policy":
-                init_hidden(player.agent, int(indices.numel()), self.num_tokens, self.device)
+        runner = MatchRunner(
+            self.env,
+            [player.agent for player in self.players],
+            team0_index=env_team0,
+            team1_index=env_team1,
+            ship_config=self.ship_config,
+            num_ships=self.num_ships,
+        )
+        runner.init_hidden()
 
         self.env.reset(options={"team_sizes": self.team_sizes})
         finished = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
-        actions = torch.zeros(
-            self.size, self.num_envs, self.num_ships, 3, dtype=torch.long, device=self.device
-        )
-        arange = torch.arange(self.num_envs, device=self.device)
         games = 0
         step = 0
 
@@ -404,53 +397,8 @@ class Tournament:
                 progress.bar(
                     games, self.num_envs, "playing", f"episodes   step {step}/{self.max_steps}"
                 )
-            state = self.env.state
-            obs = observation_from_state(
-                state, self.ship_config, include_bullets=self.include_bullets
-            )
             with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
-                semi_scripted_cache: dict[int, torch.Tensor] = {}
-                semi_random_action: torch.Tensor | None = None
-                for index, player in enumerate(self.players):
-                    indices = active[index]
-                    if indices.numel() == 0:
-                        continue
-                    agent = player.agent
-                    if agent.kind == "policy":
-                        view = self._perspective_obs(
-                            obs.slice_envs(indices), env_team1[indices] == index
-                        )
-                        actions[index, indices] = get_actions(
-                            agent,
-                            view,
-                            state,
-                            int(indices.numel()),
-                            self.num_ships,
-                            self.device,
-                        ).long()
-                    elif agent.kind == "semi_random":
-                        cache_key = id(agent.agent.scripted_agent)
-                        if cache_key not in semi_scripted_cache:
-                            semi_scripted_cache[cache_key] = agent.agent.scripted_agent.get_actions(
-                                state
-                            )
-                        scripted_action = semi_scripted_cache[cache_key]
-                        if semi_random_action is None:
-                            semi_random_action = agent.agent.random_actions_like(scripted_action)
-                        actions[index] = agent.agent.mix_actions(
-                            scripted_action, semi_random_action
-                        ).long()
-                    else:
-                        actions[index] = get_actions(
-                            agent, None, state, self.num_envs, self.num_ships, self.device
-                        ).long()
-
-                team0_actions = actions[env_team0, arange]
-                team1_actions = actions[env_team1, arange]
-                action = torch.where(
-                    (state.ship_team_id == 0).unsqueeze(-1), team0_actions, team1_actions
-                )
-                dones, truncated = self.env.step(action)
+                dones, truncated = runner.step()
 
             done_any = dones | truncated
             newly_done = done_any & ~finished
@@ -458,22 +406,8 @@ class Tournament:
                 games += int(newly_done.sum().item())
                 self._tally(newly_done, env_team0, env_team1)
                 finished |= newly_done
-            if done_any.any():
-                self.env.reset_envs(done_any, options={"team_sizes": self.team_sizes})
-                for index, player in enumerate(self.players):
-                    if player.agent.kind == "policy" and active[index].numel() > 0:
-                        reset_done_envs(player.agent, done_any[active[index]], self.num_tokens)
+            runner.reset_finished(done_any, options={"team_sizes": self.team_sizes})
         return games
-
-    def _perspective_obs(self, sliced, as_team1: torch.Tensor):
-        """Return each env's observation from the acting agent's own side.
-
-        An ego_pass policy only ever learned to act as team 0, so in envs where
-        it is playing team 1 it must see mirrored team IDs.
-        """
-        if not self.ego_pass:
-            return sliced
-        return sliced.flip_team(self.num_ships, mask=as_team1)
 
     def _tally(
         self, newly_done: torch.Tensor, env_team0: torch.Tensor, env_team1: torch.Tensor

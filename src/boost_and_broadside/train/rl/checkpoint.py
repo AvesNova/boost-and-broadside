@@ -199,6 +199,9 @@ class CheckpointMixin:
             "model_config": dataclasses.asdict(self.model_config),
             "env_config": dataclasses.asdict(self.env_config),
             "ship_config": dataclasses.asdict(self.ship_config),
+            # An ego_pass policy only ever acted as team 0, so whoever replays it
+            # has to know to hand it the mirrored view when it plays team 1.
+            "paradigm": self.cfg.paradigm,
         }
 
     def checkpoint_payload(self, update: int) -> dict:

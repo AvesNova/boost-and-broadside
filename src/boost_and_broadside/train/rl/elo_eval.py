@@ -46,6 +46,7 @@ from boost_and_broadside.modes.agent_factory import (
     init_hidden,
     reset_done_envs,
 )
+from boost_and_broadside.modes.match import merge_team_actions
 
 _ELO_RATING_SCALE = 400.0
 
@@ -504,9 +505,7 @@ class EloEvaluator:
             )
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 action_team0, action_team1 = self._compute_team_actions(obs)
-                action = torch.where(
-                    (state.ship_team_id == 0).unsqueeze(-1), action_team0, action_team1
-                )
+                action = merge_team_actions(action_team0, action_team1, state.ship_team_id)
                 dones, truncated = self.env.step(action)
                 done_any = dones | truncated
 

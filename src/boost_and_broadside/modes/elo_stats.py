@@ -13,14 +13,9 @@ from pathlib import Path
 import torch
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
-from boost_and_broadside.constants import (
-    NUM_POWER_ACTIONS,
-    NUM_SHOOT_ACTIONS,
-    NUM_TURN_ACTIONS,
-)
 from boost_and_broadside.env.env import TensorEnv
-from boost_and_broadside.env.observation import observation_from_state
 from boost_and_broadside.modes.agent_factory import ResolvedAgent, resolve_agent_spec
+from boost_and_broadside.modes.match import MatchRunner
 from boost_and_broadside.train.rl.elo_eval import expected_score
 from boost_and_broadside.train.rl.policy_io import load_policy_bundle
 
@@ -103,7 +98,6 @@ def run_elo_stats_mode(
         n0, n1 = int(parts[0]), int(parts[1])
         N = n0 + n1
         curr_env_config = replace(env_config, num_ships=N)
-        num_tokens = N + curr_env_config.num_fields
         dev = torch.device(device)
         B = num_envs
 
@@ -204,12 +198,16 @@ def run_elo_stats_mode(
         # ------------------------------------------------------------------ #
         # Step 3 — Initialize hidden states and environment                   #
         # ------------------------------------------------------------------ #
-        for a_idx, agent in enumerate(agents):
-            if agent.kind == "policy":
-                B_a = active_envs[a_idx].shape[0]
-                agent.hidden = agent.agent.initial_hidden(B_a, num_tokens, dev)
-
         env = TensorEnv(B, ship_config, curr_env_config, dev)
+        runner = MatchRunner(
+            env,
+            agents,
+            team0_index=env_agent0_idx,
+            team1_index=env_agent1_idx,
+            ship_config=ship_config,
+            num_ships=N,
+        )
+        runner.init_hidden()
         env.reset(options={"team_sizes": (n0, n1)})
 
         finished = torch.zeros(B, dtype=torch.bool, device=dev)
@@ -218,10 +216,6 @@ def run_elo_stats_mode(
         matchup_b_wins = torch.zeros(M, dtype=torch.float32, device=dev)
         matchup_ties = torch.zeros(M, dtype=torch.float32, device=dev)
 
-        # Preallocate reusable tensors
-        all_acts = torch.zeros(K, B, N, 3, dtype=torch.int32, device=dev)
-        arange_B = torch.arange(B, device=dev)
-
         total_steps = 0
         t0 = time.perf_counter()
 
@@ -229,51 +223,7 @@ def run_elo_stats_mode(
         # Step 4 — Main simulation loop                                       #
         # ------------------------------------------------------------------ #
         while not finished.all():
-            state = env.state
-            obs = observation_from_state(
-                state, ship_config, include_bullets=model_config.reads_bullets
-            )
-
-            # Compute each agent's actions for its active envs
-            for a_idx, agent in enumerate(agents):
-                active = active_envs[a_idx]
-                B_a = active.shape[0]
-
-                if agent.kind == "random":
-                    all_acts[a_idx, active] = torch.stack(
-                        [
-                            torch.randint(0, NUM_POWER_ACTIONS, (B_a, N), device=dev),
-                            torch.randint(0, NUM_TURN_ACTIONS, (B_a, N), device=dev),
-                            torch.randint(0, NUM_SHOOT_ACTIONS, (B_a, N), device=dev),
-                        ],
-                        dim=-1,
-                    ).int()
-
-                elif agent.kind == "scripted":
-                    # Scripted is a cheap vectorized op — run on full state, fill all B
-                    with torch.no_grad():
-                        all_acts[a_idx] = agent.agent.get_actions(state)
-
-                else:  # policy
-                    # slice_envs, not a dict comprehension over items(): the
-                    # bullet channels live outside .data and would be dropped.
-                    obs_a = obs.slice_envs(active)
-                    with torch.no_grad():
-                        acts_a, _, _, _, agent.hidden = agent.agent.get_action_and_value(
-                            obs_a, agent.hidden
-                        )
-                    all_acts[a_idx, active] = acts_a.int()
-
-            # Assemble: team-0 ships get env_agent0's actions, team-1 ships get env_agent1's
-            team0_acts = all_acts[env_agent0_idx, arange_B]  # (B, N, 3)
-            team1_acts = all_acts[env_agent1_idx, arange_B]  # (B, N, 3)
-            action = torch.where(
-                (state.ship_team_id == 0).unsqueeze(-1),
-                team0_acts,
-                team1_acts,
-            )
-
-            dones, truncated = env.step(action)
+            dones, truncated = runner.step()
             done_any = dones | truncated
             total_steps += B
 
@@ -297,18 +247,7 @@ def run_elo_stats_mode(
 
                 finished |= new_done
 
-            if done_any.any():
-                env.reset_envs(done_any, options={"team_sizes": (n0, n1)})
-                for a_idx, agent in enumerate(agents):
-                    if agent.kind == "policy":
-                        active = active_envs[a_idx]
-                        active_done = done_any[active]
-                        if active_done.any():
-                            agent.hidden = agent.agent.reset_hidden_for_envs(
-                                agent.hidden,
-                                active_done,
-                                num_tokens,
-                            )
+            runner.reset_finished(done_any, options={"team_sizes": (n0, n1)})
 
         elapsed = time.perf_counter() - t0
 
