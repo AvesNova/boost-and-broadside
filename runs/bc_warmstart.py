@@ -42,6 +42,7 @@ BC_WARMSTART_PRETRAIN_CONFIG = TrainConfig(
     advantage_min_rms=1e-4,
     checkpoint_dir="checkpoints",
     league_size=20,
+    league_slots=4,
     elo_milestone_gap=200.0,
     elo_temperature=200.0,
     league_uniform_sampling=False,

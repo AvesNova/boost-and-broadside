@@ -3,7 +3,7 @@
 LR warms up from 1e-7 → 3e-4 over 6M steps, then holds.
 policy_gradient_coef=0.0 throughout — no policy gradient loss.
 Scripted agent is queried on all envs for supervised targets only;
-no opponents are active (scripted_fraction=0.0).
+no opponents are active (league_fraction=0.0).
 """
 
 from boost_and_broadside.config import (
@@ -33,9 +33,7 @@ BC_SCHEDULE = TrainingSchedule(
     true_reward_scale=constant(1.0),
     global_scale=constant(1.0),
     local_scale=constant(1.0),
-    # No opponents during BC — scripted agent only supplies supervised targets.
-    scripted_fraction=constant(0.0),
-    avg_model_fraction=constant(0.0),
+    # No opponents during BC — the scripted agent only supplies supervised targets.
     league_fraction=constant(0.0),
     checkpoint_interval=stepped((0, 10)),
     num_epochs=constant(4),
@@ -71,6 +69,7 @@ BC_TRAIN_CONFIG = TrainConfig(
     advantage_min_rms=1e-4,
     checkpoint_dir="checkpoints",
     league_size=20,
+    league_slots=4,
     elo_milestone_gap=200.0,
     elo_temperature=200.0,
     league_uniform_sampling=False,

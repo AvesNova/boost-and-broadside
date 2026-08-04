@@ -40,6 +40,10 @@ class RosterEntry:
     update: int  # PPO update index when snapshotted
     path: str | None = None  # .pt file path; None for all non-checkpoint kinds
     fixed: bool = False  # If True, the rating is frozen forever (ladder anchor)
+    # Cleared by retire() when this run turns out not to be able to host the
+    # entry as an opponent (see EloRoster.retire). Its rating stays on the
+    # ladder; only opponent sampling skips it.
+    usable: bool = True
     policy: object = field(default=None, repr=False)  # Loaded YemongPolicy; None if unloaded
     # The configs this entry's weights were trained under. Held because a roster
     # spans a run's history: an entry need not share the live policy's architecture
@@ -188,6 +192,38 @@ class EloRoster:
         if entry is not None:
             entry.elo = elo
 
+    def set_special_elo(self, kind: str, elo: float) -> None:
+        """Sync a special entry's rating from the continuous evaluator.
+
+        No-op when the entry does not exist yet — "avg" only joins the roster
+        once the running average starts accumulating.
+
+        Proximity sampling reads these ratings, so a stale one misdirects the
+        draw: the average policy tracks the live policy closely and should be
+        drawn often, while the scripted agent should fade as the live rating
+        outruns it. Neither happens if their entries keep the rating they were
+        created with.
+        """
+        for entry in self.entries:
+            if entry.kind == kind:
+                entry.elo = elo
+                return
+
+    def retire(self, entry: RosterEntry) -> None:
+        """Drop an entry from opponent sampling, keeping its rating on the ladder.
+
+        For entries this run cannot host. The rollout observation's shape is
+        fixed when the wrapper is built, so — unlike the eval battery, which
+        widens to suit — a bullet-reading opponent in a bullet-free run would
+        play blind and be rated as a weaker agent than it is. Retiring beats
+        raising: the roster spans a run's history and a single incompatible
+        entry should not end training hours in.
+        """
+        entry.usable = False
+        self._unload(entry)
+        if entry in self._load_order:
+            self._load_order.remove(entry)
+
     def freeze_floating(self) -> RosterEntry | None:
         """Permanently freeze the floating checkpoint's rating at its current value.
 
@@ -221,10 +257,18 @@ class EloRoster:
     def sample(self, training_elo: float) -> RosterEntry | None:
         """Sample one entry, either uniformly or weighted by Elo proximity.
 
-        The random anchor is excluded (eval-only reference); frozen checkpoints
-        remain valid league opponents. Returns None if no candidates exist.
+        Frozen checkpoints, the running-average policy and the scripted agent
+        are all ordinary candidates — proximity weighting is what decides the
+        opponent mix. Retired entries are skipped.
+
+        The random anchor is excluded, and that exclusion is load-bearing rather
+        than incidental: the live rating starts at 0 and so does random's, so
+        including it would make the early league almost entirely random play
+        instead of the scripted agent that is the only useful opponent then.
+
+        Returns None if no candidates exist.
         """
-        candidates = [e for e in self.entries if e.kind != "random"]
+        candidates = [e for e in self.entries if e.kind != "random" and e.usable]
         if not candidates:
             return None
 

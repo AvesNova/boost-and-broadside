@@ -173,24 +173,38 @@ utility is learned from combat outcome, navigation, speed, handling, and health 
 
 ## Opponent curriculum
 
-The current primary profile starts with a high scripted-opponent fraction, then introduces
-average-policy and league games while retaining self-play. Fractions are schedules over
-the global environment step in [`runs/rl.py`](../runs/rl.py).
+The primary scale has two environment groups: self-play, and a league whose width is
+`league_fraction` (0.5 in [`runs/rl.py`](../runs/rl.py)). The league half is divided into
+`league_slots` contiguous slots, and each slot draws its own opponent from the roster at
+every rollout boundary.
 
-The main opponent types are:
+Every opponent is an ordinary roster entry on one Elo scale:
 
-- **scripted:** a stochastic hand-built controller, used for early supervision, direct
-  opposition, and a stable evaluation benchmark;
-- **self:** the live weights viewed from the other team perspective;
-- **average:** a uniform running mean of eligible live-policy snapshots after the scripted
-  performance cutoff;
-- **league:** frozen historical checkpoint policies sampled near the live rating.
+- **scripted:** a stochastic hand-built controller, also the behavior-cloning target and a
+  stable evaluation benchmark;
+- **average:** a uniform running mean of eligible live-policy snapshots, joining the roster
+  at the scripted performance cutoff;
+- **checkpoint:** frozen historical snapshots, joining at each Elo milestone.
 
-The scripted controller is scheduled directly; it is not a sampled roster entry. The
-[`EloRoster`](../src/boost_and_broadside/train/rl/roster.py) retains historical entries
+Self-play is the other half of the batch: the live weights viewed from the other team
+perspective.
+
+Sampling is proportional to `exp(-abs(opponent_elo - live_elo) / temperature)`, excluding
+the fixed random anchor. That exclusion is load-bearing — the live rating and random's both
+start at zero, so including it would make the early league mostly random play.
+
+There is no per-opponent schedule, because the ratings already encode the curriculum. At
+step zero the scripted agent is the only entry a slot can draw, so training begins as an
+even split of self-play and scripted games. The average policy joins at the BC cutoff,
+checkpoints join as milestones are crossed, and the scripted agent stops being drawn once
+the live rating leaves it behind. Ratings for the scripted and average entries are synced
+from the continuous evaluator every update, since a stale rating misdirects every draw.
+
+The [`EloRoster`](../src/boost_and_broadside/train/rl/roster.py) retains historical entries
 rather than evicting the weakest; `league_size` only bounds the GPU-resident LRU policy
-cache. Historical sampling is proportional to
-`exp(-abs(opponent_elo - live_elo) / temperature)`, excluding the fixed random anchor.
+cache. An entry this run cannot host — a bullet-reading policy in a bullet-free run, whose
+rollout observation shape is fixed when the wrapper is built — is retired from sampling
+with its rating intact, rather than ending the run.
 
 ## Continuous rating and the frozen ladder
 

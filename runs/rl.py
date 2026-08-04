@@ -4,15 +4,18 @@ Designed to be used after loading a pretrained BC checkpoint (via --pretrain_fro
 but also runnable from scratch.
 
 Phase structure:
-  Step 0 → 5M:   LR warmup 1e-7 → 3e-4. 50% envs vs scripted opponent.
-                  All reward group scales active (pretrained value function handles this).
+  Step 0 → 5M:   LR warmup 1e-7 → 3e-4. All reward group scales active
+                  (pretrained value function handles this).
   Step 5M:        LR at cruise.
   BC cutoff:      avg-model starts accumulating — the handoff is exact, the avg
                   model picks up as the BC aux loss reaches zero (scripted win
                   rate at bc_winrate_target). Outcome-based, not step-based.
-  Step 50M:       avg-model activates as opponent (20% envs).
-                  Reduce scripted to 30% to make room.
-                  League opponents activate (20% envs).
+
+The opponent mix has no phases. Half the batch is self-play and half faces a
+league entry drawn by Elo proximity, so the curriculum follows the ratings: the
+scripted agent is the only draw at first, the average policy joins at the BC
+cutoff, frozen checkpoints join at each Elo milestone, and the scripted agent
+falls out of contention as the live rating leaves it behind.
 """
 
 from boost_and_broadside.config import (
@@ -55,13 +58,13 @@ RL_SCHEDULE = TrainingSchedule(
     true_reward_scale=constant(1.0),
     global_scale=constant(1.0),
     local_scale=constant(1.0),
-    # Scripted at 50% from step 0 — stable, strong signal from the start.
-    # At step 50M avg-model is ready; reduce scripted to make room.
-    scripted_fraction=stepped((0, 0.5), (50_000_000, 0.3)),
-    # avg-model not used as opponent until step 50M (needs time to diverge from init).
-    avg_model_fraction=stepped((0, 0.0), (50_000_000, 0.2)),
-    # League activates at step 50M once the policy has meaningful Elo.
-    league_fraction=stepped((0, 0.0), (50_000_000, 0.2)),
+    # Half the batch is self-play, half faces a league entry. Which entry is
+    # decided by Elo proximity, not by a schedule: at step 0 the roster's only
+    # sampleable entry is the scripted agent, so this starts as the 50/50
+    # scripted split the run wants, then diversifies on its own as the average
+    # policy joins and checkpoints freeze, and the scripted agent fades once the
+    # live rating outruns it.
+    league_fraction=constant(0.5),
     checkpoint_interval=constant(50),
     num_epochs=stepped((0, 4)),
     target_kl=stepped((0, 0.1)),
@@ -124,6 +127,7 @@ RL_TRAIN_CONFIG = TrainConfig(
     return_quantile_samples=262_144,
     checkpoint_dir="checkpoints",
     league_size=20,
+    league_slots=4,
     elo_milestone_gap=200.0,
     elo_temperature=200.0,
     league_uniform_sampling=False,

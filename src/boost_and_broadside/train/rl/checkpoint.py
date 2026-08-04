@@ -484,10 +484,14 @@ class CheckpointMixin:
             ckpt.get("update", 0) * self._schedule_state.num_epochs * self._entity_tokens_per_epoch,
         )
 
-        # Restore roster if its JSON exists alongside the checkpoint
+        # Restore roster if its JSON exists alongside the checkpoint. load_json
+        # replaces the entry list wholesale, so the special entries are
+        # re-registered afterwards — a roster written before the scripted agent
+        # was a league entry would otherwise resume without it.
         roster_path = Path(path).parent / "roster.json"
         if roster_path.exists():
             self.roster.load_json(roster_path)
+            self._register_special_opponents()
 
         print(
             f"Checkpoint loaded from: {path} (resuming from update {self._start_update}, "

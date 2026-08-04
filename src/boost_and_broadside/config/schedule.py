@@ -222,8 +222,13 @@ class TrainingSchedule:
     local_scale: Callable[[int], float]  # self-only rewards (shaping, kill credit, ...)
 
     # --- Opponents ---
-    scripted_fraction: Callable[[int], float]
-    avg_model_fraction: Callable[[int], float]
+    # Fraction of primary-scale envs whose opponent side is played by a league
+    # entry rather than by self-play. Which entry is a sampling question, not a
+    # scheduling one: the roster holds the scripted agent, the running-average
+    # policy, and every frozen checkpoint on one Elo scale, and slots draw from
+    # it by rating proximity. The opponent curriculum then follows the ratings —
+    # early on the scripted agent is the only thing to draw, and it fades as the
+    # live policy outruns it.
     league_fraction: Callable[[int], float]
 
     # --- Checkpointing / eval ---

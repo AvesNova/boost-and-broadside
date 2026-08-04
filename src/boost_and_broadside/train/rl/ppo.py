@@ -41,7 +41,6 @@ from boost_and_broadside.constants import POWER_SLICE, SHOOT_SLICE, TURN_SLICE
 from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.observation import ObsKey, YemongObservation
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
-from boost_and_broadside.models.yemong.policy import YemongPolicy
 from boost_and_broadside.train.rl.buffer import (
     AdvantageScaler,
     LogicalRolloutBuffer,
@@ -155,8 +154,6 @@ class _ResolvedSchedule:
     true_reward_scale: float
     global_scale: float
     local_scale: float
-    scripted_fraction: float
-    avg_model_fraction: float
     league_fraction: float
     checkpoint_interval: int
     num_epochs: int
@@ -174,17 +171,10 @@ class _RolloutRuntime:
     # Recurrent tokens per env (ships). Fields are non-recurrent, so this is
     # deliberately not N+M — it is the stride for every hidden-state operation.
     num_recurrent: int
-    scripted_start: int
-    scripted_end: int
-    avg_start: int
-    avg_end: int
-    league_start: int
-    league_end: int
     elo_eval: EloEvaluator
     obs: YemongObservation
     hidden: torch.Tensor
     hidden_t1: torch.Tensor | None
-    avg_hidden: torch.Tensor | None
     action_buffer: torch.Tensor
     aux_obs: list[YemongObservation]
     aux_hiddens: list[torch.Tensor]
@@ -217,8 +207,6 @@ def _resolve_schedule(schedule: TrainingSchedule, step: int) -> _ResolvedSchedul
         true_reward_scale=schedule.true_reward_scale(step),
         global_scale=schedule.global_scale(step),
         local_scale=schedule.local_scale(step),
-        scripted_fraction=schedule.scripted_fraction(step),
-        avg_model_fraction=schedule.avg_model_fraction(step),
         league_fraction=schedule.league_fraction(step),
         checkpoint_interval=schedule.checkpoint_interval(step),
         num_epochs=schedule.num_epochs(step),
@@ -287,35 +275,21 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         base_state = _resolve_schedule(train_config.schedule, 0)
 
-        # Primary scale — supports scripted / avg-model / league opponents.
-        # Env groups are sized from the MAXIMUM fraction seen across the entire run
-        # so that slots exist when a later phase activates a higher fraction.
-        # Whether each group is ACTIVE each step is controlled by the current schedule
-        # fraction (> 0 → active, == 0 → those envs run self-play silently).
-        # Env groups are contiguous slices of the B primary envs:
-        #   [0, B_self)                          → pure self-play (+ overflow from inactive groups)
-        #   [B_self, B_self+B_sc)               → scripted opponent (+ BC targets)
-        #   [B_self+B_sc, B_self+B_sc+B_avg)   → avg-model opponent
-        #   [B_self+B_sc+B_avg, B)              → league roster opponent
+        # Primary scale — two contiguous env groups:
+        #   [0, B_self)        → self-play
+        #   [B_self, B)        → league, split into cfg.league_slots slots that each
+        #                        draw an opponent from the roster by Elo proximity
+        # The block is sized from the MAXIMUM league fraction over the run so the
+        # envs exist when a later phase widens it; the ACTIVE width inside it comes
+        # from the current schedule value each rollout (see _active_league_width),
+        # so a fraction that steps down genuinely returns envs to self-play.
         B = train_config.scales[0].num_envs
-        max_sc_frac = _max_schedule_value(
-            train_config.schedule.scripted_fraction, train_config.total_timesteps
-        )
-        max_avg_frac = _max_schedule_value(
-            train_config.schedule.avg_model_fraction, train_config.total_timesteps
-        )
         max_league_frac = _max_schedule_value(
             train_config.schedule.league_fraction, train_config.total_timesteps
         )
-        self.B_sc = round(max_sc_frac * B)
-        self.B_avg = round(max_avg_frac * B)
         self.B_league = round(max_league_frac * B)
-        self.B_self = B - self.B_sc - self.B_avg - self.B_league
+        self.B_self = B - self.B_league
 
-        if self.B_sc > 0 and scripted_agent is None:
-            raise ValueError(
-                "scripted_fraction > 0 in schedule requires a scripted_agent to be provided."
-            )
         if base_state.policy_gradient_coef == 0.0 and scripted_agent is None:
             raise ValueError("policy_gradient_coef=0.0 (BC mode) requires a scripted_agent.")
 
@@ -478,17 +452,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 _h_avg = self._avg_policy_module.initial_hidden(B, _nt, self.device)
                 self.avg_policy.get_action_and_value(sample_obs, _h_avg)
 
-        # Per-env flag (shared_pass only): which team_id is the opponent in
-        # scripted/avg/league groups. In ego_pass opponents always play team 1.
-        # Randomised at init and re-randomised each episode reset.
-        # Shape: (B_sc + B_avg + B_league,) — indexed relative to the non-self-play slice.
-        #   [:B_sc]                → scripted group
-        #   [B_sc : B_sc+B_avg]   → avg-model group
-        #   [B_sc+B_avg :]         → league group
-        n_opp_envs = self.B_sc + self.B_avg + self.B_league
+        # Per-env flag (shared_pass only): which team_id the league opponent plays.
+        # In ego_pass opponents always play team 1. Randomised at init and
+        # re-randomised each episode reset. Shape: (B_league,), indexed relative
+        # to the start of the league block.
         self._opp_team_flag = (
-            torch.randint(0, 2, (n_opp_envs,), device=self.device, dtype=torch.int32)
-            if n_opp_envs > 0
+            torch.randint(0, 2, (self.B_league,), device=self.device, dtype=torch.int32)
+            if self.B_league > 0
             else torch.empty(0, device=self.device, dtype=torch.int32)
         )
 
@@ -498,8 +468,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             elo_temperature=train_config.elo_temperature,
             uniform_sampling=train_config.league_uniform_sampling,
         )
-        # Random anchor is added by EloRoster.__init__ (Elo=0, fixed).
-        # "avg" entry is added when _update_avg_model() is first called.
+        # Random anchor is added by EloRoster.__init__ (Elo=0, fixed) and is
+        # excluded from opponent sampling. "scripted" is registered below;
+        # "avg" joins when _update_avg_model() first runs.
+        self._register_special_opponents()
 
         # Training Elo starts at 0 — all ratings begin
         # at the same point and diverge as eval matchups accumulate.
@@ -524,10 +496,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._best_training_elo_norm: float = 0.0  # best normalized training Elo seen so far
         self._best_avg_elo_norm: float = 0.0  # best normalized avg Elo seen so far
         self._last_checkpoint_path: Path | None = None
-
-        # Current league opponent for the ongoing rollout (rotated each rollout).
-        self._current_league_entry: RosterEntry | None = None
-        self._current_league_policy: YemongPolicy | None = None
 
         # Async logging queue
         self._log_queue: Queue = Queue()
@@ -777,17 +745,22 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             aux_obs[i] = next_aux_obs
             self._global_step += sc.num_envs
 
+    def _register_special_opponents(self) -> None:
+        """Ensure the non-checkpoint league entries exist on the roster.
+
+        Idempotent, and called again after a resume restores roster.json, so a
+        run resumed from a roster written before the scripted agent was an entry
+        picks it up rather than silently losing it as an opponent.
+        """
+        if self.scripted_agent is not None:
+            self.roster.add_special("scripted", initial_elo=self.cfg.elo_eval.scripted_elo_init)
+
     def _initialize_rollout_runtime(self) -> _RolloutRuntime:
         """Initialize persistent primary, auxiliary, and evaluation rollout state."""
         num_envs = self.cfg.scales[0].num_envs
         num_ships = self.wrapper.num_ships
         # Only ships carry recurrent state; field tokens take the non-recurrent path.
         num_recurrent = num_ships
-        scripted_start = self.B_self
-        scripted_end = scripted_start + self.B_sc
-        avg_start = scripted_end
-        avg_end = avg_start + self.B_avg
-        league_start = avg_end
 
         obs = self.wrapper.reset()
         self.wrapper.env.state.step_count.random_(0, self.env_config.max_episode_steps)
@@ -795,11 +768,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         hidden_t1 = (
             self.policy.initial_hidden(num_envs, num_recurrent, self.device)
             if self._ego_pass
-            else None
-        )
-        avg_hidden = (
-            self.avg_policy.initial_hidden(self.B_avg, num_recurrent, self.device)
-            if self.B_avg > 0
             else None
         )
         action_buffer = torch.zeros(num_envs, num_ships, 3, dtype=torch.int32, device=self.device)
@@ -842,12 +810,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             num_envs=num_envs,
             num_ships=num_ships,
             num_recurrent=num_recurrent,
-            scripted_start=scripted_start,
-            scripted_end=scripted_end,
-            avg_start=avg_start,
-            avg_end=avg_end,
-            league_start=league_start,
-            league_end=num_envs,
             elo_eval=EloEvaluator(
                 config=self.cfg.elo_eval,
                 ship_config=self.ship_config,
@@ -876,7 +838,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             obs=obs,
             hidden=hidden,
             hidden_t1=hidden_t1,
-            avg_hidden=avg_hidden,
             action_buffer=action_buffer,
             aux_obs=aux_obs,
             aux_hiddens=aux_hiddens,
@@ -898,24 +859,17 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             aux_buffer.reset()
             aux_buffer.store_initial_hidden(aux_hidden)
 
-        league_hidden = self._prepare_league_opponent(runtime.num_recurrent)
+        slots = self._prepare_league_slots(runtime.num_recurrent)
         for rollout_step in range(self.cfg.num_steps):
             primary = self._collect_primary_step(
                 obs=runtime.obs,
                 hidden=runtime.hidden,
                 hidden_t1=runtime.hidden_t1,
-                avg_hidden=runtime.avg_hidden,
-                league_hidden=league_hidden,
                 action_buffer=runtime.action_buffer,
                 num_envs=runtime.num_envs,
                 num_ships=runtime.num_ships,
                 num_recurrent=runtime.num_recurrent,
-                scripted_start=runtime.scripted_start,
-                scripted_end=runtime.scripted_end,
-                avg_start=runtime.avg_start,
-                avg_end=runtime.avg_end,
-                league_start=runtime.league_start,
-                league_end=runtime.league_end,
+                slots=slots,
                 env_stream=runtime.env_stream,
                 net_stream=runtime.net_stream,
             )
@@ -923,8 +877,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 runtime.obs,
                 runtime.hidden,
                 runtime.hidden_t1,
-                runtime.avg_hidden,
-                league_hidden,
                 runtime.action_buffer,
                 dones,
             ) = primary
@@ -945,6 +897,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._match_counts = elo_snapshot.match_counts
         if elo_snapshot.floating_elo is not None:
             self.roster.set_floating_elo(elo_snapshot.floating_elo)
+        # Proximity sampling reads these, so they have to track the evaluator
+        # rather than keep the rating their entry was created with.
+        self.roster.set_special_elo("scripted", elo_snapshot.scripted_elo)
+        self.roster.set_special_elo("avg", elo_snapshot.avg_elo)
         return dones
 
     def _compute_rollout_gae(
@@ -1118,7 +1074,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             self._bc_cutoff_streak = 0
         bc_cutoff_reached = self._bc_cutoff_streak >= _BC_CUTOFF_UPDATES
         metrics["schedule/bc_cutoff_streak"] = self._bc_cutoff_streak
-        if self._policy_gradient_coef > 0.0 and self.B_avg > 0:
+        # No group-size gate: the average policy is rated by the evaluator in
+        # every RL run, and the league draws it as an ordinary entry when one is
+        # configured, so there is no longer a "reserved avg envs" count to key off.
+        if self._policy_gradient_coef > 0.0:
             if self._avg_update_count > 0 or bc_cutoff_reached:
                 first_avg_update = self._avg_update_count == 0
                 self._update_avg_model()
@@ -1171,7 +1130,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._shutdown_called = True
         self._wait_for_checkpoint_saves()
         self.roster.evict_all_checkpoint_policies()
-        self._current_league_policy = None
         if self.use_wandb:
             self._log_queue.put(None)
             if hasattr(self, "_log_thread"):

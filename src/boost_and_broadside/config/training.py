@@ -189,6 +189,13 @@ class TrainConfig:
 
     # --- League play + Elo (static tournament parameters) ---
     league_size: int  # max number of checkpoint policies kept loaded for league play
+    # Independently-sampled opponents sharing the league half of the batch. One
+    # slot means the whole half faces a single draw for a whole rollout, which
+    # makes proximity sampling a per-rollout lottery rather than a distribution;
+    # more slots sample the roster better at the cost of one policy forward each
+    # (a scripted slot costs none). Clamped down when the league is narrower than
+    # this, so a tiny --smoke batch still allocates.
+    league_slots: int
     # Ladder-snapshot grid spacing: snapshots are taken as normalized Elo crosses
     # each multiple of this value, so rungs land at absolute heights (200, 400, …)
     # that are comparable across runs rather than drifting from run history.
@@ -249,6 +256,8 @@ class TrainConfig:
                 f"scales[0].num_envs={primary_envs} must be divisible by "
                 f"num_minibatches={self.num_minibatches}"
             )
+        if self.league_slots < 1:
+            raise ValueError(f"league_slots must be positive, got {self.league_slots}")
         if self.microbatch_tokens is not None and self.microbatch_tokens < 1:
             raise ValueError(
                 f"microbatch_tokens must be positive or None, got {self.microbatch_tokens}"
