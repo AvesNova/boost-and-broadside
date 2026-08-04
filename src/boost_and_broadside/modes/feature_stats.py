@@ -17,11 +17,13 @@ from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.observation import observation_from_state
 from boost_and_broadside.modes.agent_factory import (
+    agents_read_bullets,
     get_actions,
     init_hidden,
     reset_done_envs,
     resolve_agent_spec,
 )
+from boost_and_broadside.modes.match import merge_team_actions
 from boost_and_broadside.train.rl.features import build_standard_coordinator
 
 
@@ -54,6 +56,8 @@ def run_feature_stats_mode(
         team1_spec, ship_config, model_config, device, checkpoint_dir, num_ships=N
     )
 
+    include_bullets = agents_read_bullets(agent0, agent1)
+
     env = TensorEnv(B, ship_config, env_config, device)
     init_hidden(agent0, B, num_tokens, dev)
     init_hidden(agent1, B, num_tokens, dev)
@@ -62,7 +66,7 @@ def run_feature_stats_mode(
     sq_err_sum = torch.zeros(P, device=dev)
     count = torch.zeros(1, device=dev)
 
-    obs = observation_from_state(env.state, ship_config)
+    obs = observation_from_state(env.state, ship_config, include_bullets=include_bullets)
     prev_targets = coordinator.get_target_vector(obs)[:, :N]  # (B, N, target_dim)
     prev_alive = env.state.ship_alive.clone()
 
@@ -70,15 +74,15 @@ def run_feature_stats_mode(
     print(f"Collecting label null-model MSE for {num_steps} steps across {B} envs...")
 
     for step in range(num_steps):
-        obs = observation_from_state(env.state, ship_config)
+        obs = observation_from_state(env.state, ship_config, include_bullets=include_bullets)
         action0 = get_actions(agent0, obs, env.state, B, N, dev)
         action1 = get_actions(agent1, obs, env.state, B, N, dev)
         team_id = env.state.ship_team_id
-        action = torch.where((team_id == 0).unsqueeze(-1), action0, action1)
+        action = merge_team_actions(action0, action1, team_id)
 
         dones, truncated = env.step(action)
 
-        next_obs = observation_from_state(env.state, ship_config)
+        next_obs = observation_from_state(env.state, ship_config, include_bullets=include_bullets)
         next_targets = coordinator.get_target_vector(next_obs)[:, :N]
         next_alive = env.state.ship_alive.clone()
 
@@ -99,7 +103,9 @@ def run_feature_stats_mode(
             reset_done_envs(agent0, done_any, num_tokens)
             reset_done_envs(agent1, done_any, num_tokens)
 
-        next_obs_after_reset = observation_from_state(env.state, ship_config)
+        next_obs_after_reset = observation_from_state(
+            env.state, ship_config, include_bullets=include_bullets
+        )
         prev_targets = coordinator.get_target_vector(next_obs_after_reset)[:, :N]
         prev_alive = env.state.ship_alive.clone()
 

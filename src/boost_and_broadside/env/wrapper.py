@@ -3,6 +3,8 @@
 Responsibilities:
   - Convert TensorState into the raw obs dict consumed by YemongPolicy.
   - Concatenate ship and refractive-field tokens into one (B, N+M, ...) obs dict.
+  - Optionally attach the bullet cross-attention axis, (B, N*K, ...), when the
+    policy reads it (include_bullets).
   - Compute per-ship per-component rewards via the reward components
     (zero-sum accounting happens later, in PPO's lambda aggregation).
   - Reset done / truncated environments and zero GRU hidden states.
@@ -48,6 +50,7 @@ class YemongEnvWrapper:
         "alive"           (B, N+M)     — bool; fields are always True
         "previous_action" (B, N+M, 3)  — int actions; zero for fields
         "radius"          (B, N+M, 1)  — raw px; ship collision or nominal field radius
+        "local_index_gradient" (B, N+M, 2) — normalized grad(n); zero for fields
         field material     (B, N+M, 1)  — numeric width/index-ratio/damage channels
 
     All reward computations remain (B, N) — field tokens are never reward recipients.
@@ -62,6 +65,7 @@ class YemongEnvWrapper:
         device: str | torch.device,
         field_map: FieldMapCache | None = None,
         collision_compile_mode: str | None = None,
+        include_bullets: bool = False,
     ) -> None:
         self.env = TensorEnv(
             num_envs,
@@ -74,6 +78,10 @@ class YemongEnvWrapper:
         self.ship_config = ship_config
         self.env_config = env_config
         self.device = torch.device(device)
+        # Attach the bullet cross-attention axis only when the policy reads it —
+        # otherwise the profile pays the reduction and the rollout storage for
+        # channels nothing consumes.
+        self.include_bullets = include_bullets
 
         # All components (group-scale multipliers update individual weights each training step).
         self._all_components: list[RewardComponent] = build_reward_components(rewards, ship_config)
@@ -330,7 +338,12 @@ class YemongEnvWrapper:
         All values are in native units — no normalization. Feature chains in
         FeatureCoordinator handle all encoding (Fourier, symlog, one-hot, etc.).
         """
-        return observation_from_state(self.env.state, self.ship_config, self._obs_buffers)
+        return observation_from_state(
+            self.env.state,
+            self.ship_config,
+            self._obs_buffers,
+            include_bullets=self.include_bullets,
+        )
 
     # ------------------------------------------------------------------
     # Helpers

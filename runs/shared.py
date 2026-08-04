@@ -19,7 +19,17 @@ SHIP_CONFIG = ShipConfig(bullet_energy_cost=2, bullet_min_damage_frac=1.0)
 MODEL_CONFIG = ModelConfig(
     d_model=128,
     n_heads=4,
-    n_transformer_blocks=2,
+    n_yemong_blocks=2,
+    # 2 spatial : 1 temporal. A spatial sublayer measures ~4x cheaper than a
+    # temporal one at these token counts, so the second spatial layer buys a
+    # round of relational depth for a fraction of what a temporal layer costs.
+    n_spatial_per_block=2,
+    n_temporal_per_block=1,
+    # One bullet cross-attention read per block — the first spatial sublayer of
+    # each, so S1 and S3. It must precede a further spatial layer, or a ship can
+    # only reason about fire aimed at itself and never about fire aimed at an
+    # ally it might support.
+    n_bullet_cross_per_block=1,
     grad_checkpoint=False,
 )
 

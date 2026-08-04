@@ -122,7 +122,7 @@ class OpponentMixin:
         action[start:end] = torch.where(opp_mask.unsqueeze(-1), opp_action, action[start:end])
         actor_mask[start:end] &= ~opp_mask
 
-    def _prepare_league_opponent(self, num_tokens: int) -> torch.Tensor | None:
+    def _prepare_league_opponent(self, num_recurrent: int) -> torch.Tensor | None:
         """Sample and prepare the league opponent for one rollout."""
         league_active = self.B_league > 0 and self._schedule_state.league_fraction > 0.0
         if not league_active:
@@ -140,21 +140,30 @@ class OpponentMixin:
         if entry.kind == "checkpoint":
             self.roster.load_policy(
                 entry,
-                self.model_config,
-                self.coordinator,
-                self.wrapper.num_active_components,
+                self.ship_config,
                 self.wrapper.num_ships,
                 self.device,
-                self._compile_mode,
+                model_config=self.model_config,
+                compile_mode=self._compile_mode,
                 team_pma_k=self._win_k,
             )
+            # The rollout observation's shape is fixed when the wrapper is built,
+            # so unlike the eval battery it cannot widen to suit an opponent. An
+            # opponent that reads bullets would simply not see them, and would
+            # play — and be rated — as a weaker agent than it is.
+            if entry.bundle.reads_bullets and not self.model_config.reads_bullets:
+                raise ValueError(
+                    f"league entry {entry.label!r} reads bullets but this run's "
+                    "observation carries none. Train with n_bullet_cross_per_block > 0 "
+                    "to face it, or drop it from the roster."
+                )
             self._current_league_policy = entry.policy
         elif entry.kind == "avg":
             self._current_league_policy = self.avg_policy
         else:
             self._current_league_policy = None
             return None
-        return self._current_league_policy.initial_hidden(self.B_league, num_tokens, self.device)
+        return self._current_league_policy.initial_hidden(self.B_league, num_recurrent, self.device)
 
     def _rollout_network_forwards(
         self,
@@ -162,7 +171,7 @@ class OpponentMixin:
         hidden: torch.Tensor,
         hidden_t1: torch.Tensor | None,
         num_ships: int,
-        num_tokens: int,
+        num_recurrent: int,
         use_avg: bool,
         avg_start: int,
         avg_end: int,
@@ -182,7 +191,7 @@ class OpponentMixin:
                 _,
                 hidden,
                 hidden_t1,
-            ) = self._rollout_policy_pass(obs, hidden, hidden_t1, num_ships, num_tokens)
+            ) = self._rollout_policy_pass(obs, hidden, hidden_t1, num_ships, num_recurrent)
 
         action_avg = None
         if use_avg:
@@ -329,7 +338,7 @@ class OpponentMixin:
         self,
         network: RolloutNetworkOutput,
         done_any: torch.Tensor,
-        num_tokens: int,
+        num_recurrent: int,
         avg_start: int,
         avg_end: int,
         league_start: int,
@@ -338,21 +347,21 @@ class OpponentMixin:
         use_league: bool,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None, torch.Tensor | None]:
         """Reset recurrent states for completed primary-scale environments."""
-        hidden = self.policy.reset_hidden_for_envs(network.hidden, done_any, num_tokens)
+        hidden = self.policy.reset_hidden_for_envs(network.hidden, done_any, num_recurrent)
         hidden_t1 = network.hidden_t1
         if self._ego_pass:
-            hidden_t1 = self.policy.reset_hidden_for_envs(hidden_t1, done_any, num_tokens)
+            hidden_t1 = self.policy.reset_hidden_for_envs(hidden_t1, done_any, num_recurrent)
 
         avg_hidden = network.avg_hidden
         if use_avg and self.B_avg > 0:
             avg_hidden = self.avg_policy.reset_hidden_for_envs(
-                avg_hidden, done_any[avg_start:avg_end], num_tokens
+                avg_hidden, done_any[avg_start:avg_end], num_recurrent
             )
 
         league_hidden = network.league_hidden
         if use_league and self._current_league_policy is not None:
             league_hidden = self._current_league_policy.reset_hidden_for_envs(
-                league_hidden, done_any[league_start:league_end], num_tokens
+                league_hidden, done_any[league_start:league_end], num_recurrent
             )
         return hidden, hidden_t1, avg_hidden, league_hidden
 
@@ -379,7 +388,7 @@ class OpponentMixin:
         action_buffer: torch.Tensor,
         num_envs: int,
         num_ships: int,
-        num_tokens: int,
+        num_recurrent: int,
         scripted_start: int,
         scripted_end: int,
         avg_start: int,
@@ -399,7 +408,7 @@ class OpponentMixin:
             hidden,
             hidden_t1,
             num_ships,
-            num_tokens,
+            num_recurrent,
             scripted.use_avg,
             avg_start,
             avg_end,
@@ -441,7 +450,7 @@ class OpponentMixin:
         hidden, hidden_t1, avg_hidden, league_hidden = self._reset_primary_hidden(
             step.network,
             done_any,
-            num_tokens,
+            num_recurrent,
             avg_start,
             avg_end,
             league_start,

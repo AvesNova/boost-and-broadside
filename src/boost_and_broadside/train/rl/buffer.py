@@ -18,7 +18,7 @@ from typing import NamedTuple
 import numpy as np
 import torch
 
-from boost_and_broadside.env.observation import ObsKey, YemongObservation
+from boost_and_broadside.env.observation import BulletObsKey, ObsKey, YemongObservation
 
 
 class MicroBatch(NamedTuple):
@@ -49,9 +49,8 @@ class MicroBatch(NamedTuple):
         """
         if self.actions.device.type != "cpu":
             raise ValueError("pin_memory() requires a CPU micro-batch")
-        obs = YemongObservation(data={key: value.pin_memory() for key, value in self.obs.items()})
         return MicroBatch(
-            obs=obs,
+            obs=self.obs.map(lambda t: t.pin_memory()),
             actions=self.actions.pin_memory(),
             old_logprobs=self.old_logprobs.pin_memory(),
             advantages=self.advantages.pin_memory(),
@@ -78,14 +77,8 @@ class MicroBatch(NamedTuple):
         """
         if self.actions.device == device:
             return self
-        obs = YemongObservation(
-            data={
-                key: value.to(device=device, non_blocking=non_blocking)
-                for key, value in self.obs.items()
-            }
-        )
         return MicroBatch(
-            obs=obs,
+            obs=self.obs.map(lambda t: t.to(device=device, non_blocking=non_blocking)),
             actions=self.actions.to(device=device, non_blocking=non_blocking),
             old_logprobs=self.old_logprobs.to(device=device, non_blocking=non_blocking),
             advantages=self.advantages.to(device=device, non_blocking=non_blocking),
@@ -116,13 +109,14 @@ class MicroBatch(NamedTuple):
             if isinstance(value, torch.Tensor):
                 value.record_stream(stream)
 
-    def slice_envs(self, start: int, end: int, num_tokens: int) -> "MicroBatch":
+    def slice_envs(self, start: int, end: int, num_recurrent: int) -> "MicroBatch":
         """Slice a contiguous environment range from a staged shard minibatch.
 
         Args:
             start: Inclusive environment offset.
             end: Exclusive environment offset.
-            num_tokens: Entity tokens per environment, used to reshape hidden state.
+            num_recurrent: Recurrent tokens per environment (ships), used to reshape
+                hidden state. Fields are non-recurrent, so this is not N+M.
 
         Returns:
             A view-only micro-batch over ``[start:end]``.
@@ -132,19 +126,17 @@ class MicroBatch(NamedTuple):
         hidden = self.hidden.reshape(
             n_layers,
             batch_envs,
-            num_tokens,
+            num_recurrent,
             hidden_width,
         )[:, start:end]
         return MicroBatch(
-            obs=YemongObservation(
-                data={key: value[:, start:end] for key, value in self.obs.items()}
-            ),
+            obs=self.obs.map(lambda t: t[:, start:end]),
             actions=self.actions[:, start:end],
             old_logprobs=self.old_logprobs[:, start:end],
             advantages=self.advantages[:, start:end],
             returns=self.returns[:, start:end],
             alive=self.alive[:, start:end],
-            hidden=hidden.reshape(n_layers, (end - start) * num_tokens, hidden_width),
+            hidden=hidden.reshape(n_layers, (end - start) * num_recurrent, hidden_width),
             actor_mask=self.actor_mask[:, start:end],
             expert_probs=self.expert_probs[:, start:end],
             terminated=self.terminated[:, start:end],
@@ -153,7 +145,7 @@ class MicroBatch(NamedTuple):
             ns_labels=self.ns_labels[:, start:end] if self.ns_labels is not None else None,
         )
 
-    def split_envs(self, num_chunks: int, num_tokens: int) -> list["MicroBatch"]:
+    def split_envs(self, num_chunks: int, num_recurrent: int) -> list["MicroBatch"]:
         """Split a staged shard minibatch into near-even contiguous views."""
         batch_envs = self.actions.shape[1]
         base, remainder = divmod(batch_envs, num_chunks)
@@ -161,7 +153,7 @@ class MicroBatch(NamedTuple):
         start = 0
         for index in range(num_chunks):
             width = base + (1 if index < remainder else 0)
-            chunks.append(self.slice_envs(start, start + width, num_tokens))
+            chunks.append(self.slice_envs(start, start + width, num_recurrent))
             start += width
         return chunks
 
@@ -206,12 +198,13 @@ _STORAGE_FLOAT: torch.dtype = torch.bfloat16
 
 # Per-observation-channel storage dtype overrides. Channels not listed fall back
 # by kind (see _obs_storage_dtype): float → bf16, int → uint8, bool → bool.
-_OBS_STORAGE_OVERRIDES: dict[ObsKey, torch.dtype] = {
+_OBS_STORAGE_OVERRIDES: dict[ObsKey | BulletObsKey, torch.dtype] = {
     ObsKey.POS: torch.float32,  # keep full precision — needed now and for large maps
+    BulletObsKey.POS: torch.float32,  # same Fourier basis as ship position
 }
 
 
-def _obs_storage_dtype(key: ObsKey, dt: torch.dtype) -> torch.dtype:
+def _obs_storage_dtype(key: ObsKey | BulletObsKey, dt: torch.dtype) -> torch.dtype:
     """Reduced storage dtype for observation channel ``key`` of source dtype ``dt``."""
     override = _OBS_STORAGE_OVERRIDES.get(key)
     if override is not None:
@@ -531,6 +524,20 @@ class RolloutBuffer:
             )
             for key, val in obs_sample.items()
         }
+        # Bullet channels live on their own (B, N*K, ...) axis. Allocated only when
+        # the policy reads them — this is the largest single tensor the change adds.
+        self.bullet_obs: dict | None = (
+            None
+            if obs_sample.bullets is None
+            else {
+                key: torch.zeros(
+                    (T + 1, B, *val.shape[1:]),
+                    device=device,
+                    dtype=_obs_storage_dtype(key, val.dtype),
+                )
+                for key, val in obs_sample.bullets.items()
+            }
+        )
 
         self.actions = torch.zeros((T, B, N, 3), device=device, dtype=torch.int32)
         # logprobs stay fp32: PPO's ratio exp(new - old) is precision-sensitive.
@@ -626,6 +633,9 @@ class RolloutBuffer:
         t = self.ptr
         for key, val in obs.items():
             self.obs[key][t].copy_(val)
+        if self.bullet_obs is not None and obs.bullets is not None:
+            for key, val in obs.bullets.items():
+                self.bullet_obs[key][t].copy_(val)
 
         self.actions[t] = action.int()
         self.logprobs[t] = logprob
@@ -651,6 +661,9 @@ class RolloutBuffer:
         T = self.num_steps
         for key, val in obs.items():
             self.obs[key][T].copy_(val)
+        if self.bullet_obs is not None and obs.bullets is not None:
+            for key, val in obs.bullets.items():
+                self.bullet_obs[key][T].copy_(val)
 
     # ------------------------------------------------------------------
     # GAE computation
@@ -742,18 +755,25 @@ class RolloutBuffer:
             n_micro = min(max(n_micro, 1), envs_per_batch)
 
         n_layers = self.initial_hidden.shape[0]
-        hidden_full = self.initial_hidden.reshape(n_layers, self.num_envs, self.num_tokens, D)
+        hidden_full = self.initial_hidden.reshape(n_layers, self.num_envs, self.num_ships, D)
 
         for start in range(0, self.num_envs, envs_per_batch):
             end = start + envs_per_batch
             chunks = []
             for idx in np.array_split(env_order[start:end], n_micro):
                 # T+1 obs for this micro-batch
-                mb_obs = YemongObservation(data={k: v[:, idx] for k, v in self.obs.items()})
+                mb_obs = YemongObservation(
+                    data={k: v[:, idx] for k, v in self.obs.items()},
+                    bullets=(
+                        None
+                        if self.bullet_obs is None
+                        else {k: v[:, idx] for k, v in self.bullet_obs.items()}
+                    ),
+                )
 
-                # Reconstruct initial hidden: (n_layers, B_mb*num_tokens, H)
+                # Reconstruct initial hidden: (n_layers, B_mb*N, H) — ships only
                 mb_hidden = hidden_full[:, idx, :, :].reshape(
-                    n_layers, len(idx) * self.num_tokens, D
+                    n_layers, len(idx) * self.num_ships, D
                 )
 
                 chunks.append(
@@ -796,6 +816,14 @@ class StoredRollout:
         self.obs = {
             key: value.detach().to(device="cpu", copy=True) for key, value in source.obs.items()
         }
+        self.bullet_obs = (
+            None
+            if source.bullet_obs is None
+            else {
+                key: value.detach().to(device="cpu", copy=True)
+                for key, value in source.bullet_obs.items()
+            }
+        )
         self.actions = source.actions.detach().to(device="cpu", copy=True)
         self.logprobs = source.logprobs.detach().to(device="cpu", copy=True)
         self.advantages = source.advantages.detach().to(device="cpu", copy=True)
@@ -863,18 +891,23 @@ class StoredRollout:
         hidden_full = self.initial_hidden.reshape(
             n_layers,
             self.num_envs,
-            self.num_tokens,
+            self.num_ships,
             hidden_width,
         )
 
         for start in range(0, self.num_envs, envs_per_batch):
             indices = env_order[start : start + envs_per_batch]
             obs = YemongObservation(
-                data={key: value[:, indices] for key, value in self.obs.items()}
+                data={key: value[:, indices] for key, value in self.obs.items()},
+                bullets=(
+                    None
+                    if self.bullet_obs is None
+                    else {k: v[:, indices] for k, v in self.bullet_obs.items()}
+                ),
             )
             hidden = hidden_full[:, indices].reshape(
                 n_layers,
-                len(indices) * self.num_tokens,
+                len(indices) * self.num_ships,
                 hidden_width,
             )
             yield [

@@ -86,6 +86,7 @@ from boost_and_broadside.modes.semi_random_tournament import (
     parse_probabilities,
     run_semi_random_tournament,
 )
+from boost_and_broadside.train.rl.policy_io import set_config_drift_allowed
 from boost_and_broadside.train.rl.ppo import PPOTrainer
 from boost_and_broadside.ui.renderer import RenderConfig
 from runs.bc import BC_TRAIN_CONFIG
@@ -220,6 +221,15 @@ def _parse_args() -> argparse.Namespace:
         default=False,
         help="Disable W&B logging for a full run (keeps batch size and compile). "
         "Implied by --smoke.",
+    )
+    parser.add_argument(
+        "--allow-config-drift",
+        dest="allow_config_drift",
+        action="store_true",
+        default=False,
+        help="Load checkpoints whose recorded physics constants differ from the current "
+        "ShipConfig. Refused by default: those weights were fitted to differently-scaled "
+        "inputs, so results are not comparable with a matching run's.",
     )
     parser.add_argument(
         "--team0",
@@ -446,6 +456,10 @@ def main() -> None:
     args = _parse_args()
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Device: {device}")
+
+    if args.allow_config_drift:
+        set_config_drift_allowed(True)
+        print("Config drift allowed: checkpoints may load across a physics change.")
 
     match args.mode:
         case "bc":

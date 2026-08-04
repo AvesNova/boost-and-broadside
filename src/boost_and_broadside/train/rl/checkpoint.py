@@ -128,16 +128,7 @@ class CheckpointMixin:
         ckpt_dir = Path(self.cfg.checkpoint_dir) / self.run_name
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         path = ckpt_dir / f"ladder_step_{self._global_step:012d}.pt"
-        payload = clone_to_cpu(
-            {
-                "observation_schema": OBSERVATION_SCHEMA,
-                "policy_state_dict": self._policy_module.state_dict(),
-                "team_pma_k": self._win_k,
-                "num_value_components": self.wrapper.num_active_components,
-                "global_step": self._global_step,
-                "training_elo": self._training_elo,
-            }
-        )
+        payload = clone_to_cpu(self._provenance())
         tmp = path.with_suffix(".tmp")
         torch.save(payload, tmp)
         tmp.replace(path)
@@ -188,12 +179,35 @@ class CheckpointMixin:
     # Checkpointing
     # ------------------------------------------------------------------
 
-    def checkpoint_payload(self, update: int) -> dict:
-        """Build the data dict shared by all checkpoint saves."""
+    def _provenance(self) -> dict:
+        """Everything a loader needs to rebuild this policy as it exists now.
+
+        Every payload family carries this block, including the ladder snapshots —
+        those are the files the league and the post-hoc calibrator actually reload,
+        so they are the ones that most need to say what they are. Without the
+        configs, a loader has no choice but to assume the reader's own, and an
+        assumed physics constant is indistinguishable from a correct one until the
+        policy quietly underperforms its rating.
+        """
         return {
             "observation_schema": OBSERVATION_SCHEMA,
             "policy_state_dict": self._policy_module.state_dict(),
             "num_value_components": self.wrapper.num_active_components,
+            "team_pma_k": self._win_k,
+            "global_step": self._global_step,
+            "training_elo": self._training_elo,
+            "model_config": dataclasses.asdict(self.model_config),
+            "env_config": dataclasses.asdict(self.env_config),
+            "ship_config": dataclasses.asdict(self.ship_config),
+            # An ego_pass policy only ever acted as team 0, so whoever replays it
+            # has to know to hand it the mirrored view when it plays team 1.
+            "paradigm": self.cfg.paradigm,
+        }
+
+    def checkpoint_payload(self, update: int) -> dict:
+        """Build the data dict shared by all checkpoint saves."""
+        return {
+            **self._provenance(),
             "optimizer_state_dict": self.optim.state_dict(),
             "scaler_state_dict": self.scaler.state_dict(),
             "adv_scaler_state_dict": self.adv_scaler.state_dict(),
@@ -202,11 +216,9 @@ class CheckpointMixin:
             "avg_param_cumsum": list(self._avg_param_cumsum),
             "avg_update_count": self._avg_update_count,
             "update": update,
-            "global_step": self._global_step,
             "ship_steps": self._ship_steps,
             "grad_tokens": self._grad_tokens,
             "elapsed_train_time": self._elapsed_train_time + (time.time() - self._train_start_time),
-            "training_elo": self._training_elo,
             "avg_training_elo": self._avg_training_elo,
             "scripted_elo": self._scripted_elo,
             "floating_games": self._floating_games,
@@ -219,8 +231,6 @@ class CheckpointMixin:
             "train_config": {
                 k: v for k, v in dataclasses.asdict(self.cfg).items() if k != "schedule"
             },
-            "model_config": dataclasses.asdict(self.model_config),
-            "env_config": dataclasses.asdict(self.env_config),
         }
 
     def _run_async_save(self, thread_attr: str, label: str, target: Callable[[], None]) -> bool:
@@ -313,23 +323,16 @@ class CheckpointMixin:
     def _checkpoint_payload_lightweight(self, update: int) -> dict:
         """Build a best-model payload without heavy optimizer and average states."""
         return {
-            "observation_schema": OBSERVATION_SCHEMA,
-            "policy_state_dict": self._policy_module.state_dict(),
-            "num_value_components": self.wrapper.num_active_components,
+            **self._provenance(),
             "scaler_state_dict": self.scaler.state_dict(),
             "adv_scaler_state_dict": self.adv_scaler.state_dict(),
             "update": update,
-            "global_step": self._global_step,
-            "training_elo": self._training_elo,
             "eval_window_rand": list(self._eval_window_rand),
             "eval_window_sc": list(self._eval_window_sc),
             "elo_milestone": self._elo_milestone,
-            "team_pma_k": self._win_k,
             "train_config": {
                 k: v for k, v in dataclasses.asdict(self.cfg).items() if k != "schedule"
             },
-            "model_config": dataclasses.asdict(self.model_config),
-            "env_config": dataclasses.asdict(self.env_config),
         }
 
     def _avg_checkpoint_payload_lightweight(self, update: int) -> dict:

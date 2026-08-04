@@ -1,4 +1,4 @@
-from collections.abc import ItemsView
+from collections.abc import Callable, ItemsView
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -22,11 +22,35 @@ class ObsKey(StrEnum):
     RADIUS = "radius"
     PREVIOUS_ACTION = "previous_action"
     LOCAL_LOG_INDEX = "local_log_index"
+    LOCAL_INDEX_GRADIENT = "local_index_gradient"
     FIELD_TRANSITION_WIDTH = "field_transition_width"
     FIELD_INSIDE_LOG_INDEX = "field_inside_log_index"
     FIELD_OUTSIDE_LOG_INDEX = "field_outside_log_index"
     FIELD_LOG_INDEX_RATIO = "field_log_index_ratio"
     FIELD_DAMAGE = "field_damage"
+
+
+class BulletObsKey(StrEnum):
+    """Channels of the bullet observation.
+
+    Bullets live on their own ``(B, N*K, ...)`` axis rather than the entity-token
+    axis: they are key/value-only inputs to cross-attention, never queries, and
+    never carry recurrent state.
+    """
+
+    POS = "bullet_pos"
+    VEL = "bullet_vel"
+    DAMAGE = "bullet_damage"
+    LIFETIME = "bullet_lifetime"
+    LOCAL_LOG_INDEX = "bullet_local_log_index"
+    LOCAL_INDEX_GRADIENT = "bullet_local_index_gradient"
+    TEAM_ID = "bullet_team_id"
+    ACTIVE = "bullet_active"
+
+
+# Channels whose last axis IS the token axis — everything else has a trailing
+# feature dim. Used by YemongObservation.slice_tokens.
+_TOKEN_LAST_KEYS = frozenset({ObsKey.TEAM_ID, ObsKey.ALIVE})
 
 
 @dataclass(frozen=True)
@@ -41,6 +65,10 @@ class YemongObservation:
     """
 
     data: dict[ObsKey, torch.Tensor]
+    # Optional bullet channels on their own (B, N*K, ...) axis. Kept here rather
+    # than passed alongside so every structural op (slice/concat/flip) carries
+    # them automatically and cannot fall out of sync with the entity tokens.
+    bullets: dict["BulletObsKey", torch.Tensor] | None = None
 
     # ------------------------------------------------------------------
     # Key access — supports ObsKey enum or str
@@ -121,26 +149,87 @@ class YemongObservation:
     def update(self, key: ObsKey, value: torch.Tensor) -> "YemongObservation":
         new_data = dict(self.data)
         new_data[key] = value
-        return YemongObservation(data=new_data)
+        return YemongObservation(data=new_data, bullets=self.bullets)
 
-    def flip_team(self, num_ships: int) -> "YemongObservation":
-        """Swap team IDs 0 and 1 for the first num_ships entity slots."""
+    def flip_team(
+        self, num_ships: int, mask: "torch.Tensor | None" = None
+    ) -> "YemongObservation":
+        """Swap team IDs 0 and 1 for the first num_ships entity slots.
+
+        Ship and bullet team IDs flip *together*. A bullet's team is its
+        shooter's, so mirroring one without the other shows a policy its own
+        fire as the enemy's. Inactive bullet slots flip too, which is harmless —
+        they are masked out of attention. Field tokens keep their own team.
+
+        ``mask`` selects which environments flip; None flips all of them. It must
+        broadcast against the leading (batch) dims — an ``(B,)`` bool for a
+        ``(B, tokens)`` observation. Per-env selection exists because an ego_pass
+        policy plays team 1 in only some environments and carries one recurrent
+        state, so it cannot be run twice to cover both perspectives.
+        """
+        selector = None if mask is None else mask.unsqueeze(-1)
+
+        def swap(values: torch.Tensor) -> torch.Tensor:
+            swapped = torch.where(values == 0, 1, torch.where(values == 1, 0, values))
+            return swapped if selector is None else torch.where(selector, swapped, values)
+
         team_id = self.data[ObsKey.TEAM_ID].clone()
-        ship_slice = team_id[..., :num_ships]
-        flipped = torch.where(ship_slice == 0, 1, torch.where(ship_slice == 1, 0, ship_slice))
-        team_id[..., :num_ships] = flipped
-        return self.update(ObsKey.TEAM_ID, team_id)
+        team_id[..., :num_ships] = swap(team_id[..., :num_ships])
+        flipped_obs = self.update(ObsKey.TEAM_ID, team_id)
+        if self.bullets is None:
+            return flipped_obs
+        new_bullets = dict(self.bullets)
+        new_bullets[BulletObsKey.TEAM_ID] = swap(self.bullets[BulletObsKey.TEAM_ID])
+        return YemongObservation(data=flipped_obs.data, bullets=new_bullets)
+
+    def map(self, fn: "Callable[[torch.Tensor], torch.Tensor]") -> "YemongObservation":
+        """Apply ``fn`` to every channel tensor, entity and bullet alike.
+
+        Transfer helpers (pin/to/slice) use this so a new channel group cannot be
+        silently dropped by a call site that only knew about ``data``.
+        """
+        return YemongObservation(
+            data={k: fn(v) for k, v in self.data.items()},
+            bullets=None if self.bullets is None else {k: fn(v) for k, v in self.bullets.items()},
+        )
 
     def slice_envs(self, idx: "slice | torch.Tensor") -> "YemongObservation":
-        return YemongObservation(data={k: v[idx] for k, v in self.data.items()})
+        return YemongObservation(
+            data={k: v[idx] for k, v in self.data.items()},
+            bullets=None if self.bullets is None else {k: v[idx] for k, v in self.bullets.items()},
+        )
 
     def slice_time(self, start: int, end: int) -> "YemongObservation":
-        return YemongObservation(data={k: v[start:end] for k, v in self.data.items()})
+        return YemongObservation(
+            data={k: v[start:end] for k, v in self.data.items()},
+            bullets=(
+                None if self.bullets is None else {k: v[start:end] for k, v in self.bullets.items()}
+            ),
+        )
+
+    def slice_tokens(self, start: int, end: int) -> "YemongObservation":
+        """Slice the entity-token axis, which is always the last non-feature dim.
+
+        ``team_id`` and ``alive`` end at the token axis while every other channel
+        carries a trailing feature dim, so the axis is addressed from the right.
+        """
+        # Bullets are not on the entity-token axis, so they pass through unchanged.
+        return YemongObservation(
+            data={
+                k: (v[..., start:end] if k in _TOKEN_LAST_KEYS else v[..., start:end, :])
+                for k, v in self.data.items()
+            },
+            bullets=self.bullets,
+        )
 
     def concat_batch(self, other: "YemongObservation") -> "YemongObservation":
         """Concatenate two observations along the batch (env) dimension (dim 0)."""
+        bullets = None
+        if self.bullets is not None and other.bullets is not None:
+            bullets = {k: torch.cat([v, other.bullets[k]], dim=0) for k, v in self.bullets.items()}
         return YemongObservation(
-            data={k: torch.cat([v, other.data[k]], dim=0) for k, v in self.data.items()}
+            data={k: torch.cat([v, other.data[k]], dim=0) for k, v in self.data.items()},
+            bullets=bullets,
         )
 
 
@@ -201,16 +290,92 @@ class ObservationBuffers:
         """Compatibility no-op: field geometry is read directly from state."""
 
 
+def bullet_observation_from_state(
+    state: TensorState,
+    ship_config: ShipConfig,
+) -> dict[BulletObsKey, torch.Tensor]:
+    """Flatten the per-ship bullet ring buffers into one (B, N*K, ...) axis.
+
+    Every slot is emitted, active or not; inactive slots are masked out of
+    attention rather than compacted, keeping the shape static.
+
+    Position and velocity are deliberately encoded exactly as ship position and
+    velocity are (see ``build_standard_coordinator``). Attention computes relative
+    geometry as a bilinear form over the two tokens' Fourier features, which only
+    collapses into a function of displacement when both sides share one frequency
+    basis — so matching the ship encoding is load-bearing, not cosmetic.
+    """
+    B, N, K = state.bullet_pos.shape
+    flat = (B, N * K)
+
+    bullet_pos = torch.stack(
+        [state.bullet_pos.real.reshape(flat), state.bullet_pos.imag.reshape(flat)], dim=-1
+    )
+    bullet_vel = torch.stack(
+        [state.bullet_vel.real.reshape(flat), state.bullet_vel.imag.reshape(flat)], dim=-1
+    )
+    gradient = state.bullet_field_gradient.reshape(flat)
+    bullet_gradient = torch.stack([gradient.real, gradient.imag], dim=-1) / index_gradient_scale(
+        ship_config
+    )
+
+    log_scale = 2.0 * torch.log(
+        torch.tensor(ship_config.field_index_step, device=state.device, dtype=torch.float32)
+    )
+    # Inactive slots keep a stale index of 0 from reset, and log(0) is -inf.
+    local_index = state.bullet_local_index.reshape(flat).clamp(min=EPS)
+    bullet_log_index = torch.log(local_index).unsqueeze(-1) / log_scale
+
+    # A bullet's team is its shooter's; the ring buffer's ship axis supplies it.
+    shooter_team = state.ship_team_id.unsqueeze(-1).expand(B, N, K).reshape(flat)
+
+    return {
+        BulletObsKey.POS: bullet_pos,
+        BulletObsKey.VEL: bullet_vel,
+        BulletObsKey.DAMAGE: state.bullet_remaining_damage.reshape(flat).unsqueeze(-1)
+        / max(ship_config.bullet_damage, EPS),
+        BulletObsKey.LIFETIME: state.bullet_time.reshape(flat).unsqueeze(-1)
+        / max(ship_config.bullet_lifetime, EPS),
+        BulletObsKey.LOCAL_LOG_INDEX: bullet_log_index,
+        BulletObsKey.LOCAL_INDEX_GRADIENT: bullet_gradient,
+        BulletObsKey.TEAM_ID: shooter_team.to(torch.int32),
+        BulletObsKey.ACTIVE: state.bullet_active.reshape(flat),
+    }
+
+
+def index_gradient_scale(ship_config: ShipConfig) -> float:
+    """Normalising scale for grad(n), so the encoded channel lands near [-1, 1].
+
+    The interface profile is the quintic smoothstep ``alpha = 6z^5 - 15z^4 + 10z^3``
+    with ``z = clamp(0.5 - d/w, 0, 1)``. Its slope ``30z^2(z-1)^2`` peaks at 15/8
+    when ``z = 1/2``, so ``|d alpha/d d| <= 1.875/w``. Composition telescopes as
+    ``grad(n) = sum(delta_n_i grad(alpha_i))``, and the widest index span a single
+    interface can carry is ``s^2 - s^-2``. The narrowest configured band therefore
+    bounds the whole map's gradient.
+    """
+    step = ship_config.field_index_step
+    max_delta_index = step**2 - step**-2
+    return max(
+        1.875 * max_delta_index / ship_config.field_transition_width_min,
+        EPS,
+    )
+
+
 def observation_from_state(
     state: TensorState,
     ship_config: ShipConfig,
     buffers: ObservationBuffers | None = None,
+    include_bullets: bool = False,
 ) -> YemongObservation:
     """Build the raw policy observation for the supplied environment state.
 
     Fields are represented as always-alive team-2 tokens. Passing reusable
     ``buffers`` keeps the training step path allocation-free; callers outside
     training may omit them.
+
+    ``include_bullets`` attaches the bullet cross-attention channels. It is off by
+    default so profiles that do not read bullets pay neither the reduction nor the
+    rollout storage.
     """
     if buffers is None:
         buffers = ObservationBuffers.allocate(
@@ -236,9 +401,24 @@ def observation_from_state(
     )
     ship_local_log_index = torch.log(state.ship_local_index).unsqueeze(-1) / log_scale
 
+    # grad(n) at the ship. This is the direction the medium is changing, and it is
+    # the force term in a = F/m + 0.5|v|^2 grad(log m) - (v.grad(log m))v — so
+    # without it a ship feels an acceleration whose source it cannot see.
+    ship_index_gradient = torch.stack(
+        [state.ship_field_gradient.real, state.ship_field_gradient.imag],
+        dim=-1,
+    ) / index_gradient_scale(ship_config)
+
+    bullets = (
+        bullet_observation_from_state(state, ship_config)
+        if include_bullets and state.max_bullets > 0
+        else None
+    )
+
     if state.num_fields == 0:
         zeros = torch.zeros_like(ship_local_log_index)
         return YemongObservation(
+            bullets=bullets,
             data={
                 ObsKey.POS: ship_pos,
                 ObsKey.VEL: ship_vel,
@@ -252,12 +432,13 @@ def observation_from_state(
                 ObsKey.PREVIOUS_ACTION: ship_prev_action,
                 ObsKey.RADIUS: buffers.ship_radius,
                 ObsKey.LOCAL_LOG_INDEX: ship_local_log_index,
+                ObsKey.LOCAL_INDEX_GRADIENT: ship_index_gradient,
                 ObsKey.FIELD_TRANSITION_WIDTH: zeros,
                 ObsKey.FIELD_INSIDE_LOG_INDEX: zeros,
                 ObsKey.FIELD_OUTSIDE_LOG_INDEX: zeros,
                 ObsKey.FIELD_LOG_INDEX_RATIO: zeros,
                 ObsKey.FIELD_DAMAGE: zeros,
-            }
+            },
         )
 
     assert buffers.field_zero_vec is not None
@@ -282,6 +463,7 @@ def observation_from_state(
     field_damage = state.field_damage.unsqueeze(-1) / max_damage
     ship_zero = buffers.ship_field_feature_zeros
     return YemongObservation(
+        bullets=bullets,
         data={
             ObsKey.POS: torch.cat([ship_pos, field_pos], dim=1),
             ObsKey.VEL: torch.cat([ship_vel, buffers.field_zero_vec], dim=1),
@@ -299,6 +481,9 @@ def observation_from_state(
             ObsKey.LOCAL_LOG_INDEX: torch.cat(
                 [ship_local_log_index, buffers.field_zero_scalar], dim=1
             ),
+            ObsKey.LOCAL_INDEX_GRADIENT: torch.cat(
+                [ship_index_gradient, buffers.field_zero_vec], dim=1
+            ),
             ObsKey.FIELD_TRANSITION_WIDTH: torch.cat(
                 [ship_zero, state.field_transition_width.unsqueeze(-1)], dim=1
             ),
@@ -306,5 +491,5 @@ def observation_from_state(
             ObsKey.FIELD_OUTSIDE_LOG_INDEX: torch.cat([ship_zero, field_outside], dim=1),
             ObsKey.FIELD_LOG_INDEX_RATIO: torch.cat([ship_zero, field_ratio], dim=1),
             ObsKey.FIELD_DAMAGE: torch.cat([ship_zero, field_damage], dim=1),
-        }
+        },
     )

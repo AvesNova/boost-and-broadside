@@ -2,23 +2,36 @@
 
 Architecture (per timestep):
     obs → EntityEncoder → (B, N+M, D)     [ships N then fields M]
-         → N+M x YemongBlock → (B, N+M, D)   [spatial + temporal over all tokens]
+    bullets → BulletEncoder → (B, N*K, D) [key/value only; optional]
+         → n_yemong_blocks x YemongBlock → (B, N+M, D)
+              [n_spatial_per_block spatial sublayers, the first
+               n_bullet_cross_per_block of which cross-attend to bullets,
+               then n_temporal_per_block temporal sublayers]
          → slice [:N]                    → (B, N, D)    [ship tokens only]
          → ActionHead                   → (B, N, 12)   [logits: power|turn|shoot]
          → NextStateHead                → (B, N, P)    [aux: pred next state deltas; P from coord.]
          → TeamPMA                      → (B, N, D)    [pool per team, broadcast back]
          → ValueHead                    → (B, N, K)    [MSE critic: K components]
 
-Field tokens (team_id=2) participate in attention and carry temporal hidden
-state, but receive no action or value heads.
+Three entity kinds, three levels of participation:
+  ships  (team_id 0/1) — attention, recurrence, and all three heads.
+  fields (team_id 2)   — attention only. Static within an episode, so they take
+                         the non-recurrent Griffin path and receive no heads.
+  bullets              — key/value only. Never queried, never recurrent, never
+                         updated; they exist solely as things ships can look at.
 
 K = num_value_components (one head per reward component).
 Value head outputs in normalized space. The ReturnScaler in PPOTrainer maps
 between symlog-reward space (GAE) and normalized space (value head I/O).
 
-Hidden state shape: (n_layers, B*(N+M), CONV_KERNEL * D), packed as:
+Hidden state shape: (n_layers, B*N, CONV_KERNEL * D) — ships only — packed as:
   hidden[:, :, :D]   -- RG-LRU recurrent state
   hidden[:, :, D:]   -- causal conv buffer (CONV_KERNEL-1 past linear1 outputs, flattened)
+
+n_layers is n_yemong_blocks * n_temporal_per_block: every temporal sublayer owns
+one slot, and block i's slots are the contiguous run [i*n_temporal, (i+1)*n_temporal).
+The trunk reads its ship/field split off this tensor's width rather than tracking
+it separately, so sizing and splitting cannot disagree.
 """
 
 import math
@@ -35,8 +48,8 @@ from boost_and_broadside.constants import (
     TOTAL_ACTION_LOGITS,
     TURN_SLICE,
 )
-from boost_and_broadside.env.observation import YemongObservation
-from boost_and_broadside.models.yemong.encoder import ShipEncoder
+from boost_and_broadside.env.observation import BulletObsKey, YemongObservation
+from boost_and_broadside.models.yemong.encoder import BulletEncoder, ShipEncoder
 from boost_and_broadside.models.yemong.griffin import CONV_KERNEL, YemongBlock
 from boost_and_broadside.train.rl.features import FeatureCoordinator
 
@@ -128,6 +141,8 @@ class YemongPolicy(nn.Module):
         coordinator:   Feature pipeline; drives encoder input dim and aux pred dim.
         num_value_components: K — one value head output per reward component.
         num_ships:     N — first N tokens are ships; rest are fields.
+        bullet_coordinator: Bullet feature pipeline; required when the model
+            config enables bullet cross-attention.
     """
 
     def __init__(
@@ -137,6 +152,7 @@ class YemongPolicy(nn.Module):
         num_value_components: int,
         num_ships: int,
         team_pma_k: tuple[int, ...] = (),
+        bullet_coordinator: FeatureCoordinator | None = None,
     ) -> None:
         super().__init__()
         D = model_config.d_model
@@ -147,10 +163,21 @@ class YemongPolicy(nn.Module):
         self._team_pma_k_set = set(team_pma_k)
         self.coordinator = coordinator
 
-        self.encoder = ShipEncoder(model_config, coordinator)
-        self.yemong_layers = nn.ModuleList(
-            [YemongBlock(model_config) for _ in range(model_config.n_transformer_blocks)]
+        self.encoder = ShipEncoder(model_config, coordinator, num_ships=num_ships)
+        # Bullets are encoded once per timestep and reused by every spatial
+        # sublayer that reads them — re-encoding per layer would multiply the
+        # dominant encoder cost for identical data.
+        self.bullet_encoder = (
+            BulletEncoder(model_config, bullet_coordinator)
+            if model_config.reads_bullets and bullet_coordinator is not None
+            else None
         )
+        self.yemong_layers = nn.ModuleList(
+            [YemongBlock(model_config) for _ in range(model_config.n_yemong_blocks)]
+        )
+        # Hidden-state slots per block — the trunk's recurrent state is indexed
+        # [block * n_temporal + sublayer], so this stride is load-bearing.
+        self._n_temporal = model_config.n_temporal_per_block
         self._grad_checkpoint = model_config.grad_checkpoint
 
         hidden_dim = D * 2
@@ -192,41 +219,69 @@ class YemongPolicy(nn.Module):
             nn.init.orthogonal_(self.team_pma.attn.in_proj_weight, gain=math.sqrt(2))
             nn.init.orthogonal_(self.team_pma.attn.out_proj.weight, gain=1.0)
 
+    def _encode_bullets(
+        self, obs: YemongObservation
+    ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+        """Encode the bullet axis once, returning tokens and their active mask."""
+        if self.bullet_encoder is None or obs.bullets is None:
+            return None, None
+        return self.bullet_encoder(obs), obs.bullets[BulletObsKey.ACTIVE]
+
     # ------------------------------------------------------------------
     # Hidden state management
     # ------------------------------------------------------------------
 
-    def initial_hidden(self, num_envs: int, num_tokens: int, device: torch.device) -> torch.Tensor:
-        """Return zeroed hidden states for all Yemong layers.
+    def initial_hidden(
+        self, num_envs: int, num_recurrent_tokens: int, device: torch.device
+    ) -> torch.Tensor:
+        """Return zeroed hidden states for all temporal sublayers.
 
         Args:
-            num_tokens: N+M (ships + fields) — all entity tokens carry hidden state.
+            num_recurrent_tokens: N — only ship tokens carry recurrent state. Field
+                tokens are static within an episode and take the non-recurrent path
+                (see ``GriffinTemporalBlock.forward_nonrecurrent``), so passing N+M
+                here would allocate a third more state than the trunk consumes.
 
         Returns:
-            (n_layers, B*(N+M), CONV_KERNEL*D) float32 — packed RG-LRU state + conv buffer.
+            (n_layers, B*N, CONV_KERNEL*D) float32 — packed RG-LRU state + conv
+            buffer, where n_layers is n_yemong_blocks * n_temporal_per_block.
         """
-        n_layers = len(self.yemong_layers)
         return torch.zeros(
-            n_layers, num_envs * num_tokens, CONV_KERNEL * self._d_model, device=device
+            self.n_hidden_layers,
+            num_envs * num_recurrent_tokens,
+            CONV_KERNEL * self._d_model,
+            device=device,
         )
+
+    @property
+    def n_hidden_layers(self) -> int:
+        """Recurrent state slots — one per temporal sublayer across the trunk."""
+
+        return len(self.yemong_layers) * self._n_temporal
+
+    @property
+    def num_recurrent_tokens(self) -> int:
+        """Tokens carrying recurrent state — ships only; fields are static."""
+
+        return self._num_ships
 
     def reset_hidden_for_envs(
         self,
         hidden: torch.Tensor,
         done_mask: torch.Tensor,
-        num_tokens: int,
+        num_recurrent_tokens: int,
     ) -> torch.Tensor:
-        """Zero hidden states for all tokens in done environments.
+        """Zero hidden states for all recurrent tokens in done environments.
 
         Args:
-            hidden:     (n_layers, B*(N+M), CONV_KERNEL*D) current hidden state.
+            hidden:     (n_layers, B*N, CONV_KERNEL*D) current hidden state.
             done_mask:  (B,) bool — True for envs that finished.
-            num_tokens: N+M.
+            num_recurrent_tokens: N — must match what ``initial_hidden`` was given.
 
         Returns:
             Updated hidden state with done envs zeroed.
         """
-        token_keep = (~done_mask.repeat_interleave(num_tokens)).to(hidden.dtype)
+        token_keep = (~done_mask.repeat_interleave(num_recurrent_tokens)).to(hidden.dtype)
         return hidden * token_keep[None, :, None]
 
     # ------------------------------------------------------------------
@@ -255,23 +310,45 @@ class YemongPolicy(nn.Module):
         """
         alive = obs["alive"]  # (B, N+M) bool — ships then fields
         x = self.encoder(obs)  # (B, N+M, D)
+        bullets, bullet_mask = self._encode_bullets(obs)  # (B, N*K, D), (B, N*K)
 
         B, NM, D = x.shape
-        BNM = B * NM
-        n_layers = len(self.yemong_layers)
-        rglru_states = hidden[:, :, :D]  # (n_layers, B*(N+M), D)
-        conv_bufs = hidden[:, :, D:].reshape(n_layers, BNM, CONV_KERNEL - 1, D)
+        n_layers = hidden.shape[0]
+        n_temporal = self._n_temporal
+        # Recurrent token count is read off the hidden tensor rather than tracked
+        # separately, so the split can never disagree with how the caller sized it.
+        # A caller that still allocates B*(N+M) therefore keeps every token recurrent.
+        B_rec = hidden.shape[1]  # B*N — recurrent (ship) tokens only
+        n_rec = B_rec // B
+        rglru_states = hidden[:, :, :D]  # (n_layers, B*N, D)
+        conv_bufs = hidden[:, :, D:].reshape(n_layers, B_rec, CONV_KERNEL - 1, D)
 
         new_rglru, new_cbs = [], []
         for i, layer in enumerate(self.yemong_layers):
-            x, new_h, new_cb = layer.step(x, alive, rglru_states[i], conv_bufs[i])
+            # Each block owns a contiguous run of n_temporal hidden slots.
+            block_slice = slice(i * n_temporal, (i + 1) * n_temporal)
+            x, new_h, new_cb = layer.step(
+                x,
+                alive,
+                rglru_states[block_slice],
+                conv_bufs[block_slice],
+                n_rec,
+                bullets,
+                bullet_mask,
+            )
             new_rglru.append(new_h)
             new_cbs.append(new_cb)
 
-        new_rglru_t = torch.stack(new_rglru, dim=0)  # (n_layers, B*(N+M), D)
-        new_cbs_t = torch.stack(new_cbs, dim=0).reshape(
-            n_layers, BNM, -1
-        )  # (n_layers, B*(N+M), (CONV_KERNEL-1)*D)
+        # cat, not stack: each entry already carries this block's n_temporal slots.
+        # The conv-buffer width is spelled out rather than inferred with -1, which is
+        # ambiguous when n_layers is 0 (a purely spatial trunk).
+        conv_width = (CONV_KERNEL - 1) * D
+        new_rglru_t = torch.cat(new_rglru, dim=0) if new_rglru else rglru_states
+        new_cbs_t = (
+            torch.cat(new_cbs, dim=0).reshape(n_layers, B_rec, conv_width)
+            if new_cbs
+            else conv_bufs.reshape(n_layers, B_rec, conv_width)
+        )
         new_hidden = torch.cat(
             [new_rglru_t, new_cbs_t], dim=-1
         )  # (n_layers, B*(N+M), CONV_KERNEL*D)
@@ -344,23 +421,33 @@ class YemongPolicy(nn.Module):
         """
         T, B, N = actions.shape[:3]  # N = num_ships (actions only for ships)
         D = self._d_model
-        n_layers = len(self.yemong_layers)
-        BNM = initial_hidden.shape[1]  # B*(N+M)
+        n_layers = initial_hidden.shape[0]
+        n_temporal = self._n_temporal
+        B_rec = initial_hidden.shape[1]  # B*N — recurrent (ship) tokens only
+        n_rec = B_rec // B  # see get_action_and_value: split follows hidden sizing
 
         rglru_states = initial_hidden[:, :, :D]  # (n_layers, B*(N+M), D)
-        conv_bufs = initial_hidden[:, :, D:].reshape(n_layers, BNM, CONV_KERNEL - 1, D)
+        conv_bufs = initial_hidden[:, :, D:].reshape(n_layers, B_rec, CONV_KERNEL - 1, D)
 
         # obs has (T, B, N+M, ...) — flatten T into B for encoder
         NM = obs["pos"].shape[2]  # N+M total tokens
         flat_obs = YemongObservation(
-            data={k: v.reshape(T * B, *v.shape[2:]) for k, v in obs.items()}
+            data={k: v.reshape(T * B, *v.shape[2:]) for k, v in obs.items()},
+            bullets=(
+                None
+                if obs.bullets is None
+                else {k: v.reshape(T * B, *v.shape[2:]) for k, v in obs.bullets.items()}
+            ),
         )
 
         x = self.encoder(flat_obs)  # (T*B, N+M, D)
         x = x.reshape(T, B, NM, D)  # (T, B, N+M, D)
+        bullets, bullet_mask = self._encode_bullets(flat_obs)  # (T*B, N*K, D)
         z = x if return_encoder_output else None
 
         for i, layer in enumerate(self.yemong_layers):
+            # Each block owns a contiguous run of n_temporal hidden slots.
+            block_slice = slice(i * n_temporal, (i + 1) * n_temporal)
             if self._grad_checkpoint and torch.is_grad_enabled():
                 # Recompute this block's activations in backward instead of storing
                 # them: activation memory stops scaling with depth. use_reentrant=False
@@ -370,13 +457,25 @@ class YemongPolicy(nn.Module):
                     layer,
                     x,
                     alive_mask,
-                    rglru_states[i],
-                    conv_bufs[i],
+                    rglru_states[block_slice],
+                    conv_bufs[block_slice],
                     done_mask,
+                    n_rec,
+                    bullets,
+                    bullet_mask,
                     use_reentrant=False,
                 )
             else:
-                x, _, _ = layer.sequence(x, alive_mask, rglru_states[i], conv_bufs[i], done_mask)
+                x, _, _ = layer.sequence(
+                    x,
+                    alive_mask,
+                    rglru_states[block_slice],
+                    conv_bufs[block_slice],
+                    done_mask,
+                    n_rec,
+                    bullets,
+                    bullet_mask,
+                )
 
         # Slice ship tokens for heads
         x_ships = x[:, :, :N, :]  # (T, B, N, D)
@@ -429,13 +528,18 @@ def _yemong_forward(
     h0: torch.Tensor,
     conv_buf0: torch.Tensor,
     done_mask: torch.Tensor | None,
+    num_recurrent: int,
+    bullets: torch.Tensor | None,
+    bullet_mask: torch.Tensor | None,
 ) -> torch.Tensor:
     """Run one Yemong block's full-sequence forward, returning only the output.
 
     Module-level (no ``self`` capture) so ``torch.utils.checkpoint`` can rematerialize
     it cleanly. The final hidden/conv states are unused by the update-time re-evaluation.
     """
-    out, _, _ = layer.sequence(x, alive_mask, h0, conv_buf0, done_mask)
+    out, _, _ = layer.sequence(
+        x, alive_mask, h0, conv_buf0, done_mask, num_recurrent, bullets, bullet_mask
+    )
     return out
 
 

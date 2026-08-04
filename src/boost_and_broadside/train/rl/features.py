@@ -16,12 +16,13 @@ FeatureCoordinator integrates a list of Features into:
 import dataclasses
 import math
 from abc import ABC, abstractmethod
+from enum import StrEnum
 
 import torch
 import torch.nn.functional as F
 
 from boost_and_broadside.config import ShipConfig
-from boost_and_broadside.env.observation import ObsKey, YemongObservation
+from boost_and_broadside.env.observation import BulletObsKey, ObsKey, YemongObservation
 
 # ---------------------------------------------------------------------------
 # Math helpers
@@ -421,6 +422,20 @@ def _triangle_conv_loss(
 # ---------------------------------------------------------------------------
 
 
+class FeatureScope(StrEnum):
+    """Which entity types a feature actually carries information for.
+
+    Ship and field tokens share one dense observation layout, so channels that
+    only apply to one type are zero-filled for the other. The scope makes that
+    explicit, letting the split encoder give each type a first projection over
+    just its own channels instead of a mostly-zero shared vector.
+    """
+
+    SHARED = "shared"  # meaningful for both ships and fields
+    SHIP = "ship"  # zero-filled on field tokens
+    FIELD = "field"  # zero-filled on ship tokens
+
+
 class Feature:
     def __init__(
         self,
@@ -431,6 +446,7 @@ class Feature:
         predictor: Predictor | None = None,
         label_scale: float | tuple[float, ...] = 1.0,
         windowed_loss: WindowedLoss | None = None,
+        scope: FeatureScope = FeatureScope.SHARED,
     ):
         self.name = name
         self.accessor = accessor
@@ -439,6 +455,7 @@ class Feature:
         self.predictor = predictor
         self.label_scale = label_scale
         self.windowed_loss = windowed_loss
+        self.scope = scope
 
     def get_input(self, obs: YemongObservation) -> torch.Tensor:
         return self.input_encoder(self.accessor.get(obs))
@@ -474,8 +491,11 @@ class _PredictorSpec:
 class FeatureCoordinator:
     """Integrates a list of Features into cohesive input/target vectors."""
 
-    def __init__(self, features: list[Feature]):
+    def __init__(self, features: list[Feature], dummy_obs: YemongObservation | None = None):
         self.features = features
+        # Bullet features read a different observation axis, so their coordinator
+        # supplies its own probe rather than the ship/field one.
+        self._dummy_override = dummy_obs
         self._init_dims()
 
     def _init_dims(self) -> None:
@@ -527,6 +547,9 @@ class FeatureCoordinator:
     def _dummy_obs(self) -> YemongObservation:
         from boost_and_broadside.env.observation import ObsKey, YemongObservation
 
+        if self._dummy_override is not None:
+            return self._dummy_override
+
         return YemongObservation(
             data={
                 ObsKey.POS: torch.zeros((1, 1, 2)),
@@ -541,6 +564,7 @@ class FeatureCoordinator:
                 ObsKey.RADIUS: torch.zeros((1, 1, 1)),
                 ObsKey.PREVIOUS_ACTION: torch.zeros((1, 1, 3), dtype=torch.long),
                 ObsKey.LOCAL_LOG_INDEX: torch.zeros((1, 1, 1)),
+                ObsKey.LOCAL_INDEX_GRADIENT: torch.zeros((1, 1, 2)),
                 ObsKey.FIELD_TRANSITION_WIDTH: torch.zeros((1, 1, 1)),
                 ObsKey.FIELD_INSIDE_LOG_INDEX: torch.zeros((1, 1, 1)),
                 ObsKey.FIELD_OUTSIDE_LOG_INDEX: torch.zeros((1, 1, 1)),
@@ -555,6 +579,33 @@ class FeatureCoordinator:
 
     def get_input_vector(self, obs: YemongObservation) -> torch.Tensor:
         return torch.cat([f.get_input(obs) for f in self.features], dim=-1)
+
+    def get_scoped_input_vector(
+        self, obs: YemongObservation, scope: "FeatureScope"
+    ) -> torch.Tensor:
+        """Encode only shared channels plus those belonging to ``scope``.
+
+        Used by the split encoder so a field token's first projection never sees
+        the ship-only channels that are hard zeros for it, and vice versa.
+        """
+        parts = [
+            f.get_input(obs)
+            for f in self.features
+            if f.scope is FeatureScope.SHARED or f.scope is scope
+        ]
+        return torch.cat(parts, dim=-1)
+
+    def scoped_input_dimension(self, scope: "FeatureScope") -> int:
+        """Width of ``get_scoped_input_vector`` for the given entity type."""
+        dummy = self._dummy_obs()
+        total = 0
+        for f in self.features:
+            if f.scope is not FeatureScope.SHARED and f.scope is not scope:
+                continue
+            raw = f.accessor.get(dummy)
+            in_c = raw.shape[-1] if raw.dim() > 2 else 1
+            total += f.input_encoder.out_dim(in_c)
+        return total
 
     def get_target_vector(self, obs: YemongObservation) -> torch.Tensor:
         parts = [f.get_target(obs) for f in self.features if f.predictor]
@@ -745,6 +796,7 @@ def build_standard_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
             predictor=AdditivePredictor(),
             label_scale=(20.0, 20.0),
             windowed_loss=WindowedLoss(window=32),
+            scope=FeatureScope.SHIP,
         ),
         # Attitude: Fourier input, raw (cos,sin) target — phase prediction
         # wrapper produces (cos θ, sin θ) — cosine_first=True
@@ -755,6 +807,7 @@ def build_standard_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
             target_encoder=Identity(),
             predictor=UnitCirclePredictor(cosine_first=True),
             label_scale=1.5,
+            scope=FeatureScope.SHIP,
         ),
         # Angular velocity: symlog scalar, absolute prediction
         Feature(
@@ -764,6 +817,7 @@ def build_standard_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
             target_encoder=Symlog(),
             predictor=AbsolutePredictor(),
             label_scale=0.447,
+            scope=FeatureScope.SHIP,
         ),
         # Resources: quarter-wave (sin,cos) target + phase-delta prediction.
         # UnitCirclePredictor is geometrically correct for circular quantities
@@ -783,6 +837,7 @@ def build_standard_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
             target_encoder=UnitCircle(scales=ship_config.max_power),
             predictor=UnitCirclePredictor(cosine_first=False),
             label_scale=93.0,
+            scope=FeatureScope.SHIP,
         ),
         Feature(
             name="cooldown",
@@ -791,6 +846,7 @@ def build_standard_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
             target_encoder=UnitCircle(scales=ship_config.firing_cooldown),
             predictor=UnitCirclePredictor(cosine_first=False),
             label_scale=2.1,
+            scope=FeatureScope.SHIP,
         ),
         # Categoricals and static (no predictor)
         Feature("team_id", Accessor(ObsKey.TEAM_ID), OneHot(3), Identity()),
@@ -800,18 +856,21 @@ def build_standard_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
             Accessor(ObsKey.PREVIOUS_ACTION, [0]),
             OneHot(3),
             Identity(),
+            scope=FeatureScope.SHIP,
         ),
         Feature(
             "prev_turn",
             Accessor(ObsKey.PREVIOUS_ACTION, [1]),
             OneHot(7),
             Identity(),
+            scope=FeatureScope.SHIP,
         ),
         Feature(
             "prev_shoot",
             Accessor(ObsKey.PREVIOUS_ACTION, [2]),
             OneHot(2),
             Identity(),
+            scope=FeatureScope.SHIP,
         ),
         Feature(
             "radius",
@@ -826,26 +885,36 @@ def build_standard_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
             Accessor(ObsKey.FIELD_TRANSITION_WIDTH),
             Normalize(ship_config.field_transition_width_max),
             Identity(),
+            scope=FeatureScope.FIELD,
         ),
         Feature(
             "field_inside_log_index",
             Accessor(ObsKey.FIELD_INSIDE_LOG_INDEX),
             Identity(),
             Identity(),
+            scope=FeatureScope.FIELD,
         ),
         Feature(
             "field_outside_log_index",
             Accessor(ObsKey.FIELD_OUTSIDE_LOG_INDEX),
             Identity(),
             Identity(),
+            scope=FeatureScope.FIELD,
         ),
         Feature(
             "field_log_index_ratio",
             Accessor(ObsKey.FIELD_LOG_INDEX_RATIO),
             Identity(),
             Identity(),
+            scope=FeatureScope.FIELD,
         ),
-        Feature("field_damage", Accessor(ObsKey.FIELD_DAMAGE), Identity(), Identity()),
+        Feature(
+            "field_damage",
+            Accessor(ObsKey.FIELD_DAMAGE),
+            Identity(),
+            Identity(),
+            scope=FeatureScope.FIELD,
+        ),
         Feature(
             name="local_log_index",
             accessor=Accessor(ObsKey.LOCAL_LOG_INDEX),
@@ -853,7 +922,130 @@ def build_standard_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
             target_encoder=Identity(),
             predictor=AdditivePredictor(),
             label_scale=10.0,
+            scope=FeatureScope.SHIP,
+        ),
+        # grad(n) at the ship, already normalised in observation_from_state. Input
+        # only: it is a deterministic function of position given the static map, and
+        # setting an aux label_scale for it would need a measurement we do not have.
+        Feature(
+            name="local_index_gradient",
+            accessor=Accessor(ObsKey.LOCAL_INDEX_GRADIENT),
+            input_encoder=Identity(),
+            target_encoder=Identity(),
+            scope=FeatureScope.SHIP,
         ),
     ]
 
     return FeatureCoordinator(features)
+
+
+# ---------------------------------------------------------------------------
+# Bullet coordinator
+# ---------------------------------------------------------------------------
+
+
+class BulletAccessor(Accessor):
+    """Reads a channel from the bullet axis instead of the entity-token axis."""
+
+    def get(self, obs: YemongObservation) -> torch.Tensor:
+        assert obs.bullets is not None, "observation carries no bullet channels"
+        val = obs.bullets[self.key]
+        if self.channels is not None:
+            return val[..., self.channels]
+        return val
+
+
+def build_bullet_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
+    """Feature pipeline for key/value-only bullet tokens.
+
+    Position and velocity use the *same* encodings as ships. This is required,
+    not stylistic: a ship's query and a bullet's key meet in a bilinear form, and
+    ``q.k`` only reduces to a function of their displacement when both sides
+    expand position on one shared Fourier basis. Mismatched frequencies leave
+    cross terms that never combine into relative geometry, and the ship could not
+    compute "how far away is that bullet" at all.
+
+    Damage and lifetime are plain normalised scalars rather than the quarter-wave
+    encoding ships use for bounded resources: that encoding exists to give smooth
+    phase-delta prediction targets, and bullets are never predicted.
+
+    Shooter identity is carried as a team one-hot and never as an index over
+    ships — a per-ship one-hot would fix N in the weights and destroy zero-shot
+    transfer to other fleet sizes.
+    """
+    world_w, world_h = ship_config.world_size
+
+    features = [
+        Feature(
+            name="bullet_position_x",
+            accessor=BulletAccessor(BulletObsKey.POS, channels=[0]),
+            input_encoder=Fourier(n_freqs=4, periods=world_w),
+            target_encoder=Identity(),
+        ),
+        Feature(
+            name="bullet_position_y",
+            accessor=BulletAccessor(BulletObsKey.POS, channels=[1]),
+            input_encoder=Fourier(n_freqs=4, periods=world_h),
+            target_encoder=Identity(),
+        ),
+        Feature(
+            name="bullet_velocity",
+            accessor=BulletAccessor(BulletObsKey.VEL),
+            input_encoder=SymlogVelocity(),
+            target_encoder=Identity(),
+        ),
+        Feature(
+            name="bullet_damage",
+            accessor=BulletAccessor(BulletObsKey.DAMAGE),
+            input_encoder=Identity(),
+            target_encoder=Identity(),
+        ),
+        Feature(
+            name="bullet_lifetime",
+            accessor=BulletAccessor(BulletObsKey.LIFETIME),
+            input_encoder=Identity(),
+            target_encoder=Identity(),
+        ),
+        Feature(
+            name="bullet_local_log_index",
+            accessor=BulletAccessor(BulletObsKey.LOCAL_LOG_INDEX),
+            input_encoder=Identity(),
+            target_encoder=Identity(),
+        ),
+        Feature(
+            name="bullet_local_index_gradient",
+            accessor=BulletAccessor(BulletObsKey.LOCAL_INDEX_GRADIENT),
+            input_encoder=Identity(),
+            target_encoder=Identity(),
+        ),
+        Feature(
+            name="bullet_team_id",
+            accessor=BulletAccessor(BulletObsKey.TEAM_ID),
+            input_encoder=OneHot(2),
+            target_encoder=Identity(),
+        ),
+        Feature(
+            name="bullet_active",
+            accessor=BulletAccessor(BulletObsKey.ACTIVE),
+            input_encoder=Identity(),
+            target_encoder=Identity(),
+        ),
+    ]
+    return FeatureCoordinator(features, dummy_obs=_dummy_bullet_obs())
+
+
+def _dummy_bullet_obs() -> YemongObservation:
+    """Minimal observation used to derive bullet channel widths."""
+    return YemongObservation(
+        data={},
+        bullets={
+            BulletObsKey.POS: torch.zeros((1, 1, 2)),
+            BulletObsKey.VEL: torch.zeros((1, 1, 2)),
+            BulletObsKey.DAMAGE: torch.zeros((1, 1, 1)),
+            BulletObsKey.LIFETIME: torch.zeros((1, 1, 1)),
+            BulletObsKey.LOCAL_LOG_INDEX: torch.zeros((1, 1, 1)),
+            BulletObsKey.LOCAL_INDEX_GRADIENT: torch.zeros((1, 1, 2)),
+            BulletObsKey.TEAM_ID: torch.zeros((1, 1), dtype=torch.long),
+            BulletObsKey.ACTIVE: torch.zeros((1, 1), dtype=torch.bool),
+        },
+    )

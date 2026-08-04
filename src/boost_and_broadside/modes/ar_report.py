@@ -26,10 +26,12 @@ from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.modes.agent_factory import (
     ResolvedAgent,
     _decode_targets_to_obs,
+    agents_read_bullets,
     get_actions,
     init_hidden,
     resolve_agent_spec,
 )
+from boost_and_broadside.modes.match import merge_team_actions
 
 # Trajectory dots are drawn every N steps (part of the report's visual contract).
 _DOT_INTERVAL = 10
@@ -76,6 +78,7 @@ def run_ar_report_mode(
         rewards=rewards,
         device=device,
         field_map=None,
+        include_bullets=agents_read_bullets(agent0, agent1),
     )
 
     N = wrapper.num_ships
@@ -100,7 +103,7 @@ def run_ar_report_mode(
         action1 = get_actions(agent1, obs, state, 1, N, device, return_pred_next=False)
 
         team_id = obs["team_id"][:, :N]
-        action = torch.where((team_id == 0).unsqueeze(-1), action0, action1)
+        action = merge_team_actions(action0, action1, team_id)
         actions_sim.append(action.clone())
 
         history_sim.append(

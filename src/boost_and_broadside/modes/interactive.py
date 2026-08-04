@@ -30,12 +30,14 @@ from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.modes.agent_factory import (
     ResolvedAgent,
+    agents_read_bullets,
     get_actions,
     imagine_trajectory,
     init_hidden,
     reset_done_envs,
     resolve_agent_spec,
 )
+from boost_and_broadside.modes.match import merge_team_actions
 from boost_and_broadside.ui.renderer import GameRenderer, RenderConfig
 
 PLAY_ENV_CONFIG = EnvConfig(
@@ -180,6 +182,7 @@ def _run_resolved_interactive_mode(
         rewards=rewards,
         device=device,
         field_map=field_map,
+        include_bullets=agents_read_bullets(agent0, agent1),
     )
 
     try:
@@ -250,7 +253,7 @@ def _run_interactive_loop(
 
                 # Select each agent's actions for their respective team (ship tokens only)
                 team_id = obs["team_id"][:, :N]  # (1, N) — exclude field tokens
-                action = torch.where((team_id == 0).unsqueeze(-1), action0, action1)
+                action = merge_team_actions(action0, action1, team_id)
 
                 # Merge imagined trajectories by team into a single list of per-step tensors.
                 pred_nexts = None

@@ -49,15 +49,8 @@ from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import EloCalibrateConfig, EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
-from boost_and_broadside.env.observation import ObsKey, observation_from_state
-from boost_and_broadside.modes.agent_factory import (
-    ResolvedAgent,
-    get_actions,
-    infer_num_value_components,
-    infer_team_pma_k,
-    init_hidden,
-    reset_done_envs,
-)
+from boost_and_broadside.modes.agent_factory import ResolvedAgent
+from boost_and_broadside.modes.match import MatchRunner
 from boost_and_broadside.train.rl.bradley_terry import (
     RatingFit,
     allocate_games,
@@ -66,6 +59,7 @@ from boost_and_broadside.train.rl.bradley_terry import (
     fit_single_rating,
 )
 from boost_and_broadside.train.rl.checkpoint_schema import require_observation_schema
+from boost_and_broadside.train.rl.policy_io import load_policy_bundle
 
 # Opponents that are not stationary and so cannot be tournament players. "avg"
 # changes every update, exactly like the live policy it is measured against.
@@ -203,25 +197,19 @@ def _load_run_config(run_dir: Path) -> tuple[EnvConfig, ModelConfig, str]:
 def _load_ladder_policy(
     path: Path, model_config: ModelConfig, ship_config: ShipConfig, num_ships: int, device: str
 ):
-    """Build an eval-mode policy from a ladder snapshot."""
-    from boost_and_broadside.models.yemong.policy import YemongPolicy
-    from boost_and_broadside.train.rl.features import build_standard_coordinator
+    """Build an eval-mode policy from a ladder snapshot.
 
-    checkpoint = torch.load(str(path), map_location=device, weights_only=False)
-    require_observation_schema(checkpoint, str(path))
-    coordinator = build_standard_coordinator(ship_config)
-    num_components = infer_num_value_components(checkpoint)
-    policy = YemongPolicy(
-        model_config,
-        coordinator,
-        num_value_components=num_components,
+    Snapshots span a run's history, so each is rebuilt from the configs it
+    recorded; the run's own configs are the fallback for snapshots written before
+    checkpoints carried provenance.
+    """
+    return load_policy_bundle(
+        str(path),
+        device=device,
         num_ships=num_ships,
-        team_pma_k=infer_team_pma_k(checkpoint),
-    ).to(device)
-    policy.load_state_dict(checkpoint["policy_state_dict"], strict=False)
-    policy.eval()
-    policy.requires_grad_(False)
-    return policy
+        ship_config=ship_config,
+        model_config=model_config,
+    ).policy
 
 
 def semi_random_label(probability: float) -> str:
@@ -309,10 +297,14 @@ class Tournament:
         paradigm: str,
         num_envs: int,
         device: str,
+        include_bullets: bool = False,
     ) -> None:
         self.players = players
         self.size = len(players)
         self.ship_config = ship_config
+        # Whether the field's policies read bullets; ratings measured without an
+        # input the policies trained on would describe a different agent.
+        self.include_bullets = include_bullets
         self.env_config = env_config
         self.ego_pass = paradigm == "ego_pass"
         self.num_envs = num_envs
@@ -382,20 +374,18 @@ class Tournament:
         mix toward decisive games.
         """
         env_team0, env_team1 = self._assign(allocation)
-        active: list[torch.Tensor] = []
-        for index, player in enumerate(self.players):
-            mask = (env_team0 == index) | (env_team1 == index)
-            indices = mask.nonzero(as_tuple=True)[0]
-            active.append(indices)
-            if player.agent.kind == "policy":
-                init_hidden(player.agent, int(indices.numel()), self.num_tokens, self.device)
+        runner = MatchRunner(
+            self.env,
+            [player.agent for player in self.players],
+            team0_index=env_team0,
+            team1_index=env_team1,
+            ship_config=self.ship_config,
+            num_ships=self.num_ships,
+        )
+        runner.init_hidden()
 
         self.env.reset(options={"team_sizes": self.team_sizes})
         finished = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
-        actions = torch.zeros(
-            self.size, self.num_envs, self.num_ships, 3, dtype=torch.long, device=self.device
-        )
-        arange = torch.arange(self.num_envs, device=self.device)
         games = 0
         step = 0
 
@@ -407,51 +397,8 @@ class Tournament:
                 progress.bar(
                     games, self.num_envs, "playing", f"episodes   step {step}/{self.max_steps}"
                 )
-            state = self.env.state
-            obs = observation_from_state(state, self.ship_config)
             with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
-                semi_scripted_cache: dict[int, torch.Tensor] = {}
-                semi_random_action: torch.Tensor | None = None
-                for index, player in enumerate(self.players):
-                    indices = active[index]
-                    if indices.numel() == 0:
-                        continue
-                    agent = player.agent
-                    if agent.kind == "policy":
-                        view = self._perspective_obs(
-                            obs.slice_envs(indices), env_team1[indices] == index
-                        )
-                        actions[index, indices] = get_actions(
-                            agent,
-                            view,
-                            state,
-                            int(indices.numel()),
-                            self.num_ships,
-                            self.device,
-                        ).long()
-                    elif agent.kind == "semi_random":
-                        cache_key = id(agent.agent.scripted_agent)
-                        if cache_key not in semi_scripted_cache:
-                            semi_scripted_cache[cache_key] = agent.agent.scripted_agent.get_actions(
-                                state
-                            )
-                        scripted_action = semi_scripted_cache[cache_key]
-                        if semi_random_action is None:
-                            semi_random_action = agent.agent.random_actions_like(scripted_action)
-                        actions[index] = agent.agent.mix_actions(
-                            scripted_action, semi_random_action
-                        ).long()
-                    else:
-                        actions[index] = get_actions(
-                            agent, None, state, self.num_envs, self.num_ships, self.device
-                        ).long()
-
-                team0_actions = actions[env_team0, arange]
-                team1_actions = actions[env_team1, arange]
-                action = torch.where(
-                    (state.ship_team_id == 0).unsqueeze(-1), team0_actions, team1_actions
-                )
-                dones, truncated = self.env.step(action)
+                dones, truncated = runner.step()
 
             done_any = dones | truncated
             newly_done = done_any & ~finished
@@ -459,30 +406,8 @@ class Tournament:
                 games += int(newly_done.sum().item())
                 self._tally(newly_done, env_team0, env_team1)
                 finished |= newly_done
-            if done_any.any():
-                self.env.reset_envs(done_any, options={"team_sizes": self.team_sizes})
-                for index, player in enumerate(self.players):
-                    if player.agent.kind == "policy" and active[index].numel() > 0:
-                        reset_done_envs(player.agent, done_any[active[index]], self.num_tokens)
+            runner.reset_finished(done_any, options={"team_sizes": self.team_sizes})
         return games
-
-    def _perspective_obs(self, sliced, as_team1: torch.Tensor):
-        """Return each env's observation from the acting agent's own side.
-
-        An ego_pass policy only ever learned to act as team 0, so in envs where
-        it is playing team 1 it must see mirrored team IDs. The selection is
-        done inside a single observation rather than by running the policy twice
-        because the agent carries one recurrent state: a second forward pass per
-        step would advance that state twice and corrupt it.
-        """
-        if not self.ego_pass:
-            return sliced
-        team_id = sliced[ObsKey.TEAM_ID]
-        ships = team_id[..., : self.num_ships]
-        mirrored = torch.where(ships == 0, 1, torch.where(ships == 1, 0, ships))
-        merged = team_id.clone()
-        merged[..., : self.num_ships] = torch.where(as_team1.view(-1, 1), mirrored, ships)
-        return sliced.update(ObsKey.TEAM_ID, merged)
 
     def _tally(
         self, newly_done: torch.Tensor, env_team0: torch.Tensor, env_team1: torch.Tensor
@@ -827,7 +752,15 @@ def run_elo_calibrate_mode(
         progress.done(f"field ({len(players)}): {', '.join(p.label for p in players)}")
         anchor = next(i for i, p in enumerate(players) if p.label == "random")
 
-        tournament = Tournament(players, ship_config, env_config, paradigm, num_envs, device)
+        tournament = Tournament(
+            players,
+            ship_config,
+            env_config,
+            paradigm,
+            num_envs,
+            device,
+            include_bullets=model_config.reads_bullets,
+        )
         pairs = len(players) * (len(players) - 1) // 2
         progress.stage(
             f"{num_envs} games/batch over {pairs} pairs, target +/-{config.target_stderr:.0f} "

@@ -236,11 +236,19 @@ class TestBuildPlayersField:
         from boost_and_broadside.modes.elo_calibrate import build_players
 
         players = build_players(
-            tmp_path, {"entries": []}, None, ShipConfig(), 8, "cpu",
+            tmp_path,
+            {"entries": []},
+            None,
+            ShipConfig(),
+            8,
+            "cpu",
             reference_probabilities=(0.5, 0.2),
         )
         assert [p.label for p in players] == [
-            "random", "scripted", "semi_scripted_0p2", "semi_scripted_0p5",
+            "random",
+            "scripted",
+            "semi_scripted_0p2",
+            "semi_scripted_0p5",
         ]
         assert all(p.agent.kind == "semi_random" for p in players[2:])
 
@@ -249,7 +257,12 @@ class TestBuildPlayersField:
 
         with pytest.raises(AssertionError):
             build_players(
-                tmp_path, {"entries": []}, None, ShipConfig(), 8, "cpu",
+                tmp_path,
+                {"entries": []},
+                None,
+                ShipConfig(),
+                8,
+                "cpu",
                 reference_probabilities=(0.0,),
             )
 

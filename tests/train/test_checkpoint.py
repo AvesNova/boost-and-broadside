@@ -5,17 +5,18 @@ tensor has the right shape and dtype, and the values look plausible. The damage
 only surfaces later as a diverged resume or a NaN with no traceable origin.
 """
 
+import dataclasses
 from pathlib import Path
 
 import pytest
 import torch
 
-from boost_and_broadside.modes.agent_factory import infer_num_value_components
 from boost_and_broadside.train.rl.checkpoint import clone_to_cpu
 from boost_and_broadside.train.rl.checkpoint_schema import (
     OBSERVATION_SCHEMA,
     require_observation_schema,
 )
+from boost_and_broadside.train.rl.policy_io import infer_num_value_components
 
 requires_cuda = pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
 
@@ -152,6 +153,25 @@ class TestObservationSchema:
         ladder = torch.load(trainer._save_ladder_snapshot(), map_location="cpu", weights_only=False)
         assert ladder["observation_schema"] == OBSERVATION_SCHEMA
 
+    def test_every_payload_family_records_what_it_was_trained_under(self, tmp_path):
+        """Including the ladder snapshots, which are the files most often reloaded
+        and were the ones carrying the least about themselves."""
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        ladder = torch.load(trainer._save_ladder_snapshot(), map_location="cpu", weights_only=False)
+        families = [
+            trainer.checkpoint_payload(0),
+            trainer._checkpoint_payload_lightweight(0),
+            trainer._avg_checkpoint_payload_lightweight(0),
+            ladder,
+        ]
+
+        for payload in families:
+            for key in ("model_config", "env_config", "ship_config", "team_pma_k"):
+                assert key in payload, f"payload family is missing {key}"
+            assert payload["ship_config"] == dataclasses.asdict(trainer.ship_config)
+
     def test_legacy_obstacle_checkpoint_fails_clearly(self):
         with pytest.raises(ValueError, match="Observation feature semantics are incompatible"):
             require_observation_schema({"policy_state_dict": {}}, "legacy.pt")
@@ -191,6 +211,163 @@ class TestNumValueComponents:
         """Checkpoints written before the field recover K from the value head."""
         ckpt = {"policy_state_dict": {"value_head_local.3.weight": torch.zeros(5, 4)}}
         assert infer_num_value_components(ckpt) == 5
+
+
+class TestBulletReadingCheckpoints:
+    """A checkpoint's weights and the policy rebuilt to hold them must agree.
+
+    Bullet cross-attention adds a ``bullet_encoder`` submodule. Every checkpoint
+    written by a bullet-reading run carries those tensors, and a policy built
+    without the matching feature pipeline has nowhere to put them — the load then
+    fails mid-run, the first time a league opponent is sampled. ``build_policy``
+    derives the pipeline from the config, so the two cannot disagree.
+    """
+
+    @staticmethod
+    def _bullet_model_config():
+        from boost_and_broadside.config import ModelConfig
+
+        return ModelConfig(d_model=32, n_heads=4, n_yemong_blocks=1, n_bullet_cross_per_block=1)
+
+    def test_league_loader_round_trips_a_bullet_reading_snapshot(self, tmp_path):
+        from boost_and_broadside.train.rl.policy_io import load_policy_bundle
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(
+            checkpoint_dir=str(tmp_path), model_config=self._bullet_model_config()
+        )
+        path = trainer._save_ladder_snapshot()
+
+        bundle = load_policy_bundle(
+            str(path),
+            device=trainer.device,
+            num_ships=trainer.wrapper.num_ships,
+            ship_config=trainer.ship_config,
+            model_config=trainer.model_config,
+            team_pma_k=trainer._win_k,
+        )
+
+        assert bundle.policy.bullet_encoder is not None
+        assert bundle.reads_bullets
+        saved = torch.load(path, map_location="cpu", weights_only=False)["policy_state_dict"]
+        assert set(saved) == set(bundle.policy.state_dict())
+
+    def test_a_bullet_reading_config_always_gets_its_encoder(self):
+        """The invariant that replaced the bug: the pipeline is derived, not passed.
+
+        There is no argument a caller can omit to produce a bullet-reading policy
+        without a bullet encoder, which is exactly how the league loader ended up
+        building one that could not hold the weights it was about to load.
+        """
+        from boost_and_broadside.config import ShipConfig
+        from boost_and_broadside.train.rl.policy_io import build_policy
+
+        reads = build_policy(
+            self._bullet_model_config(), ShipConfig(), num_value_components=3, num_ships=4
+        )
+        silent = build_policy(
+            dataclasses.replace(self._bullet_model_config(), n_bullet_cross_per_block=0),
+            ShipConfig(),
+            num_value_components=3,
+            num_ships=4,
+        )
+
+        assert reads.bullet_encoder is not None
+        assert silent.bullet_encoder is None
+
+    def test_sampled_league_opponent_reads_bullets(self, tmp_path):
+        """The crash path itself: sample a checkpoint opponent mid-rollout."""
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(
+            checkpoint_dir=str(tmp_path),
+            league_fraction=0.5,
+            model_config=self._bullet_model_config(),
+        )
+        path = trainer._save_ladder_snapshot()
+        trainer.roster.add_checkpoint(
+            path=str(path), global_step=1, update=1, initial_elo=trainer._training_elo
+        )
+
+        hidden = trainer._prepare_league_opponent(trainer.wrapper.num_ships)
+
+        assert hidden is not None
+        assert trainer._current_league_policy.bullet_encoder is not None
+
+    def test_elo_evaluator_observes_bullets_when_the_policy_reads_them(self, tmp_path):
+        """Rating a bullet-reading policy on a bullet-free observation would
+        measure a blindfolded agent and report it as the run's Elo."""
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(
+            checkpoint_dir=str(tmp_path), model_config=self._bullet_model_config()
+        )
+        runtime = trainer._initialize_rollout_runtime()
+
+        assert runtime.elo_eval.include_bullets is True
+
+
+class TestHeterogeneousLeague:
+    """A roster spans a run's history, and a run's architecture can change.
+
+    Nothing in the policy is sized by ship count and every entry is rebuilt from
+    its own recorded config, so an opponent need not share the live policy's
+    shape. Each carries its own recurrent width, which is what makes this work at
+    all — the trainer never allocates hidden state on an opponent's behalf.
+    """
+
+    @staticmethod
+    def _config(d_model: int, blocks: int = 1):
+        from boost_and_broadside.config import ModelConfig
+
+        return ModelConfig(d_model=d_model, n_heads=4, n_yemong_blocks=blocks)
+
+    def test_a_narrower_opponent_plays_a_wider_trainee(self, tmp_path):
+        from tests.train.test_ppo import _make_trainer
+
+        older = _make_trainer(
+            checkpoint_dir=str(tmp_path / "old"), model_config=self._config(d_model=32)
+        )
+        snapshot = older._save_ladder_snapshot()
+
+        trainer = _make_trainer(
+            checkpoint_dir=str(tmp_path / "new"),
+            league_fraction=0.5,
+            model_config=self._config(d_model=64, blocks=2),
+        )
+        trainer.roster.add_checkpoint(
+            path=str(snapshot), global_step=1, update=1, initial_elo=trainer._training_elo
+        )
+
+        hidden = trainer._prepare_league_opponent(trainer.wrapper.num_ships)
+
+        assert trainer._current_league_entry.bundle.model_config.d_model == 32
+        # The opponent's hidden state is its own width, not the trainee's.
+        assert hidden.shape[0] == 1  # one temporal sublayer, from *its* config
+        trainer.train()  # a full update with the two architectures interleaved
+
+    def test_a_bullet_reading_opponent_in_a_bullet_free_run_is_refused(self, tmp_path):
+        """The rollout observation is shaped once and cannot widen to suit an
+        opponent, so the alternative is an opponent silently playing blind."""
+        from tests.train.test_ppo import _make_trainer
+
+        reader = _make_trainer(
+            checkpoint_dir=str(tmp_path / "old"),
+            model_config=dataclasses.replace(self._config(d_model=32), n_bullet_cross_per_block=1),
+        )
+        snapshot = reader._save_ladder_snapshot()
+
+        trainer = _make_trainer(
+            checkpoint_dir=str(tmp_path / "new"),
+            league_fraction=0.5,
+            model_config=self._config(d_model=32),
+        )
+        trainer.roster.add_checkpoint(
+            path=str(snapshot), global_step=1, update=1, initial_elo=trainer._training_elo
+        )
+
+        with pytest.raises(ValueError, match="reads bullets"):
+            trainer._prepare_league_opponent(trainer.wrapper.num_ships)
 
 
 def _save_checkpoint_and_join(trainer, update: int) -> None:

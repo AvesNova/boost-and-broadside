@@ -46,6 +46,7 @@ from boost_and_broadside.modes.agent_factory import (
     init_hidden,
     reset_done_envs,
 )
+from boost_and_broadside.modes.match import merge_team_actions
 
 _ELO_RATING_SCALE = 400.0
 
@@ -85,6 +86,9 @@ class LadderOpponent:
     policy: "YemongPolicy | None"  # None stands for the random agent
     elo: float
     label: str  # roster label; the key match counts are recorded under
+    # An anchor may predate the live architecture, so it says for itself whether
+    # the observation it is rated on has to carry the bullet axis.
+    reads_bullets: bool = False
 
 
 def expected_score(
@@ -157,6 +161,7 @@ class EloEvaluator:
         floating_window: deque[float],
         scripted_window: deque[float],
         live_vs_avg_window: deque[float],
+        include_bullets: bool = False,
     ) -> None:
         """Build the eval battery from the current ladder state.
 
@@ -167,6 +172,9 @@ class EloEvaluator:
                       milestone (then anchors must be just random).
             floating_games: Rated games already accumulated by the floating
                       checkpoint (restored on resume).
+            include_bullets: Whether the rated policies read bullets. Rating
+                      them on an observation that omits an input they were
+                      trained on would measure a different agent.
         """
         assert 1 <= len(anchors) <= MAX_ANCHORS, f"expected 1-{MAX_ANCHORS} anchors, got {anchors}"
         assert floating is not None or (len(anchors) == 1 and anchors[0].policy is None), (
@@ -175,6 +183,7 @@ class EloEvaluator:
         self.config = config
         self.device = device
         self.ship_config = ship_config
+        self.include_bullets = include_bullets
         self.num_ships = num_ships
         self.num_tokens = num_tokens
         self.ego_pass = ego_pass
@@ -494,12 +503,12 @@ class EloEvaluator:
 
         with torch.no_grad():
             state = self.env.state
-            obs = observation_from_state(state, self.ship_config)
+            obs = observation_from_state(
+                state, self.ship_config, include_bullets=self.include_bullets
+            )
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 action_team0, action_team1 = self._compute_team_actions(obs)
-                action = torch.where(
-                    (state.ship_team_id == 0).unsqueeze(-1), action_team0, action_team1
-                )
+                action = merge_team_actions(action_team0, action_team1, state.ship_team_id)
                 dones, truncated = self.env.step(action)
                 done_any = dones | truncated
 

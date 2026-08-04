@@ -20,7 +20,7 @@ def env_config() -> EnvConfig:
 
 @pytest.fixture
 def model_config() -> ModelConfig:
-    return ModelConfig(d_model=64, n_heads=4, n_transformer_blocks=2)
+    return ModelConfig(d_model=64, n_heads=4, n_yemong_blocks=2)
 
 
 @pytest.fixture

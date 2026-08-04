@@ -102,6 +102,7 @@ def _make_train_config(
     paradigm: str = "ego_pass",
     scripted_fraction: float = 0.0,
     avg_model_fraction: float = 0.0,
+    league_fraction: float = 0.0,
     checkpoint_dir: str = "checkpoints",
     min_games_to_freeze: int = 0,
     rollouts_per_update: int = 1,
@@ -118,6 +119,7 @@ def _make_train_config(
         schedule=_make_schedule(
             scripted_fraction=constant(scripted_fraction),
             avg_model_fraction=constant(avg_model_fraction),
+            league_fraction=constant(league_fraction),
         ),
         rewards=_make_rewards(**reward_overrides),
         num_steps=16,
@@ -152,10 +154,12 @@ def _make_trainer(
     paradigm: str = "ego_pass",
     scripted_fraction: float = 0.0,
     avg_model_fraction: float = 0.0,
+    league_fraction: float = 0.0,
     checkpoint_dir: str = "checkpoints",
     min_games_to_freeze: int = 0,
     rollouts_per_update: int = 1,
     device: str = "cpu",
+    model_config: ModelConfig | None = None,
     **reward_overrides,
 ) -> PPOTrainer:
     ship_config = ShipConfig()
@@ -169,15 +173,17 @@ def _make_trainer(
             paradigm=paradigm,
             scripted_fraction=scripted_fraction,
             avg_model_fraction=avg_model_fraction,
+            league_fraction=league_fraction,
             checkpoint_dir=checkpoint_dir,
             min_games_to_freeze=min_games_to_freeze,
             rollouts_per_update=rollouts_per_update,
             **reward_overrides,
         ),
-        model_config=ModelConfig(
+        model_config=model_config
+        or ModelConfig(
             d_model=32,
             n_heads=4,
-            n_transformer_blocks=1,
+            n_yemong_blocks=1,
         ),
         ship_config=ship_config,
         device=device,
@@ -639,7 +645,7 @@ class TestSchedulePrimitives:
                 bc_winrate_target=0.9,
                 histogram_interval=10,
             ),
-            model_config=ModelConfig(d_model=32, n_heads=4, n_transformer_blocks=1),
+            model_config=ModelConfig(d_model=32, n_heads=4, n_yemong_blocks=1),
             ship_config=ShipConfig(),
             device="cpu",
             use_wandb=False,
