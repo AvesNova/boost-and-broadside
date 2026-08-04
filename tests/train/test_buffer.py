@@ -6,6 +6,7 @@ import pytest
 import torch
 
 from boost_and_broadside.train.rl.buffer import (
+    AdvantageScaler,
     ReturnScaler,
     RolloutBuffer,
     symexp,
@@ -116,6 +117,45 @@ class TestReturnScaler:
         assert torch.allclose(scaler.percentiles[0], scaler2.percentiles[0])
         assert torch.allclose(scaler.percentiles[1], scaler2.percentiles[1])
 
+    def test_sparse_component_is_scaled_by_its_own_span(self):
+        """A small-but-real span must set the scale, not be overridden by the floor.
+
+        Guards the regression where min_span sat above a live component's span and
+        silently compressed its critic targets.
+        """
+        scaler = ReturnScaler(
+            num_components=1, device=torch.device("cpu"), ema_alpha=1.0, min_span=1e-3
+        )
+        # Span 0.1 — two orders of magnitude below the old 1.0 floor.
+        returns = torch.linspace(-0.05, 0.05, 200).reshape(200, 1, 1, 1)
+        scaler.update(returns)
+        assert not scaler.floor_bound.any()
+        p95 = scaler.percentiles[1]
+        assert scaler.normalize(p95).abs().item() == pytest.approx(1.0, abs=0.1)
+
+    def test_floor_bound_flags_a_degenerate_component(self):
+        scaler = ReturnScaler(
+            num_components=2, device=torch.device("cpu"), ema_alpha=1.0, min_span=1e-3
+        )
+        returns = torch.zeros(4, 4, 2, 2)
+        returns[..., 1] = torch.linspace(-1.0, 1.0, 32).reshape(4, 4, 2)
+        scaler.update(returns)
+        assert scaler.floor_bound.tolist() == [True, False]
+
+    def test_changed_floor_forces_reseed_on_load(self):
+        """A checkpoint written under a different floor must not carry it forward."""
+        old = ReturnScaler(num_components=K, device=torch.device("cpu"), min_span=1.0)
+        old.update(torch.randn(4, 4, 2, K) * 0.01)
+        loaded = ReturnScaler(num_components=K, device=torch.device("cpu"), min_span=1e-3)
+        loaded.load_state_dict(old.state_dict())
+        assert not loaded._initialized
+
+        same = ReturnScaler(num_components=K, device=torch.device("cpu"), min_span=1e-3)
+        same.update(torch.randn(4, 4, 2, K))
+        reloaded = ReturnScaler(num_components=K, device=torch.device("cpu"), min_span=1e-3)
+        reloaded.load_state_dict(same.state_dict())
+        assert reloaded._initialized
+
     def test_chunked_update_matches_concatenated_rollout(self):
         first = torch.randn(4, 3, 2, K)
         second = torch.randn(4, 3, 2, K)
@@ -138,6 +178,75 @@ class TestReturnScaler:
 
         assert torch.allclose(sampled.percentiles[0], exact.percentiles[0], atol=0.01)
         assert torch.allclose(sampled.percentiles[1], exact.percentiles[1], atol=0.01)
+
+
+class TestAdvantageScaler:
+    """The actor-side counterpart to ReturnScaler.
+
+    Its contract is that every component leaves normalization at unit RMS, so
+    RewardConfig weights alone set the policy-gradient mix. A floor that binds
+    breaks exactly that contract, silently and only for sparse components.
+    """
+
+    @staticmethod
+    def _advantages(rms: float, shape=(8, 4, 2)) -> tuple[torch.Tensor, torch.Tensor]:
+        advantages = torch.full((*shape, 1), rms)
+        advantages[::2] *= -1.0  # zero-mean, exact RMS
+        alive = torch.ones(shape, dtype=torch.bool)
+        return advantages, alive
+
+    def test_normalize_gives_unit_rms(self):
+        scaler = AdvantageScaler(num_components=1, device=torch.device("cpu"), ema_alpha=1.0)
+        advantages, alive = self._advantages(0.25)
+        scaler.update(advantages, alive)
+        assert scaler.normalize(advantages).pow(2).mean().sqrt().item() == pytest.approx(
+            1.0, abs=1e-3
+        )
+
+    def test_sparse_component_reaches_unit_rms_too(self):
+        """A component two orders of magnitude below a dense one still normalizes to 1.
+
+        This is the regression: with min_rms=0.1 an advantage RMS of 0.0075 came
+        out at 0.075 after normalization, a 13x silent downweight of the win
+        signal relative to the dense damage components.
+        """
+        scaler = AdvantageScaler(
+            num_components=1, device=torch.device("cpu"), ema_alpha=1.0, min_rms=1e-4
+        )
+        advantages, alive = self._advantages(0.0075)
+        scaler.update(advantages, alive)
+        assert not scaler.floor_bound.any()
+        assert scaler.normalize(advantages).pow(2).mean().sqrt().item() == pytest.approx(
+            1.0, abs=1e-2
+        )
+
+    def test_floor_binds_only_on_a_collapsed_component(self):
+        scaler = AdvantageScaler(
+            num_components=2, device=torch.device("cpu"), ema_alpha=1.0, min_rms=1e-4
+        )
+        advantages = torch.zeros(8, 4, 2, 2)
+        advantages[..., 1] = 0.0075
+        alive = torch.ones(8, 4, 2, dtype=torch.bool)
+        scaler.update(advantages, alive)
+        assert scaler.floor_bound.tolist() == [True, False]
+        assert torch.isfinite(scaler.normalize(advantages)).all()
+
+    def test_changed_floor_forces_reseed_on_load(self):
+        old = AdvantageScaler(num_components=K, device=torch.device("cpu"), min_rms=0.1)
+        advantages, alive = self._advantages(0.0075, shape=(8, 4, K))
+        old.update(advantages.expand(8, 4, K, K).contiguous(), alive)
+        loaded = AdvantageScaler(num_components=K, device=torch.device("cpu"), min_rms=1e-4)
+        loaded.load_state_dict(old.state_dict())
+        assert not loaded._initialized
+
+    def test_state_dict_roundtrip(self):
+        scaler = AdvantageScaler(num_components=K, device=torch.device("cpu"))
+        advantages = torch.randn(8, 4, 2, K)
+        alive = torch.ones(8, 4, 2, dtype=torch.bool)
+        scaler.update(advantages, alive)
+        reloaded = AdvantageScaler(num_components=K, device=torch.device("cpu"))
+        reloaded.load_state_dict(scaler.state_dict())
+        assert torch.allclose(scaler.rms, reloaded.rms)
 
 
 class TestBufferAdd:

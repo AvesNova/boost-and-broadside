@@ -90,6 +90,15 @@ stable range without forcing components with different natural scales into one v
 head. The exact loss assembly and logging proxies live in
 [`ppo.py`](../src/boost_and_broadside/train/rl/ppo.py).
 
+Both scalers carry a floor, and a floor that binds on an active component replaces that
+component's own scale with the guard's. `advantage_min_rms` is therefore a true epsilon:
+the terminal win signal's advantage RMS is around 0.008, two orders of magnitude below a
+per-step damage signal, and an earlier floor of 0.1 was downweighting it roughly
+thirteenfold in the policy gradient. `return_min_span` is *not* an epsilon and is held at
+1.0 on purpose — see the note in [`runs/rl.py`](../runs/rl.py) for why lowering it needs
+the critic's outlier sensitivity addressed first. `scaler/floor_bound_span/*` and
+`scaler/floor_bound_rms/*` report which components each floor is currently holding up.
+
 ## Reward decomposition
 
 Rewards are emitted as named components by [`rewards.py`](../src/boost_and_broadside/env/rewards.py).

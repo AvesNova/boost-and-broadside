@@ -424,7 +424,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self.adv_scaler = AdvantageScaler(
             num_components=K,
             device=self.device,
+            min_rms=train_config.advantage_min_rms,
         )
+        # Components whose scaler floor has already been reported, so a binding
+        # floor warns once rather than every update.
+        self._floor_warned: set[str] = set()
 
         # Per-component aggregated-return diagnostic — refreshed once per update
         # by _precompute_lambda_aggregates (primary scale).

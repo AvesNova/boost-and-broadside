@@ -178,7 +178,13 @@ class TrainConfig:
     max_grad_norm: float  # gradient clipping norm
     total_timesteps: int  # total environment steps before stopping
     return_ema_alpha: float  # EMA decay for per-component return percentile scaler
-    return_min_span: float  # minimum p95-p5 span (symlog-space) — guards disabled components
+    # Degeneracy epsilons for the two per-component scalers. Both are
+    # divide-by-zero guards and nothing more: they must sit far below the
+    # smallest span/RMS any *active* component really has, or they quietly
+    # rescale that component's critic targets and policy-gradient share. The
+    # trainer logs scaler/floor_bound/<name> and warns when one binds.
+    return_min_span: float  # ReturnScaler p95-p5 epsilon (symlog-space)
+    advantage_min_rms: float  # AdvantageScaler RMS epsilon (symlog-space)
     checkpoint_dir: str  # directory to write .pt files
 
     # --- League play + Elo (static tournament parameters) ---

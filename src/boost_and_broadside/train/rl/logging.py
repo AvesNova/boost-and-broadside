@@ -24,14 +24,33 @@ class LoggingMixin:
         p95_cpu = p95.cpu()
         span_cpu = p95_cpu - p5_cpu
         adv_rms_cpu = self.adv_scaler.rms.cpu()
+        # A floor that binds on an active component decouples that component's
+        # scale from its own statistics: the critic target (ReturnScaler) or the
+        # policy-gradient share (AdvantageScaler) is then set by the guard.
+        # Tracked per scaler because the two have different failure modes — see
+        # the return_min_span note in runs/rl.py.
+        span_bound_cpu = self.scaler.floor_bound.cpu()
+        rms_bound_cpu = self.adv_scaler.floor_bound.cpu()
         for i, name in enumerate(self._active_names):
             metrics[f"scaler/p5/{name}"] = p5_cpu[i].item()
             metrics[f"scaler/p95/{name}"] = p95_cpu[i].item()
             metrics[f"scaler/span/{name}"] = span_cpu[i].item()
             metrics[f"scaler/adv_rms/{name}"] = adv_rms_cpu[i].item()
+            metrics[f"scaler/floor_bound_span/{name}"] = float(span_bound_cpu[i].item())
+            metrics[f"scaler/floor_bound_rms/{name}"] = float(rms_bound_cpu[i].item())
+            if bool(rms_bound_cpu[i].item()) and name not in self._floor_warned:
+                self._floor_warned.add(name)
+                print(
+                    f"[PPOTrainer] WARNING: advantage_min_rms binds on active component "
+                    f"{name!r} (adv_rms={adv_rms_cpu[i].item():.3g} vs "
+                    f"{self.cfg.advantage_min_rms:g}). Its policy-gradient share is set "
+                    "by the guard, not by its own statistics."
+                )
 
         # Scaler span minimum — flags components where normalization may be degenerate
         metrics["scaler/span_min"] = span_cpu.min().item()
+        metrics["scaler/floor_bound_span_count"] = float(span_bound_cpu.sum().item())
+        metrics["scaler/floor_bound_rms_count"] = float(rms_bound_cpu.sum().item())
 
         # Merge episode stats accumulated on-GPU by the wrapper — one sync per update
         ep_stats = self.wrapper.pop_episode_stats()

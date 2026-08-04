@@ -101,7 +101,26 @@ RL_TRAIN_CONFIG = TrainConfig(
     max_grad_norm=1.0,
     total_timesteps=1_000_000_000,
     return_ema_alpha=0.005,
+    # Held at 1.0 deliberately, and it *does* bind on six of the eleven active
+    # components (watch scaler/floor_bound_span/*). Lowering it to an epsilon is
+    # not a free bug fix: ReturnScaler divides the whole return distribution by a
+    # robust p5-p95 half-span, so a component whose central 90% is tight but whose
+    # tails are not — every sparse terminal reward — produces very large normalized
+    # targets, and the value loss squares them. Measured: loss/value rises ~11x at
+    # production spans and ~400x in --smoke, which against max_grad_norm=1.0 (grad
+    # norm currently 0.65) makes clipping bind every step and silently cuts the
+    # effective learning rate. Fixing it properly means bounding the critic's
+    # outlier sensitivity (Huber value loss, or a tail-aware span) and re-tuning
+    # value_function_coef / max_grad_norm alongside — its own change, with its own
+    # measurement, not this one.
     return_min_span=1.0,
+    # The actor-side counterpart is a true epsilon. Its floor was pinning
+    # ally_win/enemy_win/kill_shot/kill_assist/combat_death/shoot_quality at
+    # 0.1 against true RMS values of 0.0075-0.027, downweighting the win signal
+    # ~13x in the policy gradient. No loss-magnitude risk here: the aggregated
+    # advantage is renormalized to unit RMS again after lambda aggregation
+    # (see _compute_minibatch_loss), so this changes the mix, not the scale.
+    advantage_min_rms=1e-4,
     return_quantile_samples=262_144,
     checkpoint_dir="checkpoints",
     league_size=20,
