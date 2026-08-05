@@ -50,45 +50,53 @@ from boost_and_broadside.modes.match import merge_team_actions
 
 _ELO_RATING_SCALE = 400.0
 
-# Frozen ladder entries the live and floating ratings are measured against.
-# Two anchors keep each new frozen rating tied to more than one chain link,
-# damping the random-walk error a single-link ladder accumulates.
+# Frozen *checkpoint* anchors kept in the measurement ladder. More than one
+# keeps each new frozen rating tied to several chain links, damping the random
+# walk a single-link ladder accumulates. Stationary references (the random
+# agent, the semi-random rungs, the scripted controller) are not counted here —
+# they never age out, so they are always in the anchor pool on top of these.
 #
-# NOT a tunable constant. _anchor_actions selects between anchors with a binary
-# torch.where and _resample_anchor_assignments draws against a single weight
-# threshold, so both assume exactly two. Raising this alone fails silently
-# rather than loudly: specs are oldest-first, so the newest anchor — the one
-# information weighting gives most of the games — would never be assigned or
-# played, and its share would land on the second-oldest instead. The evaluator
-# would keep running and report a quietly degraded rating. Generalize both
-# functions first (multinomial draw, gather-based select).
-MAX_ANCHORS = 2
+# The anchor count is fully general: assignment is a multinomial draw over the
+# information weights and action selection is a gather. Raising it is safe.
+MAX_CHECKPOINT_ANCHORS = 2
 
-# Row layout of the per-update match-count table. Anchors occupy the leading
-# MAX_ANCHORS rows (indexed by the live slot's per-episode anchor assignment);
-# the three fixed opponents follow. Columns are (live win, live loss, tie).
-#
-# Slot 4 (floating vs anchor) is deliberately absent: both of its participants
-# are frozen ladder entries that the post-hoc suite rates directly from far more
-# games than in-training eval could contribute. Only matchups involving the live
-# or avg policy — the two non-stationary players, which exist just once at each
-# update and can never be replayed — are recorded here.
-_COUNT_FLOATING = MAX_ANCHORS
-_COUNT_SCRIPTED = MAX_ANCHORS + 1
-_COUNT_AVG = MAX_ANCHORS + 2
-_COUNT_ROWS = MAX_ANCHORS + 3
+# Backwards-compatible alias — external callers ask for "how many ladder
+# entries should the evaluator measure against".
+MAX_ANCHORS = MAX_CHECKPOINT_ANCHORS
 
 
 @dataclass(frozen=True)
 class LadderOpponent:
-    """One rated reference the live or floating policy is measured against."""
+    """One rated reference the live or floating policy is measured against.
 
-    policy: "YemongPolicy | None"  # None stands for the random agent
+    Three kinds, distinguished without a tag:
+
+    * ``policy`` set — a checkpoint policy. Carries recurrent state, so it must
+      observe every environment in its slot even where it is not the assigned
+      opponent, and costs a forward pass.
+    * ``policy`` None, ``p_scripted`` None — the random agent.
+    * ``policy`` None, ``p_scripted`` set — a semi-random rung: the scripted
+      action with that probability, else a uniform one. ``p_scripted=1.0`` is
+      the scripted controller itself.
+
+    The stateless kinds carry no hidden state and share a single scripted
+    evaluation across the whole slot, so a ladder of rungs costs about one
+    scripted call rather than one agent each.
+    """
+
+    policy: "YemongPolicy | None"  # None stands for a stateless agent
     elo: float
     label: str  # roster label; the key match counts are recorded under
     # An anchor may predate the live architecture, so it says for itself whether
     # the observation it is rated on has to carry the bullet axis.
     reads_bullets: bool = False
+    # Scripted-action probability for stateless rungs; None means uniform random.
+    p_scripted: float | None = None
+
+    @property
+    def is_stateless(self) -> bool:
+        """Whether this reference needs no recurrent state and no forward pass."""
+        return self.policy is None
 
 
 def expected_score(
@@ -166,8 +174,9 @@ class EloEvaluator:
         """Build the eval battery from the current ladder state.
 
         Args:
-            anchors:  One LadderOpponent per anchor, oldest first; a None policy
-                      is the random agent. At most MAX_ANCHORS entries.
+            anchors:  Stationary references first (they never age out), then
+                      checkpoint anchors oldest-first. At most
+                      MAX_CHECKPOINT_ANCHORS of the latter.
             floating: The floating checkpoint, or None before the first
                       milestone (then anchors must be just random).
             floating_games: Rated games already accumulated by the floating
@@ -176,9 +185,9 @@ class EloEvaluator:
                       them on an observation that omits an input they were
                       trained on would measure a different agent.
         """
-        assert 1 <= len(anchors) <= MAX_ANCHORS, f"expected 1-{MAX_ANCHORS} anchors, got {anchors}"
-        assert floating is not None or (len(anchors) == 1 and anchors[0].policy is None), (
-            "without a floating checkpoint the ladder must consist of only the random anchor"
+        assert anchors, "the evaluator needs at least one anchor"
+        assert floating is not None or all(spec.is_stateless for spec in anchors), (
+            "without a floating checkpoint the ladder must hold only stationary references"
         )
         self.config = config
         self.device = device
@@ -227,12 +236,36 @@ class EloEvaluator:
         )
         self._anchor_idx_live = torch.zeros(size, dtype=torch.long, device=device)
         self._anchor_idx_float = torch.zeros(size, dtype=torch.long, device=device)
+        # Stationary references form the head of the anchor set and never age
+        # out; checkpoint anchors are appended and rotate behind them. Fixed for
+        # the evaluator's life — promotion only ever appends checkpoints.
+        self._n_stationary = sum(1 for spec in anchors if spec.is_stateless)
+        assert all(spec.is_stateless for spec in anchors[: self._n_stationary]), (
+            "stationary anchors must form a contiguous prefix of the anchor set"
+        )
         self._build_ladder_agents()
 
-        # (_COUNT_ROWS, 3) tally of rated episodes since the last flush, as
+        # (self._count_rows, 3) tally of rated episodes since the last flush, as
         # (live win, live loss, tie). Accumulated on device to keep step() free
         # of syncs; read back once per update in flush().
-        self._match_counts = torch.zeros(_COUNT_ROWS, 3, device=device, dtype=torch.float64)
+        # Row layout of the per-update match-count table: one row per anchor
+        # slot, then floating / scripted / avg. Sized for the largest anchor set
+        # the ladder can reach (the stationary references never age out, and
+        # promotion can add up to MAX_CHECKPOINT_ANCHORS frozen checkpoints), so
+        # promotion never has to resize it mid-run. Columns are
+        # (live win, live loss, tie).
+        #
+        # The floating-vs-anchor slot is deliberately absent: both participants
+        # are frozen ladder entries the post-hoc suite rates from far more games
+        # than in-training eval could contribute. Only matchups involving the
+        # live or avg policy — the two non-stationary players, which exist in one
+        # form for exactly one update and can never be replayed — are recorded.
+        self._anchor_rows = len(self._anchor_specs) + MAX_CHECKPOINT_ANCHORS
+        self._count_floating = self._anchor_rows
+        self._count_scripted = self._anchor_rows + 1
+        self._count_avg = self._anchor_rows + 2
+        self._count_rows = self._anchor_rows + 3
+        self._match_counts = torch.zeros(self._count_rows, 3, device=device, dtype=torch.float64)
 
         self._win_history: list[torch.Tensor] = []
         self._rated_history: list[torch.Tensor] = []
@@ -249,12 +282,6 @@ class EloEvaluator:
 
     def _anchor_elo_tensor(self) -> torch.Tensor:
         """Anchor ratings as a (A,) tensor, oldest first."""
-        # The 2 here is the binary-select assumption documented on MAX_ANCHORS,
-        # not MAX_ANCHORS itself — asserting against that would not catch a raise.
-        assert len(self._anchor_specs) <= 2, (
-            "anchor action selection and assignment sampling are hardcoded for two "
-            "anchors; generalize both (see the MAX_ANCHORS comment) before adding a third"
-        )
         return torch.tensor(
             [spec.elo for spec in self._anchor_specs], device=self.device, dtype=torch.float64
         )  # (A,)
@@ -304,9 +331,14 @@ class EloEvaluator:
         """Freeze the floating checkpoint into the anchor set and start a new one.
 
         The caller freezes the matching roster entry; here the current floating
-        policy becomes the newest anchor at its settled rating (dropping the
-        oldest anchor beyond MAX_ANCHORS) and the fresh snapshot starts floating
-        at the live policy's current rating.
+        policy becomes the newest checkpoint anchor at its settled rating and the
+        fresh snapshot starts floating at the live policy's current rating.
+
+        Only *checkpoint* anchors age out, and only beyond
+        MAX_CHECKPOINT_ANCHORS. The stationary references at the head of the set
+        — random, the semi-random rungs, scripted — are permanent: their ratings
+        are measured properties of fixed players, so they stay useful for as long
+        as the live policy is anywhere near them.
 
         Anchors are appended and dropped in place so the ones that survive keep
         their agents and hidden states: their slot-0 episodes play on across the
@@ -325,10 +357,14 @@ class EloEvaluator:
             agent_live, agent_float = self._make_anchor_agents(self._floating_policy)
             self._anchor_agents_live.append(agent_live)
             self._anchor_agents_float.append(agent_float)
-            dropped = max(0, len(self._anchor_specs) - MAX_ANCHORS)
-            del self._anchor_specs[:dropped]
-            del self._anchor_agents_live[:dropped]
-            del self._anchor_agents_float[:dropped]
+            stationary = self._n_stationary
+            checkpoints = len(self._anchor_specs) - stationary
+            dropped = max(0, checkpoints - MAX_CHECKPOINT_ANCHORS)
+            if dropped:
+                cut = slice(stationary, stationary + dropped)
+                del self._anchor_specs[cut]
+                del self._anchor_agents_live[cut]
+                del self._anchor_agents_float[cut]
             self._anchor_elos = self._anchor_elo_tensor()
         self._floating_policy = snapshot_policy
         self._floating_label = snapshot_label
@@ -341,12 +377,16 @@ class EloEvaluator:
         """Hard-reset the episodes of every slot whose participants just changed.
 
         Args:
-            dropped: Anchors removed from the front of the set. Slot-0 envs
-                     assigned to one of them restart; the rest keep their
-                     episode and shift their assignment down by this much.
+            dropped: Checkpoint anchors removed, starting immediately after the
+                     stationary prefix. Slot-0 envs assigned to one of them
+                     restart; assignments above the cut shift down by this much,
+                     and the stationary prefix is never touched.
         """
         size = self.matchup_size
-        stale_live = self._anchor_idx_live < dropped  # (size,) anchor left the set
+        stationary = self._n_stationary
+        stale_live = (self._anchor_idx_live >= stationary) & (
+            self._anchor_idx_live < stationary + dropped
+        )  # (size,) anchor left the set
         mask = torch.zeros(self.batch_size, dtype=torch.bool, device=self.device)
         mask[0:size] = stale_live  # slot 0: only envs whose anchor was dropped
         mask[size : 2 * size] = True  # slot 1: floating opponent changed
@@ -365,7 +405,11 @@ class EloEvaluator:
         for agent in self._anchor_agents_float:
             if agent is not None:
                 reset_done_envs(agent, mask[4 * size :], self.num_tokens)
-        self._anchor_idx_live = (self._anchor_idx_live - dropped).clamp(min=0)
+        self._anchor_idx_live = torch.where(
+            self._anchor_idx_live >= stationary + dropped,
+            self._anchor_idx_live - dropped,
+            self._anchor_idx_live.clamp(max=max(stationary - 1, 0)),
+        )
         self._anchor_idx_float.zero_()
         self._resample_anchor_assignments(mask)
 
@@ -389,31 +433,64 @@ class EloEvaluator:
         hi: int,
         agents: list[ResolvedAgent | None],
     ) -> torch.Tensor:
-        """Anchor-side actions for envs [lo, hi): every anchor acts, the
-        per-episode assignment selects. Non-acting anchors still observe so
-        their hidden states stay valid when the assignment changes."""
+        """Anchor-side actions for envs [lo, hi), selected by per-episode assignment.
+
+        Policy anchors act on every environment in the slot even where they are
+        not the assigned opponent, because their recurrent state has to stay
+        valid for when the assignment does land on them. Stateless anchors carry
+        no such requirement, and every semi-random rung is a Bernoulli blend of
+        the same two action tensors — so the whole stationary ladder costs one
+        scripted call and one random call however many rungs it holds.
+        """
         size = hi - lo
         state = self.env.state.slice_envs(slice(lo, hi))
+
+        stateless = [spec.is_stateless for spec in self._anchor_specs]
+        random_action = (
+            get_actions(self.random_agent, None, state, size, self.num_ships, self.device).long()
+            if any(stateless)
+            else None
+        )
+        needs_scripted = (
+            any(spec.p_scripted is not None for spec in self._anchor_specs)
+            and self.scripted_agent is not None
+        )
+        scripted_action = (
+            get_actions(self.scripted_agent, None, state, size, self.num_ships, self.device).long()
+            if needs_scripted
+            else None
+        )
+
         per_anchor = []
-        for agent in agents:
-            if agent is None:
-                actions = get_actions(
-                    self.random_agent, None, state, size, self.num_ships, self.device
-                )
-            else:
-                actions = get_actions(
+        for spec, agent in zip(self._anchor_specs, agents, strict=True):
+            if spec.is_stateless:
+                if spec.p_scripted is None or scripted_action is None:
+                    per_anchor.append(random_action)
+                else:
+                    # One coherent scripted decision per ship per step, matching
+                    # SemiRandomScriptedAgent — not a per-head coin flip.
+                    follow = (
+                        torch.rand(size, self.num_ships, device=self.device) < spec.p_scripted
+                    ).unsqueeze(-1)
+                    per_anchor.append(torch.where(follow, scripted_action, random_action))
+                continue
+            per_anchor.append(
+                get_actions(
                     agent,
                     self._opponent_obs(obs, lo, hi),
                     state,
                     size,
                     self.num_ships,
                     self.device,
-                )
-            per_anchor.append(actions.long())  # (B_slot, N, 3)
+                ).long()
+            )
+
         if len(per_anchor) == 1:
             return per_anchor[0]
         idx = self._anchor_idx_live if lo == 0 else self._anchor_idx_float  # (B_slot,)
-        return torch.where(idx.view(-1, 1, 1) == 1, per_anchor[1], per_anchor[0])
+        stacked = torch.stack(per_anchor, dim=0)  # (A, B_slot, N, 3)
+        gather_idx = idx.view(1, -1, 1, 1).expand(1, size, self.num_ships, 3)
+        return stacked.gather(0, gather_idx).squeeze(0)
 
     def _compute_team_actions(self, obs: YemongObservation) -> tuple[torch.Tensor, torch.Tensor]:
         """Return (team0, team1) actions, each (5·size, N, 3), for one eval step."""
@@ -628,40 +705,48 @@ class EloEvaluator:
         self._match_counts.index_add_(0, self._anchor_idx_live, outcomes[:size])
         # Slot 1 is the floating checkpoint, or — before the first milestone —
         # extra games against the sole random anchor, matching the rating path.
-        slot1_row = _COUNT_FLOATING if self.float_pro_agent is not None else 0
+        slot1_row = self._count_floating if self.float_pro_agent is not None else 0
         self._match_counts[slot1_row] += outcomes[size : 2 * size].sum(dim=0)
         if self.scripted_agent is not None:
-            self._match_counts[_COUNT_SCRIPTED] += outcomes[2 * size : 3 * size].sum(dim=0)
+            self._match_counts[self._count_scripted] += outcomes[2 * size : 3 * size].sum(dim=0)
         if avg_active:
-            self._match_counts[_COUNT_AVG] += outcomes[3 * size : 4 * size].sum(dim=0)
+            self._match_counts[self._count_avg] += outcomes[3 * size : 4 * size].sum(dim=0)
 
     def _match_count_labels(self) -> list[str | None]:
         """Row → opponent label, or None for rows with no active opponent."""
-        labels: list[str | None] = [None] * _COUNT_ROWS
+        labels: list[str | None] = [None] * self._count_rows
         for index, spec in enumerate(self._anchor_specs):
             labels[index] = spec.label
         if self.float_pro_agent is not None:
-            labels[_COUNT_FLOATING] = self._floating_label
+            labels[self._count_floating] = self._floating_label
         if self.scripted_agent is not None:
-            labels[_COUNT_SCRIPTED] = "scripted"
-        labels[_COUNT_AVG] = "avg"
+            labels[self._count_scripted] = "scripted"
+        labels[self._count_avg] = "avg"
         return labels
 
     def _resample_anchor_assignments(self, done_any: torch.Tensor) -> None:
-        """Redraw anchor assignments for finished ladder-slot episodes."""
+        """Redraw anchor assignments for finished ladder-slot episodes.
+
+        A multinomial draw over the information weights, so the pool can be any
+        size. Games concentrate on whichever references sit nearest the rating
+        being measured, which is what makes a long ladder cheap: saturated rungs
+        draw almost no games.
+        """
         if self._anchor_elos.numel() < 2:
             return
         size = self.matchup_size
         weights_live = information_weights(self.live_elo, self._anchor_elos)  # (A,)
-        draw_live = torch.rand(size, device=self.device)
-        self._anchor_idx_live = torch.where(
-            done_any[:size], (draw_live > weights_live[0]).long(), self._anchor_idx_live
-        )
+        draw_live = torch.multinomial(
+            weights_live.float().clamp(min=1e-12).expand(size, -1), 1
+        ).squeeze(1)  # (size,)
+        self._anchor_idx_live = torch.where(done_any[:size], draw_live, self._anchor_idx_live)
         if self.float_pro_agent is not None:
             weights_float = information_weights(self.floating_elo, self._anchor_elos)
-            draw_float = torch.rand(size, device=self.device)
+            draw_float = torch.multinomial(
+                weights_float.float().clamp(min=1e-12).expand(size, -1), 1
+            ).squeeze(1)
             self._anchor_idx_float = torch.where(
-                done_any[4 * size :], (draw_float > weights_float[0]).long(), self._anchor_idx_float
+                done_any[4 * size :], draw_float, self._anchor_idx_float
             )
 
     def _reset_agent_hiddens(self, done_any: torch.Tensor) -> None:

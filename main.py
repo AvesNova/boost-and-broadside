@@ -95,6 +95,14 @@ from runs.rl import RL_TRAIN_CONFIG
 from runs.rl_fields import RL_FIELDS_TRAIN_CONFIG
 from runs.shared import ELO_CALIBRATE, MODEL_CONFIG, REWARDS, SHIP_CONFIG
 
+# Training profiles addressable by name, for modes that need a run's environment
+# config before any such run exists.
+_TRAIN_PROFILES: dict[str, TrainConfig] = {
+    "rl": RL_TRAIN_CONFIG,
+    "rl_fields": RL_FIELDS_TRAIN_CONFIG,
+    "bc": BC_TRAIN_CONFIG,
+}
+
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -157,6 +165,16 @@ def _parse_args() -> argparse.Namespace:
         metavar="RUN",
         help="Run name for Elo modes (e.g. 'bright-cloud-219'), "
         "'latest', or 'none' (scripted agents only, no checkpoints).",
+    )
+    parser.add_argument(
+        "--profile",
+        type=str,
+        default=None,
+        choices=sorted(_TRAIN_PROFILES),
+        help="For --mode semi_random: rate the ladder under this training "
+        "profile's environment instead of a finished run's. Rung ratings are a "
+        "property of the environment (tick rate, fields, ship config), so a run "
+        "must use a ladder fitted under its own profile.",
     )
     # elo_calibrate defaults live in runs/shared.py (ELO_CALIBRATE); these flags
     # are ad-hoc overrides, so they default to None and fall back to the config.
@@ -634,8 +652,17 @@ def main() -> None:
             )
 
         case "semi_random":
+            # --profile rates the ladder under a training profile's environment
+            # instead of a finished run's, so the rungs a run will use as fixed
+            # references can be fitted before that run exists.
+            profile_config = _TRAIN_PROFILES.get(args.profile) if args.profile else None
             run_semi_random_tournament(
-                run_spec=(args.run if args.run != "none" else "resilient-resonance-682"),
+                run_spec=(
+                    args.profile
+                    if profile_config is not None
+                    else (args.run if args.run != "none" else "resilient-resonance-682")
+                ),
+                train_config=profile_config,
                 team_sizes=parse_counts(args.team_counts),
                 probabilities=parse_probabilities(args.scripted_probs),
                 games_per_pair=args.games_per_pair,

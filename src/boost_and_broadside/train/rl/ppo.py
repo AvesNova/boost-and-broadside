@@ -1967,9 +1967,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         if hist_returns is not None:
             # returns are bf16-stored; upcast before numpy (no bf16 dtype there).
-            metrics["hist/returns"] = (
-                hist_returns.reshape(-1, K)[hist_alive].float().cpu().numpy()
-            )
+            metrics["hist/returns"] = hist_returns.reshape(-1, K)[hist_alive].float().cpu().numpy()
             metrics["hist/logprob"] = hist_logprob[hist_alive].cpu().numpy()
 
         return metrics
@@ -1995,8 +1993,14 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         """
 
         def _opponent(entry: RosterEntry) -> LadderOpponent:
-            if entry.kind == "random":
-                return LadderOpponent(policy=None, elo=entry.elo, label=entry.label)
+            if entry.is_stationary:
+                # Stationary references act from the scripted/uniform blend the
+                # evaluator computes itself — no weights, no recurrent state.
+                # p_scripted=1.0 is the scripted controller; None is uniform.
+                p_scripted = 1.0 if entry.kind == "scripted" else entry.p_scripted
+                return LadderOpponent(
+                    policy=None, elo=entry.elo, label=entry.label, p_scripted=p_scripted
+                )
             self.roster.load_policy(
                 entry,
                 self.ship_config,

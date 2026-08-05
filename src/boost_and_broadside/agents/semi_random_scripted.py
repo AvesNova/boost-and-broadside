@@ -13,6 +13,21 @@ from boost_and_broadside.constants import (
 from boost_and_broadside.env.state import TensorState
 
 
+def semi_random_label(probability: float) -> str:
+    """Canonical player label for a scripted-action mixture probability.
+
+    Lives with the agent rather than with the calibrator because the roster,
+    the tournament and the calibrator all have to agree on it, and the roster
+    must not depend on a mode module to spell its own entry labels.
+    """
+    if probability == 0.0:
+        return "random"
+    if probability == 1.0:
+        return "scripted"
+    digits = f"{probability:.4f}".rstrip("0").rstrip(".").replace(".", "p")
+    return f"semi_scripted_{digits}"
+
+
 class SemiRandomScriptedAgent:
     """Use a complete scripted action with probability ``p_scripted``.
 

@@ -44,7 +44,10 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from boost_and_broadside.agents.semi_random_scripted import SemiRandomScriptedAgent
+from boost_and_broadside.agents.semi_random_scripted import (
+    SemiRandomScriptedAgent,
+    semi_random_label,
+)
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import EloCalibrateConfig, EnvConfig, ModelConfig, ShipConfig
@@ -210,16 +213,6 @@ def _load_ladder_policy(
         ship_config=ship_config,
         model_config=model_config,
     ).policy
-
-
-def semi_random_label(probability: float) -> str:
-    """Canonical player label for a scripted-action mixture probability."""
-    if probability == 0.0:
-        return "random"
-    if probability == 1.0:
-        return "scripted"
-    digits = f"{probability:.4f}".rstrip("0").rstrip(".").replace(".", "p")
-    return f"semi_scripted_{digits}"
 
 
 def build_players(

@@ -12,7 +12,7 @@ import torch
 from boost_and_broadside.agents.semi_random_scripted import SemiRandomScriptedAgent
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
-from boost_and_broadside.config import ShipConfig
+from boost_and_broadside.config import ShipConfig, TrainConfig
 from boost_and_broadside.modes.agent_factory import ResolvedAgent
 from boost_and_broadside.modes.elo_calibrate import (
     Player,
@@ -139,14 +139,32 @@ def run_semi_random_tournament(
     checkpoint_dir: str = "checkpoints",
     plot_dir: str = "docs/results",
     plot: bool = True,
+    train_config: TrainConfig | None = None,
 ) -> dict:
-    """Run or resume a side-balanced round robin among semi-random agents."""
+    """Run or resume a side-balanced round robin among semi-random agents.
+
+    Args:
+        run_spec: Finished run to read the environment config from, and the
+            directory results are written to.
+        train_config: Rate the ladder under a training *profile* instead of a
+            finished run. The rungs feed that profile's roster as fixed
+            references, and their ratings are a property of the environment they
+            play in — tick rate, field count, ship config — so they have to be
+            fitted under the config the run will actually use, which may not
+            exist as a run yet. Results land in ``<checkpoint_dir>/<run_spec>/``.
+    """
     from boost_and_broadside.modes.semi_random_tournament_plots import write_plots
 
     if games_per_pair <= 0:
         raise ValueError("games_per_pair must be positive")
-    run_dir = find_run_dir(run_spec, checkpoint_dir)
-    base_env, _, paradigm = _load_run_config(run_dir)
+    if train_config is not None:
+        run_dir = Path(checkpoint_dir) / run_spec
+        run_dir.mkdir(parents=True, exist_ok=True)
+        base_env = train_config.scales[0].env_config
+        paradigm = train_config.paradigm
+    else:
+        run_dir = find_run_dir(run_spec, checkpoint_dir)
+        base_env, _, paradigm = _load_run_config(run_dir)
     labels = [_label(probability) for probability in probabilities]
     output = run_dir / "semi_random_tournament.json"
 

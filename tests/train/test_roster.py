@@ -146,7 +146,31 @@ class TestLadder:
         _add_frozen_checkpoint(roster, step=2, elo=400.0)
         _add_frozen_checkpoint(roster, step=3, elo=600.0)
         anchors = roster.ladder_anchors(2)
-        assert [e.label for e in anchors] == ["ckpt_2", "ckpt_3"]
+        # Stationary references first, then the newest `count` checkpoints.
+        assert [e.label for e in anchors] == ["random", "ckpt_2", "ckpt_3"]
+
+    def test_stationary_references_never_age_out_of_the_ladder(self):
+        """Checkpoints rotate; fixed players are permanent calibration points.
+
+        A rung's rating is a measured property of a stationary agent, so
+        dropping it would discard a reference the run cannot regenerate.
+        """
+        roster = _make_roster()
+        roster.add_special("scripted", initial_elo=1000.0)
+        roster.add_reference(p_scripted=0.5, elo=200.0)
+        for step in range(1, 6):
+            _add_frozen_checkpoint(roster, step=step, elo=100.0 * step)
+
+        anchors = roster.ladder_anchors(2)
+        labels = [e.label for e in anchors]
+        assert labels[:3] == ["random", "semi_scripted_0p5", "scripted"]  # sorted by elo
+        assert labels[3:] == ["ckpt_4", "ckpt_5"]
+        assert all(e.is_stationary for e in anchors[:3])
+
+    def test_ladder_anchors_with_no_checkpoints_is_stationary_only(self):
+        roster = _make_roster()
+        roster.add_reference(p_scripted=0.5, elo=200.0)
+        assert [e.label for e in roster.ladder_anchors(2)] == ["random", "semi_scripted_0p5"]
 
     def test_entries_are_never_evicted(self):
         roster = _make_roster(max_size=2)

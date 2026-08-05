@@ -24,6 +24,7 @@ from boost_and_broadside.config import (
     stepped,
 )
 from boost_and_broadside.env.observation import ObsKey
+from boost_and_broadside.train.rl.elo_eval import MAX_CHECKPOINT_ANCHORS
 from boost_and_broadside.train.rl.ppo import _GROUP, _LOCAL_COMPONENTS, PPOTrainer
 
 
@@ -279,34 +280,54 @@ class TestEloLadder:
         assert trainer.roster.floating_checkpoint() is first
         assert not first.fixed
 
-    def test_third_milestone_keeps_surviving_anchor_episodes(self, tmp_path):
-        """Dropping the oldest anchor restarts only its envs; the surviving
-        anchor's slot-0 episodes play on with their assignment shifted down."""
+    def test_promotion_keeps_surviving_anchor_episodes(self, tmp_path):
+        """Only checkpoint anchors rotate, and only their envs restart.
+
+        Stationary references sit at the head of the anchor set and are never
+        dropped, so the shift applies to checkpoint assignments alone.
+        """
         trainer = _make_trainer(checkpoint_dir=str(tmp_path))
         runtime = trainer._initialize_rollout_runtime()
         elo_eval = runtime.elo_eval
         size = elo_eval.matchup_size
-        for update, elo in enumerate([60.0, 120.0], start=1):
+        stationary = elo_eval._n_stationary
+        # Fill the checkpoint anchor slots so the next promotion has to drop one.
+        for update, elo in enumerate([60.0, 120.0, 180.0], start=1):
             trainer._training_elo = elo
             trainer._maybe_advance_ladder(update=update, elo_eval=elo_eval)
+        assert len(elo_eval._anchor_specs) == stationary + MAX_CHECKPOINT_ANCHORS
 
-        # Anchors are now [random, first-frozen]; split slot 0 across both.
+        # Split slot 0 between the oldest checkpoint anchor and the newest.
+        oldest, newest = stationary, stationary + 1
         elo_eval._anchor_idx_live = torch.tensor(
-            [0, 1] * (size // 2), device=elo_eval.device, dtype=torch.long
+            [oldest, newest] * (size // 2), device=elo_eval.device, dtype=torch.long
         )
-        survivor = elo_eval._anchor_idx_live == 1
+        survivor = elo_eval._anchor_idx_live == newest
         elo_eval._rated[:size] = True
         elo_eval.env.state.step_count[:size] = 7
 
-        trainer._training_elo = 180.0
-        trainer._maybe_advance_ladder(update=3, elo_eval=elo_eval)
+        trainer._training_elo = 240.0
+        trainer._maybe_advance_ladder(update=4, elo_eval=elo_eval)
 
         step_count = elo_eval.env.state.step_count[:size]
-        # The random anchor was dropped, so the survivor shifts from index 1 to 0.
-        assert (elo_eval._anchor_idx_live[survivor] == 0).all()
+        # The oldest checkpoint left, so the survivor shifts down one slot —
+        # still behind the untouched stationary prefix.
+        assert (elo_eval._anchor_idx_live[survivor] == oldest).all()
         assert (step_count[survivor] == 7).all(), "surviving episodes were restarted"
         assert elo_eval._rated[:size][survivor].all(), "surviving episodes lost their rated flag"
         assert not (step_count[~survivor] == 7).all(), "dropped-anchor envs were not reseeded"
+
+    def test_stationary_anchors_survive_every_promotion(self, tmp_path):
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        runtime = trainer._initialize_rollout_runtime()
+        elo_eval = runtime.elo_eval
+        before = [spec.label for spec in elo_eval._anchor_specs[: elo_eval._n_stationary]]
+        for update, elo in enumerate([60.0, 120.0, 180.0, 240.0], start=1):
+            trainer._training_elo = elo
+            trainer._maybe_advance_ladder(update=update, elo_eval=elo_eval)
+        after = [spec.label for spec in elo_eval._anchor_specs[: elo_eval._n_stationary]]
+        assert before == after
+        assert all(spec.is_stateless for spec in elo_eval._anchor_specs[: elo_eval._n_stationary])
 
     def test_fresh_runtime_reloads_ladder_from_disk(self, tmp_path):
         """A new rollout runtime (resume path) rebuilds anchors and the floating

@@ -238,10 +238,21 @@ evaluation environments alongside training. The evaluator has five logical slots
 4. live vs running-average policy;
 5. floating checkpoint vs fixed anchor.
 
-Anchor games use the two newest frozen ladder checkpoints, with per-episode assignment
-weighted toward the matchup that carries the most rating information. Ties count as half
-a win. These live ratings steer opponent selection and training decisions, but they
-remain a filtered online estimate.
+The anchor pool has two parts. **Stationary references** — the random agent, any
+semi-random rungs, and the scripted controller — sit at its head and never age out,
+because their strength is a fixed property and their ratings are measured constants.
+**Checkpoint anchors** follow: the newest `MAX_CHECKPOINT_ANCHORS` frozen ladder
+snapshots, which do rotate as the live policy leaves them behind.
+
+Per-episode assignment is a multinomial draw over the information weights, so the pool
+can be any size at no extra environment cost — the slot's envs simply redistribute, and
+saturated references draw almost no games. Stationary references also cost no forward
+pass: every semi-random rung is a Bernoulli blend of the same two action tensors, so the
+whole stationary ladder is computed from one scripted call and one random call however
+many rungs it holds.
+
+Ties count as half a win. These live ratings steer opponent selection and training
+decisions, but they remain a filtered online estimate.
 
 At configured rating milestones, the trainer writes unpruned ladder snapshots. After
 training, [`elo_calibrate.py`](../src/boost_and_broadside/modes/elo_calibrate.py) replays

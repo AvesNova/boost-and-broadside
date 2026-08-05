@@ -11,9 +11,13 @@ The checkpoint entries double as the Elo measurement ladder:
     are permanent calibration references and are never modified again.
 
 Entry kinds:
-    "checkpoint" — a past training-policy snapshot loaded from a .pt file.
-    "avg"        — the live running-average policy (weights accessed externally).
-    "scripted"   — the StochasticScriptedAgent (no weights to load).
+    "checkpoint"  — a past training-policy snapshot loaded from a .pt file.
+    "avg"         — the live running-average policy (weights accessed externally).
+    "scripted"    — the StochasticScriptedAgent (no weights to load).
+    "semi_random" — a scripted/uniform blend at a fixed p_scripted, rated
+                    offline. Interior rungs between random and scripted, so the
+                    ladder has a well-matched reference at every height of the
+                    climb instead of only two saturated ones.
 """
 
 import json
@@ -23,6 +27,7 @@ from pathlib import Path
 
 import torch
 
+from boost_and_broadside.agents.semi_random_scripted import semi_random_label
 from boost_and_broadside.config import ModelConfig, ShipConfig
 from boost_and_broadside.train.rl.policy_io import PolicyBundle, load_policy_bundle
 
@@ -44,11 +49,22 @@ class RosterEntry:
     # entry as an opponent (see EloRoster.retire). Its rating stays on the
     # ladder; only opponent sampling skips it.
     usable: bool = True
+    # Scripted-action probability for "semi_random" entries; None otherwise.
+    p_scripted: float | None = None
     policy: object = field(default=None, repr=False)  # Loaded YemongPolicy; None if unloaded
     # The configs this entry's weights were trained under. Held because a roster
     # spans a run's history: an entry need not share the live policy's architecture
     # or physics, and each one plays as whatever it was.
     bundle: PolicyBundle | None = field(default=None, repr=False)
+
+    @property
+    def is_stationary(self) -> bool:
+        """Whether this is a fixed player whose rating is a measured constant.
+
+        Stationary references never age out of the measurement ladder — unlike
+        checkpoints, which rotate — because their strength does not change.
+        """
+        return self.kind in ("random", "semi_random", "scripted")
 
 
 class EloRoster:
@@ -134,6 +150,44 @@ class EloRoster:
             elo=initial_elo,
             global_step=global_step,
             update=update,
+        )
+        self.entries.append(entry)
+        return entry
+
+    def add_reference(self, p_scripted: float, elo: float) -> RosterEntry:
+        """Add or return a semi-random reference rung at a fixed rating.
+
+        Interior rungs between random and scripted. Without them the ladder has
+        exactly two stationary references and the live policy saturates both —
+        winning ~100% against random and losing ~100% against scripted — leaving
+        its rating barely identified for the whole early climb.
+
+        The rating is a measured property of a stationary player, fitted offline
+        by ``--mode semi_random_tournament`` under the same env config, tick rate
+        and fleet size the run uses, so it is ``fixed`` from the start.
+
+        Args:
+            p_scripted: Probability the rung takes the scripted action; the rest
+                        of the time it acts uniformly at random.
+            elo:        Fitted rating on this run's gauge.
+        """
+        if not 0.0 < p_scripted < 1.0:
+            raise ValueError(
+                f"p_scripted must lie strictly in (0, 1) — 0 is the random agent "
+                f"and 1 is the scripted agent, got {p_scripted}"
+            )
+        label = semi_random_label(p_scripted)
+        for entry in self.entries:
+            if entry.label == label:
+                return entry
+        entry = RosterEntry(
+            kind="semi_random",
+            label=label,
+            elo=elo,
+            global_step=0,
+            update=0,
+            fixed=True,
+            p_scripted=p_scripted,
         )
         self.entries.append(entry)
         return entry
@@ -235,20 +289,28 @@ class EloRoster:
             entry.fixed = True
         return entry
 
-    def ladder_anchors(self, count: int) -> list[RosterEntry]:
-        """Return the newest ``count`` frozen ladder entries, oldest first.
+    def ladder_anchors(self, checkpoint_count: int) -> list[RosterEntry]:
+        """Return the measurement ladder: stationary references, then checkpoints.
 
-        The ladder is the random anchor followed by every frozen checkpoint in
-        snapshot order; its tail holds the calibration anchors the continuous
-        evaluator rates the live policy against.
+        Stationary references (random, the semi-random rungs, scripted) come
+        first and are *all* returned, every time. They are fixed players whose
+        ratings are measured constants, so they stay useful for as long as the
+        live policy is near them, and dropping one would throw away a calibration
+        point that cannot be regenerated in-run. Frozen checkpoints follow,
+        oldest-first, truncated to the newest ``checkpoint_count`` — those do age
+        out, because the live policy leaves them behind.
+
+        The evaluator relies on the stationary block being a contiguous prefix.
         """
-        random_entry = next(e for e in self.entries if e.kind == "random")
+        stationary = sorted(
+            (e for e in self.entries if e.is_stationary and e.usable),
+            key=lambda e: e.elo,
+        )
         frozen = sorted(
             (e for e in self.entries if e.kind == "checkpoint" and e.fixed),
             key=lambda e: e.global_step,
         )
-        ladder = [random_entry] + frozen
-        return ladder[-count:]
+        return stationary + (frozen[-checkpoint_count:] if checkpoint_count > 0 else [])
 
     # ------------------------------------------------------------------
     # Sampling
