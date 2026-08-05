@@ -239,5 +239,13 @@ class TrainingSchedule:
     target_kl: Callable[
         [int], float | None
     ]  # exit epoch loop early if mean approx KL exceeds this; None = disabled
-    high_elo_threshold: Callable[[int], float | None]
-    high_elo_target_kl: Callable[[int], float | None]
+    # Tighten the trust region once the policy is winning. Keyed on the raw
+    # win rate against the scripted controller, the same signal that decays
+    # the behavior-cloning weight — one measure of "is it strong yet" rather
+    # than two. A rating threshold would have to be re-derived every time the
+    # Elo gauge moves; a win rate never does.
+    #
+    # The win rate saturates at 1.0 well before the run ends, so this can
+    # express one tightening point and not a second, later one.
+    high_winrate_threshold: Callable[[int], float | None]
+    high_winrate_target_kl: Callable[[int], float | None]

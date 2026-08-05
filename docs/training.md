@@ -149,6 +149,13 @@ The total update combines:
   (SIGReg, from [LeJEPA](https://arxiv.org/abs/2511.08544)), disabled in the
   reference configuration.
 
+Two gates key off the same signal — the raw win rate against the scripted controller,
+taken from the evaluation battery rather than from training envs. It decays the
+behavior-cloning weight to zero at `bc_winrate_target`, and it tightens `target_kl` at
+`high_winrate_threshold`. Using one measure of "is the policy strong yet" rather than two
+also keeps the trust region independent of the Elo gauge, which would otherwise need
+re-deriving whenever the anchor or the environment moved.
+
 Advantages are scaled per component with running RMS statistics. Returns use a
 per-component percentile scaler in symlog reward space, which keeps critic targets in a
 stable range without forcing components with different natural scales into one value

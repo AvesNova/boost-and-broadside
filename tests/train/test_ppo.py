@@ -91,8 +91,8 @@ def _make_schedule(**overrides) -> TrainingSchedule:
         checkpoint_interval=stepped((0, 0)),
         num_epochs=constant(1),
         target_kl=constant(None),
-        high_elo_threshold=constant(900.0),
-        high_elo_target_kl=constant(0.02),
+        high_winrate_threshold=constant(0.8),
+        high_winrate_target_kl=constant(0.02),
     )
     defaults.update(overrides)
     return TrainingSchedule(**defaults)
@@ -544,6 +544,64 @@ class TestLeagueAllocation:
         assert all(slot.end > slot.start for slot in slots)
 
 
+class TestTargetKlGate:
+    """The trust region tightens on the same signal that decays BC."""
+
+    def _trainer(self, tmp_path, threshold):
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        trainer._schedule_state = dataclasses.replace(
+            trainer._schedule_state,
+            target_kl=0.1,
+            high_winrate_threshold=threshold,
+            high_winrate_target_kl=0.02,
+        )
+        return trainer
+
+    def test_loose_below_the_threshold(self, tmp_path):
+        trainer = self._trainer(tmp_path, 0.8)
+        trainer._scripted_win_rate = 0.5
+        assert trainer._effective_target_kl() == 0.1
+
+    def test_tightens_at_the_threshold(self, tmp_path):
+        trainer = self._trainer(tmp_path, 0.8)
+        trainer._scripted_win_rate = 0.8
+        assert trainer._effective_target_kl() == 0.02
+
+    def test_disabled_threshold_never_tightens(self, tmp_path):
+        trainer = self._trainer(tmp_path, None)
+        trainer._scripted_win_rate = 1.0
+        assert trainer._effective_target_kl() == 0.1
+
+    def test_win_rate_tracks_the_scripted_eval_window(self, tmp_path):
+        """One measure of "is it strong yet" drives both gates, so the KL
+        threshold needs no re-deriving when the Elo gauge moves."""
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        runtime = trainer._initialize_rollout_runtime()
+        trainer._eval_window_sc.clear()
+        trainer._eval_window_sc.extend([1.0] * 40 + [0.0] * 10)
+        metrics: dict = {}
+        trainer._refresh_training_schedule(metrics, runtime.elo_eval)
+        assert trainer._scripted_win_rate == pytest.approx(0.8)
+        assert metrics["schedule/scripted_win_rate"] == pytest.approx(0.8)
+
+
+class TestAuxPredictionMetrics:
+    def test_every_prediction_dimension_is_logged(self, tmp_path):
+        """Regression: a hand-written 9-name list against 10 prediction dims
+        silently dropped local_log_index, the field-modelling channel."""
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        names = trainer.coordinator.get_feature_names()
+        assert len(names) == trainer.coordinator.total_prediction_dimension
+        assert "local_log_index_0" in names
+
+        trainer.train()
+        metrics = trainer._update_epochs(
+            all_buffers=[trainer.buffer, *trainer.aux_buffers], precomputed=False
+        )
+        for name in names:
+            assert f"next_state/{name}" in metrics, f"{name} was not logged"
+
+
 class TestReferenceLadder:
     """Stationary rungs between random and scripted, on a scripted-anchored gauge."""
 
@@ -958,8 +1016,8 @@ class TestRLSmokeTest:
             checkpoint_interval=constant(9999),
             num_epochs=constant(1),
             target_kl=constant(None),
-            high_elo_threshold=constant(900.0),
-            high_elo_target_kl=constant(0.02),
+            high_winrate_threshold=constant(0.8),
+            high_winrate_target_kl=constant(0.02),
         )
         cfg = TrainConfig(
             paradigm=paradigm,

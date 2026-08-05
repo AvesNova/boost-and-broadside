@@ -158,8 +158,8 @@ class _ResolvedSchedule:
     checkpoint_interval: int
     num_epochs: int
     target_kl: float | None
-    high_elo_threshold: float | None
-    high_elo_target_kl: float | None
+    high_winrate_threshold: float | None
+    high_winrate_target_kl: float | None
 
 
 @dataclasses.dataclass
@@ -211,8 +211,8 @@ def _resolve_schedule(schedule: TrainingSchedule, step: int) -> _ResolvedSchedul
         checkpoint_interval=schedule.checkpoint_interval(step),
         num_epochs=schedule.num_epochs(step),
         target_kl=schedule.target_kl(step),
-        high_elo_threshold=schedule.high_elo_threshold(step),
-        high_elo_target_kl=schedule.high_elo_target_kl(step),
+        high_winrate_threshold=schedule.high_winrate_threshold(step),
+        high_winrate_target_kl=schedule.high_winrate_target_kl(step),
     )
 
 
@@ -482,6 +482,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._scripted_elo: float = train_config.elo_eval.scripted_elo_init
         self._floating_games: int = 0  # rated games of the floating ladder checkpoint
         self._bc_cutoff_streak: int = 0  # consecutive updates past the BC win-rate target
+        # Raw win rate against the scripted controller, refreshed each update.
+        # Gates both the behavior-cloning decay and the target-KL tightening.
+        self._scripted_win_rate: float = 0.0
         # Latest update's rated outcomes, opponent label → (win, loss, tie).
         self._match_counts: dict[str, tuple[int, int, int]] = {}
         eval_window_size = train_config.elo_eval.window_size
@@ -1060,8 +1063,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # agent, reaching zero at bc_winrate_target (full strength before any
         # scripted games have been recorded).
         window_sc = self._eval_window_sc
-        scripted_win_rate = sum(window_sc) / len(window_sc) if window_sc else 0.0
-        bc_factor = max(0.0, 1.0 - scripted_win_rate / self.cfg.bc_winrate_target)
+        self._scripted_win_rate = sum(window_sc) / len(window_sc) if window_sc else 0.0
+        bc_factor = max(0.0, 1.0 - self._scripted_win_rate / self.cfg.bc_winrate_target)
         self._behavior_cloning_coef = self._schedule_state.behavior_cloning_coef * bc_factor
         self.optim.param_groups[0]["lr"] = self._schedule_state.learning_rate
         for component in self.wrapper.reward_components:
@@ -1073,6 +1076,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         metrics["schedule/policy_gradient_coef"] = self._policy_gradient_coef
         metrics["schedule/behavior_cloning_coef"] = self._behavior_cloning_coef
         metrics["schedule/bc_decay_factor"] = bc_factor
+        metrics["schedule/scripted_win_rate"] = self._scripted_win_rate
         metrics["schedule/target_kl"] = self._effective_target_kl()
         metrics["schedule/true_reward_scale"] = self._schedule_state.true_reward_scale
         metrics["schedule/global_scale"] = self._schedule_state.global_scale
@@ -1741,17 +1745,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             "returns/component": [],
             "returns/advantage_std": [],
         }
-        _NS_FEAT_NAMES = (
-            "pos_x_dphase",
-            "pos_y_dphase",
-            "vel_dvx_norm",
-            "vel_dvy_norm",
-            "att_dphase",
-            "ang_vel_abs",
-            "health_dphase",
-            "power_dphase",
-            "cooldown_dphase",
-        )  # 9 total — matches coordinator.total_prediction_dimension
+        # Derived, never hand-listed: a parallel name list drifts from the
+        # coordinator's prediction width silently. It already had, dropping
+        # local_log_index — the one channel that says whether fields are being
+        # modelled — off the end of a 9-name list against 10 dimensions.
+        ns_feat_names = self.coordinator.get_feature_names()
         ns_per_feat_accum: list[torch.Tensor] = []
         hist_returns: torch.Tensor | None = None
         hist_logprob: torch.Tensor | None = None
@@ -1982,7 +1980,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         if ns_per_feat_accum:
             avg_per_feat = torch.stack(ns_per_feat_accum).mean(0).cpu()  # (pred_dim,)
-            for i, name in enumerate(_NS_FEAT_NAMES):
+            for i, name in enumerate(ns_feat_names):
                 metrics[f"next_state/{name}"] = avg_per_feat[i].item()
 
         if hist_returns is not None:
@@ -2044,10 +2042,14 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         return anchors, _opponent(floating_entry)
 
     def _effective_target_kl(self) -> float | None:
-        """Resolve the Elo-gated target KL from the current schedule snapshot."""
-        threshold = self._schedule_state.high_elo_threshold
-        # Absolute gauge — the scripted controller is pinned, so the live
-        # rating needs no re-basing to be comparable across runs.
-        if threshold is not None and self._training_elo >= threshold:
-            return self._schedule_state.high_elo_target_kl
+        """Resolve the win-rate-gated target KL from the current schedule snapshot.
+
+        Reads the same scripted win rate that decays the behavior-cloning
+        weight, so "is the policy strong yet" is one measure rather than two.
+        Lags by one update — the update phase runs before the schedule refresh —
+        exactly as the rating-based gate it replaces did.
+        """
+        threshold = self._schedule_state.high_winrate_threshold
+        if threshold is not None and self._scripted_win_rate >= threshold:
+            return self._schedule_state.high_winrate_target_kl
         return self._schedule_state.target_kl

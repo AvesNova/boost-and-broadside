@@ -74,10 +74,9 @@ RL_SCHEDULE = TrainingSchedule(
     checkpoint_interval=constant(50),
     num_epochs=stepped((0, 4)),
     target_kl=stepped((0, 0.1)),
-    # Absolute rating now (scripted = 1000), so this reads as "tighten the
-    # trust region once the policy matches the scripted controller".
-    high_elo_threshold=constant(1000.0),
-    high_elo_target_kl=constant(0.02),
+    # Tighten the trust region once the policy wins 80% against scripted.
+    high_winrate_threshold=constant(0.8),
+    high_winrate_target_kl=constant(0.02),
 )
 
 RL_TRAIN_CONFIG = TrainConfig(

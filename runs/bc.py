@@ -38,8 +38,8 @@ BC_SCHEDULE = TrainingSchedule(
     checkpoint_interval=stepped((0, 10)),
     num_epochs=constant(4),
     target_kl=constant(None),
-    high_elo_threshold=constant(900.0),
-    high_elo_target_kl=constant(0.02),
+    high_winrate_threshold=constant(0.8),
+    high_winrate_target_kl=constant(0.02),
 )
 
 BC_TRAIN_CONFIG = TrainConfig(

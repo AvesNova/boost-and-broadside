@@ -169,12 +169,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--profile",
         type=str,
-        default=None,
+        default="rl",
         choices=sorted(_TRAIN_PROFILES),
-        help="For --mode semi_random: rate the ladder under this training "
-        "profile's environment instead of a finished run's. Rung ratings are a "
-        "property of the environment (tick rate, fields, ship config), so a run "
-        "must use a ladder fitted under its own profile.",
+        help="(semi_random) Training profile whose environment the reference "
+        "ladder is rated under. Rung ratings are a property of the environment "
+        "(tick rate, fields, ship config), so a run must use a ladder fitted "
+        "under its own profile. Ignored when --run names a finished run.",
     )
     # elo_calibrate defaults live in runs/shared.py (ELO_CALIBRATE); these flags
     # are ad-hoc overrides, so they default to None and fall back to the config.
@@ -652,16 +652,13 @@ def main() -> None:
             )
 
         case "semi_random":
-            # --profile rates the ladder under a training profile's environment
-            # instead of a finished run's, so the rungs a run will use as fixed
-            # references can be fitted before that run exists.
-            profile_config = _TRAIN_PROFILES.get(args.profile) if args.profile else None
+            # Rungs are rated under a *profile* by default: their ratings are a
+            # property of the environment they play in, and the run that will use
+            # them as fixed references need not exist yet. --run overrides, to
+            # re-rate the ladder a finished run actually trained against.
+            profile_config = None if args.run != "none" else _TRAIN_PROFILES[args.profile]
             run_semi_random_tournament(
-                run_spec=(
-                    args.profile
-                    if profile_config is not None
-                    else (args.run if args.run != "none" else "resilient-resonance-682")
-                ),
+                run_spec=(args.profile if profile_config is not None else args.run),
                 train_config=profile_config,
                 team_sizes=parse_counts(args.team_counts),
                 probabilities=parse_probabilities(args.scripted_probs),
