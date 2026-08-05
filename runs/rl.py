@@ -36,6 +36,12 @@ _ROLLOUT_TOKENS = 4_000_000
 _NUM_SHIPS = 8
 _NUM_FIELDS = 0
 _NUM_STEPS = 128
+# Physics ticks per decision. dt is 1/60, so this is 20 Hz: 50 ms per decision
+# against a 0.1 s firing cooldown (2 decisions) and a 1.3-2.3 s full turn (26-46
+# decisions) -- ample authority, at a third of the tokens per second of game
+# time. num_steps is deliberately unchanged: a 128-step rollout now spans 6.4 s
+# rather than 2.1 s, so BPTT finally covers a whole episode.
+_ACTION_REPEAT = 3
 _NUM_MINIBATCHES = 32
 # // 5: split each minibatch into 5 gradient-accumulation micro-batches — the
 # headroom needed to fit this scale's attention activations in VRAM on the target GPU.
@@ -80,7 +86,11 @@ RL_TRAIN_CONFIG = TrainConfig(
                 num_ships=_NUM_SHIPS,
                 num_fields=_NUM_FIELDS,
                 max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
+                # In physics ticks, so 17.1 s of game time whatever the repeat.
                 max_episode_steps=1024,
+                action_repeat=_ACTION_REPEAT,
+                # +/-25% on spawn health and power, uniform cooldown.
+                spawn_resource_spread=0.25,
             ),
             num_envs=_ROLLOUT_TOKENS
             // (_NUM_SHIPS + _NUM_FIELDS)
@@ -96,13 +106,18 @@ RL_TRAIN_CONFIG = TrainConfig(
     num_minibatches=_NUM_MINIBATCHES,
     microbatch_tokens=_MICROBATCH_TOKENS,
     next_state_coef=0.2,
-    gamma=0.990,
-    gae_lambda=0.95,
+    # Fallback horizons for components without an entry in the per-component
+    # tables; stated per decision at _ACTION_REPEAT (see runs/shared.py).
+    gamma=0.990**_ACTION_REPEAT,
+    gae_lambda=0.95**_ACTION_REPEAT,
     component_gammas=COMPONENT_GAMMAS,
     component_lambdas=COMPONENT_LAMBDAS,
     clip_coef=0.15,
     max_grad_norm=1.0,
-    total_timesteps=1_000_000_000,
+    # Environment steps, which are decisions rather than physics ticks. A third
+    # of the previous budget is the same span of game time as the 1e9-step
+    # reference run, so runs stay comparable in experience rather than in tokens.
+    total_timesteps=333_000_000,
     return_ema_alpha=0.005,
     # Held at 1.0 deliberately, and it *does* bind on six of the eleven active
     # components (watch scaler/floor_bound_span/*). Lowering it to an epsilon is

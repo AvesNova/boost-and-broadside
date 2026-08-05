@@ -19,15 +19,18 @@ records:
 | Parallel environments | 7,808 |
 | Ships per environment | 8 total (4-vs-4) |
 | Rollout length | 128 steps |
+| Decisions per second | 60 (`action_repeat=1`) |
 | PPO minibatches | 32 |
 | Token width / attention heads / blocks | 128 / 4 / 2 |
-| Episode horizon | 1,024 steps |
+| Episode horizon | 1,024 physics ticks (17.1 s) |
 | Opponent paradigm | `ego_pass` |
 | Elo evaluation games per matchup slot | 512 |
 
 The run logged 999,424,000 steps before finishing. Today's profiles have continued to
 evolve, so where this page and the export disagree about that run, the export is what
-actually ran.
+actually ran. In particular the reference run decided at 60 Hz; the current profile holds
+each action for three physics ticks (see [decision rate](#decision-rate)), so its step
+counts and discounts are not directly comparable.
 
 ## Recurrent PPO lifecycle
 
@@ -36,11 +39,52 @@ policies, rollout collection, [generalized advantage
 estimation](https://arxiv.org/abs/1506.02438), update-time sequence re-evaluation,
 evaluation, logging, and checkpoints.
 
+### Decision rate
+
+Physics always runs at `ShipConfig.dt` = 1/60 s. `EnvConfig.action_repeat` sets how many
+of those ticks each chosen action is held for, so collision and projectile integration
+are unaffected and only the rate at which the policy may change its mind moves. The
+primary profile holds for 3 ticks — **20 Hz decisions**.
+
+That rate is set by the plant, not by the renderer:
+
+| timescale | seconds | decisions @ 20 Hz |
+|---|---:|---:|
+| firing cooldown | 0.10 | 2 |
+| bullet flight to ~200 px | 0.40 | 8 |
+| full 360° turn | 1.3–2.3 | 26–46 |
+| mean episode | ~4.7 | ~93 |
+| `num_steps=128` rollout | 6.4 | 128 |
+
+At 60 Hz five of every six shoot decisions were no-ops against the cooldown, consecutive
+observations differed by 17 ms, and a 128-step rollout spanned 2.1 s against a ~4.7 s
+episode — so the recurrent policy never saw a whole episode inside one BPTT window. At
+20 Hz it does, and a token buys three times the game time.
+
+Rewards are summed across the held ticks. That is scale-preserving: over a fixed span of
+game time both the dense per-tick terms and the one-off event terms total exactly what
+they would at repeat 1, so the component ratios in `RewardConfig` are untouched. Episode
+lengths and ship ages stay in physics ticks so they remain comparable across rates.
+
+Discounts do **not** carry over unchanged. They were chosen as horizons in seconds, so
+moving the rate requires `gamma_new = gamma_old ** (rate_old / rate_new)` — and the same
+for the GAE lambdas, since variance accumulates per unit of game time rather than per
+decision. The horizons those values encode are tabulated in
+[`runs/shared.py`](../runs/shared.py).
+
+Ships also spawn with randomised health, power and cooldown
+(`EnvConfig.spawn_resource_spread`). Spawning at full resources every episode made health
+an almost deterministic function of elapsed time, which the critic can read off the clock
+instead of the state, and meant damaged-fleet positions were only reachable by playing
+two hundred steps into them. Draws are per-ship but balanced in expectation across teams,
+so no outcome variance enters the win signal that a policy could not have influenced.
+
 ### Action timing
 
-Environment and policy run concurrently on separate CUDA streams, which costs one step
-of action latency: the step that advances the environment applies the action chosen on
-the *previous* step, while the policy computes the next one from the current observation.
+Environment and policy run concurrently on separate CUDA streams, which costs one
+decision of action latency: the step that advances the environment applies the action
+chosen on the *previous* decision, while the policy computes the next one from the
+current observation.
 
 The observation is what makes that Markov. `previous_action` does not hold the action
 that already ran — it holds the action **about to be applied**, written into the
