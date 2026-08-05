@@ -489,6 +489,61 @@ class TestYemongBlockStructure:
             f"max diff: {(step_value - seq_value).abs().max().item()}"
         )
 
+    def test_step_matches_sequence_across_an_episode_boundary(self, coordinator):
+        """The same equivalence, with an episode ending mid-rollout.
+
+        Regression: ``reset_hidden_for_envs`` zeroes the whole packed hidden —
+        RG-LRU state *and* causal-conv buffer — but the sequence path applied
+        ``done_mask`` only inside the RG-LRU. The conv therefore kept reading the
+        previous episode's inputs for CONV_KERNEL-1 steps after every boundary,
+        so re-evaluation disagreed with rollout exactly at episode starts and the
+        PPO ratio was wrong there.
+        """
+        B, N, M, T = 2, 3, 2, 8
+        done_step = 3  # episode ends here; step done_step+1 starts fresh
+        _, policy = self._policy(coordinator, n_blocks=2, n_spatial=2, n_temporal=1, num_ships=N)
+
+        torch.manual_seed(11)
+        obs_seq = []
+        for _ in range(T):
+            obs = _make_obs(B, N + M)
+            obs.data[ObsKey.TEAM_ID][:, N:] = 2
+            obs_seq.append(obs)
+
+        done_mask = torch.zeros(T, B, dtype=torch.bool)
+        done_mask[done_step] = True
+
+        initial_hidden = policy.initial_hidden(B, N + M, torch.device("cpu"))
+
+        # Step path: reset the hidden state after the env reports done, exactly
+        # as the rollout loop does.
+        hidden = initial_hidden
+        step_values, actions = [], []
+        for t, obs in enumerate(obs_seq):
+            action, _, value, _, hidden = policy.get_action_and_value(obs, hidden)
+            step_values.append(value)
+            actions.append(action)
+            hidden = policy.reset_hidden_for_envs(hidden, done_mask[t], N + M)
+        step_value = torch.stack(step_values, dim=0)
+
+        stacked = YemongObservation(
+            data={
+                key: torch.stack([o.data[key] for o in obs_seq], dim=0) for key in obs_seq[0].data
+            }
+        )
+        with torch.no_grad():
+            _, _, seq_value, _, _, _ = policy.evaluate_actions(
+                stacked,
+                torch.stack(actions, dim=0),
+                initial_hidden,
+                stacked.data[ObsKey.ALIVE],
+                done_mask=done_mask,
+            )
+
+        assert torch.allclose(step_value, seq_value, atol=1e-5), (
+            f"max diff: {(step_value - seq_value).abs().max().item()}"
+        )
+
     def test_defaults_reproduce_single_sublayer_trunk(self, coordinator):
         """Omitting the new knobs must give the pre-refactor 1S+1T structure."""
         cfg = ModelConfig(d_model=64, n_heads=4, n_yemong_blocks=2)

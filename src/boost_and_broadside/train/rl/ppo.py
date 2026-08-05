@@ -727,7 +727,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 action=aux_action,
                 logprob=aux_logprob,
                 reward=aux_reward,
-                done=aux_dones.float(),
                 value=self.scaler.denormalize(aux_value_norm),
                 alive=aux_obs[i]["alive"][:, :aux_N].bool(),
                 actor_mask=aux_actor_mask,
@@ -741,7 +740,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 )
             aux_action_buffers[i] = aux_action.detach().clone()
             aux_action_buffers[i][aux_done_any] = 0
-            aux_last_dones[i] = aux_dones
+            aux_last_dones[i] = aux_done_any
             aux_obs[i] = next_aux_obs
             self._global_step += sc.num_envs
 
@@ -878,7 +877,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 runtime.hidden,
                 runtime.hidden_t1,
                 runtime.action_buffer,
-                dones,
+                terminated,
             ) = primary
             self._collect_aux_steps(
                 runtime.aux_obs,
@@ -901,19 +900,20 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # rather than keep the rating their entry was created with.
         self.roster.set_special_elo("scripted", elo_snapshot.scripted_elo)
         self.roster.set_special_elo("avg", elo_snapshot.avg_elo)
-        return dones
+        return terminated
 
     def _compute_rollout_gae(
         self,
         runtime: _RolloutRuntime,
-        dones: torch.Tensor,
+        terminated: torch.Tensor,
         update_scalers: bool = True,
     ) -> None:
         """Store final observations and compute GAE for every scale.
 
         Args:
             runtime: Persistent environment and recurrent rollout state.
-            dones: Primary-scale terminal flags after the final step.
+            terminated: Primary-scale episode-boundary flags (done | truncated)
+                after the final step.
             update_scalers: Update statistics immediately for a single-shard batch.
                 Logical host batches defer this until every shard is available.
         """
@@ -925,7 +925,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             _, _, next_value_norm, _, _ = self.policy.get_action_and_value(
                 runtime.obs, runtime.hidden
             )
-        self.buffer.compute_gae(self.scaler.denormalize(next_value_norm), dones.float())
+        self.buffer.compute_gae(self.scaler.denormalize(next_value_norm), terminated.float())
         for index, (aux_buffer, aux_hidden) in enumerate(
             zip(self.aux_buffers, runtime.aux_hiddens)
         ):
@@ -958,8 +958,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         device_buffers = [self.buffer] + self.aux_buffers
         stored_by_scale: list[list[StoredRollout]] = [[] for _ in device_buffers]
         for _ in range(self.cfg.rollouts_per_update):
-            dones = self._collect_rollout(runtime, avg_eval_active)
-            self._compute_rollout_gae(runtime, dones, update_scalers=False)
+            terminated = self._collect_rollout(runtime, avg_eval_active)
+            self._compute_rollout_gae(runtime, terminated, update_scalers=False)
             for scale_index, (shards, buffer) in enumerate(
                 zip(stored_by_scale, device_buffers, strict=True)
             ):
@@ -1093,8 +1093,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         for update in range(self._start_update, self._num_updates + 1):
             avg_eval_active = self._avg_update_count > 0
             if self.cfg.rollouts_per_update == 1:
-                dones = self._collect_rollout(runtime, avg_eval_active)
-                self._compute_rollout_gae(runtime, dones)
+                terminated = self._collect_rollout(runtime, avg_eval_active)
+                self._compute_rollout_gae(runtime, terminated)
                 update_buffers: list[RolloutBuffer | LogicalRolloutBuffer] = [
                     self.buffer,
                     *self.aux_buffers,
@@ -1733,8 +1733,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             "cooldown_dphase",
         )  # 9 total — matches coordinator.total_prediction_dimension
         ns_per_feat_accum: list[torch.Tensor] = []
-        last_returns_np = None
-        last_logprob_np = None
+        hist_returns: torch.Tensor | None = None
+        hist_logprob: torch.Tensor | None = None
+        hist_alive: torch.Tensor | None = None
 
         num_epochs = self._schedule_state.num_epochs
         target_kl = self._effective_target_kl()
@@ -1913,41 +1914,35 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 accum_scalar["train/nonfinite_grad_fraction"].append(nonfinite_grad.float())
 
                 if k_stats:
-                    # Finalize variance-based stats from the accumulated moments,
-                    # then one GPU→CPU transfer per minibatch: stack → (6, K) → cpu
+                    # Finalized from the accumulated moments but kept on device.
+                    # A .cpu() here would be a blocking copy once per optimizer
+                    # step, draining the launch queue and destroying CPU
+                    # run-ahead for a model that issues hundreds of small kernels
+                    # per micro-batch. Everything transfers once, after the loop.
                     ret_var_k = k_stats["ret_sq_k"] - k_stats["ret_mean_k"].pow(2)
                     res_var_k = k_stats["res_sq_k"] - k_stats["res_mean_k"].pow(2)
                     ev_k = 1.0 - res_var_k / (ret_var_k + 1e-8)  # (K,)
-                    stats_k_cpu = torch.stack(
-                        [
-                            k_stats["value_loss_k"],
-                            ev_k,
-                            k_stats["ret_mean_k"],
-                            self._ret_per_comp_mean_k,
-                            k_stats["pred_mean_k"],
-                            k_stats["adv_sq_k"],
-                        ]
-                    ).cpu()
-                    accum_k["critic/value_loss"].append(stats_k_cpu[0])
-                    accum_k["critic/return_mean"].append(stats_k_cpu[2])
-                    accum_k["returns/component"].append(stats_k_cpu[3])
-                    accum_k["critic/value_pred_mean"].append(stats_k_cpu[4])
-                    accum_k["returns/advantage_std"].append(stats_k_cpu[5].clamp(min=0.0).sqrt())
+                    accum_k["critic/value_loss"].append(k_stats["value_loss_k"])
+                    accum_k["critic/return_mean"].append(k_stats["ret_mean_k"])
+                    accum_k["returns/component"].append(self._ret_per_comp_mean_k)
+                    accum_k["critic/value_pred_mean"].append(k_stats["pred_mean_k"])
+                    accum_k["returns/advantage_std"].append(
+                        k_stats["adv_sq_k"].clamp(min=0.0).sqrt()
+                    )
                     if epoch_idx == num_epochs - 1:
-                        accum_k["critic/explained_variance"].append(stats_k_cpu[1])
+                        accum_k["critic/explained_variance"].append(ev_k)
 
                 if ns_feat_step is not None:
-                    ns_per_feat_accum.append(ns_feat_step.cpu())
+                    ns_per_feat_accum.append(ns_feat_step)
 
                 if record_histograms and "alive_flat" in hist_diag:
                     # Sampled from the last micro-batch of the last primary
-                    # minibatch — a large-enough sample for the histograms.
-                    alive_flat = hist_diag["alive_flat"]
-                    # returns are bf16-stored; upcast before numpy (no bf16 dtype there).
-                    last_returns_np = (
-                        hist_diag["mb_returns"].reshape(-1, K)[alive_flat].float().cpu().numpy()
-                    )
-                    last_logprob_np = hist_diag["logprob_flat"][alive_flat].cpu().numpy()
+                    # minibatch — a large-enough sample for the histograms. Held
+                    # as device tensors and converted once below, so a histogram
+                    # update does not sync once per minibatch.
+                    hist_returns = hist_diag["mb_returns"]
+                    hist_logprob = hist_diag["logprob_flat"]
+                    hist_alive = hist_diag["alive_flat"]
 
             if target_kl is not None:
                 epoch_kls = accum_scalar["policy/kl"][kl_start:]
@@ -1960,19 +1955,22 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         for key, tensors in accum_k.items():
             if not tensors:
                 continue
-            avg = torch.stack(tensors).mean(0)  # (K,) CPU
+            avg = torch.stack(tensors).mean(0).cpu()  # (K,)
             prefix = "returns" if key == "returns/component" else key
             for i, name in enumerate(self._active_names):
                 metrics[f"{prefix}/{name}"] = avg[i].item()
 
         if ns_per_feat_accum:
-            avg_per_feat = torch.stack(ns_per_feat_accum).mean(0)  # (pred_dim,) CPU
+            avg_per_feat = torch.stack(ns_per_feat_accum).mean(0).cpu()  # (pred_dim,)
             for i, name in enumerate(_NS_FEAT_NAMES):
                 metrics[f"next_state/{name}"] = avg_per_feat[i].item()
 
-        if last_returns_np is not None:
-            metrics["hist/returns"] = last_returns_np
-            metrics["hist/logprob"] = last_logprob_np
+        if hist_returns is not None:
+            # returns are bf16-stored; upcast before numpy (no bf16 dtype there).
+            metrics["hist/returns"] = (
+                hist_returns.reshape(-1, K)[hist_alive].float().cpu().numpy()
+            )
+            metrics["hist/logprob"] = hist_logprob[hist_alive].cpu().numpy()
 
         return metrics
 

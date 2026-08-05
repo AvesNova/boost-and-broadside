@@ -53,7 +53,6 @@ def _fill_buffer(buf: RolloutBuffer, T: int, B: int, N: int, D: int) -> None:
             action=torch.zeros(B, N, 3, dtype=torch.int32),
             logprob=torch.zeros(B, N),
             reward=torch.ones(B, N, Kc) * 0.1,
-            done=torch.zeros(B),
             value=torch.ones(B, N, Kc) * 0.5,
             alive=torch.ones(B, N, dtype=torch.bool),
         )
@@ -270,7 +269,6 @@ class TestBufferAdd:
                 torch.zeros(B, N, 3),
                 torch.zeros(B, N),
                 torch.zeros(B, N, Kc),
-                torch.zeros(B),
                 torch.zeros(B, N, Kc),
                 torch.ones(B, N, dtype=torch.bool),
             )
@@ -340,7 +338,6 @@ class TestStoragePrecision:
         buf = self._make_typed_buffer()
         # logprobs (PPO ratio) and the fp32 aggregates/accumulators must not be reduced.
         assert buf.logprobs.dtype == torch.float32
-        assert buf.dones.dtype == torch.float32
         assert buf.adv_agg.dtype == torch.float32
         assert buf.ret_agg.dtype == torch.float32
         assert buf.adv_rms.dtype == torch.float32
@@ -365,7 +362,6 @@ class TestStoragePrecision:
             action=torch.zeros(2, 2, 3, dtype=torch.int32),
             logprob=torch.zeros(2, 2),
             reward=torch.zeros(2, 2, K),
-            done=torch.zeros(2),
             value=torch.zeros(2, 2, K),
             alive=torch.ones(2, 2, dtype=torch.bool),
         )
@@ -415,7 +411,6 @@ class TestGAEComputation:
                 torch.zeros(B, N, 3),
                 torch.zeros(B, N),
                 torch.zeros(B, N, Kc),  # reward = 0
-                torch.zeros(B),
                 torch.zeros(B, N, Kc),  # value = 0
                 torch.ones(B, N, dtype=torch.bool),
             )
@@ -451,7 +446,6 @@ class TestGAEComputation:
                 torch.zeros(B, N, 3, dtype=torch.int32),
                 torch.zeros(B, N),
                 reward,
-                torch.zeros(B),
                 torch.zeros(B, N, Kc),  # value = 0
                 torch.ones(B, N, dtype=torch.bool),
             )
@@ -485,15 +479,14 @@ class TestGAEComputation:
         )
         for t in range(T):
             obs = {"pos": torch.zeros(B, N, 2)}
-            done = torch.tensor([1.0]) if t == 1 else torch.tensor([0.0])
             buf.add(
                 obs,
                 torch.zeros(B, N, 3),
                 torch.zeros(B, N),
                 torch.ones(B, N, Kc),  # reward = 1
-                done,
                 torch.zeros(B, N, Kc),  # value = 0
                 torch.ones(B, N, dtype=torch.bool),
+                terminated=torch.tensor([t == 1]),
             )
 
         buf.compute_gae(next_value=torch.full((B, N, Kc), 99.0), next_done=torch.zeros(B))
@@ -501,6 +494,46 @@ class TestGAEComputation:
         # Buffer applies symlog on storage: raw reward=1 → symlog(1)=log(2)≈0.693
         adv_t1 = buf.advantages[1, 0, 0, 0].item()
         assert abs(adv_t1 - math.log(2)) < 0.05
+
+    def test_truncation_cuts_the_trace_like_a_termination(self):
+        """A time-limited episode must not bootstrap off the next episode.
+
+        The wrapper auto-resets before returning the observation, so values[t+1]
+        after a truncation belongs to a freshly spawned episode. Regression: GAE
+        keyed on physics-`dones` alone, so a truncation left non_terminal=1 and
+        carried the new episode's value backwards through the whole trace.
+        """
+        T, B, N, Kc = 3, 1, 1, 1
+        from boost_and_broadside.env.observation import YemongObservation
+
+        buf = RolloutBuffer(
+            num_steps=T,
+            num_envs=B,
+            num_ships=N,
+            num_components=Kc,
+            obs_sample=YemongObservation(data={"pos": torch.zeros((B, N, 2))}),
+            gamma=torch.full((Kc,), 1.0),
+            gae_lambda=torch.full((Kc,), 1.0),
+            device=torch.device("cpu"),
+        )
+        for t in range(T):
+            buf.add(
+                {"pos": torch.zeros(B, N, 2)},
+                torch.zeros(B, N, 3),
+                torch.zeros(B, N),
+                torch.zeros(B, N, Kc),  # no reward — any advantage is leaked value
+                torch.zeros(B, N, Kc),  # value = 0
+                torch.ones(B, N, dtype=torch.bool),
+                # Truncated, not physics-done: the distinction the bug turned on.
+                terminated=torch.tensor([t == 1]),
+            )
+        buf.values[2] = 99.0  # the "next episode" the reset spawned
+
+        buf.compute_gae(next_value=torch.zeros(B, N, Kc), next_done=torch.zeros(B))
+
+        # Steps 0 and 1 precede the boundary and must not see step 2's value at all.
+        assert abs(buf.advantages[1, 0, 0, 0].item()) < 1e-3
+        assert abs(buf.advantages[0, 0, 0, 0].item()) < 1e-3
 
 
 class TestMinibatchIterator:

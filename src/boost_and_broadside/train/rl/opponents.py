@@ -68,7 +68,8 @@ class PrimaryStepOutput(NamedTuple):
     hidden: torch.Tensor
     hidden_t1: torch.Tensor | None
     action_buffer: torch.Tensor
-    dones: torch.Tensor
+    # done | truncated — the GAE boundary, not physics termination alone.
+    terminated: torch.Tensor
 
 
 class EnvironmentStepOutput(NamedTuple):
@@ -422,7 +423,6 @@ class OpponentMixin:
             action=action,
             logprob=step.network.logprob,
             reward=step.reward,
-            done=step.dones.float(),
             value=self.scaler.denormalize(step.network.value_norm),
             alive=obs["alive"][:, :num_ships].bool(),
             actor_mask=actor_mask,
@@ -440,5 +440,5 @@ class OpponentMixin:
             hidden,
             hidden_t1,
             action_buffer,
-            step.dones,
+            done_any,
         )

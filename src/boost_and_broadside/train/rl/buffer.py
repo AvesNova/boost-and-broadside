@@ -594,7 +594,6 @@ class RolloutBuffer:
         # Per-component float arrays are read-once leaf data → bf16 (see _STORAGE_FLOAT).
         self.rewards = torch.zeros((T, B, N, K), device=device, dtype=_STORAGE_FLOAT)
         self.values = torch.zeros((T, B, N, K), device=device, dtype=_STORAGE_FLOAT)
-        self.dones = torch.zeros((T, B), device=device, dtype=torch.float32)
         self.alive_mask = torch.zeros((T, B, N), device=device, dtype=torch.bool)
 
         self.advantages = torch.zeros((T, B, N, K), device=device, dtype=_STORAGE_FLOAT)
@@ -652,7 +651,6 @@ class RolloutBuffer:
         action: torch.Tensor,
         logprob: torch.Tensor,
         reward: torch.Tensor,
-        done: torch.Tensor,
         value: torch.Tensor,
         alive: torch.Tensor,
         actor_mask: torch.Tensor | None = None,
@@ -666,15 +664,14 @@ class RolloutBuffer:
             action:       (B, N, 3) int.
             logprob:      (B, N) float.
             reward:       (B, N, K) float — raw per-component per-ship rewards.
-            done:         (B,) float (0.0 or 1.0).
             value:        (B, N, K) float — critic expected values (symlog-reward space).
             alive:        (B, N) bool.
             actor_mask:   (B, N) bool — True for ships that should contribute to actor loss.
                           Defaults to all-True (pure self-play).
             expert_probs: (B, N, 12) float — scripted-agent marginal probs for BC loss.
                           Zero for envs without a scripted opponent.
-            terminated:   (B,) bool — True when episode ended (done | truncated). Used to
-                          mask aux loss at terminal transitions.
+            terminated:   (B,) bool — True when the episode ended (done | truncated).
+                          Cuts the GAE trace and masks the aux loss at boundaries.
         """
         if self.ptr >= self.num_steps:
             raise IndexError("Buffer is full — call reset() before reuse.")
@@ -689,7 +686,6 @@ class RolloutBuffer:
         self.actions[t] = action.int()
         self.logprobs[t] = logprob
         self.rewards[t] = symlog(reward)  # symlog #1: compress raw reward scale
-        self.dones[t] = done.float()
         self.values[t] = value
         self.alive_mask[t] = alive
         self.actor_masks[t] = actor_mask if actor_mask is not None else torch.ones_like(alive)
@@ -724,10 +720,23 @@ class RolloutBuffer:
         All tensor ops broadcast over the K dimension automatically — the
         loop body is identical to the scalar case.
 
+        Episode boundaries use ``terminated`` (done | truncated), not ``dones``
+        (physics termination only). The wrapper auto-resets a finished
+        environment *before* returning its observation, so ``values[t+1]`` after
+        a truncation is the value of a freshly spawned episode. Bootstrapping a
+        truncated episode's return off it would carry value across the boundary
+        — and with the win component at gamma 0.999 that leak runs the length of
+        the trace. Cutting the trace at truncation instead is mildly conservative
+        (a time-limited episode is treated as if it genuinely ended) but it never
+        mixes two episodes. Recovering the exact bootstrap would mean storing the
+        pre-reset final observation, which is not worth it at the ~2% of episodes
+        that reach the horizon.
+
         Args:
             next_value: (B, N, K) float — critic expected values at step T+1,
                         in symlog-reward space (symexp of expected bin).
-            next_done:  (B,) float — whether step T+1 is terminal.
+            next_done:  (B,) float — whether step T+1 ended an episode
+                        (done | truncated).
         """
         with torch.no_grad():
             # Accumulate in fp32 even though rewards/values are stored bf16: gamma/lam
@@ -742,7 +751,7 @@ class RolloutBuffer:
                     non_terminal = 1.0 - next_done.view(-1, 1, 1)  # (B, 1, 1)
                     next_val = next_value  # (B, N, K)
                 else:
-                    non_terminal = 1.0 - self.dones[t].view(-1, 1, 1)  # (B, 1, 1)
+                    non_terminal = 1.0 - self.terminated[t].float().view(-1, 1, 1)  # (B, 1, 1)
                     next_val = self.values[t + 1]  # (B, N, K)
 
                 delta = self.rewards[t] + gamma * next_val * non_terminal - self.values[t]

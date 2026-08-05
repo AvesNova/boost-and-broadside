@@ -36,6 +36,27 @@ policies, rollout collection, [generalized advantage
 estimation](https://arxiv.org/abs/1506.02438), update-time sequence re-evaluation,
 evaluation, logging, and checkpoints.
 
+### Action timing
+
+Environment and policy run concurrently on separate CUDA streams, which costs one step
+of action latency: the step that advances the environment applies the action chosen on
+the *previous* step, while the policy computes the next one from the current observation.
+
+The observation is what makes that Markov. `previous_action` does not hold the action
+that already ran — it holds the action **about to be applied**, written into the
+observation as it is handed forward. So the stored transition is
+`(state, pending action) → action`, and a chosen action shows up in the reward one step
+later, which GAE handles through the value function.
+
+Two consequences worth knowing before touching the auxiliary losses:
+
+- The channel is `(B, N+M, 3)`, so spatial attention lets **every ship read every other
+  ship's pending action**, opponents included. One step is 1/60 s against a ~0.4 s bullet
+  flight, so the lookahead is small, and it is symmetric.
+- One-step next-state prediction is therefore a *deterministic* function of the
+  observation (up to `bullet_spread`), not merely a short-horizon one. That is why it is
+  a weak representation signal and why longer-horizon prediction is the useful version.
+
 A logical update proceeds as follows:
 
 1. collect `T` actions while preserving `T+1` observations for bootstrap and next-state
