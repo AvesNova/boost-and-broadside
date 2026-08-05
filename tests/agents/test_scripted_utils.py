@@ -10,7 +10,7 @@ import math
 import pytest
 import torch
 
-from boost_and_broadside.agents.scripted_utils import compute_field_steering, turn_toward
+from boost_and_broadside.agents.scripted_utils import turn_toward
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import ShipConfig
@@ -91,16 +91,15 @@ def _field_steering_state(*, num_fields: int):
     return config, state
 
 
-def test_field_steering_biases_ship_away_from_nearby_material_boundary() -> None:
-    config, state = _field_steering_state(num_fields=1)
+def test_scripted_turn_targets_ignore_nearby_fields() -> None:
+    """The scripted controller aims and manoeuvres as if the medium were uniform.
 
-    bearing, strength = compute_field_steering(state, config)
-
-    assert torch.angle(bearing[0, 0]).item() == pytest.approx(math.pi / 2)
-    assert 0.0 < strength[0, 0].item() <= 0.35
-
-
-def test_scripted_turn_targets_change_when_a_field_is_nearby() -> None:
+    Its former material-aware steering measured net-negative: against a
+    uniform-random agent it produced *more* interface crossings, so behaviour
+    cloning imprinted extra crossing damage that the field_damage_taken penalty
+    then had to unteach. Field representation comes from the auxiliary
+    local_log_index prediction head, which never decays, rather than from BC.
+    """
     config, ambient = _field_steering_state(num_fields=0)
     _, fielded = _field_steering_state(num_fields=1)
     agent = StochasticScriptedAgent(config, StochasticAgentConfig())
@@ -110,4 +109,4 @@ def test_scripted_turn_targets_change_when_a_field_is_nearby() -> None:
     torch.manual_seed(0)
     _, field_probs = agent.get_actions_and_probs(fielded)
 
-    assert not torch.allclose(ambient_probs[0, 0, 3:10], field_probs[0, 0, 3:10])
+    assert torch.allclose(ambient_probs, field_probs)

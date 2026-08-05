@@ -215,10 +215,22 @@ schedules, and the preserved run config for historical weights.
 The primary [`runs/rl.py`](../runs/rl.py) profile remains an exact zero-field combat
 baseline. [`runs/rl_fields.py`](../runs/rl_fields.py) adds four cached static fields,
 activates the two local field reward heads, and reduces environment count to offset the
-extra attention tokens. The scripted controller applies a mild material-aware steering
-bias near an interface. It favors remaining on the current side, with stronger influence
-from index contrast and boundary damage, but caps the blend at 35% so fields do not become
-impenetrable walls in behavior-cloning targets.
+extra attention tokens. The scripted controller ignores fields entirely: it aims and
+manoeuvres as if the medium were uniform.
+
+It used to carry a mild stay-on-your-side steering bias, on the theory that behavior
+cloning needed field-dependent targets to warm up the attention trunk. Measurement killed
+it. Against a uniform-random agent the bias produced *more* interface crossings (2.24
+against 1.60 per thousand ship-steps) and left ships in higher-index — slower — medium
+more often (mean log index +0.159 against +0.108). Both were occupancy artifacts rather
+than decisions, and since crossing an interface costs health that
+`field_damage_taken` then penalises, behaviour cloning was imprinting a habit RL had to
+unlearn.
+
+Field representation does not depend on the scripted agent in any case. The auxiliary
+next-state head predicts `local_log_index` directly, which cannot be done without locating
+the ship relative to every field, and that pressure is always on and never decays with the
+behavior-cloning weight.
 
 Per-update physics diagnostics report field/combat damage per live ship-step, source death
 rates, the fraction of steps taking boundary damage, time in non-ambient media, and the

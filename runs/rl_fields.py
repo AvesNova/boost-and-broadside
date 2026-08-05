@@ -28,17 +28,17 @@ RL_FIELDS_TRAIN_CONFIG = replace(
     # `--mode semi_random --profile rl_fields`
     # (checkpoints/rl_fields/semi_random_tournament.json).
     reference_ladder=(
-        (0.2, 257.7),
-        (0.3, 347.0),
-        (0.4, 475.9),
-        (0.5, 554.2),
-        (0.6, 647.7),
-        (0.7, 737.3),
-        (0.8, 841.3),
-        (0.9, 897.9),
-        (0.95, 960.5),
+        (0.2, 243.3),
+        (0.3, 357.6),
+        (0.4, 462.0),
+        (0.5, 578.0),
+        (0.6, 678.4),
+        (0.7, 777.4),
+        (0.8, 864.2),
+        (0.9, 924.1),
+        (0.95, 967.4),
     ),
-    random_elo=170.2,
+    random_elo=172.7,
     scales=(
         ScaleConfig(
             env_config=replace(
