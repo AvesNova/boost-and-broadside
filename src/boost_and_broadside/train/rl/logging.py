@@ -48,6 +48,13 @@ class LoggingMixin:
                 )
 
         # Scaler span minimum — flags components where normalization may be degenerate
+        if self._field_map is not None:
+            # Sustained non-zero means the radius/width/count combination is
+            # too tight to place, and those maps are repeats of the last bank.
+            metrics["physics/field_map_generation_failures"] = (
+                self._field_map.generation_failures.item()
+            )
+
         metrics["scaler/span_min"] = span_cpu.min().item()
         metrics["scaler/floor_bound_span_count"] = float(span_bound_cpu.sum().item())
         metrics["scaler/floor_bound_rms_count"] = float(rms_bound_cpu.sum().item())

@@ -239,6 +239,23 @@ next-state head predicts `local_log_index` directly, which cannot be done withou
 the ship relative to every field, and that pressure is always on and never decays with the
 behavior-cloning weight.
 
+Field maps are regenerated every rollout rather than drawn from a bank fixed at startup.
+Generation is fully vectorised on device: it loops over fields rather than over maps or
+retries, proposing `max_generation_attempts` placements for every map at once and taking
+the first that fits, so a whole bank costs `num_fields` iterations of fixed-shape tensor
+work with no host synchronisation. A 512-map bank of four fields refreshes in about 4 ms
+against a rollout of tens of seconds.
+
+The reason to bother: a fixed bank is a small distribution that a full run draws from
+thousands of times per map, whereas a bank replaced each rollout supplies roughly one
+distinct map per episode. Maps are laminar by construction — candidates are rejected
+against already-placed fields before acceptance — which matters because
+`validate_field_layout` costs eight device-to-host syncs and raises, so it cannot run on
+the hot path. Rows that exhaust their proposal budget keep their previous map rather than
+ending the run, and `physics/field_map_generation_failures` reports how many, so a
+too-tight radius/width/count combination shows up as a number instead of silently thinning
+the distribution.
+
 Per-update physics diagnostics report field/combat damage per live ship-step, source death
 rates, the fraction of steps taking boundary damage, time in non-ambient media, and the
 field share of total applied damage. These metrics are independent of reward weights.

@@ -228,3 +228,69 @@ def test_log_symmetric_index_levels_are_reciprocal():
     assert index[0, 0] * index[0, 3] == pytest.approx(1.0, rel=1e-6)
     assert index[0, 1] * index[0, 2] == pytest.approx(1.0, rel=1e-6)
     assert math.isclose(index[0, 2].item(), config.field_index_step, rel_tol=1e-6)
+
+
+class TestFieldMapRefresh:
+    """Maps are regenerated per rollout rather than drawn from a fixed bank."""
+
+    @staticmethod
+    def _cache(cache_size=64, num_fields=4):
+        config = ShipConfig()
+        env_config = EnvConfig(
+            num_ships=8, max_bullets=0, max_episode_steps=10, num_fields=num_fields
+        )
+        map_config = FieldMapConfig(
+            cache_size=cache_size, max_generation_attempts=64, nesting_probability=0.35
+        )
+        return config, FieldMapCache.generate(
+            config, env_config, map_config, torch.device("cpu"), seed=3
+        )
+
+    def test_refresh_replaces_every_map(self):
+        _, cache = self._cache()
+        before = cache._pos.clone()
+        cache.refresh()
+        assert not torch.equal(before, cache._pos)
+        assert cache.generation_failures.item() == 0.0
+
+    def test_refreshed_maps_stay_strictly_laminar(self):
+        """The generator is the only validity guarantee on the hot path, since
+        validate_field_layout costs host syncs and raises."""
+        config, cache = self._cache()
+        for _ in range(10):
+            cache.refresh()
+            validate_field_layout(
+                cache._pos,
+                cache._radius,
+                cache._transition_width,
+                cache._index_level,
+                cache._damage_level,
+                config.world_size,
+            )
+
+    def test_refresh_never_synchronizes_on_a_failure_path(self):
+        """generation_failures stays a device tensor so reading it is optional."""
+        _, cache = self._cache()
+        cache.refresh()
+        assert isinstance(cache.generation_failures, torch.Tensor)
+        assert cache.generation_failures.ndim == 0
+
+    def test_zero_field_cache_refresh_is_a_noop(self):
+        config = ShipConfig()
+        env_config = EnvConfig(num_ships=4, max_bullets=0, max_episode_steps=10, num_fields=0)
+        cache = FieldMapCache.generate(
+            config,
+            env_config,
+            FieldMapConfig(cache_size=8, max_generation_attempts=8),
+            torch.device("cpu"),
+        )
+        cache.refresh()
+        assert cache.num_fields == 0
+
+    def test_material_levels_never_include_ambient(self):
+        """Level 0 is ambient and is not a legal field material."""
+        _, cache = self._cache(cache_size=256)
+        for _ in range(5):
+            cache.refresh()
+            assert (cache._index_level != 0).all()
+            assert ((cache._damage_level >= 0) & (cache._damage_level <= 2)).all()

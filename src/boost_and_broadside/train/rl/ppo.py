@@ -881,6 +881,12 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             aux_buffer.reset()
             aux_buffer.store_initial_hidden(aux_hidden)
 
+        # Fresh maps every rollout. A fixed bank is a small enough distribution
+        # that a full run sees each map thousands of times; regenerating it here
+        # gives roughly one distinct map per episode for a few milliseconds,
+        # entirely on device and without a host sync.
+        if self._field_map is not None:
+            self._field_map.refresh()
         slots = self._prepare_league_slots(runtime.num_recurrent)
         for rollout_step in range(self.cfg.num_steps):
             primary = self._collect_primary_step(
