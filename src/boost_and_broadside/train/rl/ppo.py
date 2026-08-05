@@ -467,16 +467,18 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             max_size=train_config.league_size,
             elo_temperature=train_config.elo_temperature,
             uniform_sampling=train_config.league_uniform_sampling,
+            random_elo=train_config.random_elo,
         )
         # Random anchor is added by EloRoster.__init__ (Elo=0, fixed) and is
         # excluded from opponent sampling. "scripted" is registered below;
         # "avg" joins when _update_avg_model() first runs.
         self._register_special_opponents()
 
-        # Training Elo starts at 0 — all ratings begin
-        # at the same point and diverge as eval matchups accumulate.
-        self._training_elo: float = 0.0
-        self._avg_training_elo: float = 0.0
+        # Seeded at the random reference's rating: an untrained policy is a
+        # random one, and on an absolute gauge that is a known point rather than
+        # zero. Starting elsewhere just costs eval games to walk back.
+        self._training_elo: float = train_config.random_elo
+        self._avg_training_elo: float = train_config.random_elo
         self._scripted_elo: float = train_config.elo_eval.scripted_elo_init
         self._floating_games: int = 0  # rated games of the floating ladder checkpoint
         self._bc_cutoff_streak: int = 0  # consecutive updates past the BC win-rate target
@@ -492,9 +494,17 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # Always a multiple of cfg.elo_milestone_gap once the first snapshot lands;
         # runs resumed from before the grid existed carry one off-grid value forward
         # and snap to the grid at their next snapshot.
-        self._elo_milestone: float = 0.0
-        self._best_training_elo_norm: float = 0.0  # best normalized training Elo seen so far
-        self._best_avg_elo_norm: float = 0.0  # best normalized avg Elo seen so far
+        # Grid points are absolute, so the first one to claim is the highest
+        # multiple of the gap at or below where the run starts.
+        self._elo_milestone: float = (
+            (train_config.random_elo // train_config.elo_milestone_gap)
+            * train_config.elo_milestone_gap
+            if train_config.elo_milestone_gap > 0
+            else 0.0
+        )
+        # Best ratings seen, on the absolute gauge.
+        self._best_training_elo_norm: float = -float("inf")
+        self._best_avg_elo_norm: float = -float("inf")
         self._last_checkpoint_path: Path | None = None
 
         # Async logging queue
@@ -745,14 +755,24 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             self._global_step += sc.num_envs
 
     def _register_special_opponents(self) -> None:
-        """Ensure the non-checkpoint league entries exist on the roster.
+        """Ensure the stationary league entries exist on the roster.
 
         Idempotent, and called again after a resume restores roster.json, so a
-        run resumed from a roster written before the scripted agent was an entry
-        picks it up rather than silently losing it as an opponent.
+        run resumed from a roster written before these were entries picks them
+        up rather than silently losing them.
+
+        Every stationary player is ``fixed``: their strength does not change, so
+        their ratings are measured constants rather than estimates to be dragged
+        around by in-training games the live policy is busy overfitting.
         """
-        if self.scripted_agent is not None:
-            self.roster.add_special("scripted", initial_elo=self.cfg.elo_eval.scripted_elo_init)
+        if self.scripted_agent is None:
+            return
+        scripted = self.roster.add_special(
+            "scripted", initial_elo=self.cfg.elo_eval.scripted_elo_init
+        )
+        scripted.fixed = True  # the gauge's anchor
+        for p_scripted, elo in self.cfg.reference_ladder:
+            self.roster.add_reference(p_scripted=p_scripted, elo=elo)
 
     def _initialize_rollout_runtime(self) -> _RolloutRuntime:
         """Initialize persistent primary, auxiliary, and evaluation rollout state."""
@@ -1977,7 +1997,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
     # ------------------------------------------------------------------
 
     def _random_elo(self) -> float:
-        """Return the current Elo of the random anchor roster entry."""
+        """Return the Elo of the random reference on this run's gauge."""
         for e in self.roster.entries:
             if e.kind == "random":
                 return e.elo
@@ -2026,7 +2046,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
     def _effective_target_kl(self) -> float | None:
         """Resolve the Elo-gated target KL from the current schedule snapshot."""
         threshold = self._schedule_state.high_elo_threshold
-        elo_norm = self._training_elo - self._random_elo()
-        if threshold is not None and elo_norm >= threshold:
+        # Absolute gauge — the scripted controller is pinned, so the live
+        # rating needs no re-basing to be comparable across runs.
+        if threshold is not None and self._training_elo >= threshold:
             return self._schedule_state.high_elo_target_kl
         return self._schedule_state.target_kl

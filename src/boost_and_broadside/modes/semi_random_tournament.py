@@ -13,6 +13,7 @@ from boost_and_broadside.agents.semi_random_scripted import SemiRandomScriptedAg
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import ShipConfig, TrainConfig
+from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.modes.agent_factory import ResolvedAgent
 from boost_and_broadside.modes.elo_calibrate import (
     Player,
@@ -157,11 +158,19 @@ def run_semi_random_tournament(
 
     if games_per_pair <= 0:
         raise ValueError("games_per_pair must be positive")
+    field_map = None
     if train_config is not None:
         run_dir = Path(checkpoint_dir) / run_spec
         run_dir.mkdir(parents=True, exist_ok=True)
         base_env = train_config.scales[0].env_config
         paradigm = train_config.paradigm
+        if base_env.num_fields > 0:
+            if train_config.field_map is None:
+                raise ValueError(f"profile {run_spec!r} has fields but no field_map config")
+            print(f"  generating field map cache ({train_config.field_map.cache_size} maps)...")
+            field_map = FieldMapCache.generate(
+                ship_config, base_env, train_config.field_map, torch.device(device)
+            )
     else:
         run_dir = find_run_dir(run_spec, checkpoint_dir)
         base_env, _, paradigm = _load_run_config(run_dir)
@@ -214,7 +223,9 @@ def run_semi_random_tournament(
 
         players = _players(ship_config, probabilities)
         env_config = replace(base_env, num_ships=2 * team_size)
-        tournament = Tournament(players, ship_config, env_config, paradigm, num_envs, device)
+        tournament = Tournament(
+            players, ship_config, env_config, paradigm, num_envs, device, field_map=field_map
+        )
         batches = list(stored.get("batches", [])) if stored else []
         if stored:
             tournament.wins[:] = np.asarray(stored["wins_matrix"], dtype=float)

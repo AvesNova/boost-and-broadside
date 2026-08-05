@@ -5,20 +5,31 @@ rather than the scripted agent, so it stays informative after the live policy
 saturates the scripted matchup. Matchup slots (each ``envs_per_matchup`` wide,
 in batch order):
 
-    0  live vs anchor      — updates live only (anchor ratings are frozen)
+    0  live vs anchor      — updates live only (anchor ratings are fixed)
     1  live vs floating    — zero-sum between live and the floating checkpoint
-    2  live vs scripted    — win-rate window + one-way scripted rating update
+    2  live vs scripted    — win-rate window + one-way live rating update
     3  live vs avg         — win-rate window + one-way avg rating update
     4  floating vs anchor  — one-way floating-checkpoint rating update
 
 The live policy plays team 0 in slots 0-3; the floating checkpoint plays team 0
-in slot 4. Anchors are the newest frozen ladder entries (just the random agent
-until checkpoints freeze). Per-episode anchor assignment is sampled proportional
-to the Bernoulli variance of the expected score, concentrating eval games where
-they carry the most rating information.
+in slot 4.
+
+Ratings live on an absolute gauge with the scripted controller pinned at
+``EloEvalConfig.scripted_elo_init``, matching the post-hoc calibration
+convention. Everything stationary — the random agent, the semi-random rungs and
+scripted itself — holds a rating measured offline, so slot 2 updates the live
+policy rather than letting the player that defines the scale drift under the one
+being measured against it.
+
+The anchor pool is those stationary references (permanent) followed by the newest
+frozen checkpoints (rotating). Per-episode assignment is a multinomial draw over
+the Bernoulli variance of the expected score, concentrating eval games where they
+carry the most rating information — which is what makes a long ladder cheap, and
+what keeps the rating identified during the early climb when the live policy
+would otherwise saturate both of its only two references.
 
 Before the first milestone there is no floating checkpoint: slot 1 falls back to
-extra live-vs-random games and slot 4 idles (random-vs-random play, ignored).
+extra games against the stationary pool and slot 4 idles (ignored).
 
 Slots are reseeded with staggered step counts (at startup, and on promotion for
 the slots whose participants changed) so rating updates arrive continuously
@@ -657,18 +668,24 @@ class EloEvaluator:
             self.floating_games = (
                 self.floating_games + rated_float[slot1].sum() + rated_float[slot4].sum()
             )
-        self.live_elo = live_before + delta_live
-
         if self.scripted_agent is not None:
+            # Scripted is the gauge's fixed anchor, so its rating never moves and
+            # slot 2 updates the live policy instead — the same one-way form the
+            # anchor slot uses. Feeding those games back into scripted's own
+            # rating would let the player that defines the scale drift under the
+            # policy being measured against it, and every rung's rating is stated
+            # relative to that anchor.
             slot2 = slice(2 * size, 3 * size)
-            self.scripted_elo = (
-                self.scripted_elo
+            delta_live = (
+                delta_live
                 + (
                     k
-                    * ((1.0 - score[slot2]) - expected_score(self.scripted_elo, live_before))
+                    * (score[slot2] - expected_score(live_before, self.scripted_elo))
                     * rated_float[slot2]
                 ).sum()
             )
+        self.live_elo = live_before + delta_live
+
         if avg_active:
             slot3 = slice(3 * size, 4 * size)
             self.avg_elo = (

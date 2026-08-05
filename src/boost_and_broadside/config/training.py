@@ -196,6 +196,21 @@ class TrainConfig:
     # (a scripted slot costs none). Clamped down when the league is narrower than
     # this, so a tiny --smoke batch still allocates.
     league_slots: int
+    # Stationary reference ladder: (p_scripted, elo) rungs between the random
+    # agent and the scripted controller, on a gauge where scripted reads
+    # elo_eval.scripted_elo_init. Together with random_elo these are the fixed
+    # calibration points the live rating is measured against.
+    #
+    # Without them the ladder has exactly two stationary references and the live
+    # policy saturates both — winning ~100% against random, losing ~100% against
+    # scripted — so its rating is barely identified for the whole early climb.
+    #
+    # Fitted offline by `--mode semi_random --profile <name>`. The ratings are a
+    # property of the environment the rungs play in, so a ladder is only valid
+    # for the tick rate, field count, ship config and fleet size it was measured
+    # under: re-run the tournament whenever any of those move.
+    reference_ladder: tuple[tuple[float, float], ...]
+    random_elo: float  # fitted rating of the uniform-random agent on that gauge
     # Ladder-snapshot grid spacing: snapshots are taken as normalized Elo crosses
     # each multiple of this value, so rungs land at absolute heights (200, 400, …)
     # that are comparable across runs rather than drifting from run history.

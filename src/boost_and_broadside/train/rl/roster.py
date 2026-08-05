@@ -100,18 +100,24 @@ class EloRoster:
         max_size: int = 20,
         elo_temperature: float = 200.0,
         uniform_sampling: bool = False,
+        random_elo: float = _DEFAULT_ELO,
     ) -> None:
         self.max_size = max_size
         self.elo_temperature = elo_temperature
         self.uniform_sampling = uniform_sampling
         self.entries: list[RosterEntry] = []
         self._load_order: list[RosterEntry] = []  # loaded checkpoints, oldest use first
-        # Random agent entry: the absolute ladder anchor, frozen at Elo 0.
+        # The random agent is a stationary reference like any other rung, fixed
+        # at its measured rating. It is *not* the scale's anchor — the scripted
+        # controller is (see EloEvalConfig.scripted_elo_init), because random
+        # sits where win rates saturate and its rating is the least identified by
+        # games, while scripted is the one opponent comparable across runs and
+        # fleet scales.
         self.entries.append(
             RosterEntry(
                 kind="random",
                 label="random",
-                elo=_DEFAULT_ELO,
+                elo=random_elo,
                 global_step=0,
                 update=0,
                 fixed=True,

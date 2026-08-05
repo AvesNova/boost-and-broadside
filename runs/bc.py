@@ -70,6 +70,9 @@ BC_TRAIN_CONFIG = TrainConfig(
     checkpoint_dir="checkpoints",
     league_size=20,
     league_slots=4,
+    # No opponents during BC, so no reference ladder is needed.
+    reference_ladder=(),
+    random_elo=0.0,
     elo_milestone_gap=200.0,
     elo_temperature=200.0,
     league_uniform_sampling=False,

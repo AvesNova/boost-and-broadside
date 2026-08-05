@@ -52,6 +52,7 @@ from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import EloCalibrateConfig, EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
+from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.modes.agent_factory import ResolvedAgent
 from boost_and_broadside.modes.match import MatchRunner
 from boost_and_broadside.train.rl.bradley_terry import (
@@ -291,6 +292,9 @@ class Tournament:
         num_envs: int,
         device: str,
         include_bullets: bool = False,
+        # Required when env_config has fields: TensorEnv refuses to build without
+        # one, and the rungs must play the same map distribution the run trains on.
+        field_map: FieldMapCache | None = None,
     ) -> None:
         self.players = players
         self.size = len(players)
@@ -307,7 +311,7 @@ class Tournament:
         self.max_steps = env_config.max_episode_steps
         self.team_sizes = (self.num_ships // 2, self.num_ships - self.num_ships // 2)
 
-        self.env = TensorEnv(num_envs, ship_config, env_config, self.device)
+        self.env = TensorEnv(num_envs, ship_config, env_config, self.device, field_map)
         self.wins = np.zeros((self.size, self.size), dtype=np.float64)
         self.ties = np.zeros((self.size, self.size), dtype=np.float64)
         # [team-0 player, team-1 player, team0 win/team1 win/tie]. Unlike the

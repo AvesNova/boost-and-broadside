@@ -102,6 +102,7 @@ def _make_train_config(
     paradigm: str = "ego_pass",
     league_fraction: float = 0.0,
     league_slots: int = 1,
+    reference_ladder: tuple[tuple[float, float], ...] = (),
     checkpoint_dir: str = "checkpoints",
     min_games_to_freeze: int = 0,
     rollouts_per_update: int = 1,
@@ -131,6 +132,8 @@ def _make_train_config(
         checkpoint_dir=checkpoint_dir,
         league_size=20,
         league_slots=league_slots,
+        reference_ladder=reference_ladder,
+        random_elo=0.0,
         league_uniform_sampling=False,
         elo_milestone_gap=50.0,
         elo_temperature=200.0,
@@ -151,6 +154,7 @@ def _make_trainer(
     paradigm: str = "ego_pass",
     league_fraction: float = 0.0,
     league_slots: int = 1,
+    reference_ladder: tuple[tuple[float, float], ...] = (),
     with_scripted: bool = True,
     checkpoint_dir: str = "checkpoints",
     min_games_to_freeze: int = 0,
@@ -170,6 +174,7 @@ def _make_trainer(
             paradigm=paradigm,
             league_fraction=league_fraction,
             league_slots=league_slots,
+            reference_ladder=reference_ladder,
             checkpoint_dir=checkpoint_dir,
             min_games_to_freeze=min_games_to_freeze,
             rollouts_per_update=rollouts_per_update,
@@ -539,6 +544,91 @@ class TestLeagueAllocation:
         assert all(slot.end > slot.start for slot in slots)
 
 
+class TestReferenceLadder:
+    """Stationary rungs between random and scripted, on a scripted-anchored gauge."""
+
+    LADDER = ((0.3, -60.0), (0.5, 300.0), (0.8, 720.0))
+
+    def _trainer(self, tmp_path, **kwargs):
+        return _make_trainer(
+            league_fraction=0.5,
+            reference_ladder=self.LADDER,
+            checkpoint_dir=str(tmp_path),
+            **kwargs,
+        )
+
+    def test_rungs_are_registered_at_their_fitted_ratings(self, tmp_path):
+        trainer = self._trainer(tmp_path)
+        rungs = {e.label: e for e in trainer.roster.entries if e.kind == "semi_random"}
+        assert len(rungs) == len(self.LADDER)
+        assert rungs["semi_scripted_0p5"].elo == 300.0
+        assert rungs["semi_scripted_0p5"].p_scripted == 0.5
+
+    def test_every_stationary_reference_is_fixed(self, tmp_path):
+        """Their strength does not change, so their ratings are constants — not
+        estimates for in-training games to drag around."""
+        trainer = self._trainer(tmp_path)
+        stationary = [e for e in trainer.roster.entries if e.is_stationary]
+        assert len(stationary) == len(self.LADDER) + 2  # + random + scripted
+        assert all(e.fixed for e in stationary)
+
+    def test_scripted_anchors_the_gauge(self, tmp_path):
+        trainer = self._trainer(tmp_path)
+        scripted = next(e for e in trainer.roster.entries if e.kind == "scripted")
+        assert scripted.elo == trainer.cfg.elo_eval.scripted_elo_init
+        assert scripted.fixed
+
+    def test_scripted_rating_does_not_drift_during_training(self, tmp_path):
+        """The player defining the scale must not move under the one being
+        measured against it — every rung's rating is stated relative to it."""
+        trainer = self._trainer(tmp_path)
+        anchor = trainer.cfg.elo_eval.scripted_elo_init
+        trainer.train()
+        assert trainer._scripted_elo == anchor
+        scripted = next(e for e in trainer.roster.entries if e.kind == "scripted")
+        assert scripted.elo == anchor
+
+    def test_rungs_join_the_anchor_pool_as_a_stationary_prefix(self, tmp_path):
+        trainer = self._trainer(tmp_path)
+        elo_eval = trainer._initialize_rollout_runtime().elo_eval
+        prefix = elo_eval._anchor_specs[: elo_eval._n_stationary]
+        assert elo_eval._n_stationary == len(self.LADDER) + 2
+        assert all(spec.is_stateless for spec in prefix)
+        # Sorted by rating, and the scripted end carries p_scripted=1.0.
+        assert [spec.elo for spec in prefix] == sorted(spec.elo for spec in prefix)
+        assert prefix[-1].p_scripted == 1.0
+
+    def test_rungs_are_league_opponents_too(self, tmp_path):
+        trainer = self._trainer(tmp_path, league_slots=4)
+        trainer._training_elo = 300.0  # sits on the 0.5 rung
+        drawn = {trainer._sample_league_entry().kind for _ in range(30)}
+        assert "semi_random" in drawn
+
+    def test_live_rating_starts_at_the_random_reference(self, tmp_path):
+        """An untrained policy is a random one, which is a known point on an
+        absolute gauge rather than zero."""
+        config = _make_train_config(
+            league_fraction=0.5,
+            reference_ladder=self.LADDER,
+            checkpoint_dir=str(tmp_path),
+        )
+        config = dataclasses.replace(config, random_elo=-350.0)
+        trainer = PPOTrainer(
+            train_config=config,
+            model_config=ModelConfig(d_model=32, n_heads=4, n_yemong_blocks=1),
+            ship_config=ShipConfig(),
+            device="cpu",
+            use_wandb=False,
+            scripted_agent=StochasticScriptedAgent(ShipConfig(), StochasticAgentConfig()),
+        )
+        assert trainer._training_elo == -350.0
+        assert trainer._random_elo() == -350.0
+        # The first milestone to claim is the grid point above where it starts,
+        # not one gap above zero.
+        gap = trainer.cfg.elo_milestone_gap
+        assert trainer._elo_milestone <= -350.0 < trainer._elo_milestone + gap
+
+
 class TestLeagueOpponents:
     """Scripted and avg are roster entries, not hard-wired opponent groups."""
 
@@ -758,6 +848,8 @@ class TestSchedulePrimitives:
                 checkpoint_dir=str(tmp_path),
                 league_size=20,
                 league_slots=1,
+                reference_ladder=(),
+                random_elo=0.0,
                 league_uniform_sampling=False,
                 elo_milestone_gap=50.0,
                 elo_temperature=200.0,
@@ -893,6 +985,8 @@ class TestRLSmokeTest:
             checkpoint_dir=str(tmp_path),
             league_size=5,
             league_slots=2,
+            reference_ladder=(),
+            random_elo=0.0,
             elo_milestone_gap=100.0,
             elo_temperature=200.0,
             league_uniform_sampling=False,

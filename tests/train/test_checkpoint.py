@@ -506,14 +506,14 @@ class TestBestCheckpoints:
         ckpt_dir = Path(tmp_path) / trainer.run_name
 
         trainer._training_elo = 10.0
-        trainer._maybe_save_best_checkpoints(random_elo=0.0)
+        trainer._maybe_save_best_checkpoints()
         trainer._active_best_thread.join(timeout=60)
         assert (ckpt_dir / "best_training.pt").exists()
         first_mtime = (ckpt_dir / "best_training.pt").stat().st_mtime_ns
 
         # Elo regresses: the file must not be rewritten.
         trainer._training_elo = 5.0
-        trainer._maybe_save_best_checkpoints(random_elo=0.0)
+        trainer._maybe_save_best_checkpoints()
         assert (ckpt_dir / "best_training.pt").stat().st_mtime_ns == first_mtime
 
     def test_best_avg_is_not_saved_before_avg_model_is_ready(self, tmp_path):
@@ -525,7 +525,7 @@ class TestBestCheckpoints:
 
         assert trainer._avg_update_count == 0
         trainer._avg_training_elo = 1000.0  # would trip the threshold if checked
-        trainer._maybe_save_best_checkpoints(random_elo=0.0)
+        trainer._maybe_save_best_checkpoints()
         assert not (ckpt_dir / "best_avg.pt").exists()
 
     def test_best_avg_checkpoint_holds_avg_policy_weights(self, tmp_path):
@@ -541,7 +541,7 @@ class TestBestCheckpoints:
 
         trainer._avg_update_count = 1
         trainer._avg_training_elo = 50.0
-        trainer._maybe_save_best_checkpoints(random_elo=0.0)
+        trainer._maybe_save_best_checkpoints()
         trainer._active_best_avg_thread.join(timeout=60)
 
         saved = torch.load(ckpt_dir / "best_avg.pt", map_location="cpu", weights_only=False)
@@ -565,7 +565,7 @@ class TestBestCheckpoints:
         trainer._avg_update_count = 1
         trainer._training_elo = 10.0  # live improves
         trainer._avg_training_elo = 10.0  # avg improves in the same call
-        trainer._maybe_save_best_checkpoints(random_elo=0.0)
+        trainer._maybe_save_best_checkpoints()
         trainer._active_best_thread.join(timeout=60)
         trainer._active_best_avg_thread.join(timeout=60)
 
@@ -590,9 +590,10 @@ class TestBestCheckpoints:
         blocker.start()
         trainer._active_best_thread = blocker  # occupy the live-best slot
 
+        mark_before = trainer._best_training_elo_norm
         trainer._training_elo = 10.0
-        trainer._maybe_save_best_checkpoints(random_elo=0.0)
+        trainer._maybe_save_best_checkpoints()
 
         # Save was skipped (slot busy), so the bar must not have moved.
-        assert trainer._best_training_elo_norm == 0.0
+        assert trainer._best_training_elo_norm == mark_before
         blocker.join(timeout=60)

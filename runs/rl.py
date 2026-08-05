@@ -74,7 +74,9 @@ RL_SCHEDULE = TrainingSchedule(
     checkpoint_interval=constant(50),
     num_epochs=stepped((0, 4)),
     target_kl=stepped((0, 0.1)),
-    high_elo_threshold=constant(900.0),
+    # Absolute rating now (scripted = 1000), so this reads as "tighten the
+    # trust region once the policy matches the scripted controller".
+    high_elo_threshold=constant(1000.0),
     high_elo_target_kl=constant(0.02),
 )
 
@@ -143,6 +145,22 @@ RL_TRAIN_CONFIG = TrainConfig(
     checkpoint_dir="checkpoints",
     league_size=20,
     league_slots=4,
+    # Fitted by `--mode semi_random --profile rl` on 4v4 at action_repeat=3,
+    # 128 games/pair, stderr 21-37 (checkpoints/rl/semi_random_tournament.json).
+    # Re-run it if the tick rate, ship config or fleet size changes: the 60 Hz
+    # ladder had random 200 Elo further from scripted than this one does.
+    reference_ladder=(
+        (0.2, -206.9),
+        (0.3, -61.2),
+        (0.4, 140.7),
+        (0.5, 299.7),
+        (0.6, 472.0),
+        (0.7, 596.2),
+        (0.8, 723.0),
+        (0.9, 873.1),
+        (0.95, 919.3),
+    ),
+    random_elo=-350.8,
     elo_milestone_gap=200.0,
     elo_temperature=200.0,
     league_uniform_sampling=False,

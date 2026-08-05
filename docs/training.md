@@ -255,8 +255,13 @@ Self-play is the other half of the batch: the live weights viewed from the other
 perspective.
 
 Sampling is proportional to `exp(-abs(opponent_elo - live_elo) / temperature)`, excluding
-the fixed random anchor. That exclusion is load-bearing — the live rating and random's both
-start at zero, so including it would make the early league mostly random play.
+the random agent. That exclusion is load-bearing: an untrained policy sits at random's own
+rating, so including it would make the early league mostly random play — which self-play
+already provides, at twice the actor tokens.
+
+Semi-random rungs cover that early range instead. They are the same interior references
+the ladder uses (below), so proximity sampling always has a well-matched candidate rather
+than a choice between an opponent it beats every time and one it never beats.
 
 There is no per-opponent schedule, because the ratings already encode the curriculum. At
 step zero the scripted agent is the only entry a slot can draw, so training begins as an
@@ -282,11 +287,33 @@ evaluation environments alongside training. The evaluator has five logical slots
 4. live vs running-average policy;
 5. floating checkpoint vs fixed anchor.
 
-The anchor pool has two parts. **Stationary references** — the random agent, any
+Ratings live on an **absolute gauge with the scripted controller pinned at 1000**, the
+same convention the post-hoc calibration reports, so in-training and calibrated numbers no
+longer need re-basing against each other. Slot 2 therefore updates the live policy rather
+than scripted: the player defining the scale must not drift under the one being measured
+against it.
+
+The anchor pool has two parts. **Stationary references** — the random agent, the
 semi-random rungs, and the scripted controller — sit at its head and never age out,
 because their strength is a fixed property and their ratings are measured constants.
 **Checkpoint anchors** follow: the newest `MAX_CHECKPOINT_ANCHORS` frozen ladder
 snapshots, which do rotate as the live policy leaves them behind.
+
+### The reference ladder
+
+With only random and scripted as fixed references, the live policy saturates both for the
+whole early climb — winning ~100% against one and losing ~100% against the other — so its
+rating is barely identified exactly when opponent selection depends on it. A ladder of
+semi-random rungs (`TrainConfig.reference_ladder`) fills that range. Each rung takes the
+scripted action with probability `p` and a uniform one otherwise, and their ratings are
+fitted offline by `--mode semi_random --profile <name>`.
+
+Those ratings are a property of the environment the rungs play in, so a ladder is valid
+only for the tick rate, field count, ship config and fleet size it was measured under.
+The two shipped profiles differ sharply — on the scripted-anchored gauge the random agent
+sits at **−351** in `rl` and **+170** in `rl_fields`, because refractive fields compress
+the skill scale — so each profile carries its own ladder and re-running the tournament is
+mandatory whenever the environment moves.
 
 Per-episode assignment is a multinomial draw over the information weights, so the pool
 can be any size at no extra environment cost — the slot's envs simply redistribute, and
