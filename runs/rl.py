@@ -135,7 +135,7 @@ RL_TRAIN_CONFIG = TrainConfig(
     # to hurt; the bin grid lives in MODEL_CONFIG.
     value_sigma=0.0,
     # The actor-side counterpart is a true epsilon. Its floor was pinning
-    # ally_win/enemy_win/kill_shot/kill_assist/combat_death/shoot_quality at
+    # win/kill_shot/kill_assist/combat_death/shoot_quality at
     # 0.1 against true RMS values of 0.0075-0.027, downweighting the win signal
     # ~13x in the policy gradient. No loss-magnitude risk here: the aggregated
     # advantage is renormalized to unit RMS again after lambda aggregation

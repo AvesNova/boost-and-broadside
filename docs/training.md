@@ -219,8 +219,7 @@ reference policy activated these components:
 
 | Component | RL / fields weight | Role |
 |---|---:|---|
-| `ally_win` | 4.0 | +1 to each surviving teammate on a win |
-| `enemy_win` | 4.0 | opponent's win signal, seen as −1 through a negative enemy lambda |
+| `win` | 1.5 | +1 to each surviving teammate on a win, −1 through the enemy lambda on a loss, 0 on a draw |
 | `facing` | 0.1 | dense aim geometry (+) |
 | `closing_speed` | 0.1 | dense approach geometry (+) |
 | `shoot_quality` | 0.1 | firing opportunity quality (+) |
@@ -241,6 +240,13 @@ local event signals to training targets:
 - global outcome components aggregate across live teammates;
 - selected enemy-perspective components use negative enemy coefficients to recover
   zero-sum outcome structure.
+
+`win` is the case where both halves apply at once: +1 over allies and −1 over enemies, so
+one component spans win, draw and loss. It was two — an ally-perspective and an
+enemy-perspective copy of the same tensor — because a scalar critic reads a draw and an
+even fight identically, both E[v] = 0. The categorical critic separates them as mass on
+the zero bin versus mass split between the ends, so the split no longer earns its second
+value output.
 
 Note that `kill_shot` is not winner-take-all: when several ships damage a target on its
 fatal step, each earns credit proportional to that step's damage. `kill_assist` remains

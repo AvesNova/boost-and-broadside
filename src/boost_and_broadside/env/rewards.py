@@ -271,12 +271,20 @@ class KillAssistReward(RewardComponent):
         return reward
 
 
-class AllyWinReward(RewardComponent):
-    """+1 to ships whose team wins at game end; 0 to losers and draws. Lambda=0 for
-    enemies. Critic learns P(ally wins), which distinguishes standoff (≈0) from
-    close fight (≈0.5) — unlike a single win/loss component where both look like 0."""
+class WinReward(RewardComponent):
+    """+1 to ships whose team wins at game end; 0 to losers and draws.
 
-    name = "ally_win"
+    Aggregated with lambda=+1 over allies and lambda=-1 over enemies, so a ship
+    sees +1 on a win, -1 on a loss, and 0 on a draw.
+
+    This was two components — ally_win and enemy_win, computing the identical
+    tensor and differing only in lambda routing — because a scalar critic cannot
+    tell a draw from a coin flip: both give E[v] = 0. The categorical critic
+    represents the difference directly, as mass on the zero bin versus mass split
+    between the +1 and -1 bins, so the split is no longer buying anything and one
+    component covers all three outcomes."""
+
+    name = "win"
 
     def compute(
         self,
@@ -295,19 +303,6 @@ class AllyWinReward(RewardComponent):
         reward[team0 & t0_wins.expand_as(team0)] = +1.0
         reward[team1 & t1_wins.expand_as(team1)] = +1.0
         return reward
-
-
-class EnemyWinReward(AllyWinReward):
-    """+1 to each ship on the WINNING team at game end; 0 to losers and draws.
-
-    Mirrors AllyWinReward but is consumed from the enemy perspective: PPO applies
-    lambda=-1 so allies see -1 when enemies win and 0 when enemies lose, letting
-    the critic distinguish three outcomes:
-      win  → ally_win=+1, enemy_win= 0
-      draw → ally_win= 0, enemy_win= 0
-      loss → ally_win= 0, enemy_win=+1 (enemy sees +1; ally sees lambda*+1=-1)"""
-
-    name = "enemy_win"
 
 
 # ---------------------------------------------------------------------------
@@ -624,21 +619,20 @@ REWARD_COMPONENT_NAMES: tuple[str, ...] = (
     "enemy_combat_death",  #  5 — enemy projectile deaths
     "ally_field_death",  #  6 — ally boundary deaths
     "enemy_field_death",  #  7 — enemy boundary deaths
-    "ally_win",  #  8 — ally team wins (positive)
-    "enemy_win",  #  9 — enemy team wins (negative for allies via lambda)
-    "facing",  # 10 — pointing at nearest enemy (shaping, self only)
-    "closing_speed",  # 11 — velocity toward nearest enemy (shaping, self only)
-    "shoot_quality",  # 12 — shot quality when firing (shaping, self only)
-    "kill_shot",  # 13 — proportional kill credit from step-level damage (self only)
-    "kill_assist",  # 14 — cumulative combat credit, including field-finished kills
-    "combat_damage_taken",  # 15 — applied projectile damage to this ship
-    "field_damage_taken",  # 16 — applied boundary damage to this ship
-    "damage_dealt_enemy",  # 17 — damage dealt to enemies this step (self only)
-    "damage_dealt_ally",  # 18 — damage dealt to allies — friendly-fire penalty
-    "combat_death",  # 19 — projectile death of this ship (self only)
-    "field_death",  # 20 — boundary death of this ship (self only)
-    "shooting_penalty",  # 21 — negative reward on every shot (self only)
-    "speed",  # 22 — penalty when proper speed < min_speed (self only)
+    "win",  #  8 — this ship's team wins; lambda=-1 over enemies makes it zero-sum
+    "facing",  #  9 — pointing at nearest enemy (shaping, self only)
+    "closing_speed",  # 10 — velocity toward nearest enemy (shaping, self only)
+    "shoot_quality",  # 11 — shot quality when firing (shaping, self only)
+    "kill_shot",  # 12 — proportional kill credit from step-level damage (self only)
+    "kill_assist",  # 13 — cumulative combat credit, including field-finished kills
+    "combat_damage_taken",  # 14 — applied projectile damage to this ship
+    "field_damage_taken",  # 15 — applied boundary damage to this ship
+    "damage_dealt_enemy",  # 16 — damage dealt to enemies this step (self only)
+    "damage_dealt_ally",  # 17 — damage dealt to allies — friendly-fire penalty
+    "combat_death",  # 18 — projectile death of this ship (self only)
+    "field_death",  # 19 — boundary death of this ship (self only)
+    "shooting_penalty",  # 20 — negative reward on every shot (self only)
+    "speed",  # 21 — penalty when proper speed < min_speed (self only)
 )
 
 _NAME_TO_K: dict[str, int] = {name: k for k, name in enumerate(REWARD_COMPONENT_NAMES)}
@@ -669,8 +663,7 @@ def build_reward_components(
         EnemyCombatDeathReward(weight=rewards.enemy_combat_death_weight),
         AllyFieldDeathReward(weight=rewards.ally_field_death_weight),
         EnemyFieldDeathReward(weight=rewards.enemy_field_death_weight),
-        AllyWinReward(weight=rewards.ally_win_weight),
-        EnemyWinReward(weight=rewards.enemy_win_weight),
+        WinReward(weight=rewards.win_weight),
         FacingReward(
             weight=rewards.facing_weight,
             radius=rewards.proximity_radius,

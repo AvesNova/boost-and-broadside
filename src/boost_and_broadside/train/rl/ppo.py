@@ -106,12 +106,11 @@ _BC_CUTOFF_UPDATES = 3
 # Maps reward component name → the TrainingSchedule group-scale field to apply.
 # Effective weight = group_scale * individual_weight (from RewardConfig).
 # Groups:
-#   true_reward → win components (ally_win, enemy_win)
+#   true_reward → the win component
 #   global      → global outcome rewards + shaping (team-aggregated via lambda)
 #   local       → self-only per-ship rewards (diagonal lambda, no teammate propagation)
 _GROUP: dict[str, str] = {
-    "ally_win": "true_reward_scale",
-    "enemy_win": "true_reward_scale",
+    "win": "true_reward_scale",
     "ally_combat_damage": "global_scale",
     "enemy_combat_damage": "global_scale",
     "ally_field_damage": "global_scale",
@@ -619,7 +618,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
     def _make_ally_zero_k(self, ally_zero_set: frozenset[str]) -> torch.Tensor:
         """Build the (K,) bool tensor marking components where same-team lambda=0.
 
-        Used for enemy-perspective source-split damage/death components and enemy_win,
+        Used for enemy-perspective source-split damage/death components and win,
         where allies should not contribute their own signal to the aggregated advantage.
         """
         return torch.tensor(

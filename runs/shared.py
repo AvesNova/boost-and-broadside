@@ -87,8 +87,7 @@ REWARDS = RewardConfig(
     # removed. 1.5 lands at 32% -- above the old share, since winning is the
     # actual objective, but without drowning out the dense shaping that keeps
     # the policy engaging at all.
-    ally_win_weight=1.5,
-    enemy_win_weight=1.5,
+    win_weight=1.5,
     # Dense shaping rewards — prevent passive collapse during early RL.
     facing_weight=0.1,
     closing_speed_weight=0.1,
@@ -113,15 +112,17 @@ REWARDS = RewardConfig(
     # Lambda configuration:
     #   enemy_neg_lambda_components → enemy ships get lambda=-1
     #   ally_zero_components        → ally ships get lambda=0 (enemy-perspective only)
-    # enemy_win is zero-sum: allies see -1 when the enemy team wins, letting the
-    # critic distinguish win / draw / loss when paired with ally_win.
+    # win is zero-sum: a ship's own team winning reads +1, the enemy team winning
+    # reads -1 through the enemy lambda, and a draw reads 0. It is deliberately
+    # absent from ally_zero_components -- allies must keep lambda=+1, which is
+    # what makes the pair of lambdas span all three outcomes with one component.
     enemy_neg_lambda_components=frozenset(
         {
             "enemy_combat_damage",
             "enemy_field_damage",
             "enemy_combat_death",
             "enemy_field_death",
-            "enemy_win",
+            "win",
         }
     ),
     ally_zero_components=frozenset(
@@ -130,7 +131,6 @@ REWARDS = RewardConfig(
             "enemy_field_damage",
             "enemy_combat_death",
             "enemy_field_death",
-            "enemy_win",
         }
     ),
     # Behaviour shaping — off by default in combat mode
@@ -169,9 +169,8 @@ FIELD_REWARDS = replace(
 #     damage        1.9   the positioning that produced the exchange
 #     shaping       0.7   instantaneous geometry; longer invites circling
 COMPONENT_GAMMAS: dict[str, float] = {
-    # Terminal — ally_win (+1 win) and enemy_win (-1 loss) both need full-episode horizon
-    "ally_win": 0.998001,
-    "enemy_win": 0.998001,
+    # Terminal — win (+1 win / -1 loss) needs a full-episode horizon
+    "win": 0.998001,
     # Kill/death
     "ally_combat_death": 0.990025,
     "enemy_combat_death": 0.990025,
@@ -200,8 +199,7 @@ COMPONENT_GAMMAS: dict[str, float] = {
 
 COMPONENT_LAMBDAS: dict[str, float] = {
     # Terminal — high λ: sparse signal must be traced back through the full episode
-    "ally_win": 0.940900,
-    "enemy_win": 0.940900,
+    "win": 0.940900,
     # Kill/death
     "ally_combat_death": 0.902500,
     "enemy_combat_death": 0.902500,

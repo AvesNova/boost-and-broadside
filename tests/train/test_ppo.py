@@ -38,8 +38,7 @@ def _make_rewards(**overrides) -> RewardConfig:
         enemy_combat_death_weight=0.5,
         ally_field_death_weight=0.5,
         enemy_field_death_weight=0.5,
-        ally_win_weight=1.0,
-        enemy_win_weight=1.0,
+        win_weight=1.0,
         facing_weight=0.01,
         closing_speed_weight=0.01,
         shoot_quality_weight=0.01,
@@ -59,7 +58,7 @@ def _make_rewards(**overrides) -> RewardConfig:
                 "enemy_field_damage",
                 "enemy_combat_death",
                 "enemy_field_death",
-                "enemy_win",
+                "win",
             }
         ),
         ally_zero_components=frozenset(
@@ -68,7 +67,6 @@ def _make_rewards(**overrides) -> RewardConfig:
                 "enemy_field_damage",
                 "enemy_combat_death",
                 "enemy_field_death",
-                "enemy_win",
             }
         ),
     )
@@ -938,15 +936,15 @@ class TestSchedulePrimitives:
 
 
 class TestWinComponentLambdaMatrix:
-    """Regression for the win-component lambda design (audit §1.2): ally_win/enemy_win
-    must use the team-based zero-sum lambda path, not the diagonal (self-only) path."""
+    """Regression for the win-component lambda design (audit §1.2): win must use the
+    team-based zero-sum lambda path, not the diagonal (self-only) path."""
 
     def test_win_component_lambda_rows_are_zero_sum(self, tmp_path):
-        """In a 2v2 layout, ship 0 aggregates ally_win from its own team (+1) and
-        enemy_win from the enemy team (-1), so win/draw/loss are distinguishable."""
+        """In a 2v2 layout ship 0 aggregates win at +1 over its own team and -1 over
+        the enemy team, which is what makes win, draw and loss distinguishable from
+        one component."""
         trainer = _make_trainer(checkpoint_dir=str(tmp_path))
-        names = trainer._active_names
-        k_ally, k_enemy = names.index("ally_win"), names.index("enemy_win")
+        k_win = trainer._active_names.index("win")
 
         # Build the per-pair lambda matrix the same way _precompute_lambda_aggregates does.
         teams = torch.tensor([0, 0, 1, 1])
@@ -959,18 +957,18 @@ class TestWinComponentLambdaMatrix:
         )  # (N, N, K)
         lam = torch.where(trainer.local_k, torch.eye(4).unsqueeze(-1), global_lambda)
 
-        assert lam[0, :, k_ally].tolist() == [1.0, 1.0, 0.0, 0.0]
-        assert lam[0, :, k_enemy].tolist() == [0.0, 0.0, -1.0, -1.0]
+        assert lam[0, :, k_win].tolist() == [1.0, 1.0, -1.0, -1.0]
 
     def test_production_config_win_lambda_sets(self):
-        """runs/shared.py must agree with the field profile and test configs on
-        which win components are zero-sum (enemy_win) vs ally-shared (ally_win)."""
+        """win takes lambda=-1 over enemies and must NOT be zeroed over allies.
+
+        Putting it in ally_zero_components would silently drop the +1 half of the
+        signal, leaving a critic that sees a loss but never a win.
+        """
         from runs.shared import REWARDS
 
-        assert "enemy_win" in REWARDS.enemy_neg_lambda_components
-        assert "enemy_win" in REWARDS.ally_zero_components
-        assert "ally_win" not in REWARDS.enemy_neg_lambda_components
-        assert "ally_win" not in REWARDS.ally_zero_components
+        assert "win" in REWARDS.enemy_neg_lambda_components
+        assert "win" not in REWARDS.ally_zero_components
 
 
 class TestLocalComponentRegistry:

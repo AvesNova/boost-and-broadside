@@ -305,7 +305,7 @@ class RewardConfig:
 
     Group scales (applied as a multiplier on top of individual weights; the
     authoritative component → group mapping is _GROUP in train/rl/ppo.py):
-        true_reward  → win components (ally_win, enemy_win)
+        true_reward  → the win component
         global       → team outcome rewards (ally/enemy source-split damage and death)
         local        → self-only per-ship rewards (shaping, kill credit,
                        per-ship damage/death)
@@ -320,8 +320,7 @@ class RewardConfig:
     enemy_combat_death_weight: float  # enemy-perspective projectile death pair
     ally_field_death_weight: float  # boundary-caused death of this ship
     enemy_field_death_weight: float  # enemy-perspective boundary death pair
-    ally_win_weight: float  # +1 when this ship's team wins
-    enemy_win_weight: float  # same signal, enemy-team perspective (pair with ally_win)
+    win_weight: float  # +1 when this ship's team wins; -1 over enemies via lambda
 
     # --- Local per-ship rewards (self-only, lambda=0 for all other ships) ---
     facing_weight: float  # pointing nose toward nearest enemy (shaping)
