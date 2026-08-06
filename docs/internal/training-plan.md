@@ -6,6 +6,11 @@ measurements, not reader-facing documentation. Reader-facing material lives in
 [training.md](../training.md).
 
 Written so a fresh session can pick this up without re-deriving anything.
+Current as of `e467120`.
+
+**Read [What went wrong twice](#what-went-wrong-twice) before changing anything
+other code consumes.** Two of the three suspects in the first regression turned
+out to be measurement bugs introduced here, not training problems.
 
 ---
 
@@ -30,7 +35,7 @@ Consequences that drive everything below:
 
 ## Done
 
-Seven commits, oldest first. Each entry records *why*, because the reasoning is
+Oldest first. Each entry records *why*, because the reasoning is
 harder to recover than the diff.
 
 ### `8f8e612` — advantage scaler floor
@@ -101,7 +106,11 @@ anchors** (rotating). Stationary references cost no forward pass: every
 semi-random rung is a Bernoulli blend of the same two action tensors, so a ladder
 of any length is one scripted call plus one random call.
 
-### `33dbef4` — 20 Hz decisions
+### `33dbef4` — action repeat (20 Hz; **superseded**, now 30 Hz)
+
+**Superseded by `e467120`**: the rate is 30 Hz and the evaluation path is fixed.
+The reasoning below is the 60 Hz baseline and still holds; only the chosen rate
+and the discount exponent changed.
 
 Physics ran at 1/60 and the policy chose a new action every tick, far finer than
 the plant responds to. `EnvConfig.action_repeat=3` holds each action three
@@ -135,15 +144,17 @@ now fixed roster entries and anchor-pool members.
 
 **Ratings are environment-specific, and the recompute proved how much:**
 
-| | old 60 Hz | `rl` @20 Hz | `rl_fields` @20 Hz |
-|---|---:|---:|---:|
-| random | −550.7 | **−350.8** | **+172.7** |
-| 0.5 rung | 193.9 | 299.7 | 578.0 |
+Current values (30 Hz, refit in `e467120`), against the original 60 Hz fit:
 
-The tick rate moved random 200 Elo; **fields move it 520** (they compress the
-skill scale). Each profile carries its own ladder. Re-run
-`--mode semi_random --profile <name>` whenever tick rate, field count, ship
-config or fleet size moves.
+| | old 60 Hz | `rl` @30 Hz | `rl_fields` @30 Hz |
+|---|---:|---:|---:|
+| random | −550.7 | **−363.9** | **+132.3** |
+| 0.5 rung | 193.9 | 270.7 | 550.4 |
+
+Fields move random ~500 Elo (they compress the skill scale); tick rate and map
+generation each move it tens to low hundreds. Each profile carries its own
+ladder. Re-run `--mode semi_random --profile <name>` whenever tick rate, field
+count, ship config, fleet size, map generation **or the scripted agent** moves.
 
 Gauge is now **scripted pinned at 1000**, matching post-hoc calibration, so
 normalized Elo collapses to the rating itself and the milestone grid is absolute.
@@ -198,9 +209,99 @@ three refreshes yield 1536 distinct layouts.
 
 ---
 
+### `e467120` — evaluation rate, anchor labels, reward mix
+
+Four fixes from investigating a regression that was mostly instrumentation. Run
+708 (20 Hz) looked far worse than 707/705 on both charts.
+
+**The eval-rate bug — the serious one.** `action_repeat` was honoured only in
+`YemongEnvWrapper.step`. The Elo battery and every evaluation mode step
+`TensorEnv` directly, so **708 trained at 20 Hz and was evaluated at 60 Hz**, and
+its reference ladders were rated at 60 Hz regardless of profile. A policy holding
+an action for N ticks but given one turns a fraction of its intended amount per
+decision, mistimes every lead, and advances its recurrent state N times too fast
+for the game clock. It still plays, just far worse, and nothing says why.
+`TensorEnv.step` is now the decision-level call; the wrapper opts out via `tick`.
+
+**The anchor-label bug.** `elo/training_vs_random` classified slot-0 games by
+whether the anchor carried weights, but *every* stationary reference is
+policy-free — random, all nine rungs, and scripted. The whole ladder landed in
+the random bucket, so the chart reported the win rate against an
+information-weighted mix of near-level opponents (~0.85) while
+`matches/random/win_rate` was **1.000**. The apparent intransitivity — beating
+random 85% while beating scripted 70%, with scripted beating random 99% — was
+entirely this.
+
+**Win weights 4.0 → 1.5.** With `AdvantageScaler` normalizing every component to
+unit RMS, the effective policy-gradient share is just `weight/sum(weights)`. 4.0
+put the win pair at **56%**, against ~21% before the floor was removed. Measured
+consequence: combat damage per live ship-step halved (0.154 vs 0.285), combat
+deaths fell a third, episodes ran 39% longer, and 13% drew. 1.5 lands at 32%.
+
+**20 Hz → 30 Hz.** Measured on the *fixed* scripted controller at equal game time,
+so the policy cannot adapt and any change is the environment alone:
+
+| | 60 Hz | 30 Hz | 20 Hz | 15 Hz |
+|---|---:|---:|---:|---:|
+| combat damage / live ship-step | 0.2965 | 0.2814 | 0.2656 | 0.2475 |
+
+20 Hz gave up 10% for a third of the tokens; 30 Hz gives up 5% for half.
+
+**Resource metrics added** — `physics/mean_power`, `mean_speed`,
+`out_of_power_fraction`. The learned policy runs at **34.8/100 mean power with
+7.8% of live ship-steps at zero**, against scripted's 56.2 and 1.2%. It is *not*
+slower than random (97.0 vs 46.4 px/s); random is the slow one.
+
+Run 708 is **uninterpretable** as evidence about the tick rate or the reward mix:
+two measurement bugs were active throughout it.
+
+## What went wrong twice
+
+Both regressions were the same shape of mistake: **a representation changed and
+its consumers were not audited.**
+
+- Making scripted and the rungs *stationary references* (`policy=None`) was
+  correct. But `anchor_is_random` had encoded "stationary" as "policy-free", and
+  that encoding silently became wrong.
+- Putting `action_repeat` in the wrapper was correct for reward accumulation. But
+  five other call sites step `TensorEnv` directly and silently kept the old
+  meaning of "a step".
+
+Both stayed invisible because the system kept running and produced plausible
+numbers. Generalisable guards:
+
+1. When you change what a type *means*, grep every consumer of that type, not
+   only the ones you are editing.
+2. Prefer making the default correct (`TensorEnv.step` honours the repeat; the
+   one caller needing otherwise opts out loudly) over making every caller
+   remember.
+3. Derive labels and counts from the source of truth rather than restating them —
+   the same class of bug produced `_NS_FEAT_NAMES` (9 names, 10 dimensions).
+4. **A fixed-policy control separates environment from learning.** The
+   scripted-vs-scripted tick sweep answered "did the env get harder or did
+   learning break?" in one run. Reach for it first.
+
 ## Remaining blocks
 
-Hard ordering constraints: **C before D** (the categorical critic changes what
+**Do Block C first**, despite the letter. It is not a new idea — it is the other
+half of `8f8e612`, and shipping the actor half alone caused the first regression:
+
+| | `ally_win` | `damage_dealt_enemy` |
+|---|---:|---:|
+| p95−p5 span | 0.058 | 2.02 |
+| half-span used (floor 1.0) | **0.5** — 17× too large | 1.01, its own |
+| normalized target std | **0.058** | ~1.0 |
+| share of critic gradient | **1/300** | 1 |
+| measured `critic/value_loss` ratio | — | **281×** |
+
+The win component's advantage is amplified ~13× on the actor while its baseline
+is trained **280× less** than the dense heads. A loud signal with a badly-fit
+baseline is a high-variance advantage — exactly what `loss/policy_gradient =
+−0.002` alongside *elevated* KL and clip fraction showed: the policy moving more
+and progressing less. The 4.0 → 1.5 rebalance in `e467120` is a stopgap on the
+actor side; Block C removes the cause.
+
+Remaining hard constraint: **C before D** (the categorical critic changes what
 every value target means; don't debug latent collapse and a rescaled critic in
 one run). A and B are independent of each other and of C.
 
@@ -374,6 +475,15 @@ env is 15% of wall clock and the update is 85% — a learned world model would b
 - **Discounts encode horizons in seconds.** Changing the tick rate means
   `γ ** (rate_old/rate_new)`, not reusing the number.
 - **`max_episode_steps` counts physics ticks**, not decisions.
+- **`TensorEnv.step` is the decision-level call** and honours `action_repeat`.
+  Only `YemongEnvWrapper` may use `tick`, because it accumulates rewards per
+  physics tick. Anything else stepping at tick granularity evaluates the policy
+  at a rate it was never trained for, silently.
+- **Stationary references are policy-free, so `policy is None` does not identify
+  the random agent.** Classify anchors by which reference they are.
+- **Weights are the reward mix.** `AdvantageScaler` normalizes every component to
+  unit RMS, so the effective policy-gradient share is `weight/sum(weights)` and
+  nothing else. Changing a weight changes the objective directly.
 
 ## Definition of done
 
