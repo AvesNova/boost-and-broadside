@@ -356,6 +356,55 @@ class TestActionRepeat:
         assert wrapper._ep_length[1] == 3
 
 
+class TestDecisionRateIsGlobal:
+    """Every consumer of the env must see the same decision rate.
+
+    Regression: action_repeat lived only in YemongEnvWrapper, so training ran at
+    the configured rate while the Elo battery and every evaluation mode stepped
+    TensorEnv directly at one tick per action. A policy trained to hold an action
+    for N ticks then turns a fraction of its intended amount per decision,
+    mistimes every lead, and advances its recurrent state N times too fast for
+    the game clock — it still plays, just far worse, and no metric says why.
+    """
+
+    @staticmethod
+    def _env(ship_cfg, repeat):
+        return TensorEnv(
+            4,
+            ship_cfg,
+            EnvConfig(num_ships=4, max_bullets=8, max_episode_steps=1000, action_repeat=repeat),
+            "cpu",
+        )
+
+    def test_step_advances_by_action_repeat(self, ship_cfg):
+        env = self._env(ship_cfg, 3)
+        env.reset()
+        env.step(torch.zeros(4, 4, 3, dtype=torch.int32))
+        assert (env.state.step_count == 3).all()
+
+    def test_tick_is_always_one_physics_step(self, ship_cfg):
+        """The wrapper opts out of the repeat because it accumulates per tick."""
+        env = self._env(ship_cfg, 3)
+        env.reset()
+        env.tick(torch.zeros(4, 4, 3, dtype=torch.int32))
+        assert (env.state.step_count == 1).all()
+
+    def test_repeat_one_leaves_step_and_tick_equivalent(self, ship_cfg):
+        for method in ("step", "tick"):
+            env = self._env(ship_cfg, 1)
+            env.reset()
+            getattr(env, method)(torch.zeros(4, 4, 3, dtype=torch.int32))
+            assert (env.state.step_count == 1).all(), method
+
+    def test_step_flags_are_sticky_across_the_hold(self, ship_cfg):
+        """An env finishing mid-hold must still be reported as finished."""
+        env = self._env(ship_cfg, 3)
+        env.reset()
+        env.state.step_count[0] = env.env_config.max_episode_steps - 1
+        _, truncated = env.step(torch.zeros(4, 4, 3, dtype=torch.int32))
+        assert truncated[0] and not truncated[1:].any()
+
+
 class TestSpawnResourceSpread:
     def test_zero_spread_spawns_at_full_resources(self, ship_cfg, reward_cfg):
         env = TensorEnv(

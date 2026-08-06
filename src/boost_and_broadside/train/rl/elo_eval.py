@@ -291,6 +291,23 @@ class EloEvaluator:
     # Ladder state
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _is_random_anchor(spec: LadderOpponent) -> bool:
+        """Whether this reference is the uniform-random agent itself.
+
+        The rungs and the scripted controller are stateless too, so the test has
+        to be ``no policy and no scripted-action probability`` rather than merely
+        ``no policy``.
+        """
+        return spec.policy is None and spec.p_scripted is None
+
+    def _random_anchor_index(self) -> int:
+        """Index of the random agent in the anchor set, or 0 if it is absent."""
+        for index, spec in enumerate(self._anchor_specs):
+            if self._is_random_anchor(spec):
+                return index
+        return 0
+
     def _anchor_elo_tensor(self) -> torch.Tensor:
         """Anchor ratings as a (A,) tensor, oldest first."""
         return torch.tensor(
@@ -638,12 +655,18 @@ class EloEvaluator:
 
         slot1 = slice(size, 2 * size)
         if self.float_pro_agent is None:
-            # Slot 1 fallback: extra games against the (sole, random) anchor.
+            # Slot 1 fallback: extra games against the random agent, which is
+            # what _compute_team_actions actually plays there.
             delta_live = (
                 delta_live
                 + (
                     k
-                    * (score[slot1] - expected_score(live_before, self._anchor_elos[0]))
+                    * (
+                        score[slot1]
+                        - expected_score(
+                            live_before, self._anchor_elos[self._random_anchor_index()]
+                        )
+                    )
                     * rated_float[slot1]
                 ).sum()
             )
@@ -827,8 +850,15 @@ class EloEvaluator:
         self._anchor_idx_history.clear()
         # Anchor identities are constant within an update (promotion happens
         # between updates), so classify slot-0 games with the current mapping.
+        #
+        # Classify by *which* reference, not by whether it carries weights. Every
+        # stationary reference is policy-free — random, each semi-random rung and
+        # the scripted controller alike — so an `agent is None` test lumped the
+        # whole ladder into the random bucket and reported
+        # elo/training_vs_random as the win rate against an
+        # information-weighted mix of opponents near the policy's own level.
         anchor_is_random = torch.tensor(
-            [agent is None for agent in self._anchor_agents_live], dtype=torch.bool
+            [self._is_random_anchor(spec) for spec in self._anchor_specs], dtype=torch.bool
         )  # (A,)
 
         for index in range(wins.shape[0]):

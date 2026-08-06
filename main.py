@@ -539,7 +539,7 @@ def main() -> None:
                     num_ships=8,
                     max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
                     max_episode_steps=1024,
-                    num_fields=0,
+                    num_fields=4,
                 ),
                 rewards=REWARDS,
                 model_config=MODEL_CONFIG,

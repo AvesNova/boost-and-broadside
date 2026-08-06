@@ -176,8 +176,9 @@ class YemongEnvWrapper:
         self._acc_wins_sum = torch.zeros((), device=d)
         self._acc_lifespan_sum = torch.zeros((), device=d)
         # field damage, combat damage, field deaths, combat deaths,
-        # field-damage steps, non-ambient live steps, total live steps.
-        self._acc_source_stats = torch.zeros((7,), device=d)
+        # field-damage steps, non-ambient live steps, total live steps,
+        # power, speed, out-of-power live steps.
+        self._acc_source_stats = torch.zeros((10,), device=d)
 
     def pop_episode_stats(self) -> dict[str, torch.Tensor]:
         """Return finished-episode stats accumulated since the last call, and reset.
@@ -317,8 +318,10 @@ class YemongEnvWrapper:
         prev_alive = self.env.state.ship_alive.clone()  # (B, N)
         prev_state = _make_prev_state_proxy(self.env.state, prev_health, prev_alive)
 
-        # Physics step (no auto-reset)
-        dones, truncated = self.env.step(
+        # One physics tick (no auto-reset). Deliberately `tick`, not `step`:
+        # this method *is* the per-tick body of a decision, and rewards and
+        # episode statistics have to accumulate at tick granularity.
+        dones, truncated = self.env.tick(
             actions,
             unlimited_resources=unlimited_resources,
         )
@@ -336,6 +339,12 @@ class YemongEnvWrapper:
                 ((source_state.ship_field_damage > 0.0) & running_n).sum(),
                 ((source_state.ship_local_index - 1.0).abs() > 1e-6).logical_and(live).sum(),
                 live.sum(),
+                # Resource economy. A policy that spends itself dry cannot
+                # thrust at all until passive regen catches up, and nothing
+                # else in the metrics would show it.
+                (source_state.ship_power * live).sum(),
+                (source_state.ship_vel.abs() * live).sum(),
+                ((source_state.ship_power <= 1.0) & live).sum(),
             ]
         )
 

@@ -44,22 +44,39 @@ evaluation, logging, and checkpoints.
 Physics always runs at `ShipConfig.dt` = 1/60 s. `EnvConfig.action_repeat` sets how many
 of those ticks each chosen action is held for, so collision and projectile integration
 are unaffected and only the rate at which the policy may change its mind moves. The
-primary profile holds for 3 ticks — **20 Hz decisions**.
+primary profile holds for 2 ticks — **30 Hz decisions**.
 
 That rate is set by the plant, not by the renderer:
 
-| timescale | seconds | decisions @ 20 Hz |
+| timescale | seconds | decisions @ 30 Hz |
 |---|---:|---:|
-| firing cooldown | 0.10 | 2 |
-| bullet flight to ~200 px | 0.40 | 8 |
-| full 360° turn | 1.3–2.3 | 26–46 |
-| mean episode | ~4.7 | ~93 |
-| `num_steps=128` rollout | 6.4 | 128 |
+| firing cooldown | 0.10 | 3 |
+| bullet flight to ~200 px | 0.40 | 12 |
+| full 360° turn | 1.3–2.3 | 39–69 |
+| mean episode | ~4.7 | ~140 |
+| `num_steps=128` rollout | 4.3 | 128 |
 
 At 60 Hz five of every six shoot decisions were no-ops against the cooldown, consecutive
 observations differed by 17 ms, and a 128-step rollout spanned 2.1 s against a ~4.7 s
-episode — so the recurrent policy never saw a whole episode inside one BPTT window. At
-20 Hz it does, and a token buys three times the game time.
+episode, so the recurrent policy never saw close to a whole episode inside one BPTT window.
+
+The rate is a real trade, not a free win. Measured with the *fixed* scripted controller at
+equal game time, so the policy cannot adapt and any change is the environment alone,
+combat damage per live ship-step falls monotonically with the hold:
+
+| | 60 Hz | 30 Hz | 20 Hz | 15 Hz |
+|---|---:|---:|---:|---:|
+| combat damage / live ship-step | 0.2965 | 0.2814 | 0.2656 | 0.2475 |
+
+30 Hz gives up 5% of combat effectiveness and halves the tokens per second of game time.
+20 Hz gives up 10% for a third, which did not pay.
+
+**`action_repeat` is honoured by `TensorEnv.step`, not by the wrapper**, so evaluation runs
+at the same rate as training. It was briefly the other way round, and the failure was
+silent: a policy trained to hold an action for N ticks but evaluated one tick per action
+turns a fraction of its intended amount per decision, mistimes every lead, and advances its
+recurrent state N times too fast for the game clock. `YemongEnvWrapper` opts out via
+`tick`, because it has to accumulate rewards and episode statistics per physics tick.
 
 Rewards are summed across the held ticks. That is scale-preserving: over a fixed span of
 game time both the dense per-tick terms and the one-off event terms total exactly what

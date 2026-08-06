@@ -36,12 +36,14 @@ _ROLLOUT_TOKENS = 4_000_000
 _NUM_SHIPS = 8
 _NUM_FIELDS = 0
 _NUM_STEPS = 128
-# Physics ticks per decision. dt is 1/60, so this is 20 Hz: 50 ms per decision
-# against a 0.1 s firing cooldown (2 decisions) and a 1.3-2.3 s full turn (26-46
-# decisions) -- ample authority, at a third of the tokens per second of game
-# time. num_steps is deliberately unchanged: a 128-step rollout now spans 6.4 s
-# rather than 2.1 s, so BPTT finally covers a whole episode.
-_ACTION_REPEAT = 3
+# Physics ticks per decision. dt is 1/60, so this is 30 Hz. Measured with the
+# *fixed* scripted controller at equal game time, coarsening the decision rate
+# costs combat effectiveness monotonically: damage per live ship-step runs
+# 0.2965 / 0.2814 / 0.2656 / 0.2475 at 60 / 30 / 20 / 15 Hz. 20 Hz gave up 10%
+# of it; 30 Hz gives up 5% and still halves the tokens per second of game time.
+# num_steps is deliberately unchanged: a 128-step rollout spans 4.3 s rather
+# than 2.1 s, so BPTT covers close to a whole ~4.7 s episode.
+_ACTION_REPEAT = 2
 _NUM_MINIBATCHES = 32
 # // 5: split each minibatch into 5 gradient-accumulation micro-batches — the
 # headroom needed to fit this scale's attention activations in VRAM on the target GPU.
@@ -115,10 +117,10 @@ RL_TRAIN_CONFIG = TrainConfig(
     component_lambdas=COMPONENT_LAMBDAS,
     clip_coef=0.15,
     max_grad_norm=1.0,
-    # Environment steps, which are decisions rather than physics ticks. A third
-    # of the previous budget is the same span of game time as the 1e9-step
+    # Environment steps, which are decisions rather than physics ticks. Half of
+    # the previous budget is the same span of game time as the 1e9-step
     # reference run, so runs stay comparable in experience rather than in tokens.
-    total_timesteps=333_000_000,
+    total_timesteps=500_000_000,
     return_ema_alpha=0.005,
     # Held at 1.0 deliberately, and it *does* bind on six of the eleven active
     # components (watch scaler/floor_bound_span/*). Lowering it to an epsilon is
@@ -144,22 +146,22 @@ RL_TRAIN_CONFIG = TrainConfig(
     checkpoint_dir="checkpoints",
     league_size=20,
     league_slots=4,
-    # Fitted by `--mode semi_random --profile rl` on 4v4 at action_repeat=3,
-    # 128 games/pair, stderr 21-37 (checkpoints/rl/semi_random_tournament.json).
-    # Re-run it if the tick rate, ship config or fleet size changes: the 60 Hz
-    # ladder had random 200 Elo further from scripted than this one does.
+    # Fitted by `--mode semi_random --profile rl` on 4v4 at action_repeat=2,
+    # 128 games/pair (checkpoints/rl/semi_random_tournament.json).
+    # Re-run it if the tick rate, ship config or fleet size changes -- the
+    # ratings move by hundreds of Elo when it does.
     reference_ladder=(
-        (0.2, -206.9),
-        (0.3, -61.2),
-        (0.4, 140.7),
-        (0.5, 299.7),
-        (0.6, 472.0),
-        (0.7, 596.2),
-        (0.8, 723.0),
-        (0.9, 873.1),
-        (0.95, 919.3),
+        (0.2, -236.0),
+        (0.3, -96.2),
+        (0.4, 114.9),
+        (0.5, 270.7),
+        (0.6, 461.1),
+        (0.7, 589.2),
+        (0.8, 733.0),
+        (0.9, 861.3),
+        (0.95, 942.5),
     ),
-    random_elo=-350.8,
+    random_elo=-363.9,
     elo_milestone_gap=200.0,
     elo_temperature=200.0,
     league_uniform_sampling=False,

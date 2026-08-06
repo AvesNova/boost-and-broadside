@@ -300,6 +300,44 @@ class TensorEnv:
         *,
         unlimited_resources: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Advance all environments by one *decision*, honouring action_repeat.
+
+        This is the default because every consumer that is not accumulating
+        per-tick rewards wants a decision, and getting it wrong is silent: a
+        policy trained to hold an action for N ticks but evaluated one tick per
+        action turns a fraction of its intended per decision, mistimes every
+        lead, and advances its recurrent state N times too fast for the game
+        clock. It still plays, just far worse, and nothing in the metrics says
+        why. YemongEnvWrapper opts out via ``tick`` because it has to compute
+        rewards and episode statistics per physics tick.
+
+        An environment that finishes partway through the hold keeps being
+        simulated for the remainder; the returned flags are sticky, so the
+        caller sees the episode as ended either way.
+
+        Args:
+            actions: (B, N, 3) int tensor — [power, turn, shoot].
+            unlimited_resources: Protect and refill alive ships.
+
+        Returns:
+            (dones, truncated) — each a (B,) bool tensor, accumulated over the hold.
+        """
+        dones = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        truncated = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        for _ in range(self.env_config.action_repeat):
+            tick_dones, tick_truncated = self.tick(
+                actions, unlimited_resources=unlimited_resources
+            )
+            dones |= tick_dones
+            truncated |= tick_truncated
+        return dones, truncated
+
+    def tick(
+        self,
+        actions: torch.Tensor,
+        *,
+        unlimited_resources: bool = False,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Advance all environments by one physics tick.
 
         The caller (wrapper) is responsible for:

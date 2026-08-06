@@ -85,6 +85,10 @@ class LoggingMixin:
             metrics["physics/field_damage_fraction"] = (
                 field_damage / total_damage if total_damage > 0.0 else 0.0
             )
+            # Resource economy, per live ship-step.
+            metrics["physics/mean_power"] = source_stats[7].item() / live_ship_steps
+            metrics["physics/mean_speed"] = source_stats[8].item() / live_ship_steps
+            metrics["physics/out_of_power_fraction"] = source_stats[9].item() / live_ship_steps
         if n_eps > 0:
             n_ship_eps = n_eps * self.wrapper.num_ships
             comp_sum = ep_stats["comp_sum"].cpu()

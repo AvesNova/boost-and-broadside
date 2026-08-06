@@ -80,8 +80,15 @@ REWARDS = RewardConfig(
     enemy_combat_death_weight=0.0,
     ally_field_death_weight=0.0,
     enemy_field_death_weight=0.0,
-    ally_win_weight=4.0,
-    enemy_win_weight=4.0,
+    # 1.5 each, not 4.0. Weights are the only place the reward mix is expressed
+    # now that AdvantageScaler normalizes every component to unit RMS, so the
+    # effective policy-gradient share is just weight/sum(weights): 4.0 put the
+    # win pair at 56% of the gradient, against ~21% before the scaler floor was
+    # removed. 1.5 lands at 32% -- above the old share, since winning is the
+    # actual objective, but without drowning out the dense shaping that keeps
+    # the policy engaging at all.
+    ally_win_weight=1.5,
+    enemy_win_weight=1.5,
     # Dense shaping rewards — prevent passive collapse during early RL.
     facing_weight=0.1,
     closing_speed_weight=0.1,
@@ -163,62 +170,62 @@ FIELD_REWARDS = replace(
 #     shaping       0.7   instantaneous geometry; longer invites circling
 COMPONENT_GAMMAS: dict[str, float] = {
     # Terminal — ally_win (+1 win) and enemy_win (-1 loss) both need full-episode horizon
-    "ally_win": 0.997003,
-    "enemy_win": 0.997003,
+    "ally_win": 0.998001,
+    "enemy_win": 0.998001,
     # Kill/death
-    "ally_combat_death": 0.985075,
-    "enemy_combat_death": 0.985075,
-    "ally_field_death": 0.985075,
-    "enemy_field_death": 0.985075,
-    "combat_death": 0.985075,
-    "field_death": 0.985075,
-    "kill_shot": 0.985075,
-    "kill_assist": 0.985075,
+    "ally_combat_death": 0.990025,
+    "enemy_combat_death": 0.990025,
+    "ally_field_death": 0.990025,
+    "enemy_field_death": 0.990025,
+    "combat_death": 0.990025,
+    "field_death": 0.990025,
+    "kill_shot": 0.990025,
+    "kill_assist": 0.990025,
     # Damage
-    "ally_combat_damage": 0.973242,
-    "enemy_combat_damage": 0.973242,
-    "ally_field_damage": 0.973242,
-    "enemy_field_damage": 0.973242,
-    "combat_damage_taken": 0.973242,
-    "field_damage_taken": 0.973242,
-    "damage_dealt_enemy": 0.973242,
-    "damage_dealt_ally": 0.973242,
+    "ally_combat_damage": 0.982081,
+    "enemy_combat_damage": 0.982081,
+    "ally_field_damage": 0.982081,
+    "enemy_field_damage": 0.982081,
+    "combat_damage_taken": 0.982081,
+    "field_damage_taken": 0.982081,
+    "damage_dealt_enemy": 0.982081,
+    "damage_dealt_ally": 0.982081,
     # Shaping
-    "facing": 0.926859,
-    "closing_speed": 0.926859,
-    "shoot_quality": 0.926859,
-    "speed": 0.926859,
-    "shooting_penalty": 0.926859,
+    "facing": 0.950625,
+    "closing_speed": 0.950625,
+    "shoot_quality": 0.950625,
+    "speed": 0.950625,
+    "shooting_penalty": 0.950625,
 }
 
 COMPONENT_LAMBDAS: dict[str, float] = {
     # Terminal — high λ: sparse signal must be traced back through the full episode
-    "ally_win": 0.912673,
-    "enemy_win": 0.912673,
+    "ally_win": 0.940900,
+    "enemy_win": 0.940900,
     # Kill/death
-    "ally_combat_death": 0.857375,
-    "enemy_combat_death": 0.857375,
-    "ally_field_death": 0.857375,
-    "enemy_field_death": 0.857375,
-    "combat_death": 0.857375,
-    "field_death": 0.857375,
+    "ally_combat_death": 0.902500,
+    "enemy_combat_death": 0.902500,
+    "ally_field_death": 0.902500,
+    "enemy_field_death": 0.902500,
+    "combat_death": 0.902500,
+    "field_death": 0.902500,
     # kill_shot: sparse fatal-step credit is noisy; shorter trace reduces variance
     # kill_assist: episode-level cumulative credit needs a longer trace
-    "kill_shot": 0.658503,
-    "kill_assist": 0.912673,
+    "kill_shot": 0.756900,
+    "kill_assist": 0.940900,
     # Damage — slightly lower; semi-dense rewards make TD errors more informative
-    "ally_combat_damage": 0.729000,
-    "enemy_combat_damage": 0.729000,
-    "ally_field_damage": 0.729000,
-    "enemy_field_damage": 0.729000,
-    "combat_damage_taken": 0.729000,
-    "field_damage_taken": 0.729000,
-    "damage_dealt_enemy": 0.729000,
-    "damage_dealt_ally": 0.729000,
+    "ally_combat_damage": 0.810000,
+    "enemy_combat_damage": 0.810000,
+    "ally_field_damage": 0.810000,
+    "enemy_field_damage": 0.810000,
+    "combat_damage_taken": 0.810000,
+    "field_damage_taken": 0.810000,
+    "damage_dealt_enemy": 0.810000,
+    "damage_dealt_ally": 0.810000,
     # Shaping — low λ: dense rewards → low-variance TD; prevents "style over substance" compounding
-    "facing": 0.512000,
-    "closing_speed": 0.512000,
-    "shoot_quality": 0.512000,
-    "speed": 0.512000,
-    "shooting_penalty": 0.512000,
+    "facing": 0.640000,
+    "closing_speed": 0.640000,
+    "shoot_quality": 0.640000,
+    "speed": 0.640000,
+    "shooting_penalty": 0.640000,
 }
