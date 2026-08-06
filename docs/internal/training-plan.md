@@ -52,14 +52,15 @@ loss-magnitude risk: the aggregated advantage is renormalized to unit RMS *after
 lambda aggregation, so this changes the mix, not the scale. Verified against
 `--smoke`: total loss unchanged at 8.2.
 
-**`return_min_span` was deliberately left at 1.0.** Lowering it is not the same
-kind of fix — `ReturnScaler` divides the whole return distribution by a robust
-p5–p95 half-span, so sparse components with heavy tails produce very large
-normalized targets and the squared value loss follows. Measured **~11× on
+**`return_min_span` was deliberately left at 1.0** at the time. Lowering it was
+not the same kind of fix — `ReturnScaler` divides the whole return distribution by
+a robust p5–p95 half-span, so sparse components with heavy tails produce very
+large normalized targets and the squared value loss follows. Measured **~11× on
 `loss/value` at production spans and ~400× in `--smoke`**, which against
 `max_grad_norm=1.0` (grad norm 0.65) would make clipping bind every step and
-silently cut the effective learning rate. **Block C resolves this** — a two-hot
-critic bins in a fixed support and never divides by a span at all.
+silently cut the effective learning rate. **Resolved by `62da40d`** — the
+categorical critic's loss is bounded per sample and scale-free in the target, so
+the floor is back to a 1e-3 epsilon.
 
 ### `c6610b2` — unified opponent league
 
@@ -255,6 +256,63 @@ slower than random (97.0 vs 46.4 px/s); random is the slow one.
 Run 708 is **uninterpretable** as evidence about the tick rate or the reward mix:
 two measurement bugs were active throughout it.
 
+### `ec3463a` / `62da40d` / `bd0c215` — categorical critic
+
+Three separately-revertable commits, in that order.
+
+**`ec3463a` — dropped TeamPMA.** The win/loss components had their own value
+head fed by pooling-by-multi-head-attention over each team's live ships. The
+trunk already runs spatial attention over all ships in every block, so a ship's
+embedding is team-aggregated before any head sees it — the pool was re-deriving
+something the representation already carried, at the cost of a second head, a
+second init path, and a per-component merge loop in both forward paths. Done
+first so the categorical rewrite landed on one head instead of two. **M4** is
+gone with it.
+
+**`62da40d` — categorical critic.** `value_bins` logits per component over a
+fixed grid spanning ±`value_support`, cross-entropy against a two-hot target,
+scalar recovered as the distribution's mean. `train/rl/value_dist.py` owns the
+grid, the targets and the decode.
+
+Binned in **normalized** space (post-`ReturnScaler`), not symlog: a fixed grid is
+only meaningful over a quantity with a stable scale, and the scaler is what
+provides that. It also means one support serves all K components. 51 bins over
+±5 → 0.2-wide bins, clipping ~3e-5 of targets (measured on a live checkpoint:
+worst-case |z| 6.27, p99.9 4.07).
+
+This is what let `return_min_span` go to 1e-3. CE's gradient is bounded per
+sample and identical whether a target sits just outside the support or far
+outside it, so the mechanism that forced the floor up no longer exists.
+
+`value_sigma` switches two-hot → HL-Gauss; 0 keeps the target's mean exactly
+equal to the return.
+
+Cost, measured against a ~3.8 GB tensor footprint: **+5.3% forward FLOPs, ~209 MB
+activation** at the production micro-batch. The value head goes from 1.1% to
+~6.4% of forward FLOPs. 31 bins is the fallback if the card is tight (+3.2%,
++132 MB).
+
+**`bd0c215` — merged `ally_win` + `enemy_win` → `win`.** `EnemyWinReward`
+subclassed `AllyWinReward` and computed an identical tensor; they differed only
+in lambda routing. One component in `enemy_neg_lambda_components` and *not* in
+`ally_zero_components` gives allies +1 and enemies −1 — exactly the pair's sum.
+The split existed because a scalar critic reads a draw and an even fight
+identically (both E[v] = 0); the categorical head separates them as mass on the
+zero bin versus mass split between the ends. **K 13 → 12**, returning ~8% of the
+head's cost. Registry order shifts by one.
+
+**Checkpoint compatibility: none.** `ec3463a` and `62da40d` both change the state
+dict, and `bd0c215` changes K. A run cannot be resumed across this. TeamPMA
+weights are rejected by name at load time rather than surfacing as a state-dict
+key error. **The reference ladder survives** — the rungs are policy-free scripted
+agents, so `reference_ladder` and `random_elo` need no recalibration.
+
+**Verified:** 599 tests, `--mode rl --smoke`, `--mode rl_fields --smoke`. Value
+loss starts ~ln(51) = 3.93 above the old MSE baseline — the uniform-distribution
+floor, exactly as expected — and descends (12.77 → 11.32 over three updates).
+Notably *stable*, unlike the ~400× blowup that dropping the span produced under
+MSE.
+
 ## What went wrong twice
 
 Both regressions were the same shape of mistake: **a representation changed and
@@ -283,8 +341,9 @@ numbers. Generalisable guards:
 
 ## Remaining blocks
 
-**Do Block C first**, despite the letter. It is not a new idea — it is the other
-half of `8f8e612`, and shipping the actor half alone caused the first regression:
+**Block C is done** (`ec3463a`, `62da40d`, `bd0c215` — see Done above). It was
+promoted ahead of A and B because it is the other half of `8f8e612`, and shipping
+the actor half alone caused the first regression:
 
 | | `ally_win` | `damage_dealt_enemy` |
 |---|---:|---:|
@@ -294,16 +353,16 @@ half of `8f8e612`, and shipping the actor half alone caused the first regression
 | share of critic gradient | **1/300** | 1 |
 | measured `critic/value_loss` ratio | — | **281×** |
 
-The win component's advantage is amplified ~13× on the actor while its baseline
-is trained **280× less** than the dense heads. A loud signal with a badly-fit
+The win component's advantage was amplified ~13× on the actor while its baseline
+was trained **280× less** than the dense heads. A loud signal with a badly-fit
 baseline is a high-variance advantage — exactly what `loss/policy_gradient =
 −0.002` alongside *elevated* KL and clip fraction showed: the policy moving more
-and progressing less. The 4.0 → 1.5 rebalance in `e467120` is a stopgap on the
-actor side; Block C removes the cause.
+and progressing less. The 4.0 → 1.5 rebalance in `e467120` was a stopgap on the
+actor side; `62da40d` removed the cause.
 
-Remaining hard constraint: **C before D** (the categorical critic changes what
-every value target means; don't debug latent collapse and a rescaled critic in
-one run). A and B are independent of each other and of C.
+**A and B remain, and are independent of each other.** D was gated on C, so it is
+now unblocked — but run C before starting D so latent collapse and a rescaled
+critic are never being debugged in the same run.
 
 Roughly one run each. Budget is tight, so each block is a coherent theme that can
 be judged as one thing.
@@ -373,33 +432,9 @@ regresses, `shared_pass` is the suspect (it forfeits the canonical team-0 prior)
 bullet flight, symmetric, and it would forfeit `shared_pass`. Block D's
 next-action head gets the opponent-modeling benefit without paying that.
 
-### Block C — value head
+### Block C — value head — **done**
 
-**Two-hot / HL-Gauss critic over all K**, binned in *symlog* space with a fixed
-wide support.
-
-| group | gain |
-|---|---|
-| win, death, kill_shot, kill_assist | **large** — sparse γ^Δt returns are the worst MSE fit |
-| damage dealt/taken | **moderate** — heavy tails, bounded per-sample CE |
-| facing, closing_speed, shoot_quality | ~none — bounded and well-scaled already |
-
-Do all K rather than a subset: two value paths and two loss types is more
-complexity than uniform treatment.
-
-**This resolves the blocked half of `8f8e612`.** Binning in a fixed support means
-never dividing by a span, so `return_min_span` and the `ReturnScaler` critic path
-are deleted. `AdvantageScaler` stays (it serves the actor).
-
-**Drop TeamPMA** in the same block — `team_pma_k=()` is already a supported path,
-and both changes rewrite the value head, so it is one re-tune instead of two.
-**M4** disappears with it. Expected impact small and sign-uncertain in isolation;
-the trunk already runs full spatial attention every block, so a ship's embedding
-is already team-aggregated.
-
-**Watch:** `loss/value` against `max_grad_norm=1.0`; per-component EV, especially
-the win heads; activation memory — `(T,B,N,K,bins)` is ~15% up on the 8 GB card
-at 51 bins, drop to 31 if tight. GAE reads `E[v] = Σ pᵢ·binᵢ`.
+Shipped as three commits; details in the Done section above.
 
 ### Block D — representation
 
@@ -454,6 +489,8 @@ env is 15% of wall clock and the update is 85% — a learned world model would b
 | **M1 (Hillis–Steele scan)** | Highest ceiling, most work. **Profile before writing anything** — a `torch.profiler` trace of one update settles whether the bandwidth estimate is right. O(T log T) with ~40 full passes per temporal sublayer; a Blelloch or chunked scan is O(T). |
 | **M5** | Check `TORCH_LOGS=graph_breaks` first; Inductor probably already fuses it. |
 | **M6** | `torch._foreach_nan_to_num_` does not exist in this build. |
+| **Bullet axis cost** | The biggest single lever measured so far, and untested. Bullets are **~26% of forward FLOPs** (23.5 GFLOP `kv_bullet` + 3.4 encoder of 103.7) and **~45% of persistent VRAM** (612 MiB of 1363, of which `bullet_pos` alone is 204 MiB in fp32), against `n_bullet_cross_per_block=1`. Five times the cost of Block C. Three sub-levers: fp32 `bullet_pos` (a shooter-relative encoding would make bf16 viable, −102 MiB); the field channels on bullets (153 MiB); and 80 fixed slots/env stored regardless of occupancy — compaction is a real project, it breaks the dense `(T,B,·)` layout. **Ablate `n_bullet_cross_per_block=0` first** to find out whether any of it earns its keep. |
+| **Ladder rung spacing** | `elo_milestone_gap=200` and the grid seeds from `random_elo // gap * gap`, so the first checkpoint snapshot fires at 200 Elo — deep inside rung territory, where the 9 semi-random rungs already cover 239–989 densely. Intended shape is rungs below the scripted anchor and checkpoints above it: set the gap to 100 and seed the grid from 1000. Note `min_games_to_freeze=1000` will defer milestones during fast climbs, so the effective gap is wider than the nominal one. **`MAX_CHECKPOINT_ANCHORS=2` is not the same kind of knob** — stateless rungs are free (the whole stationary ladder costs one scripted call and one random call), but each *policy* anchor is a full forward over 512 envs in slot 0 and again in slot 4, ~1024 env-forwards/step against the rollout's 2592. Keeping the 2 newest is near-equivalent to keeping the 2 nearest anyway, since live Elo climbs roughly monotonically and the free rungs cover everything below. |
 
 ---
 
@@ -469,9 +506,16 @@ env is 15% of wall clock and the update is 85% — a learned world model would b
   that way — an Elo threshold needs re-deriving every time the gauge moves.
 - **`validate_field_layout` must never run on the hot path** — eight syncs and it
   raises. Generated maps are laminar by construction.
-- **Scaler floors are epsilons, not scales.** `scaler/floor_bound_rms/*` binding
-  on an active component is a bug. `return_min_span` is the deliberate exception
-  until Block C.
+- **Scaler floors are epsilons, not scales.** `scaler/floor_bound_rms/*` or
+  `scaler/floor_bound_span/*` binding on an active component is a bug. There is
+  no longer an exception — `return_min_span` came back down with `62da40d`.
+- **The value grid lives in normalized space.** `value_support` is in
+  `ReturnScaler` units, not symlog. It only stays meaningful because the scaler
+  gives every component a stable scale; binning raw returns would need a
+  different support per component.
+- **`win` must stay out of `ally_zero_components`.** It needs lambda +1 over
+  allies and −1 over enemies. Zeroing the ally side leaves a critic that sees a
+  loss but never a win.
 - **Discounts encode horizons in seconds.** Changing the tick rate means
   `γ ** (rate_old/rate_new)`, not reusing the number.
 - **`max_episode_steps` counts physics ticks**, not decisions.
