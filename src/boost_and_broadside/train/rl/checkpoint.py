@@ -194,7 +194,6 @@ class CheckpointMixin:
             "observation_schema": OBSERVATION_SCHEMA,
             "policy_state_dict": self._policy_module.state_dict(),
             "num_value_components": self.wrapper.num_active_components,
-            "team_pma_k": self._win_k,
             "global_step": self._global_step,
             "training_elo": self._training_elo,
             "model_config": dataclasses.asdict(self.model_config),

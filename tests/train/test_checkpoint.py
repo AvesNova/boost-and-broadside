@@ -200,7 +200,7 @@ class TestObservationSchema:
         ]
 
         for payload in families:
-            for key in ("model_config", "env_config", "ship_config", "team_pma_k"):
+            for key in ("model_config", "env_config", "ship_config"):
                 assert key in payload, f"payload family is missing {key}"
             assert payload["ship_config"] == dataclasses.asdict(trainer.ship_config)
 
@@ -276,7 +276,6 @@ class TestBulletReadingCheckpoints:
             num_ships=trainer.wrapper.num_ships,
             ship_config=trainer.ship_config,
             model_config=trainer.model_config,
-            team_pma_k=trainer._win_k,
         )
 
         assert bundle.policy.bullet_encoder is not None

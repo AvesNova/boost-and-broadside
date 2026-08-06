@@ -1198,18 +1198,16 @@ class TestOrthogonalHeadInit:
         assert torch.allclose(gram, 2.0 * torch.eye(4), atol=1e-4)
 
     def test_policy_heads_are_orthogonal_initialized(self, model_cfg, coordinator):
-        """YemongPolicy's actual heads (including the team_pma_k win/loss head) still
-        get orthogonal-initialized end to end after the by-type refactor."""
-        team_pma_k = (0, 1)
+        """YemongPolicy's actual heads still get orthogonal-initialized end to end
+        after the by-type refactor."""
         policy = YemongPolicy(
             model_cfg,
             coordinator,
             num_value_components=NUM_VALUE_COMPONENTS,
             num_ships=4,
-            team_pma_k=team_pma_k,
         )
 
-        for head in [policy.action_head, policy.value_head_local, policy.value_head_win]:
+        for head in [policy.action_head, policy.value_head_local]:
             linears = [m for m in head if isinstance(m, torch.nn.Linear)]
             first, last = linears[0], linears[-1]
             assert torch.allclose(first.bias, torch.zeros_like(first.bias))
