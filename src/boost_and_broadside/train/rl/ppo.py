@@ -64,6 +64,12 @@ from boost_and_broadside.train.rl.opponents import (
 from boost_and_broadside.train.rl.policy_io import build_policy
 from boost_and_broadside.train.rl.roster import EloRoster, RosterEntry
 from boost_and_broadside.train.rl.sigreg import SIGReg
+from boost_and_broadside.train.rl.value_dist import (
+    bin_centers,
+    expected_value,
+    two_hot_targets,
+)
+from boost_and_broadside.train.rl.value_dist import cross_entropy as value_dist_cross_entropy
 
 # ------------------------------------------------------------------
 # Per-component gamma / lambda tensor builder
@@ -348,6 +354,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             num_value_components=K,
             num_ships=N,
         ).to(self.device)
+        # Same grid the policy registered, kept here so the loss does not have to
+        # reach through a possibly-compiled module wrapper to find it.
+        self._value_bin_centers = bin_centers(
+            model_config.value_bins, model_config.value_support, device=self.device
+        )
         self.sigreg = SIGReg(d_model=model_config.d_model, num_proj=64).to(self.device)
         self.policy = (
             torch.compile(self._policy_module, mode=compile_mode)
@@ -1342,13 +1353,15 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # can attend to field tokens; mb_alive is ships-only and used for loss masking.
         alive_mask_full = curr_mb_obs["alive"].bool()  # (T, B_mb, N+M)
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            logprob, entropy, new_value, policy_logits, z, pred_next = self.policy.evaluate_actions(
-                obs=curr_mb_obs,
-                actions=mb_actions.long(),
-                initial_hidden=mb_hidden,
-                alive_mask=alive_mask_full,
-                done_mask=mb_terminated,
-                return_encoder_output=need_sigreg,
+            logprob, entropy, value_logits, policy_logits, z, pred_next = (
+                self.policy.evaluate_actions(
+                    obs=curr_mb_obs,
+                    actions=mb_actions.long(),
+                    initial_hidden=mb_hidden,
+                    alive_mask=alive_mask_full,
+                    done_mask=mb_terminated,
+                    return_encoder_output=need_sigreg,
+                )
             )
 
         alive_f = mb_alive.float()  # (T, B_mb, N)
@@ -1375,8 +1388,15 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         pg_loss = (torch.max(pg_loss1, pg_loss2) * actor_f).sum() / actor_sum
 
         # ---- Value loss --------------------------------------------------
+        # Cross-entropy against a two-hot (or HL-Gauss) target over the value grid.
+        # Unlike squared error this is scale-free in the target and bounded in the
+        # gradient, which is what lets every component share one support and one
+        # loss weight regardless of how sparse its returns are.
         target_norm = self.scaler.normalize(mb_returns).detach()  # (T, B_mb, N, K)
-        vf_loss_raw = (new_value - target_norm).pow(2)  # (T, B_mb, N, K)
+        target_dist = two_hot_targets(
+            target_norm, self._value_bin_centers, self.cfg.value_sigma
+        )  # (T, B_mb, N, K, V)
+        vf_loss_raw = value_dist_cross_entropy(value_logits, target_dist)  # (T, B_mb, N, K)
         vf_loss = (vf_loss_raw * alive_k).sum() / (mask_sum * K)
 
         # ---- Entropy bonus -----------------------------------------------
@@ -1519,7 +1539,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             # All additive GPU tensors; ev/std finalization and the single CPU
             # transfer happen once per minibatch in _update_epochs.
             if is_primary:
-                pred_k = self.scaler.denormalize(new_value.detach())  # (T, B_mb, N, K)
+                pred_norm = expected_value(value_logits.detach(), self._value_bin_centers)
+                pred_k = self.scaler.denormalize(pred_norm)  # (T, B_mb, N, K)
                 residuals_k = mb_returns - pred_k  # (T, B_mb, N, K)
                 diag["value_loss_k"] = (vf_loss_raw.detach() * alive_k).sum(
                     (0, 1, 2)

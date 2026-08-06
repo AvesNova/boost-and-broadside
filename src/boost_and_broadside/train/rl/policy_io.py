@@ -133,13 +133,14 @@ def infer_num_value_components(ckpt: dict) -> int:
     """Return the critic width K (number of value components) for a checkpoint.
 
     Newer checkpoints store this directly under "num_value_components". Older ones
-    predate the field, so fall back to reading the final value-head Linear's output
-    width straight from the state dict — the same shape introspection every loader
-    used before the field existed.
+    predate the field, so fall back to the state dict: the final value-head Linear
+    emits K * value_bins logits, and the bin grid rides along as a buffer, so
+    dividing one by the other recovers K without needing the model config.
     """
     if "num_value_components" in ckpt:
         return int(ckpt["num_value_components"])
-    return ckpt["policy_state_dict"]["value_head_local.3.weight"].shape[0]
+    state = ckpt["policy_state_dict"]
+    return state["value_head_local.3.weight"].shape[0] // state["value_bin_centers"].numel()
 
 
 def require_no_team_pma(ckpt: dict, path: str) -> None:

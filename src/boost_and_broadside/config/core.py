@@ -241,6 +241,14 @@ class ModelConfig:
     # in backward for activation memory that no longer scales with depth — set True
     # to fit deeper networks. Only affects the update-time re-evaluation path.
     grad_checkpoint: bool = False
+    # Categorical critic: the value head emits value_bins logits per component
+    # over a fixed grid spanning [-value_support, +value_support] in ReturnScaler
+    # -normalized units. These size the head, so they are architecture and travel
+    # with the weights. See train/rl/value_dist.py for why the grid lives in
+    # normalized space. 51 bins over ±5 gives 0.2-wide bins and clips ~3e-5 of
+    # targets; drop to 31 if activation memory is tight.
+    value_bins: int = 51
+    value_support: float = 5.0
 
     @property
     def n_hidden_layers(self) -> int:
@@ -268,6 +276,10 @@ class ModelConfig:
                 "n_bullet_cross_per_block must be between 0 and n_spatial_per_block "
                 f"({self.n_spatial_per_block}), got {self.n_bullet_cross_per_block}"
             )
+        if self.value_bins < 1:
+            raise ValueError(f"value_bins must be >= 1, got {self.value_bins}")
+        if self.value_support <= 0:
+            raise ValueError(f"value_support must be > 0, got {self.value_support}")
 
 
 @dataclass(frozen=True)

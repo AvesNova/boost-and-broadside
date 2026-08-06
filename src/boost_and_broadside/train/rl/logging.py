@@ -27,8 +27,7 @@ class LoggingMixin:
         # A floor that binds on an active component decouples that component's
         # scale from its own statistics: the critic target (ReturnScaler) or the
         # policy-gradient share (AdvantageScaler) is then set by the guard.
-        # Tracked per scaler because the two have different failure modes — see
-        # the return_min_span note in runs/rl.py.
+        # Tracked per scaler because the two have different failure modes.
         span_bound_cpu = self.scaler.floor_bound.cpu()
         rms_bound_cpu = self.adv_scaler.floor_bound.cpu()
         for i, name in enumerate(self._active_names):

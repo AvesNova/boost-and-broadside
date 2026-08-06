@@ -185,6 +185,12 @@ class TrainConfig:
     # trainer logs scaler/floor_bound/<name> and warns when one binds.
     return_min_span: float  # ReturnScaler p95-p5 epsilon (symlog-space)
     advantage_min_rms: float  # AdvantageScaler RMS epsilon (symlog-space)
+    # Width of the categorical critic's target distribution, in bin widths. 0 is
+    # two-hot: all mass on the two bins bracketing the return, so the target's
+    # mean is exact. Above 0 switches to HL-Gauss, trading target sharpness for a
+    # smoother loss surface. The bin grid itself is ModelConfig.value_bins /
+    # value_support, since that sizes the head.
+    value_sigma: float  # 0 = two-hot; ~0.75 is the usual HL-Gauss setting
     checkpoint_dir: str  # directory to write .pt files
 
     # --- League play + Elo (static tournament parameters) ---

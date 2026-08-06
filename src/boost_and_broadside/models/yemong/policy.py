@@ -10,7 +10,7 @@ Architecture (per timestep):
          → slice [:N]                    → (B, N, D)    [ship tokens only]
          → ActionHead                   → (B, N, 12)   [logits: power|turn|shoot]
          → NextStateHead                → (B, N, P)    [aux: pred next state deltas; P from coord.]
-         → ValueHead                    → (B, N, K)    [MSE critic: K components]
+         → ValueHead                    → (B, N, K, V) [categorical critic: K components, V bins]
 
 Three entity kinds, three levels of participation:
   ships  (team_id 0/1) — attention, recurrence, and all three heads.
@@ -19,9 +19,11 @@ Three entity kinds, three levels of participation:
   bullets              — key/value only. Never queried, never recurrent, never
                          updated; they exist solely as things ships can look at.
 
-K = num_value_components (one head per reward component).
-Value head outputs in normalized space. The ReturnScaler in PPOTrainer maps
-between symlog-reward space (GAE) and normalized space (value head I/O).
+K = num_value_components (one head per reward component), V = model_config.value_bins.
+The value head is categorical: it emits V logits per component over a fixed grid in
+normalized space, and the scalar value is that distribution's mean. The ReturnScaler
+in PPOTrainer maps between symlog-reward space (GAE) and normalized space (value head
+I/O); train/rl/value_dist.py owns the grid, the targets, and the decode.
 
 Hidden state shape: (n_layers, B*N, CONV_KERNEL * D) — ships only — packed as:
   hidden[:, :, :D]   -- RG-LRU recurrent state
@@ -51,6 +53,7 @@ from boost_and_broadside.env.observation import BulletObsKey, YemongObservation
 from boost_and_broadside.models.yemong.encoder import BulletEncoder, ShipEncoder
 from boost_and_broadside.models.yemong.griffin import CONV_KERNEL, YemongBlock
 from boost_and_broadside.train.rl.features import FeatureCoordinator
+from boost_and_broadside.train.rl.value_dist import bin_centers, expected_value
 
 
 class NextStateHead(nn.Module):
@@ -139,15 +142,26 @@ class YemongPolicy(nn.Module):
             nn.GELU(),
             nn.Linear(hidden_dim, TOTAL_ACTION_LOGITS),
         )
-        # Value head: per-ship embedding → all K components. The trunk runs full
-        # spatial attention over every ship in every block, so a ship's embedding
-        # is already team-aggregated; an explicit pooling path on top of that
-        # bought nothing measurable and cost a second value head.
+        # Value head: per-ship embedding → K components x value_bins logits. The
+        # trunk runs full spatial attention over every ship in every block, so a
+        # ship's embedding is already team-aggregated; an explicit pooling path on
+        # top of that bought nothing measurable and cost a second value head.
+        self._value_bins = model_config.value_bins
         self.value_head_local = nn.Sequential(
             nn.Linear(D, hidden_dim),
             nn.RMSNorm(hidden_dim),
             nn.GELU(),
-            nn.Linear(hidden_dim, self._K),
+            nn.Linear(hidden_dim, self._K * self._value_bins),
+        )
+        # Grid the value distribution is defined over. A buffer, not a constant:
+        # it has to follow the policy across devices and land in the state dict
+        # beside the head whose logits it interprets.
+        self.register_buffer(
+            "value_bin_centers",
+            bin_centers(
+                model_config.value_bins, model_config.value_support, device=torch.device("cpu")
+            ),
+            persistent=True,
         )
         self.next_state_head = NextStateHead(D, pred_dim=coordinator.total_prediction_dimension)
 
@@ -241,7 +255,8 @@ class YemongPolicy(nn.Module):
         Returns:
             action:     (B, N, 3) int — sampled [power, turn, shoot].
             logprob:    (B, N) float — sum of log probs for each sub-action.
-            value:      (B, N, K) float — per-component value in normalized space.
+            value:      (B, N, K) float — per-component value in normalized space,
+                        the mean of the head's categorical distribution.
                         Caller must denormalize via ReturnScaler before using for GAE.
             pred_next:  (B, N, pred_dim) float — predicted next-state deltas/phase shifts.
             new_hidden: (n_layers, B*(N+M), CONV_KERNEL*D) updated packed state.
@@ -297,7 +312,11 @@ class YemongPolicy(nn.Module):
 
         logits = self.action_head(x_ships)  # (B, N, 12)
         pred_next = self.next_state_head(x_ships)  # (B, N, AUX_PRED_DIM)
-        value = self.value_head_local(x_ships)  # (B, N, K)
+        # Acting only ever needs the scalar, so decode here and keep every caller
+        # of this path on the same (B, N, K) contract it had before.
+        B_, N_ = x_ships.shape[0], x_ships.shape[1]
+        value_logits = self.value_head_local(x_ships).view(B_, N_, self._K, self._value_bins)
+        value = expected_value(value_logits, self.value_bin_centers)  # (B, N, K)
 
         action, logprob = _sample_action(logits)
 
@@ -344,7 +363,10 @@ class YemongPolicy(nn.Module):
         Returns:
             logprob:    (T, B, N) float.
             entropy:    (T, B, N) float.
-            new_value:  (T, B, N, K) float — per-component value in normalized space.
+            value_logits: (T, B, N, K, V) float — per-component logits over the
+                        value grid, in normalized space. The value loss consumes
+                        these directly; ``value_dist.expected_value`` decodes the
+                        scalar where one is needed.
             logits:     (T, B, N, TOTAL_ACTION_LOGITS) float — raw action logits.
             z:          (T, B, N+M, D) float — raw encoder embeddings before Yemong layers,
                         or None if return_encoder_output=False.
@@ -413,11 +435,13 @@ class YemongPolicy(nn.Module):
 
         logits = self.action_head(x_ships)  # (T, B, N, 12)
         pred_next = self.next_state_head(x_ships)  # (T, B, N, AUX_PRED_DIM)
-        new_value = self.value_head_local(x_ships)  # (T, B, N, K)
+        # Logits, not the mean: the value loss is a cross-entropy against the
+        # whole distribution, and decoding here would throw away what it trains.
+        value_logits = self.value_head_local(x_ships).view(T, B, N, self._K, self._value_bins)
 
         logprob, entropy = _evaluate_action(logits, actions)
 
-        return logprob, entropy, new_value, logits, z, pred_next
+        return logprob, entropy, value_logits, logits, z, pred_next
 
 
 # ---------------------------------------------------------------------------

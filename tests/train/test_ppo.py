@@ -128,6 +128,7 @@ def _make_train_config(
         total_timesteps=64 * rollouts_per_update,
         return_ema_alpha=0.005,
         return_min_span=1e-3,
+        value_sigma=0.0,
         advantage_min_rms=1e-4,
         checkpoint_dir=checkpoint_dir,
         league_size=20,
@@ -902,6 +903,7 @@ class TestSchedulePrimitives:
                 total_timesteps=64,
                 return_ema_alpha=0.005,
                 return_min_span=1e-3,
+                value_sigma=0.0,
                 advantage_min_rms=1e-4,
                 checkpoint_dir=str(tmp_path),
                 league_size=20,
@@ -1039,6 +1041,7 @@ class TestRLSmokeTest:
             total_timesteps=16 * 32 * 3,  # 3 updates
             return_ema_alpha=0.005,
             return_min_span=1e-3,
+            value_sigma=0.0,
             advantage_min_rms=1e-4,
             checkpoint_dir=str(tmp_path),
             league_size=5,

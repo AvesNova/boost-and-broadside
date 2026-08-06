@@ -221,9 +221,9 @@ def _obs_storage_dtype(key: ObsKey | BulletObsKey, dt: torch.dtype) -> torch.dty
 class ReturnScaler:
     """Per-component EMA of 5th/95th percentiles for return normalization.
 
-    Maps symlog-reward space returns to roughly [-1, 1] per component so that
-    MSE value loss is comparable across components that have very different
-    natural scales (e.g. victory ±80 vs turn_rate ±0.001).
+    Maps symlog-reward space returns to roughly [-1, 1] per component, which is
+    what lets one fixed set of value bins serve components whose natural scales
+    differ by orders of magnitude (e.g. victory ±80 vs turn_rate ±0.001).
 
     The scaler is updated once per rollout from the buffer's computed returns.
     Lambdas in the PPO advantage aggregation then act as pure importance weights
@@ -396,8 +396,8 @@ class ReturnScaler:
 class AdvantageScaler:
     """Per-component EMA of advantage RMS for policy gradient normalization.
 
-    The actor-side counterpart to ReturnScaler. While ReturnScaler normalizes
-    value targets so MSE loss is comparable across components, AdvantageScaler
+    The actor-side counterpart to ReturnScaler. While ReturnScaler puts value
+    targets on the scale the critic's bins are defined over, AdvantageScaler
     normalizes advantages before lambda aggregation so each component contributes
     equally to the policy gradient regardless of raw reward magnitude or density.
 
