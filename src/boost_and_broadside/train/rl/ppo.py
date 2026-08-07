@@ -1544,6 +1544,19 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 diag["value_loss_k"] = (vf_loss_raw.detach() * alive_k).sum(
                     (0, 1, 2)
                 ) / mask_sum  # (K,)
+                # Fraction of critic targets falling outside the value grid. The
+                # bins cannot represent these, and every one of them encodes to
+                # the same end bin, so a component whose events all land out
+                # there has no learnable signal left however well the trunk fits.
+                #
+                # Measured baseline at the production span floor: zero for every
+                # sparse component and up to 0.006 for the dense ones, whose
+                # spans were never floored. A sparse component reading anything
+                # above zero here means its span has collapsed onto the noise
+                # floor of nothing happening, which is what broke run 710.
+                diag["target_clip_k"] = (
+                    (target_norm.abs() > self._value_bin_centers[-1]).float() * alive_k
+                ).sum((0, 1, 2)) / mask_sum
                 diag["ret_mean_k"] = (mb_returns * alive_k).sum((0, 1, 2)) / mask_sum
                 diag["ret_sq_k"] = (mb_returns.pow(2) * alive_k).sum((0, 1, 2)) / mask_sum
                 diag["res_mean_k"] = (residuals_k * alive_k).sum((0, 1, 2)) / mask_sum
@@ -1758,6 +1771,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         }
         accum_k: dict[str, list[torch.Tensor]] = {
             "critic/value_loss": [],
+            "critic/target_clip_frac": [],
             "critic/explained_variance": [],
             "critic/return_mean": [],
             "critic/value_pred_mean": [],
@@ -1817,6 +1831,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 )
                 _primary_k = (
                     "value_loss_k",
+                    "target_clip_k",
                     "ret_mean_k",
                     "ret_sq_k",
                     "res_mean_k",
@@ -1960,6 +1975,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     res_var_k = k_stats["res_sq_k"] - k_stats["res_mean_k"].pow(2)
                     ev_k = 1.0 - res_var_k / (ret_var_k + 1e-8)  # (K,)
                     accum_k["critic/value_loss"].append(k_stats["value_loss_k"])
+                    accum_k["critic/target_clip_frac"].append(k_stats["target_clip_k"])
                     accum_k["critic/return_mean"].append(k_stats["ret_mean_k"])
                     accum_k["returns/component"].append(self._ret_per_comp_mean_k)
                     accum_k["critic/value_pred_mean"].append(k_stats["pred_mean_k"])

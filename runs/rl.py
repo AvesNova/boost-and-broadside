@@ -122,17 +122,25 @@ RL_TRAIN_CONFIG = TrainConfig(
     # reference run, so runs stay comparable in experience rather than in tokens.
     total_timesteps=500_000_000,
     return_ema_alpha=0.005,
-    # A true epsilon again. It was held at 1.0 for as long as the critic used
-    # squared error, because dividing by a robust p5-p95 half-span gives a sparse
-    # terminal component very large normalized targets and MSE squares them —
-    # measured at ~11x the value loss at production spans, enough that
-    # max_grad_norm bound every step. The categorical critic removes the
-    # mechanism: cross-entropy is bounded per sample and indifferent to how far
-    # outside the bulk a target sits, so the span can go back to guarding nothing
-    # but division by zero.
-    return_min_span=1e-3,
-    # Two-hot targets. Set to ~0.75 for HL-Gauss if the sharper target turns out
-    # to hurt; the bin grid lives in MODEL_CONFIG.
+    # NOT an epsilon, and it must not be dropped to one. It divides the return
+    # distribution by a robust p5-p95 half-span, and for a sparse component that
+    # span measures the noise floor of nothing happening rather than the signal:
+    # field_death's central 90% spans 0.0009 while its events reach -0.12. Drop
+    # the floor and those events land at |z| up to 2000 against a +/-5 bin grid,
+    # where every one of them encodes to the same end bin. Run 710 did exactly
+    # that and the affected components collapsed -- measured representation
+    # ceilings of 0.085 (field_death), 0.151 (kill_shot), 0.415
+    # (damage_dealt_ally) against observed EV of 0.024/0.032/0.109.
+    #
+    # At 1.0 the ceiling is 1.000 on every component. The compression that used
+    # to cost those components their share of the *critic* gradient is no longer
+    # a concern under cross-entropy, whose loss does not scale with the target,
+    # and two-hot stays exact well below one bin width because it interpolates
+    # linearly rather than quantizing.
+    return_min_span=1.0,
+    # Two-hot. An offline head-only comparison on frozen trunk features measured
+    # HL-Gauss at sigma=0.75 as a wash (mean held-out EV 0.613 vs 0.611), so the
+    # sharper target is kept for being the one whose mean is exact.
     value_sigma=0.0,
     # The actor-side counterpart is a true epsilon. Its floor was pinning
     # win/kill_shot/kill_assist/combat_death/shoot_quality at

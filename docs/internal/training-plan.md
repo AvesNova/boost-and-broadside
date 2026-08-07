@@ -506,9 +506,15 @@ env is 15% of wall clock and the update is 85% — a learned world model would b
   that way — an Elo threshold needs re-deriving every time the gauge moves.
 - **`validate_field_layout` must never run on the hot path** — eight syncs and it
   raises. Generated maps are laminar by construction.
-- **Scaler floors are epsilons, not scales.** `scaler/floor_bound_rms/*` or
-  `scaler/floor_bound_span/*` binding on an active component is a bug. There is
-  no longer an exception — `return_min_span` came back down with `62da40d`.
+- **`advantage_min_rms` is an epsilon. `return_min_span` is NOT, and must stay
+  at 1.0.** For a sparse component the p5–p95 span measures the noise floor of
+  nothing happening, not the signal: `field_death`'s central 90% spans 0.0009
+  while its events reach −0.12. Drop the floor and those events land at |z| up
+  to 2000 against a ±5 grid, all encoding to the same end bin. Run 710 did this
+  and the affected components collapsed. `scaler/floor_bound_span/*` binding is
+  therefore *expected* and not a bug; `scaler/floor_bound_rms/*` binding still is.
+- **Watch `critic/target_clip_frac/*`.** Nonzero on a sparse component means its
+  targets have left the value grid — the failure above, visible on update 1.
 - **The value grid lives in normalized space.** `value_support` is in
   `ReturnScaler` units, not symlog. It only stays meaningful because the scaler
   gives every component a stable scale; binning raw returns would need a
