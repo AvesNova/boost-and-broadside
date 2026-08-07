@@ -1229,6 +1229,32 @@ class TestUpdateEpochsMetricKeys:
         for key in self._EXPECTED_KEYS:
             assert math.isfinite(metrics[key]), f"{key} is not finite: {metrics[key]}"
 
+    def test_gradient_split_is_measured_at_the_histogram_cadence(self, tmp_path):
+        """The actor/critic split of the pre-clip gradient must be observable.
+
+        Both terms land on the same trunk and max_grad_norm renormalizes them
+        together, so the share one takes is the share the other loses. Run 711
+        ran at a 3.4x critic imbalance for its whole life and nothing logged said
+        so -- it had to be inferred from the total norm two runs later.
+        """
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        runtime = trainer._initialize_rollout_runtime()
+        dones = trainer._collect_rollout(runtime, False)
+        trainer._compute_rollout_gae(runtime, dones)
+
+        off = trainer._update_epochs(
+            all_buffers=[trainer.buffer] + trainer.aux_buffers, record_histograms=False
+        )
+        assert "train/actor_grad_share" not in off, "should cost nothing off-cadence"
+
+        on = trainer._update_epochs(
+            all_buffers=[trainer.buffer] + trainer.aux_buffers, record_histograms=True
+        )
+        for key in ("train/grad_norm_actor", "train/grad_norm_critic", "train/actor_grad_share"):
+            assert key in on, f"{key} missing on-cadence"
+            assert math.isfinite(on[key])
+        assert 0.0 <= on["train/actor_grad_share"] <= 1.0
+
     def test_per_component_metrics_survive_an_early_target_kl_break(self, tmp_path):
         """Explained variance must be reported even when target_kl cuts the epochs.
 

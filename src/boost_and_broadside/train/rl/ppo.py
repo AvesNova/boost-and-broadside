@@ -1292,6 +1292,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         is_primary: bool,
         denoms: dict,
         frac: float,
+        measure_grad_split: bool = False,
     ) -> tuple[torch.Tensor, dict]:
         """Compute PPO loss for one micro-batch. Does NOT call zero_grad / backward / step.
 
@@ -1497,8 +1498,30 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             + self.cfg.windowed_loss_coef * windowed_ns_loss
         )
 
-        # ---- Diagnostics (no grad) — kept as GPU tensors, .item() deferred to logging ----
         diag: dict = {}
+
+        # ---- Actor / critic gradient split ------------------------------------
+        # Both terms land on the same trunk, so max_grad_norm renormalizes them
+        # together: whichever sends more gradient takes a larger share of every
+        # clipped step. That share is what the value loss trades against the
+        # policy, and inferring it from the total norm is how a 3.4x imbalance
+        # went unnoticed across two runs. Costs two extra backward passes, so it
+        # runs on one micro-batch per update at the histogram cadence.
+        if measure_grad_split:
+            params = [p for p in self._policy_module.parameters() if p.requires_grad]
+            terms = {
+                "actor": self._policy_gradient_coef * pg_loss
+                + self._schedule_state.entropy_coef * ent_loss,
+                "critic": self._schedule_state.value_function_coef * vf_loss,
+            }
+            for term_name, term in terms.items():
+                grads = torch.autograd.grad(term, params, retain_graph=True, allow_unused=True)
+                present = [g.norm() for g in grads if g is not None]
+                diag[f"grad_norm_{term_name}"] = (
+                    torch.stack(present).norm() if present else self._zero_tensor
+                )
+
+        # ---- Diagnostics (no grad) — kept as GPU tensors, .item() deferred to logging ----
         with torch.no_grad():
             diag["loss"] = loss.detach()
             diag["pg_loss"] = pg_loss.detach()
@@ -1768,6 +1791,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             # got scrubbed. Any sustained non-zero reading means the forward or
             # backward pass is overflowing and needs investigating at source.
             "train/nonfinite_grad_fraction": [],
+            # Actor / critic split of the pre-clip gradient, and the actor's share
+            # of it. Measured on one micro-batch per update (see
+            # measure_grad_split); the share is what max_grad_norm hands to the
+            # policy after renormalizing both terms together.
+            "train/grad_norm_actor": [],
+            "train/grad_norm_critic": [],
+            "train/actor_grad_share": [],
         }
         accum_k: dict[str, list[torch.Tensor]] = {
             "critic/value_loss": [],
@@ -1801,6 +1831,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # the policy moved furthest, and would lose far more once target_kl
         # tightens to high_winrate_target_kl.
         ev_epoch: list[torch.Tensor] = []
+        # Armed once per call; the first primary micro-batch consumes it.
+        measure_split = record_histograms
 
         for epoch_idx in range(num_epochs):
             kl_start = len(accum_scalar["policy/kl"])
@@ -1904,8 +1936,16 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                             is_primary,
                             denoms,
                             frac,
+                            measure_grad_split=measure_split and is_primary,
                         )
                         (loss / n_scales).backward()
+
+                        if "grad_norm_actor" in diag:
+                            a, c = diag["grad_norm_actor"], diag["grad_norm_critic"]
+                            accum_scalar["train/grad_norm_actor"].append(a)
+                            accum_scalar["train/grad_norm_critic"].append(c)
+                            accum_scalar["train/actor_grad_share"].append(a / (a + c + 1e-12))
+                            measure_split = False
 
                         for key, dkey in _additive:
                             scalar_accum_step[key] += diag[dkey] / n_scales

@@ -61,7 +61,23 @@ RL_SCHEDULE = TrainingSchedule(
     policy_gradient_coef=constant(1.0),
     entropy_coef=constant(0.005),
     behavior_cloning_coef=constant(2.0),
-    value_function_coef=constant(1.0),
+    # 0.29, not 1.0. The value loss and the policy loss land on the same trunk
+    # and max_grad_norm renormalizes them together, so whichever sends more
+    # gradient takes a larger share of every clipped step. Cross-entropy sends
+    # 3.44x the trunk gradient that squared error does at convergence (measured
+    # offline on real returns; its loss value is 24x larger, but that is mostly
+    # the CE entropy floor and only 1.38x reaches the head's own parameters).
+    #
+    # Run 711 paid for that: solving the observed gradient norms for an
+    # actor/critic split gives actor 0.68 / critic 0.73 under MSE against actor
+    # 0.68 / critic 2.51 under CE, so the actor's share of each clipped update
+    # fell from 68% to 26%. Its critic fit better and its policy was ~65 Elo
+    # worse. 0.29 puts the critic term back at 0.73 and the actor back at 68%.
+    #
+    # Watch train/actor_grad_share -- this is a convergence-regime number, and
+    # MSE's gradient is larger early, so the critic may be under-weighted for
+    # the first ~20M steps.
+    value_function_coef=constant(0.29),
     sigreg_coef=constant(0.00),
     true_reward_scale=constant(1.0),
     global_scale=constant(1.0),
