@@ -1228,3 +1228,32 @@ class TestUpdateEpochsMetricKeys:
         assert self._EXPECTED_KEYS <= metrics.keys()
         for key in self._EXPECTED_KEYS:
             assert math.isfinite(metrics[key]), f"{key} is not finite: {metrics[key]}"
+
+    def test_per_component_metrics_survive_an_early_target_kl_break(self, tmp_path):
+        """Explained variance must be reported even when target_kl cuts the epochs.
+
+        It is the one per-component metric taken from a single epoch rather than
+        averaged over all of them. Keying that off the final epoch *index* rather
+        than the last epoch that ran dropped the whole family whenever the KL gate
+        fired -- silently, because an empty accumulator is skipped -- and it fired
+        on the updates where the policy moved furthest.
+        """
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        runtime = trainer._initialize_rollout_runtime()
+        dones = trainer._collect_rollout(runtime, False)
+        trainer._compute_rollout_gae(runtime, dones)
+
+        # Needs more than one epoch for "final epoch" and "last epoch that ran"
+        # to differ at all. A target_kl of 0 is exceeded by any update, so the
+        # loop breaks after the first and never reaches num_epochs - 1.
+        trainer._schedule_state = dataclasses.replace(trainer._schedule_state, num_epochs=3)
+        trainer._effective_target_kl = lambda: 0.0
+        metrics = trainer._update_epochs(
+            all_buffers=[trainer.buffer] + trainer.aux_buffers, record_histograms=False
+        )
+
+        assert metrics["train/epochs_completed"] < trainer._schedule_state.num_epochs
+        for name in trainer._active_names:
+            key = f"critic/explained_variance/{name}"
+            assert key in metrics, f"{key} dropped when the KL gate fired early"
+            assert math.isfinite(metrics[key])

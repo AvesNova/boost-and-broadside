@@ -1791,8 +1791,20 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         num_epochs = self._schedule_state.num_epochs
         target_kl = self._effective_target_kl()
 
+        # Explained variance describes the critic at the *end* of the update, so
+        # unlike its sibling metrics it is not averaged over epochs — it is taken
+        # from the last epoch that actually ran. Holding it in its own list that
+        # resets per epoch is what makes "last epoch that ran" different from
+        # "epoch num_epochs-1": target_kl can break the loop early, and gating on
+        # the final index instead dropped the whole family for those updates. That
+        # lost ~4% of points on run 710, biased towards exactly the updates where
+        # the policy moved furthest, and would lose far more once target_kl
+        # tightens to high_winrate_target_kl.
+        ev_epoch: list[torch.Tensor] = []
+
         for epoch_idx in range(num_epochs):
             kl_start = len(accum_scalar["policy/kl"])
+            ev_epoch = []
             iters = [
                 buf.get_minibatch_iterator(cfg.num_minibatches, cfg.microbatch_tokens)
                 for buf in all_buffers
@@ -1982,8 +1994,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     accum_k["returns/advantage_std"].append(
                         k_stats["adv_sq_k"].clamp(min=0.0).sqrt()
                     )
-                    if epoch_idx == num_epochs - 1:
-                        accum_k["critic/explained_variance"].append(ev_k)
+                    ev_epoch.append(ev_k)
 
                 if ns_feat_step is not None:
                     ns_per_feat_accum.append(ns_feat_step)
@@ -2001,6 +2012,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 epoch_kls = accum_scalar["policy/kl"][kl_start:]
                 if epoch_kls and torch.stack(epoch_kls).mean().item() > target_kl:
                     break
+
+        accum_k["critic/explained_variance"] = ev_epoch
 
         metrics: dict = {k: torch.stack(v).mean().item() for k, v in accum_scalar.items() if v}
         metrics["train/epochs_completed"] = float(epoch_idx + 1)
