@@ -321,11 +321,31 @@ final epoch *index*, so the whole family was silently dropped whenever
 updates where the policy moved furthest), and `train/actor_grad_share`, which
 makes control 2 visible on update 1 instead of three runs later.
 
-**Open:** whether TeamPMA is load-bearing. One run of MSE + no-TeamPMA
-against 709 settles it, and it is the only single-variable question left from
-this block. If PMA turns out to matter, the categorical-critic verdict has to
-be re-read, because it was never tested against a baseline that matched on
-architecture.
+**Settled by `sage-silence-713`** (MSE + no TeamPMA, single variable against
+709). Both changes cost, and they are roughly additive:
+
+| run | config | Elo @80–100M | vs 709 |
+|---|---|---:|---:|
+| `iconic-shadow-709` | MSE + TeamPMA | 1221 | — |
+| `sage-silence-713` | MSE, **no TeamPMA** | 1185 | **−35** |
+| `charmed-moon-711` | CE, no TeamPMA | 1156 | −65 |
+| `youthful-spaceship-712` | CE, no TeamPMA, coef 0.29 | 1103 | −117 |
+
+Two conclusions, both from matched comparisons rather than inference:
+
+1. **TeamPMA is load-bearing** — worth ~35 Elo on its own, about a third of
+   the gap. It is not the redundant re-derivation the removal argued it was.
+   Restored, and it stays.
+2. **The categorical critic was independently negative.** 713 and 711 differ
+   only in the critic (plus the win merge), both without TeamPMA, and CE is
+   29 Elo worse against that matched baseline. So the Block C verdict does
+   *not* need re-reading — the confound was real, and so was the effect it was
+   hiding. Both changes were bad, which is why 711 looked twice as bad as
+   either.
+
+The methodological point stands regardless: this cost three runs to learn and
+would have cost one had TeamPMA been tested separately, as its own
+"expected to do nothing" claim implied it should be.
 
 ## What went wrong
 
@@ -393,10 +413,9 @@ value-loss ratio) was arithmetic rather than a finding, and `ally_win`'s
 explained variance in 709 was 0.88. Three runs, none beat the baseline.
 
 **A and B remain, and are independent of each other.** D no longer has a
-dependency on C. Before any of them, one run settles the one live question
-Block C left behind: **MSE + no TeamPMA vs 709**, which isolates the
-architecture change that was confounded with the critic across all three runs.
-Until that is answered, 709 is not a baseline we understand.
+dependency on C. The baseline is now understood: `sage-silence-713` isolated
+the TeamPMA question and the head is load-bearing (~35 Elo), so it is
+restored and the tree is 709's configuration plus two logging additions.
 
 Roughly one run each. Budget is tight, so each block is a coherent theme that
 can be judged as one thing.

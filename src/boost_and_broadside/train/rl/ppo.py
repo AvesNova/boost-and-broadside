@@ -331,6 +331,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         )
         K = self.wrapper.num_active_components
         self._active_names = self.wrapper.active_names  # stable ref used throughout
+        # Indices of win/loss components in the active set — these use the TeamPMA
+        # value path; all other components use the local (per-ship) path.
+        self._win_k: tuple[int, ...] = tuple(
+            i for i, n in enumerate(self._active_names) if n in {"ally_win", "enemy_win"}
+        )
 
         # Build per-component (K,) discount tensors — used by all RolloutBuffers.
         self._gamma_t = _build_component_tensor(
@@ -347,6 +352,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             ship_config,
             num_value_components=K,
             num_ships=N,
+            team_pma_k=self._win_k,
         ).to(self.device)
         self.sigreg = SIGReg(d_model=model_config.d_model, num_proj=64).to(self.device)
         self.policy = (
@@ -411,6 +417,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             ship_config,
             num_value_components=K,
             num_ships=N,
+            team_pma_k=self._win_k,
         ).to(self.device)
         self.avg_policy = (
             torch.compile(self._avg_policy_module, mode=compile_mode)
@@ -2075,6 +2082,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 self.device,
                 model_config=self.model_config,
                 compile_mode=self._compile_mode,
+                team_pma_k=self._win_k,
             )
             return LadderOpponent(
                 policy=entry.policy,

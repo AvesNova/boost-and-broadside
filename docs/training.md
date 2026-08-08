@@ -388,7 +388,7 @@ the two rating series differ.
 
 Every payload family — full `step_<N>.pt` resumes, best-model snapshots, and the ladder
 snapshots the league and calibrator reload — carries the same provenance block: the
-observation schema, the weights, critic width, step and rating, the training
+observation schema, the weights, critic width, `team_pma_k`, step and rating, the training
 paradigm, and the model, environment, and ship configs it was trained under. Full
 checkpoints add optimizer, scaler and averaging state on top; ladder snapshots add nothing.
 Saves are prepared asynchronously and written through a temporary file before rename.
