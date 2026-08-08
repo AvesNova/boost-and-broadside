@@ -10,7 +10,8 @@ Architecture (per timestep):
          → slice [:N]                    → (B, N, D)    [ship tokens only]
          → ActionHead                   → (B, N, 12)   [logits: power|turn|shoot]
          → NextStateHead                → (B, N, P)    [aux: pred next state deltas; P from coord.]
-         → ValueHead                    → (B, N, K, V) [categorical critic: K components, V bins]
+         → TeamPMA                      → (B, N, D)    [pool per team, broadcast back]
+         → ValueHead                    → (B, N, K)    [MSE critic: K components]
 
 Three entity kinds, three levels of participation:
   ships  (team_id 0/1) — attention, recurrence, and all three heads.
@@ -19,11 +20,9 @@ Three entity kinds, three levels of participation:
   bullets              — key/value only. Never queried, never recurrent, never
                          updated; they exist solely as things ships can look at.
 
-K = num_value_components (one head per reward component), V = model_config.value_bins.
-The value head is categorical: it emits V logits per component over a fixed grid in
-normalized space, and the scalar value is that distribution's mean. The ReturnScaler
-in PPOTrainer maps between symlog-reward space (GAE) and normalized space (value head
-I/O); train/rl/value_dist.py owns the grid, the targets, and the decode.
+K = num_value_components (one head per reward component).
+Value head outputs in normalized space. The ReturnScaler in PPOTrainer maps
+between symlog-reward space (GAE) and normalized space (value head I/O).
 
 Hidden state shape: (n_layers, B*N, CONV_KERNEL * D) — ships only — packed as:
   hidden[:, :, :D]   -- RG-LRU recurrent state
@@ -53,7 +52,6 @@ from boost_and_broadside.env.observation import BulletObsKey, YemongObservation
 from boost_and_broadside.models.yemong.encoder import BulletEncoder, ShipEncoder
 from boost_and_broadside.models.yemong.griffin import CONV_KERNEL, YemongBlock
 from boost_and_broadside.train.rl.features import FeatureCoordinator
-from boost_and_broadside.train.rl.value_dist import bin_centers, expected_value
 
 
 class NextStateHead(nn.Module):
@@ -75,6 +73,51 @@ class NextStateHead(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Args: x (..., D). Returns: (..., pred_dim)."""
         return self.net(x)
+
+
+class TeamPMA(nn.Module):
+    """Pooling by Multi-head Attention over per-team ship embeddings.
+
+    For each team t ∈ {0, 1}, a learned seed attends over the GRU outputs of
+    alive ships on that team. Dead ships and ships from the opposite team are
+    masked out as keys. The two team embeddings are broadcast back so every
+    ship holds its team's pooled embedding — preserving the (B, N, D) shape
+    expected by the value head.
+
+    Args:
+        d_model: Token embedding dimension D.
+        n_heads:  Attention heads (must divide d_model evenly).
+    """
+
+    def __init__(self, d_model: int, n_heads: int) -> None:
+        super().__init__()
+        self.seeds = nn.Parameter(torch.zeros(2, d_model))
+        self.attn = nn.MultiheadAttention(d_model, n_heads, batch_first=True, bias=False)
+        self.norm = nn.RMSNorm(d_model)
+
+    def forward(
+        self,
+        x: torch.Tensor,  # (B, N, D)
+        team_id: torch.Tensor,  # (B, N) int
+        alive: torch.Tensor,  # (B, N) bool
+    ) -> torch.Tensor:  # (B, N, D)
+        B, N, D = x.shape
+        team_pool = x.new_zeros(B, 2, D)
+
+        for t in range(2):
+            mask = (team_id == t) & alive  # (B, N) — alive ships on team t
+            has_ship = mask.any(dim=1)  # (B,) bool
+
+            seed = self.seeds[t].view(1, 1, D).expand(B, 1, D)  # (B, 1, D)
+            # key_padding_mask: True = ignore that key position
+            out, _ = self.attn(seed, x, x, key_padding_mask=~mask, need_weights=False)
+            out = out.squeeze(1).nan_to_num(0.0)  # (B, D) — guard: all-dead → NaN → 0
+            out = out * has_ship.unsqueeze(1).to(out.dtype)  # zero dead-team envs before norm
+            team_pool[:, t] = self.norm(out)  # (B, D)
+
+        # Each ship gets its team's pooled embedding
+        idx = team_id.clamp(0, 1).long().unsqueeze(-1).expand(B, N, D)
+        return team_pool.gather(1, idx)  # (B, N, D)
 
 
 def _init_head_orthogonal(head: nn.Sequential) -> None:
@@ -108,6 +151,7 @@ class YemongPolicy(nn.Module):
         coordinator: FeatureCoordinator,
         num_value_components: int,
         num_ships: int,
+        team_pma_k: tuple[int, ...] = (),
         bullet_coordinator: FeatureCoordinator | None = None,
     ) -> None:
         super().__init__()
@@ -115,6 +159,8 @@ class YemongPolicy(nn.Module):
         self._d_model = D
         self._K = num_value_components
         self._num_ships = num_ships  # N — first N tokens are ships; rest are fields
+        self._team_pma_k = team_pma_k  # K indices that use TeamPMA path for value
+        self._team_pma_k_set = set(team_pma_k)
         self.coordinator = coordinator
 
         self.encoder = ShipEncoder(model_config, coordinator, num_ships=num_ships)
@@ -142,27 +188,24 @@ class YemongPolicy(nn.Module):
             nn.GELU(),
             nn.Linear(hidden_dim, TOTAL_ACTION_LOGITS),
         )
-        # Value head: per-ship embedding → K components x value_bins logits. The
-        # trunk runs full spatial attention over every ship in every block, so a
-        # ship's embedding is already team-aggregated; an explicit pooling path on
-        # top of that bought nothing measurable and cost a second value head.
-        self._value_bins = model_config.value_bins
+        # Local value head: per-ship embedding → all K components.
+        # For indices in team_pma_k, outputs are overridden by value_head_win.
         self.value_head_local = nn.Sequential(
             nn.Linear(D, hidden_dim),
             nn.RMSNorm(hidden_dim),
             nn.GELU(),
-            nn.Linear(hidden_dim, self._K * self._value_bins),
+            nn.Linear(hidden_dim, self._K),
         )
-        # Grid the value distribution is defined over. A buffer, not a constant:
-        # it has to follow the policy across devices and land in the state dict
-        # beside the head whose logits it interprets.
-        self.register_buffer(
-            "value_bin_centers",
-            bin_centers(
-                model_config.value_bins, model_config.value_support, device=torch.device("cpu")
-            ),
-            persistent=True,
-        )
+        # TeamPMA + win/loss head: explicit team-pool → win/loss components only.
+        # Only instantiated when team_pma_k is non-empty.
+        if team_pma_k:
+            self.team_pma = TeamPMA(d_model=D, n_heads=model_config.n_heads)
+            self.value_head_win = nn.Sequential(
+                nn.Linear(D, hidden_dim),
+                nn.RMSNorm(hidden_dim),
+                nn.GELU(),
+                nn.Linear(hidden_dim, len(team_pma_k)),
+            )
         self.next_state_head = NextStateHead(D, pred_dim=coordinator.total_prediction_dimension)
 
         # Orthogonal init — standard PPO practice. Located by type (first/last Linear)
@@ -170,6 +213,11 @@ class YemongPolicy(nn.Module):
         # Dropout) into a head can't silently init the wrong module.
         for head in [self.action_head, self.value_head_local, self.next_state_head.net]:
             _init_head_orthogonal(head)
+        if team_pma_k:
+            _init_head_orthogonal(self.value_head_win)
+            nn.init.normal_(self.team_pma.seeds, mean=0.0, std=0.02)
+            nn.init.orthogonal_(self.team_pma.attn.in_proj_weight, gain=math.sqrt(2))
+            nn.init.orthogonal_(self.team_pma.attn.out_proj.weight, gain=1.0)
 
     def _encode_bullets(
         self, obs: YemongObservation
@@ -255,8 +303,7 @@ class YemongPolicy(nn.Module):
         Returns:
             action:     (B, N, 3) int — sampled [power, turn, shoot].
             logprob:    (B, N) float — sum of log probs for each sub-action.
-            value:      (B, N, K) float — per-component value in normalized space,
-                        the mean of the head's categorical distribution.
+            value:      (B, N, K) float — per-component value in normalized space.
                         Caller must denormalize via ReturnScaler before using for GAE.
             pred_next:  (B, N, pred_dim) float — predicted next-state deltas/phase shifts.
             new_hidden: (n_layers, B*(N+M), CONV_KERNEL*D) updated packed state.
@@ -309,14 +356,17 @@ class YemongPolicy(nn.Module):
         # Slice ship tokens only for action and value heads
         N = self._num_ships
         x_ships = x[:, :N, :]  # (B, N, D)
+        alive_ships = alive[:, :N]  # (B, N)
+        team_id_ships = obs["team_id"][:, :N]  # (B, N) — fields excluded by TeamPMA
 
         logits = self.action_head(x_ships)  # (B, N, 12)
         pred_next = self.next_state_head(x_ships)  # (B, N, AUX_PRED_DIM)
-        # Acting only ever needs the scalar, so decode here and keep every caller
-        # of this path on the same (B, N, K) contract it had before.
-        B_, N_ = x_ships.shape[0], x_ships.shape[1]
-        value_logits = self.value_head_local(x_ships).view(B_, N_, self._K, self._value_bins)
-        value = expected_value(value_logits, self.value_bin_centers)  # (B, N, K)
+        value = self.value_head_local(x_ships)  # (B, N, K)
+        if self._team_pma_k:
+            x_team = self.team_pma(x_ships, team_id_ships, alive_ships)  # (B, N, D)
+            win_val = self.value_head_win(x_team)  # (B, N, K_win)
+            for i, k in enumerate(self._team_pma_k):
+                value[:, :, k] = win_val[:, :, i]
 
         action, logprob = _sample_action(logits)
 
@@ -363,10 +413,7 @@ class YemongPolicy(nn.Module):
         Returns:
             logprob:    (T, B, N) float.
             entropy:    (T, B, N) float.
-            value_logits: (T, B, N, K, V) float — per-component logits over the
-                        value grid, in normalized space. The value loss consumes
-                        these directly; ``value_dist.expected_value`` decodes the
-                        scalar where one is needed.
+            new_value:  (T, B, N, K) float — per-component value in normalized space.
             logits:     (T, B, N, TOTAL_ACTION_LOGITS) float — raw action logits.
             z:          (T, B, N+M, D) float — raw encoder embeddings before Yemong layers,
                         or None if return_encoder_output=False.
@@ -432,16 +479,41 @@ class YemongPolicy(nn.Module):
 
         # Slice ship tokens for heads
         x_ships = x[:, :, :N, :]  # (T, B, N, D)
+        alive_ships = alive_mask[:, :, :N]  # (T, B, N)
+        team_id_ships = obs["team_id"][:, :, :N]  # (T, B, N)
 
         logits = self.action_head(x_ships)  # (T, B, N, 12)
         pred_next = self.next_state_head(x_ships)  # (T, B, N, AUX_PRED_DIM)
-        # Logits, not the mean: the value loss is a cross-entropy against the
-        # whole distribution, and decoding here would throw away what it trains.
-        value_logits = self.value_head_local(x_ships).view(T, B, N, self._K, self._value_bins)
+
+        # Local value path: per-ship embedding, no team pooling.
+        local_value = self.value_head_local(x_ships)  # (T, B, N, K)
+
+        if self._team_pma_k:
+            # Win/loss path: TeamPMA over ship tokens, then fold T into B.
+            x_s_flat = x_ships.reshape(T * B, N, D)
+            alive_s_flat = alive_ships.reshape(T * B, N)
+            tid_s_flat = team_id_ships.reshape(T * B, N)
+            xv_flat = self.team_pma(x_s_flat, tid_s_flat, alive_s_flat)  # (T*B, N, D)
+            xv = xv_flat.reshape(T, B, N, D)
+            win_val = self.value_head_win(xv)  # (T, B, N, K_win)
+
+            # Merge: cat approach preserves gradients through both paths.
+            K = local_value.shape[-1]
+            pieces = []
+            win_i = 0
+            for k in range(K):
+                if k in self._team_pma_k_set:
+                    pieces.append(win_val[..., win_i : win_i + 1])
+                    win_i += 1
+                else:
+                    pieces.append(local_value[..., k : k + 1])
+            new_value = torch.cat(pieces, dim=-1)  # (T, B, N, K)
+        else:
+            new_value = local_value
 
         logprob, entropy = _evaluate_action(logits, actions)
 
-        return logprob, entropy, value_logits, logits, z, pred_next
+        return logprob, entropy, new_value, logits, z, pred_next
 
 
 # ---------------------------------------------------------------------------

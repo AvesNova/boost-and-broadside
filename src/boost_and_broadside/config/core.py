@@ -241,14 +241,6 @@ class ModelConfig:
     # in backward for activation memory that no longer scales with depth — set True
     # to fit deeper networks. Only affects the update-time re-evaluation path.
     grad_checkpoint: bool = False
-    # Categorical critic: the value head emits value_bins logits per component
-    # over a fixed grid spanning [-value_support, +value_support] in ReturnScaler
-    # -normalized units. These size the head, so they are architecture and travel
-    # with the weights. See train/rl/value_dist.py for why the grid lives in
-    # normalized space. 51 bins over ±5 gives 0.2-wide bins and clips ~3e-5 of
-    # targets; drop to 31 if activation memory is tight.
-    value_bins: int = 51
-    value_support: float = 5.0
 
     @property
     def n_hidden_layers(self) -> int:
@@ -276,10 +268,6 @@ class ModelConfig:
                 "n_bullet_cross_per_block must be between 0 and n_spatial_per_block "
                 f"({self.n_spatial_per_block}), got {self.n_bullet_cross_per_block}"
             )
-        if self.value_bins < 1:
-            raise ValueError(f"value_bins must be >= 1, got {self.value_bins}")
-        if self.value_support <= 0:
-            raise ValueError(f"value_support must be > 0, got {self.value_support}")
 
 
 @dataclass(frozen=True)
@@ -305,7 +293,7 @@ class RewardConfig:
 
     Group scales (applied as a multiplier on top of individual weights; the
     authoritative component → group mapping is _GROUP in train/rl/ppo.py):
-        true_reward  → the win component
+        true_reward  → win components (ally_win, enemy_win)
         global       → team outcome rewards (ally/enemy source-split damage and death)
         local        → self-only per-ship rewards (shaping, kill credit,
                        per-ship damage/death)
@@ -320,7 +308,8 @@ class RewardConfig:
     enemy_combat_death_weight: float  # enemy-perspective projectile death pair
     ally_field_death_weight: float  # boundary-caused death of this ship
     enemy_field_death_weight: float  # enemy-perspective boundary death pair
-    win_weight: float  # +1 when this ship's team wins; -1 over enemies via lambda
+    ally_win_weight: float  # +1 when this ship's team wins
+    enemy_win_weight: float  # same signal, enemy-team perspective (pair with ally_win)
 
     # --- Local per-ship rewards (self-only, lambda=0 for all other ships) ---
     facing_weight: float  # pointing nose toward nearest enemy (shaping)

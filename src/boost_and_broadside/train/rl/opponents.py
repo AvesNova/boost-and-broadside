@@ -171,6 +171,7 @@ class OpponentMixin:
                 self.device,
                 model_config=self.model_config,
                 compile_mode=self._compile_mode,
+                team_pma_k=self._win_k,
             )
             if entry.bundle.reads_bullets and not self.model_config.reads_bullets:
                 print(

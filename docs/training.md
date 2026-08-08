@@ -180,35 +180,13 @@ head. The exact loss assembly and logging proxies live in
 [`ppo.py`](../src/boost_and_broadside/train/rl/ppo.py).
 
 Both scalers carry a floor, and a floor that binds on an active component replaces that
-component's own scale with the guard's. Both are true epsilons: the terminal win signal's
-advantage RMS is around 0.008, two orders of magnitude below a per-step damage signal, and
-an earlier `advantage_min_rms` of 0.1 was downweighting it roughly thirteenfold in the
-policy gradient. `return_min_span` had to be held well above an epsilon for as long as the
-critic used squared error — a sparse component's normalized targets have long tails, and
-MSE squares them — but the categorical critic below removes that constraint.
-`scaler/floor_bound_span/*` and `scaler/floor_bound_rms/*` report which components each
-floor is currently holding up; either binding on an active component is a bug.
-
-### Categorical critic
-
-The value head does not regress a scalar. For each component it emits `value_bins` logits
-over a fixed grid spanning ±`value_support` in the return scaler's normalized units, and
-is trained by cross-entropy against a two-hot encoding of the observed return. The scalar
-the rest of the system uses — for GAE, for bootstrapping, for every per-component
-diagnostic — is that distribution's mean.
-
-This matters because the return targets are sparse and heavy-tailed. A terminal component
-fires once per episode and is zero everywhere else, so squared error is pulled toward the
-mean of a bimodal target and its gradient grows with the residual, which is what forced
-`return_min_span` up. Cross-entropy's gradient is bounded per sample and indifferent to
-how far outside the bulk a target lands, so every component can share one support and one
-loss weight regardless of how sparse it is.
-
-`value_sigma` widens the target from two-hot (`0`, the default, whose mean is the return
-exactly) to HL-Gauss, trading target sharpness for a smoother loss surface.
-[`value_dist.py`](../src/boost_and_broadside/train/rl/value_dist.py) owns the grid, the
-targets, and the decode. Returns outside the support are clamped to the end bins; at ±5
-that is about 3 in 100,000.
+component's own scale with the guard's. `advantage_min_rms` is therefore a true epsilon:
+the terminal win signal's advantage RMS is around 0.008, two orders of magnitude below a
+per-step damage signal, and an earlier floor of 0.1 was downweighting it roughly
+thirteenfold in the policy gradient. `return_min_span` is *not* an epsilon and is held at
+1.0 on purpose — see the note in [`runs/rl.py`](../runs/rl.py) for why lowering it needs
+the critic's outlier sensitivity addressed first. `scaler/floor_bound_span/*` and
+`scaler/floor_bound_rms/*` report which components each floor is currently holding up.
 
 ## Reward decomposition
 
@@ -219,7 +197,8 @@ reference policy activated these components:
 
 | Component | RL / fields weight | Role |
 |---|---:|---|
-| `win` | 1.5 | +1 to each surviving teammate on a win, −1 through the enemy lambda on a loss, 0 on a draw |
+| `ally_win` | 4.0 | +1 to each surviving teammate on a win |
+| `enemy_win` | 4.0 | opponent's win signal, seen as −1 through a negative enemy lambda |
 | `facing` | 0.1 | dense aim geometry (+) |
 | `closing_speed` | 0.1 | dense approach geometry (+) |
 | `shoot_quality` | 0.1 | firing opportunity quality (+) |
@@ -240,13 +219,6 @@ local event signals to training targets:
 - global outcome components aggregate across live teammates;
 - selected enemy-perspective components use negative enemy coefficients to recover
   zero-sum outcome structure.
-
-`win` is the case where both halves apply at once: +1 over allies and −1 over enemies, so
-one component spans win, draw and loss. It was two — an ally-perspective and an
-enemy-perspective copy of the same tensor — because a scalar critic reads a draw and an
-even fight identically, both E[v] = 0. The categorical critic separates them as mass on
-the zero bin versus mass split between the ends, so the split no longer earns its second
-value output.
 
 Note that `kill_shot` is not winner-take-all: when several ships damage a target on its
 fatal step, each earns credit proportional to that step's damage. `kill_assist` remains
@@ -416,7 +388,7 @@ the two rating series differ.
 
 Every payload family — full `step_<N>.pt` resumes, best-model snapshots, and the ladder
 snapshots the league and calibrator reload — carries the same provenance block: the
-observation schema, the weights, critic width, step and rating, the training
+observation schema, the weights, critic width, `team_pma_k`, step and rating, the training
 paradigm, and the model, environment, and ship configs it was trained under. Full
 checkpoints add optimizer, scaler and averaging state on top; ladder snapshots add nothing.
 Saves are prepared asynchronously and written through a temporary file before rename.

@@ -64,12 +64,6 @@ from boost_and_broadside.train.rl.opponents import (
 from boost_and_broadside.train.rl.policy_io import build_policy
 from boost_and_broadside.train.rl.roster import EloRoster, RosterEntry
 from boost_and_broadside.train.rl.sigreg import SIGReg
-from boost_and_broadside.train.rl.value_dist import (
-    bin_centers,
-    expected_value,
-    two_hot_targets,
-)
-from boost_and_broadside.train.rl.value_dist import cross_entropy as value_dist_cross_entropy
 
 # ------------------------------------------------------------------
 # Per-component gamma / lambda tensor builder
@@ -106,11 +100,12 @@ _BC_CUTOFF_UPDATES = 3
 # Maps reward component name → the TrainingSchedule group-scale field to apply.
 # Effective weight = group_scale * individual_weight (from RewardConfig).
 # Groups:
-#   true_reward → the win component
+#   true_reward → win components (ally_win, enemy_win)
 #   global      → global outcome rewards + shaping (team-aggregated via lambda)
 #   local       → self-only per-ship rewards (diagonal lambda, no teammate propagation)
 _GROUP: dict[str, str] = {
-    "win": "true_reward_scale",
+    "ally_win": "true_reward_scale",
+    "enemy_win": "true_reward_scale",
     "ally_combat_damage": "global_scale",
     "enemy_combat_damage": "global_scale",
     "ally_field_damage": "global_scale",
@@ -336,6 +331,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         )
         K = self.wrapper.num_active_components
         self._active_names = self.wrapper.active_names  # stable ref used throughout
+        # Indices of win/loss components in the active set — these use the TeamPMA
+        # value path; all other components use the local (per-ship) path.
+        self._win_k: tuple[int, ...] = tuple(
+            i for i, n in enumerate(self._active_names) if n in {"ally_win", "enemy_win"}
+        )
 
         # Build per-component (K,) discount tensors — used by all RolloutBuffers.
         self._gamma_t = _build_component_tensor(
@@ -352,12 +352,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             ship_config,
             num_value_components=K,
             num_ships=N,
+            team_pma_k=self._win_k,
         ).to(self.device)
-        # Same grid the policy registered, kept here so the loss does not have to
-        # reach through a possibly-compiled module wrapper to find it.
-        self._value_bin_centers = bin_centers(
-            model_config.value_bins, model_config.value_support, device=self.device
-        )
         self.sigreg = SIGReg(d_model=model_config.d_model, num_proj=64).to(self.device)
         self.policy = (
             torch.compile(self._policy_module, mode=compile_mode)
@@ -421,6 +417,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             ship_config,
             num_value_components=K,
             num_ships=N,
+            team_pma_k=self._win_k,
         ).to(self.device)
         self.avg_policy = (
             torch.compile(self._avg_policy_module, mode=compile_mode)
@@ -618,7 +615,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
     def _make_ally_zero_k(self, ally_zero_set: frozenset[str]) -> torch.Tensor:
         """Build the (K,) bool tensor marking components where same-team lambda=0.
 
-        Used for enemy-perspective source-split damage/death components and win,
+        Used for enemy-perspective source-split damage/death components and enemy_win,
         where allies should not contribute their own signal to the aggregated advantage.
         """
         return torch.tensor(
@@ -1353,15 +1350,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # can attend to field tokens; mb_alive is ships-only and used for loss masking.
         alive_mask_full = curr_mb_obs["alive"].bool()  # (T, B_mb, N+M)
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            logprob, entropy, value_logits, policy_logits, z, pred_next = (
-                self.policy.evaluate_actions(
-                    obs=curr_mb_obs,
-                    actions=mb_actions.long(),
-                    initial_hidden=mb_hidden,
-                    alive_mask=alive_mask_full,
-                    done_mask=mb_terminated,
-                    return_encoder_output=need_sigreg,
-                )
+            logprob, entropy, new_value, policy_logits, z, pred_next = self.policy.evaluate_actions(
+                obs=curr_mb_obs,
+                actions=mb_actions.long(),
+                initial_hidden=mb_hidden,
+                alive_mask=alive_mask_full,
+                done_mask=mb_terminated,
+                return_encoder_output=need_sigreg,
             )
 
         alive_f = mb_alive.float()  # (T, B_mb, N)
@@ -1388,15 +1383,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         pg_loss = (torch.max(pg_loss1, pg_loss2) * actor_f).sum() / actor_sum
 
         # ---- Value loss --------------------------------------------------
-        # Cross-entropy against a two-hot (or HL-Gauss) target over the value grid.
-        # Unlike squared error this is scale-free in the target and bounded in the
-        # gradient, which is what lets every component share one support and one
-        # loss weight regardless of how sparse its returns are.
         target_norm = self.scaler.normalize(mb_returns).detach()  # (T, B_mb, N, K)
-        target_dist = two_hot_targets(
-            target_norm, self._value_bin_centers, self.cfg.value_sigma
-        )  # (T, B_mb, N, K, V)
-        vf_loss_raw = value_dist_cross_entropy(value_logits, target_dist)  # (T, B_mb, N, K)
+        vf_loss_raw = (new_value - target_norm).pow(2)  # (T, B_mb, N, K)
         vf_loss = (vf_loss_raw * alive_k).sum() / (mask_sum * K)
 
         # ---- Entropy bonus -----------------------------------------------
@@ -1503,10 +1491,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # ---- Actor / critic gradient split ------------------------------------
         # Both terms land on the same trunk, so max_grad_norm renormalizes them
         # together: whichever sends more gradient takes a larger share of every
-        # clipped step. That share is what the value loss trades against the
-        # policy, and inferring it from the total norm is how a 3.4x imbalance
-        # went unnoticed across two runs. Costs two extra backward passes, so it
-        # runs on one micro-batch per update at the histogram cadence.
+        # clipped step, and the other loses it. Inferring that split from the
+        # total norm is how a 3.4x imbalance survived two full runs -- see the
+        # categorical-critic entry in docs/internal/training-plan.md. Costs two
+        # extra backward passes, so it runs on one micro-batch per update at the
+        # histogram cadence.
         if measure_grad_split:
             params = [p for p in self._policy_module.parameters() if p.requires_grad]
             terms = {
@@ -1561,25 +1550,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             # All additive GPU tensors; ev/std finalization and the single CPU
             # transfer happen once per minibatch in _update_epochs.
             if is_primary:
-                pred_norm = expected_value(value_logits.detach(), self._value_bin_centers)
-                pred_k = self.scaler.denormalize(pred_norm)  # (T, B_mb, N, K)
+                pred_k = self.scaler.denormalize(new_value.detach())  # (T, B_mb, N, K)
                 residuals_k = mb_returns - pred_k  # (T, B_mb, N, K)
                 diag["value_loss_k"] = (vf_loss_raw.detach() * alive_k).sum(
                     (0, 1, 2)
                 ) / mask_sum  # (K,)
-                # Fraction of critic targets falling outside the value grid. The
-                # bins cannot represent these, and every one of them encodes to
-                # the same end bin, so a component whose events all land out
-                # there has no learnable signal left however well the trunk fits.
-                #
-                # Measured baseline at the production span floor: zero for every
-                # sparse component and up to 0.006 for the dense ones, whose
-                # spans were never floored. A sparse component reading anything
-                # above zero here means its span has collapsed onto the noise
-                # floor of nothing happening, which is what broke run 710.
-                diag["target_clip_k"] = (
-                    (target_norm.abs() > self._value_bin_centers[-1]).float() * alive_k
-                ).sum((0, 1, 2)) / mask_sum
                 diag["ret_mean_k"] = (mb_returns * alive_k).sum((0, 1, 2)) / mask_sum
                 diag["ret_sq_k"] = (mb_returns.pow(2) * alive_k).sum((0, 1, 2)) / mask_sum
                 diag["res_mean_k"] = (residuals_k * alive_k).sum((0, 1, 2)) / mask_sum
@@ -1792,16 +1767,14 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             # backward pass is overflowing and needs investigating at source.
             "train/nonfinite_grad_fraction": [],
             # Actor / critic split of the pre-clip gradient, and the actor's share
-            # of it. Measured on one micro-batch per update (see
-            # measure_grad_split); the share is what max_grad_norm hands to the
-            # policy after renormalizing both terms together.
+            # of it. Measured on one micro-batch per update; the share is what
+            # max_grad_norm hands to the policy after renormalizing both together.
             "train/grad_norm_actor": [],
             "train/grad_norm_critic": [],
             "train/actor_grad_share": [],
         }
         accum_k: dict[str, list[torch.Tensor]] = {
             "critic/value_loss": [],
-            "critic/target_clip_frac": [],
             "critic/explained_variance": [],
             "critic/return_mean": [],
             "critic/value_pred_mean": [],
@@ -1822,14 +1795,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         target_kl = self._effective_target_kl()
 
         # Explained variance describes the critic at the *end* of the update, so
-        # unlike its sibling metrics it is not averaged over epochs — it is taken
+        # unlike its sibling metrics it is not averaged over epochs -- it is taken
         # from the last epoch that actually ran. Holding it in its own list that
         # resets per epoch is what makes "last epoch that ran" different from
         # "epoch num_epochs-1": target_kl can break the loop early, and gating on
-        # the final index instead dropped the whole family for those updates. That
-        # lost ~4% of points on run 710, biased towards exactly the updates where
-        # the policy moved furthest, and would lose far more once target_kl
-        # tightens to high_winrate_target_kl.
+        # the final index instead dropped the whole family for those updates.
         ev_epoch: list[torch.Tensor] = []
         # Armed once per call; the first primary micro-batch consumes it.
         measure_split = record_histograms
@@ -1875,7 +1845,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 )
                 _primary_k = (
                     "value_loss_k",
-                    "target_clip_k",
                     "ret_mean_k",
                     "ret_sq_k",
                     "res_mean_k",
@@ -2027,7 +1996,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     res_var_k = k_stats["res_sq_k"] - k_stats["res_mean_k"].pow(2)
                     ev_k = 1.0 - res_var_k / (ret_var_k + 1e-8)  # (K,)
                     accum_k["critic/value_loss"].append(k_stats["value_loss_k"])
-                    accum_k["critic/target_clip_frac"].append(k_stats["target_clip_k"])
                     accum_k["critic/return_mean"].append(k_stats["ret_mean_k"])
                     accum_k["returns/component"].append(self._ret_per_comp_mean_k)
                     accum_k["critic/value_pred_mean"].append(k_stats["pred_mean_k"])
@@ -2114,6 +2082,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 self.device,
                 model_config=self.model_config,
                 compile_mode=self._compile_mode,
+                team_pma_k=self._win_k,
             )
             return LadderOpponent(
                 policy=entry.policy,

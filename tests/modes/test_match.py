@@ -51,6 +51,7 @@ def _policy_agent(reads_bullets: bool = True, paradigm: str = "ego_pass", record
         ship_config=SHIP_CONFIG,
         env_config=ENV_CONFIG,
         num_value_components=3,
+        team_pma_k=(),
         paradigm=paradigm,
     )
     return ResolvedAgent("policy", _Recorder(policy) if record else policy, bundle=bundle)

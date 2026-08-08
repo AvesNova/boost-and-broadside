@@ -217,7 +217,7 @@ class TrainingSchedule:
     sigreg_coef: Callable[[int], float]  # weight for SIGReg encoder regularization loss
 
     # --- Reward group scales (component → group mapping: _GROUP in train/rl/ppo.py) ---
-    true_reward_scale: Callable[[int], float]  # the win component
+    true_reward_scale: Callable[[int], float]  # win components (ally_win, enemy_win)
     global_scale: Callable[[int], float]  # team source-split damage/death rewards
     local_scale: Callable[[int], float]  # self-only rewards (shaping, kill credit, ...)
 

@@ -256,67 +256,83 @@ slower than random (97.0 vs 46.4 px/s); random is the slow one.
 Run 708 is **uninterpretable** as evidence about the tick rate or the reward mix:
 two measurement bugs were active throughout it.
 
-### `ec3463a` / `62da40d` / `bd0c215` — categorical critic
+### Block C — categorical critic — **tried and reverted**
 
-Three separately-revertable commits, in that order.
+Shipped as `ec3463a` (drop TeamPMA), `62da40d` (categorical critic),
+`bd0c215` (merge the win pair), then `a5cb5dd` (rebalance the value
+coefficient). Three training runs. **All of it reverted** except the EV
+logging fix and the actor/critic gradient instrument.
 
-**`ec3463a` — dropped TeamPMA.** The win/loss components had their own value
-head fed by pooling-by-multi-head-attention over each team's live ships. The
-trunk already runs spatial attention over all ships in every block, so a ship's
-embedding is team-aggregated before any head sees it — the pool was re-deriving
-something the representation already carried, at the cost of a second head, a
-second init path, and a per-component merge loop in both forward paths. Done
-first so the categorical rewrite landed on one head instead of two. **M4** is
-gone with it.
+**Runs, all against `iconic-shadow-709` (MSE + TeamPMA + split win):**
 
-**`62da40d` — categorical critic.** `value_bins` logits per component over a
-fixed grid spanning ±`value_support`, cross-entropy against a two-hot target,
-scalar recovered as the distribution's mean. `train/rl/value_dist.py` owns the
-grid, the targets and the decode.
+| run | config | Elo @80–100M |
+|---|---|---:|
+| `iconic-shadow-709` | MSE, TeamPMA, split win | **1221** |
+| `ruby-puddle-710` | CE, `return_min_span=1e-3` | (representation bug) |
+| `charmed-moon-711` | CE, span floor restored | 1156 |
+| `youthful-spaceship-712` | + `value_function_coef=0.29` | 1103 |
 
-Binned in **normalized** space (post-`ReturnScaler`), not symlog: a fixed grid is
-only meaningful over a quantity with a stable scale, and the scaler is what
-provides that. It also means one support serves all K components. 51 bins over
-±5 → 0.2-wide bins, clipping ~3e-5 of targets (measured on a live checkpoint:
-worst-case |z| 6.27, p99.9 4.07).
+**The premise was wrong.** The block was justified by a 281× ratio in
+`critic/value_loss` between `ally_win` and the dense components, read as an
+undertrained win baseline. That ratio is what target compression does to a
+*squared* loss even with a perfect critic — c=23 compression gives c²=526 —
+and it carries no information about fit quality. The metric that does is
+scale-free, and `ally_win`'s explained variance in 709 was **0.88**. There
+was never an underfit baseline to fix.
 
-This is what let `return_min_span` go to 1e-3. CE's gradient is bounded per
-sample and identical whether a target sits just outside the support or far
-outside it, so the mechanism that forced the floor up no longer exists.
+**What the critic change actually did.** In 711 the critic improved by
++0.043 mean EV, concentrated entirely in the two components that had
+headroom (`field_death` 0.49→0.80, `kill_assist` 0.46→0.68) and flat on the
+other ten, which were already at 0.85–0.98. The policy was 65 Elo and 9
+win-rate points *worse*. **Improving a component's baseline does not imply a
+better policy** — that is the finding worth keeping.
 
-`value_sigma` switches two-hot → HL-Gauss; 0 keeps the target's mean exactly
-equal to the return.
+**Three controls were broken, in sequence:**
 
-Cost, measured against a ~3.8 GB tensor footprint: **+5.3% forward FLOPs, ~209 MB
-activation** at the production micro-batch. The value head goes from 1.1% to
-~6.4% of forward FLOPs. 31 bins is the fallback if the card is tight (+3.2%,
-+132 MB).
+1. **Representation.** The ±5 bin support was sized from a z-distribution
+   measured on a checkpoint whose scaler still had `min_span=1.0`, then the
+   same commit dropped the floor — changing the distribution it was sized
+   against by up to 73×. For a sparse component the p5–p95 span measures the
+   noise floor of nothing happening (`field_death`: central 90% spans 0.0009,
+   events reach −0.12), so events landed at |z| up to 2000 and all encoded to
+   the same end bin. Measured round-trip ceilings: 0.085 / 0.151 / 0.415
+   against observed EV of 0.024 / 0.032 / 0.109. That is run 710.
+2. **Effective learning rate.** CE sends **3.44× the trunk gradient** MSE does
+   at convergence (measured offline; its loss *value* is 24× larger, but that
+   is mostly the CE entropy floor, and only 1.38× reaches the head's own
+   parameters). Solving the observed gradient norms for an actor/critic split
+   gives actor 0.68 / critic 0.73 under MSE (total 1.00 vs observed 0.98) and
+   actor 0.68 / critic 2.51 under CE (total 2.60 vs observed 2.58). Against
+   `max_grad_norm=1.0` the actor's share fell 68% → 26%. Run 712 corrected it
+   — gradient norm and share both landed on target — and Elo got *worse*. The
+   mechanism was real and was not the cause.
+3. **TeamPMA.** `ec3463a` removed the attention-pooled win head on the
+   argument that "the trunk already runs spatial attention, so a ship's
+   embedding is already team-aggregated." That was never measured, and it is
+   not equivalent: attention over all tokens is permutation-equivariant across
+   the whole set, while PMA computes an explicit per-team aggregate masked to
+   that team's living ships, and P(win) is a set function over a team. **Every
+   run that lost to 709 was missing it.** Perfectly confounded with the critic
+   change across all three runs, and never isolated.
 
-**`bd0c215` — merged `ally_win` + `enemy_win` → `win`.** `EnemyWinReward`
-subclassed `AllyWinReward` and computed an identical tensor; they differed only
-in lambda routing. One component in `enemy_neg_lambda_components` and *not* in
-`ally_zero_components` gives allies +1 and enemies −1 — exactly the pair's sum.
-The split existed because a scalar critic reads a draw and an even fight
-identically (both E[v] = 0); the categorical head separates them as mass on the
-zero bin versus mass split between the ends. **K 13 → 12**, returning ~8% of the
-head's cost. Registry order shifts by one.
+**Kept:** the EV logging fix (`93a4638` — explained variance was gated on the
+final epoch *index*, so the whole family was silently dropped whenever
+`target_kl` broke the loop early, losing ~4% of points biased toward the
+updates where the policy moved furthest), and `train/actor_grad_share`, which
+makes control 2 visible on update 1 instead of three runs later.
 
-**Checkpoint compatibility: none.** `ec3463a` and `62da40d` both change the state
-dict, and `bd0c215` changes K. A run cannot be resumed across this. TeamPMA
-weights are rejected by name at load time rather than surfacing as a state-dict
-key error. **The reference ladder survives** — the rungs are policy-free scripted
-agents, so `reference_ladder` and `random_elo` need no recalibration.
+**Open:** whether TeamPMA is load-bearing. One run of MSE + no-TeamPMA
+against 709 settles it, and it is the only single-variable question left from
+this block. If PMA turns out to matter, the categorical-critic verdict has to
+be re-read, because it was never tested against a baseline that matched on
+architecture.
 
-**Verified:** 599 tests, `--mode rl --smoke`, `--mode rl_fields --smoke`. Value
-loss starts ~ln(51) = 3.93 above the old MSE baseline — the uniform-distribution
-floor, exactly as expected — and descends (12.77 → 11.32 over three updates).
-Notably *stable*, unlike the ~400× blowup that dropping the span produced under
-MSE.
+## What went wrong
 
-## What went wrong twice
+Two distinct failure modes. The first is the earlier pair of regressions; the
+second is Block C, which failed a different way and more expensively.
 
-Both regressions were the same shape of mistake: **a representation changed and
-its consumers were not audited.**
+### Shape 1 — a representation changed and its consumers were not audited
 
 - Making scripted and the rungs *stationary references* (`policy=None`) was
   correct. But `anchor_is_random` had encoded "stationary" as "policy-free", and
@@ -339,33 +355,51 @@ numbers. Generalisable guards:
    scripted-vs-scripted tick sweep answered "did the env get harder or did
    learning break?" in one run. Reach for it first.
 
+### Shape 2 — an argument was recorded as if it were a measurement
+
+Block C cost three runs and reverted. Every step of it was defensible in
+isolation and the aggregate was not, because unmeasured claims kept entering
+the record as settled facts and later work was built on them.
+
+1. **A ratio is not a finding.** The 281× `critic/value_loss` gap was read as
+   an undertrained baseline. It is what a squared loss does to targets
+   compressed 23×. One look at `critic/explained_variance` (0.88) would have
+   ended the block before it started. *Check whether the metric you are
+   reasoning from is scale-free before drawing a conclusion about fit.*
+2. **Don't measure a distribution and then change it in the same commit.** The
+   bin support was sized against a scaler state that the same commit altered by
+   up to 73×.
+3. **Bundling a "small, sign-uncertain" change into a block destroys the
+   baseline.** TeamPMA removal was never isolated, so all three runs compared
+   two variables against 709 and none of them can attribute anything. If a
+   change is genuinely expected to do nothing, that is an argument for testing
+   it separately and cheaply, not for hiding it inside something else.
+4. **Anything sharing `max_grad_norm` shares an effective learning rate.** A
+   3.4× shift in the critic's trunk gradient went unnoticed for three runs
+   because only the total norm was logged.
+5. **Offline round-trips are cheap and would have caught two of the three.**
+   The representation ceiling (encode → decode real returns, no learning) and
+   the head-only loss comparison both run in minutes. Run them before, not
+   after.
+6. **A better critic is not the goal.** EV rose +0.31 on `field_death` and
+   +0.22 on `kill_assist` and the policy got worse. Auxiliary metrics justify a
+   change only when the objective moves with them.
+
 ## Remaining blocks
 
-**Block C is done** (`ec3463a`, `62da40d`, `bd0c215` — see Done above). It was
-promoted ahead of A and B because it is the other half of `8f8e612`, and shipping
-the actor half alone caused the first regression:
+**Block C was tried and reverted** — see the post-mortem in Done. The short
+version: its premise (an undertrained win baseline, inferred from a 281×
+value-loss ratio) was arithmetic rather than a finding, and `ally_win`'s
+explained variance in 709 was 0.88. Three runs, none beat the baseline.
 
-| | `ally_win` | `damage_dealt_enemy` |
-|---|---:|---:|
-| p95−p5 span | 0.058 | 2.02 |
-| half-span used (floor 1.0) | **0.5** — 17× too large | 1.01, its own |
-| normalized target std | **0.058** | ~1.0 |
-| share of critic gradient | **1/300** | 1 |
-| measured `critic/value_loss` ratio | — | **281×** |
+**A and B remain, and are independent of each other.** D no longer has a
+dependency on C. Before any of them, one run settles the one live question
+Block C left behind: **MSE + no TeamPMA vs 709**, which isolates the
+architecture change that was confounded with the critic across all three runs.
+Until that is answered, 709 is not a baseline we understand.
 
-The win component's advantage was amplified ~13× on the actor while its baseline
-was trained **280× less** than the dense heads. A loud signal with a badly-fit
-baseline is a high-variance advantage — exactly what `loss/policy_gradient =
-−0.002` alongside *elevated* KL and clip fraction showed: the policy moving more
-and progressing less. The 4.0 → 1.5 rebalance in `e467120` was a stopgap on the
-actor side; `62da40d` removed the cause.
-
-**A and B remain, and are independent of each other.** D was gated on C, so it is
-now unblocked — but run C before starting D so latent collapse and a rescaled
-critic are never being debugged in the same run.
-
-Roughly one run each. Budget is tight, so each block is a coherent theme that can
-be judged as one thing.
+Roughly one run each. Budget is tight, so each block is a coherent theme that
+can be judged as one thing.
 
 ### Block A — action distribution
 
@@ -431,10 +465,6 @@ regresses, `shared_pass` is the suspect (it forfeits the canonical team-0 prior)
 **Not doing:** hiding enemy pending actions. The leak is 16.7 ms against a ~0.4 s
 bullet flight, symmetric, and it would forfeit `shared_pass`. Block D's
 next-action head gets the opponent-modeling benefit without paying that.
-
-### Block C — value head — **done**
-
-Shipped as three commits; details in the Done section above.
 
 ### Block D — representation
 
@@ -509,19 +539,17 @@ env is 15% of wall clock and the update is 85% — a learned world model would b
 - **`advantage_min_rms` is an epsilon. `return_min_span` is NOT, and must stay
   at 1.0.** For a sparse component the p5–p95 span measures the noise floor of
   nothing happening, not the signal: `field_death`'s central 90% spans 0.0009
-  while its events reach −0.12. Drop the floor and those events land at |z| up
-  to 2000 against a ±5 grid, all encoding to the same end bin. Run 710 did this
-  and the affected components collapsed. `scaler/floor_bound_span/*` binding is
-  therefore *expected* and not a bug; `scaler/floor_bound_rms/*` binding still is.
-- **Watch `critic/target_clip_frac/*`.** Nonzero on a sparse component means its
-  targets have left the value grid — the failure above, visible on update 1.
-- **The value grid lives in normalized space.** `value_support` is in
-  `ReturnScaler` units, not symlog. It only stays meaningful because the scaler
-  gives every component a stable scale; binning raw returns would need a
-  different support per component.
-- **`win` must stay out of `ally_zero_components`.** It needs lambda +1 over
-  allies and −1 over enemies. Zeroing the ally side leaves a critic that sees a
-  loss but never a win.
+  while its events reach −0.12. Dropping it to an epsilon does not "fix" a
+  floor-bound component, it hands that component a divisor 20–70× too small.
+  `scaler/floor_bound_span/*` binding is *expected*;
+  `scaler/floor_bound_rms/*` binding is still a bug. The 281× ratio in
+  `critic/value_loss` between a floored and an unfloored component is what a
+  squared loss does to compressed targets and says nothing about fit — read
+  `critic/explained_variance` instead.
+- **`max_grad_norm` renormalizes the actor and the critic together.** Any
+  change to the value loss changes the actor's share of every clipped step.
+  `train/actor_grad_share` reports it directly; a change that moves it is a
+  change to the effective learning rate, not just to the critic.
 - **Discounts encode horizons in seconds.** Changing the tick rate means
   `γ ** (rate_old/rate_new)`, not reusing the number.
 - **`max_episode_steps` counts physics ticks**, not decisions.

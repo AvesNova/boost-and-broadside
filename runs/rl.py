@@ -61,23 +61,7 @@ RL_SCHEDULE = TrainingSchedule(
     policy_gradient_coef=constant(1.0),
     entropy_coef=constant(0.005),
     behavior_cloning_coef=constant(2.0),
-    # 0.29, not 1.0. The value loss and the policy loss land on the same trunk
-    # and max_grad_norm renormalizes them together, so whichever sends more
-    # gradient takes a larger share of every clipped step. Cross-entropy sends
-    # 3.44x the trunk gradient that squared error does at convergence (measured
-    # offline on real returns; its loss value is 24x larger, but that is mostly
-    # the CE entropy floor and only 1.38x reaches the head's own parameters).
-    #
-    # Run 711 paid for that: solving the observed gradient norms for an
-    # actor/critic split gives actor 0.68 / critic 0.73 under MSE against actor
-    # 0.68 / critic 2.51 under CE, so the actor's share of each clipped update
-    # fell from 68% to 26%. Its critic fit better and its policy was ~65 Elo
-    # worse. 0.29 puts the critic term back at 0.73 and the actor back at 68%.
-    #
-    # Watch train/actor_grad_share -- this is a convergence-regime number, and
-    # MSE's gradient is larger early, so the critic may be under-weighted for
-    # the first ~20M steps.
-    value_function_coef=constant(0.29),
+    value_function_coef=constant(1.0),
     sigreg_coef=constant(0.00),
     true_reward_scale=constant(1.0),
     global_scale=constant(1.0),
@@ -138,28 +122,21 @@ RL_TRAIN_CONFIG = TrainConfig(
     # reference run, so runs stay comparable in experience rather than in tokens.
     total_timesteps=500_000_000,
     return_ema_alpha=0.005,
-    # NOT an epsilon, and it must not be dropped to one. It divides the return
-    # distribution by a robust p5-p95 half-span, and for a sparse component that
-    # span measures the noise floor of nothing happening rather than the signal:
-    # field_death's central 90% spans 0.0009 while its events reach -0.12. Drop
-    # the floor and those events land at |z| up to 2000 against a +/-5 bin grid,
-    # where every one of them encodes to the same end bin. Run 710 did exactly
-    # that and the affected components collapsed -- measured representation
-    # ceilings of 0.085 (field_death), 0.151 (kill_shot), 0.415
-    # (damage_dealt_ally) against observed EV of 0.024/0.032/0.109.
-    #
-    # At 1.0 the ceiling is 1.000 on every component. The compression that used
-    # to cost those components their share of the *critic* gradient is no longer
-    # a concern under cross-entropy, whose loss does not scale with the target,
-    # and two-hot stays exact well below one bin width because it interpolates
-    # linearly rather than quantizing.
+    # Held at 1.0 deliberately, and it *does* bind on six of the eleven active
+    # components (watch scaler/floor_bound_span/*). Lowering it to an epsilon is
+    # not a free bug fix: ReturnScaler divides the whole return distribution by a
+    # robust p5-p95 half-span, so a component whose central 90% is tight but whose
+    # tails are not — every sparse terminal reward — produces very large normalized
+    # targets, and the value loss squares them. Measured: loss/value rises ~11x at
+    # production spans and ~400x in --smoke, which against max_grad_norm=1.0 (grad
+    # norm currently 0.65) makes clipping bind every step and silently cuts the
+    # effective learning rate. Fixing it properly means bounding the critic's
+    # outlier sensitivity (Huber value loss, or a tail-aware span) and re-tuning
+    # value_function_coef / max_grad_norm alongside — its own change, with its own
+    # measurement, not this one.
     return_min_span=1.0,
-    # Two-hot. An offline head-only comparison on frozen trunk features measured
-    # HL-Gauss at sigma=0.75 as a wash (mean held-out EV 0.613 vs 0.611), so the
-    # sharper target is kept for being the one whose mean is exact.
-    value_sigma=0.0,
     # The actor-side counterpart is a true epsilon. Its floor was pinning
-    # win/kill_shot/kill_assist/combat_death/shoot_quality at
+    # ally_win/enemy_win/kill_shot/kill_assist/combat_death/shoot_quality at
     # 0.1 against true RMS values of 0.0075-0.027, downweighting the win signal
     # ~13x in the policy gradient. No loss-magnitude risk here: the aggregated
     # advantage is renormalized to unit RMS again after lambda aggregation

@@ -200,7 +200,7 @@ class TestObservationSchema:
         ]
 
         for payload in families:
-            for key in ("model_config", "env_config", "ship_config"):
+            for key in ("model_config", "env_config", "ship_config", "team_pma_k"):
                 assert key in payload, f"payload family is missing {key}"
             assert payload["ship_config"] == dataclasses.asdict(trainer.ship_config)
 
@@ -240,17 +240,8 @@ class TestNumValueComponents:
         assert infer_num_value_components(ckpt) == 7
 
     def test_infer_falls_back_to_state_dict_shape_for_legacy_checkpoints(self):
-        """Checkpoints written before the field recover K from the value head.
-
-        The head emits K * value_bins logits, so recovering K needs the bin count
-        as well — which the grid buffer carries in the same state dict.
-        """
-        ckpt = {
-            "policy_state_dict": {
-                "value_head_local.3.weight": torch.zeros(5 * 51, 4),
-                "value_bin_centers": torch.zeros(51),
-            }
-        }
+        """Checkpoints written before the field recover K from the value head."""
+        ckpt = {"policy_state_dict": {"value_head_local.3.weight": torch.zeros(5, 4)}}
         assert infer_num_value_components(ckpt) == 5
 
 
@@ -285,6 +276,7 @@ class TestBulletReadingCheckpoints:
             num_ships=trainer.wrapper.num_ships,
             ship_config=trainer.ship_config,
             model_config=trainer.model_config,
+            team_pma_k=trainer._win_k,
         )
 
         assert bundle.policy.bullet_encoder is not None
@@ -554,12 +546,7 @@ class TestBestCheckpoints:
 
         saved = torch.load(ckpt_dir / "best_avg.pt", map_location="cpu", weights_only=False)
         live_state = trainer._policy_module.state_dict()
-        trained = {name for name, _ in trainer._policy_module.named_parameters()}
         for name, avg_param in saved["policy_state_dict"].items():
-            # Non-parameter buffers (the value bin grid) are constants shared by
-            # both policies — only the learned weights can be expected to differ.
-            if name not in trained:
-                continue
             assert not torch.equal(avg_param, live_state[name])
 
     def test_best_avg_saves_when_live_elo_improves_in_the_same_update(self, tmp_path):

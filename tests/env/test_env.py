@@ -38,7 +38,8 @@ def reward_cfg() -> RewardConfig:
         enemy_combat_death_weight=0.5,
         ally_field_death_weight=0.5,
         enemy_field_death_weight=0.5,
-        win_weight=1.0,
+        ally_win_weight=1.0,
+        enemy_win_weight=1.0,
         facing_weight=0.01,
         closing_speed_weight=0.01,
         shoot_quality_weight=0.01,
@@ -58,7 +59,7 @@ def reward_cfg() -> RewardConfig:
                 "enemy_field_damage",
                 "enemy_combat_death",
                 "enemy_field_death",
-                "win",
+                "enemy_win",
             }
         ),
         ally_zero_components=frozenset(
@@ -67,6 +68,7 @@ def reward_cfg() -> RewardConfig:
                 "enemy_field_damage",
                 "enemy_combat_death",
                 "enemy_field_death",
+                "enemy_win",
             }
         ),
     )

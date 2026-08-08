@@ -15,11 +15,13 @@ from boost_and_broadside.env.rewards import (
     AllyCombatDeathReward,
     AllyFieldDamageReward,
     AllyFieldDeathReward,
+    AllyWinReward,
     ClosingSpeedReward,
     EnemyCombatDamageReward,
     EnemyCombatDeathReward,
     EnemyFieldDamageReward,
     EnemyFieldDeathReward,
+    EnemyWinReward,
     FacingReward,
     KillAssistReward,
     KillShotReward,
@@ -32,7 +34,6 @@ from boost_and_broadside.env.rewards import (
     ShootingPenaltyReward,
     ShootQualityReward,
     SpeedReward,
-    WinReward,
     build_reward_components,
     compute_per_component_rewards,
 )
@@ -55,7 +56,8 @@ def reward_cfg() -> RewardConfig:
         enemy_combat_death_weight=0.5,
         ally_field_death_weight=0.5,
         enemy_field_death_weight=0.5,
-        win_weight=1.0,
+        ally_win_weight=1.0,
+        enemy_win_weight=1.0,
         facing_weight=1.0,
         closing_speed_weight=1.0,
         shoot_quality_weight=1.0,
@@ -75,7 +77,7 @@ def reward_cfg() -> RewardConfig:
                 "enemy_field_damage",
                 "enemy_combat_death",
                 "enemy_field_death",
-                "win",
+                "enemy_win",
             }
         ),
         ally_zero_components=frozenset(
@@ -84,6 +86,7 @@ def reward_cfg() -> RewardConfig:
                 "enemy_field_damage",
                 "enemy_combat_death",
                 "enemy_field_death",
+                "enemy_win",
             }
         ),
     )
@@ -105,14 +108,11 @@ def _make_4ship_state(cfg):
 
 
 class TestRewardComponentNames:
-    def test_the_registry_order_is_exactly_this(self):
-        """The K axis of every rewards/values/advantages tensor is this order.
+    def test_k_equals_23(self):
+        assert len(REWARD_COMPONENT_NAMES) == 23
 
-        One assertion rather than a scatter of index literals: the order is what
-        is load-bearing, and a single tuple fails with a readable diff instead of
-        seven separate off-by-one errors.
-        """
-        assert REWARD_COMPONENT_NAMES == (
+    def test_source_split_starts_the_registry(self):
+        assert REWARD_COMPONENT_NAMES[:8] == (
             "ally_combat_damage",
             "enemy_combat_damage",
             "ally_field_damage",
@@ -121,21 +121,28 @@ class TestRewardComponentNames:
             "enemy_combat_death",
             "ally_field_death",
             "enemy_field_death",
-            "win",
-            "facing",
-            "closing_speed",
-            "shoot_quality",
-            "kill_shot",
-            "kill_assist",
+        )
+
+    def test_kill_shot_is_index_13(self):
+        assert REWARD_COMPONENT_NAMES[13] == "kill_shot"
+
+    def test_kill_assist_is_index_14(self):
+        assert REWARD_COMPONENT_NAMES[14] == "kill_assist"
+
+    def test_source_split_local_damage_is_registered(self):
+        assert REWARD_COMPONENT_NAMES[15:17] == (
             "combat_damage_taken",
             "field_damage_taken",
-            "damage_dealt_enemy",
-            "damage_dealt_ally",
-            "combat_death",
-            "field_death",
-            "shooting_penalty",
-            "speed",
         )
+
+    def test_damage_dealt_enemy_is_index_17(self):
+        assert REWARD_COMPONENT_NAMES[17] == "damage_dealt_enemy"
+
+    def test_damage_dealt_ally_is_index_18(self):
+        assert REWARD_COMPONENT_NAMES[18] == "damage_dealt_ally"
+
+    def test_source_split_local_death_is_registered(self):
+        assert REWARD_COMPONENT_NAMES[19:21] == ("combat_death", "field_death")
 
     def test_no_duplicates(self):
         assert len(set(REWARD_COMPONENT_NAMES)) == len(REWARD_COMPONENT_NAMES)
@@ -210,60 +217,74 @@ def test_source_death_rewards_read_only_their_exact_source(cfg, component_cls, s
 # ---------------------------------------------------------------------------
 
 
-class TestWinReward:
+class TestAllyWinReward:
     def test_winning_team_gets_positive_reward(self, cfg):
-        """WinReward gives +1 to each ship on the team that won."""
+        """AllyWinReward gives +1 to each ship on the team that won."""
         prev = _make_4ship_state(cfg)
         next_ = _make_4ship_state(cfg)
         next_.ship_alive[0, 2] = False
         next_.ship_alive[0, 3] = False  # team 1 eliminated
         dones = torch.tensor([True, False], dtype=torch.bool)
 
-        r = WinReward(weight=1.0)
+        r = AllyWinReward(weight=1.0)
         reward = r.compute(prev, torch.zeros(2, 4, 3), next_, dones)
 
         assert reward[0, 0].item() == pytest.approx(1.0, rel=1e-5)
         assert reward[0, 1].item() == pytest.approx(1.0, rel=1e-5)
 
     def test_losing_team_gets_zero(self, cfg):
-        """The losing team gets 0, not -1: the enemy lambda supplies the sign."""
+        """AllyWinReward gives 0 (not -1) to the losing team; lambda handles sign."""
         prev = _make_4ship_state(cfg)
         next_ = _make_4ship_state(cfg)
         next_.ship_alive[0, 2] = False
         next_.ship_alive[0, 3] = False
         dones = torch.tensor([True, False], dtype=torch.bool)
 
-        r = WinReward(weight=1.0)
+        r = AllyWinReward(weight=1.0)
         reward = r.compute(prev, torch.zeros(2, 4, 3), next_, dones)
 
         assert reward[0, 2].item() == pytest.approx(0.0)
         assert reward[0, 3].item() == pytest.approx(0.0)
-
-    def test_a_draw_gives_every_ship_zero(self, cfg):
-        """Both teams alive at termination is a draw, and reads 0 on both sides.
-
-        With one component this is the case that has to stay distinguishable from
-        a loss: a draw is 0 everywhere, a loss is 0 for the winner and -1 after
-        the enemy lambda for the loser.
-        """
-        prev = _make_4ship_state(cfg)
-        next_ = _make_4ship_state(cfg)
-        dones = torch.tensor([True, False], dtype=torch.bool)
-
-        r = WinReward(weight=1.0)
-        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, dones)
-
-        assert reward.abs().max().item() == 0.0
 
     def test_non_terminal_gives_zero_reward(self, cfg):
         prev = _make_4ship_state(cfg)
         next_ = _make_4ship_state(cfg)
         dones = torch.zeros(2, dtype=torch.bool)
 
-        r = WinReward(weight=1.0)
+        r = AllyWinReward(weight=1.0)
         reward = r.compute(prev, torch.zeros(2, 4, 3), next_, dones)
 
         assert reward.abs().max().item() == 0.0
+
+
+class TestEnemyWinReward:
+    def test_winning_team_gets_positive_reward(self, cfg):
+        """EnemyWinReward also gives +1 to winning-team ships.
+        Lambda=-1 at PPO time means allies benefit when enemies get 0 here."""
+        prev = _make_4ship_state(cfg)
+        next_ = _make_4ship_state(cfg)
+        next_.ship_alive[0, 2] = False
+        next_.ship_alive[0, 3] = False
+        dones = torch.tensor([True, False], dtype=torch.bool)
+
+        r = EnemyWinReward(weight=1.0)
+        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, dones)
+
+        assert reward[0, 0].item() == pytest.approx(1.0, rel=1e-5)
+        assert reward[0, 1].item() == pytest.approx(1.0, rel=1e-5)
+
+    def test_losing_team_gets_zero(self, cfg):
+        prev = _make_4ship_state(cfg)
+        next_ = _make_4ship_state(cfg)
+        next_.ship_alive[0, 2] = False
+        next_.ship_alive[0, 3] = False
+        dones = torch.tensor([True, False], dtype=torch.bool)
+
+        r = EnemyWinReward(weight=1.0)
+        reward = r.compute(prev, torch.zeros(2, 4, 3), next_, dones)
+
+        assert reward[0, 2].item() == pytest.approx(0.0)
+        assert reward[0, 3].item() == pytest.approx(0.0)
 
 
 # ---------------------------------------------------------------------------

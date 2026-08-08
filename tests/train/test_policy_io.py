@@ -166,6 +166,7 @@ class TestLegacyCheckpoints:
                 num_ships=trainer.wrapper.num_ships,
                 ship_config=trainer.ship_config,
                 model_config=trainer.model_config,
+                team_pma_k=trainer._win_k,
             )
 
         assert bundle.model_config == trainer.model_config
@@ -186,28 +187,4 @@ class TestLegacyCheckpoints:
                 device="cpu",
                 num_ships=trainer.wrapper.num_ships,
                 ship_config=trainer.ship_config,
-            )
-
-    def test_a_team_pma_checkpoint_is_refused_by_name(self, tmp_path):
-        """The removed pooled value path has no home in the current policy.
-
-        Without this the failure is a state-dict key error several frames into
-        ``load_state_dict``, which reads like a corrupt file rather than a
-        checkpoint from the wrong architecture.
-        """
-        from tests.train.test_ppo import _make_trainer
-
-        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
-        path = trainer._save_ladder_snapshot()
-        payload = torch.load(path, map_location="cpu", weights_only=False)
-        payload["policy_state_dict"]["team_pma.seeds"] = torch.zeros(2, 4)
-        torch.save(payload, path)
-
-        with pytest.raises(ValueError, match="carries TeamPMA weights"):
-            load_policy_bundle(
-                str(path),
-                device="cpu",
-                num_ships=trainer.wrapper.num_ships,
-                ship_config=trainer.ship_config,
-                model_config=trainer.model_config,
             )

@@ -11,7 +11,6 @@ from boost_and_broadside.models.yemong.attention import TransformerBlock
 from boost_and_broadside.models.yemong.encoder import ShipEncoder
 from boost_and_broadside.models.yemong.policy import YemongPolicy
 from boost_and_broadside.train.rl.features import FeatureCoordinator, build_standard_coordinator
-from boost_and_broadside.train.rl.value_dist import expected_value
 
 
 @pytest.fixture
@@ -357,13 +356,13 @@ class TestYemongPolicy:
         hidden = policy.initial_hidden(B, N, torch.device("cpu"))
         alive_mask = torch.ones(T, B, N, dtype=torch.bool)
 
-        logprob, entropy, value_logits, logits, _, _ = policy.evaluate_actions(
+        logprob, entropy, new_value, logits, _, _ = policy.evaluate_actions(
             obs, actions, hidden, alive_mask
         )
 
         assert logprob.shape == (T, B, N)
         assert entropy.shape == (T, B, N)
-        assert value_logits.shape == (T, B, N, K, model_cfg.value_bins)
+        assert new_value.shape == (T, B, N, K)
         assert logits.shape == (T, B, N, 12)
 
     def test_hidden_reset_zeros_done_envs(self, model_cfg, coordinator):
@@ -482,10 +481,9 @@ class TestYemongBlockStructure:
         )
         alive_mask = stacked.data[ObsKey.ALIVE]  # (T, B, N+M)
         with torch.no_grad():
-            _, _, seq_logits, _, _, _ = policy.evaluate_actions(
+            _, _, seq_value, _, _, _ = policy.evaluate_actions(
                 stacked, torch.stack(actions, dim=0), initial_hidden, alive_mask
             )
-            seq_value = expected_value(seq_logits, policy.value_bin_centers)
 
         assert torch.allclose(step_value, seq_value, atol=1e-5), (
             f"max diff: {(step_value - seq_value).abs().max().item()}"
@@ -534,14 +532,13 @@ class TestYemongBlockStructure:
             }
         )
         with torch.no_grad():
-            _, _, seq_logits, _, _, _ = policy.evaluate_actions(
+            _, _, seq_value, _, _, _ = policy.evaluate_actions(
                 stacked,
                 torch.stack(actions, dim=0),
                 initial_hidden,
                 stacked.data[ObsKey.ALIVE],
                 done_mask=done_mask,
             )
-            seq_value = expected_value(seq_logits, policy.value_bin_centers)
 
         assert torch.allclose(step_value, seq_value, atol=1e-5), (
             f"max diff: {(step_value - seq_value).abs().max().item()}"
@@ -782,13 +779,12 @@ class TestBulletCrossAttention:
             },
         )
         with torch.no_grad():
-            _, _, seq_logits, _, _, _ = policy.evaluate_actions(
+            _, _, seq_value, _, _, _ = policy.evaluate_actions(
                 stacked,
                 torch.stack(actions, dim=0),
                 initial_hidden,
                 stacked.data[ObsKey.ALIVE],
             )
-            seq_value = expected_value(seq_logits, policy.value_bin_centers)
 
         assert torch.allclose(torch.stack(step_values, dim=0), seq_value, atol=1e-5)
 
@@ -1151,13 +1147,12 @@ class TestNonRecurrentFieldPath:
             }
         )
         with torch.no_grad():
-            _, _, seq_logits, _, _, _ = policy.evaluate_actions(
+            _, _, seq_value, _, _, _ = policy.evaluate_actions(
                 stacked,
                 torch.stack(actions, dim=0),
                 initial_hidden,
                 stacked.data[ObsKey.ALIVE],
             )
-            seq_value = expected_value(seq_logits, policy.value_bin_centers)
 
         assert torch.allclose(torch.stack(step_values, dim=0), seq_value, atol=1e-5)
 
@@ -1203,16 +1198,18 @@ class TestOrthogonalHeadInit:
         assert torch.allclose(gram, 2.0 * torch.eye(4), atol=1e-4)
 
     def test_policy_heads_are_orthogonal_initialized(self, model_cfg, coordinator):
-        """YemongPolicy's actual heads still get orthogonal-initialized end to end
-        after the by-type refactor."""
+        """YemongPolicy's actual heads (including the team_pma_k win/loss head) still
+        get orthogonal-initialized end to end after the by-type refactor."""
+        team_pma_k = (0, 1)
         policy = YemongPolicy(
             model_cfg,
             coordinator,
             num_value_components=NUM_VALUE_COMPONENTS,
             num_ships=4,
+            team_pma_k=team_pma_k,
         )
 
-        for head in [policy.action_head, policy.value_head_local]:
+        for head in [policy.action_head, policy.value_head_local, policy.value_head_win]:
             linears = [m for m in head if isinstance(m, torch.nn.Linear)]
             first, last = linears[0], linears[-1]
             assert torch.allclose(first.bias, torch.zeros_like(first.bias))

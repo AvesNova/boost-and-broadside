@@ -367,6 +367,7 @@ class EloRoster:
         *,
         model_config: ModelConfig | None = None,
         compile_mode: str | None = None,
+        team_pma_k: tuple[int, ...] = (),
     ) -> None:
         """Load checkpoint weights into entry.policy (no-op if already loaded).
 
@@ -387,6 +388,7 @@ class EloRoster:
                 num_ships=num_ships,
                 ship_config=ship_config,
                 model_config=model_config,
+                team_pma_k=team_pma_k,
                 compile_mode=compile_mode,
             )
             entry.policy = entry.bundle.policy
