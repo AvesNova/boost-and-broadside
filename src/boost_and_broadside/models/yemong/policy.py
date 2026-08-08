@@ -10,7 +10,6 @@ Architecture (per timestep):
          → slice [:N]                    → (B, N, D)    [ship tokens only]
          → ActionHead                   → (B, N, 12)   [logits: power|turn|shoot]
          → NextStateHead                → (B, N, P)    [aux: pred next state deltas; P from coord.]
-         → TeamPMA                      → (B, N, D)    [pool per team, broadcast back]
          → ValueHead                    → (B, N, K)    [MSE critic: K components]
 
 Three entity kinds, three levels of participation:
@@ -75,51 +74,6 @@ class NextStateHead(nn.Module):
         return self.net(x)
 
 
-class TeamPMA(nn.Module):
-    """Pooling by Multi-head Attention over per-team ship embeddings.
-
-    For each team t ∈ {0, 1}, a learned seed attends over the GRU outputs of
-    alive ships on that team. Dead ships and ships from the opposite team are
-    masked out as keys. The two team embeddings are broadcast back so every
-    ship holds its team's pooled embedding — preserving the (B, N, D) shape
-    expected by the value head.
-
-    Args:
-        d_model: Token embedding dimension D.
-        n_heads:  Attention heads (must divide d_model evenly).
-    """
-
-    def __init__(self, d_model: int, n_heads: int) -> None:
-        super().__init__()
-        self.seeds = nn.Parameter(torch.zeros(2, d_model))
-        self.attn = nn.MultiheadAttention(d_model, n_heads, batch_first=True, bias=False)
-        self.norm = nn.RMSNorm(d_model)
-
-    def forward(
-        self,
-        x: torch.Tensor,  # (B, N, D)
-        team_id: torch.Tensor,  # (B, N) int
-        alive: torch.Tensor,  # (B, N) bool
-    ) -> torch.Tensor:  # (B, N, D)
-        B, N, D = x.shape
-        team_pool = x.new_zeros(B, 2, D)
-
-        for t in range(2):
-            mask = (team_id == t) & alive  # (B, N) — alive ships on team t
-            has_ship = mask.any(dim=1)  # (B,) bool
-
-            seed = self.seeds[t].view(1, 1, D).expand(B, 1, D)  # (B, 1, D)
-            # key_padding_mask: True = ignore that key position
-            out, _ = self.attn(seed, x, x, key_padding_mask=~mask, need_weights=False)
-            out = out.squeeze(1).nan_to_num(0.0)  # (B, D) — guard: all-dead → NaN → 0
-            out = out * has_ship.unsqueeze(1).to(out.dtype)  # zero dead-team envs before norm
-            team_pool[:, t] = self.norm(out)  # (B, D)
-
-        # Each ship gets its team's pooled embedding
-        idx = team_id.clamp(0, 1).long().unsqueeze(-1).expand(B, N, D)
-        return team_pool.gather(1, idx)  # (B, N, D)
-
-
 def _init_head_orthogonal(head: nn.Sequential) -> None:
     """Orthogonal-init a Linear+Norm+Act+Linear head's first and last Linear layers.
 
@@ -151,7 +105,6 @@ class YemongPolicy(nn.Module):
         coordinator: FeatureCoordinator,
         num_value_components: int,
         num_ships: int,
-        team_pma_k: tuple[int, ...] = (),
         bullet_coordinator: FeatureCoordinator | None = None,
     ) -> None:
         super().__init__()
@@ -159,8 +112,6 @@ class YemongPolicy(nn.Module):
         self._d_model = D
         self._K = num_value_components
         self._num_ships = num_ships  # N — first N tokens are ships; rest are fields
-        self._team_pma_k = team_pma_k  # K indices that use TeamPMA path for value
-        self._team_pma_k_set = set(team_pma_k)
         self.coordinator = coordinator
 
         self.encoder = ShipEncoder(model_config, coordinator, num_ships=num_ships)
@@ -188,24 +139,16 @@ class YemongPolicy(nn.Module):
             nn.GELU(),
             nn.Linear(hidden_dim, TOTAL_ACTION_LOGITS),
         )
-        # Local value head: per-ship embedding → all K components.
-        # For indices in team_pma_k, outputs are overridden by value_head_win.
+        # Value head: per-ship embedding → all K components. The trunk runs full
+        # spatial attention over every ship in every block, so a ship's embedding
+        # is already team-aggregated; an explicit pooling path on top of that
+        # bought nothing measurable and cost a second value head.
         self.value_head_local = nn.Sequential(
             nn.Linear(D, hidden_dim),
             nn.RMSNorm(hidden_dim),
             nn.GELU(),
             nn.Linear(hidden_dim, self._K),
         )
-        # TeamPMA + win/loss head: explicit team-pool → win/loss components only.
-        # Only instantiated when team_pma_k is non-empty.
-        if team_pma_k:
-            self.team_pma = TeamPMA(d_model=D, n_heads=model_config.n_heads)
-            self.value_head_win = nn.Sequential(
-                nn.Linear(D, hidden_dim),
-                nn.RMSNorm(hidden_dim),
-                nn.GELU(),
-                nn.Linear(hidden_dim, len(team_pma_k)),
-            )
         self.next_state_head = NextStateHead(D, pred_dim=coordinator.total_prediction_dimension)
 
         # Orthogonal init — standard PPO practice. Located by type (first/last Linear)
@@ -213,11 +156,6 @@ class YemongPolicy(nn.Module):
         # Dropout) into a head can't silently init the wrong module.
         for head in [self.action_head, self.value_head_local, self.next_state_head.net]:
             _init_head_orthogonal(head)
-        if team_pma_k:
-            _init_head_orthogonal(self.value_head_win)
-            nn.init.normal_(self.team_pma.seeds, mean=0.0, std=0.02)
-            nn.init.orthogonal_(self.team_pma.attn.in_proj_weight, gain=math.sqrt(2))
-            nn.init.orthogonal_(self.team_pma.attn.out_proj.weight, gain=1.0)
 
     def _encode_bullets(
         self, obs: YemongObservation
@@ -356,17 +294,10 @@ class YemongPolicy(nn.Module):
         # Slice ship tokens only for action and value heads
         N = self._num_ships
         x_ships = x[:, :N, :]  # (B, N, D)
-        alive_ships = alive[:, :N]  # (B, N)
-        team_id_ships = obs["team_id"][:, :N]  # (B, N) — fields excluded by TeamPMA
 
         logits = self.action_head(x_ships)  # (B, N, 12)
         pred_next = self.next_state_head(x_ships)  # (B, N, AUX_PRED_DIM)
         value = self.value_head_local(x_ships)  # (B, N, K)
-        if self._team_pma_k:
-            x_team = self.team_pma(x_ships, team_id_ships, alive_ships)  # (B, N, D)
-            win_val = self.value_head_win(x_team)  # (B, N, K_win)
-            for i, k in enumerate(self._team_pma_k):
-                value[:, :, k] = win_val[:, :, i]
 
         action, logprob = _sample_action(logits)
 
@@ -479,37 +410,10 @@ class YemongPolicy(nn.Module):
 
         # Slice ship tokens for heads
         x_ships = x[:, :, :N, :]  # (T, B, N, D)
-        alive_ships = alive_mask[:, :, :N]  # (T, B, N)
-        team_id_ships = obs["team_id"][:, :, :N]  # (T, B, N)
 
         logits = self.action_head(x_ships)  # (T, B, N, 12)
         pred_next = self.next_state_head(x_ships)  # (T, B, N, AUX_PRED_DIM)
-
-        # Local value path: per-ship embedding, no team pooling.
-        local_value = self.value_head_local(x_ships)  # (T, B, N, K)
-
-        if self._team_pma_k:
-            # Win/loss path: TeamPMA over ship tokens, then fold T into B.
-            x_s_flat = x_ships.reshape(T * B, N, D)
-            alive_s_flat = alive_ships.reshape(T * B, N)
-            tid_s_flat = team_id_ships.reshape(T * B, N)
-            xv_flat = self.team_pma(x_s_flat, tid_s_flat, alive_s_flat)  # (T*B, N, D)
-            xv = xv_flat.reshape(T, B, N, D)
-            win_val = self.value_head_win(xv)  # (T, B, N, K_win)
-
-            # Merge: cat approach preserves gradients through both paths.
-            K = local_value.shape[-1]
-            pieces = []
-            win_i = 0
-            for k in range(K):
-                if k in self._team_pma_k_set:
-                    pieces.append(win_val[..., win_i : win_i + 1])
-                    win_i += 1
-                else:
-                    pieces.append(local_value[..., k : k + 1])
-            new_value = torch.cat(pieces, dim=-1)  # (T, B, N, K)
-        else:
-            new_value = local_value
+        new_value = self.value_head_local(x_ships)  # (T, B, N, K)
 
         logprob, entropy = _evaluate_action(logits, actions)
 

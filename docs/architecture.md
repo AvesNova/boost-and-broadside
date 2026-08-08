@@ -213,12 +213,19 @@ The output shape is `(B, N, 3)` action indices.
 
 ## Decomposed value head
 
-The critic produces one value per ship and active reward component. Most components use a
-local token projection. Win/loss components instead use TeamPMA — pooling by multi-head
-attention in the style of the [Set Transformer](https://arxiv.org/abs/1810.00825)
-(Lee et al., 2019): learned seeds attend over the live ships of each team and feed a
-dedicated outcome-value projection. That gives global outcome targets an explicitly
-pooled team representation while retaining per-ship critic outputs.
+The critic produces one value per ship and active reward component, all from a single
+projection of the ship's own token.
+
+The win/loss components previously took a separate path: pooling by multi-head attention
+in the style of the [Set Transformer](https://arxiv.org/abs/1810.00825) (Lee et al., 2019),
+where a learned seed per team attends over that team's living ships and feeds a dedicated
+outcome-value projection. **Whether that path earns its keep is currently being measured.**
+The argument for dropping it is that the trunk already runs spatial attention over every
+ship in every block, so a ship's embedding is team-aggregated before any head sees it. The
+argument against is that attention over all tokens is permutation-equivariant across the
+whole set, while the pooled path computes an explicit per-team aggregate masked to that
+team's living ships — and P(win) is a set function over a team, which is what pooling by
+attention is for.
 
 Returns are normalized per component by the training system before value loss. Reward
 semantics, aggregation, and horizons are documented in [training](training.md#reward-decomposition).
