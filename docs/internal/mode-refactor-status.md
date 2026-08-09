@@ -36,8 +36,8 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: none; S04 shared evaluation primitives are complete.
-- Next section: `S05` — `bnb` CLI.
+- Active section: `S05` — `bnb` CLI.
+- Next section: none until S05 is completed.
 - Blocking issue: none.
 - Landmark migration: scheduled for `S15`, after all target schemas stabilize.
 
@@ -51,7 +51,7 @@ code, tests, and reader-facing documentation.
 | S03 | 1 gate | completed | configuration reviewer | Sol / extra high | Review resolved-config equivalence, dependency direction, and schema/fingerprint design |
 | S03R | 1 gate remediation | completed | configuration remediator + reviewer | Sol / extra high | Fix S03 blockers and obtain an independent configuration re-review |
 | S04 | 2 | completed | evaluation refactorer | Sol / high | Extract typed sizes, run catalog, match/environment, and tournament engines |
-| S05 | 3 | pending | CLI engineer | Sol / high | Replace `main.py --mode` with the strict installed `bnb` subcommand CLI |
+| S05 | 3 | in_progress | CLI engineer | Sol / high | Replace `main.py --mode` with the strict installed `bnb` subcommand CLI |
 | S06 | 4 | pending | smoke/test engineer | Sol / high | Build synthetic checkpoint fixtures and fully isolated sequential subprocess smoke coverage |
 | S07 | 2–4 gate | pending | integration reviewer | Sol / extra high | Review shared engines, CLI contracts, smoke isolation, and behavior preservation |
 | S08 | 5 | pending | mode consolidation engineer | Terra / high | Consolidate training, retire modes/flags, and fix field-capable evaluation |
