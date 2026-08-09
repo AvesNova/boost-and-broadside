@@ -36,9 +36,11 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: none; no implementation agent has been started.
-- Next section: `S01` — characterization baseline.
-- Blocking issue: none.
+- Active section: none; S03 review is complete with blocking findings.
+- Next section: `S03R` — configuration gate remediation and independent re-review.
+- Blocking issue: S03 found mutable fingerprinted config, launch-width/shard drift, a
+  machine-specific field in the semantic fingerprint, and stale references to the deleted
+  `runs/` tree.
 - Landmark migration: scheduled for `S15`, after all target schemas stabilize.
 
 ## Sequential queue
@@ -48,7 +50,8 @@ code, tests, and reader-facing documentation.
 | S00 | governance | completed | planning lead | Sol / extra high | Finalize plan, branch, ledger, and prompts |
 | S01 | 0 | completed | characterization engineer | Terra / high | Capture behavior, config, CLI, and publication baselines |
 | S02 | 1 | completed | configuration architect | Sol / extra high | Move profiles under `src`; add independent specs/resolution/fingerprints without changing RL behavior |
-| S03 | 1 gate | pending | configuration reviewer | Sol / extra high | Review resolved-config equivalence, dependency direction, and schema/fingerprint design |
+| S03 | 1 gate | completed | configuration reviewer | Sol / extra high | Review resolved-config equivalence, dependency direction, and schema/fingerprint design |
+| S03R | 1 gate remediation | pending | configuration remediator + reviewer | Sol / extra high | Fix S03 blockers and obtain an independent configuration re-review |
 | S04 | 2 | pending | evaluation refactorer | Sol / high | Extract typed sizes, run catalog, match/environment, and tournament engines |
 | S05 | 3 | pending | CLI engineer | Sol / high | Replace `main.py --mode` with the strict installed `bnb` subcommand CLI |
 | S06 | 4 | pending | smoke/test engineer | Sol / high | Build synthetic checkpoint fixtures and fully isolated sequential subprocess smoke coverage |
@@ -190,6 +193,30 @@ Review:
 - checkpoint and artifact readiness of the resolved schema.
 
 Done when: no blocking correctness or architecture findings remain.
+
+### S03R — Configuration gate remediation and re-review
+
+Agent: configuration remediator plus an independent review owner, Sol extra high.
+
+Steps:
+
+1. Reproduce every blocking finding in the S03 handoff before editing product code.
+2. Make the resolved configuration deeply immutable, or otherwise make it impossible to emit a
+   configuration whose retained fingerprint describes different values; add a regression test that
+   exercises the nested component-discount mappings and the stored/printed document.
+3. Resolve launch width and rollout shard count together after explicit `num_envs` precedence so a
+   machine-sizing override cannot silently change the profile's nominal logical token budget; test
+   a materially smaller valid width, not only a near-default value.
+4. Keep `grad_checkpoint` out of the semantic profile fingerprint while retaining it in complete
+   resolved launch configuration/provenance; do not begin the broader S13 VRAM probe/cache work.
+5. Replace the remaining live `runs/` path references made stale by S02 and add a focused guard for
+   deleted profile-path references.
+6. Re-run snapshot equivalence, focused config tests, full pytest, ruff, range whitespace checks,
+   wheel/package verification, and an independent re-review of the S01-through-S03R range.
+
+Done when: every S03 finding is closed with regression coverage, default RL/RL-fields/stale-BC
+behavior remains exactly equal to S01 evidence, fingerprints match the documented semantic/machine
+boundary, and the independent re-review reports no blocking finding.
 
 ### S04 — Shared evaluation primitives
 
@@ -486,6 +513,63 @@ Each section appends its record below when it completes. Do not replace earlier 
   the training fingerprint and must be recorded by the artifact/live-Elo provenance work. S11 owns
   the BC correction. `scripts/bench_mem.py` retains pre-existing stale `replace()` fields unrelated
   to the import move.
+
+### S03 handoff
+
+- Status: completed; blocking findings require S03R before S04
+- Agent/model/effort: configuration reviewer / `gpt-5.6-sol` / extra high
+- Commit(s) reviewed: `1d47502`, `b9581c4`, `b6f9c53`, and `d34c39b` in committed range
+  `76b4a00..d34c39b`; followed by this review-ledger commit
+- Tests/checks and results: `uv run pytest tests/config/test_resolution.py
+  tests/test_mode_refactor_baseline.py tests/test_main.py -q` (38 passed); `uv run pytest -q`
+  (620 passed); `uv run ruff check .` (passed); `git diff --check 76b4a00..d34c39b` (passed);
+  wheel build contained every config/profile module; installed import outside the checkout returned
+  exactly `rl`, `rl-fields`, and `bc`; RL fingerprints matched across distinct `PYTHONHASHSEED`
+  values; direct mutation, launch-sizing, dependency, and stale-path probes recorded below
+- Behavior/config changes: review made no product-code change. Default resolved RL, RL-fields, and
+  stale BC remain exact S01 snapshot matches, and the named RL-to-RL-fields differences remain
+  limited to existing field intent. Registered profiles are independent values and have no
+  cross-profile or runtime-engine imports.
+- Files/artifacts produced: ledger update only; wheel and probe output were temporary under `/tmp`
+- Decisions/deviations from plan: S03 does not approve the configuration foundation. S03R is
+  inserted immediately after this gate; S04 and every later section remain pending.
+- Review findings addressed: none; review agents do not edit product code
+- Blocking findings:
+  1. `ResolvedTrainConfig` is documented as immutable at
+     `src/boost_and_broadside/config/schema.py:148`, but `TrainConfig.component_gammas` and
+     `component_lambdas` are mutable dictionaries at
+     `src/boost_and_broadside/config/training.py:255`. Mutating a resolved mapping changed the
+     document emitted by `resolved_profile_document` (`config/service.py:14`) while its retained
+     `resolved_config_fingerprint` stayed unchanged. The direct probe changed `ally_win` to `0.5`
+     and reported `config_changed=True` with `fingerprint_unchanged=True`. This makes checkpoint or
+     artifact provenance capable of asserting a hash for different configuration values, and no
+     test covers deep immutability or document/hash consistency.
+  2. `resolve_profile` derives `rollouts_per_update` from the profile launch preset before applying
+     an explicit `num_envs` override (`config/resolve.py:279` versus `config/resolve.py:316`). A
+     valid override from 3904 to 1952 environments retained three shards and passed validation,
+     reducing effective update tokens from 11,993,088 to 5,996,544 against the declared 12,000,000
+     logical budget. This turns a documented launch-sizing/VRAM control into a silent optimization
+     change and violates the fixed-logical-budget shard contract; the existing override test at
+     `tests/config/test_resolution.py:145` changes width only slightly and does not assert budget or
+     shard behavior.
+  3. The profile fingerprint payload removes only `launch_defaults` at
+     `src/boost_and_broadside/config/resolve.py:74`, so it includes
+     `ModelConfig.grad_checkpoint` (`config/core.py:248`). A direct probe changing only
+     `grad_checkpoint=False` to `True` changed `profile_fingerprint` even though the resolved
+     `TrainConfig` was identical. The plan categorizes gradient checkpointing as a machine/VRAM
+     setting with the same mathematical objective, while `profile_fingerprint` must represent
+     semantic experiment intent and exclude hardware choices. Existing tests cover rollout and
+     microbatch presets but not this machine field.
+  4. S02 deleted top-level `runs/` and its handoff says no moved-path reference remains, but live
+     references still exist at `main.py:3`, `docs/getting-started.md:107`,
+     `docs/getting-started.md:180`, `STYLE_GUIDE.md:106`, `STYLE_GUIDE.md:124`, and
+     `src/boost_and_broadside/train/rl/sigreg.py:8`. The two reader-facing links target a deleted
+     directory, and the style guidance now names a nonexistent authoritative location. S02 updated
+     other references in the same files, so these are incomplete migration regressions rather than
+     intentionally deferred CLI cleanup.
+- Remaining risks or required follow-up: S03R must close all four findings and receive independent
+  re-review before S04 starts. S05/S13 still own the planned CLI and broader VRAM/cache integration;
+  S11 still owns the intentional BC correction.
 
 ### Future handoff template
 
