@@ -36,8 +36,8 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: none; S06 smoke system is complete.
-- Next section: `S07` — shared/CLI/smoke gate review.
+- Active section: `S07` — shared/CLI/smoke gate review.
+- Next section: none until S07 completes.
 - Blocking issue: none.
 - Landmark migration: scheduled for `S15`, after all target schemas stabilize.
 
@@ -53,7 +53,7 @@ code, tests, and reader-facing documentation.
 | S04 | 2 | completed | evaluation refactorer | Sol / high | Extract typed sizes, run catalog, match/environment, and tournament engines |
 | S05 | 3 | completed | CLI engineer | Sol / high | Replace `main.py --mode` with the strict installed `bnb` subcommand CLI |
 | S06 | 4 | completed | smoke/test engineer | Sol / high | Build synthetic checkpoint fixtures and fully isolated sequential subprocess smoke coverage |
-| S07 | 2–4 gate | pending | integration reviewer | Sol / extra high | Review shared engines, CLI contracts, smoke isolation, and behavior preservation |
+| S07 | 2–4 gate | in_progress | integration reviewer | Sol / extra high | Review shared engines, CLI contracts, smoke isolation, and behavior preservation |
 | S08 | 5 | pending | mode consolidation engineer | Terra / high | Consolidate training, retire modes/flags, and fix field-capable evaluation |
 | S09 | 6 | pending | artifact/publication architect | Sol / extra high | Implement artifacts, provenance, raw samples, publication manifest, and offline render checks |
 | S10 | 6 gate | pending | artifact reviewer | Sol / extra high | Review schemas, identity, atomicity, resume, Git-ignore safety, and offline publication |
