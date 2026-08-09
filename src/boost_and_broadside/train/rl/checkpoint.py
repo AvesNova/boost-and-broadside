@@ -90,8 +90,8 @@ class CheckpointMixin:
         self._save_checkpoint(update)
         self._save_roster_json()
 
-    def _maybe_save_best_checkpoints(self, random_elo: float) -> None:
-        """Overwrite the best-model checkpoints (live, then avg) when normalized Elo improves.
+    def _maybe_save_best_checkpoints(self) -> None:
+        """Overwrite the best-model checkpoints (live, then avg) when the rating improves.
 
         Each family (live/avg) tracks its own high-water mark independently, so
         the two files can lag different updates — e.g. the avg policy may still
@@ -101,13 +101,12 @@ class CheckpointMixin:
         as captured. The two families use separate thread slots so they never
         contend within a single update.
         """
-        training_elo_norm = self._training_elo - random_elo
-        if training_elo_norm > self._best_training_elo_norm and self._save_best_checkpoint(
+        if self._training_elo > self._best_training_elo_norm and self._save_best_checkpoint(
             "best_training.pt"
         ):
-            self._best_training_elo_norm = training_elo_norm
+            self._best_training_elo_norm = self._training_elo
         if self._avg_update_count > 0:
-            avg_elo_norm = self._avg_training_elo - random_elo
+            avg_elo_norm = self._avg_training_elo
             if avg_elo_norm > self._best_avg_elo_norm and self._save_best_checkpoint(
                 "best_avg.pt",
                 payload=self._avg_checkpoint_payload_lightweight(update=0),
@@ -152,7 +151,9 @@ class CheckpointMixin:
         if self._policy_gradient_coef <= 0.0 or self.cfg.elo_milestone_gap <= 0:
             return
         gap = self.cfg.elo_milestone_gap
-        elo_norm = self._training_elo - self._random_elo()
+        # Grid points are absolute on the scripted=1000 gauge, so snapshots
+        # from different runs land at comparable heights.
+        elo_norm = self._training_elo
         if elo_norm < self._elo_milestone + gap:
             return
         floating = self.roster.floating_checkpoint()
@@ -484,10 +485,14 @@ class CheckpointMixin:
             ckpt.get("update", 0) * self._schedule_state.num_epochs * self._entity_tokens_per_epoch,
         )
 
-        # Restore roster if its JSON exists alongside the checkpoint
+        # Restore roster if its JSON exists alongside the checkpoint. load_json
+        # replaces the entry list wholesale, so the special entries are
+        # re-registered afterwards — a roster written before the scripted agent
+        # was a league entry would otherwise resume without it.
         roster_path = Path(path).parent / "roster.json"
         if roster_path.exists():
             self.roster.load_json(roster_path)
+            self._register_special_opponents()
 
         print(
             f"Checkpoint loaded from: {path} (resuming from update {self._start_update}, "

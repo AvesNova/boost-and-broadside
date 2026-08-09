@@ -64,6 +64,82 @@ def _parallel_scan(
     return outputs, outputs[:, -1]
 
 
+def _causal_conv_tap_validity(done_mask: torch.Tensor) -> torch.Tensor:
+    """Per-output, per-lag mask marking taps that stay inside the current episode.
+
+    Args:
+        done_mask: (B_seq, T) bool — True at t means the episode ended at t, so
+            t+1 begins a fresh one (same convention as the RG-LRU reset).
+
+    Returns:
+        (B_seq, T, CONV_KERNEL) bool — entry [b, t, j] is True when the input at
+        t-j belongs to the same episode as t. Lag 0 is always valid.
+    """
+    starts_new = done_mask.roll(1, dims=1)
+    starts_new[:, 0] = False  # the segment start continues the stored buffer
+    no_boundary = ~starts_new  # (B_seq, T)
+
+    valids = [torch.ones_like(no_boundary)]  # lag 0
+    running = torch.ones_like(no_boundary)
+    for lag in range(1, CONV_KERNEL):
+        shift = lag - 1
+        shifted = (
+            no_boundary
+            if shift == 0
+            else F.pad(no_boundary[:, :-shift], (shift, 0), value=True)
+        )
+        running = running & shifted
+        valids.append(running)
+    return torch.stack(valids, dim=-1)  # (B_seq, T, CONV_KERNEL)
+
+
+def _causal_depthwise_conv(
+    padded: torch.Tensor,  # (B_seq, T + CONV_KERNEL - 1, D)
+    conv: nn.Conv1d,
+    num_steps: int,
+    done_mask: torch.Tensor | None,  # (B_seq, T) bool
+) -> torch.Tensor:
+    """Depthwise causal conv over a left-padded sequence, cut at episode boundaries.
+
+    Written as an explicit sum of CONV_KERNEL shifted taps rather than a
+    ``conv1d`` call, because the boundary mask depends on *both* the output step
+    and the tap's lag — a single input feeds CONV_KERNEL outputs and must be
+    dropped for some of them and kept for others, which no input-side mask can
+    express. The arithmetic is identical (a depthwise K-tap conv is K
+    multiply-adds) and it drops the transpose pair the conv1d path needed.
+
+    Without the mask, rollout and update disagree: ``reset_hidden_for_envs``
+    zeroes the whole packed hidden — conv buffer included — at an episode
+    boundary during rollout, so post-boundary steps convolve against zeros. The
+    sequence path saw the previous episode's inputs for CONV_KERNEL-1 steps
+    after every boundary, which is exactly where value estimates matter most.
+
+    Args:
+        padded: Stored conv buffer concatenated with this segment's inputs.
+        conv: The depthwise Conv1d supplying weights and bias.
+        num_steps: T — outputs to produce.
+        done_mask: Episode-end flags, or None to convolve straight through
+            (the rollout path, where the buffer is reset externally).
+
+    Returns:
+        (B_seq, T, D)
+    """
+    weight = conv.weight.squeeze(1)  # (D, CONV_KERNEL) — depthwise
+    validity = _causal_conv_tap_validity(done_mask) if done_mask is not None else None
+
+    out = torch.zeros_like(padded[:, :num_steps, :])
+    for k in range(CONV_KERNEL):
+        # conv1d is cross-correlation: out[t] = Σ_k w[k] · padded[t + k], so the
+        # tap at weight index k reads lag CONV_KERNEL-1-k.
+        tap = padded[:, k : k + num_steps, :] * weight[:, k]
+        if validity is not None:
+            tap = tap * validity[..., CONV_KERNEL - 1 - k].unsqueeze(-1)
+        out = out + tap
+    if conv.bias is not None:
+        out = out + conv.bias
+    return out
+
+
 class RGLRU(nn.Module):
     """Real-Gated Linear Recurrent Unit from the Griffin paper.
 
@@ -195,9 +271,9 @@ class GriffinTemporalBlock(nn.Module):
         b1 = self.linear1(normed)  # (B_seq, T, D)
 
         # Causal conv: prepend stored buffer instead of zeros.
-        # padded: (B_seq, T+CONV_KERNEL-1, D) → conv (no padding) → (B_seq, T, D)
+        # padded: (B_seq, T+CONV_KERNEL-1, D) → (B_seq, T, D)
         padded = torch.cat([conv_buf, b1], dim=1)
-        b1_conv = self.conv(padded.transpose(1, 2)).transpose(1, 2)  # (B_seq, T, D)
+        b1_conv = _causal_depthwise_conv(padded, self.conv, x_seq.shape[1], done_mask)
         new_conv_buf = padded[:, -(CONV_KERNEL - 1) :, :]  # (B_seq, K-1, D)
 
         b1_out, new_h = self.rg_lru.forward_sequence(b1_conv, h0, done_mask)  # (B_seq, T, D)

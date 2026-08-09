@@ -22,6 +22,23 @@ _NUM_ENVS = (
 RL_FIELDS_TRAIN_CONFIG = replace(
     RL_TRAIN_CONFIG,
     rewards=FIELD_REWARDS,
+    # Its own ladder: fields compress the skill scale badly (random sits at +170
+    # here against -351 without them), so borrowing the zero-field ratings would
+    # misdirect every proximity draw and every early rating update. Fitted by
+    # `--mode semi_random --profile rl_fields`
+    # (checkpoints/rl_fields/semi_random_tournament.json).
+    reference_ladder=(
+        (0.2, 238.8),
+        (0.3, 322.6),
+        (0.4, 435.0),
+        (0.5, 550.4),
+        (0.6, 656.9),
+        (0.7, 753.6),
+        (0.8, 824.3),
+        (0.9, 939.9),
+        (0.95, 988.9),
+    ),
+    random_elo=132.3,
     scales=(
         ScaleConfig(
             env_config=replace(

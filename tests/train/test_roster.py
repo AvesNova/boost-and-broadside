@@ -64,6 +64,47 @@ class TestSampling:
         sampled = {roster.sample(training_elo=1000.0).label for _ in range(200)}
         assert sampled == {"ckpt_1", "ckpt_2"}
 
+    def test_scripted_and_avg_are_ordinary_candidates(self):
+        """Every opponent type is drawn from one pool; nothing is special-cased."""
+        torch.manual_seed(0)
+        roster = _make_roster(uniform_sampling=True)
+        roster.add_special("scripted", initial_elo=1000.0)
+        roster.add_special("avg", initial_elo=1000.0)
+        _add_frozen_checkpoint(roster, step=1, elo=1000.0)
+        sampled = {roster.sample(training_elo=1000.0).label for _ in range(300)}
+        assert sampled == {"scripted", "avg", "ckpt_1"}
+
+    def test_scripted_fades_as_the_live_rating_outruns_it(self):
+        """The opponent curriculum is the rating, not a schedule.
+
+        At equal rating the scripted agent is a live candidate; far above it, it
+        stops being drawn in favour of the nearer entry.
+        """
+        torch.manual_seed(0)
+        roster = _make_roster()
+        roster.add_special("scripted", initial_elo=1000.0)
+        roster.add_special("avg", initial_elo=2500.0)
+        assert "scripted" in {roster.sample(training_elo=1000.0).label for _ in range(50)}
+        assert {roster.sample(training_elo=2500.0).label for _ in range(50)} == {"avg"}
+
+    def test_retired_entries_are_not_sampled_but_keep_their_rating(self):
+        torch.manual_seed(0)
+        roster = _make_roster(uniform_sampling=True)
+        keep = _add_frozen_checkpoint(roster, step=1, elo=1000.0)
+        drop = roster.add_checkpoint(path="/ckpt/b.pt", global_step=2, update=2, initial_elo=1200.0)
+        roster.retire(drop)
+        sampled = {roster.sample(training_elo=1000.0).label for _ in range(100)}
+        assert sampled == {keep.label}
+        assert drop in roster.entries and drop.elo == 1200.0
+
+    def test_sample_returns_none_when_every_entry_is_retired(self):
+        roster = _make_roster()
+        entry = roster.add_checkpoint(
+            path="/ckpt/a.pt", global_step=1, update=1, initial_elo=1000.0
+        )
+        roster.retire(entry)
+        assert roster.sample(training_elo=1000.0) is None
+
 
 class TestLadder:
     def test_random_anchor_starts_frozen_at_zero(self):
@@ -105,7 +146,31 @@ class TestLadder:
         _add_frozen_checkpoint(roster, step=2, elo=400.0)
         _add_frozen_checkpoint(roster, step=3, elo=600.0)
         anchors = roster.ladder_anchors(2)
-        assert [e.label for e in anchors] == ["ckpt_2", "ckpt_3"]
+        # Stationary references first, then the newest `count` checkpoints.
+        assert [e.label for e in anchors] == ["random", "ckpt_2", "ckpt_3"]
+
+    def test_stationary_references_never_age_out_of_the_ladder(self):
+        """Checkpoints rotate; fixed players are permanent calibration points.
+
+        A rung's rating is a measured property of a stationary agent, so
+        dropping it would discard a reference the run cannot regenerate.
+        """
+        roster = _make_roster()
+        roster.add_special("scripted", initial_elo=1000.0)
+        roster.add_reference(p_scripted=0.5, elo=200.0)
+        for step in range(1, 6):
+            _add_frozen_checkpoint(roster, step=step, elo=100.0 * step)
+
+        anchors = roster.ladder_anchors(2)
+        labels = [e.label for e in anchors]
+        assert labels[:3] == ["random", "semi_scripted_0p5", "scripted"]  # sorted by elo
+        assert labels[3:] == ["ckpt_4", "ckpt_5"]
+        assert all(e.is_stationary for e in anchors[:3])
+
+    def test_ladder_anchors_with_no_checkpoints_is_stationary_only(self):
+        roster = _make_roster()
+        roster.add_reference(p_scripted=0.5, elo=200.0)
+        assert [e.label for e in roster.ladder_anchors(2)] == ["random", "semi_scripted_0p5"]
 
     def test_entries_are_never_evicted(self):
         roster = _make_roster(max_size=2)
@@ -160,6 +225,18 @@ class TestSpecialEntries:
         roster = _make_roster()
         with pytest.raises(AssertionError):
             roster.add_special("checkpoint")
+
+    def test_set_special_elo_tracks_the_evaluator(self):
+        """Proximity sampling reads these ratings, so a stale one misdirects it."""
+        roster = _make_roster()
+        entry = roster.add_special("avg", initial_elo=500.0)
+        roster.set_special_elo("avg", 1450.0)
+        assert entry.elo == 1450.0
+
+    def test_set_special_elo_is_a_noop_before_the_entry_exists(self):
+        roster = _make_roster()
+        roster.set_special_elo("avg", 1450.0)  # avg only joins once it accumulates
+        assert all(e.kind != "avg" for e in roster.entries)
 
 
 class TestPersistence:

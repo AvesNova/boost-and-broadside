@@ -38,9 +38,14 @@ BC_WARMSTART_PRETRAIN_CONFIG = TrainConfig(
     max_grad_norm=1.0,
     total_timesteps=20_000_000,  # short: just enough for a good policy initialisation
     return_ema_alpha=0.005,
-    return_min_span=1.0,
+    return_min_span=1.0,  # see runs/rl.py — not an epsilon; lowering it needs critic re-tuning
+    advantage_min_rms=1e-4,
     checkpoint_dir="checkpoints",
     league_size=20,
+    league_slots=4,
+    # No opponents during BC, so no reference ladder is needed.
+    reference_ladder=(),
+    random_elo=0.0,
     elo_milestone_gap=200.0,
     elo_temperature=200.0,
     league_uniform_sampling=False,

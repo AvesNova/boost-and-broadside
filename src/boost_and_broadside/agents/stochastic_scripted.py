@@ -2,7 +2,6 @@ import numpy as np
 import torch
 
 from boost_and_broadside.agents.scripted_utils import (
-    compute_field_steering,
     compute_team_target_bearings,
     predict_interception,
     select_targets,
@@ -215,12 +214,6 @@ class StochasticScriptedAgent:
             * team_has_target.float()
         )
         dir_turn = (1.0 - p_team) * dir_pred + p_team * team_bearing
-        dir_turn = dir_turn / (torch.abs(dir_turn) + 1e-8)
-
-        # A deliberately modest material-aware bias gives the attention trunk
-        # useful field-dependent BC targets without making interfaces walls.
-        field_bearing, field_strength = compute_field_steering(state, self.ship_config)
-        dir_turn = (1.0 - field_strength) * dir_turn + field_strength * field_bearing
         dir_turn = dir_turn / (torch.abs(dir_turn) + 1e-8)
 
         # Suppress enemy-proximity reversal when there is no actual target

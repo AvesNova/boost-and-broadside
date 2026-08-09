@@ -19,15 +19,18 @@ records:
 | Parallel environments | 7,808 |
 | Ships per environment | 8 total (4-vs-4) |
 | Rollout length | 128 steps |
+| Decisions per second | 60 (`action_repeat=1`) |
 | PPO minibatches | 32 |
 | Token width / attention heads / blocks | 128 / 4 / 2 |
-| Episode horizon | 1,024 steps |
+| Episode horizon | 1,024 physics ticks (17.1 s) |
 | Opponent paradigm | `ego_pass` |
 | Elo evaluation games per matchup slot | 512 |
 
 The run logged 999,424,000 steps before finishing. Today's profiles have continued to
 evolve, so where this page and the export disagree about that run, the export is what
-actually ran.
+actually ran. In particular the reference run decided at 60 Hz; the current profile holds
+each action for two physics ticks (see [decision rate](#decision-rate)), so its step
+counts and discounts are not directly comparable.
 
 ## Recurrent PPO lifecycle
 
@@ -35,6 +38,85 @@ actually ran.
 policies, rollout collection, [generalized advantage
 estimation](https://arxiv.org/abs/1506.02438), update-time sequence re-evaluation,
 evaluation, logging, and checkpoints.
+
+### Decision rate
+
+Physics always runs at `ShipConfig.dt` = 1/60 s. `EnvConfig.action_repeat` sets how many
+of those ticks each chosen action is held for, so collision and projectile integration
+are unaffected and only the rate at which the policy may change its mind moves. The
+primary profile holds for 2 ticks — **30 Hz decisions**.
+
+That rate is set by the plant, not by the renderer:
+
+| timescale | seconds | decisions @ 30 Hz |
+|---|---:|---:|
+| firing cooldown | 0.10 | 3 |
+| bullet flight to ~200 px | 0.40 | 12 |
+| full 360° turn | 1.3–2.3 | 39–69 |
+| mean episode | ~4.7 | ~140 |
+| `num_steps=128` rollout | 4.3 | 128 |
+
+At 60 Hz five of every six shoot decisions were no-ops against the cooldown, consecutive
+observations differed by 17 ms, and a 128-step rollout spanned 2.1 s against a ~4.7 s
+episode, so the recurrent policy never saw close to a whole episode inside one BPTT window.
+
+The rate is a real trade, not a free win. Measured with the *fixed* scripted controller at
+equal game time, so the policy cannot adapt and any change is the environment alone,
+combat damage per live ship-step falls monotonically with the hold:
+
+| | 60 Hz | 30 Hz | 20 Hz | 15 Hz |
+|---|---:|---:|---:|---:|
+| combat damage / live ship-step | 0.2965 | 0.2814 | 0.2656 | 0.2475 |
+
+30 Hz gives up 5% of combat effectiveness and halves the tokens per second of game time.
+20 Hz gives up 10% for a third, which did not pay.
+
+**`action_repeat` is honoured by `TensorEnv.step`, not by the wrapper**, so evaluation runs
+at the same rate as training. It was briefly the other way round, and the failure was
+silent: a policy trained to hold an action for N ticks but evaluated one tick per action
+turns a fraction of its intended amount per decision, mistimes every lead, and advances its
+recurrent state N times too fast for the game clock. `YemongEnvWrapper` opts out via
+`tick`, because it has to accumulate rewards and episode statistics per physics tick.
+
+Rewards are summed across the held ticks. That is scale-preserving: over a fixed span of
+game time both the dense per-tick terms and the one-off event terms total exactly what
+they would at repeat 1, so the component ratios in `RewardConfig` are untouched. Episode
+lengths and ship ages stay in physics ticks so they remain comparable across rates.
+
+Discounts do **not** carry over unchanged. They were chosen as horizons in seconds, so
+moving the rate requires `gamma_new = gamma_old ** (rate_old / rate_new)` — and the same
+for the GAE lambdas, since variance accumulates per unit of game time rather than per
+decision. The horizons those values encode are tabulated in
+[`runs/shared.py`](../runs/shared.py).
+
+Ships also spawn with randomised health, power and cooldown
+(`EnvConfig.spawn_resource_spread`). Spawning at full resources every episode made health
+an almost deterministic function of elapsed time, which the critic can read off the clock
+instead of the state, and meant damaged-fleet positions were only reachable by playing
+two hundred steps into them. Draws are per-ship but balanced in expectation across teams,
+so no outcome variance enters the win signal that a policy could not have influenced.
+
+### Action timing
+
+Environment and policy run concurrently on separate CUDA streams, which costs one
+decision of action latency: the step that advances the environment applies the action
+chosen on the *previous* decision, while the policy computes the next one from the
+current observation.
+
+The observation is what makes that Markov. `previous_action` does not hold the action
+that already ran — it holds the action **about to be applied**, written into the
+observation as it is handed forward. So the stored transition is
+`(state, pending action) → action`, and a chosen action shows up in the reward one step
+later, which GAE handles through the value function.
+
+Two consequences worth knowing before touching the auxiliary losses:
+
+- The channel is `(B, N+M, 3)`, so spatial attention lets **every ship read every other
+  ship's pending action**, opponents included. One decision is 1/30 s against a ~0.4 s
+  bullet flight, so the lookahead is small, and it is symmetric.
+- One-step next-state prediction is therefore a *deterministic* function of the
+  observation (up to `bullet_spread`), not merely a short-horizon one. That is why it is
+  a weak representation signal and why longer-horizon prediction is the useful version.
 
 A logical update proceeds as follows:
 
@@ -84,11 +166,27 @@ The total update combines:
   (SIGReg, from [LeJEPA](https://arxiv.org/abs/2511.08544)), disabled in the
   reference configuration.
 
+Two gates key off the same signal — the raw win rate against the scripted controller,
+taken from the evaluation battery rather than from training envs. It decays the
+behavior-cloning weight to zero at `bc_winrate_target`, and it tightens `target_kl` at
+`high_winrate_threshold`. Using one measure of "is the policy strong yet" rather than two
+also keeps the trust region independent of the Elo gauge, which would otherwise need
+re-deriving whenever the anchor or the environment moved.
+
 Advantages are scaled per component with running RMS statistics. Returns use a
 per-component percentile scaler in symlog reward space, which keeps critic targets in a
 stable range without forcing components with different natural scales into one value
 head. The exact loss assembly and logging proxies live in
 [`ppo.py`](../src/boost_and_broadside/train/rl/ppo.py).
+
+Both scalers carry a floor, and a floor that binds on an active component replaces that
+component's own scale with the guard's. `advantage_min_rms` is therefore a true epsilon:
+the terminal win signal's advantage RMS is around 0.008, two orders of magnitude below a
+per-step damage signal, and an earlier floor of 0.1 was downweighting it roughly
+thirteenfold in the policy gradient. `return_min_span` is *not* an epsilon and is held at
+1.0 on purpose — see the note in [`runs/rl.py`](../runs/rl.py) for why lowering it needs
+the critic's outlier sensitivity addressed first. `scaler/floor_bound_span/*` and
+`scaler/floor_bound_rms/*` report which components each floor is currently holding up.
 
 ## Reward decomposition
 
@@ -99,8 +197,8 @@ reference policy activated these components:
 
 | Component | RL / fields weight | Role |
 |---|---:|---|
-| `ally_win` | 4.0 | +1 to each surviving teammate on a win |
-| `enemy_win` | 4.0 | opponent's win signal, seen as −1 through a negative enemy lambda |
+| `ally_win` | 1.5 | +1 to each surviving teammate on a win |
+| `enemy_win` | 1.5 | opponent's win signal, seen as −1 through a negative enemy lambda |
 | `facing` | 0.1 | dense aim geometry (+) |
 | `closing_speed` | 0.1 | dense approach geometry (+) |
 | `shoot_quality` | 0.1 | firing opportunity quality (+) |
@@ -141,10 +239,39 @@ schedules, and the preserved run config for historical weights.
 The primary [`runs/rl.py`](../runs/rl.py) profile remains an exact zero-field combat
 baseline. [`runs/rl_fields.py`](../runs/rl_fields.py) adds four cached static fields,
 activates the two local field reward heads, and reduces environment count to offset the
-extra attention tokens. The scripted controller applies a mild material-aware steering
-bias near an interface. It favors remaining on the current side, with stronger influence
-from index contrast and boundary damage, but caps the blend at 35% so fields do not become
-impenetrable walls in behavior-cloning targets.
+extra attention tokens. The scripted controller ignores fields entirely: it aims and
+manoeuvres as if the medium were uniform.
+
+It used to carry a mild stay-on-your-side steering bias, on the theory that behavior
+cloning needed field-dependent targets to warm up the attention trunk. Measurement killed
+it. Against a uniform-random agent the bias produced *more* interface crossings (2.24
+against 1.60 per thousand ship-steps) and left ships in higher-index — slower — medium
+more often (mean log index +0.159 against +0.108). Both were occupancy artifacts rather
+than decisions, and since crossing an interface costs health that
+`field_damage_taken` then penalises, behaviour cloning was imprinting a habit RL had to
+unlearn.
+
+Field representation does not depend on the scripted agent in any case. The auxiliary
+next-state head predicts `local_log_index` directly, which cannot be done without locating
+the ship relative to every field, and that pressure is always on and never decays with the
+behavior-cloning weight.
+
+Field maps are regenerated every rollout rather than drawn from a bank fixed at startup.
+Generation is fully vectorised on device: it loops over fields rather than over maps or
+retries, proposing `max_generation_attempts` placements for every map at once and taking
+the first that fits, so a whole bank costs `num_fields` iterations of fixed-shape tensor
+work with no host synchronisation. A 512-map bank of four fields refreshes in about 4 ms
+against a rollout of tens of seconds.
+
+The reason to bother: a fixed bank is a small distribution that a full run draws from
+thousands of times per map, whereas a bank replaced each rollout supplies roughly one
+distinct map per episode. Maps are laminar by construction — candidates are rejected
+against already-placed fields before acceptance — which matters because
+`validate_field_layout` costs eight device-to-host syncs and raises, so it cannot run on
+the hot path. Rows that exhaust their proposal budget keep their previous map rather than
+ending the run, and `physics/field_map_generation_failures` reports how many, so a
+too-tight radius/width/count combination shows up as a number instead of silently thinning
+the distribution.
 
 Per-update physics diagnostics report field/combat damage per live ship-step, source death
 rates, the fraction of steps taking boundary damage, time in non-ambient media, and the
@@ -164,24 +291,43 @@ utility is learned from combat outcome, navigation, speed, handling, and health 
 
 ## Opponent curriculum
 
-The current primary profile starts with a high scripted-opponent fraction, then introduces
-average-policy and league games while retaining self-play. Fractions are schedules over
-the global environment step in [`runs/rl.py`](../runs/rl.py).
+The primary scale has two environment groups: self-play, and a league whose width is
+`league_fraction` (0.5 in [`runs/rl.py`](../runs/rl.py)). The league half is divided into
+`league_slots` contiguous slots, and each slot draws its own opponent from the roster at
+every rollout boundary.
 
-The main opponent types are:
+Every opponent is an ordinary roster entry on one Elo scale:
 
-- **scripted:** a stochastic hand-built controller, used for early supervision, direct
-  opposition, and a stable evaluation benchmark;
-- **self:** the live weights viewed from the other team perspective;
-- **average:** a uniform running mean of eligible live-policy snapshots after the scripted
-  performance cutoff;
-- **league:** frozen historical checkpoint policies sampled near the live rating.
+- **scripted:** a stochastic hand-built controller, also the behavior-cloning target and a
+  stable evaluation benchmark;
+- **average:** a uniform running mean of eligible live-policy snapshots, joining the roster
+  at the scripted performance cutoff;
+- **checkpoint:** frozen historical snapshots, joining at each Elo milestone.
 
-The scripted controller is scheduled directly; it is not a sampled roster entry. The
-[`EloRoster`](../src/boost_and_broadside/train/rl/roster.py) retains historical entries
+Self-play is the other half of the batch: the live weights viewed from the other team
+perspective.
+
+Sampling is proportional to `exp(-abs(opponent_elo - live_elo) / temperature)`, excluding
+the random agent. That exclusion is load-bearing: an untrained policy sits at random's own
+rating, so including it would make the early league mostly random play — which self-play
+already provides, at twice the actor tokens.
+
+Semi-random rungs cover that early range instead. They are the same interior references
+the ladder uses (below), so proximity sampling always has a well-matched candidate rather
+than a choice between an opponent it beats every time and one it never beats.
+
+There is no per-opponent schedule, because the ratings already encode the curriculum. At
+step zero the scripted agent is the only entry a slot can draw, so training begins as an
+even split of self-play and scripted games. The average policy joins at the BC cutoff,
+checkpoints join as milestones are crossed, and the scripted agent stops being drawn once
+the live rating leaves it behind. Ratings for the scripted and average entries are synced
+from the continuous evaluator every update, since a stale rating misdirects every draw.
+
+The [`EloRoster`](../src/boost_and_broadside/train/rl/roster.py) retains historical entries
 rather than evicting the weakest; `league_size` only bounds the GPU-resident LRU policy
-cache. Historical sampling is proportional to
-`exp(-abs(opponent_elo - live_elo) / temperature)`, excluding the fixed random anchor.
+cache. An entry this run cannot host — a bullet-reading policy in a bullet-free run, whose
+rollout observation shape is fixed when the wrapper is built — is retired from sampling
+with its rating intact, rather than ending the run.
 
 ## Continuous rating and the frozen ladder
 
@@ -194,10 +340,43 @@ evaluation environments alongside training. The evaluator has five logical slots
 4. live vs running-average policy;
 5. floating checkpoint vs fixed anchor.
 
-Anchor games use the two newest frozen ladder checkpoints, with per-episode assignment
-weighted toward the matchup that carries the most rating information. Ties count as half
-a win. These live ratings steer opponent selection and training decisions, but they
-remain a filtered online estimate.
+Ratings live on an **absolute gauge with the scripted controller pinned at 1000**, the
+same convention the post-hoc calibration reports, so in-training and calibrated numbers no
+longer need re-basing against each other. Slot 2 therefore updates the live policy rather
+than scripted: the player defining the scale must not drift under the one being measured
+against it.
+
+The anchor pool has two parts. **Stationary references** — the random agent, the
+semi-random rungs, and the scripted controller — sit at its head and never age out,
+because their strength is a fixed property and their ratings are measured constants.
+**Checkpoint anchors** follow: the newest `MAX_CHECKPOINT_ANCHORS` frozen ladder
+snapshots, which do rotate as the live policy leaves them behind.
+
+### The reference ladder
+
+With only random and scripted as fixed references, the live policy saturates both for the
+whole early climb — winning ~100% against one and losing ~100% against the other — so its
+rating is barely identified exactly when opponent selection depends on it. A ladder of
+semi-random rungs (`TrainConfig.reference_ladder`) fills that range. Each rung takes the
+scripted action with probability `p` and a uniform one otherwise, and their ratings are
+fitted offline by `--mode semi_random --profile <name>`.
+
+Those ratings are a property of the environment the rungs play in, so a ladder is valid
+only for the tick rate, field count, ship config and fleet size it was measured under.
+The two shipped profiles differ sharply — on the scripted-anchored gauge the random agent
+sits at **−351** in `rl` and **+170** in `rl_fields`, because refractive fields compress
+the skill scale — so each profile carries its own ladder and re-running the tournament is
+mandatory whenever the environment moves.
+
+Per-episode assignment is a multinomial draw over the information weights, so the pool
+can be any size at no extra environment cost — the slot's envs simply redistribute, and
+saturated references draw almost no games. Stationary references also cost no forward
+pass: every semi-random rung is a Bernoulli blend of the same two action tensors, so the
+whole stationary ladder is computed from one scripted call and one random call however
+many rungs it holds.
+
+Ties count as half a win. These live ratings steer opponent selection and training
+decisions, but they remain a filtered online estimate.
 
 At configured rating milestones, the trainer writes unpruned ladder snapshots. After
 training, [`elo_calibrate.py`](../src/boost_and_broadside/modes/elo_calibrate.py) replays

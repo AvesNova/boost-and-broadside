@@ -178,11 +178,39 @@ class TrainConfig:
     max_grad_norm: float  # gradient clipping norm
     total_timesteps: int  # total environment steps before stopping
     return_ema_alpha: float  # EMA decay for per-component return percentile scaler
-    return_min_span: float  # minimum p95-p5 span (symlog-space) — guards disabled components
+    # Degeneracy epsilons for the two per-component scalers. Both are
+    # divide-by-zero guards and nothing more: they must sit far below the
+    # smallest span/RMS any *active* component really has, or they quietly
+    # rescale that component's critic targets and policy-gradient share. The
+    # trainer logs scaler/floor_bound/<name> and warns when one binds.
+    return_min_span: float  # ReturnScaler p95-p5 epsilon (symlog-space)
+    advantage_min_rms: float  # AdvantageScaler RMS epsilon (symlog-space)
     checkpoint_dir: str  # directory to write .pt files
 
     # --- League play + Elo (static tournament parameters) ---
     league_size: int  # max number of checkpoint policies kept loaded for league play
+    # Independently-sampled opponents sharing the league half of the batch. One
+    # slot means the whole half faces a single draw for a whole rollout, which
+    # makes proximity sampling a per-rollout lottery rather than a distribution;
+    # more slots sample the roster better at the cost of one policy forward each
+    # (a scripted slot costs none). Clamped down when the league is narrower than
+    # this, so a tiny --smoke batch still allocates.
+    league_slots: int
+    # Stationary reference ladder: (p_scripted, elo) rungs between the random
+    # agent and the scripted controller, on a gauge where scripted reads
+    # elo_eval.scripted_elo_init. Together with random_elo these are the fixed
+    # calibration points the live rating is measured against.
+    #
+    # Without them the ladder has exactly two stationary references and the live
+    # policy saturates both — winning ~100% against random, losing ~100% against
+    # scripted — so its rating is barely identified for the whole early climb.
+    #
+    # Fitted offline by `--mode semi_random --profile <name>`. The ratings are a
+    # property of the environment the rungs play in, so a ladder is only valid
+    # for the tick rate, field count, ship config and fleet size it was measured
+    # under: re-run the tournament whenever any of those move.
+    reference_ladder: tuple[tuple[float, float], ...]
+    random_elo: float  # fitted rating of the uniform-random agent on that gauge
     # Ladder-snapshot grid spacing: snapshots are taken as normalized Elo crosses
     # each multiple of this value, so rungs land at absolute heights (200, 400, …)
     # that are comparable across runs rather than drifting from run history.
@@ -243,6 +271,8 @@ class TrainConfig:
                 f"scales[0].num_envs={primary_envs} must be divisible by "
                 f"num_minibatches={self.num_minibatches}"
             )
+        if self.league_slots < 1:
+            raise ValueError(f"league_slots must be positive, got {self.league_slots}")
         if self.microbatch_tokens is not None and self.microbatch_tokens < 1:
             raise ValueError(
                 f"microbatch_tokens must be positive or None, got {self.microbatch_tokens}"

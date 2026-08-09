@@ -95,6 +95,14 @@ from runs.rl import RL_TRAIN_CONFIG
 from runs.rl_fields import RL_FIELDS_TRAIN_CONFIG
 from runs.shared import ELO_CALIBRATE, MODEL_CONFIG, REWARDS, SHIP_CONFIG
 
+# Training profiles addressable by name, for modes that need a run's environment
+# config before any such run exists.
+_TRAIN_PROFILES: dict[str, TrainConfig] = {
+    "rl": RL_TRAIN_CONFIG,
+    "rl_fields": RL_FIELDS_TRAIN_CONFIG,
+    "bc": BC_TRAIN_CONFIG,
+}
+
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -157,6 +165,16 @@ def _parse_args() -> argparse.Namespace:
         metavar="RUN",
         help="Run name for Elo modes (e.g. 'bright-cloud-219'), "
         "'latest', or 'none' (scripted agents only, no checkpoints).",
+    )
+    parser.add_argument(
+        "--profile",
+        type=str,
+        default="rl",
+        choices=sorted(_TRAIN_PROFILES),
+        help="(semi_random) Training profile whose environment the reference "
+        "ladder is rated under. Rung ratings are a property of the environment "
+        "(tick rate, fields, ship config), so a run must use a ladder fitted "
+        "under its own profile. Ignored when --run names a finished run.",
     )
     # elo_calibrate defaults live in runs/shared.py (ELO_CALIBRATE); these flags
     # are ad-hoc overrides, so they default to None and fall back to the config.
@@ -521,7 +539,7 @@ def main() -> None:
                     num_ships=8,
                     max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
                     max_episode_steps=1024,
-                    num_fields=0,
+                    num_fields=4,
                 ),
                 rewards=REWARDS,
                 model_config=MODEL_CONFIG,
@@ -634,8 +652,14 @@ def main() -> None:
             )
 
         case "semi_random":
+            # Rungs are rated under a *profile* by default: their ratings are a
+            # property of the environment they play in, and the run that will use
+            # them as fixed references need not exist yet. --run overrides, to
+            # re-rate the ladder a finished run actually trained against.
+            profile_config = None if args.run != "none" else _TRAIN_PROFILES[args.profile]
             run_semi_random_tournament(
-                run_spec=(args.run if args.run != "none" else "resilient-resonance-682"),
+                run_spec=(args.profile if profile_config is not None else args.run),
+                train_config=profile_config,
                 team_sizes=parse_counts(args.team_counts),
                 probabilities=parse_probabilities(args.scripted_probs),
                 games_per_pair=args.games_per_pair,

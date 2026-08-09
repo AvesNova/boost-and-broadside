@@ -216,7 +216,7 @@ def _run_interactive_loop(
         device:   Torch device.
         keyboard_teams: Team IDs whose selected actions are replaced by keyboard input.
     """
-    N_IMAGINE_STEPS = 12
+    N_IMAGINE_STEPS = 0
 
     N = wrapper.num_ships
     M = wrapper.env_config.num_fields

@@ -229,13 +229,20 @@ class ReturnScaler:
     Lambdas in the PPO advantage aggregation then act as pure importance weights
     (sign + magnitude) rather than also implicitly controlling scale.
 
+    ``min_span`` is a divide-by-zero guard, not a scale. It must sit far below
+    every active component's real span: a floor that binds on a live component
+    silently shrinks that component's critic targets, and so its share of the
+    value loss, by the ratio between the floor and the truth. Check
+    ``floor_bound`` — the trainer logs it per component — before raising it.
+
     Args:
         num_components: K — number of value components.
         device:         Torch device (must match the returns tensor).
         ema_alpha:      EMA decay rate per rollout update (default 0.005 ≈ 200-update
                         memory). Slower = more stable but slower adaptation.
-        min_span:       Minimum allowed p95−p5 value (symlog-space). Guards
-                        disabled components (weight=0) whose returns are all zero.
+        min_span:       Degeneracy epsilon on p95−p5 (symlog-space). Guards a
+                        component whose returns collapse to a constant — e.g. one
+                        whose reward group scale is scheduled to zero.
     """
 
     def __init__(
@@ -243,7 +250,7 @@ class ReturnScaler:
         num_components: int,
         device: torch.device,
         ema_alpha: float = 0.005,
-        min_span: float = 1.0,
+        min_span: float = 1e-3,
     ) -> None:
         self.alpha = ema_alpha
         self.min_span = min_span
@@ -329,6 +336,15 @@ class ReturnScaler:
         """Half the p95−p5 range, clamped to at least min_span/2."""
         return ((self._p95 - self._p5) * 0.5).clamp(min=self.min_span * 0.5)
 
+    @property
+    def floor_bound(self) -> torch.Tensor:
+        """(K,) bool — components whose span is being held up by ``min_span``.
+
+        True for an active component means its critic targets are compressed by
+        the guard rather than scaled by its own statistics.
+        """
+        return (self._p95 - self._p5) < self.min_span
+
     def normalize(self, x: torch.Tensor) -> torch.Tensor:
         """Map from symlog-reward space → normalized space (≈ [-1, 1] per component).
 
@@ -358,6 +374,7 @@ class ReturnScaler:
             "p5": self._p5.cpu(),
             "p95": self._p95.cpu(),
             "initialized": self._initialized,
+            "min_span": self.min_span,
         }
 
     @property
@@ -369,6 +386,11 @@ class ReturnScaler:
         self._p5 = d["p5"].to(self._p5.device)
         self._p95 = d["p95"].to(self._p95.device)
         self._initialized = d.get("initialized", True)  # assume initialized if loading old ckpt
+        # A checkpoint written under a different floor carries percentiles shaped
+        # by that floor. Re-seeding costs one rollout; EMA-ing a stale floor out
+        # takes ~1/alpha updates, during which the component is mis-scaled.
+        if d.get("min_span") != self.min_span:
+            self._initialized = False
 
 
 class AdvantageScaler:
@@ -384,13 +406,22 @@ class AdvantageScaler:
     p5/p95 because advantages are already approximately zero-mean from GAE's
     baseline subtraction.
 
+    ``min_rms`` is a divide-by-zero guard, not a scale. Sparse components have
+    genuinely small advantages — a terminal win reward spread over a whole
+    episode by GAE lands two orders of magnitude below a per-step damage signal —
+    so a floor set at "small" rather than "epsilon" binds on them forever and
+    silently downweights them in the policy gradient by the ratio between the
+    floor and the truth. Check ``floor_bound``, which the trainer logs per
+    component, before raising it.
+
     Args:
         num_components: K — number of value components.
         device:         Torch device.
         ema_alpha:      EMA decay per rollout (default 0.005 ≈ 200-rollout memory,
                         matching ReturnScaler).
-        min_rms:        Minimum RMS clamp — guards sparse components (e.g. ally_win
-                        early in training before any wins occur).
+        min_rms:        Degeneracy epsilon on the advantage RMS. Guards a
+                        component whose advantages collapse to zero — e.g. one
+                        whose reward group scale is scheduled to zero.
     """
 
     def __init__(
@@ -398,7 +429,7 @@ class AdvantageScaler:
         num_components: int,
         device: torch.device,
         ema_alpha: float = 0.005,
-        min_rms: float = 0.1,
+        min_rms: float = 1e-4,
     ) -> None:
         self.alpha = ema_alpha
         self.min_rms = min_rms
@@ -460,16 +491,34 @@ class AdvantageScaler:
         return advantages / (self._rms.clamp(min=self.min_rms) + 1e-8)
 
     def state_dict(self) -> dict:
-        return {"rms": self._rms.cpu(), "initialized": self._initialized}
+        return {
+            "rms": self._rms.cpu(),
+            "initialized": self._initialized,
+            "min_rms": self.min_rms,
+        }
 
     @property
     def rms(self) -> torch.Tensor:
         """Current per-component advantage RMS vector."""
         return self._rms
 
+    @property
+    def floor_bound(self) -> torch.Tensor:
+        """(K,) bool — components whose RMS is being held up by ``min_rms``.
+
+        True for an active component means its policy-gradient share is set by
+        the guard rather than by its own statistics.
+        """
+        return self._rms <= self.min_rms
+
     def load_state_dict(self, d: dict) -> None:
         self._rms = d["rms"].to(self._rms.device)
         self._initialized = d.get("initialized", True)
+        # A checkpoint written under a different floor carries an RMS shaped by
+        # that floor. Re-seeding costs one rollout; EMA-ing a stale floor out
+        # takes ~1/alpha updates, during which the component is mis-scaled.
+        if d.get("min_rms") != self.min_rms:
+            self._initialized = False
 
 
 class RolloutBuffer:
@@ -545,7 +594,6 @@ class RolloutBuffer:
         # Per-component float arrays are read-once leaf data → bf16 (see _STORAGE_FLOAT).
         self.rewards = torch.zeros((T, B, N, K), device=device, dtype=_STORAGE_FLOAT)
         self.values = torch.zeros((T, B, N, K), device=device, dtype=_STORAGE_FLOAT)
-        self.dones = torch.zeros((T, B), device=device, dtype=torch.float32)
         self.alive_mask = torch.zeros((T, B, N), device=device, dtype=torch.bool)
 
         self.advantages = torch.zeros((T, B, N, K), device=device, dtype=_STORAGE_FLOAT)
@@ -603,7 +651,6 @@ class RolloutBuffer:
         action: torch.Tensor,
         logprob: torch.Tensor,
         reward: torch.Tensor,
-        done: torch.Tensor,
         value: torch.Tensor,
         alive: torch.Tensor,
         actor_mask: torch.Tensor | None = None,
@@ -617,15 +664,14 @@ class RolloutBuffer:
             action:       (B, N, 3) int.
             logprob:      (B, N) float.
             reward:       (B, N, K) float — raw per-component per-ship rewards.
-            done:         (B,) float (0.0 or 1.0).
             value:        (B, N, K) float — critic expected values (symlog-reward space).
             alive:        (B, N) bool.
             actor_mask:   (B, N) bool — True for ships that should contribute to actor loss.
                           Defaults to all-True (pure self-play).
             expert_probs: (B, N, 12) float — scripted-agent marginal probs for BC loss.
                           Zero for envs without a scripted opponent.
-            terminated:   (B,) bool — True when episode ended (done | truncated). Used to
-                          mask aux loss at terminal transitions.
+            terminated:   (B,) bool — True when the episode ended (done | truncated).
+                          Cuts the GAE trace and masks the aux loss at boundaries.
         """
         if self.ptr >= self.num_steps:
             raise IndexError("Buffer is full — call reset() before reuse.")
@@ -640,7 +686,6 @@ class RolloutBuffer:
         self.actions[t] = action.int()
         self.logprobs[t] = logprob
         self.rewards[t] = symlog(reward)  # symlog #1: compress raw reward scale
-        self.dones[t] = done.float()
         self.values[t] = value
         self.alive_mask[t] = alive
         self.actor_masks[t] = actor_mask if actor_mask is not None else torch.ones_like(alive)
@@ -675,10 +720,23 @@ class RolloutBuffer:
         All tensor ops broadcast over the K dimension automatically — the
         loop body is identical to the scalar case.
 
+        Episode boundaries use ``terminated`` (done | truncated), not ``dones``
+        (physics termination only). The wrapper auto-resets a finished
+        environment *before* returning its observation, so ``values[t+1]`` after
+        a truncation is the value of a freshly spawned episode. Bootstrapping a
+        truncated episode's return off it would carry value across the boundary
+        — and with the win component at gamma 0.999 that leak runs the length of
+        the trace. Cutting the trace at truncation instead is mildly conservative
+        (a time-limited episode is treated as if it genuinely ended) but it never
+        mixes two episodes. Recovering the exact bootstrap would mean storing the
+        pre-reset final observation, which is not worth it at the ~2% of episodes
+        that reach the horizon.
+
         Args:
             next_value: (B, N, K) float — critic expected values at step T+1,
                         in symlog-reward space (symexp of expected bin).
-            next_done:  (B,) float — whether step T+1 is terminal.
+            next_done:  (B,) float — whether step T+1 ended an episode
+                        (done | truncated).
         """
         with torch.no_grad():
             # Accumulate in fp32 even though rewards/values are stored bf16: gamma/lam
@@ -693,7 +751,7 @@ class RolloutBuffer:
                     non_terminal = 1.0 - next_done.view(-1, 1, 1)  # (B, 1, 1)
                     next_val = next_value  # (B, N, K)
                 else:
-                    non_terminal = 1.0 - self.dones[t].view(-1, 1, 1)  # (B, 1, 1)
+                    non_terminal = 1.0 - self.terminated[t].float().view(-1, 1, 1)  # (B, 1, 1)
                     next_val = self.values[t + 1]  # (B, N, K)
 
                 delta = self.rewards[t] + gamma * next_val * non_terminal - self.values[t]

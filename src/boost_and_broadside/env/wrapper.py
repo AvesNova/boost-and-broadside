@@ -176,8 +176,9 @@ class YemongEnvWrapper:
         self._acc_wins_sum = torch.zeros((), device=d)
         self._acc_lifespan_sum = torch.zeros((), device=d)
         # field damage, combat damage, field deaths, combat deaths,
-        # field-damage steps, non-ambient live steps, total live steps.
-        self._acc_source_stats = torch.zeros((7,), device=d)
+        # field-damage steps, non-ambient live steps, total live steps,
+        # power, speed, out-of-power live steps.
+        self._acc_source_stats = torch.zeros((10,), device=d)
 
     def pop_episode_stats(self) -> dict[str, torch.Tensor]:
         """Return finished-episode stats accumulated since the last call, and reset.
@@ -232,61 +233,148 @@ class YemongEnvWrapper:
             actions: (B, N, 3) int tensor — [power, turn, shoot].
             unlimited_resources: Protect and refill alive ships for interactive play.
 
+        One call is one *decision*: the action is held for ``action_repeat``
+        physics ticks. Physics, collisions and projectile integration always run
+        at ``ShipConfig.dt``, so the simulation is unchanged — only the rate at
+        which the policy may change its mind moves.
+
+        Rewards are summed across the held ticks, which is scale-preserving:
+        over a fixed span of game time both the dense per-tick terms and the
+        one-off event terms total exactly what they would at repeat 1, so the
+        component ratios that RewardConfig sets are untouched.
+
+        An environment that finishes partway through the hold stops contributing
+        — its rewards, its win flag and its episode statistics are all frozen at
+        that tick. It keeps being simulated for the remainder (masking the
+        physics would cost more than the wasted ticks) but nothing it produces
+        afterwards is read, and it is reset once at the end.
+
+        Args:
+            actions: (B, N, 3) int tensor — [power, turn, shoot].
+            unlimited_resources: Protect and refill alive ships for interactive play.
+
         Returns:
             obs:          dict of (B, N, ...) tensors.
-            comp_rewards: (B, N, K) float32 — per-component per-ship rewards (no zero-sum).
+            comp_rewards: (B, N, K) float32 — per-component per-ship rewards
+                          summed over the held ticks (no zero-sum).
             dones:        (B,) bool — game-over (physics termination).
             truncated:    (B,) bool — episode length limit reached.
             info:         empty dict (episode stats moved to pop_episode_stats).
+        """
+        B, N = self.env.state.ship_health.shape
+        K = len(self._active_names)
+        comp_rewards = torch.zeros(B, N, K, device=self.device, dtype=torch.float32)
+        dones = torch.zeros(B, dtype=torch.bool, device=self.device)
+        truncated = torch.zeros(B, dtype=torch.bool, device=self.device)
+
+        for _ in range(self.env_config.action_repeat):
+            # Envs that already finished earlier in this hold contribute nothing.
+            running = ~(dones | truncated)
+            tick_dones, tick_truncated = self._physics_tick(
+                actions, comp_rewards, running, unlimited_resources
+            )
+            dones = dones | (tick_dones & running)
+            truncated = truncated | (tick_truncated & running)
+
+        done_mask = dones | truncated
+        done_n = done_mask.unsqueeze(1)
+
+        # Reset done environments (state mutated in-place) and their trackers
+        self.env.reset_envs(done_mask)
+        self._refresh_field_obs(done_mask)
+        self._ep_reward.masked_fill_(done_n, 0.0)
+        self._ep_length.masked_fill_(done_mask, 0)
+        self._ep_comp.masked_fill_(done_mask.view(B, 1, 1), 0.0)
+        self._ep_comp_scaled.masked_fill_(done_mask.view(B, 1, 1), 0.0)
+        self._ep_wins.masked_fill_(done_n, 0.0)
+        self._ship_age.masked_fill_(done_n, 0)
+
+        return self._get_obs(), comp_rewards, dones, truncated, {}
+
+    def _physics_tick(
+        self,
+        actions: torch.Tensor,
+        comp_rewards: torch.Tensor,
+        running: torch.Tensor,
+        unlimited_resources: bool,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Advance one physics tick, accumulating rewards and episode statistics.
+
+        Fully branchless on the GPU: episode stats for finished envs fold into
+        on-device accumulators (see pop_episode_stats) instead of being copied
+        to the CPU here, so a tick never forces a host-device sync.
+
+        Args:
+            actions: (B, N, 3) — the held action.
+            comp_rewards: (B, N, K) accumulator, added to in place.
+            running: (B,) bool — envs still live in this decision's hold.
+            unlimited_resources: Interactive-play protection toggle.
+
+        Returns:
+            (dones, truncated) for this tick, before the running mask.
         """
         # Snapshot pre-physics state fields needed for reward delta
         prev_health = self.env.state.ship_health.clone()  # (B, N)
         prev_alive = self.env.state.ship_alive.clone()  # (B, N)
         prev_state = _make_prev_state_proxy(self.env.state, prev_health, prev_alive)
 
-        # Physics step (no auto-reset)
-        dones, truncated = self.env.step(
+        # One physics tick (no auto-reset). Deliberately `tick`, not `step`:
+        # this method *is* the per-tick body of a decision, and rewards and
+        # episode statistics have to accumulate at tick granularity.
+        dones, truncated = self.env.tick(
             actions,
             unlimited_resources=unlimited_resources,
         )
 
+        running_n = running.unsqueeze(1)  # (B, 1)
+
         source_state = self.env.state
+        live = prev_alive & running_n
         self._acc_source_stats += torch.stack(
             [
-                source_state.ship_field_damage.sum(),
-                source_state.ship_combat_damage.sum(),
-                source_state.ship_field_death.sum(),
-                source_state.ship_combat_death.sum(),
-                (source_state.ship_field_damage > 0.0).sum(),
-                ((source_state.ship_local_index - 1.0).abs() > 1e-6).logical_and(prev_alive).sum(),
-                prev_alive.sum(),
+                (source_state.ship_field_damage * running_n).sum(),
+                (source_state.ship_combat_damage * running_n).sum(),
+                (source_state.ship_field_death & running_n).sum(),
+                (source_state.ship_combat_death & running_n).sum(),
+                ((source_state.ship_field_damage > 0.0) & running_n).sum(),
+                ((source_state.ship_local_index - 1.0).abs() > 1e-6).logical_and(live).sum(),
+                live.sum(),
+                # Resource economy. A policy that spends itself dry cannot
+                # thrust at all until passive regen catches up, and nothing
+                # else in the metrics would show it.
+                (source_state.ship_power * live).sum(),
+                (source_state.ship_vel.abs() * live).sum(),
+                ((source_state.ship_power <= 1.0) & live).sum(),
             ]
         )
 
         # Compute rewards for active components only — (B, N, K_active)
-        B, N = self.env.state.ship_health.shape
-        K = len(self._active_names)
-        comp_rewards = torch.zeros(B, N, K, device=self.device, dtype=torch.float32)
+        tick_rewards = torch.zeros_like(comp_rewards)
         for k, comp in enumerate(self._active_components):
-            comp_rewards[:, :, k] = comp.compute(prev_state, actions, self.env.state, dones)
+            tick_rewards[:, :, k] = comp.compute(prev_state, actions, self.env.state, dones)
 
         # Normalize all rewards by total ship count so reward scale is invariant
         # to game size across 1v1, 2v2, 4v4, etc. Win rewards are included: in 2v2
         # both allies each contribute +1, so without normalization the win signal
         # would be 2× stronger than in 1v1 after lambda aggregation.
-        _n_ships = self.env_config.num_ships
-        comp_rewards /= _n_ships
+        tick_rewards /= self.env_config.num_ships
+        tick_rewards *= running_n.unsqueeze(-1)  # finished envs stop earning
+        comp_rewards += tick_rewards
 
-        # Accumulate per-episode trackers (active components only)
-        self._ep_reward += comp_rewards.sum(dim=-1)
-        self._ep_length += 1
-        self._ship_age += prev_alive.int()  # freeze at death step
-        self._ep_comp += comp_rewards
-        self._ep_comp_scaled += comp_rewards * self._weight_t
+        # Accumulate per-episode trackers (active components only). Lengths and
+        # ages are in physics ticks, so they stay comparable across action_repeat.
+        self._ep_reward += tick_rewards.sum(dim=-1)
+        self._ep_length += running.int()
+        self._ship_age += (prev_alive & running_n).int()  # freeze at death step
+        self._ep_comp += tick_rewards
+        self._ep_comp_scaled += tick_rewards * self._weight_t
 
-        done_mask = dones | truncated
+        # Only envs finishing on *this* tick fold into the per-update stats; an
+        # env that ended earlier in the hold was already counted.
+        done_mask = (dones | truncated) & running
 
-        # Win tracking — +1 for ships on the surviving team, 0 otherwise.
+        # Win tracking — +1 for ships on the surviving team, 0 otherwise. Read at
+        # the tick the env finished, so extra held ticks cannot rewrite the result.
         s = self.env.state
         team0 = s.ship_team_id == 0  # (B, N)
         team1 = s.ship_team_id == 1  # (B, N)
@@ -316,17 +404,7 @@ class YemongEnvWrapper:
         self._acc_wins_sum += (self._ep_wins * done_nf).sum()
         self._acc_lifespan_sum += (self._ship_age.float() * done_nf).sum()
 
-        # Reset done environments (state mutated in-place) and their trackers
-        self.env.reset_envs(done_mask)
-        self._refresh_field_obs(done_mask)
-        self._ep_reward.masked_fill_(done_n, 0.0)
-        self._ep_length.masked_fill_(done_mask, 0)
-        self._ep_comp.masked_fill_(done_mask.view(B, 1, 1), 0.0)
-        self._ep_comp_scaled.masked_fill_(done_mask.view(B, 1, 1), 0.0)
-        self._ep_wins.masked_fill_(done_n, 0.0)
-        self._ship_age.masked_fill_(done_n, 0)
-
-        return self._get_obs(), comp_rewards, dones, truncated, {}
+        return dones, truncated
 
     # ------------------------------------------------------------------
     # Observation construction

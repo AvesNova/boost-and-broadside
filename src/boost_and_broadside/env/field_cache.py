@@ -11,9 +11,17 @@ from boost_and_broadside.env.field_physics import material_tensors, validate_fie
 class FieldMapCache:
     """Fixed-shape bank of static laminar field maps.
 
-    Maps are generated with bounded construction-time rejection sampling. Episode
-    resets only gather a cached row and apply a shared toroidal translation, so
-    parent relationships and all material tensors remain valid without host sync.
+    Maps are generated on device, valid by construction: candidate placements are
+    rejected against already-placed fields before they are accepted, so no map
+    ever has to be validated on the hot path. Episode resets gather a cached row
+    and apply a shared toroidal translation, so parent relationships and all
+    material tensors remain valid without host sync.
+
+    ``refresh`` regenerates the whole bank in place. Training calls it once per
+    rollout: a fixed bank is a small map distribution that a long run sees
+    thousands of times over, whereas a bank replaced every rollout supplies
+    roughly one distinct map per episode for the cost of a few hundred
+    microseconds.
     """
 
     def __init__(
@@ -24,20 +32,34 @@ class FieldMapCache:
         index_level: torch.Tensor,
         damage_level: torch.Tensor,
         ship_config: ShipConfig,
+        validate: bool = True,
     ) -> None:
+        """Build a cache from field layout tensors.
+
+        Args:
+            validate: Run the full laminar-geometry check. It costs several
+                device-to-host syncs and raises on failure, so the generator —
+                whose output is valid by construction — skips it and reports a
+                device-side failure count instead. Externally supplied layouts
+                (tests, tooling) keep the loud check.
+        """
         if pos.ndim != 2:
             raise ValueError("field cache tensors must have shape (cache_size, num_fields)")
-        parent = validate_field_layout(
-            pos,
-            radius,
-            transition_width,
-            index_level,
-            damage_level,
-            ship_config.world_size,
-        )
+        if validate:
+            parent = validate_field_layout(
+                pos,
+                radius,
+                transition_width,
+                index_level,
+                damage_level,
+                ship_config.world_size,
+            )
+        else:
+            parent = field_parents_only(pos, radius, transition_width, ship_config.world_size)
         index, damage, delta_index = material_tensors(
             index_level, damage_level, parent, ship_config
         )
+        self._ship_config = ship_config
         self._pos = pos.to(torch.complex64)
         self._radius = radius.to(torch.float32)
         self._transition_width = transition_width.to(torch.float32)
@@ -47,6 +69,11 @@ class FieldMapCache:
         self._damage = damage.to(torch.float32)
         self._parent = parent.to(torch.long)
         self._delta_index = delta_index.to(torch.float32)
+        # Maps the generator could not place within its proposal budget, kept on
+        # device so reading it never forces a sync. Those rows retain whatever
+        # map they previously held; a sustained non-zero reading means the
+        # radius/width/count combination is too tight to place reliably.
+        self.generation_failures = torch.zeros((), device=self._pos.device, dtype=torch.float32)
 
     def __len__(self) -> int:
         return self._pos.shape[0]
@@ -63,55 +90,73 @@ class FieldMapCache:
         device: torch.device,
         seed: int | None = None,
     ) -> "FieldMapCache":
-        """Generate ``cache_size`` valid maps, failing after bounded attempts."""
+        """Generate ``cache_size`` valid maps, failing loudly on a bad config.
 
-        generator = torch.Generator(device="cpu")
-        if seed is None:
-            generator.seed()
-        else:
+        The initial generation validates: a radius/width/field-count combination
+        that cannot be placed is a configuration error and should stop the run
+        rather than quietly thin the map distribution. ``refresh`` afterwards
+        skips validation, having already proved the config workable.
+        """
+        generator = None
+        if seed is not None:
+            generator = torch.Generator(device=device)
             generator.manual_seed(seed)
 
-        cache_pos: list[list[complex]] = []
-        cache_radius: list[list[float]] = []
-        cache_width: list[list[float]] = []
-        cache_index_level: list[list[int]] = []
-        cache_damage_level: list[list[int]] = []
-
-        for map_idx in range(map_config.cache_size):
-            generated = _generate_one_map(
-                env_config.num_fields,
-                ship_config,
-                map_config,
-                generator,
+        layout, valid = _generate_batch(
+            map_config.cache_size, ship_config, env_config, map_config, device, generator
+        )
+        if env_config.num_fields > 0 and not bool(valid.all().item()):
+            failed = int((~valid).sum().item())
+            raise RuntimeError(
+                f"Field map generation failed for {failed}/{map_config.cache_size} maps "
+                f"after {map_config.max_generation_attempts} attempts per field; reduce "
+                "num_fields/radii/widths, or raise max_generation_attempts"
             )
-            if generated is None:
-                raise RuntimeError(
-                    "Field map generation failed for map "
-                    f"{map_idx + 1}/{map_config.cache_size} after "
-                    f"{map_config.max_generation_attempts} attempts per field; "
-                    "reduce num_fields/radii/widths or increase max_generation_attempts"
-                )
-            pos, radius, width, index_level, damage_level = generated
-            cache_pos.append(pos)
-            cache_radius.append(radius)
-            cache_width.append(width)
-            cache_index_level.append(index_level)
-            cache_damage_level.append(damage_level)
+        cache = FieldMapCache(*layout, ship_config, validate=True)
+        cache._map_config = map_config
+        cache._env_config = env_config
+        return cache
 
-        shape = (map_config.cache_size, env_config.num_fields)
-        if env_config.num_fields == 0:
-            pos_t = torch.empty(shape, dtype=torch.complex64, device=device)
-            radius_t = torch.empty(shape, dtype=torch.float32, device=device)
-            width_t = torch.empty(shape, dtype=torch.float32, device=device)
-            index_t = torch.empty(shape, dtype=torch.int8, device=device)
-            damage_t = torch.empty(shape, dtype=torch.int8, device=device)
-        else:
-            pos_t = torch.tensor(cache_pos, dtype=torch.complex64, device=device)
-            radius_t = torch.tensor(cache_radius, dtype=torch.float32, device=device)
-            width_t = torch.tensor(cache_width, dtype=torch.float32, device=device)
-            index_t = torch.tensor(cache_index_level, dtype=torch.int8, device=device)
-            damage_t = torch.tensor(cache_damage_level, dtype=torch.int8, device=device)
-        return FieldMapCache(pos_t, radius_t, width_t, index_t, damage_t, ship_config)
+    def refresh(self, generator: torch.Generator | None = None) -> None:
+        """Regenerate the whole bank in place, on device, without syncing.
+
+        Maps that fail to place keep their previous row rather than raising —
+        a mid-run exception would lose the run over a transient sampling miss,
+        and ``generation_failures`` makes any sustained problem visible in the
+        per-update metrics instead.
+        """
+        if self.num_fields == 0:
+            return
+        layout, valid = _generate_batch(
+            len(self),
+            self._ship_config,
+            self._env_config,
+            self._map_config,
+            self._pos.device,
+            generator,
+        )
+        pos, radius, width, index_level, damage_level = layout
+        keep = valid.unsqueeze(1)
+        pos = torch.where(keep, pos, self._pos)
+        radius = torch.where(keep, radius, self._radius)
+        width = torch.where(keep, width, self._transition_width)
+        index_level = torch.where(keep, index_level, self._index_level)
+        damage_level = torch.where(keep, damage_level, self._damage_level)
+
+        parent = field_parents_only(pos, radius, width, self._ship_config.world_size)
+        index, damage, delta_index = material_tensors(
+            index_level, damage_level, parent, self._ship_config
+        )
+        self._pos = pos.to(torch.complex64)
+        self._radius = radius.to(torch.float32)
+        self._transition_width = width.to(torch.float32)
+        self._index_level = index_level.to(torch.int8)
+        self._index = index.to(torch.float32)
+        self._damage_level = damage_level.to(torch.int8)
+        self._damage = damage.to(torch.float32)
+        self._parent = parent.to(torch.long)
+        self._delta_index = delta_index.to(torch.float32)
+        self.generation_failures = (~valid).float().sum()
 
     def sample(
         self,
@@ -144,123 +189,178 @@ class FieldMapCache:
         )
 
 
-def _uniform(generator: torch.Generator, low: float, high: float) -> float:
-    if low == high:
-        return float(low)
-    return float(low + torch.rand((), generator=generator).item() * (high - low))
-
-
-def _rand_index(generator: torch.Generator, size: int) -> int:
-    return int(torch.randint(size, (), generator=generator).item())
-
-
-def _minimum_image_distance(a: complex, b: complex, world_size: tuple[float, float]) -> float:
-    world_w, world_h = world_size
-    dx = (a.real - b.real + world_w / 2.0) % world_w - world_w / 2.0
-    dy = (a.imag - b.imag + world_h / 2.0) % world_h - world_h / 2.0
-    return math.hypot(dx, dy)
-
-
-def _pair_is_laminar(
-    pos_a: complex,
-    radius_a: float,
-    width_a: float,
-    pos_b: complex,
-    radius_b: float,
-    width_b: float,
+def field_parents_only(
+    centers: torch.Tensor,
+    radii: torch.Tensor,
+    transition_widths: torch.Tensor,
     world_size: tuple[float, float],
-) -> bool:
-    distance = _minimum_image_distance(pos_a, pos_b, world_size)
-    outer_a = radius_a + width_a / 2.0
-    outer_b = radius_b + width_b / 2.0
-    core_a = radius_a - width_a / 2.0
-    core_b = radius_b - width_b / 2.0
-    return (
-        distance >= outer_a + outer_b
-        or distance + outer_b <= core_a
-        or distance + outer_a <= core_b
+) -> torch.Tensor:
+    """Direct parents for an already-laminar layout, without the validity check.
+
+    ``validate_field_layout`` returns the same thing but spends eight
+    device-to-host syncs proving the layout legal first. Generated maps are legal
+    by construction, so the hot path takes this instead.
+    """
+    from boost_and_broadside.env.field_physics import field_parents
+
+    return field_parents(centers, radii, transition_widths, world_size)
+
+
+def _wrap(delta: torch.Tensor, world_size: tuple[float, float]) -> torch.Tensor:
+    world_w, world_h = world_size
+    return torch.complex(
+        (delta.real + world_w / 2.0) % world_w - world_w / 2.0,
+        (delta.imag + world_h / 2.0) % world_h - world_h / 2.0,
     )
 
 
-def _generate_one_map(
-    num_fields: int,
+def _rand(shape, device, generator, low=0.0, high=1.0) -> torch.Tensor:
+    values = torch.rand(shape, device=device, generator=generator)
+    return values if (low, high) == (0.0, 1.0) else low + values * (high - low)
+
+
+def _generate_batch(
+    count: int,
     ship_config: ShipConfig,
+    env_config: EnvConfig,
     map_config: FieldMapConfig,
-    generator: torch.Generator,
-) -> tuple[list[complex], list[float], list[float], list[int], list[int]] | None:
-    """Generate one map sequentially; every field has a bounded attempt budget."""
+    device: torch.device,
+    generator: torch.Generator | None,
+) -> tuple[tuple[torch.Tensor, ...], torch.Tensor]:
+    """Place ``count`` laminar maps at once, entirely on device.
 
+    Loops over fields, not over maps or over retries: each field proposes
+    ``max_generation_attempts`` candidate placements for every map simultaneously,
+    checks them against the fields already placed in that map, and takes the
+    first that fits. Cost is ``num_fields`` iterations of fixed-shape tensor
+    work, with no data-dependent control flow and so no host synchronisation.
+    ``FieldMapConfig.max_generation_attempts`` sets the proposal count.
+
+    Returns:
+        ((pos, radius, width, index_level, damage_level), valid) where ``valid``
+        is (count,) bool — False for maps that ran out of proposals for some
+        field. Callers decide whether that is fatal.
+    """
+    num_fields = env_config.num_fields
     world_w, world_h = ship_config.world_size
-    positions: list[complex] = []
-    radii: list[float] = []
-    widths: list[float] = []
-    index_levels: list[int] = []
-    damage_levels: list[int] = []
+    shape = (count, num_fields)
+    pos = torch.zeros(shape, dtype=torch.complex64, device=device)
+    radius = torch.zeros(shape, dtype=torch.float32, device=device)
+    width = torch.zeros(shape, dtype=torch.float32, device=device)
+    index_level = torch.zeros(shape, dtype=torch.int8, device=device)
+    damage_level = torch.zeros(shape, dtype=torch.int8, device=device)
+    placed = torch.zeros(shape, dtype=torch.bool, device=device)
+    if num_fields == 0:
+        return (pos, radius, width, index_level, damage_level), torch.ones(
+            count, dtype=torch.bool, device=device
+        )
 
-    for _ in range(num_fields):
-        accepted = False
-        for _attempt in range(map_config.max_generation_attempts):
-            width = _uniform(
-                generator,
-                ship_config.field_transition_width_min,
-                ship_config.field_transition_width_max,
+    # Attempts become a proposal axis rather than a retry loop: every map
+    # evaluates all of them at once and takes the first that fits.
+    proposals = map_config.max_generation_attempts
+    for field in range(num_fields):
+        candidate_width = _rand(
+            (count, proposals),
+            device,
+            generator,
+            ship_config.field_transition_width_min,
+            ship_config.field_transition_width_max,
+        )
+        candidate_radius = _rand(
+            (count, proposals),
+            device,
+            generator,
+            ship_config.field_radius_min,
+            ship_config.field_radius_max,
+        )
+        free_pos = torch.complex(
+            _rand((count, proposals), device, generator) * world_w,
+            _rand((count, proposals), device, generator) * world_h,
+        )
+
+        if field == 0:
+            candidate_pos = free_pos
+            fits = torch.ones((count, proposals), dtype=torch.bool, device=device)
+        else:
+            prior_pos = pos[:, :field].unsqueeze(1)  # (count, 1, field)
+            prior_radius = radius[:, :field].unsqueeze(1)
+            prior_width = width[:, :field].unsqueeze(1)
+            prior_placed = placed[:, :field].unsqueeze(1)
+
+            # A field can nest inside a prior one only if that one's flat core
+            # has room for the candidate's whole transition band.
+            room = prior_placed & (
+                prior_radius - 0.5 * prior_width
+                >= ship_config.field_radius_min + 0.5 * candidate_width.unsqueeze(2)
+            )  # (count, proposals, field)
+            has_parent = room.any(dim=2)
+            # Uniform choice among the fields with room: randomise then take the
+            # best-scoring available one.
+            parent_index = (
+                _rand((count, proposals, field), device, generator) * room
+            ).argmax(dim=2, keepdim=True)
+            parent_pos = prior_pos.expand(-1, proposals, -1).gather(2, parent_index).squeeze(2)
+            parent_radius = (
+                prior_radius.expand(-1, proposals, -1).gather(2, parent_index).squeeze(2)
             )
-            radius = _uniform(
-                generator,
-                ship_config.field_radius_min,
-                ship_config.field_radius_max,
+            parent_width = prior_width.expand(-1, proposals, -1).gather(2, parent_index).squeeze(2)
+
+            inner_limit = parent_radius - 0.5 * parent_width - 0.5 * candidate_width
+            nested_radius = _rand((count, proposals), device, generator) * (
+                inner_limit.clamp(max=ship_config.field_radius_max)
+                - ship_config.field_radius_min
+            ).clamp(min=0.0) + ship_config.field_radius_min
+            max_offset = (inner_limit - nested_radius).clamp(min=0.0)
+            # sqrt of a uniform draw gives an area-uniform radial offset.
+            offset = max_offset * _rand((count, proposals), device, generator).sqrt()
+            angle = _rand((count, proposals), device, generator) * (2.0 * math.pi)
+            nested_pos = torch.complex(
+                (parent_pos.real + offset * angle.cos()) % world_w,
+                (parent_pos.imag + offset * angle.sin()) % world_h,
             )
 
-            parent_candidates = [
-                i
-                for i, (parent_radius, parent_width) in enumerate(zip(radii, widths, strict=True))
-                if parent_radius - parent_width / 2.0 >= ship_config.field_radius_min + width / 2.0
-            ]
-            choose_nested = (
-                bool(parent_candidates)
-                and torch.rand((), generator=generator).item() < map_config.nesting_probability
+            nest = has_parent & (
+                _rand((count, proposals), device, generator) < map_config.nesting_probability
             )
-            if choose_nested:
-                parent = parent_candidates[_rand_index(generator, len(parent_candidates))]
-                max_radius = min(
-                    ship_config.field_radius_max,
-                    radii[parent] - widths[parent] / 2.0 - width / 2.0,
-                )
-                radius = _uniform(generator, ship_config.field_radius_min, max_radius)
-                max_offset = radii[parent] - widths[parent] / 2.0 - radius - width / 2.0
-                offset_radius = math.sqrt(torch.rand((), generator=generator).item()) * max_offset
-                angle = torch.rand((), generator=generator).item() * 2.0 * math.pi
-                candidate_pos = complex(
-                    (positions[parent].real + offset_radius * math.cos(angle)) % world_w,
-                    (positions[parent].imag + offset_radius * math.sin(angle)) % world_h,
-                )
-            else:
-                candidate_pos = complex(
-                    torch.rand((), generator=generator).item() * world_w,
-                    torch.rand((), generator=generator).item() * world_h,
-                )
+            candidate_pos = torch.where(nest, nested_pos, free_pos)
+            candidate_radius = torch.where(nest, nested_radius, candidate_radius)
 
-            if all(
-                _pair_is_laminar(
-                    candidate_pos,
-                    radius,
-                    width,
-                    old_pos,
-                    old_radius,
-                    old_width,
-                    ship_config.world_size,
-                )
-                for old_pos, old_radius, old_width in zip(positions, radii, widths, strict=True)
-            ):
-                positions.append(candidate_pos)
-                radii.append(radius)
-                widths.append(width)
-                index_levels.append((-2, -1, 1, 2)[_rand_index(generator, 4)])
-                damage_levels.append(_rand_index(generator, 3))
-                accepted = True
-                break
+            # Laminar against every field already placed in the same map: either
+            # disjoint including both transition bands, or strictly nested.
+            distance = _wrap(
+                candidate_pos.unsqueeze(2) - prior_pos, ship_config.world_size
+            ).abs()  # (count, proposals, field)
+            outer = (candidate_radius + 0.5 * candidate_width).unsqueeze(2)
+            core = (candidate_radius - 0.5 * candidate_width).unsqueeze(2)
+            prior_outer = prior_radius + 0.5 * prior_width
+            prior_core = prior_radius - 0.5 * prior_width
+            laminar = (
+                (distance >= outer + prior_outer)
+                | (distance + prior_outer <= core)
+                | (distance + outer <= prior_core)
+            )
+            fits = (laminar | ~prior_placed).all(dim=2)
 
-        if not accepted:
-            return None
+        # First proposal that fits; argmax on a bool returns the first True.
+        chosen = fits.float().argmax(dim=1, keepdim=True)  # (count, 1)
+        accepted = fits.any(dim=1)
+        pos[:, field] = candidate_pos.gather(1, chosen).squeeze(1)
+        radius[:, field] = candidate_radius.gather(1, chosen).squeeze(1)
+        width[:, field] = candidate_width.gather(1, chosen).squeeze(1)
+        # Ambient (level 0) is not a legal field material, hence {-2,-1,1,2}.
+        levels = torch.tensor([-2, -1, 1, 2], device=device, dtype=torch.int8)
+        draw = torch.randint(0, 4, (count,), device=device, generator=generator)
+        index_level[:, field] = levels[draw]
+        damage_level[:, field] = torch.randint(
+            0, 3, (count,), device=device, generator=generator
+        ).to(torch.int8)
+        placed[:, field] = accepted
 
-    return positions, radii, widths, index_levels, damage_levels
+    valid = placed.all(dim=1)
+    # A failed map still has to hold a legal layout for the material tensors, so
+    # collapse its fields onto the first placed one (self-nesting is laminar).
+    fallback = pos[:, :1].expand(-1, num_fields)
+    pos = torch.where(placed, pos, fallback)
+    radius = torch.where(placed, radius, radius[:, :1].expand(-1, num_fields))
+    width = torch.where(placed, width, width[:, :1].expand(-1, num_fields))
+    return (pos, radius, width, index_level, damage_level), valid

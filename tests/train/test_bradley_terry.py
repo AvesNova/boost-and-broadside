@@ -82,9 +82,7 @@ class TestFit:
 class TestStandardError:
     def test_covariance_is_zero_for_the_selected_anchor(self):
         ratings = np.array([0.0, 100.0, 200.0])
-        covariance = rating_covariance(
-            np.full((3, 3), 500.0), ratings, anchor=1
-        )
+        covariance = rating_covariance(np.full((3, 3), 500.0), ratings, anchor=1)
 
         assert np.all(covariance[1] == 0.0)
         assert np.all(covariance[:, 1] == 0.0)

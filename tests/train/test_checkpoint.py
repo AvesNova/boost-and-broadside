@@ -91,7 +91,7 @@ class TestSavedCheckpointIntegrity:
     def test_optimizer_moments_are_self_consistent(self, tmp_path):
         from tests.train.test_ppo import _make_trainer
 
-        trainer = _make_trainer(checkpoint_dir=str(tmp_path), avg_model_fraction=0.25)
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
         trainer.train()
         trainer._save_checkpoint(update=1)
         save_thread = getattr(trainer, "_active_save_thread", None)
@@ -116,7 +116,7 @@ class TestSavedCheckpointIntegrity:
         each += round away and the averaged policy drifts without bound."""
         from tests.train.test_ppo import _make_trainer
 
-        trainer = _make_trainer(checkpoint_dir=str(tmp_path), avg_model_fraction=0.25)
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
         assert all(c.dtype == torch.float32 for c in trainer._avg_param_cumsum)
 
         trainer.train()
@@ -127,6 +127,38 @@ class TestSavedCheckpointIntegrity:
         saved = list(tmp_path.rglob("step_*.pt"))
         trainer.load_checkpoint(str(saved[0]))
         assert all(c.dtype == torch.float32 for c in trainer._avg_param_cumsum)
+
+    def test_resume_re_registers_the_scripted_league_entry(self, tmp_path):
+        """load_json replaces the entry list wholesale.
+
+        A roster written before the scripted agent was a league entry must not
+        resume into a run that can never draw it.
+        """
+        import json
+
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(league_fraction=0.5, checkpoint_dir=str(tmp_path))
+        trainer._global_step = 1
+        trainer._save_checkpoint(update=1)
+        trainer._save_roster_json()
+        save_thread = getattr(trainer, "_active_save_thread", None)
+        if save_thread is not None:
+            save_thread.join(timeout=60)
+        saved = list(tmp_path.rglob("step_*.pt"))[0]
+
+        # Rewrite the roster as an older run would have left it: no scripted entry.
+        roster_path = saved.parent / "roster.json"
+        data = json.loads(roster_path.read_text())
+        data["entries"] = [e for e in data["entries"] if e["kind"] != "scripted"]
+        roster_path.write_text(json.dumps(data))
+
+        resumed = _make_trainer(league_fraction=0.5, checkpoint_dir=str(tmp_path))
+        resumed.load_checkpoint(str(saved))
+
+        assert sum(e.kind == "scripted" for e in resumed.roster.entries) == 1
+        slots = resumed._prepare_league_slots(resumed.wrapper.num_ships)
+        assert slots and all(slot.entry.kind == "scripted" for slot in slots)
 
     def test_shutdown_waits_for_inflight_checkpoint(self, tmp_path):
         from tests.train.test_ppo import _make_trainer
@@ -189,7 +221,7 @@ class TestNumValueComponents:
     def test_payloads_record_active_component_count(self, tmp_path):
         from tests.train.test_ppo import _make_trainer
 
-        trainer = _make_trainer(checkpoint_dir=str(tmp_path), avg_model_fraction=0.25)
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
         expected = trainer.wrapper.num_active_components
 
         assert trainer.checkpoint_payload(update=0)["num_value_components"] == expected
@@ -279,9 +311,11 @@ class TestBulletReadingCheckpoints:
         """The crash path itself: sample a checkpoint opponent mid-rollout."""
         from tests.train.test_ppo import _make_trainer
 
+        # No scripted agent, so the checkpoint is the only thing a slot can draw.
         trainer = _make_trainer(
             checkpoint_dir=str(tmp_path),
             league_fraction=0.5,
+            with_scripted=False,
             model_config=self._bullet_model_config(),
         )
         path = trainer._save_ladder_snapshot()
@@ -289,10 +323,11 @@ class TestBulletReadingCheckpoints:
             path=str(path), global_step=1, update=1, initial_elo=trainer._training_elo
         )
 
-        hidden = trainer._prepare_league_opponent(trainer.wrapper.num_ships)
+        slots = trainer._prepare_league_slots(trainer.wrapper.num_ships)
 
-        assert hidden is not None
-        assert trainer._current_league_policy.bullet_encoder is not None
+        assert slots
+        assert all(slot.policy.bullet_encoder is not None for slot in slots)
+        assert all(slot.hidden is not None for slot in slots)
 
     def test_elo_evaluator_observes_bullets_when_the_policy_reads_them(self, tmp_path):
         """Rating a bullet-reading policy on a bullet-free observation would
@@ -333,22 +368,26 @@ class TestHeterogeneousLeague:
         trainer = _make_trainer(
             checkpoint_dir=str(tmp_path / "new"),
             league_fraction=0.5,
+            with_scripted=False,
             model_config=self._config(d_model=64, blocks=2),
         )
         trainer.roster.add_checkpoint(
             path=str(snapshot), global_step=1, update=1, initial_elo=trainer._training_elo
         )
 
-        hidden = trainer._prepare_league_opponent(trainer.wrapper.num_ships)
+        slots = trainer._prepare_league_slots(trainer.wrapper.num_ships)
 
-        assert trainer._current_league_entry.bundle.model_config.d_model == 32
+        assert slots[0].entry.bundle.model_config.d_model == 32
         # The opponent's hidden state is its own width, not the trainee's.
-        assert hidden.shape[0] == 1  # one temporal sublayer, from *its* config
+        assert slots[0].hidden.shape[0] == 1  # one temporal sublayer, from *its* config
         trainer.train()  # a full update with the two architectures interleaved
 
-    def test_a_bullet_reading_opponent_in_a_bullet_free_run_is_refused(self, tmp_path):
+    def test_a_bullet_reading_opponent_in_a_bullet_free_run_is_retired(self, tmp_path):
         """The rollout observation is shaped once and cannot widen to suit an
-        opponent, so the alternative is an opponent silently playing blind."""
+        opponent, so the alternative is an opponent silently playing blind.
+
+        Retired rather than raised: with the league drawing every rollout, a
+        single incompatible entry would otherwise end training hours in."""
         from tests.train.test_ppo import _make_trainer
 
         reader = _make_trainer(
@@ -360,14 +399,19 @@ class TestHeterogeneousLeague:
         trainer = _make_trainer(
             checkpoint_dir=str(tmp_path / "new"),
             league_fraction=0.5,
+            with_scripted=False,
             model_config=self._config(d_model=32),
         )
-        trainer.roster.add_checkpoint(
+        entry = trainer.roster.add_checkpoint(
             path=str(snapshot), global_step=1, update=1, initial_elo=trainer._training_elo
         )
 
-        with pytest.raises(ValueError, match="reads bullets"):
-            trainer._prepare_league_opponent(trainer.wrapper.num_ships)
+        slots = trainer._prepare_league_slots(trainer.wrapper.num_ships)
+
+        assert not entry.usable
+        assert entry.elo == trainer._training_elo  # still on the ladder, just not drawn
+        # Nothing else on this roster to draw, so the block falls back to self-play.
+        assert slots == []
 
 
 def _save_checkpoint_and_join(trainer, update: int) -> None:
@@ -402,7 +446,7 @@ class TestCheckpointRetention:
         from boost_and_broadside.train.rl.checkpoint import _KEEP_LAST_N_CHECKPOINTS
         from tests.train.test_ppo import _make_trainer
 
-        trainer = _make_trainer(checkpoint_dir=str(tmp_path), avg_model_fraction=0.25)
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
         trainer._avg_update_count = 1  # avg policy is ready to be checkpointed
         for step in range(1, _KEEP_LAST_N_CHECKPOINTS + 3):
             trainer._global_step = step
@@ -462,26 +506,26 @@ class TestBestCheckpoints:
         ckpt_dir = Path(tmp_path) / trainer.run_name
 
         trainer._training_elo = 10.0
-        trainer._maybe_save_best_checkpoints(random_elo=0.0)
+        trainer._maybe_save_best_checkpoints()
         trainer._active_best_thread.join(timeout=60)
         assert (ckpt_dir / "best_training.pt").exists()
         first_mtime = (ckpt_dir / "best_training.pt").stat().st_mtime_ns
 
         # Elo regresses: the file must not be rewritten.
         trainer._training_elo = 5.0
-        trainer._maybe_save_best_checkpoints(random_elo=0.0)
+        trainer._maybe_save_best_checkpoints()
         assert (ckpt_dir / "best_training.pt").stat().st_mtime_ns == first_mtime
 
     def test_best_avg_is_not_saved_before_avg_model_is_ready(self, tmp_path):
         """AUDIT-adjacent: _best_avg_elo_norm previously had no writer at all."""
         from tests.train.test_ppo import _make_trainer
 
-        trainer = _make_trainer(checkpoint_dir=str(tmp_path), avg_model_fraction=0.25)
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
         ckpt_dir = Path(tmp_path) / trainer.run_name
 
         assert trainer._avg_update_count == 0
         trainer._avg_training_elo = 1000.0  # would trip the threshold if checked
-        trainer._maybe_save_best_checkpoints(random_elo=0.0)
+        trainer._maybe_save_best_checkpoints()
         assert not (ckpt_dir / "best_avg.pt").exists()
 
     def test_best_avg_checkpoint_holds_avg_policy_weights(self, tmp_path):
@@ -489,7 +533,7 @@ class TestBestCheckpoints:
         weights, not the live policy's, into best_avg.pt."""
         from tests.train.test_ppo import _make_trainer
 
-        trainer = _make_trainer(checkpoint_dir=str(tmp_path), avg_model_fraction=0.25)
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
         ckpt_dir = Path(tmp_path) / trainer.run_name
         with torch.no_grad():
             for p in trainer._avg_policy_module.parameters():
@@ -497,7 +541,7 @@ class TestBestCheckpoints:
 
         trainer._avg_update_count = 1
         trainer._avg_training_elo = 50.0
-        trainer._maybe_save_best_checkpoints(random_elo=0.0)
+        trainer._maybe_save_best_checkpoints()
         trainer._active_best_avg_thread.join(timeout=60)
 
         saved = torch.load(ckpt_dir / "best_avg.pt", map_location="cpu", weights_only=False)
@@ -515,13 +559,13 @@ class TestBestCheckpoints:
         """
         from tests.train.test_ppo import _make_trainer
 
-        trainer = _make_trainer(checkpoint_dir=str(tmp_path), avg_model_fraction=0.25)
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
         ckpt_dir = Path(tmp_path) / trainer.run_name
 
         trainer._avg_update_count = 1
         trainer._training_elo = 10.0  # live improves
         trainer._avg_training_elo = 10.0  # avg improves in the same call
-        trainer._maybe_save_best_checkpoints(random_elo=0.0)
+        trainer._maybe_save_best_checkpoints()
         trainer._active_best_thread.join(timeout=60)
         trainer._active_best_avg_thread.join(timeout=60)
 
@@ -546,9 +590,10 @@ class TestBestCheckpoints:
         blocker.start()
         trainer._active_best_thread = blocker  # occupy the live-best slot
 
+        mark_before = trainer._best_training_elo_norm
         trainer._training_elo = 10.0
-        trainer._maybe_save_best_checkpoints(random_elo=0.0)
+        trainer._maybe_save_best_checkpoints()
 
         # Save was skipped (slot busy), so the bar must not have moved.
-        assert trainer._best_training_elo_norm == 0.0
+        assert trainer._best_training_elo_norm == mark_before
         blocker.join(timeout=60)

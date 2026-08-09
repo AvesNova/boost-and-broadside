@@ -161,9 +161,33 @@ class EnvConfig:
 
     num_ships: int  # total ships per env (both teams combined)
     max_bullets: int  # bullet ring-buffer size per ship (0 = no bullets, skips all bullet physics)
-    max_episode_steps: int | None  # truncation horizon; None disables time-based truncation
+    # Truncation horizon in *physics ticks*, so it is a fixed span of game time
+    # regardless of action_repeat.
+    max_episode_steps: int | None  # None disables time-based truncation
     num_fields: int = 0  # static refractive fields per env (0 = ambient-only baseline)
     single_team: bool = False  # all ships share one randomly-chosen team id (no opponents)
+    # Physics ticks each chosen action is held for. Physics always runs at
+    # ShipConfig.dt; this decides only how often the policy gets to change its
+    # mind, so collision and projectile integration stay exact.
+    #
+    # dt is 1/60, and at repeat 1 the policy re-decides every 16.7 ms against a
+    # firing cooldown of 6 ticks and a full 360-degree turn of 78-138 ticks —
+    # far finer than the plant can respond to, which makes consecutive decisions
+    # near-duplicates. Repeat 2 gives 30 Hz: 3 decisions per cooldown and 39-69
+    # per full turn, still ample authority, for half the tokens per second of
+    # game time.
+    #
+    # Coarsening is not free — it costs combat effectiveness monotonically — so
+    # the chosen value is a measured trade, not a default. See runs/rl.py.
+    # Discounts encode horizons in seconds, so moving this means re-deriving
+    # gamma and lambda as g ** (rate_old / rate_new), not reusing the number.
+    action_repeat: int = 1
+    # Fractional spread of the per-ship spawn draw for health and power: each is
+    # sampled uniformly in [(1-spread)*max, max], and cooldown in [0, firing
+    # cooldown]. 0 spawns every ship at full resources, which correlates health
+    # tightly with elapsed episode time and means damaged states are only ever
+    # reached by playing into them.
+    spawn_resource_spread: float = 0.0
 
     def __post_init__(self) -> None:
         if self.max_episode_steps is not None and self.max_episode_steps < 1:
@@ -172,6 +196,12 @@ class EnvConfig:
             )
         if self.num_fields < 0:
             raise ValueError(f"num_fields must be non-negative, got {self.num_fields}")
+        if self.action_repeat < 1:
+            raise ValueError(f"action_repeat must be positive, got {self.action_repeat}")
+        if not 0.0 <= self.spawn_resource_spread < 1.0:
+            raise ValueError(
+                f"spawn_resource_spread must lie in [0, 1), got {self.spawn_resource_spread}"
+            )
 
     @property
     def num_obstacles(self) -> int:

@@ -1,5 +1,6 @@
 """End-to-end smoke test for the PPO training loop."""
 
+import dataclasses
 import math
 
 import pytest
@@ -23,6 +24,7 @@ from boost_and_broadside.config import (
     stepped,
 )
 from boost_and_broadside.env.observation import ObsKey
+from boost_and_broadside.train.rl.elo_eval import MAX_CHECKPOINT_ANCHORS
 from boost_and_broadside.train.rl.ppo import _GROUP, _LOCAL_COMPONENTS, PPOTrainer
 
 
@@ -85,14 +87,12 @@ def _make_schedule(**overrides) -> TrainingSchedule:
         true_reward_scale=constant(1.0),
         global_scale=constant(1.0),
         local_scale=constant(1.0),
-        scripted_fraction=constant(0.0),
-        avg_model_fraction=constant(0.0),
         league_fraction=constant(0.0),
         checkpoint_interval=stepped((0, 0)),
         num_epochs=constant(1),
         target_kl=constant(None),
-        high_elo_threshold=constant(900.0),
-        high_elo_target_kl=constant(0.02),
+        high_winrate_threshold=constant(0.8),
+        high_winrate_target_kl=constant(0.02),
     )
     defaults.update(overrides)
     return TrainingSchedule(**defaults)
@@ -100,9 +100,9 @@ def _make_schedule(**overrides) -> TrainingSchedule:
 
 def _make_train_config(
     paradigm: str = "ego_pass",
-    scripted_fraction: float = 0.0,
-    avg_model_fraction: float = 0.0,
     league_fraction: float = 0.0,
+    league_slots: int = 1,
+    reference_ladder: tuple[tuple[float, float], ...] = (),
     checkpoint_dir: str = "checkpoints",
     min_games_to_freeze: int = 0,
     rollouts_per_update: int = 1,
@@ -116,11 +116,7 @@ def _make_train_config(
                 num_envs=4,
             ),
         ),
-        schedule=_make_schedule(
-            scripted_fraction=constant(scripted_fraction),
-            avg_model_fraction=constant(avg_model_fraction),
-            league_fraction=constant(league_fraction),
-        ),
+        schedule=_make_schedule(league_fraction=constant(league_fraction)),
         rewards=_make_rewards(**reward_overrides),
         num_steps=16,
         rollouts_per_update=rollouts_per_update,
@@ -131,9 +127,13 @@ def _make_train_config(
         max_grad_norm=0.5,
         total_timesteps=64 * rollouts_per_update,
         return_ema_alpha=0.005,
-        return_min_span=1.0,
+        return_min_span=1e-3,
+        advantage_min_rms=1e-4,
         checkpoint_dir=checkpoint_dir,
         league_size=20,
+        league_slots=league_slots,
+        reference_ladder=reference_ladder,
+        random_elo=0.0,
         league_uniform_sampling=False,
         elo_milestone_gap=50.0,
         elo_temperature=200.0,
@@ -152,9 +152,10 @@ def _make_train_config(
 
 def _make_trainer(
     paradigm: str = "ego_pass",
-    scripted_fraction: float = 0.0,
-    avg_model_fraction: float = 0.0,
     league_fraction: float = 0.0,
+    league_slots: int = 1,
+    reference_ladder: tuple[tuple[float, float], ...] = (),
+    with_scripted: bool = True,
     checkpoint_dir: str = "checkpoints",
     min_games_to_freeze: int = 0,
     rollouts_per_update: int = 1,
@@ -163,17 +164,17 @@ def _make_trainer(
     **reward_overrides,
 ) -> PPOTrainer:
     ship_config = ShipConfig()
+    # The scripted agent is an ordinary roster entry, so a league of any width
+    # can draw it; tests that want a policy-free league pass with_scripted=False.
     scripted_agent = (
-        StochasticScriptedAgent(ship_config, StochasticAgentConfig())
-        if scripted_fraction > 0.0
-        else None
+        StochasticScriptedAgent(ship_config, StochasticAgentConfig()) if with_scripted else None
     )
     return PPOTrainer(
         train_config=_make_train_config(
             paradigm=paradigm,
-            scripted_fraction=scripted_fraction,
-            avg_model_fraction=avg_model_fraction,
             league_fraction=league_fraction,
+            league_slots=league_slots,
+            reference_ladder=reference_ladder,
             checkpoint_dir=checkpoint_dir,
             min_games_to_freeze=min_games_to_freeze,
             rollouts_per_update=rollouts_per_update,
@@ -284,34 +285,54 @@ class TestEloLadder:
         assert trainer.roster.floating_checkpoint() is first
         assert not first.fixed
 
-    def test_third_milestone_keeps_surviving_anchor_episodes(self, tmp_path):
-        """Dropping the oldest anchor restarts only its envs; the surviving
-        anchor's slot-0 episodes play on with their assignment shifted down."""
+    def test_promotion_keeps_surviving_anchor_episodes(self, tmp_path):
+        """Only checkpoint anchors rotate, and only their envs restart.
+
+        Stationary references sit at the head of the anchor set and are never
+        dropped, so the shift applies to checkpoint assignments alone.
+        """
         trainer = _make_trainer(checkpoint_dir=str(tmp_path))
         runtime = trainer._initialize_rollout_runtime()
         elo_eval = runtime.elo_eval
         size = elo_eval.matchup_size
-        for update, elo in enumerate([60.0, 120.0], start=1):
+        stationary = elo_eval._n_stationary
+        # Fill the checkpoint anchor slots so the next promotion has to drop one.
+        for update, elo in enumerate([60.0, 120.0, 180.0], start=1):
             trainer._training_elo = elo
             trainer._maybe_advance_ladder(update=update, elo_eval=elo_eval)
+        assert len(elo_eval._anchor_specs) == stationary + MAX_CHECKPOINT_ANCHORS
 
-        # Anchors are now [random, first-frozen]; split slot 0 across both.
+        # Split slot 0 between the oldest checkpoint anchor and the newest.
+        oldest, newest = stationary, stationary + 1
         elo_eval._anchor_idx_live = torch.tensor(
-            [0, 1] * (size // 2), device=elo_eval.device, dtype=torch.long
+            [oldest, newest] * (size // 2), device=elo_eval.device, dtype=torch.long
         )
-        survivor = elo_eval._anchor_idx_live == 1
+        survivor = elo_eval._anchor_idx_live == newest
         elo_eval._rated[:size] = True
         elo_eval.env.state.step_count[:size] = 7
 
-        trainer._training_elo = 180.0
-        trainer._maybe_advance_ladder(update=3, elo_eval=elo_eval)
+        trainer._training_elo = 240.0
+        trainer._maybe_advance_ladder(update=4, elo_eval=elo_eval)
 
         step_count = elo_eval.env.state.step_count[:size]
-        # The random anchor was dropped, so the survivor shifts from index 1 to 0.
-        assert (elo_eval._anchor_idx_live[survivor] == 0).all()
+        # The oldest checkpoint left, so the survivor shifts down one slot —
+        # still behind the untouched stationary prefix.
+        assert (elo_eval._anchor_idx_live[survivor] == oldest).all()
         assert (step_count[survivor] == 7).all(), "surviving episodes were restarted"
         assert elo_eval._rated[:size][survivor].all(), "surviving episodes lost their rated flag"
         assert not (step_count[~survivor] == 7).all(), "dropped-anchor envs were not reseeded"
+
+    def test_stationary_anchors_survive_every_promotion(self, tmp_path):
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        runtime = trainer._initialize_rollout_runtime()
+        elo_eval = runtime.elo_eval
+        before = [spec.label for spec in elo_eval._anchor_specs[: elo_eval._n_stationary]]
+        for update, elo in enumerate([60.0, 120.0, 180.0, 240.0], start=1):
+            trainer._training_elo = elo
+            trainer._maybe_advance_ladder(update=update, elo_eval=elo_eval)
+        after = [spec.label for spec in elo_eval._anchor_specs[: elo_eval._n_stationary]]
+        assert before == after
+        assert all(spec.is_stateless for spec in elo_eval._anchor_specs[: elo_eval._n_stationary])
 
     def test_fresh_runtime_reloads_ladder_from_disk(self, tmp_path):
         """A new rollout runtime (resume path) rebuilds anchors and the floating
@@ -439,21 +460,21 @@ class TestAvgModelTrigger:
             trainer._refresh_training_schedule({}, trainer._elo_eval_stub)
 
     def test_starts_once_scripted_target_holds(self, tmp_path):
-        trainer = _make_trainer(checkpoint_dir=str(tmp_path), avg_model_fraction=0.25)
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
         trainer._elo_eval_stub = trainer._initialize_rollout_runtime().elo_eval
         # bc_winrate_target is 0.9 in the test config.
         self._drive(trainer, win_rate=0.95, updates=3)
         assert trainer._avg_update_count > 0
 
     def test_below_target_never_starts(self, tmp_path):
-        trainer = _make_trainer(checkpoint_dir=str(tmp_path), avg_model_fraction=0.25)
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
         trainer._elo_eval_stub = trainer._initialize_rollout_runtime().elo_eval
         self._drive(trainer, win_rate=0.5, updates=20)
         assert trainer._avg_update_count == 0
 
     def test_single_lucky_update_does_not_latch(self, tmp_path):
         """The gate is permanent, so one window above target must not trip it."""
-        trainer = _make_trainer(checkpoint_dir=str(tmp_path), avg_model_fraction=0.25)
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
         trainer._elo_eval_stub = trainer._initialize_rollout_runtime().elo_eval
         self._drive(trainer, win_rate=0.95, updates=1)
         assert trainer._avg_update_count == 0
@@ -462,7 +483,7 @@ class TestAvgModelTrigger:
 
     def test_partial_window_does_not_count(self, tmp_path):
         """A window with only a handful of games is too noisy to latch on."""
-        trainer = _make_trainer(checkpoint_dir=str(tmp_path), avg_model_fraction=0.25)
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
         trainer._elo_eval_stub = trainer._initialize_rollout_runtime().elo_eval
         trainer._eval_window_sc.clear()
         trainer._eval_window_sc.extend([1.0] * 5)
@@ -470,6 +491,251 @@ class TestAvgModelTrigger:
             trainer._refresh_training_schedule({}, trainer._elo_eval_stub)
         assert trainer._bc_cutoff_streak == 0
         assert trainer._avg_update_count == 0
+
+
+class TestLeagueAllocation:
+    """One league group, sized by the scheduled fraction and split into slots.
+
+    Regression cover for the group allocation that sized every opponent group at
+    its peak fraction and then only ever switched them fully on or fully off, so
+    a fraction scheduled downward silently kept its peak width.
+    """
+
+    def test_env_groups_are_self_play_and_league_only(self, tmp_path):
+        trainer = _make_trainer(league_fraction=0.5, checkpoint_dir=str(tmp_path))
+        assert trainer.B_self == 2
+        assert trainer.B_league == 2
+        assert trainer.B_self + trainer.B_league == trainer.cfg.scales[0].num_envs
+
+    def test_zero_fraction_allocates_no_league(self, tmp_path):
+        trainer = _make_trainer(league_fraction=0.0, checkpoint_dir=str(tmp_path))
+        assert trainer.B_league == 0
+        assert trainer._prepare_league_slots(trainer.wrapper.num_ships) == []
+
+    def test_active_width_follows_the_current_fraction(self, tmp_path):
+        """A fraction below the allocated peak must return envs to self-play.
+
+        The block is sized once at the peak; narrowing it is what the old
+        boolean activation could not express.
+        """
+        trainer = _make_trainer(league_fraction=1.0, checkpoint_dir=str(tmp_path))
+        assert trainer._active_league_width() == 4
+
+        trainer._schedule_state = dataclasses.replace(trainer._schedule_state, league_fraction=0.5)
+        assert trainer._active_league_width() == 2
+
+        trainer._schedule_state = dataclasses.replace(trainer._schedule_state, league_fraction=0.0)
+        assert trainer._active_league_width() == 0
+
+    def test_slots_tile_the_active_block_without_gaps(self, tmp_path):
+        trainer = _make_trainer(league_fraction=1.0, league_slots=3, checkpoint_dir=str(tmp_path))
+        slots = trainer._prepare_league_slots(trainer.wrapper.num_ships)
+        assert len(slots) == 3
+        assert slots[0].start == trainer.B_self
+        assert slots[-1].end == trainer.cfg.scales[0].num_envs
+        for earlier, later in zip(slots, slots[1:]):
+            assert earlier.end == later.start
+
+    def test_slot_count_clamps_to_a_narrow_league(self, tmp_path):
+        """--smoke runs four envs; asking for four slots must not make empty ones."""
+        trainer = _make_trainer(league_fraction=0.5, league_slots=8, checkpoint_dir=str(tmp_path))
+        slots = trainer._prepare_league_slots(trainer.wrapper.num_ships)
+        assert len(slots) == trainer.B_league
+        assert all(slot.end > slot.start for slot in slots)
+
+
+class TestTargetKlGate:
+    """The trust region tightens on the same signal that decays BC."""
+
+    def _trainer(self, tmp_path, threshold):
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        trainer._schedule_state = dataclasses.replace(
+            trainer._schedule_state,
+            target_kl=0.1,
+            high_winrate_threshold=threshold,
+            high_winrate_target_kl=0.02,
+        )
+        return trainer
+
+    def test_loose_below_the_threshold(self, tmp_path):
+        trainer = self._trainer(tmp_path, 0.8)
+        trainer._scripted_win_rate = 0.5
+        assert trainer._effective_target_kl() == 0.1
+
+    def test_tightens_at_the_threshold(self, tmp_path):
+        trainer = self._trainer(tmp_path, 0.8)
+        trainer._scripted_win_rate = 0.8
+        assert trainer._effective_target_kl() == 0.02
+
+    def test_disabled_threshold_never_tightens(self, tmp_path):
+        trainer = self._trainer(tmp_path, None)
+        trainer._scripted_win_rate = 1.0
+        assert trainer._effective_target_kl() == 0.1
+
+    def test_win_rate_tracks_the_scripted_eval_window(self, tmp_path):
+        """One measure of "is it strong yet" drives both gates, so the KL
+        threshold needs no re-deriving when the Elo gauge moves."""
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        runtime = trainer._initialize_rollout_runtime()
+        trainer._eval_window_sc.clear()
+        trainer._eval_window_sc.extend([1.0] * 40 + [0.0] * 10)
+        metrics: dict = {}
+        trainer._refresh_training_schedule(metrics, runtime.elo_eval)
+        assert trainer._scripted_win_rate == pytest.approx(0.8)
+        assert metrics["schedule/scripted_win_rate"] == pytest.approx(0.8)
+
+
+class TestAuxPredictionMetrics:
+    def test_every_prediction_dimension_is_logged(self, tmp_path):
+        """Regression: a hand-written 9-name list against 10 prediction dims
+        silently dropped local_log_index, the field-modelling channel."""
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        names = trainer.coordinator.get_feature_names()
+        assert len(names) == trainer.coordinator.total_prediction_dimension
+        assert "local_log_index_0" in names
+
+        trainer.train()
+        metrics = trainer._update_epochs(
+            all_buffers=[trainer.buffer, *trainer.aux_buffers], precomputed=False
+        )
+        for name in names:
+            assert f"next_state/{name}" in metrics, f"{name} was not logged"
+
+
+class TestReferenceLadder:
+    """Stationary rungs between random and scripted, on a scripted-anchored gauge."""
+
+    LADDER = ((0.3, -60.0), (0.5, 300.0), (0.8, 720.0))
+
+    def _trainer(self, tmp_path, **kwargs):
+        return _make_trainer(
+            league_fraction=0.5,
+            reference_ladder=self.LADDER,
+            checkpoint_dir=str(tmp_path),
+            **kwargs,
+        )
+
+    def test_rungs_are_registered_at_their_fitted_ratings(self, tmp_path):
+        trainer = self._trainer(tmp_path)
+        rungs = {e.label: e for e in trainer.roster.entries if e.kind == "semi_random"}
+        assert len(rungs) == len(self.LADDER)
+        assert rungs["semi_scripted_0p5"].elo == 300.0
+        assert rungs["semi_scripted_0p5"].p_scripted == 0.5
+
+    def test_every_stationary_reference_is_fixed(self, tmp_path):
+        """Their strength does not change, so their ratings are constants — not
+        estimates for in-training games to drag around."""
+        trainer = self._trainer(tmp_path)
+        stationary = [e for e in trainer.roster.entries if e.is_stationary]
+        assert len(stationary) == len(self.LADDER) + 2  # + random + scripted
+        assert all(e.fixed for e in stationary)
+
+    def test_scripted_anchors_the_gauge(self, tmp_path):
+        trainer = self._trainer(tmp_path)
+        scripted = next(e for e in trainer.roster.entries if e.kind == "scripted")
+        assert scripted.elo == trainer.cfg.elo_eval.scripted_elo_init
+        assert scripted.fixed
+
+    def test_scripted_rating_does_not_drift_during_training(self, tmp_path):
+        """The player defining the scale must not move under the one being
+        measured against it — every rung's rating is stated relative to it."""
+        trainer = self._trainer(tmp_path)
+        anchor = trainer.cfg.elo_eval.scripted_elo_init
+        trainer.train()
+        assert trainer._scripted_elo == anchor
+        scripted = next(e for e in trainer.roster.entries if e.kind == "scripted")
+        assert scripted.elo == anchor
+
+    def test_rungs_join_the_anchor_pool_as_a_stationary_prefix(self, tmp_path):
+        trainer = self._trainer(tmp_path)
+        elo_eval = trainer._initialize_rollout_runtime().elo_eval
+        prefix = elo_eval._anchor_specs[: elo_eval._n_stationary]
+        assert elo_eval._n_stationary == len(self.LADDER) + 2
+        assert all(spec.is_stateless for spec in prefix)
+        # Sorted by rating, and the scripted end carries p_scripted=1.0.
+        assert [spec.elo for spec in prefix] == sorted(spec.elo for spec in prefix)
+        assert prefix[-1].p_scripted == 1.0
+
+    def test_rungs_are_league_opponents_too(self, tmp_path):
+        trainer = self._trainer(tmp_path, league_slots=4)
+        trainer._training_elo = 300.0  # sits on the 0.5 rung
+        drawn = {trainer._sample_league_entry().kind for _ in range(30)}
+        assert "semi_random" in drawn
+
+    def test_live_rating_starts_at_the_random_reference(self, tmp_path):
+        """An untrained policy is a random one, which is a known point on an
+        absolute gauge rather than zero."""
+        config = _make_train_config(
+            league_fraction=0.5,
+            reference_ladder=self.LADDER,
+            checkpoint_dir=str(tmp_path),
+        )
+        config = dataclasses.replace(config, random_elo=-350.0)
+        trainer = PPOTrainer(
+            train_config=config,
+            model_config=ModelConfig(d_model=32, n_heads=4, n_yemong_blocks=1),
+            ship_config=ShipConfig(),
+            device="cpu",
+            use_wandb=False,
+            scripted_agent=StochasticScriptedAgent(ShipConfig(), StochasticAgentConfig()),
+        )
+        assert trainer._training_elo == -350.0
+        assert trainer._random_elo() == -350.0
+        # The first milestone to claim is the grid point above where it starts,
+        # not one gap above zero.
+        gap = trainer.cfg.elo_milestone_gap
+        assert trainer._elo_milestone <= -350.0 < trainer._elo_milestone + gap
+
+
+class TestLeagueOpponents:
+    """Scripted and avg are roster entries, not hard-wired opponent groups."""
+
+    def test_scripted_agent_is_registered_as_a_roster_entry(self, tmp_path):
+        trainer = _make_trainer(league_fraction=0.5, checkpoint_dir=str(tmp_path))
+        assert [e.label for e in trainer.roster.entries if e.kind == "scripted"] == ["scripted"]
+
+    def test_no_scripted_entry_without_a_scripted_agent(self, tmp_path):
+        trainer = _make_trainer(
+            league_fraction=0.5, with_scripted=False, checkpoint_dir=str(tmp_path)
+        )
+        assert all(e.kind != "scripted" for e in trainer.roster.entries)
+
+    def test_early_league_is_all_scripted(self, tmp_path):
+        """The opponent curriculum is emergent: at step 0 the scripted agent is
+        the only sampleable entry, so a 50% league is a 50% scripted split."""
+        trainer = _make_trainer(league_fraction=0.5, league_slots=2, checkpoint_dir=str(tmp_path))
+        slots = trainer._prepare_league_slots(trainer.wrapper.num_ships)
+        assert slots
+        assert all(slot.entry.kind == "scripted" for slot in slots)
+        # A scripted slot needs no weights and carries no recurrent state.
+        assert all(slot.policy is None and slot.hidden is None for slot in slots)
+
+    def test_scripted_slots_override_the_opponent_side(self, tmp_path):
+        trainer = _make_trainer(
+            paradigm="ego_pass", league_fraction=0.5, checkpoint_dir=str(tmp_path)
+        )
+        trainer.train()
+        T, N = trainer.cfg.num_steps, trainer.wrapper.num_ships
+        team_id = trainer.buffer.obs[ObsKey.TEAM_ID][:T, :, :N].long()
+        # ego_pass: opponents always play team 1, so only team 0 ever trains.
+        assert torch.equal(trainer.buffer.actor_masks, team_id == 0)
+
+    def test_self_play_envs_keep_every_ship_training(self, tmp_path):
+        """The self-play half must be untouched by the league override."""
+        trainer = _make_trainer(
+            paradigm="shared_pass", league_fraction=0.5, checkpoint_dir=str(tmp_path)
+        )
+        trainer.train()
+        assert trainer.buffer.actor_masks[:, : trainer.B_self].all()
+
+    def test_special_entry_ratings_track_the_evaluator(self, tmp_path):
+        """A stale avg/scripted rating would misdirect every proximity draw."""
+        trainer = _make_trainer(league_fraction=0.5, checkpoint_dir=str(tmp_path))
+        scripted_entry = next(e for e in trainer.roster.entries if e.kind == "scripted")
+        scripted_entry.elo = -12345.0
+        trainer.train()
+        assert scripted_entry.elo == trainer._scripted_elo
+        assert scripted_entry.elo != -12345.0
 
 
 class TestParadigm:
@@ -499,23 +765,23 @@ class TestParadigm:
         """shared_pass + scripted opponent: the masked-out ships in each opponent
         env form exactly one complete team (whichever the random flag assigned)."""
         trainer = _make_trainer(
-            paradigm="shared_pass", scripted_fraction=0.5, checkpoint_dir=str(tmp_path)
+            paradigm="shared_pass", league_fraction=0.5, checkpoint_dir=str(tmp_path)
         )
         trainer.train()
 
         T, N = trainer.cfg.num_steps, trainer.wrapper.num_ships
-        sc = slice(trainer.B_self, trainer.B_self + trainer.B_sc)
-        team_id = trainer.buffer.obs[ObsKey.TEAM_ID][:T, sc, :N].long()  # (T, B_sc, N)
-        excluded = ~trainer.buffer.actor_masks[:, sc]  # (T, B_sc, N)
+        league = slice(trainer.B_self, None)
+        team_id = trainer.buffer.obs[ObsKey.TEAM_ID][:T, league, :N].long()
+        excluded = ~trainer.buffer.actor_masks[:, league]
 
-        excluded_is_team0 = (excluded == (team_id == 0)).all(dim=-1)  # (T, B_sc)
-        excluded_is_team1 = (excluded == (team_id == 1)).all(dim=-1)  # (T, B_sc)
+        excluded_is_team0 = (excluded == (team_id == 0)).all(dim=-1)
+        excluded_is_team1 = (excluded == (team_id == 1)).all(dim=-1)
         assert (excluded_is_team0 | excluded_is_team1).all()
 
     def test_ego_pass_scripted_opponent_always_controls_team1(self, tmp_path):
         """ego_pass + scripted opponent: only team 0 ships train in opponent envs."""
         trainer = _make_trainer(
-            paradigm="ego_pass", scripted_fraction=0.5, checkpoint_dir=str(tmp_path)
+            paradigm="ego_pass", league_fraction=0.5, checkpoint_dir=str(tmp_path)
         )
         trainer.train()
 
@@ -635,9 +901,13 @@ class TestSchedulePrimitives:
                 max_grad_norm=0.5,
                 total_timesteps=64,
                 return_ema_alpha=0.005,
-                return_min_span=1.0,
+                return_min_span=1e-3,
+                advantage_min_rms=1e-4,
                 checkpoint_dir=str(tmp_path),
                 league_size=20,
+                league_slots=1,
+                reference_ladder=(),
+                random_elo=0.0,
                 league_uniform_sampling=False,
                 elo_milestone_gap=50.0,
                 elo_temperature=200.0,
@@ -742,14 +1012,12 @@ class TestRLSmokeTest:
             true_reward_scale=constant(1.0),
             global_scale=constant(1.0),
             local_scale=constant(1.0),
-            scripted_fraction=constant(0.5),
-            avg_model_fraction=constant(0.0),
-            league_fraction=constant(0.0),
+            league_fraction=constant(0.5),
             checkpoint_interval=constant(9999),
             num_epochs=constant(1),
             target_kl=constant(None),
-            high_elo_threshold=constant(900.0),
-            high_elo_target_kl=constant(0.02),
+            high_winrate_threshold=constant(0.8),
+            high_winrate_target_kl=constant(0.02),
         )
         cfg = TrainConfig(
             paradigm=paradigm,
@@ -770,9 +1038,13 @@ class TestRLSmokeTest:
             max_grad_norm=1.0,
             total_timesteps=16 * 32 * 3,  # 3 updates
             return_ema_alpha=0.005,
-            return_min_span=1.0,
+            return_min_span=1e-3,
+            advantage_min_rms=1e-4,
             checkpoint_dir=str(tmp_path),
             league_size=5,
+            league_slots=2,
+            reference_ladder=(),
+            random_elo=0.0,
             elo_milestone_gap=100.0,
             elo_temperature=200.0,
             league_uniform_sampling=False,
@@ -805,9 +1077,7 @@ class TestNumericalPrecision:
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
     @pytest.mark.parametrize("module_attr", ["_policy_module", "_avg_policy_module"])
     def test_no_low_precision_parameters(self, module_attr, tmp_path):
-        trainer = _make_trainer(
-            checkpoint_dir=str(tmp_path), avg_model_fraction=0.25, device="cuda"
-        )
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path), device="cuda")
         offenders = {
             name: str(param.dtype)
             for name, param in getattr(trainer, module_attr).named_parameters()
@@ -957,3 +1227,58 @@ class TestUpdateEpochsMetricKeys:
         assert self._EXPECTED_KEYS <= metrics.keys()
         for key in self._EXPECTED_KEYS:
             assert math.isfinite(metrics[key]), f"{key} is not finite: {metrics[key]}"
+
+    def test_gradient_split_is_measured_at_the_histogram_cadence(self, tmp_path):
+        """The actor/critic split of the pre-clip gradient must be observable.
+
+        Both terms land on the same trunk and max_grad_norm renormalizes them
+        together, so the share one takes is the share the other loses. A critic
+        change once ran at a 3.4x imbalance for three full runs and nothing
+        logged said so -- it had to be inferred from the total norm afterwards.
+        """
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        runtime = trainer._initialize_rollout_runtime()
+        dones = trainer._collect_rollout(runtime, False)
+        trainer._compute_rollout_gae(runtime, dones)
+
+        off = trainer._update_epochs(
+            all_buffers=[trainer.buffer] + trainer.aux_buffers, record_histograms=False
+        )
+        assert "train/actor_grad_share" not in off, "should cost nothing off-cadence"
+
+        on = trainer._update_epochs(
+            all_buffers=[trainer.buffer] + trainer.aux_buffers, record_histograms=True
+        )
+        for key in ("train/grad_norm_actor", "train/grad_norm_critic", "train/actor_grad_share"):
+            assert key in on, f"{key} missing on-cadence"
+            assert math.isfinite(on[key])
+        assert 0.0 <= on["train/actor_grad_share"] <= 1.0
+
+    def test_per_component_metrics_survive_an_early_target_kl_break(self, tmp_path):
+        """Explained variance must be reported even when target_kl cuts the epochs.
+
+        It is the one per-component metric taken from a single epoch rather than
+        averaged over all of them. Keying that off the final epoch *index* rather
+        than the last epoch that ran dropped the whole family whenever the KL gate
+        fired -- silently, because an empty accumulator is skipped -- and it fired
+        on the updates where the policy moved furthest.
+        """
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        runtime = trainer._initialize_rollout_runtime()
+        dones = trainer._collect_rollout(runtime, False)
+        trainer._compute_rollout_gae(runtime, dones)
+
+        # Needs more than one epoch for "final epoch" and "last epoch that ran"
+        # to differ at all. A target_kl of 0 is exceeded by any update, so the
+        # loop breaks after the first and never reaches num_epochs - 1.
+        trainer._schedule_state = dataclasses.replace(trainer._schedule_state, num_epochs=3)
+        trainer._effective_target_kl = lambda: 0.0
+        metrics = trainer._update_epochs(
+            all_buffers=[trainer.buffer] + trainer.aux_buffers, record_histograms=False
+        )
+
+        assert metrics["train/epochs_completed"] < trainer._schedule_state.num_epochs
+        for name in trainer._active_names:
+            key = f"critic/explained_variance/{name}"
+            assert key in metrics, f"{key} dropped when the KL gate fired early"
+            assert math.isfinite(metrics[key])

@@ -264,6 +264,201 @@ class TestTensorEnvStep:
         assert env.state.ship_health[0, 1].item() == 0.0
 
 
+class TestActionRepeat:
+    """One wrapper step is one decision, held for action_repeat physics ticks."""
+
+    @staticmethod
+    def _wrapper(ship_cfg, reward_cfg, repeat: int, num_envs: int = 4):
+        return YemongEnvWrapper(
+            num_envs=num_envs,
+            ship_config=ship_cfg,
+            env_config=EnvConfig(
+                num_ships=8, max_bullets=20, max_episode_steps=1000, action_repeat=repeat
+            ),
+            rewards=reward_cfg,
+            device="cpu",
+        )
+
+    def test_step_advances_physics_by_the_repeat(self, ship_cfg, reward_cfg):
+        wrapper = self._wrapper(ship_cfg, reward_cfg, repeat=3)
+        wrapper.reset(options={"team_sizes": (4, 4)})
+        actions = torch.zeros(4, 8, 3, dtype=torch.int32)
+
+        wrapper.step(actions)
+
+        assert (wrapper.env.state.step_count == 3).all()
+
+    def test_repeat_one_is_the_unrepeated_path(self, ship_cfg, reward_cfg):
+        """Repeat 1 must reproduce single-tick behaviour exactly."""
+        torch.manual_seed(5)
+        one = self._wrapper(ship_cfg, reward_cfg, repeat=1)
+        one.reset(seed=17, options={"team_sizes": (4, 4)})
+        actions = torch.ones(4, 8, 3, dtype=torch.int32)
+        torch.manual_seed(9)
+        _, reward_a, _, _, _ = one.step(actions)
+
+        torch.manual_seed(5)
+        two = self._wrapper(ship_cfg, reward_cfg, repeat=1)
+        two.reset(seed=17, options={"team_sizes": (4, 4)})
+        torch.manual_seed(9)
+        _, reward_b, _, _, _ = two.step(actions)
+
+        assert torch.equal(reward_a, reward_b)
+
+    def test_rewards_sum_over_held_ticks(self, ship_cfg, reward_cfg):
+        """Summing is what keeps the reward scale invariant to the repeat.
+
+        Over a fixed span of game time both the dense per-tick terms and the
+        one-off event terms total the same, so RewardConfig's component ratios
+        are untouched by the tick rate.
+        """
+        actions = torch.ones(4, 8, 3, dtype=torch.int32)
+
+        torch.manual_seed(3)
+        stepwise = self._wrapper(ship_cfg, reward_cfg, repeat=1)
+        stepwise.reset(seed=23, options={"team_sizes": (4, 4)})
+        torch.manual_seed(11)
+        total = sum(stepwise.step(actions)[1] for _ in range(3))
+
+        torch.manual_seed(3)
+        held = self._wrapper(ship_cfg, reward_cfg, repeat=3)
+        held.reset(seed=23, options={"team_sizes": (4, 4)})
+        torch.manual_seed(11)
+        _, repeated, _, _, _ = held.step(actions)
+
+        assert torch.allclose(total, repeated, atol=1e-5)
+
+    def test_episode_length_counts_physics_ticks(self, ship_cfg, reward_cfg):
+        """Lengths stay in ticks so they are comparable across tick rates."""
+        wrapper = self._wrapper(ship_cfg, reward_cfg, repeat=3)
+        wrapper.reset(options={"team_sizes": (4, 4)})
+        actions = torch.zeros(4, 8, 3, dtype=torch.int32)
+        for _ in range(4):
+            wrapper.step(actions)
+        assert (wrapper._ep_length == 12).all()
+
+    def test_finished_env_stops_earning_mid_hold(self, ship_cfg, reward_cfg):
+        """An env that ends partway through the hold contributes nothing after.
+
+        Its remaining ticks still simulate — masking the physics would cost more
+        than the wasted ticks — but nothing they produce is read.
+        """
+        wrapper = self._wrapper(ship_cfg, reward_cfg, repeat=3, num_envs=2)
+        wrapper.reset(options={"team_sizes": (4, 4)})
+        # Truncate env 0 on the first tick of the next hold.
+        wrapper.env.state.step_count[0] = wrapper.env_config.max_episode_steps - 1
+        actions = torch.zeros(2, 8, 3, dtype=torch.int32)
+
+        _, rewards, _, truncated = wrapper.step(actions)[:4]
+
+        assert truncated[0] and not truncated[1]
+        # One tick of dense shaping for env 0 against three for env 1.
+        assert wrapper._ep_length[1] == 3
+
+
+class TestDecisionRateIsGlobal:
+    """Every consumer of the env must see the same decision rate.
+
+    Regression: action_repeat lived only in YemongEnvWrapper, so training ran at
+    the configured rate while the Elo battery and every evaluation mode stepped
+    TensorEnv directly at one tick per action. A policy trained to hold an action
+    for N ticks then turns a fraction of its intended amount per decision,
+    mistimes every lead, and advances its recurrent state N times too fast for
+    the game clock — it still plays, just far worse, and no metric says why.
+    """
+
+    @staticmethod
+    def _env(ship_cfg, repeat):
+        return TensorEnv(
+            4,
+            ship_cfg,
+            EnvConfig(num_ships=4, max_bullets=8, max_episode_steps=1000, action_repeat=repeat),
+            "cpu",
+        )
+
+    def test_step_advances_by_action_repeat(self, ship_cfg):
+        env = self._env(ship_cfg, 3)
+        env.reset()
+        env.step(torch.zeros(4, 4, 3, dtype=torch.int32))
+        assert (env.state.step_count == 3).all()
+
+    def test_tick_is_always_one_physics_step(self, ship_cfg):
+        """The wrapper opts out of the repeat because it accumulates per tick."""
+        env = self._env(ship_cfg, 3)
+        env.reset()
+        env.tick(torch.zeros(4, 4, 3, dtype=torch.int32))
+        assert (env.state.step_count == 1).all()
+
+    def test_repeat_one_leaves_step_and_tick_equivalent(self, ship_cfg):
+        for method in ("step", "tick"):
+            env = self._env(ship_cfg, 1)
+            env.reset()
+            getattr(env, method)(torch.zeros(4, 4, 3, dtype=torch.int32))
+            assert (env.state.step_count == 1).all(), method
+
+    def test_step_flags_are_sticky_across_the_hold(self, ship_cfg):
+        """An env finishing mid-hold must still be reported as finished."""
+        env = self._env(ship_cfg, 3)
+        env.reset()
+        env.state.step_count[0] = env.env_config.max_episode_steps - 1
+        _, truncated = env.step(torch.zeros(4, 4, 3, dtype=torch.int32))
+        assert truncated[0] and not truncated[1:].any()
+
+
+class TestSpawnResourceSpread:
+    def test_zero_spread_spawns_at_full_resources(self, ship_cfg, reward_cfg):
+        env = TensorEnv(
+            64, ship_cfg, EnvConfig(num_ships=4, max_bullets=8, max_episode_steps=100), "cpu"
+        )
+        env.reset()
+        assert (env.state.ship_health == ship_cfg.max_health).all()
+        assert (env.state.ship_power == ship_cfg.max_power).all()
+        assert (env.state.ship_cooldown == 0.0).all()
+
+    def test_spread_randomizes_within_bounds(self, ship_cfg, reward_cfg):
+        env = TensorEnv(
+            256,
+            ship_cfg,
+            EnvConfig(
+                num_ships=4,
+                max_bullets=8,
+                max_episode_steps=100,
+                spawn_resource_spread=0.25,
+            ),
+            "cpu",
+        )
+        env.reset()
+        health, power = env.state.ship_health, env.state.ship_power
+        assert (health >= 0.75 * ship_cfg.max_health).all()
+        assert (health <= ship_cfg.max_health).all()
+        assert (power >= 0.75 * ship_cfg.max_power).all()
+        assert (power <= ship_cfg.max_power).all()
+        assert (env.state.ship_cooldown >= 0.0).all()
+        assert (env.state.ship_cooldown <= ship_cfg.firing_cooldown).all()
+        assert health.std() > 0.0, "spread did not randomize"
+
+    def test_teams_start_with_equal_expected_resources(self, ship_cfg, reward_cfg):
+        """A lopsided spawn would put outcome variance into the win signal that
+        no policy could have influenced."""
+        env = TensorEnv(
+            4096,
+            ship_cfg,
+            EnvConfig(
+                num_ships=8,
+                max_bullets=8,
+                max_episode_steps=100,
+                spawn_resource_spread=0.25,
+            ),
+            "cpu",
+        )
+        env.reset()
+        team0 = env.state.ship_team_id == 0
+        team1 = env.state.ship_team_id == 1
+        mean0 = (env.state.ship_health * team0).sum() / team0.sum()
+        mean1 = (env.state.ship_health * team1).sum() / team1.sum()
+        assert abs((mean0 - mean1).item()) < 0.5
+
+
 class TestYemongEnvWrapper:
     def test_reset_returns_obs_dict(self, ship_cfg, env_cfg, reward_cfg):
         wrapper = YemongEnvWrapper(
