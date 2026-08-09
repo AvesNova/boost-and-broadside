@@ -11,8 +11,11 @@ from types import SimpleNamespace
 import pytest
 
 import main
-from runs.bc_warmstart import BC_WARMSTART_PRETRAIN_CONFIG, BC_WARMSTART_RL_CONFIG
-from runs.rl import RL_TRAIN_CONFIG
+from boost_and_broadside.profiles import (
+    BC_WARMSTART_PRETRAIN_CONFIG,
+    BC_WARMSTART_RL_CONFIG,
+    RL_TRAIN_CONFIG,
+)
 
 
 class _StubTrainer:

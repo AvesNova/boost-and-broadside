@@ -28,9 +28,9 @@ The main layers are:
 - [`wrapper.py`](../src/boost_and_broadside/env/wrapper.py): observations, decomposed
   rewards, statistics, and automatic reset.
 
-`EnvConfig.num_ships` is the total across both teams. The primary `runs/rl.py` profile
+`EnvConfig.num_ships` is the total across both teams. The primary `profiles/rl.py` profile
 uses eight ships (4-vs-4) and zero fields, preserving the original ambient-only hot path
-exactly. `runs/rl_fields.py` is a four-field combat profile for smoke tests and future
+exactly. `profiles/rl_fields.py` is a four-field combat profile for smoke tests and future
 training.
 
 Ships also observe `grad(n)` at their own position. It was computed and consumed by the

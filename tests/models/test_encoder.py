@@ -615,9 +615,9 @@ class TestBulletCrossAttention:
     def test_bullet_observation_flattens_the_ring_buffer(self, ship_cfg):
         """Every slot is emitted; inactive ones are masked, not compacted."""
         from boost_and_broadside.config import EnvConfig
+        from boost_and_broadside.config.defaults import REWARDS
         from boost_and_broadside.env.observation import BulletObsKey, observation_from_state
         from boost_and_broadside.env.wrapper import YemongEnvWrapper
-        from runs.shared import REWARDS
 
         B, N, K = 2, 4, 10
         env_cfg = EnvConfig(num_ships=N, max_bullets=K, max_episode_steps=32)

@@ -21,12 +21,14 @@ from typing import Any
 import pytest
 
 import main
+from boost_and_broadside.config.defaults import MODEL_CONFIG, SHIP_CONFIG
 from boost_and_broadside.modes.capture import _find_run_dir, parse_matchup
 from boost_and_broadside.modes.elo_stats import find_run_dir
-from runs.bc import BC_TRAIN_CONFIG
-from runs.rl import RL_TRAIN_CONFIG
-from runs.rl_fields import RL_FIELDS_TRAIN_CONFIG
-from runs.shared import MODEL_CONFIG, SHIP_CONFIG
+from boost_and_broadside.profiles import (
+    BC_TRAIN_CONFIG,
+    RL_FIELDS_TRAIN_CONFIG,
+    RL_TRAIN_CONFIG,
+)
 
 _ROOT = Path(__file__).resolve().parents[1]
 _SNAPSHOTS = _ROOT / "tests" / "fixtures" / "mode_refactor"

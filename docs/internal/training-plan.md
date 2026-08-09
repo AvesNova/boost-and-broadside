@@ -131,7 +131,7 @@ whole episode**. It now does, and a token buys three times the game time.
 
 - Rewards **summed** across held ticks (scale-preserving over fixed game time).
 - Every γ and λ re-derived as `value ** (60/20)`; horizons in seconds are now
-  written down in `runs/shared.py`.
+  written down in `src/boost_and_broadside/config/defaults.py`.
 - `max_episode_steps` needed **no** change — it counts physics ticks.
 - Spawn health/power/cooldown randomised, balanced in expectation across teams.
 - `total_timesteps` → 333M: same game time as the 1e9-step reference run.

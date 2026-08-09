@@ -178,7 +178,7 @@ class EnvConfig:
     # game time.
     #
     # Coarsening is not free — it costs combat effectiveness monotonically — so
-    # the chosen value is a measured trade, not a default. See runs/rl.py.
+    # the chosen value is a measured trade, not a default. See profiles/rl.py.
     # Discounts encode horizons in seconds, so moving this means re-deriving
     # gamma and lambda as g ** (rate_old / rate_new), not reusing the number.
     action_repeat: int = 1

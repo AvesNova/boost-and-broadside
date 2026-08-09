@@ -1,0 +1,333 @@
+"""Contracts for the profile-intent and resolved-configuration boundary."""
+
+from __future__ import annotations
+
+import ast
+import json
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+
+from boost_and_broadside.config.fingerprint import canonical_data, canonical_json, fingerprint
+from boost_and_broadside.config.resolve import (
+    LaunchOverrides,
+    derive_aligned_num_envs,
+    derive_time_normalized_value,
+    resolve_profile,
+)
+from boost_and_broadside.config.schedule_spec import compile_schedule, constant_spec, linear_spec
+from boost_and_broadside.config.service import format_resolved_profile
+from boost_and_broadside.profiles import PROFILES
+
+_ROOT = Path(__file__).resolve().parents[2]
+_SNAPSHOTS = _ROOT / "tests" / "fixtures" / "mode_refactor"
+_PROFILE_MODULES = (
+    _ROOT / "src" / "boost_and_broadside" / "profiles" / "rl.py",
+    _ROOT / "src" / "boost_and_broadside" / "profiles" / "rl_fields.py",
+    _ROOT / "src" / "boost_and_broadside" / "profiles" / "bc.py",
+)
+
+
+@pytest.mark.parametrize(
+    ("name", "snapshot_name"),
+    (("rl", "rl"), ("rl-fields", "rl-fields"), ("bc", "bc-stale")),
+)
+def test_resolved_profiles_match_s01_snapshots(name: str, snapshot_name: str) -> None:
+    expected = json.loads((_SNAPSHOTS / f"{snapshot_name}.json").read_text())
+    resolved = resolve_profile(PROFILES[name])
+
+    assert canonical_data(resolved.ship_config) == expected["ship_config"]
+    assert canonical_data(resolved.model_config) == expected["model_config"]
+    assert canonical_data(resolved.train_config) == expected["train_config"]
+
+
+def test_rl_fields_resolved_diff_contains_only_named_field_intent() -> None:
+    rl = canonical_data(resolve_profile(PROFILES["rl"]).train_config)
+    fields = canonical_data(resolve_profile(PROFILES["rl-fields"]).train_config)
+
+    def different_paths(left, right, prefix=""):
+        if prefix == "reference_ladder":
+            return {prefix} if left != right else set()
+        if isinstance(left, dict) and isinstance(right, dict):
+            paths = set()
+            for key in left.keys() | right.keys():
+                path = f"{prefix}.{key}" if prefix else key
+                if key not in left or key not in right:
+                    paths.add(path)
+                else:
+                    paths.update(different_paths(left[key], right[key], path))
+            return paths
+        if isinstance(left, list) and isinstance(right, list) and len(left) == len(right):
+            paths = set()
+            for index, (left_item, right_item) in enumerate(zip(left, right, strict=True)):
+                paths.update(different_paths(left_item, right_item, f"{prefix}.{index}"))
+            return paths
+        return {prefix} if left != right else set()
+
+    assert different_paths(rl, fields) == {
+        "field_map",
+        "random_elo",
+        "reference_ladder",
+        "rewards.field_damage_taken_weight",
+        "rewards.field_death_weight",
+        "scales.0.env_config.num_fields",
+        "scales.0.num_envs",
+    }
+
+
+def test_registered_profile_modules_do_not_import_each_other() -> None:
+    module_names = {
+        "boost_and_broadside.profiles.rl",
+        "boost_and_broadside.profiles.rl_fields",
+        "boost_and_broadside.profiles.bc",
+    }
+    for path in _PROFILE_MODULES:
+        tree = ast.parse(path.read_text(), filename=str(path))
+        imported = {
+            node.module
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.module is not None
+        }
+        imported.update(
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Import)
+            for alias in node.names
+        )
+        assert imported.isdisjoint(module_names), f"{path.name} imports another profile: {imported}"
+    assert not (_ROOT / "runs").exists()
+
+
+def test_config_foundation_has_no_runtime_engine_dependencies() -> None:
+    roots = (
+        _ROOT / "src" / "boost_and_broadside" / "config",
+        _ROOT / "src" / "boost_and_broadside" / "profiles",
+    )
+    forbidden = (
+        "boost_and_broadside.env",
+        "boost_and_broadside.modes",
+        "boost_and_broadside.train",
+    )
+    for path in (path for root in roots for path in root.glob("*.py")):
+        tree = ast.parse(path.read_text(), filename=str(path))
+        modules = [
+            node.module
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.module is not None
+        ]
+        modules.extend(
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Import)
+            for alias in node.names
+        )
+        assert not [module for module in modules if module.startswith(forbidden)], path
+
+
+def test_token_and_discount_derivations_are_named_and_exact() -> None:
+    assert derive_aligned_num_envs(
+        rollout_tokens=4_000_000,
+        entity_tokens=8,
+        num_steps=128,
+        num_minibatches=32,
+    ) == 3904
+    assert derive_aligned_num_envs(
+        rollout_tokens=4_000_000,
+        entity_tokens=12,
+        num_steps=128,
+        num_minibatches=32,
+    ) == 2592
+    assert derive_time_normalized_value(0.99, action_repeat=2) == 0.9801
+    assert derive_time_normalized_value(0.95, action_repeat=2) == 0.9025
+
+
+def test_fingerprints_are_canonical_and_separate_intent_from_launch() -> None:
+    base = resolve_profile(PROFILES["rl"])
+    overridden = resolve_profile(
+        PROFILES["rl"],
+        LaunchOverrides(num_envs=3872, microbatch_tokens=20_000),
+    )
+
+    assert fingerprint({"b": 2, "a": 1}) == fingerprint({"a": 1, "b": 2})
+    assert base.profile_fingerprint == overridden.profile_fingerprint
+    assert base.resolved_config_fingerprint != overridden.resolved_config_fingerprint
+    second = resolve_profile(PROFILES["rl"])
+    assert canonical_data(second.train_config) == canonical_data(base.train_config)
+    assert second.profile_fingerprint == base.profile_fingerprint
+    assert second.resolved_config_fingerprint == base.resolved_config_fingerprint
+
+
+def test_canonical_serialization_has_a_stable_golden_vector() -> None:
+    value = {"z": ["alpha", "beta"], "a": (1, None)}
+    assert canonical_json(value) == '{"a":[1,null],"z":["alpha","beta"]}'
+    assert fingerprint(value) == "96a880bbbb76a458031417c64ad991bb13f4a18582af7711998ff0253f4c9bd5"
+    assert canonical_json(frozenset({"beta", "alpha"})) == '["alpha","beta"]'
+    with pytest.raises(ValueError, match="finite"):
+        canonical_json(float("nan"))
+    with pytest.raises(TypeError, match="unsupported"):
+        canonical_json(object())
+
+
+def test_current_profile_and_resolved_fingerprints_are_stable() -> None:
+    expected = {
+        "rl": (
+            "6d358e470eb0b70e01a837b437021bc0c677cdc4bfef35ea2d6bbbea2851e9cc",
+            "340ea375a3217ce2ca3be369fe64e52221b7dcf56cd94cb729dd8eede8c7afc6",
+        ),
+        "rl-fields": (
+            "8d476f1e018847ae7425e80cf1e1912104974e968a7df18192a3745e62e64aa0",
+            "2c29b7f27f78d15073953dd3f35b2cea64829d33b8fddbabd67ff936d7bcfa6f",
+        ),
+        "bc": (
+            "2ccb1869555ef1c1134be2958220d82020373c7e8a08a62171d9f6592983db42",
+            "948776506fed977433f53dd00c620aaf54583c6ee000bfdc564abe0bfb9164da",
+        ),
+    }
+    for name, fingerprints in expected.items():
+        resolved = resolve_profile(PROFILES[name])
+        assert (resolved.profile_fingerprint, resolved.resolved_config_fingerprint) == fingerprints
+
+
+def test_profile_fingerprint_includes_declarative_schedule_intent() -> None:
+    profile = PROFILES["rl"]
+    changed_schedule = replace(
+        profile.objective.schedule,
+        entropy_coef=constant_spec(0.006),
+    )
+    changed = replace(
+        profile,
+        objective=replace(profile.objective, schedule=changed_schedule),
+    )
+    changed_fingerprint = resolve_profile(changed).profile_fingerprint
+    assert changed_fingerprint != resolve_profile(profile).profile_fingerprint
+
+
+def test_profile_fingerprint_excludes_legacy_machine_launch_preset() -> None:
+    profile = PROFILES["rl"]
+    changed = replace(
+        profile,
+        launch_defaults=replace(profile.launch_defaults, rollout_tokens=3_000_000),
+    )
+    baseline = resolve_profile(profile)
+    other_machine = resolve_profile(changed)
+    assert other_machine.profile_fingerprint == baseline.profile_fingerprint
+    assert other_machine.resolved_config_fingerprint != baseline.resolved_config_fingerprint
+
+
+def test_declarative_schedule_validation_and_boundaries() -> None:
+    with pytest.raises(ValueError, match="at least two"):
+        linear_spec((0, 1.0))
+    with pytest.raises(ValueError, match="strictly increasing"):
+        linear_spec((10, 1.0), (0, 3.0))
+    schedule = linear_spec((0, 1.0), (10, 3.0))
+    runtime = compile_schedule(schedule)
+    assert (runtime(-1), runtime(5), runtime(11)) == (1.0, 2.0, 3.0)
+
+
+def test_resolution_tracks_sources_and_cli_overrides() -> None:
+    resolved = resolve_profile(
+        PROFILES["rl"],
+        LaunchOverrides(num_envs=3872, microbatch_tokens=20_000),
+    )
+
+    assert resolved.value_sources["train_config.scales.0.num_envs"] == "cli"
+    assert resolved.value_sources["train_config.microbatch_tokens"] == "cli"
+    assert resolved.value_sources["train_config.gamma"] == "derived"
+    assert resolved.value_sources["train_config.component_gammas.ally_win"] == "derived"
+    assert resolved.value_sources["model_config.d_model"] == "profile"
+    assert resolved.train_config.scales[0].num_envs == 3872
+    assert resolved.train_config.microbatch_tokens == 20_000
+
+    document = json.loads(format_resolved_profile("rl", LaunchOverrides(3872, 20_000)))
+
+    def leaves(value, prefix=""):
+        if isinstance(value, dict):
+            if not value:
+                return {prefix}
+            return set().union(
+                *(leaves(item, f"{prefix}.{key}" if prefix else key) for key, item in value.items())
+            )
+        if isinstance(value, list):
+            if not value:
+                return {prefix}
+            return set().union(
+                *(
+                    leaves(item, f"{prefix}.{index}" if prefix else str(index))
+                    for index, item in enumerate(value)
+                )
+            )
+        return {prefix}
+
+    assert set(document["sources"]) == leaves(document["config"])
+    assert set(document["sources"].values()) <= {
+        "profile",
+        "derived",
+        "vram-cache",
+        "vram-preset",
+        "cli",
+    }
+
+
+def test_equal_explicit_values_keep_value_fingerprint_but_record_cli_source() -> None:
+    baseline = resolve_profile(PROFILES["rl"])
+    explicit = resolve_profile(
+        PROFILES["rl"],
+        LaunchOverrides(num_envs=3904, microbatch_tokens=25_000),
+    )
+    assert explicit.resolved_config_fingerprint == baseline.resolved_config_fingerprint
+    assert explicit.value_sources["train_config.scales.0.num_envs"] == "cli"
+    assert explicit.value_sources["train_config.microbatch_tokens"] == "cli"
+
+
+def test_invalid_launch_override_fails_after_precedence_is_applied() -> None:
+    with pytest.raises(ValueError, match="divisible"):
+        resolve_profile(PROFILES["rl"], LaunchOverrides(num_envs=1))
+    with pytest.raises(ValueError, match="microbatch_tokens"):
+        resolve_profile(PROFILES["rl"], LaunchOverrides(microbatch_tokens=0))
+    invalid_bc = replace(
+        PROFILES["bc"],
+        launch_defaults=replace(PROFILES["bc"].launch_defaults, num_envs=0),
+    )
+    with pytest.raises(ValueError, match="num_envs must be positive"):
+        resolve_profile(invalid_bc)
+    invalid_optimizer = replace(
+        PROFILES["rl"],
+        optimizer=replace(PROFILES["rl"].optimizer, clip_coef=-0.1),
+    )
+    with pytest.raises(ValueError, match="clip_coef"):
+        resolve_profile(invalid_optimizer)
+
+
+def test_fixed_environment_legacy_preset_has_honest_machine_source() -> None:
+    resolved = resolve_profile(PROFILES["bc"])
+    assert resolved.value_sources["train_config.scales.0.num_envs"] == "vram-preset"
+
+
+def test_format_resolved_profile_is_complete_stable_json(tmp_path, monkeypatch, capsys) -> None:
+    monkeypatch.chdir(tmp_path)
+    rendered = format_resolved_profile("rl")
+    document = json.loads(rendered)
+
+    assert rendered == format_resolved_profile("rl")
+    assert document["schema_version"] == 1
+    assert document["profile"] == "rl"
+    assert document["config"]["train_config"]["scales"][0]["num_envs"] == 3904
+    assert document["sources"]["train_config.scales.0.num_envs"] == "derived"
+    assert len(document["profile_fingerprint"]) == 64
+    assert len(document["resolved_config_fingerprint"]) == 64
+    assert list(tmp_path.iterdir()) == []
+    assert capsys.readouterr() == ("", "")
+
+
+def test_profiles_are_independent_values_even_when_their_intent_matches() -> None:
+    rl = PROFILES["rl"]
+    fields = PROFILES["rl-fields"]
+
+    assert rl is not fields
+    assert rl.objective.schedule is not fields.objective.schedule
+    assert replace(fields.environment, num_fields=0) == rl.environment
+    assert set(PROFILES) == {"bc", "rl", "rl-fields"}
+    assert {profile.name for profile in PROFILES.values()} == set(PROFILES)
+    with pytest.raises(TypeError):
+        rl.discounts.component_gammas_per_tick["ally_win"] = 0.5  # type: ignore[index]

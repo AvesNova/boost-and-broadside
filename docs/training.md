@@ -87,7 +87,7 @@ Discounts do **not** carry over unchanged. They were chosen as horizons in secon
 moving the rate requires `gamma_new = gamma_old ** (rate_old / rate_new)` — and the same
 for the GAE lambdas, since variance accumulates per unit of game time rather than per
 decision. The horizons those values encode are tabulated in
-[`runs/shared.py`](../runs/shared.py).
+[`config/defaults.py`](../src/boost_and_broadside/config/defaults.py).
 
 Ships also spawn with randomised health, power and cooldown
 (`EnvConfig.spawn_resource_spread`). Spawning at full resources every episode made health
@@ -184,8 +184,9 @@ component's own scale with the guard's. `advantage_min_rms` is therefore a true 
 the terminal win signal's advantage RMS is around 0.008, two orders of magnitude below a
 per-step damage signal, and an earlier floor of 0.1 was downweighting it roughly
 thirteenfold in the policy gradient. `return_min_span` is *not* an epsilon and is held at
-1.0 on purpose — see the note in [`runs/rl.py`](../runs/rl.py) for why lowering it needs
-the critic's outlier sensitivity addressed first. `scaler/floor_bound_span/*` and
+1.0 on purpose — see the note in
+[`profiles/rl.py`](../src/boost_and_broadside/profiles/rl.py) for why lowering it needs the
+critic's outlier sensitivity addressed first. `scaler/floor_bound_span/*` and
 `scaler/floor_bound_rms/*` report which components each floor is currently holding up.
 
 ## Reward decomposition
@@ -231,16 +232,17 @@ wall-avoidance shaping. Applied interface and projectile health loss, plus their
 death causes, are recorded separately so neither source can double-count overkill.
 Interfaces also reduce projectile damage potential, but that
 barrier loss is not credited to a ship; only damage that reaches a target enters combat
-attribution. See [`runs/shared.py`](../runs/shared.py) for current component horizons and
-schedules, and the preserved run config for historical weights.
+attribution. See [`config/defaults.py`](../src/boost_and_broadside/config/defaults.py) for
+current component horizons and schedules, and the preserved run config for historical weights.
 
 ## Field training profile
 
-The primary [`runs/rl.py`](../runs/rl.py) profile remains an exact zero-field combat
-baseline. [`runs/rl_fields.py`](../runs/rl_fields.py) adds four cached static fields,
-activates the two local field reward heads, and reduces environment count to offset the
-extra attention tokens. The scripted controller ignores fields entirely: it aims and
-manoeuvres as if the medium were uniform.
+The primary [`profiles/rl.py`](../src/boost_and_broadside/profiles/rl.py) profile remains an
+exact zero-field combat baseline.
+[`profiles/rl_fields.py`](../src/boost_and_broadside/profiles/rl_fields.py) adds four cached
+static fields, activates the two local field reward heads, and reduces environment count to
+offset the extra attention tokens. The scripted controller ignores fields entirely: it aims
+and manoeuvres as if the medium were uniform.
 
 It used to carry a mild stay-on-your-side steering bias, on the theory that behavior
 cloning needed field-dependent targets to warm up the attention trunk. Measurement killed
@@ -292,8 +294,9 @@ utility is learned from combat outcome, navigation, speed, handling, and health 
 ## Opponent curriculum
 
 The primary scale has two environment groups: self-play, and a league whose width is
-`league_fraction` (0.5 in [`runs/rl.py`](../runs/rl.py)). The league half is divided into
-`league_slots` contiguous slots, and each slot draws its own opponent from the roster at
+`league_fraction` (0.5 in
+[`profiles/rl.py`](../src/boost_and_broadside/profiles/rl.py)). The league half is divided
+into `league_slots` contiguous slots, and each slot draws its own opponent from the roster at
 every rollout boundary.
 
 Every opponent is an ordinary roster entry on one Elo scale:

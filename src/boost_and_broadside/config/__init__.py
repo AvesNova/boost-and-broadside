@@ -8,6 +8,14 @@ from boost_and_broadside.config.core import (
     RewardConfig,
     ShipConfig,
 )
+from boost_and_broadside.config.fingerprint import canonical_data, canonical_json, fingerprint
+from boost_and_broadside.config.resolve import (
+    LaunchOverrides,
+    derive_aligned_num_envs,
+    derive_time_normalized_value,
+    resolve_profile,
+    validate_resolved_config,
+)
 from boost_and_broadside.config.schedule import (
     Schedule,
     TrainingSchedule,
@@ -17,6 +25,29 @@ from boost_and_broadside.config.schedule import (
     join,
     linear,
     stepped,
+)
+from boost_and_broadside.config.schedule_spec import (
+    ScheduleSpec,
+    TrainingScheduleSpec,
+    compile_schedule,
+    constant_spec,
+    exponential_spec,
+    join_spec,
+    linear_spec,
+    stepped_spec,
+)
+from boost_and_broadside.config.schema import (
+    PROFILE_SCHEMA_VERSION,
+    RESOLVED_CONFIG_SCHEMA_VERSION,
+    DiscountSpec,
+    EnvironmentSpec,
+    LaunchSizingSpec,
+    LeagueSpec,
+    ObjectiveSpec,
+    OptimizerSpec,
+    ProfileSpec,
+    ResolvedTrainConfig,
+    RolloutSpec,
 )
 from boost_and_broadside.config.training import (
     EloCalibrateConfig,
@@ -48,4 +79,31 @@ __all__ = [
     "FieldMapConfig",
     "ScaleConfig",
     "TrainConfig",
+    "DiscountSpec",
+    "EnvironmentSpec",
+    "LaunchOverrides",
+    "LaunchSizingSpec",
+    "LeagueSpec",
+    "ObjectiveSpec",
+    "OptimizerSpec",
+    "ProfileSpec",
+    "PROFILE_SCHEMA_VERSION",
+    "RESOLVED_CONFIG_SCHEMA_VERSION",
+    "ResolvedTrainConfig",
+    "RolloutSpec",
+    "ScheduleSpec",
+    "TrainingScheduleSpec",
+    "canonical_data",
+    "canonical_json",
+    "compile_schedule",
+    "constant_spec",
+    "derive_aligned_num_envs",
+    "derive_time_normalized_value",
+    "exponential_spec",
+    "fingerprint",
+    "join_spec",
+    "linear_spec",
+    "resolve_profile",
+    "stepped_spec",
+    "validate_resolved_config",
 ]

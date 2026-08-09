@@ -71,6 +71,12 @@ import torch
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import EnvConfig, TrainConfig
+from boost_and_broadside.config.defaults import (
+    ELO_CALIBRATE,
+    MODEL_CONFIG,
+    REWARDS,
+    SHIP_CONFIG,
+)
 from boost_and_broadside.constants import DEFAULT_MAX_BULLETS_PER_SHIP
 from boost_and_broadside.modes.ar_report import run_ar_report_mode
 from boost_and_broadside.modes.capture import run_capture_mode
@@ -86,14 +92,16 @@ from boost_and_broadside.modes.semi_random_tournament import (
     parse_probabilities,
     run_semi_random_tournament,
 )
+from boost_and_broadside.profiles import (
+    BC_TRAIN_CONFIG,
+    BC_WARMSTART_PRETRAIN_CONFIG,
+    BC_WARMSTART_RL_CONFIG,
+    RL_FIELDS_TRAIN_CONFIG,
+    RL_TRAIN_CONFIG,
+)
 from boost_and_broadside.train.rl.policy_io import set_config_drift_allowed
 from boost_and_broadside.train.rl.ppo import PPOTrainer
 from boost_and_broadside.ui.renderer import RenderConfig
-from runs.bc import BC_TRAIN_CONFIG
-from runs.bc_warmstart import BC_WARMSTART_PRETRAIN_CONFIG, BC_WARMSTART_RL_CONFIG
-from runs.rl import RL_TRAIN_CONFIG
-from runs.rl_fields import RL_FIELDS_TRAIN_CONFIG
-from runs.shared import ELO_CALIBRATE, MODEL_CONFIG, REWARDS, SHIP_CONFIG
 
 # Training profiles addressable by name, for modes that need a run's environment
 # config before any such run exists.
@@ -176,7 +184,7 @@ def _parse_args() -> argparse.Namespace:
         "(tick rate, fields, ship config), so a run must use a ladder fitted "
         "under its own profile. Ignored when --run names a finished run.",
     )
-    # elo_calibrate defaults live in runs/shared.py (ELO_CALIBRATE); these flags
+    # elo_calibrate defaults live in config/defaults.py (ELO_CALIBRATE); these flags
     # are ad-hoc overrides, so they default to None and fall back to the config.
     parser.add_argument(
         "--target-stderr",

@@ -124,8 +124,10 @@ Field geometry must satisfy
 `field_radius_max + field_transition_width_max/2 < min(world_size)/2`. With the default
 1024×1024 world and 40-pixel transition width, `field_radius_max` must be below 492.
 The main combat profile is
-[`runs/rl.py`](../runs/rl.py), shared model/physics/reward definitions are in
-[`runs/shared.py`](../runs/shared.py), and configuration types are frozen dataclasses in
+[`profiles/rl.py`](../src/boost_and_broadside/profiles/rl.py), shared
+model/physics/reward definitions are in
+[`config/defaults.py`](../src/boost_and_broadside/config/defaults.py), and configuration types
+are frozen dataclasses in
 [`src/boost_and_broadside/config/`](../src/boost_and_broadside/config/).
 
 The production projectile pool is

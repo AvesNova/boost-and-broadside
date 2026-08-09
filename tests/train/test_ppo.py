@@ -961,9 +961,9 @@ class TestWinComponentLambdaMatrix:
         assert lam[0, :, k_enemy].tolist() == [0.0, 0.0, -1.0, -1.0]
 
     def test_production_config_win_lambda_sets(self):
-        """runs/shared.py must agree with the field profile and test configs on
+        """config/defaults.py must agree with the field profile and test configs on
         which win components are zero-sum (enemy_win) vs ally-shared (ally_win)."""
-        from runs.shared import REWARDS
+        from boost_and_broadside.config.defaults import REWARDS
 
         assert "enemy_win" in REWARDS.enemy_neg_lambda_components
         assert "enemy_win" in REWARDS.ally_zero_components
@@ -991,7 +991,7 @@ class TestLocalComponentRegistry:
 
 
 class TestRLSmokeTest:
-    """Full RL smoke test using the real runs/shared.py config.
+    """Full RL smoke test using the real config/defaults.py config.
 
     Exercises the complete training stack with the production reward config
     (including kill_shot and kill_assist) for a small number of updates.
@@ -1000,7 +1000,7 @@ class TestRLSmokeTest:
 
     @pytest.mark.parametrize("paradigm", ["ego_pass", "shared_pass"])
     def test_rl_run_with_production_config(self, paradigm, tmp_path):
-        from runs.shared import MODEL_CONFIG, REWARDS, SHIP_CONFIG
+        from boost_and_broadside.config.defaults import MODEL_CONFIG, REWARDS, SHIP_CONFIG
 
         schedule = TrainingSchedule(
             learning_rate=constant(3e-4),
