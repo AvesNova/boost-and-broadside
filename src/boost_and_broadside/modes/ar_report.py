@@ -1,6 +1,6 @@
 """Autoregressive-rollout diagnostic report.
 
-`--mode ar_report` runs one ground-truth episode, then replays it two ways through the
+`bnb ar-report` runs one ground-truth episode, then replays it two ways through the
 policy's learned next-state predictor: a *closed-loop* rollout (the recorded actions are
 forced, so only the imagined dynamics drift) and an *open-loop* rollout (the policy also
 imagines its own actions). It writes a set of PNG plots and a markdown report under

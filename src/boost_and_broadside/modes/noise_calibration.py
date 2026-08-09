@@ -1,4 +1,4 @@
-"""noise_calibration mode: measure NextStateHead prediction error statistics.
+"""``noise-calibration`` mode: measure NextStateHead prediction error statistics.
 
 Runs two phases:
   Phase 1 — 512 envs × 512 steps, collecting per-feature single-step prediction
@@ -115,7 +115,7 @@ def run_noise_calibration_mode(
 
     if agent0.kind != "policy":
         raise ValueError(
-            f"noise_calibration requires team0 to be a policy checkpoint, "
+            f"noise-calibration requires team0 to be a policy checkpoint, "
             f"got kind={agent0.kind!r}. Pass a .pt path via --team0."
         )
 

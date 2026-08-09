@@ -1,0 +1,421 @@
+"""Installed ``bnb`` command-line interface.
+
+Parser construction is deliberately lightweight. Runtime engines are imported
+only after a complete subcommand has parsed, so ``bnb`` and ``bnb --help`` do
+not allocate an environment, construct a trainer, or probe an accelerator.
+"""
+
+from __future__ import annotations
+
+import argparse
+from collections.abc import Sequence
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from boost_and_broadside.profiles import PROFILES
+
+
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError(f"expected a positive integer, got {value!r}")
+    return parsed
+
+
+def _exact_run(value: str) -> str:
+    if not value or Path(value).name != value or value in {".", "..", "latest", "none"}:
+        raise argparse.ArgumentTypeError(
+            f"expected an exact run name, got {value!r}; magic or path-like run names are invalid"
+        )
+    return value
+
+
+def _exact_agent(value: str) -> str:
+    if not value or value != value.strip() or value in {"latest", "none"}:
+        raise argparse.ArgumentTypeError(
+            f"expected an exact agent name or checkpoint path, got {value!r}"
+        )
+    return value
+
+
+@dataclass(frozen=True)
+class OptionSpec:
+    """One declarative option owned by one command."""
+
+    flags: tuple[str, ...]
+    kwargs: dict[str, Any] = field(default_factory=dict)
+    exclusive_group: str | None = None
+    group_required: bool = False
+
+
+@dataclass(frozen=True)
+class CommandSpec:
+    """Parser and dispatch metadata for one installed subcommand."""
+
+    name: str
+    help: str
+    options: tuple[OptionSpec, ...] = ()
+
+
+def _option(*flags: str, exclusive_group: str | None = None, **kwargs: Any) -> OptionSpec:
+    return OptionSpec(flags, kwargs, exclusive_group)
+
+
+_DEVICE = _option(
+    "--device",
+    default="auto",
+    metavar="DEVICE",
+    help="Execution device (default: auto-select CUDA when available).",
+)
+_SEED = _option(
+    "--seed",
+    type=int,
+    default=None,
+    help="Execution RNG seed (default: record the process-generated PyTorch seed).",
+)
+_ALLOW_DRIFT = _option(
+    "--allow-config-drift",
+    action="store_true",
+    help="Allow checkpoint physics/config drift, with warnings.",
+)
+_TEAM0 = _option(
+    "--team0", type=_exact_agent, required=True, metavar="AGENT", help="Exact team-0 agent."
+)
+_TEAM1 = _option(
+    "--team1", type=_exact_agent, required=True, metavar="AGENT", help="Exact team-1 agent."
+)
+_RUN = _option(
+    "--run", type=_exact_run, required=True, metavar="RUN", help="Exact run directory name."
+)
+_CALIBRATION = (
+    _option(
+        "--games-per-batch",
+        type=_positive_int,
+        default=None,
+        metavar="GAMES",
+        help="Parallel games played by each adaptive tournament batch.",
+    ),
+    _option(
+        "--target-stderr",
+        type=float,
+        default=None,
+        metavar="ELO",
+        help="Stop target for every conditional Elo standard error.",
+    ),
+    _option(
+        "--max-batches",
+        type=_positive_int,
+        default=None,
+        metavar="BATCHES",
+        help="Maximum adaptive tournament batches.",
+    ),
+)
+
+
+COMMANDS: tuple[CommandSpec, ...] = (
+    CommandSpec(
+        "train",
+        "Train one exact registered profile.",
+        (
+            _option(
+                "--profile",
+                choices=tuple(sorted(PROFILES)),
+                required=True,
+                help="Independent training profile.",
+            ),
+            _option(
+                "--resume",
+                exclusive_group="training-source",
+                metavar="PATH_OR_RUN",
+                help="Resume from an explicit .pt file or the latest numeric step in an exact run.",
+            ),
+            _option(
+                "--pretrain-from",
+                exclusive_group="training-source",
+                metavar="PATH",
+                help="Warm-start policy/scaler weights from an explicit .pt checkpoint.",
+            ),
+            _option(
+                "--compile",
+                dest="compile_mode",
+                choices=("none", "reduce-overhead", "default", "max-autotune"),
+                default="reduce-overhead",
+                metavar="MODE",
+                help="torch.compile profile.",
+            ),
+            _option("--no-wandb", action="store_true", help="Disable W&B logging."),
+            _option(
+                "--print-config",
+                action="store_true",
+                help="Resolve, validate, fingerprint, and print the launch without allocation.",
+            ),
+            _option(
+                "--num-envs",
+                type=_positive_int,
+                default=None,
+                metavar="ENVS",
+                help="Explicit aligned environment width; preserves the fixed logical token batch.",
+            ),
+            _option(
+                "--microbatch-tokens",
+                type=_positive_int,
+                default=None,
+                metavar="TOKENS",
+                help="Explicit entity tokens per gradient microbatch.",
+            ),
+            _DEVICE,
+            _SEED,
+            _ALLOW_DRIFT,
+        ),
+    ),
+    CommandSpec("play", "Play the fixed human 1v1 duel.", (_DEVICE, _SEED)),
+    CommandSpec(
+        "watch",
+        "Watch two exact agents in the fixed interactive arena.",
+        (_TEAM0, _TEAM1, _DEVICE, _SEED, _ALLOW_DRIFT),
+    ),
+    CommandSpec(
+        "capture",
+        "Capture seeded scratch gameplay clips from an exact run.",
+        (
+            _RUN,
+            _option("--scenarios", nargs="+", default=["self", "vs_scripted"], metavar="SCENARIO"),
+            _option(
+                "--seeds",
+                default="0-7",
+                metavar="SEEDS",
+                help="Seed range (0-7) or comma list (0,3,9).",
+            ),
+            _option("--sizes", nargs="+", default=None, metavar="MATCHUP"),
+            _option("--fps", type=_positive_int, default=60, help="Playback frames per second."),
+            _option(
+                "--max-steps",
+                type=_positive_int,
+                default=1024,
+                metavar="PHYSICS_TICKS",
+                help="Maximum physics ticks before a tie.",
+            ),
+            _option("--hold-ms", type=_positive_int, default=1500),
+            _option("--gif", action="store_true", help="Also write a downscaled GIF."),
+            _option(
+                "--out",
+                type=Path,
+                default=Path("out"),
+                metavar="DIR",
+                help="Scratch output directory (default: out).",
+            ),
+            _DEVICE,
+            _SEED,
+            _ALLOW_DRIFT,
+        ),
+    ),
+    CommandSpec(
+        "collect-stats",
+        "Collect outcome statistics for two exact agents.",
+        (
+            _TEAM0,
+            _TEAM1,
+            _option("--sizes", nargs="+", default=["4v4"], metavar="MATCHUP"),
+            _option(
+                "--games",
+                type=_positive_int,
+                default=1024,
+                help="Parallel games per matchup.",
+            ),
+            _DEVICE,
+            _SEED,
+            _ALLOW_DRIFT,
+        ),
+    ),
+    CommandSpec(
+        "crossover",
+        "Measure the scripted fleet count needed to beat a trained fleet.",
+        (
+            _RUN,
+            _option("--sizes", default="1,2,4,8,16,32,64", metavar="TRAINED_COUNTS"),
+            _option(
+                "--games-per-matchup",
+                type=_positive_int,
+                default=256,
+                help="Parallel games per tested matchup.",
+            ),
+            _DEVICE,
+            _SEED,
+            _ALLOW_DRIFT,
+        ),
+    ),
+    CommandSpec(
+        "elo-calibrate",
+        "Post-hoc Bradley-Terry calibration for one exact run.",
+        (_RUN, *_CALIBRATION, _DEVICE, _SEED, _ALLOW_DRIFT),
+    ),
+    CommandSpec(
+        "elo-scale",
+        "Evaluate one exact run across symmetric fleet sizes.",
+        (
+            _RUN,
+            _option("--sizes", default="1,2,4,8,16,32,64", metavar="TEAM_COUNTS"),
+            *_CALIBRATION,
+            _DEVICE,
+            _SEED,
+            _ALLOW_DRIFT,
+        ),
+    ),
+    CommandSpec(
+        "semi-random",
+        "Measure a random-to-scripted reference ladder for one exact profile or run.",
+        (
+            OptionSpec(
+                ("--profile",),
+                {
+                    "choices": tuple(sorted(PROFILES)),
+                    "help": "Exact profile whose environment defines the ladder.",
+                },
+                "ladder-subject",
+                True,
+            ),
+            OptionSpec(
+                ("--run",),
+                {"type": _exact_run, "metavar": "RUN", "help": "Exact finished run."},
+                "ladder-subject",
+                True,
+            ),
+            _option("--sizes", default="1,2,4,8,16,32,64", metavar="TEAM_COUNTS"),
+            _option(
+                "--scripted-probabilities",
+                default="0,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95,1",
+                metavar="PROBABILITIES",
+            ),
+            _option(
+                "--games-per-pair",
+                type=_positive_int,
+                default=128,
+                help="Side-balanced games per unordered agent pair and fleet size.",
+            ),
+            _option(
+                "--max-parallel-games",
+                type=_positive_int,
+                default=None,
+                help="Maximum simultaneous games.",
+            ),
+            _DEVICE,
+            _SEED,
+            _ALLOW_DRIFT,
+        ),
+    ),
+    CommandSpec(
+        "ar-report",
+        "Generate autoregressive diagnostics for two exact agents.",
+        (
+            _TEAM0,
+            _TEAM1,
+            _option(
+                "--decision-steps",
+                type=_positive_int,
+                default=512,
+                help="Policy decision steps sampled per scenario.",
+            ),
+            _DEVICE,
+            _SEED,
+            _ALLOW_DRIFT,
+        ),
+    ),
+    CommandSpec(
+        "noise-calibration",
+        "Measure next-state prediction error for two exact agents.",
+        (_TEAM0, _TEAM1, _DEVICE, _SEED, _ALLOW_DRIFT),
+    ),
+    CommandSpec(
+        "feature-stats",
+        "Collect label-scale calibration statistics for two exact agents.",
+        (
+            _TEAM0,
+            _TEAM1,
+            _option("--games", type=_positive_int, default=128, help="Parallel sample games."),
+            _option(
+                "--decision-steps",
+                type=_positive_int,
+                default=1024,
+                help="Policy decision steps per game stream.",
+            ),
+            _DEVICE,
+            _SEED,
+            _ALLOW_DRIFT,
+        ),
+    ),
+    CommandSpec(
+        "publish",
+        "Render manifest-selected canonical publications (implemented in S09).",
+        (
+            _option("--target", metavar="NAME", help="Render one manifest entry."),
+            _option(
+                "--check",
+                action="store_true",
+                help="Check without modifying canonical output.",
+            ),
+        ),
+    ),
+    CommandSpec("smoke", "Run the isolated smoke matrix (implemented in S06)."),
+)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="bnb", description="Boost and Broadside")
+    subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
+    for command in COMMANDS:
+        subparser = subparsers.add_parser(command.name, help=command.help, description=command.help)
+        groups: dict[str, argparse._MutuallyExclusiveGroup] = {}
+        for option in command.options:
+            target: argparse._ActionsContainer = subparser
+            if option.exclusive_group is not None:
+                if option.exclusive_group not in groups:
+                    groups[option.exclusive_group] = subparser.add_mutually_exclusive_group(
+                        required=option.group_required
+                    )
+                target = groups[option.exclusive_group]
+            target.add_argument(*option.flags, **option.kwargs)
+    return parser
+
+
+def parse_args(
+    argv: Sequence[str] | None = None,
+) -> tuple[argparse.ArgumentParser, argparse.Namespace]:
+    parser = build_parser()
+    return parser, parser.parse_args(argv)
+
+
+def _dispatch_command(command: str, args: argparse.Namespace) -> None:
+    from boost_and_broadside.cli_commands import execute
+
+    execute(command, args)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser, args = parse_args(argv)
+    if args.command is None:
+        parser.print_help()
+        return 0
+
+    if args.command == "train" and args.print_config:
+        from boost_and_broadside.config.resolve import LaunchOverrides
+        from boost_and_broadside.config.service import print_resolved_profile
+
+        print_resolved_profile(
+            args.profile,
+            LaunchOverrides(
+                num_envs=args.num_envs,
+                microbatch_tokens=args.microbatch_tokens,
+            ),
+            file=__import__("sys").stdout,
+        )
+        return 0
+
+    try:
+        _dispatch_command(args.command, args)
+    except (FileNotFoundError, KeyError, ValueError) as error:
+        parser.error(str(error))
+    return 0
+
+
+__all__ = ["COMMANDS", "CommandSpec", "OptionSpec", "build_parser", "main", "parse_args"]

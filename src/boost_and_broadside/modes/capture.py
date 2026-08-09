@@ -29,7 +29,7 @@ from boost_and_broadside.evaluation.agents import ResolvedAgent, resolve_agent_s
 from boost_and_broadside.evaluation.environment import create_evaluation_env
 from boost_and_broadside.evaluation.match import MatchRunner
 from boost_and_broadside.evaluation.run_catalog import (
-    resolve_legacy_capture_run,
+    resolve_exact_run,
     select_final_training_checkpoint,
 )
 from boost_and_broadside.evaluation.sizes import Matchup, parse_matchup
@@ -45,11 +45,6 @@ def parse_seeds(spec: str) -> list[int]:
         lo, hi = spec.split("-", 1)
         return list(range(int(lo), int(hi) + 1))
     return [int(s) for s in spec.split(",") if s]
-
-
-def _find_run_dir(run_spec: str, checkpoint_dir: str) -> Path:
-    """Legacy S04 adapter; strict exact-run parsing replaces it in S05."""
-    return resolve_legacy_capture_run(run_spec, checkpoint_dir).path
 
 
 def _final_checkpoint(run_dir: Path) -> Path:
@@ -223,7 +218,7 @@ def run_capture_mode(
     """
     os.environ.setdefault("HEADLESS", "1")  # dummy SDL driver — set before pygame init
 
-    run_dir = _find_run_dir(run_spec, checkpoint_dir)
+    run_dir = resolve_exact_run(run_spec, checkpoint_dir).path
     checkpoint = _final_checkpoint(run_dir)
     checkpoint_data = torch.load(str(checkpoint), map_location="cpu", weights_only=False)
     require_observation_schema(checkpoint_data, str(checkpoint))

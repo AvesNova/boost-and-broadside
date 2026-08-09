@@ -1,4 +1,4 @@
-"""collect_stats mode: run parallel games between two specified agents and report stats."""
+"""``collect-stats`` mode: run games between two specified agents and report stats."""
 
 import time
 
@@ -22,18 +22,18 @@ def run_collect_stats_mode(
     """Run num_envs parallel games between team0 and team1 agents and print stats.
 
     Args:
-        team0_spec:     Agent spec for team 0 (random, scripted, latest, or path.pt).
+        team0_spec:     Exact agent name or checkpoint path for team 0.
         team1_spec:     Agent spec for team 1.
         num_envs:       Number of games to run in parallel.
         ship_config:    Physics constants.
         env_config:     Environment sizing (num_ships will be overridden).
         model_config:   Policy architecture (needed if either spec is a checkpoint).
         device:         Torch device string.
-        checkpoint_dir: Root directory searched when a spec is "latest".
+        checkpoint_dir: Checkpoint root supplied by the CLI adapter.
         matchups:       List of matchup sizes like "1v1", "2v3". Defaults to ["2v2"].
     """
     if team0_spec == "null" or team1_spec == "null":
-        raise ValueError("collect_stats does not support the 'null' agent spec")
+        raise ValueError("collect-stats does not support the 'null' agent spec")
 
     if not matchups:
         matchups = ["2v2"]
@@ -65,7 +65,7 @@ def run_collect_stats_mode(
 
         w = 56
         print(f"\n{'─' * w}")
-        print(f"  collect_stats: {matchup} ({B} games)  ({device})")
+        print(f"  collect-stats: {matchup} ({B} games)  ({device})")
         print(f"  Team 0: {team0_spec:<18}  Team 1: {team1_spec}")
         print(f"{'─' * w}")
         print(f"  Team 0 wins : {num_0:6d}  ({100 * num_0 / B:5.1f}%)")

@@ -1,4 +1,4 @@
-"""elo_calibrate mode: re-rate a finished training run from raw match counts.
+"""``elo-calibrate`` mode: re-rate a finished training run from raw match counts.
 
 A training run leaves behind two kinds of evidence. Its frozen ladder
 checkpoints are files on disk that can be replayed against each other as many
@@ -41,7 +41,7 @@ import numpy as np
 
 from boost_and_broadside.config import EloCalibrateConfig, ShipConfig
 from boost_and_broadside.evaluation.agents import ResolvedAgent
-from boost_and_broadside.evaluation.run_catalog import resolve_legacy_elo_run
+from boost_and_broadside.evaluation.run_catalog import resolve_exact_run
 from boost_and_broadside.evaluation.tournament import (
     TIE_MODES,
     BatchStat,
@@ -240,7 +240,7 @@ def run_elo_calibrate_mode(
     """
     progress = Progress()
     prior_games = config.prior_games
-    run_dir = resolve_legacy_elo_run(run_spec, checkpoint_dir).path
+    run_dir = resolve_exact_run(run_spec, checkpoint_dir).path
     history_path = run_dir / "elo_history.jsonl"
 
     if refit:

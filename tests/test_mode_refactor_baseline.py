@@ -7,23 +7,18 @@ defaults (in particular, ``bc-stale`` is intentionally stale evidence for S11).
 
 from __future__ import annotations
 
-import argparse
 import dataclasses
 import inspect
 import json
-import os
 import subprocess
-import sys
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-import main
 from boost_and_broadside.config.defaults import MODEL_CONFIG, SHIP_CONFIG
-from boost_and_broadside.modes.capture import _find_run_dir, parse_matchup
-from boost_and_broadside.modes.elo_stats import find_run_dir
+from boost_and_broadside.evaluation.sizes import parse_matchup
 from boost_and_broadside.profiles import (
     BC_TRAIN_CONFIG,
     RL_FIELDS_TRAIN_CONFIG,
@@ -94,42 +89,6 @@ def test_profile_snapshot_matches_pre_refactor_baseline(name, config):
     assert _profile_snapshot(name, config) == expected
 
 
-def _capture_parser(monkeypatch) -> argparse.ArgumentParser:
-    captured: list[argparse.ArgumentParser] = []
-    original = argparse.ArgumentParser.parse_args
-
-    def parse_args(parser, *args, **kwargs):
-        captured.append(parser)
-        return original(parser, *args, **kwargs)
-
-    monkeypatch.setattr(argparse.ArgumentParser, "parse_args", parse_args)
-    monkeypatch.setattr(sys, "argv", ["main.py"])
-    main._parse_args()
-    assert len(captured) == 1
-    return captured[0]
-
-
-def _parser_actions(parser: argparse.ArgumentParser) -> list[dict[str, Any]]:
-    actions = []
-    for action in parser._actions:
-        if not action.option_strings:
-            continue
-        actions.append(
-            {
-                "options": action.option_strings,
-                "dest": action.dest,
-                "default": str(action.default)
-                if isinstance(action.default, Path)
-                else action.default,
-                "const": str(action.const) if isinstance(action.const, Path) else action.const,
-                "nargs": action.nargs,
-                "required": action.required,
-                "choices": sorted(action.choices) if action.choices is not None else None,
-            }
-        )
-    return actions
-
-
 def _tracked_publication_assets() -> list[str]:
     tracked = subprocess.run(
         ["git", "ls-files", "docs"], check=True, capture_output=True, text=True
@@ -145,48 +104,10 @@ def _tracked_publication_assets() -> list[str]:
     )
 
 
-def test_machine_readable_inventory_matches_current_parser_and_assets(monkeypatch):
+def test_machine_readable_inventory_remains_as_legacy_evidence_and_tracks_assets():
     inventory = json.loads(_INVENTORY.read_text())
-    assert inventory["parser_actions"] == _parser_actions(_capture_parser(monkeypatch))
+    assert any(action["dest"] == "mode" for action in inventory["parser_actions"])
     assert inventory["published_assets"] == _tracked_publication_assets()
-
-
-def test_legacy_resume_selection_uses_optional_path_and_newest_mtime(tmp_path):
-    older = tmp_path / "older" / "step_000000200.pt"
-    newer = tmp_path / "newer" / "step_000000100.pt"
-    older.parent.mkdir()
-    newer.parent.mkdir()
-    older.touch()
-    newer.touch()
-    os.utime(older, (100, 100))
-    os.utime(newer, (200, 200))
-    (newer.parent / "wandb_run_id.txt").write_text("wandb-new\n")
-
-    assert main._find_resume_checkpoint("", str(tmp_path)) == (str(newer), "wandb-new")
-    assert main._find_resume_checkpoint(str(older.parent)) == (str(older), None)
-    assert main._find_resume_checkpoint(str(older)) == (str(older), None)
-
-
-def test_legacy_run_selection_treats_capture_none_as_latest_and_elo_latest_includes_empty_dirs(
-    tmp_path,
-):
-    no_checkpoint = tmp_path / "empty"
-    old = tmp_path / "old"
-    newest = tmp_path / "newest"
-    for run in (no_checkpoint, old, newest):
-        run.mkdir()
-    old_checkpoint = old / "step_000000200.pt"
-    new_checkpoint = newest / "step_000000100.pt"
-    old_checkpoint.touch()
-    new_checkpoint.touch()
-    os.utime(old_checkpoint, (100, 100))
-    os.utime(new_checkpoint, (200, 200))
-
-    assert _find_run_dir("none", str(tmp_path)) == newest
-    assert _find_run_dir("latest", str(tmp_path)) == newest
-    assert find_run_dir("latest", str(tmp_path)) == newest
-    assert _find_run_dir("old", str(tmp_path)) == old
-    assert find_run_dir("empty", str(tmp_path)) == no_checkpoint
 
 
 @pytest.mark.parametrize(
@@ -195,19 +116,3 @@ def test_legacy_run_selection_treats_capture_none_as_latest_and_elo_latest_inclu
 )
 def test_capture_size_parser_preserves_legacy_symmetric_and_asymmetric_forms(spec, expected):
     assert parse_matchup(spec) == expected
-
-
-def test_main_dispatch_retains_legacy_output_defaults(monkeypatch):
-    ar_calls: list[dict[str, Any]] = []
-    captured: dict[str, Any] = {}
-
-    monkeypatch.setattr(main, "run_ar_report_mode", lambda **kwargs: ar_calls.append(kwargs))
-    monkeypatch.setattr(sys, "argv", ["main.py", "--mode", "ar_report"])
-    main.main()
-    assert [call["out_dir"] for call in ar_calls] == ["docs/ar_report/2v2", "docs/ar_report/1v1"]
-
-    monkeypatch.setattr(main, "run_capture_mode", lambda **kwargs: captured.update(kwargs))
-    monkeypatch.setattr(sys, "argv", ["main.py", "--mode", "capture"])
-    main.main()
-    assert captured["run_spec"] == "resilient-resonance-682"
-    assert captured["out_dir"] == Path("gameplay_clips")

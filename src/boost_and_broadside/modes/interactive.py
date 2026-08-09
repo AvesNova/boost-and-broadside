@@ -107,7 +107,7 @@ def run_watch_mode(
     """Render live gameplay between two agents at 60fps.
 
     Args:
-        team0_spec:     Agent spec for team 0 (null, random, scripted, latest, or path.pt).
+        team0_spec:     Exact agent name or checkpoint path for team 0.
         team1_spec:     Agent spec for team 1.
         ship_config:    Physics constants.
         env_config:     Environment sizing.
@@ -115,7 +115,7 @@ def run_watch_mode(
         model_config:   Policy architecture (needed if either spec is a checkpoint).
         render_config:  Display settings.
         device:         Torch device string.
-        checkpoint_dir: Root directory searched when a spec is "latest".
+        checkpoint_dir: Checkpoint root supplied by the CLI adapter.
     """
     agent0 = resolve_agent_spec(
         team0_spec,

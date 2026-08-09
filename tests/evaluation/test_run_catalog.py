@@ -10,8 +10,6 @@ from boost_and_broadside.evaluation.run_catalog import (
     RunNotFoundError,
     resolve_exact_run,
     resolve_explicit_checkpoint,
-    resolve_legacy_capture_run,
-    resolve_legacy_elo_run,
     select_final_training_checkpoint,
     select_latest_resumable_checkpoint,
     select_named_best_policy,
@@ -26,18 +24,13 @@ def _run(tmp_path, name="run-a"):
 
 
 def test_exact_run_resolution_never_interprets_sentinels_or_paths(tmp_path):
-    latest = _run(tmp_path, "latest")
-    assert resolve_exact_run("latest", tmp_path).path == latest
+    _run(tmp_path, "latest")
+    with pytest.raises(RunNotFoundError):
+        resolve_exact_run("latest", tmp_path)
     with pytest.raises(RunNotFoundError):
         resolve_exact_run("missing", tmp_path)
     with pytest.raises(RunNotFoundError):
         resolve_exact_run("nested/run", tmp_path)
-
-
-@pytest.mark.parametrize("resolver", [resolve_legacy_capture_run, resolve_legacy_elo_run])
-def test_transitional_latest_adapters_raise_typed_errors_for_missing_roots(tmp_path, resolver):
-    with pytest.raises(RunNotFoundError):
-        resolver("latest", tmp_path / "missing")
 
 
 def test_numeric_step_policy_ignores_mtime_and_lexicographic_width(tmp_path):

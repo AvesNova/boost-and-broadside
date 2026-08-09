@@ -239,6 +239,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         device:          Torch device.
         use_wandb:       Whether to log metrics to W&B.
         scripted_agent:  Stochastic scripted agent for BC loss targets and scripted opponents.
+        resolved_config_document: Complete resolved launch config/fingerprints for checkpoints.
+        launch_provenance: Execution settings resolved by the installed CLI.
     """
 
     def __init__(
@@ -251,10 +253,14 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         scripted_agent: StochasticScriptedAgent | None = None,
         compile_mode: str | None = "reduce-overhead",
         resume_wandb_run_id: str | None = None,
+        resolved_config_document: Mapping[str, object] | None = None,
+        launch_provenance: Mapping[str, object] | None = None,
     ) -> None:
         self.cfg = train_config
         self.model_config = model_config
         self.ship_config = ship_config
+        self.resolved_config_document = resolved_config_document
+        self.launch_provenance = launch_provenance
         # Paradigm: "ego_pass" (dual-perspective pass, team 0 trains) vs
         # "shared_pass" (single pass, both teams train). See TrainConfig docstring.
         self._ego_pass = train_config.paradigm == "ego_pass"

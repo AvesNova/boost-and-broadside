@@ -4,6 +4,7 @@ import copy
 import dataclasses
 import threading
 import time
+import warnings
 from collections import deque
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -21,6 +22,29 @@ from boost_and_broadside.train.rl.elo_eval import EloEvaluator
 # kept per run. Ladder snapshots (ladder_step_*.pt) and named best checkpoints
 # (best_*.pt) use separate filename families and are never subject to this cap.
 _KEEP_LAST_N_CHECKPOINTS = 3
+
+
+def _check_resolved_config_provenance(
+    checkpoint: Mapping[str, Any],
+    current: Mapping[str, object] | None,
+    *,
+    allow_config_drift: bool,
+) -> None:
+    """Reject a resume whose complete recorded launch config changed."""
+    recorded = checkpoint.get("resolved_config")
+    if current is None or not isinstance(recorded, Mapping):
+        return
+    recorded_fingerprint = recorded.get("resolved_config_fingerprint")
+    current_fingerprint = current.get("resolved_config_fingerprint")
+    if recorded_fingerprint == current_fingerprint:
+        return
+    message = (
+        "Checkpoint resolved configuration does not match this launch: "
+        f"recorded={recorded_fingerprint!r}, current={current_fingerprint!r}"
+    )
+    if not allow_config_drift:
+        raise ValueError(f"{message}. Pass --allow-config-drift to override explicitly.")
+    warnings.warn(f"{message}; continuing because config drift is allowed", stacklevel=2)
 
 
 def _prune_checkpoint_family(
@@ -190,7 +214,7 @@ class CheckpointMixin:
         assumed physics constant is indistinguishable from a correct one until the
         policy quietly underperforms its rating.
         """
-        return {
+        provenance = {
             "observation_schema": OBSERVATION_SCHEMA,
             "policy_state_dict": self._policy_module.state_dict(),
             "num_value_components": self.wrapper.num_active_components,
@@ -204,6 +228,11 @@ class CheckpointMixin:
             # has to know to hand it the mirrored view when it plays team 1.
             "paradigm": self.cfg.paradigm,
         }
+        if self.resolved_config_document is not None:
+            provenance["resolved_config"] = copy.deepcopy(self.resolved_config_document)
+        if self.launch_provenance is not None:
+            provenance["launch"] = copy.deepcopy(self.launch_provenance)
+        return provenance
 
     def checkpoint_payload(self, update: int) -> dict:
         """Build the data dict shared by all checkpoint saves."""
@@ -390,6 +419,13 @@ class CheckpointMixin:
         """
         ckpt = torch.load(path, map_location=self.device, weights_only=False)
         require_observation_schema(ckpt, path)
+        _check_resolved_config_provenance(
+            ckpt,
+            self.resolved_config_document,
+            allow_config_drift=bool(
+                self.launch_provenance and self.launch_provenance.get("allow_config_drift")
+            ),
+        )
         self._policy_module.load_state_dict(ckpt["policy_state_dict"])
         self._avg_policy_module.load_state_dict(ckpt["policy_state_dict"])
         # fp32 regardless of parameter dtype: this is a running sum over every

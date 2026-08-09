@@ -22,7 +22,7 @@ from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.evaluation.agents import resolve_agent_spec
 from boost_and_broadside.evaluation.match import evaluate_matchup
 from boost_and_broadside.evaluation.run_catalog import (
-    resolve_legacy_capture_run,
+    resolve_exact_run,
     select_final_training_checkpoint,
 )
 from boost_and_broadside.train.rl.checkpoint_schema import require_observation_schema
@@ -86,7 +86,7 @@ def run_crossover_mode(
     output_dir: str = "docs/crossover",
 ) -> dict:
     """Find, per trained-team size, the scripted count that tips wins below 50%."""
-    run_dir = resolve_legacy_capture_run(run_spec, checkpoint_dir).path
+    run_dir = resolve_exact_run(run_spec, checkpoint_dir).path
     checkpoint = select_final_training_checkpoint(run_dir).path
     checkpoint_data = torch.load(str(checkpoint), map_location="cpu", weights_only=False)
     require_observation_schema(checkpoint_data, str(checkpoint))

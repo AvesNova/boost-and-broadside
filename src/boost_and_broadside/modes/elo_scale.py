@@ -17,7 +17,7 @@ import torch
 from boost_and_broadside.config import EloCalibrateConfig, ShipConfig
 from boost_and_broadside.evaluation.agents import ResolvedAgent
 from boost_and_broadside.evaluation.run_catalog import (
-    resolve_legacy_elo_run,
+    resolve_exact_run,
     select_final_training_checkpoint,
 )
 from boost_and_broadside.evaluation.tournament import (
@@ -272,7 +272,7 @@ def run_elo_scale_mode(
     """Run or resume checkpoint tournaments across symmetric team sizes."""
     from boost_and_broadside.modes.elo_scale_plots import write_scale_plots
 
-    run_dir = resolve_legacy_elo_run(run_spec, checkpoint_dir).path
+    run_dir = resolve_exact_run(run_spec, checkpoint_dir).path
     roster = json.loads((run_dir / "roster.json").read_text())
     base_env, model_config, paradigm = load_run_config(run_dir)
     final_path = select_final_training_checkpoint(run_dir).path

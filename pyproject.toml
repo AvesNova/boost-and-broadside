@@ -16,6 +16,9 @@ dependencies = [
     "wandb>=0.22.2",
 ]
 
+[project.scripts]
+bnb = "boost_and_broadside.cli:main"
+
 [[tool.uv.index]]
 name = "pytorch-cuda"
 url = "https://download.pytorch.org/whl/cu130"

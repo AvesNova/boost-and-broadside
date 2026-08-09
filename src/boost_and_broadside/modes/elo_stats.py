@@ -15,7 +15,7 @@ from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.evaluation.agents import ResolvedAgent, resolve_agent_spec
 from boost_and_broadside.evaluation.environment import create_evaluation_env
 from boost_and_broadside.evaluation.match import MatchRunner
-from boost_and_broadside.evaluation.run_catalog import resolve_legacy_elo_run
+from boost_and_broadside.evaluation.run_catalog import resolve_exact_run
 from boost_and_broadside.evaluation.sizes import MatchupParseError, parse_matchup
 from boost_and_broadside.train.rl.elo_eval import expected_score
 from boost_and_broadside.train.rl.policy_io import load_policy_bundle
@@ -34,11 +34,6 @@ SCRIPTED_SPECS = [
     "spiral_evader",
     "jinking",
 ]
-
-
-def find_run_dir(run_spec: str, checkpoint_dir: str) -> Path:
-    """Legacy S04 adapter; strict exact-run parsing replaces it in S05."""
-    return resolve_legacy_elo_run(run_spec, checkpoint_dir).path
 
 
 def _load_checkpoint_agent(
@@ -113,8 +108,8 @@ def run_elo_stats_mode(
             scripted_idx = labels.index("scripted") if "scripted" in labels else -1
             random_idx = labels.index("random") if "random" in labels else -1
         else:
-            if run_spec != "none":
-                run_dir = find_run_dir(run_spec, checkpoint_dir)
+            if run_spec:
+                run_dir = resolve_exact_run(run_spec, checkpoint_dir).path
                 print(f"Run directory: {run_dir}")
                 ckpt_paths = sorted(run_dir.glob("*.pt"), key=lambda p: p.name)
                 if not ckpt_paths:

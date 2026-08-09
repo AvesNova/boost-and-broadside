@@ -15,7 +15,7 @@ from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAge
 from boost_and_broadside.config import ShipConfig, TrainConfig
 from boost_and_broadside.evaluation.agents import ResolvedAgent
 from boost_and_broadside.evaluation.environment import create_evaluation_field_map
-from boost_and_broadside.evaluation.run_catalog import resolve_legacy_elo_run
+from boost_and_broadside.evaluation.run_catalog import resolve_exact_run
 from boost_and_broadside.evaluation.tournament import (
     Player,
     Progress,
@@ -173,7 +173,7 @@ def run_semi_random_tournament(
                 ship_config, base_env, train_config.field_map, torch.device(device)
             )
     else:
-        run_dir = resolve_legacy_elo_run(run_spec, checkpoint_dir).path
+        run_dir = resolve_exact_run(run_spec, checkpoint_dir).path
         base_env, _, paradigm = load_run_config(run_dir)
     labels = [_label(probability) for probability in probabilities]
     output = run_dir / "semi_random_tournament.json"

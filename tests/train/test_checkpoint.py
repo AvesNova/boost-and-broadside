@@ -11,7 +11,10 @@ from pathlib import Path
 import pytest
 import torch
 
-from boost_and_broadside.train.rl.checkpoint import clone_to_cpu
+from boost_and_broadside.train.rl.checkpoint import (
+    _check_resolved_config_provenance,
+    clone_to_cpu,
+)
 from boost_and_broadside.train.rl.checkpoint_schema import (
     OBSERVATION_SCHEMA,
     require_observation_schema,
@@ -191,6 +194,8 @@ class TestObservationSchema:
         from tests.train.test_ppo import _make_trainer
 
         trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        trainer.resolved_config_document = {"profile": "rl", "sources": {"x": "profile"}}
+        trainer.launch_provenance = {"device": "cpu", "seed": 7}
         ladder = torch.load(trainer._save_ladder_snapshot(), map_location="cpu", weights_only=False)
         families = [
             trainer.checkpoint_payload(0),
@@ -203,10 +208,38 @@ class TestObservationSchema:
             for key in ("model_config", "env_config", "ship_config", "team_pma_k"):
                 assert key in payload, f"payload family is missing {key}"
             assert payload["ship_config"] == dataclasses.asdict(trainer.ship_config)
+            assert payload["resolved_config"] == trainer.resolved_config_document
+            assert payload["launch"] == trainer.launch_provenance
 
     def test_legacy_obstacle_checkpoint_fails_clearly(self):
         with pytest.raises(ValueError, match="Observation feature semantics are incompatible"):
             require_observation_schema({"policy_state_dict": {}}, "legacy.pt")
+
+
+class TestResolvedConfigProvenance:
+    def test_resume_rejects_a_different_complete_resolved_config(self):
+        checkpoint = {
+            "resolved_config": {"resolved_config_fingerprint": "recorded"},
+        }
+        current = {"resolved_config_fingerprint": "current"}
+        with pytest.raises(ValueError, match="--allow-config-drift"):
+            _check_resolved_config_provenance(
+                checkpoint,
+                current,
+                allow_config_drift=False,
+            )
+
+    def test_explicit_drift_override_is_loud(self):
+        checkpoint = {
+            "resolved_config": {"resolved_config_fingerprint": "recorded"},
+        }
+        current = {"resolved_config_fingerprint": "current"}
+        with pytest.warns(UserWarning, match="config drift is allowed"):
+            _check_resolved_config_provenance(
+                checkpoint,
+                current,
+                allow_config_drift=True,
+            )
 
 
 class TestNumValueComponents:

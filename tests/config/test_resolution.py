@@ -106,7 +106,8 @@ def test_deleted_runs_profile_path_has_no_live_references() -> None:
         _ROOT / "docs" / "internal" / "mode-refactor-status.md",
     }
     candidates = [
-        _ROOT / "main.py",
+        _ROOT / "src" / "boost_and_broadside" / "cli.py",
+        _ROOT / "src" / "boost_and_broadside" / "cli_commands.py",
         _ROOT / "README.md",
         _ROOT / "STYLE_GUIDE.md",
         _ROOT / "pyproject.toml",

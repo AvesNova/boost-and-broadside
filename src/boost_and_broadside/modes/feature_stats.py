@@ -1,4 +1,4 @@
-"""feature_stats mode: collect label null-model MSE to validate/calibrate label_scale values.
+"""``feature-stats`` mode: collect label null-model MSE for label-scale calibration.
 
 For each consecutive obs pair (excluding episode boundaries and dead ships), computes
 coordinator.compute_labels() then squares it. Since labels are pre-scaled by label_scale,

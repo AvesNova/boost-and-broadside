@@ -70,7 +70,7 @@ ObstacleCacheConfig = FieldMapConfig
 class EloCalibrateConfig:
     """Configuration for the post-training Elo calibration tournament.
 
-    Used by ``--mode elo_calibrate`` to re-rate a finished run. Unlike
+    Used by ``bnb elo-calibrate`` to re-rate a finished run. Unlike
     EloEvalConfig this costs nothing during training — it runs once afterwards,
     so the budget is bounded by patience rather than by throughput.
 
@@ -225,7 +225,7 @@ class TrainConfig:
     # makes proximity sampling a per-rollout lottery rather than a distribution;
     # more slots sample the roster better at the cost of one policy forward each
     # (a scripted slot costs none). Clamped down when the league is narrower than
-    # this, so a tiny --smoke batch still allocates.
+    # this, so a tiny registry-owned smoke case still allocates.
     league_slots: int
     # Stationary reference ladder: (p_scripted, elo) rungs between the random
     # agent and the scripted controller, on a gauge where scripted reads
@@ -236,7 +236,7 @@ class TrainConfig:
     # policy saturates both — winning ~100% against random, losing ~100% against
     # scripted — so its rating is barely identified for the whole early climb.
     #
-    # Fitted offline by `--mode semi_random --profile <name>`. The ratings are a
+    # Fitted offline by `bnb semi-random --profile <name>`. The ratings are a
     # property of the environment the rungs play in, so a ladder is only valid
     # for the tick rate, field count, ship config and fleet size it was measured
     # under: re-run the tournament whenever any of those move.

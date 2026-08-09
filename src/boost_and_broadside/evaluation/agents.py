@@ -3,7 +3,6 @@
 Supported specs:
     null           — human keyboard input (watch mode only)
     random         — uniform random actions every step
-    latest         — most recently modified checkpoint under checkpoint_dir
     <path.pt>      — specific .pt checkpoint file
     scripted       — StochasticScriptedAgent
     scripted_team  — StochasticScriptedAgent with team target selection
@@ -33,10 +32,7 @@ from boost_and_broadside.constants import (
 )
 from boost_and_broadside.env.observation import YemongObservation
 from boost_and_broadside.env.state import TensorState
-from boost_and_broadside.evaluation.run_catalog import (
-    resolve_explicit_checkpoint,
-    select_latest_checkpoint_across_runs,
-)
+from boost_and_broadside.evaluation.run_catalog import resolve_explicit_checkpoint
 from boost_and_broadside.train.rl.policy_io import load_policy_bundle
 
 
@@ -71,11 +67,6 @@ def agents_read_bullets(*agents: "ResolvedAgent | None") -> bool:
     )
 
 
-def find_latest_checkpoint(checkpoint_dir: str = "checkpoints") -> str:
-    """Return the path to the most recently modified .pt file under checkpoint_dir."""
-    return str(select_latest_checkpoint_across_runs(checkpoint_dir).path)
-
-
 def resolve_agent_spec(
     spec: str,
     ship_config: ShipConfig,
@@ -88,14 +79,14 @@ def resolve_agent_spec(
     """Resolve a spec string to a ResolvedAgent.
 
     Args:
-        spec:           One of: null, random, scripted, semi_scripted:P, latest, or a
+        spec:           One of: null, random, scripted, semi_scripted:P, or an explicit
                         path ending in .pt.
         ship_config:    Physics constants (needed for scripted agent), and the
                         fallback for checkpoints that record none of their own.
         model_config:   Fallback policy architecture, likewise. A checkpoint that
                         records its own is rebuilt from that instead.
         device:         Torch device string.
-        checkpoint_dir: Root directory searched when spec is "latest".
+        checkpoint_dir: Checkpoint root supplied by the owning mode adapter.
         num_ships:      Ships (N) in the environment this agent will play in.
         allow_config_drift: Load even when the checkpoint's physics constants differ
                         from ``ship_config``.
@@ -148,12 +139,7 @@ def resolve_agent_spec(
     if spec == "team_jouster":
         return ResolvedAgent("scripted", TeamJousterAgent(ship_config))
 
-    # Checkpoint: "latest" or an explicit path
-    if spec == "latest":
-        path = find_latest_checkpoint(checkpoint_dir)
-        print(f"Auto-selected checkpoint: {path}")
-    else:
-        path = str(resolve_explicit_checkpoint(spec).path)
+    path = str(resolve_explicit_checkpoint(spec).path)
 
     bundle = load_policy_bundle(
         path,

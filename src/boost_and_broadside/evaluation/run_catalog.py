@@ -1,9 +1,4 @@
-"""Typed run discovery and checkpoint-selection policies.
-
-Strict APIs resolve exact subjects and numeric checkpoint metadata. Temporary
-legacy adapters are kept here only so S04 can move code mechanically; S05 owns
-removing the old ``latest``/``none`` command-line meanings.
-"""
+"""Typed exact-run discovery and checkpoint-selection policies."""
 
 import re
 from dataclasses import dataclass
@@ -67,7 +62,11 @@ class LadderPolicyRef:
 
 def resolve_exact_run(run_name: str, checkpoint_dir: str | Path = "checkpoints") -> RunRef:
     """Resolve one exact run name below ``checkpoint_dir``."""
-    if not run_name or Path(run_name).name != run_name or run_name in {".", ".."}:
+    if (
+        not run_name
+        or Path(run_name).name != run_name
+        or run_name in {".", "..", "latest", "none"}
+    ):
         raise RunNotFoundError(f"invalid exact run name: {run_name!r}")
     path = Path(checkpoint_dir) / run_name
     if not path.is_dir():
@@ -145,55 +144,3 @@ def select_tournament_ladder_policies(
             )
         )
     return selected
-
-
-def select_latest_checkpoint_across_runs(
-    checkpoint_dir: str | Path = "checkpoints",
-) -> CheckpointRef:
-    """Legacy mtime selection for the pre-S05 ``latest`` agent spec."""
-    root = Path(checkpoint_dir)
-    candidates = list(root.glob("**/*.pt"))
-    if not candidates:
-        raise CheckpointNotFoundError(f"no checkpoint files found under {root}")
-    path = max(candidates, key=lambda candidate: candidate.stat().st_mtime)
-    return CheckpointRef(path, CheckpointKind.EXPLICIT)
-
-
-def resolve_legacy_capture_run(
-    run_spec: str, checkpoint_dir: str | Path = "checkpoints"
-) -> RunRef:
-    """Preserve capture's characterized ``latest``/``none`` behavior until S05."""
-    if run_spec not in {"latest", "none"}:
-        return resolve_exact_run(run_spec, checkpoint_dir)
-    root = Path(checkpoint_dir)
-    if not root.is_dir():
-        raise RunNotFoundError(f"checkpoint directory not found: {root}")
-    candidates = [path for path in root.iterdir() if path.is_dir() and _numeric_steps(path)]
-    if not candidates:
-        raise RunNotFoundError(f"no run with step_*.pt under {root}")
-    path = max(
-        candidates,
-        key=lambda run: max(checkpoint.stat().st_mtime for _, checkpoint in _numeric_steps(run)),
-    )
-    return RunRef(path.name, path)
-
-
-def resolve_legacy_elo_run(
-    run_spec: str, checkpoint_dir: str | Path = "checkpoints"
-) -> RunRef:
-    """Preserve Elo's characterized ``latest`` behavior until S05."""
-    if run_spec != "latest":
-        return resolve_exact_run(run_spec, checkpoint_dir)
-    root = Path(checkpoint_dir)
-    if not root.is_dir():
-        raise RunNotFoundError(f"checkpoint directory not found: {root}")
-    candidates = [path for path in root.iterdir() if path.is_dir()]
-    if not candidates:
-        raise RunNotFoundError(f"no run directories found under {root}")
-
-    def newest_checkpoint_mtime(path: Path) -> float:
-        checkpoints = list(path.glob("*.pt"))
-        return max(item.stat().st_mtime for item in checkpoints) if checkpoints else 0.0
-
-    path = max(candidates, key=newest_checkpoint_mtime)
-    return RunRef(path.name, path)

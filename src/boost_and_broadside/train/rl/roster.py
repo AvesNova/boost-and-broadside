@@ -169,7 +169,7 @@ class EloRoster:
         its rating barely identified for the whole early climb.
 
         The rating is a measured property of a stationary player, fitted offline
-        by ``--mode semi_random_tournament`` under the same env config, tick rate
+        by ``bnb semi-random`` under the same env config, tick rate
         and fleet size the run uses, so it is ``fixed`` from the start.
 
         Args:
