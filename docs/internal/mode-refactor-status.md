@@ -36,8 +36,8 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: `S05` — `bnb` CLI.
-- Next section: none until S05 is completed.
+- Active section: none; S05 `bnb` CLI is complete.
+- Next section: `S06` — smoke system.
 - Blocking issue: none.
 - Landmark migration: scheduled for `S15`, after all target schemas stabilize.
 
@@ -51,7 +51,7 @@ code, tests, and reader-facing documentation.
 | S03 | 1 gate | completed | configuration reviewer | Sol / extra high | Review resolved-config equivalence, dependency direction, and schema/fingerprint design |
 | S03R | 1 gate remediation | completed | configuration remediator + reviewer | Sol / extra high | Fix S03 blockers and obtain an independent configuration re-review |
 | S04 | 2 | completed | evaluation refactorer | Sol / high | Extract typed sizes, run catalog, match/environment, and tournament engines |
-| S05 | 3 | in_progress | CLI engineer | Sol / high | Replace `main.py --mode` with the strict installed `bnb` subcommand CLI |
+| S05 | 3 | completed | CLI engineer | Sol / high | Replace `main.py --mode` with the strict installed `bnb` subcommand CLI |
 | S06 | 4 | pending | smoke/test engineer | Sol / high | Build synthetic checkpoint fixtures and fully isolated sequential subprocess smoke coverage |
 | S07 | 2–4 gate | pending | integration reviewer | Sol / extra high | Review shared engines, CLI contracts, smoke isolation, and behavior preservation |
 | S08 | 5 | pending | mode consolidation engineer | Terra / high | Consolidate training, retire modes/flags, and fix field-capable evaluation |
@@ -647,6 +647,49 @@ Each section appends its record below when it completes. Do not replace earlier 
   intent into `collect-stats` and the planned mode consolidation; until then field configs without an
   explicit map source continue to fail loudly rather than silently selecting a different map
   distribution.
+
+### S05 handoff
+
+- Status: completed
+- Agent/model/effort: CLI engineer / `gpt-5.6-sol` / high
+- Commit(s): `21bbf84` — mark S05 active; `63baa0d` — installed `bnb` parser, runtime
+  adapters, exact-subject break, checkpoint provenance, and contract tests; `0bd735a` — update
+  command documentation; followed by this status-only closure commit
+- Tests/checks and results: focused CLI/config/catalog/checkpoint gate (120 passed, 2 CUDA skips);
+  final `.venv/bin/pytest -q` (694 passed, 6 CUDA skips); `.venv/bin/ruff check .` (passed);
+  `git diff --check` (passed); installed `uv run --no-sync bnb` and `bnb --help` returned help with
+  no dispatch; installed missing-resume, sentinel-run, and resume/pretrain-conflict probes exited 2
+  at parsing; `uv build --wheel --no-build-isolation` succeeded and included `cli.py`,
+  `cli_commands.py`, and `entry_points.txt`
+- Behavior/config changes: the CLI break is intentional and complete: root `main.py`, `--mode`,
+  underscore spellings, pathless resume, implicit/default RL, hardcoded landmark runs, and magic
+  `latest`/`none` selection are gone. `train --profile bc|rl|rl-fields` resolves the existing
+  independent profiles; resume selects the greatest numeric step only within an exact named run and
+  is exclusive with `--pretrain-from`. Collect-stats, feature-stats, and noise-calibration now use
+  the locked 4v4 default, and capture scratch defaults to `out/`. Resolved RL, RL-fields, and stale
+  BC remain exact S01 snapshot matches. Production training checkpoints now carry the complete
+  resolved config/fingerprints/source map plus actual device, seed, compile, W&B, and drift settings;
+  mismatched resolved configs fail resume unless drift is explicitly allowed, in which case they warn.
+- Files/artifacts produced: packaged `boost_and_broadside.cli` registry and lazy
+  `cli_commands` adapters; generated parser/help/error/ownership tests in `tests/test_cli.py`;
+  reader-facing `bnb` examples and entry-point guidance; temporary wheel under `/tmp` only
+- Decisions/deviations from plan: parser construction imports only the pure profile registry and
+  defers Torch/mode engines until dispatch, so help and `--print-config` do not construct a trainer
+  or environment. `smoke` and `publish` are present in the final command registry but fail explicitly
+  as unavailable until S06 and S09 implement their assigned systems. Artifact-backed Elo reanalysis,
+  VRAM policy/cache options, arbitrary-agent calibration, and removal of the transitional
+  `elo_stats`/legacy warmstart modules remain with S09, S13, and S08 respectively. Existing AR
+  two-scenario orchestration remains unchanged for S08's canonical 4v4 consolidation.
+- Review findings addressed: self-review added full resolved-config checkpoint provenance and loud
+  resume-drift validation, replaced a fixed default RNG seed with the recorded process-generated
+  PyTorch seed when `--seed` is omitted, enforced the 4v4 default at the remaining CLI-owned analysis
+  seams, removed every transitional mtime/sentinel catalog adapter, and verified invalid devices are
+  translated into concise CLI errors
+- Remaining risks or required follow-up: S06 must replace the registered smoke placeholder with the
+  isolated subprocess matrix. S08 still owns arbitrary-agent Elo calibration, deletion of
+  `elo_stats` and legacy warmstart code, AR orchestration consolidation, field-intent threading, and
+  dead mode-argument cleanup. S09 must replace current compute-to-doc behavior and the publish
+  placeholder with artifacts/offline publication; S13 owns `--vram` probing/cache resolution.
 
 ### Future handoff template
 
