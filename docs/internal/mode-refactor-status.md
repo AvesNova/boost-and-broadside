@@ -36,8 +36,8 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: `S06` — smoke system.
-- Next section: `S07` — shared/CLI/smoke gate review, after S06 completes.
+- Active section: none; S06 smoke system is complete.
+- Next section: `S07` — shared/CLI/smoke gate review.
 - Blocking issue: none.
 - Landmark migration: scheduled for `S15`, after all target schemas stabilize.
 
@@ -52,7 +52,7 @@ code, tests, and reader-facing documentation.
 | S03R | 1 gate remediation | completed | configuration remediator + reviewer | Sol / extra high | Fix S03 blockers and obtain an independent configuration re-review |
 | S04 | 2 | completed | evaluation refactorer | Sol / high | Extract typed sizes, run catalog, match/environment, and tournament engines |
 | S05 | 3 | completed | CLI engineer | Sol / high | Replace `main.py --mode` with the strict installed `bnb` subcommand CLI |
-| S06 | 4 | in_progress | smoke/test engineer | Sol / high | Build synthetic checkpoint fixtures and fully isolated sequential subprocess smoke coverage |
+| S06 | 4 | completed | smoke/test engineer | Sol / high | Build synthetic checkpoint fixtures and fully isolated sequential subprocess smoke coverage |
 | S07 | 2–4 gate | pending | integration reviewer | Sol / extra high | Review shared engines, CLI contracts, smoke isolation, and behavior preservation |
 | S08 | 5 | pending | mode consolidation engineer | Terra / high | Consolidate training, retire modes/flags, and fix field-capable evaluation |
 | S09 | 6 | pending | artifact/publication architect | Sol / extra high | Implement artifacts, provenance, raw samples, publication manifest, and offline render checks |
@@ -690,6 +690,43 @@ Each section appends its record below when it completes. Do not replace earlier 
   `elo_stats` and legacy warmstart code, AR orchestration consolidation, field-intent threading, and
   dead mode-argument cleanup. S09 must replace current compute-to-doc behavior and the publish
   placeholder with artifacts/offline publication; S13 owns `--vram` probing/cache resolution.
+
+### S06 handoff
+
+- Status: completed
+- Agent/model/effort: smoke/test engineer / `gpt-5.6-sol` / high
+- Commit(s): `2fc844e` — mark S06 active; `ff26dab` — production payload builders,
+  synthetic current-schema run, isolated smoke registry/runner, CLI selection, and tests; followed
+  by this status-only closure commit
+- Tests/checks and results: focused fixture/checkpoint gate (36 passed, 2 CUDA skips); final
+  `.venv/bin/pytest -q` (715 passed, 6 CUDA skips); clean-checkout `.venv/bin/bnb smoke` (all 14
+  sequential subprocess cases passed); `.venv/bin/ruff check .` (passed); range `git diff --check`
+  (passed); wheel build included `smoke.py`, `cli.py`, `train/rl/checkpoint.py`, and the `bnb` entry
+  point; `bnb smoke --help` exposed only the focused diagnostic `--case` modifier
+- Behavior/config changes: `bnb smoke` now runs the full registry-owned matrix; focused diagnosis
+  uses `bnb smoke --case NAME`. Normal mode behavior and all resolved RL/RL-fields/stale-BC
+  configurations remain unchanged. Production checkpoint serialization was mechanically factored
+  through pure policy and full-resume payload builders plus the existing atomic temp-and-replace
+  path; payload keys and ordinary save/load behavior remain covered and unchanged.
+- Files/artifacts produced: packaged `boost_and_broadside.smoke`; a deterministic synthetic run
+  builder with a resumable random-policy `step_*.pt`, same-step ladder policy, minimal
+  `roster.json`, and `elo_history.jsonl`; generated coverage in `tests/test_smoke.py`; no durable
+  runtime artifact (all smoke roots are temporary and cleaned)
+- Decisions/deviations from plan: the 14 cases cover every current runtime handler, with separate
+  cases for `train` profiles `rl`, `rl-fields`, and `bc`. `smoke` is the orchestrator rather than a
+  recursive case, and `publish` remains the explicit S09 placeholder rather than being treated as a
+  successful runtime mode. Each child starts from empty checkpoint/artifact/scratch roots, runs on
+  CPU with fixed seeds and cache paths, disables publication/report rendering, and is checked for
+  root escapes and checkout changes. The synthetic ladder snapshot is required by Elo-scale's
+  production tournament contract and uses the same current payload as the final step.
+- Review findings addressed: self-review upgraded the initial policy-only fixture into a fully
+  resumable `step_*.pt` and proved ordinary trainer reload; moved heavy mode imports into child
+  execution so the parent runner cannot create matplotlib/pygame cache droppings; prohibited PNG
+  and Markdown smoke outputs; resolved repository discovery through Git so an installed `bnb`
+  executable works from the checkout; verified the capture case through the real ffmpeg path
+- Remaining risks or required follow-up: S07 is the next authorized integration review. The capture
+  smoke case exercises the existing external ffmpeg runtime dependency and will fail loudly where
+  ffmpeg is unavailable. S09 must add publication implementation and its separate offline checks.
 
 ### Future handoff template
 
