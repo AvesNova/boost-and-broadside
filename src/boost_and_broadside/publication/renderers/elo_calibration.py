@@ -44,6 +44,16 @@ from boost_and_broadside.viz.style import style_axes as _style_axes  # noqa: E40
 _TIE_LABEL = {"half_win": "ties as ½ win", "decisive": "decisive games only"}
 
 
+def _subject(result: dict) -> str:
+    """What the calibration was of: a run, or an explicit agent field."""
+
+    run = result.get("run")
+    if run:
+        return run
+    agents = result.get("agent_specs") or []
+    return ", ".join(agents) if agents else "explicit field"
+
+
 def _finite(curve: list[dict], key: str) -> np.ndarray:
     return np.array([point.get(key, float("nan")) for point in curve], dtype=float)
 
@@ -88,7 +98,7 @@ def plot_live_curve(result: dict, path: Path) -> Path:
 
     _style_axes(
         axes,
-        f"Live Elo: in-training estimate vs calibrated  —  {result['run']}",
+        f"Live Elo: in-training estimate vs calibrated  —  {_subject(result)}",
         "Each update's rating refit from its own win/loss record against "
         f"post-hoc measured opponents (reference: {result.get('reference', 'n/a')})",
     )
@@ -169,7 +179,7 @@ def plot_avg_curve(result: dict, path: Path) -> Path:
     axes = figure.add_subplot(111)
     _style_axes(
         axes,
-        f"Averaged-policy Elo: in-training vs calibrated  —  {result['run']}",
+        f"Averaged-policy Elo: in-training vs calibrated  —  {_subject(result)}",
         "Rated through the live policy it plays, so its error is the live curve's plus its own",
     )
     _draw_reference_lines(axes, _reference_lines(result))
@@ -251,7 +261,7 @@ def plot_live_and_avg(result: dict, path: Path) -> Path:
     axes = figure.add_subplot(111)
     _style_axes(
         axes,
-        f"Calibrated Elo: live vs averaged policy  —  {result['run']}",
+        f"Calibrated Elo: live vs averaged policy  —  {_subject(result)}",
         f"Both refit from their own records ({_TIE_LABEL.get(result.get('tie_mode', ''), '')})",
     )
     _draw_reference_lines(axes, _reference_lines(result))
@@ -335,7 +345,7 @@ def plot_tie_conventions(result: dict, path: Path) -> Path:
     axes = figure.add_subplot(111)
     _style_axes(
         axes,
-        f"Calibrated Elo under both draw conventions  —  {result['run']}",
+        f"Calibrated Elo under both draw conventions  —  {_subject(result)}",
         "Ties as half a win puts the calibrated curve on the same scale the run "
         "itself used; dropping them rescales the anchor",
     )
@@ -383,7 +393,7 @@ def plot_calibrated_only(result: dict, path: Path, tie_mode: str) -> Path:
     axes = figure.add_subplot(111)
     _style_axes(
         axes,
-        f"Calibrated Elo — {_TIE_LABEL.get(tie_mode, tie_mode)}  —  {result['run']}",
+        f"Calibrated Elo — {_TIE_LABEL.get(tie_mode, tie_mode)}  —  {_subject(result)}",
         f"Refit from each update's own record; shaded band is ±1 SE "
         f"(ratings pinned to ±{result['target_stderr']:.0f} against "
         f"{result.get('reference', 'the reference')})",
@@ -433,7 +443,7 @@ def plot_checkpoint_ratings(result: dict, path: Path) -> Path:
     axes = figure.add_subplot(111)
     _style_axes(
         axes,
-        f"Ladder checkpoint ratings: in-training vs calibrated  —  {result['run']}",
+        f"Ladder checkpoint ratings: in-training vs calibrated  —  {_subject(result)}",
         "Each rung as the run recorded it, and as a full tournament measures it; "
         f"errors are relative to {result.get('reference', 'the reference')}",
     )
