@@ -105,7 +105,7 @@ def build_policy(
     *,
     num_value_components: int,
     num_ships: int,
-    team_pma_k: tuple[int, ...] = (),
+    team_pma_k: tuple[int, ...],
 ) -> YemongPolicy:
     """Construct a policy with the feature pipelines its config implies.
 

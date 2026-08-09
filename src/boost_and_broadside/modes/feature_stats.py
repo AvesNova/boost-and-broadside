@@ -14,16 +14,16 @@ import time
 import torch
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
-from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.observation import observation_from_state
-from boost_and_broadside.modes.agent_factory import (
+from boost_and_broadside.evaluation.agents import (
     agents_read_bullets,
     get_actions,
     init_hidden,
     reset_done_envs,
     resolve_agent_spec,
 )
-from boost_and_broadside.modes.match import merge_team_actions
+from boost_and_broadside.evaluation.environment import create_evaluation_env
+from boost_and_broadside.evaluation.match import merge_team_actions
 from boost_and_broadside.train.rl.features import build_standard_coordinator
 
 
@@ -58,7 +58,7 @@ def run_feature_stats_mode(
 
     include_bullets = agents_read_bullets(agent0, agent1)
 
-    env = TensorEnv(B, ship_config, env_config, device)
+    env = create_evaluation_env(B, ship_config, env_config, device)
     init_hidden(agent0, B, num_tokens, dev)
     init_hidden(agent1, B, num_tokens, dev)
     env.reset()

@@ -1,4 +1,4 @@
-"""Tests for watch-mode helpers in modes/agent_factory.py."""
+"""Tests for shared agent and next-state evaluation helpers."""
 
 import math
 
@@ -8,12 +8,13 @@ import torch
 from boost_and_broadside.agents.semi_random_scripted import SemiRandomScriptedAgent
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.env.observation import ObsKey, YemongObservation
-from boost_and_broadside.modes.agent_factory import _decode_targets_to_obs, resolve_agent_spec
+from boost_and_broadside.evaluation.agents import resolve_agent_spec
+from boost_and_broadside.evaluation.next_state import decode_targets_to_observation
 from boost_and_broadside.train.rl.features import build_standard_coordinator
 
 
 def _make_prev_obs(B: int, N: int) -> YemongObservation:
-    """Minimal ship-only observation with every key _decode_targets_to_obs touches."""
+    """Minimal ship-only observation with every key the next-state decoder touches."""
     return YemongObservation(
         data={
             ObsKey.POS: torch.zeros(B, N, 2),
@@ -57,11 +58,11 @@ class TestDecodeTargetsToObs:
         )
         targets[0, 0, target_slices["attitude"]] = torch.tensor([0.0, 1.0])
 
-        obs = _decode_targets_to_obs(
+        obs = decode_targets_to_observation(
             targets,
             prev_obs=_make_prev_obs(B=1, N=1),
             action=torch.zeros(1, 1, 3, dtype=torch.long),
-            N=1,
+            num_ships=1,
             coordinator=coordinator,
         )
 
@@ -90,7 +91,7 @@ class TestBulletReadingAgents:
         return str(trainer._save_ladder_snapshot()), model_config, trainer.wrapper.num_ships
 
     def test_resolved_checkpoint_agent_keeps_its_bullet_encoder(self, tmp_path):
-        from boost_and_broadside.modes.agent_factory import ResolvedAgent, agents_read_bullets
+        from boost_and_broadside.evaluation.agents import ResolvedAgent, agents_read_bullets
 
         path, model_config, num_ships = self._bullet_checkpoint(tmp_path)
 
@@ -105,7 +106,7 @@ class TestBulletReadingAgents:
         """End-to-end through a mode: the observation must reach the policy with
         its bullet axis attached, on both the ego and the team-flipped side."""
         from boost_and_broadside.config import EnvConfig
-        from boost_and_broadside.modes.collect import evaluate_matchup
+        from boost_and_broadside.evaluation.match import evaluate_matchup
 
         path, model_config, num_ships = self._bullet_checkpoint(tmp_path)
         agent0 = resolve_agent_spec(path, ShipConfig(), model_config, "cpu", num_ships=num_ships)

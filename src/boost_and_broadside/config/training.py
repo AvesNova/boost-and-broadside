@@ -88,7 +88,7 @@ class EloCalibrateConfig:
     target_stderr: float  # stop once every rating is pinned to within this
     max_batches: int  # cap, so an unreachable target cannot run forever
     # How draws enter the likelihood: "half_win" or "decisive". See TIE_MODES in
-    # modes/elo_calibrate.py. Both are always fit and reported; this selects
+    # evaluation/tournament.py. Both are always fit and reported; this selects
     # which one drives allocation, the gauge, and the convergence test.
     tie_mode: str = "half_win"
     # Render the charts built on the secondary draw convention. Both conventions

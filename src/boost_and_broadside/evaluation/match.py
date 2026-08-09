@@ -12,17 +12,20 @@ map to agents and in what they count — so this owns the five steps and leaves 
 loop, and the tally, to the caller.
 """
 
+from dataclasses import replace
+
 import torch
 
-from boost_and_broadside.config import ShipConfig
+from boost_and_broadside.config import EnvConfig, ShipConfig
 from boost_and_broadside.env.observation import YemongObservation, observation_from_state
-from boost_and_broadside.modes.agent_factory import (
+from boost_and_broadside.evaluation.agents import (
     ResolvedAgent,
     agents_read_bullets,
     get_actions,
     init_hidden,
     reset_done_envs,
 )
+from boost_and_broadside.evaluation.environment import create_evaluation_env
 
 
 def merge_team_actions(
@@ -183,3 +186,65 @@ class MatchRunner:
         for agent, active in zip(self.agents, self.active):
             if agent.kind == "policy" and active.numel():
                 reset_done_envs(agent, done_any[active], self.num_tokens)
+
+
+def evaluate_matchup(
+    agent0: ResolvedAgent,
+    agent1: ResolvedAgent,
+    n0: int,
+    n1: int,
+    num_envs: int,
+    ship_config: ShipConfig,
+    env_config: EnvConfig,
+    device: str,
+) -> tuple[int, int, int, float]:
+    """Run parallel games to completion and return wins, ties, and mean length."""
+    num_ships = n0 + n1
+    torch_device = torch.device(device)
+    env = create_evaluation_env(
+        num_envs,
+        ship_config,
+        replace(env_config, num_ships=num_ships),
+        torch_device,
+    )
+    results = torch.zeros(num_envs, dtype=torch.int32, device=torch_device)
+    episode_lengths = torch.zeros(num_envs, dtype=torch.int64, device=torch_device)
+    finished = torch.zeros(num_envs, dtype=torch.bool, device=torch_device)
+
+    runner = MatchRunner(
+        env,
+        [agent0, agent1],
+        team0_index=torch.zeros(num_envs, dtype=torch.long, device=torch_device),
+        team1_index=torch.ones(num_envs, dtype=torch.long, device=torch_device),
+        ship_config=ship_config,
+        num_ships=num_ships,
+    )
+    runner.init_hidden()
+    reset_options = {"team_sizes": (n0, n1)}
+    env.reset(options=reset_options)
+
+    while not finished.all():
+        dones, truncated = runner.step()
+        done_any = dones | truncated
+        newly_done = done_any & ~finished
+        if newly_done.any():
+            episode_lengths[newly_done] = env.state.step_count[newly_done].long()
+            alive = env.state.ship_alive
+            team = env.state.ship_team_id
+            team0_alive = (alive & (team == 0)).any(dim=1)
+            team1_alive = (alive & (team == 1)).any(dim=1)
+            team0_won = newly_done & team0_alive & ~team1_alive
+            team1_won = newly_done & team1_alive & ~team0_alive
+            results[team0_won] = 0
+            results[team1_won] = 1
+            results[newly_done & ~team0_won & ~team1_won] = 2
+            finished |= newly_done
+        runner.reset_finished(done_any, options=reset_options)
+
+    results_cpu = results.cpu()
+    return (
+        int((results_cpu == 0).sum()),
+        int((results_cpu == 1).sum()),
+        int((results_cpu == 2).sum()),
+        float(episode_lengths.cpu().float().mean()),
+    )

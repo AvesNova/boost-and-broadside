@@ -1,4 +1,4 @@
-"""Agent specification resolution for interactive and evaluation modes.
+"""Agent specification resolution shared by interactive and evaluation modes.
 
 Supported specs:
     null           — human keyboard input (watch mode only)
@@ -11,9 +11,6 @@ Supported specs:
     run_away / spiral_evader / jinking
                    — deterministic scripted agents (see agents/)
 """
-
-import sys
-from pathlib import Path
 
 import torch
 
@@ -34,8 +31,12 @@ from boost_and_broadside.constants import (
     NUM_SHOOT_ACTIONS,
     NUM_TURN_ACTIONS,
 )
-from boost_and_broadside.env.observation import ObsKey, YemongObservation
+from boost_and_broadside.env.observation import YemongObservation
 from boost_and_broadside.env.state import TensorState
+from boost_and_broadside.evaluation.run_catalog import (
+    resolve_explicit_checkpoint,
+    select_latest_checkpoint_across_runs,
+)
 from boost_and_broadside.train.rl.policy_io import load_policy_bundle
 
 
@@ -72,10 +73,7 @@ def agents_read_bullets(*agents: "ResolvedAgent | None") -> bool:
 
 def find_latest_checkpoint(checkpoint_dir: str = "checkpoints") -> str:
     """Return the path to the most recently modified .pt file under checkpoint_dir."""
-    pts = sorted(Path(checkpoint_dir).glob("**/*.pt"), key=lambda p: p.stat().st_mtime)
-    if not pts:
-        sys.exit(f"Error: no checkpoint files found under '{checkpoint_dir}'.")
-    return str(pts[-1])
+    return str(select_latest_checkpoint_across_runs(checkpoint_dir).path)
 
 
 def resolve_agent_spec(
@@ -155,9 +153,7 @@ def resolve_agent_spec(
         path = find_latest_checkpoint(checkpoint_dir)
         print(f"Auto-selected checkpoint: {path}")
     else:
-        path = spec
-        if not Path(path).exists():
-            sys.exit(f"Error: checkpoint not found: {path!r}")
+        path = str(resolve_explicit_checkpoint(spec).path)
 
     bundle = load_policy_bundle(
         path,
@@ -251,107 +247,3 @@ def reset_done_envs(agent: ResolvedAgent, done_mask: torch.Tensor, num_tokens: i
         agent.hidden = agent.agent.reset_hidden_for_envs(
             agent.hidden, done_mask, agent.agent.num_recurrent_tokens
         )
-
-
-# ---------------------------------------------------------------------------
-# Autoregressive imagination for watch-mode visualization
-# ---------------------------------------------------------------------------
-
-ALIVE_HEALTH_EPS = 1.0  # ship is dead when decoded health ≤ this value
-
-
-def _decode_targets_to_obs(
-    targets: torch.Tensor,
-    prev_obs: YemongObservation,
-    action: torch.Tensor,
-    N: int,
-    coordinator,
-) -> YemongObservation:
-    """Decode a coordinator target vector back to a raw YemongObservation.
-
-    Per-feature target encodings are inverted by the coordinator — each feature's
-    target Transform owns its own inverse — so this function only reassembles the
-    raw values into an YemongObservation: field tokens (N:) are copied unchanged,
-    `alive` is derived from decoded health, and `action` becomes PREVIOUS_ACTION.
-
-    prev_obs: previous YemongObservation — field tokens (N:) are copied unchanged
-    action:   (B, N, 3) int — stored as PREVIOUS_ACTION for next step
-
-    Bullets are not part of the predicted state, so the decoded observation carries
-    none: an imagined rollout runs the policy blind to fire in flight, which is a
-    property of the probe rather than of the policy.
-    """
-    raw = coordinator.decode_targets(targets)
-
-    pos = torch.cat([raw["position_x"], raw["position_y"]], dim=-1)  # (B, N, 2)
-    vel = raw["velocity"]  # (B, N, 2)
-    att = raw["attitude"]  # (B, N, 2)
-    ang_vel = raw["angular_velocity"]  # (B, N, 1)
-    health = raw["health"]  # (B, N, 1)
-    power = raw["power"]  # (B, N, 1)
-    cooldown = raw["cooldown"]  # (B, N, 1)
-    local_log_index = raw["local_log_index"]  # (B, N, 1), normalized log(n)
-
-    alive = health.squeeze(-1) > ALIVE_HEALTH_EPS
-
-    new_data = {k: v.clone() for k, v in prev_obs.items()}
-    new_data[ObsKey.POS] = torch.cat([pos, prev_obs[ObsKey.POS][:, N:]], dim=1)
-    new_data[ObsKey.VEL] = torch.cat([vel, prev_obs[ObsKey.VEL][:, N:]], dim=1)
-    new_data[ObsKey.ATT] = torch.cat([att, prev_obs[ObsKey.ATT][:, N:]], dim=1)
-    new_data[ObsKey.ANG_VEL] = torch.cat([ang_vel, prev_obs[ObsKey.ANG_VEL][:, N:]], dim=1)
-    new_data[ObsKey.HEALTH] = torch.cat([health, prev_obs[ObsKey.HEALTH][:, N:]], dim=1)
-    new_data[ObsKey.POWER] = torch.cat([power, prev_obs[ObsKey.POWER][:, N:]], dim=1)
-    new_data[ObsKey.COOLDOWN] = torch.cat([cooldown, prev_obs[ObsKey.COOLDOWN][:, N:]], dim=1)
-    new_data[ObsKey.LOCAL_LOG_INDEX] = torch.cat(
-        [local_log_index, prev_obs[ObsKey.LOCAL_LOG_INDEX][:, N:]], dim=1
-    )
-    new_data[ObsKey.ALIVE] = torch.cat([alive, prev_obs[ObsKey.ALIVE][:, N:]], dim=1)
-    new_data[ObsKey.PREVIOUS_ACTION] = torch.cat(
-        [action, prev_obs[ObsKey.PREVIOUS_ACTION][:, N:]], dim=1
-    )
-    return YemongObservation(data=new_data)
-
-
-def imagine_trajectory(
-    agent: ResolvedAgent,
-    obs: YemongObservation,
-    n_steps: int,
-    num_ships: int,
-    device,
-) -> list:
-    """Autoregressive imagined rollout for watch-mode visualization.
-
-    Clones the policy's hidden state and runs n_steps forward passes,
-    feeding each predicted state back as the next observation.  The real
-    agent.hidden is never modified.
-
-    Returns:
-        List of n_steps (B, N, pred_dim) tensors, or [] for non-policy agents.
-    """
-    if agent.kind != "policy" or agent.hidden is None or n_steps <= 0:
-        return []
-
-    coordinator = agent.agent.coordinator
-    label_scale = coordinator.label_scale_vector(device)
-    imag_hidden = agent.hidden.clone()
-    imag_obs = YemongObservation(data={k: v.clone() for k, v in obs.items()})
-    curr_ship_targets = coordinator.get_target_vector(imag_obs)[:, :num_ships]
-
-    pred_nexts = []
-    with torch.no_grad():
-        for _ in range(n_steps):
-            action, _, _, pred_next_scaled, imag_hidden = agent.agent.get_action_and_value(
-                imag_obs, imag_hidden
-            )
-            # Unscale before storing: the renderer expects raw phase deltas, not
-            # the scaled values the network predicts (scaled by 1/std for O(1) outputs).
-            pred_nexts.append(pred_next_scaled / label_scale)
-            next_ship_targets = coordinator.apply_scaled_predictions(
-                curr_ship_targets, pred_next_scaled
-            )
-            imag_obs = _decode_targets_to_obs(
-                next_ship_targets, imag_obs, action, num_ships, coordinator
-            )
-            curr_ship_targets = coordinator.get_target_vector(imag_obs)[:, :num_ships]
-
-    return pred_nexts

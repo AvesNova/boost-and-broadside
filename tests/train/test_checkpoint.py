@@ -295,13 +295,18 @@ class TestBulletReadingCheckpoints:
         from boost_and_broadside.train.rl.policy_io import build_policy
 
         reads = build_policy(
-            self._bullet_model_config(), ShipConfig(), num_value_components=3, num_ships=4
+            self._bullet_model_config(),
+            ShipConfig(),
+            num_value_components=3,
+            num_ships=4,
+            team_pma_k=(),
         )
         silent = build_policy(
             dataclasses.replace(self._bullet_model_config(), n_bullet_cross_per_block=0),
             ShipConfig(),
             num_value_components=3,
             num_ships=4,
+            team_pma_k=(),
         )
 
         assert reads.bullet_encoder is not None

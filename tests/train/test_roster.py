@@ -8,7 +8,7 @@ from boost_and_broadside.train.rl.roster import EloRoster
 
 # The cache tests pre-set entry.policy, so no file is ever read; these only have
 # to satisfy the signature.
-_LOAD_ARGS = dict(ship_config=ShipConfig(), num_ships=4, device="cpu")
+_LOAD_ARGS = dict(ship_config=ShipConfig(), num_ships=4, device="cpu", team_pma_k=())
 
 
 def _make_roster(max_size: int = 3, **overrides) -> EloRoster:

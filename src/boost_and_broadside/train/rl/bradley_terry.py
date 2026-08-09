@@ -8,7 +8,7 @@ of which move — the ratings are a static estimation problem with a maximum
 likelihood answer, and this module computes it.
 
 Draws are supplied to this module already scored, as fractional wins — the
-caller decides the convention (see TIE_MODES in modes/elo_calibrate.py). The MM
+caller decides the convention (see TIE_MODES in evaluation/tournament.py). The MM
 iteration is weight-based, so fractional counts need no special handling.
 
 What this module deliberately does not do is fit a draw *parameter*. Davidson

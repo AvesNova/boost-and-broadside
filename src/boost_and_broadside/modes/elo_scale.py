@@ -15,77 +15,27 @@ import numpy as np
 import torch
 
 from boost_and_broadside.config import EloCalibrateConfig, ShipConfig
-from boost_and_broadside.modes.agent_factory import ResolvedAgent
-from boost_and_broadside.modes.elo_calibrate import (
+from boost_and_broadside.evaluation.agents import ResolvedAgent
+from boost_and_broadside.evaluation.run_catalog import (
+    resolve_legacy_elo_run,
+    select_final_training_checkpoint,
+)
+from boost_and_broadside.evaluation.tournament import (
     BatchStat,
     Player,
     Progress,
     Tournament,
-    _load_ladder_policy,
-    _load_run_config,
     build_players,
+    load_ladder_policy,
+    load_run_config,
+    parallel_envs_for,
+    rating_views,
     run_tournament,
 )
-from boost_and_broadside.train.rl.bradley_terry import (
-    fit_bradley_terry,
-    rating_covariance,
-    rating_stderr,
-)
+from boost_and_broadside.train.rl.bradley_terry import fit_bradley_terry
 
-_COLLISION_BUDGET = 4_000_000  # B*N², tuned for an 8 GB GPU
 _SCHEMA_VERSION = 1
 _SEED_BASE = 682_000
-
-
-def parallel_envs_for(total_ships: int, maximum: int) -> int:
-    """Largest parallel batch under the collision-memory budget."""
-    if total_ships <= 0 or maximum <= 0:
-        raise ValueError("ship and environment counts must be positive")
-    return max(1, min(maximum, _COLLISION_BUDGET // (total_ships * total_ships)))
-
-
-def rating_views(
-    ratings: np.ndarray, pair_games: np.ndarray, labels: list[str]
-) -> dict[str, dict[str, list[float]]]:
-    """Transform one fitted rating vector into the three reporting conventions."""
-    random_index = labels.index("random")
-    scripted_index = labels.index("scripted")
-
-    random_zero = ratings - ratings[random_index]
-    random_error = rating_stderr(pair_games, ratings, anchor=random_index)
-
-    scripted_1000 = ratings - ratings[scripted_index] + 1000.0
-    scripted_error = rating_stderr(pair_games, ratings, anchor=scripted_index)
-
-    gap = float(random_zero[scripted_index])
-    if abs(gap) < 1e-9:
-        dual = np.full_like(ratings, np.nan)
-        dual_error = np.full_like(ratings, np.inf)
-    else:
-        dual = 1000.0 * random_zero / gap
-        covariance = rating_covariance(pair_games, ratings, anchor=random_index)
-        dual_error = np.zeros_like(ratings)
-        for index in range(ratings.size):
-            gradient = np.zeros_like(ratings)
-            gradient[index] += 1000.0 / gap
-            gradient[scripted_index] -= 1000.0 * random_zero[index] / gap**2
-            variance = float(gradient @ covariance @ gradient)
-            dual_error[index] = np.sqrt(max(variance, 0.0))
-
-    return {
-        "random_zero": {
-            "ratings": random_zero.tolist(),
-            "stderr": random_error.tolist(),
-        },
-        "scripted_1000": {
-            "ratings": scripted_1000.tolist(),
-            "stderr": scripted_error.tolist(),
-        },
-        "random_zero_scripted_1000": {
-            "ratings": dual.tolist(),
-            "stderr": dual_error.tolist(),
-        },
-    }
 
 
 def combine_reference_ladder(result: dict, reference_result: dict) -> dict:
@@ -225,7 +175,7 @@ def _build_scale_players(
         run_dir, roster, model_config, ship_config, total_ships, device
     )
     checkpoint = torch.load(str(final_path), map_location="cpu", weights_only=False)
-    final_policy = _load_ladder_policy(
+    final_policy = load_ladder_policy(
         final_path, model_config, ship_config, total_ships, device
     )
     players.append(
@@ -321,15 +271,11 @@ def run_elo_scale_mode(
 ) -> dict:
     """Run or resume checkpoint tournaments across symmetric team sizes."""
     from boost_and_broadside.modes.elo_scale_plots import write_scale_plots
-    from boost_and_broadside.modes.elo_stats import find_run_dir
 
-    run_dir = find_run_dir(run_spec, checkpoint_dir)
+    run_dir = resolve_legacy_elo_run(run_spec, checkpoint_dir).path
     roster = json.loads((run_dir / "roster.json").read_text())
-    base_env, model_config, paradigm = _load_run_config(run_dir)
-    final_candidates = sorted(run_dir.glob("step_*.pt"))
-    if not final_candidates:
-        raise FileNotFoundError(f"no final step checkpoint in {run_dir}")
-    final_path = final_candidates[-1]
+    base_env, model_config, paradigm = load_run_config(run_dir)
+    final_path = select_final_training_checkpoint(run_dir).path
     metadata = _player_metadata(run_dir, roster, final_path)
     labels = [record["label"] for record in metadata]
 

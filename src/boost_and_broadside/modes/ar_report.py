@@ -23,15 +23,15 @@ import torch
 from boost_and_broadside.config import EnvConfig, ModelConfig, RewardConfig, ShipConfig
 from boost_and_broadside.env.observation import YemongObservation
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
-from boost_and_broadside.modes.agent_factory import (
+from boost_and_broadside.evaluation.agents import (
     ResolvedAgent,
-    _decode_targets_to_obs,
     agents_read_bullets,
     get_actions,
     init_hidden,
     resolve_agent_spec,
 )
-from boost_and_broadside.modes.match import merge_team_actions
+from boost_and_broadside.evaluation.match import merge_team_actions
+from boost_and_broadside.evaluation.next_state import decode_targets_to_observation
 
 # Trajectory dots are drawn every N steps (part of the report's visual contract).
 _DOT_INTERVAL = 10
@@ -229,7 +229,9 @@ def _run_ar(
 
         if pred_next is not None and coordinator is not None:
             next_ship_targets = coordinator.apply_scaled_predictions(curr_ship_targets, pred_next)
-            obs = _decode_targets_to_obs(next_ship_targets, obs, action_to_apply, N, coordinator)
+            obs = decode_targets_to_observation(
+                next_ship_targets, obs, action_to_apply, N, coordinator
+            )
             curr_ship_targets = coordinator.get_target_vector(obs)[:, :N]
 
     return history

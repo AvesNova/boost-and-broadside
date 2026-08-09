@@ -5,11 +5,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from boost_and_broadside.modes.elo_scale import (
-    combine_reference_ladder,
-    parallel_envs_for,
-    rating_views,
-)
+from boost_and_broadside.evaluation.tournament import parallel_envs_for, rating_views
+from boost_and_broadside.modes.elo_scale import combine_reference_ladder
 from boost_and_broadside.modes.elo_scale_plots import write_scale_plots
 
 

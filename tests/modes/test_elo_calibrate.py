@@ -267,7 +267,7 @@ class TestBuildPlayersField:
             )
 
     def test_rung_labels_match_the_semi_random_mode(self):
-        from boost_and_broadside.modes.elo_calibrate import semi_random_label
+        from boost_and_broadside.agents.semi_random_scripted import semi_random_label
 
         assert semi_random_label(0.0) == "random"
         assert semi_random_label(1.0) == "scripted"

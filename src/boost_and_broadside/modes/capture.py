@@ -18,7 +18,6 @@ Writes ``<out>/<scenario>_<AvA>_seed<NN>.mp4``, one clip per (scenario, size, se
 
 import os
 import subprocess
-import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -26,9 +25,14 @@ import pygame
 import torch
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
-from boost_and_broadside.env.env import TensorEnv
-from boost_and_broadside.modes.agent_factory import ResolvedAgent, resolve_agent_spec
-from boost_and_broadside.modes.match import MatchRunner
+from boost_and_broadside.evaluation.agents import ResolvedAgent, resolve_agent_spec
+from boost_and_broadside.evaluation.environment import create_evaluation_env
+from boost_and_broadside.evaluation.match import MatchRunner
+from boost_and_broadside.evaluation.run_catalog import (
+    resolve_legacy_capture_run,
+    select_final_training_checkpoint,
+)
+from boost_and_broadside.evaluation.sizes import Matchup, parse_matchup
 from boost_and_broadside.train.rl.checkpoint_schema import require_observation_schema
 from boost_and_broadside.ui.renderer import GameRenderer, RenderConfig
 
@@ -43,38 +47,13 @@ def parse_seeds(spec: str) -> list[int]:
     return [int(s) for s in spec.split(",") if s]
 
 
-def parse_matchup(spec: str) -> tuple[int, int]:
-    """Team-0 and team-1 ship counts from a size spec.
-
-    '4v4' -> (4, 4); the asymmetric '8v12' -> (8, 12); a bare '4' -> (4, 4). The
-    model is token-based and scale-invariant, so the same weights play any size or
-    imbalance zero-shot; the spec only sets how many ship tokens each side spawns.
-    """
-    if "v" in spec:
-        a, b = spec.split("v", 1)
-        return int(a), int(b)
-    n = int(spec)
-    return n, n
-
-
 def _find_run_dir(run_spec: str, checkpoint_dir: str) -> Path:
-    root = Path(checkpoint_dir)
-    if run_spec in ("latest", "none"):
-        runs = [p for p in root.iterdir() if p.is_dir() and any(p.glob("step_*.pt"))]
-        if not runs:
-            sys.exit(f"no run with step_*.pt under {root}")
-        return max(runs, key=lambda p: max(f.stat().st_mtime for f in p.glob("step_*.pt")))
-    run_dir = root / run_spec
-    if not run_dir.exists():
-        sys.exit(f"run directory not found: {run_dir}")
-    return run_dir
+    """Legacy S04 adapter; strict exact-run parsing replaces it in S05."""
+    return resolve_legacy_capture_run(run_spec, checkpoint_dir).path
 
 
 def _final_checkpoint(run_dir: Path) -> Path:
-    candidates = sorted(run_dir.glob("step_*.pt"))
-    if not candidates:
-        sys.exit(f"no step_*.pt checkpoint in {run_dir}")
-    return candidates[-1]
+    return select_final_training_checkpoint(run_dir).path
 
 
 def _open_encoder(out: Path, size: int, fps: int) -> subprocess.Popen:
@@ -138,7 +117,7 @@ def _capture_match(
     torch.cuda.manual_seed_all(seed)
 
     N = env_config.num_ships
-    env = TensorEnv(1, ship_config, env_config, device)
+    env = create_evaluation_env(1, ship_config, env_config, device)
     agent0 = policy
     agent1 = (
         ResolvedAgent("policy", policy.agent, bundle=policy.bundle)
@@ -183,7 +162,7 @@ def _capture_match(
         encoder.stdin.close()
         err = encoder.stderr.read().decode(errors="replace")
         if encoder.wait() != 0:
-            sys.exit(f"ffmpeg failed for {out}:\n{err}")
+            raise RuntimeError(f"ffmpeg failed for {out}:\n{err}")
     return frames, winner
 
 
@@ -212,7 +191,7 @@ def _write_gif(mp4: Path, fps: int, width: int) -> Path:
         text=True,
     )
     if result.returncode != 0:
-        sys.exit(f"ffmpeg gif failed for {mp4}:\n{result.stderr}")
+        raise RuntimeError(f"ffmpeg gif failed for {mp4}:\n{result.stderr}")
     return gif
 
 
@@ -250,13 +229,13 @@ def run_capture_mode(
     require_observation_schema(checkpoint_data, str(checkpoint))
     base_env = EnvConfig(**checkpoint_data["env_config"])
     native = base_env.num_ships // 2
-    matchups = [parse_matchup(s) for s in sizes] if sizes else [(native, native)]
+    matchups = [parse_matchup(s) for s in sizes] if sizes else [Matchup(native, native)]
     torch_device = torch.device(device)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     for scenario in scenarios:
         if scenario not in SCENARIOS:
-            sys.exit(f"unknown scenario {scenario!r}; choose from {SCENARIOS}")
+            raise ValueError(f"unknown scenario {scenario!r}; choose from {SCENARIOS}")
 
     renderer = GameRenderer(ship_config, RenderConfig(window_size=window, show_ui=False))
     scripted = resolve_agent_spec("scripted", ship_config, model_config, device)

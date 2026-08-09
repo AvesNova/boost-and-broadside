@@ -13,17 +13,18 @@ from boost_and_broadside.agents.semi_random_scripted import SemiRandomScriptedAg
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import ShipConfig, TrainConfig
-from boost_and_broadside.env.field_cache import FieldMapCache
-from boost_and_broadside.modes.agent_factory import ResolvedAgent
-from boost_and_broadside.modes.elo_calibrate import (
+from boost_and_broadside.evaluation.agents import ResolvedAgent
+from boost_and_broadside.evaluation.environment import create_evaluation_field_map
+from boost_and_broadside.evaluation.run_catalog import resolve_legacy_elo_run
+from boost_and_broadside.evaluation.tournament import (
     Player,
     Progress,
     Tournament,
-    _load_run_config,
+    load_run_config,
+    parallel_envs_for,
+    rating_views,
     semi_random_label,
 )
-from boost_and_broadside.modes.elo_scale import parallel_envs_for, rating_views
-from boost_and_broadside.modes.elo_stats import find_run_dir
 from boost_and_broadside.train.rl.bradley_terry import fit_bradley_terry
 
 _SCHEMA_VERSION = 1
@@ -168,12 +169,12 @@ def run_semi_random_tournament(
             if train_config.field_map is None:
                 raise ValueError(f"profile {run_spec!r} has fields but no field_map config")
             print(f"  generating field map cache ({train_config.field_map.cache_size} maps)...")
-            field_map = FieldMapCache.generate(
+            field_map = create_evaluation_field_map(
                 ship_config, base_env, train_config.field_map, torch.device(device)
             )
     else:
-        run_dir = find_run_dir(run_spec, checkpoint_dir)
-        base_env, _, paradigm = _load_run_config(run_dir)
+        run_dir = resolve_legacy_elo_run(run_spec, checkpoint_dir).path
+        base_env, _, paradigm = load_run_config(run_dir)
     labels = [_label(probability) for probability in probabilities]
     output = run_dir / "semi_random_tournament.json"
 

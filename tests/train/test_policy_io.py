@@ -66,8 +66,15 @@ class TestBuildPolicy:
             ShipConfig(),
             num_value_components=3,
             num_ships=4,
+            team_pma_k=(),
         )
-        silent = build_policy(self._config(), ShipConfig(), num_value_components=3, num_ships=4)
+        silent = build_policy(
+            self._config(),
+            ShipConfig(),
+            num_value_components=3,
+            num_ships=4,
+            team_pma_k=(),
+        )
         assert reads.bullet_encoder is not None
         assert silent.bullet_encoder is None
 
@@ -76,12 +83,19 @@ class TestBuildPolicy:
         which is exactly why a drifted ShipConfig loads cleanly and plays wrong."""
         import dataclasses
 
-        narrow = build_policy(self._config(), ShipConfig(), num_value_components=3, num_ships=4)
+        narrow = build_policy(
+            self._config(),
+            ShipConfig(),
+            num_value_components=3,
+            num_ships=4,
+            team_pma_k=(),
+        )
         wide = build_policy(
             self._config(),
             dataclasses.replace(ShipConfig(), world_size=(2048.0, 2048.0)),
             num_value_components=3,
             num_ships=4,
+            team_pma_k=(),
         )
         assert set(narrow.state_dict()) == set(wide.state_dict())
 

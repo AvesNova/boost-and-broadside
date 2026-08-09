@@ -50,14 +50,14 @@ from boost_and_broadside.config import EloEvalConfig, EnvConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.observation import YemongObservation, observation_from_state
-from boost_and_broadside.models.yemong.policy import YemongPolicy
-from boost_and_broadside.modes.agent_factory import (
+from boost_and_broadside.evaluation.agents import (
     ResolvedAgent,
     get_actions,
     init_hidden,
     reset_done_envs,
 )
-from boost_and_broadside.modes.match import merge_team_actions
+from boost_and_broadside.evaluation.match import merge_team_actions
+from boost_and_broadside.models.yemong.policy import YemongPolicy
 
 _ELO_RATING_SCALE = 400.0
 

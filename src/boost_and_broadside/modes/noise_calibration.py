@@ -25,18 +25,18 @@ import numpy as np
 import torch
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
-from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.observation import YemongObservation, observation_from_state
-from boost_and_broadside.modes.agent_factory import (
+from boost_and_broadside.evaluation.agents import (
     ResolvedAgent,
-    _decode_targets_to_obs,
     agents_read_bullets,
     get_actions,
     init_hidden,
     reset_done_envs,
     resolve_agent_spec,
 )
-from boost_and_broadside.modes.match import merge_team_actions
+from boost_and_broadside.evaluation.environment import create_evaluation_env
+from boost_and_broadside.evaluation.match import merge_team_actions
+from boost_and_broadside.evaluation.next_state import decode_targets_to_observation
 from boost_and_broadside.train.rl.features import FeatureCoordinator, build_standard_coordinator
 
 _AR_WINDOW = 20
@@ -194,7 +194,7 @@ def _run_phase1(
     coordinator,
 ) -> dict:
     include_bullets = agents_read_bullets(agent0, agent1)
-    env = TensorEnv(B, ship_config, env_config, dev)
+    env = create_evaluation_env(B, ship_config, env_config, dev)
     init_hidden(agent0, B, num_tokens, dev)
     init_hidden(agent1, B, num_tokens, dev)
     env.reset()
@@ -331,7 +331,7 @@ def _run_phase2(
     coordinator,
 ) -> dict:
     include_bullets = agents_read_bullets(agent0, warmup_agent1)
-    env = TensorEnv(B, ship_config, env_config, dev)
+    env = create_evaluation_env(B, ship_config, env_config, dev)
     init_hidden(agent0, B, num_tokens, dev)
     init_hidden(warmup_agent1, B, num_tokens, dev)
     env.reset()
@@ -418,7 +418,7 @@ def _run_phase2(
                     ar_sq_sum[k] += (err_k * mask).sum(dim=(0, 1))
                     ar_count[k] += valid_k.sum().float()
 
-                curr_obs = _decode_targets_to_obs(
+                curr_obs = decode_targets_to_observation(
                     next_targets_ar,
                     curr_obs,
                     stored_actions[k],

@@ -4,7 +4,7 @@ Entry points:
   - run_play_mode: fixed 1v1 player-vs-null match with four fields.
   - run_watch_mode: render live gameplay between two specified agents at 60fps.
 
-Agent specs (--team0 / --team1) are resolved by modes/agent_factory.py —
+Agent specs (--team0 / --team1) are resolved by evaluation/agents.py —
 `null` maps to human keyboard control (WASD to fly, Shift for sharp turns,
 Space to shoot); see that module for the full spec list.
 """
@@ -26,18 +26,18 @@ from boost_and_broadside.constants import (
     ShootActions,
     TurnActions,
 )
-from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
-from boost_and_broadside.modes.agent_factory import (
+from boost_and_broadside.evaluation.agents import (
     ResolvedAgent,
     agents_read_bullets,
     get_actions,
-    imagine_trajectory,
     init_hidden,
     reset_done_envs,
     resolve_agent_spec,
 )
-from boost_and_broadside.modes.match import merge_team_actions
+from boost_and_broadside.evaluation.environment import create_evaluation_field_map
+from boost_and_broadside.evaluation.match import merge_team_actions
+from boost_and_broadside.evaluation.next_state import imagine_trajectory
 from boost_and_broadside.ui.renderer import GameRenderer, RenderConfig
 
 PLAY_ENV_CONFIG = EnvConfig(
@@ -168,7 +168,7 @@ def _run_resolved_interactive_mode(
     # construction.
     field_map = None
     if env_config.num_fields > 0:
-        field_map = FieldMapCache.generate(
+        field_map = create_evaluation_field_map(
             ship_config,
             env_config,
             FieldMapConfig(cache_size=1, max_generation_attempts=256),

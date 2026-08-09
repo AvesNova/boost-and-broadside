@@ -5,7 +5,6 @@ distributes B parallel environments across all directed matchups, runs them
 simultaneously, and reports per-agent Elo, win rates, and episode lengths.
 """
 
-import sys
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -13,9 +12,11 @@ from pathlib import Path
 import torch
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
-from boost_and_broadside.env.env import TensorEnv
-from boost_and_broadside.modes.agent_factory import ResolvedAgent, resolve_agent_spec
-from boost_and_broadside.modes.match import MatchRunner
+from boost_and_broadside.evaluation.agents import ResolvedAgent, resolve_agent_spec
+from boost_and_broadside.evaluation.environment import create_evaluation_env
+from boost_and_broadside.evaluation.match import MatchRunner
+from boost_and_broadside.evaluation.run_catalog import resolve_legacy_elo_run
+from boost_and_broadside.evaluation.sizes import MatchupParseError, parse_matchup
 from boost_and_broadside.train.rl.elo_eval import expected_score
 from boost_and_broadside.train.rl.policy_io import load_policy_bundle
 
@@ -36,23 +37,8 @@ SCRIPTED_SPECS = [
 
 
 def find_run_dir(run_spec: str, checkpoint_dir: str) -> Path:
-    """Return the checkpoint subdirectory for a run spec."""
-    root = Path(checkpoint_dir)
-    if run_spec == "latest":
-        subdirs = [p for p in root.iterdir() if p.is_dir()]
-        if not subdirs:
-            sys.exit(f"Error: no run directories found under '{checkpoint_dir}'.")
-
-        def newest_pt_mtime(d: Path) -> float:
-            pts = list(d.glob("*.pt"))
-            return max(p.stat().st_mtime for p in pts) if pts else 0.0
-
-        return max(subdirs, key=newest_pt_mtime)
-    else:
-        run_dir = root / run_spec
-        if not run_dir.is_dir():
-            sys.exit(f"Error: run directory not found: '{run_dir}'")
-        return run_dir
+    """Legacy S04 adapter; strict exact-run parsing replaces it in S05."""
+    return resolve_legacy_elo_run(run_spec, checkpoint_dir).path
 
 
 def _load_checkpoint_agent(
@@ -91,12 +77,13 @@ def run_elo_stats_mode(
         matchups = ["2v2"]
 
     for matchup in matchups:
-        parts = matchup.split("v")
-        if len(parts) != 2:
+        try:
+            parsed = parse_matchup(matchup)
+        except MatchupParseError:
             print(f"Skipping invalid matchup: {matchup}")
             continue
-        n0, n1 = int(parts[0]), int(parts[1])
-        N = n0 + n1
+        n0, n1 = parsed
+        N = parsed.num_ships
         curr_env_config = replace(env_config, num_ships=N)
         dev = torch.device(device)
         B = num_envs
@@ -131,7 +118,7 @@ def run_elo_stats_mode(
                 print(f"Run directory: {run_dir}")
                 ckpt_paths = sorted(run_dir.glob("*.pt"), key=lambda p: p.name)
                 if not ckpt_paths:
-                    sys.exit(f"Error: no .pt checkpoints found in '{run_dir}'.")
+                    raise FileNotFoundError(f"no .pt checkpoints found in {run_dir}")
                 print(f"Loading {len(ckpt_paths)} checkpoint(s)...")
                 for path in ckpt_paths:
                     agents.append(
@@ -170,7 +157,7 @@ def run_elo_stats_mode(
         print(f"Directed matchups: {M}  ({K}×{K - 1})")
 
         if B < M:
-            sys.exit(f"Error: num_envs ({B}) < num_matchups ({M}). Increase --num_envs.")
+            raise ValueError(f"num_envs ({B}) < num_matchups ({M}); increase num_envs")
 
         # Distribute envs evenly; first (B % M) matchups get one extra env
         base, rem = divmod(B, M)
@@ -198,7 +185,7 @@ def run_elo_stats_mode(
         # ------------------------------------------------------------------ #
         # Step 3 — Initialize hidden states and environment                   #
         # ------------------------------------------------------------------ #
-        env = TensorEnv(B, ship_config, curr_env_config, dev)
+        env = create_evaluation_env(B, ship_config, curr_env_config, dev)
         runner = MatchRunner(
             env,
             agents,
