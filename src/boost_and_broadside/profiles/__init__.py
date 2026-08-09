@@ -7,9 +7,6 @@ from types import MappingProxyType
 from boost_and_broadside.config.resolve import LaunchOverrides, resolve_profile
 from boost_and_broadside.config.schema import ProfileSpec, ResolvedTrainConfig
 from boost_and_broadside.profiles.bc import BC_PROFILE
-from boost_and_broadside.profiles.legacy_bc_warmstart import (
-    LEGACY_BC_WARMSTART_PRETRAIN_PROFILE,
-)
 from boost_and_broadside.profiles.rl import RL_PROFILE
 from boost_and_broadside.profiles.rl_fields import RL_FIELDS_PROFILE
 
@@ -49,17 +46,10 @@ RL_TRAIN_CONFIG = RL_RESOLVED_CONFIG.train_config
 RL_FIELDS_TRAIN_CONFIG = RL_FIELDS_RESOLVED_CONFIG.train_config
 BC_TRAIN_CONFIG = BC_RESOLVED_CONFIG.train_config
 
-BC_WARMSTART_PRETRAIN_RESOLVED_CONFIG = resolve_profile(LEGACY_BC_WARMSTART_PRETRAIN_PROFILE)
-BC_WARMSTART_PRETRAIN_CONFIG = BC_WARMSTART_PRETRAIN_RESOLVED_CONFIG.train_config
-BC_WARMSTART_RL_CONFIG = RL_TRAIN_CONFIG
-
 __all__ = [
     "BC_PROFILE",
     "BC_RESOLVED_CONFIG",
     "BC_TRAIN_CONFIG",
-    "BC_WARMSTART_PRETRAIN_CONFIG",
-    "BC_WARMSTART_PRETRAIN_RESOLVED_CONFIG",
-    "BC_WARMSTART_RL_CONFIG",
     "PROFILES",
     "RL_FIELDS_PROFILE",
     "RL_FIELDS_RESOLVED_CONFIG",

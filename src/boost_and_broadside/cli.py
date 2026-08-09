@@ -65,6 +65,23 @@ def _matchup(value: str) -> str:
     return value
 
 
+class _AgentListAction(argparse.Action):
+    """Require a real Bradley--Terry field at the parsing boundary."""
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: list[str],
+        option_string: str | None = None,
+    ) -> None:
+        if len(values) < 2:
+            raise argparse.ArgumentError(self, "--agents requires at least two exact agents")
+        if len(set(values)) != len(values):
+            raise argparse.ArgumentError(self, "--agents must not repeat an agent")
+        setattr(namespace, self.dest, values)
+
+
 @dataclass(frozen=True)
 class OptionSpec:
     """One declarative option owned by one command."""
@@ -281,8 +298,31 @@ COMMANDS: tuple[CommandSpec, ...] = (
     ),
     CommandSpec(
         "elo-calibrate",
-        "Post-hoc Bradley-Terry calibration for one exact run.",
-        (_RUN, *_CALIBRATION, _DEVICE, _SEED, _ALLOW_DRIFT),
+        "Post-hoc Bradley-Terry calibration for one exact run or agent field.",
+        (
+            OptionSpec(
+                ("--run",),
+                {"type": _exact_run, "metavar": "RUN", "help": "Exact finished run."},
+                "calibration-subject",
+                True,
+            ),
+            OptionSpec(
+                ("--agents",),
+                {
+                    "nargs": "+",
+                    "type": _exact_agent,
+                    "action": _AgentListAction,
+                    "metavar": "AGENT",
+                    "help": "At least two exact agents for an arbitrary calibration field.",
+                },
+                "calibration-subject",
+                True,
+            ),
+            *_CALIBRATION,
+            _DEVICE,
+            _SEED,
+            _ALLOW_DRIFT,
+        ),
     ),
     CommandSpec(
         "elo-scale",

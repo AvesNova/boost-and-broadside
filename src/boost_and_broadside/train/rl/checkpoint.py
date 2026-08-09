@@ -457,7 +457,7 @@ class CheckpointMixin:
         """Build checkpoint payload with avg_policy as the primary policy_state_dict.
 
         Allows best_avg.pt / avg_step_*.pt to be loaded by _load_checkpoint_agent
-        in elo_stats.py, which reads ``ckpt["policy_state_dict"]``.
+        by policy-only evaluation checkpoints, which read ``ckpt["policy_state_dict"]``.
         """
         payload = self.checkpoint_payload(update)
         payload["policy_state_dict"] = self._avg_policy_module.state_dict()

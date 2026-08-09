@@ -102,7 +102,6 @@ def run_watch_mode(
     render_config: RenderConfig,
     device: str,
     checkpoint_dir: str = "checkpoints",
-    fast_cache: bool = False,
 ) -> None:
     """Render live gameplay between two agents at 60fps.
 
@@ -163,9 +162,7 @@ def _run_resolved_interactive_mode(
 
     renderer = GameRenderer(ship_config, render_config)
 
-    # Static maps need no orbital settling phase. ``fast_cache`` is retained in
-    # the watch-mode signature for CLI compatibility but no longer changes map
-    # construction.
+    # Static maps need no orbital settling phase.
     field_map = None
     if env_config.num_fields > 0:
         field_map = create_evaluation_field_map(

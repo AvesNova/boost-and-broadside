@@ -37,7 +37,6 @@ def run_feature_stats_mode(
     model_config: ModelConfig,
     device: str,
     checkpoint_dir: str = "checkpoints",
-    output_dir: str = "/home/vizia/.gemini/antigravity/artifacts",
 ) -> None:
     B = num_envs
     N = env_config.num_ships

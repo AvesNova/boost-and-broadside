@@ -592,12 +592,12 @@ def _run_mode_case(case: SmokeCase, roots: SmokeRoots) -> None:
             nonlocal calls
             calls += 1
             kwargs["num_steps"] = 2
-            kwargs["env_config"] = replace(kwargs["env_config"], max_episode_steps=2)
+            kwargs["env_config"] = _basic_env()
             kwargs["out_dir"] = str(roots.artifacts / "ar-report" / str(calls))
             with patch("boost_and_broadside.modes.ar_report._generate_report"):
                 return run_ar_report_mode(**kwargs)
 
-        with patch.object(cli_commands, "run_ar_report_mode", side_effect=bounded_ar):
+        with patch.object(cli_commands, "run_canonical_ar_report_mode", side_effect=bounded_ar):
             result = main(
                 [
                     "ar-report",
@@ -651,7 +651,6 @@ def _run_mode_case(case: SmokeCase, roots: SmokeRoots) -> None:
 
         def bounded_feature_stats(**kwargs):
             kwargs["env_config"] = _basic_env()
-            kwargs["output_dir"] = str(roots.artifacts / "feature-stats")
             return run_feature_stats_mode(**kwargs)
 
         with patch.object(

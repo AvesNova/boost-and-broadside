@@ -158,6 +158,10 @@ uv run bnb collect-stats \
 uv run bnb elo-calibrate \
   --run resilient-resonance-682
 
+# Bradley--Terry calibration for any explicit stationary agent field
+uv run bnb elo-calibrate \
+  --agents scripted random checkpoints/<run>/<checkpoint>.pt
+
 # Rate frozen checkpoints across symmetric fleet sizes (resumable)
 uv run bnb elo-scale \
   --run resilient-resonance-682 --sizes 1,2,4,8,16,32,64
@@ -174,7 +178,9 @@ uv run bnb crossover \
   --run resilient-resonance-682 --sizes 4,8,16,32,64 --games-per-matchup 256
 ```
 
-Calibration writes to `checkpoints/<run>/elo_calibrated.json` and `elo_calibration/`.
+Run calibration writes to `checkpoints/<run>/elo_calibrated.json` and `elo_calibration/`.
+An explicit `--agents` field has no owning run, so its result currently lives below
+`artifacts/elo-calibration/`; the versioned artifact format arrives in the next refactor phase.
 Scale calibration writes its resumable match matrices to `checkpoints/<run>/elo_scale.json`;
 the reference ladder writes `checkpoints/<run>/semi_random_tournament.json`; crossover
 writes `docs/crossover/crossover.json`. These evaluations can require substantial GPU

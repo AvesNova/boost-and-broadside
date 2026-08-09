@@ -19,7 +19,7 @@ from boost_and_broadside.evaluation.run_catalog import (
     select_latest_resumable_checkpoint,
 )
 from boost_and_broadside.execution import initialize_execution, resolve_execution_settings
-from boost_and_broadside.modes.ar_report import run_ar_report_mode
+from boost_and_broadside.modes.ar_report import run_canonical_ar_report_mode
 from boost_and_broadside.modes.capture import run_capture_mode
 from boost_and_broadside.modes.collect import run_collect_stats_mode
 from boost_and_broadside.modes.crossover import parse_counts, run_crossover_mode
@@ -167,7 +167,6 @@ def _watch(args: argparse.Namespace) -> None:
         render_config=RenderConfig(),
         device=device,
         checkpoint_dir="checkpoints",
-        fast_cache=False,
     )
 
 
@@ -226,10 +225,17 @@ def _elo_calibrate(args: argparse.Namespace) -> None:
     device = _prepare_execution(args)
     run_elo_calibrate_mode(
         run_spec=args.run,
+        agent_specs=args.agents,
         ship_config=SHIP_CONFIG,
         device=device,
         checkpoint_dir="checkpoints",
         config=_calibration_config(args),
+        model_config=MODEL_CONFIG,
+        env_config=EnvConfig(
+            num_ships=8,
+            max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
+            max_episode_steps=1024,
+        ),
         plot=True,
         refit=False,
     )
@@ -272,23 +278,16 @@ def _semi_random(args: argparse.Namespace) -> None:
 
 def _ar_report(args: argparse.Namespace) -> None:
     device = _prepare_execution(args)
-    for ships, label in ((4, "2v2"), (2, "1v1")):
-        run_ar_report_mode(
-            team0_spec=args.team0,
-            team1_spec=args.team1,
-            num_steps=args.decision_steps,
-            ship_config=SHIP_CONFIG,
-            env_config=EnvConfig(
-                num_ships=ships,
-                max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
-                max_episode_steps=args.decision_steps,
-            ),
-            rewards=REWARDS,
-            model_config=MODEL_CONFIG,
-            device=device,
-            checkpoint_dir="checkpoints",
-            out_dir=f"docs/ar_report/{label}",
-        )
+    run_canonical_ar_report_mode(
+        team0_spec=args.team0,
+        team1_spec=args.team1,
+        num_steps=args.decision_steps,
+        ship_config=SHIP_CONFIG,
+        rewards=REWARDS,
+        model_config=MODEL_CONFIG,
+        device=device,
+        checkpoint_dir="checkpoints",
+    )
 
 
 def _noise_calibration(args: argparse.Namespace) -> None:

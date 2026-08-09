@@ -4,6 +4,7 @@ import time
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.evaluation.agents import resolve_agent_spec
+from boost_and_broadside.evaluation.environment import resolve_evaluation_environment
 from boost_and_broadside.evaluation.match import evaluate_matchup
 from boost_and_broadside.evaluation.sizes import parse_matchup
 
@@ -52,9 +53,20 @@ def run_collect_stats_mode(
             team1_spec, ship_config, model_config, device, checkpoint_dir, num_ships=N
         )
 
+        current_env_config, field_map_config = resolve_evaluation_environment(
+            env_config, (agent0, agent1)
+        )
         t0 = time.perf_counter()
         num_0, num_1, n_tie, avg_len = evaluate_matchup(
-            agent0, agent1, n0, n1, B, ship_config, env_config, device
+            agent0,
+            agent1,
+            n0,
+            n1,
+            B,
+            ship_config,
+            current_env_config,
+            device,
+            field_map_config=field_map_config,
         )
         elapsed = time.perf_counter() - t0
         sim_fps = 1.0 / ship_config.dt

@@ -21,7 +21,7 @@ from dataclasses import dataclass
 
 import torch
 
-from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
+from boost_and_broadside.config import EnvConfig, FieldMapConfig, ModelConfig, ShipConfig
 from boost_and_broadside.models.yemong.policy import YemongPolicy
 from boost_and_broadside.train.rl.checkpoint_schema import (
     load_checkpoint_payload,
@@ -83,6 +83,7 @@ class PolicyBundle:
     model_config: ModelConfig
     ship_config: ShipConfig
     env_config: EnvConfig | None
+    field_map_config: FieldMapConfig | None
     num_value_components: int
     team_pma_k: tuple[int, ...]
     global_step: int | None = None
@@ -197,6 +198,22 @@ def _resolve_paradigm(checkpoint: dict) -> str:
     if "paradigm" in checkpoint:
         return checkpoint["paradigm"]
     return checkpoint.get("train_config", {}).get("paradigm", "ego_pass")
+
+
+def _field_map_config(checkpoint: dict, path: str) -> FieldMapConfig | None:
+    """Recover field-generation intent carried by a current resolved checkpoint."""
+
+    resolved = checkpoint.get("resolved_config")
+    if isinstance(resolved, Mapping):
+        config = resolved.get("config")
+        if isinstance(config, Mapping):
+            train = config.get("train_config")
+            if isinstance(train, Mapping) and train.get("field_map") is not None:
+                return _rebuild_config(train["field_map"], FieldMapConfig, path)
+    train = checkpoint.get("train_config")
+    if isinstance(train, Mapping) and train.get("field_map") is not None:
+        return _rebuild_config(train["field_map"], FieldMapConfig, path)
+    return None
 
 
 def _rebuild_config(stored: dict, cls, path: str):
@@ -342,6 +359,7 @@ def load_policy_bundle(
         model_config=checkpoint_model_config,
         ship_config=checkpoint_ship_config,
         env_config=env_config,
+        field_map_config=_field_map_config(checkpoint, path),
         num_value_components=num_value_components,
         team_pma_k=checkpoint_team_pma_k,
         global_step=checkpoint.get("global_step"),

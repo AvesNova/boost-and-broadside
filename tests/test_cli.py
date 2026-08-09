@@ -72,6 +72,7 @@ def test_modifier_ownership_matches_command_contract() -> None:
     assert owners["--out"] == {"capture"}
     assert owners["--target-stderr"] == {"elo-calibrate", "elo-scale"}
     assert owners["--max-batches"] == {"elo-calibrate", "elo-scale"}
+    assert owners["--agents"] == {"elo-calibrate"}
     assert owners["--team0"] == {
         "watch",
         "collect-stats",
@@ -127,6 +128,7 @@ def test_every_registered_command_rejects_an_irrelevant_option(command) -> None:
         ["collect-stats", "--team0", "scripted"],
         ["train"],
         ["semi-random"],
+        ["elo-calibrate"],
     ],
 )
 def test_required_subjects_fail_during_parsing(argv) -> None:
@@ -170,6 +172,20 @@ def test_resume_rejects_magic_or_path_like_run_subjects(subject) -> None:
 def test_pretraining_subject_must_be_an_explicit_checkpoint_path() -> None:
     with pytest.raises(SystemExit) as exit_info:
         _parse(["train", "--profile", "rl", "--pretrain-from", "exact-run"])
+    assert exit_info.value.code == 2
+
+
+def test_elo_calibration_accepts_an_arbitrary_agent_field_and_rejects_degenerate_ones() -> None:
+    parsed = _parse(["elo-calibrate", "--agents", "scripted", "random"])
+    assert parsed.agents == ["scripted", "random"]
+    assert parsed.run is None
+
+    with pytest.raises(SystemExit) as exit_info:
+        _parse(["elo-calibrate", "--agents", "scripted"])
+    assert exit_info.value.code == 2
+
+    with pytest.raises(SystemExit) as exit_info:
+        _parse(["elo-calibrate", "--run", "exact-run", "--agents", "scripted", "random"])
     assert exit_info.value.code == 2
 
 
@@ -489,6 +505,39 @@ def test_collect_stats_adapter_uses_the_locked_4v4_default(monkeypatch) -> None:
     assert captured["matchups"] == ["4v4"]
     assert captured["env_config"].num_ships == 8
     assert captured["num_envs"] == 1024
+
+
+def test_elo_calibration_adapter_passes_explicit_agent_fields(monkeypatch) -> None:
+    captured = {}
+    monkeypatch.setattr(cli_commands, "_prepare_execution", lambda args: "cpu")
+    monkeypatch.setattr(
+        cli_commands,
+        "run_elo_calibrate_mode",
+        lambda **kwargs: captured.update(kwargs),
+    )
+    cli_commands.execute(
+        "elo-calibrate",
+        _parse(["elo-calibrate", "--agents", "scripted", "random"]),
+    )
+    assert captured["run_spec"] is None
+    assert captured["agent_specs"] == ["scripted", "random"]
+    assert captured["env_config"].num_ships == 8
+
+
+def test_ar_report_adapter_owns_one_canonical_4v4_scenario(monkeypatch) -> None:
+    calls = []
+    monkeypatch.setattr(cli_commands, "_prepare_execution", lambda args: "cpu")
+    monkeypatch.setattr(
+        cli_commands,
+        "run_canonical_ar_report_mode",
+        lambda **kwargs: calls.append(kwargs),
+    )
+    cli_commands.execute(
+        "ar-report",
+        _parse(["ar-report", "--team0", "scripted", "--team1", "random"]),
+    )
+    assert len(calls) == 1
+    assert calls[0]["num_steps"] == 512
 
 
 @pytest.mark.parametrize(

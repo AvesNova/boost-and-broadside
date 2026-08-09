@@ -21,6 +21,7 @@ import numpy as np
 import torch
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, RewardConfig, ShipConfig
+from boost_and_broadside.constants import DEFAULT_MAX_BULLETS_PER_SHIP
 from boost_and_broadside.env.observation import YemongObservation
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.evaluation.agents import (
@@ -39,6 +40,40 @@ TEAM_DOT_COLORS = ["blue", "red"]  # team0=blue, team1=red
 METHOD_COLORS = {"gt": "black", "cl": "orange", "ol": "green"}
 
 History = list[dict[str, torch.Tensor]]
+
+
+def run_canonical_ar_report_mode(
+    team0_spec: str,
+    team1_spec: str,
+    num_steps: int,
+    ship_config: ShipConfig,
+    rewards: RewardConfig,
+    model_config: ModelConfig,
+    device: str,
+    checkpoint_dir: str = "checkpoints",
+) -> None:
+    """Run the one canonical AR report: a 4v4 diagnostic.
+
+    The CLI owns subjects and budget only. Keeping the scenario here prevents
+    adapters from silently restoring the retired 2v2/1v1 report pair.
+    """
+
+    run_ar_report_mode(
+        team0_spec=team0_spec,
+        team1_spec=team1_spec,
+        num_steps=num_steps,
+        ship_config=ship_config,
+        env_config=EnvConfig(
+            num_ships=8,
+            max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
+            max_episode_steps=num_steps,
+        ),
+        rewards=rewards,
+        model_config=model_config,
+        device=device,
+        checkpoint_dir=checkpoint_dir,
+        out_dir="docs/ar_report/4v4",
+    )
 
 
 def run_ar_report_mode(

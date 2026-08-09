@@ -5,7 +5,8 @@ import json
 import numpy as np
 import pytest
 
-from boost_and_broadside.config import EloCalibrateConfig, ShipConfig
+from boost_and_broadside.config import EloCalibrateConfig, EnvConfig, ShipConfig
+from boost_and_broadside.config.defaults import MODEL_CONFIG
 from boost_and_broadside.modes.elo_calibrate import (
     SCRIPTED_ANCHOR_ELO,
     calibrate_live_curve,
@@ -227,6 +228,25 @@ class TestRefit:
             by_label = {p["label"]: p["calibrated_elo"] for p in result["players"]}
             gaps.append(by_label["ckpt_100"] - by_label["random"])
         assert gaps[0] == pytest.approx(gaps[1], abs=2.0)
+
+
+def test_arbitrary_agent_calibration_has_no_run_and_owns_its_result(tmp_path) -> None:
+    result = run_elo_calibrate_mode(
+        run_spec=None,
+        agent_specs=["random", "scripted"],
+        ship_config=ShipConfig(),
+        model_config=MODEL_CONFIG,
+        env_config=EnvConfig(num_ships=8, max_bullets=4, max_episode_steps=1),
+        device="cpu",
+        config=EloCalibrateConfig(num_envs=2, target_stderr=1_000_000, max_batches=1),
+        plot=False,
+        artifact_root=tmp_path / "artifacts",
+    )
+    assert result["run"] is None
+    assert result["agent_specs"] == ["random", "scripted"]
+    assert result["anchor"] == "scripted"
+    outputs = list((tmp_path / "artifacts" / "elo-calibration").glob("*/result.json"))
+    assert len(outputs) == 1
 
 
 class TestBuildPlayersField:

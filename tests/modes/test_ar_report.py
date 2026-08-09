@@ -8,12 +8,33 @@ refactor that split them out of the monolithic function cannot silently change t
 
 import numpy as np
 
+from boost_and_broadside.config import ShipConfig
+from boost_and_broadside.config.defaults import MODEL_CONFIG, REWARDS
+from boost_and_broadside.modes import ar_report
 from boost_and_broadside.modes.ar_report import (
     _calc_toroidal_euclidean,
     _clamp_alive_prob,
     _toroidal_center_of_mass,
     _unwrap_1d,
 )
+
+
+def test_canonical_ar_mode_owns_one_4v4_scenario(monkeypatch) -> None:
+    captured = {}
+    monkeypatch.setattr(ar_report, "run_ar_report_mode", lambda **kwargs: captured.update(kwargs))
+
+    ar_report.run_canonical_ar_report_mode(
+        "scripted",
+        "random",
+        12,
+        ShipConfig(),
+        REWARDS,
+        MODEL_CONFIG,
+        "cpu",
+    )
+    assert captured["env_config"].num_ships == 8
+    assert captured["env_config"].max_episode_steps == 12
+    assert captured["out_dir"] == "docs/ar_report/4v4"
 
 
 def test_unwrap_1d_makes_boundary_crossing_continuous():

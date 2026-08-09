@@ -54,6 +54,7 @@ def _policy_agent(reads_bullets: bool = True, paradigm: str = "ego_pass", record
         model_config=model_config,
         ship_config=SHIP_CONFIG,
         env_config=ENV_CONFIG,
+        field_map_config=None,
         num_value_components=3,
         team_pma_k=(),
         paradigm=paradigm,

@@ -24,7 +24,7 @@ SCRIPTED_ANCHOR_ELO (see that constant for why). Because the raw win/tie
 matrices are persisted, ``refit=True`` reruns every fit and artifact from the
 stored counts without playing a single game.
 
-Writes to the run's checkpoint directory:
+Run calibration writes to the run's checkpoint directory:
     elo_calibrated.json      ratings, per-update curve, batch stats, and the raw
                              win/tie matrices, so any later refit needs no replay
     elo_calibration/*.png    live curve vs in-training, the two draw conventions,
@@ -32,15 +32,28 @@ Writes to the run's checkpoint directory:
     elo_calibration/         the calibrated ratings in the W&B export format
       history.jsonl,           (see modes/elo_calibrate_history.py), so one loader
       summary.json             reads them alongside the run's in-training history
+
+An explicit ``--agents`` field has no owning run, so its measurement is written
+under ``artifacts/elo-calibration/`` until S09 replaces this transitional location
+with the versioned artifact store.
 """
 
+import hashlib
 import json
 from pathlib import Path
 
 import numpy as np
 
-from boost_and_broadside.config import EloCalibrateConfig, ShipConfig
-from boost_and_broadside.evaluation.agents import ResolvedAgent
+from boost_and_broadside.config import EloCalibrateConfig, EnvConfig, ModelConfig, ShipConfig
+from boost_and_broadside.evaluation.agents import (
+    ResolvedAgent,
+    agents_read_bullets,
+    resolve_agent_spec,
+)
+from boost_and_broadside.evaluation.environment import (
+    create_evaluation_field_map,
+    resolve_evaluation_environment,
+)
 from boost_and_broadside.evaluation.run_catalog import resolve_exact_run
 from boost_and_broadside.evaluation.tournament import (
     TIE_MODES,
@@ -221,16 +234,60 @@ def _load_stored_result(run_dir: Path) -> dict:
     return json.loads(path.read_text())
 
 
+def build_arbitrary_players(
+    agent_specs: list[str],
+    ship_config: ShipConfig,
+    model_config: ModelConfig,
+    num_ships: int,
+    device: str,
+    checkpoint_dir: str,
+) -> list[Player]:
+    """Resolve an explicit stationary calibration field without a training run."""
+
+    labels = [Path(spec).stem if spec.endswith(".pt") else spec for spec in agent_specs]
+    duplicates = sorted({label for label in labels if labels.count(label) > 1})
+    if duplicates:
+        raise ValueError(f"calibration agents resolve to duplicate label {duplicates[0]!r}")
+
+    players: list[Player] = []
+    for spec, label in zip(agent_specs, labels, strict=True):
+        agent = resolve_agent_spec(
+            spec,
+            ship_config,
+            model_config,
+            device,
+            checkpoint_dir,
+            num_ships=num_ships,
+        )
+        if agent.kind == "null":
+            raise ValueError("elo-calibrate does not support the interactive 'null' agent")
+        players.append(Player(label, agent, None, None))
+    return players
+
+
+def _agent_field_output(agent_specs: list[str], artifact_root: str | Path) -> Path:
+    """Give a no-run measurement durable ownership until S09 replaces this layout."""
+
+    recipe = "\0".join(agent_specs).encode()
+    field_id = hashlib.sha256(recipe).hexdigest()[:12]
+    return Path(artifact_root) / "elo-calibration" / f"agents-{field_id}" / "result.json"
+
+
 def run_elo_calibrate_mode(
-    run_spec: str,
+    run_spec: str | None,
     ship_config: ShipConfig,
     device: str,
     config: EloCalibrateConfig,
     checkpoint_dir: str = "checkpoints",
     plot: bool = True,
     refit: bool = False,
+    agent_specs: list[str] | None = None,
+    *,
+    model_config: ModelConfig | None = None,
+    env_config: EnvConfig | None = None,
+    artifact_root: str | Path = "artifacts",
 ) -> dict:
-    """Re-rate a finished run and write calibrated ratings, curve, and plots.
+    """Calibrate one finished run or an explicit arbitrary-agent field.
 
     With ``refit=True`` no game is played: the raw win/tie matrices persisted by
     a previous calibration are loaded and refit under the current reporting
@@ -238,12 +295,20 @@ def run_elo_calibrate_mode(
     fit reproduces the original; only downstream reporting can differ. This is
     the cheap path for a change of anchor or draw convention.
     """
+    if (run_spec is None) == (agent_specs is None):
+        raise ValueError("provide exactly one of run_spec or agent_specs")
+    if agent_specs is not None and refit:
+        raise ValueError("refit requires an exact run with stored match matrices")
+    if agent_specs is not None and (model_config is None or env_config is None):
+        raise ValueError("arbitrary-agent calibration requires model_config and env_config")
+
     progress = Progress()
     prior_games = config.prior_games
-    run_dir = resolve_exact_run(run_spec, checkpoint_dir).path
-    history_path = run_dir / "elo_history.jsonl"
+    run_dir = resolve_exact_run(run_spec, checkpoint_dir).path if run_spec is not None else None
+    history_path = None if run_dir is None else run_dir / "elo_history.jsonl"
 
     if refit:
+        assert run_dir is not None
         stored = _load_stored_result(run_dir)
         print(f"\n=== Elo refit from stored matrices (no play): {run_dir.name} ===")
         players = [
@@ -262,7 +327,7 @@ def run_elo_calibrate_mode(
             prior_games=prior_games,
         )
         progress.done(f"refit {len(players)} players from stored matrices")
-    else:
+    elif run_dir is not None:
         num_envs = config.num_envs
         roster_path = run_dir / "roster.json"
         if not roster_path.exists():
@@ -308,13 +373,55 @@ def run_elo_calibrate_mode(
         wins, ties = tournament.wins, tournament.ties
         directed_outcomes = tournament.directed_outcomes.tolist()
         target_stderr = config.target_stderr
+    else:
+        assert agent_specs is not None
+        assert env_config is not None
+        assert model_config is not None
+        players = build_arbitrary_players(
+            agent_specs,
+            ship_config,
+            model_config,
+            env_config.num_ships,
+            device,
+            checkpoint_dir,
+        )
+        evaluation_config, field_map_config = resolve_evaluation_environment(
+            env_config, [player.agent for player in players]
+        )
+        labels = ", ".join(player.label for player in players)
+        print(f"\n=== Elo calibration: explicit field ({labels}) ===")
+        tournament = Tournament(
+            players,
+            ship_config,
+            evaluation_config,
+            "ego_pass",
+            config.num_envs,
+            device,
+            include_bullets=agents_read_bullets(*(player.agent for player in players)),
+            field_map=(
+                None
+                if field_map_config is None
+                else create_evaluation_field_map(
+                    ship_config, evaluation_config, field_map_config, device
+                )
+            ),
+        )
+        anchor = next(
+            (index for index, player in enumerate(players) if player.label == "random"), 0
+        )
+        fit, stats, reference = run_tournament(tournament, anchor, config, progress)
+        wins, ties = tournament.wins, tournament.ties
+        directed_outcomes = tournament.directed_outcomes.tolist()
+        target_stderr = config.target_stderr
 
-    # Report on the scripted-anchored scale (scripted = 1000) while keeping the
-    # errors from the gauge that is actually resolved. The shift is a constant:
-    # it moves every rating together and cancels in any comparison between two
-    # of them.
-    scripted_index = next(i for i, p in enumerate(players) if p.label == "scripted")
-    shifted = fit.ratings - fit.ratings[scripted_index] + SCRIPTED_ANCHOR_ELO
+    # Report on the scripted-anchored scale (scripted = 1000) when it is in the
+    # field. Otherwise the fitted reference is zero. The shift is a constant:
+    # it moves every rating together and cancels in any comparison between two.
+    scripted_index = next((i for i, p in enumerate(players) if p.label == "scripted"), None)
+    reporting_index = reference if scripted_index is None else scripted_index
+    reporting_anchor = players[reporting_index].label
+    reporting_anchor_elo = 0.0 if scripted_index is None else SCRIPTED_ANCHOR_ELO
+    shifted = fit.ratings - fit.ratings[reporting_index] + reporting_anchor_elo
     ratings = {player.label: float(shifted[i]) for i, player in enumerate(players)}
     stderrs = {player.label: float(fit.stderr[i]) for i, player in enumerate(players)}
 
@@ -326,11 +433,11 @@ def run_elo_calibrate_mode(
     alt_fit = fit_bradley_terry(
         effective_wins(wins, ties, alt_mode), anchor=reference, prior_games=prior_games
     )
-    alt_shifted = alt_fit.ratings - alt_fit.ratings[scripted_index] + SCRIPTED_ANCHOR_ELO
+    alt_shifted = alt_fit.ratings - alt_fit.ratings[reporting_index] + reporting_anchor_elo
     alt_ratings = {player.label: float(alt_shifted[i]) for i, player in enumerate(players)}
 
     history = []
-    if history_path.exists():
+    if history_path is not None and history_path.exists():
         history = [json.loads(line) for line in history_path.read_text().splitlines() if line]
     progress.stage(f"refitting {len(history)} update records under both draw conventions...")
     curve = calibrate_live_curve(history, ratings, config.tie_mode)
@@ -345,7 +452,8 @@ def run_elo_calibrate_mode(
     progress.done(f"calibrated {len(curve)} live-curve points")
 
     result = {
-        "run": run_dir.name,
+        "run": None if run_dir is None else run_dir.name,
+        "agent_specs": agent_specs,
         "players": [
             {
                 "label": player.label,
@@ -378,26 +486,32 @@ def run_elo_calibrate_mode(
         # shifted so scripted reads SCRIPTED_ANCHOR_ELO. That shift is itself
         # uncertain by this much, in common across all of them; it cancels
         # between any two ratings.
-        "anchor": "scripted",
-        "anchor_elo": SCRIPTED_ANCHOR_ELO,
-        "anchor_offset_stderr": float(fit.stderr[scripted_index]),
+        "anchor": reporting_anchor,
+        "anchor_elo": reporting_anchor_elo,
+        "anchor_offset_stderr": float(fit.stderr[reporting_index]),
     }
     if directed_outcomes is not None:  # absent from results stored before it existed
         result["directed_outcomes"] = directed_outcomes
-    output = run_dir / "elo_calibrated.json"
+    output = (
+        run_dir / "elo_calibrated.json"
+        if run_dir is not None
+        else _agent_field_output(agent_specs or [], artifact_root)
+    )
+    output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, indent=2))
     progress.done(f"wrote {output}")
 
     # Also leave the calibrated ratings in the W&B export format, so the same
     # loader and chart system can read them alongside the run's in-training
     # history without reshaping either.
-    from boost_and_broadside.modes.elo_calibrate_history import write_chart_data
+    if run_dir is not None:
+        from boost_and_broadside.modes.elo_calibrate_history import write_chart_data
 
-    for path in write_chart_data(result, run_dir):
-        progress.done(f"wrote {path}")
+        for path in write_chart_data(result, run_dir):
+            progress.done(f"wrote {path}")
 
     _print_summary(result)
-    if plot:
+    if plot and run_dir is not None:
         from boost_and_broadside.modes.elo_calibrate_plots import write_plots
 
         progress.stage("rendering plots...")
@@ -439,15 +553,18 @@ def _print_summary(result: dict) -> None:
         f" Random reads {random_rating:.0f} on this scale." if random_rating is not None else ""
     )
     print(
-        f"\n  Errors are relative to '{result['reference']}'. Ratings are shifted so the "
-        f"scripted\n  controller reads {result['anchor_elo']:.0f}; that shift is uncertain by "
+        f"\n  Errors are relative to '{result['reference']}'. Ratings are shifted so "
+        f"'{result['anchor']}'\n  reads {result['anchor_elo']:.0f}; that shift is uncertain by "
         f"+/-{result['anchor_offset_stderr']:.0f} in common across\n  every rating above and "
-        f"cancels whenever two are compared.{random_text}\n  Random's own link to the field is "
-        "coarse because every trained agent beats it\n  decisively — nothing plays near its "
-        "level, so those games say little however\n  they are scored. The live curve does not "
-        "have this problem: early in training\n  it drew against random constantly, and draws "
-        "are informative."
+        f"cancels whenever two are compared.{random_text}"
     )
+    if result["anchor"] == "scripted":
+        print(
+            "  Random's own link to the field is coarse because every trained agent beats it\n"
+            "  decisively — nothing plays near its level, so those games say little however\n"
+            "  they are scored. The live curve does not have this problem: early in training\n"
+            "  it drew against random constantly, and draws are informative."
+        )
     # Spacing is the part a shared offset cannot flatter, so report it directly.
     # Random is excluded: the step from it to the first rung is the coarse anchor
     # link, not a rung-to-rung gap, and listing it here would read as one.
