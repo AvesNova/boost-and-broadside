@@ -36,9 +36,9 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: `S07` — shared/CLI/smoke gate review.
-- Next section: none until S07 completes.
-- Blocking issue: none.
+- Active section: none; S07 integration review is complete.
+- Next section: `S07R` — shared/CLI/smoke gate remediation and independent re-review.
+- Blocking issue: nine S07 findings require S07R before S08.
 - Landmark migration: scheduled for `S15`, after all target schemas stabilize.
 
 ## Sequential queue
@@ -53,7 +53,8 @@ code, tests, and reader-facing documentation.
 | S04 | 2 | completed | evaluation refactorer | Sol / high | Extract typed sizes, run catalog, match/environment, and tournament engines |
 | S05 | 3 | completed | CLI engineer | Sol / high | Replace `main.py --mode` with the strict installed `bnb` subcommand CLI |
 | S06 | 4 | completed | smoke/test engineer | Sol / high | Build synthetic checkpoint fixtures and fully isolated sequential subprocess smoke coverage |
-| S07 | 2–4 gate | in_progress | integration reviewer | Sol / extra high | Review shared engines, CLI contracts, smoke isolation, and behavior preservation |
+| S07 | 2–4 gate | completed | integration reviewer | Sol / extra high | Review shared engines, CLI contracts, smoke isolation, and behavior preservation |
+| S07R | 2–4 gate remediation | pending | integration remediator + reviewer | Sol / extra high | Close S07 blockers and obtain an independent shared/CLI/smoke re-review |
 | S08 | 5 | pending | mode consolidation engineer | Terra / high | Consolidate training, retire modes/flags, and fix field-capable evaluation |
 | S09 | 6 | pending | artifact/publication architect | Sol / extra high | Implement artifacts, provenance, raw samples, publication manifest, and offline render checks |
 | S10 | 6 gate | pending | artifact reviewer | Sol / extra high | Review schemas, identity, atomicity, resume, Git-ignore safety, and offline publication |
@@ -270,6 +271,38 @@ Review S04–S06 for behavior preservation, strict CLI failure behavior, packagi
 isolation, fixture fidelity, test gaps, and forbidden cross-mode dependencies.
 
 Done when: no blocking findings remain and the full smoke/test/lint milestone is green.
+
+### S07R — Shared/CLI/smoke gate remediation and re-review
+
+Agent: integration remediator plus an independent review owner, Sol extra high.
+
+Steps:
+
+1. Make Elo-scale construct one player/metadata record for the final checkpoint whether or not that
+   step is already a roster ladder milestone; cover a valid run whose final step is absent from the
+   roster.
+2. Resolve roster-declared tournament checkpoints strictly within the selected exact run and
+   validate their recorded identity/step instead of accepting an existing foreign path.
+3. Put complete resolved-config drift enforcement on full resume, keep documented BC-to-RL
+   pretraining possible, and exercise both real loader methods rather than only the helper.
+4. Validate resume and pretraining subjects before trainer/device allocation; reject magic/path-like
+   run subjects and malformed matchups at parsing or the typed mode boundary instead of skipping.
+5. Translate expected print-config, checkpoint, and runtime input failures into concise CLI errors
+   without tracebacks, while preserving unexpected internal failures; add corrupt-input and invalid
+   print-config coverage and make the printed launch honest about its validated execution settings.
+6. Make smoke isolation detect writes outside each case root, ignored writes to real output roots,
+   and checkout changes on every success/failure/timeout path; redirect mutable home/cache state and
+   terminate complete subprocess trees on timeout, including capture's ffmpeg child.
+7. Build the synthetic ladder checkpoint with the production policy-only payload, test every fixture
+   checkpoint family, and exercise the registered CLI handler/adapter wiring end to end (or with an
+   equivalent subprocess integration seam) rather than proving only command-name equality.
+8. Make Ruff reproducible without the ignored local `wandb/` directory, remove the four committed
+   EOF whitespace errors, and run focused tests, full pytest, full smoke, clean-archive Ruff, range
+   whitespace, wheel/installed-help checks, and an independent re-review.
+
+Done when: every S07 finding is closed by regression coverage, the checks are reproducible from a
+clean archive/checkout, and the independent reviewer reports no remaining blocker. S08 remains
+pending until this row is completed.
 
 ### S08 — Mode consolidation
 
@@ -727,6 +760,89 @@ Each section appends its record below when it completes. Do not replace earlier 
 - Remaining risks or required follow-up: S07 is the next authorized integration review. The capture
   smoke case exercises the existing external ffmpeg runtime dependency and will fail loudly where
   ffmpeg is unavailable. S09 must add publication implementation and its separate offline checks.
+
+### S07 handoff
+
+- Status: completed; blocking findings require S07R before S08
+- Agent/model/effort: integration reviewer with independent S04, S05, and S06 audit tracks /
+  `gpt-5.6-sol` / extra high
+- Commit(s) reviewed: `3cac020`, `d41f340`, `0735f70`, `21bbf84`, `63baa0d`,
+  `0bd735a`, `02271a4`, `2fc844e`, `ff26dab`, and `f8d9f4c` in committed range
+  `c778ef5..f8d9f4c`; `c621f63` marked S07 active, followed by this review-ledger commit
+- Tests/checks and results: `.venv/bin/pytest -q` (715 passed, 6 skipped); isolated
+  `.venv/bin/bnb smoke` (all 14 sequential cases passed); local `.venv/bin/ruff check .`
+  (passed), but Ruff against a clean `git archive f8d9f4c` failed I001 at
+  `train/rl/logging.py:324` because the working checkout's ignored `wandb/` directory changes import
+  classification; `git diff --check c778ef5..f8d9f4c` failed on four extra EOF blank lines; wheel
+  build with a temporary UV cache succeeded and an unpacked wheel printed installed `bnb --help`
+  from outside the checkout; exact-run, provenance, loader-ordering, CLI-error, fixture, and smoke
+  escape/timeout probes recorded below
+- Behavior/config changes: review made no product-code or configuration change. Full tests and the
+  happy-path smoke matrix remain green, but the negative-path probes demonstrate unsafe resume,
+  evaluation, CLI, and isolation behavior that prevents approval.
+- Files/artifacts produced: ledger updates only; wheel, clean archive, installed-package unpack,
+  synthetic runs, and all direct probes were temporary under `/tmp`
+- Decisions/deviations from plan: S07 does not approve the shared/CLI/smoke gate. S07R is inserted
+  immediately after this section and S08 plus every later primary section remain pending.
+- Review findings addressed: none; review agents did not edit product code
+- Blocking findings:
+  1. `build_players` appends the numerically final checkpoint as `ckpt_<step>` when that step is not
+     already a roster milestone (`evaluation/tournament.py:263`), and Elo-scale appends the same
+     checkpoint again as `final` (`modes/elo_scale.py:165`) while metadata contains only `final`
+     (`modes/elo_scale.py:131`). A synthetic valid run with no final-step ladder entry failed at
+     `run_elo_scale_mode` (`modes/elo_scale.py:339`) with `loaded tournament field does not match
+     stored metadata`. S06's fixture masks the defect by making its ladder and final step identical.
+  2. Exact-run ladder selection accepts `Path(entry["path"])` whenever that foreign path exists
+     (`evaluation/run_catalog.py:123`); Elo-scale repeats the rule in `_checkpoint_path`
+     (`modes/elo_scale.py:124`). A probe for exact run `exact/` selected `other/foreign.pt`, so a
+     copied/stale roster can silently evaluate another run and invalidate subject provenance. No
+     test asserts containment, step identity, or recorded file identity.
+  3. Complete resolved-config drift enforcement is attached to `load_pretrained_weights`
+     (`train/rl/checkpoint.py:501`) rather than `load_checkpoint` (`checkpoint.py:539`). A
+     BC-fingerprinted full checkpoint resumed into an RL-fingerprinted trainer with drift disabled,
+     while the documented BC-to-RL pretraining handoff was rejected for the same fingerprint
+     difference. Tests at `tests/train/test_checkpoint.py:278` call only the helper and never either
+     loader method.
+  4. `_train` constructs `PPOTrainer` before resolving `--pretrain-from`
+     (`cli_commands.py:128`). A missing-path probe reported
+     `TRAINER_CONSTRUCTED_BEFORE_PRETRAIN_VALIDATION=True`; the real constructor can allocate field
+     maps, environments, policy/optimizer state, and rollout buffers before rejecting invalid input.
+     The existing stub test uses an already present file and does not cover ordering.
+  5. Strict CLI validation and failure translation are incomplete. The print-config path is outside
+     the error-translation block (`cli.py:404`): an invalid aligned `--num-envs 3872` exited 1 with a
+     full traceback, and corrupt explicit checkpoints can leak loader exceptions. `--resume latest`
+     and `--resume none` also parse and exit 0 when combined with `--print-config`, despite D13's
+     parser-error contract, while invalid device/execution settings are neither validated nor shown
+     by the purported complete printed launch. Tests cover one runtime `ValueError` and successful
+     print-config only (`tests/test_cli.py:184`).
+  6. The typed matchup contract is undone by `run_collect_stats_mode`, which catches
+     `MatchupParseError`, prints `Skipping`, and returns success (`modes/collect.py:43`). Installed
+     `bnb collect-stats --team0 scripted --team1 random --sizes 0v4 --device cpu` exited 0 without
+     running a game. This violates the plan's reject-rather-than-skip rule and has no CLI/mode
+     regression test.
+  7. Smoke isolation observes only descendants of the case root (`smoke.py:310`) and ordinary Git
+     status/diff (`smoke.py:632`), so a sibling escape and an ignored real `checkpoints/escaped.pt`
+     both went undetected. Timeout/isolation exceptions continue before the checkout comparison
+     (`smoke.py:690`); a temp-repository probe changed a tracked file, raised `TimeoutExpired`, and
+     left `TIMEOUT_CHANGE_SURVIVED=True`. The child is not placed in a process group, so a timeout
+     also need not terminate capture's ffmpeg descendant. Existing tests create only an unexpected
+     child inside the root and a PNG inside artifacts.
+  8. The synthetic ladder writes the full resume payload (`smoke.py:245` and `smoke.py:272`) instead
+     of production's policy-only ladder provenance: the direct probe reported identical ladder/step
+     key sets and `LADDER_HAS_OPTIMIZER=True`. Smoke tests inspect only the resumable checkpoint.
+     In addition, cases branch directly to mode functions (`smoke.py:387`) rather than invoking the
+     registered CLI handlers; the registry test proves only equal command-name sets, so adapter
+     wiring can regress while every smoke case remains green.
+  9. The committed milestone is not cleanly reproducible. Ruff passes only while the ignored local
+     top-level `wandb/` makes `wandb` look first-party; a clean archive fails the pre-existing import
+     block at `src/boost_and_broadside/train/rl/logging.py:324`. Range whitespace verification exits
+     2 for extra EOF blank lines in `evaluation/__init__.py`, `evaluation/sizes.py`,
+     `tests/evaluation/test_sizes.py`, and `tests/evaluation/test_tournament.py`, contrary to the S04
+     handoff's recorded green check.
+- Remaining risks or required follow-up: S07R must close all nine findings and receive independent
+  re-review before S08 begins. S08 still owns the planned mode consolidation/retirements and field
+  threading; S09 and later sections retain their existing artifact, training, migration, and
+  publication scopes.
 
 ### Future handoff template
 
