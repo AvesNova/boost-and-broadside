@@ -175,7 +175,7 @@ def test_fingerprints_are_canonical_and_separate_intent_from_launch() -> None:
     base = resolve_profile(PROFILES["rl"])
     overridden = resolve_profile(
         PROFILES["rl"],
-        LaunchOverrides(num_envs=3872, microbatch_tokens=20_000),
+        LaunchOverrides(num_envs=1952, microbatch_tokens=20_000),
     )
 
     assert fingerprint({"b": 2, "a": 1}) == fingerprint({"a": 1, "b": 2})
@@ -274,7 +274,7 @@ def test_declarative_schedule_validation_and_boundaries() -> None:
 def test_resolution_tracks_sources_and_cli_overrides() -> None:
     resolved = resolve_profile(
         PROFILES["rl"],
-        LaunchOverrides(num_envs=3872, microbatch_tokens=20_000),
+        LaunchOverrides(num_envs=1952, microbatch_tokens=20_000),
     )
 
     assert resolved.value_sources["train_config.scales.0.num_envs"] == "cli"
@@ -282,10 +282,10 @@ def test_resolution_tracks_sources_and_cli_overrides() -> None:
     assert resolved.value_sources["train_config.gamma"] == "derived"
     assert resolved.value_sources["train_config.component_gammas.ally_win"] == "derived"
     assert resolved.value_sources["model_config.d_model"] == "profile"
-    assert resolved.train_config.scales[0].num_envs == 3872
+    assert resolved.train_config.scales[0].num_envs == 1952
     assert resolved.train_config.microbatch_tokens == 20_000
 
-    document = json.loads(format_resolved_profile("rl", LaunchOverrides(3872, 20_000)))
+    document = json.loads(format_resolved_profile("rl", LaunchOverrides(1952, 20_000)))
 
     def leaves(value, prefix=""):
         if isinstance(value, dict):
@@ -333,6 +333,12 @@ def test_num_envs_override_recomputes_shards_at_fixed_logical_batch() -> None:
     assert effective_batch_tokens(half_width) == effective_batch_tokens(baseline)
     assert half_width.value_sources["train_config.scales.0.num_envs"] == "cli"
     assert half_width.value_sources["train_config.rollouts_per_update"] == "derived"
+
+
+@pytest.mark.parametrize("num_envs", (3872, 7776, 23_040))
+def test_num_envs_override_rejects_width_that_changes_logical_batch(num_envs: int) -> None:
+    with pytest.raises(ValueError, match="fixed logical batch"):
+        resolve_profile(PROFILES["rl"], LaunchOverrides(num_envs=num_envs))
 
 
 def test_equal_explicit_values_keep_value_fingerprint_but_record_cli_source() -> None:

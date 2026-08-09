@@ -60,15 +60,15 @@ def derive_aligned_num_envs(
 
 def derive_rollouts_per_update(
     *,
-    logical_batch_tokens: int,
+    aligned_logical_batch_tokens: int,
     num_envs: int,
     entity_tokens: int,
     num_steps: int,
 ) -> int:
-    """Choose the shard count closest to a profile's nominal logical batch."""
+    """Preserve an aligned logical batch with an integer rollout-shard count."""
 
     for name, value in (
-        ("logical_batch_tokens", logical_batch_tokens),
+        ("aligned_logical_batch_tokens", aligned_logical_batch_tokens),
         ("num_envs", num_envs),
         ("entity_tokens", entity_tokens),
         ("num_steps", num_steps),
@@ -76,11 +76,11 @@ def derive_rollouts_per_update(
         if value < 1:
             raise ValueError(f"{name} must be positive, got {value}")
     rollout_tokens = num_envs * entity_tokens * num_steps
-    quotient, remainder = divmod(logical_batch_tokens, rollout_tokens)
-    rollouts_per_update = quotient + int(remainder * 2 >= rollout_tokens)
-    if rollouts_per_update < 1:
+    rollouts_per_update, remainder = divmod(aligned_logical_batch_tokens, rollout_tokens)
+    if remainder or rollouts_per_update < 1:
         raise ValueError(
-            "resolved rollout width exceeds the nominal logical batch token budget"
+            f"num_envs={num_envs} cannot preserve the fixed logical batch of "
+            f"{aligned_logical_batch_tokens} entity tokens with an integer shard count"
         )
     return rollouts_per_update
 
@@ -313,9 +313,25 @@ def resolve_profile(
             num_steps=rollout.num_steps,
             num_minibatches=rollout.num_minibatches,
         )
+        if rollout.logical_batch_tokens % launch.rollout_tokens:
+            raise ValueError("logical_batch_tokens must be divisible by rollout_tokens")
+        default_rollouts_per_update = rollout.logical_batch_tokens // launch.rollout_tokens
     else:
         assert launch.num_envs is not None
         default_num_envs = launch.num_envs
+        default_rollout_tokens = default_num_envs * entity_tokens * rollout.num_steps
+        if rollout.logical_batch_tokens % default_rollout_tokens:
+            raise ValueError(
+                "logical_batch_tokens must be divisible by the fixed-environment rollout size"
+            )
+        default_rollouts_per_update = rollout.logical_batch_tokens // default_rollout_tokens
+
+    aligned_logical_batch_tokens = (
+        default_num_envs
+        * entity_tokens
+        * rollout.num_steps
+        * default_rollouts_per_update
+    )
 
     if launch.microbatches_per_minibatch is not None:
         if launch.rollout_tokens is None:
@@ -334,7 +350,7 @@ def resolve_profile(
 
     num_envs = overrides.num_envs if overrides.num_envs is not None else default_num_envs
     rollouts_per_update = derive_rollouts_per_update(
-        logical_batch_tokens=rollout.logical_batch_tokens,
+        aligned_logical_batch_tokens=aligned_logical_batch_tokens,
         num_envs=num_envs,
         entity_tokens=entity_tokens,
         num_steps=rollout.num_steps,
