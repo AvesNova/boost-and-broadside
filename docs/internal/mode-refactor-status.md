@@ -36,9 +36,9 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: `S07R` — shared/CLI/smoke gate remediation and independent re-review.
-- Next section: none until S07R completes.
-- Blocking issue: nine S07 findings require S07R before S08.
+- Active section: none; `S07R` is completed.
+- Next section: `S08` — mode consolidation.
+- Blocking issue: none.
 - Landmark migration: scheduled for `S15`, after all target schemas stabilize.
 
 ## Sequential queue
@@ -54,7 +54,7 @@ code, tests, and reader-facing documentation.
 | S05 | 3 | completed | CLI engineer | Sol / high | Replace `main.py --mode` with the strict installed `bnb` subcommand CLI |
 | S06 | 4 | completed | smoke/test engineer | Sol / high | Build synthetic checkpoint fixtures and fully isolated sequential subprocess smoke coverage |
 | S07 | 2–4 gate | completed | integration reviewer | Sol / extra high | Review shared engines, CLI contracts, smoke isolation, and behavior preservation |
-| S07R | 2–4 gate remediation | in_progress | integration remediator + reviewer | Sol / extra high | Close S07 blockers and obtain an independent shared/CLI/smoke re-review |
+| S07R | 2–4 gate remediation | completed | integration remediator + reviewer | Sol / extra high | Close S07 blockers and obtain an independent shared/CLI/smoke re-review |
 | S08 | 5 | pending | mode consolidation engineer | Terra / high | Consolidate training, retire modes/flags, and fix field-capable evaluation |
 | S09 | 6 | pending | artifact/publication architect | Sol / extra high | Implement artifacts, provenance, raw samples, publication manifest, and offline render checks |
 | S10 | 6 gate | pending | artifact reviewer | Sol / extra high | Review schemas, identity, atomicity, resume, Git-ignore safety, and offline publication |
@@ -843,6 +843,50 @@ Each section appends its record below when it completes. Do not replace earlier 
   re-review before S08 begins. S08 still owns the planned mode consolidation/retirements and field
   threading; S09 and later sections retain their existing artifact, training, migration, and
   publication scopes.
+
+### S07R handoff
+
+- Status: completed
+- Agent/model/effort: integration remediator plus independent read-only reviewer /
+  `gpt-5.6-sol` / extra high
+- Commit(s): `e76aa38` — mark S07R active; `4243c55` — close the nine shared/CLI/smoke
+  blockers; `a13a94b` — harden independently identified device and checkpoint error boundaries;
+  `04d97cb` — validate checkpoint state mappings; followed by this status-only closure commit
+- Tests/checks and results: all nine negative probes reproduced before remediation; focused
+  checkpoint/CLI tests passed (108 passed, 2 skipped); final full `.venv/bin/pytest -q` passed
+  (742 passed, 6 skipped); `.venv/bin/bnb smoke` passed all 14 isolated cases and reported the
+  checkout unchanged; local and clean-archive Ruff passed; `git diff --check c778ef5..04d97cb`
+  passed; a wheel built successfully, contained `execution.py` and the `bnb` entry point, and its
+  unpacked package printed `bnb --help` outside the checkout. The independent reviewer separately
+  passed a 184-test focused suite (2 skipped), the full suite (742 passed, 6 skipped), all 14 smoke
+  cases, clean-archive Ruff/wheel/help, range whitespace, and direct invalid-subject probes, then
+  reported no remaining blocker.
+- Behavior/config changes: intended strict behavior changes only: Elo-scale uses one verified final
+  policy; roster ladders cannot escape or misidentify the exact run; full resume enforces complete
+  resolved-config provenance while BC-to-RL pretraining remains allowed; invalid subjects,
+  matchups, devices, corrupt checkpoints, and incompatible checkpoint state fail concisely before
+  expensive allocation. Printed resolved config now includes validated execution settings. No
+  profile source or resolved training value changed, and the S01 behavior/config characterizations
+  remain exact.
+- Files/artifacts produced: shared evaluation/CLI/checkpoint/smoke code and regression tests;
+  `src/boost_and_broadside/execution.py` centralizes validated execution settings. Clean archive,
+  wheel, unpacked-package, synthetic-run, and probe artifacts were temporary under `/tmp`; the
+  build backend's inspected checkout-local `build/` output was removed.
+- Decisions/deviations from plan: roster entries are portable basenames resolved only beneath the
+  selected run; a true final checkpoint replaces a same-step ladder entry and keeps the `final`
+  identity; smoke fixtures use a policy-only ladder at a distinct step, traverse the registered CLI
+  adapter exactly once, redirect mutable home/cache state, compare sibling/ignored output and Git
+  state on every exit path, and terminate the subprocess process group on timeout. Independent
+  review added availability/index checks for supported device backends plus narrow normalization of
+  malformed state-dict inputs without widening the global exception catch.
+- Review findings addressed: all nine S07 blockers, plus the independent follow-up findings for
+  unavailable non-CUDA backends, incompatible loadable state dictionaries, and non-mapping state
+  payloads. Final independent disposition: no blocking findings remain in
+  `c8e3c04..04d97cb`; S07R is ready to close.
+- Remaining risks or required follow-up: accelerator-positive execution paths were reviewed
+  statically on a CPU-only host; CUDA/MPS/XPU hardware was unavailable. Real ffmpeg capture passed;
+  forced process-tree timeout behavior is covered by focused tests. S08 remains the next authorized
+  section and was not begun.
 
 ### Future handoff template
 
