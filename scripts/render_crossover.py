@@ -1,6 +1,6 @@
 """Render the policy-vs-scripted crossover figures from crossover.json.
 
-Two views of the same data (produced by ``--mode crossover``):
+Two views of the same data (produced by ``bnb crossover``):
   phase   — a square phase diagram: policy-controlled ships on x, scripted-controlled
             ships on y, with the win/lose boundary against the equal-count parity line.
   ratio   — scripted-controlled ships beaten per policy-controlled ship.

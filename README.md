@@ -95,17 +95,17 @@ schema and are not loadable by this version. After cloning:
 git lfs pull   # fetch reference checkpoints (skip if training from scratch)
 uv sync
 
-# Small no-W&B training crash test
-uv run main.py --mode rl --smoke
+# Resolve and inspect the RL launch without allocating the trainer
+uv run bnb train --profile rl --print-config
 
-# The same end-to-end crash test with four refractive fields
-uv run main.py --mode rl_fields --smoke
+# Inspect the independent refractive-field profile
+uv run bnb train --profile rl-fields --print-config
 
 # Play a 1v1 match against a null ship in four refractive fields
-uv run main.py --mode play
+uv run bnb play
 
 # Human vs a newly trained current-schema checkpoint (WASD, Shift, Space)
-uv run main.py --mode watch --team1 checkpoints/<run>/<checkpoint>.pt
+uv run bnb watch --team0 null --team1 checkpoints/<run>/<checkpoint>.pt
 ```
 
 Training is designed for CUDA hardware; the simulator and test suite also run on CPU.

@@ -1,6 +1,6 @@
 # Getting started
 
-This guide covers installation, the main entry point, common workflows, and development
+This guide covers installation, the installed CLI, common workflows, and development
 checks. For the game itself, continue to [environment and physics](environment.md); for the
 learning setup, see [training](training.md).
 
@@ -29,14 +29,16 @@ git lfs pull
 uv sync
 ```
 
-All Python commands use the single repository entry point:
+The project installs one `bnb` executable:
 
 ```bash
-uv run main.py --help
+uv run bnb --help
 ```
 
 `uv run` keeps the environment aligned with the project's lockfile. The available modes
-and their arguments are defined in [`main.py`](../main.py).
+and their command-owned arguments are defined by
+[`boost_and_broadside.cli`](../src/boost_and_broadside/cli.py). Calling `bnb` without a
+subcommand prints help and performs no simulation or training.
 
 ## Verify the checkout
 
@@ -53,56 +55,64 @@ path.
 
 ```bash
 # Fixed play mode: one player ship vs one null ship, with four fields
-uv run main.py --mode play
+uv run bnb play
 
 # Human team 0 vs a newly trained current-schema checkpoint
-uv run main.py --mode watch --team1 checkpoints/<run>/<checkpoint>.pt
+uv run bnb watch --team0 null --team1 checkpoints/<run>/<checkpoint>.pt
 
 # Learned policy vs scripted controller
-uv run main.py --mode watch --team0 latest --team1 scripted
+uv run bnb watch --team0 checkpoints/<run>/<checkpoint>.pt --team1 scripted
 
 # Two views of the same learned weights in self-play
-uv run main.py --mode watch --team0 latest --team1 latest
+uv run bnb watch \
+  --team0 checkpoints/<run>/<checkpoint>.pt \
+  --team1 checkpoints/<run>/<checkpoint>.pt
 ```
 
 Play mode has no match timer and starts a new match as soon as either ship dies. The
 `Unlimited HP/PW` button in the upper-right corner toggles full health and power for both
 ships. Human controls are WASD for flight, Shift for sharp turns, and Space to shoot. Agent specs
 accepted by `--team0` and `--team1` include `null` (human in watch mode), `random`,
-`scripted`, `latest`, a checkpoint path, and the named scripted controllers listed by
-`main.py --help`.
+`scripted`, an explicit checkpoint path, and the named scripted controllers listed by
+`bnb watch --help`. There is no implicit or `latest` checkpoint selection.
 
 ## Train
 
-Start with the smoke path after changing code or configuration:
+Resolve a launch before constructing the trainer:
 
 ```bash
-uv run main.py --mode rl --smoke
+uv run bnb train --profile rl --print-config
 ```
 
-Smoke mode uses four environments, disables W&B and compilation, and stops after a few
-updates. It is a crash test, not a meaningful experiment.
+The printed document includes the complete configuration, its semantic and launch
+fingerprints, and the source of every resolved value. `--num-envs` and
+`--microbatch-tokens` are explicit launch overrides and are validated before printing.
 
 Production entry points:
 
 ```bash
 # Recurrent PPO from scratch
-uv run main.py --mode rl
+uv run bnb train --profile rl
 
 # Full-size run without W&B
-uv run main.py --mode rl --no-wandb
+uv run bnb train --profile rl --no-wandb
 
 # Warm-start policy/scaler weights; optimizer starts fresh
-uv run main.py --mode rl \
-  --pretrain_from checkpoints/<run>/best_training.pt
+uv run bnb train --profile rl \
+  --pretrain-from checkpoints/<run>/best_training.pt
 
 # Restore a complete training state
-uv run main.py --mode rl --resume checkpoints/<run>/step_<N>.pt
+uv run bnb train --profile rl --resume checkpoints/<run>/step_<N>.pt
 
-# Behavior cloning, or cloning followed by RL in one process
-uv run main.py --mode bc
-uv run main.py --mode bc_warmstart
+# Behavior cloning, then an explicit RL warm-start when desired
+uv run bnb train --profile bc
+uv run bnb train --profile rl \
+  --pretrain-from checkpoints/<bc-run>/best_training.pt
 ```
+
+`--resume` and `--pretrain-from` are mutually exclusive. Resume always takes a value:
+either an explicit `.pt` path or an exact run name whose greatest numeric `step_*.pt`
+checkpoint should be selected. Training never defaults to RL.
 
 Training profiles live in
 [`src/boost_and_broadside/profiles/`](../src/boost_and_broadside/profiles/). Global ship, field,
@@ -141,31 +151,27 @@ rechecking capacity with [`benchmarks/bullet_throughput.py`](../benchmarks/bulle
 
 ```bash
 # Direct parallel matchup
-uv run main.py --mode collect_stats \
-  --team0 latest --team1 scripted --matchups 4v4 8v11
+uv run bnb collect-stats \
+  --team0 checkpoints/<run>/<checkpoint>.pt --team1 scripted --sizes 4v4 8v11
 
 # Post-hoc Elo calibration for a completed run
-uv run main.py --mode elo_calibrate \
+uv run bnb elo-calibrate \
   --run resilient-resonance-682
 
-# Refit the stored calibration matrices without replaying (CPU-only)
-uv run main.py --mode elo_calibrate \
-  --run resilient-resonance-682 --refit
-
 # Rate frozen checkpoints across symmetric fleet sizes (resumable)
-uv run main.py --mode elo_scale \
-  --run resilient-resonance-682 --team-counts 1,2,4,8,16,32,64
+uv run bnb elo-scale \
+  --run resilient-resonance-682 --sizes 1,2,4,8,16,32,64
 
 # Build the random-to-scripted reference ladder used to condition scale ratings
-uv run main.py --mode semi_random \
-  --run resilient-resonance-682 --team-counts 1,2,4,8,16,32,64
+uv run bnb semi-random \
+  --run resilient-resonance-682 --sizes 1,2,4,8,16,32,64
 
 # Fit that ladder for a training profile instead, before any such run exists
-uv run main.py --mode semi_random --profile rl --team-counts 4
+uv run bnb semi-random --profile rl --sizes 4
 
 # Search the scripted-team crossover for selected learned-team sizes
-uv run main.py --mode crossover \
-  --run resilient-resonance-682 --trained-counts 4,8,16,32,64 --eval-envs 256
+uv run bnb crossover \
+  --run resilient-resonance-682 --sizes 4,8,16,32,64 --games-per-matchup 256
 ```
 
 Calibration writes to `checkpoints/<run>/elo_calibrated.json` and `elo_calibration/`.
@@ -175,7 +181,7 @@ writes `docs/crossover/crossover.json`. These evaluations can require substantia
 time, and the reference-run artifacts are already included. Methodology and
 interpretation are in [evaluation and results](evaluation.md).
 
-The `--profile` form of `semi_random` serves training rather than evaluation. Training
+The `--profile` form of `semi-random` serves training rather than evaluation. Training
 rates the live policy against those same rungs as fixed references, so each profile
 carries its own fitted `reference_ladder` and `random_elo` in
 the registered profile under
@@ -188,7 +194,7 @@ config, fleet size or scripted controller moves — see
 ## Capture replays
 
 ```bash
-uv run main.py --mode capture \
+uv run bnb capture \
   --run resilient-resonance-682 \
   --scenarios vs_scripted \
   --sizes 8v11 \
@@ -197,13 +203,13 @@ uv run main.py --mode capture \
 ```
 
 Capture mode uses the run's final `step_*.pt` checkpoint, writes seeded MP4 files, and can
-also emit downscaled GIFs. Files go to `gameplay_clips/` by default; the curated subset
+also emit downscaled GIFs. Scratch files go to `out/` by default; the curated subset
 lives under `docs/results/replays/`. See the [replay guide](replays.md).
 
 ## Checkpoint and result artifacts
 
 Full `step_<N>.pt` checkpoints contain the policy, optimizer, scalers, running-average
-state, ratings, counters, and serialized configuration needed by `--resume`. Training
+state, ratings, counters, and the complete resolved configuration needed by `--resume`. Training
 also writes scheduled average/best snapshots and unpruned ladder checkpoints; the
 [checkpoint implementation](../src/boost_and_broadside/train/rl/checkpoint.py) defines
 the current filenames. (The included reference-run directory retains files from an

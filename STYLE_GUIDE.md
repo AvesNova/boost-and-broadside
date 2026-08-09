@@ -169,7 +169,7 @@ attn_mask = alive.unsqueeze(1).unsqueeze(2)        # (B, 1, 1, N) — broadcast 
     *   Avoid deep inheritance chains (A -> B -> C -> D).
 
 ### 6.7. Entry Point
-*   The only valid entry point is `uv run main.py`.
+*   The only product entry point is the installed `uv run bnb` command.
 *   All other scripts in `src/` should be modules, not executable scripts (unless they are specific utility scripts in `tools/`).
 
 ### 6.8. Backward Compatibility

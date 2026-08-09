@@ -154,7 +154,7 @@ Current values (30 Hz, refit in `e467120`), against the original 60 Hz fit:
 
 Fields move random ~500 Elo (they compress the skill scale); tick rate and map
 generation each move it tens to low hundreds. Each profile carries its own
-ladder. Re-run `--mode semi_random --profile <name>` whenever tick rate, field
+ladder. Re-run `bnb semi-random --profile <name>` whenever tick rate, field
 count, ship config, fleet size, map generation **or the scripted agent** moves.
 
 Gauge is now **scripted pinned at 1000**, matching post-hoc calibration, so
@@ -189,7 +189,7 @@ pressure never decays.
   moves. 0.8 reproduces the original firing point.
 - `_NS_FEAT_NAMES` hand-listed 9 names against a computed width of 10, silently
   dropping `local_log_index`. Names now come from `coordinator.get_feature_names()`.
-- `--mode semi_random` defaulted to a hardcoded run name; `--profile rl` now.
+- The old semi-random dispatcher defaulted to a hardcoded run name; `--profile rl` now.
 
 ### `55eeaed` — vectorized field maps, refreshed per rollout
 
@@ -547,7 +547,7 @@ env is 15% of wall clock and the update is 85% — a learned world model would b
 
 - **Reference ladders are environment-specific.** Any change to tick rate, field
   count, ship config, fleet size *or the scripted agent* invalidates them. Re-run
-  `--mode semi_random --profile <name>` and update `reference_ladder` /
+  `bnb semi-random --profile <name>` and update `reference_ladder` /
   `random_elo` in the profile.
 - **The Elo gauge is absolute**, scripted pinned at 1000. Normalized Elo is the
   rating itself. Milestone grid and any rating threshold are absolute.
@@ -584,6 +584,6 @@ env is 15% of wall clock and the update is 85% — a learned world model would b
 
 ## Definition of done
 
-`uv run --no-sync pytest`, `--mode rl --smoke`, `--mode rl_fields --smoke`, ruff
+`uv run --no-sync pytest`, the registered `bnb smoke` profile cases, and ruff
 check and format on changed files. Add tests, update docs, commit at logical
 milestones.

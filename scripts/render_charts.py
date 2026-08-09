@@ -43,7 +43,7 @@ def render(run: str, out_dir: Path) -> list[Path]:
     calib_dir = run_dir / "elo_calibration"
     for required in (wandb_dir / "history.jsonl", calib_dir / "history.jsonl"):
         if not required.exists():
-            raise SystemExit(f"missing {required}; export W&B and run --mode elo_calibrate first")
+            raise SystemExit(f"missing {required}; export W&B and run bnb elo-calibrate first")
 
     wandb_rows = history.load_history(wandb_dir / "history.jsonl")
     calib_rows = history.load_history(calib_dir / "history.jsonl")

@@ -209,7 +209,7 @@ update) — no measurable extra win from `default`/`max-autotune` over `reduce-o
 config, and compile adds ~360 MB reserved (workspace). Caveat: this used only 1 warmup iteration
 before measuring, which may undersell `max-autotune` — its autotuning cache can need more warm
 calls to fully engage. `reduce-overhead` gets the same speedup for the cheapest compile-time cost,
-so it's the reasonable default here (matches `main.py`'s existing default).
+so it's the reasonable default here (matches `bnb train`'s default).
 
 **Bottom line for this card before host-backed batches:** `grad_checkpoint=True` + microbatch
 divisor ≥2 was required to fit `_MAX_TOKENS=5_000_000`; divisor 5–6 and

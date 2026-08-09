@@ -62,7 +62,7 @@ controller.
 Generate the selected 8-vs-11 scenario with:
 
 ```bash
-uv run main.py --mode capture \
+uv run bnb capture \
   --run resilient-resonance-682 \
   --scenarios vs_scripted \
   --sizes 8v11 \
@@ -70,7 +70,7 @@ uv run main.py --mode capture \
   --gif
 ```
 
-The default output directory is `gameplay_clips/`; the curated subset is copied into
+The default scratch output directory is `out/`; the curated subset is copied into
 `docs/results/replays/`.
 
 ## Provenance

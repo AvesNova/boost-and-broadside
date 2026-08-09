@@ -362,12 +362,12 @@ whole early climb — winning ~100% against one and losing ~100% against the oth
 rating is barely identified exactly when opponent selection depends on it. A ladder of
 semi-random rungs (`TrainConfig.reference_ladder`) fills that range. Each rung takes the
 scripted action with probability `p` and a uniform one otherwise, and their ratings are
-fitted offline by `--mode semi_random --profile <name>`.
+fitted offline by `bnb semi-random --profile <name>`.
 
 Those ratings are a property of the environment the rungs play in, so a ladder is valid
 only for the tick rate, field count, ship config and fleet size it was measured under.
 The two shipped profiles differ sharply — on the scripted-anchored gauge the random agent
-sits at **−351** in `rl` and **+170** in `rl_fields`, because refractive fields compress
+sits at **−351** in `rl` and **+170** in `rl-fields`, because refractive fields compress
 the skill scale — so each profile carries its own ladder and re-running the tournament is
 mandatory whenever the environment moves.
 

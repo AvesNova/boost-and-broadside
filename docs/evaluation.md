@@ -256,10 +256,11 @@ uv run scripts/render_semi_random.py \
 ```
 
 The renderer is the source of the axis labels and equal-scale geometry; the tracked
-rasters are regenerated from it rather than edited independently. Refitting the
-calibration itself (for example under a different anchor or draw convention) needs no
-GPU: `uv run main.py --mode elo_calibrate --run resilient-resonance-682 --refit` refits
-the stored win/tie matrices.
+rasters are regenerated from it rather than edited independently. A full current-schema
+calibration is launched with
+`uv run bnb elo-calibrate --run resilient-resonance-682`. Cheap artifact-backed
+reanalysis will be exposed only after the artifact recipe is explicit; there is no
+generic refit flag.
 
 To rerun the underlying evaluations, see [getting started](getting-started.md#evaluate).
 They can require substantial GPU time; rendering from included artifacts does not.
