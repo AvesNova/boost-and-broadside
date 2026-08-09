@@ -46,7 +46,7 @@ code, tests, and reader-facing documentation.
 | ID | Plan phase | Status | Agent type | Model / effort | Mission |
 |---|---:|---|---|---|---|
 | S00 | governance | completed | planning lead | Sol / extra high | Finalize plan, branch, ledger, and prompts |
-| S01 | 0 | pending | characterization engineer | Terra / high | Capture behavior, config, CLI, and publication baselines |
+| S01 | 0 | completed | characterization engineer | Terra / high | Capture behavior, config, CLI, and publication baselines |
 | S02 | 1 | pending | configuration architect | Sol / extra high | Move profiles under `src`; add independent specs/resolution/fingerprints without changing RL behavior |
 | S03 | 1 gate | pending | configuration reviewer | Sol / extra high | Review resolved-config equivalence, dependency direction, and schema/fingerprint design |
 | S04 | 2 | pending | evaluation refactorer | Sol / high | Extract typed sizes, run catalog, match/environment, and tournament engines |
@@ -428,6 +428,27 @@ Each section appends its record below when it completes. Do not replace earlier 
 - Decisions/deviations: primary section owners are user-launched sequentially; section owners may
   orchestrate bounded subagents and concurrent writers, with safe file/worktree ownership
 - Remaining risks: none; S01 is the next authorized section
+
+### S01 handoff
+
+- Status: completed
+- Agent/model/effort: characterization engineer / `gpt-5.6-terra` / high
+- Commit(s): `1d47502` — mode/config/CLI/publication characterization baseline
+- Tests/checks and results: `uv run pytest tests/test_mode_refactor_baseline.py -q` (10 passed);
+  `uv run pytest -q` (601 passed); `uv run ruff check .` (passed); `git diff --check` (passed)
+- Behavior/config changes: none. RL and RL-fields are recorded as exact legacy baselines; the
+  separate `bc-stale` snapshot deliberately records the pre-correction BC configuration for S11.
+- Files/artifacts produced: `docs/internal/mode-characterization.json`; three complete profile
+  snapshots under `tests/fixtures/mode_refactor/`; `tests/test_mode_refactor_baseline.py`.
+- Decisions/deviations from plan: schedule callables are captured by module/qualified name plus
+  their closure construction values, which preserves the complete current schedule definition
+  before a resolver exists. The inventory records the sole untraceable asset producer honestly:
+  `docs/policy_architecture.png` is not recorded in this repository.
+- Review findings addressed: Ruff import/line-length findings in the new test were fixed before
+  the full suite.
+- Remaining risks or required follow-up: the legacy snapshots intentionally retain old names,
+  defaults, sentinels, and mtime selection until the later breaking sections replace them. S02
+  must keep RL/RL-fields field-for-field equal to these snapshots; S11 owns the BC behavior change.
 
 ### Future handoff template
 
