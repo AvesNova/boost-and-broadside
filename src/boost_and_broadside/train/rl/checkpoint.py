@@ -160,6 +160,11 @@ def _load_checkpoint_state(
 ) -> None:
     """Normalize state incompatibility at the checkpoint input boundary."""
 
+    if not isinstance(state, Mapping):
+        raise ValueError(
+            f"checkpoint {path!r} has invalid {component}: expected a mapping, "
+            f"got {type(state).__name__}"
+        )
     try:
         target.load_state_dict(state)
     except RuntimeError as error:

@@ -414,6 +414,50 @@ def test_incompatible_checkpoint_weights_are_a_concise_cli_error(
     assert "Traceback" not in error
 
 
+def test_non_mapping_checkpoint_weights_are_a_concise_cli_error(
+    tmp_path, capsys, monkeypatch
+) -> None:
+    import torch
+
+    from boost_and_broadside.train.rl.checkpoint import CheckpointMixin
+    from boost_and_broadside.train.rl.checkpoint_schema import OBSERVATION_SCHEMA
+
+    checkpoint = tmp_path / "non-mapping.pt"
+    torch.save(
+        {
+            "observation_schema": OBSERVATION_SCHEMA,
+            "policy_state_dict": None,
+        },
+        checkpoint,
+    )
+
+    class UnusedModule:
+        def load_state_dict(self, state):
+            pytest.fail("non-mapping state reached the model loader")
+
+    loader = CheckpointMixin()
+    loader.device = "cpu"
+    loader._policy_module = UnusedModule()
+    monkeypatch.setattr(cli_commands, "_make_trainer", lambda *args, **kwargs: loader)
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(
+            [
+                "train",
+                "--profile",
+                "rl",
+                "--pretrain-from",
+                str(checkpoint),
+                "--device",
+                "cpu",
+            ]
+        )
+    assert exit_info.value.code == 2
+    error = capsys.readouterr().err
+    assert "invalid policy weights: expected a mapping, got NoneType" in error
+    assert "Traceback" not in error
+
+
 def test_malformed_matchup_is_rejected_during_parsing() -> None:
     with pytest.raises(SystemExit) as exit_info:
         _parse(

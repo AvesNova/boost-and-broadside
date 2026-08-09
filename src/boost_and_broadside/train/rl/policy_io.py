@@ -16,6 +16,7 @@ differently-shaped checkpoint stays loadable as an opponent or a rating anchor.
 
 import dataclasses
 import warnings
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 import torch
@@ -316,8 +317,14 @@ def load_policy_bundle(
         num_ships=num_ships,
         team_pma_k=checkpoint_team_pma_k,
     )
+    policy_state = checkpoint["policy_state_dict"]
+    if not isinstance(policy_state, Mapping):
+        raise ValueError(
+            f"checkpoint {path!r} has invalid policy weights: expected a mapping, "
+            f"got {type(policy_state).__name__}"
+        )
     try:
-        policy.load_state_dict(checkpoint["policy_state_dict"])
+        policy.load_state_dict(policy_state)
     except RuntimeError as error:
         raise ValueError(f"checkpoint {path!r} has incompatible policy weights: {error}") from None
     policy.to(device)
