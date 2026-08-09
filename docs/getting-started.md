@@ -178,14 +178,16 @@ uv run bnb crossover \
   --run resilient-resonance-682 --sizes 4,8,16,32,64 --games-per-matchup 256
 ```
 
-Run calibration writes to `checkpoints/<run>/elo_calibrated.json` and `elo_calibration/`.
-An explicit `--agents` field has no owning run, so its result currently lives below
-`artifacts/elo-calibration/`; the versioned artifact format arrives in the next refactor phase.
-Scale calibration writes its resumable match matrices to `checkpoints/<run>/elo_scale.json`;
-the reference ladder writes `checkpoints/<run>/semi_random_tournament.json`; crossover
-writes `docs/crossover/crossover.json`. These evaluations can require substantial GPU
-time, and the reference-run artifacts are already included. Methodology and
-interpretation are in [evaluation and results](evaluation.md).
+Every evaluation writes a versioned artifact rather than a file of its own choosing.
+A measurement about one exact run lands in `checkpoints/<run>/artifacts/<type>/<id>/`;
+one with no single owning run — an explicit `--agents` field, or a ladder fitted for a
+training profile — lands in `artifacts/<type>/<id>/`. Each directory holds `result.json`
+(the aggregates every report is built from) beside `artifact.json` (the recipe, the exact
+subjects and their hashes, and the code, dependency, and device provenance behind them).
+Resumable sweeps — `elo-scale`, `semi-random`, `crossover` — continue the artifact for
+their exact recipe and start a new one for any other. These evaluations can require
+substantial GPU time, and the reference-run measurements are already included.
+Methodology and interpretation are in [evaluation and results](evaluation.md).
 
 The `--profile` form of `semi-random` serves training rather than evaluation. Training
 rates the live policy against those same rungs as fixed references, so each profile

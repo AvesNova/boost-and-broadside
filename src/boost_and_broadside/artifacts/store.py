@@ -47,6 +47,7 @@ from boost_and_broadside.artifacts.provenance import (
     producer_provenance,
     runtime_provenance,
 )
+from boost_and_broadside.errors import UserFacingError
 
 _MANIFEST_NAME = "artifact.json"
 _SAMPLES_DIR = "samples"
@@ -56,7 +57,7 @@ STATUS_IN_PROGRESS = "in-progress"
 STATUS_COMPLETE = "complete"
 
 
-class ArtifactError(RuntimeError):
+class ArtifactError(UserFacingError):
     """Base error for the artifact store."""
 
 
@@ -115,12 +116,17 @@ def _atomic_write_bytes(path: Path, payload: bytes) -> None:
     os.replace(temporary, path)
 
 
-def _sha256(path: Path) -> str:
+def file_sha256(path: str | Path) -> str:
+    """Content hash of a file, streamed so a large checkpoint stays cheap."""
+
     digest = hashlib.sha256()
-    with path.open("rb") as handle:
+    with Path(path).open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+_sha256 = file_sha256
 
 
 def _json_bytes(payload: Any) -> bytes:
@@ -438,6 +444,7 @@ __all__ = [
     "STATUS_IN_PROGRESS",
     "artifact_digest",
     "discard_artifact",
+    "file_sha256",
     "load_artifact",
     "verify_artifact",
 ]

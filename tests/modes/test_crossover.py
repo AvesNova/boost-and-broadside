@@ -1,9 +1,8 @@
 """Tests for crossover result persistence."""
 
-import json
-
 import pytest
 
+from boost_and_broadside.artifacts import ArtifactRecipe, ArtifactStore
 from boost_and_broadside.modes.crossover import _curve_rate, _load_progress, _outcome_record
 
 
@@ -27,10 +26,11 @@ def test_outcome_record_rejects_inconsistent_game_count() -> None:
 
 
 def test_load_progress_marks_legacy_rates_as_missing_counts(tmp_path) -> None:
-    path = tmp_path / "crossover.json"
-    path.write_text(json.dumps({"rows": [{"trained": 4, "curve": {"5": 0.75}}]}))
+    store = ArtifactStore(checkpoint_root=tmp_path, standalone_root=tmp_path / "artifacts")
+    artifact = store.create(ArtifactRecipe("crossover", 2), store.standalone_owner())
+    artifact.write_json({"rows": [{"trained": 4, "curve": {"5": 0.75}}]})
 
-    row = _load_progress(path)[4]
+    row = _load_progress(artifact)[4]
 
     assert row["curve"]["5"] == {"counts_available": False, "win_rate": 0.75}
     assert _curve_rate(row["curve"]["5"]) == 0.75

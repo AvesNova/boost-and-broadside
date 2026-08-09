@@ -2,11 +2,15 @@
 
 Each fleet size gets an independent stationary tournament containing random,
 scripted, every preserved ladder checkpoint, and the final checkpoint. Raw
-outcomes are saved after every adaptive batch; reporting anchors are pure
-post-processing and never require replaying a match.
+outcomes are saved into the run-owned ``elo-scale`` artifact after every
+adaptive batch, so an interrupted sweep resumes where it stopped.
+
+Reporting anchors are pure post-processing and never require replaying a match.
+The published fleet-scale figure — including the join through an independently
+measured semi-random reference ladder — is rendered by ``bnb publish`` from this
+artifact, not written here.
 """
 
-import hashlib
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -14,6 +18,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from boost_and_broadside.artifacts import ArtifactRecipe, ArtifactStore, file_sha256
 from boost_and_broadside.config import EloCalibrateConfig, ShipConfig
 from boost_and_broadside.evaluation.run_catalog import (
     InvalidCheckpointError,
@@ -21,6 +26,7 @@ from boost_and_broadside.evaluation.run_catalog import (
     select_final_training_checkpoint,
     select_tournament_ladder_policies,
 )
+from boost_and_broadside.evaluation.subjects import describe_agent, describe_environment
 from boost_and_broadside.evaluation.tournament import (
     BatchStat,
     Player,
@@ -37,89 +43,6 @@ from boost_and_broadside.train.rl.checkpoint_schema import load_checkpoint_paylo
 
 _SCHEMA_VERSION = 1
 _SEED_BASE = 682_000
-
-
-def combine_reference_ladder(result: dict, reference_result: dict) -> dict:
-    """Refit scale ratings after joining an independently measured reference ladder.
-
-    The checkpoint and reference tournaments share the same random and scripted
-    controllers. Joining their outcome matrices at those players adds intermediate
-    comparisons without replaying checkpoint matches. The returned object is a derived
-    reporting view; both input artifacts remain the sources of raw outcomes.
-    """
-    if result.get("run") != reference_result.get("run"):
-        raise ValueError("checkpoint and reference tournaments belong to different runs")
-
-    checkpoint_labels = list(result["player_labels"])
-    reference_labels = list(reference_result["labels"])
-    for endpoint in ("random", "scripted"):
-        if endpoint not in checkpoint_labels or endpoint not in reference_labels:
-            raise ValueError(f"both tournaments must contain {endpoint!r}")
-
-    labels = checkpoint_labels + [
-        label for label in reference_labels if label not in checkpoint_labels
-    ]
-    label_indices = {label: index for index, label in enumerate(labels)}
-
-    def add_matrix(target: np.ndarray, values: list[list[float]], source_labels: list[str]) -> None:
-        matrix = np.asarray(values, dtype=np.float64)
-        expected = (len(source_labels), len(source_labels))
-        if matrix.shape != expected:
-            raise ValueError("stored tournament matrix does not match its player labels")
-        indices = [label_indices[label] for label in source_labels]
-        target[np.ix_(indices, indices)] += matrix
-
-    scales = {}
-    for key, checkpoint_scale in result.get("scales", {}).items():
-        reference_scale = reference_result.get("scales", {}).get(key)
-        if reference_scale is None:
-            continue
-        if checkpoint_scale["team_size"] != reference_scale["team_size"]:
-            raise ValueError(f"team-size mismatch for scale {key}")
-        if checkpoint_scale.get("tie_mode", "half_win") != "half_win":
-            raise ValueError("reference-ladder reporting requires half-win tie scoring")
-
-        shape = (len(labels), len(labels))
-        wins = np.zeros(shape, dtype=np.float64)
-        ties = np.zeros(shape, dtype=np.float64)
-        add_matrix(wins, checkpoint_scale["wins_matrix"], checkpoint_labels)
-        add_matrix(ties, checkpoint_scale["ties_matrix"], checkpoint_labels)
-        add_matrix(wins, reference_scale["wins_matrix"], reference_labels)
-        add_matrix(ties, reference_scale["ties_matrix"], reference_labels)
-
-        scored_wins = wins + 0.5 * ties
-        pair_games = wins + wins.T + ties + ties.T
-        fit = fit_bradley_terry(
-            scored_wins,
-            anchor=labels.index("scripted"),
-            prior_games=1.0,
-        )
-        scale = dict(checkpoint_scale)
-        scale["ratings"] = rating_views(fit.ratings, pair_games, labels)
-        scale["reference_ladder_games"] = int(
-            np.asarray(reference_scale["wins_matrix"], dtype=float).sum()
-            + np.asarray(reference_scale["ties_matrix"], dtype=float).sum()
-        )
-        scales[key] = scale
-
-    return {
-        "run": result["run"],
-        "player_labels": labels,
-        "team_sizes": sorted(int(key) for key in scales),
-        "reference_ladder": {
-            "probabilities": reference_result["probabilities"],
-            "games_per_pair": reference_result["games_per_pair"],
-        },
-        "scales": scales,
-    }
-
-
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _player_metadata(run_dir: Path, roster: dict, final_path: Path) -> list[dict]:
@@ -145,7 +68,7 @@ def _player_metadata(run_dir: Path, roster: dict, final_path: Path) -> list[dict
                 "kind": "checkpoint",
                 "global_step": policy_ref.global_step,
                 "path": str(path),
-                "sha256": _sha256(path),
+                "sha256": file_sha256(path),
             }
         )
     records.append(
@@ -154,7 +77,7 @@ def _player_metadata(run_dir: Path, roster: dict, final_path: Path) -> list[dict
             "kind": "checkpoint",
             "global_step": final_step,
             "path": str(final_path),
-            "sha256": _sha256(final_path),
+            "sha256": file_sha256(final_path),
         }
     )
     return records
@@ -242,11 +165,33 @@ def _scale_result(
     }
 
 
-def _write_result(path: Path, result: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(result, indent=2))
-    temporary.replace(path)
+def _scale_recipe(
+    run: str, metadata: list[dict], team_sizes: list[int], config: EloCalibrateConfig, base_env
+) -> ArtifactRecipe:
+    """Identify this sweep by its exact player field and stopping rule."""
+
+    return ArtifactRecipe(
+        artifact_type="elo-scale",
+        result_schema_version=_SCHEMA_VERSION,
+        subjects={
+            "run": run,
+            "players": [
+                {key: record.get(key) for key in ("label", "kind", "global_step", "sha256")}
+                for record in metadata
+            ],
+            "scripted": describe_agent("scripted"),
+        },
+        parameters={
+            "team_sizes": sorted(set(team_sizes)),
+            "target_stderr": config.target_stderr,
+            "max_batches": config.max_batches,
+            "max_parallel_envs": config.num_envs,
+            "tie_mode": config.tie_mode,
+            "prior_games": config.prior_games,
+            "seed_base": _SEED_BASE,
+            "environment": describe_environment(base_env),
+        },
+    )
 
 
 def run_elo_scale_mode(
@@ -256,12 +201,9 @@ def run_elo_scale_mode(
     device: str,
     config: EloCalibrateConfig,
     checkpoint_dir: str = "checkpoints",
-    plot_dir: str = "docs/results",
-    plot: bool = True,
+    store: ArtifactStore | None = None,
 ) -> dict:
     """Run or resume checkpoint tournaments across symmetric team sizes."""
-    from boost_and_broadside.modes.elo_scale_plots import write_scale_plots
-
     run_dir = resolve_exact_run(run_spec, checkpoint_dir).path
     roster = json.loads((run_dir / "roster.json").read_text())
     base_env, model_config, paradigm = load_run_config(run_dir)
@@ -269,17 +211,13 @@ def run_elo_scale_mode(
     metadata = _player_metadata(run_dir, roster, final_path)
     labels = [record["label"] for record in metadata]
 
-    output = run_dir / "elo_scale.json"
-    reference_output = run_dir / "semi_random_tournament.json"
-
-    def reporting_result(raw_result: dict) -> dict:
-        if not reference_output.exists():
-            return raw_result
-        reference_result = json.loads(reference_output.read_text())
-        return combine_reference_ladder(raw_result, reference_result)
-
-    if output.exists():
-        result = json.loads(output.read_text())
+    store = store or ArtifactStore(checkpoint_root=checkpoint_dir)
+    artifact, resumed = store.open_resumable(
+        _scale_recipe(run_dir.name, metadata, team_sizes, config, base_env),
+        store.run_owner(run_dir.name),
+    )
+    if resumed and artifact.has("result.json"):
+        result = artifact.read_json()
         if result.get("player_labels") != labels:
             raise ValueError("stored scale result uses a different checkpoint field")
     else:
@@ -297,10 +235,7 @@ def run_elo_scale_mode(
         }
 
     result["team_sizes"] = sorted(set(result.get("team_sizes", []) + team_sizes))
-    result["target_stderr"] = config.target_stderr
-    result["max_batches"] = config.max_batches
-    result["max_parallel_envs"] = config.num_envs
-    _write_result(output, result)
+    artifact.write_json(result)
 
     for team_size in sorted(set(team_sizes)):
         if team_size <= 0:
@@ -344,9 +279,7 @@ def run_elo_scale_mode(
             result["scales"][str(team_size)] = _scale_result(
                 team_size, current, stats, reference, config
             )
-            _write_result(output, result)
-            if plot:
-                write_scale_plots(reporting_result(result), Path(plot_dir))
+            artifact.write_json(result)
 
         fit, stats, reference = run_tournament(
             tournament,
@@ -363,8 +296,6 @@ def run_elo_scale_mode(
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-    if plot:
-        written = write_scale_plots(reporting_result(result), Path(plot_dir))
-        print(f"\n  wrote {len(written)} scale charts to {plot_dir}")
-    print(f"  wrote {output}")
+    artifact.complete()
+    print(f"\n  wrote {artifact.path}")
     return result

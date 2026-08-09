@@ -21,6 +21,7 @@ from boost_and_broadside.artifacts.store import (
     Invocation,
     artifact_digest,
     discard_artifact,
+    file_sha256,
     load_artifact,
     verify_artifact,
 )
@@ -40,6 +41,7 @@ __all__ = [
     "artifact_digest",
     "artifact_id",
     "discard_artifact",
+    "file_sha256",
     "load_artifact",
     "verify_artifact",
 ]

@@ -7,12 +7,18 @@ the null-model MSE in scaled space should be ~1.0 if label_scale is well calibra
 
 Reports per-prediction-dim stats and suggested label_scale corrections:
   suggested_scale = current_scale / sqrt(mean_sq)
+
+The measurement depends on both acting agents, the environment, and the sample
+budget, so it is not a property of the profile alone: it writes a
+``feature-stats`` artifact owned by the single run behind its checkpoints, or by
+nothing at all.
 """
 
 import time
 
 import torch
 
+from boost_and_broadside.artifacts import ArtifactRecipe, ArtifactStore
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.env.observation import observation_from_state
 from boost_and_broadside.evaluation.agents import (
@@ -24,7 +30,10 @@ from boost_and_broadside.evaluation.agents import (
 )
 from boost_and_broadside.evaluation.environment import create_evaluation_env
 from boost_and_broadside.evaluation.match import merge_team_actions
+from boost_and_broadside.evaluation.subjects import describe_agents, describe_environment
 from boost_and_broadside.train.rl.features import build_standard_coordinator
+
+_SCHEMA_VERSION = 1
 
 
 def run_feature_stats_mode(
@@ -37,7 +46,8 @@ def run_feature_stats_mode(
     model_config: ModelConfig,
     device: str,
     checkpoint_dir: str = "checkpoints",
-) -> None:
+    store: ArtifactStore | None = None,
+) -> dict:
     B = num_envs
     N = env_config.num_ships
     num_tokens = N + env_config.num_fields
@@ -135,3 +145,39 @@ def run_feature_stats_mode(
     print("\nSuggested label_scale values for build_standard_coordinator:")
     for i, name in enumerate(feat_names):
         print(f"  {name}: {suggested[i].item():.1f}")
+
+    result = {
+        "schema_version": _SCHEMA_VERSION,
+        "valid_pairs": int(n * N),
+        "seconds": elapsed,
+        "features": [
+            {
+                "name": name,
+                "mean_sq_scaled": float(mean_sq[i].item()),
+                "current_scale": float(curr_scale_cpu[i].item()),
+                "suggested_scale": float(suggested[i].item()),
+            }
+            for i, name in enumerate(feat_names)
+        ],
+    }
+    store = store or ArtifactStore(checkpoint_root=checkpoint_dir)
+    recipe = ArtifactRecipe(
+        artifact_type="feature-stats",
+        result_schema_version=_SCHEMA_VERSION,
+        subjects=describe_agents(team0=team0_spec, team1=team1_spec),
+        parameters={
+            "num_envs": num_envs,
+            "decision_steps": num_steps,
+            "environment": describe_environment(env_config),
+        },
+    )
+    owner = store.owner_for(
+        store.owning_run_for_paths(
+            [spec for spec in (team0_spec, team1_spec) if spec.endswith(".pt")]
+        )
+    )
+    artifact = store.create(recipe, owner)
+    artifact.write_json(result)
+    artifact.complete()
+    print(f"\nWrote {artifact.path}")
+    return result

@@ -21,29 +21,33 @@ curve. Both come from the same match counts, so carrying both is free.
 
 Reported ratings are shifted so the scripted controller reads
 SCRIPTED_ANCHOR_ELO (see that constant for why). Because the raw win/tie
-matrices are persisted, ``refit=True`` reruns every fit and artifact from the
-stored counts without playing a single game.
+matrices are persisted, ``--from-artifact`` refits every rating from a stored
+measurement without playing a single game.
 
-Run calibration writes to the run's checkpoint directory:
-    elo_calibrated.json      ratings, per-update curve, batch stats, and the raw
-                             win/tie matrices, so any later refit needs no replay
-    elo_calibration/*.png    live curve vs in-training, the two draw conventions,
-                             per-checkpoint ratings, convergence, and draw rates
-    elo_calibration/         the calibrated ratings in the W&B export format
-      history.jsonl,           (see modes/elo_calibrate_history.py), so one loader
-      summary.json             reads them alongside the run's in-training history
+Every calibration writes one ``elo-calibration`` artifact:
+    result.json            ratings, per-update curve, batch stats, and the raw
+                           win/tie matrices, so any later refit needs no replay
+    chart_history.jsonl,   the calibrated ratings in the W&B export format (see
+    chart_summary.json     modes/elo_calibrate_history.py), so one loader reads
+                           them alongside the run's in-training history
 
-An explicit ``--agents`` field has no owning run, so its measurement is written
-under ``artifacts/elo-calibration/`` until S09 replaces this transitional location
-with the versioned artifact store.
+A run's calibration is owned by that run. An explicit ``--agents`` field is
+owned by the single run behind its checkpoints, or by nothing — in which case it
+lands in the standalone artifact root. The diagnostic figures are rendered from
+the artifact by ``bnb publish``, never written here.
 """
 
-import hashlib
 import json
 from pathlib import Path
 
 import numpy as np
 
+from boost_and_broadside.artifacts import (
+    ArtifactRecipe,
+    ArtifactStore,
+    artifact_digest,
+    load_artifact,
+)
 from boost_and_broadside.config import EloCalibrateConfig, EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.evaluation.agents import (
     ResolvedAgent,
@@ -55,6 +59,11 @@ from boost_and_broadside.evaluation.environment import (
     resolve_evaluation_environment,
 )
 from boost_and_broadside.evaluation.run_catalog import resolve_exact_run
+from boost_and_broadside.evaluation.subjects import (
+    describe_agent,
+    describe_environment,
+    describe_source_artifact,
+)
 from boost_and_broadside.evaluation.tournament import (
     TIE_MODES,
     BatchStat,
@@ -66,6 +75,7 @@ from boost_and_broadside.evaluation.tournament import (
     load_run_config,
     run_tournament,
 )
+from boost_and_broadside.modes.elo_calibrate_history import to_history_rows, to_summary
 from boost_and_broadside.train.rl.bradley_terry import (
     fit_bradley_terry,
     fit_single_rating,
@@ -108,6 +118,10 @@ _NON_STATIONARY = frozenset({"avg"})
 # that those games barely constrain the scale. Random still plays in the
 # tournament and is reported like any other player; it lands below zero here.
 SCRIPTED_ANCHOR_ELO = 1000.0
+
+# Result payload version, carried in the artifact recipe so a renderer can
+# refuse a shape it does not understand.
+_SCHEMA_VERSION = 1
 
 
 def calibrate_live_curve(
@@ -224,14 +238,17 @@ def tie_rate_table(
     return rows
 
 
-def _load_stored_result(run_dir: Path) -> dict:
-    """Read a previous calibration's persisted result."""
-    path = run_dir / "elo_calibrated.json"
-    if not path.exists():
-        raise FileNotFoundError(
-            f"no elo_calibrated.json in {run_dir}; run without refit first"
+def _load_source_measurement(path: str | Path) -> tuple[dict, dict, str]:
+    """Read a stored calibration to refit, with its identity and owning run."""
+
+    artifact = load_artifact(path)
+    if artifact.artifact_type != "elo-calibration":
+        raise ValueError(
+            f"{path} is a {artifact.artifact_type!r} artifact; "
+            "--from-artifact expects an elo-calibration measurement"
         )
-    return json.loads(path.read_text())
+    manifest = artifact.manifest
+    return artifact.read_json(), manifest, artifact_digest(artifact)
 
 
 def build_arbitrary_players(
@@ -265,12 +282,33 @@ def build_arbitrary_players(
     return players
 
 
-def _agent_field_output(agent_specs: list[str], artifact_root: str | Path) -> Path:
-    """Give a no-run measurement durable ownership until S09 replaces this layout."""
-
-    recipe = "\0".join(agent_specs).encode()
-    field_id = hashlib.sha256(recipe).hexdigest()[:12]
-    return Path(artifact_root) / "elo-calibration" / f"agents-{field_id}" / "result.json"
+def _calibration_recipe(
+    subjects: dict,
+    config: EloCalibrateConfig,
+    *,
+    env_config: EnvConfig | None = None,
+    sources: dict | None = None,
+) -> ArtifactRecipe:
+    parameters: dict = {
+        "tie_mode": config.tie_mode,
+        "prior_games": config.prior_games,
+        "target_stderr": config.target_stderr,
+        "max_batches": config.max_batches,
+        "num_envs": config.num_envs,
+        "reference_probabilities": list(config.reference_probabilities),
+        "anchor_elo": SCRIPTED_ANCHOR_ELO,
+    }
+    if env_config is not None:
+        parameters["environment"] = describe_environment(env_config)
+    if sources is not None:
+        parameters["refit"] = True
+    return ArtifactRecipe(
+        artifact_type="elo-calibration",
+        result_schema_version=_SCHEMA_VERSION,
+        subjects=subjects,
+        parameters=parameters,
+        sources=sources or {},
+    )
 
 
 def run_elo_calibrate_mode(
@@ -279,38 +317,58 @@ def run_elo_calibrate_mode(
     device: str,
     config: EloCalibrateConfig,
     checkpoint_dir: str = "checkpoints",
-    plot: bool = True,
-    refit: bool = False,
     agent_specs: list[str] | None = None,
+    from_artifact: str | Path | None = None,
     *,
     model_config: ModelConfig | None = None,
     env_config: EnvConfig | None = None,
-    artifact_root: str | Path = "artifacts",
+    store: ArtifactStore | None = None,
 ) -> dict:
-    """Calibrate one finished run or an explicit arbitrary-agent field.
+    """Calibrate one finished run, an explicit agent field, or a stored measurement.
 
-    With ``refit=True`` no game is played: the raw win/tie matrices persisted by
-    a previous calibration are loaded and refit under the current reporting
+    With ``from_artifact`` no game is played: the raw win/tie matrices persisted
+    by a previous calibration are loaded and refit under the current reporting
     conventions. Refitting reuses the stored reference gauge, so the underlying
     fit reproduces the original; only downstream reporting can differ. This is
-    the cheap path for a change of anchor or draw convention.
+    the cheap path for a change of anchor or draw convention, and it records the
+    measurement it derives from.
     """
-    if (run_spec is None) == (agent_specs is None):
-        raise ValueError("provide exactly one of run_spec or agent_specs")
-    if agent_specs is not None and refit:
-        raise ValueError("refit requires an exact run with stored match matrices")
+    given = [
+        name
+        for name, subject in (
+            ("run", run_spec),
+            ("agents", agent_specs),
+            ("from-artifact", from_artifact),
+        )
+        if subject is not None
+    ]
+    if len(given) != 1:
+        raise ValueError("provide exactly one of run_spec, agent_specs, or from_artifact")
     if agent_specs is not None and (model_config is None or env_config is None):
         raise ValueError("arbitrary-agent calibration requires model_config and env_config")
 
     progress = Progress()
     prior_games = config.prior_games
+    store = store or ArtifactStore(checkpoint_root=checkpoint_dir)
     run_dir = resolve_exact_run(run_spec, checkpoint_dir).path if run_spec is not None else None
     history_path = None if run_dir is None else run_dir / "elo_history.jsonl"
 
-    if refit:
-        assert run_dir is not None
-        stored = _load_stored_result(run_dir)
-        print(f"\n=== Elo refit from stored matrices (no play): {run_dir.name} ===")
+    if from_artifact is not None:
+        stored, source_manifest, source_digest = _load_source_measurement(from_artifact)
+        source_run = source_manifest["owner"]["run"]
+        owner = store.owner_for(source_run)
+        # The stored matrices rate the stationary field; the live curve is refit
+        # from the owning run's own record, which is not part of the artifact.
+        if source_run is not None:
+            run_dir = resolve_exact_run(source_run, checkpoint_dir).path
+            history_path = run_dir / "elo_history.jsonl"
+        agent_specs = stored.get("agent_specs")
+        recipe = _calibration_recipe(
+            dict(source_manifest["recipe"]["subjects"]),
+            config,
+            sources={"measurement": describe_source_artifact(source_manifest, source_digest)},
+        )
+        print(f"\n=== Elo refit from {source_manifest['artifact_id']} (no play) ===")
         players = [
             Player(p["label"], ResolvedAgent("stored", None), p["training_elo"], p["global_step"])
             for p in stored["players"]
@@ -354,6 +412,20 @@ def run_elo_calibrate_mode(
         )
         progress.done(f"field ({len(players)}): {', '.join(p.label for p in players)}")
         anchor = next(i for i, p in enumerate(players) if p.label == "random")
+        owner = store.run_owner(run_dir.name)
+        recipe = _calibration_recipe(
+            {
+                "run": run_dir.name,
+                "paradigm": paradigm,
+                "players": [
+                    {"label": player.label, "global_step": player.global_step}
+                    for player in players
+                ],
+                "scripted": describe_agent("scripted"),
+            },
+            config,
+            env_config=env_config,
+        )
 
         tournament = Tournament(
             players,
@@ -390,6 +462,18 @@ def run_elo_calibrate_mode(
         )
         labels = ", ".join(player.label for player in players)
         print(f"\n=== Elo calibration: explicit field ({labels}) ===")
+        owner = store.owner_for(
+            store.owning_run_for_paths([spec for spec in agent_specs if spec.endswith(".pt")])
+        )
+        recipe = _calibration_recipe(
+            {
+                "agents": [
+                    describe_agent(spec, checkpoint_root=checkpoint_dir) for spec in agent_specs
+                ]
+            },
+            config,
+            env_config=evaluation_config,
+        )
         tournament = Tournament(
             players,
             ship_config,
@@ -492,33 +576,18 @@ def run_elo_calibrate_mode(
     }
     if directed_outcomes is not None:  # absent from results stored before it existed
         result["directed_outcomes"] = directed_outcomes
-    output = (
-        run_dir / "elo_calibrated.json"
-        if run_dir is not None
-        else _agent_field_output(agent_specs or [], artifact_root)
-    )
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(result, indent=2))
-    progress.done(f"wrote {output}")
 
-    # Also leave the calibrated ratings in the W&B export format, so the same
-    # loader and chart system can read them alongside the run's in-training
-    # history without reshaping either.
-    if run_dir is not None:
-        from boost_and_broadside.modes.elo_calibrate_history import write_chart_data
-
-        for path in write_chart_data(result, run_dir):
-            progress.done(f"wrote {path}")
+    artifact = store.create(recipe, owner)
+    artifact.write_json(result)
+    # Also carry the calibrated ratings in the W&B export format, so the same
+    # loader and chart system read them alongside the run's in-training history
+    # without reshaping either.
+    artifact.write_jsonl(to_history_rows(result), "chart_history.jsonl")
+    artifact.write_json(to_summary(result), "chart_summary.json")
+    artifact.complete()
+    progress.done(f"wrote {artifact.path}")
 
     _print_summary(result)
-    if plot and run_dir is not None:
-        from boost_and_broadside.modes.elo_calibrate_plots import write_plots
-
-        progress.stage("rendering plots...")
-        written = write_plots(result, run_dir, plot_decisive=config.plot_decisive)
-        progress.done(f"wrote {len(written)} plots to {run_dir / 'elo_calibration'}")
-        for path in written:
-            print(f"    {path.name}")
     return result
 
 

@@ -10,20 +10,20 @@ Target-vector dimensions are derived from the feature coordinator.
 
 Errors are measured in target space (predicted target vs true target).
 
-Outputs written to docs/noise_calibration/:
-  noise_params.json, error_distributions.png, autocorrelation.png,
-  ar_growth.png, team_symmetry.png
+The measurement writes one ``noise-calibration`` artifact: ``result.json`` holds
+the aggregates every report is built from, and an optional ignored
+``samples/phase1_errors.npz`` retains a bounded prefix of the raw single-step
+errors so a later estimator can be tried without replaying the environment. The
+figures are rendered from the artifact by ``bnb publish``.
 """
 
 import datetime
-import json
-import os
 import time
 
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
+from boost_and_broadside.artifacts import ArtifactRecipe, ArtifactStore
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.env.observation import YemongObservation, observation_from_state
 from boost_and_broadside.evaluation.agents import (
@@ -37,11 +37,19 @@ from boost_and_broadside.evaluation.agents import (
 from boost_and_broadside.evaluation.environment import create_evaluation_env
 from boost_and_broadside.evaluation.match import merge_team_actions
 from boost_and_broadside.evaluation.next_state import decode_targets_to_observation
+from boost_and_broadside.evaluation.subjects import describe_agents, describe_environment
 from boost_and_broadside.train.rl.features import FeatureCoordinator, build_standard_coordinator
 
 _AR_WINDOW = 20
 _WARMUP_STEPS = 50
 _TEAM_SYMMETRY_REL_TOL = 0.15
+_SCHEMA_VERSION = 1
+
+# Raw single-step errors are retained as an ignored local payload so a later
+# estimator can be tried without replaying the environment. The cap keeps that
+# payload bounded: a full run is hundreds of millions of rows, and the
+# aggregates in ``result.json`` already answer everything the report asks.
+_MAX_RAW_SAMPLE_ROWS = 262_144
 
 # Coordinator feature name → stable report name, description, and channel labels.
 _REPORT_FEATURES = {
@@ -99,8 +107,8 @@ def run_noise_calibration_mode(
     model_config: ModelConfig,
     device: str,
     checkpoint_dir: str = "checkpoints",
-    output_dir: str = "docs/noise_calibration",
-) -> None:
+    store: ArtifactStore | None = None,
+) -> dict:
     dev = torch.device(device)
     N = env_config.num_ships
     num_tokens = N + env_config.num_fields
@@ -170,10 +178,45 @@ def run_noise_calibration_mode(
         num_ar_windows,
         feature_groups,
     )
-    _write_outputs(output, output_dir, feature_groups, dim_names)
+    output["dim_names"] = dim_names
+
+    store = store or ArtifactStore(checkpoint_root=checkpoint_dir)
+    recipe = ArtifactRecipe(
+        artifact_type="noise-calibration",
+        result_schema_version=_SCHEMA_VERSION,
+        subjects=describe_agents(team0=team0_spec, team1=team1_spec),
+        parameters={
+            "num_envs": num_envs,
+            "num_steps": num_steps,
+            "num_ar_envs": num_ar_envs,
+            "num_ar_windows": num_ar_windows,
+            "ar_window_len": _AR_WINDOW,
+            "warmup_steps": _WARMUP_STEPS,
+            "environment": describe_environment(env_config),
+        },
+    )
+    owner = store.owner_for(
+        store.owning_run_for_paths(
+            [spec for spec in (team0_spec, team1_spec) if spec.endswith(".pt")]
+        )
+    )
+    artifact = store.create(recipe, owner)
+    artifact.write_json(output)
+    raw_errors = phase1.get("raw_errors")
+    if raw_errors is not None and raw_errors.size:
+        artifact.write_samples_npz(
+            {
+                "errors": raw_errors,
+                "step": phase1["raw_steps"],
+                "dim_names": np.asarray(dim_names),
+            },
+            "phase1_errors.npz",
+        )
+    artifact.complete()
 
     _print_summary(output, feature_groups)
-    print(f"\nWrote results to {output_dir}/")
+    print(f"\nWrote results to {artifact.path}")
+    return output
 
 
 # ---------------------------------------------------------------------------
@@ -213,6 +256,12 @@ def _run_phase1(
 
     prev_err = torch.zeros(B, N, num_targets, device=dev)
     prev_valid = torch.zeros(B, N, dtype=torch.bool, device=dev)
+
+    # A bounded prefix of the raw rows, in collection order, with the step each
+    # came from. Enough to refit a distribution later; not a complete record.
+    raw_chunks: list[torch.Tensor] = []
+    raw_steps: list[np.ndarray] = []
+    raw_kept = 0
 
     t0 = time.perf_counter()
     print(f"Collecting {num_steps} steps across {B} envs...")
@@ -254,6 +303,12 @@ def _run_phase1(
                 err_sum += v_err.sum(0)
                 err_sq_sum += v_err.pow(2).sum(0)
                 err_count += valid.sum().float()
+
+                if raw_kept < _MAX_RAW_SAMPLE_ROWS:
+                    take = min(int(v_err.shape[0]), _MAX_RAW_SAMPLE_ROWS - raw_kept)
+                    raw_chunks.append(v_err[:take].detach().to(torch.float16).cpu())
+                    raw_steps.append(np.full(take, step, dtype=np.int32))
+                    raw_kept += take
 
                 # Lag-1 autocorrelation
                 lag_valid = valid & prev_valid  # (B, N)
@@ -310,6 +365,14 @@ def _run_phase1(
         "team_count": team_count.cpu().numpy(),
         "combat_err_sq_sum": combat_err_sq_sum.cpu().numpy(),
         "combat_count": combat_count.cpu().numpy(),
+        "raw_errors": (
+            torch.cat(raw_chunks).numpy()
+            if raw_chunks
+            else np.zeros((0, num_targets), dtype=np.float16)
+        ),
+        "raw_steps": (
+            np.concatenate(raw_steps) if raw_steps else np.zeros(0, dtype=np.int32)
+        ),
     }
 
 
@@ -532,102 +595,6 @@ def _build_output(
 
 
 # ---------------------------------------------------------------------------
-# Output writing (plots + JSON)
-# ---------------------------------------------------------------------------
-
-
-def _write_outputs(
-    data: dict,
-    output_dir: str,
-    feature_groups: dict[str, tuple[list[int], str]],
-    dim_names: list[str],
-) -> None:
-    os.makedirs(output_dir, exist_ok=True)
-
-    # JSON
-    with open(os.path.join(output_dir, "noise_params.json"), "w") as f:
-        json.dump(data, f, indent=2)
-
-    feats = data["features"]
-    feat_names = list(feature_groups)
-
-    # --- error_distributions.png: sigma bar chart per target dim with bias overlay ---
-    num_targets = len(dim_names)
-    num_columns = 5
-    num_rows = (num_targets + num_columns - 1) // num_columns
-    fig, axes = plt.subplots(num_rows, num_columns, figsize=(14, 3 * num_rows))
-    fig.suptitle("Per-dim sigma (bar) and bias (line marker)", fontsize=11)
-
-    # Rebuild per-dim sigma and bias from feature groups
-    sigma_arr = np.zeros(num_targets)
-    bias_arr = np.zeros(num_targets)
-    for name, (dims, _) in feature_groups.items():
-        sigma_arr[dims] = feats[name]["sigma"]
-        bias_arr[dims] = feats[name]["bias"]
-
-    for i, ax in enumerate(axes.flat):
-        if i < num_targets:
-            ax.bar([0], [sigma_arr[i]], color="steelblue", alpha=0.8, label="sigma")
-            ax.axhline(bias_arr[i], color="red", linewidth=1.5, linestyle="--", label="bias")
-            ax.set_title(dim_names[i], fontsize=8)
-            ax.set_xticks([])
-            ax.set_ylim(0, max(sigma_arr[i] * 1.5, 1e-6))
-            if i == 0:
-                ax.legend(fontsize=7)
-        else:
-            ax.set_visible(False)
-
-    fig.tight_layout()
-    fig.savefig(os.path.join(output_dir, "error_distributions.png"), dpi=120)
-    plt.close(fig)
-
-    # --- autocorrelation.png: rho_lag1 per feature group ---
-    rho_vals = [feats[n]["rho_lag1"] for n in feat_names]
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.bar(feat_names, rho_vals, color="darkorange", alpha=0.85)
-    ax.axhline(0, color="black", linewidth=0.8)
-    ax.set_title("Lag-1 autocorrelation of prediction error (rho) per feature")
-    ax.set_ylabel("rho")
-    ax.set_ylim(-1.0, 1.0)
-    ax.tick_params(axis="x", rotation=30)
-    fig.tight_layout()
-    fig.savefig(os.path.join(output_dir, "autocorrelation.png"), dpi=120)
-    plt.close(fig)
-
-    # --- ar_growth.png: RMSE vs depth per feature group ---
-    depths = data["ar_growth"]["depth"]
-    rmse_by_feat = data["ar_growth"]["rmse_per_feature"]
-    fig, ax = plt.subplots(figsize=(10, 5))
-    for name in feat_names:
-        ax.plot(depths, rmse_by_feat[name], label=name, marker="o", markersize=3)
-    ax.set_title("AR rollout RMSE vs depth (closed-loop, teacher-forced)")
-    ax.set_xlabel("Rollout depth (steps)")
-    ax.set_ylabel("RMSE (AUX space)")
-    ax.legend(fontsize=8, ncol=3)
-    ax.grid(True, alpha=0.3)
-    fig.tight_layout()
-    fig.savefig(os.path.join(output_dir, "ar_growth.png"), dpi=120)
-    plt.close(fig)
-
-    # --- team_symmetry.png: sigma_team0 vs sigma_team1 per feature group ---
-    s0 = [feats[n]["sigma_team0"] for n in feat_names]
-    s1 = [feats[n]["sigma_team1"] for n in feat_names]
-    x = np.arange(len(feat_names))
-    w = 0.35
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.bar(x - w / 2, s0, w, label="team 0", color="royalblue", alpha=0.85)
-    ax.bar(x + w / 2, s1, w, label="team 1", color="tomato", alpha=0.85)
-    ax.set_title("Sigma per team (should be symmetric)")
-    ax.set_ylabel("sigma")
-    ax.set_xticks(x)
-    ax.set_xticklabels(feat_names, rotation=30, ha="right")
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig(os.path.join(output_dir, "team_symmetry.png"), dpi=120)
-    plt.close(fig)
-
-
-# ---------------------------------------------------------------------------
 # Console summary
 # ---------------------------------------------------------------------------
 
@@ -650,4 +617,4 @@ def _print_summary(data: dict, feature_groups: dict[str, tuple[list[int], str]])
             f"{sym:>6}  {f['sigma_combat']:>10.5f}  {r['sigma']:>9.5f}  {r['rho']:>7.3f}"
         )
     print(f"{'=' * 70}")
-    print("\nRecommended noise_params.json written with sigma and rho per feature.")
+    print("\nRecommended sigma and rho per feature are recorded in the artifact.")

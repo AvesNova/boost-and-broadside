@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from boost_and_broadside import cli, cli_commands
+from boost_and_broadside.artifacts import ArtifactStore, Invocation
 
 EXPECTED_COMMANDS = (
     "train",
@@ -236,11 +237,11 @@ def test_print_config_rejects_an_unavailable_execution_backend(capsys, monkeypat
     assert "Traceback" not in error
 
 
-def test_publish_remains_explicitly_future_owned(capsys) -> None:
+def test_publish_failures_are_concise(capsys) -> None:
     with pytest.raises(SystemExit) as exit_info:
         cli.main(["publish"])
     assert exit_info.value.code == 2
-    assert "unavailable until S09" in capsys.readouterr().err
+    assert "Traceback" not in capsys.readouterr().err
 
 
 def test_print_config_bypasses_runtime_dispatch_and_records_cli_sources(
@@ -283,6 +284,21 @@ def test_print_config_bypasses_runtime_dispatch_and_records_cli_sources(
     }
 
 
+def _stub_execution(monkeypatch, root: Path | None = None) -> cli_commands.CommandContext:
+    """Replace device selection and RNG seeding with a fixed CPU context."""
+
+    context = cli_commands.CommandContext(
+        device="cpu",
+        store=ArtifactStore(
+            checkpoint_root=(root or Path("checkpoints")),
+            standalone_root=(root or Path("artifacts")),
+            invocation=Invocation(argv=("bnb",), command="test", execution={"device": "cpu"}),
+        ),
+    )
+    monkeypatch.setattr(cli_commands, "_prepare_execution", lambda *args, **kwargs: context)
+    return context
+
+
 class _StubTrainer:
     def __init__(self) -> None:
         self.loaded_checkpoint = None
@@ -314,7 +330,7 @@ def test_train_resume_selects_greatest_numeric_step_within_exact_run(tmp_path, m
         return trainer
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(cli_commands, "_prepare_execution", lambda args: "cpu")
+    _stub_execution(monkeypatch)
     monkeypatch.setattr(cli_commands, "_make_trainer", make_trainer)
     cli_commands.execute("train", _parse(["train", "--profile", "rl", "--resume", "exact-run"]))
 
@@ -327,7 +343,7 @@ def test_train_pretraining_requires_and_loads_an_explicit_checkpoint(tmp_path, m
     checkpoint = tmp_path / "pretrained.pt"
     checkpoint.touch()
     trainer = _StubTrainer()
-    monkeypatch.setattr(cli_commands, "_prepare_execution", lambda args: "cpu")
+    _stub_execution(monkeypatch)
     monkeypatch.setattr(cli_commands, "_make_trainer", lambda *args, **kwargs: trainer)
     cli_commands.execute(
         "train",
@@ -344,7 +360,7 @@ def test_train_validates_pretraining_before_execution_or_trainer_allocation(
     monkeypatch.setattr(
         cli_commands,
         "_prepare_execution",
-        lambda args: pytest.fail("execution prepared before subject validation"),
+        lambda *args, **kwargs: pytest.fail("execution prepared before subject validation"),
     )
     monkeypatch.setattr(
         cli_commands,
@@ -492,7 +508,7 @@ def test_malformed_matchup_is_rejected_during_parsing() -> None:
 
 def test_collect_stats_adapter_uses_the_locked_4v4_default(monkeypatch) -> None:
     captured = {}
-    monkeypatch.setattr(cli_commands, "_prepare_execution", lambda args: "cpu")
+    _stub_execution(monkeypatch)
     monkeypatch.setattr(
         cli_commands,
         "run_collect_stats_mode",
@@ -509,7 +525,7 @@ def test_collect_stats_adapter_uses_the_locked_4v4_default(monkeypatch) -> None:
 
 def test_elo_calibration_adapter_passes_explicit_agent_fields(monkeypatch) -> None:
     captured = {}
-    monkeypatch.setattr(cli_commands, "_prepare_execution", lambda args: "cpu")
+    _stub_execution(monkeypatch)
     monkeypatch.setattr(
         cli_commands,
         "run_elo_calibrate_mode",
@@ -526,7 +542,7 @@ def test_elo_calibration_adapter_passes_explicit_agent_fields(monkeypatch) -> No
 
 def test_ar_report_adapter_owns_one_canonical_4v4_scenario(monkeypatch) -> None:
     calls = []
-    monkeypatch.setattr(cli_commands, "_prepare_execution", lambda args: "cpu")
+    _stub_execution(monkeypatch)
     monkeypatch.setattr(
         cli_commands,
         "run_canonical_ar_report_mode",
@@ -549,7 +565,7 @@ def test_ar_report_adapter_owns_one_canonical_4v4_scenario(monkeypatch) -> None:
 )
 def test_analysis_adapters_use_the_locked_4v4_default(command, runtime_name, monkeypatch) -> None:
     captured = {}
-    monkeypatch.setattr(cli_commands, "_prepare_execution", lambda args: "cpu")
+    _stub_execution(monkeypatch)
     monkeypatch.setattr(cli_commands, runtime_name, lambda **kwargs: captured.update(kwargs))
     cli_commands.execute(command, _parse([command, "--team0", "model.pt", "--team1", "scripted"]))
     assert captured["env_config"].num_ships == 8

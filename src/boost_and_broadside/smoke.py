@@ -9,6 +9,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TextIO
@@ -467,11 +468,7 @@ def _run_mode_case(case: SmokeCase, roots: SmokeRoots) -> None:
         from boost_and_broadside.modes.crossover import run_crossover_mode
 
         def bounded_crossover(**kwargs):
-            return run_crossover_mode(
-                **kwargs,
-                max_total_ships=2,
-                output_dir=str(roots.artifacts / "crossover"),
-            )
+            return run_crossover_mode(**kwargs, max_total_ships=2)
 
         with patch.object(cli_commands, "run_crossover_mode", side_effect=bounded_crossover):
             result = main(
@@ -493,7 +490,7 @@ def _run_mode_case(case: SmokeCase, roots: SmokeRoots) -> None:
         from boost_and_broadside.modes.elo_calibrate import run_elo_calibrate_mode
 
         def bounded_calibrate(**kwargs):
-            return run_elo_calibrate_mode(**{**kwargs, "plot": False})
+            return run_elo_calibrate_mode(**kwargs)
 
         with patch.object(cli_commands, "run_elo_calibrate_mode", side_effect=bounded_calibrate):
             result = main(
@@ -517,13 +514,7 @@ def _run_mode_case(case: SmokeCase, roots: SmokeRoots) -> None:
         from boost_and_broadside.modes.elo_scale import run_elo_scale_mode
 
         def bounded_scale(**kwargs):
-            return run_elo_scale_mode(
-                **{
-                    **kwargs,
-                    "plot": False,
-                    "plot_dir": str(roots.artifacts / "elo-scale"),
-                }
-            )
+            return run_elo_scale_mode(**kwargs)
 
         with patch.object(cli_commands, "run_elo_scale_mode", side_effect=bounded_scale):
             result = main(
@@ -551,13 +542,7 @@ def _run_mode_case(case: SmokeCase, roots: SmokeRoots) -> None:
         )
 
         def bounded_semi_random(**kwargs):
-            return run_semi_random_tournament(
-                **{
-                    **kwargs,
-                    "plot": False,
-                    "plot_dir": str(roots.artifacts / "semi-random"),
-                }
-            )
+            return run_semi_random_tournament(**kwargs)
 
         with patch.object(
             cli_commands,
@@ -593,9 +578,7 @@ def _run_mode_case(case: SmokeCase, roots: SmokeRoots) -> None:
             calls += 1
             kwargs["num_steps"] = 2
             kwargs["env_config"] = _basic_env()
-            kwargs["out_dir"] = str(roots.artifacts / "ar-report" / str(calls))
-            with patch("boost_and_broadside.modes.ar_report._generate_report"):
-                return run_ar_report_mode(**kwargs)
+            return run_ar_report_mode(**kwargs)
 
         with patch.object(cli_commands, "run_canonical_ar_report_mode", side_effect=bounded_ar):
             result = main(
@@ -623,10 +606,8 @@ def _run_mode_case(case: SmokeCase, roots: SmokeRoots) -> None:
                 num_ar_envs=1,
                 num_ar_windows=1,
                 env_config=_basic_env(),
-                output_dir=str(roots.artifacts / "noise-calibration"),
             )
-            with patch("boost_and_broadside.modes.noise_calibration._write_outputs"):
-                return run_noise_calibration_mode(**kwargs)
+            return run_noise_calibration_mode(**kwargs)
 
         with patch.object(
             cli_commands,
@@ -697,9 +678,11 @@ def execute_case(case_name: str, root: str | Path) -> None:
     dispatched: list[str] = []
     execute = cli_commands.execute
 
-    def tracked_execute(command: str, args: argparse.Namespace) -> None:
+    def tracked_execute(
+        command: str, args: argparse.Namespace, argv: Sequence[str] | None = None
+    ) -> None:
         dispatched.append(command)
-        execute(command, args)
+        execute(command, args, argv)
 
     with patch.object(cli_commands, "execute", side_effect=tracked_execute):
         if case.command == "train":

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import replace
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, replace
 
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
+from boost_and_broadside.artifacts import ArtifactStore, Invocation
 from boost_and_broadside.config import EnvConfig
 from boost_and_broadside.config.defaults import ELO_CALIBRATE, MODEL_CONFIG, REWARDS, SHIP_CONFIG
 from boost_and_broadside.config.resolve import LaunchOverrides
@@ -37,8 +39,31 @@ from boost_and_broadside.train.rl.policy_io import set_config_drift_allowed
 from boost_and_broadside.train.rl.ppo import PPOTrainer
 from boost_and_broadside.ui.renderer import RenderConfig
 
+# A handler prepares its context only after it has validated its own subjects,
+# so a bad run name or missing checkpoint still fails before any device is
+# selected, any RNG is seeded, or any trainer is built.
+ContextFactory = Callable[[], "CommandContext"]
 
-def _prepare_execution(args: argparse.Namespace) -> str:
+
+@dataclass(frozen=True)
+class CommandContext:
+    """What one dispatched command needs beyond its parsed arguments.
+
+    The store is built here rather than inside a mode so every artifact records
+    the same invocation and validated execution settings, whichever mode wrote
+    it, and so tests and smoke can redirect the managed roots in one place.
+    """
+
+    device: str
+    store: ArtifactStore
+
+
+def _prepare_execution(
+    args: argparse.Namespace,
+    *,
+    command: str | None = None,
+    argv: Sequence[str] | None = None,
+) -> CommandContext:
     requested_compile = getattr(args, "compile_mode", None)
     compile_mode = None if requested_compile == "none" else requested_compile
     settings = resolve_execution_settings(
@@ -51,7 +76,19 @@ def _prepare_execution(args: argparse.Namespace) -> str:
     args.seed = settings.seed
     initialize_execution(settings)
     set_config_drift_allowed(getattr(args, "allow_config_drift", False))
-    return settings.device
+    return CommandContext(
+        device=settings.device,
+        store=ArtifactStore(
+            checkpoint_root="checkpoints",
+            standalone_root="artifacts",
+            invocation=Invocation(
+                argv=tuple(argv or ()),
+                command=command,
+                execution=settings.document(),
+            ),
+            device=settings.device,
+        ),
+    )
 
 
 def _calibration_config(args: argparse.Namespace):
@@ -116,7 +153,7 @@ def _run_trainer(trainer: PPOTrainer) -> None:
         trainer.shutdown()
 
 
-def _train(args: argparse.Namespace) -> None:
+def _train(args: argparse.Namespace, prepare: ContextFactory) -> None:
     resume_path, run_id = (
         _resume_checkpoint(args.resume) if args.resume is not None else (None, None)
     )
@@ -129,7 +166,8 @@ def _train(args: argparse.Namespace) -> None:
         args.profile,
         LaunchOverrides(num_envs=args.num_envs, microbatch_tokens=args.microbatch_tokens),
     )
-    device = _prepare_execution(args)
+    context = prepare()
+    device = context.device
     trainer = _make_trainer(resolved, args, device, resume_wandb_run_id=run_id)
     if resume_path is not None:
         trainer.load_checkpoint(resume_path)
@@ -138,8 +176,9 @@ def _train(args: argparse.Namespace) -> None:
     _run_trainer(trainer)
 
 
-def _play(args: argparse.Namespace) -> None:
-    device = _prepare_execution(args)
+def _play(args: argparse.Namespace, prepare: ContextFactory) -> None:
+    context = prepare()
+    device = context.device
     run_play_mode(
         ship_config=SHIP_CONFIG,
         rewards=REWARDS,
@@ -150,8 +189,9 @@ def _play(args: argparse.Namespace) -> None:
     )
 
 
-def _watch(args: argparse.Namespace) -> None:
-    device = _prepare_execution(args)
+def _watch(args: argparse.Namespace, prepare: ContextFactory) -> None:
+    context = prepare()
+    device = context.device
     run_watch_mode(
         team0_spec=args.team0,
         team1_spec=args.team1,
@@ -170,8 +210,9 @@ def _watch(args: argparse.Namespace) -> None:
     )
 
 
-def _capture(args: argparse.Namespace) -> None:
-    device = _prepare_execution(args)
+def _capture(args: argparse.Namespace, prepare: ContextFactory) -> None:
+    context = prepare()
+    device = context.device
     run_capture_mode(
         run_spec=args.run,
         scenarios=args.scenarios,
@@ -189,8 +230,9 @@ def _capture(args: argparse.Namespace) -> None:
     )
 
 
-def _collect_stats(args: argparse.Namespace) -> None:
-    device = _prepare_execution(args)
+def _collect_stats(args: argparse.Namespace, prepare: ContextFactory) -> None:
+    context = prepare()
+    device = context.device
     run_collect_stats_mode(
         team0_spec=args.team0,
         team1_spec=args.team1,
@@ -208,8 +250,9 @@ def _collect_stats(args: argparse.Namespace) -> None:
     )
 
 
-def _crossover(args: argparse.Namespace) -> None:
-    device = _prepare_execution(args)
+def _crossover(args: argparse.Namespace, prepare: ContextFactory) -> None:
+    context = prepare()
+    device = context.device
     run_crossover_mode(
         run_spec=args.run,
         trained_counts=parse_counts(args.sizes),
@@ -218,14 +261,17 @@ def _crossover(args: argparse.Namespace) -> None:
         device=device,
         checkpoint_dir="checkpoints",
         num_envs=args.games_per_matchup,
+        store=context.store,
     )
 
 
-def _elo_calibrate(args: argparse.Namespace) -> None:
-    device = _prepare_execution(args)
+def _elo_calibrate(args: argparse.Namespace, prepare: ContextFactory) -> None:
+    context = prepare()
+    device = context.device
     run_elo_calibrate_mode(
         run_spec=args.run,
         agent_specs=args.agents,
+        from_artifact=args.from_artifact,
         ship_config=SHIP_CONFIG,
         device=device,
         checkpoint_dir="checkpoints",
@@ -236,13 +282,13 @@ def _elo_calibrate(args: argparse.Namespace) -> None:
             max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
             max_episode_steps=1024,
         ),
-        plot=True,
-        refit=False,
+        store=context.store,
     )
 
 
-def _elo_scale(args: argparse.Namespace) -> None:
-    device = _prepare_execution(args)
+def _elo_scale(args: argparse.Namespace, prepare: ContextFactory) -> None:
+    context = prepare()
+    device = context.device
     run_elo_scale_mode(
         run_spec=args.run,
         team_sizes=parse_counts(args.sizes),
@@ -250,12 +296,13 @@ def _elo_scale(args: argparse.Namespace) -> None:
         device=device,
         checkpoint_dir="checkpoints",
         config=_calibration_config(args),
-        plot=True,
+        store=context.store,
     )
 
 
-def _semi_random(args: argparse.Namespace) -> None:
-    device = _prepare_execution(args)
+def _semi_random(args: argparse.Namespace, prepare: ContextFactory) -> None:
+    context = prepare()
+    device = context.device
     resolved = resolve_named_profile(args.profile) if args.profile is not None else None
     run_spec = args.profile if resolved is not None else args.run
     run_semi_random_tournament(
@@ -272,12 +319,13 @@ def _semi_random(args: argparse.Namespace) -> None:
         ship_config=SHIP_CONFIG,
         device=device,
         checkpoint_dir="checkpoints",
-        plot=True,
+        store=context.store,
     )
 
 
-def _ar_report(args: argparse.Namespace) -> None:
-    device = _prepare_execution(args)
+def _ar_report(args: argparse.Namespace, prepare: ContextFactory) -> None:
+    context = prepare()
+    device = context.device
     run_canonical_ar_report_mode(
         team0_spec=args.team0,
         team1_spec=args.team1,
@@ -287,11 +335,13 @@ def _ar_report(args: argparse.Namespace) -> None:
         model_config=MODEL_CONFIG,
         device=device,
         checkpoint_dir="checkpoints",
+        store=context.store,
     )
 
 
-def _noise_calibration(args: argparse.Namespace) -> None:
-    device = _prepare_execution(args)
+def _noise_calibration(args: argparse.Namespace, prepare: ContextFactory) -> None:
+    context = prepare()
+    device = context.device
     run_noise_calibration_mode(
         team0_spec=args.team0,
         team1_spec=args.team1,
@@ -308,12 +358,13 @@ def _noise_calibration(args: argparse.Namespace) -> None:
         model_config=MODEL_CONFIG,
         device=device,
         checkpoint_dir="checkpoints",
-        output_dir="docs/noise_calibration",
+        store=context.store,
     )
 
 
-def _feature_stats(args: argparse.Namespace) -> None:
-    device = _prepare_execution(args)
+def _feature_stats(args: argparse.Namespace, prepare: ContextFactory) -> None:
+    context = prepare()
+    device = context.device
     run_feature_stats_mode(
         team0_spec=args.team0,
         team1_spec=args.team1,
@@ -328,6 +379,7 @@ def _feature_stats(args: argparse.Namespace) -> None:
         model_config=MODEL_CONFIG,
         device=device,
         checkpoint_dir="checkpoints",
+        store=context.store,
     )
 
 
@@ -335,6 +387,12 @@ def _smoke(args: argparse.Namespace) -> None:
     from boost_and_broadside.smoke import run_smoke_matrix
 
     run_smoke_matrix(args.case)
+
+
+def _publish(args: argparse.Namespace) -> None:
+    """Render manifest-selected canonical views. Never simulates, never plays."""
+
+    raise ValueError("bnb publish is registered but its renderers are not wired yet")
 
 
 _HANDLERS = {
@@ -359,15 +417,22 @@ def runtime_command_names() -> tuple[str, ...]:
     return tuple(_HANDLERS)
 
 
-def execute(command: str, args: argparse.Namespace) -> None:
-    """Execute one completely parsed command."""
+def execute(
+    command: str, args: argparse.Namespace, argv: Sequence[str] | None = None
+) -> None:
+    """Execute one completely parsed command.
+
+    ``argv`` is the invocation as the user spelled it; it is recorded verbatim in
+    every artifact the command writes, beside the normalized ``uv run bnb`` form.
+    """
     if command == "smoke":
         _smoke(args)
         return
     if command == "publish":
-        raise ValueError("bnb publish is registered but unavailable until S09")
+        _publish(args)
+        return
     try:
         handler = _HANDLERS[command]
     except KeyError as error:
         raise ValueError(f"no handler registered for command {command!r}") from error
-    handler(args)
+    handler(args, lambda: _prepare_execution(args, command=command, argv=argv))

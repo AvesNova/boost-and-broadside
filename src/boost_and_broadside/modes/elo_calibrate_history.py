@@ -2,9 +2,9 @@
 
 The W&B archive (``scripts/export_wandb_run.py``) leaves two files per run: a
 ``history.jsonl`` of time-series rows keyed by ``_step`` (environment steps) with
-sparse metric keys, and a flat ``summary.json`` of each metric's final value. The
-calibration result (``elo_calibrated.json``) carries the same information for the
-*calibrated* ratings, just in its own richer shape.
+sparse metric keys, and a flat ``summary.json`` of each metric's final value. A
+calibration result carries the same information for the *calibrated* ratings,
+just in its own richer shape.
 
 Reducing the calibration result to those two shapes — under the same metric key
 names W&B itself uses (``ladder/elo/live``, ``ladder/elo/ckpt_<step>``,
@@ -13,13 +13,11 @@ and calibrated ratings interchangeably. "In-training vs calibrated" becomes
 simply which file is opened, exactly like reading two W&B runs.
 
 The conversion is pure and takes the already-persisted ``result`` dict, so a
-finished run can be back-filled from its ``elo_calibrated.json`` without replaying
-a single tournament match.
+finished run can be back-filled from a stored calibration artifact without
+replaying a single tournament match.
 """
 
-import json
 import math
-from pathlib import Path
 
 
 def _finite(value) -> bool:
@@ -114,21 +112,3 @@ def to_summary(result: dict) -> dict:
         if _finite(result.get(key)):
             summary[key] = float(result[key])
     return summary
-
-
-def write_chart_data(result: dict, run_dir: Path) -> list[Path]:
-    """Write ``elo_calibration/{history.jsonl,summary.json}`` in W&B export format.
-
-    Grouped alongside the calibration plots so every chart-ready artifact for a
-    run lives in one place.
-    """
-    output = run_dir / "elo_calibration"
-    output.mkdir(parents=True, exist_ok=True)
-    history_path = output / "history.jsonl"
-    summary_path = output / "summary.json"
-
-    with history_path.open("w") as fh:
-        for row in to_history_rows(result):
-            fh.write(json.dumps(row) + "\n")
-    summary_path.write_text(json.dumps(to_summary(result), indent=2))
-    return [history_path, summary_path]

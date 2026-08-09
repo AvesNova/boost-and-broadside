@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from boost_and_broadside.errors import UserFacingError
 from boost_and_broadside.profiles import PROFILES
 
 
@@ -318,6 +319,19 @@ COMMANDS: tuple[CommandSpec, ...] = (
                 "calibration-subject",
                 True,
             ),
+            OptionSpec(
+                ("--from-artifact",),
+                {
+                    "type": Path,
+                    "metavar": "ARTIFACT",
+                    "help": (
+                        "Refit a stored elo-calibration artifact from its match "
+                        "matrices, without playing a game."
+                    ),
+                },
+                "calibration-subject",
+                True,
+            ),
             *_CALIBRATION,
             _DEVICE,
             _SEED,
@@ -420,7 +434,7 @@ COMMANDS: tuple[CommandSpec, ...] = (
     ),
     CommandSpec(
         "publish",
-        "Render manifest-selected canonical publications (implemented in S09).",
+        "Render manifest-selected canonical publications offline.",
         (
             _option("--target", metavar="NAME", help="Render one manifest entry."),
             _option(
@@ -469,10 +483,16 @@ def parse_args(
     return parser, parser.parse_args(argv)
 
 
-def _dispatch_command(command: str, args: argparse.Namespace) -> None:
+def _dispatch_command(command: str, args: argparse.Namespace, argv: Sequence[str]) -> None:
     from boost_and_broadside.cli_commands import execute
 
-    execute(command, args)
+    execute(command, args, argv)
+
+
+def _invocation(argv: Sequence[str] | None) -> tuple[str, ...]:
+    """The argument vector to record, whether launched by shell or by test."""
+
+    return tuple(sys.argv) if argv is None else ("bnb", *argv)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -515,8 +535,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 parser.error(str(error))
             return 0
 
-        _dispatch_command(args.command, args)
-    except (FileNotFoundError, KeyError, ValueError) as error:
+        _dispatch_command(args.command, args, _invocation(argv))
+    except (UserFacingError, FileNotFoundError, KeyError, ValueError) as error:
         parser.error(str(error))
     return 0
 
