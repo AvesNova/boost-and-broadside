@@ -36,9 +36,9 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: `S04` — shared evaluation primitives.
-- Next section: none until S04 is completed and handed off.
-- Blocking issue: none; S03R closed all four S03 findings and its independent re-review finding.
+- Active section: none; S04 shared evaluation primitives are complete.
+- Next section: `S05` — `bnb` CLI.
+- Blocking issue: none.
 - Landmark migration: scheduled for `S15`, after all target schemas stabilize.
 
 ## Sequential queue
@@ -50,7 +50,7 @@ code, tests, and reader-facing documentation.
 | S02 | 1 | completed | configuration architect | Sol / extra high | Move profiles under `src`; add independent specs/resolution/fingerprints without changing RL behavior |
 | S03 | 1 gate | completed | configuration reviewer | Sol / extra high | Review resolved-config equivalence, dependency direction, and schema/fingerprint design |
 | S03R | 1 gate remediation | completed | configuration remediator + reviewer | Sol / extra high | Fix S03 blockers and obtain an independent configuration re-review |
-| S04 | 2 | in_progress | evaluation refactorer | Sol / high | Extract typed sizes, run catalog, match/environment, and tournament engines |
+| S04 | 2 | completed | evaluation refactorer | Sol / high | Extract typed sizes, run catalog, match/environment, and tournament engines |
 | S05 | 3 | pending | CLI engineer | Sol / high | Replace `main.py --mode` with the strict installed `bnb` subcommand CLI |
 | S06 | 4 | pending | smoke/test engineer | Sol / high | Build synthetic checkpoint fixtures and fully isolated sequential subprocess smoke coverage |
 | S07 | 2–4 gate | pending | integration reviewer | Sol / extra high | Review shared engines, CLI contracts, smoke isolation, and behavior preservation |
@@ -608,6 +608,45 @@ Each section appends its record below when it completes. Do not replace earlier 
 - Remaining risks or required follow-up: S05/S13 still must thread the complete resolved document
   and source map into launch/checkpoint provenance and implement the planned CLI/VRAM cache layers;
   S11 still owns the intentional BC correction. S04 is the next authorized section.
+
+### S04 handoff
+
+- Status: completed
+- Agent/model/effort: evaluation refactorer / `gpt-5.6-sol` / high
+- Commit(s): `3cac020` — mark S04 active; `d41f340` — shared evaluation primitives,
+  mode integration, required TeamPMA inputs, and focused tests; followed by this status-only closure
+  commit
+- Tests/checks and results: characterization/evaluation/mode gate (107 passed); expanded focused
+  policy/roster/mode gate (244 passed, 2 CUDA skips); final `.venv/bin/pytest -q` (652 passed,
+  6 CUDA skips); `.venv/bin/ruff check .` (passed);
+  `git diff --check` (passed); setuptools package discovery included
+  `boost_and_broadside.evaluation`; direct imports of every evaluation module passed; repository
+  guards found no library `sys.exit`, cross-user-facing-mode import, omitted `team_pma_k` policy
+  constructor, or stale `modes.agent_factory`/`modes.match` import
+- Behavior/config changes: resolved RL, RL-fields, and stale-BC snapshot characterization remains
+  exact; no training configuration or successful mode output contract changed. Matchup parsing now
+  produces a typed tuple-compatible `Matchup`, preserves asymmetric inputs, rejects non-positive or
+  malformed inputs, and exposes the locked 4v4 default. Final/resumable checkpoint policies use
+  numeric step metadata rather than filename lexicography or mtime. Library failures raise typed or
+  ordinary exceptions rather than terminating the process. `team_pma_k` is now required by
+  `YemongPolicy`, `build_policy`, and roster policy loading, with every caller explicit.
+- Files/artifacts produced: packaged `boost_and_broadside.evaluation` modules for agents,
+  field-aware environment construction, match execution, next-state imagination, typed run catalog,
+  typed sizes, and tournaments; focused tests under `tests/evaluation/`; no durable runtime artifact
+- Decisions/deviations from plan: pre-S05 `latest`/`none` success behavior remains behind explicitly
+  named legacy catalog adapters so S04 stays mechanically comparable while strict exact-run APIs are
+  ready for the CLI break. Field-bearing environments require an explicit `FieldMapConfig` or an
+  existing cache; S04 does not invent a map distribution when provenance is unavailable. Plot and
+  history helpers remain non-user-facing mode-adjacent renderers; the dependency guard forbids only
+  imports between modules that expose user-facing `run_*` entry points.
+- Review findings addressed: self-review caught and removed the roster loader's remaining empty
+  `team_pma_k` default; missing checkpoint roots now raise typed catalog errors; the shared
+  tournament APIs were made public rather than leaving cross-mode private imports.
+- Remaining risks or required follow-up: S05 must remove the legacy run/sentinel adapters and
+  translate catalog exceptions through the strict `bnb` CLI. S08 still owns threading field-map
+  intent into `collect-stats` and the planned mode consolidation; until then field configs without an
+  explicit map source continue to fail loudly rather than silently selecting a different map
+  distribution.
 
 ### Future handoff template
 
