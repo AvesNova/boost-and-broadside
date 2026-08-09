@@ -157,6 +157,9 @@ uv run main.py --mode elo_scale \
 uv run main.py --mode semi_random \
   --run resilient-resonance-682 --team-counts 1,2,4,8,16,32,64
 
+# Fit that ladder for a training profile instead, before any such run exists
+uv run main.py --mode semi_random --profile rl --team-counts 4
+
 # Search the scripted-team crossover for selected learned-team sizes
 uv run main.py --mode crossover \
   --run resilient-resonance-682 --trained-counts 4,8,16,32,64 --eval-envs 256
@@ -168,6 +171,14 @@ the reference ladder writes `checkpoints/<run>/semi_random_tournament.json`; cro
 writes `docs/crossover/crossover.json`. These evaluations can require substantial GPU
 time, and the reference-run artifacts are already included. Methodology and
 interpretation are in [evaluation and results](evaluation.md).
+
+The `--profile` form of `semi_random` serves training rather than evaluation. Training
+rates the live policy against those same rungs as fixed references, so each profile
+carries its own fitted `reference_ladder` and `random_elo` in
+[`runs/`](../runs/), written under `checkpoints/<profile>/`. Rung ratings are a property
+of the environment they play in, so re-fit them whenever the tick rate, field count, ship
+config, fleet size or scripted controller moves — see
+[the reference ladder](training.md#the-reference-ladder).
 
 ## Capture replays
 
