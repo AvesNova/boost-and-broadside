@@ -36,8 +36,8 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: none; `S09` is complete.
-- Next section: `S10` — artifact gate review.
+- Active section: `S10` — artifact gate review.
+- Next section: `S11` — BC correction, after `S10` closes.
 - Blocking issue: none.
 - Landmark migration: scheduled for `S15`, after all target schemas stabilize.
 
@@ -57,7 +57,7 @@ code, tests, and reader-facing documentation.
 | S07R | 2–4 gate remediation | completed | integration remediator + reviewer | Sol / extra high | Close S07 blockers and obtain an independent shared/CLI/smoke re-review |
 | S08 | 5 | completed | mode consolidation engineer | Terra / high | Consolidate training, retire modes/flags, and fix field-capable evaluation |
 | S09 | 6 | completed | artifact/publication architect | Sol / extra high | Implement artifacts, provenance, raw samples, publication manifest, and offline render checks |
-| S10 | 6 gate | pending | artifact reviewer | Sol / extra high | Review schemas, identity, atomicity, resume, Git-ignore safety, and offline publication |
+| S10 | 6 gate | in_progress | artifact reviewer | Sol / extra high | Review schemas, identity, atomicity, resume, Git-ignore safety, and offline publication |
 | S11 | 7 | pending | training-profile engineer | Sol / high | Correct BC independently and validate its allowed differences from RL |
 | S12 | 8 | pending | live-Elo engineer | Sol / extra high | Implement/document approximate live Elo separately from calibrated Elo |
 | S13 | 9 | pending | VRAM engineer | Sol / extra high | Implement resolution precedence, probing, cache fingerprints, and provenance |
