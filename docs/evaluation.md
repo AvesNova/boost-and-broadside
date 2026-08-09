@@ -217,8 +217,8 @@ For example, position-x falls from 1.49 at the first sampled update to 0.0015 at
 last; velocity-x from 3.04 to 0.019; power from 1.47 to 0.019. Health changes much less,
 from 0.57 to 0.49.
 
-These are direct measurements from the W&B history rendered by
-[`scripts/render_charts.py`](../scripts/render_charts.py). A plausible reading is that
+These are direct measurements from the archived W&B history, rendered by the
+`next-state-error-v1` publication renderer. A plausible reading is that
 health is dominated by sparse, hard-to-forecast damage events, but that is an
 interpretation — no ablation isolates the cause. Deeper sequence behavior is in
 the [autoregressive reports](ar_report/) and [noise calibration](noise_calibration/).
@@ -233,34 +233,27 @@ diagnostics rather than headline task-performance measures.
 
 ## Reproduce the figures
 
-The README/evaluation charts share one renderer for W&B-format history and calibrated
-history:
+Every canonical figure is rendered by `bnb publish` from the artifact that
+[`docs/publications.toml`](publications.toml) selects for it — nothing else writes under
+`docs/`:
 
 ```bash
-uv run scripts/render_charts.py \
-  --run resilient-resonance-682 \
-  --out docs/results
-
-uv run scripts/render_crossover.py \
-  --data docs/crossover/crossover.json \
-  --out docs/results
-
-uv run scripts/render_elo_scale.py \
-  --data checkpoints/resilient-resonance-682/elo_scale.json \
-  --reference-data checkpoints/resilient-resonance-682/semi_random_tournament.json \
-  --out docs/results
-
-uv run scripts/render_semi_random.py \
-  --data checkpoints/resilient-resonance-682/semi_random_tournament.json \
-  --out docs/results
+uv run bnb publish              # render every selected publication
+uv run bnb publish --target elo_curve
+uv run bnb publish --check      # render into a temporary tree and compare
 ```
 
-The renderer is the source of the axis labels and equal-scale geometry; the tracked
-rasters are regenerated from it rather than edited independently. A full current-schema
-calibration is launched with
-`uv run bnb elo-calibrate --run resilient-resonance-682`. Cheap artifact-backed
-reanalysis will be exposed only after the artifact recipe is explicit; there is no
-generic refit flag.
+Publication is offline and performs no simulation: it verifies each source artifact's
+hashes, refuses one produced from a dirty checkout, and installs atomically. The renderer
+is the source of the axis labels and equal-scale geometry; the tracked rasters are
+regenerated from it rather than edited independently.
+
+Selecting the exact landmark artifacts is the one-time backfill that follows the 682
+checkpoint migration, so every entry currently reports as unselected and the tracked
+outputs are left as they are. A full current-schema calibration is launched with
+`uv run bnb elo-calibrate --run resilient-resonance-682`, and a stored calibration can be
+refit without replaying a match using
+`uv run bnb elo-calibrate --from-artifact <artifact directory>`.
 
 To rerun the underlying evaluations, see [getting started](getting-started.md#evaluate).
 They can require substantial GPU time; rendering from included artifacts does not.

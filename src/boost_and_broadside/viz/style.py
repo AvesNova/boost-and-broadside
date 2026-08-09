@@ -139,9 +139,14 @@ def save(figure, path: Path, tight: bool = True) -> Path:
     ``tight`` runs ``tight_layout`` for a single-panel figure; a multi-panel grid
     that manages its own spacing (e.g. via a constrained layout) passes
     ``tight=False`` so the two do not fight.
+
+    The PNG's software metadata is suppressed so two renders of the same data are
+    byte-identical: ``bnb publish --check`` compares canonical outputs, and a
+    library version stamped into the file would make an unchanged figure read as
+    a change.
     """
     if tight:
         figure.tight_layout()
-    figure.savefig(path, facecolor=SURFACE, bbox_inches="tight")
+    figure.savefig(path, facecolor=SURFACE, bbox_inches="tight", metadata={"Software": None})
     plt.close(figure)
     return path

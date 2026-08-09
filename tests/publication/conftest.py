@@ -17,9 +17,13 @@ from boost_and_broadside.publication import renderer_api
 from boost_and_broadside.publication.renderer_api import Renderer, register
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def isolated_registry():
-    """Give each test its own renderer registry."""
+    """Give one test its own renderer registry.
+
+    Not autouse: the inventory tests read the shipped manifest and need the real
+    renderers registered.
+    """
 
     saved = dict(renderer_api._REGISTRY)
     renderer_api._REGISTRY.clear()

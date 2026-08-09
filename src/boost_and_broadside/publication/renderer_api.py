@@ -58,6 +58,11 @@ class Renderer:
     # A directory entry installs a whole rendered tree and prunes what the
     # renderer no longer produces; a file entry must produce exactly one file.
     multi_file: bool = False
+    # An external output has no producer here: publication verifies that the
+    # tracked file exists and records it in the index, and never renders it.
+    # Claiming otherwise would make the inventory look reproducible when it is
+    # not.
+    external: bool = False
 
     @property
     def source_names(self) -> tuple[str, ...]:

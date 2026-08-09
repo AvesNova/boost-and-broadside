@@ -392,7 +392,17 @@ def _smoke(args: argparse.Namespace) -> None:
 def _publish(args: argparse.Namespace) -> None:
     """Render manifest-selected canonical views. Never simulates, never plays."""
 
-    raise ValueError("bnb publish is registered but its renderers are not wired yet")
+    from pathlib import Path
+
+    from boost_and_broadside.publication.publish import run_publish
+    from boost_and_broadside.publication.renderer_api import PublicationError
+
+    report = run_publish(Path.cwd(), target=args.target, check=args.check)
+    print(report.render())
+    if report.failed:
+        raise PublicationError(
+            "canonical output does not match the manifest; run bnb publish to update it"
+        )
 
 
 _HANDLERS = {

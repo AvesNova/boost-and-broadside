@@ -1,0 +1,178 @@
+# Publication manifest — the complete canonical inventory.
+#
+# This file is the inventory: every output tracked under docs/ that the project
+# treats as a result is declared here, together with the renderer that produces
+# it. Nothing else decides what belongs in docs/, and `bnb publish` writes
+# nothing that is not declared below.
+#
+# Sources are deliberately absent. Selecting the exact landmark artifacts is the
+# one-time backfill that follows the 682 checkpoint migration; until then every
+# entry reports as unselected, its tracked output is left exactly as it is, and
+# `bnb publish --check` succeeds without writing anything. Adding an artifacts
+# table to an entry is all it takes to select it, for example:
+#
+#     [publications.crossover_phase.artifacts]
+#     crossover = "checkpoints/<run>/artifacts/crossover/<id>"
+
+schema_version = 1
+
+[publications.elo_curve]
+renderer = "training-elo-curve-v1"
+output = "docs/results/elo_curve.png"
+description = "Post-hoc calibrated Elo over training, against the scripted controller."
+# expects: calibration = an elo-calibration artifact
+
+[publications.win_rate_vs_scripted]
+renderer = "training-win-rate-v1"
+output = "docs/results/win_rate_vs_scripted.png"
+description = "Win rate against the scripted controller over training."
+# expects: wandb_export = a wandb-export artifact
+
+[publications.training_health]
+renderer = "training-health-v1"
+output = "docs/results/training_health.png"
+description = "Critic fit, reward, KL, and clip fraction as one optimisation panel."
+# expects: wandb_export = a wandb-export artifact
+
+[publications.next_state_error]
+renderer = "next-state-error-v1"
+output = "docs/results/next_state_error.png"
+description = "Next-state prediction error per observation dimension."
+# expects: wandb_export = a wandb-export artifact
+
+[publications.crossover_phase]
+renderer = "crossover-phase-v1"
+output = "docs/results/crossover_phase.png"
+description = "Where the scripted fleet overtakes the policy, against equal counts."
+# expects: crossover = a crossover artifact
+
+[publications.crossover_ratio]
+renderer = "crossover-ratio-v1"
+output = "docs/results/crossover_ratio.png"
+description = "Scripted ships beaten per policy ship."
+# expects: crossover = a crossover artifact
+
+[publications.crossover_data]
+renderer = "crossover-data-v1"
+output = "docs/crossover/crossover.json"
+description = "The measured crossover curves as published data."
+# expects: crossover = a crossover artifact
+
+[publications.elo_scale]
+renderer = "elo-scale-v1"
+output = "docs/results/elo_scale_scripted_1000.png"
+description = "Checkpoint strength across symmetric fleet sizes, scripted-anchored."
+# expects: scale = an elo-scale artifact; reference = a semi-random-ladder artifact (optional)
+
+[publications.semi_random_connectivity]
+renderer = "semi-random-connectivity-v1"
+output = "docs/results/semi_random_connectivity.png"
+description = "How informative each step of the random-to-scripted ladder is."
+# expects: ladder = a semi-random-ladder artifact
+
+[publications.ar_report]
+renderer = "ar-report-v1"
+output = "docs/ar_report/4v4"
+description = "Closed- and open-loop imagined rollouts against ground truth, 4v4."
+# expects: ar_report = an ar-report artifact
+
+[publications.noise_calibration]
+renderer = "noise-calibration-v1"
+output = "docs/noise_calibration"
+description = "Next-state prediction error: sigma, autocorrelation, and AR growth."
+# expects: noise = a noise-calibration artifact
+
+[publications.policy_architecture]
+renderer = "external-asset-v1"
+output = "docs/policy_architecture.png"
+description = "Policy architecture diagram; drawn by hand, with no producer in this repository."
+
+[publications.replay_self_16v16_seed00]
+renderer = "media-copy-v1"
+output = "docs/results/replays/self_16v16_seed00.gif"
+description = "Curated seeded replay: self 16v16 seed00."
+# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_self_2v2_seed00]
+renderer = "media-copy-v1"
+output = "docs/results/replays/self_2v2_seed00.gif"
+description = "Curated seeded replay: self 2v2 seed00."
+# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_self_32v32_seed00]
+renderer = "media-copy-v1"
+output = "docs/results/replays/self_32v32_seed00.gif"
+description = "Curated seeded replay: self 32v32 seed00."
+# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_self_4v4_seed00]
+renderer = "media-copy-v1"
+output = "docs/results/replays/self_4v4_seed00.gif"
+description = "Curated seeded replay: self 4v4 seed00."
+# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_self_64v64_seed02]
+renderer = "media-copy-v1"
+output = "docs/results/replays/self_64v64_seed02.gif"
+description = "Curated seeded replay: self 64v64 seed02."
+# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_self_8v8_seed01]
+renderer = "media-copy-v1"
+output = "docs/results/replays/self_8v8_seed01.gif"
+description = "Curated seeded replay: self 8v8 seed01."
+# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_vs_scripted_16v22_seed02]
+renderer = "media-copy-v1"
+output = "docs/results/replays/vs_scripted_16v22_seed02.gif"
+description = "Curated seeded replay: vs scripted 16v22 seed02."
+# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_vs_scripted_1v1_seed00]
+renderer = "media-copy-v1"
+output = "docs/results/replays/vs_scripted_1v1_seed00.gif"
+description = "Curated seeded replay: vs scripted 1v1 seed00."
+# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_vs_scripted_2v2_seed02]
+renderer = "media-copy-v1"
+output = "docs/results/replays/vs_scripted_2v2_seed02.gif"
+description = "Curated seeded replay: vs scripted 2v2 seed02."
+# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_vs_scripted_32v44_seed04]
+renderer = "media-copy-v1"
+output = "docs/results/replays/vs_scripted_32v44_seed04.gif"
+description = "Curated seeded replay: vs scripted 32v44 seed04."
+# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_vs_scripted_4v4_seed01]
+renderer = "media-copy-v1"
+output = "docs/results/replays/vs_scripted_4v4_seed01.gif"
+description = "Curated seeded replay: vs scripted 4v4 seed01."
+# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_vs_scripted_4v5_seed00]
+renderer = "media-copy-v1"
+output = "docs/results/replays/vs_scripted_4v5_seed00.gif"
+description = "Curated seeded replay: vs scripted 4v5 seed00."
+# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_vs_scripted_4v5_seed04]
+renderer = "media-copy-v1"
+output = "docs/results/replays/vs_scripted_4v5_seed04.gif"
+description = "Curated seeded replay: vs scripted 4v5 seed04."
+# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_vs_scripted_64v80_seed01]
+renderer = "media-copy-v1"
+output = "docs/results/replays/vs_scripted_64v80_seed01.gif"
+description = "Curated seeded replay: vs scripted 64v80 seed01."
+# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_vs_scripted_8v11_seed03]
+renderer = "media-copy-v1"
+output = "docs/results/replays/vs_scripted_8v11_seed03.gif"
+description = "Curated seeded replay: vs scripted 8v11 seed03."
+# expects: clip = the captured scratch clip, pinned by sha256

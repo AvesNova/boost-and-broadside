@@ -41,6 +41,7 @@ from boost_and_broadside.publication.renderer_api import (
 )
 
 RENDERED = "rendered"
+EXTERNAL = "external"
 UNCHANGED = "unchanged"
 CHANGED = "changed"
 MISSING = "missing"
@@ -145,6 +146,10 @@ def run_publish(
                 )
             )
             continue
+        if entry.renderer.external:
+            report.outcomes.append(_verify_external(repository, entry))
+            report.index.append(_index_row(entry, {}))
+            continue
         sources, digests = _resolve_sources(repository, entry)
         with tempfile.TemporaryDirectory(prefix="bnb-publish-") as temporary:
             staged = Path(temporary)
@@ -157,9 +162,21 @@ def run_publish(
 
     if target is None:
         report.removed.extend(_prune_unowned(repository, manifest, check=check))
-    if not check and manifest.selected and target is None:
+    if not check and target is None and any(
+        entry.selected and not entry.renderer.external for entry in manifest.entries
+    ):
         _write_generated_index(repository, manifest, report)
     return report
+
+
+def _verify_external(repository: Path, entry: PublicationEntry) -> EntryOutcome:
+    """An asset produced elsewhere is checked for presence, never rewritten."""
+
+    if not (repository / entry.output).exists():
+        return EntryOutcome(entry.name, MISSING, entry.output, "external asset is absent")
+    return EntryOutcome(
+        entry.name, EXTERNAL, entry.output, "tracked as-is; not produced in this repository"
+    )
 
 
 def _entries_to_process(
@@ -377,9 +394,10 @@ def _write_generated_index(
 ) -> None:
     """Write the generated provenance index and the ownership record beside it.
 
-    Both are written only once something is actually selected: until the exact
-    landmark artifacts are chosen there is nothing to trace, and an empty index
-    in the tree would read as a claim that there is.
+    Both appear only once something is actually rendered from a source: until
+    the exact landmark artifacts are chosen there is nothing to trace, and an
+    index listing only assets produced elsewhere would read as a claim that
+    there is.
     """
 
     for relative, body in (
@@ -395,6 +413,7 @@ def _write_generated_index(
 
 __all__ = [
     "CHANGED",
+    "EXTERNAL",
     "EntryOutcome",
     "MISSING",
     "PublishReport",

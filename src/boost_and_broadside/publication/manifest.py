@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from boost_and_broadside.publication import renderers as _renderers  # noqa: F401
 from boost_and_broadside.publication.renderer_api import (
     PublicationError,
     Renderer,

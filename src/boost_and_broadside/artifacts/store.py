@@ -192,6 +192,23 @@ class Artifact:
         self.samples_dir.mkdir(parents=True, exist_ok=True)
         return self._write(f"{_SAMPLES_DIR}/{name}", _compressed_npz(arrays))
 
+    def attach(self, name: str) -> Path:
+        """Record a file an external tool wrote into this artifact directory.
+
+        Ingestion from another system (a W&B export downloading a run's files)
+        cannot route every byte through :meth:`_write`. Attaching hashes what
+        landed, so the manifest still describes the complete payload.
+        """
+
+        path = self.path / name
+        if not path.resolve().is_relative_to(self.path.resolve()):
+            raise ArtifactError(f"artifact payload {name!r} escapes {self.path}")
+        if not path.is_file():
+            raise ArtifactError(f"no file {name!r} in {self.path} to attach")
+        self._record_file(name, path)
+        self._save_manifest()
+        return path
+
     def complete(self) -> Path:
         """Mark the measurement finished; only then is the artifact citable."""
 

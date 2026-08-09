@@ -237,11 +237,30 @@ def test_print_config_rejects_an_unavailable_execution_backend(capsys, monkeypat
     assert "Traceback" not in error
 
 
-def test_publish_failures_are_concise(capsys) -> None:
+def test_publish_reports_a_missing_manifest_concisely(tmp_path, monkeypatch, capsys) -> None:
+    monkeypatch.chdir(tmp_path)
+
     with pytest.raises(SystemExit) as exit_info:
-        cli.main(["publish"])
+        cli.main(["publish", "--check"])
+
     assert exit_info.value.code == 2
-    assert "Traceback" not in capsys.readouterr().err
+    error = capsys.readouterr().err
+    assert "publications.toml" in error
+    assert "Traceback" not in error
+
+
+def test_publish_check_succeeds_when_every_entry_is_still_unselected(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "publications.toml").write_text(Path("docs/publications.toml").read_text())
+    # The one asset with no producer here still has to be present to pass.
+    (docs / "policy_architecture.png").write_bytes(b"fixture")
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["publish", "--check"]) == 0
+    assert "unselected" in capsys.readouterr().out
 
 
 def test_print_config_bypasses_runtime_dispatch_and_records_cli_sources(

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
+from boost_and_broadside.publication.renderer_api import Renderer, RenderInputs, register
 from boost_and_broadside.viz import style
 
 
@@ -55,3 +56,18 @@ def write_plots(result: dict, output_dir: Path) -> list[Path]:
     if not _scales(result):
         return []
     return [_write_connectivity_plot(result, output_dir)]
+
+
+def _render(inputs: RenderInputs, out_dir: Path) -> list[Path]:
+    return write_plots(inputs.artifact("ladder").read_json(), out_dir)
+
+
+register(
+    Renderer(
+        name="semi-random-connectivity-v1",
+        description="How informative each step of the random-to-scripted ladder is.",
+        render=_render,
+        required_artifacts=("ladder",),
+        supported_schemas={"ladder": (1,)},
+    )
+)

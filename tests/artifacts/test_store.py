@@ -171,8 +171,9 @@ def test_an_interrupted_write_leaves_the_previous_payload_intact(tmp_path, monke
     with pytest.raises(OSError):
         artifact.write_json({"rows": [1, 2]})
 
+    # The payload the reader sees is the last complete one, never a partial write.
     assert artifact.read_json() == {"rows": [1]}
-    assert not list(artifact.path.glob(".*.tmp*")) or True  # temporary file never replaces payload
+    assert json.loads((artifact.path / ".result.json.tmp").read_text()) == {"rows": [1, 2]}
 
 
 def test_completion_is_explicit(tmp_path):
@@ -268,3 +269,25 @@ def test_an_unreadable_manifest_schema_is_refused(tmp_path):
 
     with pytest.raises(ArtifactError):
         load_artifact(artifact.path)
+
+
+def test_attaching_records_a_file_written_by_an_external_tool(tmp_path):
+    store = _store(tmp_path)
+    artifact = store.create(_recipe(), store.standalone_owner())
+    (artifact.path / "history.jsonl").write_text('{"_step": 1}\n')
+
+    artifact.attach("history.jsonl")
+
+    recorded = {record["path"] for record in artifact.manifest["files"]}
+    assert recorded == {"history.jsonl"}
+    verify_artifact(load_artifact(artifact.path))
+
+
+def test_attaching_refuses_an_absent_or_escaping_path(tmp_path):
+    store = _store(tmp_path)
+    artifact = store.create(_recipe(), store.standalone_owner())
+
+    with pytest.raises(ArtifactError):
+        artifact.attach("never_written.json")
+    with pytest.raises(ArtifactError):
+        artifact.attach("../escaped.json")

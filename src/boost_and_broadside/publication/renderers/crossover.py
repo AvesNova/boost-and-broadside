@@ -1,25 +1,26 @@
-"""Render the policy-vs-scripted crossover figures from crossover.json.
+"""The two views of the zero-shot crossover sweep.
 
-Two views of the same data (produced by ``bnb crossover``):
-  phase   — a square phase diagram: policy-controlled ships on x, scripted-controlled
-            ships on y, with the win/lose boundary against the equal-count parity line.
-  ratio   — scripted-controlled ships beaten per policy-controlled ship.
-
-Usage:
-    uv run scripts/render_crossover.py            # docs/crossover -> docs/results
+``phase`` reads as a map — policy ships against scripted ships, with the win
+boundary drawn against the equal-count parity line; ``ratio`` reduces the same
+measurement to the one number a reader remembers. Both come from one artifact,
+so they can never disagree.
 """
 
-import argparse
+from __future__ import annotations
+
 import json
 from pathlib import Path
 
 import numpy as np
 
+from boost_and_broadside.publication.renderer_api import Renderer, RenderInputs, register
 from boost_and_broadside.viz import style
 
 
-def _load(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    rows = [r for r in json.loads(path.read_text())["rows"] if r["beats_up_to"] is not None]
+def _rows(result: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The measured sizes, in ascending order, dropping capped rows."""
+
+    rows = [row for row in result["rows"] if row["beats_up_to"] is not None]
     rows.sort(key=lambda r: r["trained"])
     trained = np.array([r["trained"] for r in rows], dtype=float)
     beats = np.array([r["beats_up_to"] for r in rows], dtype=float)
@@ -119,20 +120,50 @@ def ratio_chart(trained, beats, crossover, out: Path) -> Path:
     return style.save(figure, out)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data", type=Path, default=Path("docs/crossover/crossover.json"))
-    parser.add_argument("--out", type=Path, default=Path("docs/results"))
-    args = parser.parse_args()
-
-    trained, beats, crossover = _load(args.data)
-    args.out.mkdir(parents=True, exist_ok=True)
-    for path in (
-        phase_diagram(trained, beats, crossover, args.out / "crossover_phase.png"),
-        ratio_chart(trained, beats, crossover, args.out / "crossover_ratio.png"),
-    ):
-        print(f"wrote {path}")
+def _curve(inputs: RenderInputs) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    return _rows(inputs.artifact("crossover").read_json())
 
 
-if __name__ == "__main__":
-    main()
+def _render_phase(inputs: RenderInputs, out_dir: Path) -> list[Path]:
+    return [phase_diagram(*_curve(inputs), out_dir / "crossover_phase.png")]
+
+
+def _render_ratio(inputs: RenderInputs, out_dir: Path) -> list[Path]:
+    return [ratio_chart(*_curve(inputs), out_dir / "crossover_ratio.png")]
+
+
+def _render_data(inputs: RenderInputs, out_dir: Path) -> list[Path]:
+    """Publish the measured curves themselves; prose links to this file."""
+
+    path = out_dir / "crossover.json"
+    path.write_text(json.dumps(inputs.artifact("crossover").read_json(), indent=2) + "\n")
+    return [path]
+
+
+register(
+    Renderer(
+        name="crossover-phase-v1",
+        description="Where the scripted fleet overtakes the policy, against parity.",
+        render=_render_phase,
+        required_artifacts=("crossover",),
+        supported_schemas={"crossover": (2,)},
+    )
+)
+register(
+    Renderer(
+        name="crossover-ratio-v1",
+        description="Scripted ships beaten per policy ship.",
+        render=_render_ratio,
+        required_artifacts=("crossover",),
+        supported_schemas={"crossover": (2,)},
+    )
+)
+register(
+    Renderer(
+        name="crossover-data-v1",
+        description="The measured crossover curves as published data.",
+        render=_render_data,
+        required_artifacts=("crossover",),
+        supported_schemas={"crossover": (2,)},
+    )
+)

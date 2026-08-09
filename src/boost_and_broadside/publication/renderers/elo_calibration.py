@@ -15,6 +15,11 @@ matplotlib.use("Agg")  # no display in a training container
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
+from boost_and_broadside.publication.renderer_api import (  # noqa: E402
+    Renderer,
+    RenderInputs,
+    register,
+)
 from boost_and_broadside.viz.style import (  # noqa: E402
     AVG,
     CALIBRATED,
@@ -135,7 +140,9 @@ def plot_live_curve(result: dict, path: Path) -> Path:
     lower.set_xlabel("environment steps (millions)", color=INK_SECONDARY, fontsize=10)
 
     figure.tight_layout()
-    figure.savefig(path, facecolor=SURFACE, bbox_inches="tight")
+    figure.savefig(
+        path, facecolor=SURFACE, bbox_inches="tight", metadata={"Software": None}
+    )
     plt.close(figure)
     return path
 
@@ -205,7 +212,9 @@ def plot_avg_curve(result: dict, path: Path) -> Path:
     axes.margins(x=0.06)
 
     figure.tight_layout()
-    figure.savefig(path, facecolor=SURFACE, bbox_inches="tight")
+    figure.savefig(
+        path, facecolor=SURFACE, bbox_inches="tight", metadata={"Software": None}
+    )
     plt.close(figure)
     return path
 
@@ -269,7 +278,9 @@ def plot_live_and_avg(result: dict, path: Path) -> Path:
     axes.margins(x=0.06)
 
     figure.tight_layout()
-    figure.savefig(path, facecolor=SURFACE, bbox_inches="tight")
+    figure.savefig(
+        path, facecolor=SURFACE, bbox_inches="tight", metadata={"Software": None}
+    )
     plt.close(figure)
     return path
 
@@ -341,7 +352,9 @@ def plot_tie_conventions(result: dict, path: Path) -> Path:
     axes.margins(x=0.1)
 
     figure.tight_layout()
-    figure.savefig(path, facecolor=SURFACE, bbox_inches="tight")
+    figure.savefig(
+        path, facecolor=SURFACE, bbox_inches="tight", metadata={"Software": None}
+    )
     plt.close(figure)
     return path
 
@@ -393,7 +406,9 @@ def plot_calibrated_only(result: dict, path: Path, tie_mode: str) -> Path:
     axes.margins(x=0.02)
 
     figure.tight_layout()
-    figure.savefig(path, facecolor=SURFACE, bbox_inches="tight")
+    figure.savefig(
+        path, facecolor=SURFACE, bbox_inches="tight", metadata={"Software": None}
+    )
     plt.close(figure)
     return path
 
@@ -473,7 +488,9 @@ def plot_checkpoint_ratings(result: dict, path: Path) -> Path:
     axes.margins(x=0.16, y=0.12)
 
     figure.tight_layout()
-    figure.savefig(path, facecolor=SURFACE, bbox_inches="tight")
+    figure.savefig(
+        path, facecolor=SURFACE, bbox_inches="tight", metadata={"Software": None}
+    )
     plt.close(figure)
     return path
 
@@ -548,7 +565,9 @@ def plot_convergence(result: dict, path: Path) -> Path:
     axes.margins(x=0.12)
 
     figure.tight_layout()
-    figure.savefig(path, facecolor=SURFACE, bbox_inches="tight")
+    figure.savefig(
+        path, facecolor=SURFACE, bbox_inches="tight", metadata={"Software": None}
+    )
     plt.close(figure)
     return path
 
@@ -619,20 +638,21 @@ def plot_tie_rates(result: dict, path: Path) -> Path:
         )
 
     figure.tight_layout()
-    figure.savefig(path, facecolor=SURFACE, bbox_inches="tight")
+    figure.savefig(
+        path, facecolor=SURFACE, bbox_inches="tight", metadata={"Software": None}
+    )
     plt.close(figure)
     return path
 
 
-def write_plots(result: dict, run_dir: Path, plot_decisive: bool = False) -> list[Path]:
-    """Render the calibration plots into the run directory.
+def write_plots(result: dict, output: Path, plot_decisive: bool = False) -> list[Path]:
+    """Render the calibration plots into ``output``.
 
     The secondary draw convention's charts are off by default. Both conventions
-    are still fit and written to JSON — they are a diagnostic for draw farming,
-    not a result, and rendering them alongside the primary curve invites reading
-    two different scales as though they disagreed about the same quantity.
+    are still fit and stored in the artifact — they are a diagnostic for draw
+    farming, not a result, and rendering them alongside the primary curve invites
+    reading two different scales as though they disagreed about the same quantity.
     """
-    output = run_dir / "elo_calibration"
     output.mkdir(parents=True, exist_ok=True)
     written = []
     primary = result.get("tie_mode", "half_win")
@@ -658,3 +678,21 @@ def write_plots(result: dict, run_dir: Path, plot_decisive: bool = False) -> lis
         if path.exists():
             written.append(path)
     return written
+
+
+def _render(inputs: RenderInputs, out_dir: Path) -> list[Path]:
+    # Both draw conventions are fit by the measurement, and this renderer exists
+    # to show the diagnostic pair, so the secondary charts are always drawn here.
+    return write_plots(inputs.artifact("calibration").read_json(), out_dir, plot_decisive=True)
+
+
+register(
+    Renderer(
+        name="elo-calibration-diagnostics-v1",
+        description="Live-vs-calibrated curves, per-checkpoint ratings, convergence, draw rates.",
+        render=_render,
+        required_artifacts=("calibration",),
+        supported_schemas={"calibration": (1,)},
+        multi_file=True,
+    )
+)
