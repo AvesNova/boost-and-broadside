@@ -337,6 +337,12 @@ def _feature_stats(args: argparse.Namespace) -> None:
     )
 
 
+def _smoke(args: argparse.Namespace) -> None:
+    from boost_and_broadside.smoke import run_smoke_matrix
+
+    run_smoke_matrix(args.case)
+
+
 _HANDLERS = {
     "train": _train,
     "play": _play,
@@ -353,11 +359,19 @@ _HANDLERS = {
 }
 
 
+def runtime_command_names() -> tuple[str, ...]:
+    """Commands that own runtime smoke cases (excluding orchestration/publication)."""
+
+    return tuple(_HANDLERS)
+
+
 def execute(command: str, args: argparse.Namespace) -> None:
     """Execute one completely parsed command."""
-    if command in {"smoke", "publish"}:
-        owner = "S06" if command == "smoke" else "S09"
-        raise ValueError(f"bnb {command} is registered but unavailable until {owner}")
+    if command == "smoke":
+        _smoke(args)
+        return
+    if command == "publish":
+        raise ValueError("bnb publish is registered but unavailable until S09")
     try:
         handler = _HANDLERS[command]
     except KeyError as error:

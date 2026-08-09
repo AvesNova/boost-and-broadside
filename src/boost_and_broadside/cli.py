@@ -356,7 +356,17 @@ COMMANDS: tuple[CommandSpec, ...] = (
             ),
         ),
     ),
-    CommandSpec("smoke", "Run the isolated smoke matrix (implemented in S06)."),
+    CommandSpec(
+        "smoke",
+        "Run the isolated smoke matrix.",
+        (
+            _option(
+                "--case",
+                metavar="NAME",
+                help="Run one registered case for focused diagnosis (default: full matrix).",
+            ),
+        ),
+    ),
 )
 
 
@@ -409,6 +419,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             ),
             file=__import__("sys").stdout,
         )
+        return 0
+
+    if args.command == "smoke":
+        from boost_and_broadside.smoke import SmokeError, run_smoke_matrix
+
+        try:
+            run_smoke_matrix(args.case)
+        except (FileNotFoundError, KeyError, SmokeError, ValueError) as error:
+            parser.error(str(error))
         return 0
 
     try:

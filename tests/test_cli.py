@@ -188,11 +188,11 @@ def test_runtime_argument_errors_are_translated_to_cli_errors(capsys) -> None:
     assert "invalid --device value" in capsys.readouterr().err
 
 
-def test_future_owned_commands_fail_explicitly_until_their_sections(capsys) -> None:
+def test_publish_remains_explicitly_future_owned(capsys) -> None:
     with pytest.raises(SystemExit) as exit_info:
-        cli.main(["smoke"])
+        cli.main(["publish"])
     assert exit_info.value.code == 2
-    assert "unavailable until S06" in capsys.readouterr().err
+    assert "unavailable until S09" in capsys.readouterr().err
 
 
 def test_print_config_bypasses_runtime_dispatch_and_records_cli_sources(

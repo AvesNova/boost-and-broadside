@@ -13,6 +13,8 @@ import torch
 
 from boost_and_broadside.train.rl.checkpoint import (
     _check_resolved_config_provenance,
+    build_policy_checkpoint_payload,
+    build_training_checkpoint_payload,
     clone_to_cpu,
 )
 from boost_and_broadside.train.rl.checkpoint_schema import (
@@ -177,6 +179,63 @@ class TestSavedCheckpointIntegrity:
 
 
 class TestObservationSchema:
+    def test_pure_policy_payload_builder_matches_current_provenance_schema(self):
+        from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
+
+        payload = build_policy_checkpoint_payload(
+            policy_state_dict={"weight": torch.ones(2)},
+            num_value_components=3,
+            team_pma_k=(0, 2),
+            global_step=17,
+            training_elo=42.0,
+            model_config=ModelConfig(d_model=32, n_heads=4, n_yemong_blocks=1),
+            env_config=EnvConfig(num_ships=2, max_bullets=4, max_episode_steps=8),
+            ship_config=ShipConfig(),
+            paradigm="ego_pass",
+            resolved_config={"resolved_config_fingerprint": "abc"},
+            launch={"device": "cpu", "seed": 7},
+        )
+
+        assert payload["observation_schema"] == OBSERVATION_SCHEMA
+        assert payload["num_value_components"] == 3
+        assert payload["team_pma_k"] == (0, 2)
+        assert payload["global_step"] == 17
+        assert payload["resolved_config"]["resolved_config_fingerprint"] == "abc"
+        assert payload["launch"] == {"device": "cpu", "seed": 7}
+
+    def test_full_payload_builder_matches_resumable_checkpoint_schema(self, tmp_path):
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        built = build_training_checkpoint_payload(
+            policy_payload=trainer._provenance(),
+            optimizer_state_dict=trainer.optim.state_dict(),
+            scaler_state_dict=trainer.scaler.state_dict(),
+            adv_scaler_state_dict=trainer.adv_scaler.state_dict(),
+            avg_policy_state_dict=trainer._avg_policy_module.state_dict(),
+            avg_param_cumsum=list(trainer._avg_param_cumsum),
+            avg_update_count=0,
+            update=0,
+            ship_steps=0,
+            grad_tokens=0,
+            elapsed_train_time=0.0,
+            avg_training_elo=0.0,
+            scripted_elo=1000.0,
+            floating_games=0,
+            eval_window_rand=[],
+            eval_window_sc=[],
+            eval_window_ladder=[],
+            eval_window_floating=[],
+            eval_window_live_vs_avg=[],
+            elo_milestone=0.0,
+            train_config=trainer.cfg,
+        )
+        production = trainer.checkpoint_payload(update=0)
+
+        assert set(built) == set(production)
+        assert built["train_config"] == production["train_config"]
+        assert built["optimizer_state_dict"] == production["optimizer_state_dict"]
+
     def test_all_payload_families_are_versioned(self, tmp_path):
         from tests.train.test_ppo import _make_trainer
 
