@@ -36,7 +36,7 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: `S09` — artifact and publication infrastructure.
+- Active section: none; `S09` is complete.
 - Next section: `S10` — artifact gate review.
 - Blocking issue: none.
 - Landmark migration: scheduled for `S15`, after all target schemas stabilize.
@@ -56,7 +56,7 @@ code, tests, and reader-facing documentation.
 | S07 | 2–4 gate | completed | integration reviewer | Sol / extra high | Review shared engines, CLI contracts, smoke isolation, and behavior preservation |
 | S07R | 2–4 gate remediation | completed | integration remediator + reviewer | Sol / extra high | Close S07 blockers and obtain an independent shared/CLI/smoke re-review |
 | S08 | 5 | completed | mode consolidation engineer | Terra / high | Consolidate training, retire modes/flags, and fix field-capable evaluation |
-| S09 | 6 | in_progress | artifact/publication architect | Sol / extra high | Implement artifacts, provenance, raw samples, publication manifest, and offline render checks |
+| S09 | 6 | completed | artifact/publication architect | Sol / extra high | Implement artifacts, provenance, raw samples, publication manifest, and offline render checks |
 | S10 | 6 gate | pending | artifact reviewer | Sol / extra high | Review schemas, identity, atomicity, resume, Git-ignore safety, and offline publication |
 | S11 | 7 | pending | training-profile engineer | Sol / high | Correct BC independently and validate its allowed differences from RL |
 | S12 | 8 | pending | live-Elo engineer | Sol / extra high | Implement/document approximate live Elo separately from calibrated Elo |
@@ -929,6 +929,80 @@ Each section appends its record below when it completes. Do not replace earlier 
   result location with the full artifact schema/provenance and move remaining compute-to-doc output
   contracts. Field checkpoints written before resolved field-map provenance cannot be faithfully
   evaluated and deliberately fail with an actionable error.
+
+### S09 handoff
+
+- Status: completed
+- Agent/model/effort: artifact/publication architect / extra high
+- Commit(s): `6f35425` — mark S09 active; `b882b19` — versioned artifact store;
+  `b8cc0cb` — compute modes onto managed artifacts; `acd78d9` — end-to-end mode artifact
+  tests; `6798c3f` — run-relative checkpoint subjects; `db3aa00` — bounded raw samples;
+  `2d3374c` and `5c1721c` — recorded training-config fingerprints; `35f07b6` — renderer
+  contract; `a3abfb7` — offline publication engine; `e4722e6` — renderers, inventory, and
+  CLI wiring; `35ab50a` — agent-field calibration titles; followed by this closure commit
+- Tests/checks and results: final `.venv/bin/pytest -q` (875 passed); `.venv/bin/bnb smoke`
+  (all 14 isolated cases passed, checkout unchanged); `.venv/bin/ruff check .` (passed);
+  `git diff --check` (passed); `uv build --wheel` succeeded and the wheel contains
+  `artifacts/`, `publication/`, `publication/renderers/`, `errors.py`, and
+  `evaluation/subjects.py`; `bnb publish` and `bnb publish --check` both exit 0 against the
+  real repository and write nothing. New coverage: `tests/artifacts/` (store identity,
+  atomicity, resume, provenance allowlist, ignore policy, output taxonomy, end-to-end mode
+  artifacts) and `tests/publication/` (manifest validation, publish/check/stale/offline,
+  every renderer from fixture artifacts, shipped-inventory completeness).
+- Behavior/config changes: crossover, both Elo tournaments, the semi-random ladder, AR,
+  noise calibration, and feature statistics write versioned artifacts under
+  `checkpoints/<run>/artifacts/<type>/<id>/` or `artifacts/<type>/<id>/` instead of
+  choosing their own files; `elo_calibrated.json`, `elo_scale.json`,
+  `semi_random_tournament.json`, `docs/crossover/crossover.json`,
+  `docs/noise_calibration/`, and `docs/ar_report/` are no longer written by any mode. No
+  mode renders a figure. `elo-calibrate --refit` is replaced by
+  `--from-artifact PATH`, which records the measurement it derives from and writes a new
+  artifact rather than overwriting one. `bnb publish` is implemented; `--check` renders into
+  a temporary tree and fails on missing, changed, or stale canonical output. Resumable
+  sweeps continue only an unfinished artifact for their exact recipe; a repeated or
+  differently-sized sweep is a new artifact. No resolved RL, RL-fields, or stale-BC value
+  changed, and the S01 published-asset inventory is unchanged.
+- Files/artifacts produced: `boost_and_broadside.artifacts` (recipes, identities, atomic
+  writes, resume verification, allowlisted provenance), `boost_and_broadside.publication`
+  (renderer contract, manifest, offline publish, generated provenance index),
+  `publication/renderers/` (13 renderers, absorbing the three mode plot modules and the
+  four `scripts/render_*.py` scripts, which are deleted), `evaluation/subjects.py`,
+  `errors.py`, and `docs/publications.toml`. `scripts/export_wandb_run.py` now writes a
+  `wandb-export` artifact. Ignore rules for `artifacts/`, `out/`, `.vram.json`, and every
+  nested `samples/` were added after the landmark whitelist, with a test covering that
+  interaction.
+- Decisions/deviations from plan: the shipped manifest declares the complete inventory —
+  the eight top-level figures, the crossover data file, the 4v4 AR report, the noise
+  report, the architecture diagram, and all fifteen curated replays — with **no sources
+  selected**, because choosing exact landmark artifacts depends on the 682 migration and
+  belongs to S16. Every entry therefore reports as unselected, tracked outputs are left
+  exactly as they are, and the generated `docs/results/provenance.{md,json}` pair is
+  written only once something is actually rendered from a source, so no new tracked file
+  appears yet. Two renderer kinds exist for outputs that are not computed here:
+  `media-copy-v1` promotes a curated scratch clip pinned by sha256, and
+  `external-asset-v1` verifies a tracked asset with no producer in this repository.
+  `elo-calibration-diagnostics-v1` is registered and tested but deliberately unselected —
+  those figures are run-local diagnostics that have never been published. The retired
+  `docs/ar_report/{1v1,2v2}` trees are excluded from the inventory-completeness test and
+  are S18's to delete. `EloCalibrateConfig.plot_decisive` is now unread by any mode; it was
+  left in place rather than change the resolved training schema, and the diagnostics
+  renderer always draws both conventions.
+- Review findings addressed: self-review moved context preparation behind a per-handler
+  factory so the S07R guarantee that subjects are validated before any device selection,
+  RNG seeding, or trainer allocation still holds; made figure saves suppress the library
+  version stamp after finding that `publish --check` would otherwise compare provenance
+  rather than content; restricted the generated index to runs that actually render
+  something after an external-only inventory produced one; and gave agent-field
+  calibrations an honest subject in their diagnostic titles instead of `None`.
+- Remaining risks or required follow-up: no publication entry is selected, so the offline
+  no-diff gate is exercised only against fixtures until S16 backfills the landmark
+  artifacts and selects them; renderer output was verified for filenames, determinism, and
+  containment, not for pixel-level parity with the currently tracked figures, which cannot
+  be checked before those artifacts exist. `docs/evaluation.md` and `docs/getting-started.md`
+  were updated where they described the removed scripts and output locations; the
+  repository-wide documentation sweep remains S18's. A delegated worktree agent was
+  started for the publication track and stopped after its worktree turned out to be based
+  on the pre-refactor tree; it contributed no code, and the track was completed directly.
 
 ### Future handoff template
 
