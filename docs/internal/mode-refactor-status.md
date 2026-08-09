@@ -47,7 +47,7 @@ code, tests, and reader-facing documentation.
 |---|---:|---|---|---|---|
 | S00 | governance | completed | planning lead | Sol / extra high | Finalize plan, branch, ledger, and prompts |
 | S01 | 0 | completed | characterization engineer | Terra / high | Capture behavior, config, CLI, and publication baselines |
-| S02 | 1 | pending | configuration architect | Sol / extra high | Move profiles under `src`; add independent specs/resolution/fingerprints without changing RL behavior |
+| S02 | 1 | completed | configuration architect | Sol / extra high | Move profiles under `src`; add independent specs/resolution/fingerprints without changing RL behavior |
 | S03 | 1 gate | pending | configuration reviewer | Sol / extra high | Review resolved-config equivalence, dependency direction, and schema/fingerprint design |
 | S04 | 2 | pending | evaluation refactorer | Sol / high | Extract typed sizes, run catalog, match/environment, and tournament engines |
 | S05 | 3 | pending | CLI engineer | Sol / high | Replace `main.py --mode` with the strict installed `bnb` subcommand CLI |
@@ -449,6 +449,43 @@ Each section appends its record below when it completes. Do not replace earlier 
 - Remaining risks or required follow-up: the legacy snapshots intentionally retain old names,
   defaults, sentinels, and mtime selection until the later breaking sections replace them. S02
   must keep RL/RL-fields field-for-field equal to these snapshots; S11 owns the BC behavior change.
+
+### S02 handoff
+
+- Status: completed
+- Agent/model/effort: configuration architect / `gpt-5.6-sol` / extra high
+- Commit(s): `b6f9c53` — independent profiles and resolved-configuration foundation; followed by
+  this status-only closure commit
+- Tests/checks and results: `uv run pytest tests/config/test_resolution.py
+  tests/test_mode_refactor_baseline.py tests/test_main.py -q` (38 passed); `uv run pytest -q`
+  (620 passed); `uv run ruff check .` (passed); `git diff --check` (passed); wheel build to `/tmp`
+  included every new config/profile module; installed-package import from outside the checkout
+  returned exactly `bc`, `rl`, and `rl-fields`; repository search found no remaining `runs` import
+  or moved-path reference
+- Behavior/config changes: no training behavior change. Resolved RL, RL-fields, and stale BC match
+  their S01 snapshots exactly. The resolved RL-to-RL-fields diff is limited to the named existing
+  field intent: field map, field reward weights, field count/aligned env count, reference ladder,
+  and random Elo. BC remains intentionally stale for S11.
+- Files/artifacts produced: packaged independent specs under `boost_and_broadside.profiles`; config
+  schema/defaults/resolver/declarative schedules/canonical fingerprints/service modules; source and
+  dependency guards in `tests/config/test_resolution.py`; top-level `runs/` removed; moved-path
+  imports and documentation links updated
+- Decisions/deviations from plan: schedule intent is declarative and compiled into the unchanged
+  runtime closures, so durable fingerprints never depend on callable identity/module names. The
+  profile fingerprint excludes legacy rollout/microbatch machine presets; the resolved fingerprint
+  includes their final values. Sources are recorded separately, so an explicit CLI override equal
+  to the resolved default keeps the same value fingerprint while recording `cli`. The legacy
+  `bc_warmstart` pretrain stage remains an unregistered independent transitional spec until S08.
+- Review findings addressed: exact one-ULP discount drift was eliminated with decimal exponentiation;
+  every durable resolved leaf has a closed-vocabulary source; profile modules are AST-guarded from
+  importing one another or runtime engines; invalid post-override launches fail validation; schemas
+  and current fingerprints have explicit versioned golden tests
+- Remaining risks or required follow-up: legacy callers still consume the resolved wrapper's
+  field-compatible `TrainConfig` projection; S05/S13 must thread the wrapper and source/fingerprint
+  document into launch/checkpoint provenance as planned. Scripted-agent defaults still live outside
+  the training fingerprint and must be recorded by the artifact/live-Elo provenance work. S11 owns
+  the BC correction. `scripts/bench_mem.py` retains pre-existing stale `replace()` fields unrelated
+  to the import move.
 
 ### Future handoff template
 
