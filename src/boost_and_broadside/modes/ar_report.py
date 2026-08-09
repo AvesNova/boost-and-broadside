@@ -200,7 +200,9 @@ def run_ar_report_mode(
     recipe = ArtifactRecipe(
         artifact_type="ar-report",
         result_schema_version=_SCHEMA_VERSION,
-        subjects=describe_agents(team0=team0_spec, team1=team1_spec),
+        subjects=describe_agents(
+            checkpoint_root=checkpoint_dir, team0=team0_spec, team1=team1_spec
+        ),
         parameters={
             "decision_steps": num_steps,
             "environment": describe_environment(env_config),

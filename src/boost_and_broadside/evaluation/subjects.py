@@ -50,10 +50,15 @@ def describe_agent(
     }
 
 
-def describe_agents(**specs: str) -> dict[str, Any]:
+def describe_agents(
+    *, checkpoint_root: str | Path = "checkpoints", **specs: str
+) -> dict[str, Any]:
     """Describe several named agent specs, e.g. ``team0=..., team1=...``."""
 
-    return {name: describe_agent(spec) for name, spec in specs.items()}
+    return {
+        name: describe_agent(spec, checkpoint_root=checkpoint_root)
+        for name, spec in specs.items()
+    }
 
 
 def describe_environment(env_config: Any, *, matchups: Any = None) -> dict[str, Any]:
