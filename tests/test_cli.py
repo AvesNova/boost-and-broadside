@@ -210,6 +210,16 @@ def test_invalid_print_config_is_a_concise_cli_error(capsys) -> None:
     assert "Traceback" not in error
 
 
+def test_print_config_rejects_an_unavailable_execution_backend(capsys, monkeypatch) -> None:
+    monkeypatch.setattr("torch.backends.mps.is_available", lambda: False)
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(["train", "--profile", "rl", "--device", "mps", "--print-config"])
+    assert exit_info.value.code == 2
+    error = capsys.readouterr().err
+    assert "MPS is unavailable" in error
+    assert "Traceback" not in error
+
+
 def test_publish_remains_explicitly_future_owned(capsys) -> None:
     with pytest.raises(SystemExit) as exit_info:
         cli.main(["publish"])
@@ -357,6 +367,50 @@ def test_corrupt_checkpoint_is_a_concise_cli_error(tmp_path, capsys, monkeypatch
     assert exit_info.value.code == 2
     error = capsys.readouterr().err
     assert "could not read checkpoint" in error
+    assert "Traceback" not in error
+
+
+def test_incompatible_checkpoint_weights_are_a_concise_cli_error(
+    tmp_path, capsys, monkeypatch
+) -> None:
+    from boost_and_broadside.train.rl.checkpoint import CheckpointMixin
+    from boost_and_broadside.train.rl.checkpoint_schema import OBSERVATION_SCHEMA
+
+    checkpoint = tmp_path / "incompatible.pt"
+    import torch
+
+    torch.save(
+        {
+            "observation_schema": OBSERVATION_SCHEMA,
+            "policy_state_dict": {"wrong": torch.zeros(1)},
+        },
+        checkpoint,
+    )
+
+    class IncompatibleModule:
+        def load_state_dict(self, state):
+            raise RuntimeError("missing and unexpected tensor keys")
+
+    loader = CheckpointMixin()
+    loader.device = "cpu"
+    loader._policy_module = IncompatibleModule()
+    monkeypatch.setattr(cli_commands, "_make_trainer", lambda *args, **kwargs: loader)
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(
+            [
+                "train",
+                "--profile",
+                "rl",
+                "--pretrain-from",
+                str(checkpoint),
+                "--device",
+                "cpu",
+            ]
+        )
+    assert exit_info.value.code == 2
+    error = capsys.readouterr().err
+    assert "incompatible policy weights" in error
     assert "Traceback" not in error
 
 

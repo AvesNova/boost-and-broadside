@@ -160,6 +160,24 @@ class TestCheckpointProvenance:
         # It reads the world through the constants it trained on, not the new ones.
         assert bundle.ship_config.max_health == trainer.ship_config.max_health
 
+    def test_incompatible_policy_tensors_are_reported_as_checkpoint_input(self, tmp_path):
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        path = trainer._save_ladder_snapshot()
+        payload = torch.load(path, map_location="cpu", weights_only=False)
+        key = next(iter(payload["policy_state_dict"]))
+        payload["policy_state_dict"][key] = torch.zeros(1)
+        torch.save(payload, path)
+
+        with pytest.raises(ValueError, match="incompatible policy weights"):
+            load_policy_bundle(
+                str(path),
+                device="cpu",
+                num_ships=trainer.wrapper.num_ships,
+                ship_config=trainer.ship_config,
+            )
+
 
 class TestLegacyCheckpoints:
     def test_missing_provenance_falls_back_and_says_so(self, tmp_path):

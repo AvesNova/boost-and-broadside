@@ -155,6 +155,17 @@ def _check_resolved_config_provenance(
     warnings.warn(f"{message}; continuing because config drift is allowed", stacklevel=2)
 
 
+def _load_checkpoint_state(
+    target: Any, state: Mapping[str, Any], path: str, component: str
+) -> None:
+    """Normalize state incompatibility at the checkpoint input boundary."""
+
+    try:
+        target.load_state_dict(state)
+    except RuntimeError as error:
+        raise ValueError(f"checkpoint {path!r} has incompatible {component}: {error}") from None
+
+
 def _prune_checkpoint_family(
     ckpt_dir: Path, glob_pattern: str, protected: set[str], keep_last_n: int
 ) -> None:
@@ -514,8 +525,12 @@ class CheckpointMixin:
         """
         ckpt = load_checkpoint_payload(path, map_location=self.device)
         require_observation_schema(ckpt, path)
-        self._policy_module.load_state_dict(ckpt["policy_state_dict"])
-        self._avg_policy_module.load_state_dict(ckpt["policy_state_dict"])
+        _load_checkpoint_state(
+            self._policy_module, ckpt["policy_state_dict"], path, "policy weights"
+        )
+        _load_checkpoint_state(
+            self._avg_policy_module, ckpt["policy_state_dict"], path, "averaged policy weights"
+        )
         # fp32 regardless of parameter dtype: this is a running sum over every
         # snapshot, so accumulating it in a narrower dtype lets each += round
         # away and the mean drifts without bound. Mirrors the fresh-init path.
@@ -525,9 +540,11 @@ class CheckpointMixin:
         ]
         self._avg_update_count = 0
         if "scaler_state_dict" in ckpt:
-            self.scaler.load_state_dict(ckpt["scaler_state_dict"])
+            _load_checkpoint_state(self.scaler, ckpt["scaler_state_dict"], path, "scaler state")
         if "adv_scaler_state_dict" in ckpt:
-            self.adv_scaler.load_state_dict(ckpt["adv_scaler_state_dict"])
+            _load_checkpoint_state(
+                self.adv_scaler, ckpt["adv_scaler_state_dict"], path, "advantage-scaler state"
+            )
         print(f"Pretrained weights loaded from: {path} (optimizer state discarded)")
 
     def load_checkpoint(self, path: str) -> int:
@@ -560,14 +577,23 @@ class CheckpointMixin:
                 f"run uses paradigm={self.cfg.paradigm!r}. Resuming across "
                 f"paradigms is not supported."
             )
-        self._policy_module.load_state_dict(ckpt["policy_state_dict"])
-        self.optim.load_state_dict(ckpt["optimizer_state_dict"])
+        _load_checkpoint_state(
+            self._policy_module, ckpt["policy_state_dict"], path, "policy weights"
+        )
+        _load_checkpoint_state(self.optim, ckpt["optimizer_state_dict"], path, "optimizer state")
         if "scaler_state_dict" in ckpt:
-            self.scaler.load_state_dict(ckpt["scaler_state_dict"])
+            _load_checkpoint_state(self.scaler, ckpt["scaler_state_dict"], path, "scaler state")
         if "adv_scaler_state_dict" in ckpt:
-            self.adv_scaler.load_state_dict(ckpt["adv_scaler_state_dict"])
+            _load_checkpoint_state(
+                self.adv_scaler, ckpt["adv_scaler_state_dict"], path, "advantage-scaler state"
+            )
         if "avg_policy_state_dict" in ckpt:
-            self._avg_policy_module.load_state_dict(ckpt["avg_policy_state_dict"])
+            _load_checkpoint_state(
+                self._avg_policy_module,
+                ckpt["avg_policy_state_dict"],
+                path,
+                "averaged policy weights",
+            )
             self._avg_param_cumsum = [
                 c.to(self.device, torch.float32) for c in ckpt["avg_param_cumsum"]
             ]

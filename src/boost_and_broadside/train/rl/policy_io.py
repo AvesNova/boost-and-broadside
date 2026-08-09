@@ -316,7 +316,10 @@ def load_policy_bundle(
         num_ships=num_ships,
         team_pma_k=checkpoint_team_pma_k,
     )
-    policy.load_state_dict(checkpoint["policy_state_dict"])
+    try:
+        policy.load_state_dict(checkpoint["policy_state_dict"])
+    except RuntimeError as error:
+        raise ValueError(f"checkpoint {path!r} has incompatible policy weights: {error}") from None
     policy.to(device)
     if freeze:
         policy.eval()
