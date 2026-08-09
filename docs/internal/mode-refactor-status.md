@@ -36,11 +36,9 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: `S03R` — configuration gate remediation and independent re-review.
-- Next section after the active work: `S04` — shared evaluation primitives.
-- Blocking issue: S03 found mutable fingerprinted config, launch-width/shard drift, a
-  machine-specific field in the semantic fingerprint, and stale references to the deleted
-  `runs/` tree.
+- Active section: none; S03R remediation and independent re-review are complete.
+- Next section: `S04` — shared evaluation primitives.
+- Blocking issue: none; S03R closed all four S03 findings and its independent re-review finding.
 - Landmark migration: scheduled for `S15`, after all target schemas stabilize.
 
 ## Sequential queue
@@ -51,7 +49,7 @@ code, tests, and reader-facing documentation.
 | S01 | 0 | completed | characterization engineer | Terra / high | Capture behavior, config, CLI, and publication baselines |
 | S02 | 1 | completed | configuration architect | Sol / extra high | Move profiles under `src`; add independent specs/resolution/fingerprints without changing RL behavior |
 | S03 | 1 gate | completed | configuration reviewer | Sol / extra high | Review resolved-config equivalence, dependency direction, and schema/fingerprint design |
-| S03R | 1 gate remediation | in_progress | configuration remediator + reviewer | Sol / extra high | Fix S03 blockers and obtain an independent configuration re-review |
+| S03R | 1 gate remediation | completed | configuration remediator + reviewer | Sol / extra high | Fix S03 blockers and obtain an independent configuration re-review |
 | S04 | 2 | pending | evaluation refactorer | Sol / high | Extract typed sizes, run catalog, match/environment, and tournament engines |
 | S05 | 3 | pending | CLI engineer | Sol / high | Replace `main.py --mode` with the strict installed `bnb` subcommand CLI |
 | S06 | 4 | pending | smoke/test engineer | Sol / high | Build synthetic checkpoint fixtures and fully isolated sequential subprocess smoke coverage |
@@ -570,6 +568,46 @@ Each section appends its record below when it completes. Do not replace earlier 
 - Remaining risks or required follow-up: S03R must close all four findings and receive independent
   re-review before S04 starts. S05/S13 still own the planned CLI and broader VRAM/cache integration;
   S11 still owns the intentional BC correction.
+
+### S03R handoff
+
+- Status: completed
+- Agent/model/effort: configuration remediator plus independent review owner / `gpt-5.6-sol` /
+  extra high
+- Commit(s): `0255c64` — close the four S03 configuration blockers; `98e81f5` — enforce exact
+  fixed aligned logical batches after independent review; followed by this status-only closure
+  commit
+- Tests/checks and results: reproduced all four original probes before product edits; focused
+  config/characterization/dispatch tests (45 passed); checkpoint compatibility tests (50 passed,
+  2 CUDA skips); final `uv run pytest -q` (621 passed, 6 CUDA skips); `uv run ruff check .`
+  (passed); `git diff --check` for both the S03R follow-up and `76b4a00..98e81f5` ranges (passed);
+  wheel contained every config/profile module and an install under `/tmp` imported exactly `bc`,
+  `rl`, and `rl-fields`; fingerprints matched across distinct `PYTHONHASHSEED` values; independent
+  re-review focused tests (36 passed) and probes reported no blocking finding
+- Behavior/config changes: default resolved RL, RL-fields, and stale BC remain exactly equal to
+  their S01 snapshots, and all resolved-config fingerprints are unchanged. A valid half-width RL
+  launch now resolves from 3,904 environments/3 shards to 1,952 environments/6 shards, preserving
+  the characterized 11,993,088-token aligned logical batch. Widths that cannot preserve that batch
+  with an integer shard count now fail loudly. Profile fingerprints intentionally changed for all
+  profiles because machine-only `grad_checkpoint` is excluded; the complete resolved fingerprint
+  still includes it.
+- Files/artifacts produced: immutable resolved component-discount mappings with checkpoint/W&B
+  serialization support; exact shard-count derivation and validation; regression coverage for
+  mutation/document consistency, preserving and divergent widths, gradient-checkpoint fingerprint
+  boundaries, and deleted `runs/` profile-path references; stale references corrected in the legacy
+  entry-point docstring, getting-started guide, style guide, and SIGReg documentation; build and
+  installation artifacts were temporary under `/tmp`
+- Decisions/deviations from plan: environment alignment makes the characterized default RL batch
+  11,993,088 entity tokens versus the 12,000,000 nominal intent. Launch overrides preserve that
+  aligned batch exactly; a width without an integer preserving shard count is a contradictory input
+  and is rejected. The broader VRAM preset/probe/cache system remains reserved for S13.
+- Review findings addressed: all four S03 blockers are closed. The first independent pass found
+  nearest-integer shard rounding still admitted +32.7% and +96.6% divergent batches; `98e81f5`
+  replaced rounding with exact divisibility, added 3,872/7,776/23,040 rejection coverage, and the
+  independent re-review reported no remaining blocker.
+- Remaining risks or required follow-up: S05/S13 still must thread the complete resolved document
+  and source map into launch/checkpoint provenance and implement the planned CLI/VRAM cache layers;
+  S11 still owns the intentional BC correction. S04 is the next authorized section.
 
 ### Future handoff template
 
