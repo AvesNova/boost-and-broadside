@@ -300,6 +300,37 @@ class TestResolvedConfigProvenance:
                 allow_config_drift=True,
             )
 
+    def test_real_resume_loader_enforces_drift_while_pretraining_allows_it(self, tmp_path):
+        from tests.train.test_ppo import _make_trainer
+
+        source = _make_trainer(checkpoint_dir=str(tmp_path / "source"))
+        payload = source.checkpoint_payload(0)
+        payload["resolved_config"] = {"resolved_config_fingerprint": "recorded-bc"}
+        checkpoint = tmp_path / "cross-profile.pt"
+        torch.save(payload, checkpoint)
+
+        resumed = _make_trainer(checkpoint_dir=str(tmp_path / "resume"))
+        resumed.resolved_config_document = {"resolved_config_fingerprint": "current-rl"}
+        resumed.launch_provenance = {"allow_config_drift": False}
+        with pytest.raises(ValueError, match="--allow-config-drift"):
+            resumed.load_checkpoint(str(checkpoint))
+
+        allowed = _make_trainer(checkpoint_dir=str(tmp_path / "allowed"))
+        allowed.resolved_config_document = {"resolved_config_fingerprint": "current-rl"}
+        allowed.launch_provenance = {"allow_config_drift": True}
+        with pytest.warns(UserWarning, match="config drift is allowed"):
+            assert allowed.load_checkpoint(str(checkpoint)) == 0
+
+        pretrained = _make_trainer(checkpoint_dir=str(tmp_path / "pretrain"))
+        pretrained.resolved_config_document = {"resolved_config_fingerprint": "current-rl"}
+        pretrained.launch_provenance = {"allow_config_drift": False}
+        pretrained.load_pretrained_weights(str(checkpoint))
+
+        source.shutdown()
+        resumed.shutdown()
+        allowed.shutdown()
+        pretrained.shutdown()
+
 
 class TestNumValueComponents:
     """AUDIT-018: critic width K is saved explicitly, not reverse-engineered.

@@ -38,4 +38,3 @@ def test_matchup_parser_rejects_non_positive_malformed_or_ambiguous_values(spec)
 def test_omitted_matchup_list_uses_the_locked_4v4_default():
     assert parse_matchups(None) == [DEFAULT_MATCHUP]
     assert DEFAULT_MATCHUP == Matchup(4, 4)
-

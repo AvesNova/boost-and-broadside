@@ -5,7 +5,7 @@ import time
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.evaluation.agents import resolve_agent_spec
 from boost_and_broadside.evaluation.match import evaluate_matchup
-from boost_and_broadside.evaluation.sizes import MatchupParseError, parse_matchup
+from boost_and_broadside.evaluation.sizes import parse_matchup
 
 
 def run_collect_stats_mode(
@@ -41,11 +41,7 @@ def run_collect_stats_mode(
     B = num_envs
 
     for matchup in matchups:
-        try:
-            parsed = parse_matchup(matchup)
-        except MatchupParseError:
-            print(f"Skipping invalid matchup: {matchup}")
-            continue
+        parsed = parse_matchup(matchup)
         n0, n1 = parsed
         N = parsed.num_ships
 

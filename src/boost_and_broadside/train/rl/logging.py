@@ -322,7 +322,6 @@ class LoggingMixin:
           - ``np.ndarray`` with any other key → ``wandb.Histogram`` directly.
         """
         import numpy as np
-
         import wandb
 
         while True:

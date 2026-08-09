@@ -4,9 +4,15 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import torch
 
+from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.evaluation.tournament import parallel_envs_for, rating_views
-from boost_and_broadside.modes.elo_scale import combine_reference_ladder
+from boost_and_broadside.modes.elo_scale import (
+    _build_scale_players,
+    _player_metadata,
+    combine_reference_ladder,
+)
 from boost_and_broadside.modes.elo_scale_plots import write_scale_plots
 
 
@@ -38,6 +44,27 @@ def test_dual_anchor_uncertainty_pins_both_landmarks() -> None:
 def test_parallel_width_respects_quadratic_collision_budget() -> None:
     assert parallel_envs_for(total_ships=8, maximum=16_384) == 16_384
     assert parallel_envs_for(total_ships=128, maximum=16_384) == 244
+
+
+def test_scale_field_has_one_final_when_final_step_is_absent_from_roster(
+    tmp_path: Path, monkeypatch
+) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    final = run / "step_000000000100.pt"
+    torch.save({"global_step": 100}, final)
+    roster = {"entries": []}
+    monkeypatch.setattr(
+        "boost_and_broadside.evaluation.tournament.load_ladder_policy",
+        lambda *args, **kwargs: object(),
+    )
+
+    metadata = _player_metadata(run, roster, final)
+    players = _build_scale_players(run, roster, None, ShipConfig(), 8, "cpu")
+
+    assert [record["label"] for record in metadata] == ["random", "scripted", "final"]
+    assert [player.label for player in players] == ["random", "scripted", "final"]
+    assert metadata[-1]["global_step"] == players[-1].global_step == 100
 
 
 def test_scale_plot_writes_selected_anchor_view(tmp_path: Path) -> None:

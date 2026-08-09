@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import argparse
-import random
 from dataclasses import replace
-
-import torch
 
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
@@ -21,6 +18,7 @@ from boost_and_broadside.evaluation.run_catalog import (
     resolve_explicit_checkpoint,
     select_latest_resumable_checkpoint,
 )
+from boost_and_broadside.execution import initialize_execution, resolve_execution_settings
 from boost_and_broadside.modes.ar_report import run_ar_report_mode
 from boost_and_broadside.modes.capture import run_capture_mode
 from boost_and_broadside.modes.collect import run_collect_stats_mode
@@ -40,27 +38,20 @@ from boost_and_broadside.train.rl.ppo import PPOTrainer
 from boost_and_broadside.ui.renderer import RenderConfig
 
 
-def _device(requested: str) -> str:
-    if requested == "auto":
-        return "cuda" if torch.cuda.is_available() else "cpu"
-    try:
-        device = torch.device(requested)
-    except RuntimeError as error:
-        raise ValueError(f"invalid --device value: {requested!r}") from error
-    if device.type == "cuda" and not torch.cuda.is_available():
-        raise ValueError(f"--device {requested} was requested, but CUDA is unavailable")
-    return str(device)
-
-
 def _prepare_execution(args: argparse.Namespace) -> str:
-    seed = torch.initial_seed() if args.seed is None else args.seed
-    args.seed = seed
-    random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(args.seed)
+    requested_compile = getattr(args, "compile_mode", None)
+    compile_mode = None if requested_compile == "none" else requested_compile
+    settings = resolve_execution_settings(
+        device=args.device,
+        seed=args.seed,
+        compile_mode=compile_mode,
+        wandb=not getattr(args, "no_wandb", False),
+        allow_config_drift=getattr(args, "allow_config_drift", False),
+    )
+    args.seed = settings.seed
+    initialize_execution(settings)
     set_config_drift_allowed(getattr(args, "allow_config_drift", False))
-    return _device(args.device)
+    return settings.device
 
 
 def _calibration_config(args: argparse.Namespace):
@@ -126,20 +117,24 @@ def _run_trainer(trainer: PPOTrainer) -> None:
 
 
 def _train(args: argparse.Namespace) -> None:
-    device = _prepare_execution(args)
+    resume_path, run_id = (
+        _resume_checkpoint(args.resume) if args.resume is not None else (None, None)
+    )
+    pretrain_path = (
+        str(resolve_explicit_checkpoint(args.pretrain_from).path)
+        if args.pretrain_from is not None
+        else None
+    )
     resolved = resolve_named_profile(
         args.profile,
         LaunchOverrides(num_envs=args.num_envs, microbatch_tokens=args.microbatch_tokens),
     )
-    resume_path, run_id = (
-        _resume_checkpoint(args.resume) if args.resume is not None else (None, None)
-    )
+    device = _prepare_execution(args)
     trainer = _make_trainer(resolved, args, device, resume_wandb_run_id=run_id)
     if resume_path is not None:
         trainer.load_checkpoint(resume_path)
-    elif args.pretrain_from is not None:
-        checkpoint = resolve_explicit_checkpoint(args.pretrain_from)
-        trainer.load_pretrained_weights(str(checkpoint.path))
+    elif pretrain_path is not None:
+        trainer.load_pretrained_weights(pretrain_path)
     _run_trainer(trainer)
 
 

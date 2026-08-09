@@ -14,6 +14,7 @@ import torch
 
 from boost_and_broadside.train.rl.checkpoint_schema import (
     OBSERVATION_SCHEMA,
+    load_checkpoint_payload,
     require_observation_schema,
 )
 from boost_and_broadside.train.rl.elo_eval import EloEvaluator
@@ -511,15 +512,8 @@ class CheckpointMixin:
         Args:
             path: Path to any .pt checkpoint (step_*.pt or best_*.pt).
         """
-        ckpt = torch.load(path, map_location=self.device, weights_only=False)
+        ckpt = load_checkpoint_payload(path, map_location=self.device)
         require_observation_schema(ckpt, path)
-        _check_resolved_config_provenance(
-            ckpt,
-            self.resolved_config_document,
-            allow_config_drift=bool(
-                self.launch_provenance and self.launch_provenance.get("allow_config_drift")
-            ),
-        )
         self._policy_module.load_state_dict(ckpt["policy_state_dict"])
         self._avg_policy_module.load_state_dict(ckpt["policy_state_dict"])
         # fp32 regardless of parameter dtype: this is a running sum over every
@@ -550,8 +544,15 @@ class CheckpointMixin:
                 a policy trained in one paradigm misbehaves when resumed in the
                 other (ego_pass policies only ever act as team 0).
         """
-        ckpt = torch.load(path, map_location=self.device, weights_only=False)
+        ckpt = load_checkpoint_payload(path, map_location=self.device)
         require_observation_schema(ckpt, path)
+        _check_resolved_config_provenance(
+            ckpt,
+            self.resolved_config_document,
+            allow_config_drift=bool(
+                self.launch_provenance and self.launch_provenance.get("allow_config_drift")
+            ),
+        )
         ckpt_paradigm = ckpt.get("train_config", {}).get("paradigm")
         if ckpt_paradigm is not None and ckpt_paradigm != self.cfg.paradigm:
             raise ValueError(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from typing import TextIO
 
 from boost_and_broadside.config.fingerprint import canonical_data
@@ -33,10 +34,14 @@ def resolved_profile_document(resolved: ResolvedTrainConfig) -> dict:
 def format_resolved_profile(
     name: str,
     overrides: LaunchOverrides | None = None,
+    *,
+    launch: Mapping[str, object] | None = None,
 ) -> str:
     """Resolve, validate, fingerprint, and format a launch without allocation."""
 
     document = resolved_profile_document(resolve_named_profile(name, overrides))
+    if launch is not None:
+        document["launch"] = canonical_data(launch)
     rendered = json.dumps(
         document,
         allow_nan=False,
@@ -52,7 +57,8 @@ def print_resolved_profile(
     overrides: LaunchOverrides | None = None,
     *,
     file: TextIO,
+    launch: Mapping[str, object] | None = None,
 ) -> None:
     """Thin output adapter for S05's eventual ``--print-config`` handler."""
 
-    file.write(format_resolved_profile(name, overrides))
+    file.write(format_resolved_profile(name, overrides, launch=launch))

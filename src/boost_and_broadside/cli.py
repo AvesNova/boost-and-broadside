@@ -8,6 +8,7 @@ not allocate an environment, construct a trainer, or probe an accelerator.
 from __future__ import annotations
 
 import argparse
+import sys
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -36,6 +37,31 @@ def _exact_agent(value: str) -> str:
         raise argparse.ArgumentTypeError(
             f"expected an exact agent name or checkpoint path, got {value!r}"
         )
+    return value
+
+
+def _checkpoint_path(value: str) -> str:
+    path = Path(value)
+    if not value or value != value.strip() or path.suffix != ".pt" or path.name == ".pt":
+        raise argparse.ArgumentTypeError(
+            f"expected an explicit .pt checkpoint path, got {value!r}"
+        )
+    return value
+
+
+def _resume_subject(value: str) -> str:
+    """Accept either an explicit checkpoint path or one exact run name."""
+
+    return _checkpoint_path(value) if Path(value).suffix == ".pt" else _exact_run(value)
+
+
+def _matchup(value: str) -> str:
+    from boost_and_broadside.evaluation.sizes import MatchupParseError, parse_matchup
+
+    try:
+        parse_matchup(value)
+    except MatchupParseError as error:
+        raise argparse.ArgumentTypeError(str(error)) from error
     return value
 
 
@@ -126,12 +152,14 @@ COMMANDS: tuple[CommandSpec, ...] = (
             ),
             _option(
                 "--resume",
+                type=_resume_subject,
                 exclusive_group="training-source",
                 metavar="PATH_OR_RUN",
                 help="Resume from an explicit .pt file or the latest numeric step in an exact run.",
             ),
             _option(
                 "--pretrain-from",
+                type=_checkpoint_path,
                 exclusive_group="training-source",
                 metavar="PATH",
                 help="Warm-start policy/scaler weights from an explicit .pt checkpoint.",
@@ -187,7 +215,7 @@ COMMANDS: tuple[CommandSpec, ...] = (
                 metavar="SEEDS",
                 help="Seed range (0-7) or comma list (0,3,9).",
             ),
-            _option("--sizes", nargs="+", default=None, metavar="MATCHUP"),
+            _option("--sizes", nargs="+", type=_matchup, default=None, metavar="MATCHUP"),
             _option("--fps", type=_positive_int, default=60, help="Playback frames per second."),
             _option(
                 "--max-steps",
@@ -216,7 +244,13 @@ COMMANDS: tuple[CommandSpec, ...] = (
         (
             _TEAM0,
             _TEAM1,
-            _option("--sizes", nargs="+", default=["4v4"], metavar="MATCHUP"),
+            _option(
+                "--sizes",
+                nargs="+",
+                type=_matchup,
+                default=["4v4"],
+                metavar="MATCHUP",
+            ),
             _option(
                 "--games",
                 type=_positive_int,
@@ -407,30 +441,40 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.print_help()
         return 0
 
-    if args.command == "train" and args.print_config:
-        from boost_and_broadside.config.resolve import LaunchOverrides
-        from boost_and_broadside.config.service import print_resolved_profile
-
-        print_resolved_profile(
-            args.profile,
-            LaunchOverrides(
-                num_envs=args.num_envs,
-                microbatch_tokens=args.microbatch_tokens,
-            ),
-            file=__import__("sys").stdout,
-        )
-        return 0
-
-    if args.command == "smoke":
-        from boost_and_broadside.smoke import SmokeError, run_smoke_matrix
-
-        try:
-            run_smoke_matrix(args.case)
-        except (FileNotFoundError, KeyError, SmokeError, ValueError) as error:
-            parser.error(str(error))
-        return 0
-
     try:
+        if args.command == "train" and args.print_config:
+            from boost_and_broadside.config.resolve import LaunchOverrides
+            from boost_and_broadside.config.service import print_resolved_profile
+            from boost_and_broadside.execution import resolve_execution_settings
+
+            compile_mode = None if args.compile_mode == "none" else args.compile_mode
+            execution = resolve_execution_settings(
+                device=args.device,
+                seed=args.seed,
+                compile_mode=compile_mode,
+                wandb=not args.no_wandb,
+                allow_config_drift=args.allow_config_drift,
+            )
+            print_resolved_profile(
+                args.profile,
+                LaunchOverrides(
+                    num_envs=args.num_envs,
+                    microbatch_tokens=args.microbatch_tokens,
+                ),
+                file=sys.stdout,
+                launch=execution.document(),
+            )
+            return 0
+
+        if args.command == "smoke":
+            from boost_and_broadside.smoke import SmokeError, run_smoke_matrix
+
+            try:
+                run_smoke_matrix(args.case)
+            except SmokeError as error:
+                parser.error(str(error))
+            return 0
+
         _dispatch_command(args.command, args)
     except (FileNotFoundError, KeyError, ValueError) as error:
         parser.error(str(error))

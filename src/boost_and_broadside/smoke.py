@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -15,10 +16,7 @@ from unittest.mock import patch
 
 import torch
 
-from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
-from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import EnvConfig
-from boost_and_broadside.config.defaults import ELO_CALIBRATE, REWARDS
 from boost_and_broadside.config.resolve import resolve_profile
 from boost_and_broadside.config.schema import LaunchSizingSpec, ResolvedTrainConfig
 from boost_and_broadside.config.service import resolved_profile_document
@@ -107,6 +105,7 @@ class SmokeRoots:
 class SyntheticRun:
     run_dir: Path
     checkpoint: Path
+    ladder_checkpoint: Path
     roster: Path
     elo_history: Path
     resolved: ResolvedTrainConfig
@@ -269,9 +268,10 @@ def build_synthetic_run(
         run_dir / "step_000000000001.pt",
         clone_to_cpu(payload),
     )
+    ladder_payload = {**policy_payload, "global_step": 0}
     ladder_checkpoint = write_checkpoint_payload(
-        run_dir / "ladder_step_000000000001.pt",
-        clone_to_cpu(payload),
+        run_dir / "ladder_step_000000000000.pt",
+        clone_to_cpu(ladder_payload),
     )
 
     roster_model = EloRoster(random_elo=resolved.train_config.random_elo)
@@ -283,7 +283,7 @@ def build_synthetic_run(
     )
     roster_model.add_checkpoint(
         str(ladder_checkpoint),
-        global_step=1,
+        global_step=0,
         update=0,
         initial_elo=0.0,
     )
@@ -304,7 +304,7 @@ def build_synthetic_run(
         ],
     }
     elo_history.write_text(json.dumps(record, sort_keys=True) + "\n")
-    return SyntheticRun(run_dir, checkpoint, roster, elo_history, resolved)
+    return SyntheticRun(run_dir, checkpoint, ladder_checkpoint, roster, elo_history, resolved)
 
 
 def validate_case_root(root: str | Path) -> None:
@@ -329,17 +329,6 @@ def validate_case_root(root: str | Path) -> None:
         )
 
 
-def _tiny_elo_config():
-    return replace(
-        ELO_CALIBRATE,
-        num_envs=2,
-        target_stderr=1_000_000.0,
-        max_batches=1,
-        reference_probabilities=(),
-        plot_decisive=False,
-    )
-
-
 def _basic_env(*, num_fields: int = 0) -> EnvConfig:
     return EnvConfig(
         num_ships=2,
@@ -350,31 +339,32 @@ def _basic_env(*, num_fields: int = 0) -> EnvConfig:
 
 
 def _run_training_case(case: SmokeCase, roots: SmokeRoots) -> None:
-    from boost_and_broadside.train.rl.ppo import PPOTrainer
+    from boost_and_broadside import cli_commands
+    from boost_and_broadside.cli import main
 
     assert case.profile is not None
     resolved = _smoke_resolved_profile(case.profile, roots.checkpoints)
-    trainer = PPOTrainer(
-        train_config=resolved.train_config,
-        model_config=resolved.model_config,
-        ship_config=resolved.ship_config,
-        device="cpu",
-        use_wandb=False,
-        scripted_agent=StochasticScriptedAgent(
-            resolved.ship_config,
-            StochasticAgentConfig(),
-        ),
-        compile_mode=None,
-        resolved_config_document=resolved_profile_document(resolved),
-        launch_provenance={
-            "device": "cpu",
-            "seed": 7,
-            "compile_mode": None,
-            "wandb": False,
-            "allow_config_drift": False,
-        },
-    )
-    trainer.train()
+    with patch.object(
+        cli_commands,
+        "resolve_named_profile",
+        side_effect=lambda profile, overrides=None: resolved,
+    ):
+        result = main(
+            [
+                "train",
+                "--profile",
+                case.profile,
+                "--device",
+                "cpu",
+                "--seed",
+                "7",
+                "--compile",
+                "none",
+                "--no-wandb",
+            ]
+        )
+    if result:
+        raise SmokeError(f"CLI returned {result} for smoke case {case.name!r}")
 
 
 def _queue_quit_event() -> None:
@@ -385,187 +375,318 @@ def _queue_quit_event() -> None:
 
 
 def _run_mode_case(case: SmokeCase, roots: SmokeRoots) -> None:
-    if case.command == "play":
-        from boost_and_broadside.modes.interactive import run_play_mode
-        from boost_and_broadside.ui.renderer import RenderConfig
+    from boost_and_broadside import cli_commands
+    from boost_and_broadside.cli import main
 
-        resolved = _smoke_resolved_profile("rl", roots.checkpoints)
+    if case.command == "play":
         _queue_quit_event()
-        run_play_mode(
-            ship_config=resolved.ship_config,
-            rewards=REWARDS,
-            model_config=resolved.model_config,
-            render_config=RenderConfig(window_size=64, fps=1),
-            device="cpu",
-            checkpoint_dir=str(roots.checkpoints),
-        )
+        result = main(["play", "--device", "cpu", "--seed", "7"])
+        if result:
+            raise SmokeError(f"CLI returned {result} for smoke case {case.name!r}")
         return
     if case.command == "watch":
-        from boost_and_broadside.modes.interactive import run_watch_mode
-        from boost_and_broadside.ui.renderer import RenderConfig
-
-        resolved = _smoke_resolved_profile("rl", roots.checkpoints)
         _queue_quit_event()
-        run_watch_mode(
-            team0_spec="scripted",
-            team1_spec="random",
-            ship_config=resolved.ship_config,
-            env_config=_basic_env(),
-            rewards=REWARDS,
-            model_config=resolved.model_config,
-            render_config=RenderConfig(window_size=64, fps=1),
-            device="cpu",
-            checkpoint_dir=str(roots.checkpoints),
+        result = main(
+            [
+                "watch",
+                "--team0",
+                "scripted",
+                "--team1",
+                "random",
+                "--device",
+                "cpu",
+                "--seed",
+                "7",
+            ]
         )
+        if result:
+            raise SmokeError(f"CLI returned {result} for smoke case {case.name!r}")
         return
 
     fixture = build_synthetic_run(roots.checkpoints)
     checkpoint = str(fixture.checkpoint)
-    ship_config = fixture.resolved.ship_config
-    model_config = fixture.resolved.model_config
-    checkpoint_root = str(roots.checkpoints)
 
     if case.command == "capture":
         from boost_and_broadside.modes.capture import run_capture_mode
 
-        run_capture_mode(
-            run_spec=_RUN_NAME,
-            scenarios=["vs_scripted"],
-            seeds="0",
-            ship_config=ship_config,
-            model_config=model_config,
-            device="cpu",
-            checkpoint_dir=checkpoint_root,
-            out_dir=roots.out,
-            sizes=["1v1"],
-            fps=1,
-            max_steps=1,
-            window=64,
-            hold_ms=1,
-        )
+        def bounded_capture(**kwargs):
+            return run_capture_mode(**kwargs, window=64)
+
+        with patch.object(cli_commands, "run_capture_mode", side_effect=bounded_capture):
+            result = main(
+                [
+                    "capture",
+                    "--run",
+                    _RUN_NAME,
+                    "--scenarios",
+                    "vs_scripted",
+                    "--seeds",
+                    "0",
+                    "--sizes",
+                    "1v1",
+                    "--fps",
+                    "1",
+                    "--max-steps",
+                    "1",
+                    "--hold-ms",
+                    "1",
+                    "--out",
+                    str(roots.out),
+                    "--device",
+                    "cpu",
+                    "--seed",
+                    "7",
+                ]
+            )
     elif case.command == "collect-stats":
         from boost_and_broadside.modes.collect import run_collect_stats_mode
 
-        run_collect_stats_mode(
-            "scripted",
-            "random",
-            1,
-            ship_config,
-            _basic_env(),
-            model_config,
-            "cpu",
-            checkpoint_root,
-            ["1v1"],
-        )
+        def bounded_collect(**kwargs):
+            kwargs["env_config"] = replace(kwargs["env_config"], max_episode_steps=2)
+            return run_collect_stats_mode(**kwargs)
+
+        with patch.object(cli_commands, "run_collect_stats_mode", side_effect=bounded_collect):
+            result = main(
+                [
+                    "collect-stats",
+                    "--team0",
+                    "scripted",
+                    "--team1",
+                    "random",
+                    "--sizes",
+                    "1v1",
+                    "--games",
+                    "1",
+                    "--device",
+                    "cpu",
+                    "--seed",
+                    "7",
+                ]
+            )
     elif case.command == "crossover":
         from boost_and_broadside.modes.crossover import run_crossover_mode
 
-        run_crossover_mode(
-            _RUN_NAME,
-            [1],
-            ship_config,
-            model_config,
-            "cpu",
-            checkpoint_root,
-            num_envs=1,
-            max_total_ships=2,
-            output_dir=str(roots.artifacts / "crossover"),
-        )
+        def bounded_crossover(**kwargs):
+            return run_crossover_mode(
+                **kwargs,
+                max_total_ships=2,
+                output_dir=str(roots.artifacts / "crossover"),
+            )
+
+        with patch.object(cli_commands, "run_crossover_mode", side_effect=bounded_crossover):
+            result = main(
+                [
+                    "crossover",
+                    "--run",
+                    _RUN_NAME,
+                    "--sizes",
+                    "1",
+                    "--games-per-matchup",
+                    "1",
+                    "--device",
+                    "cpu",
+                    "--seed",
+                    "7",
+                ]
+            )
     elif case.command == "elo-calibrate":
         from boost_and_broadside.modes.elo_calibrate import run_elo_calibrate_mode
 
-        run_elo_calibrate_mode(
-            _RUN_NAME,
-            ship_config,
-            "cpu",
-            _tiny_elo_config(),
-            checkpoint_root,
-            plot=False,
-        )
+        def bounded_calibrate(**kwargs):
+            return run_elo_calibrate_mode(**{**kwargs, "plot": False})
+
+        with patch.object(cli_commands, "run_elo_calibrate_mode", side_effect=bounded_calibrate):
+            result = main(
+                [
+                    "elo-calibrate",
+                    "--run",
+                    _RUN_NAME,
+                    "--games-per-batch",
+                    "2",
+                    "--target-stderr",
+                    "1000000",
+                    "--max-batches",
+                    "1",
+                    "--device",
+                    "cpu",
+                    "--seed",
+                    "7",
+                ]
+            )
     elif case.command == "elo-scale":
         from boost_and_broadside.modes.elo_scale import run_elo_scale_mode
 
-        run_elo_scale_mode(
-            _RUN_NAME,
-            [1],
-            ship_config,
-            "cpu",
-            _tiny_elo_config(),
-            checkpoint_root,
-            plot_dir=str(roots.artifacts / "elo-scale"),
-            plot=False,
-        )
+        def bounded_scale(**kwargs):
+            return run_elo_scale_mode(
+                **{
+                    **kwargs,
+                    "plot": False,
+                    "plot_dir": str(roots.artifacts / "elo-scale"),
+                }
+            )
+
+        with patch.object(cli_commands, "run_elo_scale_mode", side_effect=bounded_scale):
+            result = main(
+                [
+                    "elo-scale",
+                    "--run",
+                    _RUN_NAME,
+                    "--sizes",
+                    "1",
+                    "--games-per-batch",
+                    "2",
+                    "--target-stderr",
+                    "1000000",
+                    "--max-batches",
+                    "1",
+                    "--device",
+                    "cpu",
+                    "--seed",
+                    "7",
+                ]
+            )
     elif case.command == "semi-random":
         from boost_and_broadside.modes.semi_random_tournament import (
             run_semi_random_tournament,
         )
 
-        run_semi_random_tournament(
-            _RUN_NAME,
-            [1],
-            [0.0, 1.0],
-            1,
-            1,
-            ship_config,
-            "cpu",
-            checkpoint_root,
-            plot_dir=str(roots.artifacts / "semi-random"),
-            plot=False,
-        )
+        def bounded_semi_random(**kwargs):
+            return run_semi_random_tournament(
+                **{
+                    **kwargs,
+                    "plot": False,
+                    "plot_dir": str(roots.artifacts / "semi-random"),
+                }
+            )
+
+        with patch.object(
+            cli_commands,
+            "run_semi_random_tournament",
+            side_effect=bounded_semi_random,
+        ):
+            result = main(
+                [
+                    "semi-random",
+                    "--run",
+                    _RUN_NAME,
+                    "--sizes",
+                    "1",
+                    "--scripted-probabilities",
+                    "0,1",
+                    "--games-per-pair",
+                    "1",
+                    "--max-parallel-games",
+                    "1",
+                    "--device",
+                    "cpu",
+                    "--seed",
+                    "7",
+                ]
+            )
     elif case.command == "ar-report":
         from boost_and_broadside.modes.ar_report import run_ar_report_mode
 
-        with patch("boost_and_broadside.modes.ar_report._generate_report"):
-            run_ar_report_mode(
-                checkpoint,
-                checkpoint,
-                2,
-                ship_config,
-                _basic_env(),
-                REWARDS,
-                model_config,
-                "cpu",
-                checkpoint_root,
-                str(roots.artifacts / "ar-report"),
+        calls = 0
+
+        def bounded_ar(**kwargs):
+            nonlocal calls
+            calls += 1
+            kwargs["num_steps"] = 2
+            kwargs["env_config"] = replace(kwargs["env_config"], max_episode_steps=2)
+            kwargs["out_dir"] = str(roots.artifacts / "ar-report" / str(calls))
+            with patch("boost_and_broadside.modes.ar_report._generate_report"):
+                return run_ar_report_mode(**kwargs)
+
+        with patch.object(cli_commands, "run_ar_report_mode", side_effect=bounded_ar):
+            result = main(
+                [
+                    "ar-report",
+                    "--team0",
+                    checkpoint,
+                    "--team1",
+                    checkpoint,
+                    "--decision-steps",
+                    "2",
+                    "--device",
+                    "cpu",
+                    "--seed",
+                    "7",
+                ]
             )
     elif case.command == "noise-calibration":
         from boost_and_broadside.modes.noise_calibration import run_noise_calibration_mode
 
-        with patch("boost_and_broadside.modes.noise_calibration._write_outputs"):
-            run_noise_calibration_mode(
-                checkpoint,
-                "scripted",
-                1,
-                2,
-                1,
-                1,
-                ship_config,
-                _basic_env(),
-                model_config,
-                "cpu",
-                checkpoint_root,
-                str(roots.artifacts / "noise-calibration"),
+        def bounded_noise(**kwargs):
+            kwargs.update(
+                num_envs=1,
+                num_steps=2,
+                num_ar_envs=1,
+                num_ar_windows=1,
+                env_config=_basic_env(),
+                output_dir=str(roots.artifacts / "noise-calibration"),
+            )
+            with patch("boost_and_broadside.modes.noise_calibration._write_outputs"):
+                return run_noise_calibration_mode(**kwargs)
+
+        with patch.object(
+            cli_commands,
+            "run_noise_calibration_mode",
+            side_effect=bounded_noise,
+        ):
+            result = main(
+                [
+                    "noise-calibration",
+                    "--team0",
+                    checkpoint,
+                    "--team1",
+                    "scripted",
+                    "--device",
+                    "cpu",
+                    "--seed",
+                    "7",
+                ]
             )
     elif case.command == "feature-stats":
         from boost_and_broadside.modes.feature_stats import run_feature_stats_mode
 
-        run_feature_stats_mode(
-            checkpoint,
-            "scripted",
-            1,
-            2,
-            ship_config,
-            _basic_env(),
-            model_config,
-            "cpu",
-            checkpoint_root,
-        )
+        def bounded_feature_stats(**kwargs):
+            kwargs["env_config"] = _basic_env()
+            kwargs["output_dir"] = str(roots.artifacts / "feature-stats")
+            return run_feature_stats_mode(**kwargs)
+
+        with patch.object(
+            cli_commands,
+            "run_feature_stats_mode",
+            side_effect=bounded_feature_stats,
+        ):
+            result = main(
+                [
+                    "feature-stats",
+                    "--team0",
+                    checkpoint,
+                    "--team1",
+                    "scripted",
+                    "--games",
+                    "1",
+                    "--decision-steps",
+                    "2",
+                    "--device",
+                    "cpu",
+                    "--seed",
+                    "7",
+                ]
+            )
     else:  # pragma: no cover - registry coverage makes this unreachable
         raise SmokeError(f"no smoke implementation for command {case.command!r}")
+
+    if result:
+        raise SmokeError(f"CLI returned {result} for smoke case {case.name!r}")
 
 
 def execute_case(case_name: str, root: str | Path) -> None:
     """Execute one case inside an already isolated child process."""
+
+    from boost_and_broadside import cli_commands
 
     try:
         case = _CASES_BY_NAME[case_name]
@@ -574,25 +695,51 @@ def execute_case(case_name: str, root: str | Path) -> None:
     roots = SmokeRoots.create(root)
     os.chdir(roots.root)
     torch.manual_seed(7)
-    if case.command == "train":
-        _run_training_case(case, roots)
-    else:
-        _run_mode_case(case, roots)
+    dispatched: list[str] = []
+    execute = cli_commands.execute
+
+    def tracked_execute(command: str, args: argparse.Namespace) -> None:
+        dispatched.append(command)
+        execute(command, args)
+
+    with patch.object(cli_commands, "execute", side_effect=tracked_execute):
+        if case.command == "train":
+            _run_training_case(case, roots)
+        else:
+            _run_mode_case(case, roots)
+    if dispatched != [case.command]:
+        raise SmokeError(
+            f"case {case.name!r} did not traverse its registered CLI handler exactly once: "
+            f"{dispatched!r}"
+        )
     validate_case_root(roots.root)
 
 
 def _case_environment(roots: SmokeRoots) -> dict[str, str]:
+    home = roots.tmp / "home"
+    cache = roots.tmp / "cache"
+    config = roots.tmp / "config"
+    data = roots.tmp / "data"
+    state = roots.tmp / "state"
+    for path in (home, cache, config, data, state):
+        path.mkdir(parents=True, exist_ok=True)
     environment = os.environ.copy()
     environment.update(
         {
+            "HOME": str(home),
             "HEADLESS": "1",
             "SDL_VIDEODRIVER": "dummy",
             "SDL_AUDIODRIVER": "dummy",
             "PYGAME_HIDE_SUPPORT_PROMPT": "1",
             "MPLBACKEND": "Agg",
             "MPLCONFIGDIR": str(roots.tmp / "matplotlib"),
-            "XDG_CACHE_HOME": str(roots.tmp / "cache"),
+            "XDG_CACHE_HOME": str(cache),
+            "XDG_CONFIG_HOME": str(config),
+            "XDG_DATA_HOME": str(data),
+            "XDG_STATE_HOME": str(state),
+            "TORCH_HOME": str(cache / "torch"),
             "TMPDIR": str(roots.tmp),
+            "WANDB_DIR": str(roots.tmp / "wandb"),
             "WANDB_MODE": "disabled",
             "WANDB_SILENT": "true",
             "PYTHONHASHSEED": "0",
@@ -602,6 +749,58 @@ def _case_environment(roots: SmokeRoots) -> dict[str, str]:
     return environment
 
 
+def _tree_snapshot(path: Path) -> tuple[tuple[object, ...], ...]:
+    """Snapshot names and metadata without following symlinks or hashing large artifacts."""
+
+    if not path.exists() and not path.is_symlink():
+        return (("<missing>",),)
+    candidates = [path]
+    if path.is_dir() and not path.is_symlink():
+        candidates.extend(path.rglob("*"))
+    records = []
+    for candidate in sorted(candidates, key=lambda item: str(item)):
+        stat = candidate.lstat()
+        records.append(
+            (
+                str(candidate.relative_to(path.parent)),
+                stat.st_mode,
+                stat.st_size,
+                stat.st_mtime_ns,
+                os.readlink(candidate) if candidate.is_symlink() else None,
+            )
+        )
+    return tuple(records)
+
+
+def _outside_case_snapshot(root: Path) -> tuple[tuple[str, tuple], ...]:
+    """Snapshot siblings so a case cannot escape into its private matrix parent."""
+
+    parent = root.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    return tuple(
+        (child.name, _tree_snapshot(child))
+        for child in sorted(parent.iterdir(), key=lambda item: item.name)
+        if child != root
+    )
+
+
+def _terminate_process_tree(process: subprocess.Popen[str]) -> tuple[str, str]:
+    """Terminate the fresh process group, including renderer/ffmpeg descendants."""
+
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        return process.communicate(timeout=5)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        return process.communicate()
+
+
 def run_case_subprocess(
     case: SmokeCase | str,
     root: str | Path,
@@ -609,24 +808,45 @@ def run_case_subprocess(
     """Run one registry case in a fresh interpreter with a fixed timeout."""
 
     selected = _CASES_BY_NAME[case] if isinstance(case, str) else case
-    roots = SmokeRoots.create(root)
-    return subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "boost_and_broadside.smoke",
-            "--run-case",
-            selected.name,
-            "--root",
-            str(roots.root),
-        ],
+    root_path = Path(root).resolve()
+    outside_before = _outside_case_snapshot(root_path)
+    roots = SmokeRoots.create(root_path)
+    command = [
+        sys.executable,
+        "-m",
+        "boost_and_broadside.smoke",
+        "--run-case",
+        selected.name,
+        "--root",
+        str(roots.root),
+    ]
+    process = subprocess.Popen(
+        command,
         cwd=roots.root,
         env=_case_environment(roots),
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        timeout=selected.timeout_seconds,
-        check=False,
+        start_new_session=True,
     )
+    timeout: subprocess.TimeoutExpired | None = None
+    try:
+        stdout, stderr = process.communicate(timeout=selected.timeout_seconds)
+    except subprocess.TimeoutExpired:
+        stdout, stderr = _terminate_process_tree(process)
+        timeout = subprocess.TimeoutExpired(
+            command,
+            selected.timeout_seconds,
+            output=stdout,
+            stderr=stderr,
+        )
+
+    outside_after = _outside_case_snapshot(root_path)
+    if outside_after != outside_before:
+        raise SmokeIsolationError(f"case {selected.name!r} wrote outside {root_path}")
+    if timeout is not None:
+        raise timeout
+    return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
 
 
 def _checkout_snapshot(repository: Path) -> bytes:
@@ -643,6 +863,15 @@ def _checkout_snapshot(repository: Path) -> bytes:
         check=True,
     ).stdout
     return status + b"\0DIFF\0" + diff
+
+
+def _repository_output_snapshot(repository: Path) -> tuple[tuple[str, tuple], ...]:
+    """Observe real mutable roots, including files ignored by Git."""
+
+    return tuple(
+        (name, _tree_snapshot(repository / name))
+        for name in ("artifacts", "checkpoints", "docs", "out")
+    )
 
 
 def _repository_root() -> Path:
@@ -680,6 +909,7 @@ def run_smoke_matrix(selected_case: str | None = None, *, file: TextIO | None = 
 
     repository = _repository_root()
     checkout_before = _checkout_snapshot(repository)
+    outputs_before = _repository_output_snapshot(repository)
     failures: list[str] = []
     print(f"bnb smoke: {len(cases)} isolated case(s), sequential", file=stream, flush=True)
     with tempfile.TemporaryDirectory(prefix="bnb-smoke-") as temporary:
@@ -687,16 +917,27 @@ def run_smoke_matrix(selected_case: str | None = None, *, file: TextIO | None = 
         for index, case in enumerate(cases, start=1):
             print(f"[{index}/{len(cases)}] {case.name} ... ", end="", file=stream, flush=True)
             case_root = matrix_root / case.name
+            result: subprocess.CompletedProcess[str] | None = None
+            case_error: SmokeIsolationError | subprocess.TimeoutExpired | None = None
             try:
                 result = run_case_subprocess(case, case_root)
                 validate_case_root(case_root)
             except (SmokeIsolationError, subprocess.TimeoutExpired) as error:
-                failures.append(f"{case.name}: {error}")
-                print("FAIL", file=stream, flush=True)
-                continue
-            checkout_after = _checkout_snapshot(repository)
+                case_error = error
+            finally:
+                checkout_after = _checkout_snapshot(repository)
+                outputs_after = _repository_output_snapshot(repository)
             if checkout_after != checkout_before:
                 raise SmokeIsolationError(f"case {case.name!r} changed the source checkout")
+            if outputs_after != outputs_before:
+                raise SmokeIsolationError(
+                    f"case {case.name!r} changed a real checkout output root"
+                )
+            if case_error is not None:
+                failures.append(f"{case.name}: {case_error}")
+                print("FAIL", file=stream, flush=True)
+                continue
+            assert result is not None
             if result.returncode:
                 failures.append(
                     f"{case.name}: exit {result.returncode}\n{_failure_tail(result)}"

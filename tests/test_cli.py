@@ -160,6 +160,19 @@ def test_resume_requires_a_value_and_is_exclusive_with_pretraining() -> None:
         )
 
 
+@pytest.mark.parametrize("subject", ["latest", "none", "nested/run"])
+def test_resume_rejects_magic_or_path_like_run_subjects(subject) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        _parse(["train", "--profile", "rl", "--resume", subject, "--print-config"])
+    assert exit_info.value.code == 2
+
+
+def test_pretraining_subject_must_be_an_explicit_checkpoint_path() -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        _parse(["train", "--profile", "rl", "--pretrain-from", "exact-run"])
+    assert exit_info.value.code == 2
+
+
 @pytest.mark.parametrize(
     "argv",
     [
@@ -188,6 +201,15 @@ def test_runtime_argument_errors_are_translated_to_cli_errors(capsys) -> None:
     assert "invalid --device value" in capsys.readouterr().err
 
 
+def test_invalid_print_config_is_a_concise_cli_error(capsys) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(["train", "--profile", "rl", "--num-envs", "3872", "--print-config"])
+    assert exit_info.value.code == 2
+    error = capsys.readouterr().err
+    assert "cannot preserve the fixed logical batch" in error
+    assert "Traceback" not in error
+
+
 def test_publish_remains_explicitly_future_owned(capsys) -> None:
     with pytest.raises(SystemExit) as exit_info:
         cli.main(["publish"])
@@ -209,6 +231,14 @@ def test_print_config_bypasses_runtime_dispatch_and_records_cli_sources(
                 "1952",
                 "--microbatch-tokens",
                 "20000",
+                "--device",
+                "cpu",
+                "--seed",
+                "17",
+                "--compile",
+                "none",
+                "--no-wandb",
+                "--allow-config-drift",
                 "--print-config",
             ]
         )
@@ -218,6 +248,13 @@ def test_print_config_bypasses_runtime_dispatch_and_records_cli_sources(
     assert document["profile"] == "rl"
     assert document["sources"]["train_config.scales.0.num_envs"] == "cli"
     assert document["sources"]["train_config.microbatch_tokens"] == "cli"
+    assert document["launch"] == {
+        "allow_config_drift": True,
+        "compile_mode": None,
+        "device": "cpu",
+        "seed": 17,
+        "wandb": False,
+    }
 
 
 class _StubTrainer:
@@ -272,6 +309,71 @@ def test_train_pretraining_requires_and_loads_an_explicit_checkpoint(tmp_path, m
     )
     assert trainer.loaded_pretrained == str(checkpoint)
     assert trainer.loaded_checkpoint is None
+
+
+def test_train_validates_pretraining_before_execution_or_trainer_allocation(
+    tmp_path, monkeypatch
+) -> None:
+    missing = tmp_path / "missing.pt"
+    monkeypatch.setattr(
+        cli_commands,
+        "_prepare_execution",
+        lambda args: pytest.fail("execution prepared before subject validation"),
+    )
+    monkeypatch.setattr(
+        cli_commands,
+        "_make_trainer",
+        lambda *args, **kwargs: pytest.fail("trainer allocated before subject validation"),
+    )
+
+    with pytest.raises(FileNotFoundError, match="checkpoint not found"):
+        cli_commands.execute(
+            "train",
+            _parse(["train", "--profile", "rl", "--pretrain-from", str(missing)]),
+        )
+
+
+def test_corrupt_checkpoint_is_a_concise_cli_error(tmp_path, capsys, monkeypatch) -> None:
+    from boost_and_broadside.train.rl.checkpoint import CheckpointMixin
+
+    checkpoint = tmp_path / "corrupt.pt"
+    checkpoint.write_bytes(b"not a torch checkpoint")
+    loader = CheckpointMixin()
+    loader.device = "cpu"
+    monkeypatch.setattr(cli_commands, "_make_trainer", lambda *args, **kwargs: loader)
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(
+            [
+                "train",
+                "--profile",
+                "rl",
+                "--pretrain-from",
+                str(checkpoint),
+                "--device",
+                "cpu",
+            ]
+        )
+    assert exit_info.value.code == 2
+    error = capsys.readouterr().err
+    assert "could not read checkpoint" in error
+    assert "Traceback" not in error
+
+
+def test_malformed_matchup_is_rejected_during_parsing() -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        _parse(
+            [
+                "collect-stats",
+                "--team0",
+                "scripted",
+                "--team1",
+                "random",
+                "--sizes",
+                "0v4",
+            ]
+        )
+    assert exit_info.value.code == 2
 
 
 def test_collect_stats_adapter_uses_the_locked_4v4_default(monkeypatch) -> None:

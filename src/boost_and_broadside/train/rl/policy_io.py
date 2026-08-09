@@ -22,7 +22,10 @@ import torch
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.models.yemong.policy import YemongPolicy
-from boost_and_broadside.train.rl.checkpoint_schema import require_observation_schema
+from boost_and_broadside.train.rl.checkpoint_schema import (
+    load_checkpoint_payload,
+    require_observation_schema,
+)
 from boost_and_broadside.train.rl.features import (
     build_bullet_coordinator,
     build_standard_coordinator,
@@ -271,7 +274,7 @@ def load_policy_bundle(
         allow_config_drift: Downgrade a physics mismatch from an error to a warning.
         freeze:             Put the policy in eval mode with gradients off.
     """
-    checkpoint = torch.load(path, map_location=device, weights_only=False)
+    checkpoint = load_checkpoint_payload(path, map_location=device)
     require_observation_schema(checkpoint, path)
 
     assumed: list[str] = []

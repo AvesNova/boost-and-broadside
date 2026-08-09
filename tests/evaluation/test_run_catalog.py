@@ -7,6 +7,7 @@ import pytest
 from boost_and_broadside.evaluation.run_catalog import (
     CheckpointKind,
     CheckpointNotFoundError,
+    InvalidCheckpointError,
     RunNotFoundError,
     resolve_exact_run,
     resolve_explicit_checkpoint,
@@ -76,21 +77,21 @@ def test_ladder_selection_uses_roster_metadata_and_numeric_order(tmp_path):
             {"kind": "scripted", "label": "scripted"},
             {
                 "kind": "checkpoint",
-                "label": "late",
+                "label": "ckpt_100",
                 "path": str(late),
                 "global_step": 100,
                 "elo": 1200.0,
             },
             {
                 "kind": "checkpoint",
-                "label": "missing",
-                "path": str(run / "gone.pt"),
+                "label": "ckpt_50",
+                "path": str(run / "ladder_step_000000000050.pt"),
                 "global_step": 50,
                 "elo": 1100.0,
             },
             {
                 "kind": "checkpoint",
-                "label": "early",
+                "label": "ckpt_20",
                 "path": str(early),
                 "global_step": 20,
                 "elo": 1000.0,
@@ -98,5 +99,62 @@ def test_ladder_selection_uses_roster_metadata_and_numeric_order(tmp_path):
         ]
     }
     selected = select_tournament_ladder_policies(run, roster)
-    assert [(item.label, item.global_step) for item in selected] == [("early", 20), ("late", 100)]
+    assert [(item.label, item.global_step) for item in selected] == [
+        ("ckpt_20", 20),
+        ("ckpt_100", 100),
+    ]
     assert all(item.checkpoint.kind is CheckpointKind.LADDER for item in selected)
+
+
+def test_ladder_selection_never_accepts_an_existing_foreign_roster_path(tmp_path):
+    run = _run(tmp_path)
+    foreign_dir = _run(tmp_path, "other")
+    foreign = foreign_dir / "ladder_step_000000000020.pt"
+    foreign.touch()
+    roster = {
+        "entries": [
+            {
+                "kind": "checkpoint",
+                "label": "ckpt_20",
+                "path": str(foreign),
+                "global_step": 20,
+                "elo": 1000.0,
+            }
+        ]
+    }
+
+    assert select_tournament_ladder_policies(run, roster) == []
+
+    local = run / foreign.name
+    local.touch()
+    selected = select_tournament_ladder_policies(run, roster)
+    assert [item.checkpoint.path for item in selected] == [local]
+
+
+@pytest.mark.parametrize(
+    ("label", "path", "step"),
+    [
+        ("ckpt_21", "ladder_step_000000000020.pt", 20),
+        ("ckpt_20", "ladder_step_000000000021.pt", 20),
+        ("ckpt_20", "foreign.pt", 20),
+        ("ckpt_20", None, 20),
+    ],
+)
+def test_ladder_selection_rejects_mismatched_recorded_identity(tmp_path, label, path, step):
+    run = _run(tmp_path)
+    if path is not None:
+        (run / path).touch()
+    roster = {
+        "entries": [
+            {
+                "kind": "checkpoint",
+                "label": label,
+                "path": path,
+                "global_step": step,
+                "elo": 1000.0,
+            }
+        ]
+    }
+
+    with pytest.raises(InvalidCheckpointError):
+        select_tournament_ladder_policies(run, roster)

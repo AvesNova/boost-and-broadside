@@ -22,6 +22,7 @@ from boost_and_broadside.evaluation.environment import create_evaluation_env
 from boost_and_broadside.evaluation.match import MatchRunner
 from boost_and_broadside.evaluation.run_catalog import (
     CheckpointNotFoundError,
+    InvalidCheckpointError,
     select_final_training_checkpoint,
     select_named_best_policy,
     select_tournament_ladder_policies,
@@ -34,7 +35,10 @@ from boost_and_broadside.train.rl.bradley_terry import (
     rating_covariance,
     rating_stderr,
 )
-from boost_and_broadside.train.rl.checkpoint_schema import require_observation_schema
+from boost_and_broadside.train.rl.checkpoint_schema import (
+    load_checkpoint_payload,
+    require_observation_schema,
+)
 from boost_and_broadside.train.rl.policy_io import load_policy_bundle
 
 TIE_MODES = ("half_win", "decisive")
@@ -177,7 +181,7 @@ def load_run_config(run_dir: Path) -> tuple[EnvConfig, ModelConfig, str]:
             selected = select_named_best_policy(run_dir, "training")
         except CheckpointNotFoundError:
             selected = select_named_best_policy(run_dir, "avg")
-    checkpoint = torch.load(str(selected.path), map_location="cpu", weights_only=False)
+    checkpoint = load_checkpoint_payload(selected.path, map_location="cpu")
     require_observation_schema(checkpoint, str(selected.path))
     env_config = EnvConfig(**checkpoint["env_config"])
     model_config = ModelConfig(**checkpoint["model_config"])
@@ -186,7 +190,13 @@ def load_run_config(run_dir: Path) -> tuple[EnvConfig, ModelConfig, str]:
 
 
 def load_ladder_policy(
-    path: Path, model_config: ModelConfig, ship_config: ShipConfig, num_ships: int, device: str
+    path: Path,
+    model_config: ModelConfig,
+    ship_config: ShipConfig,
+    num_ships: int,
+    device: str,
+    *,
+    expected_global_step: int | None = None,
 ):
     """Build an eval-mode policy from a ladder snapshot.
 
@@ -194,13 +204,19 @@ def load_ladder_policy(
     recorded; the run's own configs are the fallback for snapshots written before
     checkpoints carried provenance.
     """
-    return load_policy_bundle(
+    bundle = load_policy_bundle(
         str(path),
         device=device,
         num_ships=num_ships,
         ship_config=ship_config,
         model_config=model_config,
-    ).policy
+    )
+    if expected_global_step is not None and bundle.global_step != expected_global_step:
+        raise InvalidCheckpointError(
+            f"checkpoint {path} records global_step={bundle.global_step!r}; "
+            f"roster records {expected_global_step}"
+        )
+    return bundle.policy
 
 
 def build_players(
@@ -211,6 +227,7 @@ def build_players(
     num_ships: int,
     device: str,
     reference_probabilities: tuple[float, ...] = (),
+    final_label: str | None = None,
 ) -> list[Player]:
     """Assemble the tournament field.
 
@@ -245,10 +262,23 @@ def build_players(
         if entry["label"] not in selected_labels:
             print(f"  [warn] missing ladder snapshot for {entry['label']}, skipping")
 
+    try:
+        final_checkpoint = select_final_training_checkpoint(run_dir)
+    except CheckpointNotFoundError:
+        final_checkpoint = None
+    final_step = None if final_checkpoint is None else final_checkpoint.step
+
     ladder_steps = set()
     for policy_ref in policies:
+        if final_label is not None and policy_ref.global_step == final_step:
+            continue
         policy = load_ladder_policy(
-            policy_ref.checkpoint.path, model_config, ship_config, num_ships, device
+            policy_ref.checkpoint.path,
+            model_config,
+            ship_config,
+            num_ships,
+            device,
+            expected_global_step=policy_ref.global_step,
         )
         ladder_steps.add(policy_ref.global_step)
         players.append(
@@ -260,18 +290,26 @@ def build_players(
             )
         )
 
-    try:
-        final_checkpoint = select_final_training_checkpoint(run_dir)
-    except CheckpointNotFoundError:
-        final_checkpoint = None
     if final_checkpoint is not None:
         final_path = final_checkpoint.path
         final_step = final_checkpoint.step
         assert final_step is not None
-        if final_step not in ladder_steps:
-            policy = load_ladder_policy(final_path, model_config, ship_config, num_ships, device)
+        if final_label is not None or final_step not in ladder_steps:
+            policy = load_ladder_policy(
+                final_path,
+                model_config,
+                ship_config,
+                num_ships,
+                device,
+                expected_global_step=final_step,
+            )
             players.append(
-                Player(f"ckpt_{final_step}", ResolvedAgent("policy", policy), None, final_step)
+                Player(
+                    final_label or f"ckpt_{final_step}",
+                    ResolvedAgent("policy", policy),
+                    None,
+                    final_step,
+                )
             )
     return players
 

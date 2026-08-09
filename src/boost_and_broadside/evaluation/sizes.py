@@ -51,4 +51,3 @@ def parse_matchup(spec: str) -> Matchup:
 def parse_matchups(specs: list[str] | tuple[str, ...] | None) -> list[Matchup]:
     """Parse a list, using the project-wide 4v4 default when omitted."""
     return [DEFAULT_MATCHUP] if not specs else [parse_matchup(spec) for spec in specs]
-

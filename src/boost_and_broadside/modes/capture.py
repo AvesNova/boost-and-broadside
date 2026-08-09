@@ -33,7 +33,10 @@ from boost_and_broadside.evaluation.run_catalog import (
     select_final_training_checkpoint,
 )
 from boost_and_broadside.evaluation.sizes import Matchup, parse_matchup
-from boost_and_broadside.train.rl.checkpoint_schema import require_observation_schema
+from boost_and_broadside.train.rl.checkpoint_schema import (
+    load_checkpoint_payload,
+    require_observation_schema,
+)
 from boost_and_broadside.ui.renderer import GameRenderer, RenderConfig
 
 SCENARIOS = ("self", "vs_scripted")
@@ -220,7 +223,7 @@ def run_capture_mode(
 
     run_dir = resolve_exact_run(run_spec, checkpoint_dir).path
     checkpoint = _final_checkpoint(run_dir)
-    checkpoint_data = torch.load(str(checkpoint), map_location="cpu", weights_only=False)
+    checkpoint_data = load_checkpoint_payload(checkpoint, map_location="cpu")
     require_observation_schema(checkpoint_data, str(checkpoint))
     base_env = EnvConfig(**checkpoint_data["env_config"])
     native = base_env.num_ships // 2

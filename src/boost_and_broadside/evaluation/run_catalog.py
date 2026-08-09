@@ -6,6 +6,7 @@ from enum import StrEnum
 from pathlib import Path
 
 _STEP_PATTERN = re.compile(r"step_(?P<step>\d+)\.pt", re.ASCII)
+_LADDER_STEP_PATTERN = re.compile(r"ladder_step_(?P<step>\d+)\.pt", re.ASCII)
 
 
 class RunCatalogError(Exception):
@@ -123,24 +124,68 @@ def resolve_explicit_checkpoint(path: str | Path) -> CheckpointRef:
 def select_tournament_ladder_policies(
     run: RunRef | Path, roster: dict
 ) -> list[LadderPolicyRef]:
-    """Select existing roster entries eligible for a stationary tournament."""
-    run_path = run.path if isinstance(run, RunRef) else run
+    """Select roster checkpoints strictly from one exact run.
+
+    Roster paths are historical metadata and may be absolute paths from another
+    machine. Their basename identifies the checkpoint, but only the matching file
+    below ``run`` is eligible. The production ladder filename, label, and recorded
+    global step must agree before a policy can enter a tournament.
+    """
+    run_path = (run.path if isinstance(run, RunRef) else run).resolve()
+
+    def recorded_step(entry: dict) -> int:
+        try:
+            return int(entry["global_step"])
+        except (KeyError, TypeError, ValueError) as error:
+            raise InvalidCheckpointError(
+                f"roster checkpoint has invalid global_step: {entry.get('global_step')!r}"
+            ) from error
+
+    entries = roster.get("entries")
+    if not isinstance(entries, list) or any(not isinstance(item, dict) for item in entries):
+        raise InvalidCheckpointError("roster entries must be a list of objects")
     selected: list[LadderPolicyRef] = []
     for entry in sorted(
-        (item for item in roster.get("entries", []) if item.get("kind") == "checkpoint"),
-        key=lambda item: int(item["global_step"]),
+        (item for item in entries if item.get("kind") == "checkpoint"),
+        key=recorded_step,
     ):
-        recorded = Path(entry["path"])
-        path = recorded if recorded.is_file() else run_path / recorded.name
+        step = recorded_step(entry)
+        path_text = entry.get("path")
+        if not isinstance(path_text, str) or not path_text:
+            raise InvalidCheckpointError(
+                f"roster checkpoint step {step} has invalid path {path_text!r}"
+            )
+        recorded = Path(path_text)
+        match = _LADDER_STEP_PATTERN.fullmatch(recorded.name)
+        if match is None or int(match.group("step")) != step:
+            raise InvalidCheckpointError(
+                f"roster checkpoint {recorded!s} does not identify recorded step {step}"
+            )
+        expected_label = f"ckpt_{step}"
+        if entry.get("label") != expected_label:
+            raise InvalidCheckpointError(
+                f"roster checkpoint step {step} has label {entry.get('label')!r}; "
+                f"expected {expected_label!r}"
+            )
+        path = run_path / recorded.name
         if not path.is_file():
             continue
-        step = int(entry["global_step"])
+        if path.resolve().parent != run_path:
+            raise InvalidCheckpointError(
+                f"roster checkpoint resolves outside selected run {run_path}: {path}"
+            )
+        try:
+            training_elo = float(entry["elo"])
+        except (KeyError, TypeError, ValueError) as error:
+            raise InvalidCheckpointError(
+                f"roster checkpoint step {step} has invalid Elo {entry.get('elo')!r}"
+            ) from error
         selected.append(
             LadderPolicyRef(
                 checkpoint=CheckpointRef(path, CheckpointKind.LADDER, step=step),
                 label=str(entry["label"]),
                 global_step=step,
-                training_elo=float(entry["elo"]),
+                training_elo=training_elo,
             )
         )
     return selected

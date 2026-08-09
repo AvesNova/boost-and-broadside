@@ -15,10 +15,11 @@ import numpy as np
 import torch
 
 from boost_and_broadside.config import EloCalibrateConfig, ShipConfig
-from boost_and_broadside.evaluation.agents import ResolvedAgent
 from boost_and_broadside.evaluation.run_catalog import (
+    InvalidCheckpointError,
     resolve_exact_run,
     select_final_training_checkpoint,
+    select_tournament_ladder_policies,
 )
 from boost_and_broadside.evaluation.tournament import (
     BatchStat,
@@ -26,13 +27,13 @@ from boost_and_broadside.evaluation.tournament import (
     Progress,
     Tournament,
     build_players,
-    load_ladder_policy,
     load_run_config,
     parallel_envs_for,
     rating_views,
     run_tournament,
 )
 from boost_and_broadside.train.rl.bradley_terry import fit_bradley_terry
+from boost_and_broadside.train.rl.checkpoint_schema import load_checkpoint_payload
 
 _SCHEMA_VERSION = 1
 _SEED_BASE = 682_000
@@ -121,40 +122,37 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _checkpoint_path(run_dir: Path, path_text: str) -> Path:
-    path = Path(path_text)
-    if path.exists():
-        return path
-    return run_dir / path.name
-
-
 def _player_metadata(run_dir: Path, roster: dict, final_path: Path) -> list[dict]:
     records = [
         {"label": "random", "kind": "random", "global_step": 0},
         {"label": "scripted", "kind": "scripted", "global_step": None},
     ]
-    for entry in sorted(
-        (item for item in roster["entries"] if item["kind"] == "checkpoint"),
-        key=lambda item: item["global_step"],
-    ):
-        path = _checkpoint_path(run_dir, entry["path"])
-        if not path.exists():
+    final_checkpoint = load_checkpoint_payload(final_path, map_location="cpu")
+    final_step = int(final_checkpoint.get("global_step", 0))
+    selected_final = select_final_training_checkpoint(run_dir)
+    if selected_final.step != final_step:
+        raise InvalidCheckpointError(
+            f"final checkpoint {final_path} records global_step={final_step}; "
+            f"filename records {selected_final.step}"
+        )
+    for policy_ref in select_tournament_ladder_policies(run_dir, roster):
+        if policy_ref.global_step == final_step:
             continue
+        path = policy_ref.checkpoint.path
         records.append(
             {
-                "label": entry["label"],
+                "label": policy_ref.label,
                 "kind": "checkpoint",
-                "global_step": entry["global_step"],
+                "global_step": policy_ref.global_step,
                 "path": str(path),
                 "sha256": _sha256(path),
             }
         )
-    final_checkpoint = torch.load(str(final_path), map_location="cpu", weights_only=False)
     records.append(
         {
             "label": "final",
             "kind": "checkpoint",
-            "global_step": int(final_checkpoint.get("global_step", 0)),
+            "global_step": final_step,
             "path": str(final_path),
             "sha256": _sha256(final_path),
         }
@@ -169,24 +167,16 @@ def _build_scale_players(
     ship_config: ShipConfig,
     total_ships: int,
     device: str,
-    final_path: Path,
 ) -> list[Player]:
-    players = build_players(
-        run_dir, roster, model_config, ship_config, total_ships, device
+    return build_players(
+        run_dir,
+        roster,
+        model_config,
+        ship_config,
+        total_ships,
+        device,
+        final_label="final",
     )
-    checkpoint = torch.load(str(final_path), map_location="cpu", weights_only=False)
-    final_policy = load_ladder_policy(
-        final_path, model_config, ship_config, total_ships, device
-    )
-    players.append(
-        Player(
-            "final",
-            ResolvedAgent("policy", final_policy),
-            None,
-            int(checkpoint.get("global_step", 0)),
-        )
-    )
-    return players
 
 
 def _restore_tournament(tournament: Tournament, stored: dict | None) -> list[BatchStat]:
@@ -334,7 +324,6 @@ def run_elo_scale_mode(
             ship_config,
             total_ships,
             device,
-            final_path,
         )
         if [player.label for player in players] != labels:
             raise ValueError("loaded tournament field does not match stored metadata")
