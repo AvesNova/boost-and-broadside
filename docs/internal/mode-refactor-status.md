@@ -36,7 +36,7 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: `S08` — mode consolidation.
+- Active section: none; `S08` is completed.
 - Next section: `S09` — artifact and publication infrastructure.
 - Blocking issue: none.
 - Landmark migration: scheduled for `S15`, after all target schemas stabilize.
@@ -55,7 +55,7 @@ code, tests, and reader-facing documentation.
 | S06 | 4 | completed | smoke/test engineer | Sol / high | Build synthetic checkpoint fixtures and fully isolated sequential subprocess smoke coverage |
 | S07 | 2–4 gate | completed | integration reviewer | Sol / extra high | Review shared engines, CLI contracts, smoke isolation, and behavior preservation |
 | S07R | 2–4 gate remediation | completed | integration remediator + reviewer | Sol / extra high | Close S07 blockers and obtain an independent shared/CLI/smoke re-review |
-| S08 | 5 | in_progress | mode consolidation engineer | Terra / high | Consolidate training, retire modes/flags, and fix field-capable evaluation |
+| S08 | 5 | completed | mode consolidation engineer | Terra / high | Consolidate training, retire modes/flags, and fix field-capable evaluation |
 | S09 | 6 | pending | artifact/publication architect | Sol / extra high | Implement artifacts, provenance, raw samples, publication manifest, and offline render checks |
 | S10 | 6 gate | pending | artifact reviewer | Sol / extra high | Review schemas, identity, atomicity, resume, Git-ignore safety, and offline publication |
 | S11 | 7 | pending | training-profile engineer | Sol / high | Correct BC independently and validate its allowed differences from RL |
@@ -887,6 +887,48 @@ Each section appends its record below when it completes. Do not replace earlier 
   statically on a CPU-only host; CUDA/MPS/XPU hardware was unavailable. Real ffmpeg capture passed;
   forced process-tree timeout behavior is covered by focused tests. S08 remains the next authorized
   section and was not begun.
+
+### S08 handoff
+
+- Status: completed
+- Agent/model/effort: mode consolidation engineer / `gpt-5.6-terra` / high
+- Commit(s): `5106d96` — mark S08 active; `8f31012` — consolidate modes, arbitrary-agent
+  calibration, field-aware collection, and regression coverage; followed by this status-only
+  closure commit
+- Tests/checks and results: `.venv/bin/ruff check .` (passed); `git diff --check` (passed);
+  full pytest run in two non-overlapping partitions: 490 passed (one warning) and 235 passed,
+  6 skipped (105 known CPU-autocast warnings); all 24 `tests/test_smoke.py` cases passed in
+  focused groups, including every registered fresh-subprocess case. Direct full `bnb smoke` was
+  started twice but the execution host cut the parent process off before its own timeout; the
+  equivalent registered fresh-subprocess coverage passed case by case.
+- Behavior/config changes: `bc-warmstart` and `elo-stats` are deleted. Training remains solely
+  `bnb train --profile {bc,rl,rl-fields}`; the documented BC-to-RL transition is explicit via
+  `--pretrain-from`. `bnb elo-calibrate` now accepts exactly one of `--run` or an explicit
+  `--agents` field (at least two distinct agents), uses Bradley--Terry for either, and owns no-run
+  measurements under `artifacts/elo-calibration/`. A field without scripted is honestly gauged to
+  its fitted reference at zero rather than pretending it is scripted-anchored. AR reporting now
+  has one mode-owned canonical 4v4 scenario instead of CLI-owned 2v2 and 1v1 reports. Collect-stats
+  derives a shared field environment and map distribution from policy checkpoint provenance, and
+  rejects unavailable or conflicting field intent. No resolved RL, RL-fields, or stale-BC value
+  changed.
+- Files/artifacts produced: `PolicyBundle` now carries checkpoint field-map intent; the shared
+  evaluation environment resolver and match helper pass it to `FieldMapCache`; new CLI/mode,
+  field-environment, and smoke regression tests. No durable runtime artifact was retained from
+  verification.
+- Decisions/deviations from plan: the no-run calibration location is intentionally a narrow,
+  deterministic transitional owner (`artifacts/elo-calibration/agents-<subject-hash>/result.json`),
+  not S09's future versioned artifact schema. Old field checkpoints that lack map intent fail
+  loudly rather than selecting a map distribution silently. The S06 smoke registry did not need a
+  new case because the changed commands retain their registered names; its AR adapter now exercises
+  the mode-owned 4v4 entry point.
+- Review findings addressed: removed the remaining no-op `fast_cache` and
+  `feature-stats.output_dir` parameters; removed the obsolete policy-only checkpoint comment that
+  named `elo_stats`; repository guards find no retired mode, profile, or flag references in
+  executable source/tests.
+- Remaining risks or required follow-up: S09 must replace the transitional no-run calibration
+  result location with the full artifact schema/provenance and move remaining compute-to-doc output
+  contracts. Field checkpoints written before resolved field-map provenance cannot be faithfully
+  evaluated and deliberately fail with an actionable error.
 
 ### Future handoff template
 
