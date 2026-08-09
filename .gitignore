@@ -20,3 +20,13 @@ wandb/
 .env
 .claude/settings.local.json
 gameplay_clips/
+# Durable artifacts without an owning run, and disposable scratch output.
+/artifacts/
+/out/
+# Recomputable machine state, not an artifact.
+.vram.json
+# Raw analysis samples stay local. This rule follows the landmark whitelist
+# above deliberately: a promoted run directory re-includes everything under it,
+# so `samples/` has to be excluded again afterwards or a multi-gigabyte payload
+# would become trackable inside checkpoints/resilient-resonance-682/.
+samples/
