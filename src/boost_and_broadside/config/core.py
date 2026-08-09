@@ -173,9 +173,14 @@ class EnvConfig:
     # dt is 1/60, and at repeat 1 the policy re-decides every 16.7 ms against a
     # firing cooldown of 6 ticks and a full 360-degree turn of 78-138 ticks —
     # far finer than the plant can respond to, which makes consecutive decisions
-    # near-duplicates. Repeat 3 gives 20 Hz: 2 decisions per cooldown and 26-46
-    # per full turn, still ample authority, for a third of the tokens per second
-    # of game time.
+    # near-duplicates. Repeat 2 gives 30 Hz: 3 decisions per cooldown and 39-69
+    # per full turn, still ample authority, for half the tokens per second of
+    # game time.
+    #
+    # Coarsening is not free — it costs combat effectiveness monotonically — so
+    # the chosen value is a measured trade, not a default. See runs/rl.py.
+    # Discounts encode horizons in seconds, so moving this means re-deriving
+    # gamma and lambda as g ** (rate_old / rate_new), not reusing the number.
     action_repeat: int = 1
     # Fractional spread of the per-ship spawn draw for health and power: each is
     # sampled uniformly in [(1-spread)*max, max], and cooldown in [0, firing

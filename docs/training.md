@@ -29,7 +29,7 @@ records:
 The run logged 999,424,000 steps before finishing. Today's profiles have continued to
 evolve, so where this page and the export disagree about that run, the export is what
 actually ran. In particular the reference run decided at 60 Hz; the current profile holds
-each action for three physics ticks (see [decision rate](#decision-rate)), so its step
+each action for two physics ticks (see [decision rate](#decision-rate)), so its step
 counts and discounts are not directly comparable.
 
 ## Recurrent PPO lifecycle
@@ -112,8 +112,8 @@ later, which GAE handles through the value function.
 Two consequences worth knowing before touching the auxiliary losses:
 
 - The channel is `(B, N+M, 3)`, so spatial attention lets **every ship read every other
-  ship's pending action**, opponents included. One step is 1/60 s against a ~0.4 s bullet
-  flight, so the lookahead is small, and it is symmetric.
+  ship's pending action**, opponents included. One decision is 1/30 s against a ~0.4 s
+  bullet flight, so the lookahead is small, and it is symmetric.
 - One-step next-state prediction is therefore a *deterministic* function of the
   observation (up to `bullet_spread`), not merely a short-horizon one. That is why it is
   a weak representation signal and why longer-horizon prediction is the useful version.
@@ -197,8 +197,8 @@ reference policy activated these components:
 
 | Component | RL / fields weight | Role |
 |---|---:|---|
-| `ally_win` | 4.0 | +1 to each surviving teammate on a win |
-| `enemy_win` | 4.0 | opponent's win signal, seen as −1 through a negative enemy lambda |
+| `ally_win` | 1.5 | +1 to each surviving teammate on a win |
+| `enemy_win` | 1.5 | opponent's win signal, seen as −1 through a negative enemy lambda |
 | `facing` | 0.1 | dense aim geometry (+) |
 | `closing_speed` | 0.1 | dense approach geometry (+) |
 | `shoot_quality` | 0.1 | firing opportunity quality (+) |

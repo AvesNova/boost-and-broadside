@@ -533,7 +533,7 @@ env is 15% of wall clock and the update is 85% — a learned world model would b
 |---|---|
 | **Team-size / token-split randomization** | "trained only on 4v4" is the stronger claim. Revisit behind an env-fraction gate; note `comp_rewards /= _n_ships` uses the static config count and would need to be per-env. The lambda aggregation is already alive-aware and needs no change. |
 | **Variable per-agent step size** | Batching kills the payoff — all ships share one forward, so a subset cannot be skipped. Zero throughput gain, and a ragged buffer breaks the dense `(T,B,N)` layout GAE, the lambda einsum and the scan all assume. |
-| **Hiding enemy pending actions** | 16.7 ms, symmetric, and it forfeits `shared_pass`. |
+| **Hiding enemy pending actions** | 33 ms at `action_repeat=2`, symmetric, and it forfeits `shared_pass`. |
 | **Scripted field interaction** | Two attempts measured worse than nothing. Needs a *path-weighted* index metric before retrying; the time-weighted one is confounded. |
 | **M1 (Hillis–Steele scan)** | Highest ceiling, most work. **Profile before writing anything** — a `torch.profiler` trace of one update settles whether the bandwidth estimate is right. O(T log T) with ~40 full passes per temporal sublayer; a Blelloch or chunked scan is O(T). |
 | **M5** | Check `TORCH_LOGS=graph_breaks` first; Inductor probably already fuses it. |
