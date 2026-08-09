@@ -36,9 +36,11 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: `S10` — artifact gate review.
-- Next section: `S11` — BC correction, after `S10` closes.
-- Blocking issue: none.
+- Active section: none; `S10` is complete and did not approve the artifact gate.
+- Next section: `S10R` — artifact gate remediation and re-review.
+- Blocking issue: two S10 blockers — `publish --check` passes with a stale unowned canonical
+  output, and publication cites an artifact that never completed. `S11` and every later section
+  stay pending until `S10R` closes.
 - Landmark migration: scheduled for `S15`, after all target schemas stabilize.
 
 ## Sequential queue
@@ -57,7 +59,8 @@ code, tests, and reader-facing documentation.
 | S07R | 2–4 gate remediation | completed | integration remediator + reviewer | Sol / extra high | Close S07 blockers and obtain an independent shared/CLI/smoke re-review |
 | S08 | 5 | completed | mode consolidation engineer | Terra / high | Consolidate training, retire modes/flags, and fix field-capable evaluation |
 | S09 | 6 | completed | artifact/publication architect | Sol / extra high | Implement artifacts, provenance, raw samples, publication manifest, and offline render checks |
-| S10 | 6 gate | in_progress | artifact reviewer | Sol / extra high | Review schemas, identity, atomicity, resume, Git-ignore safety, and offline publication |
+| S10 | 6 gate | completed | artifact reviewer | Sol / extra high | Review schemas, identity, atomicity, resume, Git-ignore safety, and offline publication |
+| S10R | 6 gate remediation | pending | artifact remediator + reviewer | Sol / extra high | Close the S10 blockers and obtain an independent artifact/publication re-review |
 | S11 | 7 | pending | training-profile engineer | Sol / high | Correct BC independently and validate its allowed differences from RL |
 | S12 | 8 | pending | live-Elo engineer | Sol / extra high | Implement/document approximate live Elo separately from calibrated Elo |
 | S13 | 9 | pending | VRAM engineer | Sol / extra high | Implement resolution precedence, probing, cache fingerprints, and provenance |
@@ -347,6 +350,32 @@ correctness, raw-sample retention/ignore behavior, secret exposure, offline enfo
 rendering, and manifest ownership of every current published output.
 
 Done when: no blocking findings remain.
+
+### S10R — Artifact gate remediation and re-review
+
+Agent: artifact remediator plus an independent review owner, Sol extra high.
+
+Steps:
+
+1. Reproduce both S10 blocking probes before editing product code.
+2. Make a canonical output the manifest no longer owns a `publish --check` failure, not an
+   advisory line, and stop check mode from reporting a removal it did not perform. Cover the case
+   where every still-owned entry is unchanged, so the stale output is the only signal.
+3. Refuse an artifact that never completed as a publication source, so `Artifact.complete()`'s
+   stated citability contract is enforced where citation happens. Cover an interrupted resumable
+   sweep whose payload is internally consistent.
+4. Decide and record whether resume should verify payload integrity as well as the recipe; if the
+   recipe-only contract stands, say so in the store's documentation rather than leaving it implied.
+5. Add coverage for `training-win-rate-v1`, `training-health-v1`, and `next-state-error-v1` from a
+   `wandb-export` fixture, and correct the S09 handoff's claim that every renderer is covered.
+6. Validate the ownership record's paths before deleting anything they name.
+7. Re-run focused artifact/publication tests, full pytest, the full smoke matrix, ruff, range
+   whitespace, `bnb publish` and `bnb publish --check` against the real repository, and an
+   independent re-review of the S09-through-S10R range.
+
+Done when: both blockers are closed with regression coverage, no compute mode or publication path
+can cite incomplete or unowned canonical output, and the independent re-review reports no remaining
+blocker. `S11` remains pending until this row is completed.
 
 ### S11 — BC correction
 
@@ -1003,6 +1032,98 @@ Each section appends its record below when it completes. Do not replace earlier 
   repository-wide documentation sweep remains S18's. A delegated worktree agent was
   started for the publication track and stopped after its worktree turned out to be based
   on the pre-refactor tree; it contributed no code, and the track was completed directly.
+
+### S10 handoff
+
+- Status: completed; blocking findings require S10R before S11
+- Agent/model/effort: artifact reviewer / `gpt-5.6-sol` / extra high
+- Commit(s) reviewed: `6f35425`, `b882b19`, `b8cc0cb`, `acd78d9`, `6798c3f`, `db3aa00`, `2d3374c`,
+  `5c1721c`, `35f07b6`, `a3abfb7`, `e4722e6`, `35ab50a`, and `37797a5` in committed range
+  `77222be..37797a5`; `c735a52` marked S10 active, followed by this review-ledger commit
+- Tests/checks and results: `.venv/bin/pytest -q` (875 passed); `.venv/bin/bnb smoke` (all 14
+  isolated cases passed, checkout unchanged); `.venv/bin/ruff check .` (passed);
+  `git diff --check 77222be..37797a5` (passed); `bnb publish` and `bnb publish --check` against the
+  real repository both exit 0, report 1 external and 26 unselected, and leave the worktree clean;
+  `bnb elo-calibrate --from-artifact /nonexistent/path` exits 2 with one concise line and no
+  traceback. Direct probes recorded below: stale-unowned output under `--check`, an in-progress
+  artifact as a publication source, every mode's real artifact fed to its declared renderer, and a
+  hand-built `wandb-export` artifact through the three renderers no test reaches.
+- Behavior/config changes: review made no product-code change. The artifact store's identity,
+  ownership, atomic write, recipe-verified resume, allowlisted provenance, sample-ignore, and
+  taxonomy guarantees hold as documented; `.gitignore` correctly re-excludes `samples/` after the
+  landmark whitelist; the shipped manifest owns every tracked published asset outside the retired
+  `docs/ar_report/{1v1,2v2}` trees; no compute mode names `docs/` or imports matplotlib.
+- Files/artifacts produced: ledger updates only. All probes ran in temporary roots under `/tmp`.
+- Decisions/deviations from plan: S10 does not approve the artifact gate. S10R is inserted
+  immediately after this section; S11 and every later primary section remain pending.
+- Review findings addressed: none; review agents do not edit product code
+- Blocking findings:
+  1. `bnb publish --check` passes while a canonical output the manifest no longer owns is still in
+     `docs/`. `_prune_unowned` (`publication/publish.py:357`) collects those outputs into
+     `PublishReport.removed`, but `PublishReport.failed` (`publication/publish.py:76`) considers
+     only `CHANGED`/`MISSING` outcome statuses, and `_publish` (`cli_commands.py:402`) raises only
+     on `report.failed`. A probe published `kept.json` and `dropped.json`, dropped the second entry
+     from the manifest, and ran check mode: `outcomes=['unchanged']`, `removed=
+     ['docs/results/dropped.json']`, `failed=False`, and the file remained on disk. The plan
+     requires `--check` to fail on missing, stale, or changed output. Check mode also prints
+     `removed stale output ...` (`publication/publish.py:89`) for a removal it did not perform.
+     `tests/publication/test_publish.py:147` covers only the non-check removal path.
+  2. Publication cites an artifact that never completed. `Artifact.complete()`
+     (`artifacts/store.py:212`) documents that only then is an artifact citable, but
+     `_resolve_sources` (`publication/publish.py:196`) checks payload hashes, clean-commit
+     provenance, and result schema and never reads `manifest["status"]`; a repository search finds
+     `STATUS_COMPLETE` read nowhere outside the store's own resume test at
+     `artifacts/store.py:359`. A probe set a fixture source to `in-progress` and `run_publish`
+     rendered it into `docs/` with status `rendered` and `failed=False`. This is reachable, not
+     theoretical: `elo_scale.save_batch` (`modes/elo_scale.py:281`), the semi-random ladder
+     (`modes/semi_random_tournament.py:271`), and crossover's per-size save
+     (`modes/crossover.py:190`) each write a complete, hash-consistent `result.json` after every
+     batch, so an interrupted sweep leaves a partial measurement that publishes as a canonical
+     result with no signal. No test covers it.
+- Non-blocking findings:
+  1. Three registered renderers have no test at all: `training-win-rate-v1`, `training-health-v1`,
+     and `next-state-error-v1` (`publication/renderers/training.py:69-166`). Nothing under `tests/`
+     names them or the `wandb-export` artifact type they read, and `scripts/export_wandb_run.py` is
+     also untested. They own three of the eight top-level figures. A probe built a `wandb-export`
+     artifact in that script's shape and all three rendered correctly, so this is coverage rather
+     than a defect — but the S09 handoff's claim that `tests/publication/` covers "every renderer
+     from fixture artifacts" is inaccurate and should be corrected.
+  2. Every mode-produced artifact renders through its declared renderer. A probe ran crossover,
+     elo-scale, semi-random, AR, noise calibration, and Elo calibration against the synthetic run
+     and fed each real artifact to its manifest renderer: nine renderers, zero failures. The
+     producer/consumer contract is therefore sound today even though the shipped renderer tests
+     drive hand-written fixtures.
+  3. Promoted media is not reproducible from a clean checkout. `media-copy-v1` sources live in
+     gitignored `out/`, and an absent promoted file makes `_resolve_sources`
+     (`publication/publish.py:216`) raise, aborting the whole run rather than reporting one entry —
+     unlike `_verify_external`, which returns a per-entry `MISSING`. Fifteen replay entries use it.
+     S16 must decide how a curated clip satisfies D18 before selecting them.
+  4. `_prune_unowned` deletes paths — including `shutil.rmtree` on directories
+     (`publication/publish.py:372`) — read from the generated, tracked
+     `docs/results/provenance.json` without revalidating containment under `docs/`. Manifest
+     outputs are validated by `_output` (`publication/manifest.py:161`); the ownership record is
+     not.
+  5. Resume verifies the recipe but not payload integrity: `_latest_matching` loads with
+     `verify=False` (`artifacts/store.py:353`) and the modes then read `result.json` back. That
+     matches the plan's stated recipe-verification contract, but the choice is implicit and worth
+     recording explicitly in the store's documentation.
+  6. Field-map intent is absent from artifact recipes. `describe_environment`
+     (`evaluation/subjects.py:82`) records ship, field, bullet, and episode counts but not the
+     resolved `FieldMapConfig`, which the plan lists among the field-map inputs `artifact.json`
+     should record. Identity is still sound because the map derives from checkpoints hashed in
+     `subjects`, but a reader cannot see the map distribution without loading the checkpoint.
+  7. `bnb publish` has no smoke case; `runtime_command_names` excludes it by construction
+     (`cli_commands.py:424`). The one command that writes into the tracked tree is never exercised
+     under the isolated-subprocess escape and checkout-clean assertions, though pytest covers it
+     well and `publish --check` runs against the real repository.
+  8. `docs/evaluation.md:21,119,153,192` still cite
+     `checkpoints/resilient-resonance-682/{elo_calibrated,elo_scale,semi_random_tournament}.json`.
+     Those legacy landmark outputs are still tracked so the links resolve, and no mode writes them
+     any more; S16 replaces the evidence and S18 sweeps the prose. Recorded so it is not lost.
+- Remaining risks or required follow-up: S10R must close both blockers and receive independent
+  re-review before S11 starts. The offline no-diff gate is still exercised only against fixtures
+  because no publication entry is selected; S16 owns landmark selection and pixel parity, S18 owns
+  the documentation sweep, and S11–S13 retain their existing training scopes.
 
 ### Future handoff template
 
