@@ -72,6 +72,39 @@ _REPORT_FEATURES = {
 }
 
 
+class _RawSampleBuffer:
+    """A bounded, in-order prefix of raw error rows and the step each came from.
+
+    Retention is deliberately a prefix rather than a sample: it costs nothing to
+    collect, keeps the rows contiguous in time, and is honest about what it is.
+    Anything that needs an unbiased sample of the whole run should read the
+    aggregates, which cover every row.
+    """
+
+    def __init__(self, max_rows: int, num_targets: int) -> None:
+        self._max_rows = max_rows
+        self._num_targets = num_targets
+        self._chunks: list[torch.Tensor] = []
+        self._steps: list[np.ndarray] = []
+        self._kept = 0
+
+    def add(self, rows: torch.Tensor, step: int) -> None:
+        if self._kept >= self._max_rows or not rows.shape[0]:
+            return
+        take = min(int(rows.shape[0]), self._max_rows - self._kept)
+        self._chunks.append(rows[:take].detach().to(torch.float16).cpu())
+        self._steps.append(np.full(take, step, dtype=np.int32))
+        self._kept += take
+
+    def errors(self) -> np.ndarray:
+        if not self._chunks:
+            return np.zeros((0, self._num_targets), dtype=np.float16)
+        return torch.cat(self._chunks).numpy()
+
+    def steps(self) -> np.ndarray:
+        return np.concatenate(self._steps) if self._steps else np.zeros(0, dtype=np.int32)
+
+
 def _report_layout(
     coordinator: FeatureCoordinator,
 ) -> tuple[dict[str, tuple[list[int], str]], list[str]]:
@@ -259,11 +292,7 @@ def _run_phase1(
     prev_err = torch.zeros(B, N, num_targets, device=dev)
     prev_valid = torch.zeros(B, N, dtype=torch.bool, device=dev)
 
-    # A bounded prefix of the raw rows, in collection order, with the step each
-    # came from. Enough to refit a distribution later; not a complete record.
-    raw_chunks: list[torch.Tensor] = []
-    raw_steps: list[np.ndarray] = []
-    raw_kept = 0
+    raw_samples = _RawSampleBuffer(_MAX_RAW_SAMPLE_ROWS, num_targets)
 
     t0 = time.perf_counter()
     print(f"Collecting {num_steps} steps across {B} envs...")
@@ -305,12 +334,7 @@ def _run_phase1(
                 err_sum += v_err.sum(0)
                 err_sq_sum += v_err.pow(2).sum(0)
                 err_count += valid.sum().float()
-
-                if raw_kept < _MAX_RAW_SAMPLE_ROWS:
-                    take = min(int(v_err.shape[0]), _MAX_RAW_SAMPLE_ROWS - raw_kept)
-                    raw_chunks.append(v_err[:take].detach().to(torch.float16).cpu())
-                    raw_steps.append(np.full(take, step, dtype=np.int32))
-                    raw_kept += take
+                raw_samples.add(v_err, step)
 
                 # Lag-1 autocorrelation
                 lag_valid = valid & prev_valid  # (B, N)
@@ -367,14 +391,8 @@ def _run_phase1(
         "team_count": team_count.cpu().numpy(),
         "combat_err_sq_sum": combat_err_sq_sum.cpu().numpy(),
         "combat_count": combat_count.cpu().numpy(),
-        "raw_errors": (
-            torch.cat(raw_chunks).numpy()
-            if raw_chunks
-            else np.zeros((0, num_targets), dtype=np.float16)
-        ),
-        "raw_steps": (
-            np.concatenate(raw_steps) if raw_steps else np.zeros(0, dtype=np.int32)
-        ),
+        "raw_errors": raw_samples.errors(),
+        "raw_steps": raw_samples.steps(),
     }
 
 

@@ -231,6 +231,22 @@ def run_ar_report_mode(
             **_rollout_arrays("ol", history_open),
         }
     )
+    # The rollouts above are what every report reads. The inputs that produced
+    # them — the forced action sequence and the state both replays started from —
+    # are what a later predictor needs to re-imagine this same episode without
+    # replaying the environment, so they are retained as an ignored local payload.
+    artifact.write_samples_npz(
+        {
+            "actions": np.stack(
+                [action.squeeze(0).cpu().numpy() for action in actions_sim]
+            ).astype(np.float32),
+            **{
+                f"init_{key}": value.squeeze(0).cpu().numpy().astype(np.float32)
+                for key, value in init_obs.items()
+            },
+        },
+        "rollout_inputs.npz",
+    )
     artifact.complete()
     print(f"Done! Wrote {artifact.path}.")
     return result
