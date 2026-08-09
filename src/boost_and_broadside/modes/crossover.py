@@ -24,7 +24,11 @@ from boost_and_broadside.evaluation.run_catalog import (
     resolve_exact_run,
     select_final_training_checkpoint,
 )
-from boost_and_broadside.evaluation.subjects import describe_agent, describe_environment
+from boost_and_broadside.evaluation.subjects import (
+    describe_agent,
+    describe_checkpoint_configuration,
+    describe_environment,
+)
 from boost_and_broadside.train.rl.checkpoint_schema import (
     load_checkpoint_payload,
     require_observation_schema,
@@ -106,6 +110,7 @@ def run_crossover_mode(
                 "checkpoint": checkpoint.name,
                 "sha256": file_sha256(checkpoint),
                 "global_step": int(checkpoint_data.get("global_step", 0)),
+                "training_config": describe_checkpoint_configuration(checkpoint_data),
             },
             "scripted": describe_agent("scripted"),
         },

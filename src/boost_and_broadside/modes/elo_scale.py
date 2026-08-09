@@ -26,7 +26,11 @@ from boost_and_broadside.evaluation.run_catalog import (
     select_final_training_checkpoint,
     select_tournament_ladder_policies,
 )
-from boost_and_broadside.evaluation.subjects import describe_agent, describe_environment
+from boost_and_broadside.evaluation.subjects import (
+    describe_agent,
+    describe_checkpoint_configuration,
+    describe_environment,
+)
 from boost_and_broadside.evaluation.tournament import (
     BatchStat,
     Player,
@@ -78,6 +82,7 @@ def _player_metadata(run_dir: Path, roster: dict, final_path: Path) -> list[dict
             "global_step": final_step,
             "path": str(final_path),
             "sha256": file_sha256(final_path),
+            "training_config": describe_checkpoint_configuration(final_checkpoint),
         }
     )
     return records
@@ -176,7 +181,10 @@ def _scale_recipe(
         subjects={
             "run": run,
             "players": [
-                {key: record.get(key) for key in ("label", "kind", "global_step", "sha256")}
+                {
+                    key: record.get(key)
+                    for key in ("label", "kind", "global_step", "sha256", "training_config")
+                }
                 for record in metadata
             ],
             "scripted": describe_agent("scripted"),

@@ -50,6 +50,24 @@ def describe_agent(
     }
 
 
+def describe_checkpoint_configuration(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """The training configuration a checkpoint was produced under, by fingerprint.
+
+    A checkpoint carries its complete resolved configuration; repeating it in
+    every artifact would be noise. The two fingerprints are enough to decide
+    whether two measurements were taken against the same experiment intent and
+    the same launched configuration, and the checkpoint itself remains the
+    authority they resolve against.
+    """
+
+    recorded = payload.get("resolved_config") or {}
+    return {
+        "profile": recorded.get("profile"),
+        "profile_fingerprint": recorded.get("profile_fingerprint"),
+        "resolved_config_fingerprint": recorded.get("resolved_config_fingerprint"),
+    }
+
+
 def describe_agents(
     *, checkpoint_root: str | Path = "checkpoints", **specs: str
 ) -> dict[str, Any]:
