@@ -36,8 +36,8 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: `S00` — planning, branch, and execution-governance setup.
-- Next section after S00: `S01` — characterization baseline.
+- Active section: none; no implementation agent has been started.
+- Next section: `S01` — characterization baseline.
 - Blocking issue: none.
 - Landmark migration: scheduled for `S15`, after all target schemas stabilize.
 
@@ -45,7 +45,7 @@ code, tests, and reader-facing documentation.
 
 | ID | Plan phase | Status | Agent type | Model / effort | Mission |
 |---|---:|---|---|---|---|
-| S00 | governance | in_progress | planning lead | Sol / extra high | Finalize plan, branch, ledger, and prompts |
+| S00 | governance | completed | planning lead | Sol / extra high | Finalize plan, branch, ledger, and prompts |
 | S01 | 0 | pending | characterization engineer | Terra / high | Capture behavior, config, CLI, and publication baselines |
 | S02 | 1 | pending | configuration architect | Sol / extra high | Move profiles under `src`; add independent specs/resolution/fingerprints without changing RL behavior |
 | S03 | 1 gate | pending | configuration reviewer | Sol / extra high | Review resolved-config equivalence, dependency direction, and schema/fingerprint design |
@@ -419,12 +419,15 @@ Each section appends its record below when it completes. Do not replace earlier 
 
 ### S00 handoff
 
-- Status: in progress
-- Commits: pending
-- Tests/checks: pending
+- Status: completed
+- Agent/model/effort: planning lead / `gpt-5.6-sol` / extra high
+- Commit(s): `6649f72` — planning baseline; followed by a status-only closure commit
+- Tests/checks: branch/base verification; plan/ledger consistency searches; trailing-whitespace check;
+  clean-worktree check after closure
 - Behavior/config changes: documentation/governance only
-- Decisions/deviations: pending
-- Remaining risks: pending
+- Decisions/deviations: primary section owners are user-launched sequentially; section owners may
+  orchestrate bounded subagents and concurrent writers, with safe file/worktree ownership
+- Remaining risks: none; S01 is the next authorized section
 
 ### Future handoff template
 
