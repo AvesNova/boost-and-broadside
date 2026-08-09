@@ -1,6 +1,6 @@
 """Boost and Broadside — entry point.
 
-Select a mode with --mode. All hyperparameters live in runs/.
+Select a mode with --mode. Training profiles live in boost_and_broadside.profiles.
 
 Training:
     uv run main.py --mode rl                          # RL from scratch

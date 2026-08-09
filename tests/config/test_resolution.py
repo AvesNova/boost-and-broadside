@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import ast
 import json
-from dataclasses import replace
+import re
+from dataclasses import asdict, replace
 from pathlib import Path
 
 import pytest
@@ -17,7 +18,7 @@ from boost_and_broadside.config.resolve import (
     resolve_profile,
 )
 from boost_and_broadside.config.schedule_spec import compile_schedule, constant_spec, linear_spec
-from boost_and_broadside.config.service import format_resolved_profile
+from boost_and_broadside.config.service import format_resolved_profile, resolved_profile_document
 from boost_and_broadside.profiles import PROFILES
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -99,6 +100,34 @@ def test_registered_profile_modules_do_not_import_each_other() -> None:
     assert not (_ROOT / "runs").exists()
 
 
+def test_deleted_runs_profile_path_has_no_live_references() -> None:
+    historical_documents = {
+        _ROOT / "docs" / "internal" / "mode-refactor-plan.md",
+        _ROOT / "docs" / "internal" / "mode-refactor-status.md",
+    }
+    candidates = [
+        _ROOT / "main.py",
+        _ROOT / "README.md",
+        _ROOT / "STYLE_GUIDE.md",
+        _ROOT / "pyproject.toml",
+    ]
+    for root in (_ROOT / "src", _ROOT / "scripts", _ROOT / "docs"):
+        candidates.extend(
+            path
+            for path in root.rglob("*")
+            if path.suffix in {".md", ".py", ".toml"}
+            and path not in historical_documents
+        )
+
+    stale_reference = re.compile(r"\b(?:from|import)\s+runs\b|\bruns/")
+    offenders = {
+        str(path.relative_to(_ROOT)): sorted(set(stale_reference.findall(path.read_text())))
+        for path in candidates
+        if stale_reference.search(path.read_text())
+    }
+    assert offenders == {}
+
+
 def test_config_foundation_has_no_runtime_engine_dependencies() -> None:
     roots = (
         _ROOT / "src" / "boost_and_broadside" / "config",
@@ -172,15 +201,15 @@ def test_canonical_serialization_has_a_stable_golden_vector() -> None:
 def test_current_profile_and_resolved_fingerprints_are_stable() -> None:
     expected = {
         "rl": (
-            "6d358e470eb0b70e01a837b437021bc0c677cdc4bfef35ea2d6bbbea2851e9cc",
+            "d312b8195197f171c99ace9351ac4507d201366a470dac3e24c49a086781d125",
             "340ea375a3217ce2ca3be369fe64e52221b7dcf56cd94cb729dd8eede8c7afc6",
         ),
         "rl-fields": (
-            "8d476f1e018847ae7425e80cf1e1912104974e968a7df18192a3745e62e64aa0",
+            "542017f9d6f583011cb40a02dc85e6c01a7731ce778ab2fc2a690930280a2939",
             "2c29b7f27f78d15073953dd3f35b2cea64829d33b8fddbabd67ff936d7bcfa6f",
         ),
         "bc": (
-            "2ccb1869555ef1c1134be2958220d82020373c7e8a08a62171d9f6592983db42",
+            "c61ba10b4d388415d00f005ec170118cb410865e1ccf0977440ddf559100add2",
             "948776506fed977433f53dd00c620aaf54583c6ee000bfdc564abe0bfb9164da",
         ),
     }
@@ -211,6 +240,23 @@ def test_profile_fingerprint_excludes_legacy_machine_launch_preset() -> None:
     )
     baseline = resolve_profile(profile)
     other_machine = resolve_profile(changed)
+    assert other_machine.profile_fingerprint == baseline.profile_fingerprint
+    assert other_machine.resolved_config_fingerprint != baseline.resolved_config_fingerprint
+
+
+def test_profile_fingerprint_excludes_gradient_checkpointing() -> None:
+    profile = PROFILES["rl"]
+    changed = replace(
+        profile,
+        model_config=replace(
+            profile.model_config,
+            grad_checkpoint=not profile.model_config.grad_checkpoint,
+        ),
+    )
+    baseline = resolve_profile(profile)
+    other_machine = resolve_profile(changed)
+
+    assert canonical_data(other_machine.train_config) == canonical_data(baseline.train_config)
     assert other_machine.profile_fingerprint == baseline.profile_fingerprint
     assert other_machine.resolved_config_fingerprint != baseline.resolved_config_fingerprint
 
@@ -269,6 +315,26 @@ def test_resolution_tracks_sources_and_cli_overrides() -> None:
     }
 
 
+def test_num_envs_override_recomputes_shards_at_fixed_logical_batch() -> None:
+    baseline = resolve_profile(PROFILES["rl"])
+    half_width = resolve_profile(PROFILES["rl"], LaunchOverrides(num_envs=1952))
+
+    def effective_batch_tokens(resolved) -> int:
+        scale = resolved.train_config.scales[0]
+        return (
+            scale.num_envs
+            * resolved.train_config.num_steps
+            * (scale.env_config.num_ships + scale.env_config.num_fields)
+            * resolved.train_config.rollouts_per_update
+        )
+
+    assert baseline.train_config.rollouts_per_update == 3
+    assert half_width.train_config.rollouts_per_update == 6
+    assert effective_batch_tokens(half_width) == effective_batch_tokens(baseline)
+    assert half_width.value_sources["train_config.scales.0.num_envs"] == "cli"
+    assert half_width.value_sources["train_config.rollouts_per_update"] == "derived"
+
+
 def test_equal_explicit_values_keep_value_fingerprint_but_record_cli_source() -> None:
     baseline = resolve_profile(PROFILES["rl"])
     explicit = resolve_profile(
@@ -318,6 +384,22 @@ def test_format_resolved_profile_is_complete_stable_json(tmp_path, monkeypatch, 
     assert len(document["resolved_config_fingerprint"]) == 64
     assert list(tmp_path.iterdir()) == []
     assert capsys.readouterr() == ("", "")
+
+
+def test_resolved_component_discounts_are_deeply_immutable() -> None:
+    resolved = resolve_profile(PROFILES["rl"])
+    stored_document = resolved_profile_document(resolved)
+
+    with pytest.raises(TypeError):
+        resolved.train_config.component_gammas["ally_win"] = 0.5  # type: ignore[index]
+    with pytest.raises(TypeError):
+        resolved.train_config.component_lambdas["ally_win"] = 0.5  # type: ignore[index]
+
+    assert resolved_profile_document(resolved) == stored_document
+    assert json.loads(format_resolved_profile("rl")) == stored_document
+    serialized = asdict(resolved.train_config)
+    assert serialized["component_gammas"] == dict(resolved.train_config.component_gammas)
+    assert serialized["component_lambdas"] == dict(resolved.train_config.component_lambdas)
 
 
 def test_profiles_are_independent_values_even_when_their_intent_matches() -> None:

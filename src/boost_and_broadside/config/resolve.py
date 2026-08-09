@@ -58,6 +58,33 @@ def derive_aligned_num_envs(
     return aligned
 
 
+def derive_rollouts_per_update(
+    *,
+    logical_batch_tokens: int,
+    num_envs: int,
+    entity_tokens: int,
+    num_steps: int,
+) -> int:
+    """Choose the shard count closest to a profile's nominal logical batch."""
+
+    for name, value in (
+        ("logical_batch_tokens", logical_batch_tokens),
+        ("num_envs", num_envs),
+        ("entity_tokens", entity_tokens),
+        ("num_steps", num_steps),
+    ):
+        if value < 1:
+            raise ValueError(f"{name} must be positive, got {value}")
+    rollout_tokens = num_envs * entity_tokens * num_steps
+    quotient, remainder = divmod(logical_batch_tokens, rollout_tokens)
+    rollouts_per_update = quotient + int(remainder * 2 >= rollout_tokens)
+    if rollouts_per_update < 1:
+        raise ValueError(
+            "resolved rollout width exceeds the nominal logical batch token budget"
+        )
+    return rollouts_per_update
+
+
 def derive_time_normalized_value(per_tick_value: float, *, action_repeat: int) -> float:
     """Convert one-physics-tick discount or lambda to one policy decision."""
 
@@ -74,6 +101,7 @@ def derive_time_normalized_value(per_tick_value: float, *, action_repeat: int) -
 def _profile_fingerprint_payload(profile: ProfileSpec) -> dict[str, Any]:
     payload = canonical_data(profile)
     del payload["launch_defaults"]
+    del payload["model_config"]["grad_checkpoint"]
     return {
         "schema_version": PROFILE_SCHEMA_VERSION,
         "profile": payload,
@@ -285,18 +313,9 @@ def resolve_profile(
             num_steps=rollout.num_steps,
             num_minibatches=rollout.num_minibatches,
         )
-        if profile.rollout.logical_batch_tokens % launch.rollout_tokens:
-            raise ValueError("logical_batch_tokens must be divisible by rollout_tokens")
-        rollouts_per_update = profile.rollout.logical_batch_tokens // launch.rollout_tokens
     else:
         assert launch.num_envs is not None
         default_num_envs = launch.num_envs
-        actual_rollout_tokens = default_num_envs * entity_tokens * rollout.num_steps
-        if profile.rollout.logical_batch_tokens % actual_rollout_tokens:
-            raise ValueError(
-                "logical_batch_tokens must be divisible by the fixed-environment rollout size"
-            )
-        rollouts_per_update = profile.rollout.logical_batch_tokens // actual_rollout_tokens
 
     if launch.microbatches_per_minibatch is not None:
         if launch.rollout_tokens is None:
@@ -314,6 +333,12 @@ def resolve_profile(
         microbatch_source = "vram-preset" if launch.microbatch_tokens is not None else "profile"
 
     num_envs = overrides.num_envs if overrides.num_envs is not None else default_num_envs
+    rollouts_per_update = derive_rollouts_per_update(
+        logical_batch_tokens=rollout.logical_batch_tokens,
+        num_envs=num_envs,
+        entity_tokens=entity_tokens,
+        num_steps=rollout.num_steps,
+    )
     microbatch_tokens = (
         overrides.microbatch_tokens
         if overrides.microbatch_tokens is not None

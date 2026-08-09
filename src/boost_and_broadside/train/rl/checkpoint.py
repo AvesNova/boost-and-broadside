@@ -5,7 +5,7 @@ import dataclasses
 import threading
 import time
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -50,7 +50,7 @@ def clone_to_cpu(obj: Any) -> Any:
     """
     if isinstance(obj, torch.Tensor):
         return obj.to("cpu") if obj.is_cuda else obj.clone()
-    if isinstance(obj, dict):
+    if isinstance(obj, Mapping):
         return {key: clone_to_cpu(value) for key, value in obj.items()}
     if isinstance(obj, list):
         return [clone_to_cpu(value) for value in obj]

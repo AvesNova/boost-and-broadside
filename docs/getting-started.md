@@ -104,8 +104,9 @@ uv run main.py --mode bc
 uv run main.py --mode bc_warmstart
 ```
 
-Hyperparameters live in [`runs/`](../runs/). Global ship, field, and projectile defaults
-are defined on `ShipConfig` in
+Training profiles live in
+[`src/boost_and_broadside/profiles/`](../src/boost_and_broadside/profiles/). Global ship, field,
+and projectile defaults are defined on `ShipConfig` in
 [`src/boost_and_broadside/config/core.py`](../src/boost_and_broadside/config/core.py).
 The most relevant field/projectile controls are:
 
@@ -177,8 +178,10 @@ interpretation are in [evaluation and results](evaluation.md).
 The `--profile` form of `semi_random` serves training rather than evaluation. Training
 rates the live policy against those same rungs as fixed references, so each profile
 carries its own fitted `reference_ladder` and `random_elo` in
-[`runs/`](../runs/), written under `checkpoints/<profile>/`. Rung ratings are a property
-of the environment they play in, so re-fit them whenever the tick rate, field count, ship
+the registered profile under
+[`src/boost_and_broadside/profiles/`](../src/boost_and_broadside/profiles/), written under
+`checkpoints/<profile>/`. Rung ratings are a property of the environment they play in, so re-fit
+them whenever the tick rate, field count, ship
 config, fleet size or scripted controller moves — see
 [the reference ladder](training.md#the-reference-ladder).
 

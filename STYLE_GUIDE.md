@@ -103,7 +103,7 @@ We use `@dataclass(frozen=True)` for all configuration. No Hydra, no OmegaConf.
 *   **No Magic Numbers**: Do not hardcode numeric constants inline. Every constant that controls behavior must be in a config dataclass or `constants.py`.
     *   *Bad*: `reward = damage * 0.001`
     *   *Good*: `reward = damage * config.damage_weight`
-*   **No Defaults for Active Hyperparameters**: Training, model, and reward configs must not default values that shape training. Every active hyperparameter must be explicitly specified at the call site (in `runs/`).
+*   **No Defaults for Active Hyperparameters**: Training, model, and reward configs must not default values that shape training. Every active hyperparameter must be explicitly specified in its module under `src/boost_and_broadside/profiles/`.
     *   *Bad*: `learning_rate: float = 3e-4`
     *   *Good*: `learning_rate: float  # required — set in the run profile`
     *   **Carve-out**: fields that *disable* an optional feature may default to the
@@ -121,7 +121,7 @@ class TrainConfig:
     num_envs: int          # no default
     gamma: float           # no default
 
-# run profile (runs/*.py) — all active values explicit
+# training profile (src/boost_and_broadside/profiles/*.py) — all active values explicit
 cfg = TrainConfig(learning_rate=3e-4, num_envs=64, gamma=0.99)
 ```
 

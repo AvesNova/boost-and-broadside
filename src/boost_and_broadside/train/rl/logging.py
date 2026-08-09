@@ -3,6 +3,7 @@
 import dataclasses
 import json
 import time
+from collections.abc import Mapping
 from pathlib import Path
 from queue import Empty
 
@@ -282,7 +283,7 @@ class LoggingMixin:
             """Recursively convert frozenset/set → sorted list for JSON serialization."""
             if isinstance(obj, (frozenset, set)):
                 return sorted(_sanitize(x) for x in obj)  # type: ignore[misc]
-            if isinstance(obj, dict):
+            if isinstance(obj, Mapping):
                 return {k: _sanitize(v) for k, v in obj.items()}
             if isinstance(obj, (list, tuple)):
                 return [_sanitize(x) for x in obj]

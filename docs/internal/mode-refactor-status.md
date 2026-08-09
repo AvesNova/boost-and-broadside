@@ -36,8 +36,8 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: none; S03 review is complete with blocking findings.
-- Next section: `S03R` — configuration gate remediation and independent re-review.
+- Active section: `S03R` — configuration gate remediation and independent re-review.
+- Next section after the active work: `S04` — shared evaluation primitives.
 - Blocking issue: S03 found mutable fingerprinted config, launch-width/shard drift, a
   machine-specific field in the semantic fingerprint, and stale references to the deleted
   `runs/` tree.
@@ -51,7 +51,7 @@ code, tests, and reader-facing documentation.
 | S01 | 0 | completed | characterization engineer | Terra / high | Capture behavior, config, CLI, and publication baselines |
 | S02 | 1 | completed | configuration architect | Sol / extra high | Move profiles under `src`; add independent specs/resolution/fingerprints without changing RL behavior |
 | S03 | 1 gate | completed | configuration reviewer | Sol / extra high | Review resolved-config equivalence, dependency direction, and schema/fingerprint design |
-| S03R | 1 gate remediation | pending | configuration remediator + reviewer | Sol / extra high | Fix S03 blockers and obtain an independent configuration re-review |
+| S03R | 1 gate remediation | in_progress | configuration remediator + reviewer | Sol / extra high | Fix S03 blockers and obtain an independent configuration re-review |
 | S04 | 2 | pending | evaluation refactorer | Sol / high | Extract typed sizes, run catalog, match/environment, and tournament engines |
 | S05 | 3 | pending | CLI engineer | Sol / high | Replace `main.py --mode` with the strict installed `bnb` subcommand CLI |
 | S06 | 4 | pending | smoke/test engineer | Sol / high | Build synthetic checkpoint fixtures and fully isolated sequential subprocess smoke coverage |

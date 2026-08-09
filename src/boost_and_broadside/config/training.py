@@ -1,10 +1,41 @@
 """Training configuration: scale, PPO hyperparameters, and run assembly."""
 
 import dataclasses
+from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 
 from boost_and_broadside.config.core import EnvConfig, RewardConfig
 from boost_and_broadside.config.schedule import TrainingSchedule
+
+
+class _FrozenFloatMapping(Mapping[str, float]):
+    """A pickle-compatible immutable mapping for nested config values."""
+
+    __slots__ = ("_values",)
+
+    def __init__(self, values: Mapping[str, float]) -> None:
+        object.__setattr__(self, "_values", MappingProxyType(dict(values)))
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError("configuration mappings are immutable")
+
+    def __getitem__(self, key: str) -> float:
+        return self._values[key]
+
+    def __iter__(self):
+        return iter(self._values)
+
+    def __len__(self) -> int:
+        return len(self._values)
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "_FrozenFloatMapping":
+        return self
+
+    def __reduce__(self) -> tuple[type[dict], tuple[dict[str, float]]]:
+        # Checkpoint payloads historically contain ordinary dictionaries after
+        # pickle round-trips, so preserve that wire representation.
+        return dict, (dict(self),)
 
 
 @dataclass(frozen=True)
@@ -252,10 +283,20 @@ class TrainConfig:
 
     # --- Per-component GAE discounts (override global gamma/gae_lambda by name) ---
     # Missing keys fall back to the global gamma / gae_lambda values.
-    component_gammas: dict[str, float] = dataclasses.field(default_factory=dict)
-    component_lambdas: dict[str, float] = dataclasses.field(default_factory=dict)
+    component_gammas: Mapping[str, float] = dataclasses.field(default_factory=dict)
+    component_lambdas: Mapping[str, float] = dataclasses.field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "component_gammas",
+            _FrozenFloatMapping(self.component_gammas),
+        )
+        object.__setattr__(
+            self,
+            "component_lambdas",
+            _FrozenFloatMapping(self.component_lambdas),
+        )
         if len(self.scales) == 0:
             raise ValueError("scales must contain at least one ScaleConfig")
         has_fields = any(scale.env_config.num_fields > 0 for scale in self.scales)

@@ -20,7 +20,7 @@ import dataclasses
 import threading
 import time
 from collections import deque
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, Mapping
 from pathlib import Path
 from queue import Queue
 
@@ -72,7 +72,7 @@ from boost_and_broadside.train.rl.sigreg import SIGReg
 
 def _build_component_tensor(
     global_val: float,
-    overrides: dict[str, float],
+    overrides: Mapping[str, float],
     names: tuple[str, ...],
     device: torch.device,
 ) -> torch.Tensor:
