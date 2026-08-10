@@ -12,10 +12,13 @@ import pytest
 import torch
 
 from boost_and_broadside.train.rl.checkpoint import (
+    OPTIONAL_TRAINING_CHECKPOINT_FIELDS,
+    RESUMABLE_CHECKPOINT_FIELDS,
     _check_resolved_config_provenance,
     build_policy_checkpoint_payload,
     build_training_checkpoint_payload,
     clone_to_cpu,
+    require_resumable_checkpoint,
 )
 from boost_and_broadside.train.rl.checkpoint_schema import (
     OBSERVATION_SCHEMA,
@@ -329,6 +332,138 @@ class TestResolvedConfigProvenance:
         resumed.shutdown()
         allowed.shutdown()
         pretrained.shutdown()
+
+
+class TestResumableCheckpointContract:
+    """A resume restores the complete training state, or it is refused.
+
+    The failure this closes is silent by construction: a payload written under
+    the pre-rename live-Elo field names loaded, resumed at the right update, and
+    continued with the weights and optimizer intact — while the live rating, its
+    running average, and the milestone grid restarted at zero. With
+    ``elo_milestone_gap=200`` the run then re-freezes ladder snapshots at heights
+    it had already passed. Nothing in the output said so.
+    """
+
+    @staticmethod
+    def _production_payload(tmp_path):
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        payload = trainer.checkpoint_payload(update=6)
+        trainer.shutdown()
+        return payload
+
+    def test_required_fields_are_exactly_what_the_builder_always_writes(self, tmp_path):
+        """The tripwire: adding a payload field without deciding its resume
+        behavior fails here rather than becoming another silent default."""
+        payload = self._production_payload(tmp_path)
+
+        assert set(payload) - set(OPTIONAL_TRAINING_CHECKPOINT_FIELDS) == set(
+            RESUMABLE_CHECKPOINT_FIELDS
+        )
+        assert len(RESUMABLE_CHECKPOINT_FIELDS) == len(set(RESUMABLE_CHECKPOINT_FIELDS))
+
+    @pytest.mark.parametrize("field", RESUMABLE_CHECKPOINT_FIELDS)
+    def test_every_required_field_is_named_when_it_is_missing(self, field, tmp_path):
+        payload = dict(self._production_payload(tmp_path))
+        payload.pop(field)
+
+        with pytest.raises(ValueError, match=f"not a resumable training checkpoint.*{field}"):
+            require_resumable_checkpoint(payload, "step_000000000042.pt")
+
+    def test_optional_provenance_fields_do_not_block_a_resume(self, tmp_path):
+        """A trainer built without a resolved-config document or launch record —
+        every hermetic fixture — still writes a payload that resumes."""
+        payload = self._production_payload(tmp_path)
+
+        assert not set(OPTIONAL_TRAINING_CHECKPOINT_FIELDS) & set(payload)
+        require_resumable_checkpoint(payload, "step_000000000042.pt")
+
+    @pytest.mark.parametrize("with_resolved_config", [False, True])
+    def test_real_resume_refuses_the_pre_rename_live_elo_payload(
+        self, with_resolved_config, tmp_path
+    ):
+        """Both shapes, because the drift check returns early on a payload that
+        records no resolved config and so cannot be what stands between a legacy
+        file and a reset rating."""
+        from tests.train.test_ppo import _make_trainer
+
+        source = _make_trainer(checkpoint_dir=str(tmp_path / "source"))
+        source._live_elo = 1547.3
+        source._avg_live_elo = 1500.0
+        source._elo_milestone = 1400.0
+        payload = source.checkpoint_payload(update=6)
+        payload["training_elo"] = payload.pop("live_elo")
+        payload["avg_training_elo"] = payload.pop("avg_live_elo")
+        if with_resolved_config:
+            payload["resolved_config"] = {"resolved_config_fingerprint": "recorded"}
+        legacy = tmp_path / "legacy.pt"
+        torch.save(payload, legacy)
+
+        resumed = _make_trainer(checkpoint_dir=str(tmp_path / "resume"))
+        resumed.resolved_config_document = {"resolved_config_fingerprint": "recorded"}
+        resumed.launch_provenance = {"allow_config_drift": False}
+        before = (
+            resumed._live_elo,
+            resumed._avg_live_elo,
+            resumed._elo_milestone,
+            resumed._start_update,
+        )
+
+        with pytest.raises(ValueError, match="predates the current live-Elo naming"):
+            resumed.load_checkpoint(str(legacy))
+
+        # Refused before any state was restored, so the trainer is untouched.
+        assert (
+            resumed._live_elo,
+            resumed._avg_live_elo,
+            resumed._elo_milestone,
+            resumed._start_update,
+        ) == before
+        source.shutdown()
+        resumed.shutdown()
+
+    def test_real_resume_refuses_a_policy_only_checkpoint(self, tmp_path):
+        """The ladder and best_*.pt families are policy-only by design; resuming
+        one would silently start a run with a fresh optimizer."""
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        ladder = trainer._save_ladder_snapshot()
+
+        with pytest.raises(ValueError, match="--pretrain-from"):
+            trainer.load_checkpoint(str(ladder))
+        trainer.shutdown()
+
+    def test_a_complete_payload_restores_every_rating_field(self, tmp_path):
+        """The positive side of the contract, at the real loader."""
+        from tests.train.test_ppo import _make_trainer
+
+        source = _make_trainer(checkpoint_dir=str(tmp_path / "source"))
+        source._live_elo = 1547.3
+        source._avg_live_elo = 1500.0
+        source._elo_milestone = 1400.0
+        source._floating_games = 11
+        source._ship_steps = 4242
+        source._grad_tokens = 9999
+        source._global_step = 512
+        saved = tmp_path / "step.pt"
+        torch.save(clone_to_cpu(source.checkpoint_payload(update=6)), saved)
+
+        resumed = _make_trainer(checkpoint_dir=str(tmp_path / "resume"))
+
+        assert resumed.load_checkpoint(str(saved)) == 6
+        assert resumed._live_elo == 1547.3
+        assert resumed._avg_live_elo == 1500.0
+        assert resumed._elo_milestone == 1400.0
+        assert resumed._floating_games == 11
+        assert resumed._ship_steps == 4242
+        assert resumed._grad_tokens == 9999
+        assert resumed._global_step == 512
+        assert resumed._start_update == 7
+        source.shutdown()
+        resumed.shutdown()
 
 
 class TestNumValueComponents:

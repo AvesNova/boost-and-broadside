@@ -12,7 +12,6 @@ from typing import Any
 
 import torch
 
-from boost_and_broadside.config.live_elo import LIVE_RANDOM_ELO
 from boost_and_broadside.train.rl.checkpoint_schema import (
     OBSERVATION_SCHEMA,
     load_checkpoint_payload,
@@ -101,7 +100,16 @@ def build_training_checkpoint_payload(
     elo_milestone: float,
     train_config: Any,
 ) -> dict[str, Any]:
-    """Build the complete resumable ``step_*.pt`` payload as plain data."""
+    """Build the complete resumable ``step_*.pt`` payload as plain data.
+
+    Every key written here is required to resume — see
+    ``RESUMABLE_CHECKPOINT_FIELDS``. The only genuinely optional keys are the two
+    the policy block writes conditionally,
+    ``OPTIONAL_TRAINING_CHECKPOINT_FIELDS``: a trainer constructed without a
+    resolved-configuration document or launch provenance (tests and hermetic
+    fixtures) still writes a usable payload, and the drift check treats a missing
+    record as "nothing to compare".
+    """
 
     return {
         **policy_payload,
@@ -129,6 +137,89 @@ def build_training_checkpoint_payload(
             if key != "schedule"
         },
     }
+
+
+# Every key ``build_training_checkpoint_payload`` always writes, in the order it
+# writes them. ``load_checkpoint`` requires all of them: a resumable checkpoint
+# either restores the complete training state or is refused. Reading any of these
+# with a silent default is how a payload written under different field names
+# resumes as a fresh run — the live rating, its running average, and the
+# milestone grid all restart at zero while the weights and optimizer continue.
+# ``tests/train/test_checkpoint.py`` pins this tuple against a real payload, so
+# adding a field to the builder without deciding its resume behavior fails there.
+RESUMABLE_CHECKPOINT_FIELDS: tuple[str, ...] = (
+    "observation_schema",
+    "policy_state_dict",
+    "num_value_components",
+    "team_pma_k",
+    "global_step",
+    "live_elo",
+    "model_config",
+    "env_config",
+    "ship_config",
+    "paradigm",
+    "optimizer_state_dict",
+    "scaler_state_dict",
+    "adv_scaler_state_dict",
+    "avg_policy_state_dict",
+    "avg_param_cumsum",
+    "avg_update_count",
+    "update",
+    "ship_steps",
+    "grad_tokens",
+    "elapsed_train_time",
+    "avg_live_elo",
+    "floating_games",
+    "eval_window_rand",
+    "eval_window_sc",
+    "eval_window_ladder",
+    "eval_window_floating",
+    "eval_window_live_vs_avg",
+    "elo_milestone",
+    "train_config",
+)
+
+# The two keys a training payload may legitimately omit. Both are provenance
+# rather than state: a trainer with neither still resumes, and the drift check
+# reads an absent ``resolved_config`` as "nothing recorded to compare".
+OPTIONAL_TRAINING_CHECKPOINT_FIELDS: tuple[str, ...] = ("resolved_config", "launch")
+
+# Fields this branch renamed, mapped current name -> the name a pre-rename
+# payload uses. Only used to make the refusal say what the file actually is.
+_RENAMED_CHECKPOINT_FIELDS: dict[str, str] = {
+    "live_elo": "training_elo",
+    "avg_live_elo": "avg_training_elo",
+}
+
+
+def require_resumable_checkpoint(checkpoint: Mapping[str, Any], path: str | None = None) -> None:
+    """Refuse a payload that cannot restore the complete training state.
+
+    ``observation_schema`` is listed among the required fields for completeness
+    but is checked first and separately by ``require_observation_schema``, which
+    has more to say about why the weights are incompatible.
+    """
+
+    missing = [field for field in RESUMABLE_CHECKPOINT_FIELDS if field not in checkpoint]
+    if not missing:
+        return
+    location = f" {path!r}" if path is not None else ""
+    renamed = [
+        f"{old!r} for {new!r}"
+        for new, old in _RENAMED_CHECKPOINT_FIELDS.items()
+        if new in missing and old in checkpoint
+    ]
+    predates = (
+        f" It carries {' and '.join(renamed)}, so it predates the current live-Elo"
+        " naming and has to be migrated rather than resumed."
+        if renamed
+        else ""
+    )
+    raise ValueError(
+        f"Checkpoint{location} is not a resumable training checkpoint: missing "
+        f"{', '.join(missing)}.{predates} Resume requires a complete step_*.pt payload; "
+        "start from a policy-only checkpoint with --pretrain-from instead."
+    )
 
 
 def _check_resolved_config_provenance(
@@ -559,12 +650,16 @@ class CheckpointMixin:
             The update index stored in the checkpoint.
 
         Raises:
-            ValueError: If the checkpoint was trained under a different paradigm —
-                a policy trained in one paradigm misbehaves when resumed in the
-                other (ego_pass policies only ever act as team 0).
+            ValueError: If the checkpoint is not a complete resumable payload, or
+                was trained under a different paradigm — a policy trained in one
+                paradigm misbehaves when resumed in the other (ego_pass policies
+                only ever act as team 0).
         """
         ckpt = load_checkpoint_payload(path, map_location=self.device)
         require_observation_schema(ckpt, path)
+        # Before the drift check, which returns early on a payload that records
+        # no resolved config — the shape of every pre-branch checkpoint.
+        require_resumable_checkpoint(ckpt, path)
         _check_resolved_config_provenance(
             ckpt,
             self.resolved_config_document,
@@ -572,7 +667,7 @@ class CheckpointMixin:
                 self.launch_provenance and self.launch_provenance.get("allow_config_drift")
             ),
         )
-        ckpt_paradigm = ckpt.get("train_config", {}).get("paradigm")
+        ckpt_paradigm = ckpt["train_config"].get("paradigm")
         if ckpt_paradigm is not None and ckpt_paradigm != self.cfg.paradigm:
             raise ValueError(
                 f"Checkpoint was trained with paradigm={ckpt_paradigm!r} but this "
@@ -583,65 +678,35 @@ class CheckpointMixin:
             self._policy_module, ckpt["policy_state_dict"], path, "policy weights"
         )
         _load_checkpoint_state(self.optim, ckpt["optimizer_state_dict"], path, "optimizer state")
-        if "scaler_state_dict" in ckpt:
-            _load_checkpoint_state(self.scaler, ckpt["scaler_state_dict"], path, "scaler state")
-        if "adv_scaler_state_dict" in ckpt:
-            _load_checkpoint_state(
-                self.adv_scaler, ckpt["adv_scaler_state_dict"], path, "advantage-scaler state"
-            )
-        if "avg_policy_state_dict" in ckpt:
-            _load_checkpoint_state(
-                self._avg_policy_module,
-                ckpt["avg_policy_state_dict"],
-                path,
-                "averaged policy weights",
-            )
-            self._avg_param_cumsum = [
-                c.to(self.device, torch.float32) for c in ckpt["avg_param_cumsum"]
-            ]
-            self._avg_update_count = ckpt["avg_update_count"]
-        if "live_elo" in ckpt:
-            self._live_elo = ckpt["live_elo"]
-            self._elo_milestone = ckpt.get("elo_milestone", 0.0)
-        self._avg_live_elo = ckpt.get("avg_live_elo", LIVE_RANDOM_ELO)
-        self._floating_games = ckpt.get("floating_games", 0)
-        if "eval_window_rand" in ckpt:
-            self._eval_window_rand = deque(
-                ckpt["eval_window_rand"], maxlen=self.cfg.elo_eval.window_size
-            )
-        if "eval_window_sc" in ckpt:
-            self._eval_window_sc = deque(
-                ckpt["eval_window_sc"], maxlen=self.cfg.elo_eval.window_size
-            )
-        if "eval_window_ladder" in ckpt:
-            self._eval_window_ladder = deque(
-                ckpt["eval_window_ladder"], maxlen=self.cfg.elo_eval.window_size
-            )
-        if "eval_window_floating" in ckpt:
-            self._eval_window_floating = deque(
-                ckpt["eval_window_floating"], maxlen=self.cfg.elo_eval.window_size
-            )
-        if "eval_window_live_vs_avg" in ckpt:
-            self._eval_window_live_vs_avg = deque(
-                ckpt["eval_window_live_vs_avg"], maxlen=self.cfg.elo_eval.window_size
-            )
-        if "global_step" in ckpt:
-            self._global_step = ckpt["global_step"]
-            self._start_update = ckpt["update"] + 1
-        self._elapsed_train_time = ckpt.get("elapsed_train_time", 0.0)
-        # Older checkpoints lack ship_steps — reconstruct from update count,
-        # exact as long as the scale config hasn't changed between runs.
-        ship_tokens_per_update = self.cfg.num_steps * sum(
-            sc.num_envs * sc.env_config.num_ships for sc in self.cfg.scales
+        _load_checkpoint_state(self.scaler, ckpt["scaler_state_dict"], path, "scaler state")
+        _load_checkpoint_state(
+            self.adv_scaler, ckpt["adv_scaler_state_dict"], path, "advantage-scaler state"
         )
-        self._ship_steps = ckpt.get("ship_steps", ckpt.get("update", 0) * ship_tokens_per_update)
-        # Older checkpoints lack grad_tokens — reconstruct from the update count
-        # and the current schedule's num_epochs (approximate: ignores target_kl
-        # early stops and epoch-schedule changes before the checkpoint).
-        self._grad_tokens = ckpt.get(
-            "grad_tokens",
-            ckpt.get("update", 0) * self._schedule_state.num_epochs * self._entity_tokens_per_epoch,
+        _load_checkpoint_state(
+            self._avg_policy_module,
+            ckpt["avg_policy_state_dict"],
+            path,
+            "averaged policy weights",
         )
+        self._avg_param_cumsum = [
+            c.to(self.device, torch.float32) for c in ckpt["avg_param_cumsum"]
+        ]
+        self._avg_update_count = ckpt["avg_update_count"]
+        self._live_elo = ckpt["live_elo"]
+        self._elo_milestone = ckpt["elo_milestone"]
+        self._avg_live_elo = ckpt["avg_live_elo"]
+        self._floating_games = ckpt["floating_games"]
+        window = self.cfg.elo_eval.window_size
+        self._eval_window_rand = deque(ckpt["eval_window_rand"], maxlen=window)
+        self._eval_window_sc = deque(ckpt["eval_window_sc"], maxlen=window)
+        self._eval_window_ladder = deque(ckpt["eval_window_ladder"], maxlen=window)
+        self._eval_window_floating = deque(ckpt["eval_window_floating"], maxlen=window)
+        self._eval_window_live_vs_avg = deque(ckpt["eval_window_live_vs_avg"], maxlen=window)
+        self._global_step = ckpt["global_step"]
+        self._start_update = ckpt["update"] + 1
+        self._elapsed_train_time = ckpt["elapsed_train_time"]
+        self._ship_steps = ckpt["ship_steps"]
+        self._grad_tokens = ckpt["grad_tokens"]
 
         # Restore roster if its JSON exists alongside the checkpoint. load_json
         # replaces the entry list wholesale, so the special entries are

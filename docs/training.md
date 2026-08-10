@@ -492,6 +492,17 @@ makes the memory decision part of a run's history rather than a property of whic
 machine happened to start it — a resume onto a card that sizes the launch differently is a
 resolved-config difference, and is refused unless `--allow-config-drift` is passed.
 
+Resuming is stricter than reloading a policy. `load_checkpoint` requires every field a full
+payload writes and refuses one that lacks any of them, naming it: a resume restores the
+complete training state — weights, optimizer, both scalers, the averaging accumulator, the
+live rating and its running average, the milestone grid, and the evaluation windows — or it
+does not happen. Only the resolved-config and launch blocks are optional, and both are
+provenance rather than state. Reading a state field with a default is what let a payload
+written under the earlier live-Elo field names resume as a fresh run: weights and optimizer
+continued while the rating restarted at zero and the ladder re-froze snapshots the run had
+already passed. Policy-only files (`best_*.pt`, `ladder_step_*.pt`) are consequently not
+resumable; `--pretrain-from` is the path that takes one.
+
 ### Launch sizing is not an experiment change
 
 A profile fixes its logical batch, minibatch count, and fleet; `--vram` only decides how
