@@ -14,6 +14,7 @@ from boost_and_broadside.artifacts.store import (
     STATUS_IN_PROGRESS,
     Artifact,
     ArtifactError,
+    ArtifactIncomplete,
     ArtifactIntegrityError,
     ArtifactOwner,
     ArtifactRecipeMismatch,
@@ -23,6 +24,7 @@ from boost_and_broadside.artifacts.store import (
     discard_artifact,
     file_sha256,
     load_artifact,
+    require_complete,
     verify_artifact,
 )
 
@@ -30,6 +32,7 @@ __all__ = [
     "ARTIFACT_MANIFEST_SCHEMA_VERSION",
     "Artifact",
     "ArtifactError",
+    "ArtifactIncomplete",
     "ArtifactIntegrityError",
     "ArtifactOwner",
     "ArtifactRecipe",
@@ -43,5 +46,6 @@ __all__ = [
     "discard_artifact",
     "file_sha256",
     "load_artifact",
+    "require_complete",
     "verify_artifact",
 ]

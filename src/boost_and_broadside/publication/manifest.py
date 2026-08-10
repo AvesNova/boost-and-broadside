@@ -158,15 +158,30 @@ def _entry(name: str, body: Any, root: str | Path) -> PublicationEntry:
     )
 
 
-def _output(name: str, value: str, root: str | Path) -> str:
+def publication_output_path(value: str, root: str | Path, *, described_as: str) -> str:
+    """Normalise a canonical output path, or reject one that is not inside ``docs/``.
+
+    Publication both writes and removes the paths it is given, so every one of
+    them is checked here: by the manifest before an entry is accepted, and by
+    the ownership record before anything it names is deleted.
+    """
+
     candidate = Path(value)
     if candidate.is_absolute() or ".." in candidate.parts:
-        raise ManifestError(f"publication {name!r} output {value!r} must be a path inside docs/")
+        raise ManifestError(f"{described_as} {value!r} must be a path inside {PUBLICATION_ROOT}/")
     resolved = (Path(root) / candidate).resolve()
     docs_root = (Path(root) / PUBLICATION_ROOT).resolve()
     if not resolved.is_relative_to(docs_root):
-        raise ManifestError(f"publication {name!r} output {value!r} escapes {PUBLICATION_ROOT}/")
+        raise ManifestError(f"{described_as} {value!r} escapes {PUBLICATION_ROOT}/")
+    if resolved == docs_root:
+        raise ManifestError(
+            f"{described_as} {value!r} names {PUBLICATION_ROOT}/ itself, not an output in it"
+        )
     return candidate.as_posix()
+
+
+def _output(name: str, value: str, root: str | Path) -> str:
+    return publication_output_path(value, root, described_as=f"publication {name!r} output")
 
 
 def _artifacts(name: str, value: Any) -> dict[str, str]:
@@ -245,4 +260,5 @@ __all__ = [
     "PublicationManifest",
     "load_manifest",
     "manifest_path",
+    "publication_output_path",
 ]

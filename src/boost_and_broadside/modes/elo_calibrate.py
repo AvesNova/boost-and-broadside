@@ -47,6 +47,7 @@ from boost_and_broadside.artifacts import (
     ArtifactStore,
     artifact_digest,
     load_artifact,
+    require_complete,
 )
 from boost_and_broadside.config import EloCalibrateConfig, EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.evaluation.agents import (
@@ -247,6 +248,9 @@ def _load_source_measurement(path: str | Path) -> tuple[dict, dict, str]:
             f"{path} is a {artifact.artifact_type!r} artifact; "
             "--from-artifact expects an elo-calibration measurement"
         )
+    # An interrupted sweep's matrices hold a fraction of the games asked for;
+    # refitting them would report that fraction as a measurement.
+    require_complete(artifact)
     manifest = artifact.manifest
     return artifact.read_json(), manifest, artifact_digest(artifact)
 

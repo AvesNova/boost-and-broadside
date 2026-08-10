@@ -109,6 +109,11 @@ def test_a_renderer_with_no_required_source_is_always_selected(repository, isola
         ),
         (
             'schema_version = 1\n[publications.a]\nrenderer = "fixture-summary-v1"\n'
+            'output = "docs"\ndescription = "x"\n',
+            "names docs/ itself",
+        ),
+        (
+            'schema_version = 1\n[publications.a]\nrenderer = "fixture-summary-v1"\n'
             'output = "docs/a.json"\ndescription = "x"\nmystery = 1\n',
             "unknown keys",
         ),

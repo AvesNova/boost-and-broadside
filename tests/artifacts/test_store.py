@@ -12,6 +12,7 @@ from boost_and_broadside.artifacts import (
     STATUS_COMPLETE,
     STATUS_IN_PROGRESS,
     ArtifactError,
+    ArtifactIncomplete,
     ArtifactIntegrityError,
     ArtifactRecipe,
     ArtifactRecipeMismatch,
@@ -20,6 +21,7 @@ from boost_and_broadside.artifacts import (
     artifact_digest,
     artifact_id,
     load_artifact,
+    require_complete,
     verify_artifact,
 )
 from boost_and_broadside.artifacts.provenance import environment_provenance, normalized_command
@@ -201,6 +203,45 @@ def test_resume_continues_an_unfinished_artifact_and_never_a_finished_one(tmp_pa
     fresh, resumed = store.open_resumable(_recipe(), owner)
     assert resumed is False
     assert fresh.path != first.path
+
+
+def test_only_a_completed_artifact_may_be_cited(tmp_path):
+    store = _store(tmp_path)
+    artifact = store.create(_recipe(), store.standalone_owner())
+    artifact.write_json({"rows": [1]})
+
+    # Internally consistent and hash-verifiable, but only part of what was asked.
+    verify_artifact(artifact)
+    with pytest.raises(ArtifactIncomplete, match="cannot be cited"):
+        require_complete(artifact)
+
+    artifact.complete()
+    require_complete(load_artifact(artifact.path))
+
+
+def test_resume_verifies_the_recipe_and_not_the_payload_hashes(tmp_path):
+    """The recorded contract: a manifest hash may lag an interrupted payload.
+
+    ``_write`` replaces the payload and then saves the manifest, so a process
+    killed between those two steps leaves a complete, newer payload beside the
+    previous recorded hash. That is exactly the artifact resume exists to
+    continue, so resume checks the recipe rather than re-hashing.
+    """
+
+    store = _store(tmp_path)
+    owner = store.standalone_owner()
+    artifact, _ = store.open_resumable(_recipe(), owner)
+    artifact.write_json({"rows": [1]})
+    # The next batch lands, the process dies before the manifest is saved.
+    (artifact.path / "result.json").write_text('{"rows": [1, 2]}\n')
+
+    resumed, was_resumed = store.open_resumable(_recipe(), owner)
+
+    assert was_resumed is True
+    assert resumed.read_json() == {"rows": [1, 2]}
+    # Reading the same artifact as final evidence still refuses it.
+    with pytest.raises(ArtifactIntegrityError):
+        load_artifact(artifact.path)
 
 
 def test_a_different_recipe_never_resumes_another_measurement(tmp_path):

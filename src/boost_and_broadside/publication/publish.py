@@ -20,12 +20,19 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from boost_and_broadside.artifacts import Artifact, ArtifactError, artifact_digest, load_artifact
+from boost_and_broadside.artifacts import (
+    Artifact,
+    ArtifactError,
+    artifact_digest,
+    load_artifact,
+    require_complete,
+)
 from boost_and_broadside.artifacts.store import file_sha256
 from boost_and_broadside.publication.manifest import (
     PublicationEntry,
     PublicationManifest,
     load_manifest,
+    publication_output_path,
 )
 from boost_and_broadside.publication.provenance import (
     OWNERSHIP_RELATIVE_PATH,
@@ -46,6 +53,7 @@ UNCHANGED = "unchanged"
 CHANGED = "changed"
 MISSING = "missing"
 UNSELECTED = "unselected"
+STALE = "stale"
 
 _PIXEL_SUFFIXES = frozenset({".png"})
 
@@ -71,11 +79,21 @@ class PublishReport:
     checked: bool
     outcomes: list[EntryOutcome] = field(default_factory=list)
     removed: list[str] = field(default_factory=list)
+    stale: list[str] = field(default_factory=list)
     index: list[str] = field(default_factory=list)
 
     @property
     def failed(self) -> bool:
-        return any(outcome.failed for outcome in self.outcomes)
+        """True when ``docs/`` does not match the manifest.
+
+        A canonical output the manifest no longer owns is as much a mismatch as
+        a changed one: it is still in the tree, still reads as canonical, and
+        nothing produces it any more. Only check mode records one as ``stale``;
+        publish mode removes it and records it under ``removed``, which is a
+        repair rather than a failure.
+        """
+
+        return any(outcome.failed for outcome in self.outcomes) or bool(self.stale)
 
     def by_status(self, status: str) -> list[EntryOutcome]:
         return [outcome for outcome in self.outcomes if outcome.status == status]
@@ -87,9 +105,16 @@ class PublishReport:
             for outcome in self.outcomes
         ]
         lines.extend(f"removed stale output {path}" for path in self.removed)
+        lines.extend(
+            f"stale output {path} is no longer owned by the manifest; "
+            "run bnb publish to remove it"
+            for path in self.stale
+        )
         counts = {}
         for outcome in self.outcomes:
             counts[outcome.status] = counts.get(outcome.status, 0) + 1
+        if self.stale:
+            counts[STALE] = len(self.stale)
         summary = ", ".join(f"{count} {status}" for status, count in sorted(counts.items()))
         verb = "publish --check" if self.checked else "publish"
         lines.append(f"{verb}: {summary or 'nothing to do'}")
@@ -161,7 +186,8 @@ def run_publish(
         report.index.append(_index_row(entry, digests))
 
     if target is None:
-        report.removed.extend(_prune_unowned(repository, manifest, check=check))
+        unowned = _prune_unowned(repository, manifest, check=check)
+        (report.stale if check else report.removed).extend(unowned)
     if not check and target is None and any(
         entry.selected and not entry.renderer.external for entry in manifest.entries
     ):
@@ -203,6 +229,7 @@ def _resolve_sources(
         path = repository / location
         try:
             artifact = load_artifact(path)
+            require_complete(artifact)
         except ArtifactError as error:
             raise PublicationError(f"publication {entry.name!r}: {error}") from error
         _require_clean_source(entry, name, artifact)
@@ -357,23 +384,35 @@ def _stale_files(destination: Path, produced: set[Path]) -> list[Path]:
 def _prune_unowned(
     repository: Path, manifest: PublicationManifest, *, check: bool
 ) -> list[str]:
-    """Remove outputs a previous run owned and this manifest no longer declares."""
+    """Find outputs a previous run owned and this manifest no longer declares.
+
+    Publish mode removes them. Check mode changes nothing, so it only reports
+    them and the caller turns that into a failure — an output nothing produces
+    any more is still sitting in ``docs/`` reading as canonical.
+
+    The ownership record is generated, but it is also tracked and hand-editable,
+    so every path it names is re-validated as a location inside ``docs/`` before
+    anything is deleted.
+    """
 
     previous = load_ownership(repository)
     owned = {entry.output for entry in manifest.entries}
-    removed = []
+    found = []
     for output in sorted(set(previous) - owned):
-        path = repository / output
+        relative = publication_output_path(
+            output, repository, described_as=f"{OWNERSHIP_RELATIVE_PATH.as_posix()} entry"
+        )
+        path = repository / relative
         if not path.exists():
             continue
-        removed.append(output)
+        found.append(relative)
         if check:
             continue
         if path.is_dir():
             shutil.rmtree(path)
         else:
             path.unlink()
-    return removed
+    return found
 
 
 def _index_row(entry: PublicationEntry, digests: dict[str, str]) -> str:
@@ -418,6 +457,7 @@ __all__ = [
     "MISSING",
     "PublishReport",
     "RENDERED",
+    "STALE",
     "UNCHANGED",
     "UNSELECTED",
     "offline",

@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from boost_and_broadside.artifacts import ArtifactRecipe
 from boost_and_broadside.artifacts.store import file_sha256
 from boost_and_broadside.publication.provenance import (
     OWNERSHIP_RELATIVE_PATH,
@@ -26,7 +27,12 @@ from boost_and_broadside.publication.renderer_api import (
     Renderer,
     register,
 )
-from tests.publication.conftest import build_artifact, write_manifest
+from tests.publication.conftest import (
+    build_artifact,
+    fixture_store,
+    record_commit,
+    write_manifest,
+)
 
 _SUMMARY = """
 schema_version = 1
@@ -49,6 +55,39 @@ output = "docs/report"
 description = "A fixture report tree."
 
 [publications.report.artifacts]
+measurement = "{location}"
+"""
+
+
+_TWO_ENTRIES = """
+schema_version = 1
+
+[publications.kept]
+renderer = "fixture-summary-v1"
+output = "docs/results/kept.json"
+description = "Still owned."
+
+[publications.kept.artifacts]
+measurement = "{location}"
+
+[publications.dropped]
+renderer = "fixture-summary-v1"
+output = "docs/results/dropped.json"
+description = "Dropped from the inventory below."
+
+[publications.dropped.artifacts]
+measurement = "{location}"
+"""
+
+_ONE_ENTRY = """
+schema_version = 1
+
+[publications.kept]
+renderer = "fixture-summary-v1"
+output = "docs/results/kept.json"
+description = "Still owned."
+
+[publications.kept.artifacts]
 measurement = "{location}"
 """
 
@@ -160,6 +199,100 @@ def test_an_output_the_manifest_no_longer_owns_is_removed(repository, renderers)
 
     assert "docs/results/summary.json" in report.removed
     assert not (repository / "docs" / "results" / "summary.json").exists()
+
+
+def test_check_fails_on_an_output_the_manifest_no_longer_owns(repository, renderers) -> None:
+    # Every entry the manifest still owns is unchanged, so the stale output is
+    # the only signal there is: if it does not fail the check, nothing does.
+    location = build_artifact(repository, {"value": 1})
+    write_manifest(repository, _TWO_ENTRIES.format(location=location))
+    run_publish(repository)
+    dropped = repository / "docs" / "results" / "dropped.json"
+    assert dropped.is_file()
+
+    write_manifest(repository, _ONE_ENTRY.format(location=location))
+    report = run_publish(repository, check=True)
+
+    assert [outcome.status for outcome in report.outcomes] == [UNCHANGED]
+    assert report.stale == ["docs/results/dropped.json"]
+    assert report.failed
+    # Check mode changes nothing, so it may not claim to have removed anything.
+    assert report.removed == []
+    assert "removed" not in report.render()
+    assert dropped.is_file()
+
+
+def test_publish_removes_what_check_only_reported(repository, renderers) -> None:
+    location = build_artifact(repository, {"value": 1})
+    write_manifest(repository, _TWO_ENTRIES.format(location=location))
+    run_publish(repository)
+    write_manifest(repository, _ONE_ENTRY.format(location=location))
+    run_publish(repository, check=True)
+
+    report = run_publish(repository)
+
+    assert report.removed == ["docs/results/dropped.json"]
+    assert report.stale == []
+    assert not report.failed
+    assert not (repository / "docs" / "results" / "dropped.json").exists()
+    assert not run_publish(repository, check=True).failed
+
+
+def test_an_ownership_record_naming_a_path_outside_docs_deletes_nothing(
+    repository, renderers
+) -> None:
+    location = build_artifact(repository, {"value": 1})
+    write_manifest(repository, _SUMMARY.format(location=location))
+    run_publish(repository)
+    outsider = repository / "checkpoints" / "keep_me.pt"
+    outsider.parent.mkdir(parents=True, exist_ok=True)
+    outsider.write_bytes(b"not a canonical output")
+    ownership = repository / OWNERSHIP_RELATIVE_PATH
+    ownership.write_text(
+        json.dumps({"schema_version": 1, "outputs": ["../checkpoints/keep_me.pt"]}) + "\n"
+    )
+
+    with pytest.raises(PublicationError, match="must be a path inside docs/"):
+        run_publish(repository)
+    assert outsider.is_file()
+
+
+def test_an_incomplete_source_is_refused(repository, renderers) -> None:
+    location = build_artifact(repository, {"value": 1}, complete=False)
+    write_manifest(repository, _SUMMARY.format(location=location))
+
+    with pytest.raises(PublicationError, match="in-progress"):
+        run_publish(repository)
+    assert not (repository / "docs" / "results" / "summary.json").exists()
+
+
+def test_an_interrupted_resumable_sweep_is_refused_as_a_source(repository, renderers) -> None:
+    # A resumable sweep rewrites result.json after every batch, so an interrupted
+    # one leaves a payload that verifies perfectly and reports a fraction of the
+    # games it was asked for. Only the recorded status distinguishes it.
+    store = fixture_store(repository)
+    recipe = ArtifactRecipe("fixture", 1, subjects={"fixture": True}, parameters={"games": 100})
+    artifact, resumed = store.open_resumable(recipe, store.standalone_owner())
+    assert not resumed
+    artifact.write_json({"value": 1, "games": 50})
+    artifact, resumed = store.open_resumable(recipe, store.standalone_owner())
+    assert resumed
+    artifact.write_json({"value": 1, "games": 75})  # killed before complete()
+    record_commit(artifact.path)
+    location = artifact.path.relative_to(repository)
+    write_manifest(repository, _SUMMARY.format(location=location))
+
+    with pytest.raises(PublicationError, match="cannot be cited"):
+        run_publish(repository)
+
+    # Finishing the same measurement makes it citable, and nothing else changes.
+    artifact.complete()
+    record_commit(artifact.path)
+    report = run_publish(repository)
+    assert report.by_status(RENDERED)
+    assert json.loads(
+        (repository / "docs" / "results" / "summary.json").read_text()
+    ) == {"value": 1, "games": 75}
 
 
 def test_an_unselected_entry_is_reported_and_left_alone(repository, renderers) -> None:

@@ -19,6 +19,15 @@ Writes are atomic and the manifest is rewritten after every payload file, so an
 interrupted measurement leaves either the previous consistent state or the new
 one. Resuming re-verifies the stored recipe field by field before continuing,
 which is what stops a resumed sweep from mixing two different requests.
+
+Resume verifies the recipe and deliberately not the payload hashes. Each write
+replaces the payload and *then* saves the manifest, so a process killed between
+those two steps leaves a complete, newer payload beside a manifest recording the
+previous hash — exactly the artifact resume exists to continue. Re-hashing would
+reject it, and would in any case check bytes the resumed sweep is about to
+rewrite. Integrity is verified where an artifact is read as final evidence
+instead: :func:`load_artifact` re-hashes by default, and publication and
+reanalysis additionally require :func:`require_complete`.
 """
 
 from __future__ import annotations
@@ -67,6 +76,10 @@ class ArtifactRecipeMismatch(ArtifactError):
 
 class ArtifactIntegrityError(ArtifactError):
     """A stored artifact's payload does not match its recorded hashes."""
+
+
+class ArtifactIncomplete(ArtifactError):
+    """A measurement that never finished is being cited as if it had."""
 
 
 @dataclass(frozen=True)
@@ -210,7 +223,13 @@ class Artifact:
         return path
 
     def complete(self) -> Path:
-        """Mark the measurement finished; only then is the artifact citable."""
+        """Mark the measurement finished; only then is the artifact citable.
+
+        Nothing else marks it: an interrupted sweep leaves a payload that is
+        internally consistent — every batch is written atomically — but partial,
+        which is indistinguishable from a finished one by hashes alone. Anything
+        that cites an artifact calls :func:`require_complete` to say so.
+        """
 
         self._manifest["status"] = STATUS_COMPLETE
         return self._save_manifest()
@@ -335,6 +354,8 @@ class ArtifactStore:
         A finished artifact is never reopened: a repeated measurement is a new
         measurement, with its own seeds and provenance. Only an interrupted one
         is continued, and only after its stored recipe matches this one exactly.
+        The recipe is what is verified here — see the module docstring for why
+        the payload's recorded hashes deliberately are not.
         """
 
         existing = self._latest_matching(recipe, owner)
@@ -388,8 +409,10 @@ class ArtifactStore:
 def load_artifact(path: str | Path, *, verify: bool = True) -> Artifact:
     """Read an artifact from disk, optionally re-hashing every recorded file.
 
-    Publication verifies; the store itself does not, because a resumed
-    measurement is about to rewrite the payload it would have checked.
+    Publication verifies; resume does not, because the manifest's hashes may
+    legitimately lag an interrupted artifact's payload by one write and the
+    resumed measurement is about to rewrite that payload anyway. The module
+    docstring records that contract in full.
     """
 
     directory = Path(path)
@@ -426,6 +449,24 @@ def verify_artifact(artifact: Artifact) -> None:
             )
 
 
+def require_complete(artifact: Artifact) -> None:
+    """Refuse an artifact that never finished as evidence for anything else.
+
+    Publication and reanalysis both read a stored payload and present the result
+    as a measurement. A resumable sweep rewrites ``result.json`` after every
+    batch, so an interrupted one leaves a complete-looking, hash-consistent file
+    holding a fraction of the games asked for. The recorded status is the only
+    thing that distinguishes it, so it is checked wherever an artifact is cited.
+    """
+
+    status = artifact.manifest.get("status")
+    if status != STATUS_COMPLETE:
+        raise ArtifactIncomplete(
+            f"{artifact.path} is {status!r}, not {STATUS_COMPLETE!r}; an unfinished "
+            "measurement holds only part of what it was asked for and cannot be cited"
+        )
+
+
 def artifact_digest(artifact: Artifact) -> str:
     """A stable digest over an artifact's identity and its recorded file hashes."""
 
@@ -452,6 +493,7 @@ def discard_artifact(artifact: Artifact) -> None:
 __all__ = [
     "Artifact",
     "ArtifactError",
+    "ArtifactIncomplete",
     "ArtifactIntegrityError",
     "ArtifactOwner",
     "ArtifactRecipeMismatch",
@@ -463,5 +505,6 @@ __all__ = [
     "discard_artifact",
     "file_sha256",
     "load_artifact",
+    "require_complete",
     "verify_artifact",
 ]

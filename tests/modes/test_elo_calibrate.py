@@ -6,7 +6,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from boost_and_broadside.artifacts import ArtifactRecipe, ArtifactStore, Invocation, load_artifact
+from boost_and_broadside.artifacts import (
+    ArtifactIncomplete,
+    ArtifactRecipe,
+    ArtifactStore,
+    Invocation,
+    load_artifact,
+)
 from boost_and_broadside.config import EloCalibrateConfig, EnvConfig, ShipConfig
 from boost_and_broadside.config.defaults import MODEL_CONFIG
 from boost_and_broadside.modes.elo_calibrate import (
@@ -172,7 +178,7 @@ def _store(tmp_path) -> ArtifactStore:
     )
 
 
-def _source_measurement(tmp_path, reference: str) -> Path:
+def _source_measurement(tmp_path, reference: str, *, complete: bool = True) -> Path:
     """A completed calibration artifact for the refit path to read."""
 
     run_dir = tmp_path / "checkpoints" / "test-run"
@@ -200,7 +206,8 @@ def _source_measurement(tmp_path, reference: str) -> Path:
         store.run_owner("test-run"),
     )
     artifact.write_json(_stored_result(reference))
-    artifact.complete()
+    if complete:
+        artifact.complete()
     return artifact.path
 
 
@@ -259,6 +266,22 @@ class TestRefit:
         assert stored["wins_matrix"] == _stored_result("scripted")["wins_matrix"]
         assert refit.manifest["recipe"]["sources"]["measurement"]["artifact_id"] == source.name
         assert refit.manifest["recipe"]["parameters"]["refit"] is True
+
+    def test_refitting_an_unfinished_measurement_is_refused(self, tmp_path):
+        """A sweep that never completed holds part of the games it was asked for;
+        refitting it would report that fraction as a measurement."""
+        source = _source_measurement(tmp_path, "scripted", complete=False)
+
+        with pytest.raises(ArtifactIncomplete, match="cannot be cited"):
+            run_elo_calibrate_mode(
+                run_spec=None,
+                from_artifact=source,
+                ship_config=ShipConfig(),
+                device="cpu",
+                config=EloCalibrateConfig(num_envs=4, target_stderr=10.0, max_batches=1),
+                checkpoint_dir=str(tmp_path / "checkpoints"),
+                store=_store(tmp_path),
+            )
 
     def test_rating_gaps_are_invariant_to_the_stored_reference_gauge(self, tmp_path):
         """The reference only sets the error gauge; reported gaps must not move

@@ -104,29 +104,22 @@ def write_manifest(repository: Path, body: str) -> Path:
     return path
 
 
-def build_artifact(
-    repository: Path,
-    payload: dict,
-    *,
-    schema_version: int = 1,
-    clean: bool = True,
-    artifact_type: str = "fixture",
-) -> Path:
-    """A completed artifact, optionally recorded as built from a clean commit."""
-
-    store = ArtifactStore(
+def fixture_store(repository: Path) -> ArtifactStore:
+    return ArtifactStore(
         checkpoint_root=repository / "checkpoints",
         standalone_root=repository / "artifacts",
         invocation=Invocation(argv=("bnb", "fixture"), command="fixture"),
     )
-    artifact = store.create(
-        ArtifactRecipe(artifact_type, schema_version, subjects={"fixture": True}),
-        store.standalone_owner(),
-    )
-    artifact.write_json(payload)
-    artifact.complete()
 
-    manifest_path = artifact.path / "artifact.json"
+
+def record_commit(artifact_path: Path, *, clean: bool = True) -> None:
+    """Rewrite an artifact's code provenance; the test tree is not a repository.
+
+    Call after the last payload write: the artifact holds its manifest in memory
+    and would write the real provenance back over this.
+    """
+
+    manifest_path = artifact_path / "artifact.json"
     manifest = json.loads(manifest_path.read_text())
     manifest["code"] = {
         "git_commit": "0" * 40,
@@ -135,4 +128,26 @@ def build_artifact(
         "uv_lock_sha256": "1" * 64,
     }
     manifest_path.write_text(json.dumps(manifest, indent=2))
+
+
+def build_artifact(
+    repository: Path,
+    payload: dict,
+    *,
+    schema_version: int = 1,
+    clean: bool = True,
+    artifact_type: str = "fixture",
+    complete: bool = True,
+) -> Path:
+    """A completed artifact, optionally recorded as built from a clean commit."""
+
+    store = fixture_store(repository)
+    artifact = store.create(
+        ArtifactRecipe(artifact_type, schema_version, subjects={"fixture": True}),
+        store.standalone_owner(),
+    )
+    artifact.write_json(payload)
+    if complete:
+        artifact.complete()
+    record_commit(artifact.path, clean=clean)
     return artifact.path.relative_to(repository)
