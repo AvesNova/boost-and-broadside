@@ -36,11 +36,9 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: `S10R` — artifact gate remediation and re-review.
-- Next section: `S11` — BC correction, once `S10R` completes.
-- Blocking issue: two S10 blockers — `publish --check` passes with a stale unowned canonical
-  output, and publication cites an artifact that never completed. `S11` and every later section
-  stay pending until `S10R` closes.
+- Active section: none; `S10R` closed both S10 blockers and passed independent re-review.
+- Next section: `S11` — BC correction.
+- Blocking issue: none.
 - Landmark migration: scheduled for `S15`, after all target schemas stabilize.
 
 ## Sequential queue
@@ -60,7 +58,7 @@ code, tests, and reader-facing documentation.
 | S08 | 5 | completed | mode consolidation engineer | Terra / high | Consolidate training, retire modes/flags, and fix field-capable evaluation |
 | S09 | 6 | completed | artifact/publication architect | Sol / extra high | Implement artifacts, provenance, raw samples, publication manifest, and offline render checks |
 | S10 | 6 gate | completed | artifact reviewer | Sol / extra high | Review schemas, identity, atomicity, resume, Git-ignore safety, and offline publication |
-| S10R | 6 gate remediation | in_progress | artifact remediator + reviewer | Sol / extra high | Close the S10 blockers and obtain an independent artifact/publication re-review |
+| S10R | 6 gate remediation | completed | artifact remediator + reviewer | Sol / extra high | Close the S10 blockers and obtain an independent artifact/publication re-review |
 | S11 | 7 | pending | training-profile engineer | Sol / high | Correct BC independently and validate its allowed differences from RL |
 | S12 | 8 | pending | live-Elo engineer | Sol / extra high | Implement/document approximate live Elo separately from calibrated Elo |
 | S13 | 9 | pending | VRAM engineer | Sol / extra high | Implement resolution precedence, probing, cache fingerprints, and provenance |
@@ -978,6 +976,12 @@ Each section appends its record below when it completes. Do not replace earlier 
   atomicity, resume, provenance allowlist, ignore policy, output taxonomy, end-to-end mode
   artifacts) and `tests/publication/` (manifest validation, publish/check/stale/offline,
   every renderer from fixture artifacts, shipped-inventory completeness).
+  **Corrected by S10R:** `tests/publication/` did not cover every renderer. Seven of the
+  fourteen registered renderers were named by no test: `training-win-rate-v1`,
+  `training-health-v1`, `next-state-error-v1`, `training-elo-curve-v1`,
+  `elo-calibration-diagnostics-v1`, and `media-copy-v1` had no coverage at all, and
+  `external-asset-v1` was reached only indirectly through the real-repository check. S10R
+  added tests for all seven and a tripwire that fails when a registered renderer has none.
 - Behavior/config changes: crossover, both Elo tournaments, the semi-random ladder, AR,
   noise calibration, and feature statistics write versioned artifacts under
   `checkpoints/<run>/artifacts/<type>/<id>/` or `artifacts/<type>/<id>/` instead of
@@ -1124,6 +1128,95 @@ Each section appends its record below when it completes. Do not replace earlier 
   re-review before S11 starts. The offline no-diff gate is still exercised only against fixtures
   because no publication entry is selected; S16 owns landmark selection and pixel parity, S18 owns
   the documentation sweep, and S11–S13 retain their existing training scopes.
+
+### S10R handoff
+
+- Status: completed
+- Agent/model/effort: artifact remediator plus an independent read-only re-review owner /
+  extra high
+- Commit(s): `48b7243` — mark S10R active; `0121eb0` — fail publication on a stale or
+  unfinished canonical source; `44cfdfa` — cover the renderers that read a stored export;
+  `a77a62a` — document what publication refuses and what `--check` fails on; `d6d13c2` —
+  refuse an ownership record that cannot be read; followed by this closure commit
+- Tests/checks and results: both S10 probes reproduced before any product edit — check mode
+  reported `outcomes=['unchanged']`, `removed=['docs/results/dropped.json']`, `failed=False`
+  with the file still on disk and a printed "removed stale output" line for a removal it had
+  not performed; an `in-progress` fixture source rendered into `docs/` with `failed=False`.
+  After remediation the same probes report `failed=True` with `stale=[...]`, `removed=[]`,
+  nothing deleted, and a refusal naming the incomplete artifact. Focused
+  `tests/publication tests/artifacts tests/modes/test_elo_calibrate.py` (167 passed); final
+  `.venv/bin/pytest -q` (900 passed, up from 875 at S10); `.venv/bin/bnb smoke` (all 14
+  isolated cases passed, checkout unchanged); `.venv/bin/ruff check .` (passed);
+  `git diff --check` for the worktree and `77222be..HEAD` (passed); `bnb publish` and
+  `bnb publish --check` against the real repository both exit 0, report 1 external and 26
+  unselected, and leave the worktree clean. The independent reviewer re-ran the full suite,
+  smoke matrix, Ruff, range whitespace, and real-repository check, wrote its own probes for
+  both blockers, attacked the ownership record with twelve malformed entry shapes including
+  symlinks, reverted nine product changes in temporary `/tmp` copies to confirm each new test
+  fails without its fix, and reported **no blocking findings**.
+- Behavior/config changes: `publish --check` now fails on a canonical output the manifest no
+  longer owns, reports it as `stale`, deletes nothing, and no longer claims a removal it did
+  not perform; `bnb publish` still removes such outputs and reports them under `removed`,
+  which is a repair rather than a failure. Publication and `elo-calibrate --from-artifact`
+  refuse a source whose artifact status is not `complete`. Every path named by the generated
+  ownership record is re-validated as a location inside `docs/` before deletion, a damaged
+  ownership record is an error instead of an empty one, and `docs/` itself can no longer be a
+  manifest output. No training, profile, or resolved configuration value changed; resolved RL,
+  RL-fields, and stale BC remain exact S01 matches, and the S01 published-asset inventory is
+  unchanged.
+- Files/artifacts produced: no new modules. `publication/publish.py` gained the `stale` report
+  channel and validated pruning; `publication/manifest.py` gained the shared
+  `publication_output_path`; `publication/provenance.py` fails loudly on an unreadable record;
+  `artifacts/store.py` gained `require_complete`/`ArtifactIncomplete` and the recorded resume
+  contract. New coverage in `tests/publication/test_publish.py` (stale-output check failure
+  with every owned entry unchanged, publish-repairs-then-check-passes, ownership escape,
+  incomplete source, interrupted resumable sweep, unreadable/absent ownership record),
+  `tests/publication/test_renderers.py` (seven previously untested renderers plus a coverage
+  tripwire), `tests/artifacts/test_store.py`, `tests/modes/test_elo_calibrate.py`, and
+  `tests/publication/test_manifest.py`. All probe output was temporary under `/tmp`.
+- Decisions/deviations from plan: **the recipe-only resume contract stands** and is now stated
+  in `artifacts/store.py` rather than implied. The reason is the write ordering: `_write`
+  replaces the payload and then saves the manifest, so a process killed between those two steps
+  leaves a complete, newer payload beside the previously recorded hash — exactly the artifact
+  resume exists to continue — and that same file is the one a resumed sweep reads back, so
+  re-hashing could not protect it without a different protocol. Integrity is enforced where an
+  artifact is read as final evidence instead. `STALE` is deliberately not an `EntryOutcome`
+  status: staleness belongs to a leftover output, not to an entry. Renderer coverage was
+  extended past the three renderers the mission named to all seven that had none, because the
+  claim being corrected was about the whole inventory; a tripwire now fails when a registered
+  renderer has no test naming it. The next-state metric-key drift found during re-review was
+  deliberately **not** fixed here — see the risks below.
+- Review findings addressed: both S10 blockers, plus S10 non-blocking findings 1 (renderer
+  coverage and the inaccurate S09 claim, corrected in place above), 4 (ownership paths
+  validated before deletion), and 5 (resume contract recorded). S10 non-blocking 2 needed no
+  change — every mode-produced artifact still renders through its declared renderer. From the
+  independent re-review: the overstated resume justification, the fail-open ownership record,
+  the `STALE`-is-not-a-status trap, the `--target` qualifier missing from the new
+  documentation, and a stale `# pragma: no cover` were all closed in `d6d13c2`/`a77a62a`.
+- Remaining risks or required follow-up:
+  1. **S16 must resolve before selecting any training figure.** `publication/renderers/training.py`
+     reads `next_state/pos_x_dphase`, `next_state/vel_dvx_norm`, … but `ppo.py:2046` now names
+     these metrics from `FeatureCoordinator.get_feature_names()`, which yields
+     `next_state/position_x_0`, `next_state/velocity_0`, … — zero overlap. The rename landed in
+     `afdf406`, the branch base, so a current run's export would render an empty
+     `next_state_error.png` **silently**; the landmark 682 export predates it and should carry
+     the old keys. S16 must confirm which key set the selected export actually has, and should
+     decide whether a renderer that finds no series must fail rather than emit a blank figure.
+     The S10R fixture imports the renderer's own key list, so it cannot detect this by design.
+  2. An absent ownership record still means "nothing published yet", so deleting
+     `docs/results/provenance.json` disables stale detection; the file is tracked, so the
+     deletion is visible in review.
+  3. `publish --target NAME --check` does not detect stale outputs — pruning only runs over the
+     whole inventory. Documented in `docs/evaluation.md`.
+  4. A hand-made symlink inside `docs/` pointing at a directory inside `docs/` makes publish
+     raise a bare `OSError` from `shutil.rmtree` rather than a concise user-facing error;
+     nothing outside `docs/` is deleted and the target survives.
+  5. S10 non-blocking findings 3 (an absent `media-copy-v1` source aborts the whole run instead
+     of reporting one entry `MISSING`), 6 (field-map intent absent from artifact recipes), 7
+     (`bnb publish` has no smoke case), and 8 (`docs/evaluation.md` still cites the legacy
+     landmark JSON) are unchanged and remain with S16 and S18 as recorded there.
+  6. The offline no-diff gate is still exercised only against fixtures because no publication
+     entry is selected. S11 is the next authorized section and was not begun.
 
 ### Future handoff template
 
