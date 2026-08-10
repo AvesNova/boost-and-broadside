@@ -220,9 +220,18 @@ def subprocess_runner(
                 f"VRAM probe candidate {knobs.document()} failed with exit code "
                 f"{completed.returncode} and no result: " + " | ".join(tail)
             )
+        outcome = measurement.get("outcome")
+        if outcome not in {"fit", "oom"}:
+            # Only running out of memory means "too big". Anything else — an
+            # import failure, a driver fault, a bug — would otherwise be
+            # silently downgraded into a narrower launch that nobody chose.
+            raise VramError(
+                f"VRAM probe candidate {knobs.document()} failed for a reason other than "
+                f"memory: {measurement.get('error', outcome)}"
+            )
         return ProbeOutcome(
             knobs=knobs,
-            fit=completed.returncode == 0 and measurement.get("outcome") == "fit",
+            fit=completed.returncode == 0 and outcome == "fit",
             measurement=measurement,
         )
 

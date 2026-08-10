@@ -241,6 +241,34 @@ def test_a_child_that_reports_nothing_is_an_error_not_a_rejection(monkeypatch) -
         runner(VramKnobs(3904, 25_000, False))
 
 
+def test_a_candidate_that_crashes_is_not_treated_as_too_big(monkeypatch) -> None:
+    """Only memory means "too big". A crash silently downgraded into a narrower
+    launch would look exactly like a card that could not hold the batch."""
+
+    class _Completed:
+        returncode = 1
+        stdout = json.dumps({"outcome": "error", "error": "ImportError: no such module"})
+        stderr = ""
+
+    monkeypatch.setattr(subprocess, "run", lambda *_, **__: _Completed())
+    runner = vram_probe.subprocess_runner(profile="rl", device="cuda", compile_mode=None)
+    with pytest.raises(VramError, match="other than memory: ImportError"):
+        runner(VramKnobs(3904, 25_000, False))
+
+
+def test_an_out_of_memory_candidate_is_a_rejection_not_a_failure(monkeypatch) -> None:
+    class _Completed:
+        returncode = OOM_EXIT_CODE
+        stdout = json.dumps({"outcome": "oom", "error": "CUDA out of memory"})
+        stderr = ""
+
+    monkeypatch.setattr(subprocess, "run", lambda *_, **__: _Completed())
+    runner = vram_probe.subprocess_runner(profile="rl", device="cuda", compile_mode=None)
+    outcome = runner(VramKnobs(3904, 25_000, False))
+    assert not outcome.fit
+    assert outcome.reason == "oom"
+
+
 def test_a_child_that_hangs_is_not_silently_accepted(monkeypatch) -> None:
     def _timeout(*_, **__):
         raise subprocess.TimeoutExpired(cmd="probe", timeout=1.0)
