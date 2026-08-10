@@ -340,3 +340,10 @@ geometry. Change any of those and the entry stops matching, so `auto` falls back
 profile's own sizing instead of reusing a measurement of a different question. A cache file
 that cannot be read is an error naming `--vram reprobe` or `--vram off`, never a silent
 resize.
+
+Compile mode being part of that fingerprint has a practical consequence: `--compile`
+changes the reserved workspace, so a measurement taken under one mode does not answer for
+another. Probe with the flags you intend to train with — `bnb train --profile rl --vram
+probe` uses the run's own compile mode, so the same command line probes and then trains
+against its own measurement. Switching `--compile` afterwards is a cache miss, and `auto`
+reports it as one rather than reusing the wrong number.

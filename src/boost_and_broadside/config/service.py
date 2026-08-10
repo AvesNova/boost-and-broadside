@@ -7,9 +7,7 @@ from collections.abc import Mapping
 from typing import TextIO
 
 from boost_and_broadside.config.fingerprint import canonical_data
-from boost_and_broadside.config.resolve import LaunchOverrides
 from boost_and_broadside.config.schema import RESOLVED_CONFIG_SCHEMA_VERSION, ResolvedTrainConfig
-from boost_and_broadside.profiles import resolve_named_profile
 
 
 def resolved_profile_document(resolved: ResolvedTrainConfig) -> dict:
@@ -49,17 +47,6 @@ def format_resolved_config(
         sort_keys=True,
     )
     return rendered + "\n"
-
-
-def format_resolved_profile(
-    name: str,
-    overrides: LaunchOverrides | None = None,
-    *,
-    launch: Mapping[str, object] | None = None,
-) -> str:
-    """Resolve, validate, fingerprint, and format a launch without allocation."""
-
-    return format_resolved_config(resolve_named_profile(name, overrides), launch=launch)
 
 
 def print_resolved_config(

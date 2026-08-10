@@ -19,7 +19,7 @@ from boost_and_broadside.config.resolve import (
 )
 from boost_and_broadside.config.schedule_spec import compile_schedule, constant_spec, linear_spec
 from boost_and_broadside.config.schema import LaunchSizingSpec
-from boost_and_broadside.config.service import format_resolved_profile, resolved_profile_document
+from boost_and_broadside.config.service import format_resolved_config, resolved_profile_document
 from boost_and_broadside.profiles import PROFILES
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -292,7 +292,9 @@ def test_resolution_tracks_sources_and_cli_overrides() -> None:
     assert resolved.train_config.scales[0].num_envs == 1952
     assert resolved.train_config.microbatch_tokens == 20_000
 
-    document = json.loads(format_resolved_profile("rl", LaunchOverrides(1952, 20_000)))
+    document = json.loads(
+        format_resolved_config(resolve_profile(PROFILES["rl"], LaunchOverrides(1952, 20_000)))
+    )
 
     def leaves(value, prefix=""):
         if isinstance(value, dict):
@@ -396,12 +398,12 @@ def test_fixed_environment_legacy_preset_has_honest_machine_source() -> None:
     assert resolved.train_config.rollouts_per_update == 3
 
 
-def test_format_resolved_profile_is_complete_stable_json(tmp_path, monkeypatch, capsys) -> None:
+def test_format_resolved_config_is_complete_stable_json(tmp_path, monkeypatch, capsys) -> None:
     monkeypatch.chdir(tmp_path)
-    rendered = format_resolved_profile("rl")
+    rendered = format_resolved_config(resolve_profile(PROFILES["rl"]))
     document = json.loads(rendered)
 
-    assert rendered == format_resolved_profile("rl")
+    assert rendered == format_resolved_config(resolve_profile(PROFILES["rl"]))
     assert document["schema_version"] == 1
     assert document["profile"] == "rl"
     assert document["config"]["train_config"]["scales"][0]["num_envs"] == 3904
@@ -422,7 +424,7 @@ def test_resolved_component_discounts_are_deeply_immutable() -> None:
         resolved.train_config.component_lambdas["ally_win"] = 0.5  # type: ignore[index]
 
     assert resolved_profile_document(resolved) == stored_document
-    assert json.loads(format_resolved_profile("rl")) == stored_document
+    assert json.loads(format_resolved_config(resolve_profile(PROFILES["rl"]))) == stored_document
     serialized = asdict(resolved.train_config)
     assert serialized["component_gammas"] == dict(resolved.train_config.component_gammas)
     assert serialized["component_lambdas"] == dict(resolved.train_config.component_lambdas)
