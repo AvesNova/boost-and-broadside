@@ -36,7 +36,7 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: `S13` — VRAM resolution.
+- Active section: none; `S13` implemented VRAM resolution, probing, and the cache.
 - Next section: `S14` — training-systems gate review.
 - Blocking issue: none.
 - Landmark migration: scheduled for `S15`, after all target schemas stabilize.
@@ -61,7 +61,7 @@ code, tests, and reader-facing documentation.
 | S10R | 6 gate remediation | completed | artifact remediator + reviewer | Sol / extra high | Close the S10 blockers and obtain an independent artifact/publication re-review |
 | S11 | 7 | completed | training-profile engineer | Sol / high | Correct BC independently and validate its allowed differences from RL |
 | S12 | 8 | completed | live-Elo engineer | Sol / extra high | Implement/document approximate live Elo separately from calibrated Elo |
-| S13 | 9 | in_progress | VRAM engineer | Sol / extra high | Implement resolution precedence, probing, cache fingerprints, and provenance |
+| S13 | 9 | completed | VRAM engineer | Sol / extra high | Implement resolution precedence, probing, cache fingerprints, and provenance |
 | S14 | 7–9 gate | pending | training-systems reviewer | Sol / extra high | Review BC, live Elo, and VRAM behavior together before checkpoint schema freeze |
 | S15 | 10 | pending | checkpoint migration engineer | Sol / extra high | Migrate the complete 682 checkpoint set once into the frozen current schema |
 | S16 | 10 | pending | landmark/publication integrator | Sol / high | Backfill 682 artifacts and raw samples; select and regenerate canonical publications |
@@ -1431,6 +1431,127 @@ Each section appends its record below when it completes. Do not replace earlier 
      file without its docstring has only the file's name to tell it apart from a calibration
      export.
   5. S13 is the next authorized section and was not begun.
+
+### S13 handoff
+
+- Status: completed
+- Agent/model/effort: VRAM engineer / `gpt-5.6-sol` / extra high
+- Commit(s): `6442dbd` — mark S13 active; `91a69f2` — VRAM policies, presets, probe cache,
+  and launch composition; `bbd3a96` — tests for the tier boundary, cache identity, and
+  precedence; `a831fa4` — documentation; `fa50668` — cite the direct 8 GB probe;
+  `a03255e` — format an already resolved launch instead of re-resolving by name;
+  `56450ed` — refuse a probe candidate that failed for a reason other than memory;
+  followed by this closure commit
+- Tests/checks and results: focused `tests/config tests/test_vram_probe.py tests/test_cli.py`
+  (250 passed); final `.venv/bin/pytest -q` (1069 passed, up from 960 at S12);
+  `.venv/bin/bnb smoke` (all 14 isolated cases passed, checkout unchanged);
+  `.venv/bin/ruff check .` (passed); `git diff --check 6442dbd..HEAD` (passed);
+  `bnb publish --check` against the real repository exits 0 and reports 1 external and 26
+  unselected, unchanged from S12; `uv build --wheel` succeeded and the wheel contains
+  `config/vram.py`, `vram_probe.py`, `launch.py`, and the `bnb` entry point. The build
+  backend's checkout-local `build/` output was removed.
+- Behavior/config changes: **no resolved training value moved.** RL, RL-fields, and BC keep
+  their S01/S11/S12 resolved configurations and both fingerprints byte-for-byte; the
+  snapshot and golden-fingerprint tests are untouched. What is new is `bnb train --vram
+  auto|probe|reprobe|off|8|16|24|32`, defaulting to `auto`. `auto` uses a stored measurement
+  only when its fingerprint still matches this machine, and otherwise keeps the profile's
+  own derived sizing — so on a machine with no `.vram.json`, and on any non-CUDA device, the
+  launch resolves exactly as it did before this section and no device is queried at all.
+  `LaunchOverrides` gains `grad_checkpoint` plus a per-knob source, making gradient
+  checkpointing settable at launch for the first time; it has no CLI flag of its own because
+  the plan's modifier table lists only `--vram`, `--num-envs`, and `--microbatch-tokens`
+  under launch sizing, so only a VRAM decision can set it, with source `vram-cache` or
+  `vram-preset`. `--print-config` output and every training checkpoint's `launch`
+  provenance gained a `vram` block (policy, source, status, proposed versus applied knobs,
+  the equivalence tier of each knob that moved, the cache identity fingerprint, and notes) —
+  an additive key that two existing CLI tests were updated for. `--vram probe|reprobe` is
+  refused under `--print-config` and is mutually exclusive with `--num-envs`/
+  `--microbatch-tokens`. `config/service.format_resolved_profile` was deleted after its last
+  production caller went away; `format_resolved_config`/`print_resolved_config` take a
+  resolved value, so `--print-config` resolves the profile once rather than three times.
+- Files/artifacts produced: `src/boost_and_broadside/config/vram.py` (Torch-free: policies,
+  preset rows, the knob-to-tier map and its guarantees, cache identity/read/atomic write,
+  and the precedence composition); `src/boost_and_broadside/vram_probe.py` (device and
+  software identity, the candidate ladder, the fresh-subprocess runner, `resolve_vram`, and
+  the child module entry point); `src/boost_and_broadside/launch.py` (`resolve_training_launch`,
+  shared by `train` and `--print-config`); `launch_geometry`/`LaunchGeometry` in
+  `config/resolve.py`, now the single sizing derivation and the enumerator of valid shard
+  widths; `tests/config/test_vram.py` (72 tests) and `tests/test_vram_probe.py` (30 tests);
+  a `--vram` section in `docs/getting-started.md`, a resolution section in
+  `docs/engineering/memory-optimization.md`, and a launch-sizing section in
+  `docs/training.md`. `.vram.json` was already gitignored and already covered by
+  `tests/artifacts/test_ignore_policy.py`. The validation cache and wheel were temporary
+  outside the checkout.
+- Decisions/deviations from plan:
+  1. **`auto` never applies a preset.** D10 says `auto` reads the cache; a row that was
+     never measured is not something to apply silently. With no matching measurement `auto`
+     keeps the profile's own sizing and names the two ways to change that. The consequence
+     is the property worth having: default behaviour is identical to pre-S13 on every
+     machine, measured by the unchanged fingerprints.
+  2. **Applying a preset is always `provisional`, including the measured 8 GB row.** A
+     measurement belongs to the card it was taken on, so only a probe of the *current*
+     machine is reported as `measured`. This is a stricter reading of "only measured rows
+     are called measured" than the plan's wording requires, and the honest one.
+  3. **Preset rows state a per-shard token ceiling, not a width.** The valid widths differ
+     per profile — `rl` admits 1, 2, 3, and 6 shards, `rl-fields` only 1, 3, 9, … — so a row
+     naming an absolute width would be invalid on `rl-fields`. A consequence is recorded in
+     a test and the docs: `rl-fields` has no two-shard split, so its 16 GB row is honestly
+     its 8 GB row.
+  4. **The 8 GB row is exactly the shipped launch**, so `--vram 8` is a no-op on every
+     registered profile down to the resolved fingerprint, asserted per profile.
+  5. **`probe` is idempotent, `reprobe` is not.** `probe` reuses a matching entry rather
+     than re-measuring; `reprobe` always measures again and replaces. `off` and presets
+     neither read nor write the cache.
+  6. **An unreadable or wrong-schema `.vram.json` is an error**, not an empty cache, naming
+     `--vram reprobe` or `--vram off`. Silently resizing the launch because a recomputable
+     file broke is the substitution this system exists to prevent.
+  7. **The probe measures one complete real PPO update per candidate**, not a synthetic
+     allocation, each in its own interpreter with its own scratch working directory. Only
+     `outcome=oom` counts as a rejection; any other child failure aborts the probe and names
+     the error.
+  8. Compile mode is part of the cache identity, because `--compile` changes the reserved
+     workspace. Probing under one mode and training under another is a deliberate miss.
+- Review findings addressed: self-review found that a crashing probe child printed its error
+  as JSON and was scored exactly like an out-of-memory rejection, so an import failure or
+  driver fault in the first candidate would quietly become a narrower launch nobody chose —
+  closed in `56450ed` with coverage for both the crash and the genuine-OOM paths. Self-review
+  also bounded `shard_widths()` by the minibatch constraint instead of scanning the whole
+  batch, stopped `resolve_vram` from querying the driver twice for one decision, and removed
+  the by-name formatter left with no production caller.
+- Bounded validation (RTX 4070 Laptop 8 GB, real hardware, outside the checkout):
+  1. A real `--vram reprobe` of the `rl` profile accepted its **first** candidate — the
+     shipped 3904 envs / 3 shards / 25,000 microbatch tokens / no gradient checkpointing —
+     with a peak of **6.00 GB allocated and 7.88 GB reserved of 8.19 GB**, zero rejections.
+     The cache entry recorded the real stack (Torch 2.13.0+cu130, CUDA 13.0, cuDNN 92000,
+     Python 3.13.11) and the real device (UUID, 8,186,822,656 bytes, capability 8.9, 36 SMs,
+     not MIG). This measurement replaced the older sweep as the 8 GB row's stated basis.
+  2. `--vram auto` on the same machine then resolved `status=measured`, `source=vram-cache`
+     on all three knobs, to the same 3904 envs / 3 shards.
+  3. The same command with the CLI's default `--compile reduce-overhead` correctly reported
+     the entry as non-matching, and `--profile bc` likewise — the identity fingerprint
+     discriminates as designed.
+  4. A deliberately corrupted `.vram.json` produced one concise CLI line naming
+     `--vram reprobe` or `--vram off`, with no traceback.
+- Remaining risks or required follow-up:
+  1. **The shipped 8 GB launch reserves 96% of that card.** It fits, measured, but there is
+     essentially no allocator headroom; a future model or environment change could push it
+     over, and the ladder's next rung is gradient checkpointing. Worth S14's attention.
+  2. The 16, 24, and 32 GB rows are extrapolations and have never been run. They are labelled
+     provisional and `auto` never selects them, but an explicit `--vram 24` on a real 24 GB
+     card is an untested launch.
+  3. Only `rl` was probed on real hardware. The `bc` and `rl-fields` probe paths are covered
+     by injected runners and the candidate-validity test, not by a real measurement.
+  4. A checkpoint resolved under a cached measurement carries a different
+     `resolved_config_fingerprint` than the same profile resolved elsewhere, so resuming on a
+     differently-sized machine is refused unless `--allow-config-drift` is passed. That is
+     S07R's intended drift enforcement meeting S13's new inputs; S14 should confirm it is the
+     wanted ergonomics before the schema freeze.
+  5. Probing costs one full update per candidate — roughly 20 minutes for the first candidate
+     on the 8 GB card. This is documented, not reduced.
+  6. Tier 2 changes minibatch composition and temporal correlation. The system labels that
+     honestly; it does not measure the learning consequence, and no run has been trained at a
+     non-default width.
+  7. S14 is the next authorized section and was not begun.
 
 ### Future handoff template
 
