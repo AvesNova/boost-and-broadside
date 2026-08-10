@@ -36,9 +36,10 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: `S14` — training-systems gate review of S11–S13.
-- Next section: `S15` — complete one-time 682 migration, after this gate closes.
-- Blocking issue: none.
+- Active section: none; `S14` reviewed S11–S13 and did **not** approve the gate.
+- Next section: `S14R` — close the checkpoint-payload blocker and obtain an independent re-review.
+- Blocking issue: the ordinary resume loader treats the live-Elo keys S12 renamed as optional, so
+  a pre-rename payload resumes silently at live Elo 0. Target schemas are **not** frozen.
 - Landmark migration: scheduled for `S15`, after all target schemas stabilize.
 
 ## Sequential queue
@@ -62,7 +63,8 @@ code, tests, and reader-facing documentation.
 | S11 | 7 | completed | training-profile engineer | Sol / high | Correct BC independently and validate its allowed differences from RL |
 | S12 | 8 | completed | live-Elo engineer | Sol / extra high | Implement/document approximate live Elo separately from calibrated Elo |
 | S13 | 9 | completed | VRAM engineer | Sol / extra high | Implement resolution precedence, probing, cache fingerprints, and provenance |
-| S14 | 7–9 gate | in_progress | training-systems reviewer | Sol / extra high | Review BC, live Elo, and VRAM behavior together before checkpoint schema freeze |
+| S14 | 7–9 gate | completed | training-systems reviewer | Sol / extra high | Review BC, live Elo, and VRAM behavior together before checkpoint schema freeze |
+| S14R | 7–9 gate remediation | pending | training-systems remediator + reviewer | Sol / extra high | Close the S14 blocker, freeze the migration target schemas, and obtain an independent re-review |
 | S15 | 10 | pending | checkpoint migration engineer | Sol / extra high | Migrate the complete 682 checkpoint set once into the frozen current schema |
 | S16 | 10 | pending | landmark/publication integrator | Sol / high | Backfill 682 artifacts and raw samples; select and regenerate canonical publications |
 | S17 | 10 gate | pending | migration/reproducibility reviewer | Sol / extra high | Independently verify 682 equivalence, completeness, provenance, and publication reproducibility |
@@ -428,6 +430,37 @@ override conflicts, memory-equivalence claims, cache invalidation, checkpoint pa
 and readiness to freeze migration target schemas.
 
 Done when: target checkpoint/config/artifact schemas are explicitly frozen for S15.
+
+### S14R — Training-systems gate remediation and re-review
+
+Agent: training-systems remediator plus an independent review owner, Sol extra high.
+
+Steps:
+
+1. Reproduce the S14 blocking probe before editing product code: a payload carrying
+   `training_elo`/`avg_training_elo` and no `resolved_config` block currently resumes with exit
+   code 0, no warning, and live Elo, averaged live Elo, and the milestone grid all reset to 0.
+2. Make the resumable checkpoint contract enforced rather than implied. Every field
+   `build_training_checkpoint_payload` always writes is required by `load_checkpoint`; a payload
+   missing one is a concise refusal naming the field, not a silent default. Decide explicitly which
+   fields stay genuinely optional and say so where the payload is built.
+3. Cover the pre-rename shape directly: a checkpoint with the old live-Elo key names must be
+   refused whether or not it carries a `resolved_config` block, so the drift check is not the only
+   thing standing between a legacy payload and a reset rating.
+4. Then freeze the migration target schemas explicitly in this ledger: the policy and resumable
+   checkpoint key sets, `OBSERVATION_SCHEMA`, `PROFILE_SCHEMA_VERSION`,
+   `RESOLVED_CONFIG_SCHEMA_VERSION`, `ARTIFACT_MANIFEST_SCHEMA_VERSION`, and each artifact type's
+   `result_schema_version`. Record the frozen values, not a pointer to the code.
+5. Address or explicitly defer each S14 non-blocking finding with a recorded decision. Non-blocking
+   finding 5 (the BC win-rate cutoff leaving entropy as the only actor gradient) is a behavioral
+   question, not a cleanup: decide it with evidence or defer it by name.
+6. Re-run focused checkpoint/config/VRAM tests, full pytest, the full smoke matrix, ruff, range
+   whitespace, `bnb publish --check` against the real repository, and an independent re-review of
+   the S11-through-S14R range.
+
+Done when: the blocker is closed with regression coverage, the target schemas are frozen in this
+ledger with their concrete values, and the independent re-review reports no remaining blocker.
+`S15` remains pending until this row is completed.
 
 ### S15 — Complete one-time 682 migration
 
@@ -1552,6 +1585,147 @@ Each section appends its record below when it completes. Do not replace earlier 
      honestly; it does not measure the learning consequence, and no run has been trained at a
      non-default width.
   7. S14 is the next authorized section and was not begun.
+
+### S14 handoff
+
+- Status: completed; blocking finding requires S14R before S15
+- Agent/model/effort: training-systems reviewer / `gpt-5.6-sol` / extra high
+- Commit(s) reviewed: `e564288`, `4f4b39a`, `40db30d`, `e34d04a`, `494bf65`, `0b992cf`, `3f99d23`,
+  `235dd41`, `c89d8e2`, `6442dbd`, `91a69f2`, `bbd3a96`, `a831fa4`, `fa50668`, `a03255e`,
+  `56450ed`, and `0666f67` in committed range `d6d13c2..0666f67`; `2bee118` marked S14 active,
+  followed by this review-ledger commit
+- Tests/checks and results: `.venv/bin/pytest -q` (1069 passed, 3 warnings — matches the S13
+  handoff); `.venv/bin/bnb smoke` (all 14 isolated cases passed, checkout unchanged);
+  `.venv/bin/ruff check .` (passed); `git diff --check d6d13c2..HEAD` (passed);
+  `bnb publish --check` against the real repository exits 0 and reports 1 external and 26
+  unselected, unchanged from S12/S13. Direct probes recorded below, all on a real CUDA host.
+- Behavior/config changes: review made no product-code change.
+- Files/artifacts produced: ledger updates only. Every probe ran under the session scratchpad.
+- Decisions/deviations from plan: **S14 does not approve the training-systems gate and does not
+  freeze the migration target schemas.** S14R is inserted immediately after this section; S15 and
+  every later primary section remain pending.
+- Review findings addressed: none; review agents do not edit product code
+- Verified as sound (recorded so S14R does not re-litigate them):
+  1. **No tier-3 change is reachable through `--vram`.** `KNOB_TIERS` (`config/vram.py:67`) admits
+     only `grad_checkpoint`, `microbatch_tokens`, and `num_envs`, and every width has to divide the
+     profile's aligned logical batch exactly (`config/resolve.py:139`). Resolving all three
+     registered profiles against `auto`, `off`, and each preset kept the aligned logical batch at
+     11,993,088 (`rl`, `bc`) and its `rl-fields` equivalent in every case.
+  2. **`--vram 8` is a no-op down to the resolved fingerprint on all three profiles**, and `auto`
+     with no matching cache entry resolves byte-identically to pre-S13. Confirmed by comparing
+     `resolved_config_fingerprint` against `resolve_named_profile(name)` for each profile.
+  3. **Cache identity discriminates as designed.** With a matching entry, `auto` resolved
+     `status=measured`, `source=vram-cache`. Changing only the compile mode, and separately only the
+     profile, both reported the entry as non-matching and fell back to the profile's own sizing with
+     a note naming the miss.
+  4. **Explicit overrides outrank a measurement and say so.** `--num-envs 5856` over a cached
+     1952-env entry applied the CLI width, kept the measured microbatch and gradient-checkpoint
+     values, recorded `train_config.scales.0.num_envs` source `cli`, dropped `num_envs` from the
+     record's `applied` block while keeping it under `proposed`, and appended an override note.
+  5. **Contradictory launches fail loudly at exit 2 with no traceback.** `--vram 32 --num-envs 1952`
+     ("microbatch_tokens=75000 exceeds the resolved minibatch size 62464"), `--num-envs 3872`,
+     `--vram 12`, `--vram probe --print-config`, and `--vram probe --num-envs 1952` were each one
+     concise line.
+  6. **Provenance is complete.** `--print-config` and the checkpoint `launch` block carry policy,
+     source, status, `proposed` versus `applied`, the equivalence tier of each applied knob, the
+     cache identity fingerprint, and notes, alongside the full resolved config, both fingerprints,
+     and a closed-vocabulary source per leaf.
+  7. **The S12 resolved-config diff is exactly the three leaves it names.** The `rl.json` snapshot
+     diff is `scripted_elo_init`→`scripted_live_elo`, `reference_ladder`+`random_elo` removed,
+     `live_reference_probabilities` added — nothing else in any resolved configuration moved.
+  8. **The BC-versus-RL invariant is an equality, not a subset.**
+     `test_resolved_bc_differs_from_rl_only_where_the_objective_requires_it`
+     (`tests/config/test_bc_profile.py:94`) asserts the differing-path set *equals* the named
+     allowances over both resolved values and declarative schedule intent, so an unnamed divergence
+     in either direction fails.
+  9. **Renderers cannot silently read a pre-S12 calibration.** `training-elo-curve-v1` declares
+     `supported_schemas={"calibration": (2,)}` (`publication/renderers/training.py:139`), and the
+     `wandb-export` renderers read `overview/*` keys S12 deliberately left alone. The only renamed
+     overview key, `overview/elo`→`overview/live_elo`, is read by no renderer.
+- Blocking findings:
+  1. **A checkpoint carrying the pre-S12 live-Elo key names resumes silently at live Elo 0.**
+     `build_training_checkpoint_payload` (`train/rl/checkpoint.py:118`) always writes `live_elo`,
+     `avg_live_elo`, and `elo_milestone`, but `load_checkpoint` reads them as optional with silent
+     defaults: `if "live_elo" in ckpt` and `ckpt.get("avg_live_elo", LIVE_RANDOM_ELO)`
+     (`train/rl/checkpoint.py:603-606`). S12 renamed exactly these keys from
+     `training_elo`/`avg_training_elo`. A payload with the old names and no `resolved_config` block
+     — the shape of the entire 682 landmark set — therefore bypasses S07R's drift check, which
+     returns early when the checkpoint has no recorded config (`train/rl/checkpoint.py:142`).
+     Probe: a payload built from a real trainer at `live_elo=1547.3`, `avg_live_elo=1500.0`,
+     `elo_milestone=1400.0`, renamed to the old keys with `resolved_config` removed, resumed
+     through `PPOTrainer.load_checkpoint` returning update 7, **zero warnings**, and
+     `_live_elo=0.0`, `_avg_live_elo=0.0`, `_elo_milestone=0.0`.
+     Two consequences make this a gate blocker rather than a cleanup. With
+     `elo_milestone_gap=200` the grid restarts at 0, so a resumed run re-freezes ladder snapshots
+     at heights it already passed and rewrites the league roster with duplicate rungs. And S15's
+     own acceptance criterion — "every migrated file loads through the ordinary strict loader" —
+     cannot detect an incomplete migration of the two fields this reviewed range renamed, which is
+     precisely what this gate exists to certify before the freeze. The loader's leniency predates
+     the branch; the rename that made it reachable does not. No test covers a payload missing
+     either key.
+- Non-blocking findings:
+  1. **The recovery a damaged VRAM cache names does not work.** `read_cache`
+     (`config/vram.py:343`) tells the user to "delete it, or launch with --vram reprobe or --vram
+     off", but `write_cache_entry` (`config/vram.py:363`) re-reads the file through `read_cache`
+     before replacing it, so `reprobe` raises the same error — *after* the full measurement, which
+     costs roughly 20 minutes per candidate on the 8 GB card. Probe: writing a valid entry into a
+     truncated-JSON cache and into a `schema_version: 99` cache both raised `VramError` with the
+     same circular advice. Nothing is corrupted and the failure is loud; the cost is a wasted
+     measurement and misdirection. Suggested fix: treat a damaged cache as replaceable on the
+     `reprobe` write path, or drop `reprobe` from the message.
+  2. **A no-op VRAM decision over-claims its equivalence tiers.** `VramKnobs.tiers()`
+     (`config/vram.py:127`) counts a knob as moved whenever its value is not `None`, so `--vram 8`
+     — proven above to change nothing, down to the fingerprint — records tiers 1 and 2 in
+     `--print-config` and in every checkpoint's launch block, including tier 2's "different
+     env-stream count, temporal correlation, and minibatch composition". The error is toward
+     over-warning and `proposed`/`applied` are in the same record, so a reader can check, but the
+     tier list is the honesty claim and it should compare against the profile's own values.
+  3. **`elo-calibrate --from-artifact` does not check the result schema before reading a renamed
+     field.** `_load_source_measurement` (`modes/elo_calibrate.py:246`) verifies the artifact type
+     and completeness but never compares `result_schema_version`, and the refit path then reads
+     `p["live_elo"]` (`modes/elo_calibrate.py:381`), which schema 1 spells `training_elo`. A
+     schema-1 source would surface as a bare `KeyError: 'live_elo'` rather than a schema message.
+     Renderers gate on schema; this path does not. No artifact of that type exists yet, so this is
+     reachable only once S16 backfills one.
+  4. **Two sign conventions for the live-gauge residual.** `config/live_elo.py:17-26` reproduces
+     the plan's table as fitted minus linear, while `_live_gauge_error`
+     (`modes/semi_random_tournament.py:127`) writes `live_elo_error` as derived minus fitted. Both
+     are documented at their own site and S12 recorded the choice, but the two sit two files apart
+     and a reader carrying a sign between them will invert it.
+  5. **The BC win-rate cutoff leaves entropy maximization as the only actor gradient.** Once the
+     scripted win rate reaches `bc_winrate_target=0.45` and holds for the streak,
+     `_behavior_cloning_coef` goes to 0 (`train/rl/ppo.py:1089`) while `policy_gradient_coef` is
+     0.0 for the whole BC schedule, so the actor term in the loss reduces to
+     `entropy_coef * ent_loss` (`train/rl/ppo.py:1495-1499`) — a gradient that actively pushes the
+     cloned policy back toward uniform, for the remainder of a 2,000,000,000-step budget. The
+     avg-model accumulation that would otherwise pick up is gated on `policy_gradient_coef > 0.0`
+     (`train/rl/ppo.py:1126`), so BC does not benefit from it either. This is pre-existing —
+     verified identical at the branch base `afdf406` — and S11 flagged it for this gate; S11's
+     correction halves `entropy_coef` to 0.005 but makes the cutoff reachable in far fewer updates.
+     S14R should decide it with evidence (a bounded BC run carried through the cutoff) before BC is
+     used as the `--pretrain-from` source, or defer it by name.
+  6. **Stale live-Elo metric names survive in prose.** `train/rl/elo_eval.py:862` and
+     `docs/internal/training-plan.md:228` still say `elo/training_vs_random`, which is now
+     `eval/win_rate_vs_random`. Executable code and reader-facing docs are clean; S18 owns the
+     sweep.
+  7. **A numeric `--vram` preset is accepted on a non-accelerator device.** `resolve_vram`
+     (`vram_probe.py:332`) returns the preset before the CUDA check that makes `auto` report
+     "not an accelerator; nothing to size", so `--vram 24 --device cpu` sizes a CPU launch from a
+     GPU memory row. Harmless in practice and useful for `--print-config` on a laptop, but the two
+     policies disagree about what a non-accelerator means.
+- Remaining risks or required follow-up: S14R must close the blocker, freeze the target schemas
+  with their concrete values, and receive independent re-review before S15 starts. The migration
+  target schemas are **not** frozen by this section. Carried forward unchanged: S10R risk 1 (the
+  `next_state/*` metric-key drift between a stored landmark export and
+  `publication/renderers/training.py`, still S16's to resolve, and still able to render a blank
+  figure silently); S13 risks 1–6 (the 8 GB launch reserving 96% of that card, the unmeasured 16/24/32
+  rows, `bc` and `rl-fields` never probed on real hardware, resume across differently-sized machines
+  requiring `--allow-config-drift`, probe cost, and the unmeasured learning consequence of a tier-2
+  width); and S12 risks 2–4 (no full-length run on the new gauge, field and zero-field live ratings
+  sharing a scale without sharing a difficulty, and `elo_history.jsonl` keeping its short key names).
+  On S13 risk 4 specifically, this review confirms the ergonomics are the wanted ones: a cached
+  measurement is part of the complete resolved configuration, so resuming it elsewhere *should*
+  require an explicit override.
 
 ### Future handoff template
 
