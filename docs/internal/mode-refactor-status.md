@@ -36,8 +36,8 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: none; `S14` reviewed S11–S13 and did **not** approve the gate.
-- Next section: `S14R` — close the checkpoint-payload blocker and obtain an independent re-review.
+- Active section: `S14R` — closing the checkpoint-payload blocker and freezing the target schemas.
+- Next section: `S15` — the one-time 682 migration, once S14R closes.
 - Blocking issue: the ordinary resume loader treats the live-Elo keys S12 renamed as optional, so
   a pre-rename payload resumes silently at live Elo 0. Target schemas are **not** frozen.
 - Landmark migration: scheduled for `S15`, after all target schemas stabilize.
@@ -64,7 +64,7 @@ code, tests, and reader-facing documentation.
 | S12 | 8 | completed | live-Elo engineer | Sol / extra high | Implement/document approximate live Elo separately from calibrated Elo |
 | S13 | 9 | completed | VRAM engineer | Sol / extra high | Implement resolution precedence, probing, cache fingerprints, and provenance |
 | S14 | 7–9 gate | completed | training-systems reviewer | Sol / extra high | Review BC, live Elo, and VRAM behavior together before checkpoint schema freeze |
-| S14R | 7–9 gate remediation | pending | training-systems remediator + reviewer | Sol / extra high | Close the S14 blocker, freeze the migration target schemas, and obtain an independent re-review |
+| S14R | 7–9 gate remediation | in_progress | training-systems remediator + reviewer | Sol / extra high | Close the S14 blocker, freeze the migration target schemas, and obtain an independent re-review |
 | S15 | 10 | pending | checkpoint migration engineer | Sol / extra high | Migrate the complete 682 checkpoint set once into the frozen current schema |
 | S16 | 10 | pending | landmark/publication integrator | Sol / high | Backfill 682 artifacts and raw samples; select and regenerate canonical publications |
 | S17 | 10 gate | pending | migration/reproducibility reviewer | Sol / extra high | Independently verify 682 equivalence, completeness, provenance, and publication reproducibility |
