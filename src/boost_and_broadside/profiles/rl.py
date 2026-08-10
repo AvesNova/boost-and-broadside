@@ -13,6 +13,8 @@ from boost_and_broadside.config.defaults import (
     MODEL_CONFIG,
     REWARDS,
     SHIP_CONFIG,
+    ZERO_FIELD_RANDOM_ELO,
+    ZERO_FIELD_REFERENCE_LADDER,
     make_rl_schedule_spec,
 )
 from boost_and_broadside.config.schema import (
@@ -82,20 +84,10 @@ RL_PROFILE = ProfileSpec(
     league=LeagueSpec(
         league_size=20,
         league_slots=4,
-        # Fitted by the legacy semi-random tournament on 4v4 at repeat=2.
-        # S12 replaces this training ladder with the accepted live-Elo contract.
-        reference_ladder=(
-            (0.2, -236.0),
-            (0.3, -96.2),
-            (0.4, 114.9),
-            (0.5, 270.7),
-            (0.6, 461.1),
-            (0.7, 589.2),
-            (0.8, 733.0),
-            (0.9, 861.3),
-            (0.95, 942.5),
-        ),
-        random_elo=-363.9,
+        # This profile trains in the zero-field environment the gauge was fitted
+        # in.  S12 replaces the fitted rungs with the accepted live-Elo contract.
+        reference_ladder=ZERO_FIELD_REFERENCE_LADDER,
+        random_elo=ZERO_FIELD_RANDOM_ELO,
         elo_milestone_gap=200.0,
         elo_temperature=200.0,
         league_uniform_sampling=False,

@@ -9,6 +9,8 @@ from boost_and_broadside.config.defaults import (
     COMPONENT_GAMMAS_PER_TICK,
     COMPONENT_LAMBDAS_PER_TICK,
     ELO_EVAL,
+    FIELD_RANDOM_ELO,
+    FIELD_REFERENCE_LADDER,
     FIELD_REWARDS,
     MODEL_CONFIG,
     SHIP_CONFIG,
@@ -76,20 +78,8 @@ RL_FIELDS_PROFILE = ProfileSpec(
     league=LeagueSpec(
         league_size=20,
         league_slots=4,
-        # Fields compress the fitted skill scale, so this environment cannot
-        # borrow the zero-field ladder without corrupting proximity sampling.
-        reference_ladder=(
-            (0.2, 238.8),
-            (0.3, 322.6),
-            (0.4, 435.0),
-            (0.5, 550.4),
-            (0.6, 656.9),
-            (0.7, 753.6),
-            (0.8, 824.3),
-            (0.9, 939.9),
-            (0.95, 988.9),
-        ),
-        random_elo=132.3,
+        reference_ladder=FIELD_REFERENCE_LADDER,
+        random_elo=FIELD_RANDOM_ELO,
         elo_milestone_gap=200.0,
         elo_temperature=200.0,
         league_uniform_sampling=False,

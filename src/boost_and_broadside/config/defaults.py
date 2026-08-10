@@ -49,6 +49,39 @@ ELO_CALIBRATE = EloCalibrateConfig(
     reference_probabilities=(0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95),
 )
 
+# Live reference gauges, fitted by the legacy semi-random tournament on 4v4 at
+# action_repeat=2.  They are properties of an environment and its stationary
+# controllers, not of a training objective, so every profile that trains in that
+# environment rates on the same gauge.  S12 replaces the fitted numbers with the
+# accepted live-Elo contract; keeping them here means it edits one place.
+ZERO_FIELD_REFERENCE_LADDER: tuple[tuple[float, float], ...] = (
+    (0.2, -236.0),
+    (0.3, -96.2),
+    (0.4, 114.9),
+    (0.5, 270.7),
+    (0.6, 461.1),
+    (0.7, 589.2),
+    (0.8, 733.0),
+    (0.9, 861.3),
+    (0.95, 942.5),
+)
+ZERO_FIELD_RANDOM_ELO = -363.9
+
+# Fields compress the fitted skill scale, so a field environment cannot borrow
+# the zero-field gauge without corrupting Elo-proximity opponent sampling.
+FIELD_REFERENCE_LADDER: tuple[tuple[float, float], ...] = (
+    (0.2, 238.8),
+    (0.3, 322.6),
+    (0.4, 435.0),
+    (0.5, 550.4),
+    (0.6, 656.9),
+    (0.7, 753.6),
+    (0.8, 824.3),
+    (0.9, 939.9),
+    (0.95, 988.9),
+)
+FIELD_RANDOM_ELO = 132.3
+
 REWARDS = RewardConfig(
     # Source-split outcome heads are retained even when their weights are zero.
     ally_combat_damage_weight=0.0,
@@ -191,21 +224,41 @@ def make_rl_schedule_spec() -> TrainingScheduleSpec:
 
 
 def make_bc_schedule_spec() -> TrainingScheduleSpec:
-    """Return independent declarative intent for the stale S01 BC schedule."""
+    """Return independent declarative intent for the supervised BC schedule.
+
+    Every value the behavior-cloning objective does not require is the current
+    project value.  The five that differ from :func:`make_rl_schedule_spec` are
+    named and tested by the BC-versus-RL allowed-difference invariant.
+    """
 
     return TrainingScheduleSpec(
+        # Warm up to the project learning rate, then hold.  RL's decay tail is
+        # keyed to keypoints at 100M and 500M steps -- the end of *its* budget --
+        # and means nothing on BC's own, much longer budget.
         learning_rate=linear_spec((0, 1e-7), (6_000_000, 3e-4)),
+        # No policy gradient: the scripted controller supplies supervised action
+        # targets and never takes a side in the rollout.
         policy_gradient_coef=constant_spec(0.0),
-        entropy_coef=constant_spec(0.01),
+        entropy_coef=constant_spec(0.005),
+        # In BC this is the policy head's only learning signal, deliberately
+        # balanced one-to-one against the next-state auxiliary BC also weights
+        # at 1.0.  RL's 2.0 is the strength of an *auxiliary* imitation term
+        # carried alongside a live policy gradient.
         behavior_cloning_coef=constant_spec(1.0),
         value_function_coef=constant_spec(1.0),
         sigreg_coef=constant_spec(0.0),
+        # All component groups stay active so the critic learns the full reward
+        # signal before RL begins.
         true_reward_scale=constant_spec(1.0),
         global_scale=constant_spec(1.0),
         local_scale=constant_spec(1.0),
+        # League opposition disabled: no roster opponent plays a BC rollout.
         league_fraction=constant_spec(0.0),
-        checkpoint_interval=stepped_spec((0, 10)),
-        num_epochs=constant_spec(4),
+        checkpoint_interval=constant_spec(50),
+        num_epochs=stepped_spec((0, 4)),
+        # A KL trust region early-stops epochs when the policy moves away from
+        # the one that produced the rollout.  Under supervision that movement is
+        # the objective, so the PPO stopping criterion does not apply.
         target_kl=constant_spec(None),
         high_winrate_threshold=constant_spec(0.8),
         high_winrate_target_kl=constant_spec(0.02),

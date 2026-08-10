@@ -2,7 +2,8 @@
 
 These lock the old dispatcher and profile behavior only until the plan explicitly
 replaces it.  The serialized files are evidence, not an endorsement of legacy
-defaults (in particular, ``bc-stale`` is intentionally stale evidence for S11).
+defaults: ``bc-stale.json`` records the pre-correction BC configuration, which
+S11 has since deliberately replaced.
 """
 
 from __future__ import annotations
@@ -20,7 +21,6 @@ import pytest
 from boost_and_broadside.config.defaults import MODEL_CONFIG, SHIP_CONFIG
 from boost_and_broadside.evaluation.sizes import parse_matchup
 from boost_and_broadside.profiles import (
-    BC_TRAIN_CONFIG,
     RL_FIELDS_TRAIN_CONFIG,
     RL_TRAIN_CONFIG,
 )
@@ -80,11 +80,15 @@ def _profile_snapshot(name: str, config: Any) -> dict[str, Any]:
     [
         ("rl", RL_TRAIN_CONFIG),
         ("rl-fields", RL_FIELDS_TRAIN_CONFIG),
-        ("bc-stale", BC_TRAIN_CONFIG),
     ],
 )
 def test_profile_snapshot_matches_pre_refactor_baseline(name, config):
-    """Keep RL/RL-fields mechanically identical through S02; preserve BC evidence."""
+    """Keep RL and RL-fields mechanically identical to their pre-refactor form.
+
+    BC left this parametrization in S11, which corrected it deliberately.
+    ``bc-stale.json`` stays as the "before" side of that review and is asserted
+    by ``tests/config/test_bc_profile.py``.
+    """
     expected = json.loads((_SNAPSHOTS / f"{name}.json").read_text())
     assert _profile_snapshot(name, config) == expected
 

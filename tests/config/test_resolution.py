@@ -18,6 +18,7 @@ from boost_and_broadside.config.resolve import (
     resolve_profile,
 )
 from boost_and_broadside.config.schedule_spec import compile_schedule, constant_spec, linear_spec
+from boost_and_broadside.config.schema import LaunchSizingSpec
 from boost_and_broadside.config.service import format_resolved_profile, resolved_profile_document
 from boost_and_broadside.profiles import PROFILES
 
@@ -30,12 +31,14 @@ _PROFILE_MODULES = (
 )
 
 
-@pytest.mark.parametrize(
-    ("name", "snapshot_name"),
-    (("rl", "rl"), ("rl-fields", "rl-fields"), ("bc", "bc-stale")),
-)
-def test_resolved_profiles_match_s01_snapshots(name: str, snapshot_name: str) -> None:
-    expected = json.loads((_SNAPSHOTS / f"{snapshot_name}.json").read_text())
+@pytest.mark.parametrize("name", ("rl", "rl-fields"))
+def test_resolved_profiles_match_s01_snapshots(name: str) -> None:
+    """BC is deliberately absent: S11 corrected it away from its S01 evidence.
+
+    ``tests/config/test_bc_profile.py`` pins the corrected profile and the exact
+    set of values that correction changed.
+    """
+    expected = json.loads((_SNAPSHOTS / f"{name}.json").read_text())
     resolved = resolve_profile(PROFILES[name])
 
     assert canonical_data(resolved.ship_config) == expected["ship_config"]
@@ -209,9 +212,10 @@ def test_current_profile_and_resolved_fingerprints_are_stable() -> None:
             "542017f9d6f583011cb40a02dc85e6c01a7731ce778ab2fc2a690930280a2939",
             "2c29b7f27f78d15073953dd3f35b2cea64829d33b8fddbabd67ff936d7bcfa6f",
         ),
+        # Changed by the S11 BC correction; RL and RL-fields are unmoved.
         "bc": (
-            "c61ba10b4d388415d00f005ec170118cb410865e1ccf0977440ddf559100add2",
-            "948776506fed977433f53dd00c620aaf54583c6ee000bfdc564abe0bfb9164da",
+            "531744c3e5c867183c54fb405c4a718203f332feda7cf5b164702868b680eea1",
+            "73a0b0aa85a9de9b3e3d8930247495031723451442dcd8a7b7f913b324fe754e",
         ),
     }
     for name, fingerprints in expected.items():
@@ -358,12 +362,12 @@ def test_invalid_launch_override_fails_after_precedence_is_applied() -> None:
         resolve_profile(PROFILES["rl"], LaunchOverrides(num_envs=1))
     with pytest.raises(ValueError, match="microbatch_tokens"):
         resolve_profile(PROFILES["rl"], LaunchOverrides(microbatch_tokens=0))
-    invalid_bc = replace(
+    invalid_fixed_width = replace(
         PROFILES["bc"],
-        launch_defaults=replace(PROFILES["bc"].launch_defaults, num_envs=0),
+        launch_defaults=LaunchSizingSpec(num_envs=0),
     )
     with pytest.raises(ValueError, match="num_envs must be positive"):
-        resolve_profile(invalid_bc)
+        resolve_profile(invalid_fixed_width)
     invalid_optimizer = replace(
         PROFILES["rl"],
         optimizer=replace(PROFILES["rl"].optimizer, clip_coef=-0.1),
@@ -373,8 +377,21 @@ def test_invalid_launch_override_fails_after_precedence_is_applied() -> None:
 
 
 def test_fixed_environment_legacy_preset_has_honest_machine_source() -> None:
-    resolved = resolve_profile(PROFILES["bc"])
+    """A profile that states a launch width outright says the width is machine-chosen.
+
+    No registered profile still does this — S11 moved BC onto the derived token
+    target — so the shape is exercised directly.
+    """
+    fixed_width = replace(
+        PROFILES["rl"],
+        rollout=replace(PROFILES["rl"].rollout, logical_batch_tokens=11_993_088),
+        launch_defaults=LaunchSizingSpec(num_envs=3904),
+    )
+    resolved = resolve_profile(fixed_width)
+
     assert resolved.value_sources["train_config.scales.0.num_envs"] == "vram-preset"
+    assert resolved.value_sources["train_config.rollouts_per_update"] == "derived"
+    assert resolved.train_config.rollouts_per_update == 3
 
 
 def test_format_resolved_profile_is_complete_stable_json(tmp_path, monkeypatch, capsys) -> None:
