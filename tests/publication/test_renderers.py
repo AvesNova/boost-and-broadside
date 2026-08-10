@@ -16,7 +16,13 @@ import pytest
 
 from boost_and_broadside.artifacts import ArtifactRecipe, ArtifactStore, Invocation
 from boost_and_broadside.evaluation.tournament import rating_views
-from boost_and_broadside.publication.renderer_api import RenderInputs, get_renderer
+from boost_and_broadside.modes.elo_calibrate_history import to_history_rows, to_summary
+from boost_and_broadside.publication import registered_renderers
+from boost_and_broadside.publication.renderer_api import (
+    PublicationError,
+    RenderInputs,
+    get_renderer,
+)
 from boost_and_broadside.publication.renderers.ar_report import (
     _calc_toroidal_euclidean,
     _clamp_alive_prob,
@@ -24,6 +30,7 @@ from boost_and_broadside.publication.renderers.ar_report import (
     _unwrap_1d,
 )
 from boost_and_broadside.publication.renderers.elo_scale import combine_reference_ladder
+from boost_and_broadside.publication.renderers.training import _NEXT_STATE
 
 
 def _store(tmp_path) -> ArtifactStore:
@@ -150,6 +157,159 @@ def _ar_arrays(steps: int = 6, ships: int = 4) -> dict[str, np.ndarray]:
         arrays[f"{prefix}_alive"] = np.ones((steps, ships), dtype=np.float32)
         arrays[f"{prefix}_alive_prob"] = np.ones((steps, ships), dtype=np.float32)
     return arrays
+
+
+def _calibration_result() -> dict:
+    """A calibration in the shape ``modes/elo_calibrate.py`` persists."""
+
+    curve = []
+    for update, step in enumerate(range(0, 2_000_000, 400_000), start=1):
+        live = 200.0 * update
+        curve.append(
+            {
+                "update": update,
+                "global_step": step,
+                "live_training": live + 50.0,
+                "live_calibrated": live,
+                "live_stderr": 12.0,
+                "games": 400,
+                "avg_training": live + 20.0,
+                "avg_calibrated": live - 30.0,
+                "avg_stderr": 15.0,
+                "live_calibrated_alt": live + 10.0,
+                "live_stderr_alt": 13.0,
+            }
+        )
+    players = [
+        {"label": "random", "training_elo": 0.0, "global_step": 0},
+        {"label": "scripted", "training_elo": None, "global_step": None},
+        {"label": "ckpt_400000", "training_elo": 900.0, "global_step": 400_000},
+        {"label": "ckpt_1200000", "training_elo": 1300.0, "global_step": 1_200_000},
+    ]
+    for player, (calibrated, stderr) in zip(
+        players, [(0.0, 8.0), (1000.0, 6.0), (850.0, 9.0), (1250.0, 10.0)], strict=True
+    ):
+        player["calibrated_elo"] = calibrated
+        player["stderr"] = stderr
+    tie_rates = [
+        {
+            "a": "random",
+            "b": "scripted",
+            "games": 400,
+            "tie_rate": 0.04,
+            "mean_rating": 500.0,
+            "rating_gap": 1000.0,
+        },
+        {
+            "a": "ckpt_400000",
+            "b": "ckpt_1200000",
+            "games": 400,
+            "tie_rate": 0.01,
+            "mean_rating": 1050.0,
+            "rating_gap": 400.0,
+        },
+    ]
+    return {
+        "schema_version": 1,
+        "run": "fixture-run",
+        "anchor": "scripted",
+        "anchor_elo": 1000.0,
+        "anchor_offset_stderr": 6.0,
+        "reference": "scripted",
+        "tie_mode": "half_win",
+        "tie_mode_alt": "decisive",
+        "target_stderr": 10.0,
+        "converged": True,
+        "players": players,
+        "player_labels": [player["label"] for player in players],
+        "curve": curve,
+        "batches": [
+            {
+                "batch": index + 1,
+                "games": 400,
+                "cumulative_games": 400 * (index + 1),
+                "max_stderr": 20.0 - 5.0 * index,
+                "mean_stderr": 14.0 - 3.0 * index,
+                "seconds": 2.0,
+                "ratings": [0.0, 1000.0, 850.0, 1250.0],
+            }
+            for index in range(3)
+        ],
+        "wins_matrix": [
+            [0.0, 10.0, 20.0, 5.0],
+            [190.0, 0.0, 120.0, 60.0],
+            [180.0, 80.0, 0.0, 40.0],
+            [195.0, 140.0, 160.0, 0.0],
+        ],
+        "ties_matrix": [[0.0] * 4 for _ in range(4)],
+        "tie_rates": tie_rates,
+        "training_tie_rates": [dict(row, update=index + 1) for index, row in enumerate(tie_rates)],
+    }
+
+
+def _calibration_artifact(tmp_path):
+    """A calibration artifact carrying the chart pair the mode writes beside it."""
+
+    store = _store(tmp_path)
+    artifact = store.create(
+        ArtifactRecipe("elo-calibration", 1, subjects={"run": "fixture-run"}),
+        store.standalone_owner(),
+    )
+    result = _calibration_result()
+    artifact.write_json(result)
+    artifact.write_jsonl(to_history_rows(result), "chart_history.jsonl")
+    artifact.write_json(to_summary(result), "chart_summary.json")
+    artifact.complete()
+    return artifact
+
+
+def _wandb_history() -> list[dict]:
+    """Sampled training history in the sparse shape W&B logs and the export keeps."""
+
+    rows = []
+    for index, step in enumerate(range(0, 2_000_000, 400_000)):
+        row = {
+            "_step": step,
+            "overview/win_rate_vs_scripted": 0.1 + 0.15 * index,
+            "overview/explained_variance": 0.2 + 0.1 * index,
+            "overview/reward_mean": -1.0 + 0.5 * index,
+            "overview/kl": 0.02 - 0.002 * index,
+            "overview/clip_fraction": 0.15 - 0.01 * index,
+        }
+        for _, keys in _NEXT_STATE:
+            for offset, key in enumerate(keys):
+                row[key] = 0.5 / (index + 1) + 0.01 * offset
+        if index == 2:
+            # W&B logs sparsely; a metric absent from one row is normal.
+            del row["overview/kl"]
+        rows.append(row)
+    return rows
+
+
+def _wandb_export(tmp_path, rows: list[dict] | None = None):
+    """A ``wandb-export`` artifact in the shape ``scripts/export_wandb_run.py`` writes."""
+
+    store = _store(tmp_path)
+    artifact = store.create(
+        ArtifactRecipe(
+            "wandb-export",
+            1,
+            subjects={"wandb_run": "fixture/boost-and-broadside/abc123", "run": "fixture-run"},
+            parameters={"samples": 2000},
+        ),
+        store.standalone_owner(),
+    )
+    artifact.write_json({"profile": "rl"}, "config.json")
+    artifact.write_json({"overview/win_rate_vs_scripted": 0.85}, "summary.json")
+    artifact.write_json(
+        {"id": "abc123", "name": "fixture-run", "state": "finished"}, "run_meta.json"
+    )
+    (artifact.path / "history.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in (rows if rows is not None else _wandb_history()))
+    )
+    artifact.attach("history.jsonl")
+    artifact.complete()
+    return artifact
 
 
 def _noise_result() -> dict:
@@ -291,6 +451,63 @@ def test_the_ar_report_renders_its_complete_published_set(tmp_path) -> None:
     assert sum(name.startswith("feature_") for name in written) == 9
 
 
+def test_the_elo_curve_renders_from_a_stored_calibration(tmp_path) -> None:
+    artifact = _calibration_artifact(tmp_path)
+
+    written = _render("training-elo-curve-v1", {"calibration": artifact}, tmp_path / "out")
+
+    assert written == ["elo_curve.png"]
+
+
+def test_the_calibration_diagnostics_render_both_draw_conventions(tmp_path) -> None:
+    artifact = _calibration_artifact(tmp_path)
+
+    written = _render(
+        "elo-calibration-diagnostics-v1", {"calibration": artifact}, tmp_path / "out"
+    )
+
+    assert written == [
+        "avg_curve.png",
+        "calibrated_decisive.png",
+        "calibrated_half_win.png",
+        "checkpoint_ratings.png",
+        "convergence.png",
+        "live_and_avg.png",
+        "live_curve.png",
+        "tie_conventions.png",
+        "tie_rates.png",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("renderer", "expected"),
+    [
+        ("training-win-rate-v1", ["win_rate_vs_scripted.png"]),
+        ("training-health-v1", ["training_health.png"]),
+        ("next-state-error-v1", ["next_state_error.png"]),
+    ],
+)
+def test_the_training_figures_render_from_a_stored_export(tmp_path, renderer, expected) -> None:
+    artifact = _wandb_export(tmp_path)
+
+    assert _render(renderer, {"wandb_export": artifact}, tmp_path / renderer) == expected
+
+
+@pytest.mark.parametrize(
+    "renderer", ["training-win-rate-v1", "training-health-v1", "next-state-error-v1"]
+)
+def test_rendering_the_same_export_twice_is_byte_identical(tmp_path, renderer) -> None:
+    artifact = _wandb_export(tmp_path)
+    first, second = tmp_path / "first", tmp_path / "second"
+
+    names = _render(renderer, {"wandb_export": artifact}, first)
+    _render(renderer, {"wandb_export": artifact}, second)
+
+    assert [(first / name).read_bytes() for name in names] == [
+        (second / name).read_bytes() for name in names
+    ]
+
+
 def test_noise_calibration_renders_its_report(tmp_path) -> None:
     artifact = _artifact(tmp_path, "noise-calibration", _noise_result())
 
@@ -325,6 +542,39 @@ def test_rendering_the_same_measurement_twice_is_byte_identical(
     assert [(first / name).read_bytes() for name in names] == [
         (second / name).read_bytes() for name in names
     ]
+
+
+def test_promoted_media_is_copied_under_its_own_name(tmp_path) -> None:
+    clip = tmp_path / "out" / "duel-4v4.gif"
+    clip.parent.mkdir(parents=True)
+    clip.write_bytes(b"GIF89a-curated")
+    out_dir = tmp_path / "published"
+    out_dir.mkdir()
+
+    get_renderer("media-copy-v1").render(RenderInputs(files={"clip": clip}), out_dir)
+
+    assert (out_dir / "duel-4v4.gif").read_bytes() == clip.read_bytes()
+
+
+def test_an_external_asset_is_verified_rather_than_rendered(tmp_path) -> None:
+    renderer = get_renderer("external-asset-v1")
+
+    assert renderer.external
+    with pytest.raises(PublicationError, match="never rendered"):
+        renderer.render(RenderInputs(), tmp_path)
+
+
+def test_every_registered_renderer_is_named_by_a_test() -> None:
+    """A tripwire for the claim that these tests cover the renderer inventory.
+
+    S09's handoff recorded that every renderer was covered from fixture
+    artifacts while three had none at all, and nothing checked. This is coarse —
+    a name in a comment would satisfy it — but it fails the moment a renderer is
+    registered with no test naming it.
+    """
+
+    sources = " ".join(path.read_text() for path in Path(__file__).parent.glob("test_*.py"))
+    assert [name for name in registered_renderers() if name not in sources] == []
 
 
 def test_a_renderer_writes_only_inside_the_directory_it_is_given(tmp_path) -> None:
