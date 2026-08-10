@@ -25,6 +25,12 @@ regauged to the same anchors:
     0.9       898.3           930.7      900     −1.7       +30.7
     0.95      957.8           987.2      950     +7.8       +37.2
 
+The Δ columns here are fitted minus linear, the orientation the plan's table
+uses. ``bnb semi-random`` reports the same residual per rung as
+``live_elo_error`` and orients it the other way, live minus fitted, so that a
+positive value means the gauge over-rates that rung: the two numbers are
+negations of each other and neither is wrong.
+
 Two consequences are accepted along with the approximation. Opponent sampling
 is proximity-weighted, so a rung placed ~100 points high early draws league and
 evaluation games slightly sooner than a fitted rung would. And the ladder

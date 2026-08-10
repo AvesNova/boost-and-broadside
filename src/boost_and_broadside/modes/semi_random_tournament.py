@@ -107,6 +107,9 @@ def _live_gauge_error(
 
     ``live_elo_error`` is oriented as the gauge's own error, live minus fitted,
     so a positive value means training rates that rung above where it plays.
+    The accepted-error table in ``config/live_elo`` states the same residual the
+    other way round, fitted minus linear; the two are negations, so a sign
+    carried between the two files has to be flipped.
 
     Both endpoints are included and are zero by construction — dropping them
     would hide the fact that the comparison is anchored, not free.

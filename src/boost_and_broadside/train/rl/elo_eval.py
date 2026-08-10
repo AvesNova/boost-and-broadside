@@ -859,8 +859,9 @@ class EloEvaluator:
         # stationary reference is policy-free — random, each semi-random rung and
         # the scripted controller alike — so an `agent is None` test lumped the
         # whole ladder into the random bucket and reported
-        # elo/training_vs_random as the win rate against an
-        # information-weighted mix of opponents near the policy's own level.
+        # eval/win_rate_vs_random — then named elo/training_vs_random — as the
+        # win rate against an information-weighted mix of opponents near the
+        # policy's own level.
         anchor_is_random = torch.tensor(
             [self._is_random_anchor(spec) for spec in self._anchor_specs], dtype=torch.bool
         )  # (A,)
