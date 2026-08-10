@@ -36,7 +36,7 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: `S11` — BC correction.
+- Active section: none; `S11` corrected BC and pinned its allowed differences from RL.
 - Next section: `S12` — live Elo.
 - Blocking issue: none.
 - Landmark migration: scheduled for `S15`, after all target schemas stabilize.
@@ -59,7 +59,7 @@ code, tests, and reader-facing documentation.
 | S09 | 6 | completed | artifact/publication architect | Sol / extra high | Implement artifacts, provenance, raw samples, publication manifest, and offline render checks |
 | S10 | 6 gate | completed | artifact reviewer | Sol / extra high | Review schemas, identity, atomicity, resume, Git-ignore safety, and offline publication |
 | S10R | 6 gate remediation | completed | artifact remediator + reviewer | Sol / extra high | Close the S10 blockers and obtain an independent artifact/publication re-review |
-| S11 | 7 | in_progress | training-profile engineer | Sol / high | Correct BC independently and validate its allowed differences from RL |
+| S11 | 7 | completed | training-profile engineer | Sol / high | Correct BC independently and validate its allowed differences from RL |
 | S12 | 8 | pending | live-Elo engineer | Sol / extra high | Implement/document approximate live Elo separately from calibrated Elo |
 | S13 | 9 | pending | VRAM engineer | Sol / extra high | Implement resolution precedence, probing, cache fingerprints, and provenance |
 | S14 | 7–9 gate | pending | training-systems reviewer | Sol / extra high | Review BC, live Elo, and VRAM behavior together before checkpoint schema freeze |
@@ -1217,6 +1217,103 @@ Each section appends its record below when it completes. Do not replace earlier 
      landmark JSON) are unchanged and remain with S16 and S18 as recorded there.
   6. The offline no-diff gate is still exercised only against fixtures because no publication
      entry is selected. S11 is the next authorized section and was not begun.
+
+### S11 handoff
+
+- Status: completed
+- Agent/model/effort: training-profile engineer / `gpt-5.6-sol` / high
+- Commit(s): `e564288` — mark S11 active; `4f4b39a` — rebuild the BC profile on the current
+  project values; `40db30d` — describe the behavior-cloning profile and its gauge; followed by
+  this status-only closure commit
+- Tests/checks and results: focused `tests/config tests/train/test_bc_training.py
+  tests/test_mode_refactor_baseline.py` (47 passed); final `.venv/bin/pytest -q` (914 passed, up
+  from 900 at S10R); `.venv/bin/bnb smoke` (all 14 isolated cases passed, checkout unchanged);
+  `.venv/bin/ruff check .` (passed); `git diff --check` for the worktree and `e564288..HEAD`
+  (passed). Mutation check: thirteen reverts — stale entropy, checkpoint interval, ship count and
+  action repeat, empty ladder, clip coefficient, unbounded quantiles, the old batch/launch preset,
+  a halved logical batch, and each of the five named allowed differences — were each caught by
+  three to five of the new tests; two further reverts were rejected by the resolver itself.
+  Bounded validation: four real updates of the corrected profile on an RTX 4070 at reduced launch
+  width (256 envs, 32-step rollouts, 64-env evaluator slots; objective, environment, discounts,
+  schedule, and gauge untouched). Total loss fell monotonically 7.71 → 6.71 → 6.12 → 5.82, mean
+  ship lifespan rose 28.8 → 230.7 ticks, 96 of 100 parameter tensors moved and all stayed finite,
+  `B_league` was 0 against `league_slots=4`, all eleven stationary anchors registered at the
+  fitted gauge with scripted pinned at 1000, and no floating/milestone checkpoint was frozen.
+- Behavior/config changes: **BC changes deliberately; RL and RL-fields do not.** Both RL
+  fingerprints are byte-identical and their S01 snapshots still pass. Resolved BC moves from 2
+  ships / `action_repeat=1` / `spawn_resource_spread=0.0` / 480 envs / 122,880-token batch / 4
+  minibatches / no microbatching / unbounded return quantiles / empty discount tables /
+  `clip_coef=0.2` / `entropy_coef=0.01` / `checkpoint_interval=10` / empty reference ladder /
+  `random_elo=0.0` to the current project values: 8 ships (4v4), `action_repeat=2`, spread 0.25,
+  3904 envs from the 4,000,000-token target, the 11,993,088-token aligned logical batch over 3
+  shards, 32 minibatches, `microbatch_tokens=25000`, `return_quantile_samples=262144`, the full
+  component gamma/lambda tables (`gamma=0.9801`, `gae_lambda=0.9025`), `clip_coef=0.15`,
+  `entropy_coef=0.005`, `checkpoint_interval=50`, and the fitted zero-field gauge. BC's budget
+  now spans 1,334 updates rather than 32,552. New BC fingerprints are
+  `531744c3…` (profile) and `73a0b0aa…` (resolved). Six named differences from RL remain:
+  `next_state_coef=1.0`, `total_timesteps=2_000_000_000`, and the schedule's `learning_rate`,
+  `policy_gradient_coef`, `behavior_cloning_coef`, `league_fraction`, and `target_kl`.
+- Files/artifacts produced: rewritten `profiles/bc.py` and `make_bc_schedule_spec`;
+  `ZERO_FIELD_REFERENCE_LADDER`/`ZERO_FIELD_RANDOM_ELO`/`FIELD_REFERENCE_LADDER`/
+  `FIELD_RANDOM_ELO` in `config/defaults.py`, composed by all three profiles with no value change;
+  `tests/config/test_bc_profile.py` (11 tests: the allowed-difference invariant over resolved
+  values and over declarative schedule intent, the RL-shared shape, budget-wide objective
+  invariants, and the stale-versus-corrected correction record);
+  `tests/train/test_bc_training.py` (5 tests driving the real `PPOTrainer` from the registered
+  profile); `tests/fixtures/mode_refactor/bc.json`; a BC section in `docs/training.md`. Validation
+  checkpoints were temporary outside the checkout.
+- Decisions/deviations from plan:
+  1. **BC adopts RL's fitted zero-field gauge** (`reference_ladder`, `random_elo=-363.9`) rather
+     than keeping its empty ladder. The old profile justified the empty ladder as "no opponents
+     during BC", which conflates rollout opponents with evaluation anchors: BC runs the Elo
+     evaluator regardless, because its own scripted win rate is what decays the cloning weight.
+     After the correction BC's environment is identical to RL's, so the gauge fitted for that
+     environment applies exactly, and stationary rungs are cost-neutral (the whole ladder is one
+     scripted call, and slot widths are fixed). This changes reported live Elo and the anchors BC
+     is rated against; it changes no optimizer update. It also lets S12 apply one derivation
+     uniformly instead of carrying a BC exception.
+  2. **`entropy_coef` and `checkpoint_interval` are treated as drift, not intent.** Git history
+     is decisive: at the profiles' first commit BC and RL shared `entropy_coef=0.01`,
+     `checkpoint_interval=stepped((0, 10))`, `clip_coef=0.2`, `num_minibatches=4`, `num_ships=2`,
+     and `total_timesteps=2e9`. RL moved every one of those; BC moved none. The plan's rule —
+     match current RL values wherever the objective does not require a difference — therefore
+     applies. `total_timesteps` is the exception the plan itself names.
+  3. **`behavior_cloning_coef` stays at 1.0.** Unlike the above, it never matched: BC has held
+     1.0 since creation while RL went 0.0 → 2.0. In BC it is the policy head's only learning
+     signal, balanced 1:1 against the next-state auxiliary BC also weights at 1.0; RL's 2.0 sizes
+     an auxiliary term carried alongside a live policy gradient. Changing it would be an
+     unevidenced behavioral change.
+  4. **BC keeps its own learning-rate schedule.** RL's decay tail is keyed to keypoints at 100M
+     and 500M steps — the end of RL's budget — which is meaningless on BC's 2e9. The warmup shape
+     and target rate match; only the tail differs.
+  5. `num_epochs` moved from `constant_spec(4)` to `stepped_spec((0, 4))` so BC and RL state the
+     same value the same way. Identical compiled behavior; it keeps a representation-only
+     artifact out of the invariant.
+  6. The S01 snapshot parametrizations in `tests/config/test_resolution.py` and
+     `tests/test_mode_refactor_baseline.py` no longer include BC, and
+     `test_fixed_environment_legacy_preset_has_honest_machine_source` builds its fixed-width
+     profile directly now that no registered profile states a launch width outright.
+     `bc-stale.json` is still asserted, as the "before" side of the correction record.
+- Review findings addressed: self-review corrected the schedule docstring's difference count,
+  simplified a filtered-generator assertion, and refreshed the baseline module docstring that
+  still described BC as awaiting correction. `docs/training.md` quoted the random reference at
+  −351 / +170 where the shipped profiles configure −363.9 / +132.3; the prose now matches the
+  code, and the ladder paragraph says a gauge belongs to an environment rather than to a profile.
+- Remaining risks or required follow-up:
+  1. **S12 must re-derive both gauges, not one.** `ZERO_FIELD_REFERENCE_LADDER` now has two
+     consumers (`rl`, `bc`); `FIELD_REFERENCE_LADDER` has one. Both live in `config/defaults.py`.
+  2. The bounded validation is four updates at 256 envs — enough to prove the objective is wired
+     and descending, not enough to characterize convergence at the full 3904-env launch. No
+     full-budget BC run has been made, and BC has not been re-measured as the `--pretrain-from`
+     source for RL.
+  3. `bc_winrate_target=0.45` still zeroes the cloning weight once the policy reaches a 45% win
+     rate against scripted, after which a BC run keeps only its critic, entropy, and next-state
+     terms. That is pre-existing behavior and unchanged, but the correction makes it reachable in
+     far fewer updates than the stale profile would have taken. S14 may want to look at it.
+  4. `clip_coef`, `league_size`, and `league_slots` are inert under BC (no policy gradient, no
+     league envs). They are set to the current project values rather than to sentinels so the
+     invariant stays meaningful; the bounded validation asserts `B_league == 0` directly.
+  5. S12 is the next authorized section and was not begun.
 
 ### Future handoff template
 
