@@ -36,7 +36,7 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: `S12` — live Elo.
+- Active section: none; `S12` replaced the fitted live ladder with the derived gauge.
 - Next section: `S13` — VRAM resolution.
 - Blocking issue: none.
 - Landmark migration: scheduled for `S15`, after all target schemas stabilize.
@@ -60,7 +60,7 @@ code, tests, and reader-facing documentation.
 | S10 | 6 gate | completed | artifact reviewer | Sol / extra high | Review schemas, identity, atomicity, resume, Git-ignore safety, and offline publication |
 | S10R | 6 gate remediation | completed | artifact remediator + reviewer | Sol / extra high | Close the S10 blockers and obtain an independent artifact/publication re-review |
 | S11 | 7 | completed | training-profile engineer | Sol / high | Correct BC independently and validate its allowed differences from RL |
-| S12 | 8 | in_progress | live-Elo engineer | Sol / extra high | Implement/document approximate live Elo separately from calibrated Elo |
+| S12 | 8 | completed | live-Elo engineer | Sol / extra high | Implement/document approximate live Elo separately from calibrated Elo |
 | S13 | 9 | pending | VRAM engineer | Sol / extra high | Implement resolution precedence, probing, cache fingerprints, and provenance |
 | S14 | 7–9 gate | pending | training-systems reviewer | Sol / extra high | Review BC, live Elo, and VRAM behavior together before checkpoint schema freeze |
 | S15 | 10 | pending | checkpoint migration engineer | Sol / extra high | Migrate the complete 682 checkpoint set once into the frozen current schema |
@@ -1314,6 +1314,123 @@ Each section appends its record below when it completes. Do not replace earlier 
      league envs). They are set to the current project values rather than to sentinels so the
      invariant stays meaningful; the bounded validation asserts `B_league == 0` directly.
   5. S12 is the next authorized section and was not begun.
+
+### S12 handoff
+
+- Status: completed
+- Agent/model/effort: live-Elo engineer / `gpt-5.6-sol` / extra high
+- Commit(s): `494bf65` — mark S12 active; `0b992cf` — derive the live Elo ladder instead of
+  shipping a fitted one; `3f99d23` — keep calibrated Elo in its own namespace and check the
+  live gauge; `235dd41` — describe the approximate live gauge; followed by this closure commit
+- Tests/checks and results: focused `tests/config tests/test_mode_refactor_baseline.py`
+  (79 passed) and `tests/train` (234 passed); final `.venv/bin/pytest -q` (960 passed, up
+  from 914 at S11); `.venv/bin/bnb smoke` (all 14 isolated cases passed, checkout unchanged);
+  `.venv/bin/ruff check .` (passed); `git diff --check 494bf65..HEAD` (passed); `bnb publish`
+  and `bnb publish --check` against the real repository both exit 0, report 1 external and
+  26 unselected, and leave the worktree clean; `uv build --wheel` succeeded and the wheel
+  contains `config/live_elo.py` and the `bnb` entry point. Commits `0b992cf` and `3f99d23`
+  were each verified in isolation (later work stashed) rather than only at the branch tip.
+- Behavior/config changes: **the live gauge is now defined rather than measured.** Random is
+  pinned at 0, scripted at `EloEvalConfig.scripted_live_elo` = 1000, and a semi-random rung
+  at 1000·p, derived in one place (`config/live_elo`). `LeagueSpec` and `TrainConfig` lose
+  `reference_ladder` and `random_elo` and gain `live_reference_probabilities`;
+  `scripted_elo_init` is renamed `scripted_live_elo` because it is a pin, not an estimate.
+  The complete resolved-config diff for all three profiles is exactly those three leaves —
+  visible in the updated `tests/fixtures/mode_refactor/{rl,rl-fields,bc}.json`. Nothing else
+  in any resolved configuration moved. Both fingerprints changed for all three profiles
+  (rl `9f4baf83…`/`882ed9ba…`, rl-fields `cdd020cf…`/`1a5a3c43…`, bc `138544ad…`/`b91a4ef7…`):
+  what a run is rated against is semantic intent. The resolved rl-to-rl-fields diff shrinks
+  from seven paths to five — field intent only, no rating difference. Registration re-pins
+  random, the rungs, and scripted on every startup including resume, so a roster written
+  under the old gauge is corrected instead of trusted. The evaluator reads the scripted pin
+  from config; `EloSnapshot.scripted_elo`, the `scripted_elo` checkpoint field, and the
+  per-update `set_special_elo("scripted", …)` sync are all removed as redundant paths that
+  could only disagree with it. Metric keys: `live_elo/{policy,scripted,avg,floating}`,
+  `live_elo/ladder/<label>`, `overview/live_elo`, and the evaluation win-rate windows move
+  from `elo/training_vs_*` to `eval/win_rate_vs_*`. Checkpoint payloads store `live_elo` and
+  `avg_live_elo` (were `training_elo`/`avg_training_elo`). Calibration chart files write
+  `calibrated_elo/*` (were `ladder/elo/*` and `elo/scripted`) and the calibration result
+  schema goes to 2 (`players[].live_elo`, `curve[].live_elo`, `curve[].avg_live_elo`). The
+  semi-random ladder schema goes to 2 for the new `live_gauge_error` block. `overview/*`
+  win-rate and health keys are deliberately unchanged — the landmark W&B export carries them
+  and three renderers read them.
+- Files/artifacts produced: `src/boost_and_broadside/config/live_elo.py` (gauge constants,
+  derivation, validation, and the accepted-error table); `LIVE_REFERENCE_PROBABILITIES` in
+  `config/defaults.py` replacing the four fitted-ladder constants;
+  `EloRoster.pin_stationary_elo`; `_live_gauge_error` in `modes/semi_random_tournament.py`;
+  `tests/config/test_live_elo.py` (37 tests: the definition, rejection of invalid rungs, the
+  same gauge on every profile, a guard that the fitted fields cannot return, and the recorded
+  fitted ladders with their per-rung error); `TestLiveEloMetricNaming` in `tests/train/test_ppo.py`
+  driving a real training loop and asserting the namespaces; `TestGaugeNamespaces` in
+  `tests/modes/test_elo_calibrate_history.py`; `TestLiveGaugeError` in
+  `tests/modes/test_semi_random_tournament.py`; a live-versus-calibrated section in
+  `docs/training.md`. Validation checkpoints and the wheel were temporary outside the checkout.
+- Decisions/deviations from plan:
+  1. **The fitted ladders are deleted from configuration but preserved as evidence** in
+     `tests/config/test_live_elo.py`, with the per-rung error of the linear placement pinned
+     against both environments to ±0.1 Elo. They are the measurement the approximation was
+     accepted on; a future edit to the gauge now has to face the same numbers.
+  2. **`elo_history.jsonl` keeps its short key names** (`live`, `avg`, `scripted`). They are
+     unambiguous inside a file that records only live ratings, and `elo-calibrate` reads the
+     landmark 682 file to build its curve — renaming would strand the very records S16
+     depends on. The docstring now states the file has no calibrated column.
+  3. **The calibration result schema was renamed now rather than later.** No artifact of that
+     type is selected by `docs/publications.toml` and S16 has not backfilled any, so the cost
+     is zero today and would not have been after the landmark backfill.
+  4. **`rl-fields` rates on the same rungs as `rl`.** The gauge is a definition, so there is
+     one; the field and zero-field environments are not thereby claimed to be equally hard,
+     and cross-environment live ratings are not comparable. Recorded in the profile and docs.
+  5. `semi-random` gained `live_gauge_error` per rung rather than only being re-documented,
+     so "validation tool" is something the artifact demonstrates rather than something the
+     prose asserts. Sign convention is live minus fitted (positive = the gauge over-rates);
+     the plan's §1 table lists the negation.
+- Review findings addressed: self-review found that with the per-update scripted re-sync
+  removed, a resumed roster could keep a stale rung or scripted rating, because both
+  `add_special` and `add_reference` returned an existing entry untouched — closed by
+  re-pinning every stationary rating at registration, with a regression test that corrupts
+  the whole roster and asserts repair. Also caught renderer labels and the calibration
+  summary table still reading "in-training", and two docs pages still calling live Elo
+  "online Elo".
+- Bounded validation (RTX 4070, reduced launch width, outside the checkout):
+  1. Four real updates of the registered `rl` profile at 256 envs / 32-step rollouts. The
+     roster registered exactly random 0, scripted 1000, and nine rungs at 200…950, all
+     `fixed`; the live rating started at 0 and the milestone grid seeded at 0. Logged keys
+     contained 14 `live_elo/*` entries and zero under `elo/`, `ladder/elo/`, or
+     `calibrated_elo`. Almost no episode resolved at the profile's 1024-step horizon, so the
+     rating barely moved — hence probe 2.
+  2. Six updates at a shortened 48-step horizon so games actually resolve: live Elo climbed
+     182 → 375 → 632 → 796 → 813 → 867 against the derived anchors, with 280–1029 rated games
+     per update spread across all nine rungs, random, scripted, and three frozen ladder
+     checkpoints. Every stationary rating was still exactly its derived value afterwards.
+     The climb is fast because a 48-step horizon makes nearly every game a draw and half-win
+     scoring pays for drawing with a stronger rung; it demonstrates the machinery, not
+     convergence.
+  3. Milestone placement: seeded at 0 on construction, and a live rating of 250 claimed grid
+     point 200 and wrote one floating snapshot at 250 with every stationary rating untouched.
+- Roster/milestone diff versus the pre-S12 fitted zero-field gauge: random −363.9 → 0 and
+  each rung's regauged position moves by the accepted error (0.2: 93.8 → 200; 0.3: 196.3 → 300;
+  0.4: 351.1 → 400; 0.5: 465.3 → 500; 0.6: 604.9 → 600; 0.7: 698.8 → 700; 0.8: 804.2 → 800;
+  0.9: 898.3 → 900; 0.95: 957.8 → 950). The snapshot grid seed moves from −400 to 0, so with
+  `elo_milestone_gap=200` the first six grid points move from a regauged 120/267/413/560/707/853
+  to 200/400/600/800/1000/1200: **five ladder snapshots below scripted instead of seven, and
+  the first one fires later in skill terms.** This is a real change to league membership over
+  a run and is the main thing S14 should weigh.
+- Remaining risks or required follow-up:
+  1. **Checkpoint and calibration schemas moved; S14 freezes them and S15 migrates.** A
+     pre-S12 checkpoint's `training_elo`/`avg_training_elo` are no longer read, so a resume
+     from one would silently restart the live rating at 0 — S07R's resolved-config drift
+     check rejects such a resume first, and the 682 set is migrated wholesale in S15, but the
+     migration must map these two keys.
+  2. The bounded validation is 10 updates total at reduced width and, in the rated probe, at
+     an artificially short episode horizon. No full-length run has been made on the new
+     gauge, so the milestone cadence above is derived from the grid rather than observed at
+     full scale.
+  3. Live ratings from the field and zero-field environments now share a scale without
+     sharing a difficulty. Nothing compares them today; anything that starts to must not.
+  4. `elo_history.jsonl` retains the short key names by decision 2. A reader who opens that
+     file without its docstring has only the file's name to tell it apart from a calibration
+     export.
+  5. S13 is the next authorized section and was not begun.
 
 ### Future handoff template
 
