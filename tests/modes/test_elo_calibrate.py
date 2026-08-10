@@ -16,6 +16,7 @@ from boost_and_broadside.artifacts import (
 from boost_and_broadside.config import EloCalibrateConfig, EnvConfig, ShipConfig
 from boost_and_broadside.config.defaults import MODEL_CONFIG
 from boost_and_broadside.modes.elo_calibrate import (
+    _SCHEMA_VERSION,
     SCRIPTED_ANCHOR_ELO,
     calibrate_live_curve,
     run_elo_calibrate_mode,
@@ -178,7 +179,9 @@ def _store(tmp_path) -> ArtifactStore:
     )
 
 
-def _source_measurement(tmp_path, reference: str, *, complete: bool = True) -> Path:
+def _source_measurement(
+    tmp_path, reference: str, *, complete: bool = True, schema_version: int = _SCHEMA_VERSION
+) -> Path:
     """A calibration artifact for the refit path to read, finished unless asked otherwise."""
 
     run_dir = tmp_path / "checkpoints" / "test-run"
@@ -199,7 +202,7 @@ def _source_measurement(tmp_path, reference: str, *, complete: bool = True) -> P
     artifact = store.create(
         ArtifactRecipe(
             artifact_type="elo-calibration",
-            result_schema_version=1,
+            result_schema_version=schema_version,
             subjects={"run": "test-run"},
             parameters={"tie_mode": "half_win"},
         ),
@@ -273,6 +276,23 @@ class TestRefit:
         source = _source_measurement(tmp_path, "scripted", complete=False)
 
         with pytest.raises(ArtifactIncomplete, match="cannot be cited"):
+            run_elo_calibrate_mode(
+                run_spec=None,
+                from_artifact=source,
+                ship_config=ShipConfig(),
+                device="cpu",
+                config=EloCalibrateConfig(num_envs=4, target_stderr=10.0, max_batches=1),
+                checkpoint_dir=str(tmp_path / "checkpoints"),
+                store=_store(tmp_path),
+            )
+
+    def test_refitting_an_older_result_schema_is_refused_by_version(self, tmp_path):
+        """Schema 1 spells the per-player rating ``training_elo``. Reading it as
+        ``live_elo`` would surface as a bare KeyError rather than as the version
+        mismatch it is; renderers gate on the schema and so does this."""
+        source = _source_measurement(tmp_path, "scripted", schema_version=1)
+
+        with pytest.raises(ValueError, match="schema version 1"):
             run_elo_calibrate_mode(
                 run_spec=None,
                 from_artifact=source,

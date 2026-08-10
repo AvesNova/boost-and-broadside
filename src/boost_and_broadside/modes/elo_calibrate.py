@@ -256,6 +256,16 @@ def _load_source_measurement(path: str | Path) -> tuple[dict, dict, str]:
     # refitting them would report that fraction as a measurement.
     require_complete(artifact)
     manifest = artifact.manifest
+    # Renderers gate on the result schema and so does this: schema 1 spells the
+    # per-player rating ``training_elo``, and reading it as ``live_elo`` would
+    # surface as a bare KeyError rather than as the version mismatch it is.
+    stored_schema = manifest.get("result_schema_version")
+    if stored_schema != _SCHEMA_VERSION:
+        raise ValueError(
+            f"{path} holds an elo-calibration result of schema version {stored_schema!r}; "
+            f"--from-artifact reads version {_SCHEMA_VERSION}. Re-measure it rather than "
+            "refitting a shape this version does not understand."
+        )
     return artifact.read_json(), manifest, artifact_digest(artifact)
 
 
