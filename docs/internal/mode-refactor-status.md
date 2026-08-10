@@ -36,8 +36,8 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: none; `S10R` closed both S10 blockers and passed independent re-review.
-- Next section: `S11` — BC correction.
+- Active section: `S11` — BC correction.
+- Next section: `S12` — live Elo.
 - Blocking issue: none.
 - Landmark migration: scheduled for `S15`, after all target schemas stabilize.
 
@@ -59,7 +59,7 @@ code, tests, and reader-facing documentation.
 | S09 | 6 | completed | artifact/publication architect | Sol / extra high | Implement artifacts, provenance, raw samples, publication manifest, and offline render checks |
 | S10 | 6 gate | completed | artifact reviewer | Sol / extra high | Review schemas, identity, atomicity, resume, Git-ignore safety, and offline publication |
 | S10R | 6 gate remediation | completed | artifact remediator + reviewer | Sol / extra high | Close the S10 blockers and obtain an independent artifact/publication re-review |
-| S11 | 7 | pending | training-profile engineer | Sol / high | Correct BC independently and validate its allowed differences from RL |
+| S11 | 7 | in_progress | training-profile engineer | Sol / high | Correct BC independently and validate its allowed differences from RL |
 | S12 | 8 | pending | live-Elo engineer | Sol / extra high | Implement/document approximate live Elo separately from calibrated Elo |
 | S13 | 9 | pending | VRAM engineer | Sol / extra high | Implement resolution precedence, probing, cache fingerprints, and provenance |
 | S14 | 7–9 gate | pending | training-systems reviewer | Sol / extra high | Review BC, live Elo, and VRAM behavior together before checkpoint schema freeze |
