@@ -245,9 +245,10 @@ uv run bnb publish --check      # render into a temporary tree and compare
 
 Publication is offline and performs no simulation: it verifies each source artifact's
 hashes, refuses one produced from a dirty checkout or from a measurement that never
-finished, and installs atomically. `--check` fails on a canonical output that is missing,
-differs from what its renderer produces, or is no longer owned by the manifest; it changes
-nothing, so removing a stale output is `bnb publish`'s job. The renderer is the source of
+finished, and installs atomically. `--check` fails on a canonical output that is missing or
+differs from what its renderer produces, and — when checking the whole inventory rather than
+one `--target` — on one the manifest no longer owns; it changes nothing, so removing a stale
+output is `bnb publish`'s job. The renderer is the source of
 the axis labels and equal-scale geometry; the tracked rasters are regenerated from it
 rather than edited independently.
 

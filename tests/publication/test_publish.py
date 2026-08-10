@@ -257,6 +257,44 @@ def test_an_ownership_record_naming_a_path_outside_docs_deletes_nothing(
     assert outsider.is_file()
 
 
+@pytest.mark.parametrize(
+    ("record", "message"),
+    [
+        ("{not json", "not valid JSON"),
+        ('{"schema_version": 1}', "list of output paths"),
+        ('{"schema_version": 1, "outputs": "docs/results/dropped.json"}', "list of output paths"),
+        ('{"schema_version": 1, "outputs": [17]}', "list of output paths"),
+    ],
+)
+def test_an_unreadable_ownership_record_is_an_error_not_an_empty_one(
+    repository, renderers, record, message
+) -> None:
+    # Reading a damaged record as "nothing was owned" would switch the stale
+    # check off silently, which is the failure this whole path exists to catch.
+    location = build_artifact(repository, {"value": 1})
+    write_manifest(repository, _TWO_ENTRIES.format(location=location))
+    run_publish(repository)
+    write_manifest(repository, _ONE_ENTRY.format(location=location))
+    (repository / OWNERSHIP_RELATIVE_PATH).write_text(record)
+
+    with pytest.raises(PublicationError, match=message):
+        run_publish(repository, check=True)
+
+
+def test_an_absent_ownership_record_means_nothing_was_published_yet(
+    repository, renderers
+) -> None:
+    # Unlike a damaged one, no record at all is the ordinary first-run state.
+    location = build_artifact(repository, {"value": 1})
+    write_manifest(repository, _SUMMARY.format(location=location))
+    assert not (repository / OWNERSHIP_RELATIVE_PATH).exists()
+
+    report = run_publish(repository)
+
+    assert report.stale == [] and report.removed == []
+    assert not report.failed
+
+
 def test_an_incomplete_source_is_refused(repository, renderers) -> None:
     location = build_artifact(repository, {"value": 1}, complete=False)
     write_manifest(repository, _SUMMARY.format(location=location))

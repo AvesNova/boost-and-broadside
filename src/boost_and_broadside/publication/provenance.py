@@ -14,6 +14,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from boost_and_broadside.publication.renderer_api import PublicationError
+
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from boost_and_broadside.publication.manifest import PublicationManifest
 
@@ -50,17 +52,34 @@ def render_ownership(manifest: PublicationManifest) -> str:
 
 
 def load_ownership(root: str | Path) -> tuple[str, ...]:
-    """The outputs the previous run recorded, or nothing on a first run."""
+    """The outputs the previous run recorded, or nothing on a first run.
+
+    This is the only evidence that an output the manifest has dropped was ever
+    canonical, so a record that cannot be read is an error rather than an empty
+    one: reading it as "nothing was owned" would turn the stale-output check off
+    without saying so. An absent file is different — it genuinely means nothing
+    has been published yet — and the record is tracked, so its deletion shows up
+    in review.
+    """
 
     path = Path(root) / OWNERSHIP_RELATIVE_PATH
     if not path.is_file():
         return ()
+    location = OWNERSHIP_RELATIVE_PATH.as_posix()
     try:
         payload = json.loads(path.read_text())
-    except json.JSONDecodeError:
-        return ()
-    outputs = payload.get("outputs", [])
-    return tuple(str(item) for item in outputs)
+    except json.JSONDecodeError as error:
+        raise PublicationError(
+            f"{location} is not valid JSON ({error}); it records which outputs the "
+            "manifest owned. Restore it from Git, or delete it to start a fresh record."
+        ) from error
+    outputs = payload.get("outputs") if isinstance(payload, dict) else None
+    if not isinstance(outputs, list) or any(not isinstance(item, str) for item in outputs):
+        raise PublicationError(
+            f"{location} does not record a list of output paths under 'outputs'; "
+            "restore it from Git, or delete it to start a fresh record."
+        )
+    return tuple(outputs)
 
 
 __all__ = [

@@ -23,10 +23,11 @@ which is what stops a resumed sweep from mixing two different requests.
 Resume verifies the recipe and deliberately not the payload hashes. Each write
 replaces the payload and *then* saves the manifest, so a process killed between
 those two steps leaves a complete, newer payload beside a manifest recording the
-previous hash — exactly the artifact resume exists to continue. Re-hashing would
-reject it, and would in any case check bytes the resumed sweep is about to
-rewrite. Integrity is verified where an artifact is read as final evidence
-instead: :func:`load_artifact` re-hashes by default, and publication and
+previous hash — exactly the artifact resume exists to continue. That one file is
+also the one a resumed sweep reads back and builds on, so re-hashing here could
+not protect it without a different protocol: it would only reject the artifact
+worth continuing. Integrity is verified where an artifact is read as final
+evidence instead: :func:`load_artifact` re-hashes by default, and publication and
 reanalysis additionally require :func:`require_complete`.
 """
 

@@ -28,7 +28,7 @@ def _render_clip(inputs: RenderInputs, out_dir: Path) -> list[Path]:
     return [destination]
 
 
-def _render_external(inputs: RenderInputs, out_dir: Path) -> list[Path]:  # pragma: no cover
+def _render_external(inputs: RenderInputs, out_dir: Path) -> list[Path]:
     raise PublicationError("an external asset is verified, never rendered")
 
 

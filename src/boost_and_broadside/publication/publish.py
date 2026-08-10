@@ -53,6 +53,8 @@ UNCHANGED = "unchanged"
 CHANGED = "changed"
 MISSING = "missing"
 UNSELECTED = "unselected"
+# Not an entry status: staleness is a property of a leftover output rather than
+# of any entry, so it is reported in PublishReport.stale, not through by_status.
 STALE = "stale"
 
 _PIXEL_SUFFIXES = frozenset({".png"})
