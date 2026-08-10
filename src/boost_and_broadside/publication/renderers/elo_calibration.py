@@ -86,7 +86,7 @@ def plot_live_curve(result: dict, path: Path) -> Path:
     """
     curve = result["curve"]
     steps = _finite(curve, "global_step") / 1e6
-    training = _finite(curve, "live_training")
+    training = _finite(curve, "live_elo")
     calibrated = _finite(curve, "live_calibrated")
     stderr = _finite(curve, "live_stderr")
     good = _measured(calibrated, stderr)
@@ -98,7 +98,7 @@ def plot_live_curve(result: dict, path: Path) -> Path:
 
     _style_axes(
         axes,
-        f"Live Elo: in-training estimate vs calibrated  —  {_subject(result)}",
+        f"Live Elo vs calibrated Elo  —  {_subject(result)}",
         "Each update's rating refit from its own win/loss record against "
         f"post-hoc measured opponents (reference: {result.get('reference', 'n/a')})",
     )
@@ -112,7 +112,7 @@ def plot_live_curve(result: dict, path: Path) -> Path:
         linewidth=0,
         zorder=2,
     )
-    axes.plot(steps, training, color=TRAINING, linewidth=2.0, zorder=3, label="In-training")
+    axes.plot(steps, training, color=TRAINING, linewidth=2.0, zorder=3, label="Live")
     axes.plot(
         steps[good],
         calibrated[good],
@@ -126,7 +126,7 @@ def plot_live_curve(result: dict, path: Path) -> Path:
     # Direct labels at the right edge, so identity survives without the legend.
     ends = []
     for values, color, name in (
-        (training, TRAINING, "in-training"),
+        (training, TRAINING, "live"),
         (np.where(good, calibrated, np.nan), CALIBRATED, "calibrated"),
     ):
         finite = np.isfinite(values)
@@ -146,7 +146,7 @@ def plot_live_curve(result: dict, path: Path) -> Path:
     lower.axhline(0.0, color=INK_MUTED, linewidth=1.0, zorder=2)
     lower.plot(steps, drift, color=INK_SECONDARY, linewidth=1.6, zorder=3)
     lower.fill_between(steps, 0.0, drift, color=INK_SECONDARY, alpha=0.13, linewidth=0, zorder=2)
-    lower.set_ylabel("calibrated − in-training", color=INK_SECONDARY, fontsize=9)
+    lower.set_ylabel("calibrated − live", color=INK_SECONDARY, fontsize=9)
     lower.set_xlabel("environment steps (millions)", color=INK_SECONDARY, fontsize=10)
 
     figure.tight_layout()
@@ -168,7 +168,7 @@ def plot_avg_curve(result: dict, path: Path) -> Path:
     """
     curve = result["curve"]
     steps = _finite(curve, "global_step") / 1e6
-    training = _finite(curve, "avg_training")
+    training = _finite(curve, "avg_live_elo")
     calibrated = _finite(curve, "avg_calibrated")
     stderr = _finite(curve, "avg_stderr")
     good = _measured(calibrated, stderr)
@@ -179,7 +179,7 @@ def plot_avg_curve(result: dict, path: Path) -> Path:
     axes = figure.add_subplot(111)
     _style_axes(
         axes,
-        f"Averaged-policy Elo: in-training vs calibrated  —  {_subject(result)}",
+        f"Averaged-policy Elo: live vs calibrated  —  {_subject(result)}",
         "Rated through the live policy it plays, so its error is the live curve's plus its own",
     )
     _draw_reference_lines(axes, _reference_lines(result))
@@ -200,7 +200,7 @@ def plot_avg_curve(result: dict, path: Path) -> Path:
         color=TRAINING,
         linewidth=2.0,
         zorder=4,
-        label="In-training",
+        label="Live",
     )
     axes.plot(
         steps[good],
@@ -212,7 +212,7 @@ def plot_avg_curve(result: dict, path: Path) -> Path:
     )
     if training_good.any():
         ends.append(
-            (steps[training_good][-1], training[training_good][-1], TRAINING, "in-training")
+            (steps[training_good][-1], training[training_good][-1], TRAINING, "live")
         )
     ends.append((steps[good][-1], calibrated[good][-1], CALIBRATED, "calibrated"))
     _label_series_ends(axes, ends)
@@ -315,14 +315,14 @@ def plot_tie_conventions(result: dict, path: Path) -> Path:
     steps = _finite(curve, "global_step") / 1e6
     # The in-training curve has no standard error of its own — it is the filter's
     # running state, defined at every update — so it is drawn unfiltered.
-    always = np.isfinite(_finite(curve, "live_training"))
+    always = np.isfinite(_finite(curve, "live_elo"))
     series = [
         (
-            _finite(curve, "live_training"),
+            _finite(curve, "live_elo"),
             always,
             TRAINING,
-            "in-training",
-            "In-training (ties = ½ win)",
+            "live",
+            "Live (ties = ½ win)",
         ),
     ]
     for mode, value_key, error_key in (
@@ -428,13 +428,13 @@ def plot_checkpoint_ratings(result: dict, path: Path) -> Path:
     # The random anchor is excluded: it defines the zero, so its "before and
     # after" is 0 to 0 by construction and says nothing about the run.
     players = [
-        p for p in result["players"] if p["training_elo"] is not None and p["label"] != "random"
+        p for p in result["players"] if p["live_elo"] is not None and p["label"] != "random"
     ]
     players.sort(key=lambda p: p["calibrated_elo"])
     if not players:
         return path
     labels = [p["label"] for p in players]
-    training = np.array([p["training_elo"] for p in players])
+    training = np.array([p["live_elo"] for p in players])
     calibrated = np.array([p["calibrated_elo"] for p in players])
     stderr = np.array([p["stderr"] for p in players])
     positions = np.arange(len(players))
@@ -443,7 +443,7 @@ def plot_checkpoint_ratings(result: dict, path: Path) -> Path:
     axes = figure.add_subplot(111)
     _style_axes(
         axes,
-        f"Ladder checkpoint ratings: in-training vs calibrated  —  {_subject(result)}",
+        f"Ladder checkpoint ratings: live vs calibrated  —  {_subject(result)}",
         "Each rung as the run recorded it, and as a full tournament measures it; "
         f"errors are relative to {result.get('reference', 'the reference')}",
     )
@@ -457,7 +457,7 @@ def plot_checkpoint_ratings(result: dict, path: Path) -> Path:
         zorder=3,
         edgecolors=SURFACE,
         linewidths=2,
-        label="In-training",
+        label="Live",
     )
     axes.errorbar(
         calibrated,
@@ -702,7 +702,7 @@ register(
         description="Live-vs-calibrated curves, per-checkpoint ratings, convergence, draw rates.",
         render=_render,
         required_artifacts=("calibration",),
-        supported_schemas={"calibration": (1,)},
+        supported_schemas={"calibration": (2,)},
         multi_file=True,
     )
 )

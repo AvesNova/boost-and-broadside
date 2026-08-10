@@ -169,11 +169,11 @@ def _calibration_result() -> dict:
             {
                 "update": update,
                 "global_step": step,
-                "live_training": live + 50.0,
+                "live_elo": live + 50.0,
                 "live_calibrated": live,
                 "live_stderr": 12.0,
                 "games": 400,
-                "avg_training": live + 20.0,
+                "avg_live_elo": live + 20.0,
                 "avg_calibrated": live - 30.0,
                 "avg_stderr": 15.0,
                 "live_calibrated_alt": live + 10.0,
@@ -181,10 +181,10 @@ def _calibration_result() -> dict:
             }
         )
     players = [
-        {"label": "random", "training_elo": 0.0, "global_step": 0},
-        {"label": "scripted", "training_elo": None, "global_step": None},
-        {"label": "ckpt_400000", "training_elo": 900.0, "global_step": 400_000},
-        {"label": "ckpt_1200000", "training_elo": 1300.0, "global_step": 1_200_000},
+        {"label": "random", "live_elo": 0.0, "global_step": 0},
+        {"label": "scripted", "live_elo": None, "global_step": None},
+        {"label": "ckpt_400000", "live_elo": 900.0, "global_step": 400_000},
+        {"label": "ckpt_1200000", "live_elo": 1300.0, "global_step": 1_200_000},
     ]
     for player, (calibrated, stderr) in zip(
         players, [(0.0, 8.0), (1000.0, 6.0), (850.0, 9.0), (1250.0, 10.0)], strict=True

@@ -90,22 +90,24 @@ def combine_series(rows: list[dict], keys: list[str]) -> tuple[np.ndarray, np.nd
 def checkpoint_points(summary: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Per-checkpoint ratings from a summary: ``(steps, ratings, stderr)``.
 
-    Reads the ``ladder/elo/ckpt_<step>`` keys (and their ``_stderr`` companions)
-    that both W&B and the calibration summary expose, so a run's frozen ladder
-    can be scattered as points on the Elo curve. ``stderr`` is NaN where absent.
+    Reads the ``calibrated_elo/ckpt_<step>`` keys (and their ``_stderr``
+    companions) a calibration summary exposes, so a run's frozen ladder can be
+    scattered as points on the calibrated Elo curve. ``stderr`` is NaN where
+    absent. The prefix is deliberately not the trainer's ``live_elo/``: these
+    points are post-hoc fits and are never mixed with live readings on one axis.
     """
     steps, ratings, errs = [], [], []
     for key, value in summary.items():
-        if not key.startswith("ladder/elo/ckpt_") or key.endswith("_stderr"):
+        if not key.startswith("calibrated_elo/ckpt_") or key.endswith("_stderr"):
             continue
         if not _finite(value):
             continue
-        step = key[len("ladder/elo/ckpt_") :]
+        step = key[len("calibrated_elo/ckpt_") :]
         if not step.isdigit():
             continue
         steps.append(float(step))
         ratings.append(float(value))
-        err = summary.get(f"ladder/elo/ckpt_{step}_stderr")
+        err = summary.get(f"calibrated_elo/ckpt_{step}_stderr")
         errs.append(float(err) if _finite(err) else float("nan"))
     order = np.argsort(steps) if steps else np.array([], dtype=int)
     arrays = (np.asarray(a) for a in (steps, ratings, errs))

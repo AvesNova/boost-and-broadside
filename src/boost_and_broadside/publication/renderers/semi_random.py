@@ -68,6 +68,6 @@ register(
         description="How informative each step of the random-to-scripted ladder is.",
         render=_render,
         required_artifacts=("ladder",),
-        supported_schemas={"ladder": (1,)},
+        supported_schemas={"ladder": (2,)},
     )
 )

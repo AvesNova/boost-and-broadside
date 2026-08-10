@@ -197,6 +197,6 @@ register(
         render=_render,
         required_artifacts=("scale",),
         optional_artifacts=("reference",),
-        supported_schemas={"scale": (1,), "reference": (1,)},
+        supported_schemas={"scale": (1,), "reference": (2,)},
     )
 )

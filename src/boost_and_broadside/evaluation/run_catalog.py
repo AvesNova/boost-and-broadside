@@ -58,7 +58,7 @@ class LadderPolicyRef:
     checkpoint: CheckpointRef
     label: str
     global_step: int
-    training_elo: float
+    live_elo: float
 
 
 def resolve_exact_run(run_name: str, checkpoint_dir: str | Path = "checkpoints") -> RunRef:
@@ -175,7 +175,7 @@ def select_tournament_ladder_policies(
                 f"roster checkpoint resolves outside selected run {run_path}: {path}"
             )
         try:
-            training_elo = float(entry["elo"])
+            live_elo = float(entry["elo"])
         except (KeyError, TypeError, ValueError) as error:
             raise InvalidCheckpointError(
                 f"roster checkpoint step {step} has invalid Elo {entry.get('elo')!r}"
@@ -185,7 +185,7 @@ def select_tournament_ladder_policies(
                 checkpoint=CheckpointRef(path, CheckpointKind.LADDER, step=step),
                 label=str(entry["label"]),
                 global_step=step,
-                training_elo=training_elo,
+                live_elo=live_elo,
             )
         )
     return selected

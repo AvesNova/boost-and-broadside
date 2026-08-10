@@ -40,7 +40,7 @@ class TestCalibrateLiveCurve:
             counts[label] = [probability * games, (1 - probability) * games, 0]
         curve = calibrate_live_curve([_record(1, 100, counts, live=-999.0)], opponents)
         assert curve[0]["live_calibrated"] == pytest.approx(truth, abs=5.0)
-        assert curve[0]["live_training"] == -999.0  # untouched, for comparison
+        assert curve[0]["live_elo"] == -999.0  # untouched, for comparison
 
     def test_ignores_opponents_with_no_calibrated_rating(self):
         counts = {"random": [90, 10, 0], "mystery_agent": [50, 50, 0]}
@@ -144,9 +144,9 @@ def _stored_result(reference: str) -> dict:
     return {
         "run": "test-run",
         "players": [
-            {"label": "random", "training_elo": 0.0, "global_step": 0},
-            {"label": "scripted", "training_elo": None, "global_step": None},
-            {"label": "ckpt_100", "training_elo": 1500.0, "global_step": 100},
+            {"label": "random", "live_elo": 0.0, "global_step": 0},
+            {"label": "scripted", "live_elo": None, "global_step": None},
+            {"label": "ckpt_100", "live_elo": 1500.0, "global_step": 100},
         ],
         "player_labels": labels,
         "wins_matrix": wins,

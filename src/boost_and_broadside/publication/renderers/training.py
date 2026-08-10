@@ -45,7 +45,7 @@ def _render_elo_curve(inputs: RenderInputs, out_dir: Path) -> list[Path]:
 
     # The scripted controller — the one opponent shared across runs — is the
     # reference line for reading where the policy actually got to.
-    scripted = summary.get("elo/scripted")
+    scripted = summary.get("calibrated_elo/scripted")
     references = [("scripted controller", float(scripted))] if history._finite(scripted) else None
     # Tournament-rated checkpoints sit on the refit curve as precise points;
     # the last one pins the curve's endpoint.
@@ -58,7 +58,7 @@ def _render_elo_curve(inputs: RenderInputs, out_dir: Path) -> list[Path]:
     )
     return [
         charts.trend(
-            [_line(rows, "ladder/elo/live", "live policy (refit)")],
+            [_line(rows, "calibrated_elo/live", "live policy (refit)")],
             out_dir / "elo_curve.png",
             title="Calibrated Elo over training",
             ylabel="Elo (scripted = 1000)",
@@ -136,7 +136,7 @@ register(
         description="Post-hoc calibrated Elo over training, with tournament-rated checkpoints.",
         render=_render_elo_curve,
         required_artifacts=("calibration",),
-        supported_schemas={"calibration": (1,)},
+        supported_schemas={"calibration": (2,)},
     )
 )
 register(

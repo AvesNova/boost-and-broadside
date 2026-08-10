@@ -122,7 +122,11 @@ SCRIPTED_ANCHOR_ELO = 1000.0
 
 # Result payload version, carried in the artifact recipe so a renderer can
 # refuse a shape it does not understand.
-_SCHEMA_VERSION = 1
+#
+# 2: the in-training columns say which gauge they are on. ``players[].live_elo``
+#    was ``training_elo`` and ``curve[].live_elo`` / ``avg_live_elo`` were
+#    ``live_training`` / ``avg_training``; ``calibrated_elo`` is unchanged.
+_SCHEMA_VERSION = 2
 
 
 def calibrate_live_curve(
@@ -154,7 +158,7 @@ def calibrate_live_curve(
         point = {
             "update": record["update"],
             "global_step": record["global_step"],
-            "live_training": record["live"],
+            "live_elo": record["live"],
             "live_calibrated": live,
             "live_stderr": live_stderr,
             "games": int(sum(wins) + sum(losses)),
@@ -169,7 +173,7 @@ def calibrate_live_curve(
                 np.array([float(live_loss) + share]),
                 np.array([float(live_win) + share]),
             )
-            point["avg_training"] = record["avg"]
+            point["avg_live_elo"] = record["avg"]
             point["avg_calibrated"] = avg
             point["avg_stderr"] = avg_stderr
         curve.append(point)
@@ -374,7 +378,7 @@ def run_elo_calibrate_mode(
         )
         print(f"\n=== Elo refit from {source_manifest['artifact_id']} (no play) ===")
         players = [
-            Player(p["label"], ResolvedAgent("stored", None), p["training_elo"], p["global_step"])
+            Player(p["label"], ResolvedAgent("stored", None), p["live_elo"], p["global_step"])
             for p in stored["players"]
         ]
         wins = np.asarray(stored["wins_matrix"], dtype=np.float64)
@@ -545,7 +549,7 @@ def run_elo_calibrate_mode(
         "players": [
             {
                 "label": player.label,
-                "training_elo": player.training_elo,
+                "live_elo": player.live_elo,
                 "calibrated_elo": ratings[player.label],
                 "calibrated_elo_alt": alt_ratings[player.label],
                 "stderr": stderrs[player.label],
@@ -596,16 +600,16 @@ def run_elo_calibrate_mode(
 
 
 def _print_summary(result: dict) -> None:
-    """Print the calibrated-vs-training comparison for every ladder player."""
-    print(f"\n  {'agent':<20} {'training':>10} {'calibrated':>12} {'+/-':>7} {'drift':>9}")
+    """Print the calibrated-versus-live comparison for every ladder player."""
+    print(f"\n  {'agent':<20} {'live':>10} {'calibrated':>12} {'+/-':>7} {'drift':>9}")
     print(f"  {'-' * 62}")
     for player in result["players"]:
-        training = player["training_elo"]
+        live = player["live_elo"]
         calibrated = player["calibrated_elo"]
-        drift = f"{calibrated - training:+9.1f}" if training is not None else f"{'—':>9}"
-        training_text = f"{training:10.1f}" if training is not None else f"{'—':>10}"
+        drift = f"{calibrated - live:+9.1f}" if live is not None else f"{'—':>9}"
+        live_text = f"{live:10.1f}" if live is not None else f"{'—':>10}"
         print(
-            f"  {player['label']:<20} {training_text} {calibrated:12.1f} "
+            f"  {player['label']:<20} {live_text} {calibrated:12.1f} "
             f"{player['stderr']:7.1f} {drift}"
         )
     primary, alt = result.get("tie_mode", "half_win"), result.get("tie_mode_alt", "decisive")
@@ -642,16 +646,16 @@ def _print_summary(result: dict) -> None:
     # Random is excluded: the step from it to the first rung is the coarse anchor
     # link, not a rung-to-rung gap, and listing it here would read as one.
     ladder = [
-        p for p in result["players"] if p["training_elo"] is not None and p["label"] != "random"
+        p for p in result["players"] if p["live_elo"] is not None and p["label"] != "random"
     ]
     ladder.sort(key=lambda p: p["global_step"] or 0)
     if len(ladder) > 1:
-        print(f"\n  {'rung-to-rung gap':<20} {'training':>10} {'calibrated':>12} {'delta':>9}")
+        print(f"\n  {'rung-to-rung gap':<20} {'live':>10} {'calibrated':>12} {'delta':>9}")
         print(f"  {'-' * 54}")
         for previous, current in zip(ladder, ladder[1:]):
-            training_gap = current["training_elo"] - previous["training_elo"]
+            live_gap = current["live_elo"] - previous["live_elo"]
             calibrated_gap = current["calibrated_elo"] - previous["calibrated_elo"]
             print(
-                f"  {current['label']:<20} {training_gap:10.1f} {calibrated_gap:12.1f} "
-                f"{calibrated_gap - training_gap:+9.1f}"
+                f"  {current['label']:<20} {live_gap:10.1f} {calibrated_gap:12.1f} "
+                f"{calibrated_gap - live_gap:+9.1f}"
             )

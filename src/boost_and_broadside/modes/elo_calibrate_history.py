@@ -6,11 +6,16 @@ sparse metric keys, and a flat ``summary.json`` of each metric's final value. A
 calibration result carries the same information for the *calibrated* ratings,
 just in its own richer shape.
 
-Reducing the calibration result to those two shapes — under the same metric key
-names W&B itself uses (``ladder/elo/live``, ``ladder/elo/ckpt_<step>``,
-``elo/scripted``) — means one loader and one chart system read the in-training
-and calibrated ratings interchangeably. "In-training vs calibrated" becomes
-simply which file is opened, exactly like reading two W&B runs.
+Reducing the calibration result to those two shapes means one loader and one
+chart system read the in-training and the calibrated ratings — "in-training vs
+calibrated" becomes simply which file is opened, exactly like reading two W&B
+runs.
+
+The *shapes* are shared; the key namespaces deliberately are not. Everything
+here is written under ``calibrated_elo/``, while the trainer logs its own
+approximate ratings under ``live_elo/`` (see ``config/live_elo``). The two are
+different estimators of different things and the naming is what stops a chart,
+a summary lookup, or a piece of prose from quietly presenting one as the other.
 
 The conversion is pure and takes the already-persisted ``result`` dict, so a
 finished run can be back-filled from a stored calibration artifact without
@@ -38,8 +43,8 @@ def to_history_rows(result: dict) -> list[dict]:
 
     The live/averaged curves become one row per update at that update's global
     step; each checkpoint's calibrated rating is added to the row at its own
-    step (or a fresh row) under the same ``ladder/elo/ckpt_<step>`` key W&B logs
-    the in-training rating under.
+    step (or a fresh row), under the ``calibrated_elo/`` prefix that marks every
+    rating in this file as a post-hoc fit rather than a live reading.
     """
     rows: dict[int, dict] = {}
 
@@ -51,12 +56,12 @@ def to_history_rows(result: dict) -> list[dict]:
         if step is None:
             continue
         row = row_at(step)
-        _put(row, "ladder/elo/live", point.get("live_calibrated"))
-        _put(row, "ladder/elo/live_stderr", point.get("live_stderr"))
-        _put(row, "ladder/elo/avg", point.get("avg_calibrated"))
-        _put(row, "ladder/elo/avg_stderr", point.get("avg_stderr"))
-        _put(row, "ladder/elo/live_decisive", point.get("live_calibrated_alt"))
-        _put(row, "ladder/elo/live_decisive_stderr", point.get("live_stderr_alt"))
+        _put(row, "calibrated_elo/live", point.get("live_calibrated"))
+        _put(row, "calibrated_elo/live_stderr", point.get("live_stderr"))
+        _put(row, "calibrated_elo/avg", point.get("avg_calibrated"))
+        _put(row, "calibrated_elo/avg_stderr", point.get("avg_stderr"))
+        _put(row, "calibrated_elo/live_decisive", point.get("live_calibrated_alt"))
+        _put(row, "calibrated_elo/live_decisive_stderr", point.get("live_stderr_alt"))
 
     for player in result.get("players", []):
         step = player.get("global_step")
@@ -67,8 +72,8 @@ def to_history_rows(result: dict) -> list[dict]:
         if step is None or player["label"] == "random":
             continue
         row = row_at(step)
-        _put(row, f"ladder/elo/ckpt_{int(step)}", player.get("calibrated_elo"))
-        _put(row, f"ladder/elo/ckpt_{int(step)}_stderr", player.get("stderr"))
+        _put(row, f"calibrated_elo/ckpt_{int(step)}", player.get("calibrated_elo"))
+        _put(row, f"calibrated_elo/ckpt_{int(step)}_stderr", player.get("stderr"))
 
     # A row carrying only ``_step`` means every fit at that step was non-finite;
     # drop it rather than emit a metric-less row (W&B never logs an empty step).
@@ -78,9 +83,9 @@ def to_history_rows(result: dict) -> list[dict]:
 def to_summary(result: dict) -> dict:
     """Calibrated finals + calibration metadata as a flat W&B-style summary.
 
-    Per-checkpoint calibrated ratings land under the same ``ladder/elo/ckpt_<step>``
-    keys W&B's summary uses, and the scripted agent — the one opponent shared
-    across runs — under ``elo/scripted``, so both files are directly comparable.
+    Per-checkpoint calibrated ratings land under ``calibrated_elo/ckpt_<step>``
+    keys, and the scripted agent — the one opponent shared across runs — under
+    ``calibrated_elo/scripted``.
     """
     summary: dict = {}
     final_step = 0
@@ -88,20 +93,20 @@ def to_summary(result: dict) -> dict:
         label = player["label"]
         calibrated = player.get("calibrated_elo")
         if label == "scripted":
-            _put(summary, "elo/scripted", calibrated)
+            _put(summary, "calibrated_elo/scripted", calibrated)
             continue
         step = player.get("global_step")
         if step is None or label == "random":
             continue
-        _put(summary, f"ladder/elo/ckpt_{int(step)}", calibrated)
-        _put(summary, f"ladder/elo/ckpt_{int(step)}_stderr", player.get("stderr"))
+        _put(summary, f"calibrated_elo/ckpt_{int(step)}", calibrated)
+        _put(summary, f"calibrated_elo/ckpt_{int(step)}_stderr", player.get("stderr"))
         final_step = max(final_step, int(step))
 
     curve = result.get("curve", [])
     if curve:
         last = curve[-1]
-        _put(summary, "ladder/elo/live", last.get("live_calibrated"))
-        _put(summary, "ladder/elo/avg", last.get("avg_calibrated"))
+        _put(summary, "calibrated_elo/live", last.get("live_calibrated"))
+        _put(summary, "calibrated_elo/avg", last.get("avg_calibrated"))
         final_step = max(final_step, int(last.get("global_step") or 0))
 
     summary["_step"] = final_step

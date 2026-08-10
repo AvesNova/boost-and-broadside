@@ -108,7 +108,7 @@ class Player:
 
     label: str
     agent: ResolvedAgent
-    training_elo: float | None  # rating the run itself assigned, for comparison
+    live_elo: float | None  # rating the run itself assigned, for comparison
     global_step: int | None  # None for agents with no place on the timeline
 
 
@@ -285,7 +285,7 @@ def build_players(
             Player(
                 policy_ref.label,
                 ResolvedAgent("policy", policy),
-                policy_ref.training_elo,
+                policy_ref.live_elo,
                 policy_ref.global_step,
             )
         )
