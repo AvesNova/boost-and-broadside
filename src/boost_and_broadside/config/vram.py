@@ -169,9 +169,9 @@ VRAM_PRESETS: Mapping[int, VramPreset] = {
             grad_checkpoint=False,
             measured_on="NVIDIA GeForce RTX 4070 Laptop GPU",
             basis=(
-                "the shipped launch preset; the Jul 2026 sweep in "
-                "docs/engineering/memory-optimization.md found the microbatch divisor "
-                "of 5 to be the largest that fits this card"
+                "the shipped launch preset, probed directly on that card (Aug 2026): one "
+                "complete rl update peaked at 6.00 GB allocated and 7.88 GB reserved of "
+                "8.19 GB, with no gradient checkpointing"
             ),
         ),
         VramPreset(
@@ -386,7 +386,18 @@ def utc_timestamp() -> str:
 
 @dataclass(frozen=True)
 class VramResolution:
-    """What a VRAM policy decided, and how honestly it knows it."""
+    """What a VRAM policy decided, and how honestly it knows it.
+
+    ``knobs`` is what this policy proposed.  ``applied`` is the subset that
+    actually reached the launch: a knob the command line also named is dropped
+    from it, because the launch took that value from the command line and not
+    from here.  Both are recorded, so a reader can see a proposal that was
+    overridden rather than only its replacement.
+
+    ``status`` is ``measured`` only for a probe of *this* machine.  A preset row
+    is ``provisional`` even when its numbers were measured somewhere else, and a
+    launch VRAM did not size at all is ``unresolved``.
+    """
 
     policy: str
     source: ResolutionSource | None

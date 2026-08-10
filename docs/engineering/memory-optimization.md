@@ -307,11 +307,21 @@ every resolved value with its source (`profile`, `derived`, `vram-cache`, `vram-
 
 Only the 8 GB row is measured — it is exactly the launch every registered profile already
 resolves to (3904 envs / 3 shards / 25,000 microbatch tokens / no gradient checkpointing for
-`rl`), sourced from the sweep above. The 16, 24, and 32 GB rows are linear extrapolations of
-the persistent-buffer and rollout-peak figures in the production comparison and have never
-been run. Applying *any* row, including the measured one, is reported as `provisional`,
-because a measurement belongs to the card it was taken on. Only a probe of the current
-machine is reported as `measured`.
+`rl`). Probing that card directly (Aug 2026, one complete `rl` update, eager, Torch 2.13 /
+CUDA 13.0) accepted it on the first candidate:
+
+| candidate | allocated peak | reserved peak | of total | outcome |
+|---|---:|---:|---:|---|
+| 3904 envs, 25,000 microbatch tokens, no checkpointing | 6.00 GB | 7.88 GB | 8.19 GB | fit |
+
+Reserved peak is 96% of the card, so this row has essentially no allocator headroom on
+8 GB — it fits, and a slightly larger shard or microbatch would not. That is why the ladder
+below it reaches for gradient checkpointing before a narrower shard.
+
+The 16, 24, and 32 GB rows are linear extrapolations of the persistent-buffer and
+rollout-peak figures in the production comparison and have never been run. Applying *any*
+row, including the measured one, is reported as `provisional`, because a measurement belongs
+to the card it was taken on. Only a probe of the current machine is reported as `measured`.
 
 ### Probing
 

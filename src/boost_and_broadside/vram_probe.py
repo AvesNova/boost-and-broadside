@@ -339,12 +339,13 @@ def resolve_vram(
         )
 
     geometry = launch_geometry(PROFILES[profile_name])
+    device_record = device_identity(device)
     identity = cache_identity(
         profile_name=profile_name,
         profile_fingerprint=profile_fingerprint,
         geometry=geometry,
         compile_mode=compile_mode,
-        device=device_identity(device),
+        device=device_record,
         software=software_identity(),
     )
     key = identity_fingerprint(identity)
@@ -367,6 +368,9 @@ def resolve_vram(
         compile_mode=compile_mode,
         profile_fingerprint=profile_fingerprint,
         runner=runner,
+        # The device was already identified above; asking the driver twice
+        # cannot improve the answer and could only disagree with it.
+        identity=device_record,
     )
     for attempt in attempts[:-1]:
         announce(f"  rejected {attempt.knobs.document()}: {attempt.reason}")
