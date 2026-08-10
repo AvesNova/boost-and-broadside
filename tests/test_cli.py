@@ -11,6 +11,7 @@ import pytest
 
 from boost_and_broadside import cli, cli_commands
 from boost_and_broadside.artifacts import ArtifactStore, Invocation
+from boost_and_broadside.launch import resolve_training_launch
 
 EXPECTED_COMMANDS = (
     "train",
@@ -300,6 +301,18 @@ def test_print_config_bypasses_runtime_dispatch_and_records_cli_sources(
         "device": "cpu",
         "seed": 17,
         "wandb": False,
+        # A CPU launch has nothing to size, and says so rather than implying a
+        # decision it did not make.
+        "vram": {
+            "policy": "auto",
+            "source": None,
+            "status": "unresolved",
+            "proposed": {"grad_checkpoint": None, "microbatch_tokens": None, "num_envs": None},
+            "applied": {"grad_checkpoint": None, "microbatch_tokens": None, "num_envs": None},
+            "tiers": {},
+            "identity_fingerprint": None,
+            "notes": ["--device cpu is not an accelerator; nothing to size"],
+        },
     }
 
 
@@ -599,20 +612,31 @@ def test_trainer_receives_complete_resolved_and_launch_provenance(monkeypatch) -
             captured.update(kwargs)
 
     monkeypatch.setattr(cli_commands, "PPOTrainer", CaptureTrainer)
-    resolved = cli_commands.resolve_named_profile("rl")
-    args = _parse(["train", "--profile", "rl", "--no-wandb", "--seed", "0"])
-    cli_commands._make_trainer(resolved, args, "cpu")
+    args = _parse(["train", "--profile", "rl", "--no-wandb", "--seed", "0", "--device", "cpu"])
+    launch = resolve_training_launch(
+        profile="rl",
+        vram=args.vram,
+        device="cpu",
+        seed=0,
+        compile_mode=args.compile_mode,
+        wandb=False,
+    )
+    cli_commands._make_trainer(launch, args, "cpu")
 
     document = captured["resolved_config_document"]
     assert document["profile"] == "rl"
-    assert document["resolved_config_fingerprint"] == resolved.resolved_config_fingerprint
-    assert captured["launch_provenance"] == {
+    assert document["resolved_config_fingerprint"] == launch.resolved.resolved_config_fingerprint
+    provenance = captured["launch_provenance"]
+    assert {key: provenance[key] for key in provenance if key != "vram"} == {
         "device": "cpu",
         "seed": 0,
         "compile_mode": "reduce-overhead",
         "wandb": False,
         "allow_config_drift": False,
     }
+    # The launch record names the VRAM decision, not just the execution settings.
+    assert provenance["vram"]["policy"] == "auto"
+    assert provenance["vram"]["status"] == "unresolved"
 
 
 def test_project_registers_installed_bnb_entrypoint(tmp_path) -> None:

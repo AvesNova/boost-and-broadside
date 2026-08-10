@@ -31,15 +31,14 @@ def resolved_profile_document(resolved: ResolvedTrainConfig) -> dict:
     }
 
 
-def format_resolved_profile(
-    name: str,
-    overrides: LaunchOverrides | None = None,
+def format_resolved_config(
+    resolved: ResolvedTrainConfig,
     *,
     launch: Mapping[str, object] | None = None,
 ) -> str:
-    """Resolve, validate, fingerprint, and format a launch without allocation."""
+    """Format an already resolved launch, so the caller resolves it exactly once."""
 
-    document = resolved_profile_document(resolve_named_profile(name, overrides))
+    document = resolved_profile_document(resolved)
     if launch is not None:
         document["launch"] = canonical_data(launch)
     rendered = json.dumps(
@@ -52,13 +51,23 @@ def format_resolved_profile(
     return rendered + "\n"
 
 
-def print_resolved_profile(
+def format_resolved_profile(
     name: str,
     overrides: LaunchOverrides | None = None,
+    *,
+    launch: Mapping[str, object] | None = None,
+) -> str:
+    """Resolve, validate, fingerprint, and format a launch without allocation."""
+
+    return format_resolved_config(resolve_named_profile(name, overrides), launch=launch)
+
+
+def print_resolved_config(
+    resolved: ResolvedTrainConfig,
     *,
     file: TextIO,
     launch: Mapping[str, object] | None = None,
 ) -> None:
-    """Thin output adapter for S05's eventual ``--print-config`` handler."""
+    """Thin output adapter for the ``--print-config`` handler."""
 
-    file.write(format_resolved_profile(name, overrides, launch=launch))
+    file.write(format_resolved_config(resolved, launch=launch))

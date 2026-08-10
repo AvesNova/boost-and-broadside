@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from types import MappingProxyType
 from typing import Any
 
-from boost_and_broadside.config.core import EnvConfig
+from boost_and_broadside.config.core import EnvConfig, ModelConfig
 from boost_and_broadside.config.fingerprint import canonical_data, fingerprint
 from boost_and_broadside.config.live_elo import validate_live_reference_probabilities
 from boost_and_broadside.config.schema import (
@@ -27,10 +27,67 @@ class LaunchOverrides:
 
     These are applied after the profile's legacy launch preset and all
     derivations.  The fully overridden result is then validated.
+
+    Each knob carries the source that chose it, because the same three values
+    can arrive from a VRAM cache entry, a VRAM preset, or the command line, and
+    a launch has to record which one it was.  ``cli`` is the default so that a
+    caller which only knows it is applying a user override says so by omission.
     """
 
     num_envs: int | None = None
     microbatch_tokens: int | None = None
+    grad_checkpoint: bool | None = None
+    num_envs_source: ResolutionSource = "cli"
+    microbatch_tokens_source: ResolutionSource = "cli"
+    grad_checkpoint_source: ResolutionSource = "cli"
+
+
+@dataclass(frozen=True)
+class LaunchGeometry:
+    """The token arithmetic every launch of one profile has to preserve.
+
+    ``aligned_logical_batch_tokens`` is the profile's nominal logical batch
+    after environment alignment.  It is fixed: a launch may redistribute it
+    across shard widths (plan tier 2) but may not resize it (tier 3).
+    """
+
+    entity_tokens: int
+    num_steps: int
+    num_minibatches: int
+    aligned_logical_batch_tokens: int
+    default_num_envs: int
+    default_rollouts_per_update: int
+    default_microbatch_tokens: int | None
+    default_num_envs_source: ResolutionSource
+    default_microbatch_source: ResolutionSource
+
+    def rollout_tokens(self, num_envs: int) -> int:
+        """Entity tokens resident in one rollout shard at this width."""
+
+        return num_envs * self.entity_tokens * self.num_steps
+
+    def minibatch_tokens(self, num_envs: int) -> int:
+        """Entity tokens in one PPO minibatch at this width."""
+
+        return self.rollout_tokens(num_envs) // self.num_minibatches
+
+    def shard_widths(self) -> tuple[tuple[int, int], ...]:
+        """Every ``(num_envs, rollouts_per_update)`` preserving the fixed batch.
+
+        Widest shard first.  A width qualifies only when it divides the aligned
+        logical batch exactly and stays minibatch-aligned, which is the same
+        rule :func:`derive_rollouts_per_update` and
+        :func:`validate_resolved_config` enforce one launch at a time.
+        """
+
+        total_env_steps = self.aligned_logical_batch_tokens // self.entity_tokens // self.num_steps
+        widths = []
+        for shards in range(1, total_env_steps + 1):
+            num_envs, remainder = divmod(total_env_steps, shards)
+            if remainder or num_envs % self.num_minibatches:
+                continue
+            widths.append((num_envs, shards))
+        return tuple(widths)
 
 
 def derive_aligned_num_envs(
@@ -112,6 +169,7 @@ def _profile_fingerprint_payload(profile: ProfileSpec) -> dict[str, Any]:
 def _resolved_fingerprint_payload(
     profile: ProfileSpec,
     *,
+    model_config: ModelConfig,
     env_config: EnvConfig,
     train_config: TrainConfig,
 ) -> dict[str, Any]:
@@ -124,7 +182,7 @@ def _resolved_fingerprint_payload(
         "schema_version": RESOLVED_CONFIG_SCHEMA_VERSION,
         "profile_name": profile.name,
         "ship_config": canonical_data(profile.ship_config),
-        "model_config": canonical_data(profile.model_config),
+        "model_config": canonical_data(model_config),
         "env_config": canonical_data(env_config),
         "train_config": train_payload,
     }
@@ -155,6 +213,7 @@ def _source_map(
     *,
     num_envs_source: ResolutionSource,
     microbatch_source: ResolutionSource,
+    grad_checkpoint_source: ResolutionSource,
 ) -> dict[str, ResolutionSource]:
     sources: dict[str, ResolutionSource] = {
         path: "profile" for path in _leaf_paths(config_payload)
@@ -173,6 +232,8 @@ def _source_map(
             sources[path] = num_envs_source
         if path.startswith("train_config.microbatch_tokens"):
             sources[path] = microbatch_source
+        if path.startswith("model_config.grad_checkpoint"):
+            sources[path] = grad_checkpoint_source
     return sources
 
 
@@ -286,22 +347,21 @@ def validate_resolved_config(config: TrainConfig) -> None:
     validate_live_reference_probabilities(config.live_reference_probabilities)
 
 
-def resolve_profile(
-    profile: ProfileSpec,
-    overrides: LaunchOverrides | None = None,
-) -> ResolvedTrainConfig:
-    """Resolve profile → derivations → launch preset → CLI overrides → validation."""
+def launch_geometry(profile: ProfileSpec) -> LaunchGeometry:
+    """Derive one profile's fixed token arithmetic and its default launch sizing.
+
+    This is the single named sizing derivation.  ``resolve_profile`` applies it
+    to one launch; VRAM resolution uses it to enumerate the shard widths that
+    preserve the same logical batch.
+    """
 
     _validate_profile(profile)
-    overrides = overrides or LaunchOverrides()
     environment = profile.environment
     rollout = profile.rollout
     launch = profile.launch_defaults
     entity_tokens = environment.num_ships + environment.num_fields
 
     if launch.rollout_tokens is not None:
-        if launch.rollout_tokens < 1:
-            raise ValueError(f"rollout_tokens must be positive, got {launch.rollout_tokens}")
         default_num_envs = derive_aligned_num_envs(
             rollout_tokens=launch.rollout_tokens,
             entity_tokens=entity_tokens,
@@ -311,6 +371,7 @@ def resolve_profile(
         if rollout.logical_batch_tokens % launch.rollout_tokens:
             raise ValueError("logical_batch_tokens must be divisible by rollout_tokens")
         default_rollouts_per_update = rollout.logical_batch_tokens // launch.rollout_tokens
+        default_num_envs_source: ResolutionSource = "derived"
     else:
         assert launch.num_envs is not None
         default_num_envs = launch.num_envs
@@ -320,32 +381,55 @@ def resolve_profile(
                 "logical_batch_tokens must be divisible by the fixed-environment rollout size"
             )
         default_rollouts_per_update = rollout.logical_batch_tokens // default_rollout_tokens
-
-    aligned_logical_batch_tokens = (
-        default_num_envs
-        * entity_tokens
-        * rollout.num_steps
-        * default_rollouts_per_update
-    )
+        default_num_envs_source = "vram-preset"
 
     if launch.microbatches_per_minibatch is not None:
         if launch.rollout_tokens is None:
             raise ValueError("microbatches_per_minibatch requires a rollout token target")
-        if launch.microbatches_per_minibatch < 1:
-            raise ValueError("microbatches_per_minibatch must be positive")
         default_microbatch_tokens = (
             launch.rollout_tokens
             // rollout.num_minibatches
             // launch.microbatches_per_minibatch
         )
-        microbatch_source: ResolutionSource = "vram-preset"
+        default_microbatch_source: ResolutionSource = "vram-preset"
     else:
         default_microbatch_tokens = launch.microbatch_tokens
-        microbatch_source = "vram-preset" if launch.microbatch_tokens is not None else "profile"
+        default_microbatch_source = (
+            "vram-preset" if launch.microbatch_tokens is not None else "profile"
+        )
 
-    num_envs = overrides.num_envs if overrides.num_envs is not None else default_num_envs
+    return LaunchGeometry(
+        entity_tokens=entity_tokens,
+        num_steps=rollout.num_steps,
+        num_minibatches=rollout.num_minibatches,
+        aligned_logical_batch_tokens=(
+            default_num_envs * entity_tokens * rollout.num_steps * default_rollouts_per_update
+        ),
+        default_num_envs=default_num_envs,
+        default_rollouts_per_update=default_rollouts_per_update,
+        default_microbatch_tokens=default_microbatch_tokens,
+        default_num_envs_source=default_num_envs_source,
+        default_microbatch_source=default_microbatch_source,
+    )
+
+
+def resolve_profile(
+    profile: ProfileSpec,
+    overrides: LaunchOverrides | None = None,
+) -> ResolvedTrainConfig:
+    """Resolve profile → derivations → VRAM cache/preset → CLI overrides → validation."""
+
+    geometry = launch_geometry(profile)
+    overrides = overrides or LaunchOverrides()
+    environment = profile.environment
+    rollout = profile.rollout
+    entity_tokens = geometry.entity_tokens
+
+    num_envs = (
+        overrides.num_envs if overrides.num_envs is not None else geometry.default_num_envs
+    )
     rollouts_per_update = derive_rollouts_per_update(
-        aligned_logical_batch_tokens=aligned_logical_batch_tokens,
+        aligned_logical_batch_tokens=geometry.aligned_logical_batch_tokens,
         num_envs=num_envs,
         entity_tokens=entity_tokens,
         num_steps=rollout.num_steps,
@@ -353,16 +437,24 @@ def resolve_profile(
     microbatch_tokens = (
         overrides.microbatch_tokens
         if overrides.microbatch_tokens is not None
-        else default_microbatch_tokens
+        else geometry.default_microbatch_tokens
     )
-    if overrides.num_envs is not None:
-        num_envs_source: ResolutionSource = "cli"
-    elif launch.rollout_tokens is not None:
-        num_envs_source = "derived"
+    num_envs_source = (
+        overrides.num_envs_source
+        if overrides.num_envs is not None
+        else geometry.default_num_envs_source
+    )
+    microbatch_source = (
+        overrides.microbatch_tokens_source
+        if overrides.microbatch_tokens is not None
+        else geometry.default_microbatch_source
+    )
+    if overrides.grad_checkpoint is None:
+        model_config = profile.model_config
+        grad_checkpoint_source: ResolutionSource = "profile"
     else:
-        num_envs_source = "vram-preset"
-    if overrides.microbatch_tokens is not None:
-        microbatch_source = "cli"
+        model_config = replace(profile.model_config, grad_checkpoint=overrides.grad_checkpoint)
+        grad_checkpoint_source = overrides.grad_checkpoint_source
 
     env_config = EnvConfig(
         num_ships=environment.num_ships,
@@ -432,18 +524,20 @@ def resolve_profile(
     canonical_train_config["schedule"] = canonical_data(profile.objective.schedule)
     config_payload = {
         "ship_config": canonical_data(profile.ship_config),
-        "model_config": canonical_data(profile.model_config),
+        "model_config": canonical_data(model_config),
         "train_config": canonical_train_config,
     }
     sources = _source_map(
         config_payload,
         num_envs_source=num_envs_source,
         microbatch_source=microbatch_source,
+        grad_checkpoint_source=grad_checkpoint_source,
     )
     profile_digest = fingerprint(_profile_fingerprint_payload(profile))
     resolved_digest = fingerprint(
         _resolved_fingerprint_payload(
             profile,
+            model_config=model_config,
             env_config=env_config,
             train_config=train_config,
         )
@@ -451,7 +545,7 @@ def resolve_profile(
     return ResolvedTrainConfig(
         profile_name=profile.name,
         ship_config=profile.ship_config,
-        model_config=profile.model_config,
+        model_config=model_config,
         train_config=train_config,
         schedule_spec=profile.objective.schedule,
         value_sources=MappingProxyType(sources),

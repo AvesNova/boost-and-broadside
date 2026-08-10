@@ -56,6 +56,16 @@ def _resume_subject(value: str) -> str:
     return _checkpoint_path(value) if Path(value).suffix == ".pt" else _exact_run(value)
 
 
+def _vram_policy(value: str) -> str:
+    from boost_and_broadside.config.vram import VramError, parse_vram_policy
+
+    try:
+        parse_vram_policy(value)
+    except VramError as error:
+        raise argparse.ArgumentTypeError(str(error)) from error
+    return value
+
+
 def _matchup(value: str) -> str:
     from boost_and_broadside.evaluation.sizes import MatchupParseError, parse_matchup
 
@@ -195,6 +205,16 @@ COMMANDS: tuple[CommandSpec, ...] = (
                 "--print-config",
                 action="store_true",
                 help="Resolve, validate, fingerprint, and print the launch without allocation.",
+            ),
+            _option(
+                "--vram",
+                type=_vram_policy,
+                default="auto",
+                metavar="POLICY",
+                help=(
+                    "Device memory sizing: auto (use a matching cached measurement), "
+                    "probe, reprobe, off, or a provisional preset 8|16|24|32 (GB)."
+                ),
             ),
             _option(
                 "--num-envs",
@@ -503,26 +523,23 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         if args.command == "train" and args.print_config:
-            from boost_and_broadside.config.resolve import LaunchOverrides
-            from boost_and_broadside.config.service import print_resolved_profile
-            from boost_and_broadside.execution import resolve_execution_settings
+            from boost_and_broadside.config.service import print_resolved_config
+            from boost_and_broadside.launch import resolve_training_launch
 
-            compile_mode = None if args.compile_mode == "none" else args.compile_mode
-            execution = resolve_execution_settings(
+            launch = resolve_training_launch(
+                profile=args.profile,
+                vram=args.vram,
                 device=args.device,
                 seed=args.seed,
-                compile_mode=compile_mode,
+                compile_mode=None if args.compile_mode == "none" else args.compile_mode,
                 wandb=not args.no_wandb,
                 allow_config_drift=args.allow_config_drift,
+                num_envs=args.num_envs,
+                microbatch_tokens=args.microbatch_tokens,
+                allow_probe=False,
             )
-            print_resolved_profile(
-                args.profile,
-                LaunchOverrides(
-                    num_envs=args.num_envs,
-                    microbatch_tokens=args.microbatch_tokens,
-                ),
-                file=sys.stdout,
-                launch=execution.document(),
+            print_resolved_config(
+                launch.resolved, file=sys.stdout, launch=launch.document()
             )
             return 0
 

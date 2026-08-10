@@ -11,8 +11,6 @@ from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAge
 from boost_and_broadside.artifacts import ArtifactStore, Invocation
 from boost_and_broadside.config import EnvConfig
 from boost_and_broadside.config.defaults import ELO_CALIBRATE, MODEL_CONFIG, REWARDS, SHIP_CONFIG
-from boost_and_broadside.config.resolve import LaunchOverrides
-from boost_and_broadside.config.schema import ResolvedTrainConfig
 from boost_and_broadside.config.service import resolved_profile_document
 from boost_and_broadside.constants import DEFAULT_MAX_BULLETS_PER_SHIP
 from boost_and_broadside.evaluation.run_catalog import (
@@ -21,6 +19,7 @@ from boost_and_broadside.evaluation.run_catalog import (
     select_latest_resumable_checkpoint,
 )
 from boost_and_broadside.execution import initialize_execution, resolve_execution_settings
+from boost_and_broadside.launch import TrainingLaunch, resolve_training_launch
 from boost_and_broadside.modes.ar_report import run_canonical_ar_report_mode
 from boost_and_broadside.modes.capture import run_capture_mode
 from boost_and_broadside.modes.collect import run_collect_stats_mode
@@ -118,13 +117,13 @@ def _resume_checkpoint(subject: str, checkpoint_dir: str = "checkpoints") -> tup
 
 
 def _make_trainer(
-    resolved: ResolvedTrainConfig,
+    launch: TrainingLaunch,
     args: argparse.Namespace,
     device: str,
     *,
     resume_wandb_run_id: str | None = None,
 ) -> PPOTrainer:
-    compile_mode = None if args.compile_mode == "none" else args.compile_mode
+    resolved = launch.resolved
     return PPOTrainer(
         train_config=resolved.train_config,
         model_config=resolved.model_config,
@@ -132,16 +131,12 @@ def _make_trainer(
         device=device,
         use_wandb=not args.no_wandb,
         scripted_agent=StochasticScriptedAgent(resolved.ship_config, StochasticAgentConfig()),
-        compile_mode=compile_mode,
+        compile_mode=launch.execution.compile_mode,
         resume_wandb_run_id=resume_wandb_run_id,
         resolved_config_document=resolved_profile_document(resolved),
-        launch_provenance={
-            "device": device,
-            "seed": args.seed,
-            "compile_mode": compile_mode,
-            "wandb": not args.no_wandb,
-            "allow_config_drift": args.allow_config_drift,
-        },
+        # The complete launch record, including which VRAM decision chose the
+        # rollout width, the microbatch, and gradient checkpointing.
+        launch_provenance=launch.document(),
     )
 
 
@@ -162,13 +157,24 @@ def _train(args: argparse.Namespace, prepare: ContextFactory) -> None:
         if args.pretrain_from is not None
         else None
     )
-    resolved = resolve_named_profile(
-        args.profile,
-        LaunchOverrides(num_envs=args.num_envs, microbatch_tokens=args.microbatch_tokens),
+    # Subjects are validated above, so a probe never runs for a launch that was
+    # going to be rejected anyway.
+    launch = resolve_training_launch(
+        profile=args.profile,
+        vram=args.vram,
+        device=args.device,
+        seed=args.seed,
+        compile_mode=None if args.compile_mode == "none" else args.compile_mode,
+        wandb=not args.no_wandb,
+        allow_config_drift=args.allow_config_drift,
+        num_envs=args.num_envs,
+        microbatch_tokens=args.microbatch_tokens,
+        report=print,
+        resolve=resolve_named_profile,
     )
     context = prepare()
     device = context.device
-    trainer = _make_trainer(resolved, args, device, resume_wandb_run_id=run_id)
+    trainer = _make_trainer(launch, args, device, resume_wandb_run_id=run_id)
     if resume_path is not None:
         trainer.load_checkpoint(resume_path)
     elif pretrain_path is not None:
