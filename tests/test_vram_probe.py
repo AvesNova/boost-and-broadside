@@ -496,6 +496,57 @@ def test_a_measured_launch_records_every_source(tmp_path: Path, fake_cuda) -> No
     assert set(record["tiers"]) == {"1", "2"}
 
 
+def test_the_vram_decision_is_stored_in_the_checkpoint(tmp_path: Path, fake_cuda) -> None:
+    """A run's memory decision belongs to its history, not to the machine that
+    happened to start it."""
+
+    import torch
+
+    from boost_and_broadside.train.rl.checkpoint import (
+        build_policy_checkpoint_payload,
+        write_checkpoint_payload,
+    )
+
+    cache = tmp_path / ".vram.json"
+    entry, _ = probe_profile(
+        "rl",
+        device="cuda",
+        compile_mode=None,
+        profile_fingerprint=_RL_FINGERPRINT,
+        runner=_runner(VramKnobs(1952, 25_000, True)),
+        identity=_IDENTITY,
+    )
+    write_cache_entry(cache, entry)
+    launch = resolve_training_launch(
+        profile="rl", vram="auto", device="cuda", compile_mode=None, cache_file=cache
+    )
+
+    payload = build_policy_checkpoint_payload(
+        policy_state_dict={},
+        num_value_components=1,
+        team_pma_k=(1,),
+        global_step=0,
+        live_elo=0.0,
+        model_config=launch.resolved.model_config,
+        env_config=launch.resolved.env_config,
+        ship_config=launch.resolved.ship_config,
+        paradigm=launch.resolved.train_config.paradigm,
+        launch=launch.document(),
+    )
+    path = write_checkpoint_payload(tmp_path / "step_0.pt", payload)
+    stored = torch.load(path, weights_only=False)["launch"]["vram"]
+
+    assert stored["status"] == "measured"
+    assert stored["source"] == "vram-cache"
+    assert stored["applied"] == {
+        "num_envs": 1952,
+        "microbatch_tokens": 25_000,
+        "grad_checkpoint": True,
+    }
+    assert stored["identity_fingerprint"] == entry.fingerprint
+    assert payload["model_config"]["grad_checkpoint"] is True
+
+
 def test_an_explicit_override_outranks_a_measurement(tmp_path: Path, fake_cuda) -> None:
     cache = tmp_path / ".vram.json"
     entry, _ = probe_profile(

@@ -486,6 +486,24 @@ Three compatibility rules follow from that:
 Payloads written before provenance existed still load; the loader falls back to the
 caller's configs and warns, naming what it assumed.
 
+Full checkpoints also carry the complete resolved launch: every configuration value, both
+fingerprints, the source that chose each value, and the execution and VRAM record. That
+makes the memory decision part of a run's history rather than a property of whichever
+machine happened to start it — a resume onto a card that sizes the launch differently is a
+resolved-config difference, and is refused unless `--allow-config-drift` is passed.
+
+### Launch sizing is not an experiment change
+
+A profile fixes its logical batch, minibatch count, and fleet; `--vram` only decides how
+that fixed batch is laid out in memory. It may enable gradient checkpointing and set the
+microbatch — the same objective within floating-point tolerance — and it may redistribute
+the batch across a different number of rollout shards, which keeps the nominal token count
+and optimizer-step count but changes the env-stream count, the temporal correlation within
+a shard, and how minibatches are composed. It may never resize the batch, the minibatch
+count, or the fleet. `docs/engineering/memory-optimization.md` describes the policies, the
+preset rows, and what the probe measures; the short version is that a preset is a starting
+point and only a probe of the current machine is reported as `measured`.
+
 W&B logging runs off the main training path. The reference run's sampled metric history,
 configuration, summary, and run metadata are exported under
 [`wandb_export/`](../checkpoints/resilient-resonance-682/wandb_export/) so the published

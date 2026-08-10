@@ -270,5 +270,63 @@ reliable comparison here—reserved-memory peaks depend on allocator history and
 Use shard width, not logical batch size, to tune rollout throughput. A matched 5M experiment
 split into two 2.5M shards lost much more throughput because small rollout batches became
 launch-bound; transfer and host preprocessing accounted for only about 2.5 seconds of that
-run. Keep `_ROLLOUT_TOKENS` near the efficient 5–6M frontier on this GPU and raise
+run. Keep the rollout shard near the efficient 5–6M frontier on this GPU and raise
 `rollouts_per_update` to grow total experience.
+
+## Resolving a launch for a card (`--vram`)
+
+The knobs above are no longer edited into a profile. `bnb train --vram` selects them, and
+the three categories differ in what they promise, so they are never mixed:
+
+| Tier | Knobs | Guarantee |
+|---|---|---|
+| 1 — same mathematical objective | gradient checkpointing, microbatch tokens | Equivalent objective and update within floating-point tolerance; not bit-identical |
+| 2 — same nominal logical batch | rollout shard width and shard count at a fixed total | Same nominal tokens and optimizer-step count; different env-stream count, temporal correlation, and minibatch composition |
+| 3 — experiment change | total token budget, minibatch count, fleet size | Changes the optimization or the task |
+
+`--vram` may move tier 1 and tier 2 only. A profile's logical batch is fixed, so a width is
+valid only when it divides that batch exactly and stays minibatch-aligned; anything else is
+rejected rather than silently rounded. For the `rl` profile the valid widths are 11712 (1
+shard), 5856 (2), 3904 (3), and 1952 (6), and `rl-fields` has no two-shard split at all.
+
+### Policies
+
+| Value | Behaviour |
+|---|---|
+| `auto` (default) | Use a cached measurement of *this* machine if one matches; otherwise keep the profile's derived sizing |
+| `probe` | Measure this machine unless it is already cached, then store and use the result |
+| `reprobe` | Measure again and replace the stored entry |
+| `off` | Ignore cache and presets entirely |
+| `8`/`16`/`24`/`32` | Apply that memory-tier preset row |
+
+Explicit `--num-envs`/`--microbatch-tokens` outrank all of it, and `--print-config` reports
+every resolved value with its source (`profile`, `derived`, `vram-cache`, `vram-preset`, or
+`cli`), which is also stored in every training checkpoint.
+
+### Presets are starting points, measurements are not
+
+Only the 8 GB row is measured — it is exactly the launch every registered profile already
+resolves to (3904 envs / 3 shards / 25,000 microbatch tokens / no gradient checkpointing for
+`rl`), sourced from the sweep above. The 16, 24, and 32 GB rows are linear extrapolations of
+the persistent-buffer and rollout-peak figures in the production comparison and have never
+been run. Applying *any* row, including the measured one, is reported as `provisional`,
+because a measurement belongs to the card it was taken on. Only a probe of the current
+machine is reported as `measured`.
+
+### Probing
+
+Each candidate runs one complete PPO update at production width in its own interpreter, so
+an out-of-memory failure never leaves a fragmented allocator behind for the next attempt.
+The ladder starts at the largest preset row the card's advertised memory could hold and
+descends; below the smallest row it enables gradient checkpointing first, because that is
+numerically exact and only costs time, and narrows the rollout shard only after that. The
+first candidate that survives a full update wins.
+
+The result lands in `.vram.json` beside the working tree — gitignored, recomputable, and not
+an artifact. An entry applies only to a fingerprint covering GPU name, UUID, MIG status,
+total memory, compute capability and SM count, the Torch/CUDA/cuDNN/Python versions, the
+autocast dtype, the compile mode, the profile's semantic fingerprint, and its token
+geometry. Change any of those and the entry stops matching, so `auto` falls back to the
+profile's own sizing instead of reusing a measurement of a different question. A cache file
+that cannot be read is an error naming `--vram reprobe` or `--vram off`, never a silent
+resize.

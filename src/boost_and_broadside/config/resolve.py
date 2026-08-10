@@ -81,8 +81,10 @@ class LaunchGeometry:
         """
 
         total_env_steps = self.aligned_logical_batch_tokens // self.entity_tokens // self.num_steps
+        # A width has to be a positive multiple of the minibatch count, which
+        # bounds the shard count without scanning the whole batch.
         widths = []
-        for shards in range(1, total_env_steps + 1):
+        for shards in range(1, total_env_steps // self.num_minibatches + 1):
             num_envs, remainder = divmod(total_env_steps, shards)
             if remainder or num_envs % self.num_minibatches:
                 continue

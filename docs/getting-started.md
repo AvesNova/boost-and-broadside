@@ -114,6 +114,35 @@ uv run bnb train --profile rl \
 either an explicit `.pt` path or an exact run name whose greatest numeric `step_*.pt`
 checkpoint should be selected. Training never defaults to RL.
 
+### Fitting the launch to a GPU
+
+`--vram` chooses how much of the fixed logical batch stays resident and how finely the
+backward pass is chunked. It never changes the batch itself:
+
+```bash
+uv run bnb train --profile rl --vram probe    # measure this card once, then train
+uv run bnb train --profile rl                 # --vram auto: reuse that measurement
+uv run bnb train --profile rl --vram 16       # a provisional preset for a 16 GB card
+uv run bnb train --profile rl --vram off      # the profile's own sizing, nothing else
+```
+
+`auto` is the default. It uses a stored measurement only when that measurement was taken
+on this exact GPU, software stack, compile mode, and profile; otherwise it leaves the
+profile's derived sizing alone and says so. `probe` measures the machine if it has not
+already, `reprobe` measures it again, and both write `.vram.json` — a gitignored local
+cache, not an artifact. Probing runs one real training update per candidate in its own
+subprocess, so it takes minutes, and it needs a CUDA device.
+
+A numeric preset (`8|16|24|32`, in GB) is a starting point rather than a measurement of
+your card: only the 8 GB row was measured, and applying any row is reported as
+`provisional`. `--print-config` shows the whole decision — which knobs moved, what
+equivalence tier each one belongs to, and the resolved shard count.
+
+Explicit `--num-envs` and `--microbatch-tokens` outrank whatever `--vram` proposes, and
+the printed source map records which value came from where. They cannot be combined with
+`--vram probe` or `--vram reprobe`, which exist to determine exactly those two values.
+`docs/engineering/memory-optimization.md` describes what each knob costs.
+
 Training profiles live in
 [`src/boost_and_broadside/profiles/`](../src/boost_and_broadside/profiles/). Global ship, field,
 and projectile defaults are defined on `ShipConfig` in
