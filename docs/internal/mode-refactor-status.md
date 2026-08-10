@@ -36,8 +36,8 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: none; `S10` is complete and did not approve the artifact gate.
-- Next section: `S10R` — artifact gate remediation and re-review.
+- Active section: `S10R` — artifact gate remediation and re-review.
+- Next section: `S11` — BC correction, once `S10R` completes.
 - Blocking issue: two S10 blockers — `publish --check` passes with a stale unowned canonical
   output, and publication cites an artifact that never completed. `S11` and every later section
   stay pending until `S10R` closes.
@@ -60,7 +60,7 @@ code, tests, and reader-facing documentation.
 | S08 | 5 | completed | mode consolidation engineer | Terra / high | Consolidate training, retire modes/flags, and fix field-capable evaluation |
 | S09 | 6 | completed | artifact/publication architect | Sol / extra high | Implement artifacts, provenance, raw samples, publication manifest, and offline render checks |
 | S10 | 6 gate | completed | artifact reviewer | Sol / extra high | Review schemas, identity, atomicity, resume, Git-ignore safety, and offline publication |
-| S10R | 6 gate remediation | pending | artifact remediator + reviewer | Sol / extra high | Close the S10 blockers and obtain an independent artifact/publication re-review |
+| S10R | 6 gate remediation | in_progress | artifact remediator + reviewer | Sol / extra high | Close the S10 blockers and obtain an independent artifact/publication re-review |
 | S11 | 7 | pending | training-profile engineer | Sol / high | Correct BC independently and validate its allowed differences from RL |
 | S12 | 8 | pending | live-Elo engineer | Sol / extra high | Implement/document approximate live Elo separately from calibrated Elo |
 | S13 | 9 | pending | VRAM engineer | Sol / extra high | Implement resolution precedence, probing, cache fingerprints, and provenance |
