@@ -147,7 +147,7 @@ def _smoke_resolved_profile(
     league = replace(
         base.league,
         league_slots=1,
-        reference_ladder=(),
+        live_reference_probabilities=(),
         elo_milestone_gap=0.0,
         elo_eval=replace(
             base.league.elo_eval,
@@ -216,7 +216,7 @@ def build_synthetic_run(
         num_value_components=num_components,
         team_pma_k=team_pma_k,
         global_step=1,
-        training_elo=0.0,
+        live_elo=0.0,
         model_config=resolved.model_config,
         env_config=resolved.env_config,
         ship_config=resolved.ship_config,
@@ -254,8 +254,7 @@ def build_synthetic_run(
         ship_steps=0,
         grad_tokens=0,
         elapsed_train_time=0.0,
-        avg_training_elo=0.0,
-        scripted_elo=resolved.train_config.elo_eval.scripted_elo_init,
+        avg_live_elo=0.0,
         floating_games=0,
         eval_window_rand=[],
         eval_window_sc=[],
@@ -275,12 +274,12 @@ def build_synthetic_run(
         clone_to_cpu(ladder_payload),
     )
 
-    roster_model = EloRoster(random_elo=resolved.train_config.random_elo)
+    roster_model = EloRoster()
     roster_model.add_special(
         "scripted",
         global_step=0,
         update=0,
-        initial_elo=resolved.train_config.elo_eval.scripted_elo_init,
+        initial_elo=resolved.train_config.elo_eval.scripted_live_elo,
     )
     roster_model.add_checkpoint(
         str(ladder_checkpoint),
@@ -297,7 +296,7 @@ def build_synthetic_run(
         "global_step": 1,
         "live": 0.0,
         "avg": 0.0,
-        "scripted": resolved.train_config.elo_eval.scripted_elo_init,
+        "scripted": resolved.train_config.elo_eval.scripted_live_elo,
         "counts": {"random": [0, 0, 1], "scripted": [0, 0, 1]},
         "entries": [
             {"label": entry.label, "elo": entry.elo, "fixed": entry.fixed}

@@ -37,6 +37,7 @@ from boost_and_broadside.config import (
     TrainConfig,
     TrainingSchedule,
 )
+from boost_and_broadside.config.live_elo import LIVE_RANDOM_ELO, live_reference_ladder
 from boost_and_broadside.constants import POWER_SLICE, SHOOT_SLICE, TURN_SLICE
 from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.observation import ObsKey, YemongObservation
@@ -473,7 +474,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             max_size=train_config.league_size,
             elo_temperature=train_config.elo_temperature,
             uniform_sampling=train_config.league_uniform_sampling,
-            random_elo=train_config.random_elo,
         )
         # Random anchor is added by EloRoster.__init__ (Elo=0, fixed) and is
         # excluded from opponent sampling. "scripted" is registered below;
@@ -481,11 +481,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._register_special_opponents()
 
         # Seeded at the random reference's rating: an untrained policy is a
-        # random one, and on an absolute gauge that is a known point rather than
-        # zero. Starting elsewhere just costs eval games to walk back.
-        self._training_elo: float = train_config.random_elo
-        self._avg_training_elo: float = train_config.random_elo
-        self._scripted_elo: float = train_config.elo_eval.scripted_elo_init
+        # random one, and on the live gauge that is a defined point rather than
+        # an arbitrary zero. Starting elsewhere just costs eval games to walk
+        # back.
+        self._live_elo: float = LIVE_RANDOM_ELO
+        self._avg_live_elo: float = LIVE_RANDOM_ELO
         self._floating_games: int = 0  # rated games of the floating ladder checkpoint
         self._bc_cutoff_streak: int = 0  # consecutive updates past the BC win-rate target
         # Raw win rate against the scripted controller, refreshed each update.
@@ -506,14 +506,14 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # Grid points are absolute, so the first one to claim is the highest
         # multiple of the gap at or below where the run starts.
         self._elo_milestone: float = (
-            (train_config.random_elo // train_config.elo_milestone_gap)
+            (LIVE_RANDOM_ELO // train_config.elo_milestone_gap)
             * train_config.elo_milestone_gap
             if train_config.elo_milestone_gap > 0
             else 0.0
         )
-        # Best ratings seen, on the absolute gauge.
-        self._best_training_elo_norm: float = -float("inf")
-        self._best_avg_elo_norm: float = -float("inf")
+        # Best ratings seen, on the live gauge.
+        self._best_live_elo: float = -float("inf")
+        self._best_avg_live_elo: float = -float("inf")
         self._last_checkpoint_path: Path | None = None
 
         # Async logging queue
@@ -764,23 +764,35 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             self._global_step += sc.num_envs
 
     def _register_special_opponents(self) -> None:
-        """Ensure the stationary league entries exist on the roster.
+        """Ensure the stationary league entries exist, at the gauge's ratings.
 
         Idempotent, and called again after a resume restores roster.json, so a
         run resumed from a roster written before these were entries picks them
         up rather than silently losing them.
 
+        Every stationary rating is *re-pinned* here rather than read back from
+        the roster. All three kinds — random, the semi-random rungs, and
+        scripted — are defined by the live gauge (config/live_elo), so a stored
+        roster that disagrees is out of date, not evidence. Resuming is the case
+        that matters: it is the one path where the on-disk numbers could quietly
+        outrank the configured gauge.
+
         Every stationary player is ``fixed``: their strength does not change, so
-        their ratings are measured constants rather than estimates to be dragged
-        around by in-training games the live policy is busy overfitting.
+        their ratings stay constants rather than estimates to be dragged around
+        by in-training games the live policy is busy overfitting.
         """
+        self.roster.pin_stationary_elo("random", LIVE_RANDOM_ELO)  # the gauge's zero
         if self.scripted_agent is None:
             return
-        scripted = self.roster.add_special(
-            "scripted", initial_elo=self.cfg.elo_eval.scripted_elo_init
+        self.roster.add_special("scripted", initial_elo=self.cfg.elo_eval.scripted_live_elo)
+        self.roster.pin_stationary_elo(  # the gauge's unit
+            "scripted", self.cfg.elo_eval.scripted_live_elo
         )
-        scripted.fixed = True  # the gauge's anchor
-        for p_scripted, elo in self.cfg.reference_ladder:
+        ladder = live_reference_ladder(
+            self.cfg.live_reference_probabilities,
+            scripted_elo=self.cfg.elo_eval.scripted_live_elo,
+        )
+        for p_scripted, elo in ladder:
             self.roster.add_reference(p_scripted=p_scripted, elo=elo)
 
     def _initialize_rollout_runtime(self) -> _RolloutRuntime:
@@ -850,9 +862,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 num_ships=num_ships,
                 num_tokens=num_recurrent,
                 ego_pass=self._ego_pass,
-                live_elo=self._training_elo,
-                avg_elo=self._avg_training_elo,
-                scripted_elo=self._scripted_elo,
+                live_elo=self._live_elo,
+                avg_elo=self._avg_live_elo,
                 anchors=anchors,
                 floating=floating,
                 floating_games=self._floating_games,
@@ -924,16 +935,15 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             runtime.elo_eval.step(rollout_step, avg_eval_active)
 
         elo_snapshot = runtime.elo_eval.flush(avg_eval_active)
-        self._training_elo = elo_snapshot.live_elo
-        self._avg_training_elo = elo_snapshot.avg_elo
-        self._scripted_elo = elo_snapshot.scripted_elo
+        self._live_elo = elo_snapshot.live_elo
+        self._avg_live_elo = elo_snapshot.avg_elo
         self._floating_games = elo_snapshot.floating_games
         self._match_counts = elo_snapshot.match_counts
         if elo_snapshot.floating_elo is not None:
             self.roster.set_floating_elo(elo_snapshot.floating_elo)
-        # Proximity sampling reads these, so they have to track the evaluator
-        # rather than keep the rating their entry was created with.
-        self.roster.set_special_elo("scripted", elo_snapshot.scripted_elo)
+        # Proximity sampling reads this, so it has to track the evaluator rather
+        # than keep the rating the entry was created with. The scripted entry
+        # needs no such sync: the live gauge pins it and it never moves.
         self.roster.set_special_elo("avg", elo_snapshot.avg_elo)
         return terminated
 
@@ -1119,7 +1129,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 self._update_avg_model()
                 if first_avg_update:
                     elo_eval.seed_avg_elo_from_live()
-                    self._avg_training_elo = self._training_elo
+                    self._avg_live_elo = self._live_elo
 
     def train(self) -> None:
         """Run the full PPO training loop."""

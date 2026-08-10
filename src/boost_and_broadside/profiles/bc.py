@@ -21,11 +21,10 @@ from boost_and_broadside.config.defaults import (
     COMPONENT_GAMMAS_PER_TICK,
     COMPONENT_LAMBDAS_PER_TICK,
     ELO_EVAL,
+    LIVE_REFERENCE_PROBABILITIES,
     MODEL_CONFIG,
     REWARDS,
     SHIP_CONFIG,
-    ZERO_FIELD_RANDOM_ELO,
-    ZERO_FIELD_REFERENCE_LADDER,
     make_bc_schedule_spec,
 )
 from boost_and_broadside.config.schema import (
@@ -98,10 +97,9 @@ BC_PROFILE = ProfileSpec(
         league_slots=4,
         # league_fraction is 0.0 throughout, so no roster entry ever plays a
         # rollout.  The Elo evaluator still runs -- BC's own scripted win rate
-        # is what decays the cloning weight -- and it rates the live policy on
-        # the zero-field gauge RL continues on.
-        reference_ladder=ZERO_FIELD_REFERENCE_LADDER,
-        random_elo=ZERO_FIELD_RANDOM_ELO,
+        # is what decays the cloning weight -- and it rates the live policy
+        # against the same derived rungs RL continues on.
+        live_reference_probabilities=LIVE_REFERENCE_PROBABILITIES,
         elo_milestone_gap=200.0,
         elo_temperature=200.0,
         league_uniform_sampling=False,

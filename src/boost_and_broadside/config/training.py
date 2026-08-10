@@ -131,7 +131,9 @@ class EloEvalConfig:
     envs_per_matchup: int
     step_interval: int  # eval steps once per this many rollout steps
     k_factor: float
-    scripted_elo_init: float  # initial estimate for the scripted agent's floating rating
+    # The live gauge's unit: the rating the scripted controller is *pinned* at,
+    # never an estimate that moves. See config/live_elo.
+    scripted_live_elo: float
     window_size: int
     # Rated games the floating checkpoint must accumulate before it may be
     # frozen at the next milestone. 0 disables the gate.
@@ -227,21 +229,18 @@ class TrainConfig:
     # (a scripted slot costs none). Clamped down when the league is narrower than
     # this, so a tiny registry-owned smoke case still allocates.
     league_slots: int
-    # Stationary reference ladder: (p_scripted, elo) rungs between the random
-    # agent and the scripted controller, on a gauge where scripted reads
-    # elo_eval.scripted_elo_init. Together with random_elo these are the fixed
-    # calibration points the live rating is measured against.
+    # Stationary reference rungs between the random agent and the scripted
+    # controller, as scripted-action probabilities in (0, 1). Their live ratings
+    # are not stored: the live gauge derives them as 1000·p (see
+    # config/live_elo), so there is nothing here that can go stale against the
+    # environment.
     #
-    # Without them the ladder has exactly two stationary references and the live
-    # policy saturates both — winning ~100% against random, losing ~100% against
-    # scripted — so its rating is barely identified for the whole early climb.
-    #
-    # Fitted offline by `bnb semi-random --profile <name>`. The ratings are a
-    # property of the environment the rungs play in, so a ladder is only valid
-    # for the tick rate, field count, ship config and fleet size it was measured
-    # under: re-run the tournament whenever any of those move.
-    reference_ladder: tuple[tuple[float, float], ...]
-    random_elo: float  # fitted rating of the uniform-random agent on that gauge
+    # Without the rungs the ladder has exactly two stationary references and the
+    # live policy saturates both — winning ~100% against random, losing ~100%
+    # against scripted — so its rating is barely identified for the whole early
+    # climb. `bnb semi-random` measures how far the derived ratings sit from a
+    # fitted gauge; it no longer supplies them.
+    live_reference_probabilities: tuple[float, ...]
     # Ladder-snapshot grid spacing: snapshots are taken as normalized Elo crosses
     # each multiple of this value, so rungs land at absolute heights (200, 400, …)
     # that are comparable across runs rather than drifting from run history.

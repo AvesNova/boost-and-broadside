@@ -12,6 +12,7 @@ from typing import Any
 
 import torch
 
+from boost_and_broadside.config.live_elo import LIVE_RANDOM_ELO
 from boost_and_broadside.train.rl.checkpoint_schema import (
     OBSERVATION_SCHEMA,
     load_checkpoint_payload,
@@ -31,7 +32,7 @@ def build_policy_checkpoint_payload(
     num_value_components: int,
     team_pma_k: tuple[int, ...],
     global_step: int,
-    training_elo: float,
+    live_elo: float,
     model_config: Any,
     env_config: Any,
     ship_config: Any,
@@ -53,7 +54,7 @@ def build_policy_checkpoint_payload(
         "num_value_components": num_value_components,
         "team_pma_k": team_pma_k,
         "global_step": global_step,
-        "training_elo": training_elo,
+        "live_elo": live_elo,
         "model_config": dataclasses.asdict(model_config),
         "env_config": dataclasses.asdict(env_config),
         "ship_config": dataclasses.asdict(ship_config),
@@ -90,8 +91,7 @@ def build_training_checkpoint_payload(
     ship_steps: int,
     grad_tokens: int,
     elapsed_train_time: float,
-    avg_training_elo: float,
-    scripted_elo: float,
+    avg_live_elo: float,
     floating_games: int,
     eval_window_rand: list[Any],
     eval_window_sc: list[Any],
@@ -115,8 +115,7 @@ def build_training_checkpoint_payload(
         "ship_steps": ship_steps,
         "grad_tokens": grad_tokens,
         "elapsed_train_time": elapsed_train_time,
-        "avg_training_elo": avg_training_elo,
-        "scripted_elo": scripted_elo,
+        "avg_live_elo": avg_live_elo,
         "floating_games": floating_games,
         "eval_window_rand": eval_window_rand,
         "eval_window_sc": eval_window_sc,
@@ -249,18 +248,18 @@ class CheckpointMixin:
         as captured. The two families use separate thread slots so they never
         contend within a single update.
         """
-        if self._training_elo > self._best_training_elo_norm and self._save_best_checkpoint(
+        if self._live_elo > self._best_live_elo and self._save_best_checkpoint(
             "best_training.pt"
         ):
-            self._best_training_elo_norm = self._training_elo
+            self._best_live_elo = self._live_elo
         if self._avg_update_count > 0:
-            avg_elo_norm = self._avg_training_elo
-            if avg_elo_norm > self._best_avg_elo_norm and self._save_best_checkpoint(
+            avg_elo = self._avg_live_elo
+            if avg_elo > self._best_avg_live_elo and self._save_best_checkpoint(
                 "best_avg.pt",
                 payload=self._avg_checkpoint_payload_lightweight(update=0),
                 thread_attr="_active_best_avg_thread",
             ):
-                self._best_avg_elo_norm = avg_elo_norm
+                self._best_avg_live_elo = avg_elo
 
     # ------------------------------------------------------------------
     # Elo measurement ladder
@@ -297,10 +296,9 @@ class CheckpointMixin:
         if self._policy_gradient_coef <= 0.0 or self.cfg.elo_milestone_gap <= 0:
             return
         gap = self.cfg.elo_milestone_gap
-        # Grid points are absolute on the scripted=1000 gauge, so snapshots
-        # from different runs land at comparable heights.
-        elo_norm = self._training_elo
-        if elo_norm < self._elo_milestone + gap:
+        # Grid points are absolute on the live gauge, so snapshots from
+        # different runs land at comparable heights.
+        if self._live_elo < self._elo_milestone + gap:
             return
         floating = self.roster.floating_checkpoint()
         if floating is not None and self._floating_games < self.cfg.elo_eval.min_games_to_freeze:
@@ -309,7 +307,7 @@ class CheckpointMixin:
         self.roster.freeze_floating()
         path = self._save_ladder_snapshot()
         entry = self.roster.add_checkpoint(
-            str(path), self._global_step, update, initial_elo=self._training_elo
+            str(path), self._global_step, update, initial_elo=self._live_elo
         )
         snapshot_policy = copy.deepcopy(self._policy_module).eval()
         snapshot_policy.requires_grad_(False)
@@ -319,7 +317,7 @@ class CheckpointMixin:
         # that fired. A rating that jumps several gaps in one update takes a
         # single snapshot rather than queueing one per crossed point, and a dip
         # back below a claimed point cannot re-trigger on the way up.
-        self._elo_milestone = elo_norm // gap * gap
+        self._elo_milestone = self._live_elo // gap * gap
         self._save_roster_json()
 
     # ------------------------------------------------------------------
@@ -341,7 +339,7 @@ class CheckpointMixin:
             num_value_components=self.wrapper.num_active_components,
             team_pma_k=self._win_k,
             global_step=self._global_step,
-            training_elo=self._training_elo,
+            live_elo=self._live_elo,
             model_config=self.model_config,
             env_config=self.env_config,
             ship_config=self.ship_config,
@@ -368,8 +366,7 @@ class CheckpointMixin:
             grad_tokens=self._grad_tokens,
             elapsed_train_time=self._elapsed_train_time
             + (time.time() - self._train_start_time),
-            avg_training_elo=self._avg_training_elo,
-            scripted_elo=self._scripted_elo,
+            avg_live_elo=self._avg_live_elo,
             floating_games=self._floating_games,
             eval_window_rand=list(self._eval_window_rand),
             eval_window_sc=list(self._eval_window_sc),
@@ -603,11 +600,10 @@ class CheckpointMixin:
                 c.to(self.device, torch.float32) for c in ckpt["avg_param_cumsum"]
             ]
             self._avg_update_count = ckpt["avg_update_count"]
-        if "training_elo" in ckpt:
-            self._training_elo = ckpt["training_elo"]
+        if "live_elo" in ckpt:
+            self._live_elo = ckpt["live_elo"]
             self._elo_milestone = ckpt.get("elo_milestone", 0.0)
-        self._avg_training_elo = ckpt.get("avg_training_elo", 0.0)
-        self._scripted_elo = ckpt.get("scripted_elo", self.cfg.elo_eval.scripted_elo_init)
+        self._avg_live_elo = ckpt.get("avg_live_elo", LIVE_RANDOM_ELO)
         self._floating_games = ckpt.get("floating_games", 0)
         if "eval_window_rand" in ckpt:
             self._eval_window_rand = deque(

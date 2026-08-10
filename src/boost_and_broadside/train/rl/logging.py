@@ -123,36 +123,41 @@ class LoggingMixin:
         metrics["counters/train_hours"] = elapsed / 3600.0
 
         # Elo evaluation — continuous live statistics from parallel slots.
+        # Every rating logged here is on the approximate live gauge and says so
+        # in its key: nothing under `live_elo/` is a calibrated rating, and
+        # nothing calibrated is ever logged under it (see config/live_elo).
         # Avg-model metrics only exist once the avg model has been initialized.
-        metrics["elo/training"] = self._training_elo
-        metrics["elo/scripted"] = self._scripted_elo
+        metrics["live_elo/policy"] = self._live_elo
+        metrics["live_elo/scripted"] = self.cfg.elo_eval.scripted_live_elo
         metrics["ladder/frozen_count"] = sum(
             1 for e in self.roster.entries if e.kind == "checkpoint" and e.fixed
         )
         floating_entry = self.roster.floating_checkpoint()
         if floating_entry is not None:
-            metrics["elo/floating"] = floating_entry.elo
+            metrics["live_elo/floating"] = floating_entry.elo
             metrics["ladder/floating_games"] = self._floating_games
+        # Win rates, not ratings — they keep their own prefix so no chart can
+        # read one as an Elo.
         if self._eval_window_rand:
-            metrics["elo/training_vs_random"] = sum(self._eval_window_rand) / len(
+            metrics["eval/win_rate_vs_random"] = sum(self._eval_window_rand) / len(
                 self._eval_window_rand
             )
         if self._eval_window_sc:
-            metrics["elo/training_vs_scripted"] = sum(self._eval_window_sc) / len(
+            metrics["eval/win_rate_vs_scripted"] = sum(self._eval_window_sc) / len(
                 self._eval_window_sc
             )
         if self._eval_window_ladder:
-            metrics["elo/training_vs_ladder"] = sum(self._eval_window_ladder) / len(
+            metrics["eval/win_rate_vs_ladder"] = sum(self._eval_window_ladder) / len(
                 self._eval_window_ladder
             )
         if self._eval_window_floating:
-            metrics["elo/training_vs_floating"] = sum(self._eval_window_floating) / len(
+            metrics["eval/win_rate_vs_floating"] = sum(self._eval_window_floating) / len(
                 self._eval_window_floating
             )
         if self._avg_update_count > 0:
-            metrics["elo/avg"] = self._avg_training_elo
+            metrics["live_elo/avg"] = self._avg_live_elo
             if self._eval_window_live_vs_avg:
-                metrics["elo/training_vs_avg"] = sum(self._eval_window_live_vs_avg) / len(
+                metrics["eval/win_rate_vs_avg"] = sum(self._eval_window_live_vs_avg) / len(
                     self._eval_window_live_vs_avg
                 )
         self._append_elo_history(update)
@@ -174,12 +179,12 @@ class LoggingMixin:
                 metrics[f"matches/{label}/decisive_win_rate"] = win / decisive
         metrics["matches/games_total"] = total_games
         # One scalar per ladder entry, keyed under a shared prefix so a single
-        # line-plot panel with y = `ladder/elo/*` overlays them all natively.
-        # Frozen entries log a constant (flat line); live rides along as the
-        # reference the floating rating is chasing.
-        metrics["ladder/elo/live"] = self._training_elo
+        # line-plot panel with y = `live_elo/ladder/*` overlays them all
+        # natively. Frozen entries log a constant (flat line); the live policy
+        # rides along as the reference the floating rating is chasing.
+        metrics["live_elo/ladder/policy"] = self._live_elo
         for entry in self.roster.entries:
-            metrics[f"ladder/elo/{entry.label}"] = entry.elo
+            metrics[f"live_elo/ladder/{entry.label}"] = entry.elo
 
         # Save overwriting best-model checkpoints (live, then avg) when the
         # rating improves. Absolute gauge, so no re-basing.
@@ -187,11 +192,11 @@ class LoggingMixin:
 
         # Overview — redundant copies of the most important global metrics
         for src, dst in [
-            ("elo/training", "overview/elo"),
-            ("elo/training_vs_scripted", "overview/win_rate_vs_scripted"),
-            ("elo/training_vs_random", "overview/win_rate_vs_random"),
-            ("elo/training_vs_ladder", "overview/win_rate_vs_ladder"),
-            ("elo/training_vs_avg", "overview/win_rate_vs_avg"),
+            ("live_elo/policy", "overview/live_elo"),
+            ("eval/win_rate_vs_scripted", "overview/win_rate_vs_scripted"),
+            ("eval/win_rate_vs_random", "overview/win_rate_vs_random"),
+            ("eval/win_rate_vs_ladder", "overview/win_rate_vs_ladder"),
+            ("eval/win_rate_vs_avg", "overview/win_rate_vs_avg"),
             ("loss/total", "overview/loss_total"),
             ("loss_proxy/policy_gradient", "overview/loss_proxy_pg"),
             ("loss_proxy/behavioral_cloning", "overview/loss_proxy_bc"),
@@ -222,15 +227,21 @@ class LoggingMixin:
         measurements: the live and avg policies exist in one form for exactly one
         update and can never be replayed, whereas every frozen ladder entry can
         be re-measured from disk afterwards at whatever precision is wanted.
+
+        Every rating in this file is on the approximate live gauge; the file has
+        no calibrated column and never gains one. ``elo-calibrate`` reads the
+        counts, refits them, and writes its own artifact. The short key names
+        are kept as they are so an existing run's history stays readable —
+        renaming them would strand the very records calibration depends on.
         """
         path = Path(self.cfg.checkpoint_dir) / self.run_name / "elo_history.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)
         record = {
             "update": update,
             "global_step": self._global_step,
-            "live": self._training_elo,
-            "avg": self._avg_training_elo,
-            "scripted": self._scripted_elo,
+            "live": self._live_elo,
+            "avg": self._avg_live_elo,
+            "scripted": self.cfg.elo_eval.scripted_live_elo,
             "counts": {label: list(wlt) for label, wlt in self._match_counts.items()},
             "entries": [
                 {"label": e.label, "elo": e.elo, "fixed": e.fixed} for e in self.roster.entries
@@ -263,7 +274,7 @@ class LoggingMixin:
             f"sps={sps:,}  "
             f"ship_tps={ship_tps:,}  "
             f"loss={metrics.get('loss/total', 0.0):.4f}"
-            f"  elo={self._training_elo:.0f}"
+            f"  live_elo={self._live_elo:.0f}"
             f"{lifespan}"
             f"{field_sources}"
         )

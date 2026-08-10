@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from boost_and_broadside.config.core import ModelConfig, RewardConfig, ShipConfig
+from boost_and_broadside.config.live_elo import LIVE_SCRIPTED_ELO
 from boost_and_broadside.config.schedule_spec import (
     TrainingScheduleSpec,
     constant_spec,
@@ -35,7 +36,7 @@ ELO_EVAL = EloEvalConfig(
     envs_per_matchup=512,
     step_interval=1,
     k_factor=4.0,
-    scripted_elo_init=1000.0,
+    scripted_live_elo=LIVE_SCRIPTED_ELO,
     window_size=100,
     min_games_to_freeze=1000,
 )
@@ -49,38 +50,18 @@ ELO_CALIBRATE = EloCalibrateConfig(
     reference_probabilities=(0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95),
 )
 
-# Live reference gauges, fitted by the legacy semi-random tournament on 4v4 at
-# action_repeat=2.  They are properties of an environment and its stationary
-# controllers, not of a training objective, so every profile that trains in that
-# environment rates on the same gauge.  S12 replaces the fitted numbers with the
-# accepted live-Elo contract; keeping them here means it edits one place.
-ZERO_FIELD_REFERENCE_LADDER: tuple[tuple[float, float], ...] = (
-    (0.2, -236.0),
-    (0.3, -96.2),
-    (0.4, 114.9),
-    (0.5, 270.7),
-    (0.6, 461.1),
-    (0.7, 589.2),
-    (0.8, 733.0),
-    (0.9, 861.3),
-    (0.95, 942.5),
-)
-ZERO_FIELD_RANDOM_ELO = -363.9
-
-# Fields compress the fitted skill scale, so a field environment cannot borrow
-# the zero-field gauge without corrupting Elo-proximity opponent sampling.
-FIELD_REFERENCE_LADDER: tuple[tuple[float, float], ...] = (
-    (0.2, 238.8),
-    (0.3, 322.6),
-    (0.4, 435.0),
-    (0.5, 550.4),
-    (0.6, 656.9),
-    (0.7, 753.6),
-    (0.8, 824.3),
-    (0.9, 939.9),
-    (0.95, 988.9),
-)
-FIELD_RANDOM_ELO = 132.3
+# Interior rungs of the live measurement ladder, as scripted-action
+# probabilities.  Their live ratings are *derived* — 1000·p, see config/live_elo
+# — so this is the only choice a profile makes about the ladder, and no
+# environment carries a fitted gauge of its own any more.
+#
+# Nine rungs cost nothing to evaluate (the whole stationary ladder is one
+# scripted call and one random call) and they cover the climb densely enough
+# that the live rating stays identified between random and scripted.  They
+# deliberately match ELO_CALIBRATE.reference_probabilities so `bnb semi-random`
+# measures the same rungs training rates against, but the two are independent
+# settings: post-hoc calibration fits a field, training defines a gauge.
+LIVE_REFERENCE_PROBABILITIES: tuple[float, ...] = (0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95)
 
 REWARDS = RewardConfig(
     # Source-split outcome heads are retained even when their weights are zero.

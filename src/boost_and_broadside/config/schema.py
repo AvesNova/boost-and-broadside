@@ -115,12 +115,16 @@ class OptimizerSpec:
 
 @dataclass(frozen=True)
 class LeagueSpec:
-    """League and live-evaluation intent retained unchanged in S02."""
+    """League and live-evaluation intent.
+
+    The ladder is stated as the scripted-action probabilities of its rungs, not
+    as ratings: the live gauge assigns those (see ``config/live_elo``), so a
+    profile chooses which references exist and nothing else about the scale.
+    """
 
     league_size: int
     league_slots: int
-    reference_ladder: tuple[tuple[float, float], ...]
-    random_elo: float
+    live_reference_probabilities: tuple[float, ...]
     elo_milestone_gap: float
     elo_temperature: float
     league_uniform_sampling: bool

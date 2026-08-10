@@ -10,11 +10,10 @@ from boost_and_broadside.config.defaults import (
     COMPONENT_GAMMAS_PER_TICK,
     COMPONENT_LAMBDAS_PER_TICK,
     ELO_EVAL,
+    LIVE_REFERENCE_PROBABILITIES,
     MODEL_CONFIG,
     REWARDS,
     SHIP_CONFIG,
-    ZERO_FIELD_RANDOM_ELO,
-    ZERO_FIELD_REFERENCE_LADDER,
     make_rl_schedule_spec,
 )
 from boost_and_broadside.config.schema import (
@@ -84,10 +83,9 @@ RL_PROFILE = ProfileSpec(
     league=LeagueSpec(
         league_size=20,
         league_slots=4,
-        # This profile trains in the zero-field environment the gauge was fitted
-        # in.  S12 replaces the fitted rungs with the accepted live-Elo contract.
-        reference_ladder=ZERO_FIELD_REFERENCE_LADDER,
-        random_elo=ZERO_FIELD_RANDOM_ELO,
+        # Rung ratings are derived, not stated: the live gauge pins random at 0
+        # and scripted at 1000 and places a rung at 1000·p.
+        live_reference_probabilities=LIVE_REFERENCE_PROBABILITIES,
         elo_milestone_gap=200.0,
         elo_temperature=200.0,
         league_uniform_sampling=False,

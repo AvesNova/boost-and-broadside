@@ -10,6 +10,7 @@ from typing import Any
 
 from boost_and_broadside.config.core import EnvConfig
 from boost_and_broadside.config.fingerprint import canonical_data, fingerprint
+from boost_and_broadside.config.live_elo import validate_live_reference_probabilities
 from boost_and_broadside.config.schema import (
     PROFILE_SCHEMA_VERSION,
     RESOLVED_CONFIG_SCHEMA_VERSION,
@@ -240,12 +241,12 @@ def _validate_profile(profile: ProfileSpec) -> None:
     if elo_eval.window_size < 1 or elo_eval.min_games_to_freeze < 0:
         raise ValueError("league Elo evaluation window/gate values are invalid")
     for name, value in (
-        ("league.random_elo", league.random_elo),
         ("league.elo_eval.k_factor", elo_eval.k_factor),
-        ("league.elo_eval.scripted_elo_init", elo_eval.scripted_elo_init),
+        ("league.elo_eval.scripted_live_elo", elo_eval.scripted_live_elo),
     ):
         if not math.isfinite(value):
             raise ValueError(f"{name} must be finite, got {value}")
+    validate_live_reference_probabilities(league.live_reference_probabilities)
     if elo_eval.k_factor <= 0.0:
         raise ValueError("league.elo_eval.k_factor must be positive")
 
@@ -282,13 +283,7 @@ def validate_resolved_config(config: TrainConfig) -> None:
     for name, value in (("gamma", config.gamma), ("gae_lambda", config.gae_lambda)):
         if not math.isfinite(value) or not 0.0 < value <= 1.0:
             raise ValueError(f"{name} must be finite and in (0, 1], got {value}")
-    previous_probability = 0.0
-    for probability, rating in config.reference_ladder:
-        if not previous_probability < probability < 1.0:
-            raise ValueError("reference_ladder probabilities must be strictly increasing in (0, 1)")
-        if not math.isfinite(rating):
-            raise ValueError("reference_ladder ratings must be finite")
-        previous_probability = probability
+    validate_live_reference_probabilities(config.live_reference_probabilities)
 
 
 def resolve_profile(
@@ -415,8 +410,7 @@ def resolve_profile(
         checkpoint_dir=optimizer.checkpoint_dir,
         league_size=league.league_size,
         league_slots=league.league_slots,
-        reference_ladder=league.reference_ladder,
-        random_elo=league.random_elo,
+        live_reference_probabilities=league.live_reference_probabilities,
         elo_milestone_gap=league.elo_milestone_gap,
         elo_temperature=league.elo_temperature,
         league_uniform_sampling=league.league_uniform_sampling,

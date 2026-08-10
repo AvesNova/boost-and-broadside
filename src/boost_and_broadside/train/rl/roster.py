@@ -14,10 +14,10 @@ Entry kinds:
     "checkpoint"  — a past training-policy snapshot loaded from a .pt file.
     "avg"         — the live running-average policy (weights accessed externally).
     "scripted"    — the StochasticScriptedAgent (no weights to load).
-    "semi_random" — a scripted/uniform blend at a fixed p_scripted, rated
-                    offline. Interior rungs between random and scripted, so the
-                    ladder has a well-matched reference at every height of the
-                    climb instead of only two saturated ones.
+    "semi_random" — a scripted/uniform blend at a fixed p_scripted, rated by the
+                    live gauge at 1000·p. Interior rungs between random and
+                    scripted, so the ladder has a well-matched reference at every
+                    height of the climb instead of only two saturated ones.
 """
 
 import json
@@ -29,6 +29,7 @@ import torch
 
 from boost_and_broadside.agents.semi_random_scripted import semi_random_label
 from boost_and_broadside.config import ModelConfig, ShipConfig
+from boost_and_broadside.config.live_elo import LIVE_RANDOM_ELO
 from boost_and_broadside.train.rl.policy_io import PolicyBundle, load_policy_bundle
 
 _DEFAULT_ELO = 0.0
@@ -71,7 +72,7 @@ class EloRoster:
     """Elo-rated pool of league opponents with proximity-weighted sampling.
 
     Entries:
-        "random"     — always present; Elo fixed at 0 as the absolute ladder anchor.
+        "random"     — always present; Elo pinned at 0, the live gauge's zero.
         "avg"        — added when the avg model first becomes ready.
         "checkpoint" — added at Elo milestones; frozen at the following milestone.
 
@@ -83,7 +84,7 @@ class EloRoster:
     Sampling is weighted by Elo proximity so the training policy tends to face
     near-equal opponents:
 
-        w_i = exp( -|elo_i - training_elo| / elo_temperature )
+        w_i = exp( -|elo_i - live_elo| / elo_temperature )
 
     The "random" entry is excluded from sampling (only used as an eval anchor).
 
@@ -100,24 +101,23 @@ class EloRoster:
         max_size: int = 20,
         elo_temperature: float = 200.0,
         uniform_sampling: bool = False,
-        random_elo: float = _DEFAULT_ELO,
     ) -> None:
         self.max_size = max_size
         self.elo_temperature = elo_temperature
         self.uniform_sampling = uniform_sampling
         self.entries: list[RosterEntry] = []
         self._load_order: list[RosterEntry] = []  # loaded checkpoints, oldest use first
-        # The random agent is a stationary reference like any other rung, fixed
-        # at its measured rating. It is *not* the scale's anchor — the scripted
-        # controller is (see EloEvalConfig.scripted_elo_init), because random
-        # sits where win rates saturate and its rating is the least identified by
-        # games, while scripted is the one opponent comparable across runs and
-        # fleet scales.
+        # The random agent is the live gauge's zero, pinned rather than
+        # measured (see config/live_elo). It is not the scale's unit — the
+        # scripted controller is, at EloEvalConfig.scripted_live_elo — because
+        # random sits where win rates saturate and its rating would be the least
+        # identified by games, while scripted is the one opponent comparable
+        # across runs and fleet scales.
         self.entries.append(
             RosterEntry(
                 kind="random",
                 label="random",
-                elo=random_elo,
+                elo=LIVE_RANDOM_ELO,
                 global_step=0,
                 update=0,
                 fixed=True,
@@ -168,14 +168,14 @@ class EloRoster:
         winning ~100% against random and losing ~100% against scripted — leaving
         its rating barely identified for the whole early climb.
 
-        The rating is a measured property of a stationary player, fitted offline
-        by ``bnb semi-random`` under the same env config, tick rate
-        and fleet size the run uses, so it is ``fixed`` from the start.
+        The rating is assigned by the live gauge rather than measured — see
+        ``config.live_elo.live_reference_ladder``, the single derivation site —
+        so it is ``fixed`` from the start.
 
         Args:
             p_scripted: Probability the rung takes the scripted action; the rest
                         of the time it acts uniformly at random.
-            elo:        Fitted rating on this run's gauge.
+            elo:        Derived live rating for that probability.
         """
         if not 0.0 < p_scripted < 1.0:
             raise ValueError(
@@ -185,6 +185,10 @@ class EloRoster:
         label = semi_random_label(p_scripted)
         for entry in self.entries:
             if entry.label == label:
+                # Re-pin rather than trust: the rating is derived, so a roster
+                # restored from disk must not keep a different one.
+                entry.elo = elo
+                entry.fixed = True
                 return entry
         entry = RosterEntry(
             kind="semi_random",
@@ -269,6 +273,19 @@ class EloRoster:
                 entry.elo = elo
                 return
 
+    def pin_stationary_elo(self, kind: str, elo: float) -> None:
+        """Force a stationary reference to the gauge's rating and freeze it.
+
+        Unlike :meth:`set_special_elo`, which tracks a moving estimate, this
+        asserts a definition: the live gauge fixes random and scripted, so a
+        roster restored from disk is corrected to the configured gauge instead
+        of being trusted over it. No-op when the entry does not exist.
+        """
+        for entry in self.entries:
+            if entry.kind == kind:
+                entry.elo = elo
+                entry.fixed = True
+
     def retire(self, entry: RosterEntry) -> None:
         """Drop an entry from opponent sampling, keeping its rating on the ladder.
 
@@ -322,7 +339,7 @@ class EloRoster:
     # Sampling
     # ------------------------------------------------------------------
 
-    def sample(self, training_elo: float) -> RosterEntry | None:
+    def sample(self, live_elo: float) -> RosterEntry | None:
         """Sample one entry, either uniformly or weighted by Elo proximity.
 
         Frozen checkpoints, the running-average policy and the scripted agent
@@ -344,7 +361,7 @@ class EloRoster:
             idx = int(torch.randint(len(candidates), (1,)).item())
             return candidates[idx]
 
-        weights = [math.exp(-abs(e.elo - training_elo) / self.elo_temperature) for e in candidates]
+        weights = [math.exp(-abs(e.elo - live_elo) / self.elo_temperature) for e in candidates]
         total = sum(weights)
         r = torch.rand(1).item() * total
         cumulative = 0.0

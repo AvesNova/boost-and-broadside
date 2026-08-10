@@ -19,9 +19,11 @@ import torch
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config.core import ModelConfig
-from boost_and_broadside.config.defaults import (
-    ZERO_FIELD_RANDOM_ELO,
-    ZERO_FIELD_REFERENCE_LADDER,
+from boost_and_broadside.config.defaults import LIVE_REFERENCE_PROBABILITIES
+from boost_and_broadside.config.live_elo import (
+    LIVE_RANDOM_ELO,
+    LIVE_SCRIPTED_ELO,
+    live_reference_ladder,
 )
 from boost_and_broadside.config.resolve import resolve_profile
 from boost_and_broadside.config.schema import LaunchSizingSpec, ResolvedTrainConfig
@@ -104,17 +106,20 @@ def test_bc_requires_the_scripted_controller_it_clones(tmp_path) -> None:
         _trainer(tmp_path, with_scripted=False)
 
 
-def test_bc_rates_on_the_zero_field_gauge(tmp_path) -> None:
+def test_bc_rates_on_the_derived_live_gauge(tmp_path) -> None:
     trainer = _trainer(tmp_path)
 
     rungs = {entry.p_scripted: entry.elo for entry in trainer.roster.entries if entry.fixed}
-    for probability, elo in ZERO_FIELD_REFERENCE_LADDER:
-        assert rungs[probability] == elo
-    assert trainer._random_elo() == ZERO_FIELD_RANDOM_ELO
-    assert trainer._training_elo == ZERO_FIELD_RANDOM_ELO
+    for probability, elo in live_reference_ladder(LIVE_REFERENCE_PROBABILITIES):
+        assert rungs[probability] == elo == pytest.approx(1000.0 * probability)
+    assert trainer._random_elo() == LIVE_RANDOM_ELO == 0.0
+    assert trainer._live_elo == LIVE_RANDOM_ELO
+    scripted = next(entry for entry in trainer.roster.entries if entry.kind == "scripted")
+    assert scripted.elo == LIVE_SCRIPTED_ELO == 1000.0
+    assert scripted.fixed
 
     stationary = [entry for entry in trainer.roster.entries if entry.is_stationary]
-    assert len(stationary) == len(ZERO_FIELD_REFERENCE_LADDER) + 2  # + random + scripted
+    assert len(stationary) == len(LIVE_REFERENCE_PROBABILITIES) + 2  # + random + scripted
     assert all(entry.fixed for entry in stationary)
 
 
@@ -145,4 +150,5 @@ def test_bounded_bc_run_learns_from_supervision_and_freezes_no_milestone(tmp_pat
     # Milestones are gated on a live policy gradient, so BC contributes no
     # frozen ladder entry no matter how its rating moves.
     assert trainer.roster.floating_checkpoint() is None
-    assert trainer._scripted_elo == trainer.cfg.elo_eval.scripted_elo_init
+    scripted = next(entry for entry in trainer.roster.entries if entry.kind == "scripted")
+    assert scripted.elo == trainer.cfg.elo_eval.scripted_live_elo

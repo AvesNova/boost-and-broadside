@@ -135,8 +135,11 @@ def test_bc_shares_rls_environment_batch_and_optimizer_shape() -> None:
     assert (bc.train_config.gamma, bc.train_config.gae_lambda) == (0.9801, 0.9025)
     assert dict(bc.train_config.component_gammas) == dict(rl.train_config.component_gammas)
     assert dict(bc.train_config.component_lambdas) == dict(rl.train_config.component_lambdas)
-    assert bc.train_config.reference_ladder == rl.train_config.reference_ladder
-    assert bc.train_config.random_elo == rl.train_config.random_elo
+    assert (
+        bc.train_config.live_reference_probabilities
+        == rl.train_config.live_reference_probabilities
+    )
+    assert bc.train_config.elo_eval == rl.train_config.elo_eval
 
     def batch_tokens(resolved) -> int:
         scale = resolved.train_config.scales[0]
@@ -199,9 +202,15 @@ def test_corrected_bc_changed_exactly_the_reviewed_stale_values() -> None:
         "return_quantile_samples",
         # Current project optimizer value.
         "clip_coef",
-        # The live gauge BC's Elo evaluation and RL both rate on.
+        # The live gauge BC's Elo evaluation and RL both rate on. The stale
+        # profile had an empty fitted ladder and a random rating of its own;
+        # S11 gave BC RL's fitted gauge and S12 replaced the fitted fields on
+        # every profile with derived rungs and a renamed scripted pin.
         "reference_ladder",
         "random_elo",
+        "live_reference_probabilities",
+        "elo_eval.scripted_elo_init",
+        "elo_eval.scripted_live_elo",
         # Schedule values RL moved and BC had not followed.
         "schedule.entropy_coef",
         "schedule.checkpoint_interval",

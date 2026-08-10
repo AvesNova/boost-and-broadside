@@ -51,8 +51,6 @@ def test_rl_fields_resolved_diff_contains_only_named_field_intent() -> None:
     fields = canonical_data(resolve_profile(PROFILES["rl-fields"]).train_config)
 
     def different_paths(left, right, prefix=""):
-        if prefix == "reference_ladder":
-            return {prefix} if left != right else set()
         if isinstance(left, dict) and isinstance(right, dict):
             paths = set()
             for key in left.keys() | right.keys():
@@ -69,10 +67,11 @@ def test_rl_fields_resolved_diff_contains_only_named_field_intent() -> None:
             return paths
         return {prefix} if left != right else set()
 
+    # The live gauge is defined rather than fitted per environment, so S12
+    # removed the two rating differences that used to be here: what separates
+    # the two profiles is now field intent and nothing else.
     assert different_paths(rl, fields) == {
         "field_map",
-        "random_elo",
-        "reference_ladder",
         "rewards.field_damage_taken_weight",
         "rewards.field_death_weight",
         "scales.0.env_config.num_fields",
@@ -203,19 +202,22 @@ def test_canonical_serialization_has_a_stable_golden_vector() -> None:
 
 
 def test_current_profile_and_resolved_fingerprints_are_stable() -> None:
+    # All six moved in S12: replacing each profile's fitted reference ladder and
+    # random rating with the derived live gauge is a semantic change to what the
+    # run is rated against, so both fingerprints are expected to differ from the
+    # values recorded through S11.
     expected = {
         "rl": (
-            "d312b8195197f171c99ace9351ac4507d201366a470dac3e24c49a086781d125",
-            "340ea375a3217ce2ca3be369fe64e52221b7dcf56cd94cb729dd8eede8c7afc6",
+            "9f4baf830c22ffb198b2ffd67412113376761d236f8863bc8bdefc29be933323",
+            "882ed9ba23a1bf1cd0b3030966d2e30358e7ee7c26d5186580ba5ab10d322ee3",
         ),
         "rl-fields": (
-            "542017f9d6f583011cb40a02dc85e6c01a7731ce778ab2fc2a690930280a2939",
-            "2c29b7f27f78d15073953dd3f35b2cea64829d33b8fddbabd67ff936d7bcfa6f",
+            "cdd020cf01d8e0a16425ea9a34c00ba84cdb4b549f8345a6955e0106605ba047",
+            "1a5a3c43a53401671fa6b446c2e6163c29a154cad3626b7cb617c497e25bea08",
         ),
-        # Changed by the S11 BC correction; RL and RL-fields are unmoved.
         "bc": (
-            "531744c3e5c867183c54fb405c4a718203f332feda7cf5b164702868b680eea1",
-            "73a0b0aa85a9de9b3e3d8930247495031723451442dcd8a7b7f913b324fe754e",
+            "138544ad41438242bbe795025773970389ba161e522f1a8959cef54c214c5a19",
+            "b91a4ef73a92309ddabbc34ce58f485b3497890fafc9a6db4541174e209c2a6d",
         ),
     }
     for name, fingerprints in expected.items():

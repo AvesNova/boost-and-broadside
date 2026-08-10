@@ -9,9 +9,8 @@ from boost_and_broadside.config.defaults import (
     COMPONENT_GAMMAS_PER_TICK,
     COMPONENT_LAMBDAS_PER_TICK,
     ELO_EVAL,
-    FIELD_RANDOM_ELO,
-    FIELD_REFERENCE_LADDER,
     FIELD_REWARDS,
+    LIVE_REFERENCE_PROBABILITIES,
     MODEL_CONFIG,
     SHIP_CONFIG,
     make_rl_schedule_spec,
@@ -78,8 +77,11 @@ RL_FIELDS_PROFILE = ProfileSpec(
     league=LeagueSpec(
         league_size=20,
         league_slots=4,
-        reference_ladder=FIELD_REFERENCE_LADDER,
-        random_elo=FIELD_RANDOM_ELO,
+        # The live gauge is defined, not fitted, so the field environment rates
+        # on the same rungs as the zero-field one.  That is a deliberate
+        # simplification: it says nothing about the two being equally hard, and
+        # cross-environment live ratings are not comparable.
+        live_reference_probabilities=LIVE_REFERENCE_PROBABILITIES,
         elo_milestone_gap=200.0,
         elo_temperature=200.0,
         league_uniform_sampling=False,
