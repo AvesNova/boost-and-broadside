@@ -244,16 +244,20 @@ uv run bnb publish --check      # render into a temporary tree and compare
 ```
 
 Publication is offline and performs no simulation: it verifies each source artifact's
-hashes, refuses one produced from a dirty checkout, and installs atomically. The renderer
-is the source of the axis labels and equal-scale geometry; the tracked rasters are
-regenerated from it rather than edited independently.
+hashes, refuses one produced from a dirty checkout or from a measurement that never
+finished, and installs atomically. `--check` fails on a canonical output that is missing,
+differs from what its renderer produces, or is no longer owned by the manifest; it changes
+nothing, so removing a stale output is `bnb publish`'s job. The renderer is the source of
+the axis labels and equal-scale geometry; the tracked rasters are regenerated from it
+rather than edited independently.
 
 Selecting the exact landmark artifacts is the one-time backfill that follows the 682
 checkpoint migration, so every entry currently reports as unselected and the tracked
 outputs are left as they are. A full current-schema calibration is launched with
 `uv run bnb elo-calibrate --run resilient-resonance-682`, and a stored calibration can be
 refit without replaying a match using
-`uv run bnb elo-calibrate --from-artifact <artifact directory>`.
+`uv run bnb elo-calibrate --from-artifact <artifact directory>`, which likewise refuses a
+calibration that never finished.
 
 To rerun the underlying evaluations, see [getting started](getting-started.md#evaluate).
 They can require substantial GPU time; rendering from included artifacts does not.

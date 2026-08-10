@@ -179,7 +179,7 @@ def _store(tmp_path) -> ArtifactStore:
 
 
 def _source_measurement(tmp_path, reference: str, *, complete: bool = True) -> Path:
-    """A completed calibration artifact for the refit path to read."""
+    """A calibration artifact for the refit path to read, finished unless asked otherwise."""
 
     run_dir = tmp_path / "checkpoints" / "test-run"
     run_dir.mkdir(parents=True)
