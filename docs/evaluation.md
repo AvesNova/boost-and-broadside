@@ -93,9 +93,15 @@ realization, not the source of the aggregate rates above.
 *Tournament-rated checkpoints (dots, ±1 SE) sit on the refit curve; the final dot pins
 the endpoint.*
 
-Online Elo is useful during training, but its location can drift with sequential K-factor
-updates and changing opponents. [`elo_calibrate.py`](../src/boost_and_broadside/modes/elo_calibrate.py)
-constructs a post-hoc scale in two stages:
+**Every rating on this page is calibrated Elo.** Training also keeps a *live* Elo — a
+deliberately approximate scale that places the random agent at 0, the scripted controller
+at 1000, and a semi-random rung at 1000·p — but that is an instrument for opponent
+sampling and progress reporting, not a result. It is logged under `live_elo/` and never
+appears in a published figure; the [training guide](training.md#live-elo-versus-calibrated-elo)
+sets the two side by side. Live Elo also drifts with sequential K-factor updates and
+changing opponents, which is the second reason not to quote it.
+[`elo_calibrate.py`](../src/boost_and_broadside/modes/elo_calibrate.py) constructs the
+reported scale post hoc in two stages:
 
 1. run an adaptive tournament among stationary players — random, the scripted
    controller, semi-random rungs between them, the frozen ladder checkpoints, and the
@@ -133,9 +139,10 @@ scripted is about 826 points however the scale is pinned. The independent
 1822 ± 4 in its own 4-vs-4 bracket — the two measurements agree within uncertainty.
 
 Two earlier estimates are superseded by this tournament and worth distinguishing. The
-final *online* training rating (1547.3) is a drifting sequential estimator and should
-not be mixed with the calibrated curve. And before the rungs were added, random's
-position was measured only through near-certain games and read about −240 ± 33; the
+final *live* training rating (1547.3) is a drifting sequential estimator on the
+approximate live gauge and should not be mixed with the calibrated curve. And before
+the rungs were added, random's position was measured only through near-certain games
+and read about −240 ± 33; the
 conditioned tournament places it at −426 ± 10, a reminder that saturated matchups carry
 almost no rating information.
 
@@ -194,6 +201,12 @@ contains 128 side-balanced games for every unordered pair at every scale. Its ou
 matrices are joined to the checkpoint tournament through the shared random and scripted
 endpoints before fitting, which improves graph connectivity without treating an
 interpolated controller as a trained checkpoint.
+
+The same measurement doubles as the check on training's live gauge, which assigns each
+rung 1000·p instead of fitting it. Each scale in a current `semi-random` artifact reports
+`live_gauge_error`: the fitted ladder regauged to the same two endpoints, minus the rating
+training uses. On the reference run the linear placement runs about 106 Elo high at the
+`p=0.2` rung and within 40 points from `p=0.6` up.
 
 ## Scripted benchmark over training
 

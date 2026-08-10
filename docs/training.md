@@ -257,7 +257,7 @@ convention, because the profile is written independently and does not inherit fr
 
 Evaluation still runs during BC: the raw win rate against the scripted controller is
 what decays the cloning weight to zero at `bc_winrate_target`, and the run rates on the
-same zero-field gauge RL continues on.
+same live gauge RL continues on.
 
 ## Field training profile
 
@@ -367,15 +367,16 @@ evaluation environments alongside training. The evaluator has five logical slots
 4. live vs running-average policy;
 5. floating checkpoint vs fixed anchor.
 
-Ratings live on an **absolute gauge with the scripted controller pinned at 1000**, the
-same convention the post-hoc calibration reports, so in-training and calibrated numbers no
-longer need re-basing against each other. Slot 2 therefore updates the live policy rather
-than scripted: the player defining the scale must not drift under the one being measured
-against it.
+Ratings live on the **live gauge**: an approximate scale, defined rather than measured,
+that pins the uniform-random agent at 0 and the scripted controller at 1000. Slot 2
+therefore updates the live policy rather than scripted: the player defining the scale must
+not drift under the one being measured against it. Everything on this scale is logged
+under `live_elo/` and is never the number a result quotes — see
+[live Elo versus calibrated Elo](#live-elo-versus-calibrated-elo) below.
 
 The anchor pool has two parts. **Stationary references** — the random agent, the
 semi-random rungs, and the scripted controller — sit at its head and never age out,
-because their strength is a fixed property and their ratings are measured constants.
+because their strength is a fixed property and their ratings are fixed constants.
 **Checkpoint anchors** follow: the newest `MAX_CHECKPOINT_ANCHORS` frozen ladder
 snapshots, which do rotate as the live policy leaves them behind.
 
@@ -384,18 +385,25 @@ snapshots, which do rotate as the live policy leaves them behind.
 With only random and scripted as fixed references, the live policy saturates both for the
 whole early climb — winning ~100% against one and losing ~100% against the other — so its
 rating is barely identified exactly when opponent selection depends on it. A ladder of
-semi-random rungs (`TrainConfig.reference_ladder`) fills that range. Each rung takes the
-scripted action with probability `p` and a uniform one otherwise, and their ratings are
-fitted offline by `bnb semi-random --profile <name>`.
+semi-random rungs fills that range. Each rung takes the scripted action with probability
+`p` and a uniform one otherwise, and the gauge assigns it **1000·p**. A profile therefore
+declares only which rungs exist (`TrainConfig.live_reference_probabilities`); the ratings
+follow from the definition in
+[`config/live_elo.py`](../src/boost_and_broadside/config/live_elo.py).
 
-Those ratings are a property of the environment the rungs play in, so a ladder is valid
-only for the tick rate, field count, ship config and fleet size it was measured under.
-The two shipped environments differ sharply — on the scripted-anchored gauge the random
-agent sits at **−364** in the zero-field environment and **+132** with four fields,
-because refractive fields compress the skill scale. A gauge is therefore shared by every
-profile that trains in the environment it was fitted in (`rl` and `bc` both use the
-zero-field one), and re-running the tournament is mandatory whenever that environment
-moves.
+The linear placement is an approximation and a rough one at the weak end. Measured against
+ladders fitted by `bnb semi-random` and regauged to the same two endpoints, it rates the
+`p=0.2` rung about 106 Elo too high in the zero-field environment and 77 too high with
+fields; from `p=0.6` upward it is within 40 points in both. Two consequences come with it:
+proximity sampling meets an over-rated rung slightly earlier than it otherwise would, and
+the milestone grid that decides when checkpoints freeze is read on these numbers.
+
+What it buys is that nothing has to be re-fitted. A fitted gauge is a property of the
+environment its rungs played in — tick rate, field count, ship config, fleet size — so it
+silently expires whenever any of those move, and the two shipped environments had fitted
+gauges that disagreed sharply (random at −364 with no fields, +132 with four). The defined
+gauge is the same in both, which is precisely why a live rating from one environment is
+not comparable with a live rating from the other.
 
 Per-episode assignment is a multinomial draw over the information weights, so the pool
 can be any size at no extra environment cost — the slot's envs simply redistribute, and
@@ -405,13 +413,35 @@ whole stationary ladder is computed from one scripted call and one random call h
 many rungs it holds.
 
 Ties count as half a win. These live ratings steer opponent selection and training
-decisions, but they remain a filtered online estimate.
+decisions, but they remain a filtered online estimate on an approximate scale.
 
 At configured rating milestones, the trainer writes unpruned ladder snapshots. After
 training, [`elo_calibrate.py`](../src/boost_and_broadside/modes/elo_calibrate.py) replays
 stationary players and refits historical match records to construct the more rigorous
 reported curve. The [evaluation guide](evaluation.md#post-hoc-elo-calibration) explains why
 the two rating series differ.
+
+### Live Elo versus calibrated Elo
+
+They are different estimators of different things and are never substituted for one
+another:
+
+| | live Elo | calibrated Elo |
+|---|---|---|
+| Produced by | the trainer, continuously | `bnb elo-calibrate`, after the run |
+| Scale | defined: random 0, scripted 1000, rung 1000·p | fitted Bradley–Terry, shifted so scripted reads 1000 |
+| Purpose | opponent sampling, progress, milestone placement | reported results |
+| Metric keys | `live_elo/policy`, `live_elo/ladder/<label>` | `calibrated_elo/live`, `calibrated_elo/ckpt_<step>` |
+| Stored in | `elo_history.jsonl`, checkpoint payloads | the `elo-calibration` artifact |
+
+The naming is the enforcement. Nothing the trainer emits sits under a bare `elo/` prefix
+that could be read as either, and the calibration chart files deliberately do not reuse
+the trainer's key names even though they share its file shape. Published figures and prose
+quote the calibrated series only.
+
+`bnb semi-random` checks the approximation rather than supplying it: each scale in its
+artifact carries `live_gauge_error`, the per-rung distance between the fitted ladder and
+the rating training actually uses. No profile has to wait for it.
 
 ## Checkpoints and reproducibility
 

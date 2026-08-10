@@ -166,11 +166,11 @@ uv run bnb elo-calibrate \
 uv run bnb elo-scale \
   --run resilient-resonance-682 --sizes 1,2,4,8,16,32,64
 
-# Build the random-to-scripted reference ladder used to condition scale ratings
+# Measure the random-to-scripted reference ladder used to condition scale ratings
 uv run bnb semi-random \
   --run resilient-resonance-682 --sizes 1,2,4,8,16,32,64
 
-# Fit that ladder for a training profile instead, before any such run exists
+# Measure it under a training profile's environment instead, with no run involved
 uv run bnb semi-random --profile rl --sizes 4
 
 # Search the scripted-team crossover for selected learned-team sizes
@@ -189,14 +189,13 @@ their exact recipe and start a new one for any other. These evaluations can requ
 substantial GPU time, and the reference-run measurements are already included.
 Methodology and interpretation are in [evaluation and results](evaluation.md).
 
-The `--profile` form of `semi-random` serves training rather than evaluation. Training
-rates the live policy against those same rungs as fixed references, so each profile
-carries its own fitted `reference_ladder` and `random_elo` in
-the registered profile under
-[`src/boost_and_broadside/profiles/`](../src/boost_and_broadside/profiles/), written under
-`checkpoints/<profile>/`. Rung ratings are a property of the environment they play in, so re-fit
-them whenever the tick rate, field count, ship
-config, fleet size or scripted controller moves — see
+The `--profile` form of `semi-random` measures the ladder under a training profile's
+environment rather than a finished run's. It is a check, not a prerequisite: training
+assigns each rung `1000·p` outright, so nothing has to be fitted before a profile can run.
+What the artifact adds is `live_gauge_error` per rung — how far the ratings training uses
+sit from the ones the tournament measures in that exact environment. Fitted ratings are a
+property of the environment they play in, so re-measure whenever the tick rate, field
+count, ship config, fleet size or scripted controller moves — see
 [the reference ladder](training.md#the-reference-ladder).
 
 ## Capture replays

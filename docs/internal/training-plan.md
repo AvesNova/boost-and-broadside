@@ -224,7 +224,8 @@ decision, mistimes every lead, and advances its recurrent state N times too fast
 for the game clock. It still plays, just far worse, and nothing says why.
 `TensorEnv.step` is now the decision-level call; the wrapper opts out via `tick`.
 
-**The anchor-label bug.** `elo/training_vs_random` classified slot-0 games by
+**The anchor-label bug.** `eval/win_rate_vs_random`, then named
+`elo/training_vs_random`, classified slot-0 games by
 whether the anchor carried weights, but *every* stationary reference is
 policy-free — random, all nine rungs, and scripted. The whole ladder landed in
 the random bucket, so the chart reported the win rate against an
@@ -539,18 +540,23 @@ env is 15% of wall clock and the update is 85% — a learned world model would b
 | **M5** | Check `TORCH_LOGS=graph_breaks` first; Inductor probably already fuses it. |
 | **M6** | `torch._foreach_nan_to_num_` does not exist in this build. |
 | **Bullet axis cost** | The biggest single lever measured so far, and untested. Bullets are **~26% of forward FLOPs** (23.5 GFLOP `kv_bullet` + 3.4 encoder of 103.7) and **~45% of persistent VRAM** (612 MiB of 1363, of which `bullet_pos` alone is 204 MiB in fp32), against `n_bullet_cross_per_block=1`. Five times the cost of Block C. Three sub-levers: fp32 `bullet_pos` (a shooter-relative encoding would make bf16 viable, −102 MiB); the field channels on bullets (153 MiB); and 80 fixed slots/env stored regardless of occupancy — compaction is a real project, it breaks the dense `(T,B,·)` layout. **Ablate `n_bullet_cross_per_block=0` first** to find out whether any of it earns its keep. |
-| **Ladder rung spacing** | `elo_milestone_gap=200` and the grid seeds from `random_elo // gap * gap`, so the first checkpoint snapshot fires at 200 Elo — deep inside rung territory, where the 9 semi-random rungs already cover 239–989 densely. Intended shape is rungs below the scripted anchor and checkpoints above it: set the gap to 100 and seed the grid from 1000. Note `min_games_to_freeze=1000` will defer milestones during fast climbs, so the effective gap is wider than the nominal one. **`MAX_CHECKPOINT_ANCHORS=2` is not the same kind of knob** — stateless rungs are free (the whole stationary ladder costs one scripted call and one random call), but each *policy* anchor is a full forward over 512 envs in slot 0 and again in slot 4, ~1024 env-forwards/step against the rollout's 2592. Keeping the 2 newest is near-equivalent to keeping the 2 nearest anyway, since live Elo climbs roughly monotonically and the free rungs cover everything below. |
+| **Ladder rung spacing** | `elo_milestone_gap=200` and the grid seeds from the live gauge's zero, so the first checkpoint snapshot fires at 200 Elo — deep inside rung territory, where the 9 semi-random rungs cover 200–950 densely. Intended shape is rungs below the scripted anchor and checkpoints above it: set the gap to 100 and seed the grid from 1000. Note `min_games_to_freeze=1000` will defer milestones during fast climbs, so the effective gap is wider than the nominal one. **`MAX_CHECKPOINT_ANCHORS=2` is not the same kind of knob** — stateless rungs are free (the whole stationary ladder costs one scripted call and one random call), but each *policy* anchor is a full forward over 512 envs in slot 0 and again in slot 4, ~1024 env-forwards/step against the rollout's 2592. Keeping the 2 newest is near-equivalent to keeping the 2 nearest anyway, since live Elo climbs roughly monotonically and the free rungs cover everything below. |
 
 ---
 
 ## Invariants a fresh session must not break
 
-- **Reference ladders are environment-specific.** Any change to tick rate, field
-  count, ship config, fleet size *or the scripted agent* invalidates them. Re-run
-  `bnb semi-random --profile <name>` and update `reference_ladder` /
-  `random_elo` in the profile.
-- **The Elo gauge is absolute**, scripted pinned at 1000. Normalized Elo is the
+- **The live gauge is defined, not fitted.** Random is 0, scripted is 1000, a
+  semi-random rung is 1000·p, and `config/live_elo` is the single derivation
+  site. A profile chooses which rungs exist and nothing else about the scale, so
+  no environment change can leave a stale ladder behind. `bnb semi-random`
+  measures how far that placement sits from a fitted one — it validates the
+  gauge and is never a prerequisite for training.
+- **The live gauge is absolute**, scripted pinned at 1000. Normalized Elo is the
   rating itself. Milestone grid and any rating threshold are absolute.
+- **Live Elo is not calibrated Elo.** The trainer logs `live_elo/*`;
+  `bnb elo-calibrate` writes `calibrated_elo/*`; published results quote the
+  latter only.
 - **Both "is it strong yet" gates read the scripted win rate**, not Elo. Keep it
   that way — an Elo threshold needs re-deriving every time the gauge moves.
 - **`validate_field_layout` must never run on the hot path** — eight syncs and it
