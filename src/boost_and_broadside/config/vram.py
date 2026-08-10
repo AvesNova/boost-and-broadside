@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -124,10 +124,23 @@ class VramKnobs:
             grad_checkpoint=document.get("grad_checkpoint"),
         )
 
-    def tiers(self) -> tuple[int, ...]:
-        """The equivalence tiers this proposal actually touches."""
+    def tiers(self, baseline: VramKnobs) -> tuple[int, ...]:
+        """The equivalence tiers this proposal actually touches.
 
-        moved = {name for name, value in self.document().items() if value is not None}
+        Measured against ``baseline`` — the values the profile resolves to on its
+        own — because a knob is only moved if it lands somewhere else. A row that
+        restates the shipped launch, which the 8 GB preset does exactly, claims
+        no tier at all; the tier list is the honesty claim and it should not warn
+        about a change nobody made. A knob the baseline says nothing about
+        (``None``) counts as moved whenever the proposal names it.
+        """
+
+        reference = baseline.document()
+        moved = {
+            name
+            for name, value in self.document().items()
+            if value is not None and value != reference[name]
+        }
         return tuple(sorted({KNOB_TIERS[name] for name in moved}))
 
 
@@ -357,10 +370,28 @@ def read_cache(path: Path) -> dict[str, VramCacheEntry]:
     return {entry.fingerprint: entry for entry in map(VramCacheEntry.from_document, entries)}
 
 
-def write_cache_entry(path: Path, entry: VramCacheEntry) -> None:
-    """Replace one entry and rewrite the whole cache atomically."""
+def write_cache_entry(
+    path: Path, entry: VramCacheEntry, *, report: Callable[[str], None] | None = None
+) -> None:
+    """Replace one entry and rewrite the whole cache atomically.
 
-    entries = dict(read_cache(path)) if path.is_file() else {}
+    A damaged cache is replaced here rather than re-raised. ``read_cache`` tells
+    the user to launch with ``--vram reprobe``, and a reprobe reaches this
+    function only after measuring the card — roughly twenty minutes per
+    candidate — so raising the same error on the write would make the advice
+    circular and throw the measurement away. Reading a damaged cache is still an
+    error: the risk being avoided there is training at a width nobody chose,
+    which cannot happen when the width was just measured. The replacement is
+    announced, and the file is recomputable by construction.
+    """
+
+    try:
+        entries = dict(read_cache(path)) if path.is_file() else {}
+    except VramError as error:
+        (report or (lambda _message: None))(
+            f"  replacing the unreadable cache at {path} with this measurement ({error})"
+        )
+        entries = {}
     entries[entry.fingerprint] = entry
     document = {
         "schema_version": VRAM_CACHE_SCHEMA_VERSION,
@@ -407,7 +438,10 @@ class VramResolution:
     identity_fingerprint: str | None
     notes: tuple[str, ...] = ()
 
-    def document(self) -> dict[str, Any]:
+    def document(self, baseline: VramKnobs) -> dict[str, Any]:
+        """The stored record. ``baseline`` is the profile's own derived sizing,
+        against which the applied knobs are judged to have moved or not."""
+
         applied = self.applied.document()
         return {
             "policy": self.policy,
@@ -416,7 +450,7 @@ class VramResolution:
             "proposed": self.knobs.document(),
             "applied": applied,
             "tiers": {
-                str(tier): TIER_GUARANTEES[tier] for tier in self.applied.tiers()
+                str(tier): TIER_GUARANTEES[tier] for tier in self.applied.tiers(baseline)
             },
             "identity_fingerprint": self.identity_fingerprint,
             "notes": list(self.notes),

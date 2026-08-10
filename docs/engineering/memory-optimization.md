@@ -299,6 +299,10 @@ shard), 5856 (2), 3904 (3), and 1952 (6), and `rl-fields` has no two-shard split
 | `off` | Ignore cache and presets entirely |
 | `8`/`16`/`24`/`32` | Apply that memory-tier preset row |
 
+A numeric row is applied on whatever device was asked for, including `--device cpu`, which
+is how a launch for a card that is not in this machine gets printed; the record notes that
+the device is not an accelerator, where `auto` would have reported nothing to size instead.
+
 Explicit `--num-envs`/`--microbatch-tokens` outrank all of it, and `--print-config` reports
 every resolved value with its source (`profile`, `derived`, `vram-cache`, `vram-preset`, or
 `cli`), which is also stored in every training checkpoint.
@@ -339,7 +343,14 @@ autocast dtype, the compile mode, the profile's semantic fingerprint, and its to
 geometry. Change any of those and the entry stops matching, so `auto` falls back to the
 profile's own sizing instead of reusing a measurement of a different question. A cache file
 that cannot be read is an error naming `--vram reprobe` or `--vram off`, never a silent
-resize.
+resize — and a reprobe, which reaches the file only after measuring the card, replaces the
+damaged one rather than raising the same error again and discarding the measurement.
+
+The tiers a launch record claims are the ones it actually moved, compared against the
+profile's own derived sizing. A row that restates the shipped launch — which the 8 GB row
+does exactly — claims no tier, because tier 2's warning is about a different env-stream
+count and minibatch composition and a knob set to the value it already had produces
+neither. The full proposal is recorded either way.
 
 Compile mode being part of that fingerprint has a practical consequence: `--compile`
 changes the reserved workspace, so a measurement taken under one mode does not answer for

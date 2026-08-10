@@ -18,6 +18,7 @@ from typing import Any
 from boost_and_broadside.config.resolve import LaunchOverrides
 from boost_and_broadside.config.schema import ResolvedTrainConfig
 from boost_and_broadside.config.vram import (
+    VramKnobs,
     VramResolution,
     apply_cli_overrides,
     launch_overrides,
@@ -30,6 +31,20 @@ from boost_and_broadside.profiles import resolve_named_profile
 ProfileResolver = Callable[..., ResolvedTrainConfig]
 
 
+def profile_knobs(resolved: ResolvedTrainConfig) -> VramKnobs:
+    """The sizing knobs a profile resolves to on its own.
+
+    The reference a VRAM proposal is judged against: a proposal that restates
+    these values moved nothing, whatever it names.
+    """
+
+    return VramKnobs(
+        num_envs=resolved.train_config.scales[0].num_envs,
+        microbatch_tokens=resolved.train_config.microbatch_tokens,
+        grad_checkpoint=resolved.model_config.grad_checkpoint,
+    )
+
+
 @dataclass(frozen=True)
 class TrainingLaunch:
     """Everything one ``bnb train`` invocation decided before allocating."""
@@ -37,11 +52,13 @@ class TrainingLaunch:
     resolved: ResolvedTrainConfig
     execution: ExecutionSettings
     vram: VramResolution
+    # The profile's own derived sizing, before any VRAM decision or override.
+    baseline: VramKnobs
 
     def document(self) -> dict[str, Any]:
         """The launch record stored in checkpoints and printed by --print-config."""
 
-        return {**self.execution.document(), "vram": self.vram.document()}
+        return {**self.execution.document(), "vram": self.vram.document(self.baseline)}
 
 
 def resolve_training_launch(
@@ -113,7 +130,12 @@ def resolve_training_launch(
         resolution, num_envs=num_envs, microbatch_tokens=microbatch_tokens
     )
     resolved = intent if _is_noop(overrides) else resolve(profile, overrides)
-    return TrainingLaunch(resolved=resolved, execution=execution, vram=resolution)
+    return TrainingLaunch(
+        resolved=resolved,
+        execution=execution,
+        vram=resolution,
+        baseline=profile_knobs(intent),
+    )
 
 
 def _is_noop(overrides: LaunchOverrides) -> bool:
@@ -124,4 +146,4 @@ def _is_noop(overrides: LaunchOverrides) -> bool:
     )
 
 
-__all__ = ["TrainingLaunch", "resolve_training_launch"]
+__all__ = ["TrainingLaunch", "profile_knobs", "resolve_training_launch"]

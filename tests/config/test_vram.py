@@ -40,6 +40,7 @@ from boost_and_broadside.config.vram import (
     unresolved,
     write_cache_entry,
 )
+from boost_and_broadside.launch import profile_knobs
 from boost_and_broadside.profiles import PROFILES
 
 _DEVICE = {
@@ -128,10 +129,26 @@ def test_vram_may_only_move_tier_one_and_two_knobs() -> None:
     assert set(KNOB_TIERS) == set(VramKnobs().document())
     assert set(KNOB_TIERS.values()) <= {1, 2}
     assert set(TIER_GUARANTEES) == {1, 2, 3}
-    assert VramKnobs().tiers() == ()
-    assert VramKnobs(grad_checkpoint=True).tiers() == (1,)
-    assert VramKnobs(num_envs=1952).tiers() == (2,)
-    assert VramKnobs(1952, 20_000, True).tiers() == (1, 2)
+    unknown = VramKnobs()
+    assert VramKnobs().tiers(unknown) == ()
+    assert VramKnobs(grad_checkpoint=True).tiers(unknown) == (1,)
+    assert VramKnobs(num_envs=1952).tiers(unknown) == (2,)
+    assert VramKnobs(1952, 20_000, True).tiers(unknown) == (1, 2)
+
+
+def test_a_proposal_that_restates_the_profile_claims_no_tier() -> None:
+    """The tier list is the honesty claim, so it may not warn about a change
+    nobody made: tier 2's warning is about a different env-stream count and
+    minibatch composition, and a knob set to the value it already had produces
+    neither."""
+
+    baseline = VramKnobs(3904, 25_000, False)
+
+    assert VramKnobs(3904, 25_000, False).tiers(baseline) == ()
+    assert VramKnobs(3904, 25_000, True).tiers(baseline) == (1,)
+    assert VramKnobs(1952, 25_000, False).tiers(baseline) == (2,)
+    # A knob the proposal does not name never counts, whatever the baseline is.
+    assert VramKnobs(num_envs=3904).tiers(baseline) == ()
 
 
 @pytest.mark.parametrize("name", sorted(PROFILES))
@@ -182,6 +199,8 @@ def test_the_eight_gigabyte_row_is_exactly_the_shipped_launch(name: str) -> None
     assert canonical_data(sized.train_config) == canonical_data(baseline.train_config)
     assert canonical_data(sized.model_config) == canonical_data(baseline.model_config)
     assert sized.resolved_config_fingerprint == baseline.resolved_config_fingerprint
+    # And it must not claim it moved anything either.
+    assert knobs.tiers(profile_knobs(baseline)) == ()
 
 
 def test_a_bigger_row_holds_more_of_the_fixed_batch_resident() -> None:
@@ -384,6 +403,33 @@ def test_a_cache_that_cannot_be_understood_is_an_error(
         read_cache(path)
 
 
+@pytest.mark.parametrize(
+    "content", ("not json at all", '{"schema_version": 99, "entries": []}', '{"schema_version": 1}')
+)
+def test_a_fresh_measurement_replaces_a_cache_it_cannot_read(
+    tmp_path: Path, content: str
+) -> None:
+    """The recovery ``read_cache`` names has to work.
+
+    It tells the user to launch with ``--vram reprobe``; a reprobe reaches the
+    write only after measuring the card, so raising there would make the advice
+    circular and discard twenty minutes of measurement per candidate.
+    """
+
+    path = tmp_path / ".vram.json"
+    path.write_text(content)
+    entry = _entry(VramKnobs(1952, 12_500, True))
+    lines: list[str] = []
+
+    write_cache_entry(path, entry, report=lines.append)
+
+    stored = read_cache(path)
+    assert list(stored) == [entry.fingerprint]
+    assert stored[entry.fingerprint].knobs == VramKnobs(1952, 12_500, True)
+    assert len(lines) == 1 and "replacing the unreadable cache" in lines[0]
+    assert sorted(item.name for item in tmp_path.iterdir()) == [".vram.json"]
+
+
 def test_an_entry_with_an_unknown_knob_is_rejected(tmp_path: Path) -> None:
     path = tmp_path / ".vram.json"
     entry = _entry().document()
@@ -456,16 +502,21 @@ def test_a_vram_proposal_is_recorded_as_its_own_source() -> None:
 
 
 def test_the_resolution_document_states_the_guarantee_of_what_it_moved() -> None:
+    baseline = VramKnobs(3904, 25_000, False)
     document = resolution_from_cache(
         VramPolicy("auto"), _entry(VramKnobs(1952, 20_000, True))
-    ).document()
+    ).document(baseline)
     assert document["status"] == "measured"
     assert document["source"] == "vram-cache"
     assert set(document["tiers"]) == {"1", "2"}
     assert document["tiers"]["2"] == TIER_GUARANTEES[2]
     assert "3" not in document["tiers"]
 
-    off = unresolved(VramPolicy("off"), "note").document()
+    restated = resolution_from_cache(VramPolicy("auto"), _entry(baseline)).document(baseline)
+    assert restated["applied"] == baseline.document()
+    assert restated["tiers"] == {}
+
+    off = unresolved(VramPolicy("off"), "note").document(baseline)
     assert off["tiers"] == {}
     assert off["notes"] == ["note"]
 

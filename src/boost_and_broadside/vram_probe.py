@@ -332,7 +332,23 @@ def resolve_vram(
     if policy.mode == "preset":
         assert policy.preset_gigabytes is not None
         geometry = launch_geometry(PROFILES[profile_name])
-        return resolution_from_preset(policy, VRAM_PRESETS[policy.preset_gigabytes], geometry)
+        resolution = resolution_from_preset(
+            policy, VRAM_PRESETS[policy.preset_gigabytes], geometry
+        )
+        if not device.startswith("cuda"):
+            # An explicit row is honored on any device — it is how a launch is
+            # printed on a laptop for a card that is not in this machine — but
+            # `auto` calls the same device "nothing to size", so the record says
+            # which of the two happened rather than leaving them to disagree.
+            resolution = replace(
+                resolution,
+                notes=(
+                    *resolution.notes,
+                    f"--device {device} is not an accelerator; the "
+                    f"{policy.preset_gigabytes} GB row is applied because it was asked for",
+                ),
+            )
+        return resolution
 
     if not device.startswith("cuda"):
         if policy.probes:
@@ -383,7 +399,7 @@ def resolve_vram(
     )
     for attempt in attempts[:-1]:
         announce(f"  rejected {attempt.knobs.document()}: {attempt.reason}")
-    write_cache_entry(path, entry)
+    write_cache_entry(path, entry, report=announce)
     announce(f"  measured {entry.knobs.document()}; cached in {path}")
     return replace(
         resolution_from_cache(policy, entry),

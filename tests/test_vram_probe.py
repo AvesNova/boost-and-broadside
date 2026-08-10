@@ -478,6 +478,10 @@ def test_a_preset_needs_no_device_at_all(monkeypatch) -> None:
     )
     assert resolution.applied == VramKnobs(5856, 37_500, False)
     assert resolution.status == "provisional"
+    # `auto` calls a CPU launch "nothing to size" and a preset sizes it anyway;
+    # the record says which happened rather than leaving the two to disagree.
+    assert any("not an accelerator" in note for note in resolution.notes)
+    assert any("because it was asked for" in note for note in resolution.notes)
 
 
 # ----------------------------------------------------------------------
@@ -493,6 +497,21 @@ def test_a_default_cpu_launch_resolves_exactly_as_the_profile_does() -> None:
     assert launch.vram.status == "unresolved"
     assert launch.document()["vram"]["tiers"] == {}
     assert launch.resolved.value_sources["train_config.scales.0.num_envs"] == "derived"
+
+
+def test_the_shipped_row_records_no_tier_because_it_moves_nothing() -> None:
+    """`--vram 8` is the shipped launch down to the fingerprint, so the record
+    must not warn about tier 2's different minibatch composition."""
+
+    launch = resolve_training_launch(profile="rl", vram="8", device="cpu")
+    baseline = resolve_profile(PROFILES["rl"])
+    record = launch.document()["vram"]
+
+    assert launch.resolved.resolved_config_fingerprint == baseline.resolved_config_fingerprint
+    assert record["applied"] == launch.baseline.document()
+    assert record["tiers"] == {}
+    # The proposal is still recorded in full; only the claim about it changed.
+    assert record["proposed"]["num_envs"] == 3904
 
 
 def test_a_measured_launch_records_every_source(tmp_path: Path, fake_cuda) -> None:
