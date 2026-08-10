@@ -235,6 +235,30 @@ barrier loss is not credited to a ship; only damage that reaches a target enters
 attribution. See [`config/defaults.py`](../src/boost_and_broadside/config/defaults.py) for
 current component horizons and schedules, and the preserved run config for historical weights.
 
+## Behavior-cloning profile
+
+[`profiles/bc.py`](../src/boost_and_broadside/profiles/bc.py) pretrains against the
+scripted controller before any policy gradient is taken. The controller supplies
+supervised action targets on every environment and never takes a side, so
+`policy_gradient_coef` and `league_fraction` are zero for the whole budget and no roster
+entry plays a rollout. The critic and the next-state head train alongside the actor,
+which is most of the point: RL inherits a warm trunk and a critic that has already seen
+the full reward decomposition.
+
+It trains in the environment RL continues in — eight ships, the same decision rate,
+spawn spread, logical batch, minibatching, and component discount horizons — so the
+handoff in `bnb train --profile rl --pretrain-from <bc-checkpoint>` does not also change
+the task. Five things differ, and only where the objective requires it: no policy
+gradient, no league, no KL trust region (under supervision, moving away from the rollout
+policy is the objective rather than a reason to stop), full-strength next-state
+prediction, and its own budget. That list is enforced by a test rather than by
+convention, because the profile is written independently and does not inherit from
+`rl`.
+
+Evaluation still runs during BC: the raw win rate against the scripted controller is
+what decays the cloning weight to zero at `bc_winrate_target`, and the run rates on the
+same zero-field gauge RL continues on.
+
 ## Field training profile
 
 The primary [`profiles/rl.py`](../src/boost_and_broadside/profiles/rl.py) profile remains an
@@ -366,10 +390,12 @@ fitted offline by `bnb semi-random --profile <name>`.
 
 Those ratings are a property of the environment the rungs play in, so a ladder is valid
 only for the tick rate, field count, ship config and fleet size it was measured under.
-The two shipped profiles differ sharply — on the scripted-anchored gauge the random agent
-sits at **−351** in `rl` and **+170** in `rl-fields`, because refractive fields compress
-the skill scale — so each profile carries its own ladder and re-running the tournament is
-mandatory whenever the environment moves.
+The two shipped environments differ sharply — on the scripted-anchored gauge the random
+agent sits at **−364** in the zero-field environment and **+132** with four fields,
+because refractive fields compress the skill scale. A gauge is therefore shared by every
+profile that trains in the environment it was fitted in (`rl` and `bc` both use the
+zero-field one), and re-running the tournament is mandatory whenever that environment
+moves.
 
 Per-episode assignment is a multinomial draw over the information weights, so the pool
 can be any size at no extra environment cost — the slot's envs simply redistribute, and
