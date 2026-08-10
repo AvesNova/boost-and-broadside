@@ -71,6 +71,11 @@ def test_modifier_ownership_matches_command_contract() -> None:
     assert owners["--compile"] == {"train"}
     assert owners["--no-wandb"] == {"train"}
     assert owners["--print-config"] == {"train"}
+    # Launch sizing belongs to training alone: no evaluation command has a
+    # logical batch to redistribute.
+    assert owners["--vram"] == {"train"}
+    assert owners["--num-envs"] == {"train"}
+    assert owners["--microbatch-tokens"] == {"train"}
     assert owners["--out"] == {"capture"}
     assert owners["--target-stderr"] == {"elo-calibrate", "elo-scale"}
     assert owners["--max-batches"] == {"elo-calibrate", "elo-scale"}
@@ -226,6 +231,53 @@ def test_invalid_print_config_is_a_concise_cli_error(capsys) -> None:
     error = capsys.readouterr().err
     assert "cannot preserve the fixed logical batch" in error
     assert "Traceback" not in error
+
+
+@pytest.mark.parametrize("policy", ("12", "8gb", "AUTO", ""))
+def test_an_undocumented_vram_policy_fails_during_parsing(policy: str, capsys) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(["train", "--profile", "rl", "--vram", policy, "--print-config"])
+    assert exit_info.value.code == 2
+    assert "expected auto|probe|reprobe|off|8|16|24|32" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("policy", ("probe", "reprobe"))
+def test_print_config_refuses_to_probe_from_the_command_line(policy: str, capsys) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(
+            ["train", "--profile", "rl", "--device", "cpu", "--vram", policy, "--print-config"]
+        )
+    assert exit_info.value.code == 2
+    error = capsys.readouterr().err
+    assert "printing a launch has no side effects" in error
+    assert "Traceback" not in error
+
+
+def test_print_config_records_a_provisional_preset_and_its_basis(capsys) -> None:
+    assert (
+        cli.main(
+            ["train", "--profile", "rl", "--device", "cpu", "--vram", "16", "--print-config"]
+        )
+        == 0
+    )
+    document = json.loads(capsys.readouterr().out)
+    vram = document["launch"]["vram"]
+    assert vram == {
+        "policy": "16",
+        "source": "vram-preset",
+        "status": "provisional",
+        "proposed": {"num_envs": 5856, "microbatch_tokens": 37_500, "grad_checkpoint": False},
+        "applied": {"num_envs": 5856, "microbatch_tokens": 37_500, "grad_checkpoint": False},
+        "tiers": vram["tiers"],
+        "identity_fingerprint": None,
+        "notes": vram["notes"],
+    }
+    assert set(vram["tiers"]) == {"1", "2"}
+    assert "never measured" in vram["notes"][0]
+    # D9: the resolved shard count is recorded and reported.
+    assert document["config"]["train_config"]["rollouts_per_update"] == 2
+    assert document["sources"]["train_config.scales.0.num_envs"] == "vram-preset"
+    assert document["sources"]["model_config.grad_checkpoint"] == "vram-preset"
 
 
 def test_print_config_rejects_an_unavailable_execution_backend(capsys, monkeypatch) -> None:
