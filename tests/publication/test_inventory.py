@@ -95,6 +95,8 @@ def test_every_selected_artifacts_payload_is_tracked_or_a_raw_sample(manifest) -
 
     untracked = []
     for entry in manifest.entries:
+        if not entry.selected:
+            continue
         for location in entry.artifacts.values():
             recorded = json.loads((_ROOT / location / "artifact.json").read_text())["files"]
             untracked.extend(

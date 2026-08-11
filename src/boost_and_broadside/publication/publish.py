@@ -210,11 +210,12 @@ def run_publish(
     if target is None:
         unowned = _prune_unowned(repository, manifest, check=check)
         (report.stale if check else report.removed).extend(unowned)
-    # The generated index describes what this run published. A run that could not
-    # resolve one of its sources published less than the inventory, so rewriting
-    # the index from it would quietly drop that entry's provenance row while its
-    # output stayed in `docs/`; leave the previous index in place instead.
-    if not check and target is None and not report.failed and any(
+    # An unresolved entry contributes no provenance row and no ownership record,
+    # so rewriting the index from this run would drop it from both while its
+    # output stayed in `docs/` — leaving it unowned, and prunable by the next
+    # run. Every other outcome still contributes its row, so only this one has
+    # to hold the index back.
+    if not check and target is None and not report.by_status(UNRESOLVED) and any(
         entry.selected and not entry.renderer.external for entry in manifest.entries
     ):
         _write_generated_index(repository, manifest, report)
@@ -543,6 +544,7 @@ __all__ = [
     "RENDERED",
     "STALE",
     "UNCHANGED",
+    "UNRESOLVED",
     "UNSELECTED",
     "offline",
     "run_publish",

@@ -1059,6 +1059,11 @@ def render_report(document: Mapping[str, Any]) -> str:
     records, through the same pure functions the migration used.
     """
 
+    # Render from the document as JSON stores it, whoever supplied it. The
+    # config blocks are interpolated by repr, so an in-memory document would
+    # print tuples where the tracked file has lists — the same report, spelled
+    # two ways, depending on the caller.
+    document = json.loads(json.dumps(document, default=str))
     records: list[dict[str, Any]] = list(document["files"])
     provenance = document["provenance"]
     ship_config = _ship_config_from_document(document)

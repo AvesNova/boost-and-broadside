@@ -407,11 +407,17 @@ def _publish(args: argparse.Namespace) -> None:
 
     from pathlib import Path
 
-    from boost_and_broadside.publication.publish import run_publish
+    from boost_and_broadside.publication.publish import UNRESOLVED, run_publish
     from boost_and_broadside.publication.renderer_api import PublicationError
 
     report = run_publish(Path.cwd(), target=args.target, check=args.check)
     print(report.render())
+    if report.by_status(UNRESOLVED):
+        # Re-running publish cannot repair a source that is damaged, absent, or
+        # was produced from a dirty checkout, so do not suggest it.
+        raise PublicationError(
+            "a publication source could not be verified; see the entries reported above"
+        )
     if report.failed:
         raise PublicationError(
             "canonical output does not match the manifest; run bnb publish to update it"

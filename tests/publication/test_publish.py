@@ -388,6 +388,21 @@ def test_one_damaged_source_does_not_hide_the_rest_of_the_inventory(
     assert report.failed
 
 
+def test_an_unreadable_manifest_fails_its_own_entry_too(repository, renderers) -> None:
+    """Damage that is not a missing file is still attributed to its artifact.
+
+    ``json.JSONDecodeError`` used to escape as itself, which made a corrupt
+    manifest the one kind of damage that took down the inventory without naming
+    the artifact carrying it.
+    """
+
+    location = build_artifact(repository, {"value": 1})
+    (repository / location / "artifact.json").write_text("{not json")
+    write_manifest(repository, _SUMMARY.format(location=location))
+
+    _refused(run_publish(repository), "not valid JSON")
+
+
 def test_an_unselected_entry_is_reported_and_left_alone(repository, renderers) -> None:
     write_manifest(
         repository,

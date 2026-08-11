@@ -420,7 +420,13 @@ def load_artifact(path: str | Path, *, verify: bool = True) -> Artifact:
     manifest_path = directory / _MANIFEST_NAME
     if not manifest_path.is_file():
         raise ArtifactError(f"no {_MANIFEST_NAME} in {directory}")
-    manifest = json.loads(manifest_path.read_text())
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except json.JSONDecodeError as error:
+        # An unreadable manifest is a damaged artifact like any other. Letting
+        # JSONDecodeError escape made it the one kind of damage that could not
+        # be attributed to the artifact that carried it.
+        raise ArtifactError(f"{manifest_path} is not valid JSON: {error}") from error
     if manifest.get("schema_version") != ARTIFACT_MANIFEST_SCHEMA_VERSION:
         raise ArtifactError(
             f"{directory} uses artifact manifest schema "

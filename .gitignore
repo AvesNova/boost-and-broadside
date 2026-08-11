@@ -33,6 +33,11 @@ gameplay_clips/
 # those payloads are re-included here. `samples/` below deliberately follows,
 # and still wins: raw samples are the one payload that stays local by design.
 !checkpoints/*/artifacts/**
+# The same reasoning for the raw W&B export a landmark artifact was promoted
+# from: nine of its ten `files/` were tracked and `output.log` was not, so the
+# ingestion command the artifact records would rebuild a different payload on a
+# fresh clone than the one it names.
+!checkpoints/*/wandb_export/**
 # Raw analysis samples stay local. This rule follows the landmark whitelist
 # above deliberately: a promoted run directory re-includes everything under it,
 # so `samples/` has to be excluded again afterwards or a multi-gigabyte payload

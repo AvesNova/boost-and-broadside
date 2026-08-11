@@ -60,6 +60,9 @@ def test_promotable_landmark_aggregates_remain_trackable(path):
         f"{_LANDMARK}/artifacts/wandb-export/20260809T142500Z-a81bc39e/files/output.log",
         f"{_LANDMARK}/artifacts/wandb-export/20260809T142500Z-a81bc39e/files/archive.zip",
         f"{_LANDMARK}/artifacts/crossover/20260809T142500Z-a81bc39e/data/matrix.npz",
+        # The raw export an artifact was promoted from is evidence on the same
+        # terms: the recorded ingestion command has to rebuild the same payload.
+        f"{_LANDMARK}/wandb_export/files/output.log",
     ],
 )
 def test_a_broad_local_rule_does_not_reach_inside_an_artifact_payload(path):
