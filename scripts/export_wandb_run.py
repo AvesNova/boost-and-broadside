@@ -62,7 +62,7 @@ def export_run(
         checkpoint_root=checkpoint_root,
         standalone_root=standalone_root,
         invocation=Invocation(
-            argv=("export_wandb_run.py", "--run", run_path),
+            argv=("scripts/export_wandb_run.py", "--run", run_path),
             command="wandb-export",
             execution={"samples": samples},
         ),
@@ -146,7 +146,7 @@ def ingest_export_directory(
         checkpoint_root=checkpoint_root,
         standalone_root=standalone_root,
         invocation=Invocation(
-            argv=("export_wandb_run.py", "--from-directory", str(source)),
+            argv=("scripts/export_wandb_run.py", "--from-directory", str(source)),
             command="wandb-export",
             execution={"network": False},
         ),

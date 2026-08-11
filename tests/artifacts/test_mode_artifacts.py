@@ -87,6 +87,9 @@ def test_the_manifest_identifies_subjects_command_and_machine(tmp_path, syntheti
 
     assert manifest["invocation"]["normalized"].startswith("uv run bnb crossover")
     assert manifest["execution"]["device"] == "cpu"
+    # `wandb` is a training launch setting. A compute mode has no `--no-wandb`
+    # and contacts nothing, so its artifact does not report one either way.
+    assert "wandb" not in manifest["execution"]
     assert manifest["runtime"]["torch"]
     assert "git_commit" in manifest["code"]
     assert manifest["files"][0]["path"] == "result.json"

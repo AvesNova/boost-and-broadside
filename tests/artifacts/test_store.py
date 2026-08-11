@@ -139,6 +139,20 @@ def test_normalized_command_is_the_canonical_uv_spelling():
     )
 
 
+def test_a_script_producer_keeps_its_path_in_the_normalized_command():
+    """The one producer that is not a `bnb` subcommand still yields a real command.
+
+    Dropping `argv[0]` is right for the installed executable, which carries no
+    information. Doing it to the ingestion script produced `uv run bnb
+    --from-directory ...` — no subcommand, an argparse error — in the field
+    whose whole promise is that a reader can paste it.
+    """
+
+    assert normalized_command(
+        ["scripts/export_wandb_run.py", "--from-directory", "checkpoints/run/wandb_export"]
+    ) == ("uv run scripts/export_wandb_run.py --from-directory checkpoints/run/wandb_export")
+
+
 def test_payload_writes_record_hashes_and_sizes(tmp_path):
     store = _store(tmp_path)
     artifact = store.create(_recipe(), store.run_owner("synthetic-run"))

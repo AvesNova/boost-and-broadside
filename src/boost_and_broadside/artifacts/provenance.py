@@ -126,16 +126,25 @@ def environment_provenance() -> dict[str, str]:
 
 
 def normalized_command(argv: Sequence[str]) -> str:
-    """The canonical ``uv run bnb ...`` spelling of an invocation.
+    """The canonical ``uv run ...`` spelling of an invocation.
 
     The original argv is recorded verbatim beside this; the normalized form is
     what a reader can paste to reproduce the measurement regardless of whether
     it was launched through ``uv run``, an activated virtual environment, or an
     absolute path to the installed executable.
+
+    Twelve of the thirteen producers are ``bnb`` subcommands, whose ``argv[0]``
+    is the installed executable and carries no information. Ingestion is a
+    script, and dropping *its* ``argv[0]`` produced a normalized command with no
+    subcommand in it — something that would fail at argparse, in the one field a
+    reader is invited to paste. A script keeps its path.
     """
 
-    arguments = list(argv[1:])
-    return " ".join(["uv", "run", "bnb", *arguments])
+    if not argv:
+        return "uv run bnb"
+    if argv[0].endswith(".py"):
+        return " ".join(["uv", "run", *argv])
+    return " ".join(["uv", "run", "bnb", *argv[1:]])
 
 
 def producer_provenance() -> dict[str, Any]:

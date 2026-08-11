@@ -75,6 +75,13 @@ def _prepare_execution(
     args.seed = settings.seed
     initialize_execution(settings)
     set_config_drift_allowed(getattr(args, "allow_config_drift", False))
+    execution = settings.document()
+    if not hasattr(args, "no_wandb"):
+        # `wandb` is a training launch setting, and only `train` exposes it. A
+        # compute mode contacts nothing, so recording `wandb: true` on its
+        # artifact reads as a claim about the measurement rather than what it
+        # is: the default of an option this command does not have.
+        execution.pop("wandb", None)
     return CommandContext(
         device=settings.device,
         store=ArtifactStore(
@@ -83,7 +90,7 @@ def _prepare_execution(
             invocation=Invocation(
                 argv=tuple(argv or ()),
                 command=command,
-                execution=settings.document(),
+                execution=execution,
             ),
             device=settings.device,
         ),
