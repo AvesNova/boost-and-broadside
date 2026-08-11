@@ -19,6 +19,7 @@ from boost_and_broadside.publication.publish import (
     MISSING,
     RENDERED,
     UNCHANGED,
+    UNRESOLVED,
     UNSELECTED,
     run_publish,
 )
@@ -295,12 +296,19 @@ def test_an_absent_ownership_record_means_nothing_was_published_yet(
     assert not report.failed
 
 
+def _refused(report, match: str) -> None:
+    """A bad source fails its own entry, loudly, having rendered nothing for it."""
+
+    (outcome,) = report.by_status(UNRESOLVED)
+    assert match in outcome.detail
+    assert report.failed
+
+
 def test_an_incomplete_source_is_refused(repository, renderers) -> None:
     location = build_artifact(repository, {"value": 1}, complete=False)
     write_manifest(repository, _SUMMARY.format(location=location))
 
-    with pytest.raises(PublicationError, match="in-progress"):
-        run_publish(repository)
+    _refused(run_publish(repository), "in-progress")
     assert not (repository / "docs" / "results" / "summary.json").exists()
 
 
@@ -320,8 +328,7 @@ def test_an_interrupted_resumable_sweep_is_refused_as_a_source(repository, rende
     location = artifact.path.relative_to(repository)
     write_manifest(repository, _SUMMARY.format(location=location))
 
-    with pytest.raises(PublicationError, match="cannot be cited"):
-        run_publish(repository)
+    _refused(run_publish(repository), "cannot be cited")
 
     # Finishing the same measurement makes it citable, and nothing else changes.
     artifact.complete()
@@ -331,6 +338,54 @@ def test_an_interrupted_resumable_sweep_is_refused_as_a_source(repository, rende
     assert json.loads(
         (repository / "docs" / "results" / "summary.json").read_text()
     ) == {"value": 1, "games": 75}
+
+
+def test_one_damaged_source_does_not_hide_the_rest_of_the_inventory(
+    repository, renderers
+) -> None:
+    """A bad source fails its entry, not the run's ability to report on the others.
+
+    The landmark inventory found this the hard way: one selected artifact
+    recorded a payload file the repository would not track, and because source
+    resolution raised, all 26 healthy entries went unreported behind a single
+    line. External and promoted sources already reported per entry; artifact
+    sources now do too.
+    """
+
+    healthy = build_artifact(repository, {"value": 1})
+    damaged = build_artifact(repository, {"value": 2})
+    write_manifest(
+        repository,
+        f"""
+        schema_version = 1
+
+        [publications.healthy]
+        renderer = "fixture-summary-v1"
+        output = "docs/results/healthy.json"
+        description = "Intact."
+
+        [publications.healthy.artifacts]
+        measurement = "{healthy}"
+
+        [publications.damaged]
+        renderer = "fixture-summary-v1"
+        output = "docs/results/damaged.json"
+        description = "Its source is about to be tampered with."
+
+        [publications.damaged.artifacts]
+        measurement = "{damaged}"
+        """,
+    )
+    assert not run_publish(repository).failed
+
+    (repository / damaged / "result.json").write_text('{"value": 99}')
+    report = run_publish(repository, check=True)
+
+    assert {outcome.name: outcome.status for outcome in report.outcomes} == {
+        "healthy": UNCHANGED,
+        "damaged": UNRESOLVED,
+    }
+    assert report.failed
 
 
 def test_an_unselected_entry_is_reported_and_left_alone(repository, renderers) -> None:
@@ -374,8 +429,7 @@ def test_a_dirty_source_is_refused(repository, renderers) -> None:
     location = build_artifact(repository, {"value": 1}, clean=False)
     write_manifest(repository, _SUMMARY.format(location=location))
 
-    with pytest.raises(PublicationError, match="dirty checkout"):
-        run_publish(repository)
+    _refused(run_publish(repository), "dirty checkout")
 
 
 def test_a_tampered_source_payload_is_refused(repository, renderers) -> None:
@@ -383,16 +437,14 @@ def test_a_tampered_source_payload_is_refused(repository, renderers) -> None:
     write_manifest(repository, _SUMMARY.format(location=location))
     (repository / location / "result.json").write_text('{"value": 2}')
 
-    with pytest.raises(PublicationError, match="recorded hash"):
-        run_publish(repository)
+    _refused(run_publish(repository), "recorded hash")
 
 
 def test_a_source_schema_the_renderer_cannot_read_is_refused(repository, renderers) -> None:
     location = build_artifact(repository, {"value": 1}, schema_version=7)
     write_manifest(repository, _SUMMARY.format(location=location))
 
-    with pytest.raises(PublicationError, match="result schema"):
-        run_publish(repository)
+    _refused(run_publish(repository), "result schema")
 
 
 def test_promoted_media_must_match_its_recorded_hash(repository, renderers) -> None:
@@ -418,8 +470,8 @@ def test_promoted_media_must_match_its_recorded_hash(repository, renderers) -> N
     assert report.by_status(RENDERED)
 
     clip.write_bytes(b"GIF89a-changed")
-    with pytest.raises(PublicationError, match="recorded sha256"):
-        run_publish(repository)
+    _refused(run_publish(repository), "recorded sha256")
+    assert published.read_bytes() == b"GIF89a-fixture"
 
 
 _CLIP = """

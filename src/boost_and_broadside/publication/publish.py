@@ -53,6 +53,10 @@ UNCHANGED = "unchanged"
 CHANGED = "changed"
 MISSING = "missing"
 UNSELECTED = "unselected"
+# The entry's sources could not be verified, so nothing was rendered for it. A
+# failure like every other, reported against the entry that owns the bad source
+# rather than as the run's only output.
+UNRESOLVED = "unresolved"
 # Not an entry status: staleness is a property of a leftover output rather than
 # of any entry, so it is reported in PublishReport.stale, not through by_status.
 STALE = "stale"
@@ -71,7 +75,7 @@ class EntryOutcome:
 
     @property
     def failed(self) -> bool:
-        return self.status in {CHANGED, MISSING}
+        return self.status in {CHANGED, MISSING, UNRESOLVED}
 
 
 @dataclass
@@ -183,7 +187,17 @@ def run_publish(
             report.index.append(_index_row(entry, _pinned_digests(entry)))
             published[entry.name] = entry.output
             continue
-        sources, digests = _resolve_sources(repository, entry)
+        try:
+            sources, digests = _resolve_sources(repository, entry)
+        except PublicationError as error:
+            # One damaged, dirty, or unreadable source says nothing about the
+            # other entries. Reporting it against its own entry lets the rest of
+            # the inventory still be checked, and the run still fails: an
+            # unresolved entry is a failed one, so the exit code is unchanged.
+            report.outcomes.append(
+                EntryOutcome(entry.name, UNRESOLVED, entry.output, _detail(entry, error))
+            )
+            continue
         with tempfile.TemporaryDirectory(prefix="bnb-publish-") as temporary:
             staged = Path(temporary)
             with offline():
@@ -196,7 +210,11 @@ def run_publish(
     if target is None:
         unowned = _prune_unowned(repository, manifest, check=check)
         (report.stale if check else report.removed).extend(unowned)
-    if not check and target is None and any(
+    # The generated index describes what this run published. A run that could not
+    # resolve one of its sources published less than the inventory, so rewriting
+    # the index from it would quietly drop that entry's provenance row while its
+    # output stayed in `docs/`; leave the previous index in place instead.
+    if not check and target is None and not report.failed and any(
         entry.selected and not entry.renderer.external for entry in manifest.entries
     ):
         _write_generated_index(repository, manifest, report)
@@ -259,6 +277,16 @@ def _verify_promoted(repository: Path, entry: PublicationEntry) -> EntryOutcome 
         entry.output,
         f"{source.path} is not present and the output does not match its pinned sha256",
     )
+
+
+def _detail(entry: PublicationEntry, error: PublicationError) -> str:
+    """The error's own words, minus the entry name the report line already carries."""
+
+    message = str(error)
+    prefix = f"publication {entry.name!r}"
+    if message.startswith(prefix):
+        message = message[len(prefix) :].lstrip(": ")
+    return message
 
 
 def _entries_to_process(
