@@ -36,13 +36,13 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: `S17R` — migration/reproducibility gate remediation and re-review.
-- Next section: `S18`, once `S17R` closes both blockers and an independent re-review reports none remaining.
-- Blocking issue: two, both recorded in the `S17` handoff below. A clean checkout cannot publish at
-  all, because the selected `wandb-export` artifact requires a payload file `.gitignore` excludes;
-  and `migration_report.md` records a migrated SHA-256 for three of the sixteen landmark files that
-  matches nothing in the repository or its history. `S18` and `S19` remain pending until `S17R`
-  closes both and an independent re-review reports no remaining blocker.
+- Active section: none. `S17R` is completed and **closes** the migration/reproducibility gate.
+- Next section: `S18` — documentation and cleanup.
+- Blocking issue: none. Both `S17` blockers are closed with regression coverage, and the independent
+  re-review of `599beff..S17R` reports no remaining blocker. A clean `git archive HEAD` extraction
+  now runs `bnb publish --check` to `1 external, 26 unchanged`, exit 0, and reproduces `docs/`
+  byte-for-byte; `migration_report.md` agrees with `migration_report.json` and with the tracked
+  bytes on all sixteen files.
 - Target schemas: **frozen** — see "Frozen migration target schemas" below. `S15` migrates into
   exactly those shapes.
 
@@ -72,7 +72,7 @@ code, tests, and reader-facing documentation.
 | S15 | 10 | completed | checkpoint migration engineer | Sol / extra high | Migrate the complete 682 checkpoint set once into the frozen current schema (first attempt reviewed, rejected, reverted) |
 | S16 | 10 | completed | landmark/publication integrator | Sol / high | Backfill 682 artifacts and raw samples; select and regenerate canonical publications |
 | S17 | 10 gate | completed | migration/reproducibility reviewer | Sol / extra high | Independently verify 682 equivalence, completeness, provenance, and publication reproducibility |
-| S17R | 10 gate remediation | in_progress | migration/reproducibility remediator + reviewer | Sol / extra high | Make a clean checkout publishable and the migration record true, then obtain an independent re-review |
+| S17R | 10 gate remediation | completed | migration/reproducibility remediator + reviewer | Sol / extra high | Make a clean checkout publishable and the migration record true, then obtain an independent re-review |
 | S18 | 11 | pending | documentation/cleanup engineer | Terra / high | Complete repo-wide docs and remove obsolete paths, names, and temporary compatibility residue |
 | S19 | final gate | pending | final branch reviewer | Sol / extra high | Review the complete branch against the plan and run final acceptance checks |
 
@@ -2650,6 +2650,149 @@ closed by the restart above.
      intent being absent from artifact recipes; the retired `docs/ar_report/{1v1,2v2}` trees and the
      three superseded landmark JSON files awaiting S18; and S15 risks 1–4, S14R risks 1–3, S13 risks
      1–3 and 5–6, and S12 risks 2–4).
+
+### S17R handoff
+
+- Status: completed; the migration/reproducibility gate is **closed**
+- Agent/model/effort: migration/reproducibility remediator + independent reviewer / `gpt-5.6-sol` /
+  extra high
+- Commit(s): `af7be40` — mark S17R active; `f037a31` — track every byte a selected artifact is
+  verified against; `b6d9bc0` — render the landmark report from the record it describes; `73ba9b1` —
+  report a bad source against its own entry; `2466049` — record a command a reader can actually
+  paste; `879ea98` — re-ingest the landmark export with a true invocation record; `7990512` — pin
+  the report to the record it is rendered from; `97ebfb2` — follow the per-entry publication report
+  into the CLI; `18ca6b4` — close the re-review's follow-ups on the new failure path; followed by
+  this closure commit.
+- Both blocking probes were reproduced before any product code was edited, exactly as `S17`
+  recorded them: `git archive HEAD` into a temporary directory then `bnb publish --check` there
+  exited **2** with one line and nothing rendered; and the three tracked `.pt` files hashed to
+  `2e2f52d9…`, `160c1422…`, `78562c2d…` against the document's `636e0103…`, `51ff9cd9…`,
+  `ae7c6ea1…`.
+
+**Blocking finding 1 — a clean checkout could not publish.** The rule was wrong, not the file.
+`.gitignore`'s repository-wide `*.log` was aimed at stray training output and had no business
+reaching inside a promoted run's artifacts, where `verify_artifact` requires every recorded file
+that is not a raw sample. Excluding `files/output.log` from the payload was rejected: the ingest's
+contract is that it promotes *exactly* the downloaded bytes, and selecting by extension would have
+left `*.zip` and `data/` as the same trap for the next payload. `!checkpoints/*/artifacts/**` is
+therefore inserted before the `samples/` rule, which still wins for the one payload that is local
+by design. A survey of all seven selected artifacts found exactly three recorded-but-untracked
+files: the two `samples/` payloads, which are exempt, and `files/output.log`, which is now tracked.
+
+**Blocking finding 2 — the migration report named bytes nobody had.** Hand-editing three cells was
+rejected because it would have left the trap armed: the document was produced by re-running the
+migration, and three of the sixteen payloads do not serialize byte-identically twice. The document
+is now a *view* of the record — `build_report_document` assembles `migration_report.json`,
+`render_report` turns exactly that document into Markdown, and the migration writes the JSON first
+and renders from what it wrote. `--render-report-from` regenerates the prose from the tracked JSON
+while migrating and hashing nothing; that is how the three rows were corrected, and they are the
+only lines in the document that moved.
+
+- Tests/checks and results: `uv run --no-sync pytest -q` (**1489 passed**, 3 warnings — up from
+  1479 at `S17`); `.venv/bin/bnb smoke` (all 14 isolated cases passed, checkout unchanged);
+  `uv run --no-sync ruff check .` and Ruff against a clean `git archive HEAD` (both passed);
+  `git diff --check 599beff..HEAD` (passed); `bnb publish --check` against the working checkout
+  **and against a clean `git archive HEAD` extraction** — both exit 0 and report **1 external, 26
+  unchanged**. The independent reviewer additionally ran a non-check `bnb publish` in a clean
+  extraction and found `diff -rq` against the tracked `docs/` empty: the offline no-diff gate now
+  holds byte-for-byte from a fresh clone, which is the acceptance criterion `S17` could not meet.
+- New regression coverage, each verified to fail without its fix: every file a manifest-selected
+  artifact records is tracked or exempt under `samples/` (`tests/publication/test_inventory.py`); a
+  payload file is trackable whatever its extension (`tests/artifacts/test_ignore_policy.py`); the
+  Markdown report is the JSON record rendered, and changing a hash in the document moves exactly
+  that cell (`tests/migration/test_landmark_682.py`); one damaged source does not hide the rest of
+  the inventory, and an unreadable manifest fails its own entry (`tests/publication/test_publish.py`).
+- Behavior/config changes: **no training configuration, profile, fingerprint, or checkpoint moved,
+  and no measurement was recomputed.** Five product changes, all in the publication and provenance
+  surface:
+  1. Artifact payloads inside a tracked run are trackable; `samples/` still is not.
+  2. A source that cannot be verified fails its own entry as `unresolved` rather than aborting the
+     inventory (ledger step 3, decided below). An unresolved entry is a failed one, so exit codes
+     are unchanged and nothing became quieter.
+  3. `normalized_command` keeps a script's path, so the one producer that is not a `bnb` subcommand
+     records a command that parses.
+  4. A compute mode's artifact no longer records `wandb`, an option only `train` has.
+  5. The landmark `wandb-export` artifact was re-ingested so its stored invocation is true.
+- Files/artifacts produced: the `wandb-export` artifact moved from `20260811T074027Z-86b2417d` to
+  `20260811T193851Z-86b2417d`. Git records every payload file as a pure rename — the bytes are
+  identical and the recipe digest `86b2417d` is unchanged — and `artifact.json` differs only in id,
+  timestamps, `code.git_commit`, and the corrected invocation. `docs/publications.toml` and the
+  generated `docs/results/provenance.{md,json}` follow the new id; all three W&B-derived figures
+  publish as unchanged. Also newly tracked: `checkpoints/resilient-resonance-682/wandb_export/files/output.log`.
+- Decisions/deviations from plan:
+  1. **Ledger step 3: report per entry.** `_resolve_sources` raising meant one damaged source took
+     down 26 healthy entries and said nothing about whether they were fine, while `_verify_external`
+     and `_verify_promoted` already reported per entry. Artifact and promoted-file sources now do
+     too. Five tests that asserted the exception shape were converted to assert the refusal shape —
+     the same reason strings, plus `report.failed`, plus that nothing was rendered or overwritten;
+     one of them is strictly stronger than before.
+  2. **The generated index is held back only by an unresolved entry.** Every other outcome still
+     contributes its provenance row, so only that case could write an index and ownership record
+     missing an entry whose output remains in `docs/` — which would leave it unowned and prunable.
+  3. **`S17` non-blocking 1 (the unpasteable normalized command) was closed in the record, not only
+     in the generator.** Fixing the code does not fix a record already written, so the export was
+     re-ingested from the same tracked directory it was promoted from. Deterministic, offline, and
+     verified byte-identical.
+  4. **`S17` non-blocking 2 (`global_step: null` on explicit checkpoint subjects) is deferred, by
+     name.** The subject description feeds `ArtifactRecipe.canonical()` and therefore the recipe
+     digest and the artifact id, so filling it in cannot be a metadata edit: the AR and
+     noise-calibration artifacts would have to be produced again by their modes, which changes
+     published outputs and the numbers quoted from them. Identity is already pinned by the
+     checkpoint sha256, and the step is recoverable from the payload that hash names. This belongs
+     with the next re-measurement, not with a gate remediation.
+  5. **`S17` non-blocking 3 (`migrate_682.py` untested) is partly closed.** The report path — the
+     concrete cost `S17` named — now has three tests, including one asserting the tracked `.md` and
+     `.json` agree. The transformation functions still have no unit tests of their own; they remain
+     covered through the sixteen tracked files.
+  6. **`S17` non-blocking 4 (`execution.wandb` on offline artifacts) is fixed forward only.** The
+     six shipped compute artifacts still record it. The cost of removing it is not that the numbers
+     would move — the modes are seeded and would be expected to reproduce them — but six GPU
+     re-runs, six new artifact ids (the timestamp component always moves), and re-pointing
+     `docs/publications.toml` and the provenance index, for a field that is part of no recipe and
+     falsifies nothing.
+- Review findings addressed: the independent re-review of `599beff..HEAD` returned **no blocking
+  findings**, having verified both blockers closed with its own probes, confirmed all three new
+  regression tests fail without their fix (in scratch copies), re-derived the `.gitignore` behavior
+  with a six-path `git check-ignore` matrix, cross-checked all sixteen files across `.md` × `.json`
+  × disk with zero mismatches, and confirmed a clean extraction reproduces `docs/` byte-for-byte.
+  Six of its eleven non-blocking findings were then closed in `18ca6b4`: the over-broad index guard,
+  a corrupt `artifact.json` escaping as `JSONDecodeError` instead of failing its entry, a failure
+  message advising a repair that would not work, `render_report` being correct only on a
+  round-tripped document, the raw `wandb_export/` having nine of its ten `files/` tracked, and two
+  smaller consistency items.
+- Remaining risks or required follow-up:
+  1. **`publish --check` does not verify the generated provenance index.** `_write_generated_index`
+     runs only in non-check mode, so `docs/results/provenance.{md,json}` are canonical outputs that
+     the no-diff gate does not cover. Pre-existing since `S16`; the reviewer confirmed by hand that
+     both files are currently correct, and a clean-extraction `bnb publish` reproduces them exactly.
+     `S18`/`S19` should close it.
+  2. **The provenance index and the ownership record are written together, and only one of them can
+     go stale.** `render_ownership` is derived from the manifest and never truncates; only
+     `provenance.md`, built from `report.index`, can. Because `_write_generated_index` writes both
+     in one loop, holding it back for an unresolved entry also holds back an ownership record that
+     would have been correct — so an output added to the manifest and rendered in the same run as an
+     unresolved entry is not recorded as owned, and would escape `_prune_unowned` if later dropped.
+     Much narrower than the pre-`18ca6b4` guard and now commented; splitting the two writes closes
+     it. Related and pre-existing: a MISSING external asset or a MISSING/CHANGED promoted entry
+     still contributes an index row for an output that is absent or off its pin. The run exits
+     non-zero in every one of these cases, so none of them is silent.
+  3. `render_report` rebuilds a `ShipConfig` from the recorded fields, so a future change to that
+     dataclass makes rendering the historical record fail loudly rather than silently. Accepted: the
+     renderer already needs the live feature pipeline to recompute the encoder tables.
+  4. `ingest_export_directory`'s docstring says the stored bytes are copied and hashed, which is
+     literally true of `files/` and `history.jsonl`; the three JSON documents are re-serialized and
+     gain a trailing newline. The transformation is deterministic — re-ingesting on a fresh clone
+     reproduces the tracked payload exactly, which the reviewer confirmed file by file — so this is
+     a wording fix for `S18` if it touches that script.
+  5. Carried forward unchanged: `S17` risk 2 (the equivalence evidence is fixed-observation and
+     scenario equivalence, not aggregate match outcomes; no ladder-versus-ladder tournament has been
+     run on the migrated set); `S16` risks 1–5, including that the published measurements come from
+     the migrated checkpoints under current physics rather than the run's original evaluation, that
+     the three largest fleet sizes did not reach their rating target, that `bnb publish` has no
+     smoke case and field-map intent is absent from artifact recipes, and that the retired
+     `docs/ar_report/{1v1,2v2}` trees and three superseded landmark JSON files await `S18`; and
+     `S15` risks 1–4, `S14R` risks 1–3, `S13` risks 1–3 and 5–6, and `S12` risks 2–4.
+  6. `S18` is the next authorized section and was not begun.
 
 ### Future handoff template
 
