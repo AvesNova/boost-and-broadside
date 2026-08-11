@@ -1,0 +1,281 @@
+{
+  "schema_version": 1,
+  "artifact_type": "elo-scale",
+  "artifact_id": "20260811T114922Z-c68a8980",
+  "status": "complete",
+  "created_at": "2026-08-11T11:49:22Z",
+  "updated_at": "2026-08-11T15:39:42Z",
+  "owner": {
+    "kind": "run",
+    "run": "resilient-resonance-682"
+  },
+  "recipe": {
+    "artifact_type": "elo-scale",
+    "result_schema_version": 1,
+    "subjects": {
+      "players": [
+        {
+          "global_step": 0,
+          "kind": "random",
+          "label": "random",
+          "sha256": null,
+          "training_config": null
+        },
+        {
+          "global_step": null,
+          "kind": "scripted",
+          "label": "scripted",
+          "sha256": null,
+          "training_config": null
+        },
+        {
+          "global_step": 14991360,
+          "kind": "checkpoint",
+          "label": "ckpt_14991360",
+          "sha256": "c0b17022ec46995a5439ab30996583a86524b0699e61245740d2f788b523560f",
+          "training_config": null
+        },
+        {
+          "global_step": 21987328,
+          "kind": "checkpoint",
+          "label": "ckpt_21987328",
+          "sha256": "086805cdfa565bdeeb180af9f573ba8482066ad4f19121cc9ff1cc003a5acc45",
+          "training_config": null
+        },
+        {
+          "global_step": 28983296,
+          "kind": "checkpoint",
+          "label": "ckpt_28983296",
+          "sha256": "c775625d484e6bae9de1c61f4f2ebb63def2bfd421242de2554e0f33b0365325",
+          "training_config": null
+        },
+        {
+          "global_step": 36978688,
+          "kind": "checkpoint",
+          "label": "ckpt_36978688",
+          "sha256": "75138ea7fddbd424eeee1f5bc65a68d2e0e8e539f16ef5104bb6f74f035c70a6",
+          "training_config": null
+        },
+        {
+          "global_step": 49971200,
+          "kind": "checkpoint",
+          "label": "ckpt_49971200",
+          "sha256": "5cecf8bde7ae2429c5a77373a4dd46151736c0862664d6ea81a5482a0289dd0d",
+          "training_config": null
+        },
+        {
+          "global_step": 70959104,
+          "kind": "checkpoint",
+          "label": "ckpt_70959104",
+          "sha256": "502d2d493fb29543edfd73a5a64ae9b8aecf3d8b351616109f1daeefc67bd6af",
+          "training_config": null
+        },
+        {
+          "global_step": 87949312,
+          "kind": "checkpoint",
+          "label": "ckpt_87949312",
+          "sha256": "c96e707bede2a442174b68a3c3bdf36d8254da951a330eb003dc402dc3c12f95",
+          "training_config": null
+        },
+        {
+          "global_step": 102940672,
+          "kind": "checkpoint",
+          "label": "ckpt_102940672",
+          "sha256": "57f00f5ee17d70908988eb4ac9dd91e115ed231ec2d9aad73d052a8d8f1c02d1",
+          "training_config": null
+        },
+        {
+          "global_step": 155910144,
+          "kind": "checkpoint",
+          "label": "ckpt_155910144",
+          "sha256": "f2f4f75dc80d28ef2db3c195b2c4d534c9a4ff28fa0be2976ba19a5e52bda91a",
+          "training_config": null
+        },
+        {
+          "global_step": 206880768,
+          "kind": "checkpoint",
+          "label": "ckpt_206880768",
+          "sha256": "bdc084e7c7611b6e8bed9fab9c289c97038b15d5621c209657c492262fc4c273",
+          "training_config": null
+        },
+        {
+          "global_step": 272842752,
+          "kind": "checkpoint",
+          "label": "ckpt_272842752",
+          "sha256": "ee1768b736c10a0ce476443693813093e2946feb59f803a04bb70bcd8959ba12",
+          "training_config": null
+        },
+        {
+          "global_step": 416759808,
+          "kind": "checkpoint",
+          "label": "ckpt_416759808",
+          "sha256": "fc7a75ffb51c37e8fbd083f906f34c745f5a81c09bd63fc8da6f9ef0c8999845",
+          "training_config": null
+        },
+        {
+          "global_step": 876494848,
+          "kind": "checkpoint",
+          "label": "ckpt_876494848",
+          "sha256": "0781b1ecdbf14cffab83e50cf4d836b428c12f1ff302557ac5ac21b96691f39f",
+          "training_config": null
+        },
+        {
+          "global_step": 999424000,
+          "kind": "checkpoint",
+          "label": "final",
+          "sha256": "2e2f52d90ccec4c768f46126773e5e28a285e6a81800f8e6338463e381215eb3",
+          "training_config": {
+            "profile": null,
+            "profile_fingerprint": null,
+            "resolved_config_fingerprint": null
+          }
+        }
+      ],
+      "run": "resilient-resonance-682",
+      "scripted": {
+        "kind": "scripted",
+        "scripted_config": {
+          "boost_speed_prob": [
+            0.68,
+            0.04
+          ],
+          "boost_speed_ramp": [
+            16,
+            32
+          ],
+          "close_range_prob": [
+            0.5,
+            0.05
+          ],
+          "close_range_ramp": [
+            10,
+            50
+          ],
+          "flat_action_sampling": false,
+          "prob_offset": 0.1,
+          "sharp_turn_angle_prob": [
+            0.05,
+            0.95
+          ],
+          "sharp_turn_angle_ramp": [
+            0.24,
+            0.42
+          ],
+          "shoot_angle_prob": [
+            0.95,
+            0.05
+          ],
+          "shoot_angle_ramp": [
+            1.0,
+            1.5
+          ],
+          "shoot_distance_prob": [
+            0.95,
+            0.05
+          ],
+          "shoot_distance_ramp": [
+            200,
+            500
+          ],
+          "team_target_distance_prob": [
+            0.0,
+            0.0
+          ],
+          "team_target_distance_ramp": [
+            60.0,
+            100.0
+          ],
+          "turn_angle_prob": [
+            0.068,
+            0.95
+          ],
+          "turn_angle_ramp": [
+            0.03,
+            0.12
+          ]
+        }
+      }
+    },
+    "parameters": {
+      "environment": {
+        "max_bullets": 20,
+        "max_episode_steps": 1024,
+        "num_fields": 0,
+        "num_ships": 8
+      },
+      "max_batches": 12,
+      "max_parallel_envs": 16384,
+      "prior_games": 1.0,
+      "seed_base": 682000,
+      "target_stderr": 10.0,
+      "team_sizes": [
+        1,
+        2,
+        4,
+        8,
+        16,
+        32,
+        64
+      ],
+      "tie_mode": "half_win"
+    },
+    "sources": {}
+  },
+  "recipe_digest": "c68a89806bfc2eb5ae056b4d2fb6f20d3836aa05617f65272c77610c0c910c4a",
+  "result_schema_version": 1,
+  "invocation": {
+    "command": "elo-scale",
+    "argv": [
+      "/home/vizia/avesnova/boost-and-broadside/.venv/bin/bnb",
+      "elo-scale",
+      "--run",
+      "resilient-resonance-682",
+      "--seed",
+      "682"
+    ],
+    "normalized": "uv run bnb elo-scale --run resilient-resonance-682 --seed 682"
+  },
+  "execution": {
+    "device": "cuda",
+    "seed": 682,
+    "compile_mode": null,
+    "wandb": true,
+    "allow_config_drift": false
+  },
+  "code": {
+    "git_commit": "4adf124a63c6752788c0a1afcabfc57fd2e31cb8",
+    "git_dirty": false,
+    "repository_available": true,
+    "uv_lock_sha256": "eff32a47a4f866e4b4864030845339fe79c57bb888bde3fab76347f8c8afba93"
+  },
+  "runtime": {
+    "python": "3.13.11",
+    "platform": "Linux-7.0.0-28-generic-x86_64-with-glibc2.39",
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "cudnn_benchmark": false,
+    "deterministic_algorithms": false,
+    "float32_matmul_precision": "highest",
+    "device": {
+      "requested": "cuda",
+      "name": "NVIDIA GeForce RTX 4070 Laptop GPU",
+      "index": 0,
+      "total_memory_bytes": 8186822656,
+      "capability": "8.9",
+      "uuid": "7161aed0-f7cd-9222-9196-257e42144f0d"
+    }
+  },
+  "environment": {},
+  "producer": {
+    "name": "boost-and-broadside",
+    "version": "0.1.0"
+  },
+  "files": [
+    {
+      "path": "result.json",
+      "sha256": "0dc0053f8df7f7ecab520f4243943467df98965814e9ea6254f5442502a57680",
+      "bytes": 293983
+    }
+  ],
+  "samples_present": false
+}
