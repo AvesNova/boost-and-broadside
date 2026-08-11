@@ -1215,6 +1215,10 @@ def write_report(
     add("  of what the run was launched with. No loader rebuilds it into a dataclass.")
     add("")
 
+    # Sections are written with a trailing blank so they compose; drop it at the end
+    # so the file ends with exactly one newline.
+    while lines and not lines[-1]:
+        lines.pop()
     path.write_text("\n".join(lines) + "\n")
 
 
