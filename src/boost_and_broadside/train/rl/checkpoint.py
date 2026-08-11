@@ -104,11 +104,10 @@ def build_training_checkpoint_payload(
 
     Every key written here is required to resume — see
     ``RESUMABLE_CHECKPOINT_FIELDS``. The only genuinely optional keys are the two
-    the policy block writes conditionally,
-    ``OPTIONAL_TRAINING_CHECKPOINT_FIELDS``: a trainer constructed without a
-    resolved-configuration document or launch provenance (tests and hermetic
-    fixtures) still writes a usable payload, and the drift check treats a missing
-    record as "nothing to compare".
+    the policy block writes conditionally, ``OPTIONAL_CHECKPOINT_FIELDS``: a
+    trainer constructed without a resolved-configuration document or launch
+    provenance (tests and hermetic fixtures) still writes a usable payload, and
+    the drift check treats a missing record as "nothing to compare".
     """
 
     return {
@@ -139,15 +138,10 @@ def build_training_checkpoint_payload(
     }
 
 
-# Every key ``build_training_checkpoint_payload`` always writes, in the order it
-# writes them. ``load_checkpoint`` requires all of them: a resumable checkpoint
-# either restores the complete training state or is refused. Reading any of these
-# with a silent default is how a payload written under different field names
-# resumes as a fresh run — the live rating, its running average, and the
-# milestone grid all restart at zero while the weights and optimizer continue.
-# ``tests/train/test_checkpoint.py`` pins this tuple against a real payload, so
-# adding a field to the builder without deciding its resume behavior fails there.
-RESUMABLE_CHECKPOINT_FIELDS: tuple[str, ...] = (
+# Every key ``build_policy_checkpoint_payload`` always writes, in the order it
+# writes them. This is the block every payload family starts with, and on its
+# own it is the whole of a ladder snapshot or a policy-only file.
+POLICY_CHECKPOINT_FIELDS: tuple[str, ...] = (
     "observation_schema",
     "policy_state_dict",
     "num_value_components",
@@ -158,6 +152,24 @@ RESUMABLE_CHECKPOINT_FIELDS: tuple[str, ...] = (
     "env_config",
     "ship_config",
     "paradigm",
+)
+
+# The two keys any family may legitimately omit. Both are provenance rather than
+# state: a trainer with neither still resumes, and the drift check reads an
+# absent ``resolved_config`` as "nothing recorded to compare".
+OPTIONAL_CHECKPOINT_FIELDS: tuple[str, ...] = ("resolved_config", "launch")
+
+# Every key ``build_training_checkpoint_payload`` always writes, in the order it
+# writes them. ``load_checkpoint`` requires all of them: a resumable checkpoint
+# either restores the complete training state or is refused. Reading any of these
+# with a silent default is how a payload written under different field names
+# resumes as a fresh run — the live rating, its running average, and the
+# milestone grid all restart at zero while the weights and optimizer continue.
+# ``tests/train/test_checkpoint.py`` pins both tuples against real payloads, so
+# adding a field to either builder without deciding its resume behavior fails
+# there.
+RESUMABLE_CHECKPOINT_FIELDS: tuple[str, ...] = (
+    *POLICY_CHECKPOINT_FIELDS,
     "optimizer_state_dict",
     "scaler_state_dict",
     "adv_scaler_state_dict",
@@ -178,11 +190,6 @@ RESUMABLE_CHECKPOINT_FIELDS: tuple[str, ...] = (
     "elo_milestone",
     "train_config",
 )
-
-# The two keys a training payload may legitimately omit. Both are provenance
-# rather than state: a trainer with neither still resumes, and the drift check
-# reads an absent ``resolved_config`` as "nothing recorded to compare".
-OPTIONAL_TRAINING_CHECKPOINT_FIELDS: tuple[str, ...] = ("resolved_config", "launch")
 
 # Fields this branch renamed, mapped current name -> the name a pre-rename
 # payload uses. Only used to make the refusal say what the file actually is.

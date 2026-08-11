@@ -12,7 +12,8 @@ import pytest
 import torch
 
 from boost_and_broadside.train.rl.checkpoint import (
-    OPTIONAL_TRAINING_CHECKPOINT_FIELDS,
+    OPTIONAL_CHECKPOINT_FIELDS,
+    POLICY_CHECKPOINT_FIELDS,
     RESUMABLE_CHECKPOINT_FIELDS,
     _check_resolved_config_provenance,
     build_policy_checkpoint_payload,
@@ -359,10 +360,22 @@ class TestResumableCheckpointContract:
         behavior fails here rather than becoming another silent default."""
         payload = self._production_payload(tmp_path)
 
-        assert set(payload) - set(OPTIONAL_TRAINING_CHECKPOINT_FIELDS) == set(
-            RESUMABLE_CHECKPOINT_FIELDS
-        )
+        assert set(payload) - set(OPTIONAL_CHECKPOINT_FIELDS) == set(RESUMABLE_CHECKPOINT_FIELDS)
         assert len(RESUMABLE_CHECKPOINT_FIELDS) == len(set(RESUMABLE_CHECKPOINT_FIELDS))
+
+    def test_the_policy_family_is_pinned_to_what_its_own_builder_writes(self, tmp_path):
+        """The block every family starts with, and the whole of a ladder file.
+        S15 migrates against these key sets, so they are frozen here."""
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        ladder = torch.load(trainer._save_ladder_snapshot(), map_location="cpu", weights_only=False)
+        trainer.shutdown()
+
+        assert set(ladder) - set(OPTIONAL_CHECKPOINT_FIELDS) == set(POLICY_CHECKPOINT_FIELDS)
+        assert RESUMABLE_CHECKPOINT_FIELDS[: len(POLICY_CHECKPOINT_FIELDS)] == (
+            POLICY_CHECKPOINT_FIELDS
+        )
 
     @pytest.mark.parametrize("field", RESUMABLE_CHECKPOINT_FIELDS)
     def test_every_required_field_is_named_when_it_is_missing(self, field, tmp_path):
@@ -377,7 +390,7 @@ class TestResumableCheckpointContract:
         every hermetic fixture — still writes a payload that resumes."""
         payload = self._production_payload(tmp_path)
 
-        assert not set(OPTIONAL_TRAINING_CHECKPOINT_FIELDS) & set(payload)
+        assert not set(OPTIONAL_CHECKPOINT_FIELDS) & set(payload)
         require_resumable_checkpoint(payload, "step_000000000042.pt")
 
     @pytest.mark.parametrize("with_resolved_config", [False, True])
