@@ -532,36 +532,46 @@ def _write_markdown_report(
     mae_features: list[tuple[str, str, np.ndarray, np.ndarray]],
     features: list[tuple[str, str, np.ndarray, np.ndarray, np.ndarray]],
 ) -> None:
-    """Write ar_report.md linking every generated plot."""
-    with open(os.path.join(out_dir, "ar_report.md"), "w") as f:
-        f.write("# Autoregressive Rollout Report\n\n")
-        f.write(
-            "This report compares the ground truth simulation with closed-loop "
-            "(forced actions) and open-loop (imagined actions) autoregressive rollouts.\n\n"
-        )
+    """Write ar_report.md linking every generated plot.
 
-        if num_ships > 2:
-            f.write("## 2D Trajectory Map (All Ships)\n")
-            f.write("![Trajectory Map](2d_map.png)\n\n")
-            f.write("## 2D Trajectory Map (Featured Ships — Centered)\n")
-            f.write("![Trajectory Map Ship 0](2d_map_ship0.png)\n\n")
-        else:
-            f.write("## 2D Trajectory Map\n")
-            f.write("![Trajectory Map](2d_map.png)\n\n")
+    Sections are separated by a blank line, so the document is assembled first
+    and written with exactly one trailing newline; appending straight to the
+    file would leave it ending on a blank line.
+    """
+    body: list[str] = []
+    add = body.append
 
-        f.write("## 2D Velocity Space Map\n")
-        f.write("![Velocity Space](2d_vel_map.png)\n\n")
+    add("# Autoregressive Rollout Report\n\n")
+    add(
+        "This report compares the ground truth simulation with closed-loop "
+        "(forced actions) and open-loop (imagined actions) autoregressive rollouts.\n\n"
+    )
 
-        f.write("## Error Metrics Over Time\n")
-        f.write("Calculated only while both the ground truth and rollout ships are alive.\n\n")
-        for file_key, name, _, _ in mae_features:
-            f.write(f"### {name}\n")
-            f.write(f"![{name}](mae_{file_key}.png)\n\n")
+    if num_ships > 2:
+        add("## 2D Trajectory Map (All Ships)\n")
+        add("![Trajectory Map](2d_map.png)\n\n")
+        add("## 2D Trajectory Map (Featured Ships — Centered)\n")
+        add("![Trajectory Map Ship 0](2d_map_ship0.png)\n\n")
+    else:
+        add("## 2D Trajectory Map\n")
+        add("![Trajectory Map](2d_map.png)\n\n")
 
-        f.write("## Feature Divergence\n")
-        for file_key, name, _, _, _ in features:
-            f.write(f"### {name}\n")
-            f.write(f"![{name}](feature_{file_key}.png)\n\n")
+    add("## 2D Velocity Space Map\n")
+    add("![Velocity Space](2d_vel_map.png)\n\n")
+
+    add("## Error Metrics Over Time\n")
+    add("Calculated only while both the ground truth and rollout ships are alive.\n\n")
+    for file_key, name, _, _ in mae_features:
+        add(f"### {name}\n")
+        add(f"![{name}](mae_{file_key}.png)\n\n")
+
+    add("## Feature Divergence\n")
+    for file_key, name, _, _, _ in features:
+        add(f"### {name}\n")
+        add(f"![{name}](feature_{file_key}.png)\n\n")
+
+    document = "".join(body).rstrip("\n") + "\n"
+    Path(out_dir, "ar_report.md").write_text(document)
 
 
 def generate_report(result: dict, arrays: dict[str, np.ndarray], out_dir: str) -> None:
