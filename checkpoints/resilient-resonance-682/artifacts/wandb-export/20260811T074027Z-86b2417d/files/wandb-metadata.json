@@ -1,0 +1,46 @@
+{
+  "os": "Linux-6.8.0-124-generic-x86_64-with-glibc2.39",
+  "python": "CPython 3.13.8",
+  "startedAt": "2026-07-22T17:44:03.090614Z",
+  "args": [
+    "--mode",
+    "rl",
+    "--compile",
+    "max-autotune"
+  ],
+  "program": "/workspace/boost-and-broadside/main.py",
+  "codePath": "main.py",
+  "codePathLocal": "main.py",
+  "git": {
+    "remote": "https://github.com/AvesNova/boost-and-broadside",
+    "commit": "b4883769ca49bb60e818986586db5673a4bf83c1"
+  },
+  "email": "julianzia@gmail.com",
+  "root": "/workspace/boost-and-broadside",
+  "host": "7f6dcaeb6d43",
+  "executable": "/workspace/boost-and-broadside/.venv/bin/python3",
+  "cpu_count": 16,
+  "cpu_count_logical": 32,
+  "gpu": "NVIDIA GeForce RTX 5090",
+  "gpu_count": 1,
+  "disk": {
+    "/": {
+      "total": "32212254720",
+      "used": "16924672"
+    }
+  },
+  "memory": {
+    "total": "200081207296"
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA GeForce RTX 5090",
+      "memoryTotal": "34190917632",
+      "cudaCores": 21760,
+      "architecture": "Blackwell",
+      "uuid": "GPU-26eaec73-3c16-0043-ad5f-f5a213ab5137"
+    }
+  ],
+  "cudaVersion": "13.0",
+  "writerId": "9qz61mgyflmnguda3tyeef2got9ubtdj"
+}

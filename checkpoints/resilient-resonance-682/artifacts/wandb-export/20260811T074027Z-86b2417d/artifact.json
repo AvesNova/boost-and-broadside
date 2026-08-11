@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "artifact_type": "wandb-export",
+  "artifact_id": "20260811T074027Z-86b2417d",
+  "status": "complete",
+  "created_at": "2026-08-11T07:40:27Z",
+  "updated_at": "2026-08-11T07:40:27Z",
+  "owner": {
+    "kind": "run",
+    "run": "resilient-resonance-682"
+  },
+  "recipe": {
+    "artifact_type": "wandb-export",
+    "result_schema_version": 1,
+    "subjects": {
+      "run": "resilient-resonance-682",
+      "wandb_run": "vizia128/boost-and-broadside/chpl40cj"
+    },
+    "parameters": {
+      "samples": null
+    },
+    "sources": {
+      "export_directory": "checkpoints/resilient-resonance-682/wandb_export"
+    }
+  },
+  "recipe_digest": "86b2417d3a834d94edf43889449f5bf915d37d7138083d9891c343eec721439f",
+  "result_schema_version": 1,
+  "invocation": {
+    "command": "wandb-export",
+    "argv": [
+      "export_wandb_run.py",
+      "--from-directory",
+      "checkpoints/resilient-resonance-682/wandb_export"
+    ],
+    "normalized": "uv run bnb --from-directory checkpoints/resilient-resonance-682/wandb_export"
+  },
+  "execution": {
+    "network": false
+  },
+  "code": {
+    "git_commit": "b983ee94b2a1449a9fe82306ea1ea3495c1e4ee5",
+    "git_dirty": false,
+    "repository_available": true,
+    "uv_lock_sha256": "eff32a47a4f866e4b4864030845339fe79c57bb888bde3fab76347f8c8afba93"
+  },
+  "runtime": {
+    "python": "3.13.11",
+    "platform": "Linux-7.0.0-28-generic-x86_64-with-glibc2.39",
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "cudnn_benchmark": false,
+    "deterministic_algorithms": false,
+    "float32_matmul_precision": "highest",
+    "device": {
+      "requested": null
+    }
+  },
+  "environment": {},
+  "producer": {
+    "name": "boost-and-broadside",
+    "version": "0.1.0"
+  },
+  "files": [
+    {
+      "path": "config.json",
+      "sha256": "4eb9e982897711ce1e88ba0686a8dfee397517f3dfa8de11dc690f77a9ae5fe2",
+      "bytes": 4782
+    },
+    {
+      "path": "files/artifact/3177965881/wandb_manifest.json",
+      "sha256": "9a7cbf466d22f467f3c2bb870c432033c9aeccb3cf67f32db5221aa68b89017d",
+      "bytes": 230
+    },
+    {
+      "path": "files/config.yaml",
+      "sha256": "1064e90c7cf9a6d7d129a68ac5d6e3c61d2a9c1956cef27c6822b050e59fa08c",
+      "bytes": 7201
+    },
+    {
+      "path": "files/output.log",
+      "sha256": "10e425940c3647f5baa604270b195673466fe8d5575ed6308157efa740f5d9a5",
+      "bytes": 22524
+    },
+    {
+      "path": "files/requirements.txt",
+      "sha256": "64bd50698b72d4075087600e66db331df4f48786069fde439e4305a7961b1d05",
+      "bytes": 2124
+    },
+    {
+      "path": "files/wandb-metadata.json",
+      "sha256": "8be9b524823bd4fe547e5a9903d8ef1167131cd5261fdb8e2e5bd113b5e9dba5",
+      "bytes": 1173
+    },
+    {
+      "path": "files/wandb-summary.json",
+      "sha256": "c67dbf26fd59cd0085049e89c6d6c04ab0b84121a1e2a92cb75ddd413e83b0f6",
+      "bytes": 33018
+    },
+    {
+      "path": "history.jsonl",
+      "sha256": "8b06b8ba163e2d02db33da08eab4c3c7788111d7c8a5edb443bfb0bcf3a3385c",
+      "bytes": 14842887
+    },
+    {
+      "path": "run_meta.json",
+      "sha256": "6a01c07149e8438a5f1a23ca3f6fb53f928946b47c34fa947f39aa5dff5434d3",
+      "bytes": 260
+    },
+    {
+      "path": "summary.json",
+      "sha256": "93ceda651e603d2823d1dad80ad9ed671f10dcf739c27ce03111c485be5d5c72",
+      "bytes": 15454
+    }
+  ],
+  "samples_present": false
+}
