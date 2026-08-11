@@ -84,7 +84,14 @@ cannot see this; it was found by diffing every shared feature's encoder
 specification against the training commit, where it is the only difference.
 
 Uncompensated, these weights would read a ship radius of 0.0195 where they were
-fitted on 0.25. The compensation is exact, not approximate: the feature enters
+fitted on 0.25. How much that matters is worth stating rather than implying: on
+the fixed-observation set it moves logits by up to 1.3, and a 64-game 4v4 of
+`best_training.pt` against the scripted agent goes from 64 wins to 63. The
+landmark policy is far stronger than scripted, so a perturbation has room to hide
+there; between two ladder snapshots of similar strength it has less. The point is
+that this is a behavior change with no reason to accept it, not that it is large.
+
+The compensation is exact, not approximate: the feature enters
 through one column of one `Linear`, so scaling that column of the weight by
 `512/40` reproduces the historical pre-activation for every input value. Adam's
 moments for that column are carried as `1/k` and `1/k^2` (the gradient scales
@@ -95,9 +102,9 @@ optimizer and averaged-policy records stay consistent with the weight.
 
 | file | family | original SHA-256 | migrated SHA-256 | migrated content SHA-256 |
 |---|---|---|---|---|
-| `step_000999424000.pt` | resumable | `c372dba9ce29ebbd3fc41b4f13ec4040037fb47dcf3aaa3942ae442b5896cb80` | `99d7338082ab25e6cc37d20a8c0453fa3fb81f1bc82da44f775aa25f85d62f70` | `9cc01b32008f077a3f94c762afdbb281703c912879e12cd2a53b81d17d085beb` |
-| `recent_avg.pt` | resumable | `2831192c3b312e678ddebea8779f93b8eca557a0cabfbf9cb3451ccd666f986a` | `7f9c2462385005822dbeab301d1330e6785c76078d046785236344bfdf1095c1` | `f4825565c31aab1f55b02d59e06ef36e78d938cbc5f98d16951232d9c42987d1` |
-| `best_training.pt` | best | `3c8c60bff631a6d0838c0a6ad8e5df41f0e13fccf37f9d5cf33c97d94169aded` | `e2975ba549eaf374609ea10200a325c6eb0c8e87c8cff64609e22137c523cc98` | `bf24128d3b50e62f68860136e9cefa7359f2ae9a0d44fd1c2985cbc64685faa1` |
+| `step_000999424000.pt` | resumable | `c372dba9ce29ebbd3fc41b4f13ec4040037fb47dcf3aaa3942ae442b5896cb80` | `636e0103b824d84195d99e2c5e6ced2a93567afeebe0b26bbefd8c4b14e6202c` | `9cc01b32008f077a3f94c762afdbb281703c912879e12cd2a53b81d17d085beb` |
+| `recent_avg.pt` | resumable | `2831192c3b312e678ddebea8779f93b8eca557a0cabfbf9cb3451ccd666f986a` | `51ff9cd974937e6d211414b7a4f26eafebea20b0fa556f3d832b1ec9ebce6271` | `f4825565c31aab1f55b02d59e06ef36e78d938cbc5f98d16951232d9c42987d1` |
+| `best_training.pt` | best | `3c8c60bff631a6d0838c0a6ad8e5df41f0e13fccf37f9d5cf33c97d94169aded` | `ae7c6ea127d4f650e784fe0f445baefea8583264c92e8efb8bca83c4aaf511cf` | `bf24128d3b50e62f68860136e9cefa7359f2ae9a0d44fd1c2985cbc64685faa1` |
 | `ladder_step_000014991360.pt` | policy | `ef350d77c62845c3a6bd0d2b0620f3f8b3d6aa25ccac7afc6567cfcfb90d367f` | `c0b17022ec46995a5439ab30996583a86524b0699e61245740d2f788b523560f` | `feb8d6f9f02e4a04e3dbd05fac6183cb255a68dcabab49698a07adca816f4286` |
 | `ladder_step_000021987328.pt` | policy | `636d218a0619cd9808ced2e4c4512dd454ba989d30dfbf6b6565a528a303f098` | `086805cdfa565bdeeb180af9f573ba8482066ad4f19121cc9ff1cc003a5acc45` | `f870e3d144c4c2729b68c0f4b982e85bcc3cc5a973ee36cd02e67bc90f95c602` |
 | `ladder_step_000028983296.pt` | policy | `0d494ca99e5e910e1a2a5dfe480d8731162e773b594d311195ff60d7f2472360` | `c775625d484e6bae9de1c61f4f2ebb63def2bfd421242de2554e0f33b0365325` | `3879c6bb1839521db9659d7adbed0479c501d902238028790d96a104f173e4ef` |
