@@ -674,7 +674,13 @@ class CheckpointMixin:
                 self.launch_provenance and self.launch_provenance.get("allow_config_drift")
             ),
         )
-        ckpt_paradigm = ckpt["train_config"].get("paradigm")
+        recorded_config = ckpt["train_config"]
+        if not isinstance(recorded_config, Mapping):
+            raise ValueError(
+                f"checkpoint {path!r} has invalid train_config: expected a mapping, "
+                f"got {type(recorded_config).__name__}"
+            )
+        ckpt_paradigm = recorded_config.get("paradigm")
         if ckpt_paradigm is not None and ckpt_paradigm != self.cfg.paradigm:
             raise ValueError(
                 f"Checkpoint was trained with paradigm={ckpt_paradigm!r} but this "
