@@ -196,6 +196,36 @@ class _StagedMicroBatch:
     ready: torch.cuda.Event
 
 
+def _actor_entropy_coef(
+    scheduled: float, *, policy_gradient_coef: float, behavior_cloning_coef: float
+) -> float:
+    """The entropy weight, dropped to zero when nothing else trains the actor.
+
+    Entropy is a regularizer on an objective: it keeps a policy gradient from
+    collapsing onto one action, and it keeps a cloned policy from over-sharpening
+    past its teacher. It is not itself an objective. With both of those weights at
+    zero it becomes the only gradient reaching the actor, and its optimum is the
+    uniform distribution — so the run spends the rest of its budget undoing
+    whatever the actor had learned.
+
+    That is exactly the state a behavior-cloning run enters when its scripted win
+    rate reaches ``bc_winrate_target``: ``_behavior_cloning_coef`` decays to zero
+    while ``policy_gradient_coef`` is zero for the whole BC schedule. Measured at
+    a reduced launch width (64 envs, d_model 64), a policy cloned to a KL of 1.12
+    and 60% of maximum action entropy returned to 99.8% of maximum entropy and a
+    KL of 2.66 — its untrained value — within 400 updates of the cutoff, while the
+    control arm held at 1.10 and 60% over the same span.
+
+    RL is unaffected: its policy gradient is positive throughout, so the
+    scheduled value passes through unchanged. The critic, next-state, and SIGReg
+    terms keep training through the shared trunk either way.
+    """
+
+    if policy_gradient_coef > 0.0 or behavior_cloning_coef > 0.0:
+        return scheduled
+    return 0.0
+
+
 def _resolve_schedule(schedule: TrainingSchedule, step: int) -> _ResolvedSchedule:
     """Evaluate every schedule field at ``step`` and return a resolved snapshot."""
     return _ResolvedSchedule(
@@ -569,6 +599,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._schedule_state: _ResolvedSchedule = base_state
         self._policy_gradient_coef: float = base_state.policy_gradient_coef
         self._behavior_cloning_coef: float = base_state.behavior_cloning_coef
+        self._entropy_coef: float = _actor_entropy_coef(
+            base_state.entropy_coef,
+            policy_gradient_coef=base_state.policy_gradient_coef,
+            behavior_cloning_coef=base_state.behavior_cloning_coef,
+        )
 
         # --- Auxiliary training scales (multi-scale curriculum) ---
         # Each scale has its own env + buffer; policy, optimizer, and scaler are shared.
@@ -1088,6 +1123,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._scripted_win_rate = sum(window_sc) / len(window_sc) if window_sc else 0.0
         bc_factor = max(0.0, 1.0 - self._scripted_win_rate / self.cfg.bc_winrate_target)
         self._behavior_cloning_coef = self._schedule_state.behavior_cloning_coef * bc_factor
+        self._entropy_coef = _actor_entropy_coef(
+            self._schedule_state.entropy_coef,
+            policy_gradient_coef=self._policy_gradient_coef,
+            behavior_cloning_coef=self._behavior_cloning_coef,
+        )
         self.optim.param_groups[0]["lr"] = self._schedule_state.learning_rate
         for component in self.wrapper.reward_components:
             raw_weight = getattr(self.cfg.rewards, f"{component.name}_weight")
@@ -1097,6 +1137,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         metrics["schedule/learning_rate"] = self._schedule_state.learning_rate
         metrics["schedule/policy_gradient_coef"] = self._policy_gradient_coef
         metrics["schedule/behavior_cloning_coef"] = self._behavior_cloning_coef
+        metrics["schedule/entropy_coef"] = self._entropy_coef
         metrics["schedule/bc_decay_factor"] = bc_factor
         metrics["schedule/scripted_win_rate"] = self._scripted_win_rate
         metrics["schedule/target_kl"] = self._effective_target_kl()
@@ -1495,7 +1536,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         loss = (
             self._policy_gradient_coef * pg_loss
             + self._schedule_state.value_function_coef * vf_loss
-            + self._schedule_state.entropy_coef * ent_loss
+            + self._entropy_coef * ent_loss
             + self._behavior_cloning_coef * bc_loss
             + self._schedule_state.sigreg_coef * sigreg_loss
             + self.cfg.next_state_coef * next_state_loss
@@ -1515,8 +1556,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         if measure_grad_split:
             params = [p for p in self._policy_module.parameters() if p.requires_grad]
             terms = {
-                "actor": self._policy_gradient_coef * pg_loss
-                + self._schedule_state.entropy_coef * ent_loss,
+                "actor": self._policy_gradient_coef * pg_loss + self._entropy_coef * ent_loss,
                 "critic": self._schedule_state.value_function_coef * vf_loss,
             }
             for term_name, term in terms.items():
@@ -1987,7 +2027,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     self._schedule_state.value_function_coef * scalar_accum_step["vf"]
                 )
                 accum_scalar["loss_proxy/entropy"].append(
-                    self._schedule_state.entropy_coef * scalar_accum_step["ent"]
+                    self._entropy_coef * scalar_accum_step["ent"]
                 )
                 accum_scalar["loss_proxy/behavioral_cloning"].append(
                     self._behavior_cloning_coef * scalar_accum_step["bc"]

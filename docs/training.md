@@ -259,6 +259,17 @@ Evaluation still runs during BC: the raw win rate against the scripted controlle
 what decays the cloning weight to zero at `bc_winrate_target`, and the run rates on the
 same live gauge RL continues on.
 
+Once that weight reaches zero the entropy bonus goes with it. Entropy regularizes an
+objective; it is not one. With no policy gradient and no cloning term it would be the only
+gradient reaching the actor, and its optimum is the uniform distribution — so a run that
+had finished cloning would spend the rest of its budget undoing it. Measured at a reduced
+launch width, a policy cloned to a KL of 1.12 against the scripted controller and 60% of
+maximum action entropy returned to 99.8% of maximum and a KL of 2.66, its untrained value,
+within 400 updates of the cutoff, while a control arm that kept cloning held steady. After
+the cutoff the actor is held where cloning left it and the critic, next-state, and SIGReg
+terms carry on through the shared trunk. RL is unaffected: its policy gradient is positive
+throughout, so it keeps the scheduled entropy bonus.
+
 ## Field training profile
 
 The primary [`profiles/rl.py`](../src/boost_and_broadside/profiles/rl.py) profile remains an

@@ -28,7 +28,7 @@ from boost_and_broadside.config.live_elo import (
 from boost_and_broadside.config.resolve import resolve_profile
 from boost_and_broadside.config.schema import LaunchSizingSpec, ResolvedTrainConfig
 from boost_and_broadside.profiles import PROFILES
-from boost_and_broadside.train.rl.ppo import PPOTrainer
+from boost_and_broadside.train.rl.ppo import PPOTrainer, _actor_entropy_coef
 
 _NUM_ENVS = 4
 _NUM_STEPS = 8
@@ -152,3 +152,76 @@ def test_bounded_bc_run_learns_from_supervision_and_freezes_no_milestone(tmp_pat
     assert trainer.roster.floating_checkpoint() is None
     scripted = next(entry for entry in trainer.roster.entries if entry.kind == "scripted")
     assert scripted.elo == trainer.cfg.elo_eval.scripted_live_elo
+
+
+class TestEntropyAfterTheCloningCutoff:
+    """What the actor is left with once the cloning weight decays to zero.
+
+    ``bc_winrate_target`` zeroes ``_behavior_cloning_coef`` at a 45% scripted win
+    rate, and BC's ``policy_gradient_coef`` is zero for its whole budget. Before
+    this gate the surviving actor term was ``entropy_coef * ent_loss``, whose
+    optimum is the uniform distribution: at a reduced launch width a policy
+    cloned to a KL of 1.12 and 60% of maximum action entropy came back to 99.8%
+    of maximum and a KL of 2.66 — its untrained value — within 400 updates,
+    while a control arm that kept cloning held at 1.10 and 60%.
+    """
+
+    def test_entropy_is_dropped_when_no_objective_trains_the_actor(self) -> None:
+        assert (
+            _actor_entropy_coef(0.005, policy_gradient_coef=0.0, behavior_cloning_coef=0.0) == 0.0
+        )
+
+    @pytest.mark.parametrize(
+        ("policy_gradient_coef", "behavior_cloning_coef"),
+        [(1.0, 0.0), (0.0, 1.0), (1.0, 2.0), (1.0, 1e-9)],
+    )
+    def test_entropy_is_untouched_while_something_trains_the_actor(
+        self, policy_gradient_coef: float, behavior_cloning_coef: float
+    ) -> None:
+        assert (
+            _actor_entropy_coef(
+                0.005,
+                policy_gradient_coef=policy_gradient_coef,
+                behavior_cloning_coef=behavior_cloning_coef,
+            )
+            == 0.005
+        )
+
+    def test_a_bc_run_holds_entropy_until_its_cloning_weight_decays(self, tmp_path) -> None:
+        """At the real trainer, through the schedule refresh that sets both."""
+        trainer = _trainer(tmp_path)
+        metrics: dict = {}
+        runtime = trainer._initialize_rollout_runtime()
+
+        trainer._refresh_training_schedule(metrics, runtime.elo_eval)
+        scheduled = trainer._schedule_state.entropy_coef
+        assert scheduled > 0.0
+        assert trainer._behavior_cloning_coef > 0.0
+        assert trainer._entropy_coef == scheduled == metrics["schedule/entropy_coef"]
+
+        # The cutoff: a full window at or above the target win rate.
+        window = trainer._eval_window_sc
+        window.extend([1.0] * window.maxlen)
+        trainer._refresh_training_schedule(metrics, runtime.elo_eval)
+
+        assert trainer._behavior_cloning_coef == 0.0
+        assert trainer._policy_gradient_coef == 0.0
+        assert trainer._entropy_coef == 0.0 == metrics["schedule/entropy_coef"]
+        trainer.shutdown()
+
+    def test_an_rl_run_keeps_its_entropy_bonus(self, tmp_path) -> None:
+        """The gate must not touch the profile it was not about."""
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        metrics: dict = {}
+        runtime = trainer._initialize_rollout_runtime()
+        window = trainer._eval_window_sc
+        window.extend([1.0] * window.maxlen)
+
+        trainer._refresh_training_schedule(metrics, runtime.elo_eval)
+
+        assert trainer._policy_gradient_coef > 0.0
+        assert trainer._behavior_cloning_coef == 0.0  # decayed by the same cutoff
+        assert trainer._entropy_coef == trainer._schedule_state.entropy_coef > 0.0
+        trainer.shutdown()
