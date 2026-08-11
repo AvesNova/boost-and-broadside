@@ -139,7 +139,7 @@ def run_ar_report_mode(
     history_sim: History = []
     actions_sim = []
 
-    for _ in range(num_steps):
+    for step in range(num_steps):
         state = wrapper.state
         action0 = get_actions(agent0, obs, state, 1, N, device, return_pred_next=False)
         action1 = get_actions(agent1, obs, state, 1, N, device, return_pred_next=False)
@@ -165,7 +165,7 @@ def run_ar_report_mode(
         obs, _, terminated, truncated, _ = wrapper.step(action)
 
         if terminated or truncated:
-            print(f"Episode finished early at step {_}. Truncating rollout.")
+            print(f"Episode finished early at step {step}. Truncating rollout.")
             break
 
     actual_steps = len(history_sim)
