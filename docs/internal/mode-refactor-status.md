@@ -36,9 +36,9 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: none. A first `S15` attempt was reviewed, rejected, and **reverted**; `S15` is
-  back to `pending` and starts fresh.
-- Next section: `S15` — the one-time 682 migration, restarting from a clean tree.
+- Active section: `S15` — the one-time 682 migration, restarted from a clean tree. A first attempt
+  was reviewed, rejected, and **reverted**; its record is kept below as evidence.
+- Next section: `S16`, after `S15` closes.
 - Blocking issue: none. The sixteen landmark `.pt` files were restored from git-LFS and each one
   hashes to its original object id; the attempt's scripts, reports, and scratch probes are gone.
   Nothing from the attempt was ever committed or written into the LFS store. Its review record is
@@ -69,7 +69,7 @@ code, tests, and reader-facing documentation.
 | S13 | 9 | completed | VRAM engineer | Sol / extra high | Implement resolution precedence, probing, cache fingerprints, and provenance |
 | S14 | 7–9 gate | completed | training-systems reviewer | Sol / extra high | Review BC, live Elo, and VRAM behavior together before checkpoint schema freeze |
 | S14R | 7–9 gate remediation | completed | training-systems remediator + reviewer | Sol / extra high | Close the S14 blocker, freeze the migration target schemas, and obtain an independent re-review |
-| S15 | 10 | pending | checkpoint migration engineer | Sol / extra high | Migrate the complete 682 checkpoint set once into the frozen current schema (first attempt reviewed, rejected, reverted) |
+| S15 | 10 | in_progress | checkpoint migration engineer | Sol / extra high | Migrate the complete 682 checkpoint set once into the frozen current schema (first attempt reviewed, rejected, reverted) |
 | S16 | 10 | pending | landmark/publication integrator | Sol / high | Backfill 682 artifacts and raw samples; select and regenerate canonical publications |
 | S17 | 10 gate | pending | migration/reproducibility reviewer | Sol / extra high | Independently verify 682 equivalence, completeness, provenance, and publication reproducibility |
 | S18 | 11 | pending | documentation/cleanup engineer | Terra / high | Complete repo-wide docs and remove obsolete paths, names, and temporary compatibility residue |
