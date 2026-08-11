@@ -36,9 +36,9 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: `S15` — the one-time 682 migration, restarted from a clean tree. A first attempt
-  was reviewed, rejected, and **reverted**; its record is kept below as evidence.
-- Next section: `S16`, after `S15` closes.
+- Active section: none. `S15` is completed on its restart; the first attempt's rejection record is
+  kept below it as evidence.
+- Next section: `S16` — landmark artifacts and publication.
 - Blocking issue: none. The sixteen landmark `.pt` files were restored from git-LFS and each one
   hashes to its original object id; the attempt's scripts, reports, and scratch probes are gone.
   Nothing from the attempt was ever committed or written into the LFS store. Its review record is
@@ -69,7 +69,7 @@ code, tests, and reader-facing documentation.
 | S13 | 9 | completed | VRAM engineer | Sol / extra high | Implement resolution precedence, probing, cache fingerprints, and provenance |
 | S14 | 7–9 gate | completed | training-systems reviewer | Sol / extra high | Review BC, live Elo, and VRAM behavior together before checkpoint schema freeze |
 | S14R | 7–9 gate remediation | completed | training-systems remediator + reviewer | Sol / extra high | Close the S14 blocker, freeze the migration target schemas, and obtain an independent re-review |
-| S15 | 10 | in_progress | checkpoint migration engineer | Sol / extra high | Migrate the complete 682 checkpoint set once into the frozen current schema (first attempt reviewed, rejected, reverted) |
+| S15 | 10 | completed | checkpoint migration engineer | Sol / extra high | Migrate the complete 682 checkpoint set once into the frozen current schema (first attempt reviewed, rejected, reverted) |
 | S16 | 10 | pending | landmark/publication integrator | Sol / high | Backfill 682 artifacts and raw samples; select and regenerate canonical publications |
 | S17 | 10 gate | pending | migration/reproducibility reviewer | Sol / extra high | Independently verify 682 equivalence, completeness, provenance, and publication reproducibility |
 | S18 | 11 | pending | documentation/cleanup engineer | Terra / high | Complete repo-wide docs and remove obsolete paths, names, and temporary compatibility residue |
@@ -2005,6 +2005,187 @@ Each section appends its record below when it completes. Do not replace earlier 
   5. S16 is the next authorized section.
 
 ### S15 handoff
+
+- Status: completed
+- Agent/model/effort: checkpoint migration engineer / `gpt-5.6-sol` / extra high
+- Commit(s): `718925b` — mark S15 active; `8eff388` — the one-time migration script and the
+  historical reference capture; `956612b` — the complete migrated checkpoint set and its report;
+  `45f21ab` — the sixteen-file verification suite and its reference fixture; `d34a493` — report
+  EOF newline; `f2adb31` — record what the radius compensation is measured to be worth; followed
+  by this closure commit.
+- Tests/checks and results: new `tests/migration/test_landmark_682.py` (**344 tests**, every one
+  parametrized over the sixteen tracked files or both input sets); final `uv run --no-sync pytest
+  -q` (**1464 passed**, up from 1120 at S14R); `.venv/bin/bnb smoke` (all 14 isolated cases passed,
+  checkout unchanged); `uv run --no-sync ruff check .` and Ruff against a clean `git archive HEAD`
+  (both passed); `git diff --check 599beff..HEAD` (passed); `.venv/bin/bnb publish --check` against
+  the real repository exits 0 and reports 1 external and 26 unselected, unchanged from
+  S12/S13/S14/S14R. Twelve-case mutation check recorded below. End-to-end: `bnb collect-stats
+  --team0 checkpoints/resilient-resonance-682/best_training.pt --team1 scripted --sizes 4v4 --games
+  64 --device cpu --seed 7` → **64 wins, 0 losses, 0 ties**.
+- Behavior/config changes: **no product code changed.** The only non-additive edit outside the
+  landmark run is `tests/config/test_resolution.py`, whose `runs/` guard gains the two migration
+  scripts alongside the two planning documents it already exempted — both name `runs/shared.py` as
+  the location of the profiles *at the recorded training commit*, not as a path in this tree. The
+  sixteen tracked `.pt` files are rewritten; nothing else about the repository's behavior moves.
+- Files/artifacts produced: `scripts/migrate_682.py`, `scripts/landmark_682_reference.py`,
+  `checkpoints/resilient-resonance-682/migration_report.{md,json}`,
+  `tests/migration/test_landmark_682.py`, and
+  `tests/fixtures/migration/landmark_682_reference.npz` (3.2 MB — the historical forward pass,
+  frozen). The historical worktree, the out-of-place migration output, and every probe were
+  temporary under the session scratchpad.
+
+#### The thing that was not in the shape of the problem
+
+The run records its own training commit in `wandb_export/files/wandb-metadata.json`:
+`b4883769ca49bb60e818986586db5673a4bf83c1`, an ancestor of `main`. Everything below is derived
+from a worktree at that commit rather than inferred, and the equivalence check compares against
+measured historical behavior rather than an assumption.
+
+Diffing every shared feature's encoder specification between that commit and today returns exactly
+one difference, and it is not a shape, a key, or a config field:
+
+    radius: Normalize(40.0) -> Normalize(0.5 * min(world_size)) == Normalize(512.0)
+
+The old divisor was the obstacle radius ceiling; the new one is derived from world size, because
+refractive fields are far larger than any obstacle was. **No `ShipConfig` field moved**, so
+`_check_config_drift` cannot see it, and no shape mismatch would ever surface it. Left alone, these
+weights read a ship radius of 0.0195 where they were fitted on 0.25.
+
+The compensation is exact rather than approximate: the feature enters through one column of one
+`Linear`, so scaling that column by `512/40` reproduces the historical pre-activation for every
+input value. Adam's moments for that column are carried as `1/k` and `1/k²` and the averaging
+accumulator as `k`, so the optimizer and averaged-policy records stay consistent with the weight.
+
+Measured, so the claim is not larger than the evidence: on the fixed-observation set omitting it
+moves logits by up to 1.3, and the 64-game 4v4 above goes from 64 wins to 63. The landmark policy
+is far stronger than scripted, so a perturbation has room to hide there and less room between two
+ladder snapshots of similar strength — which is S16's situation, not this one.
+
+#### What the migration does
+
+- **Out of place.** `--source` is read-only, `--out` must differ, and a source that is already
+  migrated is refused by name. Two runs from the same originals are content-identical.
+- **Provenance derived or omitted.** `paradigm` is `ego_pass` from the run's own `train_config`.
+  `model_config` is the legacy `{d_model, n_heads, n_transformer_blocks}` renamed, plus six fields
+  that did not exist and whose values are *read back off the stored tensors* — the script raises
+  rather than defaulting. `env_config` is rebuilt (`num_obstacles` dropped; `num_fields=0`,
+  `action_repeat=1`, `spawn_resource_spread=0.0` derived from the historical environment's own
+  behavior). `ship_config` is the training commit's values re-expressed in the current schema.
+  **`resolved_config` and `launch` are omitted** — both optional, neither ever recorded.
+- **Tensors.** Encoder input widened 58→66 with zero columns at the tail, which is exactly where
+  the current layout appends them; next-state head 9→10 with a zero row for the trailing
+  `local_log_index`; `yemong_layers.<i>.{spatial,temporal}.<leaf>` →
+  `...{spatial,temporal}.0.<leaf>`; `field_sub` introduced as the identity a fresh block uses.
+- **The value head needs no permutation.** The eleven historically active components, mapped
+  through the two renames the combat/field damage split caused (`damage_taken` →
+  `combat_damage_taken`, `death` → `combat_death`), come out in the same order under the current
+  registry. The script recomputes this and raises rather than emitting a scrambled critic if it
+  ever stops holding, and a test recomputes it from the live registry. **The rejected attempt's
+  `P = [0,1,8,9,10,3,4,5,6,7,2]` is wrong**; applying it is one of the mutations below.
+- **Optimizer: carried, not dropped.** All 74 legacy parameter states map to their new index *by
+  name* — the attempt's bug was looking the new name up in the old table — with the run's own
+  `lr=1e-4`, `eps=1e-5`, `betas=(0.9, 0.999)` preserved. The two `field_sub` parameters get fresh
+  zero state at step 0.
+
+#### Equivalence
+
+`scripts/landmark_682_reference.py` runs the *original* weights through the *original* policy,
+observation builder, and environment at the training commit and freezes the result. The tests
+replay the same inputs through the migrated files with no historical code involved. Two input
+sets, both driven from recorded states rather than by re-running the simulator, because the physics
+changed and this section is about the policy:
+
+1. **fixed** — seeded synthetic states covering dead ships, mixed teams, and the full range of
+   every channel over 6 steps;
+2. **scenario** — a real seeded zero-field 4v4 episode the historical policy played, replayed over
+   24 steps so the recurrent state evolves across it.
+
+Both run for all sixteen files, plus the averaged policy the two resumable files carry — 18 sets of
+weights. Measured maxima over all of it: the encoder's own output agrees to **2.4e-07**, under one
+float32 ULP at its magnitude; amplified through two Yemong blocks that becomes **3.2e-05** on
+logits, **7.9e-06** on values, **8.6e-06** on the nine inherited next-state outputs, and **1.0e-05**
+on the recurrent state. **Every greedy action matches exactly.** The eleven observation channels
+both versions share compare bit-for-bit equal. Bitwise policy equality is unreachable and is not
+claimed: the first matmul went from k=58 to k=66, which reorders the accumulation of the terms that
+survived.
+
+#### Mutation check
+
+Twelve deliberate corruptions, each confirmed to fail the suite — including every defect the
+rejected attempt shipped: reverted radius compensation; non-zero encoder pad columns; `paradigm`
+set to `shared_pass`; the legacy `env_config` restored; Adam hyperparameters reset to library
+defaults; the 46 trunk optimizer states dropped; the attempt's value permutation applied;
+`field_sub` zeroed; `team_pma_k` removed; the next-state row-9 pad made non-zero; a
+`{"resolved_config_fingerprint": "migrated_682"}` placeholder added; `live_elo` renamed back to
+`training_elo`.
+
+- Decisions/deviations from plan:
+  1. **The radius compensation is applied.** Not compensating is provably a behavior change, which
+     the section forbids; compensating is an exact linear reparameterization that the equivalence
+     fixture measures. This was not anticipated by the plan or by the S15 mission card — it is the
+     one genuinely new finding — but it needs no decision above this section, because the
+     alternative is the thing the section exists to prevent.
+  2. **The resumable files are migrated as complete resumable payloads, and the caveat is stated.**
+     They satisfy the frozen contract and carry every byte of Adam state. Actually continuing the
+     run additionally needs a profile whose reward vocabulary matches the historical one, which no
+     longer exists — the current registry splits two of these eleven components. Recorded in the
+     report under known limitations rather than claimed away.
+  3. **`train_config` is kept verbatim in the historical schema.** It is the record of what the run
+     was launched with, and no loader rebuilds it into a dataclass; `load_checkpoint` reads only
+     `paradigm` from it, and `_field_map_config` correctly finds no `field_map`.
+  4. **Filenames are unchanged.** `recent_avg.pt` carries the resumable key set but keeps its
+     legacy name; renaming tracked landmark files would move what `docs/` and `roster.json` point
+     at, which is S16's and S18's to decide, not this section's.
+  5. **The migration lives in `scripts/`, not in the package.** D19 rules out runtime migration
+     infrastructure. The tests read the tracked files directly; they load the script only for its
+     canonical content digest.
+  6. **The reference fixture is tracked at 3.2 MB.** It is the evidence for this section's central
+     claim and the only way the equivalence check runs without a historical checkout. In line with
+     what the repository already tracks (a 14 MB history JSONL, several 3–5 MB replay GIFs).
+  7. **Byte-reproducibility is partial, and the report says which part.** Thirteen files serialize
+     identically every run. The three carrying the historical `train_config` do not: two of its
+     reward fields are `frozenset`s and `pickle` writes a frozenset in iteration order, which Python
+     randomizes per process. A canonical `migrated_content` digest is recorded per file and
+     asserted, and it is what a reproduction should compare.
+- Review findings addressed: all nine blocking findings from the rejected attempt's review are
+  closed with executable coverage — 1 (every file failed the ordinary loader) by the rebuilt
+  `env_config` plus a per-file loader test; 2 (fabricated `paradigm`) by deriving `ego_pass` and
+  asserting it; 3 (verification that verified nothing) by the historical reference fixture and 344
+  tests; 4 (silently corrupted optimizer state) by name-keyed mapping with preserved
+  hyperparameters; 5 (fabricated provenance in fields loaders compare) by omitting the two optional
+  fields and deriving the rest; 6 (`observation_schema` asserted rather than earned) by measuring
+  the forward pass it gates; 7 (missing `team_pma_k`) by deriving and cross-checking it; 8
+  (destructive, non-idempotent, lost safety net) by migrating out of place with the originals still
+  named in history; 9 (the report is not the record the plan requires) by the tensor and optimizer
+  mappings, the value-component identification, the named unknowns, and both hash kinds. Its four
+  non-blocking findings are closed too: the `avg_param_cumsum`/`avg_policy` inconsistency, by making
+  the accumulator reproduce the averaged policy exactly and asserting it; the zero tenth next-state
+  predictor, recorded and asserted rather than left implicit; `field_sub`'s inertness, proved by a
+  test that scales it by −3 and shows the output unchanged; and `num_value_components=11`, whose
+  resumability consequence is decision 2 above.
+- Remaining risks or required follow-up:
+  1. **The tenth next-state predictor is a constant zero.** The historical head never learned it,
+     so its row is zero-padded. Any AR or next-state analysis S16 runs on these files reads a flat
+     series there. This compounds S10R risk 1 (the `next_state/*` metric-key drift), which is still
+     open and still S16's.
+  2. **S16 should prefer to compare like with like.** The radius measurement above is against
+     scripted, where the landmark policy is far stronger. Between ladder snapshots of similar
+     strength the migration's float32 residual is still ~1e-5 on logits, which is negligible, but no
+     ladder-versus-ladder tournament has been run on the migrated set.
+  3. The equivalence evidence is 2 environments × 30 steps × 18 weight sets, not a full tournament.
+     It pins the forward pass tightly; it is not a statement about aggregate match outcomes.
+  4. `scripts/migrate_682.py` has no test of its own beyond the content digest the suite imports.
+     The tracked files it produced are covered exhaustively, which is the property that matters, but
+     re-running the script is verified only by the reproduction described in decision 7.
+  5. Carried forward unchanged: S14R risks 1–3 (the post-cutoff BC blind spot, one malformed entry
+     costing the whole VRAM cache, and BC's evidence being 1,200 reduced-width updates); S13 risks
+     1–3 and 5–6; and S12 risks 2–4.
+  6. S16 is the next authorized section and was not begun.
+
+#### The rejected first attempt
+
+The record below is the gate review of the first `S15` attempt, kept as evidence. Its findings are
+closed by the restart above.
 
 - Status: **rejected and reverted.** The migration attempt never met the section's "Done when", was
   never committed, and has been removed from the working tree at the user's direction. `S15` is
