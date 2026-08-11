@@ -422,6 +422,70 @@ def test_promoted_media_must_match_its_recorded_hash(repository, renderers) -> N
         run_publish(repository)
 
 
+_CLIP = """
+schema_version = 1
+
+[publications.clip]
+renderer = "fixture-media-v1"
+output = "docs/results/replays/clip.gif"
+description = "A promoted clip."
+
+[publications.clip.files]
+clip = {{ path = "out/clip.gif", sha256 = "{digest}" }}
+"""
+
+
+def _promoted(repository) -> Path:
+    """A curated clip in scratch, promoted and then published."""
+
+    clip = repository / "out" / "clip.gif"
+    clip.parent.mkdir()
+    clip.write_bytes(b"GIF89a-fixture")
+    write_manifest(repository, _CLIP.format(digest=file_sha256(clip)))
+    run_publish(repository)
+    return clip
+
+
+def test_a_promoted_clip_is_verified_against_its_pin_when_scratch_is_gone(
+    repository, renderers
+) -> None:
+    """A clean checkout has no ``out/``; the pinned hash is what makes it citable."""
+
+    _promoted(repository).unlink()
+
+    report = run_publish(repository, check=True)
+
+    assert not report.failed
+    assert [outcome.status for outcome in report.by_status(UNCHANGED)] == [UNCHANGED]
+    assert "pinned sha256" in report.by_status(UNCHANGED)[0].detail
+
+
+def test_a_published_clip_that_no_longer_matches_its_pin_fails(repository, renderers) -> None:
+    clip = _promoted(repository)
+    clip.unlink()
+    (repository / "docs" / "results" / "replays" / "clip.gif").write_bytes(b"GIF89a-tampered")
+
+    report = run_publish(repository, check=True)
+
+    assert report.failed
+    assert report.by_status(CHANGED)
+
+
+def test_a_promoted_clip_with_neither_scratch_nor_output_is_missing(
+    repository, renderers
+) -> None:
+    """One absent clip is reported; it no longer aborts the whole inventory."""
+
+    clip = _promoted(repository)
+    clip.unlink()
+    (repository / "docs" / "results" / "replays" / "clip.gif").unlink()
+
+    report = run_publish(repository, check=True)
+
+    assert report.failed
+    assert report.by_status(MISSING)
+
+
 def test_a_renderer_that_reaches_the_network_fails(repository, isolated_registry) -> None:
     def connect(inputs, out_dir: Path) -> list[Path]:
         socket.create_connection(("example.invalid", 80))

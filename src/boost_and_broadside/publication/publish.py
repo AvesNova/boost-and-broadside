@@ -177,6 +177,12 @@ def run_publish(
             report.outcomes.append(_verify_external(repository, entry))
             report.index.append(_index_row(entry, {}))
             continue
+        promoted = _verify_promoted(repository, entry)
+        if promoted is not None:
+            report.outcomes.append(promoted)
+            report.index.append(_index_row(entry, _pinned_digests(entry)))
+            published[entry.name] = entry.output
+            continue
         sources, digests = _resolve_sources(repository, entry)
         with tempfile.TemporaryDirectory(prefix="bnb-publish-") as temporary:
             staged = Path(temporary)
@@ -204,6 +210,54 @@ def _verify_external(repository: Path, entry: PublicationEntry) -> EntryOutcome:
         return EntryOutcome(entry.name, MISSING, entry.output, "external asset is absent")
     return EntryOutcome(
         entry.name, EXTERNAL, entry.output, "tracked as-is; not produced in this repository"
+    )
+
+
+def _pinned_digests(entry: PublicationEntry) -> dict[str, str]:
+    return {name: source.sha256 for name, source in entry.files.items()}
+
+
+def _verify_promoted(repository: Path, entry: PublicationEntry) -> EntryOutcome | None:
+    """Check a promoted output against its pinned hash when the source is gone.
+
+    A curated clip is scratch: it is captured, reviewed, and promoted, and the
+    working copy under ``out/`` is deliberately never tracked. What makes the
+    published file citable is therefore not the scratch file — it is the sha256
+    the manifest pins, which is committed. A checkout without ``out/`` can still
+    say whether ``docs/`` holds exactly the reviewed bytes, so that is what
+    happens here rather than aborting the whole inventory over a file whose
+    absence is the normal state.
+
+    Returns ``None`` when the ordinary path applies: any promoted source that is
+    present is copied and compared as before.
+    """
+
+    if len(entry.files) != 1 or entry.artifacts or entry.renderer.multi_file:
+        return None
+    (source,) = entry.files.values()
+    if (repository / source.path).is_file():
+        return None
+
+    destination = repository / entry.output
+    if not destination.is_file():
+        return EntryOutcome(
+            entry.name,
+            MISSING,
+            entry.output,
+            f"{source.path} is not present and the canonical output is absent",
+        )
+    if file_sha256(destination) == source.sha256:
+        return EntryOutcome(
+            entry.name,
+            UNCHANGED,
+            entry.output,
+            f"{source.path} is not present; the output matches its pinned sha256",
+        )
+    return EntryOutcome(
+        entry.name,
+        CHANGED,
+        entry.output,
+        f"{source.path} is not present and the output does not match its pinned sha256",
     )
 
 
