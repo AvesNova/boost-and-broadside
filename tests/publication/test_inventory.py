@@ -58,9 +58,22 @@ def test_every_tracked_published_asset_is_owned_by_exactly_one_entry(manifest) -
     assert unowned == []
 
 
-def test_the_repository_checks_clean_with_nothing_selected_yet() -> None:
+def test_every_entry_has_a_source(manifest) -> None:
+    """S16 selected the reference run's artifacts; nothing is pending a source.
+
+    An entry without one is not an error in general — it is how the inventory
+    carries an output whose measurement has not been made yet — but the shipped
+    manifest has no such entry any more, and a new one would mean a canonical
+    output silently stopped being regenerated.
+    """
+
+    unselected = [entry.name for entry in manifest.entries if not entry.selected]
+    assert unselected == []
+
+
+def test_the_repository_checks_clean_against_its_selected_sources() -> None:
     report = run_publish(_ROOT, check=True)
 
     assert not report.failed
-    assert report.by_status(UNSELECTED)
-    assert not (_ROOT / "docs" / "results" / "provenance.md").exists()
+    assert not report.by_status(UNSELECTED)
+    assert (_ROOT / "docs" / "results" / "provenance.md").exists()

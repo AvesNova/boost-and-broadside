@@ -303,18 +303,48 @@ def test_publish_reports_a_missing_manifest_concisely(tmp_path, monkeypatch, cap
     assert "Traceback" not in error
 
 
-def test_publish_check_succeeds_when_every_entry_is_still_unselected(
+_UNSELECTED_MANIFEST = """
+schema_version = 1
+
+[publications.pending]
+renderer = "crossover-phase-v1"
+output = "docs/results/crossover_phase.png"
+description = "An entry whose measurement has not been made yet."
+"""
+
+
+def test_publish_check_succeeds_when_an_entry_is_still_unselected(
     tmp_path, monkeypatch, capsys
 ) -> None:
+    """An entry with no source is part of the inventory, not an error."""
+
     docs = tmp_path / "docs"
     docs.mkdir()
-    (docs / "publications.toml").write_text(Path("docs/publications.toml").read_text())
-    # The one asset with no producer here still has to be present to pass.
-    (docs / "policy_architecture.png").write_bytes(b"fixture")
+    (docs / "publications.toml").write_text(_UNSELECTED_MANIFEST)
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["publish", "--check"]) == 0
     assert "unselected" in capsys.readouterr().out
+
+
+def test_publish_reports_a_selected_source_that_is_absent_concisely(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """The shipped manifest names real artifacts; without them, say so plainly."""
+
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "publications.toml").write_text(Path("docs/publications.toml").read_text())
+    (docs / "policy_architecture.png").write_bytes(b"fixture")
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(["publish", "--check"])
+
+    assert exit_info.value.code == 2
+    error = capsys.readouterr().err
+    assert "artifact.json" in error
+    assert "Traceback" not in error
 
 
 def test_print_config_bypasses_runtime_dispatch_and_records_cli_sources(

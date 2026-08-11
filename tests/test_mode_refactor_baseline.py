@@ -109,9 +109,18 @@ def _tracked_publication_assets() -> list[str]:
 
 
 def test_machine_readable_inventory_remains_as_legacy_evidence_and_tracks_assets():
+    """No published asset recorded at the branch base has been lost since.
+
+    This was an equality until S16, which selected the reference run's artifacts
+    and regenerated the inventory: publishing added the canonical 4v4 AR report
+    and the generated provenance index. Growth is allowed — a canonical output
+    *disappearing* is what this guards, and the S01 record stays frozen as the
+    thing it is compared against.
+    """
+
     inventory = json.loads(_INVENTORY.read_text())
     assert any(action["dest"] == "mode" for action in inventory["parser_actions"])
-    assert inventory["published_assets"] == _tracked_publication_assets()
+    assert set(inventory["published_assets"]) <= set(_tracked_publication_assets())
 
 
 @pytest.mark.parametrize(
