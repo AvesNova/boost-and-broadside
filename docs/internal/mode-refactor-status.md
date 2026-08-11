@@ -36,12 +36,13 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: `S17` — migration/reproducibility gate review, reviewing `599beff..692f892`.
-- Next section: `S18` — documentation and cleanup, pending the outcome of `S17`.
-- Blocking issue: none. The sixteen landmark `.pt` files were restored from git-LFS and each one
-  hashes to its original object id; the attempt's scripts, reports, and scratch probes are gone.
-  Nothing from the attempt was ever committed or written into the LFS store. Its review record is
-  kept below as evidence, and its findings are folded into the `S15` mission card.
+- Active section: none. `S17` is completed and did **not** approve the migration/reproducibility gate.
+- Next section: `S17R` — migration/reproducibility gate remediation and re-review.
+- Blocking issue: two, both recorded in the `S17` handoff below. A clean checkout cannot publish at
+  all, because the selected `wandb-export` artifact requires a payload file `.gitignore` excludes;
+  and `migration_report.md` records a migrated SHA-256 for three of the sixteen landmark files that
+  matches nothing in the repository or its history. `S18` and `S19` remain pending until `S17R`
+  closes both and an independent re-review reports no remaining blocker.
 - Target schemas: **frozen** — see "Frozen migration target schemas" below. `S15` migrates into
   exactly those shapes.
 
@@ -70,7 +71,8 @@ code, tests, and reader-facing documentation.
 | S14R | 7–9 gate remediation | completed | training-systems remediator + reviewer | Sol / extra high | Close the S14 blocker, freeze the migration target schemas, and obtain an independent re-review |
 | S15 | 10 | completed | checkpoint migration engineer | Sol / extra high | Migrate the complete 682 checkpoint set once into the frozen current schema (first attempt reviewed, rejected, reverted) |
 | S16 | 10 | completed | landmark/publication integrator | Sol / high | Backfill 682 artifacts and raw samples; select and regenerate canonical publications |
-| S17 | 10 gate | in_progress | migration/reproducibility reviewer | Sol / extra high | Independently verify 682 equivalence, completeness, provenance, and publication reproducibility |
+| S17 | 10 gate | completed | migration/reproducibility reviewer | Sol / extra high | Independently verify 682 equivalence, completeness, provenance, and publication reproducibility |
+| S17R | 10 gate remediation | pending | migration/reproducibility remediator + reviewer | Sol / extra high | Make a clean checkout publishable and the migration record true, then obtain an independent re-review |
 | S18 | 11 | pending | documentation/cleanup engineer | Terra / high | Complete repo-wide docs and remove obsolete paths, names, and temporary compatibility residue |
 | S19 | final gate | pending | final branch reviewer | Sol / extra high | Review the complete branch against the plan and run final acceptance checks |
 
@@ -559,6 +561,43 @@ scenario equivalence, absence of runtime migrations, artifact provenance, ignore
 publication manifest coverage, and offline no-diff regeneration.
 
 Done when: no blocking migration or reproducibility findings remain.
+
+### S17R — Migration/reproducibility gate remediation and re-review
+
+Agent: migration/reproducibility remediator plus an independent review owner, Sol extra high.
+
+Steps:
+
+1. Reproduce both `S17` blocking probes before editing product code: `git archive HEAD` into a
+   temporary directory and run `bnb publish --check` there (exit 2, nothing rendered); and hash the
+   three tracked `train_config`-carrying `.pt` files against the migrated column of
+   `migration_report.md`.
+2. Make a clean checkout publishable. Decide explicitly whether `files/output.log` belongs in the
+   `wandb-export` artifact's payload at all — a run's console log is not evidence any renderer
+   reads — and then either exclude it from the recorded payload or negate `.gitignore`'s `*.log`
+   for tracked artifact payloads. Whichever is chosen, no selected artifact may record a file the
+   repository will not track. Cover it with a test that fails today: every file recorded by a
+   manifest-selected artifact is either tracked by Git or exempt under the `samples/` rule.
+3. Decide whether a missing artifact payload file should abort the whole inventory.
+   `_resolve_sources` (`publication/publish.py:288`) raises, so one damaged source takes down 26
+   healthy entries, unlike `_verify_external` and `_verify_promoted`, which report one entry. Either
+   report it per entry or record why aborting is right.
+4. Make `migration_report.md` true again for all sixteen files, and make it stay true. The report is
+   written by `write_report` (`scripts/migrate_682.py:1012`) from the payloads that run just
+   produced, so regenerating the prose re-migrates and re-hashes — which is exactly how the three
+   rows drifted. Derive the document from the tracked `migration_report.json`, or re-commit the
+   payloads the document describes; do not hand-edit three hash cells. Assert the `.md` and the
+   `.json` agree, from the test suite.
+5. Address or explicitly defer each `S17` non-blocking finding with a recorded decision.
+6. Re-run the full pytest suite, the full smoke matrix, Ruff locally and against a clean
+   `git archive HEAD`, range whitespace, `bnb publish --check` against the real repository **and
+   against a clean archive extraction**, and an independent re-review of the
+   `599beff`-through-`S17R` range.
+
+Done when: a clean checkout regenerates every canonical output with no diff, the tracked migration
+record matches the tracked files, both are covered by tests that fail without their fix, and the
+independent re-review reports no remaining blocker. `S18` remains pending until this row is
+completed.
 
 ### S18 — Documentation and cleanup
 
@@ -2472,6 +2511,145 @@ closed by the restart above.
      comparison; the bounded equivalence evidence; `migrate_682.py` having no test of its own);
      S14R risks 1–3; S13 risks 1–3 and 5–6; and S12 risks 2–4.
   6. S17 is the next authorized section and was not begun.
+
+### S17 handoff
+
+- Status: completed; blocking findings require S17R before S18
+- Agent/model/effort: migration/reproducibility reviewer / `gpt-5.6-sol` / extra high
+- Commit(s) reviewed: `718925b`, `8eff388`, `956612b`, `45f21ab`, `d34a493`, `f2adb31`, `088d91e`,
+  `d6434f5`, `a27f8f9`, `b983ee9`, `5849e53`, `504573e`, `044d0e0`, `4adf124`, `e512312`, `6c7a1a4`,
+  `5a53c94`, `7d14271`, `aadf21c`, `7d7eea9`, `4fdd160`, `fcbc255`, `f8027a6`, `9dd422b`, `9031a95`,
+  and `692f892` in committed range `599beff..692f892`; `85505f4` marked S17 active, followed by this
+  review-ledger commit
+- Tests/checks and results: `uv run --no-sync pytest -q` (**1479 passed**, 3 warnings — matches the
+  S16 handoff); `.venv/bin/bnb smoke` (all 14 isolated cases passed, checkout unchanged);
+  `uv run --no-sync ruff check .` and Ruff against a clean `git archive HEAD` (both passed);
+  `git diff --check 599beff..HEAD` (passed); `.venv/bin/bnb publish --check` **against the working
+  checkout** exits 0 and reports 1 external and 26 unchanged. Against a clean `git archive HEAD`
+  extraction it exits 2 and renders nothing — blocking finding 1. Direct probes recorded below.
+- Behavior/config changes: review made no product-code, checkpoint, artifact, or configuration
+  change. The historical worktree it created was removed and the worktree is clean.
+- Files/artifacts produced: ledger updates only. The clean archive, the historical worktree at
+  `b4883769`, the sixteen originals materialized from `.git/lfs/objects`, and every probe were
+  temporary under the session scratchpad.
+- Decisions/deviations from plan: **S17 does not approve the migration/reproducibility gate.** S17R
+  is inserted immediately after this section; S18 and S19 remain pending.
+- Review findings addressed: none; review agents do not edit product code
+- Verified as sound (recorded so S17R does not re-litigate them):
+  1. **The transformation is exactly what the report says, on all sixteen files.** Each original was
+     read from `.git/lfs/objects` by the `original` hash the report records — all sixteen present and
+     loadable, so the recorded inputs are real — and compared tensor by tensor against the tracked
+     file, without using the migration script's helpers. For every file: the 74 legacy
+     `policy_state_dict` entries map onto the renamed keys with **no tensor changed** beyond the three
+     documented edits; `encoder.feature_extractor.0.weight` is exactly the original with column 57
+     scaled by `512/40` and columns 58:66 zero; `next_state_head.net.3.{weight,bias}` keep rows 0–8
+     bit-identical and zero row 9; and the only new keys are the two `field_sub` weights, each exactly
+     the 128×128 identity. Sixteen of sixteen, zero exceptions.
+  2. **The optimizer state is carried, not reconstructed.** Both resumable files keep all 74 legacy
+     parameter states, mapped by name across the rename, with `lr=1e-4`, `eps=1e-5`,
+     `betas=(0.9, 0.999)`, `weight_decay=0` preserved and every `step` equal. The encoder column's
+     moments are scaled by exactly `1/k` and `1/k²` (max absolute deviation 0.0), every other column
+     is untouched, the padded columns are zero, and the two `field_sub` parameters carry fresh state
+     at step 0. Nothing is dropped.
+  3. **The equivalence fixture is genuinely historical, and reproducible.** `git worktree add` at the
+     run's own recorded training commit `b4883769`, the sixteen originals from the LFS store, and
+     `scripts/landmark_682_reference.py` reproduced `tests/fixtures/migration/landmark_682_reference.npz`
+     **bit-for-bit**: 198 of 198 keys present with identical shapes and dtypes, and a maximum absolute
+     difference of **0.0** across all 182 float arrays. The tracked fixture is therefore the historical
+     forward pass it claims to be, not a recording of current code, and the 344 migration tests are
+     comparing against something a third party can re-derive.
+  4. **No runtime migration exists.** The only occurrences of "migrat" under `src/` are two refusal
+     messages (`train/rl/checkpoint.py:221`, `train/rl/checkpoint_schema.py:39`). No package module
+     names the landmark run.
+  5. **Raw samples are retained and ignored.** AR's `samples/rollout_inputs.npz` and noise
+     calibration's `samples/phase1_errors.npz` are present locally, resolve to `.gitignore:32`, and
+     `git ls-files` matches no `samples/` path. `verify_artifact` (`artifacts/store.py:441`)
+     deliberately tolerates an absent sample file, and the clean-archive probe confirms both artifacts
+     verify and render without their samples.
+  6. **The offline no-diff gate is real once its one missing file is supplied.** Copying only
+     `files/output.log` into the clean archive turned the failure into `1 external, 26 unchanged`,
+     exit 0 — every figure, the AR report's 19 files, the noise report's 5, and all fifteen replays
+     verified against their pins with `out/` absent. So finding 1 is the *only* clean-checkout gap.
+  7. **Artifact provenance is otherwise complete and honest.** All seven artifacts record
+     `status: complete`, a clean in-branch commit with `git_dirty: false`, the `uv.lock` hash, seed
+     682, device, the full runtime stack, subject checkpoint sha256s that match the tracked migrated
+     files, and scripted-agent configuration. `environment` is `{}` — the allowlist matched nothing,
+     and no environment variable or secret is dumped anywhere.
+  8. **The published numbers are the artifacts' numbers.** `docs/evaluation.md:144`'s 1772.2 ± 7.3
+     over 9,347 games, `README.md:49`'s ~1772, and `docs/internal/evidence.md:54-55`'s 1787 ± 11 at
+     4v4 with `converged: false` above it were each read back out of `result.json` and match.
+- Blocking findings:
+  1. **A clean checkout cannot publish anything, because a selected artifact requires a file
+     `.gitignore` excludes.** The `wandb-export` artifact
+     (`checkpoints/resilient-resonance-682/artifacts/wandb-export/20260811T074027Z-86b2417d`) records
+     `files/output.log` (22,524 bytes, sha256 `10e42594…`) in its `artifact.json` payload list, but
+     `.gitignore:10` is a repository-wide `*.log`, so `git ls-files` does not name it and
+     `git status --ignored` reports it `!!`. `verify_artifact` (`artifacts/store.py:441`) exempts only
+     `samples/`, so the file is required. Probe: `git archive HEAD` extracted to a temporary directory,
+     then `bnb publish --check` run there — exit **2**, one line, nothing rendered:
+     `publication 'win_rate_vs_scripted': …/20260811T074027Z-86b2417d is missing files/output.log`.
+     The same failure reproduces in place by moving that one file aside. Two things make this a gate
+     blocker rather than a note. It is S17's own acceptance criterion and plan phase 10's — "every
+     canonical published output regenerates from the manifest with no unexplained diff" is false for
+     every fresh clone of this branch. And because `_resolve_sources` (`publication/publish.py:288`)
+     raises a `PublicationError` instead of returning a per-entry outcome, one unverifiable source
+     aborts the entire inventory: the 23 entries that do not read the export never run either. The
+     file itself is a W&B console log that no renderer reads; it entered the payload because
+     `ingest_directory` (`scripts/export_wandb_run.py:177`) attaches everything under `files/`. No
+     test covers the tracked-ness of a selected artifact's recorded payload, so the full suite,
+     the smoke matrix, and `publish --check` in the working checkout are all green over it.
+  2. **The tracked migration report records a migrated hash for three of sixteen files that names
+     bytes existing nowhere.** `migration_report.md:105-107` gives `step_000999424000.pt`
+     `636e0103…`, `recent_avg.pt` `51ff9cd9…`, and `best_training.pt` `ae7c6ea1…`. The tracked files
+     hash to `2e2f52d9…`, `160c1422…`, and `78562c2d…` — which is also what the LFS pointers at HEAD
+     say and what `migration_report.json` records, so the *files* are right and the *document* is
+     wrong. The document states its own contract two paragraphs down (`migration_report.md:124`):
+     "The migrated hash identifies the bytes now tracked." History shows exactly how it drifted: at
+     `956612b` all sixteen rows matched; `d34a493` and `f2adb31` regenerated the prose by re-running
+     `scripts/migrate_682.py`, whose `main` (`migrate_682.py:1279-1289`) hashes the payloads that run
+     just wrote, and only the `.md` was copied back — `migration_report.json` has no commit after
+     `956612b`. The three files that moved are precisely the three carrying the historical
+     `train_config`, whose `frozenset` reward fields pickle in a process-random order, which the
+     report already explains at `migration_report.md:125-129`. Consequences: the human-readable
+     record the plan's phase 10 requires is false for the three files that carry the optimizer state,
+     and anyone verifying the landmark set by hand against it concludes three files were altered
+     after migration. `tests/migration/test_landmark_682.py:300` pins the tracked files against
+     `migration_report.json` only and asserts of the `.md` merely that it exists
+     (`test_landmark_682.py:287`), so nothing catches the disagreement — and regenerating the `.md`
+     to fix it would re-migrate and drift again, so the fix has to be structural.
+- Non-blocking findings:
+  1. **The `wandb-export` artifact's normalized command is not a command.**
+     `invocation.normalized` reads `uv run bnb --from-directory checkpoints/resilient-resonance-682/wandb_export`,
+     which names no subcommand and would fail at argparse. `normalized_command`
+     (`artifacts/provenance.py:128`) assumes `argv[0]` is the `bnb` executable and simply drops it,
+     which is right for the twelve CLI modes and wrong for the one producer that is a script. Its
+     docstring promises "what a reader can paste to reproduce the measurement". The verbatim `argv`
+     beside it is correct, so nothing is lost, but the normalized field is the one publication's
+     provenance index invites a reader to trust.
+  2. **Explicit checkpoint subjects record `global_step: null`.** The AR and noise-calibration
+     recipes name `resilient-resonance-682/step_000999424000.pt` with its sha256 but no step, while
+     the payload carries `global_step = 999424000`. Plan §5 lists global steps among what
+     `artifact.json` records; identity is still pinned by the hash, so this is a completeness gap in
+     the two artifacts whose subjects were given as paths rather than through `--run`.
+  3. **`scripts/migrate_682.py` still has no test of its own** (carried forward from S15 risk 4).
+     Blocking finding 2 is the first concrete cost of that: the script is the only way to regenerate
+     the record it wrote, re-running it is not byte-stable for three files, and nothing asserts that
+     what it writes still describes what is tracked.
+  4. **`execution.wandb: true` is recorded on artifacts from modes that never contact W&B.** It is an
+     honest report of a resolved launch setting rather than a claim about the measurement, but in an
+     artifact whose whole purpose is offline evidence it reads as one.
+- Remaining risks or required follow-up:
+  1. S17R must close both blockers with regression coverage and receive an independent re-review
+     before S18 begins.
+  2. The equivalence evidence remains what S15 measured: 2 input sets × 30 steps × 18 weight sets,
+     verified here to be reproducible from the historical commit, but still not a statement about
+     aggregate match outcomes. No ladder-versus-ladder tournament has been run on the migrated set.
+  3. Carried forward unchanged: S16 risks 1–5 (the published measurements coming from migrated
+     checkpoints under current physics rather than the run's original evaluation; the three largest
+     fleet sizes not reaching their rating target; `bnb publish` having no smoke case and field-map
+     intent being absent from artifact recipes; the retired `docs/ar_report/{1v1,2v2}` trees and the
+     three superseded landmark JSON files awaiting S18; and S15 risks 1–4, S14R risks 1–3, S13 risks
+     1–3 and 5–6, and S12 risks 2–4).
 
 ### Future handoff template
 
