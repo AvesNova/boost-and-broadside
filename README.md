@@ -34,11 +34,11 @@ Selected results from the [recorded crossover sweep](docs/crossover/crossover.js
 
 | Learned ships | Scripted ships | Win rate |
 |---:|---:|---:|
-| 4 | 5 | **81.6%** |
-| 8 | 11 | **69.5%** |
-| 16 | 24 | **52.7%** |
-| 32 | 47 | **55.9%** |
-| 64 | 87 | **53.1%** |
+| 4 | 5 | **82.4%** |
+| 8 | 11 | **72.7%** |
+| 16 | 24 | **56.6%** |
+| 32 | 48 | **56.2%** |
+| 64 | 88 | **50.3%** |
 
 The [evaluation guide](docs/evaluation.md#zero-shot-crossover) covers the search method,
 sample sizes, raw artifacts, and limitations behind these measurements.
@@ -46,8 +46,8 @@ sample sizes, raw artifacts, and limitations behind these measurements.
 ## Learning progression
 
 A one-billion-step training run completed in 7.5 hours on a single RTX 5090. Post-hoc
-calibration places the final checkpoint at about **1826 Elo** on a scale that fixes the
-scripted controller at 1000 — a lead of roughly **826 points**, where 400 points
+calibration places the final checkpoint at about **1772 Elo** on a scale that fixes the
+scripted controller at 1000 — a lead of roughly **772 points**, where 400 points
 already means ten-to-one odds.
 
 ![Post-hoc calibrated Elo over training](docs/results/elo_curve.png)
