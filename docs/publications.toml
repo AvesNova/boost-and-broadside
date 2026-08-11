@@ -5,14 +5,12 @@
 # it. Nothing else decides what belongs in docs/, and `bnb publish` writes
 # nothing that is not declared below.
 #
-# Sources are deliberately absent. Selecting the exact landmark artifacts is the
-# one-time backfill that follows the 682 checkpoint migration; until then every
-# entry reports as unselected, its tracked output is left exactly as it is, and
-# `bnb publish --check` succeeds without writing anything. Adding an artifacts
-# table to an entry is all it takes to select it, for example:
-#
-#     [publications.crossover_phase.artifacts]
-#     crossover = "checkpoints/<run>/artifacts/crossover/<id>"
+# Every entry names its exact source. The computed figures come from artifacts
+# under the reference run, each recording the command, seeds, checkpoint hashes,
+# and clean commit it was produced from. The curated replays are scratch clips
+# promoted by content hash: `out/` is never tracked, so the sha256 below is what
+# makes a published clip citable, and it is checked against the tracked output
+# whether or not the scratch copy is still on this machine.
 
 schema_version = 1
 
@@ -20,67 +18,90 @@ schema_version = 1
 renderer = "training-elo-curve-v1"
 output = "docs/results/elo_curve.png"
 description = "Post-hoc calibrated Elo over training, against the scripted controller."
-# expects: calibration = an elo-calibration artifact
+
+[publications.elo_curve.artifacts]
+calibration = "checkpoints/resilient-resonance-682/artifacts/elo-calibration/20260811T162139Z-00c0e326"
 
 [publications.win_rate_vs_scripted]
 renderer = "training-win-rate-v1"
 output = "docs/results/win_rate_vs_scripted.png"
 description = "Win rate against the scripted controller over training."
-# expects: wandb_export = a wandb-export artifact
+
+[publications.win_rate_vs_scripted.artifacts]
+wandb_export = "checkpoints/resilient-resonance-682/artifacts/wandb-export/20260811T074027Z-86b2417d"
 
 [publications.training_health]
 renderer = "training-health-v1"
 output = "docs/results/training_health.png"
 description = "Critic fit, reward, KL, and clip fraction as one optimisation panel."
-# expects: wandb_export = a wandb-export artifact
+
+[publications.training_health.artifacts]
+wandb_export = "checkpoints/resilient-resonance-682/artifacts/wandb-export/20260811T074027Z-86b2417d"
 
 [publications.next_state_error]
 renderer = "next-state-error-v1"
 output = "docs/results/next_state_error.png"
 description = "Next-state prediction error per observation dimension."
-# expects: wandb_export = a wandb-export artifact
+
+[publications.next_state_error.artifacts]
+wandb_export = "checkpoints/resilient-resonance-682/artifacts/wandb-export/20260811T074027Z-86b2417d"
 
 [publications.crossover_phase]
 renderer = "crossover-phase-v1"
 output = "docs/results/crossover_phase.png"
 description = "Where the scripted fleet overtakes the policy, against equal counts."
-# expects: crossover = a crossover artifact
+
+[publications.crossover_phase.artifacts]
+crossover = "checkpoints/resilient-resonance-682/artifacts/crossover/20260811T074317Z-7b876d99"
 
 [publications.crossover_ratio]
 renderer = "crossover-ratio-v1"
 output = "docs/results/crossover_ratio.png"
 description = "Scripted ships beaten per policy ship."
-# expects: crossover = a crossover artifact
+
+[publications.crossover_ratio.artifacts]
+crossover = "checkpoints/resilient-resonance-682/artifacts/crossover/20260811T074317Z-7b876d99"
 
 [publications.crossover_data]
 renderer = "crossover-data-v1"
 output = "docs/crossover/crossover.json"
 description = "The measured crossover curves as published data."
-# expects: crossover = a crossover artifact
+
+[publications.crossover_data.artifacts]
+crossover = "checkpoints/resilient-resonance-682/artifacts/crossover/20260811T074317Z-7b876d99"
 
 [publications.elo_scale]
 renderer = "elo-scale-v1"
 output = "docs/results/elo_scale_scripted_1000.png"
 description = "Checkpoint strength across symmetric fleet sizes, scripted-anchored."
-# expects: scale = an elo-scale artifact; reference = a semi-random-ladder artifact (optional)
+
+[publications.elo_scale.artifacts]
+scale = "checkpoints/resilient-resonance-682/artifacts/elo-scale/20260811T114922Z-c68a8980"
+reference = "checkpoints/resilient-resonance-682/artifacts/semi-random-ladder/20260811T101433Z-a4ff2d80"
 
 [publications.semi_random_connectivity]
 renderer = "semi-random-connectivity-v1"
 output = "docs/results/semi_random_connectivity.png"
 description = "How informative each step of the random-to-scripted ladder is."
-# expects: ladder = a semi-random-ladder artifact
+
+[publications.semi_random_connectivity.artifacts]
+ladder = "checkpoints/resilient-resonance-682/artifacts/semi-random-ladder/20260811T101433Z-a4ff2d80"
 
 [publications.ar_report]
 renderer = "ar-report-v1"
 output = "docs/ar_report/4v4"
 description = "Closed- and open-loop imagined rollouts against ground truth, 4v4."
-# expects: ar_report = an ar-report artifact
+
+[publications.ar_report.artifacts]
+ar_report = "checkpoints/resilient-resonance-682/artifacts/ar-report/20260811T162325Z-c36da470"
 
 [publications.noise_calibration]
 renderer = "noise-calibration-v1"
 output = "docs/noise_calibration"
 description = "Next-state prediction error: sigma, autocorrelation, and AR growth."
-# expects: noise = a noise-calibration artifact
+
+[publications.noise_calibration.artifacts]
+noise = "checkpoints/resilient-resonance-682/artifacts/noise-calibration/20260811T162950Z-3c0bca32"
 
 [publications.policy_architecture]
 renderer = "external-asset-v1"
@@ -91,88 +112,133 @@ description = "Policy architecture diagram; drawn by hand, with no producer in t
 renderer = "media-copy-v1"
 output = "docs/results/replays/self_16v16_seed00.gif"
 description = "Curated seeded replay: self 16v16 seed00."
-# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_self_16v16_seed00.files.clip]
+path = "out/self_16v16_seed00.gif"
+sha256 = "5ca87de8a577e884ece0cf1ef68ba048c200e0172ae64feb70b7efa5d9d1ef77"
 
 [publications.replay_self_2v2_seed00]
 renderer = "media-copy-v1"
 output = "docs/results/replays/self_2v2_seed00.gif"
 description = "Curated seeded replay: self 2v2 seed00."
-# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_self_2v2_seed00.files.clip]
+path = "out/self_2v2_seed00.gif"
+sha256 = "e51b7f82e56d35f7645cb88012b56ba97b2c1a9ce644b403db8a9ed9f1b46ad9"
 
 [publications.replay_self_32v32_seed00]
 renderer = "media-copy-v1"
 output = "docs/results/replays/self_32v32_seed00.gif"
 description = "Curated seeded replay: self 32v32 seed00."
-# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_self_32v32_seed00.files.clip]
+path = "out/self_32v32_seed00.gif"
+sha256 = "ce61f461ca5789063df5be229402e58807b1bed5c9a4468e22be5892a3058816"
 
 [publications.replay_self_4v4_seed00]
 renderer = "media-copy-v1"
 output = "docs/results/replays/self_4v4_seed00.gif"
 description = "Curated seeded replay: self 4v4 seed00."
-# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_self_4v4_seed00.files.clip]
+path = "out/self_4v4_seed00.gif"
+sha256 = "8eba154daa12d53daa4c27c1c59361cd46db280e07fbc4a308c91def4dfdf897"
 
 [publications.replay_self_64v64_seed02]
 renderer = "media-copy-v1"
 output = "docs/results/replays/self_64v64_seed02.gif"
 description = "Curated seeded replay: self 64v64 seed02."
-# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_self_64v64_seed02.files.clip]
+path = "out/self_64v64_seed02.gif"
+sha256 = "375958130ba434dc9af20259305b48f8ed540fdbc97402de06c556d0407328de"
 
 [publications.replay_self_8v8_seed01]
 renderer = "media-copy-v1"
 output = "docs/results/replays/self_8v8_seed01.gif"
 description = "Curated seeded replay: self 8v8 seed01."
-# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_self_8v8_seed01.files.clip]
+path = "out/self_8v8_seed01.gif"
+sha256 = "4d8713a561ff50b342085031fc1216b06655c6116f3c55b7c3d883c9d7d3fb15"
 
 [publications.replay_vs_scripted_16v22_seed02]
 renderer = "media-copy-v1"
 output = "docs/results/replays/vs_scripted_16v22_seed02.gif"
 description = "Curated seeded replay: vs scripted 16v22 seed02."
-# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_vs_scripted_16v22_seed02.files.clip]
+path = "out/vs_scripted_16v22_seed02.gif"
+sha256 = "a89fc0a76d6ef1686f84701df1e2bf925c34aa7d3f60dc7002e08d343b917378"
 
 [publications.replay_vs_scripted_1v1_seed00]
 renderer = "media-copy-v1"
 output = "docs/results/replays/vs_scripted_1v1_seed00.gif"
 description = "Curated seeded replay: vs scripted 1v1 seed00."
-# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_vs_scripted_1v1_seed00.files.clip]
+path = "out/vs_scripted_1v1_seed00.gif"
+sha256 = "034d93d87567ea5834fa53ad0372bf7767f9e989000b4674be60a9ddb64f19fd"
 
 [publications.replay_vs_scripted_2v2_seed02]
 renderer = "media-copy-v1"
 output = "docs/results/replays/vs_scripted_2v2_seed02.gif"
 description = "Curated seeded replay: vs scripted 2v2 seed02."
-# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_vs_scripted_2v2_seed02.files.clip]
+path = "out/vs_scripted_2v2_seed02.gif"
+sha256 = "d8406e065f34af7bb8bbf8ff258979087e41ae22d50fa9031fd871ce228f2b55"
 
 [publications.replay_vs_scripted_32v44_seed04]
 renderer = "media-copy-v1"
 output = "docs/results/replays/vs_scripted_32v44_seed04.gif"
 description = "Curated seeded replay: vs scripted 32v44 seed04."
-# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_vs_scripted_32v44_seed04.files.clip]
+path = "out/vs_scripted_32v44_seed04.gif"
+sha256 = "9f9a04653052e897e9e6362dd5af1346321712f8cfbef3cc5210132c9a177637"
 
 [publications.replay_vs_scripted_4v4_seed01]
 renderer = "media-copy-v1"
 output = "docs/results/replays/vs_scripted_4v4_seed01.gif"
 description = "Curated seeded replay: vs scripted 4v4 seed01."
-# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_vs_scripted_4v4_seed01.files.clip]
+path = "out/vs_scripted_4v4_seed01.gif"
+sha256 = "6b8c25877b6d65472ff1149429092a6821b0611246814fd80d3b60ac0f9f44b2"
 
 [publications.replay_vs_scripted_4v5_seed00]
 renderer = "media-copy-v1"
 output = "docs/results/replays/vs_scripted_4v5_seed00.gif"
 description = "Curated seeded replay: vs scripted 4v5 seed00."
-# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_vs_scripted_4v5_seed00.files.clip]
+path = "out/vs_scripted_4v5_seed00.gif"
+sha256 = "d2b7195a1c5031c9dcf112423accd8d9085c1f4b75afb993af747588950746ff"
 
 [publications.replay_vs_scripted_4v5_seed04]
 renderer = "media-copy-v1"
 output = "docs/results/replays/vs_scripted_4v5_seed04.gif"
 description = "Curated seeded replay: vs scripted 4v5 seed04."
-# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_vs_scripted_4v5_seed04.files.clip]
+path = "out/vs_scripted_4v5_seed04.gif"
+sha256 = "48db2a6563765522f16342f7301e72a63710c9582b00631e94c48181e7435e9c"
 
 [publications.replay_vs_scripted_64v80_seed01]
 renderer = "media-copy-v1"
 output = "docs/results/replays/vs_scripted_64v80_seed01.gif"
 description = "Curated seeded replay: vs scripted 64v80 seed01."
-# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_vs_scripted_64v80_seed01.files.clip]
+path = "out/vs_scripted_64v80_seed01.gif"
+sha256 = "25661047544d7032c676afe128b43cfeb34c8030799a86c0cc8155efc965717a"
 
 [publications.replay_vs_scripted_8v11_seed03]
 renderer = "media-copy-v1"
 output = "docs/results/replays/vs_scripted_8v11_seed03.gif"
 description = "Curated seeded replay: vs scripted 8v11 seed03."
-# expects: clip = the captured scratch clip, pinned by sha256
+
+[publications.replay_vs_scripted_8v11_seed03.files.clip]
+path = "out/vs_scripted_8v11_seed03.gif"
+sha256 = "fecf1d6911cd0a9044c19297dc98d5899214653a9ed1522cbc8c4b84c1ab6459"
