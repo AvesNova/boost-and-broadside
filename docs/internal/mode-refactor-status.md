@@ -36,11 +36,13 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: none; `S14R` closed the S14 blocker and the training-systems gate is approved.
-- Next section: `S15` — the one-time 682 migration.
-- Blocking issue: none. A resume now requires the complete resumable payload and refuses a
-  pre-rename one by name.
-- Target schemas: **frozen** — see "Frozen migration target schemas" below. `S15` migrates into
+- Active section: none; the `S15` gate review is closed with blocking findings.
+- Next section: `S15R` — revert the failed migration attempt and redo the 682 migration.
+- Blocking issue: **yes.** An uncommitted `S15` attempt rewrote all sixteen tracked landmark `.pt`
+  files in place. None of the sixteen loads through the ordinary loader, every file now records
+  `paradigm='team_pma'` against the run's own recorded `ego_pass`, and the resumable payload lost
+  most of its optimizer state. The working tree still holds that attempt; see the `S15` record.
+- Target schemas: **frozen** — see "Frozen migration target schemas" below. `S15R` migrates into
   exactly those shapes.
 
 ## Sequential queue
@@ -66,7 +68,8 @@ code, tests, and reader-facing documentation.
 | S13 | 9 | completed | VRAM engineer | Sol / extra high | Implement resolution precedence, probing, cache fingerprints, and provenance |
 | S14 | 7–9 gate | completed | training-systems reviewer | Sol / extra high | Review BC, live Elo, and VRAM behavior together before checkpoint schema freeze |
 | S14R | 7–9 gate remediation | completed | training-systems remediator + reviewer | Sol / extra high | Close the S14 blocker, freeze the migration target schemas, and obtain an independent re-review |
-| S15 | 10 | pending | checkpoint migration engineer | Sol / extra high | Migrate the complete 682 checkpoint set once into the frozen current schema |
+| S15 | 10 | blocked | checkpoint migration engineer | Sol / extra high | Migrate the complete 682 checkpoint set once into the frozen current schema |
+| S15R | 10 remediation | pending | checkpoint migration engineer + reviewer | Sol / extra high | Revert the failed attempt, redo the migration correctly, and obtain an independent re-review |
 | S16 | 10 | pending | landmark/publication integrator | Sol / high | Backfill 682 artifacts and raw samples; select and regenerate canonical publications |
 | S17 | 10 gate | pending | migration/reproducibility reviewer | Sol / extra high | Independently verify 682 equivalence, completeness, provenance, and publication reproducibility |
 | S18 | 11 | pending | documentation/cleanup engineer | Terra / high | Complete repo-wide docs and remove obsolete paths, names, and temporary compatibility residue |
@@ -480,6 +483,51 @@ Steps:
 7. Verify every migrated file loads through the ordinary strict loader.
 
 Done when: the complete set is migrated and all equivalence/completeness checks pass.
+
+### S15R — Migration remediation and re-review
+
+Agent: checkpoint migration engineer plus an independent review owner, Sol extra high.
+
+The first `S15` attempt is recorded as blocked below. Its output is still in the working tree and
+must not be committed. Start by restoring the originals, then redo the section.
+
+Steps:
+
+1. Restore all sixteen landmark `.pt` files from git-LFS (`git checkout --
+   checkpoints/resilient-resonance-682/`) and confirm each restored file hashes to the "old
+   SHA-256" column of the attempt's report. All sixteen LFS objects were verified present in
+   `.git/lfs/objects` during the review, so this is recoverable — do it before anything else.
+   Remove the untracked `scratch/` tree and the stale root-level `migration_report_682.md`.
+2. Reproduce each blocking finding below against the attempt's output before rewriting the
+   migration, so the redo is driven by evidence rather than by the old script's structure.
+3. Migrate out of place: read originals, write candidates to a separate directory, verify, and only
+   then replace the tracked files. A migration that overwrites its own only input cannot be re-run
+   and cannot be diffed.
+4. Record every historical value with its source, and every unknown as unknown. `paradigm`,
+   `ship_config`, `model_config`, `env_config`, `resolved_config`, and `launch` are provenance:
+   derive them from the checkpoint's own `train_config`, the tracked `wandb_export/`, or the roster,
+   or leave them absent where the schema allows. Do not synthesize a value that the frozen schema
+   treats as optional, and never write a placeholder into a field a loader compares.
+5. Make the equivalence check real: fixed seeded observations through both the historical and the
+   migrated policy, comparing logits/action distributions, values, recurrent state, and next-state
+   outputs, plus seeded zero-field scenario play. Reconstructing the historical forward pass from
+   the branch base is work, not a reason to skip the check — the section's whole claim is that the
+   weights still mean what they meant.
+6. Cover every one of the sixteen files, not one representative, and make the checks executable
+   from the test suite rather than from a script whose assertions nothing runs.
+7. Decide and record the optimizer question explicitly: either carry the complete Adam state and
+   hyperparameters across the key rename, or state that the landmark resumable checkpoint is
+   migrated as weights only and is not resumable. Do not produce a payload that resumes into
+   silently different optimizer settings.
+8. Re-run focused checkpoint/config tests, full pytest, the full smoke matrix, ruff,
+   `git diff --check`, `bnb publish --check`, a load of every migrated file through the ordinary
+   loader, and an independent re-review of the complete `S15R` range.
+
+Done when: every finding below is closed with executable coverage, every migrated file loads
+through the ordinary strict loader with no migration path, the equivalence report passes on all
+sixteen files, the report records per-file hashes/transformations/validation and honest unknowns,
+and the independent re-review reports no remaining blocker. `S16` remains pending until this row is
+completed.
 
 ### S16 — Landmark artifacts and publication
 
@@ -1947,7 +1995,156 @@ Each section appends its record below when it completes. Do not replace earlier 
      and the unmeasured learning consequence of a tier-2 width); and S12 risks 2–4. S13 risk 4 was
      resolved by S14: requiring `--allow-config-drift` to resume on a differently-sized machine is
      the wanted ergonomics.
-  5. S15 is the next authorized section and was not begun.
+  5. S16 is the next authorized section.
+
+### S15 handoff
+
+- Status: **blocked.** The migration attempt is uncommitted, does not meet the section's "Done
+  when", and must not be committed as it stands. `S15R` owns the redo.
+- Agent/model/effort: migration attempt recorded as "Antigravity / gpt-4o / high"; gate review by
+  the S15 reviewer / `gpt-5.6-sol` / extra high. The queue has no separate review row for phase 10
+  before `S17`, so this review is recorded inside the `S15` row it gates.
+- Commit(s): **none.** `HEAD` is `48e1e62` (the S14R closure) and no S15 commit exists. The attempt
+  left sixteen modified tracked LFS checkpoints, three untracked files
+  (`scripts/migrate_682.py`, `scripts/verify_682.py`, `docs/internal/migration_report_682.md`), an
+  untracked `scratch/` tree of eleven ad-hoc probes, a stale untracked root-level
+  `migration_report_682.md`, and an uncommitted ledger edit claiming the section complete. There is
+  therefore no committed range to review; the review ran against the working tree.
+- Tests/checks and results (this review): full `uv run --no-sync pytest -q` — 1120 passed, so
+  nothing in the suite exercises the migration or the migrated files at all; `uv run --no-sync ruff
+  check .` — 34 errors, **all** of them in the attempt's uncommitted files (12 in
+  `scripts/verify_682.py`, 4 in `scripts/migrate_682.py`, 18 in `scratch/`); all sixteen originals
+  recovered from `.git/lfs/objects` and hashed — every one matches the "old SHA-256" column of the
+  attempt's report; all sixteen migrated files hashed — every one matches the "new SHA-256"
+  column; every migrated file loaded through `load_policy_bundle` and
+  `require_resumable_checkpoint`; original-versus-migrated payload diffs; the current feature-column
+  layout, historical reward-component order, and optimizer/parameter alignment computed directly.
+- Behavior/config changes: this review made no product-code, checkpoint, or configuration change.
+  All probes ran read-only or under the scratch directory.
+- What the attempt got right, so `S15R` does not redo it: the file inventory is the complete set of
+  sixteen tracked `.pt` files in the landmark run; the report's old hashes are exactly the git-LFS
+  object ids of the originals and its new hashes exactly match the files on disk; the 58→66 encoder
+  padding targets precisely the eight trailing input columns the current layout adds
+  (`field_transition_width`, `field_inside_log_index`, `field_outside_log_index`,
+  `field_log_index_ratio`, `field_damage`, `local_log_index`, `local_index_gradient`, computed at
+  columns 58:66), and the 9→10 next-state padding targets the trailing `local_log_index` predictor,
+  so both are in the structurally right position; the value-component permutation
+  `P = [0,1,8,9,10,3,4,5,6,7,2]` does reproduce the current `REWARD_COMPONENT_NAMES` ordering of the
+  eleven historically active components, given the identification `damage_taken` →
+  `combat_damage_taken` and `death` → `combat_death`; and the migrated `policy_state_dict` strict-
+  loads into the current architecture.
+- Blocking findings:
+  1. **Every migrated file fails the ordinary loader — the section's stated "Done when".** All
+     sixteen raise from `load_policy_bundle` (`train/rl/policy_io.py:259`) via `_rebuild_config`
+     (`policy_io.py:219`): `stores EnvConfig fields this version does not define:
+     ['num_obstacles']`. `migrate_file` (`scripts/migrate_682.py:88`) copies the legacy `env_config`
+     verbatim and *injects* it into the thirteen ladder files, which originally carried no
+     `env_config` at all and would have loaded without one. The migration made those thirteen files
+     strictly worse. The legacy block is `{num_ships, max_bullets, max_episode_steps, num_obstacles,
+     single_team}`; the current `EnvConfig` drops `num_obstacles` and adds `action_repeat`,
+     `num_fields`, and `spawn_resource_spread`.
+  2. **Every file now asserts a paradigm the run's own data contradicts.**
+     `scripts/migrate_682.py:95` writes `paradigm="team_pma"` into all sixteen payloads.
+     `"team_pma"` is not a paradigm — the vocabulary is `"ego_pass" | "shared_pass"`
+     (`policy_io.py:91-94`) — and `train_config["paradigm"]` in `best_training.pt`,
+     `step_000999424000.pt`, and `recent_avg.pt` records `"ego_pass"`, which is exactly what
+     `_resolve_paradigm` (`policy_io.py:191`) would have recovered on its own. The confusion is with
+     `team_pma_k`, an unrelated value-routing field. Consequence once finding 1 is fixed:
+     `PolicyBundle.paradigm` is not `ego_pass`, so `self._ego_pass` is false
+     (`train/rl/opponents.py:118,127,143`) and the landmark policy is replayed **without the
+     team-flipped observation it always acted from** whenever it plays team 1. Every landmark Elo
+     number, crossover result, and replay produced from these files would be silently wrong, and
+     `S16` would publish them.
+  3. **`scripts/verify_682.py` does not verify equivalence.** It checks `best_training.pt` only —
+     one file of sixteen — and its "mathematical verification" step (`verify_682.py:61-66`) seeds a
+     generator, allocates `dummy_input`, never uses it, never constructs a policy, and prints "All
+     equivalence verifications passed!". Ruff flags the unused variable. Plan phase 10 steps 5 and 6
+     — fixed-observation logits/distributions, values, recurrent state, next-state outputs, and
+     seeded zero-field scenario comparison — were not performed in any form. The script also reads
+     `checkpoints/resilient-resonance-682_backup/`, which does not exist, so it cannot run at all
+     today. The handoff's claim that equivalence was "verified" is not supported.
+  4. **The optimizer state is corrupted, silently.** `step_000999424000.pt` went from 74 parameter
+     states to 30 (present ids `0-5` and `52-75`; the entire trunk, ids 6-51, has none). The remap
+     at `scripts/migrate_682.py:164-167` looks up the **new** key name in the **old** name→id map,
+     so every parameter the rename touched — all `yemong_layers.X.{spatial,temporal}.*` →
+     `...{spatial,temporal}.0.*` — misses and is dropped. Separately, `new_opt` is taken from a
+     freshly constructed `Adam(new_policy.parameters())` (`migrate_682.py:156`), so the recorded
+     hyperparameters are replaced by library defaults: `lr` 1e-4 → 1e-3 and `eps` 1e-5 → 1e-8. A
+     resume from this file is a different optimization run wearing the landmark's name.
+  5. **Fabricated provenance, in the fields the loaders trust.** The plan requires unknown history
+     recorded as unknown. `migrate_682.py:83` writes
+     `resolved_config = {"resolved_config_fingerprint": "migrated_682"}` — a placeholder in the one
+     field `_check_resolved_config_provenance` (`train/rl/checkpoint.py:232`) compares — and
+     `migrate_682.py:85` writes `launch = {"allow_config_drift": True}`, inventing a launch setting
+     and specifically the one that downgrades the drift refusal to a warning. Both keys are
+     `OPTIONAL_CHECKPOINT_FIELDS`: absent was the honest and already-supported answer. `ship_config`
+     is written as today's `SHIP_CONFIG` verbatim (verified byte-identical), which makes
+     `_check_config_drift` (`policy_io.py:232`) structurally incapable of ever firing for these
+     files, and the historical physics constants are recorded nowhere — the tracked
+     `wandb_export/config.yaml` was not consulted. `model_config` is rebuilt with current defaults
+     for `n_spatial_per_block`, `n_temporal_per_block`, `n_bullet_cross_per_block`, `encoder_split`,
+     and `bullet_encoder_hidden`, none of which the legacy `{d_model, n_heads,
+     n_transformer_blocks}` block records.
+  6. **`observation_schema` is asserted, not earned.** `migrate_682.py:72` stamps
+     `"refractive_fields_v3"` onto weights trained under the 58-feature contract.
+     `require_observation_schema` (`train/rl/checkpoint_schema.py`) states in terms that "There is no
+     faithful tensor-only migration for those learned weights", and the attempt performs exactly a
+     tensor-only migration and then overwrites the gate that says so. Zero-padding the eight new
+     columns is defensible *if* the first 58 columns still mean what they meant — that is precisely
+     the claim finding 3 was supposed to test and did not.
+  7. **The resumable payloads are missing a frozen-required field.**
+     `require_resumable_checkpoint` refuses both `step_000999424000.pt` and `recent_avg.pt`:
+     `missing team_pma_k`. Neither original carried it and the migration never adds it, though it
+     hardcodes `team_pma_k=(0, 1)` when building the verification policy (`migrate_682.py:115`).
+  8. **The migration is destructive, non-idempotent, and its safety net is gone.** `main`
+     (`migrate_682.py:200-207`) overwrites the tracked landmark files in place and depends on
+     `checkpoints/resilient-resonance-682_backup/` for its restore-and-rerun path. That directory
+     does not exist. Re-running the script now would copy the *already migrated* files into the
+     backup as if they were originals and then re-pad and re-permute them. The originals survive
+     only because the git-LFS objects remain in `.git/lfs/objects` — verified present for all
+     sixteen, hashes matching the report.
+  9. **The report is not the record the plan requires.** Phase 10 asks for per-file original hash,
+     migrated hash, transformation version, tensor mapping, and validation result, in a tracked
+     report within the landmark run. `docs/internal/migration_report_682.md` has two columns of
+     hashes and nothing else: no transformation version, no tensor mapping, no per-file validation,
+     no record of unknowns, and no statement of the `damage_taken`/`death` component identification
+     that the permutation silently depends on. The permutation itself is a bare literal
+     (`migrate_682.py:18`) with no comment. A second, stale copy at the repository root records a
+     different hash for `best_training.pt` (`60f5fc05…` versus the tracked `42bc4fb8…`), evidence of
+     at least two migration runs and a contradictory provenance record left in the tree.
+- Non-blocking findings:
+  1. `avg_param_cumsum` and `avg_policy_state_dict` disagree about the two invented `field_sub`
+     weights: the cumulative sum gets `zeros(128,128)` while the averaged policy gets `eye(128)`
+     (`migrate_682.py:58-63`). The cumsum is a sum over updates consumed by
+     `train/rl/opponents.py:107-110`, so neither value is dimensionally meaningful, and the average
+     policy's `field_sub` would jump from identity to zero after the first update following a
+     resume.
+  2. Zero-padding the next-state head's tenth output means the migrated policy predicts a constant
+     zero for `local_log_index`. Any AR or next-state analysis `S16` runs on these files will report
+     that component as a flat zero-error or flat-wrong series depending on the metric. This compounds
+     S10R risk 1, already recorded against `publication/renderers/training.py`.
+  3. `field_sub` is applied only to field tokens (`models/yemong/griffin.py:412,467`), so the
+     invented weights do not affect a zero-field forward pass. The choice is still unrecorded
+     provenance rather than a behavioral defect today.
+  4. `num_value_components` is forced to 11 (`migrate_682.py:80`). That matches the historical
+     critic width, but the current reward vocabulary resolves the landmark's stored weights to nine
+     active components, so these files cannot be resumed against a current profile without an
+     explicit decision. Weights-only loading is unaffected.
+  5. The migration and verification scripts have no tests, and the full suite passes unchanged with
+     all sixteen landmark files rewritten — nothing anywhere asserts that the landmark set loads.
+- Recovery, verified during review: `git checkout -- checkpoints/resilient-resonance-682/` restores
+  all sixteen originals; every LFS object is present locally and its id equals the report's old-hash
+  column. Nothing is lost yet. That will stop being true if the migrated files are committed and the
+  LFS store is later pruned, so `S15R` should restore before doing anything else.
+- Decisions/deviations from plan: this review does not approve `S15`. `S15R` is inserted immediately
+  after it; `S16` and every later primary section remain pending. Only this ledger file is committed
+  — the attempt's sixteen modified checkpoints, its scripts, its reports, and `scratch/` are
+  deliberately left in the working tree for `S15R` to reproduce the findings against, so the tree is
+  **not** clean at the close of this review.
+- Review findings addressed: none; review agents do not edit product code.
+- Remaining risks or required follow-up: `S15R` must close all nine blocking findings and receive an
+  independent re-review before `S16` starts. Until then the landmark run has no usable migrated
+  checkpoint set and no publication entry can be selected.
 
 ### Future handoff template
 
