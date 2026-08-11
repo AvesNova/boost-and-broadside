@@ -36,8 +36,8 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: none. `S17` is completed and did **not** approve the migration/reproducibility gate.
-- Next section: `S17R` — migration/reproducibility gate remediation and re-review.
+- Active section: `S17R` — migration/reproducibility gate remediation and re-review.
+- Next section: `S18`, once `S17R` closes both blockers and an independent re-review reports none remaining.
 - Blocking issue: two, both recorded in the `S17` handoff below. A clean checkout cannot publish at
   all, because the selected `wandb-export` artifact requires a payload file `.gitignore` excludes;
   and `migration_report.md` records a migrated SHA-256 for three of the sixteen landmark files that
@@ -72,7 +72,7 @@ code, tests, and reader-facing documentation.
 | S15 | 10 | completed | checkpoint migration engineer | Sol / extra high | Migrate the complete 682 checkpoint set once into the frozen current schema (first attempt reviewed, rejected, reverted) |
 | S16 | 10 | completed | landmark/publication integrator | Sol / high | Backfill 682 artifacts and raw samples; select and regenerate canonical publications |
 | S17 | 10 gate | completed | migration/reproducibility reviewer | Sol / extra high | Independently verify 682 equivalence, completeness, provenance, and publication reproducibility |
-| S17R | 10 gate remediation | pending | migration/reproducibility remediator + reviewer | Sol / extra high | Make a clean checkout publishable and the migration record true, then obtain an independent re-review |
+| S17R | 10 gate remediation | in_progress | migration/reproducibility remediator + reviewer | Sol / extra high | Make a clean checkout publishable and the migration record true, then obtain an independent re-review |
 | S18 | 11 | pending | documentation/cleanup engineer | Terra / high | Complete repo-wide docs and remove obsolete paths, names, and temporary compatibility residue |
 | S19 | final gate | pending | final branch reviewer | Sol / extra high | Review the complete branch against the plan and run final acceptance checks |
 
