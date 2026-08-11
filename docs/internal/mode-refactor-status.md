@@ -36,13 +36,14 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: none; the `S15` gate review is closed with blocking findings.
-- Next section: `S15R` — revert the failed migration attempt and redo the 682 migration.
-- Blocking issue: **yes.** An uncommitted `S15` attempt rewrote all sixteen tracked landmark `.pt`
-  files in place. None of the sixteen loads through the ordinary loader, every file now records
-  `paradigm='team_pma'` against the run's own recorded `ego_pass`, and the resumable payload lost
-  most of its optimizer state. The working tree still holds that attempt; see the `S15` record.
-- Target schemas: **frozen** — see "Frozen migration target schemas" below. `S15R` migrates into
+- Active section: none. A first `S15` attempt was reviewed, rejected, and **reverted**; `S15` is
+  back to `pending` and starts fresh.
+- Next section: `S15` — the one-time 682 migration, restarting from a clean tree.
+- Blocking issue: none. The sixteen landmark `.pt` files were restored from git-LFS and each one
+  hashes to its original object id; the attempt's scripts, reports, and scratch probes are gone.
+  Nothing from the attempt was ever committed or written into the LFS store. Its review record is
+  kept below as evidence, and its findings are folded into the `S15` mission card.
+- Target schemas: **frozen** — see "Frozen migration target schemas" below. `S15` migrates into
   exactly those shapes.
 
 ## Sequential queue
@@ -68,8 +69,7 @@ code, tests, and reader-facing documentation.
 | S13 | 9 | completed | VRAM engineer | Sol / extra high | Implement resolution precedence, probing, cache fingerprints, and provenance |
 | S14 | 7–9 gate | completed | training-systems reviewer | Sol / extra high | Review BC, live Elo, and VRAM behavior together before checkpoint schema freeze |
 | S14R | 7–9 gate remediation | completed | training-systems remediator + reviewer | Sol / extra high | Close the S14 blocker, freeze the migration target schemas, and obtain an independent re-review |
-| S15 | 10 | blocked | checkpoint migration engineer | Sol / extra high | Migrate the complete 682 checkpoint set once into the frozen current schema |
-| S15R | 10 remediation | pending | checkpoint migration engineer + reviewer | Sol / extra high | Revert the failed attempt, redo the migration correctly, and obtain an independent re-review |
+| S15 | 10 | pending | checkpoint migration engineer | Sol / extra high | Migrate the complete 682 checkpoint set once into the frozen current schema (first attempt reviewed, rejected, reverted) |
 | S16 | 10 | pending | landmark/publication integrator | Sol / high | Backfill 682 artifacts and raw samples; select and regenerate canonical publications |
 | S17 | 10 gate | pending | migration/reproducibility reviewer | Sol / extra high | Independently verify 682 equivalence, completeness, provenance, and publication reproducibility |
 | S18 | 11 | pending | documentation/cleanup engineer | Terra / high | Complete repo-wide docs and remove obsolete paths, names, and temporary compatibility residue |
@@ -484,50 +484,57 @@ Steps:
 
 Done when: the complete set is migrated and all equivalence/completeness checks pass.
 
-### S15R — Migration remediation and re-review
+#### Constraints carried over from the reverted first attempt
 
-Agent: checkpoint migration engineer plus an independent review owner, Sol extra high.
+A first attempt was reviewed, rejected, and reverted; its record is under "S15 handoff" below. The
+tree is clean and the section starts fresh, but these are the specific ways it went wrong, so treat
+them as requirements rather than advice:
 
-The first `S15` attempt is recorded as blocked below. Its output is still in the working tree and
-must not be committed. Start by restoring the originals, then redo the section.
+1. **Migrate out of place.** Read the originals, write candidates to a separate directory, verify
+   there, and only then replace the tracked files. The attempt overwrote its own only input, which
+   made it non-idempotent and impossible to diff, and its restore path depended on a backup
+   directory it had already lost.
+2. **Provenance is derived or absent, never synthesized.** `paradigm`, `ship_config`,
+   `model_config`, `env_config`, `resolved_config`, and `launch` come from the checkpoint's own
+   `train_config`, the tracked `wandb_export/`, or the roster — or they are left out where the
+   frozen schema allows. `resolved_config` and `launch` are optional; absent is the honest answer
+   and the loaders already handle it. Never write a placeholder into a field a loader compares:
+   the attempt's `'migrated_682'` fingerprint and `allow_config_drift: True` sat in exactly those
+   fields, and its `ship_config` copied today's values, which makes the drift check unable to fire.
+3. **`paradigm` is `ego_pass` for this run.** It is recorded in the run's own `train_config`, the
+   vocabulary is `ego_pass | shared_pass`, and it is unrelated to `team_pma_k`. Getting it wrong
+   disables observation team-flipping on replay and silently corrupts every landmark evaluation.
+4. **`env_config` must be rebuilt, not copied.** The legacy block carries `num_obstacles`, which the
+   current `EnvConfig` does not define, and lacks `action_repeat`, `num_fields`, and
+   `spawn_resource_spread`. Copying it verbatim makes every file unloadable; injecting it into the
+   thirteen ladder files, which carry none and load fine without one, is worse than doing nothing.
+5. **The equivalence check is the section, not a formality.** Fixed seeded observations through both
+   the historical and the migrated policy, comparing logits/action distributions, values, recurrent
+   state, and next-state outputs, plus seeded zero-field scenario play. Reconstructing the
+   historical forward pass from the branch base is work, not a reason to skip it. The attempt's
+   script allocated a random tensor, never used it, never built a policy, and printed that all
+   verifications passed.
+6. **Cover all sixteen files, from the test suite.** Not one representative, and not in a script
+   whose assertions nothing runs. The full suite passed unchanged while every landmark file was
+   broken.
+7. **Decide the optimizer question explicitly.** Either carry the complete Adam state and its
+   recorded hyperparameters across the key rename, or state that the landmark resumable checkpoint
+   is migrated as weights only and is not resumable. The attempt silently dropped 44 of 74
+   parameter states and reset `lr` and `eps` to library defaults.
+8. **The report is a record, not a hash table.** Per-file original hash, migrated hash,
+   transformation version, tensor mapping, validation result, and named unknowns, tracked within
+   the landmark run. Document the value-component mapping in particular: the permutation the
+   attempt used is correct but depends on identifying `damage_taken` → `combat_damage_taken` and
+   `death` → `combat_death`, which appeared nowhere.
 
-Steps:
-
-1. Restore all sixteen landmark `.pt` files from git-LFS (`git checkout --
-   checkpoints/resilient-resonance-682/`) and confirm each restored file hashes to the "old
-   SHA-256" column of the attempt's report. All sixteen LFS objects were verified present in
-   `.git/lfs/objects` during the review, so this is recoverable — do it before anything else.
-   Remove the untracked `scratch/` tree and the stale root-level `migration_report_682.md`.
-2. Reproduce each blocking finding below against the attempt's output before rewriting the
-   migration, so the redo is driven by evidence rather than by the old script's structure.
-3. Migrate out of place: read originals, write candidates to a separate directory, verify, and only
-   then replace the tracked files. A migration that overwrites its own only input cannot be re-run
-   and cannot be diffed.
-4. Record every historical value with its source, and every unknown as unknown. `paradigm`,
-   `ship_config`, `model_config`, `env_config`, `resolved_config`, and `launch` are provenance:
-   derive them from the checkpoint's own `train_config`, the tracked `wandb_export/`, or the roster,
-   or leave them absent where the schema allows. Do not synthesize a value that the frozen schema
-   treats as optional, and never write a placeholder into a field a loader compares.
-5. Make the equivalence check real: fixed seeded observations through both the historical and the
-   migrated policy, comparing logits/action distributions, values, recurrent state, and next-state
-   outputs, plus seeded zero-field scenario play. Reconstructing the historical forward pass from
-   the branch base is work, not a reason to skip the check — the section's whole claim is that the
-   weights still mean what they meant.
-6. Cover every one of the sixteen files, not one representative, and make the checks executable
-   from the test suite rather than from a script whose assertions nothing runs.
-7. Decide and record the optimizer question explicitly: either carry the complete Adam state and
-   hyperparameters across the key rename, or state that the landmark resumable checkpoint is
-   migrated as weights only and is not resumable. Do not produce a payload that resumes into
-   silently different optimizer settings.
-8. Re-run focused checkpoint/config tests, full pytest, the full smoke matrix, ruff,
-   `git diff --check`, `bnb publish --check`, a load of every migrated file through the ordinary
-   loader, and an independent re-review of the complete `S15R` range.
-
-Done when: every finding below is closed with executable coverage, every migrated file loads
-through the ordinary strict loader with no migration path, the equivalence report passes on all
-sixteen files, the report records per-file hashes/transformations/validation and honest unknowns,
-and the independent re-review reports no remaining blocker. `S16` remains pending until this row is
-completed.
+Findings worth keeping from the attempt, so they are not re-derived: the inventory is the sixteen
+tracked `.pt` files in the landmark run; the eight new encoder input columns are exactly 58:66
+(`field_transition_width`, `field_inside_log_index`, `field_outside_log_index`,
+`field_log_index_ratio`, `field_damage`, `local_log_index`, `local_index_gradient`), so tail padding
+is the structurally right position; the tenth next-state predictor is the trailing `local_log_index`;
+`P = [0,1,8,9,10,3,4,5,6,7,2]` reproduces the current `REWARD_COMPONENT_NAMES` order of the eleven
+historically active components; and `field_sub` is applied only to field tokens, so its
+initialization does not affect a zero-field forward pass.
 
 ### S16 — Landmark artifacts and publication
 
@@ -1999,8 +2006,10 @@ Each section appends its record below when it completes. Do not replace earlier 
 
 ### S15 handoff
 
-- Status: **blocked.** The migration attempt is uncommitted, does not meet the section's "Done
-  when", and must not be committed as it stands. `S15R` owns the redo.
+- Status: **rejected and reverted.** The migration attempt never met the section's "Done when", was
+  never committed, and has been removed from the working tree at the user's direction. `S15` is
+  `pending` again and will be restarted from scratch; its mission card carries the constraints this
+  attempt established. This record is kept as evidence, not as a completed section.
 - Agent/model/effort: migration attempt recorded as "Antigravity / gpt-4o / high"; gate review by
   the S15 reviewer / `gpt-5.6-sol` / extra high. The queue has no separate review row for phase 10
   before `S17`, so this review is recorded inside the `S15` row it gates.
@@ -2021,7 +2030,7 @@ Each section appends its record below when it completes. Do not replace earlier 
   layout, historical reward-component order, and optimizer/parameter alignment computed directly.
 - Behavior/config changes: this review made no product-code, checkpoint, or configuration change.
   All probes ran read-only or under the scratch directory.
-- What the attempt got right, so `S15R` does not redo it: the file inventory is the complete set of
+- What the attempt got right, so a restart does not redo it: the file inventory is the complete set of
   sixteen tracked `.pt` files in the landmark run; the report's old hashes are exactly the git-LFS
   object ids of the originals and its new hashes exactly match the files on disk; the 58→66 encoder
   padding targets precisely the eight trailing input columns the current layout adds
@@ -2132,19 +2141,20 @@ Each section appends its record below when it completes. Do not replace earlier 
      explicit decision. Weights-only loading is unaffected.
   5. The migration and verification scripts have no tests, and the full suite passes unchanged with
      all sixteen landmark files rewritten — nothing anywhere asserts that the landmark set loads.
-- Recovery, verified during review: `git checkout -- checkpoints/resilient-resonance-682/` restores
-  all sixteen originals; every LFS object is present locally and its id equals the report's old-hash
-  column. Nothing is lost yet. That will stop being true if the migrated files are committed and the
-  LFS store is later pruned, so `S15R` should restore before doing anything else.
-- Decisions/deviations from plan: this review does not approve `S15`. `S15R` is inserted immediately
-  after it; `S16` and every later primary section remain pending. Only this ledger file is committed
-  — the attempt's sixteen modified checkpoints, its scripts, its reports, and `scratch/` are
-  deliberately left in the working tree for `S15R` to reproduce the findings against, so the tree is
-  **not** clean at the close of this review.
+- Revert, verified: `git checkout -- checkpoints/resilient-resonance-682/` restored all sixteen
+  originals and each restored file was re-hashed against its git-LFS object id — sixteen matches,
+  zero mismatches. The attempt's `scripts/migrate_682.py`, `scripts/verify_682.py`, both copies of
+  the migration report, and the `scratch/` probe tree were removed. Nothing from the attempt was
+  ever staged, committed, or written into `.git/lfs/objects`; four migrated payload hashes were
+  checked against the local LFS store and all were absent. The working tree is clean.
+- Decisions/deviations from plan: this review did not approve `S15`. The attempt was reverted at the
+  user's direction rather than remediated, so no remediation row exists: `S15` returns to `pending`
+  and restarts fresh, and `S16` and every later primary section remain pending as before. The
+  attempt's files were archived outside the repository before deletion.
 - Review findings addressed: none; review agents do not edit product code.
-- Remaining risks or required follow-up: `S15R` must close all nine blocking findings and receive an
-  independent re-review before `S16` starts. Until then the landmark run has no usable migrated
-  checkpoint set and no publication entry can be selected.
+- Remaining risks or required follow-up: the landmark run still has no migrated checkpoint set, so
+  no publication entry can be selected and `S16` cannot start. A restarted `S15` must close all nine
+  findings above with executable coverage.
 
 ### Future handoff template
 
