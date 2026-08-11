@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "num_ships": 8,
+  "num_steps": 357,
+  "world_size": [
+    1024.0,
+    1024.0
+  ],
+  "agents": {
+    "team0": "checkpoints/resilient-resonance-682/step_000999424000.pt",
+    "team1": "checkpoints/resilient-resonance-682/step_000999424000.pt"
+  },
+  "rollouts": [
+    "gt",
+    "cl",
+    "ol"
+  ],
+  "fields": [
+    "pos",
+    "vel",
+    "att",
+    "ang_vel",
+    "health",
+    "power",
+    "cooldown",
+    "alive",
+    "alive_prob"
+  ]
+}
