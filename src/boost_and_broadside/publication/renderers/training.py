@@ -12,26 +12,75 @@ from pathlib import Path
 
 import numpy as np
 
-from boost_and_broadside.publication.renderer_api import Renderer, RenderInputs, register
+from boost_and_broadside.publication.renderer_api import (
+    PublicationError,
+    Renderer,
+    RenderInputs,
+    register,
+)
 from boost_and_broadside.viz import charts, history
 from boost_and_broadside.viz.charts import Line, Panel, Points
 
 # The next-state prediction error logs symmetric spatial channels separately;
 # each pair is averaged into one honest curve. Order sets the palette slots.
+#
+# Each group lists both spellings the trainer has used for the same predictor.
+# `afdf406` replaced a hardcoded nine-name tuple with
+# `FeatureCoordinator.get_feature_names()`, which renamed every one of them
+# positionally and appended a tenth predictor; the pairing below is that
+# positional identity, not a guess. A run exported on either side of the rename
+# therefore renders the same seven curves. The tenth predictor
+# (`local_log_index_0`) is deliberately not charted: no export that predates the
+# rename has it, and the landmark policy never learned it (see the S15 handoff).
 _NEXT_STATE = [
-    ("position", ["next_state/pos_x_dphase", "next_state/pos_y_dphase"]),
-    ("velocity", ["next_state/vel_dvx_norm", "next_state/vel_dvy_norm"]),
-    ("angular vel", ["next_state/ang_vel_abs"]),
-    ("attitude", ["next_state/att_dphase"]),
-    ("cooldown", ["next_state/cooldown_dphase"]),
-    ("health", ["next_state/health_dphase"]),
-    ("power", ["next_state/power_dphase"]),
+    ("position", (
+        ["next_state/pos_x_dphase", "next_state/pos_y_dphase"],
+        ["next_state/position_x_0", "next_state/position_y_0"],
+    )),
+    ("velocity", (
+        ["next_state/vel_dvx_norm", "next_state/vel_dvy_norm"],
+        ["next_state/velocity_0", "next_state/velocity_1"],
+    )),
+    ("angular vel", (["next_state/ang_vel_abs"], ["next_state/angular_velocity_0"])),
+    ("attitude", (["next_state/att_dphase"], ["next_state/attitude_0"])),
+    ("cooldown", (["next_state/cooldown_dphase"], ["next_state/cooldown_0"])),
+    ("health", (["next_state/health_dphase"], ["next_state/health_0"])),
+    ("power", (["next_state/power_dphase"], ["next_state/power_0"])),
 ]
 
 
+def _required(x: np.ndarray, y: np.ndarray, keys: list[str]) -> tuple[np.ndarray, np.ndarray]:
+    """Refuse to draw a curve the source has no measurements for.
+
+    A metric rename between the export and this module reads exactly like a
+    metric that was never logged: :func:`history.series` drops every row and the
+    figure comes out empty but well-formed. A blank canonical figure is worse
+    than a failed publish, so an empty series names the keys it looked for and
+    stops here.
+    """
+
+    if x.size:
+        return x, y
+    named = ", ".join(keys)
+    raise PublicationError(
+        f"no finite points for {named} in this export; the figure would be blank. "
+        "The stored export either predates or postdates these metric names."
+    )
+
+
 def _line(rows: list[dict], key: str, label: str) -> Line:
-    x, y = history.series(rows, key)
-    return Line(x, y, label)
+    return Line(*_required(*history.series(rows, key), [key]), label)
+
+
+def _next_state_line(rows: list[dict], label: str, spellings: tuple[list[str], ...]) -> Line:
+    """One averaged curve, under whichever spelling this export actually used."""
+
+    for keys in spellings:
+        x, y = history.combine_series(rows, keys)
+        if x.size:
+            return Line(x, y, label=label)
+    return Line(*_required(*history.combine_series(rows, spellings[0]),
+                           [key for keys in spellings for key in keys]), label=label)
 
 
 def _wandb_rows(inputs: RenderInputs) -> list[dict]:
@@ -117,8 +166,8 @@ def _render_next_state_error(inputs: RenderInputs, out_dir: Path) -> list[Path]:
     return [
         charts.trend(
             [
-                Line(*history.combine_series(rows, keys), label=label)
-                for label, keys in _NEXT_STATE
+                _next_state_line(rows, label, spellings)
+                for label, spellings in _NEXT_STATE
             ],
             out_dir / "next_state_error.png",
             title="Next-state prediction error by dimension",

@@ -263,8 +263,13 @@ def _calibration_artifact(tmp_path):
     return artifact
 
 
-def _wandb_history() -> list[dict]:
-    """Sampled training history in the sparse shape W&B logs and the export keeps."""
+def _wandb_history(spelling: int = 0) -> list[dict]:
+    """Sampled training history in the sparse shape W&B logs and the export keeps.
+
+    ``spelling`` picks which of the trainer's next-state metric namings the
+    export carries: 0 is the one the landmark run logged, 1 the one the current
+    trainer derives from the feature coordinator.
+    """
 
     rows = []
     for index, step in enumerate(range(0, 2_000_000, 400_000)):
@@ -276,8 +281,8 @@ def _wandb_history() -> list[dict]:
             "overview/kl": 0.02 - 0.002 * index,
             "overview/clip_fraction": 0.15 - 0.01 * index,
         }
-        for _, keys in _NEXT_STATE:
-            for offset, key in enumerate(keys):
+        for _, spellings in _NEXT_STATE:
+            for offset, key in enumerate(spellings[spelling]):
                 row[key] = 0.5 / (index + 1) + 0.01 * offset
         if index == 2:
             # W&B logs sparsely; a metric absent from one row is normal.
@@ -506,6 +511,48 @@ def test_rendering_the_same_export_twice_is_byte_identical(tmp_path, renderer) -
     assert [(first / name).read_bytes() for name in names] == [
         (second / name).read_bytes() for name in names
     ]
+
+
+def test_the_next_state_figure_reads_either_metric_spelling(tmp_path) -> None:
+    """The rename at `afdf406` renamed every predictor; both spellings render."""
+
+    landmark = _wandb_export(tmp_path, _wandb_history(spelling=0))
+    current = _wandb_export(tmp_path, _wandb_history(spelling=1))
+    first, second = tmp_path / "landmark", tmp_path / "current"
+
+    assert _render("next-state-error-v1", {"wandb_export": landmark}, first) == [
+        "next_state_error.png"
+    ]
+    assert _render("next-state-error-v1", {"wandb_export": current}, second) == [
+        "next_state_error.png"
+    ]
+    # The same measurements under two names are the same figure.
+    assert (first / "next_state_error.png").read_bytes() == (
+        second / "next_state_error.png"
+    ).read_bytes()
+
+
+@pytest.mark.parametrize(
+    ("renderer", "dropped"),
+    [
+        ("next-state-error-v1", "next_state/"),
+        ("training-win-rate-v1", "overview/win_rate_vs_scripted"),
+        ("training-health-v1", "overview/kl"),
+    ],
+)
+def test_a_figure_with_no_measurements_fails_instead_of_coming_out_blank(
+    tmp_path, renderer, dropped
+) -> None:
+    """A metric this build cannot find is a refusal, not an empty canvas."""
+
+    rows = [
+        {key: value for key, value in row.items() if not key.startswith(dropped)}
+        for row in _wandb_history()
+    ]
+    artifact = _wandb_export(tmp_path, rows)
+
+    with pytest.raises(PublicationError, match="would be blank"):
+        _render(renderer, {"wandb_export": artifact}, tmp_path / renderer)
 
 
 def test_noise_calibration_renders_its_report(tmp_path) -> None:
