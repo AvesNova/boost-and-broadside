@@ -1821,12 +1821,13 @@ Each section appends its record below when it completes. Do not replace earlier 
   `ValueError` naming `live_elo, avg_live_elo`, adding that the payload "predates the current
   live-Elo naming", with no trainer state touched. Focused
   `tests/train tests/config tests/test_vram_probe.py tests/modes/test_elo_calibrate.py` (483 + 12
-  passed); final `.venv/bin/pytest -q` (**1118 passed**, up from 1069 at S13/S14);
+  passed); final `.venv/bin/pytest -q` (**1120 passed**, up from 1069 at S13/S14);
   `.venv/bin/bnb smoke` (all 14 isolated cases passed, checkout unchanged);
   `.venv/bin/ruff check .` (passed); `git diff --check 02c866e..HEAD` (passed);
   `.venv/bin/bnb publish --check` against the real repository exits 0 and reports 1 external and
-  26 unselected, unchanged from S12/S13/S14. Bounded validation on real CUDA hardware is recorded
-  below.
+  26 unselected, unchanged from S12/S13/S14. Every one of these was re-run on the committed tree
+  after the two review-driven fixes, with the worktree quiescent. Bounded validation on real CUDA
+  hardware is recorded below.
 - Behavior/config changes: **no resolved training value or fingerprint moved.** All three profiles
   keep their S11/S12 snapshots and both fingerprints. Four behavior changes, all refusals or
   omissions rather than new defaults:
