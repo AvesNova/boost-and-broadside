@@ -25,6 +25,14 @@ gameplay_clips/
 /out/
 # Recomputable machine state, not an artifact.
 .vram.json
+# An artifact payload is verified as a whole: `verify_artifact` requires every
+# file `artifact.json` records, so a payload file the repository refuses to
+# track makes a clean checkout unable to verify — or publish — anything citing
+# it. The broad rules above (`*.log`, `*.zip`, `data/`) are aimed at stray local
+# output and have no business reaching inside a promoted run's artifacts, so
+# those payloads are re-included here. `samples/` below deliberately follows,
+# and still wins: raw samples are the one payload that stays local by design.
+!checkpoints/*/artifacts/**
 # Raw analysis samples stay local. This rule follows the landmark whitelist
 # above deliberately: a promoted run directory re-includes everything under it,
 # so `samples/` has to be excluded again afterwards or a multi-gigabyte payload

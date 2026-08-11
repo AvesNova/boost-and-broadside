@@ -8,6 +8,7 @@ canonical output cannot quietly stop being owned by anyone.
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -69,6 +70,40 @@ def test_every_entry_has_a_source(manifest) -> None:
 
     unselected = [entry.name for entry in manifest.entries if not entry.selected]
     assert unselected == []
+
+
+def test_every_selected_artifacts_payload_is_tracked_or_a_raw_sample(manifest) -> None:
+    """A clean clone must hold every byte the selected artifacts are verified against.
+
+    ``verify_artifact`` re-hashes each file ``artifact.json`` records and exempts
+    exactly one thing: a pruned ``samples/`` payload, which is local by design.
+    Everything else it names has to be in the index, or ``publish --check``
+    passes here and fails on a fresh clone — which is precisely what happened
+    when ``.gitignore``'s repository-wide ``*.log`` reached into the landmark
+    W&B export and took ``files/output.log`` out of the index.
+    """
+
+    tracked = set(
+        subprocess.run(
+            ["git", "ls-files", "-z"],
+            cwd=_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.split("\0")
+    )
+
+    untracked = []
+    for entry in manifest.entries:
+        for location in entry.artifacts.values():
+            recorded = json.loads((_ROOT / location / "artifact.json").read_text())["files"]
+            untracked.extend(
+                f"{location}/{record['path']}"
+                for record in recorded
+                if not record["path"].startswith("samples/")
+                and f"{location}/{record['path']}" not in tracked
+            )
+    assert sorted(set(untracked)) == []
 
 
 def test_the_repository_checks_clean_against_its_selected_sources() -> None:

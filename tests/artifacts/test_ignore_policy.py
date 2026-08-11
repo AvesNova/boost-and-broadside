@@ -52,3 +52,25 @@ def test_local_only_outputs_are_ignored(path):
 )
 def test_promotable_landmark_aggregates_remain_trackable(path):
     assert not _ignored(path)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        f"{_LANDMARK}/artifacts/wandb-export/20260809T142500Z-a81bc39e/files/output.log",
+        f"{_LANDMARK}/artifacts/wandb-export/20260809T142500Z-a81bc39e/files/archive.zip",
+        f"{_LANDMARK}/artifacts/crossover/20260809T142500Z-a81bc39e/data/matrix.npz",
+    ],
+)
+def test_a_broad_local_rule_does_not_reach_inside_an_artifact_payload(path):
+    """A recorded payload file must be trackable whatever its name happens to be.
+
+    ``verify_artifact`` requires every file ``artifact.json`` records, so one the
+    repository refuses to track makes a clean checkout unable to verify — or
+    publish — anything citing that artifact. That is not hypothetical: the
+    landmark W&B export records ``files/output.log``, and the repository-wide
+    ``*.log`` rule aimed at stray training logs quietly swallowed it, leaving a
+    fresh clone unable to render a single canonical output.
+    """
+
+    assert not _ignored(path)
