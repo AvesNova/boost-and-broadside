@@ -330,7 +330,12 @@ def test_publish_check_succeeds_when_an_entry_is_still_unselected(
 def test_publish_reports_a_selected_source_that_is_absent_concisely(
     tmp_path, monkeypatch, capsys
 ) -> None:
-    """The shipped manifest names real artifacts; without them, say so plainly."""
+    """The shipped manifest names real artifacts; without them, say so plainly.
+
+    Each entry says which source it could not resolve, rather than one entry's
+    failure standing in for the whole inventory, so the naming happens in the
+    report on stdout and stderr carries the summary. Both stay concise.
+    """
 
     docs = tmp_path / "docs"
     docs.mkdir()
@@ -342,9 +347,10 @@ def test_publish_reports_a_selected_source_that_is_absent_concisely(
         cli.main(["publish", "--check"])
 
     assert exit_info.value.code == 2
-    error = capsys.readouterr().err
-    assert "artifact.json" in error
-    assert "Traceback" not in error
+    captured = capsys.readouterr()
+    assert "artifact.json" in captured.out
+    assert "unresolved" in captured.out
+    assert "Traceback" not in captured.err and "Traceback" not in captured.out
 
 
 def test_print_config_bypasses_runtime_dispatch_and_records_cli_sources(
