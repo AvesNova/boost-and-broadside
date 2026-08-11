@@ -59,4 +59,3 @@ Calculated only while both the ground truth and rollout ships are alive.
 
 ### Alive Prob
 ![Alive Prob](feature_alive.png)
-
