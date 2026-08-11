@@ -136,8 +136,9 @@ def _migration_script():
 
     It lives in ``scripts/`` rather than in the package because it is a one-time
     repository operation, not runtime compatibility infrastructure — so it is not on
-    ``pythonpath``. Only its canonical content digest is used here; the tests
-    otherwise read the tracked files directly, which is the point.
+    ``pythonpath``. Only its canonical content digest and its report renderer are
+    used here; the tests otherwise read the tracked files directly, which is the
+    point. Neither entry point migrates anything or opens a checkpoint.
     """
 
     import importlib.util
@@ -287,6 +288,21 @@ class TestInventory:
     def test_the_migration_report_is_tracked_beside_the_checkpoints(self):
         assert (RUN_DIR / "migration_report.md").exists()
         assert REPORT_PATH.exists()
+
+    def test_the_markdown_report_is_the_json_record_rendered(self):
+        """The prose and the machine record cannot disagree, because one makes the other.
+
+        They did once. Regenerating the Markdown used to re-run the migration,
+        which re-hashed the payloads that run had just written — and three of the
+        sixteen do not serialize byte-identically twice, so the document ended up
+        naming bytes nothing tracked while ``migration_report.json`` stayed right.
+        ``render_report`` now reads the tracked JSON and opens no checkpoint, and
+        this is the assertion that keeps the two in step.
+        """
+
+        document = json.loads(REPORT_PATH.read_text())
+        rendered = _migration_script().render_report(document)
+        assert rendered == (RUN_DIR / "migration_report.md").read_text()
 
     def test_the_report_records_every_file_with_both_hashes(self):
         report = json.loads(REPORT_PATH.read_text())

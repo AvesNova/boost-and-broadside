@@ -1009,15 +1009,65 @@ def _tensor_mapping_summary(records: list[dict[str, Any]]) -> list[str]:
     return lines
 
 
-def write_report(
-    path: Path,
-    records: list[dict[str, Any]],
-    hashes: dict[str, dict[str, str]],
-    provenance: Mapping[str, Any],
-) -> None:
+def build_report_document(
+    records: list[dict[str, Any]], provenance: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Assemble the migration record: the one authority both report files describe.
+
+    ``migration_report.json`` *is* this document, and the Markdown is rendered
+    from it. Keeping one source is not tidiness — it is what stops the two from
+    disagreeing. The Markdown once drifted because regenerating the prose re-ran
+    the migration and re-hashed the payloads it had just written, and three of
+    the sixteen files do not serialize byte-identically twice.
+    """
+
+    return {
+        "run": RUN_NAME,
+        "transformation_version": TRANSFORMATION_VERSION,
+        "training_commit": TRAINING_COMMIT,
+        "observation_schema": OBSERVATION_SCHEMA,
+        "provenance": {
+            "paradigm": provenance["paradigm"],
+            "model_config": dataclasses.asdict(provenance["model_config"]),
+            "env_config": dataclasses.asdict(provenance["env_config"]),
+            "ship_config": dataclasses.asdict(provenance["ship_config"]),
+            "historical_components": provenance["historical_components"],
+            "active_components": provenance["active_components"],
+        },
+        "files": records,
+    }
+
+
+def _ship_config_from_document(document: Mapping[str, Any]) -> ShipConfig:
+    """Rebuild the recorded ``ShipConfig``, restoring the tuples JSON flattened."""
+
+    recorded = document["provenance"]["ship_config"]
+    return ShipConfig(
+        **{
+            key: tuple(value) if isinstance(value, list) else value
+            for key, value in recorded.items()
+        }
+    )
+
+
+def render_report(document: Mapping[str, Any]) -> str:
+    """Render the human-readable record from the migration document.
+
+    Every fact here is read out of ``document``; nothing is re-measured and no
+    checkpoint is opened. The two encoder tables are the exception that proves
+    it — they are recomputed, but from the ``ship_config`` the document itself
+    records, through the same pure functions the migration used.
+    """
+
+    records: list[dict[str, Any]] = list(document["files"])
+    provenance = document["provenance"]
+    ship_config = _ship_config_from_document(document)
+    encoder_rescales = encoder_column_rescales(ship_config)
+    encoder_columns = current_feature_columns(ship_config)
+
     lines: list[str] = []
     add = lines.append
-    add(f"# Landmark checkpoint migration — `{RUN_NAME}`")
+    add(f"# Landmark checkpoint migration — `{document['run']}`")
     add("")
     add(
         "One-time offline migration of the complete landmark checkpoint set into the "
@@ -1025,12 +1075,12 @@ def write_report(
         "the record the plan's phase 10 requires."
     )
     add("")
-    add(f"- Transformation version: `{TRANSFORMATION_VERSION}`")
+    add(f"- Transformation version: `{document['transformation_version']}`")
     add(
         "- Training commit (recorded by the run in "
-        f"`wandb_export/files/wandb-metadata.json`): `{TRAINING_COMMIT}`"
+        f"`wandb_export/files/wandb-metadata.json`): `{document['training_commit']}`"
     )
-    add(f"- Observation schema written: `{OBSERVATION_SCHEMA}`")
+    add(f"- Observation schema written: `{document['observation_schema']}`")
     add(f"- Files migrated: {len(records)}")
     add("")
 
@@ -1045,8 +1095,8 @@ def write_report(
         f"- `paradigm`: `{provenance['paradigm']}` — from the run's own "
         '`train_config["paradigm"]`.'
     )
-    add(f"- `model_config`: `{dataclasses.asdict(provenance['model_config'])}`")
-    add(f"- `env_config`: `{dataclasses.asdict(provenance['env_config'])}`")
+    add(f"- `model_config`: `{provenance['model_config']}`")
+    add(f"- `env_config`: `{provenance['env_config']}`")
     add("- `ship_config`: the training commit's `SHIP_CONFIG`, re-expressed in the current")
     add("  schema. Every field both versions define holds the same value, so the loader's")
     add("  physics-drift check correctly stays silent.")
@@ -1104,10 +1154,8 @@ def write_report(
     add("")
     add("| feature | column | divisor at training | divisor now | weight factor |")
     add("|---|---:|---:|---:|---:|")
-    for column, factor in sorted(provenance["encoder_rescales"].items()):
-        name = next(
-            key for key, span in provenance["encoder_columns"].items() if span[0] == column
-        )
+    for column, factor in sorted(encoder_rescales.items()):
+        name = next(key for key, span in encoder_columns.items() if span[0] == column)
         historical = HISTORICAL_FEATURE_INPUT_SCALES[name]
         add(f"| `{name}` | {column} | {historical:g} | {historical * factor:g} | {factor:g} |")
     add("")
@@ -1138,10 +1186,10 @@ def write_report(
     add("| file | family | original SHA-256 | migrated SHA-256 | migrated content SHA-256 |")
     add("|---|---|---|---|---|")
     for record in records:
-        name = record["file"]
+        digests = record["sha256"]
         add(
-            f"| `{name}` | {record['family']} | `{hashes[name]['original']}` | "
-            f"`{hashes[name]['migrated']}` | `{hashes[name]['migrated_content']}` |"
+            f"| `{record['file']}` | {record['family']} | `{digests['original']}` | "
+            f"`{digests['migrated']}` | `{digests['migrated_content']}` |"
         )
     add("")
     add("The original hashes are the git-LFS object ids of the files this migration read;")
@@ -1226,19 +1274,39 @@ def write_report(
     # so the file ends with exactly one newline.
     while lines and not lines[-1]:
         lines.pop()
-    path.write_text("\n".join(lines) + "\n")
+    return "\n".join(lines) + "\n"
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument(
-        "--source", type=Path, required=True, help="read-only landmark run directory"
-    )
-    parser.add_argument(
-        "--out", type=Path, required=True, help="output directory (must differ from --source)"
-    )
+    parser.add_argument("--source", type=Path, help="read-only landmark run directory")
+    parser.add_argument("--out", type=Path, help="output directory (must differ from --source)")
     parser.add_argument("--report", type=Path, default=None, help="Markdown report path")
+    parser.add_argument(
+        "--render-report-from",
+        type=Path,
+        default=None,
+        help=(
+            "regenerate the Markdown report from an existing migration_report.json "
+            "and exit; migrates nothing and hashes nothing"
+        ),
+    )
     args = parser.parse_args(argv)
+
+    if args.render_report_from is not None:
+        # Regenerating the prose must never re-run the migration: three of the
+        # sixteen payloads do not serialize byte-identically twice, so a re-run
+        # would write hashes that describe bytes nobody tracks.
+        if args.source is not None or args.out is not None:
+            parser.error("--render-report-from renders the tracked record; it takes no source")
+        document = json.loads(args.render_report_from.read_text())
+        report_path = args.report or args.render_report_from.with_suffix(".md")
+        report_path.write_text(render_report(document))
+        print(f"rendered {report_path} from {args.render_report_from}")
+        return 0
+
+    if args.source is None or args.out is None:
+        parser.error("--source and --out are required unless --render-report-from is given")
 
     source: Path = args.source.resolve()
     out: Path = args.out.resolve()
@@ -1261,7 +1329,6 @@ def main(argv: list[str] | None = None) -> int:
     provenance = run_provenance_from(anchor)
 
     records: list[dict[str, Any]] = []
-    hashes: dict[str, dict[str, str]] = {}
     for name in ALL_FILES:
         legacy = torch.load(source / name, map_location="cpu", weights_only=False)
         payload, record = migrate_payload(name, legacy, provenance)
@@ -1277,39 +1344,22 @@ def main(argv: list[str] | None = None) -> int:
 
         destination = out / name
         torch.save(payload, destination)
-        hashes[name] = {
+        record["sha256"] = {
             "original": sha256(source / name),
             "migrated": sha256(destination),
             "migrated_content": content_sha256(payload),
         }
-        record["sha256"] = hashes[name]
         records.append(record)
         print(f"migrated {name} ({record['family']})")
 
     report_path = args.report or (out / "migration_report.md")
-    write_report(report_path, records, hashes, provenance)
-    (report_path.parent / "migration_report.json").write_text(
-        json.dumps(
-            {
-                "run": RUN_NAME,
-                "transformation_version": TRANSFORMATION_VERSION,
-                "training_commit": TRAINING_COMMIT,
-                "observation_schema": OBSERVATION_SCHEMA,
-                "provenance": {
-                    "paradigm": provenance["paradigm"],
-                    "model_config": dataclasses.asdict(provenance["model_config"]),
-                    "env_config": dataclasses.asdict(provenance["env_config"]),
-                    "ship_config": dataclasses.asdict(provenance["ship_config"]),
-                    "historical_components": provenance["historical_components"],
-                    "active_components": provenance["active_components"],
-                },
-                "files": records,
-            },
-            indent=1,
-            default=str,
-        )
-        + "\n"
+    json_path = report_path.parent / "migration_report.json"
+    json_path.write_text(
+        json.dumps(build_report_document(records, provenance), indent=1, default=str) + "\n"
     )
+    # Render from what was written, not from what is in memory, so this run and a
+    # later --render-report-from over the same JSON produce identical prose.
+    report_path.write_text(render_report(json.loads(json_path.read_text())))
     print(f"wrote {report_path}")
     return 0
 
