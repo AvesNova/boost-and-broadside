@@ -10,17 +10,28 @@ Usage:
     uv run scripts/export_wandb_run.py \
         --run vizia128/boost-and-broadside/chpl40cj \
         --run-name resilient-resonance-682
+
+A run downloaded before the artifact store existed is already on disk as a plain
+directory. ``--from-directory`` promotes exactly those bytes into an artifact
+without contacting W&B, so an export that predates the store is citable on the
+same terms as one taken today:
+
+    uv run scripts/export_wandb_run.py \
+        --from-directory checkpoints/resilient-resonance-682/wandb_export \
+        --run-name resilient-resonance-682
 """
 
 import argparse
 import json
+import shutil
 from pathlib import Path
-
-import wandb
 
 from boost_and_broadside.artifacts import ArtifactRecipe, ArtifactStore, Invocation
 
 _SCHEMA_VERSION = 1
+# The payload a W&B export is made of. `files/` is copied wholesale beside them.
+_DOCUMENTS = ("config.json", "summary.json", "run_meta.json")
+_HISTORY = "history.jsonl"
 
 
 def _json_default(obj):
@@ -41,6 +52,8 @@ def export_run(
     standalone_root: str | Path = "artifacts",
 ) -> Path:
     """Store one W&B run as a ``wandb-export`` artifact and return its directory."""
+
+    import wandb
 
     api = wandb.Api()
     run = api.run(run_path)
@@ -107,9 +120,78 @@ def export_run(
     return artifact.path
 
 
+def ingest_export_directory(
+    directory: str | Path,
+    *,
+    run_name: str | None = None,
+    checkpoint_root: str | Path = "checkpoints",
+    standalone_root: str | Path = "artifacts",
+) -> Path:
+    """Promote an already-downloaded export directory into a stored artifact.
+
+    Nothing is fetched and nothing is recomputed: the stored bytes are copied
+    into a managed artifact directory and hashed there, so what publication
+    renders is provably the same export that was downloaded. The number of
+    history points W&B was asked for is not recoverable from the files, so it is
+    recorded as unknown rather than assumed to be this script's default.
+    """
+
+    source = Path(directory)
+    for name in (*_DOCUMENTS, _HISTORY):
+        if not (source / name).is_file():
+            raise FileNotFoundError(f"{source} is not a W&B export: no {name}")
+    meta = json.loads((source / "run_meta.json").read_text())
+
+    store = ArtifactStore(
+        checkpoint_root=checkpoint_root,
+        standalone_root=standalone_root,
+        invocation=Invocation(
+            argv=("export_wandb_run.py", "--from-directory", str(source)),
+            command="wandb-export",
+            execution={"network": False},
+        ),
+    )
+    owner = (
+        store.run_owner(run_name)
+        if run_name is not None and (Path(checkpoint_root) / run_name).is_dir()
+        else store.standalone_owner()
+    )
+    artifact = store.create(
+        ArtifactRecipe(
+            artifact_type="wandb-export",
+            result_schema_version=_SCHEMA_VERSION,
+            subjects={"wandb_run": meta.get("path"), "run": run_name},
+            parameters={"samples": None},
+            sources={"export_directory": source.as_posix()},
+        ),
+        owner,
+    )
+
+    for name in _DOCUMENTS:
+        artifact.write_json(json.loads((source / name).read_text()), name)
+    shutil.copyfile(source / _HISTORY, artifact.path / _HISTORY)
+    artifact.attach(_HISTORY)
+
+    files = source / "files"
+    if files.is_dir():
+        shutil.copytree(files, artifact.path / "files")
+        for path in sorted((artifact.path / "files").rglob("*")):
+            if path.is_file():
+                artifact.attach(str(path.relative_to(artifact.path)))
+
+    artifact.complete()
+    print(f"Ingested {source} -> {artifact.path}")
+    return artifact.path
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run", required=True, help="entity/project/run_id")
+    subject = parser.add_mutually_exclusive_group(required=True)
+    subject.add_argument("--run", help="entity/project/run_id")
+    subject.add_argument(
+        "--from-directory",
+        help="An export already on disk; ingested offline, with no W&B call.",
+    )
     parser.add_argument(
         "--run-name",
         default=None,
@@ -122,6 +204,9 @@ def main() -> None:
         help="points per key for sampled history; use 0 for full unsampled scan",
     )
     args = parser.parse_args()
+    if args.from_directory is not None:
+        ingest_export_directory(args.from_directory, run_name=args.run_name)
+        return
     export_run(args.run, run_name=args.run_name, samples=args.samples or None)
 
 
