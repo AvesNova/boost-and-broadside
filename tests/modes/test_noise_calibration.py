@@ -3,8 +3,13 @@
 import datetime
 
 import numpy as np
+import pytest
 
-from boost_and_broadside.modes.noise_calibration import _build_output
+from boost_and_broadside.modes.noise_calibration import (
+    _REPORT_FEATURES,
+    _build_output,
+    _report_layout,
+)
 
 
 def _make_phase1(target_dim: int) -> dict:
@@ -50,3 +55,43 @@ class TestBuildOutputTimestamp:
 
         assert parsed.tzinfo is not None, "timestamp must carry explicit UTC offset info"
         assert parsed.utcoffset() == datetime.timedelta(0)
+
+
+class TestReportLayout:
+    """Every target dimension the coordinator predicts must be named.
+
+    The report groups target dimensions by hand. A predictor added to the
+    coordinator and not to that table was still measured, but reached the
+    published figure as an untitled panel over a dimension nobody could
+    identify — so the layout now refuses to build instead.
+    """
+
+    def test_the_layout_names_every_dimension_the_coordinator_produces(self):
+        from boost_and_broadside.config.defaults import SHIP_CONFIG
+        from boost_and_broadside.train.rl.features import build_standard_coordinator
+
+        coordinator = build_standard_coordinator(SHIP_CONFIG)
+
+        groups, dim_names = _report_layout(coordinator)
+
+        assert len(dim_names) == coordinator.total_target_dimension
+        assert all(dim_names), dim_names
+        grouped = sorted(index for dims, _ in groups.values() for index in dims)
+        assert grouped == list(range(coordinator.total_target_dimension))
+
+    def test_a_dimension_the_layout_forgets_is_refused(self, monkeypatch):
+        from boost_and_broadside.config.defaults import SHIP_CONFIG
+        from boost_and_broadside.train.rl.features import build_standard_coordinator
+
+        coordinator = build_standard_coordinator(SHIP_CONFIG)
+        forgetful = {
+            name: entry
+            for name, entry in _REPORT_FEATURES.items()
+            if name != "local_log_index"
+        }
+        monkeypatch.setattr(
+            "boost_and_broadside.modes.noise_calibration._REPORT_FEATURES", forgetful
+        )
+
+        with pytest.raises(ValueError, match="names no channel"):
+            _report_layout(coordinator)

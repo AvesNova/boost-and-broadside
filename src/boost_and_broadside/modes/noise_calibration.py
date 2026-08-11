@@ -69,6 +69,11 @@ _REPORT_FEATURES = {
         "cooldown (sin, cos)",
         ("cooldown_sin", "cooldown_cos"),
     ),
+    "local_log_index": (
+        "local_log_index",
+        "local encoded log-index delta",
+        ("local_log_index",),
+    ),
 }
 
 
@@ -120,6 +125,15 @@ def _report_layout(
         groups[report_name] = (dims, description)
         for dim, channel_name in zip(dims, channel_names):
             dim_names[dim] = channel_name
+    unnamed = [index for index, name in enumerate(dim_names) if not name]
+    if unnamed:
+        # A predictor the report does not know about is measured anyway and then
+        # published as a nameless empty panel. Fail here instead: the layout has
+        # to name every target dimension the coordinator produces.
+        raise ValueError(
+            f"noise report layout names no channel for target dimension(s) {unnamed}; "
+            f"add them to _REPORT_FEATURES (coordinator targets: {sorted(target_slices)})"
+        )
     return groups, dim_names
 
 
