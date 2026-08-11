@@ -503,20 +503,21 @@ def test_a_vram_proposal_is_recorded_as_its_own_source() -> None:
 
 def test_the_resolution_document_states_the_guarantee_of_what_it_moved() -> None:
     baseline = VramKnobs(3904, 25_000, False)
-    document = resolution_from_cache(
-        VramPolicy("auto"), _entry(VramKnobs(1952, 20_000, True))
-    ).document(baseline)
+    moved = VramKnobs(1952, 20_000, True)
+    document = resolution_from_cache(VramPolicy("auto"), _entry(moved)).document(baseline, moved)
     assert document["status"] == "measured"
     assert document["source"] == "vram-cache"
     assert set(document["tiers"]) == {"1", "2"}
     assert document["tiers"]["2"] == TIER_GUARANTEES[2]
     assert "3" not in document["tiers"]
 
-    restated = resolution_from_cache(VramPolicy("auto"), _entry(baseline)).document(baseline)
+    restated = resolution_from_cache(VramPolicy("auto"), _entry(baseline)).document(
+        baseline, baseline
+    )
     assert restated["applied"] == baseline.document()
     assert restated["tiers"] == {}
 
-    off = unresolved(VramPolicy("off"), "note").document(baseline)
+    off = unresolved(VramPolicy("off"), "note").document(baseline, baseline)
     assert off["tiers"] == {}
     assert off["notes"] == ["note"]
 

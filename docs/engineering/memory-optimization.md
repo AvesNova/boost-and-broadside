@@ -346,11 +346,13 @@ that cannot be read is an error naming `--vram reprobe` or `--vram off`, never a
 resize — and a reprobe, which reaches the file only after measuring the card, replaces the
 damaged one rather than raising the same error again and discarding the measurement.
 
-The tiers a launch record claims are the ones it actually moved, compared against the
-profile's own derived sizing. A row that restates the shipped launch — which the 8 GB row
-does exactly — claims no tier, because tier 2's warning is about a different env-stream
-count and minibatch composition and a knob set to the value it already had produces
-neither. The full proposal is recorded either way.
+The tiers a launch record claims are the ones the launch actually moved, measured between
+the profile's own derived sizing and what it runs at. A row that restates the shipped
+launch — which the 8 GB row does exactly — claims no tier, because tier 2's warning is
+about a different env-stream count and minibatch composition and a knob set to the value it
+already had produces neither. A width or microbatch the command line chose does claim its
+tier: it costs the same whoever picked it. Who picked it is answered separately, by
+`proposed`, `applied`, and the per-value source map.
 
 Compile mode being part of that fingerprint has a practical consequence: `--compile`
 changes the reserved workspace, so a measurement taken under one mode does not answer for

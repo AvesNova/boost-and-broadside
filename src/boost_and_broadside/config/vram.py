@@ -125,14 +125,14 @@ class VramKnobs:
         )
 
     def tiers(self, baseline: VramKnobs) -> tuple[int, ...]:
-        """The equivalence tiers this proposal actually touches.
+        """The equivalence tiers these knobs touch, measured against ``baseline``.
 
-        Measured against ``baseline`` — the values the profile resolves to on its
-        own — because a knob is only moved if it lands somewhere else. A row that
-        restates the shipped launch, which the 8 GB preset does exactly, claims
-        no tier at all; the tier list is the honesty claim and it should not warn
-        about a change nobody made. A knob the baseline says nothing about
-        (``None``) counts as moved whenever the proposal names it.
+        A knob is only moved if it lands somewhere else, so a set of knobs that
+        restates the profile's own derived sizing — which the 8 GB row does
+        exactly — claims no tier at all. The tier list is the honesty claim and
+        it should neither warn about a change nobody made nor stay silent about
+        one somebody did. A knob the baseline says nothing about (``None``)
+        counts as moved whenever this side names it.
         """
 
         reference = baseline.document()
@@ -438,9 +438,19 @@ class VramResolution:
     identity_fingerprint: str | None
     notes: tuple[str, ...] = ()
 
-    def document(self, baseline: VramKnobs) -> dict[str, Any]:
-        """The stored record. ``baseline`` is the profile's own derived sizing,
-        against which the applied knobs are judged to have moved or not."""
+    def document(self, baseline: VramKnobs, effective: VramKnobs) -> dict[str, Any]:
+        """The stored record.
+
+        ``baseline`` is the profile's own derived sizing and ``effective`` is
+        what the launch actually runs at, so the tier list describes the distance
+        between the two. It is deliberately not computed from ``applied``: a knob
+        the command line set is dropped from ``applied`` — the launch took that
+        value from the command line, not from here — but a launch that halves the
+        rollout width has made a tier-2 change whoever chose it, and a record that
+        said `{}` because the width came from `--num-envs` would be quietly
+        wrong. Who chose what is answered by ``proposed``, ``applied``, and the
+        source map; ``tiers`` answers what it costs.
+        """
 
         applied = self.applied.document()
         return {
@@ -450,7 +460,7 @@ class VramResolution:
             "proposed": self.knobs.document(),
             "applied": applied,
             "tiers": {
-                str(tier): TIER_GUARANTEES[tier] for tier in self.applied.tiers(baseline)
+                str(tier): TIER_GUARANTEES[tier] for tier in effective.tiers(baseline)
             },
             "identity_fingerprint": self.identity_fingerprint,
             "notes": list(self.notes),

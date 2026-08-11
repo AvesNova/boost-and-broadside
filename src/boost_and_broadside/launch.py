@@ -32,10 +32,11 @@ ProfileResolver = Callable[..., ResolvedTrainConfig]
 
 
 def profile_knobs(resolved: ResolvedTrainConfig) -> VramKnobs:
-    """The sizing knobs a profile resolves to on its own.
+    """The sizing knobs one resolved configuration carries.
 
-    The reference a VRAM proposal is judged against: a proposal that restates
-    these values moved nothing, whatever it names.
+    Applied to the profile resolved at its defaults it is the reference a VRAM
+    decision is judged against; applied to the final launch it is what that
+    launch actually runs at. The distance between the two is the tier list.
     """
 
     return VramKnobs(
@@ -58,7 +59,12 @@ class TrainingLaunch:
     def document(self) -> dict[str, Any]:
         """The launch record stored in checkpoints and printed by --print-config."""
 
-        return {**self.execution.document(), "vram": self.vram.document(self.baseline)}
+        return {
+            **self.execution.document(),
+            # Judged against what this launch actually runs at, so a width or
+            # microbatch the command line chose is counted like any other.
+            "vram": self.vram.document(self.baseline, profile_knobs(self.resolved)),
+        }
 
 
 def resolve_training_launch(

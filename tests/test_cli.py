@@ -11,6 +11,7 @@ import pytest
 
 from boost_and_broadside import cli, cli_commands
 from boost_and_broadside.artifacts import ArtifactStore, Invocation
+from boost_and_broadside.config.vram import TIER_GUARANTEES
 from boost_and_broadside.launch import resolve_training_launch
 
 EXPECTED_COMMANDS = (
@@ -354,14 +355,16 @@ def test_print_config_bypasses_runtime_dispatch_and_records_cli_sources(
         "seed": 17,
         "wandb": False,
         # A CPU launch has nothing to size, and says so rather than implying a
-        # decision it did not make.
+        # decision it did not make. The tiers are still claimed: this launch
+        # really does run at half the profile's width and a smaller microbatch,
+        # and it costs the same whether VRAM or the command line chose it.
         "vram": {
             "policy": "auto",
             "source": None,
             "status": "unresolved",
             "proposed": {"grad_checkpoint": None, "microbatch_tokens": None, "num_envs": None},
             "applied": {"grad_checkpoint": None, "microbatch_tokens": None, "num_envs": None},
-            "tiers": {},
+            "tiers": {"1": TIER_GUARANTEES[1], "2": TIER_GUARANTEES[2]},
             "identity_fingerprint": None,
             "notes": ["--device cpu is not an accelerator; nothing to size"],
         },

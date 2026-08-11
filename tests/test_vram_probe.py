@@ -514,6 +514,37 @@ def test_the_shipped_row_records_no_tier_because_it_moves_nothing() -> None:
     assert record["proposed"]["num_envs"] == 3904
 
 
+@pytest.mark.parametrize(
+    ("override", "expected"),
+    [({"num_envs": 1952}, {"2"}), ({"microbatch_tokens": 12_500}, {"1"})],
+)
+def test_a_width_the_command_line_chose_still_claims_its_tier(
+    override: dict[str, int], expected: set[str]
+) -> None:
+    """A knob the command line set is dropped from `applied` — the launch took
+    that value from the command line, not from the VRAM decision — but halving
+    the rollout width is a tier-2 change whoever chose it. The tier list says
+    what the launch costs; `proposed`, `applied`, and the source map say who
+    chose it."""
+
+    launch = resolve_training_launch(profile="rl", vram="8", device="cpu", **override)
+    record = launch.document()["vram"]
+    knob, value = next(iter(override.items()))
+
+    assert set(record["tiers"]) == expected
+    assert record["applied"][knob] is None
+    assert record["proposed"][knob] is not None
+    assert any("overrides the vram-preset" in note for note in record["notes"])
+    assert launch.resolved.value_sources[_SOURCE_PATHS[knob]] == "cli"
+    assert launch.baseline.document()[knob] != value
+
+
+_SOURCE_PATHS = {
+    "num_envs": "train_config.scales.0.num_envs",
+    "microbatch_tokens": "train_config.microbatch_tokens",
+}
+
+
 def test_a_measured_launch_records_every_source(tmp_path: Path, fake_cuda) -> None:
     cache = tmp_path / ".vram.json"
     entry, _ = probe_profile(
