@@ -36,7 +36,7 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: `S16` — landmark artifacts and publication.
+- Active section: none. `S16` is completed.
 - Next section: `S17` — migration/reproducibility gate review.
 - Blocking issue: none. The sixteen landmark `.pt` files were restored from git-LFS and each one
   hashes to its original object id; the attempt's scripts, reports, and scratch probes are gone.
@@ -69,7 +69,7 @@ code, tests, and reader-facing documentation.
 | S14 | 7–9 gate | completed | training-systems reviewer | Sol / extra high | Review BC, live Elo, and VRAM behavior together before checkpoint schema freeze |
 | S14R | 7–9 gate remediation | completed | training-systems remediator + reviewer | Sol / extra high | Close the S14 blocker, freeze the migration target schemas, and obtain an independent re-review |
 | S15 | 10 | completed | checkpoint migration engineer | Sol / extra high | Migrate the complete 682 checkpoint set once into the frozen current schema (first attempt reviewed, rejected, reverted) |
-| S16 | 10 | in_progress | landmark/publication integrator | Sol / high | Backfill 682 artifacts and raw samples; select and regenerate canonical publications |
+| S16 | 10 | completed | landmark/publication integrator | Sol / high | Backfill 682 artifacts and raw samples; select and regenerate canonical publications |
 | S17 | 10 gate | pending | migration/reproducibility reviewer | Sol / extra high | Independently verify 682 equivalence, completeness, provenance, and publication reproducibility |
 | S18 | 11 | pending | documentation/cleanup engineer | Terra / high | Complete repo-wide docs and remove obsolete paths, names, and temporary compatibility residue |
 | S19 | final gate | pending | final branch reviewer | Sol / extra high | Review the complete branch against the plan and run final acceptance checks |
@@ -2335,6 +2335,143 @@ closed by the restart above.
 - Remaining risks or required follow-up: the landmark run still has no migrated checkpoint set, so
   no publication entry can be selected and `S16` cannot start. A restarted `S15` must close all nine
   findings above with executable coverage.
+
+### S16 handoff
+
+- Status: completed
+- Agent/model/effort: landmark/publication integrator / `gpt-5.6-sol` / high
+- Commit(s): `d6434f5` — mark S16 active; `a27f8f9` — refuse a training figure the export has
+  no measurements for; `b983ee9` — promote an already-downloaded W&B export without contacting
+  W&B; `5849e53` — the landmark export as a citable artifact; `504573e` — verify a promoted
+  clip against its pin when the scratch copy is gone; `044d0e0` — the crossover sweep;
+  `4adf124` — the semi-random reference ladder; `e512312` — the fleet-scale tournament;
+  `6c7a1a4` — the post-hoc calibration; `5a53c94` — say which step the AR episode ended on;
+  `7d14271` — the canonical 4v4 AR report; `aadf21c` — name every target dimension the noise
+  report measures; `7d7eea9` — the next-state noise measurement; `4fdd160` — select the 682
+  artifacts and regenerate every canonical output; `fcbc255` — quote the recomputed
+  measurements in the reader docs; `f8027a6` — hold the inventory to a selected manifest;
+  `9dd422b` — end the AR report on exactly one newline; `9031a95` — regenerate that document;
+  followed by this closure commit.
+- Tests/checks and results: final `uv run --no-sync pytest -q` (**1479 passed**, up from 1464
+  at S15); `.venv/bin/bnb smoke` (all 14 isolated cases passed, checkout unchanged);
+  `uv run --no-sync ruff check .` and Ruff against a clean `git archive HEAD` (both passed);
+  `git diff --check 088d91e..HEAD` (passed, after `9dd422b` fixed the one EOF blank line it
+  found — in generated output, so the renderer was fixed rather than the file);
+  `bnb publish` and `bnb publish --check` against the real repository both exit 0 and report
+  **1 external, 26 unchanged** — the offline no-diff gate, exercised against real sources for
+  the first time rather than fixtures. Every relative link added to `README.md`,
+  `docs/evaluation.md`, `docs/replays.md`, and `docs/internal/evidence.md` was resolved.
+- Behavior/config changes: **no training configuration, profile, or fingerprint moved.** Six
+  product changes, all in the publication and measurement surface:
+  1. A training figure whose export carries no finite points for a metric is a concise
+     refusal, not a blank canvas; and `next-state-error-v1` reads either spelling of the
+     next-state metric names (see the S10R risk closed below).
+  2. `scripts/export_wandb_run.py --from-directory` ingests an export already on disk. The
+     `wandb` import moved inside the network path, so the offline path never imports it.
+  3. A promoted clip whose scratch copy is absent is verified against the sha256 the manifest
+     pins, instead of aborting the whole inventory (S10 non-blocking 3, closed below).
+  4. `ar-report` prints the step an episode actually ended on; it was interpolating the
+     unpacked `info` dict and printing `{}`.
+  5. The noise report refuses to build a layout that does not name every target dimension the
+     coordinator predicts. It had been measuring `local_log_index` and publishing it as an
+     untitled panel over an unidentifiable dimension.
+  6. `ar_report.md` ends on exactly one newline.
+- Files/artifacts produced: seven Tier A artifacts under
+  `checkpoints/resilient-resonance-682/artifacts/` — `wandb-export`, `crossover`,
+  `semi-random-ladder`, `elo-scale`, `elo-calibration`, `ar-report`, `noise-calibration` —
+  each recording its normalized command, seed 682, resolved settings, subject checkpoint
+  hashes, scripted-agent configuration, device, and the clean commit it was produced from.
+  `docs/publications.toml` selects all 27 entries. New tracked output: `docs/ar_report/4v4/`
+  (19 files) and the generated `docs/results/provenance.{md,json}`. New coverage in
+  `tests/publication/test_wandb_ingest.py`, `tests/publication/test_publish.py`,
+  `tests/publication/test_renderers.py`, and `tests/modes/test_noise_calibration.py`.
+- Raw samples (plan step 2): AR retains `samples/rollout_inputs.npz` (12 KB) and noise
+  calibration `samples/phase1_errors.npz` (7.3 MB), both on this machine only.
+  `git check-ignore` resolves each to `.gitignore:32` — the `samples/` rule that deliberately
+  follows the landmark whitelist — and `git ls-files` matches no `samples/` path anywhere.
+- Output diffs, all intentional and each explained:
+  1. **The three W&B-derived figures are byte-for-byte equivalent.**
+     `win_rate_vs_scripted.png`, `training_health.png`, and `next_state_error.png` published
+     as `unchanged — identical pixels, different bytes`. The stored export and the renderers
+     reproduce the historically published figures exactly.
+  2. **Everything measured again moved a little.** The measurements were recomputed from the
+     migrated checkpoints under current physics, where the tracked outputs were measured on
+     1 August against the pre-migration files under the then-current environment. Crossover
+     `beats_up_to` is unchanged at 28 of 64 sizes, +1 at 27, +2 at 8, and −1 once; the
+     headline 4, 8, and 16 boundaries are identical and 32 and 64 gain one ship. Calibrated
+     Elo for the final checkpoint moves 1825.5 ± 7.4 → 1772.2 ± 7.3 and the fleet-scale 4v4
+     rating 1817 ± 4 → 1787 ± 11 — the same direction in two independent tournaments, which
+     is what a small environment change looks like rather than a migration defect.
+  3. **`docs/ar_report/4v4/` is new** (S08 replaced the retired 1v1/2v2 pair; those trees are
+     untouched and remain S18's to delete), and the noise report is now measured on the
+     reference run. Its previous figures came from `checkpoints/dulcet-dragon-570`, a run that
+     does not exist in this repository — that was the dead default S08 removed.
+  4. **All fifteen replays were re-captured** from the migrated final checkpoint. Every
+     `vs_scripted` clip is still won by the policy; the 8v11 hero still finishes with ships to
+     spare.
+- Independent confirmations of S15 worth recording: the crossover sweep reproduces the
+  historical boundary to within two ships across all 64 sizes, and the semi-random ladder's
+  `live_gauge_error` at 4v4 reproduces the plan's §1 accepted-error table (p=0.2 fitted at
+  89.6 against the table's 93.8; p=0.3 at 196.4 against 196.3) — measured on the migrated set,
+  against a table fitted before the migration existed.
+- Decisions/deviations from plan:
+  1. **The curated clips satisfy D18 through their committed pin, not through `out/`** (S10
+     non-blocking 3, which S10 assigned to this section). A clip is scratch and `out/` is never
+     tracked, so the sha256 in `docs/publications.toml` is what makes a published clip citable.
+     When the scratch copy is present publication copies and compares it as before; when it is
+     absent — the normal state of a clean checkout — `--check` verifies the tracked GIF against
+     that pin. Verified by deleting `out/` and re-running: 1 external, 26 unchanged, exit 0.
+  2. **The clips were re-captured rather than kept.** Pinning the existing GIFs would have
+     meant naming a scratch path that never existed, which is the fabricated-provenance failure
+     S15's review rejected. Re-capturing also keeps every published output on one footing:
+     current code, migrated checkpoints.
+  3. **The stored export is duplicated rather than moved.** The artifact holds its own copy of
+     the 14.8 MB `history.jsonl`; the plain `wandb_export/` directory stays where the frozen
+     S15 migration report and seven reader-facing links point. Git stores one blob for
+     identical content, so the duplication costs tree entries rather than bytes.
+  4. **The elo-scale budget was left at the shipped twelve batches.** 16v16, 32v32, and 64v64
+     record `converged: false` and carry ±17, ±37, and ±59. They are still better measured than
+     the legacy tournament, which had 5,856 and 1,464 games at 32 and 64 against 11,712 and
+     2,928 here. The docs quote the error bars and no longer claim a peak fleet size, because
+     16, 32, and 64 overlap within uncertainty.
+  5. **S10R risk 1 is closed by measurement, not assumption.** The landmark export carries the
+     pre-`afdf406` `next_state/*` names, which is exactly what the renderer read, so the figure
+     was never blank. Both halves of the risk are addressed anyway: an empty series is now a
+     refusal, and the renderer reads either spelling, the pairing being the positional identity
+     the `afdf406` diff shows rather than a guess.
+  6. **Reader-facing numbers were updated here rather than deferred to S18.** S16 changes the
+     evidence those numbers cite; leaving `README.md`, `docs/evaluation.md`,
+     `docs/replays.md`, and `docs/internal/evidence.md` asserting superseded values would have
+     left the tree self-contradicting. The repository-wide sweep is still S18's.
+  7. **Three tests that encoded "nothing selected yet" were rewritten, not deleted.** The
+     inventory test now requires every entry to have a source; the CLI test splits into an
+     unselected entry (exit 0) and an absent selected source (exit 2, no traceback); and the
+     S01 baseline assertion moved from equality to subset, after confirming no asset recorded
+     at the branch base was lost. The S01 record itself stays frozen.
+- Review findings addressed: S10 non-blocking 3 (an absent promoted source aborting the run)
+  and 8 (`docs/evaluation.md` citing the legacy landmark JSON — those links are gone; the three
+  files are now referenced by nothing and are S18's to delete); S10R risk 1 (the `next_state/*`
+  key drift). Self-review found and fixed the AR step message, the unnamed noise dimension, and
+  the generated document's trailing blank line, each before the artifact or output it affected
+  was made canonical.
+- Remaining risks or required follow-up:
+  1. **The published measurements are not the run's original evaluation.** They come from the
+     migrated checkpoints under current physics. Both tournaments moved in the same direction
+     by a few tens of Elo. Nothing isolates how much of that is the environment change and how
+     much is the migration's float32 residual; S15 measured the latter at ~1e-5 on logits, which
+     is far too small to explain it, so the environment is the presumed cause but is not proven.
+  2. The three largest fleet sizes did not reach their rating target within the shipped batch
+     budget. Raising it is a cost decision, not a correctness one.
+  3. `bnb publish` still has no smoke case (S10 non-blocking 7), and field-map intent is still
+     absent from artifact recipes (S10 non-blocking 6). Neither moved here.
+  4. The retired `docs/ar_report/{1v1,2v2}` trees and the three superseded landmark JSON files
+     (`elo_calibrated.json`, `elo_scale.json`, `semi_random_tournament.json`) are now referenced
+     by no document. S18 deletes them.
+  5. Carried forward unchanged: S15 risks 1–4 (the zero tenth next-state predictor — now
+     visible as the inert `local_log_index` row in the noise report; ladder-versus-ladder
+     comparison; the bounded equivalence evidence; `migrate_682.py` having no test of its own);
+     S14R risks 1–3; S13 risks 1–3 and 5–6; and S12 risks 2–4.
+  6. S17 is the next authorized section and was not begun.
 
 ### Future handoff template
 
