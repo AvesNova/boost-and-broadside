@@ -304,6 +304,25 @@ class TestInventory:
         rendered = _migration_script().render_report(document)
         assert rendered == (RUN_DIR / "migration_report.md").read_text()
 
+    def test_the_rendered_report_reads_the_record_rather_than_the_files(self):
+        """What the document says is what the document renders.
+
+        The previous renderer took the hashes of the payloads the migration had
+        just written, so the prose described whatever that run happened to
+        produce. This one is a view of the record: change a hash in the document
+        and exactly that cell moves, which is why the assertion above is enough
+        to keep the two files in step.
+        """
+
+        document = json.loads(REPORT_PATH.read_text())
+        recorded = document["files"][0]["sha256"]["migrated"]
+        document["files"][0]["sha256"]["migrated"] = "f" * 64
+
+        rendered = _migration_script().render_report(document)
+
+        assert f"`{'f' * 64}`" in rendered
+        assert recorded not in rendered
+
     def test_the_report_records_every_file_with_both_hashes(self):
         report = json.loads(REPORT_PATH.read_text())
         recorded = {entry["file"]: entry for entry in report["files"]}
