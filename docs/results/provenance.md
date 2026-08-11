@@ -9,9 +9,9 @@ reading; the artifact directory holds the full recipe and provenance.
 | output | renderer | source | description |
 |---|---|---|---|
 | `docs/results/elo_curve.png` | training-elo-curve-v1 | calibration=checkpoints/resilient-resonance-682/artifacts/elo-calibration/20260811T162139Z-00c0e326 (7e0af30b4dba) | Post-hoc calibrated Elo over training, against the scripted controller. |
-| `docs/results/win_rate_vs_scripted.png` | training-win-rate-v1 | wandb_export=checkpoints/resilient-resonance-682/artifacts/wandb-export/20260811T074027Z-86b2417d (8c73d6b19b56) | Win rate against the scripted controller over training. |
-| `docs/results/training_health.png` | training-health-v1 | wandb_export=checkpoints/resilient-resonance-682/artifacts/wandb-export/20260811T074027Z-86b2417d (8c73d6b19b56) | Critic fit, reward, KL, and clip fraction as one optimisation panel. |
-| `docs/results/next_state_error.png` | next-state-error-v1 | wandb_export=checkpoints/resilient-resonance-682/artifacts/wandb-export/20260811T074027Z-86b2417d (8c73d6b19b56) | Next-state prediction error per observation dimension. |
+| `docs/results/win_rate_vs_scripted.png` | training-win-rate-v1 | wandb_export=checkpoints/resilient-resonance-682/artifacts/wandb-export/20260811T193851Z-86b2417d (f7908fb34d7c) | Win rate against the scripted controller over training. |
+| `docs/results/training_health.png` | training-health-v1 | wandb_export=checkpoints/resilient-resonance-682/artifacts/wandb-export/20260811T193851Z-86b2417d (f7908fb34d7c) | Critic fit, reward, KL, and clip fraction as one optimisation panel. |
+| `docs/results/next_state_error.png` | next-state-error-v1 | wandb_export=checkpoints/resilient-resonance-682/artifacts/wandb-export/20260811T193851Z-86b2417d (f7908fb34d7c) | Next-state prediction error per observation dimension. |
 | `docs/results/crossover_phase.png` | crossover-phase-v1 | crossover=checkpoints/resilient-resonance-682/artifacts/crossover/20260811T074317Z-7b876d99 (e48f2352ee72) | Where the scripted fleet overtakes the policy, against equal counts. |
 | `docs/results/crossover_ratio.png` | crossover-ratio-v1 | crossover=checkpoints/resilient-resonance-682/artifacts/crossover/20260811T074317Z-7b876d99 (e48f2352ee72) | Scripted ships beaten per policy ship. |
 | `docs/crossover/crossover.json` | crossover-data-v1 | crossover=checkpoints/resilient-resonance-682/artifacts/crossover/20260811T074317Z-7b876d99 (e48f2352ee72) | The measured crossover curves as published data. |
