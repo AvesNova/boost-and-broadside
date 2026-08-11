@@ -1,0 +1,229 @@
+{
+  "schema_version": 1,
+  "artifact_type": "crossover",
+  "artifact_id": "20260811T074317Z-7b876d99",
+  "status": "complete",
+  "created_at": "2026-08-11T07:43:17Z",
+  "updated_at": "2026-08-11T10:13:39Z",
+  "owner": {
+    "kind": "run",
+    "run": "resilient-resonance-682"
+  },
+  "recipe": {
+    "artifact_type": "crossover",
+    "result_schema_version": 2,
+    "subjects": {
+      "run": "resilient-resonance-682",
+      "scripted": {
+        "kind": "scripted",
+        "scripted_config": {
+          "boost_speed_prob": [
+            0.68,
+            0.04
+          ],
+          "boost_speed_ramp": [
+            16,
+            32
+          ],
+          "close_range_prob": [
+            0.5,
+            0.05
+          ],
+          "close_range_ramp": [
+            10,
+            50
+          ],
+          "flat_action_sampling": false,
+          "prob_offset": 0.1,
+          "sharp_turn_angle_prob": [
+            0.05,
+            0.95
+          ],
+          "sharp_turn_angle_ramp": [
+            0.24,
+            0.42
+          ],
+          "shoot_angle_prob": [
+            0.95,
+            0.05
+          ],
+          "shoot_angle_ramp": [
+            1.0,
+            1.5
+          ],
+          "shoot_distance_prob": [
+            0.95,
+            0.05
+          ],
+          "shoot_distance_ramp": [
+            200,
+            500
+          ],
+          "team_target_distance_prob": [
+            0.0,
+            0.0
+          ],
+          "team_target_distance_ramp": [
+            60.0,
+            100.0
+          ],
+          "turn_angle_prob": [
+            0.068,
+            0.95
+          ],
+          "turn_angle_ramp": [
+            0.03,
+            0.12
+          ]
+        }
+      },
+      "trained": {
+        "checkpoint": "step_000999424000.pt",
+        "global_step": 999424000,
+        "kind": "policy",
+        "sha256": "2e2f52d90ccec4c768f46126773e5e28a285e6a81800f8e6338463e381215eb3",
+        "training_config": {
+          "profile": null,
+          "profile_fingerprint": null,
+          "resolved_config_fingerprint": null
+        }
+      }
+    },
+    "parameters": {
+      "environment": {
+        "max_bullets": 20,
+        "max_episode_steps": 1024,
+        "num_fields": 0,
+        "num_ships": 8
+      },
+      "max_total_ships": 320,
+      "num_envs": 256,
+      "trained_counts": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64
+      ]
+    },
+    "sources": {}
+  },
+  "recipe_digest": "7b876d9957088da3dc607241996a771109f4729544bb6c2c334bbc47e61cb3cc",
+  "result_schema_version": 2,
+  "invocation": {
+    "command": "crossover",
+    "argv": [
+      "/home/vizia/avesnova/boost-and-broadside/.venv/bin/bnb",
+      "crossover",
+      "--run",
+      "resilient-resonance-682",
+      "--sizes",
+      "1-64",
+      "--seed",
+      "682"
+    ],
+    "normalized": "uv run bnb crossover --run resilient-resonance-682 --sizes 1-64 --seed 682"
+  },
+  "execution": {
+    "device": "cuda",
+    "seed": 682,
+    "compile_mode": null,
+    "wandb": true,
+    "allow_config_drift": false
+  },
+  "code": {
+    "git_commit": "5849e539d49ae9236706afe5e6352dd373b0153d",
+    "git_dirty": false,
+    "repository_available": true,
+    "uv_lock_sha256": "eff32a47a4f866e4b4864030845339fe79c57bb888bde3fab76347f8c8afba93"
+  },
+  "runtime": {
+    "python": "3.13.11",
+    "platform": "Linux-7.0.0-28-generic-x86_64-with-glibc2.39",
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "cudnn_benchmark": false,
+    "deterministic_algorithms": false,
+    "float32_matmul_precision": "highest",
+    "device": {
+      "requested": "cuda",
+      "name": "NVIDIA GeForce RTX 4070 Laptop GPU",
+      "index": 0,
+      "total_memory_bytes": 8186822656,
+      "capability": "8.9",
+      "uuid": "7161aed0-f7cd-9222-9196-257e42144f0d"
+    }
+  },
+  "environment": {},
+  "producer": {
+    "name": "boost-and-broadside",
+    "version": "0.1.0"
+  },
+  "files": [
+    {
+      "path": "result.json",
+      "sha256": "509d2a8538120b7e3bf4eb50a0a09ca53faf226395e8d295b059a8df39d8167d",
+      "bytes": 50600
+    }
+  ],
+  "samples_present": false
+}
