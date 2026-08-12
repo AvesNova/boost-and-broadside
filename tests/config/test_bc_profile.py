@@ -172,54 +172,6 @@ def test_bc_learning_rate_warms_up_and_then_holds() -> None:
     assert schedule.learning_rate(2_000_000_000) == pytest.approx(3e-4)
 
 
-def test_corrected_bc_changed_exactly_the_reviewed_stale_values() -> None:
-    """Pin the S01 pre-correction evidence against the corrected profile.
-
-    ``bc-stale.json`` is the resolved BC configuration as it stood before this
-    section.  Anything that reverts toward it, or any further silent change,
-    breaks here rather than in a training run.
-    """
-
-    stale = json.loads((_SNAPSHOTS / "bc-stale.json").read_text())["train_config"]
-    corrected = canonical_data(resolve_profile(PROFILES["bc"]).train_config)
-
-    assert _differing_train_config_paths(stale, corrected) == {
-        # 4v4 in RL's environment, at RL's decision rate and spawn spread.
-        "scales.0.env_config.num_ships",
-        "scales.0.env_config.action_repeat",
-        "scales.0.env_config.spawn_resource_spread",
-        # Discounts follow the action repeat and gain the component tables.
-        "gamma",
-        "gae_lambda",
-        "component_gammas",
-        "component_lambdas",
-        # RL's logical batch, token sizing, minibatching, microbatching, and
-        # bounded return quantiles.
-        "scales.0.num_envs",
-        "rollouts_per_update",
-        "num_minibatches",
-        "microbatch_tokens",
-        "return_quantile_samples",
-        # Current project optimizer value.
-        "clip_coef",
-        # The live gauge BC's Elo evaluation and RL both rate on. The stale
-        # profile had an empty fitted ladder and a random rating of its own;
-        # S11 gave BC RL's fitted gauge and S12 replaced the fitted fields on
-        # every profile with derived rungs and a renamed scripted pin.
-        "reference_ladder",
-        "random_elo",
-        "live_reference_probabilities",
-        "elo_eval.scripted_elo_init",
-        "elo_eval.scripted_live_elo",
-        # Schedule values RL moved and BC had not followed.
-        "schedule.entropy_coef",
-        "schedule.checkpoint_interval",
-        # Representation-only: stepped((0, 4)) compiles to the same constant 4
-        # RL uses, so the invariant above sees no num_epochs difference.
-        "schedule.num_epochs",
-    }
-
-
 def test_corrected_bc_matches_its_reviewed_snapshot() -> None:
     expected = json.loads((_SNAPSHOTS / "bc.json").read_text())
     resolved = resolve_profile(PROFILES["bc"])

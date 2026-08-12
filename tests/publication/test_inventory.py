@@ -1,8 +1,12 @@
 """The shipped inventory: nothing published is missing from it, and it parses.
 
 The manifest is the only place that decides what belongs under ``docs/``. This
-holds it to that claim against the S01 record of what is actually tracked, so a
-canonical output cannot quietly stop being owned by anyone.
+holds it to that claim against the tree as it stands, so a result file cannot be
+added without an owner and cannot quietly stop having one.
+
+``bnb publish --check`` covers the other direction: a declared output that goes
+missing or changes fails there. What it cannot see is a file nobody declared, so
+that is what the ownership test below is for.
 """
 
 from __future__ import annotations
@@ -18,13 +22,39 @@ from boost_and_broadside.publication.manifest import load_manifest
 from boost_and_broadside.publication.publish import UNSELECTED, run_publish
 
 _ROOT = Path(__file__).resolve().parents[2]
-_INVENTORY = _ROOT / "docs" / "internal" / "mode-characterization.json"
 
-# S08 replaced the 2v2/1v1 AR report pair with one canonical 4v4 report. S18
-# deleted their files from the tree; the frozen S01 inventory snapshot still
-# names them, and the manifest deliberately never adopted outputs on their way
-# out, so they stay excluded here rather than rewriting frozen S01 evidence.
-_RETIRED = ("docs/ar_report/1v1/", "docs/ar_report/2v2/")
+# Tracked locations under docs/ that hold results rather than prose. A file here
+# is a published artifact and needs a manifest entry that owns it.
+_RESULT_PATHS = (
+    "docs/results/",
+    "docs/ar_report/",
+    "docs/noise_calibration/",
+    "docs/crossover/",
+)
+_RESULT_FILES = ("docs/policy_architecture.png",)
+
+# `bnb publish` generates these two itself, as the index and ownership record of
+# everything it published. They are outputs of the manifest as a whole rather
+# than of any one entry, so no entry declares them and none should.
+_GENERATED_INDEX = ("docs/results/provenance.md", "docs/results/provenance.json")
+
+
+def _tracked_result_assets() -> list[str]:
+    """Every result file Git currently tracks under docs/."""
+
+    tracked = subprocess.run(
+        ["git", "ls-files", "docs"],
+        check=True,
+        capture_output=True,
+        text=True,
+        cwd=_ROOT,
+    ).stdout.split()
+    return sorted(
+        path
+        for path in tracked
+        if (path in _RESULT_FILES or path.startswith(_RESULT_PATHS))
+        and path not in _GENERATED_INDEX
+    )
 
 
 @pytest.fixture(scope="module")
@@ -44,17 +74,20 @@ def test_every_declared_output_is_unique_and_inside_docs(manifest) -> None:
     assert all(output.startswith("docs/") for output in outputs)
 
 
-def test_every_tracked_published_asset_is_owned_by_exactly_one_entry(manifest) -> None:
-    tracked = [
-        path
-        for path in json.loads(_INVENTORY.read_text())["published_assets"]
-        if not path.startswith(_RETIRED)
-    ]
+def test_every_tracked_result_asset_is_owned_by_a_manifest_entry(manifest) -> None:
+    """A result file in the tree that no entry declares is unowned and unpublished.
+
+    Scanning the tree rather than a frozen list is what makes this catch a figure
+    added today and never declared. The generated provenance index is the record
+    of what publication owns, so an unowned file is invisible to it and would be
+    pruned if it were ever adopted and then dropped.
+    """
+
     owners = {entry.output for entry in manifest.entries}
 
     unowned = [
         path
-        for path in tracked
+        for path in _tracked_result_assets()
         if path not in owners and not any(path.startswith(f"{owner}/") for owner in owners)
     ]
     assert unowned == []
