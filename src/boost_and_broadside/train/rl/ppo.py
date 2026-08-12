@@ -557,6 +557,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         self._global_step = 0
         self._start_update = 1
+        # Last update the loop carried all the way through. An interrupt lands
+        # mid-update, so this -- not the update in progress -- is the only index
+        # a final save can honestly claim.
+        self._completed_update = 0
         # Cumulative counters persisted across checkpoint resumes so throughput
         # metrics behave as if training never stopped.
         self._ship_steps = 0  # ship tokens (all teams, all envs, all scales)
@@ -1204,7 +1208,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             self._log_training_update(metrics, update, sps, ship_tps)
             self._maybe_save_checkpoint(update)
             self._maybe_advance_ladder(update, runtime.elo_eval)
+            self._completed_update = update
 
+        self.save_final_checkpoint()
         self.shutdown()
 
     def shutdown(self) -> None:

@@ -152,6 +152,7 @@ def _run_trainer(trainer: PPOTrainer) -> None:
         trainer.train()
     except KeyboardInterrupt:
         print("\nTraining interrupted.")
+        trainer.save_final_checkpoint()
         trainer.shutdown()
 
 

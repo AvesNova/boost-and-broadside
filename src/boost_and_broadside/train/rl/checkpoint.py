@@ -335,6 +335,39 @@ class CheckpointMixin:
         self._save_checkpoint(update)
         self._save_roster_json()
 
+    def save_final_checkpoint(self) -> None:
+        """Persist training state before the process exits, if it is not already on disk.
+
+        The scheduled saver runs at the end of an update; an interrupt arrives in
+        the middle of one. So this writes the trainer as it stands but labels it
+        with the last *completed* update, which is what a resume must restart
+        after -- labelling it with the update in progress would resume past work
+        that never finished.
+
+        Nothing is written when that update is already saved, which at a
+        checkpoint interval of one update is the ordinary case. What is left is
+        the narrow gap the scheduled saver cannot cover: a save the writer
+        skipped because the previous one was still running.
+
+        Synchronous by necessity. The save threads are daemons, so a write that
+        is not joined here dies unfinished when the process exits.
+        """
+        if self._completed_update <= 0:
+            return
+        # A zero interval turns checkpointing off, and exiting is not a reason to
+        # overrule that.
+        if self._schedule_state.checkpoint_interval <= 0:
+            return
+        ckpt_dir = Path(self.cfg.checkpoint_dir) / self.run_name
+        if (ckpt_dir / f"step_{self._global_step:012d}.pt").exists():
+            return
+        # Clears the thread slot, so the save below is dispatched rather than
+        # dropped as a collision with a write that is already running.
+        self._wait_for_checkpoint_saves()
+        self._save_checkpoint(self._completed_update)
+        self._wait_for_checkpoint_saves()
+        self._save_roster_json()
+
     def _maybe_save_best_checkpoints(self) -> None:
         """Overwrite the best-model checkpoints (live, then avg) when the rating improves.
 
@@ -717,6 +750,9 @@ class CheckpointMixin:
         self._eval_window_live_vs_avg = deque(ckpt["eval_window_live_vs_avg"], maxlen=window)
         self._global_step = ckpt["global_step"]
         self._start_update = ckpt["update"] + 1
+        # An interrupt before the resumed run finishes an update of its own has
+        # nothing newer to write than the file it just loaded.
+        self._completed_update = ckpt["update"]
         self._elapsed_train_time = ckpt["elapsed_train_time"]
         self._ship_steps = ckpt["ship_steps"]
         self._grad_tokens = ckpt["grad_tokens"]

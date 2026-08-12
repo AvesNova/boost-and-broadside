@@ -6,6 +6,7 @@ only surfaces later as a diverged resume or a NaN with no traceable origin.
 """
 
 import dataclasses
+import threading
 from pathlib import Path
 
 import pytest
@@ -769,6 +770,124 @@ class TestCheckpointRetention:
         remaining = sorted(p.name for p in ckpt_dir.glob("step_*.pt"))
         expected_steps = [1, *range(4, _KEEP_LAST_N_CHECKPOINTS + 4)]
         assert remaining == [f"step_{s:012d}.pt" for s in expected_steps]
+
+    def test_save_is_skipped_while_the_previous_write_is_in_flight(self, tmp_path):
+        """Saving every update means a save can land while the last one is still
+        writing. The new one is dropped rather than queued, and the step it would
+        have written is simply absent -- the next update writes the next step."""
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        ckpt_dir = Path(tmp_path) / trainer.run_name
+        release = threading.Event()
+        in_flight = threading.Thread(target=release.wait, daemon=True)
+        in_flight.start()
+        trainer._active_save_thread = in_flight
+
+        trainer._global_step = 7
+        trainer._save_checkpoint(update=7)
+        assert not list(ckpt_dir.glob("step_*.pt"))
+
+        release.set()
+        in_flight.join(timeout=60)
+        trainer._global_step = 8
+        _save_checkpoint_and_join(trainer, update=8)
+        assert [p.name for p in ckpt_dir.glob("step_*.pt")] == ["step_000000000008.pt"]
+
+
+class TestFinalCheckpoint:
+    """An interrupted run has to leave behind something resumable.
+
+    Before this, ``shutdown`` waited for in-flight writes and exited, so a run
+    stopped between scheduled saves discarded every update since the last one.
+
+    The shared test schedule sets a checkpoint interval of zero, which turns
+    checkpointing off, so each case that expects a file has to switch it on.
+    """
+
+    @staticmethod
+    def _interrupted_at(tmp_path, *, global_step: int, completed_update: int):
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        trainer._schedule_state.checkpoint_interval = 1
+        trainer._global_step = global_step
+        trainer._completed_update = completed_update
+        return trainer
+
+    def test_final_save_writes_the_last_completed_update(self, tmp_path):
+        trainer = self._interrupted_at(tmp_path, global_step=4096, completed_update=12)
+
+        trainer.save_final_checkpoint()
+
+        ckpt_dir = Path(tmp_path) / trainer.run_name
+        written = ckpt_dir / "step_000000004096.pt"
+        assert written.exists()
+        assert not list(ckpt_dir.glob("*.tmp")), "writer was not joined before returning"
+        assert torch.load(written, map_location="cpu", weights_only=False)["update"] == 12
+        assert (ckpt_dir / "roster.json").exists()
+
+    def test_final_save_is_a_no_op_when_the_step_is_already_saved(self, tmp_path):
+        trainer = self._interrupted_at(tmp_path, global_step=4096, completed_update=12)
+        _save_checkpoint_and_join(trainer, update=12)
+        written = Path(tmp_path) / trainer.run_name / "step_000000004096.pt"
+        before = written.stat().st_mtime_ns
+
+        trainer.save_final_checkpoint()
+
+        assert written.stat().st_mtime_ns == before
+
+    def test_final_save_writes_nothing_before_the_first_update_completes(self, tmp_path):
+        """An interrupt during startup or the first rollout has no consistent
+        state to record: the run has advanced the step counter but has not
+        carried a single update through."""
+        trainer = self._interrupted_at(tmp_path, global_step=512, completed_update=0)
+
+        trainer.save_final_checkpoint()
+
+        assert not list(Path(tmp_path).rglob("step_*.pt"))
+
+    def test_final_save_honours_checkpointing_being_switched_off(self, tmp_path):
+        """A zero interval means this run does not write checkpoints, and the
+        exit path is not an exception to that."""
+        trainer = self._interrupted_at(tmp_path, global_step=4096, completed_update=12)
+        trainer._schedule_state.checkpoint_interval = 0
+
+        trainer.save_final_checkpoint()
+
+        assert not list(Path(tmp_path).rglob("step_*.pt"))
+
+    def test_final_save_dispatches_after_an_in_flight_write_finishes(self, tmp_path):
+        """``_run_async_save`` drops a save that collides with a running one, so
+        the final save has to wait the writer out rather than be skipped by it."""
+        trainer = self._interrupted_at(tmp_path, global_step=4096, completed_update=12)
+        release = threading.Event()
+        in_flight = threading.Thread(target=release.wait, daemon=True)
+        in_flight.start()
+        trainer._active_save_thread = in_flight
+
+        finished = threading.Event()
+        threading.Thread(
+            target=lambda: (trainer.save_final_checkpoint(), finished.set()), daemon=True
+        ).start()
+        assert not finished.wait(timeout=0.5), "returned without waiting for the running write"
+        release.set()
+        assert finished.wait(timeout=60)
+
+        assert (Path(tmp_path) / trainer.run_name / "step_000000004096.pt").exists()
+
+    def test_resume_after_a_final_save_restarts_on_the_next_update(self, tmp_path):
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = self._interrupted_at(tmp_path, global_step=4096, completed_update=12)
+        trainer.save_final_checkpoint()
+
+        resumed = _make_trainer(checkpoint_dir=str(tmp_path))
+        resumed.load_checkpoint(str(Path(tmp_path) / trainer.run_name / "step_000000004096.pt"))
+
+        assert resumed._start_update == 13
+        # Interrupting again before finishing update 13 must not claim update 13.
+        assert resumed._completed_update == 12
 
 
 class TestBestCheckpoints:
