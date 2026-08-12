@@ -47,7 +47,7 @@ sample sizes, raw artifacts, and limitations behind these measurements.
 
 A one-billion-step training run completed in 7.5 hours on a single RTX 5090. Post-hoc
 calibration places the final checkpoint at about **1772 Elo** on a scale that fixes the
-scripted controller at 1000 — a lead of roughly **772 points**, where 400 points
+scripted controller at 1000, a lead of roughly **772 points**, where 400 points
 already means ten-to-one odds.
 
 ![Post-hoc calibrated Elo over training](docs/results/elo_curve.png)
@@ -62,8 +62,8 @@ procedure, exact values, and uncertainty.
 
 ![YemongPolicy architecture: entity tokens through spatial attention and temporal recurrence to per-ship heads](docs/policy_architecture.png)
 
-One trunk processes the whole fleet as entity tokens — attention mixes across ships
-within a timestep, Griffin recurrence carries each ship through time — and every head
+One trunk processes the whole fleet as entity tokens, with attention mixing across ships
+within a timestep and Griffin recurrence carrying each ship through time. Every head
 emits one output per ship, however many there are.
 
 - The [environment and physics engine](docs/environment.md) runs thousands of tensorized

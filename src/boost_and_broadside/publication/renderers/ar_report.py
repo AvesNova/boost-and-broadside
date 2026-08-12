@@ -550,7 +550,7 @@ def _write_markdown_report(
     if num_ships > 2:
         add("## 2D Trajectory Map (All Ships)\n")
         add("![Trajectory Map](2d_map.png)\n\n")
-        add("## 2D Trajectory Map (Featured Ships — Centered)\n")
+        add("## 2D Trajectory Map (Featured Ships, Centered)\n")
         add("![Trajectory Map Ship 0](2d_map_ship0.png)\n\n")
     else:
         add("## 2D Trajectory Map\n")

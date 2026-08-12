@@ -8,7 +8,7 @@ learning setup, see [training](training.md).
 
 - Python 3.13 or newer;
 - [`uv`](https://docs.astral.sh/uv/) for environment and dependency management;
-- Git LFS for historical reference checkpoints (`*.pt`) — not needed to train from
+- Git LFS for historical reference checkpoints (`*.pt`), not needed to train from
   scratch. These weights predate the refractive-field observation schema and are retained
   as result artifacts, not as loadable weights for the current encoder;
 - `ffmpeg` only when generating MP4/GIF replay assets;
@@ -74,7 +74,7 @@ Play mode has no match timer and starts a new match as soon as either ship dies.
 ships. Human controls are WASD for flight, Shift for sharp turns, and Space to shoot. Agent specs
 accepted by `--team0` and `--team1` include `null` (human in watch mode), `random`,
 `scripted`, an explicit checkpoint path, and the named scripted controllers listed by
-`bnb watch --help`. There is no implicit or `latest` checkpoint selection.
+`bnb watch --help`. A checkpoint is always named explicitly.
 
 ## Train
 
@@ -112,7 +112,7 @@ uv run bnb train --profile rl \
 
 `--resume` and `--pretrain-from` are mutually exclusive. Resume always takes a value:
 either an explicit `.pt` path or an exact run name whose greatest numeric `step_*.pt`
-checkpoint should be selected. Training never defaults to RL.
+checkpoint should be selected.
 
 ### Fitting the launch to a GPU
 
@@ -129,13 +129,13 @@ uv run bnb train --profile rl --vram off      # the profile's own sizing, nothin
 `auto` is the default. It uses a stored measurement only when that measurement was taken
 on this exact GPU, software stack, compile mode, and profile; otherwise it leaves the
 profile's derived sizing alone and says so. `probe` measures the machine if it has not
-already, `reprobe` measures it again, and both write `.vram.json` — a gitignored local
-cache, not an artifact. Probing runs one real training update per candidate in its own
+already, `reprobe` measures it again, and both write `.vram.json`, a gitignored local
+cache rather than an artifact. Probing runs one real training update per candidate in its own
 subprocess, so it takes minutes, and it needs a CUDA device.
 
 A numeric preset (`8|16|24|32`, in GB) is a starting point rather than a measurement of
 your card: only the 8 GB row was measured, and applying any row is reported as
-`provisional`. `--print-config` shows the whole decision — which knobs moved, what
+`provisional`. `--print-config` shows the whole decision: which knobs moved, which
 equivalence tier each one belongs to, and the resolved shard count.
 
 Explicit `--num-envs` and `--microbatch-tokens` outrank whatever `--vram` proposes, and
@@ -187,7 +187,7 @@ uv run bnb collect-stats \
 uv run bnb elo-calibrate \
   --run resilient-resonance-682
 
-# Bradley--Terry calibration for any explicit stationary agent field
+# Bradley-Terry calibration for any explicit stationary agent field
 uv run bnb elo-calibrate \
   --agents scripted random checkpoints/<run>/<checkpoint>.pt
 
@@ -209,11 +209,11 @@ uv run bnb crossover \
 
 Every evaluation writes a versioned artifact rather than a file of its own choosing.
 A measurement about one exact run lands in `checkpoints/<run>/artifacts/<type>/<id>/`;
-one with no single owning run — an explicit `--agents` field, or a ladder fitted for a
-training profile — lands in `artifacts/<type>/<id>/`. Each directory holds `result.json`
+one with no single owning run, such as an explicit `--agents` field or a ladder fitted for a
+training profile, lands in `artifacts/<type>/<id>/`. Each directory holds `result.json`
 (the aggregates every report is built from) beside `artifact.json` (the recipe, the exact
 subjects and their hashes, and the code, dependency, and device provenance behind them).
-Resumable sweeps — `elo-scale`, `semi-random`, `crossover` — continue the artifact for
+Resumable sweeps (`elo-scale`, `semi-random`, `crossover`) continue the artifact for
 their exact recipe and start a new one for any other. These evaluations can require
 substantial GPU time, and the reference-run measurements are already included.
 Methodology and interpretation are in [evaluation and results](evaluation.md).
@@ -221,10 +221,10 @@ Methodology and interpretation are in [evaluation and results](evaluation.md).
 The `--profile` form of `semi-random` measures the ladder under a training profile's
 environment rather than a finished run's. It is a check, not a prerequisite: training
 assigns each rung `1000·p` outright, so nothing has to be fitted before a profile can run.
-What the artifact adds is `live_gauge_error` per rung — how far the ratings training uses
+What the artifact adds is `live_gauge_error` per rung: how far the ratings training uses
 sit from the ones the tournament measures in that exact environment. Fitted ratings are a
 property of the environment they play in, so re-measure whenever the tick rate, field
-count, ship config, fleet size or scripted controller moves — see
+count, ship config, fleet size or scripted controller moves; see
 [the reference ladder](training.md#the-reference-ladder).
 
 ## Capture replays

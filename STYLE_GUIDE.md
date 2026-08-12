@@ -19,7 +19,7 @@ This document defines the coding standards for the **Boost and Broadside** proje
 *   **Tooling (binding)**: Formatting and linting are enforced by ruff, configured under
     `[tool.ruff]` in `pyproject.toml` (line length 100; rule sets `E`, `F`, `I`, `UP`).
     Run `uv run ruff check .` and `uv run ruff format .` before
-    committing — a clean check is expected, not aspirational.
+    committing; a clean check is expected, not aspirational.
 *   **Whitespace**:
     *   Two blank lines between top-level definitions (classes, functions).
     *   One blank line between methods inside a class.
@@ -60,7 +60,7 @@ We follow the **Google Style** for docstrings.
     *   **Args**: List each argument, its type (if not obvious), and description.
     *   **Returns**: Describe the return value.
     *   **Raises**: List exceptions that are explicitly raised.
-*   **Never hardcode counts in prose** (component counts, test counts, step totals) —
+*   **Never hardcode counts in prose** (component counts, test counts, step totals):
     they rot. Point at the source of truth instead (e.g. "one head per entry in
     `REWARD_COMPONENT_NAMES`" rather than "the 21 heads").
 
@@ -105,7 +105,7 @@ We use `@dataclass(frozen=True)` for all configuration. No Hydra, no OmegaConf.
     *   *Good*: `reward = damage * config.damage_weight`
 *   **No Defaults for Active Hyperparameters**: Training, model, and reward configs must not default values that shape training. Every active hyperparameter must be explicitly specified in its module under `src/boost_and_broadside/profiles/`.
     *   *Bad*: `learning_rate: float = 3e-4`
-    *   *Good*: `learning_rate: float  # required — set in the run profile`
+    *   *Good*: `learning_rate: float  # required, set in the run profile`
     *   **Carve-out**: fields that *disable* an optional feature may default to the
         disabled value (`0.0` / `None` / empty). Example: `obstacle_cache: ObstacleCacheConfig | None = None`.
         The moment a feature is active, its values must be explicit.
@@ -121,7 +121,7 @@ class TrainConfig:
     num_envs: int          # no default
     gamma: float           # no default
 
-# training profile (src/boost_and_broadside/profiles/*.py) — all active values explicit
+# training profile (src/boost_and_broadside/profiles/*.py): all active values explicit
 cfg = TrainConfig(learning_rate=3e-4, num_envs=64, gamma=0.99)
 ```
 
@@ -133,16 +133,16 @@ Every non-trivial tensor must have a shape comment on the line it is created or 
     `M` = num_fields (entity tokens are `N+M`), `T` = time/steps, `D` = feature dim,
     `H` = heads, `K` = bullets in `env/`, reward components in `train/`.
 *   The rollout buffer stores `T+1` observation steps (the extra final observation feeds
-    aux-loss label computation) — annotate those tensors as `(T+1, B, ...)`.
+    aux-loss label computation), so annotate those tensors as `(T+1, B, ...)`.
 *   Put the comment inline for short lines, above for complex reshapes.
 *   **Shape comments are code**: when a tensor's shape changes, its comment changes in
     the same commit. A stale shape comment is a bug, not a nit.
 
 ```python
 x = self.encoder(obs)                              # (B, N, D)
-x = x.unsqueeze(1)                                 # (B, 1, N, D) — add time dim
-x = x.reshape(B * N, T, self.d_model)              # (B*N, T, D) — flatten for GRU
-attn_mask = alive.unsqueeze(1).unsqueeze(2)        # (B, 1, 1, N) — broadcast over heads
+x = x.unsqueeze(1)                                 # (B, 1, N, D) add time dim
+x = x.reshape(B * N, T, self.d_model)              # (B*N, T, D) flatten for GRU
+attn_mask = alive.unsqueeze(1).unsqueeze(2)        # (B, 1, 1, N) broadcast over heads
 ```
 
 ### 6.5. GPU / PyTorch Rules
@@ -154,7 +154,7 @@ attn_mask = alive.unsqueeze(1).unsqueeze(2)        # (B, 1, 1, N) — broadcast 
 *   **Avoid Python loops over batch dims**: Use tensor operations. If you find yourself writing `for i in range(num_envs):`, that is a red flag.
 *   **Device discipline**: Every tensor must be on the correct device from creation. Pass `device` explicitly. Never rely on implicit CPU fallback.
 *   **In-place ops**: Prefer in-place tensor writes (e.g., `self._ep_reward.masked_fill_(done, 0.0)`) for large, long-lived preallocated buffers to avoid allocations, but be careful with autograd.
-    *   **Carve-out — `TensorState` physics fields**: advance these by *reassignment* (`state.x = f(state.x)`), never in-place mutation. The reward-shaping snapshot (`_make_prev_state_proxy`) aliases the pre-step tensors and depends on reassignment leaving them untouched; an in-place write would silently corrupt it (see `TensorState`'s docstring). The in-place preference above applies to buffers nothing snapshots — wrapper episode accumulators, the preallocated observation buffer, and per-step scratch fields like `damage_matrix`.
+    *   **Carve-out, `TensorState` physics fields**: advance these by *reassignment* (`state.x = f(state.x)`), never in-place mutation. The reward-shaping snapshot (`_make_prev_state_proxy`) aliases the pre-step tensors and depends on reassignment leaving them untouched; an in-place write would silently corrupt it (see `TensorState`'s docstring). The in-place preference above applies to buffers nothing snapshots: wrapper episode accumulators, the preallocated observation buffer, and per-step scratch fields like `damage_matrix`.
 
 ### 6.6. Classes vs. Functions
 *   **Use Classes** when you need to maintain state or bundle data with behavior.
@@ -192,7 +192,7 @@ attn_mask = alive.unsqueeze(1).unsqueeze(2)        # (B, 1, 1, N) — broadcast 
     every observation channel enters the network through a `Feature` (accessor +
     input encoder + optional target encoder/predictor) registered in
     `build_standard_coordinator()`.
-*   New observation inputs or aux-prediction targets are added there — never by
+*   New observation inputs or aux-prediction targets are added there, never by
     hand-rolling encodings in model or mode code. Dimensions (encoder input, aux target,
     aux prediction) are always derived from the coordinator, never hardcoded.
 

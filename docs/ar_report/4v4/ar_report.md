@@ -5,7 +5,7 @@ This report compares the ground truth simulation with closed-loop (forced action
 ## 2D Trajectory Map (All Ships)
 ![Trajectory Map](2d_map.png)
 
-## 2D Trajectory Map (Featured Ships — Centered)
+## 2D Trajectory Map (Featured Ships, Centered)
 ![Trajectory Map Ship 0](2d_map_ship0.png)
 
 ## 2D Velocity Space Map

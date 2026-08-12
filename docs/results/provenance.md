@@ -19,7 +19,7 @@ reading; the artifact directory holds the full recipe and provenance.
 | `docs/results/semi_random_connectivity.png` | semi-random-connectivity-v1 | ladder=checkpoints/resilient-resonance-682/artifacts/semi-random-ladder/20260811T101433Z-a4ff2d80 (37073b811425) | How informative each step of the random-to-scripted ladder is. |
 | `docs/ar_report/4v4` | ar-report-v1 | ar_report=checkpoints/resilient-resonance-682/artifacts/ar-report/20260811T162325Z-c36da470 (f2ffe3295982) | Closed- and open-loop imagined rollouts against ground truth, 4v4. |
 | `docs/noise_calibration` | noise-calibration-v1 | noise=checkpoints/resilient-resonance-682/artifacts/noise-calibration/20260811T162950Z-3c0bca32 (a48ec15cc60d) | Next-state prediction error: sigma, autocorrelation, and AR growth. |
-| `docs/policy_architecture.png` | external-asset-v1 | — | Policy architecture diagram; drawn by hand, with no producer in this repository. |
+| `docs/policy_architecture.png` | external-asset-v1 | none | Policy architecture diagram; drawn by hand, with no producer in this repository. |
 | `docs/results/replays/self_16v16_seed00.gif` | media-copy-v1 | clip=out/self_16v16_seed00.gif (5ca87de8a577) | Curated seeded replay: self 16v16 seed00. |
 | `docs/results/replays/self_2v2_seed00.gif` | media-copy-v1 | clip=out/self_2v2_seed00.gif (e51b7f82e56d) | Curated seeded replay: self 2v2 seed00. |
 | `docs/results/replays/self_32v32_seed00.gif` | media-copy-v1 | clip=out/self_32v32_seed00.gif (ce61f461ca57) | Curated seeded replay: self 32v32 seed00. |

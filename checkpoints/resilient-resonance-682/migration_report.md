@@ -1,4 +1,4 @@
-# Landmark checkpoint migration — `resilient-resonance-682`
+# Landmark checkpoint migration: `resilient-resonance-682`
 
 One-time offline migration of the complete landmark checkpoint set into the schemas frozen by `S14R`. Produced by `scripts/migrate_682.py`; this file is the record the plan's phase 10 requires.
 
@@ -11,10 +11,10 @@ One-time offline migration of the complete landmark checkpoint set into the sche
 
 Every value below comes from the run's own recorded data or from the stored
 tensors. Nothing is a placeholder, and `resolved_config` and `launch` are
-omitted rather than invented — both are optional in the frozen schema and
+omitted rather than invented. Both are optional in the frozen schema and
 neither was ever recorded for this run.
 
-- `paradigm`: `ego_pass` — from the run's own `train_config["paradigm"]`.
+- `paradigm`: `ego_pass`, from the run's own `train_config["paradigm"]`.
 - `model_config`: `{'d_model': 128, 'n_heads': 4, 'n_yemong_blocks': 2, 'n_spatial_per_block': 1, 'n_temporal_per_block': 1, 'encoder_split': False, 'n_bullet_cross_per_block': 0, 'bullet_encoder_hidden': 64, 'grad_checkpoint': False}`
 - `env_config`: `{'num_ships': 8, 'max_bullets': 20, 'max_episode_steps': 1024, 'num_fields': 0, 'single_team': False, 'action_repeat': 1, 'spawn_resource_spread': 0.0}`
 - `ship_config`: the training commit's `SHIP_CONFIG`, re-expressed in the current
@@ -26,9 +26,9 @@ neither was ever recorded for this run.
 Values the current schema requires that the run never recorded. Each takes its
 dataclass default, which is the absence of a choice rather than a measured one:
 
-- `model_config.bullet_encoder_hidden` — inert while `n_bullet_cross_per_block=0`.
-- `model_config.grad_checkpoint` — a backward-pass memory setting, not architecture.
-- `ship_config.bullet_drag_coeff`, `ship_config.bullet_field_damage_scale`, `ship_config.bullet_field_integration_substeps`, `ship_config.bullet_field_integrator`, `ship_config.field_index_step`, `ship_config.field_integration_substeps`, `ship_config.field_integrator`, `ship_config.field_interface_damage`, `ship_config.field_radius_max`, `ship_config.field_radius_min`, `ship_config.field_transition_width_max`, `ship_config.field_transition_width_min` — refractive-field and bullet-drag physics, none of which existed at the training commit. The run has `num_fields=0`, and the four of these the feature pipeline reads scale only the zero-weighted encoder columns, so no value of theirs can reach these weights.
+- `model_config.bullet_encoder_hidden`: inert while `n_bullet_cross_per_block=0`.
+- `model_config.grad_checkpoint`: a backward-pass memory setting, not architecture.
+- `ship_config.bullet_drag_coeff`, `ship_config.bullet_field_damage_scale`, `ship_config.bullet_field_integration_substeps`, `ship_config.bullet_field_integrator`, `ship_config.field_index_step`, `ship_config.field_integration_substeps`, `ship_config.field_integrator`, `ship_config.field_interface_damage`, `ship_config.field_radius_max`, `ship_config.field_radius_min`, `ship_config.field_transition_width_max`, `ship_config.field_transition_width_min`: refractive-field and bullet-drag physics, none of which existed at the training commit. The run has `num_fields=0`, and the four of these the feature pipeline reads scale only the zero-weighted encoder columns, so no value of theirs can reach these weights.
 
 Fields the training commit defined that the current schema does not, and which
 are therefore dropped rather than carried:
@@ -38,7 +38,7 @@ are therefore dropped rather than carried:
 - `ship_config.obstacle_gravity_harmonic`
 - `ship_config.obstacle_radius_max`
 - `ship_config.obstacle_radius_min`
-- `env_config.num_obstacles` — the run set it to 0, so nothing is lost.
+- `env_config.num_obstacles`: the run set it to 0, so nothing is lost.
 
 ## Value-component mapping
 
@@ -147,9 +147,9 @@ trained with one of each.
   - `(none)` None -> `yemong_layers.1.field_sub.0.weight` [128, 128]: introduced as identity (no legacy counterpart; inert with num_fields=0)
 
 The list above is identical in every one of the sixteen files, so only the first
-is shown here. The complete per-tensor mapping for every file — including the
+is shown here. The complete per-tensor mapping for every file, including the
 69 tensors that are renamed or copied unchanged, and the per-parameter optimizer
-index mapping for the two resumable files — is in `migration_report.json` beside
+index mapping for the two resumable files, is in `migration_report.json` beside
 this file.
 
 ## Validation
@@ -186,7 +186,7 @@ went from k=58 to k=66, which reorders the accumulation of the terms that surviv
   their complete Adam state and its recorded hyperparameters (`lr=1e-4`,
   `eps=1e-5`) across the rename, so they satisfy the frozen resumable contract.
   Actually continuing the run additionally needs a profile whose reward vocabulary
-  matches the historical one, which no longer exists — the current registry splits
+  matches the historical one, which no longer exists: the current registry splits
   two of these eleven components. These files are complete and loadable; they are
   not a resumable path back into today's training system.
 - **`train_config` is kept verbatim**, in the historical schema. It is the record

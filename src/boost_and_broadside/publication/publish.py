@@ -535,7 +535,10 @@ def _index_row(entry: PublicationEntry, digests: dict[str, str]) -> str:
         for name, source in sorted(entry.files.items())
     )
     joined = ", ".join(part for part in (sources, promoted) if part)
-    return f"| `{entry.output}` | {entry.renderer_name} | {joined or '—'} | {entry.description} |"
+    return (
+        f"| `{entry.output}` | {entry.renderer_name} "
+        f"| {joined or 'none'} | {entry.description} |"
+    )
 
 
 def _write_generated_index(

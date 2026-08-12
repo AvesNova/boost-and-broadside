@@ -38,12 +38,12 @@ Consequences that drive everything below:
 Oldest first. Each entry records *why*, because the reasoning is
 harder to recover than the diff.
 
-### `8f8e612` — advantage scaler floor
+### `8f8e612`: advantage scaler floor
 
 `AdvantageScaler.min_rms` defaulted to 0.1 with no config path, against true
 per-component advantage RMS of 0.0075 (win) to 0.27 (damage). The floor bound
 permanently on **six of eleven** components, so `normalize()` divided them by the
-guard rather than their own statistics — exactly what the scaler exists to
+guard rather than their own statistics, exactly what the scaler exists to
 prevent. Win components were taking ~22% of the policy gradient against the ~62%
 their weights ask for.
 
@@ -53,22 +53,22 @@ lambda aggregation, so this changes the mix, not the scale. Verified against
 `--smoke`: total loss unchanged at 8.2.
 
 **`return_min_span` was deliberately left at 1.0** at the time. Lowering it was
-not the same kind of fix — `ReturnScaler` divides the whole return distribution by
+not the same kind of fix: `ReturnScaler` divides the whole return distribution by
 a robust p5–p95 half-span, so sparse components with heavy tails produce very
 large normalized targets and the squared value loss follows. Measured **~11× on
 `loss/value` at production spans and ~400× in `--smoke`**, which against
 `max_grad_norm=1.0` (grad norm 0.65) would make clipping bind every step and
-silently cut the effective learning rate. **Resolved by `62da40d`** — the
+silently cut the effective learning rate. **Resolved by `62da40d`**: the
 categorical critic's loss is bounded per sample and scale-free in the target, so
 the floor is back to a 1e-3 epsilon.
 
-### `c6610b2` — unified opponent league
+### `c6610b2`: unified opponent league
 
 Three opponent env groups were each sized at their peak scheduled fraction and
 then only ever switched fully on or off, so `scripted_fraction` stepping 0.5 →
 0.3 at 50M **never actually stepped down**. The reference run trained against
 scripted in 50% of envs for its whole length with self-play at 10% rather than
-30% — and by then the scripted matchup sat at a 100% win rate, so half the batch
+30%, and by then the scripted matchup sat at a 100% win rate, so half the batch
 produced no outcome signal.
 
 Replaced with self-play plus one league whose width is a single `league_fraction`,
@@ -79,15 +79,15 @@ Two more bugs fixed here: the `avg` entry's rating was set once at creation and
 **never updated**, and a bullet-reading league entry in a bullet-free run *raised
 mid-rollout* instead of being retired.
 
-### `11a00ea` — GAE truncation and conv-buffer boundaries
+### `11a00ea`: GAE truncation and conv-buffer boundaries
 
 **C1:** GAE keyed its non-terminal mask on physics `dones`, but the wrapper
 auto-resets before returning the observation, so a *truncated* episode
 bootstrapped off the freshly spawned one. At γ=0.999 that leaked the length of
 the trace. Now keyed on `terminated`.
 
-**C2:** `reset_hidden_for_envs` zeroes the whole packed hidden — RG-LRU state
-*and* conv buffer — but `forward_sequence` applied `done_mask` only inside the
+**C2:** `reset_hidden_for_envs` zeroes the whole packed hidden (RG-LRU state
+*and* conv buffer), but `forward_sequence` applied `done_mask` only inside the
 RG-LRU, so re-evaluation read the previous episode's inputs for `CONV_KERNEL-1`
 steps after every boundary and the PPO ratio was wrong there. The boundary mask
 depends on the output step **and** the tap's lag, so no input-side mask expresses
@@ -96,7 +96,7 @@ validity mask. **Verified by reverting the fix with the new test in place.**
 
 **M2:** removed the blocking `.cpu()` once per optimizer step.
 
-### `c9e2c41` — generalized measurement ladder
+### `c9e2c41`: generalized measurement ladder
 
 `MAX_ANCHORS = 2` was hardwired into a binary `torch.where` and a single-threshold
 draw, with a comment warning that raising it fails *silently*. Now a multinomial
@@ -107,7 +107,7 @@ anchors** (rotating). Stationary references cost no forward pass: every
 semi-random rung is a Bernoulli blend of the same two action tensors, so a ladder
 of any length is one scripted call plus one random call.
 
-### `33dbef4` — action repeat (20 Hz; **superseded**, now 30 Hz)
+### `33dbef4`: action repeat (20 Hz; **superseded**, now 30 Hz)
 
 **Superseded by `e467120`**: the rate is 30 Hz and the evaluation path is fixed.
 The reasoning below is the 60 Hz baseline and still holds; only the chosen rate
@@ -126,17 +126,17 @@ physics ticks. Physics, collisions and projectile integration are untouched.
 | `num_steps=128` rollout | 6.4 | 128 |
 
 At 60 Hz five of six shoot decisions were no-ops against the cooldown, and a
-128-step rollout spanned 2.1 s against a ~4.7 s episode — **BPTT never covered a
+128-step rollout spanned 2.1 s against a ~4.7 s episode, so **BPTT never covered a
 whole episode**. It now does, and a token buys three times the game time.
 
 - Rewards **summed** across held ticks (scale-preserving over fixed game time).
 - Every γ and λ re-derived as `value ** (60/20)`; horizons in seconds are now
   written down in `src/boost_and_broadside/config/defaults.py`.
-- `max_episode_steps` needed **no** change — it counts physics ticks.
+- `max_episode_steps` needed **no** change, because it counts physics ticks.
 - Spawn health/power/cooldown randomised, balanced in expectation across teams.
 - `total_timesteps` → 333M: same game time as the 1e9-step reference run.
 
-### `6f8e61e` — reference ladder and scripted-anchored gauge
+### `6f8e61e`: reference ladder and scripted-anchored gauge
 
 With only random and scripted as fixed references the live policy saturates both
 for the whole early climb, so its rating is barely identified exactly when
@@ -161,20 +161,20 @@ Gauge is now **scripted pinned at 1000**, matching post-hoc calibration, so
 normalized Elo collapses to the rating itself and the milestone grid is absolute.
 Slot 2 updates the live policy rather than scripted.
 
-### `a32e178` — scripted controller ignores fields
+### `a32e178`: scripted controller ignores fields
 
 Its stay-on-your-side steering measured **net-negative**: 2.24 interface
 crossings per thousand ship-steps against uniform-random's 1.60, and mean log
 index +0.159 against +0.108. Both occupancy artifacts (a ship at index *n* takes
-*n*× as long to cross the same ground), not decisions — the bias capped at 35% of
+*n*× as long to cross the same ground), not decisions, and the bias capped at 35% of
 turn intent and only acted within ~120 px of an interface, so pursuit overwhelmed
 it. Since crossing costs health that `field_damage_taken` penalises, BC was
 imprinting a habit RL had to unlearn.
 
 Two replacements were tried and both failed: `grad(n)` is zero throughout a flat
 core so it never reaches a ship in slow medium; the index-difference version
-measured worse still. **The metric is also confounded** — time-weighted index is
-mechanically biased toward slow media — so a *path-weighted* measure is needed
+measured worse still. **The metric is also confounded**: time-weighted index is
+mechanically biased toward slow media, so a *path-weighted* measure is needed
 before attempting this again.
 
 Field representation never depended on it: the auxiliary next-state head predicts
@@ -182,7 +182,7 @@ Field representation never depended on it: the auxiliary next-state head predict
 without locating the ship against every field, and unlike the BC weight that
 pressure never decays.
 
-### `38a5c22` — win-rate KL gate, derived aux names, tournament defaults
+### `38a5c22`: win-rate KL gate, derived aux names, tournament defaults
 
 - `high_elo_threshold` → `high_winrate_threshold` at 0.8. Both gates now read the
   raw scripted win rate, so the trust region needs no re-deriving when the gauge
@@ -191,13 +191,13 @@ pressure never decays.
   dropping `local_log_index`. Names now come from `coordinator.get_feature_names()`.
 - The old semi-random dispatcher defaulted to a hardcoded run name; `--profile rl` now.
 
-### `55eeaed` — vectorized field maps, refreshed per rollout
+### `55eeaed`: vectorized field maps, refreshed per rollout
 
 Maps came from a bank of 512 built once by a CPU loop with an `.item()` per draw;
 a full run drew each thousands of times. Generation now loops over **fields**,
 not maps or retries: every field proposes `max_generation_attempts` placements
 for all maps at once and takes the first that fits. No data-dependent control
-flow, so no host sync. **4 ms per refresh**, called at the top of every rollout —
+flow, so no host sync. **4 ms per refresh**, called at the top of every rollout,
 roughly one distinct map per episode.
 
 `validate_field_layout` costs **eight** device-to-host syncs and raises, so it
@@ -210,12 +210,12 @@ three refreshes yield 1536 distinct layouts.
 
 ---
 
-### `e467120` — evaluation rate, anchor labels, reward mix
+### `e467120`: evaluation rate, anchor labels, reward mix
 
 Four fixes from investigating a regression that was mostly instrumentation. Run
 708 (20 Hz) looked far worse than 707/705 on both charts.
 
-**The eval-rate bug — the serious one.** `action_repeat` was honoured only in
+**The eval-rate bug, the serious one.** `action_repeat` was honoured only in
 `YemongEnvWrapper.step`. The Elo battery and every evaluation mode step
 `TensorEnv` directly, so **708 trained at 20 Hz and was evaluated at 60 Hz**, and
 its reference ladders were rated at 60 Hz regardless of profile. A policy holding
@@ -227,11 +227,11 @@ for the game clock. It still plays, just far worse, and nothing says why.
 **The anchor-label bug.** `eval/win_rate_vs_random`, then named
 `elo/training_vs_random`, classified slot-0 games by
 whether the anchor carried weights, but *every* stationary reference is
-policy-free — random, all nine rungs, and scripted. The whole ladder landed in
+policy-free: random, all nine rungs, and scripted. The whole ladder landed in
 the random bucket, so the chart reported the win rate against an
 information-weighted mix of near-level opponents (~0.85) while
-`matches/random/win_rate` was **1.000**. The apparent intransitivity — beating
-random 85% while beating scripted 70%, with scripted beating random 99% — was
+`matches/random/win_rate` was **1.000**. The apparent intransitivity, beating
+random 85% while beating scripted 70% with scripted beating random 99%, was
 entirely this.
 
 **Win weights 4.0 → 1.5.** With `AdvantageScaler` normalizing every component to
@@ -249,7 +249,7 @@ so the policy cannot adapt and any change is the environment alone:
 
 20 Hz gave up 10% for a third of the tokens; 30 Hz gives up 5% for half.
 
-**Resource metrics added** — `physics/mean_power`, `mean_speed`,
+**Resource metrics added**: `physics/mean_power`, `mean_speed`,
 `out_of_power_fraction`. The learned policy runs at **34.8/100 mean power with
 7.8% of live ship-steps at zero**, against scripted's 56.2 and 1.2%. It is *not*
 slower than random (97.0 vs 46.4 px/s); random is the slow one.
@@ -257,7 +257,7 @@ slower than random (97.0 vs 46.4 px/s); random is the slow one.
 Run 708 is **uninterpretable** as evidence about the tick rate or the reward mix:
 two measurement bugs were active throughout it.
 
-### Block C — categorical critic — **tried and reverted**
+### Block C: categorical critic (**tried and reverted**)
 
 Shipped as `ec3463a` (drop TeamPMA), `62da40d` (categorical critic),
 `bd0c215` (merge the win pair), then `a5cb5dd` (rebalance the value
@@ -276,7 +276,7 @@ logging fix and the actor/critic gradient instrument.
 **The premise was wrong.** The block was justified by a 281× ratio in
 `critic/value_loss` between `ally_win` and the dense components, read as an
 undertrained win baseline. That ratio is what target compression does to a
-*squared* loss even with a perfect critic — c=23 compression gives c²=526 —
+*squared* loss even with a perfect critic, since c=23 compression gives c²=526,
 and it carries no information about fit quality. The metric that does is
 scale-free, and `ally_win`'s explained variance in 709 was **0.88**. There
 was never an underfit baseline to fix.
@@ -286,13 +286,13 @@ was never an underfit baseline to fix.
 headroom (`field_death` 0.49→0.80, `kill_assist` 0.46→0.68) and flat on the
 other ten, which were already at 0.85–0.98. The policy was 65 Elo and 9
 win-rate points *worse*. **Improving a component's baseline does not imply a
-better policy** — that is the finding worth keeping.
+better policy**, and that is the finding worth keeping.
 
 **Three controls were broken, in sequence:**
 
 1. **Representation.** The ±5 bin support was sized from a z-distribution
    measured on a checkpoint whose scaler still had `min_span=1.0`, then the
-   same commit dropped the floor — changing the distribution it was sized
+   same commit dropped the floor, changing the distribution it was sized
    against by up to 73×. For a sparse component the p5–p95 span measures the
    noise floor of nothing happening (`field_death`: central 90% spans 0.0009,
    events reach −0.12), so events landed at |z| up to 2000 and all encoded to
@@ -305,7 +305,7 @@ better policy** — that is the finding worth keeping.
    gives actor 0.68 / critic 0.73 under MSE (total 1.00 vs observed 0.98) and
    actor 0.68 / critic 2.51 under CE (total 2.60 vs observed 2.58). Against
    `max_grad_norm=1.0` the actor's share fell 68% → 26%. Run 712 corrected it
-   — gradient norm and share both landed on target — and Elo got *worse*. The
+   (gradient norm and share both landed on target) and Elo got *worse*. The
    mechanism was real and was not the cause.
 3. **TeamPMA.** `ec3463a` removed the attention-pooled win head on the
    argument that "the trunk already runs spatial attention, so a ship's
@@ -316,7 +316,7 @@ better policy** — that is the finding worth keeping.
    run that lost to 709 was missing it.** Perfectly confounded with the critic
    change across all three runs, and never isolated.
 
-**Kept:** the EV logging fix (`93a4638` — explained variance was gated on the
+**Kept:** the EV logging fix (`93a4638`, where explained variance was gated on the
 final epoch *index*, so the whole family was silently dropped whenever
 `target_kl` broke the loop early, losing ~4% of points biased toward the
 updates where the policy moved furthest), and `train/actor_grad_share`, which
@@ -327,20 +327,20 @@ makes control 2 visible on update 1 instead of three runs later.
 
 | run | config | Elo @80–100M | vs 709 |
 |---|---|---:|---:|
-| `iconic-shadow-709` | MSE + TeamPMA | 1221 | — |
+| `iconic-shadow-709` | MSE + TeamPMA | 1221 | n/a |
 | `sage-silence-713` | MSE, **no TeamPMA** | 1185 | **−35** |
 | `charmed-moon-711` | CE, no TeamPMA | 1156 | −65 |
 | `youthful-spaceship-712` | CE, no TeamPMA, coef 0.29 | 1103 | −117 |
 
 Two conclusions, both from matched comparisons rather than inference:
 
-1. **TeamPMA is load-bearing** — worth ~35 Elo on its own, about a third of
+1. **TeamPMA is load-bearing**, worth ~35 Elo on its own, about a third of
    the gap. It is not the redundant re-derivation the removal argued it was.
    Restored, and it stays.
 2. **The categorical critic was independently negative.** 713 and 711 differ
    only in the critic (plus the win merge), both without TeamPMA, and CE is
    29 Elo worse against that matched baseline. So the Block C verdict does
-   *not* need re-reading — the confound was real, and so was the effect it was
+   *not* need re-reading: the confound was real, and so was the effect it was
    hiding. Both changes were bad, which is why 711 looked twice as bad as
    either.
 
@@ -353,7 +353,7 @@ would have cost one had TeamPMA been tested separately, as its own
 Two distinct failure modes. The first is the earlier pair of regressions; the
 second is Block C, which failed a different way and more expensively.
 
-### Shape 1 — a representation changed and its consumers were not audited
+### Shape 1: a representation changed and its consumers were not audited
 
 - Making scripted and the rungs *stationary references* (`policy=None`) was
   correct. But `anchor_is_random` had encoded "stationary" as "policy-free", and
@@ -370,13 +370,13 @@ numbers. Generalisable guards:
 2. Prefer making the default correct (`TensorEnv.step` honours the repeat; the
    one caller needing otherwise opts out loudly) over making every caller
    remember.
-3. Derive labels and counts from the source of truth rather than restating them —
+3. Derive labels and counts from the source of truth rather than restating them;
    the same class of bug produced `_NS_FEAT_NAMES` (9 names, 10 dimensions).
 4. **A fixed-policy control separates environment from learning.** The
    scripted-vs-scripted tick sweep answered "did the env get harder or did
    learning break?" in one run. Reach for it first.
 
-### Shape 2 — an argument was recorded as if it were a measurement
+### Shape 2: an argument was recorded as if it were a measurement
 
 Block C cost three runs and reverted. Every step of it was defensible in
 isolation and the aggregate was not, because unmeasured claims kept entering
@@ -408,7 +408,7 @@ the record as settled facts and later work was built on them.
 
 ## Remaining blocks
 
-**Block C was tried and reverted** — see the post-mortem in Done. The short
+**Block C was tried and reverted**; see the post-mortem in Done. The short
 version: its premise (an undertrained win baseline, inferred from a 281×
 value-loss ratio) was arithmetic rather than a finding, and `ally_win`'s
 explained variance in 709 was 0.88. Three runs, none beat the baseline.
@@ -421,7 +421,7 @@ restored and the tree is 709's configuration plus two logging additions.
 Roughly one run each. Budget is tight, so each block is a coherent theme that
 can be judged as one thing.
 
-### Block A — action distribution
+### Block A: action distribution
 
 **Joint 2×3×7 = 42-way action head.** Product distributions are a strict subset:
 a factored policy *cannot* represent "boost-straight or coast-turn, never
@@ -441,7 +441,7 @@ maxima `ln 3`, `ln 7`, `ln 2` at sensible floors.
 With a joint head, compute marginals per state by reshaping 42 → (3,7,2) and
 summing the other two axes, then take entropy of each. Two notes:
 
-- A single `H(joint)` bonus is **insufficient** — max is `ln 42 = 3.74`, and the
+- A single `H(joint)` bonus is **insufficient**: max is `ln 42 = 3.74`, and the
   optimizer can satisfy any target on it while shoot stays pinned.
 - Marginals are **coupled** under a joint head (moving shoot mass perturbs turn
   and power), so three dual controllers can oscillate. **Start with fixed
@@ -453,13 +453,13 @@ summing the other two axes, then take entropy of each. Two notes:
 **M3** folds in here: the per-head softmaxes stop being throwaway diagnostics.
 
 **Watch:** per-factor marginal entropies at their floors; `policy/kl` rising off
-~0.005 (it was suppressed *by* the collapse — a near-deterministic categorical
+~0.005 (it was suppressed *by* the collapse, since a near-deterministic categorical
 has small KL under logit perturbation); `policy/clip_fraction` near 0.08.
 
-This block is what makes the win-rate KL gate meaningful — neither KL threshold
+This block is what makes the win-rate KL gate meaningful: neither KL threshold
 has ever bound.
 
-### Block B — token allocation
+### Block B: token allocation
 
 **`shared_pass`.** In `ego_pass` only team-0 ships carry actor gradient. That is
 *correct* in league envs (team 1 is the opponent) but wastes half the ships in
@@ -486,7 +486,7 @@ regresses, `shared_pass` is the suspect (it forfeits the canonical team-0 prior)
 bullet flight, symmetric, and it would forfeit `shared_pass`. Block D's
 next-action head gets the opponent-modeling benefit without paying that.
 
-### Block D — representation
+### Block D: representation
 
 The one-step next-state prediction is a **deterministic function of the
 observation** (up to `bullet_spread`), not merely short-horizon: `previous_action`
@@ -495,14 +495,14 @@ spatial attention each ship sees every pending action. It is nearly trivially
 solvable, which is why it is a weak representation signal.
 
 **Iterated action-conditioned k-step latent prediction.** One learned step
-function applied k times — *not* k independent heads, which each learn a shortcut
+function applied k times, *not* k independent heads, which each learn a shortcut
 and never form a coherent dynamics model. Condition on the ship's own actions
 from the buffer; what remains unpredictable is other agents' behaviour, which is
 the signal wanted.
 
 - All ship tokens, both teams. Fields excluded (static within an episode, so
   trivially predictable).
-- Target `z[t+k].detach()`, masked by `alive` and by episode boundaries — reuse
+- Target `z[t+k].detach()`, masked by `alive` and by episode boundaries; reuse
   the `max_pool1d` window-validity trick from `_triangle_conv_loss`.
 - Cosine loss on L2-normalized latents, substantially more collapse-resistant
   than raw MSE.
@@ -517,13 +517,13 @@ slice. Best compute-to-signal ratio on the list.
 
 **Enemy next-action prediction head.** Predict the *simultaneous* action `a_t`,
 genuinely unknown, with `buffer.actions[t]` as the label. Opponent modeling with
-**no observation change**, so it survives `shared_pass`. The degeneracy worry —
-that ships learn to act predictably to satisfy the head — is unfounded: a sampled
+**no observation change**, so it survives `shared_pass`. The degeneracy worry,
+that ships learn to act predictably to satisfy the head, is unfounded: a sampled
 discrete action index is a constant w.r.t. parameters, so no gradient path rewards
 being predictable.
 
 **Not doing: dreaming.** Dreamer's premise is that the env is expensive. Here the
-env is 15% of wall clock and the update is 85% — a learned world model would be
+env is 15% of wall clock and the update is 85%, so a learned world model would be
 *slower* than the real simulator.
 
 ---
@@ -533,14 +533,14 @@ env is 15% of wall clock and the update is 85% — a learned world model would b
 | | why |
 |---|---|
 | **Team-size / token-split randomization** | "trained only on 4v4" is the stronger claim. Revisit behind an env-fraction gate; note `comp_rewards /= _n_ships` uses the static config count and would need to be per-env. The lambda aggregation is already alive-aware and needs no change. |
-| **Variable per-agent step size** | Batching kills the payoff — all ships share one forward, so a subset cannot be skipped. Zero throughput gain, and a ragged buffer breaks the dense `(T,B,N)` layout GAE, the lambda einsum and the scan all assume. |
+| **Variable per-agent step size** | Batching kills the payoff: all ships share one forward, so a subset cannot be skipped. Zero throughput gain, and a ragged buffer breaks the dense `(T,B,N)` layout GAE, the lambda einsum and the scan all assume. |
 | **Hiding enemy pending actions** | 33 ms at `action_repeat=2`, symmetric, and it forfeits `shared_pass`. |
 | **Scripted field interaction** | Two attempts measured worse than nothing. Needs a *path-weighted* index metric before retrying; the time-weighted one is confounded. |
-| **M1 (Hillis–Steele scan)** | Highest ceiling, most work. **Profile before writing anything** — a `torch.profiler` trace of one update settles whether the bandwidth estimate is right. O(T log T) with ~40 full passes per temporal sublayer; a Blelloch or chunked scan is O(T). |
+| **M1 (Hillis–Steele scan)** | Highest ceiling, most work. **Profile before writing anything**: a `torch.profiler` trace of one update settles whether the bandwidth estimate is right. O(T log T) with ~40 full passes per temporal sublayer; a Blelloch or chunked scan is O(T). |
 | **M5** | Check `TORCH_LOGS=graph_breaks` first; Inductor probably already fuses it. |
 | **M6** | `torch._foreach_nan_to_num_` does not exist in this build. |
-| **Bullet axis cost** | The biggest single lever measured so far, and untested. Bullets are **~26% of forward FLOPs** (23.5 GFLOP `kv_bullet` + 3.4 encoder of 103.7) and **~45% of persistent VRAM** (612 MiB of 1363, of which `bullet_pos` alone is 204 MiB in fp32), against `n_bullet_cross_per_block=1`. Five times the cost of Block C. Three sub-levers: fp32 `bullet_pos` (a shooter-relative encoding would make bf16 viable, −102 MiB); the field channels on bullets (153 MiB); and 80 fixed slots/env stored regardless of occupancy — compaction is a real project, it breaks the dense `(T,B,·)` layout. **Ablate `n_bullet_cross_per_block=0` first** to find out whether any of it earns its keep. |
-| **Ladder rung spacing** | `elo_milestone_gap=200` and the grid seeds from the live gauge's zero, so the first checkpoint snapshot fires at 200 Elo — deep inside rung territory, where the 9 semi-random rungs cover 200–950 densely. Intended shape is rungs below the scripted anchor and checkpoints above it: set the gap to 100 and seed the grid from 1000. Note `min_games_to_freeze=1000` will defer milestones during fast climbs, so the effective gap is wider than the nominal one. **`MAX_CHECKPOINT_ANCHORS=2` is not the same kind of knob** — stateless rungs are free (the whole stationary ladder costs one scripted call and one random call), but each *policy* anchor is a full forward over 512 envs in slot 0 and again in slot 4, ~1024 env-forwards/step against the rollout's 2592. Keeping the 2 newest is near-equivalent to keeping the 2 nearest anyway, since live Elo climbs roughly monotonically and the free rungs cover everything below. |
+| **Bullet axis cost** | The biggest single lever measured so far, and untested. Bullets are **~26% of forward FLOPs** (23.5 GFLOP `kv_bullet` + 3.4 encoder of 103.7) and **~45% of persistent VRAM** (612 MiB of 1363, of which `bullet_pos` alone is 204 MiB in fp32), against `n_bullet_cross_per_block=1`. Five times the cost of Block C. Three sub-levers: fp32 `bullet_pos` (a shooter-relative encoding would make bf16 viable, −102 MiB); the field channels on bullets (153 MiB); and 80 fixed slots/env stored regardless of occupancy, where compaction is a real project, it breaks the dense `(T,B,·)` layout. **Ablate `n_bullet_cross_per_block=0` first** to find out whether any of it earns its keep. |
+| **Ladder rung spacing** | `elo_milestone_gap=200` and the grid seeds from the live gauge's zero, so the first checkpoint snapshot fires at 200 Elo, deep inside rung territory, where the 9 semi-random rungs cover 200–950 densely. Intended shape is rungs below the scripted anchor and checkpoints above it: set the gap to 100 and seed the grid from 1000. Note `min_games_to_freeze=1000` will defer milestones during fast climbs, so the effective gap is wider than the nominal one. **`MAX_CHECKPOINT_ANCHORS=2` is not the same kind of knob**: stateless rungs are free (the whole stationary ladder costs one scripted call and one random call), but each *policy* anchor is a full forward over 512 envs in slot 0 and again in slot 4, ~1024 env-forwards/step against the rollout's 2592. Keeping the 2 newest is near-equivalent to keeping the 2 nearest anyway, since live Elo climbs roughly monotonically and the free rungs cover everything below. |
 
 ---
 
@@ -550,7 +550,7 @@ env is 15% of wall clock and the update is 85% — a learned world model would b
   semi-random rung is 1000·p, and `config/live_elo` is the single derivation
   site. A profile chooses which rungs exist and nothing else about the scale, so
   no environment change can leave a stale ladder behind. `bnb semi-random`
-  measures how far that placement sits from a fitted one — it validates the
+  measures how far that placement sits from a fitted one, validating the
   gauge and is never a prerequisite for training.
 - **The live gauge is absolute**, scripted pinned at 1000. Normalized Elo is the
   rating itself. Milestone grid and any rating threshold are absolute.
@@ -558,8 +558,8 @@ env is 15% of wall clock and the update is 85% — a learned world model would b
   `bnb elo-calibrate` writes `calibrated_elo/*`; published results quote the
   latter only.
 - **Both "is it strong yet" gates read the scripted win rate**, not Elo. Keep it
-  that way — an Elo threshold needs re-deriving every time the gauge moves.
-- **`validate_field_layout` must never run on the hot path** — eight syncs and it
+  that way, because an Elo threshold needs re-deriving every time the gauge moves.
+- **`validate_field_layout` must never run on the hot path**: eight syncs and it
   raises. Generated maps are laminar by construction.
 - **`advantage_min_rms` is an epsilon. `return_min_span` is NOT, and must stay
   at 1.0.** For a sparse component the p5–p95 span measures the noise floor of
@@ -569,7 +569,7 @@ env is 15% of wall clock and the update is 85% — a learned world model would b
   `scaler/floor_bound_span/*` binding is *expected*;
   `scaler/floor_bound_rms/*` binding is still a bug. The 281× ratio in
   `critic/value_loss` between a floored and an unfloored component is what a
-  squared loss does to compressed targets and says nothing about fit — read
+  squared loss does to compressed targets and says nothing about fit; read
   `critic/explained_variance` instead.
 - **`max_grad_norm` renormalizes the actor and the critic together.** Any
   change to the value loss changes the actor's share of every clipped step.

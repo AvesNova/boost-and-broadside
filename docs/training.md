@@ -44,7 +44,7 @@ evaluation, logging, and checkpoints.
 Physics always runs at `ShipConfig.dt` = 1/60 s. `EnvConfig.action_repeat` sets how many
 of those ticks each chosen action is held for, so collision and projectile integration
 are unaffected and only the rate at which the policy may change its mind moves. The
-primary profile holds for 2 ticks — **30 Hz decisions**.
+primary profile holds for 2 ticks, giving **30 Hz decisions**.
 
 That rate is set by the plant, not by the renderer:
 
@@ -84,7 +84,7 @@ they would at repeat 1, so the component ratios in `RewardConfig` are untouched.
 lengths and ship ages stay in physics ticks so they remain comparable across rates.
 
 Discounts do **not** carry over unchanged. They were chosen as horizons in seconds, so
-moving the rate requires `gamma_new = gamma_old ** (rate_old / rate_new)` — and the same
+moving the rate requires `gamma_new = gamma_old ** (rate_old / rate_new)`, and the same
 for the GAE lambdas, since variance accumulates per unit of game time rather than per
 decision. The horizons those values encode are tabulated in
 [`config/defaults.py`](../src/boost_and_broadside/config/defaults.py).
@@ -104,7 +104,7 @@ chosen on the *previous* decision, while the policy computes the next one from t
 current observation.
 
 The observation is what makes that Markov. `previous_action` does not hold the action
-that already ran — it holds the action **about to be applied**, written into the
+that already ran. It holds the action **about to be applied**, written into the
 observation as it is handed forward. So the stored transition is
 `(state, pending action) → action`, and a chosen action shows up in the reward one step
 later, which GAE handles through the value function.
@@ -166,7 +166,7 @@ The total update combines:
   (SIGReg, from [LeJEPA](https://arxiv.org/abs/2511.08544)), disabled in the
   reference configuration.
 
-Two gates key off the same signal — the raw win rate against the scripted controller,
+Two gates key off the same signal: the raw win rate against the scripted controller,
 taken from the evaluation battery rather than from training envs. It decays the
 behavior-cloning weight to zero at `bc_winrate_target`, and it tightens `target_kl` at
 `high_winrate_threshold`. Using one measure of "is the policy strong yet" rather than two
@@ -184,7 +184,7 @@ component's own scale with the guard's. `advantage_min_rms` is therefore a true 
 the terminal win signal's advantage RMS is around 0.008, two orders of magnitude below a
 per-step damage signal, and an earlier floor of 0.1 was downweighting it roughly
 thirteenfold in the policy gradient. `return_min_span` is *not* an epsilon and is held at
-1.0 on purpose — see the note in
+1.0 on purpose; see the note in
 [`profiles/rl.py`](../src/boost_and_broadside/profiles/rl.py) for why lowering it needs the
 critic's outlier sensitivity addressed first. `scaler/floor_bound_span/*` and
 `scaler/floor_bound_rms/*` report which components each floor is currently holding up.
@@ -245,8 +245,8 @@ entry plays a rollout. The critic and the next-state head train alongside the ac
 which is most of the point: RL inherits a warm trunk and a critic that has already seen
 the full reward decomposition.
 
-It trains in the environment RL continues in — eight ships, the same decision rate,
-spawn spread, logical batch, minibatching, and component discount horizons — so the
+It trains in the environment RL continues in (eight ships, the same decision rate,
+spawn spread, logical batch, minibatching, and component discount horizons), so the
 handoff in `bnb train --profile rl --pretrain-from <bc-checkpoint>` does not also change
 the task. Five things differ, and only where the objective requires it: no policy
 gradient, no league, no KL trust region (under supervision, moving away from the rollout
@@ -261,7 +261,7 @@ same live gauge RL continues on.
 
 Once that weight reaches zero the entropy bonus goes with it. Entropy regularizes an
 objective; it is not one. With no policy gradient and no cloning term it would be the only
-gradient reaching the actor, and its optimum is the uniform distribution — so a run that
+gradient reaching the actor, and its optimum is the uniform distribution, so a run that
 had finished cloning would spend the rest of its budget undoing it. Measured at a reduced
 launch width, a policy cloned to a KL of 1.12 against the scripted controller and 60% of
 maximum action entropy returned to 99.8% of maximum and a KL of 2.66, its untrained value,
@@ -282,7 +282,7 @@ and manoeuvres as if the medium were uniform.
 It used to carry a mild stay-on-your-side steering bias, on the theory that behavior
 cloning needed field-dependent targets to warm up the attention trunk. Measurement killed
 it. Against a uniform-random agent the bias produced *more* interface crossings (2.24
-against 1.60 per thousand ship-steps) and left ships in higher-index — slower — medium
+against 1.60 per thousand ship-steps) and left ships in higher-index, slower medium
 more often (mean log index +0.159 against +0.108). Both were occupancy artifacts rather
 than decisions, and since crossing an interface costs health that
 `field_damage_taken` then penalises, behaviour cloning was imprinting a habit RL had to
@@ -302,8 +302,8 @@ against a rollout of tens of seconds.
 
 The reason to bother: a fixed bank is a small distribution that a full run draws from
 thousands of times per map, whereas a bank replaced each rollout supplies roughly one
-distinct map per episode. Maps are laminar by construction — candidates are rejected
-against already-placed fields before acceptance — which matters because
+distinct map per episode. Maps are laminar because candidates are rejected against
+already-placed fields before acceptance, which matters because
 `validate_field_layout` costs eight device-to-host syncs and raises, so it cannot run on
 the hot path. Rows that exhaust their proposal budget keep their previous map rather than
 ending the run, and `physics/field_map_generation_failures` reports how many, so a
@@ -347,8 +347,8 @@ perspective.
 
 Sampling is proportional to `exp(-abs(opponent_elo - live_elo) / temperature)`, excluding
 the random agent. That exclusion is load-bearing: an untrained policy sits at random's own
-rating, so including it would make the early league mostly random play — which self-play
-already provides, at twice the actor tokens.
+rating, so including it would make the early league mostly random play, which self-play
+already provides at twice the actor tokens.
 
 Semi-random rungs cover that early range instead. They are the same interior references
 the ladder uses (below), so proximity sampling always has a well-matched candidate rather
@@ -363,8 +363,8 @@ from the continuous evaluator every update, since a stale rating misdirects ever
 
 The [`EloRoster`](../src/boost_and_broadside/train/rl/roster.py) retains historical entries
 rather than evicting the weakest; `league_size` only bounds the GPU-resident LRU policy
-cache. An entry this run cannot host — a bullet-reading policy in a bullet-free run, whose
-rollout observation shape is fixed when the wrapper is built — is retired from sampling
+cache. An entry this run cannot host, such as a bullet-reading policy in a bullet-free run
+whose rollout observation shape is fixed when the wrapper is built, is retired from sampling
 with its rating intact, rather than ending the run.
 
 ## Continuous rating and the frozen ladder
@@ -382,11 +382,11 @@ Ratings live on the **live gauge**: an approximate scale, defined rather than me
 that pins the uniform-random agent at 0 and the scripted controller at 1000. Slot 2
 therefore updates the live policy rather than scripted: the player defining the scale must
 not drift under the one being measured against it. Everything on this scale is logged
-under `live_elo/` and is never the number a result quotes — see
+under `live_elo/` and is never the number a result quotes; see
 [live Elo versus calibrated Elo](#live-elo-versus-calibrated-elo) below.
 
-The anchor pool has two parts. **Stationary references** — the random agent, the
-semi-random rungs, and the scripted controller — sit at its head and never age out,
+The anchor pool has two parts. **Stationary references** (the random agent, the
+semi-random rungs, and the scripted controller) sit at its head and never age out,
 because their strength is a fixed property and their ratings are fixed constants.
 **Checkpoint anchors** follow: the newest `MAX_CHECKPOINT_ANCHORS` frozen ladder
 snapshots, which do rotate as the live policy leaves them behind.
@@ -394,7 +394,7 @@ snapshots, which do rotate as the live policy leaves them behind.
 ### The reference ladder
 
 With only random and scripted as fixed references, the live policy saturates both for the
-whole early climb — winning ~100% against one and losing ~100% against the other — so its
+whole early climb, winning ~100% against one and losing ~100% against the other, so its
 rating is barely identified exactly when opponent selection depends on it. A ladder of
 semi-random rungs fills that range. Each rung takes the scripted action with probability
 `p` and a uniform one otherwise, and the gauge assigns it **1000·p**. A profile therefore
@@ -410,14 +410,14 @@ proximity sampling meets an over-rated rung slightly earlier than it otherwise w
 the milestone grid that decides when checkpoints freeze is read on these numbers.
 
 What it buys is that nothing has to be re-fitted. A fitted gauge is a property of the
-environment its rungs played in — tick rate, field count, ship config, fleet size — so it
+environment its rungs played in (tick rate, field count, ship config, fleet size), so it
 silently expires whenever any of those move, and the two shipped environments had fitted
 gauges that disagreed sharply (random at −364 with no fields, +132 with four). The defined
 gauge is the same in both, which is precisely why a live rating from one environment is
 not comparable with a live rating from the other.
 
 Per-episode assignment is a multinomial draw over the information weights, so the pool
-can be any size at no extra environment cost — the slot's envs simply redistribute, and
+can be any size at no extra environment cost: the slot's envs simply redistribute, and
 saturated references draw almost no games. Stationary references also cost no forward
 pass: every semi-random rung is a Bernoulli blend of the same two action tensors, so the
 whole stationary ladder is computed from one scripted call and one random call however
@@ -440,7 +440,7 @@ another:
 | | live Elo | calibrated Elo |
 |---|---|---|
 | Produced by | the trainer, continuously | `bnb elo-calibrate`, after the run |
-| Scale | defined: random 0, scripted 1000, rung 1000·p | fitted Bradley–Terry, shifted so scripted reads 1000 |
+| Scale | defined: random 0, scripted 1000, rung 1000·p | fitted Bradley-Terry, shifted so scripted reads 1000 |
 | Purpose | opponent sampling, progress, milestone placement | reported results |
 | Metric keys | `live_elo/policy`, `live_elo/ladder/<label>` | `calibrated_elo/live`, `calibrated_elo/ckpt_<step>` |
 | Stored in | `elo_history.jsonl`, checkpoint payloads | the `elo-calibration` artifact |
@@ -456,8 +456,8 @@ the rating training actually uses. No profile has to wait for it.
 
 ## Checkpoints and reproducibility
 
-Every payload family — full `step_<N>.pt` resumes, best-model snapshots, and the ladder
-snapshots the league and calibrator reload — carries the same provenance block: the
+Every payload family (full `step_<N>.pt` resumes, best-model snapshots, and the ladder
+snapshots the league and calibrator reload) carries the same provenance block: the
 observation schema, the weights, critic width, `team_pma_k`, step and rating, the training
 paradigm, and the model, environment, and ship configs it was trained under. Full
 checkpoints add optimizer, scaler and averaging state on top; ladder snapshots add nothing.
@@ -468,7 +468,7 @@ convention.)
 
 Checkpoints are rebuilt from their own recorded configs rather than from whatever the
 reader is running, by
-[`policy_io.load_policy_bundle`](../src/boost_and_broadside/train/rl/policy_io.py) — the
+[`policy_io.load_policy_bundle`](../src/boost_and_broadside/train/rl/policy_io.py), the
 single loading path behind the league roster, the ladder evaluator, and every eval mode.
 `build_policy` derives the feature pipelines from `ship_config` instead of accepting them,
 so a bullet-reading config always gets its bullet encoder and there is no argument a caller
@@ -488,7 +488,7 @@ Three compatibility rules follow from that:
   policy then reads the world through the constants it trained on.
 - **Architecture.** Nothing needs to match. Nothing in the policy is sized by ship count,
   and each entry is rebuilt from its own config, so a league or rating field can hold
-  checkpoints of different widths and depths — an entry whose architecture differs from the
+  checkpoints of different widths and depths. An entry whose architecture differs from the
   live run's simply runs eager rather than claiming a compiled graph nothing else reuses.
   The one exception is the training rollout, whose observation shape is fixed when the
   wrapper is built: a bullet-reading opponent in a bullet-free run is refused rather than
@@ -500,36 +500,33 @@ caller's configs and warns, naming what it assumed.
 Full checkpoints also carry the complete resolved launch: every configuration value, both
 fingerprints, the source that chose each value, and the execution and VRAM record. That
 makes the memory decision part of a run's history rather than a property of whichever
-machine happened to start it — a resume onto a card that sizes the launch differently is a
+machine happened to start it. Resuming onto a card that sizes the launch differently is a
 resolved-config difference, and is refused unless `--allow-config-drift` is passed.
 
 Resuming is stricter than reloading a policy. `load_checkpoint` requires every field a full
-payload writes and refuses one that lacks any of them, naming it: a resume restores the
-complete training state — weights, optimizer, both scalers, the averaging accumulator, the
-live rating and its running average, the milestone grid, and the evaluation windows — or it
+payload writes and refuses one that lacks any of them, naming it. A resume restores the
+complete training state (weights, optimizer, both scalers, the averaging accumulator, the
+live rating and its running average, the milestone grid, and the evaluation windows) or it
 does not happen. Only the resolved-config and launch blocks are optional, and both are
-provenance rather than state. Reading a state field with a default is what let a payload
-written under the earlier live-Elo field names resume as a fresh run: weights and optimizer
-continued while the rating restarted at zero and the ladder re-froze snapshots the run had
-already passed. Policy-only files (`best_*.pt`, `ladder_step_*.pt`) are consequently not
-resumable; `--pretrain-from` is the path that takes one.
-
-### Launch sizing is not an experiment change
-
-A profile fixes its logical batch, minibatch count, and fleet; `--vram` only decides how
-that fixed batch is laid out in memory. It may enable gradient checkpointing and set the
-microbatch — the same objective within floating-point tolerance — and it may redistribute
-the batch across a different number of rollout shards, which keeps the nominal token count
-and optimizer-step count but changes the env-stream count, the temporal correlation within
-a shard, and how minibatches are composed. It may never resize the batch, the minibatch
-count, or the fleet. `docs/engineering/memory-optimization.md` describes the policies, the
-preset rows, and what the probe measures; the short version is that a preset is a starting
-point and only a probe of the current machine is reported as `measured`.
+provenance rather than state. Policy-only files (`best_*.pt`, `ladder_step_*.pt`) are
+consequently not resumable; `--pretrain-from` is the path that takes one.
 
 W&B logging runs off the main training path. The reference run's sampled metric history,
 configuration, summary, and run metadata are exported under
 [`wandb_export/`](../checkpoints/resilient-resonance-682/wandb_export/) so the published
 charts can be rebuilt without relying on a hosted dashboard.
+
+### What `--vram` may and may not change
+
+A profile fixes its logical batch, minibatch count, and fleet, and `--vram` only decides
+how that fixed batch is laid out in memory. It may enable gradient checkpointing and set
+the microbatch, which give the same objective within floating-point tolerance. It may
+redistribute the batch across a different number of rollout shards, which keeps the nominal
+token count and optimizer-step count but changes the env-stream count, the temporal
+correlation within a shard, and how minibatches are composed. It may never resize the
+batch, the minibatch count, or the fleet.
+[Memory optimization](engineering/memory-optimization.md#resolving-a-launch-for-a-card---vram)
+describes the policies, the preset rows, and what the probe measures.
 
 ## Engineering validation
 

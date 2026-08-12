@@ -97,7 +97,7 @@ def ratio_chart(trained, beats, crossover, out: Path) -> Path:
     style.style_axes(
         axes,
         "Numerical advantage per policy-controlled ship",
-        "Scripted-controlled ships defeated for each policy-controlled ship — the edge peaks for "
+        "Scripted-controlled ships defeated for each policy-controlled ship; the edge peaks for "
         "mid-sized teams (~1.5x), then eases toward ~1.35x",
     )
     ratio = beats / trained

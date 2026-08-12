@@ -70,22 +70,19 @@ uv run bnb capture \
   --gif
 ```
 
-The default scratch output directory is `out/`, which is never tracked. The curated
-subset is promoted into `docs/results/replays/` by
-[`docs/publications.toml`](publications.toml), which pins each clip by sha256, and
-`bnb publish` is what copies it.
+Capture writes to `out/`, which is scratch and is never tracked. The curated subset is
+promoted into `docs/results/replays/` by `bnb publish`.
 
 ## Provenance
 
-A GIF still encodes frames only. What identifies these clips is outside them: every one is
+A GIF encodes frames only, so what identifies these clips sits outside them. Each one is
 declared in [`docs/publications.toml`](publications.toml) with the sha256 of the exact file
 that was reviewed, and [`docs/results/provenance.md`](results/provenance.md) lists that
 digest beside the output it owns. `bnb publish --check` compares the tracked GIF against
-its pin, so a replaced or re-encoded clip is a failure rather than a silent substitution.
+its pin, so a replaced or re-encoded clip fails rather than substituting silently.
 
-All fifteen were captured from the reference run's final checkpoint with the command shape
-above, seeds as named in each filename, on the migrated checkpoint set. They are not the
-clips the run originally shipped: the environment changed between the training commit and
-now, so these were re-captured to keep every published output on one footing. A poster
-frame and an embedded sidecar remain unimplemented and are tracked with the other known
-gaps in the [internal evidence ledger](internal/evidence.md#deferred-asset-and-analysis-ledger).
+All fifteen come from the reference run's final checkpoint, captured with the command
+above and the seed named in each filename. The clips do not record their own capture
+arguments: a poster frame and an embedded sidecar are still unimplemented, and are tracked
+with the other known gaps in the
+[internal evidence map](internal/evidence.md#deferred-asset-and-analysis-ledger).

@@ -1072,7 +1072,7 @@ def render_report(document: Mapping[str, Any]) -> str:
 
     lines: list[str] = []
     add = lines.append
-    add(f"# Landmark checkpoint migration — `{document['run']}`")
+    add(f"# Landmark checkpoint migration: `{document['run']}`")
     add("")
     add(
         "One-time offline migration of the complete landmark checkpoint set into the "
@@ -1093,11 +1093,11 @@ def render_report(document: Mapping[str, Any]) -> str:
     add("")
     add("Every value below comes from the run's own recorded data or from the stored")
     add("tensors. Nothing is a placeholder, and `resolved_config` and `launch` are")
-    add("omitted rather than invented — both are optional in the frozen schema and")
+    add("omitted rather than invented. Both are optional in the frozen schema and")
     add("neither was ever recorded for this run.")
     add("")
     add(
-        f"- `paradigm`: `{provenance['paradigm']}` — from the run's own "
+        f"- `paradigm`: `{provenance['paradigm']}`, from the run's own "
         '`train_config["paradigm"]`.'
     )
     add(f"- `model_config`: `{provenance['model_config']}`")
@@ -1111,12 +1111,12 @@ def render_report(document: Mapping[str, Any]) -> str:
     add("Values the current schema requires that the run never recorded. Each takes its")
     add("dataclass default, which is the absence of a choice rather than a measured one:")
     add("")
-    add("- `model_config.bullet_encoder_hidden` — inert while `n_bullet_cross_per_block=0`.")
-    add("- `model_config.grad_checkpoint` — a backward-pass memory setting, not architecture.")
+    add("- `model_config.bullet_encoder_hidden`: inert while `n_bullet_cross_per_block=0`.")
+    add("- `model_config.grad_checkpoint`: a backward-pass memory setting, not architecture.")
     add(
         "- "
         + ", ".join(f"`ship_config.{field}`" for field in SHIP_CONFIG_FIELDS_WITHOUT_HISTORY)
-        + " — refractive-field and bullet-drag physics, none of which existed at the"
+        + ": refractive-field and bullet-drag physics, none of which existed at the"
         " training commit. The run has `num_fields=0`, and the four of these the feature"
         " pipeline reads scale only the zero-weighted encoder columns, so no value of"
         " theirs can reach these weights."
@@ -1127,7 +1127,7 @@ def render_report(document: Mapping[str, Any]) -> str:
     add("")
     for field in SHIP_CONFIG_FIELDS_REMOVED:
         add(f"- `ship_config.{field}`")
-    add("- `env_config.num_obstacles` — the run set it to 0, so nothing is lost.")
+    add("- `env_config.num_obstacles`: the run set it to 0, so nothing is lost.")
     add("")
 
     add("## Value-component mapping")
@@ -1227,9 +1227,9 @@ def render_report(document: Mapping[str, Any]) -> str:
         add("")
         break
     add("The list above is identical in every one of the sixteen files, so only the first")
-    add("is shown here. The complete per-tensor mapping for every file — including the")
+    add("is shown here. The complete per-tensor mapping for every file, including the")
     add("69 tensors that are renamed or copied unchanged, and the per-parameter optimizer")
-    add("index mapping for the two resumable files — is in `migration_report.json` beside")
+    add("index mapping for the two resumable files, is in `migration_report.json` beside")
     add("this file.")
     add("")
 
@@ -1268,7 +1268,7 @@ def render_report(document: Mapping[str, Any]) -> str:
     add("  their complete Adam state and its recorded hyperparameters (`lr=1e-4`,")
     add("  `eps=1e-5`) across the rename, so they satisfy the frozen resumable contract.")
     add("  Actually continuing the run additionally needs a profile whose reward vocabulary")
-    add("  matches the historical one, which no longer exists — the current registry splits")
+    add("  matches the historical one, which no longer exists: the current registry splits")
     add("  two of these eleven components. These files are complete and loadable; they are")
     add("  not a resumable path back into today's training system.")
     add("- **`train_config` is kept verbatim**, in the historical schema. It is the record")
