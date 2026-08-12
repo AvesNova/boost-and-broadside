@@ -7,11 +7,18 @@ import time
 import warnings
 from collections import deque
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import torch
 
+from boost_and_broadside.run_manifest import (
+    RunManifest,
+    RunStatus,
+    read_manifest,
+    write_manifest,
+)
 from boost_and_broadside.train.rl.checkpoint_schema import (
     OBSERVATION_SCHEMA,
     load_checkpoint_payload,
@@ -327,6 +334,58 @@ class CheckpointMixin:
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         self.roster.save_json(ckpt_dir / "roster.json")
 
+    def _run_directory(self) -> Path:
+        return Path(self.cfg.checkpoint_dir) / self.run_name
+
+    def _write_run_manifest(self, update: int, status: RunStatus) -> None:
+        """Record what this run is, next to the checkpoint that makes it selectable.
+
+        Written from the save path so it inherits the save path's restraint: a
+        run that writes no checkpoint writes no manifest either, because nothing
+        can resume it and nothing should offer to.
+        """
+
+        launch = self.launch_provenance or {}
+        resolved = self.resolved_config_document or {}
+        run_id_path = self._run_directory() / "wandb_run_id.txt"
+        write_manifest(
+            self._run_directory(),
+            RunManifest(
+                run=self.run_name,
+                profile=resolved.get("profile"),
+                status=status,
+                global_step=self._global_step,
+                update=update,
+                elapsed_seconds=self._elapsed_seconds(),
+                live_elo=self._live_elo,
+                device=launch.get("device"),
+                seed=launch.get("seed"),
+                resolved_config_fingerprint=resolved.get("resolved_config_fingerprint"),
+                wandb_run_id=(
+                    run_id_path.read_text().strip() if run_id_path.is_file() else None
+                ),
+            ),
+        )
+
+    def _elapsed_seconds(self) -> float:
+        """Wall-clock training time, including what earlier runs of this run spent."""
+
+        started = getattr(self, "_train_start_time", None)
+        return self._elapsed_train_time + (time.time() - started if started else 0.0)
+
+    def record_run_status(self, status: RunStatus) -> None:
+        """Move an existing manifest to a terminal status.
+
+        Deliberately does not create one. A run that never wrote a checkpoint has
+        nothing for a listing to offer, and creating a record on the way out
+        would put one in every directory a bare trainer ever touched.
+        """
+
+        current = read_manifest(self._run_directory())
+        if current is None:
+            return
+        write_manifest(self._run_directory(), replace(current, status=status))
+
     def _maybe_save_checkpoint(self, update: int) -> None:
         """Save the resumable checkpoint on schedule."""
         interval = self._schedule_state.checkpoint_interval
@@ -334,6 +393,7 @@ class CheckpointMixin:
             return
         self._save_checkpoint(update)
         self._save_roster_json()
+        self._write_run_manifest(update, RunStatus.RUNNING)
 
     def save_final_checkpoint(self) -> None:
         """Persist training state before the process exits, if it is not already on disk.
@@ -367,6 +427,7 @@ class CheckpointMixin:
         self._save_checkpoint(self._completed_update)
         self._wait_for_checkpoint_saves()
         self._save_roster_json()
+        self._write_run_manifest(self._completed_update, RunStatus.RUNNING)
 
     def _maybe_save_best_checkpoints(self) -> None:
         """Overwrite the best-model checkpoints (live, then avg) when the rating improves.

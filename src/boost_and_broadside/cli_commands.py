@@ -34,6 +34,7 @@ from boost_and_broadside.modes.semi_random_tournament import (
     run_semi_random_tournament,
 )
 from boost_and_broadside.profiles import resolve_named_profile
+from boost_and_broadside.run_manifest import RunStatus
 from boost_and_broadside.train.rl.policy_io import set_config_drift_allowed
 from boost_and_broadside.train.rl.ppo import PPOTrainer
 from boost_and_broadside.ui.renderer import RenderConfig
@@ -153,6 +154,7 @@ def _run_trainer(trainer: PPOTrainer) -> None:
     except KeyboardInterrupt:
         print("\nTraining interrupted.")
         trainer.save_final_checkpoint()
+        trainer.record_run_status(RunStatus.INTERRUPTED)
         trainer.shutdown()
 
 

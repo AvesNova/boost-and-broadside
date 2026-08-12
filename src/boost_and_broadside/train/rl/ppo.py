@@ -42,6 +42,7 @@ from boost_and_broadside.constants import POWER_SLICE, SHOOT_SLICE, TURN_SLICE
 from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.observation import ObsKey, YemongObservation
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
+from boost_and_broadside.run_manifest import RunStatus
 from boost_and_broadside.train.rl.buffer import (
     AdvantageScaler,
     LogicalRolloutBuffer,
@@ -1211,6 +1212,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             self._completed_update = update
 
         self.save_final_checkpoint()
+        self.record_run_status(RunStatus.COMPLETE)
         self.shutdown()
 
     def shutdown(self) -> None:

@@ -890,6 +890,91 @@ class TestFinalCheckpoint:
         assert resumed._completed_update == 12
 
 
+class TestRunManifest:
+    """The manifest tracks the run alongside its checkpoints, and only those runs.
+
+    Selecting a run to resume reads this file rather than loading a 27 MB
+    payload, so what matters is that it exists exactly where something is
+    resumable and that its status tells the truth about how the run ended.
+    """
+
+    @staticmethod
+    def _trainer(tmp_path):
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        trainer._schedule_state.checkpoint_interval = 1
+        trainer.resolved_config_document = {
+            "profile": "rl",
+            "resolved_config_fingerprint": "0bf3a3b5",
+        }
+        trainer.launch_provenance = {"device": "cpu", "seed": 7}
+        return trainer
+
+    def test_a_scheduled_save_records_the_run(self, tmp_path):
+        from boost_and_broadside.run_manifest import RunStatus, read_manifest
+
+        trainer = self._trainer(tmp_path)
+        trainer._global_step = 4096
+        trainer._maybe_save_checkpoint(update=3)
+        trainer._active_save_thread.join(timeout=60)
+
+        manifest = read_manifest(Path(tmp_path) / trainer.run_name)
+
+        assert manifest is not None
+        assert manifest.run == trainer.run_name
+        assert (manifest.profile, manifest.device, manifest.seed) == ("rl", "cpu", 7)
+        assert (manifest.global_step, manifest.update) == (4096, 3)
+        assert manifest.status is RunStatus.RUNNING
+        assert manifest.resolved_config_fingerprint == "0bf3a3b5"
+
+    def test_the_final_save_records_the_run_it_wrote(self, tmp_path):
+        from boost_and_broadside.run_manifest import read_manifest
+
+        trainer = self._trainer(tmp_path)
+        trainer._global_step = 4096
+        trainer._completed_update = 12
+        trainer.save_final_checkpoint()
+
+        manifest = read_manifest(Path(tmp_path) / trainer.run_name)
+
+        assert manifest is not None
+        assert (manifest.global_step, manifest.update) == (4096, 12)
+
+    def test_status_moves_to_a_terminal_value_on_an_existing_manifest(self, tmp_path):
+        from boost_and_broadside.run_manifest import RunStatus, read_manifest
+
+        trainer = self._trainer(tmp_path)
+        trainer._global_step = 4096
+        trainer._maybe_save_checkpoint(update=3)
+        trainer._active_save_thread.join(timeout=60)
+
+        trainer.record_run_status(RunStatus.INTERRUPTED)
+
+        manifest = read_manifest(Path(tmp_path) / trainer.run_name)
+        assert manifest is not None
+        assert manifest.status is RunStatus.INTERRUPTED
+        # The record it was tracking is untouched by the status change.
+        assert (manifest.global_step, manifest.update) == (4096, 3)
+
+    def test_a_run_with_no_checkpoint_gets_no_manifest(self, tmp_path):
+        """Checkpointing switched off means nothing to resume, so nothing to list
+        -- and no directory written for a trainer that only ever ran."""
+        from boost_and_broadside.run_manifest import RunStatus, read_manifest
+
+        trainer = self._trainer(tmp_path)
+        trainer._schedule_state.checkpoint_interval = 0
+        trainer._global_step = 4096
+        trainer._completed_update = 12
+
+        trainer._maybe_save_checkpoint(update=12)
+        trainer.save_final_checkpoint()
+        trainer.record_run_status(RunStatus.COMPLETE)
+
+        assert read_manifest(Path(tmp_path) / trainer.run_name) is None
+        assert not list(Path(tmp_path).rglob("run.json"))
+
+
 class TestBestCheckpoints:
     """The best-model checkpoints (live and avg) overwrite in place as Elo improves."""
 

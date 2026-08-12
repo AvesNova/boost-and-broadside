@@ -255,6 +255,11 @@ A full checkpoint is written every update, and the newest few of each family are
 Runs started before that cadence recorded the wider interval in their resolved
 configuration, so resuming one reports config drift and needs `--allow-config-drift`.
 
+Each run that writes a checkpoint also writes `run.json` beside it: the profile, the
+status, the update and step reached, elapsed training time, and the latest live rating.
+It exists so a run can be identified without loading a checkpoint. Runs from before it
+existed do not have one.
+
 ## Development notes
 
 - Follow [STYLE_GUIDE.md](../STYLE_GUIDE.md).
