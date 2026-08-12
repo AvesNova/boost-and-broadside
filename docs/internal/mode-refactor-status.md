@@ -36,8 +36,8 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: none. `S17R` is completed and **closes** the migration/reproducibility gate.
-- Next section: `S18` — documentation and cleanup.
+- Active section: `S18` — documentation and cleanup.
+- Next section: `S19`, once `S18` closes with a clean worktree.
 - Blocking issue: none. Both `S17` blockers are closed with regression coverage, and the independent
   re-review of `599beff..S17R` reports no remaining blocker. A clean `git archive HEAD` extraction
   now runs `bnb publish --check` to `1 external, 26 unchanged`, exit 0, and reproduces `docs/`
@@ -73,7 +73,7 @@ code, tests, and reader-facing documentation.
 | S16 | 10 | completed | landmark/publication integrator | Sol / high | Backfill 682 artifacts and raw samples; select and regenerate canonical publications |
 | S17 | 10 gate | completed | migration/reproducibility reviewer | Sol / extra high | Independently verify 682 equivalence, completeness, provenance, and publication reproducibility |
 | S17R | 10 gate remediation | completed | migration/reproducibility remediator + reviewer | Sol / extra high | Make a clean checkout publishable and the migration record true, then obtain an independent re-review |
-| S18 | 11 | pending | documentation/cleanup engineer | Terra / high | Complete repo-wide docs and remove obsolete paths, names, and temporary compatibility residue |
+| S18 | 11 | in_progress | documentation/cleanup engineer | Terra / high | Complete repo-wide docs and remove obsolete paths, names, and temporary compatibility residue |
 | S19 | final gate | pending | final branch reviewer | Sol / extra high | Review the complete branch against the plan and run final acceptance checks |
 
 Model names for agent configuration are `gpt-5.6-sol` and `gpt-5.6-terra`; “extra high” maps to
