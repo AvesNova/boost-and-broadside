@@ -218,7 +218,7 @@
       "checkpoint_interval": {
         "callable": "boost_and_broadside.config.schedule.constant.<locals>._schedule",
         "closure": {
-          "value": 50
+          "value": 1
         }
       },
       "entropy_coef": {

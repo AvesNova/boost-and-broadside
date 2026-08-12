@@ -182,6 +182,22 @@ def test_token_and_discount_derivations_are_named_and_exact() -> None:
     assert derive_time_normalized_value(0.95, action_repeat=2) == 0.9025
 
 
+@pytest.mark.parametrize("name", ("rl", "rl-fields", "bc"))
+def test_every_profile_checkpoints_on_every_update(name: str) -> None:
+    """Save cadence is not a tuning knob any profile owns.
+
+    A save costs a few tens of milliseconds against updates measured in minutes,
+    and the writer skips itself rather than queueing when a previous save is
+    still running, so a wider interval buys no throughput -- it only sets how
+    much progress an interrupted run discards.  Held for BC too: cadence is not
+    one of the objective-driven differences ``test_bc_profile`` licenses.
+    """
+
+    schedule = resolve_profile(PROFILES[name]).train_config.schedule
+    for step in (0, 1, 5_000_000, 500_000_000):
+        assert schedule.checkpoint_interval(step) == 1
+
+
 def test_fingerprints_are_canonical_and_separate_intent_from_launch() -> None:
     base = resolve_profile(PROFILES["rl"])
     overridden = resolve_profile(
@@ -214,18 +230,24 @@ def test_current_profile_and_resolved_fingerprints_are_stable() -> None:
     # random rating with the derived live gauge is a semantic change to what the
     # run is rated against, so both fingerprints are expected to differ from the
     # values recorded through S11.
+    #
+    # All six moved again when checkpoint_interval went from 50 updates to 1.
+    # Save cadence changes nothing about what is trained or how it is rated, but
+    # the interval is declared schedule intent and both fingerprints cover the
+    # whole schedule, so a run recorded under the old cadence reads as drifted
+    # and needs --allow-config-drift to resume.
     expected = {
         "rl": (
-            "9f4baf830c22ffb198b2ffd67412113376761d236f8863bc8bdefc29be933323",
-            "882ed9ba23a1bf1cd0b3030966d2e30358e7ee7c26d5186580ba5ab10d322ee3",
+            "8185ff05150d3986a07652154ea9ced8eff0e4f1cd084f693aa83794589c383a",
+            "0bf3a3b52232e1fee5b6152fff05b5eae683af0dec48e603f4a8fb7c759fc12e",
         ),
         "rl-fields": (
-            "cdd020cf01d8e0a16425ea9a34c00ba84cdb4b549f8345a6955e0106605ba047",
-            "1a5a3c43a53401671fa6b446c2e6163c29a154cad3626b7cb617c497e25bea08",
+            "be1cc46795c4c07b9abd0a111c9633f1fbec9097c255231042c0085e363f89dc",
+            "35f7837d475c1b8c5ec2fadf50af2309af8cf1c7d77c47016d76a42a79d39a39",
         ),
         "bc": (
-            "138544ad41438242bbe795025773970389ba161e522f1a8959cef54c214c5a19",
-            "b91a4ef73a92309ddabbc34ce58f485b3497890fafc9a6db4541174e209c2a6d",
+            "f4e6d49575885b45c168ff2bc0f9f3261c4933518205072f573b79059bad5056",
+            "268bd9a48907f8d139a92ba074fb1511889962752954b0651d467f773c5aa6d5",
         ),
     }
     for name, fingerprints in expected.items():

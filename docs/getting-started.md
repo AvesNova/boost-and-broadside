@@ -251,6 +251,10 @@ also writes scheduled average/best snapshots and unpruned ladder checkpoints; th
 the current filenames. (The included reference-run directory retains files from an
 earlier naming convention, such as `recent_avg.pt`.)
 
+A full checkpoint is written every update, and the newest few of each family are kept.
+Runs started before that cadence recorded the wider interval in their resolved
+configuration, so resuming one reports config drift and needs `--allow-config-drift`.
+
 ## Development notes
 
 - Follow [STYLE_GUIDE.md](../STYLE_GUIDE.md).

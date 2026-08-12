@@ -196,7 +196,12 @@ def make_rl_schedule_spec() -> TrainingScheduleSpec:
         global_scale=constant_spec(1.0),
         local_scale=constant_spec(1.0),
         league_fraction=constant_spec(0.5),
-        checkpoint_interval=constant_spec(50),
+        # Every update.  A save costs ~48 ms of blocking device-to-host copy
+        # against an update measured in minutes, and the writer already skips
+        # itself rather than queueing when a previous save is still running, so
+        # the interval buys no throughput -- it only decides how much progress
+        # an interrupted run throws away.
+        checkpoint_interval=constant_spec(1),
         num_epochs=stepped_spec((0, 4)),
         target_kl=stepped_spec((0, 0.1)),
         high_winrate_threshold=constant_spec(0.8),
@@ -235,7 +240,7 @@ def make_bc_schedule_spec() -> TrainingScheduleSpec:
         local_scale=constant_spec(1.0),
         # League opposition disabled: no roster opponent plays a BC rollout.
         league_fraction=constant_spec(0.0),
-        checkpoint_interval=constant_spec(50),
+        checkpoint_interval=constant_spec(1),
         num_epochs=stepped_spec((0, 4)),
         # A KL trust region early-stops epochs when the policy moves away from
         # the one that produced the rollout.  Under supervision that movement is
