@@ -158,3 +158,95 @@ def test_ladder_selection_rejects_mismatched_recorded_identity(tmp_path, label, 
 
     with pytest.raises(InvalidCheckpointError):
         select_tournament_ladder_policies(run, roster)
+
+
+def _recorded_run(tmp_path, name, *, profile=None, step=None, modified=None):
+    """A run directory as a listing would find it on disk."""
+    from boost_and_broadside.run_manifest import RunManifest, write_manifest
+
+    path = tmp_path / name
+    path.mkdir()
+    if step is not None:
+        (path / f"step_{step:012d}.pt").touch()
+    if profile is not None:
+        write_manifest(path, RunManifest(run=name, profile=profile, update=3, live_elo=880.0))
+    if modified is not None:
+        os.utime(path, (modified, modified))
+    return path
+
+
+def test_runs_are_summarized_newest_first(tmp_path):
+    from boost_and_broadside.evaluation.run_catalog import summarize_runs
+
+    _recorded_run(tmp_path, "oldest", profile="rl", step=1, modified=1_000)
+    _recorded_run(tmp_path, "middle", profile="rl", step=2, modified=2_000)
+    _recorded_run(tmp_path, "newest", profile="bc", step=3, modified=3_000)
+
+    summaries = summarize_runs(tmp_path)
+
+    assert [summary.run.name for summary in summaries] == ["newest", "middle", "oldest"]
+    assert [summary.profile for summary in summaries] == ["bc", "rl", "rl"]
+    assert [summary.latest_step for summary in summaries] == [3, 2, 1]
+
+
+def test_a_limit_stops_the_scan_rather_than_trimming_it(tmp_path):
+    """Hundreds of run directories must not each cost a manifest read."""
+    from boost_and_broadside.evaluation.run_catalog import summarize_runs
+
+    for index in range(25):
+        _recorded_run(tmp_path, f"run-{index:02d}", profile="rl", step=index + 1, modified=index)
+
+    summaries = summarize_runs(tmp_path, limit=10)
+
+    assert len(summaries) == 10
+    assert summaries[0].run.name == "run-24"
+
+
+def test_unknown_profile_runs_never_satisfy_a_profile_filter(tmp_path):
+    """A run written before the manifest existed says nothing about its profile,
+    and guessing is how a resume lands in the wrong launch."""
+    from boost_and_broadside.evaluation.run_catalog import summarize_runs
+
+    _recorded_run(tmp_path, "unrecorded", step=1, modified=3_000)
+    _recorded_run(tmp_path, "recorded", profile="rl", step=2, modified=1_000)
+
+    assert [s.run.name for s in summarize_runs(tmp_path, profile="rl")] == ["recorded"]
+    assert [s.run.name for s in summarize_runs(tmp_path)] == ["unrecorded", "recorded"]
+
+
+def test_resumable_filter_skips_runs_with_no_step_checkpoint(tmp_path):
+    from boost_and_broadside.evaluation.run_catalog import summarize_runs
+
+    _recorded_run(tmp_path, "ladder-only", profile="rl", modified=3_000)
+    _recorded_run(tmp_path, "resumable", profile="rl", step=7, modified=1_000)
+
+    summaries = summarize_runs(tmp_path, resumable_only=True)
+
+    assert [summary.run.name for summary in summaries] == ["resumable"]
+    assert summaries[0].resumable
+
+
+def test_latest_resumable_run_picks_the_newest_of_its_own_profile(tmp_path):
+    from boost_and_broadside.evaluation.run_catalog import select_latest_resumable_run
+
+    _recorded_run(tmp_path, "newest-bc", profile="bc", step=9, modified=4_000)
+    _recorded_run(tmp_path, "newest-rl-unresumable", profile="rl", modified=3_000)
+    _recorded_run(tmp_path, "older-rl", profile="rl", step=5, modified=2_000)
+
+    assert select_latest_resumable_run("rl", tmp_path).name == "older-rl"
+    assert select_latest_resumable_run("bc", tmp_path).name == "newest-bc"
+
+
+def test_latest_resumable_run_explains_itself_when_nothing_matches(tmp_path):
+    from boost_and_broadside.evaluation.run_catalog import select_latest_resumable_run
+
+    _recorded_run(tmp_path, "unrecorded", step=1)
+
+    with pytest.raises(RunNotFoundError, match="bnb runs"):
+        select_latest_resumable_run("rl", tmp_path)
+
+
+def test_summarizing_a_missing_checkpoint_root_is_empty_not_an_error(tmp_path):
+    from boost_and_broadside.evaluation.run_catalog import summarize_runs
+
+    assert summarize_runs(tmp_path / "absent") == []

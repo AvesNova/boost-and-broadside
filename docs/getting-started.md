@@ -104,15 +104,29 @@ uv run bnb train --profile rl \
 # Restore a complete training state
 uv run bnb train --profile rl --resume checkpoints/<run>/step_<N>.pt
 
+# Restore the most recently written run of this profile
+uv run bnb train --profile rl --resume-last
+
 # Behavior cloning, then an explicit RL warm-start when desired
 uv run bnb train --profile bc
 uv run bnb train --profile rl \
   --pretrain-from checkpoints/<bc-run>/best_training.pt
 ```
 
-`--resume` and `--pretrain-from` are mutually exclusive. Resume always takes a value:
-either an explicit `.pt` path or an exact run name whose greatest numeric `step_*.pt`
-checkpoint should be selected.
+`--resume`, `--resume-last`, and `--pretrain-from` are mutually exclusive. `--resume`
+always takes a value: either an explicit `.pt` path or an exact run name whose greatest
+numeric `step_*.pt` checkpoint should be selected. `--resume-last` takes none, and
+selects the most recently written run recorded as this profile; runs from before
+`run.json` existed have no recorded profile and are never selected that way.
+
+`bnb runs` lists the ten most recently written runs with their profile, status, progress
+and newest resumable checkpoint. `--limit`, `--all`, `--profile` and `--resumable` narrow
+it:
+
+```bash
+uv run bnb runs
+uv run bnb runs --profile rl --resumable --limit 5
+```
 
 ### Fitting the launch to a GPU
 

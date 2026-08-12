@@ -186,6 +186,15 @@ COMMANDS: tuple[CommandSpec, ...] = (
                 help="Resume from an explicit .pt file or the latest numeric step in an exact run.",
             ),
             _option(
+                "--resume-last",
+                action="store_true",
+                exclusive_group="training-source",
+                help=(
+                    "Resume the most recently written run of this profile. "
+                    "Runs recorded before run.json existed are not eligible."
+                ),
+            ),
+            _option(
                 "--pretrain-from",
                 type=_checkpoint_path,
                 exclusive_group="training-source",
@@ -450,6 +459,30 @@ COMMANDS: tuple[CommandSpec, ...] = (
             _DEVICE,
             _SEED,
             _ALLOW_DRIFT,
+        ),
+    ),
+    CommandSpec(
+        "runs",
+        "List the most recently written training runs.",
+        (
+            _option(
+                "--limit",
+                type=_positive_int,
+                default=10,
+                metavar="COUNT",
+                help="How many runs to list, newest first.",
+            ),
+            _option("--all", action="store_true", help="List every run, ignoring --limit."),
+            _option(
+                "--profile",
+                choices=tuple(sorted(PROFILES)),
+                help="List only runs recorded as this profile.",
+            ),
+            _option(
+                "--resumable",
+                action="store_true",
+                help="List only runs holding a resumable step_*.pt checkpoint.",
+            ),
         ),
     ),
     CommandSpec(

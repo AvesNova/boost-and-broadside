@@ -1,9 +1,12 @@
 """Typed exact-run discovery and checkpoint-selection policies."""
 
+import os
 import re
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+
+from boost_and_broadside.run_manifest import RunManifest, read_manifest
 
 _STEP_PATTERN = re.compile(r"step_(?P<step>\d+)\.pt", re.ASCII)
 _LADDER_STEP_PATTERN = re.compile(r"ladder_step_(?P<step>\d+)\.pt", re.ASCII)
@@ -93,6 +96,96 @@ def select_latest_resumable_checkpoint(run: RunRef | Path) -> CheckpointRef:
         raise CheckpointNotFoundError(f"no resumable step_*.pt checkpoint in {path}")
     step, checkpoint = max(candidates, key=lambda item: item[0])
     return CheckpointRef(checkpoint, CheckpointKind.RESUMABLE, step=step)
+
+
+@dataclass(frozen=True)
+class RunSummary:
+    """One run as a listing sees it, without opening a checkpoint."""
+
+    run: RunRef
+    manifest: RunManifest | None
+    latest_step: int | None
+    modified: float
+
+    @property
+    def profile(self) -> str | None:
+        return self.manifest.profile if self.manifest is not None else None
+
+    @property
+    def resumable(self) -> bool:
+        return self.latest_step is not None
+
+
+def _run_directories(checkpoint_dir: str | Path) -> list[tuple[float, Path]]:
+    """Every run directory with its modification time, newest first.
+
+    Deliberately a bare scan: no file inside any run is opened here. With
+    hundreds of run directories, ordering has to be settled before anything is
+    read, so that reading is confined to the few a caller actually takes.
+    """
+
+    root = Path(checkpoint_dir)
+    if not root.is_dir():
+        return []
+    found: list[tuple[float, Path]] = []
+    with os.scandir(root) as entries:
+        for entry in entries:
+            if entry.is_dir():
+                found.append((entry.stat().st_mtime, Path(entry.path)))
+    found.sort(key=lambda item: (-item[0], item[1].name))
+    return found
+
+
+def summarize_runs(
+    checkpoint_dir: str | Path = "checkpoints",
+    *,
+    limit: int | None = None,
+    profile: str | None = None,
+    resumable_only: bool = False,
+) -> list[RunSummary]:
+    """Summarize the most recently touched runs, newest first.
+
+    Reads lazily in modification order and stops once ``limit`` matches are in
+    hand, so a filtered listing costs the runs it had to look at rather than the
+    whole directory. A run whose profile is unknown -- anything written before
+    the manifest existed -- never satisfies a profile filter, because guessing
+    which profile an old run belongs to is exactly the mistake that would resume
+    the wrong thing.
+    """
+
+    summaries: list[RunSummary] = []
+    for modified, path in _run_directories(checkpoint_dir):
+        manifest = read_manifest(path)
+        if profile is not None and (manifest is None or manifest.profile != profile):
+            continue
+        steps = _numeric_steps(path)
+        latest_step = max((step for step, _ in steps), default=None)
+        if resumable_only and latest_step is None:
+            continue
+        summaries.append(RunSummary(RunRef(path.name, path), manifest, latest_step, modified))
+        if limit is not None and len(summaries) >= limit:
+            break
+    return summaries
+
+
+def select_latest_resumable_run(
+    profile: str, checkpoint_dir: str | Path = "checkpoints"
+) -> RunRef:
+    """The most recently touched run of ``profile`` that has something to resume.
+
+    Scoped to the profile because resuming an RL run into a BC launch, or the
+    reverse, is a mistake the resume itself would only catch as configuration
+    drift.
+    """
+
+    found = summarize_runs(checkpoint_dir, limit=1, profile=profile, resumable_only=True)
+    if not found:
+        raise RunNotFoundError(
+            f"no resumable {profile} run found under {Path(checkpoint_dir)}; "
+            "runs recorded before run.json existed have no profile and are not "
+            "eligible -- name one explicitly with --resume, and see bnb runs"
+        )
+    return found[0].run
 
 
 def select_final_training_checkpoint(run: RunRef | Path) -> CheckpointRef:

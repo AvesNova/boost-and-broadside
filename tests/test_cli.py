@@ -27,6 +27,7 @@ EXPECTED_COMMANDS = (
     "ar-report",
     "noise-calibration",
     "feature-stats",
+    "runs",
     "publish",
     "smoke",
 )
@@ -44,6 +45,7 @@ VALID_ARGV = {
     "ar-report": ["--team0", "scripted", "--team1", "random"],
     "noise-calibration": ["--team0", "model.pt", "--team1", "scripted"],
     "feature-stats": ["--team0", "scripted", "--team1", "random"],
+    "runs": [],
     "publish": [],
     "smoke": [],
 }
@@ -68,6 +70,7 @@ def test_modifier_ownership_matches_command_contract() -> None:
                 owners.setdefault(flag, set()).add(command.name)
 
     assert owners["--resume"] == {"train"}
+    assert owners["--resume-last"] == {"train"}
     assert owners["--pretrain-from"] == {"train"}
     assert owners["--compile"] == {"train"}
     assert owners["--no-wandb"] == {"train"}
@@ -738,3 +741,93 @@ def test_project_registers_installed_bnb_entrypoint(tmp_path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.startswith("usage: bnb")
+
+
+def _recorded_run(root: Path, name: str, *, profile: str, step: int, modified: float) -> Path:
+    from boost_and_broadside.run_manifest import RunManifest, write_manifest
+
+    path = root / "checkpoints" / name
+    path.mkdir(parents=True)
+    (path / f"step_{step:012d}.pt").touch()
+    write_manifest(
+        path,
+        RunManifest(
+            run=name, profile=profile, update=7, global_step=step, live_elo=879.8,
+            elapsed_seconds=5_400.0,
+        ),
+    )
+    os.utime(path, (modified, modified))
+    return path
+
+
+def test_resume_and_resume_last_are_mutually_exclusive() -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        _parse(["train", "--profile", "rl", "--resume", "some-run", "--resume-last"])
+    assert exit_info.value.code == 2
+
+
+def test_resume_last_resolves_to_an_exact_run_of_the_same_profile(tmp_path, monkeypatch) -> None:
+    """It becomes the same explicit subject a typed --resume would have produced."""
+    _recorded_run(tmp_path, "older-rl", profile="rl", step=1024, modified=1_000)
+    _recorded_run(tmp_path, "newest-rl", profile="rl", step=2048, modified=3_000)
+    _recorded_run(tmp_path, "newest-bc", profile="bc", step=4096, modified=4_000)
+    monkeypatch.chdir(tmp_path)
+
+    args = _parse(["train", "--profile", "rl", "--resume-last"])
+    assert cli_commands._resume_subject_for(args) == "newest-rl"
+
+    bc_args = _parse(["train", "--profile", "bc", "--resume-last"])
+    assert cli_commands._resume_subject_for(bc_args) == "newest-bc"
+
+
+def test_resume_last_without_a_recorded_run_says_what_to_do(tmp_path, monkeypatch) -> None:
+    from boost_and_broadside.evaluation.run_catalog import RunNotFoundError
+
+    (tmp_path / "checkpoints" / "unrecorded").mkdir(parents=True)
+    (tmp_path / "checkpoints" / "unrecorded" / "step_000000001024.pt").touch()
+    monkeypatch.chdir(tmp_path)
+
+    args = _parse(["train", "--profile", "rl", "--resume-last"])
+    with pytest.raises(RunNotFoundError, match="bnb runs"):
+        cli_commands._resume_subject_for(args)
+
+
+def test_runs_lists_newest_first_and_marks_what_is_resumable(tmp_path, monkeypatch, capsys):
+    _recorded_run(tmp_path, "older-rl", profile="rl", step=1024, modified=1_000)
+    _recorded_run(tmp_path, "newest-bc", profile="bc", step=4096, modified=4_000)
+    (tmp_path / "checkpoints" / "no-checkpoint").mkdir(parents=True)
+    os.utime(tmp_path / "checkpoints" / "no-checkpoint", (5_000, 5_000))
+    monkeypatch.chdir(tmp_path)
+
+    cli.parse_args(["runs"])
+    cli_commands.execute("runs", _parse(["runs"]), argv=["runs"])
+
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0].split() == [
+        "RUN", "PROFILE", "STATUS", "UPDATE", "STEP", "ELAPSED", "LIVE", "ELO", "RESUMABLE",
+    ]
+    assert [line.split()[0] for line in lines[1:]] == ["no-checkpoint", "newest-bc", "older-rl"]
+    assert lines[2].split()[1:] == ["bc", "running", "7", "4,096", "1h30m", "880",
+                                    "step_000000004096.pt"]
+    # A run with no manifest and no checkpoint still lists, with nothing invented.
+    assert lines[1].split()[1:] == ["-", "-", "-", "-", "-", "-", "-"]
+
+
+def test_runs_honours_its_filters(tmp_path, monkeypatch, capsys):
+    _recorded_run(tmp_path, "older-rl", profile="rl", step=1024, modified=1_000)
+    _recorded_run(tmp_path, "newest-bc", profile="bc", step=4096, modified=4_000)
+    monkeypatch.chdir(tmp_path)
+
+    cli_commands.execute("runs", _parse(["runs", "--profile", "rl"]), argv=["runs"])
+    assert [line.split()[0] for line in capsys.readouterr().out.splitlines()[1:]] == ["older-rl"]
+
+    cli_commands.execute("runs", _parse(["runs", "--limit", "1"]), argv=["runs"])
+    assert [line.split()[0] for line in capsys.readouterr().out.splitlines()[1:]] == ["newest-bc"]
+
+
+def test_runs_on_an_empty_checkpoint_root_says_so(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+
+    cli_commands.execute("runs", _parse(["runs"]), argv=["runs"])
+
+    assert capsys.readouterr().out.strip() == "no runs found under checkpoints/"

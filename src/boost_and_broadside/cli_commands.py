@@ -17,6 +17,8 @@ from boost_and_broadside.evaluation.run_catalog import (
     resolve_exact_run,
     resolve_explicit_checkpoint,
     select_latest_resumable_checkpoint,
+    select_latest_resumable_run,
+    summarize_runs,
 )
 from boost_and_broadside.execution import initialize_execution, resolve_execution_settings
 from boost_and_broadside.launch import TrainingLaunch, resolve_training_launch
@@ -158,9 +160,25 @@ def _run_trainer(trainer: PPOTrainer) -> None:
         trainer.shutdown()
 
 
+def _resume_subject_for(args: argparse.Namespace) -> str | None:
+    """The run or checkpoint this launch resumes, if any.
+
+    ``--resume-last`` resolves to an exact run name here rather than anywhere
+    later, so the rest of training sees the same explicit subject a typed
+    ``--resume`` produces.
+    """
+
+    if args.resume is not None:
+        return args.resume
+    if args.resume_last:
+        return select_latest_resumable_run(args.profile).name
+    return None
+
+
 def _train(args: argparse.Namespace, prepare: ContextFactory) -> None:
+    resume_subject = _resume_subject_for(args)
     resume_path, run_id = (
-        _resume_checkpoint(args.resume) if args.resume is not None else (None, None)
+        _resume_checkpoint(resume_subject) if resume_subject is not None else (None, None)
     )
     pretrain_path = (
         str(resolve_explicit_checkpoint(args.pretrain_from).path)
@@ -405,6 +423,46 @@ def _smoke(args: argparse.Namespace) -> None:
     run_smoke_matrix(args.case)
 
 
+def _format_elapsed(seconds: float | None) -> str:
+    if seconds is None:
+        return "-"
+    hours, remainder = divmod(int(seconds), 3600)
+    return f"{hours}h{remainder // 60:02d}m" if hours else f"{remainder // 60}m"
+
+
+def _runs(args: argparse.Namespace) -> None:
+    """List runs from their manifests. Never loads a checkpoint, never allocates."""
+
+    summaries = summarize_runs(
+        limit=None if args.all else args.limit,
+        profile=args.profile,
+        resumable_only=args.resumable,
+    )
+    if not summaries:
+        print("no runs found under checkpoints/")
+        return
+
+    header = ("RUN", "PROFILE", "STATUS", "UPDATE", "STEP", "ELAPSED", "LIVE ELO", "RESUMABLE")
+    rows = [header]
+    for summary in summaries:
+        manifest = summary.manifest
+        rows.append(
+            (
+                summary.run.name,
+                manifest.profile if manifest and manifest.profile else "-",
+                str(manifest.status) if manifest else "-",
+                str(manifest.update) if manifest else "-",
+                f"{manifest.global_step:,}" if manifest else "-",
+                _format_elapsed(manifest.elapsed_seconds if manifest else None),
+                f"{manifest.live_elo:.0f}" if manifest and manifest.live_elo is not None else "-",
+                f"step_{summary.latest_step:012d}.pt" if summary.resumable else "-",
+            )
+        )
+    widths = [max(len(row[column]) for row in rows) for column in range(len(header))]
+    for row in rows:
+        print("  ".join(value.ljust(width) for value, width in zip(row, widths, strict=True)))
+
+
 def _publish(args: argparse.Namespace) -> None:
     """Render manifest-selected canonical views. Never simulates, never plays."""
 
@@ -462,6 +520,9 @@ def execute(
         return
     if command == "publish":
         _publish(args)
+        return
+    if command == "runs":
+        _runs(args)
         return
     try:
         handler = _HANDLERS[command]
