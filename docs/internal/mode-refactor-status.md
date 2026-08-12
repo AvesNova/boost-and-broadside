@@ -36,8 +36,8 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: none. `S18` is completed.
-- Next section: `S19` — final branch acceptance.
+- Active section: `S19` — final branch acceptance.
+- Next section: none. `S19` is the last row in the queue.
 - Blocking issue: none. Both `S17` blockers are closed with regression coverage, and the independent
   re-review of `599beff..S17R` reports no remaining blocker. A clean `git archive HEAD` extraction
   now runs `bnb publish --check` to `1 external, 26 unchanged`, exit 0, and reproduces `docs/`
@@ -74,7 +74,7 @@ code, tests, and reader-facing documentation.
 | S17 | 10 gate | completed | migration/reproducibility reviewer | Sol / extra high | Independently verify 682 equivalence, completeness, provenance, and publication reproducibility |
 | S17R | 10 gate remediation | completed | migration/reproducibility remediator + reviewer | Sol / extra high | Make a clean checkout publishable and the migration record true, then obtain an independent re-review |
 | S18 | 11 | completed | documentation/cleanup engineer | Terra / high | Complete repo-wide docs and remove obsolete paths, names, and temporary compatibility residue |
-| S19 | final gate | pending | final branch reviewer | Sol / extra high | Review the complete branch against the plan and run final acceptance checks |
+| S19 | final gate | in_progress | final branch reviewer | Sol / extra high | Review the complete branch against the plan and run final acceptance checks |
 
 Model names for agent configuration are `gpt-5.6-sol` and `gpt-5.6-terra`; “extra high” maps to
 `xhigh`. An agent may lower effort for purely mechanical commands inside its section, but the
