@@ -93,12 +93,8 @@ def test_modifier_ownership_matches_command_contract() -> None:
 def test_legacy_entrypoint_and_reader_facing_commands_are_gone() -> None:
     root = Path(__file__).resolve().parents[1]
     assert not (root / "main.py").exists()
-    excluded = {
-        root / "docs" / "internal" / "mode-refactor-plan.md",
-        root / "docs" / "internal" / "mode-refactor-status.md",
-    }
     documents = [root / "README.md", root / "STYLE_GUIDE.md"]
-    documents.extend(path for path in (root / "docs").rglob("*.md") if path not in excluded)
+    documents.extend((root / "docs").rglob("*.md"))
     offenders = {
         str(path.relative_to(root)): token
         for path in documents

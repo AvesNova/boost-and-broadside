@@ -104,16 +104,14 @@ def test_registered_profile_modules_do_not_import_each_other() -> None:
 
 def test_deleted_runs_profile_path_has_no_live_references() -> None:
     # Files that name `runs/` as *history* rather than as a path in this tree. The
-    # two planning documents describe the move that deleted it. The two 682
-    # migration scripts read the landmark run's own training commit, where the
-    # profiles still lived at `runs/shared.py`; that commit is recorded in the run's
-    # W&B export and is an ancestor of main, so the reference is to a real location
-    # in a real checkout, just not this one. Nothing here imports `runs` at runtime:
-    # landmark_682_reference.py does so only inside a subprocess-style entry point
-    # that has already put the historical checkout first on sys.path, and asserts it.
+    # two 682 migration scripts read the landmark run's own training commit, where
+    # the profiles still lived at `runs/shared.py`; that commit is recorded in the
+    # run's W&B export and is an ancestor of main, so the reference is to a real
+    # location in a real checkout, just not this one. Nothing here imports `runs` at
+    # runtime: landmark_682_reference.py does so only inside a subprocess-style entry
+    # point that has already put the historical checkout first on sys.path, and
+    # asserts it.
     historical_references = {
-        _ROOT / "docs" / "internal" / "mode-refactor-plan.md",
-        _ROOT / "docs" / "internal" / "mode-refactor-status.md",
         _ROOT / "scripts" / "migrate_682.py",
         _ROOT / "scripts" / "landmark_682_reference.py",
     }

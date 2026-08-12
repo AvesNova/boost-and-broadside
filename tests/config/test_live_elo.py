@@ -65,9 +65,8 @@ _FITTED_FIELD = {
 # Accepted per-rung error of the linear gauge against each fitted ladder
 # regauged to the same two endpoints, as (zero-field, field) Elo points.
 # Oriented as the gauge's own error, live minus fitted, so positive means the
-# gauge rates the rung above where it actually plays. The table in
-# docs/internal/mode-refactor-plan.md §1 lists the same numbers negated, as
-# fitted minus linear.
+# gauge rates the rung above where it actually plays. `bnb semi-random` reports
+# the same quantity per rung as `live_gauge_error`, with the same orientation.
 _ACCEPTED_ERROR = {
     0.2: (106.2, 77.3),
     0.3: (103.7, 80.7),
