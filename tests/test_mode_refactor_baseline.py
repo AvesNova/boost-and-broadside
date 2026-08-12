@@ -29,6 +29,12 @@ _ROOT = Path(__file__).resolve().parents[1]
 _SNAPSHOTS = _ROOT / "tests" / "fixtures" / "mode_refactor"
 _INVENTORY = _ROOT / "docs" / "internal" / "mode-characterization.json"
 
+# S08 replaced the 2v2/1v1 AR report pair with one canonical 4v4 report; S18
+# deleted their files from the tree, the one intentional removal this frozen
+# S01 baseline is allowed to no longer see. See the same exclusion in
+# tests/publication/test_inventory.py.
+_RETIRED = ("docs/ar_report/1v1/", "docs/ar_report/2v2/")
+
 
 def _normalize(value: Any) -> Any:
     """Turn current dataclass config into stable, complete JSON evidence.
@@ -115,12 +121,17 @@ def test_machine_readable_inventory_remains_as_legacy_evidence_and_tracks_assets
     and regenerated the inventory: publishing added the canonical 4v4 AR report
     and the generated provenance index. Growth is allowed — a canonical output
     *disappearing* is what this guards, and the S01 record stays frozen as the
-    thing it is compared against.
+    thing it is compared against. The one exception is `_RETIRED`: S18 deleted
+    the superseded 1v1/2v2 AR report trees by name, on the record, so they are
+    excluded here rather than treated as an unexplained loss.
     """
 
     inventory = json.loads(_INVENTORY.read_text())
     assert any(action["dest"] == "mode" for action in inventory["parser_actions"])
-    assert set(inventory["published_assets"]) <= set(_tracked_publication_assets())
+    recorded = [
+        path for path in inventory["published_assets"] if not path.startswith(_RETIRED)
+    ]
+    assert set(recorded) <= set(_tracked_publication_assets())
 
 
 @pytest.mark.parametrize(

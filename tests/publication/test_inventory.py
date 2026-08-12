@@ -20,9 +20,10 @@ from boost_and_broadside.publication.publish import UNSELECTED, run_publish
 _ROOT = Path(__file__).resolve().parents[2]
 _INVENTORY = _ROOT / "docs" / "internal" / "mode-characterization.json"
 
-# S08 replaced the 2v2/1v1 AR report pair with one canonical 4v4 report. Their
-# files are still tracked and are deleted by the documentation sweep in S18; the
-# manifest deliberately does not adopt outputs that are on their way out.
+# S08 replaced the 2v2/1v1 AR report pair with one canonical 4v4 report. S18
+# deleted their files from the tree; the frozen S01 inventory snapshot still
+# names them, and the manifest deliberately never adopted outputs on their way
+# out, so they stay excluded here rather than rewriting frozen S01 evidence.
 _RETIRED = ("docs/ar_report/1v1/", "docs/ar_report/2v2/")
 
 
