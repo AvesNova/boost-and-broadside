@@ -36,13 +36,14 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: `S19` — final branch acceptance.
-- Next section: none. `S19` is the last row in the queue.
-- Blocking issue: none. Both `S17` blockers are closed with regression coverage, and the independent
-  re-review of `599beff..S17R` reports no remaining blocker. A clean `git archive HEAD` extraction
-  now runs `bnb publish --check` to `1 external, 26 unchanged`, exit 0, and reproduces `docs/`
-  byte-for-byte; `migration_report.md` agrees with `migration_report.json` and with the tracked
-  bytes on all sixteen files.
+- Active section: none. `S19` is completed and the queue is finished.
+- Next section: none. The branch is ready for human review and merge preparation; `S19` did not
+  merge, and the plan and this ledger are deliberately retained until that human-approved step.
+- Blocking issue: none. `S19` reviewed the complete `afdf406..a135529` branch against every locked
+  decision and found no blocking finding. The full suite is 1492 passed, the 14-case smoke matrix
+  passes with the checkout unchanged, and a clean `git archive HEAD` extraction runs
+  `bnb publish --check` to `1 external, 26 unchanged`, exit 0, and reproduces `docs/` byte-for-byte
+  under a real `bnb publish`.
 - Target schemas: **frozen** — see "Frozen migration target schemas" below. `S15` migrates into
   exactly those shapes.
 
@@ -74,7 +75,7 @@ code, tests, and reader-facing documentation.
 | S17 | 10 gate | completed | migration/reproducibility reviewer | Sol / extra high | Independently verify 682 equivalence, completeness, provenance, and publication reproducibility |
 | S17R | 10 gate remediation | completed | migration/reproducibility remediator + reviewer | Sol / extra high | Make a clean checkout publishable and the migration record true, then obtain an independent re-review |
 | S18 | 11 | completed | documentation/cleanup engineer | Terra / high | Complete repo-wide docs and remove obsolete paths, names, and temporary compatibility residue |
-| S19 | final gate | in_progress | final branch reviewer | Sol / extra high | Review the complete branch against the plan and run final acceptance checks |
+| S19 | final gate | completed | final branch reviewer | Sol / extra high | Review the complete branch against the plan and run final acceptance checks |
 
 Model names for agent configuration are `gpt-5.6-sol` and `gpt-5.6-terra`; “extra high” maps to
 `xhigh`. An agent may lower effort for purely mechanical commands inside its section, but the
@@ -2877,6 +2878,198 @@ only lines in the document that moved.
      equivalence, not an aggregate ladder-versus-ladder tournament on the migrated set); `S16` risks
      1–5; `S15` risks 1–4; `S14R` risks 1–3; `S13` risks 1–3 and 5–6; `S12` risks 2–4.
   3. `S19` is the next authorized section and was not begun.
+
+### S19 handoff
+
+- Status: completed; **the final branch gate is closed with no blocking findings**
+- Agent/model/effort: final branch reviewer / Claude Opus 5 / extra high
+- Commit(s): `a135529` — mark S19 active; followed by this closure commit. No product code was
+  changed: review agents do not edit product code, and nothing this review found required one.
+- Range reviewed: the complete branch, `afdf406..a135529` — 126 commits, 289 files,
+  +91,258/−56,769. Every earlier row was confirmed `completed` and the worktree clean before
+  starting.
+
+#### Acceptance checks
+
+- `uv run --no-sync pytest -q` — **1492 passed**, 3 warnings, 543 s. Matches `S18` exactly.
+- `.venv/bin/bnb smoke` — all **14** isolated cases passed; runner reported the checkout unchanged,
+  and `git status --porcelain` was empty before and after.
+- `uv run --no-sync ruff check .` — passed. Ruff against a clean `git archive HEAD` extraction —
+  passed, so the result does not depend on the ignored local `wandb/`.
+- `git diff --check main...HEAD` and `git diff --check` — both passed over the whole branch range.
+- `bnb publish --check` against the working checkout — exit 0, **1 external, 26 unchanged**.
+- `bnb publish` (non-check) against the working checkout — exit 0, same counts, worktree still clean.
+- **The offline no-diff gate, from a fresh clone.** `git archive HEAD` extracted to a temporary
+  directory (334 files, LFS objects materialized — `best_training.pt` is 5,535,604 real bytes, not a
+  pointer), with no `out/` and no `samples/`, as a clean checkout has. `bnb publish --check` there
+  exits 0 at **1 external, 26 unchanged**; a real `bnb publish` there then leaves `diff -rq` against
+  the tracked `docs/` **empty**. This is plan phase 10's "Done when", re-derived independently.
+
+#### Verified against the locked decisions
+
+Each was checked against the code or a live probe, not against the handoff records.
+
+1. **D1** — `num_ships=8` in all three registered profiles, `action_repeat=2`,
+   `DEFAULT_MATCHUP = Matchup(4, 4)` (`evaluation/sizes.py:28`). `play` is the human 1v1 duel;
+   `capture` defaults to the subject run's native size, which for the landmark is 4v4.
+2. **D2/D5** — `bc-warmstart` and `elo-stats` are gone from the parser and no `warmstart` token
+   survives anywhere in `src/`, `tests/`, or `scripts/`. `elo-calibrate` takes exactly one of
+   `--run | --agents | --from-artifact`.
+3. **D3/D15** — `PROFILES` is a `MappingProxyType` registry of three entries; no profile module
+   imports another, or any runtime engine. Their only imports are `config.defaults`,
+   `config.schema`, `config.training`, and `constants`.
+4. **D4** — no module exposing a user-facing `run_*` entry point imports another. The single
+   cross-module import, `elo_calibrate` → `elo_calibrate_history`, is to a module with no `run_*`
+   entry point, which is the guard's recorded boundary.
+5. **D6** — the 14 smoke cases run in isolated subprocesses and the runner asserts the checkout
+   unchanged. `publish` is excluded by construction; see non-blocking 2.
+6. **D7/D8** — `LIVE_RANDOM_ELO = 0.0`, `LIVE_SCRIPTED_ELO = 1000.0`, and every rung equals
+   `1000·p` to within 1e-9 on all three profiles. `reference_ladder`, `random_elo`, and
+   `scripted_elo_init` are absent from both `TrainConfig` and `EloEvalConfig`.
+7. **D10/D11/D17** — `.gitignore` is exactly as documented: `/artifacts/`, `/out/`, `.vram.json`,
+   then `!checkpoints/*/artifacts/**` and `!checkpoints/*/wandb_export/**` after the landmark
+   whitelist, then `samples/` last so it still wins. `git ls-files` matches no `samples/` path; both
+   local sample payloads resolve to `.gitignore:45`; the previously-trapped
+   `wandb-export/files/output.log` is tracked. Nothing outside `publication/` names or writes
+   `docs/`, and no mode imports matplotlib.
+8. **D12/D13** — root `main.py` and `runs/` are deleted; `pyproject.toml` registers
+   `bnb = "boost_and_broadside.cli:main"`. The command list is exactly the plan's fourteen. Bare
+   `bnb` prints help at exit 0 with no side effects. `--resume latest` and `--resume none` are
+   argparse errors naming the rule ("magic or path-like run names are invalid"); `--resume` with no
+   value, `train` with no `--profile`, `--resume X --pretrain-from Y`, `collect_stats`,
+   `elo-stats`, `bc-warmstart`, `play --profile`, `collect-stats --resume`, `train --no-plots`, and
+   `train --smoke` all exit 2. No option anywhere contains an underscore, and there is no
+   `--set key=value`. Every budget option names its unit; `--max-steps` is metavar
+   `PHYSICS_TICKS`.
+9. **D14** — all library code is under `src/`. The only Python outside it is `tests/`, `scripts/`,
+   and the two pre-existing `benchmarks/` throughput scripts, none of which is importable library
+   code.
+10. **D18** — publication actively blocks the network: `_offline` swaps `socket.socket` and
+    `socket.create_connection` for raisers around the whole run (`publication/publish.py:158-170`).
+    The only `import wandb` outside training is inside `export_wandb_run.py`'s network function, so
+    the `--from-directory` path never imports it.
+11. **D19** — no runtime migration exists. The only occurrences of "migrat" under `src/` are three
+    refusal or docstring lines (`config/training.py:65`, `checkpoint_schema.py:39`,
+    `checkpoint.py:221`), and no package module names the landmark run. `elo_scale._SEED_BASE =
+    682_000` is a numeric seed base, never a run subject.
+
+#### Frozen schemas and fingerprints, re-derived from code
+
+- All four schema constants match the frozen record: `OBSERVATION_SCHEMA = "refractive_fields_v3"`,
+  `PROFILE_SCHEMA_VERSION = 1`, `RESOLVED_CONFIG_SCHEMA_VERSION = 1`,
+  `ARTIFACT_MANIFEST_SCHEMA_VERSION = 1`.
+- `POLICY_CHECKPOINT_FIELDS` is the frozen ten in the frozen order;
+  `RESUMABLE_CHECKPOINT_FIELDS` is the frozen twenty-nine in the frozen order;
+  `OPTIONAL_CHECKPOINT_FIELDS` is exactly `{resolved_config, launch}`. Compared element by element,
+  not by length.
+- All six profile fingerprints match the frozen table: `rl` `9f4baf830c22…`/`882ed9ba23a1…`,
+  `rl-fields` `cdd020cf01d8…`/`1a5a3c43a534…`, `bc` `138544ad4143…`/`b91a4ef73a92…`.
+- All eight artifact `result_schema_version`s match: `ar-report` 1, `crossover` 2,
+  `elo-calibration` 2, `elo-scale` 1, `feature-stats` 1, `noise-calibration` 1,
+  `semi-random-ladder` 2, `wandb-export` 1.
+
+#### Artifact integrity, provenance, and the migration record
+
+- All **seven** artifacts pass `load_artifact(verify=True)` and `require_complete`. Every one
+  records `status: complete`, `git_dirty: false`, a commit that is an ancestor of HEAD on this
+  branch, `environment: {}`, the `uv.lock` hash, the runtime stack, and an `invocation.normalized`
+  that names a real subcommand or script path.
+- Every payload file recorded by every artifact is either tracked by Git or under `samples/`.
+  Zero untracked non-sample files — `S17` blocking finding 1 is closed, verified independently.
+- The migration record agrees on **16 of 16** files across `migration_report.json`,
+  `migration_report.md`, and the sha256 of the bytes on disk, including the three
+  `train_config`-carrying files that drifted at `S17`. Both hash kinds appear in the document for
+  every file. `S17` blocking finding 2 is closed.
+- All **16** landmark `.pt` files load through the ordinary strict loader with no migration path,
+  each resolving `paradigm=ego_pass` and `team_pma_k=(0, 1)` — the two things the rejected first
+  attempt got wrong. Both resumable files additionally satisfy `require_resumable_checkpoint`.
+
+#### The gates were probed, not assumed
+
+Eight deliberate corruptions in disposable copies of the clean archive, to confirm
+`publish --check` is not vacuous. Seven exit 2 and name the entry: a tampered
+`docs/results/provenance.md` and a deleted `docs/results/provenance.json` (both
+`1 index-drift` — `S18`'s new coverage biting), a figure overwritten with a different image and a
+truncated figure (both `1 changed`), a byte appended to a replay GIF (`changed`, against its pinned
+sha256) and to `ar_report.md` (`changed`), a deleted artifact payload file (`3 unresolved`, with
+the other 23 entries still reported — `S17R`'s per-entry reporting), and an artifact flipped to
+`in-progress` (`1 unresolved`). The eighth is non-blocking finding 1 below.
+
+#### Unrelated changes and stale paths
+
+- The simulation and model core is essentially untouched by the branch: `env/` and `models/` differ
+  from `main` by **two lines**, and both are the plan's own asks — a docstring path corrected from
+  `runs/shared.py` to `config/defaults.py`, and `YemongPolicy.team_pma_k` losing its empty default
+  (plan §4).
+- The repository-wide sweep for `main.py`, `--mode`, `bc_warmstart`, `elo_stats`, `runs/` imports,
+  8v8-default claims, `--fast-cache`, `--no-plots`, and `feature-stats.output_dir` found no live
+  reference. The surviving hits are all legitimate: the historical W&B export's own
+  `wandb-metadata.json`, the guard test that asserts the tokens are absent, `profiles/rl_fields.py`
+  as a module filename (the CLI name is `rl-fields`, and `--profile rl_fields` is a tested exit 2),
+  `scripts/landmark_682_reference.py`'s import from the historical worktree, the `self_8v8_seed01`
+  replay clip name, and `output_dir` as a renderer parameter.
+- No tracked scratch, backup, `.orig`, or `.rej` path; no `TODO`/`FIXME`/`XXX`/`HACK` under `src/`.
+- `ROADMAP.md` is not covered by the docs guard test (which reads `README.md`, `STYLE_GUIDE.md`, and
+  `docs/**/*.md`) but was checked by hand and names no retired command.
+- Test files grew 39 → 70 across the branch, with every plan §6 layer represented:
+  `tests/config` 5, `tests/evaluation` 6, `tests/artifacts` 5, `tests/publication` 7,
+  `tests/migration` 2, `tests/modes` 13, `tests/train` 9, plus 6 at top level.
+
+- Behavior/config changes: **none.** This review changed no product code, configuration,
+  checkpoint, or artifact. Every probe ran read-only or under the session scratchpad; the archive
+  extraction and all eight mutation copies were temporary and are removed.
+- Files/artifacts produced: this ledger record only.
+- Decisions/deviations from plan: **S19 approves the branch for human review and merge
+  preparation.** It does not merge. Per plan phase 11, `docs/internal/mode-refactor-plan.md` and
+  this ledger are deliberately retained through that human-approved step and are not deleted here.
+- Review findings addressed: none; review agents do not edit product code. No finding below is
+  blocking, so no remediation row is inserted.
+- Non-blocking findings:
+  1. **A canonical PNG can carry bytes publication would never produce, and neither `--check` nor
+     `publish` converges it.** `_compare` (`publication/publish.py:467-481`) tries sha256 first and
+     then falls back to decoded-pixel equality for `_PIXEL_SUFFIXES`, so a byte appended after a
+     PNG's `IEND` reports `elo_curve: unchanged — identical pixels, different bytes` and
+     `--check` exits 0; a plain `bnb publish` then does not rewrite the file either, so the byte
+     difference persists in both directions. The tolerance is the plan's own (§5: "checks may
+     compare decoded pixels where byte identity is not stable") and `S16` depends on it — the three
+     W&B-derived figures publish under exactly that note — so this is a recorded design choice, not
+     a regression. The content gate is intact: a real pixel change and a truncation both exit 2,
+     and GIF, Markdown, and JSON outputs each fail on a single byte. The tracked bytes are
+     currently exactly what publication produces, confirmed by the empty `diff -rq` above, and any
+     drift would appear in `git status` because the outputs are tracked. Recorded because several
+     handoffs describe the gate as "byte-for-byte", which is true of the tree today but is not what
+     `--check` enforces for the eight PNGs.
+  2. **`bnb publish` still has no smoke case.** `runtime_command_names`
+     (`cli_commands.py:443`) returns `tuple(_HANDLERS)`, which excludes `publish` and `smoke`, so
+     the one command that writes into the tracked tree is never exercised under the isolated-root
+     escape and checkout-clean assertions. Pre-existing `S10` non-blocking 7, carried unchanged by
+     `S16` and `S17R`. `tests/publication/` covers it well and `--check` runs against the real
+     repository, so this is coverage placement rather than a defect.
+  3. **The one `external` entry is verified for presence only.** `_verify_external`
+     (`publication/publish.py:250-257`) checks that `docs/policy_architecture.png` exists and
+     reports "tracked as-is; not produced in this repository"; nothing pins its content. That is
+     honest — the asset is hand-drawn with no producer here, recorded as such since `S01`, and the
+     report counts it separately from the 26 verified entries rather than folding it in. It is
+     still the single canonical output whose content no gate checks, and `media-copy-v1` already
+     demonstrates the cheap fix for an output with no in-repo producer: a sha256 pin in the
+     manifest.
+  4. **`.gitignore:15` keeps a commented-out `# /runs/` rule** for the directory `S02` deleted.
+     Cosmetic residue; it ignores nothing, and `S18`'s sweep was scoped to executable source and
+     reader-facing documents.
+- Remaining risks or required follow-up:
+  1. The four non-blocking findings above, none of which blocks merge.
+  2. Carried forward unchanged from earlier sections, all previously recorded and none re-opened
+     here: `S18` risk 2; `S17R` risks 3 (`render_report`'s `ShipConfig` rebuild is fragile to a
+     future dataclass change, accepted) and 4 (`ingest_export_directory`'s docstring wording,
+     deferred by name twice); `S17` risk 2 (the equivalence evidence is fixed-observation and
+     scenario equivalence over 2 input sets × 30 steps × 18 weight sets, not an aggregate
+     ladder-versus-ladder tournament on the migrated set); `S16` risks 1–5, in particular that the
+     published measurements come from the migrated checkpoints under current physics rather than
+     the run's original evaluation, and that the three largest fleet sizes record
+     `converged: false`; `S15` risks 1–4; `S14R` risks 1–3; `S13` risks 1–3 and 5–6; `S12` risks
+     2–4.
+  3. **The branch is ready for human review and merge.** The queue is complete; there is no next
+     section, and `S19` did not merge.
 
 ### Future handoff template
 
