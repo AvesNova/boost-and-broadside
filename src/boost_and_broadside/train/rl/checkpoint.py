@@ -582,6 +582,12 @@ class CheckpointMixin:
             previous save on this thread slot is still running. Callers that gate a
             high-water mark on the save must only advance it when this returns True,
             or a skipped save would raise the bar without persisting the checkpoint.
+
+        ``_save_checkpoint`` copies its payload to host memory *before* asking, so
+        a skipped save has already paid the full blocking cost for nothing.
+        Harmless while an update takes minutes and this never fires; worth
+        hoisting the check above the copy if updates ever get short enough for
+        saves to collide routinely.
         """
         active = getattr(self, thread_attr, None)
         if active is not None and active.is_alive():
@@ -647,6 +653,23 @@ class CheckpointMixin:
 
         Allows best_avg.pt / avg_step_*.pt to be loaded by _load_checkpoint_agent
         by policy-only evaluation checkpoints, which read ``ckpt["policy_state_dict"]``.
+
+        This rebuilds the whole payload, so ``_save_checkpoint`` copies the
+        optimizer state to host memory twice per save: about 19 ms of the ~48 ms
+        it blocks for, measured on a 27.5 MB payload. Deduplicating it means
+        building the live CPU payload once and shallow-copying it with only
+        ``policy_state_dict`` replaced by a *separately cloned* average.
+
+        Do not reach for the cheaper-looking version of that. The live payload
+        already holds a host copy of these weights under ``avg_policy_state_dict``,
+        and reusing that object as ``policy_state_dict`` costs no copy at all --
+        but ``torch.save`` collapses tensors that share storage within one file
+        and ``torch.load`` restores the sharing, so the two keys come back
+        aliased and writing through either one silently rewrites the other.
+        ``avg_policy_state_dict`` is a required resumable field, so that aliasing
+        is reachable. The same trap is why the duplicate copy of the average
+        weights this payload writes -- once here, once under
+        ``avg_policy_state_dict`` -- is left alone.
         """
         payload = self.checkpoint_payload(update)
         payload["policy_state_dict"] = self._avg_policy_module.state_dict()
