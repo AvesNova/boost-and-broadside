@@ -16,6 +16,7 @@ from boost_and_broadside.publication.provenance import (
 )
 from boost_and_broadside.publication.publish import (
     CHANGED,
+    INDEX_DRIFT,
     MISSING,
     RENDERED,
     UNCHANGED,
@@ -648,6 +649,54 @@ def test_the_generated_index_names_each_source_and_only_appears_once_selected(
     assert str(location) in index
     ownership = json.loads((repository / OWNERSHIP_RELATIVE_PATH).read_text())
     assert ownership["outputs"] == ["docs/results/summary.json"]
+
+
+def test_check_fails_on_a_hand_edited_provenance_index(repository, renderers) -> None:
+    # Nothing else in a run exercises this file, so a hand edit — or a renderer
+    # change that moves a digest without changing any entry's install status —
+    # would otherwise pass `--check` while the index quietly disagreed with
+    # what `bnb publish` would actually write.
+    location = build_artifact(repository, {"value": 1})
+    write_manifest(repository, _SUMMARY.format(location=location))
+    run_publish(repository)
+    (repository / PROVENANCE_RELATIVE_PATH).write_text("# tampered\n")
+
+    report = run_publish(repository, check=True)
+
+    assert report.failed
+    assert report.index_drift == ["docs/results/provenance.md"]
+    assert [outcome.status for outcome in report.outcomes] == [UNCHANGED]
+    assert f"1 {INDEX_DRIFT}" in report.render()
+    # Check mode changes nothing.
+    assert (repository / PROVENANCE_RELATIVE_PATH).read_text() == "# tampered\n"
+
+
+def test_check_fails_on_a_deleted_ownership_record_even_though_output_matches(
+    repository, renderers
+) -> None:
+    location = build_artifact(repository, {"value": 1})
+    write_manifest(repository, _SUMMARY.format(location=location))
+    run_publish(repository)
+    (repository / OWNERSHIP_RELATIVE_PATH).unlink()
+
+    report = run_publish(repository, check=True)
+
+    assert report.failed
+    assert report.index_drift == ["docs/results/provenance.json"]
+    assert [outcome.status for outcome in report.outcomes] == [UNCHANGED]
+
+
+def test_publish_repairs_a_tampered_provenance_index(repository, renderers) -> None:
+    location = build_artifact(repository, {"value": 1})
+    write_manifest(repository, _SUMMARY.format(location=location))
+    run_publish(repository)
+    (repository / PROVENANCE_RELATIVE_PATH).write_text("# tampered\n")
+
+    report = run_publish(repository)
+
+    assert not report.failed
+    assert "Do not edit" in (repository / PROVENANCE_RELATIVE_PATH).read_text()
+    assert not run_publish(repository, check=True).failed
 
 
 def test_publish_never_writes_outside_docs(repository, renderers) -> None:

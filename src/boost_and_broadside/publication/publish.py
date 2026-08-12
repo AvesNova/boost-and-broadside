@@ -60,6 +60,10 @@ UNRESOLVED = "unresolved"
 # Not an entry status: staleness is a property of a leftover output rather than
 # of any entry, so it is reported in PublishReport.stale, not through by_status.
 STALE = "stale"
+# Also not an entry status, for the same reason: the generated index is one
+# file pair with no owning manifest entry, so drift in it is reported in
+# PublishReport.index_drift rather than through by_status.
+INDEX_DRIFT = "index-drift"
 
 _PIXEL_SUFFIXES = frozenset({".png"})
 
@@ -87,6 +91,7 @@ class PublishReport:
     removed: list[str] = field(default_factory=list)
     stale: list[str] = field(default_factory=list)
     index: list[str] = field(default_factory=list)
+    index_drift: list[str] = field(default_factory=list)
 
     @property
     def failed(self) -> bool:
@@ -96,10 +101,16 @@ class PublishReport:
         a changed one: it is still in the tree, still reads as canonical, and
         nothing produces it any more. Only check mode records one as ``stale``;
         publish mode removes it and records it under ``removed``, which is a
-        repair rather than a failure.
+        repair rather than a failure. The generated provenance index and
+        ownership record are canonical outputs too, even though no manifest
+        entry owns them directly; check mode records their drift the same way.
         """
 
-        return any(outcome.failed for outcome in self.outcomes) or bool(self.stale)
+        return (
+            any(outcome.failed for outcome in self.outcomes)
+            or bool(self.stale)
+            or bool(self.index_drift)
+        )
 
     def by_status(self, status: str) -> list[EntryOutcome]:
         return [outcome for outcome in self.outcomes if outcome.status == status]
@@ -116,11 +127,18 @@ class PublishReport:
             "run bnb publish to remove it"
             for path in self.stale
         )
+        lines.extend(
+            f"generated index {path} does not match the manifest; "
+            "run bnb publish to regenerate it"
+            for path in self.index_drift
+        )
         counts = {}
         for outcome in self.outcomes:
             counts[outcome.status] = counts.get(outcome.status, 0) + 1
         if self.stale:
             counts[STALE] = len(self.stale)
+        if self.index_drift:
+            counts[INDEX_DRIFT] = len(self.index_drift)
         summary = ", ".join(f"{count} {status}" for status, count in sorted(counts.items()))
         verb = "publish --check" if self.checked else "publish"
         lines.append(f"{verb}: {summary or 'nothing to do'}")
@@ -214,11 +232,18 @@ def run_publish(
     # so rewriting the index from this run would drop it from both while its
     # output stayed in `docs/` — leaving it unowned, and prunable by the next
     # run. Every other outcome still contributes its row, so only this one has
-    # to hold the index back.
-    if not check and target is None and not report.by_status(UNRESOLVED) and any(
-        entry.selected and not entry.renderer.external for entry in manifest.entries
-    ):
-        _write_generated_index(repository, manifest, report)
+    # to hold the index back, in both modes: check verifies the same body it
+    # would otherwise write, so it must be withheld under the same condition.
+    index_ready = (
+        target is None
+        and not report.by_status(UNRESOLVED)
+        and any(entry.selected and not entry.renderer.external for entry in manifest.entries)
+    )
+    if index_ready:
+        if check:
+            report.index_drift.extend(_verify_generated_index(repository, manifest, report))
+        else:
+            _write_generated_index(repository, manifest, report)
     return report
 
 
@@ -535,10 +560,34 @@ def _write_generated_index(
         os.replace(temporary, destination)
 
 
+def _verify_generated_index(
+    repository: Path, manifest: PublicationManifest, report: PublishReport
+) -> list[str]:
+    """Check mode's half of ``_write_generated_index``: compare, never write.
+
+    Nothing else in the run exercises these two files, so a hand edit, a
+    renderer change that alters a digest without changing an entry's install
+    status, or a manually reverted checkout would otherwise pass ``--check``
+    while ``docs/results/provenance.{md,json}`` quietly disagreed with what
+    ``bnb publish`` would actually produce.
+    """
+
+    drifted = []
+    for relative, body in (
+        (PROVENANCE_RELATIVE_PATH, render_provenance_index(report.index)),
+        (OWNERSHIP_RELATIVE_PATH, render_ownership(manifest)),
+    ):
+        destination = repository / relative
+        if not destination.is_file() or destination.read_text() != body:
+            drifted.append(relative.as_posix())
+    return drifted
+
+
 __all__ = [
     "CHANGED",
     "EXTERNAL",
     "EntryOutcome",
+    "INDEX_DRIFT",
     "MISSING",
     "PublishReport",
     "RENDERED",
