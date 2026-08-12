@@ -36,8 +36,8 @@ code, tests, and reader-facing documentation.
 
 ## Current state
 
-- Active section: `S18` — documentation and cleanup.
-- Next section: `S19`, once `S18` closes with a clean worktree.
+- Active section: none. `S18` is completed.
+- Next section: `S19` — final branch acceptance.
 - Blocking issue: none. Both `S17` blockers are closed with regression coverage, and the independent
   re-review of `599beff..S17R` reports no remaining blocker. A clean `git archive HEAD` extraction
   now runs `bnb publish --check` to `1 external, 26 unchanged`, exit 0, and reproduces `docs/`
@@ -73,7 +73,7 @@ code, tests, and reader-facing documentation.
 | S16 | 10 | completed | landmark/publication integrator | Sol / high | Backfill 682 artifacts and raw samples; select and regenerate canonical publications |
 | S17 | 10 gate | completed | migration/reproducibility reviewer | Sol / extra high | Independently verify 682 equivalence, completeness, provenance, and publication reproducibility |
 | S17R | 10 gate remediation | completed | migration/reproducibility remediator + reviewer | Sol / extra high | Make a clean checkout publishable and the migration record true, then obtain an independent re-review |
-| S18 | 11 | in_progress | documentation/cleanup engineer | Terra / high | Complete repo-wide docs and remove obsolete paths, names, and temporary compatibility residue |
+| S18 | 11 | completed | documentation/cleanup engineer | Terra / high | Complete repo-wide docs and remove obsolete paths, names, and temporary compatibility residue |
 | S19 | final gate | pending | final branch reviewer | Sol / extra high | Review the complete branch against the plan and run final acceptance checks |
 
 Model names for agent configuration are `gpt-5.6-sol` and `gpt-5.6-terra`; “extra high” maps to
@@ -2793,6 +2793,90 @@ only lines in the document that moved.
      `docs/ar_report/{1v1,2v2}` trees and three superseded landmark JSON files await `S18`; and
      `S15` risks 1–4, `S14R` risks 1–3, `S13` risks 1–3 and 5–6, and `S12` risks 2–4.
   6. `S18` is the next authorized section and was not begun.
+
+### S18 handoff
+
+- Status: completed
+- Agent/model/effort: documentation/cleanup engineer / Claude Sonnet 5 / high
+- Commit(s): `120e1d1` — mark S18 active; `ad2d0d3` — delete the superseded 1v1/2v2 AR report and
+  legacy landmark JSON; `fc6ed78` — verify the generated provenance index under `--check`; followed
+  by this closure commit.
+- Tests/checks and results: `uv run --no-sync pytest -q` (**1492 passed**, 3 warnings — up from 1489
+  at `S17R`; the three new `test_publish.py` cases account for the difference); `.venv/bin/bnb smoke`
+  (all 14 isolated cases passed, checkout unchanged); `uv run --no-sync ruff check .` (passed);
+  `git diff --check` (passed); `bnb publish --check` against the working checkout **and** against a
+  clean `git archive HEAD` extraction — both exit 0 and report **1 external, 26 unchanged**; ruff
+  also run clean against the same archive extraction.
+- New regression coverage, each verified to fail without its fix: a hand-edited
+  `docs/results/provenance.md` now fails `--check` (`test_check_fails_on_a_hand_edited_provenance_index`);
+  a deleted `docs/results/provenance.json` fails `--check` even though every entry's own output still
+  matches (`test_check_fails_on_a_deleted_ownership_record_even_though_output_matches`); a tampered
+  index is repaired by a normal `bnb publish`
+  (`test_publish_repairs_a_tampered_provenance_index`) — all in `tests/publication/test_publish.py`.
+  The `tests/test_mode_refactor_baseline.py` guard fix below was itself caught by the full suite
+  failing without it.
+- Behavior/config changes: **no training configuration, profile, fingerprint, or checkpoint moved.**
+  Two product changes, both in the documentation/publication surface:
+  1. The retired `docs/ar_report/{1v1,2v2}` trees (38 files, replaced by the canonical 4v4 report in
+     `S08`/`S16`) and the three superseded landmark JSON files —
+     `checkpoints/resilient-resonance-682/{elo_calibrated,elo_scale,semi_random_tournament}.json`
+     (replaced by managed Tier A artifacts in `S16`) — are deleted. Nothing referenced them; confirmed
+     by repository-wide search before deletion.
+  2. `bnb publish --check` now verifies `docs/results/provenance.md` and `provenance.json` instead of
+     only writing them in non-check mode. `PublishReport` gained an `index_drift` field and the
+     `INDEX_DRIFT` status; `_verify_generated_index` computes the same body `_write_generated_index`
+     would write and compares it to what is tracked, under the same `index_ready` gating condition
+     (target-less run, no unresolved entry, at least one selected non-external entry) so it does not
+     fire when the index would legitimately be withheld. This closes the gap `S17R` left named for
+     `S18`/`S19`.
+- Files/artifacts produced: none new; only deletions and test/source edits. No canonical `docs/`
+  output changed content — confirmed by the byte-identical `--check` runs above both before and
+  after committing.
+- Decisions/deviations from plan:
+  1. **`docs/internal/mode-characterization.json` is untouched.** It is the frozen S01 evidence
+     baseline (`S02`/`S16` both record that it stays frozen), not a reader-facing doc, so it is out
+     of Phase 11's sweep scope even though it still names the old `main.py` entry point, `bc_warmstart`,
+     `elo_stats`, and the pre-refactor `"none"`/`"latest"` sentinels — as history, which is what it is
+     for. Both tests that compare tracked assets against it (`tests/publication/test_inventory.py`'s
+     `_RETIRED` and this section's new `tests/test_mode_refactor_baseline.py`'s `_RETIRED`) now name
+     the two retired AR report paths explicitly, so their deletion reads as accounted-for rather than
+     silently allowed.
+  2. **`docs/internal/training-plan.md:150`'s `` `rl_fields` @30 Hz `` table header is left as-is.**
+     It is a dev-log entry describing commit `6f8e61e`'s own measurement, not a claim about current
+     CLI or profile naming; changing it would misrepresent what that historical entry called things
+     at the time.
+  3. **`ingest_export_directory`'s docstring wording (`S17R` risk 4) stays deferred, by name again.**
+     `S17R` scoped the fix to "if `S18` touches that script"; this section had no other reason to
+     touch `scripts/export_wandb_run.py`, so the wording fix waits for whichever section next changes
+     it — the transformation itself was already confirmed deterministic and correct.
+  4. **The `publish --check` provenance-index gap (`S17R` remaining risk 1) was closed here, not left
+     for `S19`.** `S17R` named it "S18/S19 should close it", but `S19`'s standard review-agent prompt
+     forbids product-code edits, so leaving it to `S19` would only have produced a finding with
+     nowhere to land inside the ledger's own rules without opening an `S19R`. Fixing it now avoids
+     that detour.
+  5. **`elo/training_vs_random` → `eval/win_rate_vs_random` (`S14` non-blocking finding 6) needed no
+     action.** `git blame` on `src/boost_and_broadside/train/rl/elo_eval.py:862` and
+     `docs/internal/training-plan.md:227-228` shows both were already corrected by commits `73578050`
+     and `235dd412`, before this section began.
+- Review findings addressed: self-review of the diff before running the full suite caught nothing;
+  the full suite itself caught what self-review missed — deleting the retired AR report trees broke
+  `tests/test_mode_refactor_baseline.py::test_machine_readable_inventory_remains_as_legacy_evidence_and_tracks_assets`,
+  the S01 "growth is allowed, disappearance is not" guard, because it had no exclusion for this one
+  intentional, ledger-recorded removal. Fixed with the same named-exclusion pattern the equivalent
+  `test_inventory.py` guard already used, then the full suite was re-run clean.
+- Remaining risks or required follow-up:
+  1. Every item other sections explicitly flagged "S18's to delete/sweep" is closed: the retired AR
+     report trees, the three superseded landmark JSON files, and the `publish --check` provenance-index
+     gap. The repository-wide sweep for old command names, `--mode`, `runs/` imports, 8v8-default
+     claims, sentinels, and implicit-682 usage found nothing outstanding across `README.md`, all of
+     `docs/` (excluding the frozen plan/status/characterization files and `docs/archive/`), and
+     `scripts/*.py` — checked directly and independently via a dedicated read-only sweep.
+  2. Carried forward unchanged, out of this section's scope: `S17R` risks 3 (`render_report`'s
+     `ShipConfig` rebuild is fragile to a future dataclass change, accepted) and 4 (`ingest_export_directory`
+     docstring, deferred above); `S17` risk 2 (equivalence evidence is fixed-observation and scenario
+     equivalence, not an aggregate ladder-versus-ladder tournament on the migrated set); `S16` risks
+     1–5; `S15` risks 1–4; `S14R` risks 1–3; `S13` risks 1–3 and 5–6; `S12` risks 2–4.
+  3. `S19` is the next authorized section and was not begun.
 
 ### Future handoff template
 
