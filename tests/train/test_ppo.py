@@ -23,6 +23,7 @@ from boost_and_broadside.config import (
     linear,
     stepped,
 )
+from boost_and_broadside.config.live_elo import LIVE_RANDOM_ELO
 from boost_and_broadside.env.observation import ObsKey
 from boost_and_broadside.train.rl.elo_eval import MAX_CHECKPOINT_ANCHORS
 from boost_and_broadside.train.rl.ppo import _GROUP, _LOCAL_COMPONENTS, PPOTrainer
@@ -102,7 +103,7 @@ def _make_train_config(
     paradigm: str = "ego_pass",
     league_fraction: float = 0.0,
     league_slots: int = 1,
-    reference_ladder: tuple[tuple[float, float], ...] = (),
+    live_reference_probabilities: tuple[float, ...] = (),
     checkpoint_dir: str = "checkpoints",
     min_games_to_freeze: int = 0,
     rollouts_per_update: int = 1,
@@ -132,8 +133,7 @@ def _make_train_config(
         checkpoint_dir=checkpoint_dir,
         league_size=20,
         league_slots=league_slots,
-        reference_ladder=reference_ladder,
-        random_elo=0.0,
+        live_reference_probabilities=live_reference_probabilities,
         league_uniform_sampling=False,
         elo_milestone_gap=50.0,
         elo_temperature=200.0,
@@ -141,7 +141,7 @@ def _make_train_config(
             envs_per_matchup=4,
             step_interval=4,
             k_factor=4.0,
-            scripted_elo_init=1000.0,
+            scripted_live_elo=1000.0,
             window_size=100,
             min_games_to_freeze=min_games_to_freeze,
         ),
@@ -154,7 +154,7 @@ def _make_trainer(
     paradigm: str = "ego_pass",
     league_fraction: float = 0.0,
     league_slots: int = 1,
-    reference_ladder: tuple[tuple[float, float], ...] = (),
+    live_reference_probabilities: tuple[float, ...] = (),
     with_scripted: bool = True,
     checkpoint_dir: str = "checkpoints",
     min_games_to_freeze: int = 0,
@@ -174,7 +174,7 @@ def _make_trainer(
             paradigm=paradigm,
             league_fraction=league_fraction,
             league_slots=league_slots,
-            reference_ladder=reference_ladder,
+            live_reference_probabilities=live_reference_probabilities,
             checkpoint_dir=checkpoint_dir,
             min_games_to_freeze=min_games_to_freeze,
             rollouts_per_update=rollouts_per_update,
@@ -244,7 +244,7 @@ class TestEloLadder:
     def test_first_milestone_creates_floating_checkpoint(self, tmp_path):
         trainer = _make_trainer(checkpoint_dir=str(tmp_path))
         runtime = trainer._initialize_rollout_runtime()
-        trainer._training_elo = 60.0  # above the 50-point milestone gap
+        trainer._live_elo = 60.0  # above the 50-point milestone gap
         trainer._maybe_advance_ladder(update=1, elo_eval=runtime.elo_eval)
         assert trainer.roster.floating_checkpoint() is not None
         assert runtime.elo_eval.float_pro_agent is not None
@@ -252,7 +252,7 @@ class TestEloLadder:
     def test_ladder_snapshot_file_is_written(self, tmp_path):
         trainer = _make_trainer(checkpoint_dir=str(tmp_path))
         runtime = trainer._initialize_rollout_runtime()
-        trainer._training_elo = 60.0
+        trainer._live_elo = 60.0
         trainer._maybe_advance_ladder(update=1, elo_eval=runtime.elo_eval)
         floating = trainer.roster.floating_checkpoint()
         ckpt = torch.load(floating.path, map_location="cpu", weights_only=False)
@@ -261,13 +261,13 @@ class TestEloLadder:
     def test_second_milestone_freezes_first_at_measured_rating(self, tmp_path):
         trainer = _make_trainer(checkpoint_dir=str(tmp_path))
         runtime = trainer._initialize_rollout_runtime()
-        trainer._training_elo = 60.0
+        trainer._live_elo = 60.0
         trainer._maybe_advance_ladder(update=1, elo_eval=runtime.elo_eval)
         first = trainer.roster.floating_checkpoint()
         # Pretend the floating rating settled at 42 rather than a round number.
         trainer.roster.set_floating_elo(42.0)
         runtime.elo_eval.floating_elo.fill_(42.0)
-        trainer._training_elo = 120.0
+        trainer._live_elo = 120.0
         trainer._maybe_advance_ladder(update=2, elo_eval=runtime.elo_eval)
         assert first.fixed
         assert first.elo == 42.0
@@ -276,10 +276,10 @@ class TestEloLadder:
     def test_milestone_deferred_until_floating_settles(self, tmp_path):
         trainer = _make_trainer(checkpoint_dir=str(tmp_path), min_games_to_freeze=10_000)
         runtime = trainer._initialize_rollout_runtime()
-        trainer._training_elo = 60.0
+        trainer._live_elo = 60.0
         trainer._maybe_advance_ladder(update=1, elo_eval=runtime.elo_eval)
         first = trainer.roster.floating_checkpoint()
-        trainer._training_elo = 120.0
+        trainer._live_elo = 120.0
         trainer._floating_games = 0  # rating has not settled yet
         trainer._maybe_advance_ladder(update=2, elo_eval=runtime.elo_eval)
         assert trainer.roster.floating_checkpoint() is first
@@ -298,7 +298,7 @@ class TestEloLadder:
         stationary = elo_eval._n_stationary
         # Fill the checkpoint anchor slots so the next promotion has to drop one.
         for update, elo in enumerate([60.0, 120.0, 180.0], start=1):
-            trainer._training_elo = elo
+            trainer._live_elo = elo
             trainer._maybe_advance_ladder(update=update, elo_eval=elo_eval)
         assert len(elo_eval._anchor_specs) == stationary + MAX_CHECKPOINT_ANCHORS
 
@@ -311,7 +311,7 @@ class TestEloLadder:
         elo_eval._rated[:size] = True
         elo_eval.env.state.step_count[:size] = 7
 
-        trainer._training_elo = 240.0
+        trainer._live_elo = 240.0
         trainer._maybe_advance_ladder(update=4, elo_eval=elo_eval)
 
         step_count = elo_eval.env.state.step_count[:size]
@@ -328,7 +328,7 @@ class TestEloLadder:
         elo_eval = runtime.elo_eval
         before = [spec.label for spec in elo_eval._anchor_specs[: elo_eval._n_stationary]]
         for update, elo in enumerate([60.0, 120.0, 180.0, 240.0], start=1):
-            trainer._training_elo = elo
+            trainer._live_elo = elo
             trainer._maybe_advance_ladder(update=update, elo_eval=elo_eval)
         after = [spec.label for spec in elo_eval._anchor_specs[: elo_eval._n_stationary]]
         assert before == after
@@ -340,7 +340,7 @@ class TestEloLadder:
         trainer = _make_trainer(checkpoint_dir=str(tmp_path))
         runtime = trainer._initialize_rollout_runtime()
         for update, elo in enumerate([60.0, 120.0, 180.0], start=1):
-            trainer._training_elo = elo
+            trainer._live_elo = elo
             trainer._maybe_advance_ladder(update=update, elo_eval=runtime.elo_eval)
         trainer.roster.evict_all_checkpoint_policies()  # force reload from disk
         fresh = trainer._initialize_rollout_runtime()
@@ -353,7 +353,7 @@ class TestEloLadder:
         trainer = _make_trainer(checkpoint_dir=str(tmp_path))
         runtime = trainer._initialize_rollout_runtime()
         for update, elo in enumerate([60.0, 120.0, 180.0], start=1):
-            trainer._training_elo = elo
+            trainer._live_elo = elo
             trainer._maybe_advance_ladder(update=update, elo_eval=runtime.elo_eval)
         for _ in range(8):
             runtime.elo_eval.step(0, avg_active=False)
@@ -366,12 +366,12 @@ class TestEloLadder:
         trainer = _make_trainer(checkpoint_dir=str(tmp_path))
         runtime = trainer._initialize_rollout_runtime()
         # Fires well past the 50 grid point; the grid must not ratchet to 90+50.
-        trainer._training_elo = 90.0
+        trainer._live_elo = 90.0
         trainer._maybe_advance_ladder(update=1, elo_eval=runtime.elo_eval)
         assert trainer._elo_milestone == 50.0
         first = trainer.roster.floating_checkpoint()
 
-        trainer._training_elo = 105.0  # past the 100 grid point
+        trainer._live_elo = 105.0  # past the 100 grid point
         trainer._maybe_advance_ladder(update=2, elo_eval=runtime.elo_eval)
         assert trainer.roster.floating_checkpoint() is not first
         assert trainer._elo_milestone == 100.0
@@ -381,20 +381,20 @@ class TestEloLadder:
         recrossing it must not take a second snapshot at the same rung."""
         trainer = _make_trainer(checkpoint_dir=str(tmp_path))
         runtime = trainer._initialize_rollout_runtime()
-        trainer._training_elo = 60.0
+        trainer._live_elo = 60.0
         trainer._maybe_advance_ladder(update=1, elo_eval=runtime.elo_eval)
         floating = trainer.roster.floating_checkpoint()
 
-        trainer._training_elo = 40.0  # dipped back below the 50 rung
+        trainer._live_elo = 40.0  # dipped back below the 50 rung
         trainer._maybe_advance_ladder(update=2, elo_eval=runtime.elo_eval)
-        trainer._training_elo = 70.0  # and recrossed it
+        trainer._live_elo = 70.0  # and recrossed it
         trainer._maybe_advance_ladder(update=3, elo_eval=runtime.elo_eval)
         assert trainer.roster.floating_checkpoint() is floating
 
     def test_jump_across_several_grid_points_snapshots_once(self, tmp_path):
         trainer = _make_trainer(checkpoint_dir=str(tmp_path))
         runtime = trainer._initialize_rollout_runtime()
-        trainer._training_elo = 260.0  # crosses 50, 100, 150, 200, 250 at once
+        trainer._live_elo = 260.0  # crosses 50, 100, 150, 200, 250 at once
         trainer._maybe_advance_ladder(update=1, elo_eval=runtime.elo_eval)
         checkpoints = [e for e in trainer.roster.entries if e.kind == "checkpoint"]
         assert len(checkpoints) == 1
@@ -407,7 +407,7 @@ class TestMatchCounts:
     def test_counts_are_keyed_by_roster_label(self, tmp_path):
         trainer = _make_trainer(checkpoint_dir=str(tmp_path))
         runtime = trainer._initialize_rollout_runtime()
-        trainer._training_elo = 60.0
+        trainer._live_elo = 60.0
         trainer._maybe_advance_ladder(update=1, elo_eval=runtime.elo_eval)
         floating_label = trainer.roster.floating_checkpoint().label
 
@@ -602,47 +602,112 @@ class TestAuxPredictionMetrics:
             assert f"next_state/{name}" in metrics, f"{name} was not logged"
 
 
-class TestReferenceLadder:
-    """Stationary rungs between random and scripted, on a scripted-anchored gauge."""
+class TestLiveEloMetricNaming:
+    """Everything the trainer logs is a live reading and says so.
 
-    LADDER = ((0.3, -60.0), (0.5, 300.0), (0.8, 720.0))
+    D8 forbids substituting the approximate live rating for the calibrated one.
+    The enforcement is naming: ratings the trainer emits live under
+    ``live_elo/``, ratings ``elo-calibrate`` writes under ``calibrated_elo/``,
+    and nothing under a bare ``elo/`` prefix that could be read as either.
+    """
+
+    def _logged_metrics(self, tmp_path) -> dict:
+        trainer = _make_trainer(
+            league_fraction=0.5,
+            live_reference_probabilities=(0.3, 0.8),
+            checkpoint_dir=str(tmp_path),
+        )
+        # A 64-timestep run need not finish a rated episode in every slot, and
+        # an empty window logs no key at all. Seed them so the naming of the
+        # win-rate metrics is exercised rather than skipped.
+        for window in (
+            trainer._eval_window_rand,
+            trainer._eval_window_sc,
+            trainer._eval_window_ladder,
+            trainer._eval_window_floating,
+        ):
+            window.append(1.0)
+        captured: dict = {}
+        trainer._enqueue_log = lambda metrics, step: captured.update(metrics)
+        trainer.train()
+        assert captured, "the training loop logged nothing"
+        return captured
+
+    def test_live_ratings_are_logged_under_the_live_prefix(self, tmp_path):
+        metrics = self._logged_metrics(tmp_path)
+
+        assert metrics["live_elo/policy"] == pytest.approx(
+            metrics["live_elo/ladder/policy"]
+        )
+        assert metrics["live_elo/scripted"] == 1000.0
+        assert metrics["live_elo/ladder/random"] == LIVE_RANDOM_ELO
+        assert metrics["live_elo/ladder/semi_scripted_0p3"] == 300.0
+        assert metrics["live_elo/ladder/semi_scripted_0p8"] == 800.0
+        assert metrics["overview/live_elo"] == metrics["live_elo/policy"]
+
+    def test_nothing_is_logged_under_an_ambiguous_elo_prefix(self, tmp_path):
+        metrics = self._logged_metrics(tmp_path)
+
+        assert not [key for key in metrics if key.startswith("elo/")]
+        assert not [key for key in metrics if key.startswith("ladder/elo/")]
+        # The calibrated namespace belongs to the post-hoc suite alone.
+        assert not [key for key in metrics if key.startswith("calibrated_elo")]
+
+    def test_win_rates_do_not_live_in_a_rating_namespace(self, tmp_path):
+        metrics = self._logged_metrics(tmp_path)
+
+        rates = [key for key in metrics if key.startswith("eval/win_rate_vs_")]
+        assert rates, "no evaluation win-rate window was logged"
+        for key in rates:
+            assert 0.0 <= metrics[key] <= 1.0
+        assert not [key for key in metrics if key.startswith("live_elo/") and "win_rate" in key]
+
+
+class TestReferenceLadder:
+    """Stationary rungs between random and scripted, on the derived live gauge."""
+
+    RUNGS = (0.3, 0.5, 0.8)
 
     def _trainer(self, tmp_path, **kwargs):
         return _make_trainer(
             league_fraction=0.5,
-            reference_ladder=self.LADDER,
+            live_reference_probabilities=self.RUNGS,
             checkpoint_dir=str(tmp_path),
             **kwargs,
         )
 
-    def test_rungs_are_registered_at_their_fitted_ratings(self, tmp_path):
+    def test_rungs_are_registered_at_their_derived_ratings(self, tmp_path):
         trainer = self._trainer(tmp_path)
         rungs = {e.label: e for e in trainer.roster.entries if e.kind == "semi_random"}
-        assert len(rungs) == len(self.LADDER)
-        assert rungs["semi_scripted_0p5"].elo == 300.0
+        assert len(rungs) == len(self.RUNGS)
+        assert rungs["semi_scripted_0p5"].elo == 500.0  # 1000 * 0.5
         assert rungs["semi_scripted_0p5"].p_scripted == 0.5
+        for probability in self.RUNGS:
+            label = f"semi_scripted_{str(probability).replace('.', 'p')}"
+            assert rungs[label].elo == pytest.approx(
+                trainer.cfg.elo_eval.scripted_live_elo * probability
+            )
 
     def test_every_stationary_reference_is_fixed(self, tmp_path):
         """Their strength does not change, so their ratings are constants — not
         estimates for in-training games to drag around."""
         trainer = self._trainer(tmp_path)
         stationary = [e for e in trainer.roster.entries if e.is_stationary]
-        assert len(stationary) == len(self.LADDER) + 2  # + random + scripted
+        assert len(stationary) == len(self.RUNGS) + 2  # + random + scripted
         assert all(e.fixed for e in stationary)
 
     def test_scripted_anchors_the_gauge(self, tmp_path):
         trainer = self._trainer(tmp_path)
         scripted = next(e for e in trainer.roster.entries if e.kind == "scripted")
-        assert scripted.elo == trainer.cfg.elo_eval.scripted_elo_init
+        assert scripted.elo == trainer.cfg.elo_eval.scripted_live_elo
         assert scripted.fixed
 
     def test_scripted_rating_does_not_drift_during_training(self, tmp_path):
         """The player defining the scale must not move under the one being
         measured against it — every rung's rating is stated relative to it."""
         trainer = self._trainer(tmp_path)
-        anchor = trainer.cfg.elo_eval.scripted_elo_init
+        anchor = trainer.cfg.elo_eval.scripted_live_elo
         trainer.train()
-        assert trainer._scripted_elo == anchor
         scripted = next(e for e in trainer.roster.entries if e.kind == "scripted")
         assert scripted.elo == anchor
 
@@ -650,7 +715,7 @@ class TestReferenceLadder:
         trainer = self._trainer(tmp_path)
         elo_eval = trainer._initialize_rollout_runtime().elo_eval
         prefix = elo_eval._anchor_specs[: elo_eval._n_stationary]
-        assert elo_eval._n_stationary == len(self.LADDER) + 2
+        assert elo_eval._n_stationary == len(self.RUNGS) + 2
         assert all(spec.is_stateless for spec in prefix)
         # Sorted by rating, and the scripted end carries p_scripted=1.0.
         assert [spec.elo for spec in prefix] == sorted(spec.elo for spec in prefix)
@@ -658,33 +723,18 @@ class TestReferenceLadder:
 
     def test_rungs_are_league_opponents_too(self, tmp_path):
         trainer = self._trainer(tmp_path, league_slots=4)
-        trainer._training_elo = 300.0  # sits on the 0.5 rung
+        trainer._live_elo = 500.0  # sits on the 0.5 rung
         drawn = {trainer._sample_league_entry().kind for _ in range(30)}
         assert "semi_random" in drawn
 
     def test_live_rating_starts_at_the_random_reference(self, tmp_path):
-        """An untrained policy is a random one, which is a known point on an
-        absolute gauge rather than zero."""
-        config = _make_train_config(
-            league_fraction=0.5,
-            reference_ladder=self.LADDER,
-            checkpoint_dir=str(tmp_path),
-        )
-        config = dataclasses.replace(config, random_elo=-350.0)
-        trainer = PPOTrainer(
-            train_config=config,
-            model_config=ModelConfig(d_model=32, n_heads=4, n_yemong_blocks=1),
-            ship_config=ShipConfig(),
-            device="cpu",
-            use_wandb=False,
-            scripted_agent=StochasticScriptedAgent(ShipConfig(), StochasticAgentConfig()),
-        )
-        assert trainer._training_elo == -350.0
-        assert trainer._random_elo() == -350.0
-        # The first milestone to claim is the grid point above where it starts,
-        # not one gap above zero.
-        gap = trainer.cfg.elo_milestone_gap
-        assert trainer._elo_milestone <= -350.0 < trainer._elo_milestone + gap
+        """An untrained policy is a random one, which the live gauge pins at 0."""
+        trainer = self._trainer(tmp_path)
+        assert trainer._live_elo == LIVE_RANDOM_ELO == 0.0
+        assert trainer._random_elo() == LIVE_RANDOM_ELO
+        # The gauge's zero is on every milestone grid, so the first point to
+        # claim is that zero and the first snapshot fires one full gap above it.
+        assert trainer._elo_milestone == 0.0
 
 
 class TestLeagueOpponents:
@@ -728,14 +778,29 @@ class TestLeagueOpponents:
         trainer.train()
         assert trainer.buffer.actor_masks[:, : trainer.B_self].all()
 
-    def test_special_entry_ratings_track_the_evaluator(self, tmp_path):
-        """A stale avg/scripted rating would misdirect every proximity draw."""
-        trainer = _make_trainer(league_fraction=0.5, checkpoint_dir=str(tmp_path))
-        scripted_entry = next(e for e in trainer.roster.entries if e.kind == "scripted")
-        scripted_entry.elo = -12345.0
-        trainer.train()
-        assert scripted_entry.elo == trainer._scripted_elo
-        assert scripted_entry.elo != -12345.0
+    def test_gauge_ratings_are_repinned_rather_than_read_back(self, tmp_path):
+        """random, the rungs, and scripted are definitions, not stored state.
+
+        A roster restored from an older gauge must not outrank the configured
+        one, so registration overwrites whatever the entries carry.
+        """
+        trainer = _make_trainer(
+            league_fraction=0.5,
+            live_reference_probabilities=(0.3, 0.5),
+            checkpoint_dir=str(tmp_path),
+        )
+        for entry in trainer.roster.entries:
+            entry.elo = -12345.0
+            entry.fixed = False
+
+        trainer._register_special_opponents()
+
+        by_label = {entry.label: entry for entry in trainer.roster.entries}
+        assert by_label["random"].elo == LIVE_RANDOM_ELO == 0.0
+        assert by_label["scripted"].elo == trainer.cfg.elo_eval.scripted_live_elo
+        assert by_label["semi_scripted_0p3"].elo == 300.0
+        assert by_label["semi_scripted_0p5"].elo == 500.0
+        assert all(entry.fixed for entry in trainer.roster.entries if entry.is_stationary)
 
 
 class TestParadigm:
@@ -906,8 +971,7 @@ class TestSchedulePrimitives:
                 checkpoint_dir=str(tmp_path),
                 league_size=20,
                 league_slots=1,
-                reference_ladder=(),
-                random_elo=0.0,
+                live_reference_probabilities=(),
                 league_uniform_sampling=False,
                 elo_milestone_gap=50.0,
                 elo_temperature=200.0,
@@ -961,9 +1025,9 @@ class TestWinComponentLambdaMatrix:
         assert lam[0, :, k_enemy].tolist() == [0.0, 0.0, -1.0, -1.0]
 
     def test_production_config_win_lambda_sets(self):
-        """runs/shared.py must agree with the field profile and test configs on
+        """config/defaults.py must agree with the field profile and test configs on
         which win components are zero-sum (enemy_win) vs ally-shared (ally_win)."""
-        from runs.shared import REWARDS
+        from boost_and_broadside.config.defaults import REWARDS
 
         assert "enemy_win" in REWARDS.enemy_neg_lambda_components
         assert "enemy_win" in REWARDS.ally_zero_components
@@ -991,7 +1055,7 @@ class TestLocalComponentRegistry:
 
 
 class TestRLSmokeTest:
-    """Full RL smoke test using the real runs/shared.py config.
+    """Full RL smoke test using the real config/defaults.py config.
 
     Exercises the complete training stack with the production reward config
     (including kill_shot and kill_assist) for a small number of updates.
@@ -1000,7 +1064,7 @@ class TestRLSmokeTest:
 
     @pytest.mark.parametrize("paradigm", ["ego_pass", "shared_pass"])
     def test_rl_run_with_production_config(self, paradigm, tmp_path):
-        from runs.shared import MODEL_CONFIG, REWARDS, SHIP_CONFIG
+        from boost_and_broadside.config.defaults import MODEL_CONFIG, REWARDS, SHIP_CONFIG
 
         schedule = TrainingSchedule(
             learning_rate=constant(3e-4),
@@ -1043,8 +1107,7 @@ class TestRLSmokeTest:
             checkpoint_dir=str(tmp_path),
             league_size=5,
             league_slots=2,
-            reference_ladder=(),
-            random_elo=0.0,
+            live_reference_probabilities=(),
             elo_milestone_gap=100.0,
             elo_temperature=200.0,
             league_uniform_sampling=False,

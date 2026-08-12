@@ -34,11 +34,11 @@ Selected results from the [recorded crossover sweep](docs/crossover/crossover.js
 
 | Learned ships | Scripted ships | Win rate |
 |---:|---:|---:|
-| 4 | 5 | **81.6%** |
-| 8 | 11 | **69.5%** |
-| 16 | 24 | **52.7%** |
-| 32 | 47 | **55.9%** |
-| 64 | 87 | **53.1%** |
+| 4 | 5 | **82.4%** |
+| 8 | 11 | **72.7%** |
+| 16 | 24 | **56.6%** |
+| 32 | 48 | **56.2%** |
+| 64 | 88 | **50.3%** |
 
 The [evaluation guide](docs/evaluation.md#zero-shot-crossover) covers the search method,
 sample sizes, raw artifacts, and limitations behind these measurements.
@@ -46,8 +46,8 @@ sample sizes, raw artifacts, and limitations behind these measurements.
 ## Learning progression
 
 A one-billion-step training run completed in 7.5 hours on a single RTX 5090. Post-hoc
-calibration places the final checkpoint at about **1826 Elo** on a scale that fixes the
-scripted controller at 1000 — a lead of roughly **826 points**, where 400 points
+calibration places the final checkpoint at about **1772 Elo** on a scale that fixes the
+scripted controller at 1000, a lead of roughly **772 points**, where 400 points
 already means ten-to-one odds.
 
 ![Post-hoc calibrated Elo over training](docs/results/elo_curve.png)
@@ -62,8 +62,8 @@ procedure, exact values, and uncertainty.
 
 ![YemongPolicy architecture: entity tokens through spatial attention and temporal recurrence to per-ship heads](docs/policy_architecture.png)
 
-One trunk processes the whole fleet as entity tokens — attention mixes across ships
-within a timestep, Griffin recurrence carries each ship through time — and every head
+One trunk processes the whole fleet as entity tokens, with attention mixing across ships
+within a timestep and Griffin recurrence carrying each ship through time. Every head
 emits one output per ship, however many there are.
 
 - The [environment and physics engine](docs/environment.md) runs thousands of tensorized
@@ -95,17 +95,17 @@ schema and are not loadable by this version. After cloning:
 git lfs pull   # fetch reference checkpoints (skip if training from scratch)
 uv sync
 
-# Small no-W&B training crash test
-uv run main.py --mode rl --smoke
+# Resolve and inspect the RL launch without allocating the trainer
+uv run bnb train --profile rl --print-config
 
-# The same end-to-end crash test with four refractive fields
-uv run main.py --mode rl_fields --smoke
+# Inspect the independent refractive-field profile
+uv run bnb train --profile rl-fields --print-config
 
 # Play a 1v1 match against a null ship in four refractive fields
-uv run main.py --mode play
+uv run bnb play
 
 # Human vs a newly trained current-schema checkpoint (WASD, Shift, Space)
-uv run main.py --mode watch --team1 checkpoints/<run>/<checkpoint>.pt
+uv run bnb watch --team0 null --team1 checkpoints/<run>/<checkpoint>.pt
 ```
 
 Training is designed for CUDA hardware; the simulator and test suite also run on CPU.

@@ -1,12 +1,22 @@
 """Tests for the post-training calibration mode's pure logic."""
 
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
 
-from boost_and_broadside.config import EloCalibrateConfig, ShipConfig
+from boost_and_broadside.artifacts import (
+    ArtifactIncomplete,
+    ArtifactRecipe,
+    ArtifactStore,
+    Invocation,
+    load_artifact,
+)
+from boost_and_broadside.config import EloCalibrateConfig, EnvConfig, ShipConfig
+from boost_and_broadside.config.defaults import MODEL_CONFIG
 from boost_and_broadside.modes.elo_calibrate import (
+    _SCHEMA_VERSION,
     SCRIPTED_ANCHOR_ELO,
     calibrate_live_curve,
     run_elo_calibrate_mode,
@@ -31,7 +41,7 @@ class TestCalibrateLiveCurve:
             counts[label] = [probability * games, (1 - probability) * games, 0]
         curve = calibrate_live_curve([_record(1, 100, counts, live=-999.0)], opponents)
         assert curve[0]["live_calibrated"] == pytest.approx(truth, abs=5.0)
-        assert curve[0]["live_training"] == -999.0  # untouched, for comparison
+        assert curve[0]["live_elo"] == -999.0  # untouched, for comparison
 
     def test_ignores_opponents_with_no_calibrated_rating(self):
         counts = {"random": [90, 10, 0], "mystery_agent": [50, 50, 0]}
@@ -135,9 +145,9 @@ def _stored_result(reference: str) -> dict:
     return {
         "run": "test-run",
         "players": [
-            {"label": "random", "training_elo": 0.0, "global_step": 0},
-            {"label": "scripted", "training_elo": None, "global_step": None},
-            {"label": "ckpt_100", "training_elo": 1500.0, "global_step": 100},
+            {"label": "random", "live_elo": 0.0, "global_step": 0},
+            {"label": "scripted", "live_elo": None, "global_step": None},
+            {"label": "ckpt_100", "live_elo": 1500.0, "global_step": 100},
         ],
         "player_labels": labels,
         "wins_matrix": wins,
@@ -161,10 +171,21 @@ def _stored_result(reference: str) -> dict:
     }
 
 
-def _run_refit(tmp_path, reference: str = "scripted") -> dict:
+def _store(tmp_path) -> ArtifactStore:
+    return ArtifactStore(
+        checkpoint_root=tmp_path / "checkpoints",
+        standalone_root=tmp_path / "artifacts",
+        invocation=Invocation(argv=("bnb", "elo-calibrate"), command="elo-calibrate"),
+    )
+
+
+def _source_measurement(
+    tmp_path, reference: str, *, complete: bool = True, schema_version: int = _SCHEMA_VERSION
+) -> Path:
+    """A calibration artifact for the refit path to read, finished unless asked otherwise."""
+
     run_dir = tmp_path / "checkpoints" / "test-run"
     run_dir.mkdir(parents=True)
-    (run_dir / "elo_calibrated.json").write_text(json.dumps(_stored_result(reference)))
     (run_dir / "elo_history.jsonl").write_text(
         json.dumps(
             {
@@ -177,14 +198,32 @@ def _run_refit(tmp_path, reference: str = "scripted") -> dict:
         )
         + "\n"
     )
+    store = _store(tmp_path)
+    artifact = store.create(
+        ArtifactRecipe(
+            artifact_type="elo-calibration",
+            result_schema_version=schema_version,
+            subjects={"run": "test-run"},
+            parameters={"tie_mode": "half_win"},
+        ),
+        store.run_owner("test-run"),
+    )
+    artifact.write_json(_stored_result(reference))
+    if complete:
+        artifact.complete()
+    return artifact.path
+
+
+def _run_refit(tmp_path, reference: str = "scripted") -> dict:
+    source = _source_measurement(tmp_path, reference)
     return run_elo_calibrate_mode(
-        run_spec="test-run",
+        run_spec=None,
+        from_artifact=source,
         ship_config=ShipConfig(),
         device="cpu",
         config=EloCalibrateConfig(num_envs=4, target_stderr=10.0, max_batches=1),
         checkpoint_dir=str(tmp_path / "checkpoints"),
-        plot=False,
-        refit=True,
+        store=_store(tmp_path),
     )
 
 
@@ -209,13 +248,60 @@ class TestRefit:
         result = _run_refit(tmp_path)
         assert result["curve"][0]["live_calibrated"] > SCRIPTED_ANCHOR_ELO
 
-    def test_refit_rewrites_the_stored_artifact(self, tmp_path):
-        _run_refit(tmp_path)
-        stored = json.loads(
-            (tmp_path / "checkpoints" / "test-run" / "elo_calibrated.json").read_text()
+    def test_refit_writes_a_new_artifact_naming_the_one_it_derives_from(self, tmp_path):
+        source = _source_measurement(tmp_path, "scripted")
+        run_elo_calibrate_mode(
+            run_spec=None,
+            from_artifact=source,
+            ship_config=ShipConfig(),
+            device="cpu",
+            config=EloCalibrateConfig(num_envs=4, target_stderr=10.0, max_batches=1),
+            checkpoint_dir=str(tmp_path / "checkpoints"),
+            store=_store(tmp_path),
         )
+        written = sorted(
+            (tmp_path / "checkpoints" / "test-run" / "artifacts" / "elo-calibration").iterdir()
+        )
+        assert len(written) == 2  # the source measurement plus its refit
+        refit = load_artifact(next(path for path in written if path != source))
+        stored = refit.read_json()
         assert stored["anchor"] == "scripted"
         assert stored["wins_matrix"] == _stored_result("scripted")["wins_matrix"]
+        assert refit.manifest["recipe"]["sources"]["measurement"]["artifact_id"] == source.name
+        assert refit.manifest["recipe"]["parameters"]["refit"] is True
+
+    def test_refitting_an_unfinished_measurement_is_refused(self, tmp_path):
+        """A sweep that never completed holds part of the games it was asked for;
+        refitting it would report that fraction as a measurement."""
+        source = _source_measurement(tmp_path, "scripted", complete=False)
+
+        with pytest.raises(ArtifactIncomplete, match="cannot be cited"):
+            run_elo_calibrate_mode(
+                run_spec=None,
+                from_artifact=source,
+                ship_config=ShipConfig(),
+                device="cpu",
+                config=EloCalibrateConfig(num_envs=4, target_stderr=10.0, max_batches=1),
+                checkpoint_dir=str(tmp_path / "checkpoints"),
+                store=_store(tmp_path),
+            )
+
+    def test_refitting_an_older_result_schema_is_refused_by_version(self, tmp_path):
+        """Schema 1 spells the per-player rating ``training_elo``. Reading it as
+        ``live_elo`` would surface as a bare KeyError rather than as the version
+        mismatch it is; renderers gate on the schema and so does this."""
+        source = _source_measurement(tmp_path, "scripted", schema_version=1)
+
+        with pytest.raises(ValueError, match="schema version 1"):
+            run_elo_calibrate_mode(
+                run_spec=None,
+                from_artifact=source,
+                ship_config=ShipConfig(),
+                device="cpu",
+                config=EloCalibrateConfig(num_envs=4, target_stderr=10.0, max_batches=1),
+                checkpoint_dir=str(tmp_path / "checkpoints"),
+                store=_store(tmp_path),
+            )
 
     def test_rating_gaps_are_invariant_to_the_stored_reference_gauge(self, tmp_path):
         """The reference only sets the error gauge; reported gaps must not move
@@ -227,6 +313,28 @@ class TestRefit:
             by_label = {p["label"]: p["calibrated_elo"] for p in result["players"]}
             gaps.append(by_label["ckpt_100"] - by_label["random"])
         assert gaps[0] == pytest.approx(gaps[1], abs=2.0)
+
+
+def test_arbitrary_agent_calibration_has_no_run_and_owns_its_artifact(tmp_path) -> None:
+    result = run_elo_calibrate_mode(
+        run_spec=None,
+        agent_specs=["random", "scripted"],
+        ship_config=ShipConfig(),
+        model_config=MODEL_CONFIG,
+        env_config=EnvConfig(num_ships=8, max_bullets=4, max_episode_steps=1),
+        device="cpu",
+        config=EloCalibrateConfig(num_envs=2, target_stderr=1_000_000, max_batches=1),
+        store=_store(tmp_path),
+    )
+    assert result["run"] is None
+    assert result["agent_specs"] == ["random", "scripted"]
+    assert result["anchor"] == "scripted"
+
+    written = list((tmp_path / "artifacts" / "elo-calibration").glob("*/result.json"))
+    assert len(written) == 1
+    artifact = load_artifact(written[0].parent)
+    assert artifact.manifest["owner"] == {"kind": "standalone", "run": None}
+    assert artifact.has("chart_history.jsonl") and artifact.has("chart_summary.json")
 
 
 class TestBuildPlayersField:
@@ -267,7 +375,7 @@ class TestBuildPlayersField:
             )
 
     def test_rung_labels_match_the_semi_random_mode(self):
-        from boost_and_broadside.modes.elo_calibrate import semi_random_label
+        from boost_and_broadside.agents.semi_random_scripted import semi_random_label
 
         assert semi_random_label(0.0) == "random"
         assert semi_random_label(1.0) == "scripted"

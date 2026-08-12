@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "artifact_type": "semi-random-ladder",
+  "artifact_id": "20260811T101433Z-a4ff2d80",
+  "status": "complete",
+  "created_at": "2026-08-11T10:14:33Z",
+  "updated_at": "2026-08-11T11:48:55Z",
+  "owner": {
+    "kind": "run",
+    "run": "resilient-resonance-682"
+  },
+  "recipe": {
+    "artifact_type": "semi-random-ladder",
+    "result_schema_version": 2,
+    "subjects": {
+      "run": "resilient-resonance-682",
+      "scripted": {
+        "kind": "scripted",
+        "scripted_config": {
+          "boost_speed_prob": [
+            0.68,
+            0.04
+          ],
+          "boost_speed_ramp": [
+            16,
+            32
+          ],
+          "close_range_prob": [
+            0.5,
+            0.05
+          ],
+          "close_range_ramp": [
+            10,
+            50
+          ],
+          "flat_action_sampling": false,
+          "prob_offset": 0.1,
+          "sharp_turn_angle_prob": [
+            0.05,
+            0.95
+          ],
+          "sharp_turn_angle_ramp": [
+            0.24,
+            0.42
+          ],
+          "shoot_angle_prob": [
+            0.95,
+            0.05
+          ],
+          "shoot_angle_ramp": [
+            1.0,
+            1.5
+          ],
+          "shoot_distance_prob": [
+            0.95,
+            0.05
+          ],
+          "shoot_distance_ramp": [
+            200,
+            500
+          ],
+          "team_target_distance_prob": [
+            0.0,
+            0.0
+          ],
+          "team_target_distance_ramp": [
+            60.0,
+            100.0
+          ],
+          "turn_angle_prob": [
+            0.068,
+            0.95
+          ],
+          "turn_angle_ramp": [
+            0.03,
+            0.12
+          ]
+        }
+      }
+    },
+    "parameters": {
+      "environment": {
+        "max_bullets": 20,
+        "max_episode_steps": 1024,
+        "num_fields": 0,
+        "num_ships": 8
+      },
+      "games_per_pair": 128,
+      "max_parallel_envs": 16384,
+      "paradigm": "ego_pass",
+      "probabilities": [
+        0.0,
+        0.2,
+        0.3,
+        0.4,
+        0.5,
+        0.6,
+        0.7,
+        0.8,
+        0.9,
+        0.95,
+        1.0
+      ],
+      "seed_base": 683000,
+      "team_sizes": [
+        1,
+        2,
+        4,
+        8,
+        16,
+        32,
+        64
+      ]
+    },
+    "sources": {}
+  },
+  "recipe_digest": "a4ff2d806d5c120c1b0a9575e1c45ac1d1da0c13efa22dfffa40cc12361030c9",
+  "result_schema_version": 2,
+  "invocation": {
+    "command": "semi-random",
+    "argv": [
+      "/home/vizia/avesnova/boost-and-broadside/.venv/bin/bnb",
+      "semi-random",
+      "--run",
+      "resilient-resonance-682",
+      "--seed",
+      "682"
+    ],
+    "normalized": "uv run bnb semi-random --run resilient-resonance-682 --seed 682"
+  },
+  "execution": {
+    "device": "cuda",
+    "seed": 682,
+    "compile_mode": null,
+    "wandb": true,
+    "allow_config_drift": false
+  },
+  "code": {
+    "git_commit": "044d0e00ad1a579752c35fd8edfc5d58ec116a66",
+    "git_dirty": false,
+    "repository_available": true,
+    "uv_lock_sha256": "eff32a47a4f866e4b4864030845339fe79c57bb888bde3fab76347f8c8afba93"
+  },
+  "runtime": {
+    "python": "3.13.11",
+    "platform": "Linux-7.0.0-28-generic-x86_64-with-glibc2.39",
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "cudnn_benchmark": false,
+    "deterministic_algorithms": false,
+    "float32_matmul_precision": "highest",
+    "device": {
+      "requested": "cuda",
+      "name": "NVIDIA GeForce RTX 4070 Laptop GPU",
+      "index": 0,
+      "total_memory_bytes": 8186822656,
+      "capability": "8.9",
+      "uuid": "7161aed0-f7cd-9222-9196-257e42144f0d"
+    }
+  },
+  "environment": {},
+  "producer": {
+    "name": "boost-and-broadside",
+    "version": "0.1.0"
+  },
+  "files": [
+    {
+      "path": "result.json",
+      "sha256": "8ebe08c7fef1a4d903f50764fcabf4c0fe44f6c784e7fcbab6fa10d1e95b7174",
+      "bytes": 160785
+    }
+  ],
+  "samples_present": false
+}

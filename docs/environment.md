@@ -28,15 +28,15 @@ The main layers are:
 - [`wrapper.py`](../src/boost_and_broadside/env/wrapper.py): observations, decomposed
   rewards, statistics, and automatic reset.
 
-`EnvConfig.num_ships` is the total across both teams. The primary `runs/rl.py` profile
+`EnvConfig.num_ships` is the total across both teams. The primary `profiles/rl.py` profile
 uses eight ships (4-vs-4) and zero fields, preserving the original ambient-only hot path
-exactly. `runs/rl_fields.py` is a four-field combat profile for smoke tests and future
+exactly. `profiles/rl_fields.py` is a four-field combat profile for smoke tests and future
 training.
 
-Ships also observe `grad(n)` at their own position. It was computed and consumed by the
-physics well before it reached the observation — the force term in
-`a = F/m + 0.5|v|^2 grad(log m) - (v.grad(log m))v` — so a ship could see which medium it
-occupied but not which way that medium was changing.
+Ships also observe `grad(n)` at their own position. The physics had been computing and
+consuming it long before it reached the observation, as the force term in
+`a = F/m + 0.5|v|^2 grad(log m) - (v.grad(log m))v`. Until it was exposed, a ship could see
+which medium it occupied but not which way that medium was changing.
 
 ## Flight, proper speed, and power
 
@@ -208,7 +208,7 @@ traversable rather than absorbing projectiles as solid obstacles.
 Fields render as unfilled outlines with toroidal edge copies. Cyan/blue means lower/faster
 index; violet means higher/slower index, with stronger levels brighter and more saturated.
 Dotted, dashed, and solid borders mean none, standard, and severe damage respectively.
-Solid means severe interface damage—not an impermeable wall. Parents draw first so nested
+Solid means severe interface damage, not an impermeable wall. Parents draw first so nested
 children remain visible.
 
 ## Measured field cost

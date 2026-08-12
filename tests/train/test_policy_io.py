@@ -66,8 +66,15 @@ class TestBuildPolicy:
             ShipConfig(),
             num_value_components=3,
             num_ships=4,
+            team_pma_k=(),
         )
-        silent = build_policy(self._config(), ShipConfig(), num_value_components=3, num_ships=4)
+        silent = build_policy(
+            self._config(),
+            ShipConfig(),
+            num_value_components=3,
+            num_ships=4,
+            team_pma_k=(),
+        )
         assert reads.bullet_encoder is not None
         assert silent.bullet_encoder is None
 
@@ -76,12 +83,19 @@ class TestBuildPolicy:
         which is exactly why a drifted ShipConfig loads cleanly and plays wrong."""
         import dataclasses
 
-        narrow = build_policy(self._config(), ShipConfig(), num_value_components=3, num_ships=4)
+        narrow = build_policy(
+            self._config(),
+            ShipConfig(),
+            num_value_components=3,
+            num_ships=4,
+            team_pma_k=(),
+        )
         wide = build_policy(
             self._config(),
             dataclasses.replace(ShipConfig(), world_size=(2048.0, 2048.0)),
             num_value_components=3,
             num_ships=4,
+            team_pma_k=(),
         )
         assert set(narrow.state_dict()) == set(wide.state_dict())
 
@@ -145,6 +159,41 @@ class TestCheckpointProvenance:
 
         # It reads the world through the constants it trained on, not the new ones.
         assert bundle.ship_config.max_health == trainer.ship_config.max_health
+
+    def test_incompatible_policy_tensors_are_reported_as_checkpoint_input(self, tmp_path):
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        path = trainer._save_ladder_snapshot()
+        payload = torch.load(path, map_location="cpu", weights_only=False)
+        key = next(iter(payload["policy_state_dict"]))
+        payload["policy_state_dict"][key] = torch.zeros(1)
+        torch.save(payload, path)
+
+        with pytest.raises(ValueError, match="incompatible policy weights"):
+            load_policy_bundle(
+                str(path),
+                device="cpu",
+                num_ships=trainer.wrapper.num_ships,
+                ship_config=trainer.ship_config,
+            )
+
+    def test_non_mapping_policy_state_is_reported_as_checkpoint_input(self, tmp_path):
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        path = trainer._save_ladder_snapshot()
+        payload = torch.load(path, map_location="cpu", weights_only=False)
+        payload["policy_state_dict"] = None
+        torch.save(payload, path)
+
+        with pytest.raises(ValueError, match="expected a mapping, got NoneType"):
+            load_policy_bundle(
+                str(path),
+                device="cpu",
+                num_ships=trainer.wrapper.num_ships,
+                ship_config=trainer.ship_config,
+            )
 
 
 class TestLegacyCheckpoints:

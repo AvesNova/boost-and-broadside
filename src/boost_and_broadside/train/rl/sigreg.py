@@ -5,7 +5,7 @@ embeddings deviates from that of a standard isotropic Gaussian (Epps–Pulley
 statistic).  Use to regularize a latent space toward N(0,I) during training.
 
 Config-gated via ``TrainingSchedule.sigreg_coef`` (``ppo.py``); off by
-default (coef 0.0) in every run profile in ``runs/``. When disabled, the
+default (coef 0.0) in every registered training profile. When disabled, the
 policy skips computing and returning the encoder output needed for this
 loss (``need_sigreg`` in ``ppo.py``'s minibatch loss), so the only always-on
 cost is this module's own (small) buffer allocation.

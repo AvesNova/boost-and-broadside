@@ -36,9 +36,9 @@ import torch
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import constant
+from boost_and_broadside.config.defaults import MODEL_CONFIG, SHIP_CONFIG
+from boost_and_broadside.profiles import RL_TRAIN_CONFIG
 from boost_and_broadside.train.rl.ppo import PPOTrainer
-from runs.rl import RL_TRAIN_CONFIG
-from runs.shared import MODEL_CONFIG, SHIP_CONFIG
 
 MB = 1024.0 * 1024.0
 

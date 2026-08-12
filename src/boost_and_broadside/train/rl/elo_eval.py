@@ -14,12 +14,15 @@ in batch order):
 The live policy plays team 0 in slots 0-3; the floating checkpoint plays team 0
 in slot 4.
 
-Ratings live on an absolute gauge with the scripted controller pinned at
-``EloEvalConfig.scripted_elo_init``, matching the post-hoc calibration
-convention. Everything stationary — the random agent, the semi-random rungs and
-scripted itself — holds a rating measured offline, so slot 2 updates the live
-policy rather than letting the player that defines the scale drift under the one
-being measured against it.
+Ratings live on the approximate live gauge: random at 0, the scripted controller
+pinned at ``EloEvalConfig.scripted_live_elo``, and each semi-random rung at
+1000·p (see ``config/live_elo``). Everything stationary holds a rating the gauge
+*defines* rather than one this loop estimates, so slot 2 updates the live policy
+rather than letting the player that defines the scale drift under the one being
+measured against it.
+
+Nothing here is a calibrated rating. Post-hoc ``bnb elo-calibrate`` fits the
+recorded match counts and owns every published number.
 
 The anchor pool is those stationary references (permanent) followed by the newest
 frozen checkpoints (rotating). Per-episode assignment is a multinomial draw over
@@ -50,14 +53,14 @@ from boost_and_broadside.config import EloEvalConfig, EnvConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.observation import YemongObservation, observation_from_state
-from boost_and_broadside.models.yemong.policy import YemongPolicy
-from boost_and_broadside.modes.agent_factory import (
+from boost_and_broadside.evaluation.agents import (
     ResolvedAgent,
     get_actions,
     init_hidden,
     reset_done_envs,
 )
-from boost_and_broadside.modes.match import merge_team_actions
+from boost_and_broadside.evaluation.match import merge_team_actions
+from boost_and_broadside.models.yemong.policy import YemongPolicy
 
 _ELO_RATING_SCALE = 400.0
 
@@ -145,7 +148,6 @@ class EloSnapshot:
 
     live_elo: float
     avg_elo: float
-    scripted_elo: float
     floating_elo: float | None  # None before the first milestone snapshot
     floating_games: int  # rated games the floating checkpoint has accumulated
     # Rated episodes this update, keyed by opponent label → (win, loss, tie)
@@ -171,7 +173,6 @@ class EloEvaluator:
         ego_pass: bool,
         live_elo: float,
         avg_elo: float,
-        scripted_elo: float,
         anchors: list[LadderOpponent],
         floating: LadderOpponent | None,
         floating_games: int,
@@ -236,7 +237,11 @@ class EloEvaluator:
 
         self.live_elo = torch.tensor(float(live_elo), device=device, dtype=torch.float64)
         self.avg_elo = torch.tensor(float(avg_elo), device=device, dtype=torch.float64)
-        self.scripted_elo = torch.tensor(float(scripted_elo), device=device, dtype=torch.float64)
+        # Pinned by the live gauge, never updated: slot 2 moves the live policy
+        # instead (see _apply_rating_updates).
+        self.scripted_elo = torch.tensor(
+            float(config.scripted_live_elo), device=device, dtype=torch.float64
+        )
         self._anchor_specs = list(anchors)
         self._floating_policy = floating.policy if floating is not None else None
         self._floating_label = floating.label if floating is not None else ""
@@ -833,7 +838,6 @@ class EloEvaluator:
         snapshot = EloSnapshot(
             live_elo=float(self.live_elo.item()),
             avg_elo=float(self.avg_elo.item()),
-            scripted_elo=float(self.scripted_elo.item()),
             floating_elo=float(self.floating_elo.item()) if floating_active else None,
             floating_games=int(self.floating_games.item()) if floating_active else 0,
             match_counts=self._flush_match_counts(),
@@ -855,8 +859,9 @@ class EloEvaluator:
         # stationary reference is policy-free — random, each semi-random rung and
         # the scripted controller alike — so an `agent is None` test lumped the
         # whole ladder into the random bucket and reported
-        # elo/training_vs_random as the win rate against an
-        # information-weighted mix of opponents near the policy's own level.
+        # eval/win_rate_vs_random — then named elo/training_vs_random — as the
+        # win rate against an information-weighted mix of opponents near the
+        # policy's own level.
         anchor_is_random = torch.tensor(
             [self._is_random_anchor(spec) for spec in self._anchor_specs], dtype=torch.bool
         )  # (A,)

@@ -1,10 +1,41 @@
 """Training configuration: scale, PPO hyperparameters, and run assembly."""
 
 import dataclasses
+from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 
 from boost_and_broadside.config.core import EnvConfig, RewardConfig
 from boost_and_broadside.config.schedule import TrainingSchedule
+
+
+class _FrozenFloatMapping(Mapping[str, float]):
+    """A pickle-compatible immutable mapping for nested config values."""
+
+    __slots__ = ("_values",)
+
+    def __init__(self, values: Mapping[str, float]) -> None:
+        object.__setattr__(self, "_values", MappingProxyType(dict(values)))
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError("configuration mappings are immutable")
+
+    def __getitem__(self, key: str) -> float:
+        return self._values[key]
+
+    def __iter__(self):
+        return iter(self._values)
+
+    def __len__(self) -> int:
+        return len(self._values)
+
+    def __deepcopy__(self, memo: dict[int, object]) -> "_FrozenFloatMapping":
+        return self
+
+    def __reduce__(self) -> tuple[type[dict], tuple[dict[str, float]]]:
+        # Checkpoint payloads historically contain ordinary dictionaries after
+        # pickle round-trips, so preserve that wire representation.
+        return dict, (dict(self),)
 
 
 @dataclass(frozen=True)
@@ -39,7 +70,7 @@ ObstacleCacheConfig = FieldMapConfig
 class EloCalibrateConfig:
     """Configuration for the post-training Elo calibration tournament.
 
-    Used by ``--mode elo_calibrate`` to re-rate a finished run. Unlike
+    Used by ``bnb elo-calibrate`` to re-rate a finished run. Unlike
     EloEvalConfig this costs nothing during training — it runs once afterwards,
     so the budget is bounded by patience rather than by throughput.
 
@@ -57,7 +88,7 @@ class EloCalibrateConfig:
     target_stderr: float  # stop once every rating is pinned to within this
     max_batches: int  # cap, so an unreachable target cannot run forever
     # How draws enter the likelihood: "half_win" or "decisive". See TIE_MODES in
-    # modes/elo_calibrate.py. Both are always fit and reported; this selects
+    # evaluation/tournament.py. Both are always fit and reported; this selects
     # which one drives allocation, the gauge, and the convergence test.
     tie_mode: str = "half_win"
     # Render the charts built on the secondary draw convention. Both conventions
@@ -100,7 +131,9 @@ class EloEvalConfig:
     envs_per_matchup: int
     step_interval: int  # eval steps once per this many rollout steps
     k_factor: float
-    scripted_elo_init: float  # initial estimate for the scripted agent's floating rating
+    # The live gauge's unit: the rating the scripted controller is *pinned* at,
+    # never an estimate that moves. See config/live_elo.
+    scripted_live_elo: float
     window_size: int
     # Rated games the floating checkpoint must accumulate before it may be
     # frozen at the next milestone. 0 disables the gate.
@@ -194,23 +227,20 @@ class TrainConfig:
     # makes proximity sampling a per-rollout lottery rather than a distribution;
     # more slots sample the roster better at the cost of one policy forward each
     # (a scripted slot costs none). Clamped down when the league is narrower than
-    # this, so a tiny --smoke batch still allocates.
+    # this, so a tiny registry-owned smoke case still allocates.
     league_slots: int
-    # Stationary reference ladder: (p_scripted, elo) rungs between the random
-    # agent and the scripted controller, on a gauge where scripted reads
-    # elo_eval.scripted_elo_init. Together with random_elo these are the fixed
-    # calibration points the live rating is measured against.
+    # Stationary reference rungs between the random agent and the scripted
+    # controller, as scripted-action probabilities in (0, 1). Their live ratings
+    # are not stored: the live gauge derives them as 1000·p (see
+    # config/live_elo), so there is nothing here that can go stale against the
+    # environment.
     #
-    # Without them the ladder has exactly two stationary references and the live
-    # policy saturates both — winning ~100% against random, losing ~100% against
-    # scripted — so its rating is barely identified for the whole early climb.
-    #
-    # Fitted offline by `--mode semi_random --profile <name>`. The ratings are a
-    # property of the environment the rungs play in, so a ladder is only valid
-    # for the tick rate, field count, ship config and fleet size it was measured
-    # under: re-run the tournament whenever any of those move.
-    reference_ladder: tuple[tuple[float, float], ...]
-    random_elo: float  # fitted rating of the uniform-random agent on that gauge
+    # Without the rungs the ladder has exactly two stationary references and the
+    # live policy saturates both — winning ~100% against random, losing ~100%
+    # against scripted — so its rating is barely identified for the whole early
+    # climb. `bnb semi-random` measures how far the derived ratings sit from a
+    # fitted gauge; it no longer supplies them.
+    live_reference_probabilities: tuple[float, ...]
     # Ladder-snapshot grid spacing: snapshots are taken as normalized Elo crosses
     # each multiple of this value, so rungs land at absolute heights (200, 400, …)
     # that are comparable across runs rather than drifting from run history.
@@ -252,10 +282,20 @@ class TrainConfig:
 
     # --- Per-component GAE discounts (override global gamma/gae_lambda by name) ---
     # Missing keys fall back to the global gamma / gae_lambda values.
-    component_gammas: dict[str, float] = dataclasses.field(default_factory=dict)
-    component_lambdas: dict[str, float] = dataclasses.field(default_factory=dict)
+    component_gammas: Mapping[str, float] = dataclasses.field(default_factory=dict)
+    component_lambdas: Mapping[str, float] = dataclasses.field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "component_gammas",
+            _FrozenFloatMapping(self.component_gammas),
+        )
+        object.__setattr__(
+            self,
+            "component_lambdas",
+            _FrozenFloatMapping(self.component_lambdas),
+        )
         if len(self.scales) == 0:
             raise ValueError("scales must contain at least one ScaleConfig")
         has_fields = any(scale.env_config.num_fields > 0 for scale in self.scales)

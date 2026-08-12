@@ -8,7 +8,7 @@ from boost_and_broadside.train.rl.roster import EloRoster
 
 # The cache tests pre-set entry.policy, so no file is ever read; these only have
 # to satisfy the signature.
-_LOAD_ARGS = dict(ship_config=ShipConfig(), num_ships=4, device="cpu")
+_LOAD_ARGS = dict(ship_config=ShipConfig(), num_ships=4, device="cpu", team_pma_k=())
 
 
 def _make_roster(max_size: int = 3, **overrides) -> EloRoster:
@@ -29,13 +29,13 @@ def _add_frozen_checkpoint(roster: EloRoster, step: int, elo: float):
 class TestSampling:
     def test_sample_returns_none_with_only_random_anchor(self):
         roster = _make_roster()
-        assert roster.sample(training_elo=1000.0) is None
+        assert roster.sample(live_elo=1000.0) is None
 
     def test_random_anchor_is_never_sampled(self):
         torch.manual_seed(0)
         roster = _make_roster()
         roster.add_checkpoint(path="/ckpt/a.pt", global_step=1, update=1, initial_elo=1000.0)
-        sampled = {roster.sample(training_elo=1000.0).label for _ in range(50)}
+        sampled = {roster.sample(live_elo=1000.0).label for _ in range(50)}
         assert sampled == {"ckpt_1"}
 
     def test_frozen_checkpoints_remain_sampleable(self):
@@ -43,7 +43,7 @@ class TestSampling:
         roster = _make_roster(uniform_sampling=True)
         _add_frozen_checkpoint(roster, step=1, elo=1000.0)
         roster.add_checkpoint(path="/ckpt/b.pt", global_step=2, update=2, initial_elo=1000.0)
-        sampled = {roster.sample(training_elo=1000.0).label for _ in range(200)}
+        sampled = {roster.sample(live_elo=1000.0).label for _ in range(200)}
         assert sampled == {"ckpt_1", "ckpt_2"}
 
     def test_proximity_sampling_prefers_near_elo_entries(self):
@@ -53,7 +53,7 @@ class TestSampling:
         roster = _make_roster()
         _add_frozen_checkpoint(roster, step=1, elo=1000.0)
         roster.add_checkpoint(path="/ckpt/far.pt", global_step=2, update=2, initial_elo=51000.0)
-        sampled = {roster.sample(training_elo=1000.0).label for _ in range(100)}
+        sampled = {roster.sample(live_elo=1000.0).label for _ in range(100)}
         assert sampled == {"ckpt_1"}
 
     def test_uniform_sampling_ignores_elo_proximity(self):
@@ -61,7 +61,7 @@ class TestSampling:
         roster = _make_roster(uniform_sampling=True)
         _add_frozen_checkpoint(roster, step=1, elo=1000.0)
         roster.add_checkpoint(path="/ckpt/far.pt", global_step=2, update=2, initial_elo=51000.0)
-        sampled = {roster.sample(training_elo=1000.0).label for _ in range(200)}
+        sampled = {roster.sample(live_elo=1000.0).label for _ in range(200)}
         assert sampled == {"ckpt_1", "ckpt_2"}
 
     def test_scripted_and_avg_are_ordinary_candidates(self):
@@ -71,7 +71,7 @@ class TestSampling:
         roster.add_special("scripted", initial_elo=1000.0)
         roster.add_special("avg", initial_elo=1000.0)
         _add_frozen_checkpoint(roster, step=1, elo=1000.0)
-        sampled = {roster.sample(training_elo=1000.0).label for _ in range(300)}
+        sampled = {roster.sample(live_elo=1000.0).label for _ in range(300)}
         assert sampled == {"scripted", "avg", "ckpt_1"}
 
     def test_scripted_fades_as_the_live_rating_outruns_it(self):
@@ -84,8 +84,8 @@ class TestSampling:
         roster = _make_roster()
         roster.add_special("scripted", initial_elo=1000.0)
         roster.add_special("avg", initial_elo=2500.0)
-        assert "scripted" in {roster.sample(training_elo=1000.0).label for _ in range(50)}
-        assert {roster.sample(training_elo=2500.0).label for _ in range(50)} == {"avg"}
+        assert "scripted" in {roster.sample(live_elo=1000.0).label for _ in range(50)}
+        assert {roster.sample(live_elo=2500.0).label for _ in range(50)} == {"avg"}
 
     def test_retired_entries_are_not_sampled_but_keep_their_rating(self):
         torch.manual_seed(0)
@@ -93,7 +93,7 @@ class TestSampling:
         keep = _add_frozen_checkpoint(roster, step=1, elo=1000.0)
         drop = roster.add_checkpoint(path="/ckpt/b.pt", global_step=2, update=2, initial_elo=1200.0)
         roster.retire(drop)
-        sampled = {roster.sample(training_elo=1000.0).label for _ in range(100)}
+        sampled = {roster.sample(live_elo=1000.0).label for _ in range(100)}
         assert sampled == {keep.label}
         assert drop in roster.entries and drop.elo == 1200.0
 
@@ -103,7 +103,7 @@ class TestSampling:
             path="/ckpt/a.pt", global_step=1, update=1, initial_elo=1000.0
         )
         roster.retire(entry)
-        assert roster.sample(training_elo=1000.0) is None
+        assert roster.sample(live_elo=1000.0) is None
 
 
 class TestLadder:

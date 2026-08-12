@@ -1,9 +1,34 @@
 """Checkpoint compatibility for the refractive-field observation contract."""
 
+import pickle
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
+import torch
+
 OBSERVATION_SCHEMA = "refractive_fields_v3"
+
+
+def load_checkpoint_payload(
+    path: str | Path,
+    *,
+    map_location: str | torch.device,
+) -> Mapping[str, Any]:
+    """Read a checkpoint and normalize expected corrupt-input failures."""
+
+    try:
+        checkpoint = torch.load(path, map_location=map_location, weights_only=False)
+    except (EOFError, OSError, pickle.UnpicklingError, RuntimeError) as error:
+        raise ValueError(
+            f"could not read checkpoint {str(path)!r}: {type(error).__name__}: {error}"
+        ) from None
+    if not isinstance(checkpoint, Mapping):
+        raise ValueError(
+            f"could not read checkpoint {str(path)!r}: expected a mapping payload, "
+            f"got {type(checkpoint).__name__}"
+        )
+    return checkpoint
 
 
 def require_observation_schema(checkpoint: Mapping[str, Any], path: str | None = None) -> None:

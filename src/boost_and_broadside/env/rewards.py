@@ -14,7 +14,7 @@ Adding a new reward
 -------------------
 1. Create a subclass of RewardComponent with a unique `name` class attribute.
 2. Add its name to REWARD_COMPONENT_NAMES (fixes K and value head ordering).
-3. Add a weight field to RewardConfig in config/core.py and set it in runs/shared.py.
+3. Add a weight field to RewardConfig in config/core.py and set it in config/defaults.py.
 4. Add an instance to the list in build_reward_components().
 5. Classify it in `_GROUP` in train/rl/ppo.py (true_reward / global / local scale).
    `_LOCAL_COMPONENTS` — which components use diagonal (self-only) lambda — is

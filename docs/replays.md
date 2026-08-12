@@ -11,18 +11,18 @@ red.
 The learned fleet starts three ships down and finishes with three ships to spare. The
 matchup is compact and easy to follow, which is why it serves as the README hero.
 
-The quantitative sweep reports a 69.5% learned-team win rate at this 8-vs-11 matchup and
-42.2% at 8-vs-12; see [zero-shot crossover](evaluation.md#zero-shot-crossover) for the
-raw data and statistical caveats. A clip is one qualitative realization, not the source
-of those aggregate rates.
+The quantitative sweep reports a 72.7% learned-team win rate at this 8-vs-11 matchup
+(186 wins, 70 losses in 256 games) and 48.4% at 8-vs-12; see
+[zero-shot crossover](evaluation.md#zero-shot-crossover) for the raw data and statistical
+caveats. A clip is one qualitative realization, not the source of those aggregate rates.
 
 ## Large-scale transfer: 64 vs 80
 
 ![Sixty-four learned blue ships versus eighty scripted red ships](results/replays/vs_scripted_64v80_seed01.gif)
 
 The same variable-cardinality execution path at a much larger scale. The stored crossover
-sweep reports a 91.1% learned-team win rate at 64-vs-80, while the empirical boundary is
-between 87 and 88 scripted ships.
+sweep searches upward from parity and does not probe 64-vs-80 directly; it locates the
+empirical boundary between 88 and 89 scripted ships, at a 50.3% win rate over 173 games.
 
 ## Self-play
 
@@ -62,7 +62,7 @@ controller.
 Generate the selected 8-vs-11 scenario with:
 
 ```bash
-uv run main.py --mode capture \
+uv run bnb capture \
   --run resilient-resonance-682 \
   --scenarios vs_scripted \
   --sizes 8v11 \
@@ -70,14 +70,20 @@ uv run main.py --mode capture \
   --gif
 ```
 
-The default output directory is `gameplay_clips/`; the curated subset is copied into
-`docs/results/replays/`.
+Capture writes to `out/`, which is scratch and is never tracked. The curated subset is
+promoted into `docs/results/replays/` by `bnb publish`.
 
 ## Provenance
 
-The current GIFs encode frames only — not the run, checkpoint hash, source commit,
-capture arguments, or winner. Controller colors and the hero clip's terminal outcome
-have been verified against the capture code and the frames themselves; exact checkpoint
-provenance cannot be reconstructed from a GIF alone. Future curated captures should
-carry a JSON sidecar and a poster frame, which is tracked with the other known gaps in
-the [internal evidence ledger](internal/evidence.md#deferred-asset-and-analysis-ledger).
+A GIF encodes frames and nothing else, so a clip carries no record of where it came from.
+That record lives beside it. Each one is declared in
+[`docs/publications.toml`](publications.toml) with the sha256 of the exact file that was
+reviewed, and [`docs/results/provenance.md`](results/provenance.md) lists that digest
+beside the output it owns. `bnb publish --check` compares the tracked GIF against its pin,
+so a replaced or re-encoded clip fails the check instead of passing unnoticed.
+
+All fifteen come from the reference run's final checkpoint, captured with the command
+above and the seed named in each filename. The clips do not record their own capture
+arguments: a poster frame and an embedded sidecar are still unimplemented, and are tracked
+with the other known gaps in the
+[internal evidence map](internal/evidence.md#deferred-asset-and-analysis-ledger).

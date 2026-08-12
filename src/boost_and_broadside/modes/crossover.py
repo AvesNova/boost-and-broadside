@@ -10,19 +10,29 @@ The same trained weights play every size — the model is token-based and scale-
 invariant — so this is one checkpoint measured across a grid of matchups. An
 exponential-then-bisection search over S keeps it to ~log(range) batches per T.
 
-Writes ``<output_dir>/crossover.json`` (full outcome-count curves) and prints a table.
+Writes a run-owned ``crossover`` artifact holding the full outcome-count curves,
+and prints a table. The figures built from it are rendered by ``bnb publish``.
 """
-
-import json
-from pathlib import Path
 
 import torch
 
+from boost_and_broadside.artifacts import Artifact, ArtifactRecipe, ArtifactStore, file_sha256
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
-from boost_and_broadside.modes.agent_factory import resolve_agent_spec
-from boost_and_broadside.modes.capture import _final_checkpoint, _find_run_dir
-from boost_and_broadside.modes.collect import evaluate_matchup
-from boost_and_broadside.train.rl.checkpoint_schema import require_observation_schema
+from boost_and_broadside.evaluation.agents import resolve_agent_spec
+from boost_and_broadside.evaluation.match import evaluate_matchup
+from boost_and_broadside.evaluation.run_catalog import (
+    resolve_exact_run,
+    select_final_training_checkpoint,
+)
+from boost_and_broadside.evaluation.subjects import (
+    describe_agent,
+    describe_checkpoint_configuration,
+    describe_environment,
+)
+from boost_and_broadside.train.rl.checkpoint_schema import (
+    load_checkpoint_payload,
+    require_observation_schema,
+)
 
 # Collision physics allocates a (B, N*bullets, N) tensor, so peak memory grows as
 # B*N^2. Hold B*N^2 under this budget (tuned for an 8 GB GPU) by shrinking the
@@ -80,24 +90,44 @@ def run_crossover_mode(
     checkpoint_dir: str = "checkpoints",
     num_envs: int = 256,
     max_total_ships: int = 320,
-    output_dir: str = "docs/crossover",
+    store: ArtifactStore | None = None,
 ) -> dict:
     """Find, per trained-team size, the scripted count that tips wins below 50%."""
-    run_dir = _find_run_dir(run_spec, checkpoint_dir)
-    checkpoint = _final_checkpoint(run_dir)
-    checkpoint_data = torch.load(str(checkpoint), map_location="cpu", weights_only=False)
+    run_dir = resolve_exact_run(run_spec, checkpoint_dir).path
+    checkpoint = select_final_training_checkpoint(run_dir).path
+    checkpoint_data = load_checkpoint_payload(checkpoint, map_location="cpu")
     require_observation_schema(checkpoint_data, str(checkpoint))
     base_env = EnvConfig(**checkpoint_data["env_config"])
+
+    store = store or ArtifactStore(checkpoint_root=checkpoint_dir)
+    recipe = ArtifactRecipe(
+        artifact_type="crossover",
+        result_schema_version=_SCHEMA_VERSION,
+        subjects={
+            "run": run_dir.name,
+            "trained": {
+                "kind": "policy",
+                "checkpoint": checkpoint.name,
+                "sha256": file_sha256(checkpoint),
+                "global_step": int(checkpoint_data.get("global_step", 0)),
+                "training_config": describe_checkpoint_configuration(checkpoint_data),
+            },
+            "scripted": describe_agent("scripted"),
+        },
+        parameters={
+            "trained_counts": sorted(set(trained_counts)),
+            "num_envs": num_envs,
+            "max_total_ships": max_total_ships,
+            "environment": describe_environment(base_env),
+        },
+    )
+    # Resume: keep any rows already computed so a crash mid-sweep loses nothing.
+    artifact, resumed = store.open_resumable(recipe, store.run_owner(run_dir.name))
+    by_trained = _load_progress(artifact) if resumed else {}
 
     trained = resolve_agent_spec(str(checkpoint), ship_config, model_config, device, num_ships=2)
     scripted = resolve_agent_spec("scripted", ship_config, model_config, device)
     print(f"\n=== crossover: {run_dir.name}  ({num_envs} games/matchup, {device}) ===\n")
-
-    out = Path(output_dir)
-    out.mkdir(parents=True, exist_ok=True)
-    out_json = out / "crossover.json"
-    # Resume: keep any rows already computed so a crash mid-sweep loses nothing.
-    by_trained = _load_progress(out_json)
 
     # Ascending order makes the crossover monotonic, so each size warm-starts from
     # the previous one's result (whether just computed or loaded from a prior run).
@@ -157,25 +187,20 @@ def run_crossover_mode(
         }
         if crossover is not None:
             hint = crossover
-        _save(out_json, run_dir.name, num_envs, max_total_ships, by_trained)  # after each size
+        _save(artifact, run_dir.name, num_envs, max_total_ships, by_trained)  # after each size
 
-    rows = [by_trained[t] for t in sorted(by_trained)]
-    _print_table(rows, max_total_ships)
-    print(f"\n  wrote {out_json}")
-    return {
-        "schema_version": _SCHEMA_VERSION,
-        "run": run_dir.name,
-        "num_envs": num_envs,
-        "max_total_ships": max_total_ships,
-        "rows": rows,
-    }
+    result = _save(artifact, run_dir.name, num_envs, max_total_ships, by_trained)
+    artifact.complete()
+    _print_table(result["rows"], max_total_ships)
+    print(f"\n  wrote {artifact.path}")
+    return result
 
 
-def _load_progress(path: Path) -> dict[int, dict]:
+def _load_progress(artifact: Artifact) -> dict[int, dict]:
     """Rows already computed, keyed by trained-team size (empty if none)."""
-    if not path.exists():
+    if not artifact.has("result.json"):
         return {}
-    rows = json.loads(path.read_text()).get("rows", [])
+    rows = artifact.read_json().get("rows", [])
     for row in rows:
         row["curve"] = {
             scripted_n: (
@@ -188,20 +213,18 @@ def _load_progress(path: Path) -> dict[int, dict]:
     return {r["trained"]: r for r in rows}
 
 
-def _save(path: Path, run: str, num_envs: int, max_total_ships: int, by_trained: dict) -> None:
-    rows = [by_trained[t] for t in sorted(by_trained)]
-    path.write_text(
-        json.dumps(
-            {
-                "schema_version": _SCHEMA_VERSION,
-                "run": run,
-                "num_envs": num_envs,
-                "max_total_ships": max_total_ships,
-                "rows": rows,
-            },
-            indent=2,
-        )
-    )
+def _save(
+    artifact: Artifact, run: str, num_envs: int, max_total_ships: int, by_trained: dict
+) -> dict:
+    result = {
+        "schema_version": _SCHEMA_VERSION,
+        "run": run,
+        "num_envs": num_envs,
+        "max_total_ships": max_total_ships,
+        "rows": [by_trained[t] for t in sorted(by_trained)],
+    }
+    artifact.write_json(result)
+    return result
 
 
 def _find_crossover(

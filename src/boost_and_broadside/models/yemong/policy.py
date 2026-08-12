@@ -151,7 +151,7 @@ class YemongPolicy(nn.Module):
         coordinator: FeatureCoordinator,
         num_value_components: int,
         num_ships: int,
-        team_pma_k: tuple[int, ...] = (),
+        team_pma_k: tuple[int, ...],
         bullet_coordinator: FeatureCoordinator | None = None,
     ) -> None:
         super().__init__()

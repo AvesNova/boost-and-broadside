@@ -1,10 +1,21 @@
-"""Evaluate a controlled ladder from random to scripted play at each fleet size."""
+"""Evaluate a controlled ladder from random to scripted play at each fleet size.
 
-import json
+This measures the rungs; it does not supply them. Training assigns every
+semi-random rung ``1000·p`` outright (see ``config/live_elo``), so the ladder
+here is the check on that approximation rather than an input to it: each scale
+reports ``live_gauge_error``, the per-rung distance between the fitted ladder
+regauged to the same endpoints and the ratings training actually uses. Nothing
+in this mode has to run before a profile can train.
+
+The fitted rungs are a property of the environment they play in, so a ladder
+measured for a finished run belongs to that run and one measured for a training
+profile belongs to no run at all. The two land in different artifact roots
+accordingly.
+"""
+
 import math
 import time
 from dataclasses import replace
-from pathlib import Path
 
 import numpy as np
 import torch
@@ -12,21 +23,27 @@ import torch
 from boost_and_broadside.agents.semi_random_scripted import SemiRandomScriptedAgent
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
+from boost_and_broadside.artifacts import ArtifactRecipe, ArtifactStore
 from boost_and_broadside.config import ShipConfig, TrainConfig
-from boost_and_broadside.env.field_cache import FieldMapCache
-from boost_and_broadside.modes.agent_factory import ResolvedAgent
-from boost_and_broadside.modes.elo_calibrate import (
+from boost_and_broadside.config.live_elo import live_reference_elo
+from boost_and_broadside.evaluation.agents import ResolvedAgent
+from boost_and_broadside.evaluation.environment import create_evaluation_field_map
+from boost_and_broadside.evaluation.run_catalog import resolve_exact_run
+from boost_and_broadside.evaluation.subjects import describe_agent, describe_environment
+from boost_and_broadside.evaluation.tournament import (
     Player,
     Progress,
     Tournament,
-    _load_run_config,
+    load_run_config,
+    parallel_envs_for,
+    rating_views,
     semi_random_label,
 )
-from boost_and_broadside.modes.elo_scale import parallel_envs_for, rating_views
-from boost_and_broadside.modes.elo_stats import find_run_dir
 from boost_and_broadside.train.rl.bradley_terry import fit_bradley_terry
 
-_SCHEMA_VERSION = 1
+# 2: each scale carries live_gauge_error, the per-rung residual against the
+# derived live gauge.
+_SCHEMA_VERSION = 2
 _SEED_BASE = 683_000
 
 
@@ -75,6 +92,50 @@ def _players(ship_config: ShipConfig, probabilities: list[float]) -> list[Player
     ]
 
 
+def _live_gauge_error(
+    probabilities: list[float],
+    labels: list[str],
+    views: dict[str, dict[str, list[float]]],
+) -> list[dict]:
+    """Per-rung distance between the fitted ladder and the derived live gauge.
+
+    This is what makes the mode a validation instrument rather than a supplier.
+    Training assigns each rung ``1000·p`` outright (see ``config/live_elo``);
+    the ``random_zero_scripted_1000`` view is the fitted ladder regauged to the
+    same two endpoints, so subtracting the two compares like with like and the
+    residual is exactly the error the approximation accepts.
+
+    ``live_elo_error`` is oriented as the gauge's own error, live minus fitted,
+    so a positive value means training rates that rung above where it plays.
+    The accepted-error table in ``config/live_elo`` states the same residual the
+    other way round, fitted minus linear; the two are negations, so a sign
+    carried between the two files has to be flipped.
+
+    Both endpoints are included and are zero by construction — dropping them
+    would hide the fact that the comparison is anchored, not free.
+    """
+
+    view = views["random_zero_scripted_1000"]
+    rows = []
+    for probability, label, fitted, stderr in zip(
+        probabilities, labels, view["ratings"], view["stderr"], strict=True
+    ):
+        derived = live_reference_elo(probability)
+        rows.append(
+            {
+                "label": label,
+                "p_scripted": probability,
+                "live_elo": derived,
+                "fitted_regauged_elo": fitted,
+                "fitted_regauged_stderr": stderr,
+                "live_elo_error": (
+                    derived - fitted if fitted is not None and math.isfinite(fitted) else None
+                ),
+            }
+        )
+    return rows
+
+
 def _scale_result(
     team_size: int,
     probabilities: list[float],
@@ -104,6 +165,7 @@ def _scale_result(
             }
         )
 
+    views = rating_views(fit.ratings, pair_games, labels)
     return {
         "team_size": team_size,
         "total_ships": 2 * team_size,
@@ -113,20 +175,14 @@ def _scale_result(
         "parallel_envs": tournament.num_envs,
         "seed_base": _SEED_BASE + team_size * 100,
         "complete": bool(batches and batches[-1]["cumulative_games_per_pair"] >= games_per_pair),
-        "ratings": rating_views(fit.ratings, pair_games, labels),
+        "ratings": views,
+        "live_gauge_error": _live_gauge_error(probabilities, labels, views),
         "adjacent_matchups": adjacent,
         "wins_matrix": tournament.wins.tolist(),
         "ties_matrix": tournament.ties.tolist(),
         "directed_outcomes": tournament.directed_outcomes.tolist(),
         "batches": batches,
     }
-
-
-def _write(path: Path, result: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(result, indent=2))
-    temporary.replace(path)
 
 
 def run_semi_random_tournament(
@@ -138,47 +194,60 @@ def run_semi_random_tournament(
     ship_config: ShipConfig,
     device: str,
     checkpoint_dir: str = "checkpoints",
-    plot_dir: str = "docs/results",
-    plot: bool = True,
     train_config: TrainConfig | None = None,
+    store: ArtifactStore | None = None,
 ) -> dict:
     """Run or resume a side-balanced round robin among semi-random agents.
 
     Args:
-        run_spec: Finished run to read the environment config from, and the
-            directory results are written to.
+        run_spec: Finished run whose environment config the ladder is rated
+            under, and which owns the resulting artifact.
         train_config: Rate the ladder under a training *profile* instead of a
-            finished run. The rungs feed that profile's roster as fixed
-            references, and their ratings are a property of the environment they
-            play in — tick rate, field count, ship config — so they have to be
-            fitted under the config the run will actually use, which may not
-            exist as a run yet. Results land in ``<checkpoint_dir>/<run_spec>/``.
+            finished run. Fitted ratings are a property of the environment the
+            rungs play in — tick rate, field count, ship config — so validating
+            the gauge a profile will train on means playing them under that
+            profile's config, which may not exist as a run yet. A profile ladder
+            has no owning run and lands in the standalone artifact root.
     """
-    from boost_and_broadside.modes.semi_random_tournament_plots import write_plots
-
     if games_per_pair <= 0:
         raise ValueError("games_per_pair must be positive")
     field_map = None
     if train_config is not None:
-        run_dir = Path(checkpoint_dir) / run_spec
-        run_dir.mkdir(parents=True, exist_ok=True)
+        subject = {"profile": run_spec}
         base_env = train_config.scales[0].env_config
         paradigm = train_config.paradigm
         if base_env.num_fields > 0:
             if train_config.field_map is None:
                 raise ValueError(f"profile {run_spec!r} has fields but no field_map config")
             print(f"  generating field map cache ({train_config.field_map.cache_size} maps)...")
-            field_map = FieldMapCache.generate(
+            field_map = create_evaluation_field_map(
                 ship_config, base_env, train_config.field_map, torch.device(device)
             )
     else:
-        run_dir = find_run_dir(run_spec, checkpoint_dir)
-        base_env, _, paradigm = _load_run_config(run_dir)
+        run_dir = resolve_exact_run(run_spec, checkpoint_dir).path
+        subject = {"run": run_dir.name}
+        base_env, _, paradigm = load_run_config(run_dir)
     labels = [_label(probability) for probability in probabilities]
-    output = run_dir / "semi_random_tournament.json"
 
-    if output.exists():
-        result = json.loads(output.read_text())
+    store = store or ArtifactStore(checkpoint_root=checkpoint_dir)
+    recipe = ArtifactRecipe(
+        artifact_type="semi-random-ladder",
+        result_schema_version=_SCHEMA_VERSION,
+        subjects={**subject, "scripted": describe_agent("scripted")},
+        parameters={
+            "probabilities": probabilities,
+            "team_sizes": sorted(set(team_sizes)),
+            "games_per_pair": games_per_pair,
+            "max_parallel_envs": max_parallel_envs,
+            "paradigm": paradigm,
+            "seed_base": _SEED_BASE,
+            "environment": describe_environment(base_env),
+        },
+    )
+    artifact, resumed = store.open_resumable(recipe, store.owner_for(subject.get("run")))
+
+    if resumed and artifact.has("result.json"):
+        result = artifact.read_json()
         if result.get("probabilities") != probabilities:
             raise ValueError("stored tournament uses a different probability ladder")
         if result.get("games_per_pair") != games_per_pair:
@@ -186,7 +255,8 @@ def run_semi_random_tournament(
     else:
         result = {
             "schema_version": _SCHEMA_VERSION,
-            "run": run_dir.name,
+            "run": subject.get("run"),
+            "profile": subject.get("profile"),
             "probabilities": probabilities,
             "labels": labels,
             "games_per_pair": games_per_pair,
@@ -195,7 +265,7 @@ def run_semi_random_tournament(
             "scales": {},
         }
     result["team_sizes"] = sorted(set(result.get("team_sizes", []) + team_sizes))
-    _write(output, result)
+    artifact.write_json(result)
 
     pair_count = len(probabilities) * (len(probabilities) - 1) // 2
     for team_size in sorted(set(team_sizes)):
@@ -253,7 +323,7 @@ def run_semi_random_tournament(
             result["scales"][str(team_size)] = _scale_result(
                 team_size, probabilities, tournament, batches, games_per_pair
             )
-            _write(output, result)
+            artifact.write_json(result)
             print(
                 f"  batch {batch_index + 1:2d}/{total_batches}  "
                 f"games={games:5d}  pair total="
@@ -265,11 +335,7 @@ def run_semi_random_tournament(
         del tournament, players
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-        if plot:
-            write_plots(result, Path(plot_dir))
 
-    if plot:
-        paths = write_plots(result, Path(plot_dir))
-        print(f"\n  wrote {len(paths)} semi-random ladder charts to {plot_dir}")
-    print(f"  wrote {output}")
+    artifact.complete()
+    print(f"\n  wrote {artifact.path}")
     return result

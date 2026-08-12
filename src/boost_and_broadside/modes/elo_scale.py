@@ -2,11 +2,15 @@
 
 Each fleet size gets an independent stationary tournament containing random,
 scripted, every preserved ladder checkpoint, and the final checkpoint. Raw
-outcomes are saved after every adaptive batch; reporting anchors are pure
-post-processing and never require replaying a match.
+outcomes are saved into the run-owned ``elo-scale`` artifact after every
+adaptive batch, so an interrupted sweep resumes where it stopped.
+
+Reporting anchors are pure post-processing and never require replaying a match.
+The published fleet-scale figure — including the join through an independently
+measured semi-random reference ladder — is rendered by ``bnb publish`` from this
+artifact, not written here.
 """
 
-import hashlib
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -14,168 +18,35 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from boost_and_broadside.artifacts import ArtifactRecipe, ArtifactStore, file_sha256
 from boost_and_broadside.config import EloCalibrateConfig, ShipConfig
-from boost_and_broadside.modes.agent_factory import ResolvedAgent
-from boost_and_broadside.modes.elo_calibrate import (
+from boost_and_broadside.evaluation.run_catalog import (
+    InvalidCheckpointError,
+    resolve_exact_run,
+    select_final_training_checkpoint,
+    select_tournament_ladder_policies,
+)
+from boost_and_broadside.evaluation.subjects import (
+    describe_agent,
+    describe_checkpoint_configuration,
+    describe_environment,
+)
+from boost_and_broadside.evaluation.tournament import (
     BatchStat,
     Player,
     Progress,
     Tournament,
-    _load_ladder_policy,
-    _load_run_config,
     build_players,
+    load_run_config,
+    parallel_envs_for,
+    rating_views,
     run_tournament,
 )
-from boost_and_broadside.train.rl.bradley_terry import (
-    fit_bradley_terry,
-    rating_covariance,
-    rating_stderr,
-)
+from boost_and_broadside.train.rl.bradley_terry import fit_bradley_terry
+from boost_and_broadside.train.rl.checkpoint_schema import load_checkpoint_payload
 
-_COLLISION_BUDGET = 4_000_000  # B*N², tuned for an 8 GB GPU
 _SCHEMA_VERSION = 1
 _SEED_BASE = 682_000
-
-
-def parallel_envs_for(total_ships: int, maximum: int) -> int:
-    """Largest parallel batch under the collision-memory budget."""
-    if total_ships <= 0 or maximum <= 0:
-        raise ValueError("ship and environment counts must be positive")
-    return max(1, min(maximum, _COLLISION_BUDGET // (total_ships * total_ships)))
-
-
-def rating_views(
-    ratings: np.ndarray, pair_games: np.ndarray, labels: list[str]
-) -> dict[str, dict[str, list[float]]]:
-    """Transform one fitted rating vector into the three reporting conventions."""
-    random_index = labels.index("random")
-    scripted_index = labels.index("scripted")
-
-    random_zero = ratings - ratings[random_index]
-    random_error = rating_stderr(pair_games, ratings, anchor=random_index)
-
-    scripted_1000 = ratings - ratings[scripted_index] + 1000.0
-    scripted_error = rating_stderr(pair_games, ratings, anchor=scripted_index)
-
-    gap = float(random_zero[scripted_index])
-    if abs(gap) < 1e-9:
-        dual = np.full_like(ratings, np.nan)
-        dual_error = np.full_like(ratings, np.inf)
-    else:
-        dual = 1000.0 * random_zero / gap
-        covariance = rating_covariance(pair_games, ratings, anchor=random_index)
-        dual_error = np.zeros_like(ratings)
-        for index in range(ratings.size):
-            gradient = np.zeros_like(ratings)
-            gradient[index] += 1000.0 / gap
-            gradient[scripted_index] -= 1000.0 * random_zero[index] / gap**2
-            variance = float(gradient @ covariance @ gradient)
-            dual_error[index] = np.sqrt(max(variance, 0.0))
-
-    return {
-        "random_zero": {
-            "ratings": random_zero.tolist(),
-            "stderr": random_error.tolist(),
-        },
-        "scripted_1000": {
-            "ratings": scripted_1000.tolist(),
-            "stderr": scripted_error.tolist(),
-        },
-        "random_zero_scripted_1000": {
-            "ratings": dual.tolist(),
-            "stderr": dual_error.tolist(),
-        },
-    }
-
-
-def combine_reference_ladder(result: dict, reference_result: dict) -> dict:
-    """Refit scale ratings after joining an independently measured reference ladder.
-
-    The checkpoint and reference tournaments share the same random and scripted
-    controllers. Joining their outcome matrices at those players adds intermediate
-    comparisons without replaying checkpoint matches. The returned object is a derived
-    reporting view; both input artifacts remain the sources of raw outcomes.
-    """
-    if result.get("run") != reference_result.get("run"):
-        raise ValueError("checkpoint and reference tournaments belong to different runs")
-
-    checkpoint_labels = list(result["player_labels"])
-    reference_labels = list(reference_result["labels"])
-    for endpoint in ("random", "scripted"):
-        if endpoint not in checkpoint_labels or endpoint not in reference_labels:
-            raise ValueError(f"both tournaments must contain {endpoint!r}")
-
-    labels = checkpoint_labels + [
-        label for label in reference_labels if label not in checkpoint_labels
-    ]
-    label_indices = {label: index for index, label in enumerate(labels)}
-
-    def add_matrix(target: np.ndarray, values: list[list[float]], source_labels: list[str]) -> None:
-        matrix = np.asarray(values, dtype=np.float64)
-        expected = (len(source_labels), len(source_labels))
-        if matrix.shape != expected:
-            raise ValueError("stored tournament matrix does not match its player labels")
-        indices = [label_indices[label] for label in source_labels]
-        target[np.ix_(indices, indices)] += matrix
-
-    scales = {}
-    for key, checkpoint_scale in result.get("scales", {}).items():
-        reference_scale = reference_result.get("scales", {}).get(key)
-        if reference_scale is None:
-            continue
-        if checkpoint_scale["team_size"] != reference_scale["team_size"]:
-            raise ValueError(f"team-size mismatch for scale {key}")
-        if checkpoint_scale.get("tie_mode", "half_win") != "half_win":
-            raise ValueError("reference-ladder reporting requires half-win tie scoring")
-
-        shape = (len(labels), len(labels))
-        wins = np.zeros(shape, dtype=np.float64)
-        ties = np.zeros(shape, dtype=np.float64)
-        add_matrix(wins, checkpoint_scale["wins_matrix"], checkpoint_labels)
-        add_matrix(ties, checkpoint_scale["ties_matrix"], checkpoint_labels)
-        add_matrix(wins, reference_scale["wins_matrix"], reference_labels)
-        add_matrix(ties, reference_scale["ties_matrix"], reference_labels)
-
-        scored_wins = wins + 0.5 * ties
-        pair_games = wins + wins.T + ties + ties.T
-        fit = fit_bradley_terry(
-            scored_wins,
-            anchor=labels.index("scripted"),
-            prior_games=1.0,
-        )
-        scale = dict(checkpoint_scale)
-        scale["ratings"] = rating_views(fit.ratings, pair_games, labels)
-        scale["reference_ladder_games"] = int(
-            np.asarray(reference_scale["wins_matrix"], dtype=float).sum()
-            + np.asarray(reference_scale["ties_matrix"], dtype=float).sum()
-        )
-        scales[key] = scale
-
-    return {
-        "run": result["run"],
-        "player_labels": labels,
-        "team_sizes": sorted(int(key) for key in scales),
-        "reference_ladder": {
-            "probabilities": reference_result["probabilities"],
-            "games_per_pair": reference_result["games_per_pair"],
-        },
-        "scales": scales,
-    }
-
-
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def _checkpoint_path(run_dir: Path, path_text: str) -> Path:
-    path = Path(path_text)
-    if path.exists():
-        return path
-    return run_dir / path.name
 
 
 def _player_metadata(run_dir: Path, roster: dict, final_path: Path) -> list[dict]:
@@ -183,30 +54,35 @@ def _player_metadata(run_dir: Path, roster: dict, final_path: Path) -> list[dict
         {"label": "random", "kind": "random", "global_step": 0},
         {"label": "scripted", "kind": "scripted", "global_step": None},
     ]
-    for entry in sorted(
-        (item for item in roster["entries"] if item["kind"] == "checkpoint"),
-        key=lambda item: item["global_step"],
-    ):
-        path = _checkpoint_path(run_dir, entry["path"])
-        if not path.exists():
+    final_checkpoint = load_checkpoint_payload(final_path, map_location="cpu")
+    final_step = int(final_checkpoint.get("global_step", 0))
+    selected_final = select_final_training_checkpoint(run_dir)
+    if selected_final.step != final_step:
+        raise InvalidCheckpointError(
+            f"final checkpoint {final_path} records global_step={final_step}; "
+            f"filename records {selected_final.step}"
+        )
+    for policy_ref in select_tournament_ladder_policies(run_dir, roster):
+        if policy_ref.global_step == final_step:
             continue
+        path = policy_ref.checkpoint.path
         records.append(
             {
-                "label": entry["label"],
+                "label": policy_ref.label,
                 "kind": "checkpoint",
-                "global_step": entry["global_step"],
+                "global_step": policy_ref.global_step,
                 "path": str(path),
-                "sha256": _sha256(path),
+                "sha256": file_sha256(path),
             }
         )
-    final_checkpoint = torch.load(str(final_path), map_location="cpu", weights_only=False)
     records.append(
         {
             "label": "final",
             "kind": "checkpoint",
-            "global_step": int(final_checkpoint.get("global_step", 0)),
+            "global_step": final_step,
             "path": str(final_path),
-            "sha256": _sha256(final_path),
+            "sha256": file_sha256(final_path),
+            "training_config": describe_checkpoint_configuration(final_checkpoint),
         }
     )
     return records
@@ -219,24 +95,16 @@ def _build_scale_players(
     ship_config: ShipConfig,
     total_ships: int,
     device: str,
-    final_path: Path,
 ) -> list[Player]:
-    players = build_players(
-        run_dir, roster, model_config, ship_config, total_ships, device
+    return build_players(
+        run_dir,
+        roster,
+        model_config,
+        ship_config,
+        total_ships,
+        device,
+        final_label="final",
     )
-    checkpoint = torch.load(str(final_path), map_location="cpu", weights_only=False)
-    final_policy = _load_ladder_policy(
-        final_path, model_config, ship_config, total_ships, device
-    )
-    players.append(
-        Player(
-            "final",
-            ResolvedAgent("policy", final_policy),
-            None,
-            int(checkpoint.get("global_step", 0)),
-        )
-    )
-    return players
 
 
 def _restore_tournament(tournament: Tournament, stored: dict | None) -> list[BatchStat]:
@@ -302,11 +170,36 @@ def _scale_result(
     }
 
 
-def _write_result(path: Path, result: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(result, indent=2))
-    temporary.replace(path)
+def _scale_recipe(
+    run: str, metadata: list[dict], team_sizes: list[int], config: EloCalibrateConfig, base_env
+) -> ArtifactRecipe:
+    """Identify this sweep by its exact player field and stopping rule."""
+
+    return ArtifactRecipe(
+        artifact_type="elo-scale",
+        result_schema_version=_SCHEMA_VERSION,
+        subjects={
+            "run": run,
+            "players": [
+                {
+                    key: record.get(key)
+                    for key in ("label", "kind", "global_step", "sha256", "training_config")
+                }
+                for record in metadata
+            ],
+            "scripted": describe_agent("scripted"),
+        },
+        parameters={
+            "team_sizes": sorted(set(team_sizes)),
+            "target_stderr": config.target_stderr,
+            "max_batches": config.max_batches,
+            "max_parallel_envs": config.num_envs,
+            "tie_mode": config.tie_mode,
+            "prior_games": config.prior_games,
+            "seed_base": _SEED_BASE,
+            "environment": describe_environment(base_env),
+        },
+    )
 
 
 def run_elo_scale_mode(
@@ -316,34 +209,23 @@ def run_elo_scale_mode(
     device: str,
     config: EloCalibrateConfig,
     checkpoint_dir: str = "checkpoints",
-    plot_dir: str = "docs/results",
-    plot: bool = True,
+    store: ArtifactStore | None = None,
 ) -> dict:
     """Run or resume checkpoint tournaments across symmetric team sizes."""
-    from boost_and_broadside.modes.elo_scale_plots import write_scale_plots
-    from boost_and_broadside.modes.elo_stats import find_run_dir
-
-    run_dir = find_run_dir(run_spec, checkpoint_dir)
+    run_dir = resolve_exact_run(run_spec, checkpoint_dir).path
     roster = json.loads((run_dir / "roster.json").read_text())
-    base_env, model_config, paradigm = _load_run_config(run_dir)
-    final_candidates = sorted(run_dir.glob("step_*.pt"))
-    if not final_candidates:
-        raise FileNotFoundError(f"no final step checkpoint in {run_dir}")
-    final_path = final_candidates[-1]
+    base_env, model_config, paradigm = load_run_config(run_dir)
+    final_path = select_final_training_checkpoint(run_dir).path
     metadata = _player_metadata(run_dir, roster, final_path)
     labels = [record["label"] for record in metadata]
 
-    output = run_dir / "elo_scale.json"
-    reference_output = run_dir / "semi_random_tournament.json"
-
-    def reporting_result(raw_result: dict) -> dict:
-        if not reference_output.exists():
-            return raw_result
-        reference_result = json.loads(reference_output.read_text())
-        return combine_reference_ladder(raw_result, reference_result)
-
-    if output.exists():
-        result = json.loads(output.read_text())
+    store = store or ArtifactStore(checkpoint_root=checkpoint_dir)
+    artifact, resumed = store.open_resumable(
+        _scale_recipe(run_dir.name, metadata, team_sizes, config, base_env),
+        store.run_owner(run_dir.name),
+    )
+    if resumed and artifact.has("result.json"):
+        result = artifact.read_json()
         if result.get("player_labels") != labels:
             raise ValueError("stored scale result uses a different checkpoint field")
     else:
@@ -361,10 +243,7 @@ def run_elo_scale_mode(
         }
 
     result["team_sizes"] = sorted(set(result.get("team_sizes", []) + team_sizes))
-    result["target_stderr"] = config.target_stderr
-    result["max_batches"] = config.max_batches
-    result["max_parallel_envs"] = config.num_envs
-    _write_result(output, result)
+    artifact.write_json(result)
 
     for team_size in sorted(set(team_sizes)):
         if team_size <= 0:
@@ -388,7 +267,6 @@ def run_elo_scale_mode(
             ship_config,
             total_ships,
             device,
-            final_path,
         )
         if [player.label for player in players] != labels:
             raise ValueError("loaded tournament field does not match stored metadata")
@@ -409,9 +287,7 @@ def run_elo_scale_mode(
             result["scales"][str(team_size)] = _scale_result(
                 team_size, current, stats, reference, config
             )
-            _write_result(output, result)
-            if plot:
-                write_scale_plots(reporting_result(result), Path(plot_dir))
+            artifact.write_json(result)
 
         fit, stats, reference = run_tournament(
             tournament,
@@ -428,8 +304,6 @@ def run_elo_scale_mode(
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-    if plot:
-        written = write_scale_plots(reporting_result(result), Path(plot_dir))
-        print(f"\n  wrote {len(written)} scale charts to {plot_dir}")
-    print(f"  wrote {output}")
+    artifact.complete()
+    print(f"\n  wrote {artifact.path}")
     return result

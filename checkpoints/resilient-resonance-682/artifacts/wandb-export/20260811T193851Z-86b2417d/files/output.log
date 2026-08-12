@@ -1,0 +1,234 @@
+update=10/1000  step=9,994,240  sps=47,792  ship_tps=382,343  loss=4.2995  elo=0  lifespan=366.6
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=20/1000  step=19,988,480  sps=46,898  ship_tps=375,185  loss=1.4176  elo=492  lifespan=279.2
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=30/1000  step=29,982,720  sps=43,975  ship_tps=351,804  loss=0.6407  elo=658  lifespan=258.9
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=40/1000  step=39,976,960  sps=42,339  ship_tps=338,714  loss=0.3226  elo=726  lifespan=259.3
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=50/1000  step=49,971,200  sps=41,326  ship_tps=330,608  loss=-0.0146  elo=800  lifespan=250.5
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Checkpoint saved asynchronously: checkpoints/resilient-resonance-682/step_000049971200.pt
+Recent avg checkpoint saved asynchronously: checkpoints/resilient-resonance-682/recent_avg.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=60/1000  step=59,965,440  sps=40,466  ship_tps=323,729  loss=-0.0145  elo=846  lifespan=247.7
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=70/1000  step=69,959,680  sps=39,908  ship_tps=319,264  loss=-0.0150  elo=873  lifespan=241.2
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=80/1000  step=79,953,920  sps=39,455  ship_tps=315,646  loss=0.0198  elo=982  lifespan=238.5
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=90/1000  step=89,948,160  sps=39,103  ship_tps=312,824  loss=-0.0117  elo=1017  lifespan=243.0
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=100/1000  step=99,942,400  sps=38,860  ship_tps=310,883  loss=0.0163  elo=1066  lifespan=240.9
+Checkpoint saved asynchronously: checkpoints/resilient-resonance-682/step_000099942400.pt
+Recent avg checkpoint saved asynchronously: checkpoints/resilient-resonance-682/recent_avg.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=110/1000  step=109,936,640  sps=38,640  ship_tps=309,120  loss=0.0338  elo=1096  lifespan=244.1
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=120/1000  step=119,930,880  sps=38,470  ship_tps=307,761  loss=-0.0106  elo=1099  lifespan=245.3
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=130/1000  step=129,925,120  sps=38,335  ship_tps=306,683  loss=-0.0235  elo=1122  lifespan=238.1
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=140/1000  step=139,919,360  sps=38,197  ship_tps=305,577  loss=0.0215  elo=1145  lifespan=233.9
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=150/1000  step=149,913,600  sps=38,090  ship_tps=304,725  loss=-0.0108  elo=1196  lifespan=230.9
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Checkpoint saved asynchronously: checkpoints/resilient-resonance-682/step_000149913600.pt
+Recent avg checkpoint saved asynchronously: checkpoints/resilient-resonance-682/recent_avg.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=160/1000  step=159,907,840  sps=38,001  ship_tps=304,012  loss=0.0180  elo=1204  lifespan=225.0
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=170/1000  step=169,902,080  sps=37,920  ship_tps=303,361  loss=0.0369  elo=1219  lifespan=219.9
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=180/1000  step=179,896,320  sps=37,842  ship_tps=302,737  loss=0.0115  elo=1217  lifespan=220.9
+update=190/1000  step=189,890,560  sps=37,770  ship_tps=302,166  loss=-0.0123  elo=1264  lifespan=217.6
+update=200/1000  step=199,884,800  sps=37,707  ship_tps=301,657  loss=0.0090  elo=1278  lifespan=217.5
+Checkpoint saved asynchronously: checkpoints/resilient-resonance-682/step_000199884800.pt
+Recent avg checkpoint saved asynchronously: checkpoints/resilient-resonance-682/recent_avg.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=210/1000  step=209,879,040  sps=37,667  ship_tps=301,343  loss=0.0441  elo=1278  lifespan=213.6
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=220/1000  step=219,873,280  sps=37,614  ship_tps=300,916  loss=0.0455  elo=1333  lifespan=213.0
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=230/1000  step=229,867,520  sps=37,573  ship_tps=300,589  loss=-0.0316  elo=1330  lifespan=210.4
+update=240/1000  step=239,861,760  sps=37,553  ship_tps=300,428  loss=0.0221  elo=1326  lifespan=210.4
+update=250/1000  step=249,856,000  sps=37,515  ship_tps=300,126  loss=0.0127  elo=1371  lifespan=209.9
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Checkpoint saved asynchronously: checkpoints/resilient-resonance-682/step_000249856000.pt
+Recent avg checkpoint saved asynchronously: checkpoints/resilient-resonance-682/recent_avg.pt
+update=260/1000  step=259,850,240  sps=37,482  ship_tps=299,863  loss=0.0549  elo=1306  lifespan=206.6
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=270/1000  step=269,844,480  sps=37,450  ship_tps=299,601  loss=0.0013  elo=1344  lifespan=207.5
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=280/1000  step=279,838,720  sps=37,419  ship_tps=299,356  loss=-0.0215  elo=1357  lifespan=204.6
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=290/1000  step=289,832,960  sps=37,397  ship_tps=299,181  loss=0.0544  elo=1395  lifespan=205.7
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=300/1000  step=299,827,200  sps=37,393  ship_tps=299,151  loss=-0.0146  elo=1417  lifespan=204.5
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Checkpoint saved asynchronously: checkpoints/resilient-resonance-682/step_000299827200.pt
+Recent avg checkpoint saved asynchronously: checkpoints/resilient-resonance-682/recent_avg.pt
+update=310/1000  step=309,821,440  sps=37,367  ship_tps=298,937  loss=0.0233  elo=1392  lifespan=203.5
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=320/1000  step=319,815,680  sps=37,342  ship_tps=298,741  loss=0.0482  elo=1379  lifespan=203.3
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=330/1000  step=329,809,920  sps=37,324  ship_tps=298,597  loss=0.0336  elo=1453  lifespan=203.6
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=340/1000  step=339,804,160  sps=37,305  ship_tps=298,444  loss=0.0018  elo=1436  lifespan=202.7
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=350/1000  step=349,798,400  sps=37,285  ship_tps=298,283  loss=0.0141  elo=1427  lifespan=200.1
+Checkpoint saved asynchronously: checkpoints/resilient-resonance-682/step_000349798400.pt
+Recent avg checkpoint saved asynchronously: checkpoints/resilient-resonance-682/recent_avg.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=360/1000  step=359,792,640  sps=37,266  ship_tps=298,128  loss=0.0535  elo=1499  lifespan=201.3
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=370/1000  step=369,786,880  sps=37,259  ship_tps=298,078  loss=-0.0036  elo=1420  lifespan=198.2
+update=380/1000  step=379,781,120  sps=37,249  ship_tps=297,994  loss=0.0159  elo=1467  lifespan=198.2
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=390/1000  step=389,775,360  sps=37,241  ship_tps=297,935  loss=0.0003  elo=1481  lifespan=197.5
+update=400/1000  step=399,769,600  sps=37,230  ship_tps=297,841  loss=-0.0123  elo=1454  lifespan=198.4
+Checkpoint saved asynchronously: checkpoints/resilient-resonance-682/step_000399769600.pt
+Recent avg checkpoint saved asynchronously: checkpoints/resilient-resonance-682/recent_avg.pt
+update=410/1000  step=409,763,840  sps=37,226  ship_tps=297,815  loss=0.0081  elo=1466  lifespan=199.0
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=420/1000  step=419,758,080  sps=37,222  ship_tps=297,777  loss=0.0266  elo=1498  lifespan=198.9
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=430/1000  step=429,752,320  sps=37,213  ship_tps=297,707  loss=0.0095  elo=1465  lifespan=198.8
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=440/1000  step=439,746,560  sps=37,205  ship_tps=297,646  loss=0.0114  elo=1492  lifespan=199.8
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=450/1000  step=449,740,800  sps=37,191  ship_tps=297,531  loss=0.0054  elo=1453  lifespan=199.4
+Checkpoint saved asynchronously: checkpoints/resilient-resonance-682/step_000449740800.pt
+Recent avg checkpoint saved asynchronously: checkpoints/resilient-resonance-682/recent_avg.pt
+update=460/1000  step=459,735,040  sps=37,178  ship_tps=297,430  loss=0.0478  elo=1477  lifespan=199.4
+update=470/1000  step=469,729,280  sps=37,164  ship_tps=297,317  loss=0.0293  elo=1499  lifespan=197.7
+update=480/1000  step=479,723,520  sps=37,151  ship_tps=297,213  loss=0.0174  elo=1518  lifespan=195.9
+update=490/1000  step=489,717,760  sps=37,143  ship_tps=297,145  loss=0.0190  elo=1526  lifespan=197.6
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=500/1000  step=499,712,000  sps=37,134  ship_tps=297,075  loss=0.0128  elo=1522  lifespan=194.7
+Checkpoint saved asynchronously: checkpoints/resilient-resonance-682/step_000499712000.pt
+Recent avg checkpoint saved asynchronously: checkpoints/resilient-resonance-682/recent_avg.pt
+update=510/1000  step=509,706,240  sps=37,121  ship_tps=296,975  loss=0.0088  elo=1537  lifespan=194.7
+update=520/1000  step=519,700,480  sps=37,118  ship_tps=296,945  loss=0.0238  elo=1541  lifespan=193.3
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=530/1000  step=529,694,720  sps=37,107  ship_tps=296,856  loss=0.0148  elo=1550  lifespan=193.2
+update=540/1000  step=539,688,960  sps=37,099  ship_tps=296,795  loss=0.0151  elo=1545  lifespan=195.3
+update=550/1000  step=549,683,200  sps=37,089  ship_tps=296,717  loss=-0.0179  elo=1542  lifespan=197.0
+Checkpoint saved asynchronously: checkpoints/resilient-resonance-682/step_000549683200.pt
+Recent avg checkpoint saved asynchronously: checkpoints/resilient-resonance-682/recent_avg.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=560/1000  step=559,677,440  sps=37,080  ship_tps=296,646  loss=0.0282  elo=1537  lifespan=197.6
+update=570/1000  step=569,671,680  sps=37,075  ship_tps=296,606  loss=0.0154  elo=1569  lifespan=198.1
+update=580/1000  step=579,665,920  sps=37,073  ship_tps=296,587  loss=0.0056  elo=1523  lifespan=199.8
+update=590/1000  step=589,660,160  sps=37,070  ship_tps=296,563  loss=0.0242  elo=1519  lifespan=199.9
+update=600/1000  step=599,654,400  sps=37,064  ship_tps=296,512  loss=0.0104  elo=1547  lifespan=202.1
+Checkpoint saved asynchronously: checkpoints/resilient-resonance-682/step_000599654400.pt
+Recent avg checkpoint saved asynchronously: checkpoints/resilient-resonance-682/recent_avg.pt
+update=610/1000  step=609,648,640  sps=37,060  ship_tps=296,485  loss=0.0279  elo=1553  lifespan=202.1
+update=620/1000  step=619,642,880  sps=37,055  ship_tps=296,445  loss=0.0269  elo=1534  lifespan=199.1
+update=630/1000  step=629,637,120  sps=37,053  ship_tps=296,428  loss=0.0321  elo=1574  lifespan=199.6
+update=640/1000  step=639,631,360  sps=37,049  ship_tps=296,393  loss=0.0314  elo=1541  lifespan=202.5
+update=650/1000  step=649,625,600  sps=37,049  ship_tps=296,398  loss=0.0165  elo=1530  lifespan=200.6
+Checkpoint saved asynchronously: checkpoints/resilient-resonance-682/step_000649625600.pt
+Recent avg checkpoint saved asynchronously: checkpoints/resilient-resonance-682/recent_avg.pt
+update=660/1000  step=659,619,840  sps=37,050  ship_tps=296,400  loss=0.0313  elo=1529  lifespan=202.3
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=670/1000  step=669,614,080  sps=37,044  ship_tps=296,357  loss=0.0218  elo=1549  lifespan=200.3
+update=680/1000  step=679,608,320  sps=37,040  ship_tps=296,324  loss=-0.0081  elo=1520  lifespan=200.7
+update=690/1000  step=689,602,560  sps=37,034  ship_tps=296,277  loss=0.0330  elo=1559  lifespan=200.8
+update=700/1000  step=699,596,800  sps=37,027  ship_tps=296,223  loss=0.0375  elo=1552  lifespan=198.9
+Checkpoint saved asynchronously: checkpoints/resilient-resonance-682/step_000699596800.pt
+Recent avg checkpoint saved asynchronously: checkpoints/resilient-resonance-682/recent_avg.pt
+update=710/1000  step=709,591,040  sps=37,023  ship_tps=296,187  loss=-0.0027  elo=1560  lifespan=203.0
+update=720/1000  step=719,585,280  sps=37,018  ship_tps=296,150  loss=0.0310  elo=1553  lifespan=203.9
+update=730/1000  step=729,579,520  sps=37,019  ship_tps=296,153  loss=0.0417  elo=1576  lifespan=207.5
+update=740/1000  step=739,573,760  sps=37,020  ship_tps=296,167  loss=0.0098  elo=1534  lifespan=204.0
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=750/1000  step=749,568,000  sps=37,020  ship_tps=296,165  loss=0.0168  elo=1526  lifespan=205.7
+Checkpoint saved asynchronously: checkpoints/resilient-resonance-682/step_000749568000.pt
+Recent avg checkpoint saved asynchronously: checkpoints/resilient-resonance-682/recent_avg.pt
+update=760/1000  step=759,562,240  sps=37,017  ship_tps=296,137  loss=0.0034  elo=1575  lifespan=201.0
+update=770/1000  step=769,556,480  sps=37,015  ship_tps=296,124  loss=0.0208  elo=1572  lifespan=202.4
+update=780/1000  step=779,550,720  sps=37,015  ship_tps=296,120  loss=0.0340  elo=1580  lifespan=200.9
+update=790/1000  step=789,544,960  sps=37,013  ship_tps=296,104  loss=0.0337  elo=1559  lifespan=198.7
+update=800/1000  step=799,539,200  sps=37,011  ship_tps=296,091  loss=0.0270  elo=1530  lifespan=204.5
+Checkpoint saved asynchronously: checkpoints/resilient-resonance-682/step_000799539200.pt
+Recent avg checkpoint saved asynchronously: checkpoints/resilient-resonance-682/recent_avg.pt
+update=810/1000  step=809,533,440  sps=37,008  ship_tps=296,068  loss=-0.0068  elo=1551  lifespan=201.9
+update=820/1000  step=819,527,680  sps=37,009  ship_tps=296,075  loss=0.0010  elo=1536  lifespan=200.9
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=830/1000  step=829,521,920  sps=37,008  ship_tps=296,071  loss=0.0190  elo=1572  lifespan=200.8
+update=840/1000  step=839,516,160  sps=37,007  ship_tps=296,056  loss=0.0092  elo=1563  lifespan=201.2
+update=850/1000  step=849,510,400  sps=37,006  ship_tps=296,049  loss=-0.0125  elo=1538  lifespan=202.6
+Checkpoint saved asynchronously: checkpoints/resilient-resonance-682/step_000849510400.pt
+Recent avg checkpoint saved asynchronously: checkpoints/resilient-resonance-682/recent_avg.pt
+update=860/1000  step=859,504,640  sps=37,005  ship_tps=296,043  loss=0.0126  elo=1550  lifespan=201.1
+update=870/1000  step=869,498,880  sps=37,006  ship_tps=296,049  loss=0.0488  elo=1580  lifespan=202.6
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=880/1000  step=879,493,120  sps=37,004  ship_tps=296,037  loss=-0.0228  elo=1556  lifespan=201.5
+update=890/1000  step=889,487,360  sps=37,005  ship_tps=296,047  loss=0.0380  elo=1596  lifespan=203.2
+update=900/1000  step=899,481,600  sps=37,007  ship_tps=296,056  loss=-0.0276  elo=1559  lifespan=201.8
+Checkpoint saved asynchronously: checkpoints/resilient-resonance-682/step_000899481600.pt
+Recent avg checkpoint saved asynchronously: checkpoints/resilient-resonance-682/recent_avg.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=910/1000  step=909,475,840  sps=37,007  ship_tps=296,062  loss=0.0251  elo=1586  lifespan=203.5
+update=920/1000  step=919,470,080  sps=37,008  ship_tps=296,069  loss=0.0515  elo=1570  lifespan=204.7
+update=930/1000  step=929,464,320  sps=37,007  ship_tps=296,057  loss=0.0280  elo=1603  lifespan=201.0
+update=940/1000  step=939,458,560  sps=37,007  ship_tps=296,059  loss=0.0465  elo=1572  lifespan=196.8
+update=950/1000  step=949,452,800  sps=37,005  ship_tps=296,046  loss=0.0500  elo=1578  lifespan=199.1
+Checkpoint saved asynchronously: checkpoints/resilient-resonance-682/step_000949452800.pt
+Recent avg checkpoint saved asynchronously: checkpoints/resilient-resonance-682/recent_avg.pt
+Best checkpoint saved asynchronously: checkpoints/resilient-resonance-682/best_training.pt
+update=960/1000  step=959,447,040  sps=37,004  ship_tps=296,033  loss=0.0238  elo=1577  lifespan=197.0
+update=970/1000  step=969,441,280  sps=37,002  ship_tps=296,021  loss=0.0644  elo=1603  lifespan=204.9
+update=980/1000  step=979,435,520  sps=37,004  ship_tps=296,035  loss=0.0188  elo=1558  lifespan=201.5
+update=990/1000  step=989,429,760  sps=37,000  ship_tps=296,007  loss=-0.0344  elo=1593  lifespan=205.1
+update=1000/1000  step=999,424,000  sps=37,000  ship_tps=296,002  loss=0.0288  elo=1547  lifespan=201.2

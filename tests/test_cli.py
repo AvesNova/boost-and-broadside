@@ -1,0 +1,833 @@
+"""Generated parser, dispatch, and installed-entry-point contracts for ``bnb``."""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from boost_and_broadside import cli, cli_commands
+from boost_and_broadside.artifacts import ArtifactStore, Invocation
+from boost_and_broadside.config.vram import TIER_GUARANTEES
+from boost_and_broadside.launch import resolve_training_launch
+
+EXPECTED_COMMANDS = (
+    "train",
+    "play",
+    "watch",
+    "capture",
+    "collect-stats",
+    "crossover",
+    "elo-calibrate",
+    "elo-scale",
+    "semi-random",
+    "ar-report",
+    "noise-calibration",
+    "feature-stats",
+    "runs",
+    "publish",
+    "smoke",
+)
+
+VALID_ARGV = {
+    "train": ["--profile", "rl"],
+    "play": [],
+    "watch": ["--team0", "scripted", "--team1", "random"],
+    "capture": ["--run", "exact-run"],
+    "collect-stats": ["--team0", "scripted", "--team1", "random"],
+    "crossover": ["--run", "exact-run"],
+    "elo-calibrate": ["--run", "exact-run"],
+    "elo-scale": ["--run", "exact-run"],
+    "semi-random": ["--profile", "rl"],
+    "ar-report": ["--team0", "scripted", "--team1", "random"],
+    "noise-calibration": ["--team0", "model.pt", "--team1", "scripted"],
+    "feature-stats": ["--team0", "scripted", "--team1", "random"],
+    "runs": [],
+    "publish": [],
+    "smoke": [],
+}
+
+
+def _parse(argv: list[str]):
+    return cli.parse_args(argv)[1]
+
+
+def test_registry_is_the_exact_final_hyphenated_command_list() -> None:
+    assert tuple(command.name for command in cli.COMMANDS) == EXPECTED_COMMANDS
+    for command in cli.COMMANDS:
+        assert "_" not in command.name
+        assert all("_" not in flag for option in command.options for flag in option.flags)
+
+
+def test_modifier_ownership_matches_command_contract() -> None:
+    owners: dict[str, set[str]] = {}
+    for command in cli.COMMANDS:
+        for option in command.options:
+            for flag in option.flags:
+                owners.setdefault(flag, set()).add(command.name)
+
+    assert owners["--resume"] == {"train"}
+    assert owners["--resume-last"] == {"train"}
+    assert owners["--pretrain-from"] == {"train"}
+    assert owners["--compile"] == {"train"}
+    assert owners["--no-wandb"] == {"train"}
+    assert owners["--print-config"] == {"train"}
+    # Launch sizing belongs to training alone: no evaluation command has a
+    # logical batch to redistribute.
+    assert owners["--vram"] == {"train"}
+    assert owners["--num-envs"] == {"train"}
+    assert owners["--microbatch-tokens"] == {"train"}
+    assert owners["--out"] == {"capture"}
+    assert owners["--target-stderr"] == {"elo-calibrate", "elo-scale"}
+    assert owners["--max-batches"] == {"elo-calibrate", "elo-scale"}
+    assert owners["--agents"] == {"elo-calibrate"}
+    assert owners["--team0"] == {
+        "watch",
+        "collect-stats",
+        "ar-report",
+        "noise-calibration",
+        "feature-stats",
+    }
+
+
+def test_legacy_entrypoint_and_reader_facing_commands_are_gone() -> None:
+    root = Path(__file__).resolve().parents[1]
+    assert not (root / "main.py").exists()
+    documents = [root / "README.md", root / "STYLE_GUIDE.md"]
+    documents.extend((root / "docs").rglob("*.md"))
+    offenders = {
+        str(path.relative_to(root)): token
+        for path in documents
+        for token in ("uv run main.py", "--mode ")
+        if token in path.read_text()
+    }
+    assert offenders == {}
+
+
+@pytest.mark.parametrize("command", EXPECTED_COMMANDS)
+def test_every_registered_command_has_generated_help(command, capsys) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        _parse([command, "--help"])
+    assert exit_info.value.code == 0
+    assert f"usage: bnb {command}" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("command", EXPECTED_COMMANDS)
+def test_every_registered_command_rejects_an_irrelevant_option(command) -> None:
+    foreign = "--run" if command == "train" else "--team0"
+    if command in {"watch", "collect-stats", "ar-report", "noise-calibration", "feature-stats"}:
+        foreign = "--profile"
+    if command == "semi-random":
+        foreign = "--team0"
+    with pytest.raises(SystemExit) as exit_info:
+        _parse([command, *VALID_ARGV[command], foreign, "irrelevant"])
+    assert exit_info.value.code == 2
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["capture"],
+        ["watch", "--team0", "scripted"],
+        ["collect-stats", "--team0", "scripted"],
+        ["train"],
+        ["semi-random"],
+        ["elo-calibrate"],
+    ],
+)
+def test_required_subjects_fail_during_parsing(argv) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        _parse(argv)
+    assert exit_info.value.code == 2
+
+
+@pytest.mark.parametrize("sentinel", ["latest", "none"])
+def test_magic_run_and_agent_sentinels_are_rejected(sentinel) -> None:
+    with pytest.raises(SystemExit):
+        _parse(["capture", "--run", sentinel])
+    with pytest.raises(SystemExit):
+        _parse(["watch", "--team0", sentinel, "--team1", "random"])
+
+
+def test_resume_requires_a_value_and_is_exclusive_with_pretraining() -> None:
+    with pytest.raises(SystemExit):
+        _parse(["train", "--profile", "rl", "--resume"])
+    with pytest.raises(SystemExit):
+        _parse(
+            [
+                "train",
+                "--profile",
+                "rl",
+                "--resume",
+                "exact-run",
+                "--pretrain-from",
+                "weights.pt",
+            ]
+        )
+
+
+@pytest.mark.parametrize("subject", ["latest", "none", "nested/run"])
+def test_resume_rejects_magic_or_path_like_run_subjects(subject) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        _parse(["train", "--profile", "rl", "--resume", subject, "--print-config"])
+    assert exit_info.value.code == 2
+
+
+def test_pretraining_subject_must_be_an_explicit_checkpoint_path() -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        _parse(["train", "--profile", "rl", "--pretrain-from", "exact-run"])
+    assert exit_info.value.code == 2
+
+
+def test_elo_calibration_accepts_an_arbitrary_agent_field_and_rejects_degenerate_ones() -> None:
+    parsed = _parse(["elo-calibrate", "--agents", "scripted", "random"])
+    assert parsed.agents == ["scripted", "random"]
+    assert parsed.run is None
+
+    with pytest.raises(SystemExit) as exit_info:
+        _parse(["elo-calibrate", "--agents", "scripted"])
+    assert exit_info.value.code == 2
+
+    with pytest.raises(SystemExit) as exit_info:
+        _parse(["elo-calibrate", "--run", "exact-run", "--agents", "scripted", "random"])
+    assert exit_info.value.code == 2
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["collect_stats", "--team0", "scripted", "--team1", "random"],
+        ["train", "--profile", "rl_fields"],
+        ["train", "--profile", "rl", "--pretrain_from", "weights.pt"],
+        ["train", "--profile", "rl", "--smoke"],
+    ],
+)
+def test_legacy_command_and_option_aliases_do_not_parse(argv) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        _parse(argv)
+    assert exit_info.value.code == 2
+
+
+def test_no_subcommand_prints_help_without_dispatch(capsys, monkeypatch) -> None:
+    monkeypatch.setattr(cli, "_dispatch_command", lambda *_: pytest.fail("dispatched"))
+    assert cli.main([]) == 0
+    assert "usage: bnb" in capsys.readouterr().out
+
+
+def test_runtime_argument_errors_are_translated_to_cli_errors(capsys) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(["play", "--device", "not-a-device"])
+    assert exit_info.value.code == 2
+    assert "invalid --device value" in capsys.readouterr().err
+
+
+def test_invalid_print_config_is_a_concise_cli_error(capsys) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(["train", "--profile", "rl", "--num-envs", "3872", "--print-config"])
+    assert exit_info.value.code == 2
+    error = capsys.readouterr().err
+    assert "cannot preserve the fixed logical batch" in error
+    assert "Traceback" not in error
+
+
+@pytest.mark.parametrize("policy", ("12", "8gb", "AUTO", ""))
+def test_an_undocumented_vram_policy_fails_during_parsing(policy: str, capsys) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(["train", "--profile", "rl", "--vram", policy, "--print-config"])
+    assert exit_info.value.code == 2
+    assert "expected auto|probe|reprobe|off|8|16|24|32" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("policy", ("probe", "reprobe"))
+def test_print_config_refuses_to_probe_from_the_command_line(policy: str, capsys) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(
+            ["train", "--profile", "rl", "--device", "cpu", "--vram", policy, "--print-config"]
+        )
+    assert exit_info.value.code == 2
+    error = capsys.readouterr().err
+    assert "printing a launch has no side effects" in error
+    assert "Traceback" not in error
+
+
+def test_print_config_records_a_provisional_preset_and_its_basis(capsys) -> None:
+    assert (
+        cli.main(
+            ["train", "--profile", "rl", "--device", "cpu", "--vram", "16", "--print-config"]
+        )
+        == 0
+    )
+    document = json.loads(capsys.readouterr().out)
+    vram = document["launch"]["vram"]
+    assert vram == {
+        "policy": "16",
+        "source": "vram-preset",
+        "status": "provisional",
+        "proposed": {"num_envs": 5856, "microbatch_tokens": 37_500, "grad_checkpoint": False},
+        "applied": {"num_envs": 5856, "microbatch_tokens": 37_500, "grad_checkpoint": False},
+        "tiers": vram["tiers"],
+        "identity_fingerprint": None,
+        "notes": vram["notes"],
+    }
+    assert set(vram["tiers"]) == {"1", "2"}
+    assert "never measured" in vram["notes"][0]
+    # D9: the resolved shard count is recorded and reported.
+    assert document["config"]["train_config"]["rollouts_per_update"] == 2
+    assert document["sources"]["train_config.scales.0.num_envs"] == "vram-preset"
+    assert document["sources"]["model_config.grad_checkpoint"] == "vram-preset"
+
+
+def test_print_config_rejects_an_unavailable_execution_backend(capsys, monkeypatch) -> None:
+    monkeypatch.setattr("torch.backends.mps.is_available", lambda: False)
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(["train", "--profile", "rl", "--device", "mps", "--print-config"])
+    assert exit_info.value.code == 2
+    error = capsys.readouterr().err
+    assert "MPS is unavailable" in error
+    assert "Traceback" not in error
+
+
+def test_publish_reports_a_missing_manifest_concisely(tmp_path, monkeypatch, capsys) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(["publish", "--check"])
+
+    assert exit_info.value.code == 2
+    error = capsys.readouterr().err
+    assert "publications.toml" in error
+    assert "Traceback" not in error
+
+
+_UNSELECTED_MANIFEST = """
+schema_version = 1
+
+[publications.pending]
+renderer = "crossover-phase-v1"
+output = "docs/results/crossover_phase.png"
+description = "An entry whose measurement has not been made yet."
+"""
+
+
+def test_publish_check_succeeds_when_an_entry_is_still_unselected(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """An entry with no source is part of the inventory, not an error."""
+
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "publications.toml").write_text(_UNSELECTED_MANIFEST)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["publish", "--check"]) == 0
+    assert "unselected" in capsys.readouterr().out
+
+
+def test_publish_reports_a_selected_source_that_is_absent_concisely(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """The shipped manifest names real artifacts; without them, say so plainly.
+
+    Each entry says which source it could not resolve, rather than one entry's
+    failure standing in for the whole inventory, so the naming happens in the
+    report on stdout and stderr carries the summary. Both stay concise.
+    """
+
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "publications.toml").write_text(Path("docs/publications.toml").read_text())
+    (docs / "policy_architecture.png").write_bytes(b"fixture")
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(["publish", "--check"])
+
+    assert exit_info.value.code == 2
+    captured = capsys.readouterr()
+    assert "artifact.json" in captured.out
+    assert "unresolved" in captured.out
+    assert "Traceback" not in captured.err and "Traceback" not in captured.out
+
+
+def test_print_config_bypasses_runtime_dispatch_and_records_cli_sources(
+    capsys, monkeypatch
+) -> None:
+    monkeypatch.setattr(cli, "_dispatch_command", lambda *_: pytest.fail("dispatched"))
+    assert (
+        cli.main(
+            [
+                "train",
+                "--profile",
+                "rl",
+                "--num-envs",
+                "1952",
+                "--microbatch-tokens",
+                "20000",
+                "--device",
+                "cpu",
+                "--seed",
+                "17",
+                "--compile",
+                "none",
+                "--no-wandb",
+                "--allow-config-drift",
+                "--print-config",
+            ]
+        )
+        == 0
+    )
+    document = json.loads(capsys.readouterr().out)
+    assert document["profile"] == "rl"
+    assert document["sources"]["train_config.scales.0.num_envs"] == "cli"
+    assert document["sources"]["train_config.microbatch_tokens"] == "cli"
+    assert document["launch"] == {
+        "allow_config_drift": True,
+        "compile_mode": None,
+        "device": "cpu",
+        "seed": 17,
+        "wandb": False,
+        # A CPU launch has nothing to size, and says so rather than implying a
+        # decision it did not make. The tiers are still claimed: this launch
+        # really does run at half the profile's width and a smaller microbatch,
+        # and it costs the same whether VRAM or the command line chose it.
+        "vram": {
+            "policy": "auto",
+            "source": None,
+            "status": "unresolved",
+            "proposed": {"grad_checkpoint": None, "microbatch_tokens": None, "num_envs": None},
+            "applied": {"grad_checkpoint": None, "microbatch_tokens": None, "num_envs": None},
+            "tiers": {"1": TIER_GUARANTEES[1], "2": TIER_GUARANTEES[2]},
+            "identity_fingerprint": None,
+            "notes": ["--device cpu is not an accelerator; nothing to size"],
+        },
+    }
+
+
+def _stub_execution(monkeypatch, root: Path | None = None) -> cli_commands.CommandContext:
+    """Replace device selection and RNG seeding with a fixed CPU context."""
+
+    context = cli_commands.CommandContext(
+        device="cpu",
+        store=ArtifactStore(
+            checkpoint_root=(root or Path("checkpoints")),
+            standalone_root=(root or Path("artifacts")),
+            invocation=Invocation(argv=("bnb",), command="test", execution={"device": "cpu"}),
+        ),
+    )
+    monkeypatch.setattr(cli_commands, "_prepare_execution", lambda *args, **kwargs: context)
+    return context
+
+
+class _StubTrainer:
+    def __init__(self) -> None:
+        self.loaded_checkpoint = None
+        self.loaded_pretrained = None
+
+    def load_checkpoint(self, path: str) -> None:
+        self.loaded_checkpoint = path
+
+    def load_pretrained_weights(self, path: str) -> None:
+        self.loaded_pretrained = path
+
+    def train(self) -> None:
+        pass
+
+
+def test_train_resume_selects_greatest_numeric_step_within_exact_run(tmp_path, monkeypatch) -> None:
+    run = tmp_path / "checkpoints" / "exact-run"
+    run.mkdir(parents=True)
+    low = run / "step_9.pt"
+    high = run / "step_100.pt"
+    low.touch()
+    high.touch()
+    (run / "wandb_run_id.txt").write_text("wandb-id\n")
+    captured = {}
+    trainer = _StubTrainer()
+
+    def make_trainer(resolved, args, device, *, resume_wandb_run_id=None):
+        captured["run_id"] = resume_wandb_run_id
+        return trainer
+
+    monkeypatch.chdir(tmp_path)
+    _stub_execution(monkeypatch)
+    monkeypatch.setattr(cli_commands, "_make_trainer", make_trainer)
+    cli_commands.execute("train", _parse(["train", "--profile", "rl", "--resume", "exact-run"]))
+
+    assert Path(trainer.loaded_checkpoint).resolve() == high
+    assert trainer.loaded_pretrained is None
+    assert captured["run_id"] == "wandb-id"
+
+
+def test_train_pretraining_requires_and_loads_an_explicit_checkpoint(tmp_path, monkeypatch) -> None:
+    checkpoint = tmp_path / "pretrained.pt"
+    checkpoint.touch()
+    trainer = _StubTrainer()
+    _stub_execution(monkeypatch)
+    monkeypatch.setattr(cli_commands, "_make_trainer", lambda *args, **kwargs: trainer)
+    cli_commands.execute(
+        "train",
+        _parse(["train", "--profile", "bc", "--pretrain-from", str(checkpoint)]),
+    )
+    assert trainer.loaded_pretrained == str(checkpoint)
+    assert trainer.loaded_checkpoint is None
+
+
+def test_train_validates_pretraining_before_execution_or_trainer_allocation(
+    tmp_path, monkeypatch
+) -> None:
+    missing = tmp_path / "missing.pt"
+    monkeypatch.setattr(
+        cli_commands,
+        "_prepare_execution",
+        lambda *args, **kwargs: pytest.fail("execution prepared before subject validation"),
+    )
+    monkeypatch.setattr(
+        cli_commands,
+        "_make_trainer",
+        lambda *args, **kwargs: pytest.fail("trainer allocated before subject validation"),
+    )
+
+    with pytest.raises(FileNotFoundError, match="checkpoint not found"):
+        cli_commands.execute(
+            "train",
+            _parse(["train", "--profile", "rl", "--pretrain-from", str(missing)]),
+        )
+
+
+def test_corrupt_checkpoint_is_a_concise_cli_error(tmp_path, capsys, monkeypatch) -> None:
+    from boost_and_broadside.train.rl.checkpoint import CheckpointMixin
+
+    checkpoint = tmp_path / "corrupt.pt"
+    checkpoint.write_bytes(b"not a torch checkpoint")
+    loader = CheckpointMixin()
+    loader.device = "cpu"
+    monkeypatch.setattr(cli_commands, "_make_trainer", lambda *args, **kwargs: loader)
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(
+            [
+                "train",
+                "--profile",
+                "rl",
+                "--pretrain-from",
+                str(checkpoint),
+                "--device",
+                "cpu",
+            ]
+        )
+    assert exit_info.value.code == 2
+    error = capsys.readouterr().err
+    assert "could not read checkpoint" in error
+    assert "Traceback" not in error
+
+
+def test_incompatible_checkpoint_weights_are_a_concise_cli_error(
+    tmp_path, capsys, monkeypatch
+) -> None:
+    from boost_and_broadside.train.rl.checkpoint import CheckpointMixin
+    from boost_and_broadside.train.rl.checkpoint_schema import OBSERVATION_SCHEMA
+
+    checkpoint = tmp_path / "incompatible.pt"
+    import torch
+
+    torch.save(
+        {
+            "observation_schema": OBSERVATION_SCHEMA,
+            "policy_state_dict": {"wrong": torch.zeros(1)},
+        },
+        checkpoint,
+    )
+
+    class IncompatibleModule:
+        def load_state_dict(self, state):
+            raise RuntimeError("missing and unexpected tensor keys")
+
+    loader = CheckpointMixin()
+    loader.device = "cpu"
+    loader._policy_module = IncompatibleModule()
+    monkeypatch.setattr(cli_commands, "_make_trainer", lambda *args, **kwargs: loader)
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(
+            [
+                "train",
+                "--profile",
+                "rl",
+                "--pretrain-from",
+                str(checkpoint),
+                "--device",
+                "cpu",
+            ]
+        )
+    assert exit_info.value.code == 2
+    error = capsys.readouterr().err
+    assert "incompatible policy weights" in error
+    assert "Traceback" not in error
+
+
+def test_non_mapping_checkpoint_weights_are_a_concise_cli_error(
+    tmp_path, capsys, monkeypatch
+) -> None:
+    import torch
+
+    from boost_and_broadside.train.rl.checkpoint import CheckpointMixin
+    from boost_and_broadside.train.rl.checkpoint_schema import OBSERVATION_SCHEMA
+
+    checkpoint = tmp_path / "non-mapping.pt"
+    torch.save(
+        {
+            "observation_schema": OBSERVATION_SCHEMA,
+            "policy_state_dict": None,
+        },
+        checkpoint,
+    )
+
+    class UnusedModule:
+        def load_state_dict(self, state):
+            pytest.fail("non-mapping state reached the model loader")
+
+    loader = CheckpointMixin()
+    loader.device = "cpu"
+    loader._policy_module = UnusedModule()
+    monkeypatch.setattr(cli_commands, "_make_trainer", lambda *args, **kwargs: loader)
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(
+            [
+                "train",
+                "--profile",
+                "rl",
+                "--pretrain-from",
+                str(checkpoint),
+                "--device",
+                "cpu",
+            ]
+        )
+    assert exit_info.value.code == 2
+    error = capsys.readouterr().err
+    assert "invalid policy weights: expected a mapping, got NoneType" in error
+    assert "Traceback" not in error
+
+
+def test_malformed_matchup_is_rejected_during_parsing() -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        _parse(
+            [
+                "collect-stats",
+                "--team0",
+                "scripted",
+                "--team1",
+                "random",
+                "--sizes",
+                "0v4",
+            ]
+        )
+    assert exit_info.value.code == 2
+
+
+def test_collect_stats_adapter_uses_the_locked_4v4_default(monkeypatch) -> None:
+    captured = {}
+    _stub_execution(monkeypatch)
+    monkeypatch.setattr(
+        cli_commands,
+        "run_collect_stats_mode",
+        lambda **kwargs: captured.update(kwargs),
+    )
+    cli_commands.execute(
+        "collect-stats",
+        _parse(["collect-stats", "--team0", "scripted", "--team1", "random"]),
+    )
+    assert captured["matchups"] == ["4v4"]
+    assert captured["env_config"].num_ships == 8
+    assert captured["num_envs"] == 1024
+
+
+def test_elo_calibration_adapter_passes_explicit_agent_fields(monkeypatch) -> None:
+    captured = {}
+    _stub_execution(monkeypatch)
+    monkeypatch.setattr(
+        cli_commands,
+        "run_elo_calibrate_mode",
+        lambda **kwargs: captured.update(kwargs),
+    )
+    cli_commands.execute(
+        "elo-calibrate",
+        _parse(["elo-calibrate", "--agents", "scripted", "random"]),
+    )
+    assert captured["run_spec"] is None
+    assert captured["agent_specs"] == ["scripted", "random"]
+    assert captured["env_config"].num_ships == 8
+
+
+def test_ar_report_adapter_owns_one_canonical_4v4_scenario(monkeypatch) -> None:
+    calls = []
+    _stub_execution(monkeypatch)
+    monkeypatch.setattr(
+        cli_commands,
+        "run_canonical_ar_report_mode",
+        lambda **kwargs: calls.append(kwargs),
+    )
+    cli_commands.execute(
+        "ar-report",
+        _parse(["ar-report", "--team0", "scripted", "--team1", "random"]),
+    )
+    assert len(calls) == 1
+    assert calls[0]["num_steps"] == 512
+
+
+@pytest.mark.parametrize(
+    ("command", "runtime_name"),
+    [
+        ("noise-calibration", "run_noise_calibration_mode"),
+        ("feature-stats", "run_feature_stats_mode"),
+    ],
+)
+def test_analysis_adapters_use_the_locked_4v4_default(command, runtime_name, monkeypatch) -> None:
+    captured = {}
+    _stub_execution(monkeypatch)
+    monkeypatch.setattr(cli_commands, runtime_name, lambda **kwargs: captured.update(kwargs))
+    cli_commands.execute(command, _parse([command, "--team0", "model.pt", "--team1", "scripted"]))
+    assert captured["env_config"].num_ships == 8
+
+
+def test_trainer_receives_complete_resolved_and_launch_provenance(monkeypatch) -> None:
+    captured = {}
+
+    class CaptureTrainer(_StubTrainer):
+        def __init__(self, **kwargs):
+            super().__init__()
+            captured.update(kwargs)
+
+    monkeypatch.setattr(cli_commands, "PPOTrainer", CaptureTrainer)
+    args = _parse(["train", "--profile", "rl", "--no-wandb", "--seed", "0", "--device", "cpu"])
+    launch = resolve_training_launch(
+        profile="rl",
+        vram=args.vram,
+        device="cpu",
+        seed=0,
+        compile_mode=args.compile_mode,
+        wandb=False,
+    )
+    cli_commands._make_trainer(launch, args, "cpu")
+
+    document = captured["resolved_config_document"]
+    assert document["profile"] == "rl"
+    assert document["resolved_config_fingerprint"] == launch.resolved.resolved_config_fingerprint
+    provenance = captured["launch_provenance"]
+    assert {key: provenance[key] for key in provenance if key != "vram"} == {
+        "device": "cpu",
+        "seed": 0,
+        "compile_mode": "reduce-overhead",
+        "wandb": False,
+        "allow_config_drift": False,
+    }
+    # The launch record names the VRAM decision, not just the execution settings.
+    assert provenance["vram"]["policy"] == "auto"
+    assert provenance["vram"]["status"] == "unresolved"
+
+
+def test_project_registers_installed_bnb_entrypoint(tmp_path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        ["uv", "run", "--no-sync", "bnb", "--help"],
+        cwd=root,
+        env={**os.environ, "UV_CACHE_DIR": str(tmp_path / "uv-cache")},
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.startswith("usage: bnb")
+
+
+def _recorded_run(root: Path, name: str, *, profile: str, step: int, modified: float) -> Path:
+    from boost_and_broadside.run_manifest import RunManifest, write_manifest
+
+    path = root / "checkpoints" / name
+    path.mkdir(parents=True)
+    (path / f"step_{step:012d}.pt").touch()
+    write_manifest(
+        path,
+        RunManifest(
+            run=name, profile=profile, update=7, global_step=step, live_elo=879.8,
+            elapsed_seconds=5_400.0,
+        ),
+    )
+    os.utime(path, (modified, modified))
+    return path
+
+
+def test_resume_and_resume_last_are_mutually_exclusive() -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        _parse(["train", "--profile", "rl", "--resume", "some-run", "--resume-last"])
+    assert exit_info.value.code == 2
+
+
+def test_resume_last_resolves_to_an_exact_run_of_the_same_profile(tmp_path, monkeypatch) -> None:
+    """It becomes the same explicit subject a typed --resume would have produced."""
+    _recorded_run(tmp_path, "older-rl", profile="rl", step=1024, modified=1_000)
+    _recorded_run(tmp_path, "newest-rl", profile="rl", step=2048, modified=3_000)
+    _recorded_run(tmp_path, "newest-bc", profile="bc", step=4096, modified=4_000)
+    monkeypatch.chdir(tmp_path)
+
+    args = _parse(["train", "--profile", "rl", "--resume-last"])
+    assert cli_commands._resume_subject_for(args) == "newest-rl"
+
+    bc_args = _parse(["train", "--profile", "bc", "--resume-last"])
+    assert cli_commands._resume_subject_for(bc_args) == "newest-bc"
+
+
+def test_resume_last_without_a_recorded_run_says_what_to_do(tmp_path, monkeypatch) -> None:
+    from boost_and_broadside.evaluation.run_catalog import RunNotFoundError
+
+    (tmp_path / "checkpoints" / "unrecorded").mkdir(parents=True)
+    (tmp_path / "checkpoints" / "unrecorded" / "step_000000001024.pt").touch()
+    monkeypatch.chdir(tmp_path)
+
+    args = _parse(["train", "--profile", "rl", "--resume-last"])
+    with pytest.raises(RunNotFoundError, match="bnb runs"):
+        cli_commands._resume_subject_for(args)
+
+
+def test_runs_lists_newest_first_and_marks_what_is_resumable(tmp_path, monkeypatch, capsys):
+    _recorded_run(tmp_path, "older-rl", profile="rl", step=1024, modified=1_000)
+    _recorded_run(tmp_path, "newest-bc", profile="bc", step=4096, modified=4_000)
+    (tmp_path / "checkpoints" / "no-checkpoint").mkdir(parents=True)
+    os.utime(tmp_path / "checkpoints" / "no-checkpoint", (5_000, 5_000))
+    monkeypatch.chdir(tmp_path)
+
+    cli.parse_args(["runs"])
+    cli_commands.execute("runs", _parse(["runs"]), argv=["runs"])
+
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0].split() == [
+        "RUN", "PROFILE", "STATUS", "UPDATE", "STEP", "ELAPSED", "LIVE", "ELO", "RESUMABLE",
+    ]
+    assert [line.split()[0] for line in lines[1:]] == ["no-checkpoint", "newest-bc", "older-rl"]
+    assert lines[2].split()[1:] == ["bc", "running", "7", "4,096", "1h30m", "880",
+                                    "step_000000004096.pt"]
+    # A run with no manifest and no checkpoint still lists, with nothing invented.
+    assert lines[1].split()[1:] == ["-", "-", "-", "-", "-", "-", "-"]
+
+
+def test_runs_honours_its_filters(tmp_path, monkeypatch, capsys):
+    _recorded_run(tmp_path, "older-rl", profile="rl", step=1024, modified=1_000)
+    _recorded_run(tmp_path, "newest-bc", profile="bc", step=4096, modified=4_000)
+    monkeypatch.chdir(tmp_path)
+
+    cli_commands.execute("runs", _parse(["runs", "--profile", "rl"]), argv=["runs"])
+    assert [line.split()[0] for line in capsys.readouterr().out.splitlines()[1:]] == ["older-rl"]
+
+    cli_commands.execute("runs", _parse(["runs", "--limit", "1"]), argv=["runs"])
+    assert [line.split()[0] for line in capsys.readouterr().out.splitlines()[1:]] == ["newest-bc"]
+
+
+def test_runs_on_an_empty_checkpoint_root_says_so(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+
+    cli_commands.execute("runs", _parse(["runs"]), argv=["runs"])
+
+    assert capsys.readouterr().out.strip() == "no runs found under checkpoints/"

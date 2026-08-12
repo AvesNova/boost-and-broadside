@@ -4,15 +4,24 @@ import copy
 import dataclasses
 import threading
 import time
+import warnings
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import torch
 
+from boost_and_broadside.run_manifest import (
+    RunManifest,
+    RunStatus,
+    read_manifest,
+    write_manifest,
+)
 from boost_and_broadside.train.rl.checkpoint_schema import (
     OBSERVATION_SCHEMA,
+    load_checkpoint_payload,
     require_observation_schema,
 )
 from boost_and_broadside.train.rl.elo_eval import EloEvaluator
@@ -21,6 +30,249 @@ from boost_and_broadside.train.rl.elo_eval import EloEvaluator
 # kept per run. Ladder snapshots (ladder_step_*.pt) and named best checkpoints
 # (best_*.pt) use separate filename families and are never subject to this cap.
 _KEEP_LAST_N_CHECKPOINTS = 3
+
+
+def build_policy_checkpoint_payload(
+    *,
+    policy_state_dict: Mapping[str, Any],
+    num_value_components: int,
+    team_pma_k: tuple[int, ...],
+    global_step: int,
+    live_elo: float,
+    model_config: Any,
+    env_config: Any,
+    ship_config: Any,
+    paradigm: str,
+    resolved_config: Mapping[str, object] | None = None,
+    launch: Mapping[str, object] | None = None,
+) -> dict[str, Any]:
+    """Build the current policy-provenance block without constructing a trainer.
+
+    Every production checkpoint family starts with this block. Keeping its
+    construction pure also lets hermetic tools create a randomly initialized,
+    current-schema policy fixture without fabricating optimizer state or
+    allocating the full training engine.
+    """
+
+    payload: dict[str, Any] = {
+        "observation_schema": OBSERVATION_SCHEMA,
+        "policy_state_dict": policy_state_dict,
+        "num_value_components": num_value_components,
+        "team_pma_k": team_pma_k,
+        "global_step": global_step,
+        "live_elo": live_elo,
+        "model_config": dataclasses.asdict(model_config),
+        "env_config": dataclasses.asdict(env_config),
+        "ship_config": dataclasses.asdict(ship_config),
+        "paradigm": paradigm,
+    }
+    if resolved_config is not None:
+        payload["resolved_config"] = copy.deepcopy(dict(resolved_config))
+    if launch is not None:
+        payload["launch"] = copy.deepcopy(dict(launch))
+    return payload
+
+
+def write_checkpoint_payload(path: str | Path, payload: Mapping[str, Any]) -> Path:
+    """Atomically serialize one already-snapshotted checkpoint payload."""
+
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_suffix(".tmp")
+    torch.save(dict(payload), temporary)
+    temporary.replace(destination)
+    return destination
+
+
+def build_training_checkpoint_payload(
+    *,
+    policy_payload: Mapping[str, Any],
+    optimizer_state_dict: Mapping[str, Any],
+    scaler_state_dict: Mapping[str, Any],
+    adv_scaler_state_dict: Mapping[str, Any],
+    avg_policy_state_dict: Mapping[str, Any],
+    avg_param_cumsum: list[torch.Tensor],
+    avg_update_count: int,
+    update: int,
+    ship_steps: int,
+    grad_tokens: int,
+    elapsed_train_time: float,
+    avg_live_elo: float,
+    floating_games: int,
+    eval_window_rand: list[Any],
+    eval_window_sc: list[Any],
+    eval_window_ladder: list[Any],
+    eval_window_floating: list[Any],
+    eval_window_live_vs_avg: list[Any],
+    elo_milestone: float,
+    train_config: Any,
+) -> dict[str, Any]:
+    """Build the complete resumable ``step_*.pt`` payload as plain data.
+
+    Every key written here is required to resume — see
+    ``RESUMABLE_CHECKPOINT_FIELDS``. The only genuinely optional keys are the two
+    the policy block writes conditionally, ``OPTIONAL_CHECKPOINT_FIELDS``: a
+    trainer constructed without a resolved-configuration document or launch
+    provenance (tests and hermetic fixtures) still writes a usable payload, and
+    the drift check treats a missing record as "nothing to compare".
+    """
+
+    return {
+        **policy_payload,
+        "optimizer_state_dict": optimizer_state_dict,
+        "scaler_state_dict": scaler_state_dict,
+        "adv_scaler_state_dict": adv_scaler_state_dict,
+        "avg_policy_state_dict": avg_policy_state_dict,
+        "avg_param_cumsum": avg_param_cumsum,
+        "avg_update_count": avg_update_count,
+        "update": update,
+        "ship_steps": ship_steps,
+        "grad_tokens": grad_tokens,
+        "elapsed_train_time": elapsed_train_time,
+        "avg_live_elo": avg_live_elo,
+        "floating_games": floating_games,
+        "eval_window_rand": eval_window_rand,
+        "eval_window_sc": eval_window_sc,
+        "eval_window_ladder": eval_window_ladder,
+        "eval_window_floating": eval_window_floating,
+        "eval_window_live_vs_avg": eval_window_live_vs_avg,
+        "elo_milestone": elo_milestone,
+        "train_config": {
+            key: value
+            for key, value in dataclasses.asdict(train_config).items()
+            if key != "schedule"
+        },
+    }
+
+
+# Every key ``build_policy_checkpoint_payload`` always writes, in the order it
+# writes them. This is the block every payload family starts with, and on its
+# own it is the whole of a ladder snapshot or a policy-only file.
+POLICY_CHECKPOINT_FIELDS: tuple[str, ...] = (
+    "observation_schema",
+    "policy_state_dict",
+    "num_value_components",
+    "team_pma_k",
+    "global_step",
+    "live_elo",
+    "model_config",
+    "env_config",
+    "ship_config",
+    "paradigm",
+)
+
+# The two keys any family may legitimately omit. Both are provenance rather than
+# state: a trainer with neither still resumes, and the drift check reads an
+# absent ``resolved_config`` as "nothing recorded to compare".
+OPTIONAL_CHECKPOINT_FIELDS: tuple[str, ...] = ("resolved_config", "launch")
+
+# Every key ``build_training_checkpoint_payload`` always writes, in the order it
+# writes them. ``load_checkpoint`` requires all of them: a resumable checkpoint
+# either restores the complete training state or is refused. Reading any of these
+# with a silent default is how a payload written under different field names
+# resumes as a fresh run — the live rating, its running average, and the
+# milestone grid all restart at zero while the weights and optimizer continue.
+# ``tests/train/test_checkpoint.py`` pins both tuples against real payloads, so
+# adding a field to either builder without deciding its resume behavior fails
+# there.
+RESUMABLE_CHECKPOINT_FIELDS: tuple[str, ...] = (
+    *POLICY_CHECKPOINT_FIELDS,
+    "optimizer_state_dict",
+    "scaler_state_dict",
+    "adv_scaler_state_dict",
+    "avg_policy_state_dict",
+    "avg_param_cumsum",
+    "avg_update_count",
+    "update",
+    "ship_steps",
+    "grad_tokens",
+    "elapsed_train_time",
+    "avg_live_elo",
+    "floating_games",
+    "eval_window_rand",
+    "eval_window_sc",
+    "eval_window_ladder",
+    "eval_window_floating",
+    "eval_window_live_vs_avg",
+    "elo_milestone",
+    "train_config",
+)
+
+# Fields this branch renamed, mapped current name -> the name a pre-rename
+# payload uses. Only used to make the refusal say what the file actually is.
+_RENAMED_CHECKPOINT_FIELDS: dict[str, str] = {
+    "live_elo": "training_elo",
+    "avg_live_elo": "avg_training_elo",
+}
+
+
+def require_resumable_checkpoint(checkpoint: Mapping[str, Any], path: str | None = None) -> None:
+    """Refuse a payload that cannot restore the complete training state.
+
+    ``observation_schema`` is listed among the required fields for completeness
+    but is checked first and separately by ``require_observation_schema``, which
+    has more to say about why the weights are incompatible.
+    """
+
+    missing = [field for field in RESUMABLE_CHECKPOINT_FIELDS if field not in checkpoint]
+    if not missing:
+        return
+    location = f" {path!r}" if path is not None else ""
+    renamed = [
+        f"{old!r} for {new!r}"
+        for new, old in _RENAMED_CHECKPOINT_FIELDS.items()
+        if new in missing and old in checkpoint
+    ]
+    predates = (
+        f" It carries {' and '.join(renamed)}, so it predates the current live-Elo"
+        " naming and has to be migrated rather than resumed."
+        if renamed
+        else ""
+    )
+    raise ValueError(
+        f"Checkpoint{location} is not a resumable training checkpoint: missing "
+        f"{', '.join(missing)}.{predates} Resume requires a complete step_*.pt payload; "
+        "start from a policy-only checkpoint with --pretrain-from instead."
+    )
+
+
+def _check_resolved_config_provenance(
+    checkpoint: Mapping[str, Any],
+    current: Mapping[str, object] | None,
+    *,
+    allow_config_drift: bool,
+) -> None:
+    """Reject a resume whose complete recorded launch config changed."""
+    recorded = checkpoint.get("resolved_config")
+    if current is None or not isinstance(recorded, Mapping):
+        return
+    recorded_fingerprint = recorded.get("resolved_config_fingerprint")
+    current_fingerprint = current.get("resolved_config_fingerprint")
+    if recorded_fingerprint == current_fingerprint:
+        return
+    message = (
+        "Checkpoint resolved configuration does not match this launch: "
+        f"recorded={recorded_fingerprint!r}, current={current_fingerprint!r}"
+    )
+    if not allow_config_drift:
+        raise ValueError(f"{message}. Pass --allow-config-drift to override explicitly.")
+    warnings.warn(f"{message}; continuing because config drift is allowed", stacklevel=2)
+
+
+def _load_checkpoint_state(
+    target: Any, state: Mapping[str, Any], path: str, component: str
+) -> None:
+    """Normalize state incompatibility at the checkpoint input boundary."""
+
+    if not isinstance(state, Mapping):
+        raise ValueError(
+            f"checkpoint {path!r} has invalid {component}: expected a mapping, "
+            f"got {type(state).__name__}"
+        )
+    try:
+        target.load_state_dict(state)
+    except RuntimeError as error:
+        raise ValueError(f"checkpoint {path!r} has incompatible {component}: {error}") from None
 
 
 def _prune_checkpoint_family(
@@ -50,7 +302,7 @@ def clone_to_cpu(obj: Any) -> Any:
     """
     if isinstance(obj, torch.Tensor):
         return obj.to("cpu") if obj.is_cuda else obj.clone()
-    if isinstance(obj, dict):
+    if isinstance(obj, Mapping):
         return {key: clone_to_cpu(value) for key, value in obj.items()}
     if isinstance(obj, list):
         return [clone_to_cpu(value) for value in obj]
@@ -82,6 +334,58 @@ class CheckpointMixin:
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         self.roster.save_json(ckpt_dir / "roster.json")
 
+    def _run_directory(self) -> Path:
+        return Path(self.cfg.checkpoint_dir) / self.run_name
+
+    def _write_run_manifest(self, update: int, status: RunStatus) -> None:
+        """Record what this run is, next to the checkpoint that makes it selectable.
+
+        Written from the save path so it inherits the save path's restraint: a
+        run that writes no checkpoint writes no manifest either, because nothing
+        can resume it and nothing should offer to.
+        """
+
+        launch = self.launch_provenance or {}
+        resolved = self.resolved_config_document or {}
+        run_id_path = self._run_directory() / "wandb_run_id.txt"
+        write_manifest(
+            self._run_directory(),
+            RunManifest(
+                run=self.run_name,
+                profile=resolved.get("profile"),
+                status=status,
+                global_step=self._global_step,
+                update=update,
+                elapsed_seconds=self._elapsed_seconds(),
+                live_elo=self._live_elo,
+                device=launch.get("device"),
+                seed=launch.get("seed"),
+                resolved_config_fingerprint=resolved.get("resolved_config_fingerprint"),
+                wandb_run_id=(
+                    run_id_path.read_text().strip() if run_id_path.is_file() else None
+                ),
+            ),
+        )
+
+    def _elapsed_seconds(self) -> float:
+        """Wall-clock training time, including what earlier runs of this run spent."""
+
+        started = getattr(self, "_train_start_time", None)
+        return self._elapsed_train_time + (time.time() - started if started else 0.0)
+
+    def record_run_status(self, status: RunStatus) -> None:
+        """Move an existing manifest to a terminal status.
+
+        Deliberately does not create one. A run that never wrote a checkpoint has
+        nothing for a listing to offer, and creating a record on the way out
+        would put one in every directory a bare trainer ever touched.
+        """
+
+        current = read_manifest(self._run_directory())
+        if current is None:
+            return
+        write_manifest(self._run_directory(), replace(current, status=status))
+
     def _maybe_save_checkpoint(self, update: int) -> None:
         """Save the resumable checkpoint on schedule."""
         interval = self._schedule_state.checkpoint_interval
@@ -89,6 +393,41 @@ class CheckpointMixin:
             return
         self._save_checkpoint(update)
         self._save_roster_json()
+        self._write_run_manifest(update, RunStatus.RUNNING)
+
+    def save_final_checkpoint(self) -> None:
+        """Persist training state before the process exits, if it is not already on disk.
+
+        The scheduled saver runs at the end of an update; an interrupt arrives in
+        the middle of one. So this writes the trainer as it stands but labels it
+        with the last *completed* update, which is what a resume must restart
+        after -- labelling it with the update in progress would resume past work
+        that never finished.
+
+        Nothing is written when that update is already saved, which at a
+        checkpoint interval of one update is the ordinary case. What is left is
+        the narrow gap the scheduled saver cannot cover: a save the writer
+        skipped because the previous one was still running.
+
+        Synchronous by necessity. The save threads are daemons, so a write that
+        is not joined here dies unfinished when the process exits.
+        """
+        if self._completed_update <= 0:
+            return
+        # A zero interval turns checkpointing off, and exiting is not a reason to
+        # overrule that.
+        if self._schedule_state.checkpoint_interval <= 0:
+            return
+        ckpt_dir = Path(self.cfg.checkpoint_dir) / self.run_name
+        if (ckpt_dir / f"step_{self._global_step:012d}.pt").exists():
+            return
+        # Clears the thread slot, so the save below is dispatched rather than
+        # dropped as a collision with a write that is already running.
+        self._wait_for_checkpoint_saves()
+        self._save_checkpoint(self._completed_update)
+        self._wait_for_checkpoint_saves()
+        self._save_roster_json()
+        self._write_run_manifest(self._completed_update, RunStatus.RUNNING)
 
     def _maybe_save_best_checkpoints(self) -> None:
         """Overwrite the best-model checkpoints (live, then avg) when the rating improves.
@@ -101,18 +440,18 @@ class CheckpointMixin:
         as captured. The two families use separate thread slots so they never
         contend within a single update.
         """
-        if self._training_elo > self._best_training_elo_norm and self._save_best_checkpoint(
+        if self._live_elo > self._best_live_elo and self._save_best_checkpoint(
             "best_training.pt"
         ):
-            self._best_training_elo_norm = self._training_elo
+            self._best_live_elo = self._live_elo
         if self._avg_update_count > 0:
-            avg_elo_norm = self._avg_training_elo
-            if avg_elo_norm > self._best_avg_elo_norm and self._save_best_checkpoint(
+            avg_elo = self._avg_live_elo
+            if avg_elo > self._best_avg_live_elo and self._save_best_checkpoint(
                 "best_avg.pt",
                 payload=self._avg_checkpoint_payload_lightweight(update=0),
                 thread_attr="_active_best_avg_thread",
             ):
-                self._best_avg_elo_norm = avg_elo_norm
+                self._best_avg_live_elo = avg_elo
 
     # ------------------------------------------------------------------
     # Elo measurement ladder
@@ -128,9 +467,7 @@ class CheckpointMixin:
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         path = ckpt_dir / f"ladder_step_{self._global_step:012d}.pt"
         payload = clone_to_cpu(self._provenance())
-        tmp = path.with_suffix(".tmp")
-        torch.save(payload, tmp)
-        tmp.replace(path)
+        write_checkpoint_payload(path, payload)
         return path
 
     def _maybe_advance_ladder(self, update: int, elo_eval: EloEvaluator) -> None:
@@ -151,10 +488,9 @@ class CheckpointMixin:
         if self._policy_gradient_coef <= 0.0 or self.cfg.elo_milestone_gap <= 0:
             return
         gap = self.cfg.elo_milestone_gap
-        # Grid points are absolute on the scripted=1000 gauge, so snapshots
-        # from different runs land at comparable heights.
-        elo_norm = self._training_elo
-        if elo_norm < self._elo_milestone + gap:
+        # Grid points are absolute on the live gauge, so snapshots from
+        # different runs land at comparable heights.
+        if self._live_elo < self._elo_milestone + gap:
             return
         floating = self.roster.floating_checkpoint()
         if floating is not None and self._floating_games < self.cfg.elo_eval.min_games_to_freeze:
@@ -163,7 +499,7 @@ class CheckpointMixin:
         self.roster.freeze_floating()
         path = self._save_ladder_snapshot()
         entry = self.roster.add_checkpoint(
-            str(path), self._global_step, update, initial_elo=self._training_elo
+            str(path), self._global_step, update, initial_elo=self._live_elo
         )
         snapshot_policy = copy.deepcopy(self._policy_module).eval()
         snapshot_policy.requires_grad_(False)
@@ -173,7 +509,7 @@ class CheckpointMixin:
         # that fired. A rating that jumps several gaps in one update takes a
         # single snapshot rather than queueing one per crossed point, and a dip
         # back below a claimed point cannot re-trigger on the way up.
-        self._elo_milestone = elo_norm // gap * gap
+        self._elo_milestone = self._live_elo // gap * gap
         self._save_roster_json()
 
     # ------------------------------------------------------------------
@@ -190,49 +526,48 @@ class CheckpointMixin:
         assumed physics constant is indistinguishable from a correct one until the
         policy quietly underperforms its rating.
         """
-        return {
-            "observation_schema": OBSERVATION_SCHEMA,
-            "policy_state_dict": self._policy_module.state_dict(),
-            "num_value_components": self.wrapper.num_active_components,
-            "team_pma_k": self._win_k,
-            "global_step": self._global_step,
-            "training_elo": self._training_elo,
-            "model_config": dataclasses.asdict(self.model_config),
-            "env_config": dataclasses.asdict(self.env_config),
-            "ship_config": dataclasses.asdict(self.ship_config),
+        return build_policy_checkpoint_payload(
+            policy_state_dict=self._policy_module.state_dict(),
+            num_value_components=self.wrapper.num_active_components,
+            team_pma_k=self._win_k,
+            global_step=self._global_step,
+            live_elo=self._live_elo,
+            model_config=self.model_config,
+            env_config=self.env_config,
+            ship_config=self.ship_config,
             # An ego_pass policy only ever acted as team 0, so whoever replays it
             # has to know to hand it the mirrored view when it plays team 1.
-            "paradigm": self.cfg.paradigm,
-        }
+            paradigm=self.cfg.paradigm,
+            resolved_config=self.resolved_config_document,
+            launch=self.launch_provenance,
+        )
 
     def checkpoint_payload(self, update: int) -> dict:
         """Build the data dict shared by all checkpoint saves."""
-        return {
-            **self._provenance(),
-            "optimizer_state_dict": self.optim.state_dict(),
-            "scaler_state_dict": self.scaler.state_dict(),
-            "adv_scaler_state_dict": self.adv_scaler.state_dict(),
-            "avg_policy_state_dict": self._avg_policy_module.state_dict(),
+        return build_training_checkpoint_payload(
+            policy_payload=self._provenance(),
+            optimizer_state_dict=self.optim.state_dict(),
+            scaler_state_dict=self.scaler.state_dict(),
+            adv_scaler_state_dict=self.adv_scaler.state_dict(),
+            avg_policy_state_dict=self._avg_policy_module.state_dict(),
             # Left on device; the clone_to_cpu walk over this payload copies it.
-            "avg_param_cumsum": list(self._avg_param_cumsum),
-            "avg_update_count": self._avg_update_count,
-            "update": update,
-            "ship_steps": self._ship_steps,
-            "grad_tokens": self._grad_tokens,
-            "elapsed_train_time": self._elapsed_train_time + (time.time() - self._train_start_time),
-            "avg_training_elo": self._avg_training_elo,
-            "scripted_elo": self._scripted_elo,
-            "floating_games": self._floating_games,
-            "eval_window_rand": list(self._eval_window_rand),
-            "eval_window_sc": list(self._eval_window_sc),
-            "eval_window_ladder": list(self._eval_window_ladder),
-            "eval_window_floating": list(self._eval_window_floating),
-            "eval_window_live_vs_avg": list(self._eval_window_live_vs_avg),
-            "elo_milestone": self._elo_milestone,
-            "train_config": {
-                k: v for k, v in dataclasses.asdict(self.cfg).items() if k != "schedule"
-            },
-        }
+            avg_param_cumsum=list(self._avg_param_cumsum),
+            avg_update_count=self._avg_update_count,
+            update=update,
+            ship_steps=self._ship_steps,
+            grad_tokens=self._grad_tokens,
+            elapsed_train_time=self._elapsed_train_time
+            + (time.time() - self._train_start_time),
+            avg_live_elo=self._avg_live_elo,
+            floating_games=self._floating_games,
+            eval_window_rand=list(self._eval_window_rand),
+            eval_window_sc=list(self._eval_window_sc),
+            eval_window_ladder=list(self._eval_window_ladder),
+            eval_window_floating=list(self._eval_window_floating),
+            eval_window_live_vs_avg=list(self._eval_window_live_vs_avg),
+            elo_milestone=self._elo_milestone,
+            train_config=self.cfg,
+        )
 
     def _run_async_save(self, thread_attr: str, label: str, target: Callable[[], None]) -> bool:
         """Spawn an async save thread, skipping if the previous save of this kind is still running.
@@ -247,6 +582,12 @@ class CheckpointMixin:
             previous save on this thread slot is still running. Callers that gate a
             high-water mark on the save must only advance it when this returns True,
             or a skipped save would raise the bar without persisting the checkpoint.
+
+        ``_save_checkpoint`` copies its payload to host memory *before* asking, so
+        a skipped save has already paid the full blocking cost for nothing.
+        Harmless while an update takes minutes and this never fires; worth
+        hoisting the check above the copy if updates ever get short enough for
+        saves to collide routinely.
         """
         active = getattr(self, thread_attr, None)
         if active is not None and active.is_alive():
@@ -286,15 +627,11 @@ class CheckpointMixin:
         def _async_save():
             # Write to a temp file then rename atomically so .exists() only
             # returns True once the file is complete (avoids partial-read crashes).
-            tmp = path.with_suffix(".tmp")
-            torch.save(cpu_payload, tmp)
-            tmp.replace(path)
+            write_checkpoint_payload(path, cpu_payload)
             print(f"Checkpoint saved asynchronously: {path}")
 
             if avg_cpu_payload is not None and avg_path is not None:
-                tmp_avg = avg_path.with_suffix(".tmp")
-                torch.save(avg_cpu_payload, tmp_avg)
-                tmp_avg.replace(avg_path)
+                write_checkpoint_payload(avg_path, avg_cpu_payload)
                 print(f"Avg checkpoint saved asynchronously: {avg_path}")
 
             # Prune each family (live step_*.pt, avg avg_step_*.pt) down to the
@@ -315,7 +652,24 @@ class CheckpointMixin:
         """Build checkpoint payload with avg_policy as the primary policy_state_dict.
 
         Allows best_avg.pt / avg_step_*.pt to be loaded by _load_checkpoint_agent
-        in elo_stats.py, which reads ``ckpt["policy_state_dict"]``.
+        by policy-only evaluation checkpoints, which read ``ckpt["policy_state_dict"]``.
+
+        This rebuilds the whole payload, so ``_save_checkpoint`` copies the
+        optimizer state to host memory twice per save: about 19 ms of the ~48 ms
+        it blocks for, measured on a 27.5 MB payload. Deduplicating it means
+        building the live CPU payload once and shallow-copying it with only
+        ``policy_state_dict`` replaced by a *separately cloned* average.
+
+        Do not reach for the cheaper-looking version of that. The live payload
+        already holds a host copy of these weights under ``avg_policy_state_dict``,
+        and reusing that object as ``policy_state_dict`` costs no copy at all --
+        but ``torch.save`` collapses tensors that share storage within one file
+        and ``torch.load`` restores the sharing, so the two keys come back
+        aliased and writing through either one silently rewrites the other.
+        ``avg_policy_state_dict`` is a required resumable field, so that aliasing
+        is reachable. The same trap is why the duplicate copy of the average
+        weights this payload writes -- once here, once under
+        ``avg_policy_state_dict`` -- is left alone.
         """
         payload = self.checkpoint_payload(update)
         payload["policy_state_dict"] = self._avg_policy_module.state_dict()
@@ -368,9 +722,7 @@ class CheckpointMixin:
         cpu_payload = clone_to_cpu(raw_payload)
 
         def _async_save():
-            tmp = path.with_suffix(".tmp")
-            torch.save(cpu_payload, tmp)
-            tmp.replace(path)
+            write_checkpoint_payload(path, cpu_payload)
             print(f"Best checkpoint saved asynchronously: {path}")
 
         return self._run_async_save(thread_attr, f"best checkpoint save for '{name}'", _async_save)
@@ -388,10 +740,14 @@ class CheckpointMixin:
         Args:
             path: Path to any .pt checkpoint (step_*.pt or best_*.pt).
         """
-        ckpt = torch.load(path, map_location=self.device, weights_only=False)
+        ckpt = load_checkpoint_payload(path, map_location=self.device)
         require_observation_schema(ckpt, path)
-        self._policy_module.load_state_dict(ckpt["policy_state_dict"])
-        self._avg_policy_module.load_state_dict(ckpt["policy_state_dict"])
+        _load_checkpoint_state(
+            self._policy_module, ckpt["policy_state_dict"], path, "policy weights"
+        )
+        _load_checkpoint_state(
+            self._avg_policy_module, ckpt["policy_state_dict"], path, "averaged policy weights"
+        )
         # fp32 regardless of parameter dtype: this is a running sum over every
         # snapshot, so accumulating it in a narrower dtype lets each += round
         # away and the mean drifts without bound. Mirrors the fresh-init path.
@@ -401,9 +757,11 @@ class CheckpointMixin:
         ]
         self._avg_update_count = 0
         if "scaler_state_dict" in ckpt:
-            self.scaler.load_state_dict(ckpt["scaler_state_dict"])
+            _load_checkpoint_state(self.scaler, ckpt["scaler_state_dict"], path, "scaler state")
         if "adv_scaler_state_dict" in ckpt:
-            self.adv_scaler.load_state_dict(ckpt["adv_scaler_state_dict"])
+            _load_checkpoint_state(
+                self.adv_scaler, ckpt["adv_scaler_state_dict"], path, "advantage-scaler state"
+            )
         print(f"Pretrained weights loaded from: {path} (optimizer state discarded)")
 
     def load_checkpoint(self, path: str) -> int:
@@ -416,74 +774,72 @@ class CheckpointMixin:
             The update index stored in the checkpoint.
 
         Raises:
-            ValueError: If the checkpoint was trained under a different paradigm —
-                a policy trained in one paradigm misbehaves when resumed in the
-                other (ego_pass policies only ever act as team 0).
+            ValueError: If the checkpoint is not a complete resumable payload, or
+                was trained under a different paradigm — a policy trained in one
+                paradigm misbehaves when resumed in the other (ego_pass policies
+                only ever act as team 0).
         """
-        ckpt = torch.load(path, map_location=self.device, weights_only=False)
+        ckpt = load_checkpoint_payload(path, map_location=self.device)
         require_observation_schema(ckpt, path)
-        ckpt_paradigm = ckpt.get("train_config", {}).get("paradigm")
+        # Before the drift check, which returns early on a payload that records
+        # no resolved config — the shape of every pre-branch checkpoint.
+        require_resumable_checkpoint(ckpt, path)
+        _check_resolved_config_provenance(
+            ckpt,
+            self.resolved_config_document,
+            allow_config_drift=bool(
+                self.launch_provenance and self.launch_provenance.get("allow_config_drift")
+            ),
+        )
+        recorded_config = ckpt["train_config"]
+        if not isinstance(recorded_config, Mapping):
+            raise ValueError(
+                f"checkpoint {path!r} has invalid train_config: expected a mapping, "
+                f"got {type(recorded_config).__name__}"
+            )
+        ckpt_paradigm = recorded_config.get("paradigm")
         if ckpt_paradigm is not None and ckpt_paradigm != self.cfg.paradigm:
             raise ValueError(
                 f"Checkpoint was trained with paradigm={ckpt_paradigm!r} but this "
                 f"run uses paradigm={self.cfg.paradigm!r}. Resuming across "
                 f"paradigms is not supported."
             )
-        self._policy_module.load_state_dict(ckpt["policy_state_dict"])
-        self.optim.load_state_dict(ckpt["optimizer_state_dict"])
-        if "scaler_state_dict" in ckpt:
-            self.scaler.load_state_dict(ckpt["scaler_state_dict"])
-        if "adv_scaler_state_dict" in ckpt:
-            self.adv_scaler.load_state_dict(ckpt["adv_scaler_state_dict"])
-        if "avg_policy_state_dict" in ckpt:
-            self._avg_policy_module.load_state_dict(ckpt["avg_policy_state_dict"])
-            self._avg_param_cumsum = [
-                c.to(self.device, torch.float32) for c in ckpt["avg_param_cumsum"]
-            ]
-            self._avg_update_count = ckpt["avg_update_count"]
-        if "training_elo" in ckpt:
-            self._training_elo = ckpt["training_elo"]
-            self._elo_milestone = ckpt.get("elo_milestone", 0.0)
-        self._avg_training_elo = ckpt.get("avg_training_elo", 0.0)
-        self._scripted_elo = ckpt.get("scripted_elo", self.cfg.elo_eval.scripted_elo_init)
-        self._floating_games = ckpt.get("floating_games", 0)
-        if "eval_window_rand" in ckpt:
-            self._eval_window_rand = deque(
-                ckpt["eval_window_rand"], maxlen=self.cfg.elo_eval.window_size
-            )
-        if "eval_window_sc" in ckpt:
-            self._eval_window_sc = deque(
-                ckpt["eval_window_sc"], maxlen=self.cfg.elo_eval.window_size
-            )
-        if "eval_window_ladder" in ckpt:
-            self._eval_window_ladder = deque(
-                ckpt["eval_window_ladder"], maxlen=self.cfg.elo_eval.window_size
-            )
-        if "eval_window_floating" in ckpt:
-            self._eval_window_floating = deque(
-                ckpt["eval_window_floating"], maxlen=self.cfg.elo_eval.window_size
-            )
-        if "eval_window_live_vs_avg" in ckpt:
-            self._eval_window_live_vs_avg = deque(
-                ckpt["eval_window_live_vs_avg"], maxlen=self.cfg.elo_eval.window_size
-            )
-        if "global_step" in ckpt:
-            self._global_step = ckpt["global_step"]
-            self._start_update = ckpt["update"] + 1
-        self._elapsed_train_time = ckpt.get("elapsed_train_time", 0.0)
-        # Older checkpoints lack ship_steps — reconstruct from update count,
-        # exact as long as the scale config hasn't changed between runs.
-        ship_tokens_per_update = self.cfg.num_steps * sum(
-            sc.num_envs * sc.env_config.num_ships for sc in self.cfg.scales
+        _load_checkpoint_state(
+            self._policy_module, ckpt["policy_state_dict"], path, "policy weights"
         )
-        self._ship_steps = ckpt.get("ship_steps", ckpt.get("update", 0) * ship_tokens_per_update)
-        # Older checkpoints lack grad_tokens — reconstruct from the update count
-        # and the current schedule's num_epochs (approximate: ignores target_kl
-        # early stops and epoch-schedule changes before the checkpoint).
-        self._grad_tokens = ckpt.get(
-            "grad_tokens",
-            ckpt.get("update", 0) * self._schedule_state.num_epochs * self._entity_tokens_per_epoch,
+        _load_checkpoint_state(self.optim, ckpt["optimizer_state_dict"], path, "optimizer state")
+        _load_checkpoint_state(self.scaler, ckpt["scaler_state_dict"], path, "scaler state")
+        _load_checkpoint_state(
+            self.adv_scaler, ckpt["adv_scaler_state_dict"], path, "advantage-scaler state"
         )
+        _load_checkpoint_state(
+            self._avg_policy_module,
+            ckpt["avg_policy_state_dict"],
+            path,
+            "averaged policy weights",
+        )
+        self._avg_param_cumsum = [
+            c.to(self.device, torch.float32) for c in ckpt["avg_param_cumsum"]
+        ]
+        self._avg_update_count = ckpt["avg_update_count"]
+        self._live_elo = ckpt["live_elo"]
+        self._elo_milestone = ckpt["elo_milestone"]
+        self._avg_live_elo = ckpt["avg_live_elo"]
+        self._floating_games = ckpt["floating_games"]
+        window = self.cfg.elo_eval.window_size
+        self._eval_window_rand = deque(ckpt["eval_window_rand"], maxlen=window)
+        self._eval_window_sc = deque(ckpt["eval_window_sc"], maxlen=window)
+        self._eval_window_ladder = deque(ckpt["eval_window_ladder"], maxlen=window)
+        self._eval_window_floating = deque(ckpt["eval_window_floating"], maxlen=window)
+        self._eval_window_live_vs_avg = deque(ckpt["eval_window_live_vs_avg"], maxlen=window)
+        self._global_step = ckpt["global_step"]
+        self._start_update = ckpt["update"] + 1
+        # An interrupt before the resumed run finishes an update of its own has
+        # nothing newer to write than the file it just loaded.
+        self._completed_update = ckpt["update"]
+        self._elapsed_train_time = ckpt["elapsed_train_time"]
+        self._ship_steps = ckpt["ship_steps"]
+        self._grad_tokens = ckpt["grad_tokens"]
 
         # Restore roster if its JSON exists alongside the checkpoint. load_json
         # replaces the entry list wholesale, so the special entries are

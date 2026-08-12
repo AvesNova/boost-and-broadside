@@ -20,7 +20,7 @@ import dataclasses
 import threading
 import time
 from collections import deque
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, Mapping
 from pathlib import Path
 from queue import Queue
 
@@ -37,10 +37,12 @@ from boost_and_broadside.config import (
     TrainConfig,
     TrainingSchedule,
 )
+from boost_and_broadside.config.live_elo import LIVE_RANDOM_ELO, live_reference_ladder
 from boost_and_broadside.constants import POWER_SLICE, SHOOT_SLICE, TURN_SLICE
 from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.observation import ObsKey, YemongObservation
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
+from boost_and_broadside.run_manifest import RunStatus
 from boost_and_broadside.train.rl.buffer import (
     AdvantageScaler,
     LogicalRolloutBuffer,
@@ -72,7 +74,7 @@ from boost_and_broadside.train.rl.sigreg import SIGReg
 
 def _build_component_tensor(
     global_val: float,
-    overrides: dict[str, float],
+    overrides: Mapping[str, float],
     names: tuple[str, ...],
     device: torch.device,
 ) -> torch.Tensor:
@@ -195,6 +197,36 @@ class _StagedMicroBatch:
     ready: torch.cuda.Event
 
 
+def _actor_entropy_coef(
+    scheduled: float, *, policy_gradient_coef: float, behavior_cloning_coef: float
+) -> float:
+    """The entropy weight, dropped to zero when nothing else trains the actor.
+
+    Entropy is a regularizer on an objective: it keeps a policy gradient from
+    collapsing onto one action, and it keeps a cloned policy from over-sharpening
+    past its teacher. It is not itself an objective. With both of those weights at
+    zero it becomes the only gradient reaching the actor, and its optimum is the
+    uniform distribution — so the run spends the rest of its budget undoing
+    whatever the actor had learned.
+
+    That is exactly the state a behavior-cloning run enters when its scripted win
+    rate reaches ``bc_winrate_target``: ``_behavior_cloning_coef`` decays to zero
+    while ``policy_gradient_coef`` is zero for the whole BC schedule. Measured at
+    a reduced launch width (64 envs, d_model 64), a policy cloned to a KL of 1.12
+    and 60% of maximum action entropy returned to 99.8% of maximum entropy and a
+    KL of 2.66 — its untrained value — within 400 updates of the cutoff, while the
+    control arm held at 1.10 and 60% over the same span.
+
+    RL is unaffected: its policy gradient is positive throughout, so the
+    scheduled value passes through unchanged. The critic, next-state, and SIGReg
+    terms keep training through the shared trunk either way.
+    """
+
+    if policy_gradient_coef > 0.0 or behavior_cloning_coef > 0.0:
+        return scheduled
+    return 0.0
+
+
 def _resolve_schedule(schedule: TrainingSchedule, step: int) -> _ResolvedSchedule:
     """Evaluate every schedule field at ``step`` and return a resolved snapshot."""
     return _ResolvedSchedule(
@@ -239,6 +271,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         device:          Torch device.
         use_wandb:       Whether to log metrics to W&B.
         scripted_agent:  Stochastic scripted agent for BC loss targets and scripted opponents.
+        resolved_config_document: Complete resolved launch config/fingerprints for checkpoints.
+        launch_provenance: Execution settings resolved by the installed CLI.
     """
 
     def __init__(
@@ -251,10 +285,14 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         scripted_agent: StochasticScriptedAgent | None = None,
         compile_mode: str | None = "reduce-overhead",
         resume_wandb_run_id: str | None = None,
+        resolved_config_document: Mapping[str, object] | None = None,
+        launch_provenance: Mapping[str, object] | None = None,
     ) -> None:
         self.cfg = train_config
         self.model_config = model_config
         self.ship_config = ship_config
+        self.resolved_config_document = resolved_config_document
+        self.launch_provenance = launch_provenance
         # Paradigm: "ego_pass" (dual-perspective pass, team 0 trains) vs
         # "shared_pass" (single pass, both teams train). See TrainConfig docstring.
         self._ego_pass = train_config.paradigm == "ego_pass"
@@ -467,7 +505,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             max_size=train_config.league_size,
             elo_temperature=train_config.elo_temperature,
             uniform_sampling=train_config.league_uniform_sampling,
-            random_elo=train_config.random_elo,
         )
         # Random anchor is added by EloRoster.__init__ (Elo=0, fixed) and is
         # excluded from opponent sampling. "scripted" is registered below;
@@ -475,11 +512,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._register_special_opponents()
 
         # Seeded at the random reference's rating: an untrained policy is a
-        # random one, and on an absolute gauge that is a known point rather than
-        # zero. Starting elsewhere just costs eval games to walk back.
-        self._training_elo: float = train_config.random_elo
-        self._avg_training_elo: float = train_config.random_elo
-        self._scripted_elo: float = train_config.elo_eval.scripted_elo_init
+        # random one, and on the live gauge that is a defined point rather than
+        # an arbitrary zero. Starting elsewhere just costs eval games to walk
+        # back.
+        self._live_elo: float = LIVE_RANDOM_ELO
+        self._avg_live_elo: float = LIVE_RANDOM_ELO
         self._floating_games: int = 0  # rated games of the floating ladder checkpoint
         self._bc_cutoff_streak: int = 0  # consecutive updates past the BC win-rate target
         # Raw win rate against the scripted controller, refreshed each update.
@@ -500,14 +537,14 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # Grid points are absolute, so the first one to claim is the highest
         # multiple of the gap at or below where the run starts.
         self._elo_milestone: float = (
-            (train_config.random_elo // train_config.elo_milestone_gap)
+            (LIVE_RANDOM_ELO // train_config.elo_milestone_gap)
             * train_config.elo_milestone_gap
             if train_config.elo_milestone_gap > 0
             else 0.0
         )
-        # Best ratings seen, on the absolute gauge.
-        self._best_training_elo_norm: float = -float("inf")
-        self._best_avg_elo_norm: float = -float("inf")
+        # Best ratings seen, on the live gauge.
+        self._best_live_elo: float = -float("inf")
+        self._best_avg_live_elo: float = -float("inf")
         self._last_checkpoint_path: Path | None = None
 
         # Async logging queue
@@ -521,6 +558,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         self._global_step = 0
         self._start_update = 1
+        # Last update the loop carried all the way through. An interrupt lands
+        # mid-update, so this -- not the update in progress -- is the only index
+        # a final save can honestly claim.
+        self._completed_update = 0
         # Cumulative counters persisted across checkpoint resumes so throughput
         # metrics behave as if training never stopped.
         self._ship_steps = 0  # ship tokens (all teams, all envs, all scales)
@@ -563,6 +604,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._schedule_state: _ResolvedSchedule = base_state
         self._policy_gradient_coef: float = base_state.policy_gradient_coef
         self._behavior_cloning_coef: float = base_state.behavior_cloning_coef
+        self._entropy_coef: float = _actor_entropy_coef(
+            base_state.entropy_coef,
+            policy_gradient_coef=base_state.policy_gradient_coef,
+            behavior_cloning_coef=base_state.behavior_cloning_coef,
+        )
 
         # --- Auxiliary training scales (multi-scale curriculum) ---
         # Each scale has its own env + buffer; policy, optimizer, and scaler are shared.
@@ -758,23 +804,35 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             self._global_step += sc.num_envs
 
     def _register_special_opponents(self) -> None:
-        """Ensure the stationary league entries exist on the roster.
+        """Ensure the stationary league entries exist, at the gauge's ratings.
 
         Idempotent, and called again after a resume restores roster.json, so a
         run resumed from a roster written before these were entries picks them
         up rather than silently losing them.
 
+        Every stationary rating is *re-pinned* here rather than read back from
+        the roster. All three kinds — random, the semi-random rungs, and
+        scripted — are defined by the live gauge (config/live_elo), so a stored
+        roster that disagrees is out of date, not evidence. Resuming is the case
+        that matters: it is the one path where the on-disk numbers could quietly
+        outrank the configured gauge.
+
         Every stationary player is ``fixed``: their strength does not change, so
-        their ratings are measured constants rather than estimates to be dragged
-        around by in-training games the live policy is busy overfitting.
+        their ratings stay constants rather than estimates to be dragged around
+        by in-training games the live policy is busy overfitting.
         """
+        self.roster.pin_stationary_elo("random", LIVE_RANDOM_ELO)  # the gauge's zero
         if self.scripted_agent is None:
             return
-        scripted = self.roster.add_special(
-            "scripted", initial_elo=self.cfg.elo_eval.scripted_elo_init
+        self.roster.add_special("scripted", initial_elo=self.cfg.elo_eval.scripted_live_elo)
+        self.roster.pin_stationary_elo(  # the gauge's unit
+            "scripted", self.cfg.elo_eval.scripted_live_elo
         )
-        scripted.fixed = True  # the gauge's anchor
-        for p_scripted, elo in self.cfg.reference_ladder:
+        ladder = live_reference_ladder(
+            self.cfg.live_reference_probabilities,
+            scripted_elo=self.cfg.elo_eval.scripted_live_elo,
+        )
+        for p_scripted, elo in ladder:
             self.roster.add_reference(p_scripted=p_scripted, elo=elo)
 
     def _initialize_rollout_runtime(self) -> _RolloutRuntime:
@@ -844,9 +902,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 num_ships=num_ships,
                 num_tokens=num_recurrent,
                 ego_pass=self._ego_pass,
-                live_elo=self._training_elo,
-                avg_elo=self._avg_training_elo,
-                scripted_elo=self._scripted_elo,
+                live_elo=self._live_elo,
+                avg_elo=self._avg_live_elo,
                 anchors=anchors,
                 floating=floating,
                 floating_games=self._floating_games,
@@ -918,16 +975,15 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             runtime.elo_eval.step(rollout_step, avg_eval_active)
 
         elo_snapshot = runtime.elo_eval.flush(avg_eval_active)
-        self._training_elo = elo_snapshot.live_elo
-        self._avg_training_elo = elo_snapshot.avg_elo
-        self._scripted_elo = elo_snapshot.scripted_elo
+        self._live_elo = elo_snapshot.live_elo
+        self._avg_live_elo = elo_snapshot.avg_elo
         self._floating_games = elo_snapshot.floating_games
         self._match_counts = elo_snapshot.match_counts
         if elo_snapshot.floating_elo is not None:
             self.roster.set_floating_elo(elo_snapshot.floating_elo)
-        # Proximity sampling reads these, so they have to track the evaluator
-        # rather than keep the rating their entry was created with.
-        self.roster.set_special_elo("scripted", elo_snapshot.scripted_elo)
+        # Proximity sampling reads this, so it has to track the evaluator rather
+        # than keep the rating the entry was created with. The scripted entry
+        # needs no such sync: the live gauge pins it and it never moves.
         self.roster.set_special_elo("avg", elo_snapshot.avg_elo)
         return terminated
 
@@ -1072,6 +1128,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._scripted_win_rate = sum(window_sc) / len(window_sc) if window_sc else 0.0
         bc_factor = max(0.0, 1.0 - self._scripted_win_rate / self.cfg.bc_winrate_target)
         self._behavior_cloning_coef = self._schedule_state.behavior_cloning_coef * bc_factor
+        self._entropy_coef = _actor_entropy_coef(
+            self._schedule_state.entropy_coef,
+            policy_gradient_coef=self._policy_gradient_coef,
+            behavior_cloning_coef=self._behavior_cloning_coef,
+        )
         self.optim.param_groups[0]["lr"] = self._schedule_state.learning_rate
         for component in self.wrapper.reward_components:
             raw_weight = getattr(self.cfg.rewards, f"{component.name}_weight")
@@ -1081,6 +1142,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         metrics["schedule/learning_rate"] = self._schedule_state.learning_rate
         metrics["schedule/policy_gradient_coef"] = self._policy_gradient_coef
         metrics["schedule/behavior_cloning_coef"] = self._behavior_cloning_coef
+        metrics["schedule/entropy_coef"] = self._entropy_coef
         metrics["schedule/bc_decay_factor"] = bc_factor
         metrics["schedule/scripted_win_rate"] = self._scripted_win_rate
         metrics["schedule/target_kl"] = self._effective_target_kl()
@@ -1113,7 +1175,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 self._update_avg_model()
                 if first_avg_update:
                     elo_eval.seed_avg_elo_from_live()
-                    self._avg_training_elo = self._training_elo
+                    self._avg_live_elo = self._live_elo
 
     def train(self) -> None:
         """Run the full PPO training loop."""
@@ -1147,7 +1209,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             self._log_training_update(metrics, update, sps, ship_tps)
             self._maybe_save_checkpoint(update)
             self._maybe_advance_ladder(update, runtime.elo_eval)
+            self._completed_update = update
 
+        self.save_final_checkpoint()
+        self.record_run_status(RunStatus.COMPLETE)
         self.shutdown()
 
     def shutdown(self) -> None:
@@ -1479,7 +1544,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         loss = (
             self._policy_gradient_coef * pg_loss
             + self._schedule_state.value_function_coef * vf_loss
-            + self._schedule_state.entropy_coef * ent_loss
+            + self._entropy_coef * ent_loss
             + self._behavior_cloning_coef * bc_loss
             + self._schedule_state.sigreg_coef * sigreg_loss
             + self.cfg.next_state_coef * next_state_loss
@@ -1499,8 +1564,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         if measure_grad_split:
             params = [p for p in self._policy_module.parameters() if p.requires_grad]
             terms = {
-                "actor": self._policy_gradient_coef * pg_loss
-                + self._schedule_state.entropy_coef * ent_loss,
+                "actor": self._policy_gradient_coef * pg_loss + self._entropy_coef * ent_loss,
                 "critic": self._schedule_state.value_function_coef * vf_loss,
             }
             for term_name, term in terms.items():
@@ -1971,7 +2035,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     self._schedule_state.value_function_coef * scalar_accum_step["vf"]
                 )
                 accum_scalar["loss_proxy/entropy"].append(
-                    self._schedule_state.entropy_coef * scalar_accum_step["ent"]
+                    self._entropy_coef * scalar_accum_step["ent"]
                 )
                 accum_scalar["loss_proxy/behavioral_cloning"].append(
                     self._behavior_cloning_coef * scalar_accum_step["bc"]

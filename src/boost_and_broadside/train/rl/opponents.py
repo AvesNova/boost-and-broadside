@@ -111,7 +111,7 @@ class OpponentMixin:
         ):
             avg_parameter.data.copy_(cumulative / self._avg_update_count)
         if first_update:
-            self.roster.add_special("avg", self._global_step, 0, initial_elo=self._training_elo)
+            self.roster.add_special("avg", self._global_step, 0, initial_elo=self._live_elo)
 
     def _opponent_obs(self, obs_slice: YemongObservation, num_ships: int) -> YemongObservation:
         """Return the observation perspective used by policy opponents."""
@@ -161,7 +161,7 @@ class OpponentMixin:
 
     def _sample_league_entry(self) -> RosterEntry | None:
         """Draw one league opponent, retiring any entry this run cannot host."""
-        while (entry := self.roster.sample(self._training_elo)) is not None:
+        while (entry := self.roster.sample(self._live_elo)) is not None:
             if entry.kind != "checkpoint":
                 return entry
             self.roster.load_policy(

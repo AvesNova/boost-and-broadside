@@ -12,8 +12,8 @@ import torch
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.observation import BulletObsKey, ObsKey
-from boost_and_broadside.modes.agent_factory import ResolvedAgent
-from boost_and_broadside.modes.match import MatchRunner, agent_view, merge_team_actions
+from boost_and_broadside.evaluation.agents import ResolvedAgent
+from boost_and_broadside.evaluation.match import MatchRunner, agent_view, merge_team_actions
 from boost_and_broadside.train.rl.policy_io import PolicyBundle, build_policy
 
 SHIP_CONFIG = ShipConfig()
@@ -43,13 +43,18 @@ def _policy_agent(reads_bullets: bool = True, paradigm: str = "ego_pass", record
         n_bullet_cross_per_block=1 if reads_bullets else 0,
     )
     policy = build_policy(
-        model_config, SHIP_CONFIG, num_value_components=3, num_ships=ENV_CONFIG.num_ships
+        model_config,
+        SHIP_CONFIG,
+        num_value_components=3,
+        num_ships=ENV_CONFIG.num_ships,
+        team_pma_k=(),
     ).eval()
     bundle = PolicyBundle(
         policy=policy,
         model_config=model_config,
         ship_config=SHIP_CONFIG,
         env_config=ENV_CONFIG,
+        field_map_config=None,
         num_value_components=3,
         team_pma_k=(),
         paradigm=paradigm,

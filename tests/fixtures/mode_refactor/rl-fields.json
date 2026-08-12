@@ -1,0 +1,362 @@
+{
+  "model_config": {
+    "bullet_encoder_hidden": 64,
+    "d_model": 128,
+    "encoder_split": false,
+    "grad_checkpoint": false,
+    "n_bullet_cross_per_block": 1,
+    "n_heads": 4,
+    "n_spatial_per_block": 2,
+    "n_temporal_per_block": 1,
+    "n_yemong_blocks": 2
+  },
+  "profile": "rl-fields",
+  "ship_config": {
+    "base_thrust": 8.0,
+    "boost_thrust": 80.0,
+    "bullet_damage": 10.0,
+    "bullet_drag_coeff": 0.0008,
+    "bullet_energy_cost": 2,
+    "bullet_field_damage_scale": 0.1,
+    "bullet_field_integration_substeps": 2,
+    "bullet_field_integrator": "two_step",
+    "bullet_lifetime": 1.0,
+    "bullet_min_damage_frac": 1.0,
+    "bullet_speed": 500.0,
+    "bullet_spread": 12.0,
+    "collision_radius": 10.0,
+    "default_speed": 100.0,
+    "dt": 0.016666666666666666,
+    "field_index_step": 1.4142135623730951,
+    "field_integration_substeps": 2,
+    "field_integrator": "midpoint",
+    "field_interface_damage": 10.0,
+    "field_radius_max": 490.0,
+    "field_radius_min": 30.0,
+    "field_transition_width_max": 40.0,
+    "field_transition_width_min": 40.0,
+    "firing_cooldown": 0.1,
+    "gravity_eps": 10000.0,
+    "gravity_factor": 0.0,
+    "max_health": 100.0,
+    "max_power": 100.0,
+    "max_speed": 180.0,
+    "min_speed": 1.0,
+    "no_turn_drag_coeff": 0.0008,
+    "normal_turn_angle": 0.08726646259971647,
+    "normal_turn_drag_coeff": 0.0012,
+    "normal_turn_lift_coeff": 0.015,
+    "passive_power_gain": 10.0,
+    "power_speed_constant": 200.0,
+    "random_speed": false,
+    "reverse_thrust": -80.0,
+    "sharp_turn_angle": 0.2617993877991494,
+    "sharp_turn_drag_coeff": 0.005,
+    "sharp_turn_lift_coeff": 0.027,
+    "world_size": [
+      1024.0,
+      1024.0
+    ]
+  },
+  "train_config": {
+    "advantage_min_rms": 0.0001,
+    "bc_winrate_target": 0.45,
+    "checkpoint_dir": "checkpoints",
+    "clip_coef": 0.15,
+    "component_gammas": {
+      "ally_combat_damage": 0.982081,
+      "ally_combat_death": 0.990025,
+      "ally_field_damage": 0.982081,
+      "ally_field_death": 0.990025,
+      "ally_win": 0.998001,
+      "closing_speed": 0.950625,
+      "combat_damage_taken": 0.982081,
+      "combat_death": 0.990025,
+      "damage_dealt_ally": 0.982081,
+      "damage_dealt_enemy": 0.982081,
+      "enemy_combat_damage": 0.982081,
+      "enemy_combat_death": 0.990025,
+      "enemy_field_damage": 0.982081,
+      "enemy_field_death": 0.990025,
+      "enemy_win": 0.998001,
+      "facing": 0.950625,
+      "field_damage_taken": 0.982081,
+      "field_death": 0.990025,
+      "kill_assist": 0.990025,
+      "kill_shot": 0.990025,
+      "shoot_quality": 0.950625,
+      "shooting_penalty": 0.950625,
+      "speed": 0.950625
+    },
+    "component_lambdas": {
+      "ally_combat_damage": 0.81,
+      "ally_combat_death": 0.9025,
+      "ally_field_damage": 0.81,
+      "ally_field_death": 0.9025,
+      "ally_win": 0.9409,
+      "closing_speed": 0.64,
+      "combat_damage_taken": 0.81,
+      "combat_death": 0.9025,
+      "damage_dealt_ally": 0.81,
+      "damage_dealt_enemy": 0.81,
+      "enemy_combat_damage": 0.81,
+      "enemy_combat_death": 0.9025,
+      "enemy_field_damage": 0.81,
+      "enemy_field_death": 0.9025,
+      "enemy_win": 0.9409,
+      "facing": 0.64,
+      "field_damage_taken": 0.81,
+      "field_death": 0.9025,
+      "kill_assist": 0.9409,
+      "kill_shot": 0.7569,
+      "shoot_quality": 0.64,
+      "shooting_penalty": 0.64,
+      "speed": 0.64
+    },
+    "elo_eval": {
+      "envs_per_matchup": 512,
+      "k_factor": 4.0,
+      "min_games_to_freeze": 1000,
+      "scripted_live_elo": 1000.0,
+      "step_interval": 1,
+      "window_size": 100
+    },
+    "elo_milestone_gap": 200.0,
+    "elo_temperature": 200.0,
+    "field_map": {
+      "cache_size": 512,
+      "max_generation_attempts": 256,
+      "nesting_probability": 0.35
+    },
+    "gae_lambda": 0.9025,
+    "gamma": 0.9801,
+    "histogram_interval": 10,
+    "league_size": 20,
+    "league_slots": 4,
+    "league_uniform_sampling": false,
+    "live_reference_probabilities": [
+      0.2,
+      0.3,
+      0.4,
+      0.5,
+      0.6,
+      0.7,
+      0.8,
+      0.9,
+      0.95
+    ],
+    "log_interval": 10,
+    "max_grad_norm": 1.0,
+    "microbatch_tokens": 25000,
+    "next_state_coef": 0.2,
+    "num_minibatches": 32,
+    "num_steps": 128,
+    "paradigm": "ego_pass",
+    "return_ema_alpha": 0.005,
+    "return_min_span": 1.0,
+    "return_quantile_samples": 262144,
+    "rewards": {
+      "ally_combat_damage_weight": 0.0,
+      "ally_combat_death_weight": 0.0,
+      "ally_field_damage_weight": 0.0,
+      "ally_field_death_weight": 0.0,
+      "ally_win_weight": 1.5,
+      "ally_zero_components": [
+        "enemy_combat_damage",
+        "enemy_combat_death",
+        "enemy_field_damage",
+        "enemy_field_death",
+        "enemy_win"
+      ],
+      "closing_speed_weight": 0.1,
+      "combat_damage_taken_weight": 0.5,
+      "combat_death_weight": 1.0,
+      "damage_dealt_ally_weight": 0.5,
+      "damage_dealt_enemy_weight": 0.5,
+      "enemy_combat_damage_weight": 0.0,
+      "enemy_combat_death_weight": 0.0,
+      "enemy_field_damage_weight": 0.0,
+      "enemy_field_death_weight": 0.0,
+      "enemy_neg_lambda_components": [
+        "enemy_combat_damage",
+        "enemy_combat_death",
+        "enemy_field_damage",
+        "enemy_field_death",
+        "enemy_win"
+      ],
+      "enemy_win_weight": 1.5,
+      "facing_weight": 0.1,
+      "field_damage_taken_weight": 0.5,
+      "field_death_weight": 1.0,
+      "kill_assist_weight": 1.0,
+      "kill_shot_weight": 1.0,
+      "proximity_radius": 400.0,
+      "shoot_quality_radius": 200.0,
+      "shoot_quality_weight": 0.1,
+      "shooting_penalty_weight": 0.0,
+      "speed_penalty_min": 10.0,
+      "speed_weight": 0.0
+    },
+    "rollouts_per_update": 3,
+    "scales": [
+      {
+        "env_config": {
+          "action_repeat": 2,
+          "max_bullets": 10,
+          "max_episode_steps": 1024,
+          "num_fields": 4,
+          "num_ships": 8,
+          "single_team": false,
+          "spawn_resource_spread": 0.25
+        },
+        "num_envs": 2592
+      }
+    ],
+    "schedule": {
+      "behavior_cloning_coef": {
+        "callable": "boost_and_broadside.config.schedule.constant.<locals>._schedule",
+        "closure": {
+          "value": 2.0
+        }
+      },
+      "checkpoint_interval": {
+        "callable": "boost_and_broadside.config.schedule.constant.<locals>._schedule",
+        "closure": {
+          "value": 1
+        }
+      },
+      "entropy_coef": {
+        "callable": "boost_and_broadside.config.schedule.constant.<locals>._schedule",
+        "closure": {
+          "value": 0.005
+        }
+      },
+      "global_scale": {
+        "callable": "boost_and_broadside.config.schedule.constant.<locals>._schedule",
+        "closure": {
+          "value": 1.0
+        }
+      },
+      "high_winrate_target_kl": {
+        "callable": "boost_and_broadside.config.schedule.constant.<locals>._schedule",
+        "closure": {
+          "value": 0.02
+        }
+      },
+      "high_winrate_threshold": {
+        "callable": "boost_and_broadside.config.schedule.constant.<locals>._schedule",
+        "closure": {
+          "value": 0.8
+        }
+      },
+      "league_fraction": {
+        "callable": "boost_and_broadside.config.schedule.constant.<locals>._schedule",
+        "closure": {
+          "value": 0.5
+        }
+      },
+      "learning_rate": {
+        "callable": "boost_and_broadside.config.schedule.join.<locals>._schedule",
+        "closure": {
+          "segments": [
+            [
+              0,
+              {
+                "callable": "boost_and_broadside.config.schedule.linear.<locals>._schedule",
+                "closure": {
+                  "steps": [
+                    0,
+                    5000000
+                  ],
+                  "values": [
+                    1e-07,
+                    0.0003
+                  ]
+                }
+              }
+            ],
+            [
+              5000000,
+              {
+                "callable": "boost_and_broadside.config.schedule.constant.<locals>._schedule",
+                "closure": {
+                  "value": 0.0003
+                }
+              }
+            ],
+            [
+              100000000,
+              {
+                "callable": "boost_and_broadside.config.schedule.exponential.<locals>._schedule",
+                "closure": {
+                  "steps": [
+                    100000000,
+                    500000000
+                  ],
+                  "values": [
+                    0.0003,
+                    0.0001
+                  ]
+                }
+              }
+            ]
+          ]
+        }
+      },
+      "local_scale": {
+        "callable": "boost_and_broadside.config.schedule.constant.<locals>._schedule",
+        "closure": {
+          "value": 1.0
+        }
+      },
+      "num_epochs": {
+        "callable": "boost_and_broadside.config.schedule.stepped.<locals>._schedule",
+        "closure": {
+          "keypoints": [
+            [
+              0,
+              4
+            ]
+          ]
+        }
+      },
+      "policy_gradient_coef": {
+        "callable": "boost_and_broadside.config.schedule.constant.<locals>._schedule",
+        "closure": {
+          "value": 1.0
+        }
+      },
+      "sigreg_coef": {
+        "callable": "boost_and_broadside.config.schedule.constant.<locals>._schedule",
+        "closure": {
+          "value": 0.0
+        }
+      },
+      "target_kl": {
+        "callable": "boost_and_broadside.config.schedule.stepped.<locals>._schedule",
+        "closure": {
+          "keypoints": [
+            [
+              0,
+              0.1
+            ]
+          ]
+        }
+      },
+      "true_reward_scale": {
+        "callable": "boost_and_broadside.config.schedule.constant.<locals>._schedule",
+        "closure": {
+          "value": 1.0
+        }
+      },
+      "value_function_coef": {
+        "callable": "boost_and_broadside.config.schedule.constant.<locals>._schedule",
+        "closure": {
+          "value": 1.0
+        }
+      }
+    },
+    "total_timesteps": 500000000,
+    "windowed_loss_coef": 0.1
+  }
+}

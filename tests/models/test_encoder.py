@@ -277,7 +277,11 @@ class TestYemongPolicy:
         """
         B, N, M = 2, 3, 2
         policy = YemongPolicy(
-            model_cfg, coordinator, num_value_components=NUM_VALUE_COMPONENTS, num_ships=N
+            model_cfg,
+            coordinator,
+            num_value_components=NUM_VALUE_COMPONENTS,
+            num_ships=N,
+            team_pma_k=(),
         )
         obs = _make_obs(B, N + M)
         obs.data[ObsKey.TEAM_ID][:, N:] = 2
@@ -302,7 +306,11 @@ class TestYemongPolicy:
         """get_action_and_value must return correct tensor shapes."""
         B, N = 2, 8
         policy = YemongPolicy(
-            model_cfg, coordinator, num_value_components=NUM_VALUE_COMPONENTS, num_ships=N
+            model_cfg,
+            coordinator,
+            num_value_components=NUM_VALUE_COMPONENTS,
+            num_ships=N,
+            team_pma_k=(),
         )
         obs = _make_obs(B, N)
         hidden = policy.initial_hidden(B, N, torch.device("cpu"))
@@ -331,7 +339,11 @@ class TestYemongPolicy:
 
         B, N = 2, 4
         policy = YemongPolicy(
-            model_cfg, coordinator, num_value_components=NUM_VALUE_COMPONENTS, num_ships=N
+            model_cfg,
+            coordinator,
+            num_value_components=NUM_VALUE_COMPONENTS,
+            num_ships=N,
+            team_pma_k=(),
         )
         obs = _make_obs(B, N)
         hidden = policy.initial_hidden(B, N, torch.device("cpu"))
@@ -346,7 +358,11 @@ class TestYemongPolicy:
         """evaluate_actions returns (T,B,N) logprob/entropy and (T,B,N,K) new_value."""
         T, B, N = 4, 2, 8
         policy = YemongPolicy(
-            model_cfg, coordinator, num_value_components=NUM_VALUE_COMPONENTS, num_ships=N
+            model_cfg,
+            coordinator,
+            num_value_components=NUM_VALUE_COMPONENTS,
+            num_ships=N,
+            team_pma_k=(),
         )
         K = NUM_VALUE_COMPONENTS
 
@@ -369,7 +385,11 @@ class TestYemongPolicy:
         """reset_hidden_for_envs must zero hidden states for done environments."""
         B, N = 3, 4
         policy = YemongPolicy(
-            model_cfg, coordinator, num_value_components=NUM_VALUE_COMPONENTS, num_ships=N
+            model_cfg,
+            coordinator,
+            num_value_components=NUM_VALUE_COMPONENTS,
+            num_ships=N,
+            team_pma_k=(),
         )
         from boost_and_broadside.models.yemong.griffin import CONV_KERNEL
 
@@ -399,7 +419,11 @@ class TestYemongBlockStructure:
         )
         torch.manual_seed(0)
         policy = YemongPolicy(
-            cfg, coordinator, num_value_components=NUM_VALUE_COMPONENTS, num_ships=num_ships
+            cfg,
+            coordinator,
+            num_value_components=NUM_VALUE_COMPONENTS,
+            num_ships=num_ships,
+            team_pma_k=(),
         )
         return cfg, policy.eval()
 
@@ -604,6 +628,7 @@ class TestBulletCrossAttention:
             coordinator,
             num_value_components=NUM_VALUE_COMPONENTS,
             num_ships=N,
+            team_pma_k=(),
             bullet_coordinator=build_bullet_coordinator(ship_cfg) if n_cross else None,
         ).eval()
 
@@ -615,9 +640,9 @@ class TestBulletCrossAttention:
     def test_bullet_observation_flattens_the_ring_buffer(self, ship_cfg):
         """Every slot is emitted; inactive ones are masked, not compacted."""
         from boost_and_broadside.config import EnvConfig
+        from boost_and_broadside.config.defaults import REWARDS
         from boost_and_broadside.env.observation import BulletObsKey, observation_from_state
         from boost_and_broadside.env.wrapper import YemongEnvWrapper
-        from runs.shared import REWARDS
 
         B, N, K = 2, 4, 10
         env_cfg = EnvConfig(num_ships=N, max_bullets=K, max_episode_steps=32)
@@ -868,6 +893,7 @@ class TestBulletCrossAttention:
             coordinator,
             num_value_components=NUM_VALUE_COMPONENTS,
             num_ships=4,
+            team_pma_k=(),
             bullet_coordinator=build_bullet_coordinator(ship_cfg),
         ).eval()
 
@@ -949,7 +975,11 @@ class TestEncoderSplit:
         B, N, M = 2, 3, 2
         torch.manual_seed(0)
         policy = YemongPolicy(
-            self._cfg(True), coordinator, num_value_components=NUM_VALUE_COMPONENTS, num_ships=N
+            self._cfg(True),
+            coordinator,
+            num_value_components=NUM_VALUE_COMPONENTS,
+            num_ships=N,
+            team_pma_k=(),
         ).eval()
         obs = _make_obs(B, N + M)
         obs.data[ObsKey.TEAM_ID][:, N:] = 2
@@ -1022,7 +1052,11 @@ class TestNonRecurrentFieldPath:
         )
         torch.manual_seed(0)
         return YemongPolicy(
-            cfg, coordinator, num_value_components=NUM_VALUE_COMPONENTS, num_ships=num_ships
+            cfg,
+            coordinator,
+            num_value_components=NUM_VALUE_COMPONENTS,
+            num_ships=num_ships,
+            team_pma_k=(),
         ).eval()
 
     def test_field_sub_is_identity_initialised(self, coordinator):
@@ -1251,7 +1285,7 @@ class TestFeatureCoordinatorDecode:
 
         Exercises every invertible target Transform (Fourier, SymlogVelocity,
         Identity, Symlog, UnitCircle) through the public coordinator boundary that
-        _decode_targets_to_obs relies on.
+        the shared next-state decoder relies on.
         """
         coordinator = build_standard_coordinator(ship_cfg)
         w, h = ship_cfg.world_size
@@ -1288,12 +1322,19 @@ class TestGradCheckpoint:
         T, B, N = 4, 2, 8
         K = NUM_VALUE_COMPONENTS
         torch.manual_seed(0)
-        base = YemongPolicy(model_cfg, coordinator, num_value_components=K, num_ships=N)
+        base = YemongPolicy(
+            model_cfg,
+            coordinator,
+            num_value_components=K,
+            num_ships=N,
+            team_pma_k=(),
+        )
         ckpt = YemongPolicy(
             replace(model_cfg, grad_checkpoint=True),
             coordinator,
             num_value_components=K,
             num_ships=N,
+            team_pma_k=(),
         )
         ckpt.load_state_dict(base.state_dict())  # identical weights
 
