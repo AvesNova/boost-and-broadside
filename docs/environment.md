@@ -33,10 +33,10 @@ uses eight ships (4-vs-4) and zero fields, preserving the original ambient-only 
 exactly. `profiles/rl_fields.py` is a four-field combat profile for smoke tests and future
 training.
 
-Ships also observe `grad(n)` at their own position. It was computed and consumed by the
-physics well before it reached the observation, through the force term in
-`a = F/m + 0.5|v|^2 grad(log m) - (v.grad(log m))v`, so a ship could see which medium it
-occupied but not which way that medium was changing.
+Ships also observe `grad(n)` at their own position. The physics had been computing and
+consuming it long before it reached the observation, as the force term in
+`a = F/m + 0.5|v|^2 grad(log m) - (v.grad(log m))v`. Until it was exposed, a ship could see
+which medium it occupied but not which way that medium was changing.
 
 ## Flight, proper speed, and power
 

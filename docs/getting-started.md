@@ -130,8 +130,8 @@ uv run bnb train --profile rl --vram off      # the profile's own sizing, nothin
 on this exact GPU, software stack, compile mode, and profile; otherwise it leaves the
 profile's derived sizing alone and says so. `probe` measures the machine if it has not
 already, `reprobe` measures it again, and both write `.vram.json`, a gitignored local
-cache rather than an artifact. Probing runs one real training update per candidate in its own
-subprocess, so it takes minutes, and it needs a CUDA device.
+cache rather than an artifact. Probing needs a CUDA device and takes minutes, because it
+runs one real training update per candidate in its own subprocess.
 
 A numeric preset (`8|16|24|32`, in GB) is a starting point rather than a measurement of
 your card: only the 8 GB row was measured, and applying any row is reported as
@@ -208,9 +208,9 @@ uv run bnb crossover \
 ```
 
 Every evaluation writes a versioned artifact rather than a file of its own choosing.
-A measurement about one exact run lands in `checkpoints/<run>/artifacts/<type>/<id>/`;
-one with no single owning run, such as an explicit `--agents` field or a ladder fitted for a
-training profile, lands in `artifacts/<type>/<id>/`. Each directory holds `result.json`
+A measurement about one exact run lands in `checkpoints/<run>/artifacts/<type>/<id>/`.
+Measurements with no single owning run land in `artifacts/<type>/<id>/` instead: an
+explicit `--agents` field, say, or a ladder fitted for a training profile. Each directory holds `result.json`
 (the aggregates every report is built from) beside `artifact.json` (the recipe, the exact
 subjects and their hashes, and the code, dependency, and device provenance behind them).
 Resumable sweeps (`elo-scale`, `semi-random`, `crossover`) continue the artifact for
@@ -221,8 +221,8 @@ Methodology and interpretation are in [evaluation and results](evaluation.md).
 The `--profile` form of `semi-random` measures the ladder under a training profile's
 environment rather than a finished run's. It is a check, not a prerequisite: training
 assigns each rung `1000·p` outright, so nothing has to be fitted before a profile can run.
-What the artifact adds is `live_gauge_error` per rung: how far the ratings training uses
-sit from the ones the tournament measures in that exact environment. Fitted ratings are a
+The artifact adds a `live_gauge_error` per rung: how far the ratings training uses sit
+from the ones the tournament measures in that exact environment. Fitted ratings are a
 property of the environment they play in, so re-measure whenever the tick rate, field
 count, ship config, fleet size or scripted controller moves; see
 [the reference ladder](training.md#the-reference-ladder).

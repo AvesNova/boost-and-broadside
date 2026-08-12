@@ -60,9 +60,9 @@ At 60 Hz five of every six shoot decisions were no-ops against the cooldown, con
 observations differed by 17 ms, and a 128-step rollout spanned 2.1 s against a ~4.7 s
 episode, so the recurrent policy never saw close to a whole episode inside one BPTT window.
 
-The rate is a real trade, not a free win. Measured with the *fixed* scripted controller at
-equal game time, so the policy cannot adapt and any change is the environment alone,
-combat damage per live ship-step falls monotonically with the hold:
+The rate is a real trade, not a free win. Combat damage per live ship-step falls
+monotonically as the hold grows. The measurement uses the *fixed* scripted controller over
+equal game time, so the policy cannot adapt and the whole difference is the environment:
 
 | | 60 Hz | 30 Hz | 20 Hz | 15 Hz |
 |---|---:|---:|---:|---:|
@@ -241,9 +241,8 @@ current component horizons and schedules, and the preserved run config for histo
 scripted controller before any policy gradient is taken. The controller supplies
 supervised action targets on every environment and never takes a side, so
 `policy_gradient_coef` and `league_fraction` are zero for the whole budget and no roster
-entry plays a rollout. The critic and the next-state head train alongside the actor,
-which is most of the point: RL inherits a warm trunk and a critic that has already seen
-the full reward decomposition.
+entry plays a rollout. The critic and the next-state head train alongside the actor, so RL inherits a warm trunk
+and a critic that has already seen the full reward decomposition.
 
 It trains in the environment RL continues in (eight ships, the same decision rate,
 spawn spread, logical batch, minibatching, and component discount horizons), so the
@@ -262,10 +261,10 @@ same live gauge RL continues on.
 Once that weight reaches zero the entropy bonus goes with it. Entropy regularizes an
 objective; it is not one. With no policy gradient and no cloning term it would be the only
 gradient reaching the actor, and its optimum is the uniform distribution, so a run that
-had finished cloning would spend the rest of its budget undoing it. Measured at a reduced
-launch width, a policy cloned to a KL of 1.12 against the scripted controller and 60% of
-maximum action entropy returned to 99.8% of maximum and a KL of 2.66, its untrained value,
-within 400 updates of the cutoff, while a control arm that kept cloning held steady. After
+had finished cloning would spend the rest of its budget undoing it. This was measured at a reduced launch width. A policy that had been cloned to a KL of 1.12
+against the scripted controller, at 60% of maximum action entropy, was back to 99.8% of
+maximum and a KL of 2.66 within 400 updates of the cutoff. Those are its untrained values.
+A control arm that kept its cloning weight held steady over the same span. After
 the cutoff the actor is held where cloning left it and the critic, next-state, and SIGReg
 terms carry on through the shared trunk. RL is unaffected: its policy gradient is positive
 throughout, so it keeps the scheduled entropy bonus.
@@ -282,7 +281,7 @@ and manoeuvres as if the medium were uniform.
 It used to carry a mild stay-on-your-side steering bias, on the theory that behavior
 cloning needed field-dependent targets to warm up the attention trunk. Measurement killed
 it. Against a uniform-random agent the bias produced *more* interface crossings (2.24
-against 1.60 per thousand ship-steps) and left ships in higher-index, slower medium
+against 1.60 per thousand ship-steps) and left ships in higher-index (slower) medium
 more often (mean log index +0.159 against +0.108). Both were occupancy artifacts rather
 than decisions, and since crossing an interface costs health that
 `field_damage_taken` then penalises, behaviour cloning was imprinting a habit RL had to
@@ -363,9 +362,10 @@ from the continuous evaluator every update, since a stale rating misdirects ever
 
 The [`EloRoster`](../src/boost_and_broadside/train/rl/roster.py) retains historical entries
 rather than evicting the weakest; `league_size` only bounds the GPU-resident LRU policy
-cache. An entry this run cannot host, such as a bullet-reading policy in a bullet-free run
-whose rollout observation shape is fixed when the wrapper is built, is retired from sampling
-with its rating intact, rather than ending the run.
+cache. Some entries a given run cannot host at all: a bullet-reading policy in a
+bullet-free run, for instance, whose rollout observation shape was fixed when the wrapper
+was built. Those are retired from sampling with their ratings intact, and the run
+continues.
 
 ## Continuous rating and the frozen ladder
 
@@ -394,8 +394,9 @@ snapshots, which do rotate as the live policy leaves them behind.
 ### The reference ladder
 
 With only random and scripted as fixed references, the live policy saturates both for the
-whole early climb, winning ~100% against one and losing ~100% against the other, so its
-rating is barely identified exactly when opponent selection depends on it. A ladder of
+whole early climb: ~100% wins against one, ~100% losses against the other. Its rating is
+therefore barely identified at exactly the point where opponent selection depends on
+it. A ladder of
 semi-random rungs fills that range. Each rung takes the scripted action with probability
 `p` and a uniform one otherwise, and the gauge assigns it **1000·p**. A profile therefore
 declares only which rungs exist (`TrainConfig.live_reference_probabilities`); the ratings

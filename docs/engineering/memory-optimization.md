@@ -12,10 +12,10 @@ Three pools compete for VRAM, and each has its own knob:
 | **Rollout buffer** (persistent, resident) | pre-allocated obs + per-component arrays | batch (`num_envs`), T, K | bf16 / uint8 buffer storage |
 | **Host arena** (pageable CPU RAM) | logical batch beyond the resident shard | logical tokens | `rollouts_per_update` |
 
-The short version: the SDPA fix and the reduced-precision buffer are unconditional baseline
-improvements and are always on. Gradient checkpointing and microbatch size are what `--vram`
-reaches for when a launch does not otherwise fit, and both are numerically equivalent to
-leaving them alone. Nothing `--vram` can do changes the experiment.
+The SDPA fix and the reduced-precision buffer are unconditional and always on. Gradient
+checkpointing and microbatch size are what `--vram` reaches for when a launch does not
+otherwise fit; both are numerically equivalent to leaving them alone. Nothing `--vram` can
+do changes the experiment.
 
 ## Resolving a launch for a card (`--vram`)
 
@@ -63,8 +63,8 @@ mode under Torch 2.13 / CUDA 13.0, accepted it on the first candidate:
 | 3904 envs, 25,000 microbatch tokens, no checkpointing | 6.00 GB | 7.88 GB | 8.19 GB | fit |
 
 Reserved peak is 96% of the card, so this row has essentially no allocator headroom on
-8 GB. It fits, and a slightly larger shard or microbatch would not. That is why the ladder
-below it reaches for gradient checkpointing before a narrower shard.
+8 GB. It fits; a slightly larger shard or microbatch would not. The ladder below it
+therefore reaches for gradient checkpointing before it narrows the shard.
 
 The 16, 24, and 32 GB rows are linear extrapolations of the persistent-buffer and
 rollout-peak figures in the production comparison below, and have never been run. Applying
@@ -86,25 +86,26 @@ than an artifact. An entry applies only to a fingerprint covering GPU name, UUID
 total memory, compute capability and SM count, the Torch/CUDA/cuDNN/Python versions, the
 autocast dtype, the compile mode, the profile's semantic fingerprint, and its token
 geometry. Change any of those and the entry stops matching, so `auto` falls back to the
-profile's own sizing instead of reusing a measurement of a different question. A cache file
-that cannot be read is an error naming `--vram reprobe` or `--vram off` rather than a silent
-resize, and a reprobe reaches the file only after measuring the card, so it replaces the
-damaged one instead of raising the same error again and discarding the measurement.
+profile's own sizing instead of reusing a measurement of a different question.
 
-The tiers a launch record claims are the ones the launch actually moved, measured between
-the profile's own derived sizing and what it runs at. A row that restates the shipped
-launch, which the 8 GB row does exactly, claims no tier: tier 2's warning is about a
-different env-stream count and minibatch composition, and a knob set to the value it already
-had produces neither. A width or microbatch the command line chose does claim its tier,
-because it costs the same whoever picked it. Who picked it is answered separately, by
-`proposed`, `applied`, and the per-value source map.
+A cache file that cannot be read is an error naming `--vram reprobe` or `--vram off`, never
+a silent resize. A reprobe reaches the file only after it has measured the card, so it
+replaces the damaged entry instead of raising the same error and throwing the measurement
+away.
 
-Compile mode being part of that fingerprint has a practical consequence. `--compile` changes
-the reserved workspace, so a measurement taken under one mode does not answer for another.
-Probe with the flags you intend to train with: `bnb train --profile rl --vram probe` uses the
-run's own compile mode, so the same command line probes and then trains against its own
-measurement. Switching `--compile` afterwards is a cache miss, and `auto` reports it as one
-rather than reusing the wrong number.
+A launch record claims only the tiers the launch actually moved, measured between the
+profile's own derived sizing and what it runs at. The 8 GB row restates the shipped launch
+exactly, so it claims nothing: tier 2 warns about a changed env-stream count and minibatch
+composition, and a knob reset to the value it already held changes neither. A width or
+microbatch chosen on the command line does claim its tier, since the cost is the same
+whoever picked it. `proposed`, `applied`, and the per-value source map record who did.
+
+`--compile` changes the reserved workspace, which is why compile mode is part of the cache
+fingerprint: a measurement taken under one mode does not answer for another. Probe with the
+flags you intend to train with. `bnb train --profile rl --vram probe` uses the run's own
+compile mode, so one command line probes and then trains against its own measurement.
+Switching `--compile` afterwards is a cache miss, and `auto` says so instead of reusing the
+wrong number.
 
 ## The knobs and what they cost
 

@@ -1,11 +1,11 @@
 # Policy architecture
 
-`YemongPolicy` (*Yemong*, from the Korean 예몽, a dream that foretells the future) is a
-centralized recurrent controller: it reads the full scene, exchanges information across
-entities with spatial attention, carries per-entity memory through time, and emits a
-factored action for every ship in the learned fleet. The name comes from its auxiliary
-head, which learns to predict the next state of the world. The variable-cardinality
-design is what makes zero-shot transfer across team sizes possible.
+`YemongPolicy` is a centralized recurrent controller. It reads the full scene, exchanges
+information across entities with spatial attention, carries per-entity memory through
+time, and emits a factored action for every ship in the learned fleet. Its name (*Yemong*,
+from the Korean 예몽, a dream that foretells the future) comes from the auxiliary head that
+learns to predict the next state of the world. Zero-shot transfer across team sizes comes
+from its variable-cardinality design, described [below](#why-team-size-can-change).
 
 ![YemongPolicy architecture](policy_architecture.png)
 
@@ -43,18 +43,19 @@ Every Yemong block has the same shape, set by [`ModelConfig`](../src/boost_and_b
 repeated `n_yemong_blocks` times. The reference configuration is two blocks of
 `2 spatial + 1 temporal`, so the trunk is `S S T | S S T`.
 
-The ratio is deliberate. At these token counts a spatial sublayer measures roughly a
-quarter the cost of a temporal one at equal parameter count, so relational depth is the
-cheap axis. Depth itself is not the binding constraint: reasoning of the form *"fight the
-enemy that is not already swarmed"* is two hops, one layer for each ship to aggregate its
-own local situation and one for the decision, so four spatial layers leaves slack. The
-likelier limit is how many distinct aggregates one layer can hold at once, which is a
-head-count question.
+The ratio is deliberate. At these token counts a spatial sublayer costs roughly a quarter
+of a temporal one at equal parameter count, so relational depth is the cheap axis to spend
+on.
+
+Four spatial layers is more depth than the reasoning appears to need. *"Fight the enemy
+that is not already swarmed"* is two hops: one layer for each ship to aggregate its own
+local situation, one for the decision. The tighter limit is head count, which sets how
+many distinct aggregates a single layer can hold at once.
 
 `n_bullet_cross_per_block` spatial sublayers cross-attend to bullets, counted from the
-first. Counting from the front is a correctness constraint rather than a cost choice: the
-read must precede a further entity-to-entity layer, or a ship can react to fire aimed at
-itself but can never reason about fire aimed at an ally it might support.
+first. The front is where they have to go. A bullet read must precede at least one more
+entity-to-entity layer; otherwise a ship can react to fire aimed at itself but can never
+reason about fire aimed at an ally it might support.
 
 ## Observation and feature coordination
 
@@ -68,7 +69,8 @@ Field properties are unchanged by team flipping.
 
 The index gradient is the force term in `a = F/m + 0.5|v|² grad(log m) - (v·grad(log m))v`.
 Without it a ship can see which medium it occupies but not which way that medium is
-changing, an acceleration whose source is absent from its input.
+changing. It would feel the resulting acceleration with nothing in its input to explain
+it.
 
 The policy does not hand-encode those channels. The canonical
 [`FeatureCoordinator`](../src/boost_and_broadside/train/rl/features.py) binds each raw
@@ -99,10 +101,11 @@ Phase targets make wraparound natural: crossing the map boundary is a small rota
 a large coordinate jump. Feature dimensions and prediction layout are derived from the
 registered features rather than hardcoded in model code.
 
-The index gradient is an input only. It is a deterministic function of position given the
-static field map, and the auxiliary `label_scale` values are `1/std` estimates that would
-have to be invented for it, and a mis-set scale can quietly dominate or vanish inside the aux
-loss, so it stays out until measured.
+The index gradient is an input only. Given the static field map it is a deterministic
+function of position. Making it a target would also mean inventing a `label_scale`, since
+those are `1/std` estimates and there is nothing here to estimate one from. A mis-set
+scale can quietly dominate or vanish inside the aux loss, so it stays out until
+measured.
 
 Bullets have their own feature set on a separate axis, built by `build_bullet_coordinator`:
 
@@ -117,9 +120,9 @@ Bullets have their own feature set on a separate axis, built by `build_bullet_co
 
 Both pipelines are derived from `ShipConfig` by
 [`policy_io.build_policy`](../src/boost_and_broadside/train/rl/policy_io.py), the single
-path that constructs a policy. Which encoders exist therefore follows from the config
-rather than from what a call site remembered to pass, and the bullet encoder exists exactly
-when `n_bullet_cross_per_block > 0`.
+path that constructs a policy. Which encoders exist therefore follows from the config,
+not from what a call site passes. The bullet encoder exists exactly when
+`n_bullet_cross_per_block > 0`.
 
 ## Entity encoder
 
@@ -131,13 +134,14 @@ masks are also passed to attention so dead entities cannot act as keys.
 Setting `encoder_split` gives ships and fields a separate first projection over shared
 plus own channels, followed by a *shared* second projection. Each feature declares a
 `FeatureScope`, so a field token no longer spends most of its input width on ship-only
-channels that are hard zeros for it. The shared output layer is what keeps both token
-types in one latent space: the spatial layers apply a single `W_qkv` to both, and cannot
-reconcile two that have drifted apart.
+channels that are hard zeros for it. The shared output layer keeps both token types in one
+latent space. Spatial layers apply a single `W_qkv` to ships and fields alike, and cannot
+reconcile two spaces that have drifted apart.
 
 [`BulletEncoder`](../src/boost_and_broadside/models/yemong/encoder.py) is separate and
-deliberately narrow. It runs over `N·K` entities rather than `N+M`, so its width rather
-than the entity encoder's sets encoder cost, and a bullet is a much simpler entity.
+deliberately narrow. It runs over `N·K` entities where the entity encoder runs over `N+M`,
+so its width is what sets encoder cost. A bullet is also a much simpler entity to
+describe.
 
 The reference policy uses `d_model=128` and four attention heads.
 
@@ -154,11 +158,10 @@ impractical: a bullet curves under `grad(n)`, refracts, can totally internally r
 travels at `500/n` locally, and loses damage crossing interfaces, so dead-reckoning one
 from the shooter's pose amounts to integrating an ODE inside the recurrent state.
 
-They enter as **key/value-only** tokens. A bullet has no query, no output projection, no
-FFN and no recurrence, `2·D²` per token against `16·D²` for a full one. That is what makes
-attending over every bullet affordable instead of selecting a top-k, and it also means a
-bullet holds no persistent representation, so a recycled ring-buffer slot cannot carry
-stale state.
+They enter as **key/value-only** tokens: no query, no output projection, no FFN, no
+recurrence. A bullet therefore costs `2·D²` per token against `16·D²` for a full entity,
+cheap enough to attend over all of them instead of selecting a top-k. Nothing persists
+between steps either, so a recycled ring-buffer slot cannot carry stale state.
 
 Bullet position and velocity use the *same* encodings as ships. Attention computes relative
 geometry as a bilinear form over Fourier features, and `q·k` reduces to a function of the
@@ -167,10 +170,10 @@ frequencies leave cross terms that never form relative geometry at all. Shooter 
 carried as a team one-hot and never as an index over ships, which would fix `N` in the
 weights and break zero-shot transfer.
 
-One caveat is worth stating plainly: softmax normalises, so this read conveys *which*
-bullets are relevant but not *how many*. Threat intensity is not yet available, and the
-transfer-safe fix is an environment-side saturating count and a lethality ratio, not
-sum-pooling, which grows without bound as fleets scale.
+Softmax normalises, so this read conveys *which* bullets are relevant but not *how many*.
+Threat intensity is not yet available. The transfer-safe fix is an environment-side
+saturating count and a lethality ratio; sum-pooling would grow without bound as fleets
+scale.
 
 ## Temporal recurrence
 
@@ -185,11 +188,11 @@ converges to a fixed point and carries nothing the encoder did not already suppl
 costing the expensive half of every block. Field tokens instead take
 `forward_nonrecurrent`, which replaces the causal conv and RG-LRU with a per-sublayer
 linear and keeps `norm1`, `linear1`, `linear2`, `linear_out`, `norm2`, and `gated_mlp`
-shared with the ship path. Sharing is the point: running both types through the same
-weights means the next spatial layer's single `W_qkv` has no divergence to undo. The
-substitute linear supplies the one thing shared weights cannot, a type-specific linear
-map, and is identity-initialised, because `b1_out` feeds a multiplicative gate and
-zeroing it would erase the branch entirely.
+shared with the ship path. Running both types through the same weights leaves the next
+spatial layer's single `W_qkv` no divergence to undo. The substitute linear supplies the
+one thing shared weights cannot: a type-specific linear map. It is initialised to the
+identity, because `b1_out` feeds a multiplicative gate and zeroing it would erase the
+branch entirely.
 
 The recurrent state therefore covers ships only, `(n_yemong_blocks · n_temporal_per_block,
 B·N, CONV_KERNEL·D)`, a third smaller than in the four-field profile before.
@@ -214,7 +217,7 @@ The output shape is `(B, N, 3)` action indices.
 ## Decomposed value head
 
 The critic produces one value per ship and active reward component. Most components use a
-local token projection. Win/loss components instead use TeamPMA, pooling by multi-head
+local token projection. Win/loss components use TeamPMA, which pools by multi-head
 attention in the style of the [Set Transformer](https://arxiv.org/abs/1810.00825)
 (Lee et al., 2019): learned seeds attend over the live ships of each team and feed a
 dedicated outcome-value projection. That gives global outcome targets an explicitly
@@ -249,8 +252,7 @@ That makes new team sizes executable without retraining; the
 [crossover sweep](evaluation.md#zero-shot-crossover) tests whether the learned behavior
 remains effective as the fleet grows.
 
-The bullet path preserves this. Cross-attention is linear in bullet count, shooter identity
-is a team one-hot rather than a per-ship index, and softmax attention naturally yields
-proportions rather than counts, which is the right invariant when the fleet size changes,
-since "outnumbered two to one" means the same thing at any scale while "five enemies
-nearby" does not.
+The bullet path preserves this. Cross-attention is linear in bullet count, and shooter
+identity is a team one-hot with no per-ship index anywhere. Softmax attention yields
+proportions, which is the invariant that survives a change in fleet size: "outnumbered two
+to one" means the same thing at any scale, while "five enemies nearby" does not.
