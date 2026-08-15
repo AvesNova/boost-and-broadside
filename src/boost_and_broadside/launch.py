@@ -15,6 +15,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from boost_and_broadside.config.diagnostics import (
+    GRADIENT_DIAGNOSTICS_OFF,
+    GradientDiagnosticsConfig,
+)
 from boost_and_broadside.config.resolve import LaunchOverrides
 from boost_and_broadside.config.schema import ResolvedTrainConfig
 from boost_and_broadside.config.vram import (
@@ -76,6 +80,7 @@ def resolve_training_launch(
     compile_mode: str | None = None,
     wandb: bool = True,
     allow_config_drift: bool = False,
+    gradient_diagnostics: GradientDiagnosticsConfig = GRADIENT_DIAGNOSTICS_OFF,
     num_envs: int | None = None,
     microbatch_tokens: int | None = None,
     allow_probe: bool = True,
@@ -111,6 +116,7 @@ def resolve_training_launch(
         compile_mode=compile_mode,
         wandb=wandb,
         allow_config_drift=allow_config_drift,
+        gradient_diagnostics=gradient_diagnostics,
     )
     # The semantic fingerprint keys the VRAM cache and does not depend on any
     # launch sizing, so resolving the profile at its defaults is enough to ask

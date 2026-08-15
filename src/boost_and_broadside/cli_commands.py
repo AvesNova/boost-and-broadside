@@ -11,6 +11,7 @@ from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAge
 from boost_and_broadside.artifacts import ArtifactStore, Invocation
 from boost_and_broadside.config import EnvConfig
 from boost_and_broadside.config.defaults import ELO_CALIBRATE, MODEL_CONFIG, REWARDS, SHIP_CONFIG
+from boost_and_broadside.config.diagnostics import GradientDiagnosticsConfig
 from boost_and_broadside.config.service import resolved_profile_document
 from boost_and_broadside.constants import DEFAULT_MAX_BULLETS_PER_SHIP
 from boost_and_broadside.evaluation.run_catalog import (
@@ -115,6 +116,16 @@ def _calibration_config(args: argparse.Namespace):
     )
 
 
+def gradient_diagnostics_from_args(args: argparse.Namespace) -> GradientDiagnosticsConfig:
+    """Build the observability setting the ``train`` gradient-diagnostic flags describe."""
+
+    return GradientDiagnosticsConfig(
+        level=args.gradient_diagnostics,
+        interval=args.gradient_diagnostics_interval,
+        minibatches=args.gradient_diagnostics_minibatches,
+    )
+
+
 def _resume_checkpoint(subject: str, checkpoint_dir: str = "checkpoints") -> tuple[str, str | None]:
     if subject.endswith(".pt"):
         checkpoint = resolve_explicit_checkpoint(subject).path
@@ -142,6 +153,7 @@ def _make_trainer(
         use_wandb=not args.no_wandb,
         scripted_agent=StochasticScriptedAgent(resolved.ship_config, StochasticAgentConfig()),
         compile_mode=launch.execution.compile_mode,
+        gradient_diagnostics=launch.execution.gradient_diagnostics,
         resume_wandb_run_id=resume_wandb_run_id,
         resolved_config_document=resolved_profile_document(resolved),
         # The complete launch record, including which VRAM decision chose the
@@ -195,6 +207,7 @@ def _train(args: argparse.Namespace, prepare: ContextFactory) -> None:
         compile_mode=None if args.compile_mode == "none" else args.compile_mode,
         wandb=not args.no_wandb,
         allow_config_drift=args.allow_config_drift,
+        gradient_diagnostics=gradient_diagnostics_from_args(args),
         num_envs=args.num_envs,
         microbatch_tokens=args.microbatch_tokens,
         report=print,
@@ -507,9 +520,7 @@ def runtime_command_names() -> tuple[str, ...]:
     return tuple(_HANDLERS)
 
 
-def execute(
-    command: str, args: argparse.Namespace, argv: Sequence[str] | None = None
-) -> None:
+def execute(command: str, args: argparse.Namespace, argv: Sequence[str] | None = None) -> None:
     """Execute one completely parsed command.
 
     ``argv`` is the invocation as the user spelled it; it is recorded verbatim in

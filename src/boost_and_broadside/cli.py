@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from boost_and_broadside.config.diagnostics import GRADIENT_DIAGNOSTICS_LEVELS
 from boost_and_broadside.errors import UserFacingError
 from boost_and_broadside.profiles import PROFILES
 
@@ -238,6 +239,31 @@ COMMANDS: tuple[CommandSpec, ...] = (
                 default=None,
                 metavar="TOKENS",
                 help="Explicit entity tokens per gradient microbatch.",
+            ),
+            _option(
+                "--gradient-diagnostics",
+                choices=GRADIENT_DIAGNOSTICS_LEVELS,
+                default="off",
+                metavar="LEVEL",
+                help=(
+                    "Decompose the update's gradient by loss term (top_level), also by "
+                    "reward component for the policy (reward_policy), or for the policy "
+                    "and the critic (reward_full). Default: off."
+                ),
+            ),
+            _option(
+                "--gradient-diagnostics-interval",
+                type=_positive_int,
+                default=1,
+                metavar="UPDATES",
+                help="Measure gradient diagnostics every N PPO updates (default: 1).",
+            ),
+            _option(
+                "--gradient-diagnostics-minibatches",
+                type=_positive_int,
+                default=1,
+                metavar="MINIBATCHES",
+                help="Complete optimizer minibatches measured per diagnostic update.",
             ),
             _DEVICE,
             _SEED,
@@ -556,6 +582,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         if args.command == "train" and args.print_config:
+            from boost_and_broadside.cli_commands import gradient_diagnostics_from_args
             from boost_and_broadside.config.service import print_resolved_config
             from boost_and_broadside.launch import resolve_training_launch
 
@@ -567,6 +594,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 compile_mode=None if args.compile_mode == "none" else args.compile_mode,
                 wandb=not args.no_wandb,
                 allow_config_drift=args.allow_config_drift,
+                gradient_diagnostics=gradient_diagnostics_from_args(args),
                 num_envs=args.num_envs,
                 microbatch_tokens=args.microbatch_tokens,
                 allow_probe=False,

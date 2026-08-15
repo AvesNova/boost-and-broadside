@@ -219,6 +219,26 @@ class YemongPolicy(nn.Module):
             nn.init.orthogonal_(self.team_pma.attn.in_proj_weight, gain=math.sqrt(2))
             nn.init.orthogonal_(self.team_pma.attn.out_proj.weight, gain=1.0)
 
+    def trunk_modules(self) -> tuple[nn.Module, ...]:
+        """The submodules every head reads from.
+
+        Stated as module references rather than name patterns so a renamed or
+        newly added head cannot silently redefine what "shared" means. Anything
+        not listed here is head-specific: the action head, the two value heads
+        and their pooling, and the next-state head.
+        """
+        modules: list[nn.Module] = [self.encoder, self.yemong_layers]
+        if self.bullet_encoder is not None:
+            modules.append(self.bullet_encoder)
+        return tuple(modules)
+
+    def trunk_parameter_ids(self) -> frozenset[int]:
+        """Identities of the shared-trunk parameters, for scoping diagnostics."""
+
+        return frozenset(
+            id(parameter) for module in self.trunk_modules() for parameter in module.parameters()
+        )
+
     def _encode_bullets(
         self, obs: YemongObservation
     ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
