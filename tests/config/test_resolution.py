@@ -31,6 +31,16 @@ _PROFILE_MODULES = (
 )
 
 
+# Values a profile has deliberately moved away from its S01 evidence since the
+# snapshot was taken. The snapshots stay as written -- they are the record of
+# what the refactor had to preserve -- so an intended change is declared here,
+# where it is one reviewable line, rather than by quietly rewriting the evidence.
+_INTENDED_DIVERGENCE: dict[str, dict[str, object]] = {
+    # The field run's budget was doubled; nothing else about the profile moved.
+    "rl-fields": {"total_timesteps": 1_000_000_000},
+}
+
+
 @pytest.mark.parametrize("name", ("rl", "rl-fields"))
 def test_resolved_profiles_match_s01_snapshots(name: str) -> None:
     """BC is deliberately absent: S11 corrected it away from its S01 evidence.
@@ -40,6 +50,10 @@ def test_resolved_profiles_match_s01_snapshots(name: str) -> None:
     """
     expected = json.loads((_SNAPSHOTS / f"{name}.json").read_text())
     resolved = resolve_profile(PROFILES[name])
+    divergence = _INTENDED_DIVERGENCE.get(name, {})
+    for key, value in divergence.items():
+        assert expected["train_config"][key] != value, f"{name}.{key} no longer diverges"
+        expected["train_config"][key] = value
 
     assert canonical_data(resolved.ship_config) == expected["ship_config"]
     assert canonical_data(resolved.model_config) == expected["model_config"]
@@ -76,6 +90,10 @@ def test_rl_fields_resolved_diff_contains_only_named_field_intent() -> None:
         "rewards.field_death_weight",
         "scales.0.env_config.num_fields",
         "scales.0.num_envs",
+        # Budget, not intent: the field run is given twice the steps. It is the
+        # one non-field difference between the two profiles, so it is named here
+        # rather than allowed to hide inside a looser assertion.
+        "total_timesteps",
     }
 
 
@@ -236,14 +254,19 @@ def test_current_profile_and_resolved_fingerprints_are_stable() -> None:
     # the interval is declared schedule intent and both fingerprints cover the
     # whole schedule, so a run recorded under the old cadence reads as drifted
     # and needs --allow-config-drift to resume.
+    #
+    # Both rl-fields values moved again when its budget went from 500M to 1B
+    # steps. total_timesteps is declared optimizer intent, and it also sets the
+    # update count and the peak league width, so an rl-fields run recorded under
+    # the 500M budget reads as drifted against this profile.
     expected = {
         "rl": (
             "8185ff05150d3986a07652154ea9ced8eff0e4f1cd084f693aa83794589c383a",
             "0bf3a3b52232e1fee5b6152fff05b5eae683af0dec48e603f4a8fb7c759fc12e",
         ),
         "rl-fields": (
-            "be1cc46795c4c07b9abd0a111c9633f1fbec9097c255231042c0085e363f89dc",
-            "35f7837d475c1b8c5ec2fadf50af2309af8cf1c7d77c47016d76a42a79d39a39",
+            "2f18fe83041e96b3de14bd4378e675fe132c2bbad9cf73883dd0796fd4335fd6",
+            "d5842b671a7fed0ed85d2a8d73e054494ab5e660a5d135af69955538991de66f",
         ),
         "bc": (
             "f4e6d49575885b45c168ff2bc0f9f3261c4933518205072f573b79059bad5056",
