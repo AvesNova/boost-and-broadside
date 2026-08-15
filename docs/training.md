@@ -548,12 +548,19 @@ bnb train --profile rl-fields --gradient-diagnostics reward_full \
     --gradient-diagnostics-interval 100 --gradient-diagnostics-minibatches 2
 ```
 
-| Level | Decomposes | Extra backward traversals per diagnosed micro-batch |
-|---|---|---:|
-| `off` | nothing; no diagnostic code runs | 0 |
-| `top_level` | the weighted PPO loss terms | one per active term |
-| `reward_policy` | also the policy gradient, by reward component | plus one per weighted component |
-| `reward_full` | also the critic gradient, by reward component | plus one per active component |
+| Level | Decomposes | Extra backward traversals per diagnosed micro-batch | Update phase | Peak VRAM |
+|---|---|---:|---:|---:|
+| `off` | nothing; no diagnostic code runs | 0 | 1.00x | 4051 MiB |
+| `top_level` | the weighted PPO loss terms | one per active term | 1.02x | 4361 MiB |
+| `reward_policy` | also the policy gradient, by reward component | plus one per weighted component | 1.09x | 4441 MiB |
+| `reward_full` | also the critic gradient, by reward component | plus one per active component | 1.17x | 4529 MiB |
+
+Cost measured by
+[`benchmarks/gradient_diagnostics.py`](../benchmarks/gradient_diagnostics.py) on the `rl`
+profile at half width (`--num-envs 1952`) on an RTX 4070 Laptop, one diagnosed minibatch
+every update. The multiplier is on the update phase alone; a training step also collects a
+rollout and runs Elo evaluation, so the share of total wall clock is smaller. Raising
+`--gradient-diagnostics-interval` divides the overhead by the cadence.
 
 `--gradient-diagnostics-interval` sets the cadence in PPO updates and
 `--gradient-diagnostics-minibatches` how many complete optimizer minibatches each diagnostic
