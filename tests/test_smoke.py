@@ -11,6 +11,7 @@ import pytest
 import torch
 
 from boost_and_broadside import cli, cli_commands
+from boost_and_broadside.config.diagnostics import GRADIENT_DIAGNOSTICS_LEVELS
 from boost_and_broadside.smoke import (
     SMOKE_CASES,
     SmokeCase,
@@ -41,6 +42,16 @@ def test_registry_covers_every_runtime_command_and_training_profile() -> None:
     assert {case.profile for case in by_command["train"]} == {"bc", "rl", "rl-fields"}
     assert len({case.name for case in SMOKE_CASES}) == len(SMOKE_CASES)
     assert all(case.timeout_seconds > 0 for case in SMOKE_CASES)
+
+
+def test_every_gradient_diagnostic_level_is_launched_by_a_training_case() -> None:
+    """Each level is a distinct code path, so each gets its own bounded launch."""
+    launched = {case.gradient_diagnostics for case in SMOKE_CASES if case.command == "train"}
+    assert launched == set(GRADIENT_DIAGNOSTICS_LEVELS)
+    # Nothing that is not a training run has a gradient to decompose.
+    assert all(
+        case.gradient_diagnostics == "off" for case in SMOKE_CASES if case.command != "train"
+    )
 
 
 def test_synthetic_run_uses_current_loadable_checkpoint_schema(tmp_path: Path) -> None:

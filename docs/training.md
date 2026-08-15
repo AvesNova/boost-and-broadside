@@ -529,11 +529,99 @@ batch, the minibatch count, or the fleet.
 [Memory optimization](engineering/memory-optimization.md#resolving-a-launch-for-a-card---vram)
 describes the policies, the preset rows, and what the probe measures.
 
+## Gradient diagnostics
+
+Several named losses land on one shared trunk, and `max_grad_norm` renormalizes whatever
+arrives together: the term that sends more gradient takes a larger share of every clipped
+step and the others lose it. The total gradient norm cannot show that split, and inferring
+it after the fact is how a 3.4x actor/critic imbalance survived three full runs. Gradient
+diagnostics measure it directly.
+
+The instrument is off by default and changes nothing about what a run optimizes. It is
+selected per launch, alongside `--device` rather than in the profile, and recorded in the
+launch block of every checkpoint.
+
+```
+bnb train --profile rl --gradient-diagnostics top_level
+bnb train --profile rl --gradient-diagnostics reward_policy --gradient-diagnostics-interval 25
+bnb train --profile rl-fields --gradient-diagnostics reward_full \
+    --gradient-diagnostics-interval 100 --gradient-diagnostics-minibatches 2
+```
+
+| Level | Decomposes | Extra backward traversals per diagnosed micro-batch |
+|---|---|---:|
+| `off` | nothing; no diagnostic code runs | 0 |
+| `top_level` | the weighted PPO loss terms | one per active term |
+| `reward_policy` | also the policy gradient, by reward component | plus one per weighted component |
+| `reward_full` | also the critic gradient, by reward component | plus one per active component |
+
+`--gradient-diagnostics-interval` sets the cadence in PPO updates and
+`--gradient-diagnostics-minibatches` how many complete optimizer minibatches each diagnostic
+update measures. Measurement happens in the first epoch, so every reading describes a step
+taken against a comparably fresh policy.
+
+### What is measured
+
+Gradients are accumulated over every micro-batch of an optimizer minibatch before any
+statistic is taken, so what is reported describes a real optimizer step. The cosine is
+
+    cos(sum_microbatches g_a, sum_microbatches g_b)
+
+and not the mean of per-micro-batch cosines, which is a different number and is not the
+direction the step follows.
+
+- `grad_norm/<group>/<term>` — the length of that term's accumulated gradient.
+- `grad_share/<group>/<term>` — its norm over the summed term norms: the share of the
+  pre-clip gradient budget it is asking for, and so roughly the share of the clipped step it
+  takes. This is the generalization of `train/actor_grad_share`.
+- `grad_cos/<group>/<a>__<b>` — whether two terms pull the same way. Near +1 they reinforce,
+  near −1 they are cancelling and both are being wasted, near 0 they are independent.
+- `grad_diag/total_norm/<group>` — the norm of the combined gradient, and
+  `grad_diag/agreement/<group>` that over the summed norms. Agreement near 1 means the terms
+  point the same way; near 0 means the group is largely cancelling itself out.
+
+Groups are `top_level`, `reward_policy`, and `reward_value`, each also reported over the
+shared trunk under a `trunk_` prefix. The trunk scope is the informative one for cosines
+between terms owned by different heads: the action head, the two value heads, and the
+next-state head have disjoint parameters, which drags every whole-model pairing toward zero
+whatever the terms are doing to the weights they share. The trunk is defined by module
+reference (`YemongPolicy.trunk_modules`), not by matching parameter names.
+
+`grad_diag/microbatches`, `grad_diag/terms`, `grad_diag/level`, and `grad_diag/seconds`
+record how the measurement was taken.
+
+### Reward decomposition
+
+`reward_policy` splits the policy gradient across active reward components. The split is an
+exact attribution rather than a model: the per-component advantages are aggregated through
+the same lambda matrix the live gradient used, and PPO's clipping branch is taken from the
+*aggregate* objective and reused for every component. Choosing a branch per component would
+let each reward take whichever branch flatters it, and the parts would no longer sum to the
+update being run — not subtly, but by orders of magnitude. Components sum back to the
+aggregate policy gradient to floating-point tolerance, which
+[`test_grad_diagnostics.py`](../tests/train/test_grad_diagnostics.py) asserts with clipping
+active. Components scheduled to zero weight contribute no gradient and are not logged.
+
+`reward_full` adds the same split for the critic, which is already a sum of independent
+per-component squared errors. It is substantially more expensive than the other levels — one
+extra backward traversal per component on top of the policy split, and it holds one full
+gradient copy per term in memory simultaneously — and it emits O(K²) cosine series. Use it
+on a cadence, not every update.
+
+On a diagnostic update the actor/critic split (`train/grad_norm_actor`,
+`train/grad_norm_critic`, `train/actor_grad_share`) is read off the accumulated top-level
+terms — the same quantity over a whole minibatch instead of one micro-batch of it — and the
+cheap histogram-cadence probe stands down rather than measuring it twice.
+
 ## Engineering validation
 
 Training behavior is covered across:
 
 - [`test_ppo.py`](../tests/train/test_ppo.py) for loss, masking, rollout, and schedule logic;
+- [`test_grad_diagnostics.py`](../tests/train/test_grad_diagnostics.py) for gradient
+  decomposition: that the components sum to the aggregate gradient with clipping active,
+  that micro-batch accumulation matches the unsplit minibatch, and that measuring leaves the
+  applied gradient bit-identical;
 - [`test_buffer.py`](../tests/train/test_buffer.py) for recurrent storage, GAE, precision,
   sharding, and scalers;
 - [`test_roster.py`](../tests/train/test_roster.py) and

@@ -45,12 +45,22 @@ class SmokeCase:
     command: str
     profile: str | None = None
     timeout_seconds: int = 90
+    # Gradient-diagnostic level this training case launches at. Off is the
+    # default every non-diagnostic case runs, and the one shipping runs use.
+    gradient_diagnostics: str = "off"
 
 
 SMOKE_CASES: tuple[SmokeCase, ...] = (
     SmokeCase("train-rl", "train", "rl", 120),
     SmokeCase("train-rl-fields", "train", "rl-fields", 180),
     SmokeCase("train-bc", "train", "bc", 120),
+    # One case per diagnostic level, because each level adds a distinct code
+    # path: decomposing nothing, the loss terms, the policy by reward, and the
+    # critic by reward. They run against the cheapest profile; what is being
+    # exercised is the decomposition, not the environment.
+    SmokeCase("train-grad-top-level", "train", "rl", 150, gradient_diagnostics="top_level"),
+    SmokeCase("train-grad-reward-policy", "train", "rl", 180, gradient_diagnostics="reward_policy"),
+    SmokeCase("train-grad-reward-full", "train", "rl", 240, gradient_diagnostics="reward_full"),
     SmokeCase("play", "play"),
     SmokeCase("watch", "watch"),
     SmokeCase("capture", "capture", timeout_seconds=120),
@@ -361,6 +371,8 @@ def _run_training_case(case: SmokeCase, roots: SmokeRoots) -> None:
                 "--compile",
                 "none",
                 "--no-wandb",
+                "--gradient-diagnostics",
+                case.gradient_diagnostics,
             ]
         )
     if result:
