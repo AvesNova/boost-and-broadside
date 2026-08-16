@@ -31,14 +31,43 @@ _PROFILE_MODULES = (
 )
 
 
-# Values a profile has deliberately moved away from its S01 evidence since the
-# snapshot was taken. The snapshots stay as written -- they are the record of
-# what the refactor had to preserve -- so an intended change is declared here,
+# Values a profile has deliberately moved away from its recorded snapshot since
+# that snapshot was taken. The snapshots stay as written -- they are the record
+# of what the refactor had to preserve -- so an intended change is declared here,
 # where it is one reviewable line, rather than by quietly rewriting the evidence.
+# Keys are dotted paths into the resolved train_config.
 _INTENDED_DIVERGENCE: dict[str, dict[str, object]] = {
-    # The field run's budget was doubled; nothing else about the profile moved.
-    "rl-fields": {"total_timesteps": 1_000_000_000},
+    # Shoot-quality shaping was switched off. It is a base reward weight rather
+    # than field intent, so it moves all three profiles together and the two RL
+    # profiles stay separated by field intent alone.
+    "rl": {"rewards.shoot_quality_weight": 0.0},
+    "bc": {"rewards.shoot_quality_weight": 0.0},
+    # The field run's budget was doubled on top of that.
+    "rl-fields": {
+        "rewards.shoot_quality_weight": 0.0,
+        "total_timesteps": 1_000_000_000,
+    },
 }
+
+
+def apply_intended_divergence(name: str, train_config: dict) -> None:
+    """Move a recorded snapshot onto the values a profile has since chosen.
+
+    Asserts each declared value is genuinely a change, so an entry that has been
+    folded back into the snapshot fails here instead of silently weakening the
+    comparison.
+
+    Args:
+        name:          Registered profile name.
+        train_config:  Snapshot ``train_config`` block, edited in place.
+    """
+    for path, value in _INTENDED_DIVERGENCE.get(name, {}).items():
+        target = train_config
+        *parents, leaf = path.split(".")
+        for key in parents:
+            target = target[key]
+        assert target[leaf] != value, f"{name}.{path} no longer diverges from its snapshot"
+        target[leaf] = value
 
 
 @pytest.mark.parametrize("name", ("rl", "rl-fields"))
@@ -50,10 +79,7 @@ def test_resolved_profiles_match_s01_snapshots(name: str) -> None:
     """
     expected = json.loads((_SNAPSHOTS / f"{name}.json").read_text())
     resolved = resolve_profile(PROFILES[name])
-    divergence = _INTENDED_DIVERGENCE.get(name, {})
-    for key, value in divergence.items():
-        assert expected["train_config"][key] != value, f"{name}.{key} no longer diverges"
-        expected["train_config"][key] = value
+    apply_intended_divergence(name, expected["train_config"])
 
     assert canonical_data(resolved.ship_config) == expected["ship_config"]
     assert canonical_data(resolved.model_config) == expected["model_config"]
@@ -255,22 +281,25 @@ def test_current_profile_and_resolved_fingerprints_are_stable() -> None:
     # whole schedule, so a run recorded under the old cadence reads as drifted
     # and needs --allow-config-drift to resume.
     #
+    # All six moved again when shoot_quality_weight was set to 0. It is a base
+    # reward weight, so every profile that builds on REWARDS carries the change.
+    #
     # Both rl-fields values moved again when its budget went from 500M to 1B
     # steps. total_timesteps is declared optimizer intent, and it also sets the
     # update count and the peak league width, so an rl-fields run recorded under
     # the 500M budget reads as drifted against this profile.
     expected = {
         "rl": (
-            "8185ff05150d3986a07652154ea9ced8eff0e4f1cd084f693aa83794589c383a",
-            "0bf3a3b52232e1fee5b6152fff05b5eae683af0dec48e603f4a8fb7c759fc12e",
+            "bb68ab1fef9aa748859d7de9b79d7a33f5a9de501a8a5ca0f2882d884dd4d7f8",
+            "1a713e912c583443a82773da31942027c0abfe3484b66d8422e51500051d91f7",
         ),
         "rl-fields": (
-            "2f18fe83041e96b3de14bd4378e675fe132c2bbad9cf73883dd0796fd4335fd6",
-            "d5842b671a7fed0ed85d2a8d73e054494ab5e660a5d135af69955538991de66f",
+            "1f806159565f9ac8e62363dee74663b56bbdcb87ba454fcf4dc77dd35e88afaf",
+            "d2d94e6ca68d88442c8fa281f1e7c17acd8f414808c5256f11e74672296b95a3",
         ),
         "bc": (
-            "f4e6d49575885b45c168ff2bc0f9f3261c4933518205072f573b79059bad5056",
-            "268bd9a48907f8d139a92ba074fb1511889962752954b0651d467f773c5aa6d5",
+            "87432c0b1102fca6f00640358047e8ba3014b5d58906800e3aabed7094d01565",
+            "68a72d4bfc43e4736fe8ef316604e35f419451f843e965101180f9e04d2b0da1",
         ),
     }
     for name, fingerprints in expected.items():

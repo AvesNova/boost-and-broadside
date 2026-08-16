@@ -202,7 +202,7 @@ reference policy activated these components:
 | `enemy_win` | 1.5 | opponent's win signal, seen as −1 through a negative enemy lambda |
 | `facing` | 0.1 | dense aim geometry (+) |
 | `closing_speed` | 0.1 | dense approach geometry (+) |
-| `shoot_quality` | 0.1 | firing opportunity quality (+) |
+| `shoot_quality` | off | firing opportunity quality (+); head retained at zero weight |
 | `kill_shot` | 1.0 | fatal-step credit (+), proportional to that step's damage; killing a friendly earns the negative share |
 | `kill_assist` | 1.0 | assist credit (+), proportional to cumulative episode damage |
 | `combat_damage_taken` | 0.5 / 0.5 | −applied projectile health loss |

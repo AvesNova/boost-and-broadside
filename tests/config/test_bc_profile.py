@@ -20,6 +20,8 @@ from boost_and_broadside.config.resolve import resolve_profile
 from boost_and_broadside.config.schedule_spec import TrainingScheduleSpec
 from boost_and_broadside.profiles import PROFILES
 
+from .test_resolution import apply_intended_divergence
+
 _ROOT = Path(__file__).resolve().parents[2]
 _SNAPSHOTS = _ROOT / "tests" / "fixtures" / "mode_refactor"
 
@@ -175,6 +177,7 @@ def test_bc_learning_rate_warms_up_and_then_holds() -> None:
 def test_corrected_bc_matches_its_reviewed_snapshot() -> None:
     expected = json.loads((_SNAPSHOTS / "bc.json").read_text())
     resolved = resolve_profile(PROFILES["bc"])
+    apply_intended_divergence("bc", expected["train_config"])
 
     assert canonical_data(resolved.ship_config) == expected["ship_config"]
     assert canonical_data(resolved.model_config) == expected["model_config"]

@@ -79,7 +79,7 @@ REWARDS = RewardConfig(
     enemy_win_weight=1.5,
     facing_weight=0.1,
     closing_speed_weight=0.1,
-    shoot_quality_weight=0.1,
+    shoot_quality_weight=0.0,
     # Per-ship credit stays local under the lambda aggregation matrix.
     kill_shot_weight=1.0,
     kill_assist_weight=1.0,
