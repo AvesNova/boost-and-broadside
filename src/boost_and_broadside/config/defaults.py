@@ -182,10 +182,13 @@ def make_rl_schedule_spec() -> TrainingScheduleSpec:
     """Return independent declarative intent for the current RL schedule."""
 
     return TrainingScheduleSpec(
+        # Peak 4.5e-4, decaying to a third of it. The decay keypoints clamp, so a
+        # budget longer than 500M steps trains its tail at the floor rather than
+        # continuing to decay.
         learning_rate=join_spec(
-            (0, linear_spec((0, 1e-7), (5_000_000, 3e-4))),
-            (5_000_000, constant_spec(3e-4)),
-            (100_000_000, exponential_spec((100_000_000, 3e-4), (500_000_000, 1e-4))),
+            (0, linear_spec((0, 1e-7), (5_000_000, 4.5e-4))),
+            (5_000_000, constant_spec(4.5e-4)),
+            (100_000_000, exponential_spec((100_000_000, 4.5e-4), (500_000_000, 1.5e-4))),
         ),
         policy_gradient_coef=constant_spec(1.0),
         entropy_coef=constant_spec(0.005),

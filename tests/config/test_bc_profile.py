@@ -42,8 +42,9 @@ ALLOWED_TRAIN_CONFIG_DIFFERENCES = {
 # whole declarative expressions: a differing shape is a differing entry.
 ALLOWED_SCHEDULE_DIFFERENCES = {
     "learning_rate": (
-        "Same warmup to the same project learning rate, then hold.  RL's decay "
-        "tail is keyed to keypoints at the end of its own 500M-step budget."
+        "Same warmup shape, then hold.  BC keeps the 3e-4 target it was tuned "
+        "at; RL since moved its peak to 4.5e-4, and RL's decay tail is keyed to "
+        "keypoints at the end of its own 500M-step budget."
     ),
     "policy_gradient_coef": "Disabled: BC takes no policy gradient.",
     "behavior_cloning_coef": (

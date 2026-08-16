@@ -49,6 +49,20 @@ _INTENDED_DIVERGENCE: dict[str, dict[str, object]] = {
     },
 }
 
+# The RL learning-rate schedule was raised from a 3e-4 peak decaying to 1e-4, to
+# a 4.5e-4 peak decaying proportionally to 1.5e-4. Each moved number is named
+# rather than the schedule replaced wholesale, so a fourth value drifting would
+# still be caught. Paths walk the compiled closure the snapshot records:
+# segments[i][1] is the i-th segment's schedule.
+_RL_LEARNING_RATE_DIVERGENCE = {
+    "schedule.learning_rate.closure.segments.0.1.closure.values.1": 4.5e-4,  # warmup target
+    "schedule.learning_rate.closure.segments.1.1.closure.value": 4.5e-4,  # hold
+    "schedule.learning_rate.closure.segments.2.1.closure.values.0": 4.5e-4,  # decay start
+    "schedule.learning_rate.closure.segments.2.1.closure.values.1": 1.5e-4,  # decay floor
+}
+_INTENDED_DIVERGENCE["rl"].update(_RL_LEARNING_RATE_DIVERGENCE)
+_INTENDED_DIVERGENCE["rl-fields"].update(_RL_LEARNING_RATE_DIVERGENCE)
+
 
 def apply_intended_divergence(name: str, train_config: dict) -> None:
     """Move a recorded snapshot onto the values a profile has since chosen.
@@ -57,17 +71,25 @@ def apply_intended_divergence(name: str, train_config: dict) -> None:
     folded back into the snapshot fails here instead of silently weakening the
     comparison.
 
+    A numeric path segment indexes a list, so a compiled schedule closure can be
+    reached as precisely as a plain field.
+
     Args:
         name:          Registered profile name.
         train_config:  Snapshot ``train_config`` block, edited in place.
     """
+
+    def descend(container: object, key: str) -> object:
+        return container[int(key)] if isinstance(container, list) else container[key]
+
     for path, value in _INTENDED_DIVERGENCE.get(name, {}).items():
         target = train_config
         *parents, leaf = path.split(".")
         for key in parents:
-            target = target[key]
-        assert target[leaf] != value, f"{name}.{path} no longer diverges from its snapshot"
-        target[leaf] = value
+            target = descend(target, key)
+        index = int(leaf) if isinstance(target, list) else leaf
+        assert target[index] != value, f"{name}.{path} no longer diverges from its snapshot"
+        target[index] = value
 
 
 @pytest.mark.parametrize("name", ("rl", "rl-fields"))
@@ -284,18 +306,22 @@ def test_current_profile_and_resolved_fingerprints_are_stable() -> None:
     # All six moved again when shoot_quality_weight was set to 0. It is a base
     # reward weight, so every profile that builds on REWARDS carries the change.
     #
+    # The four RL values moved once more when the RL learning-rate peak went from
+    # 3e-4 to 4.5e-4 and its floor proportionally from 1e-4 to 1.5e-4. BC keeps
+    # its own warmup target and is unaffected.
+    #
     # Both rl-fields values moved again when its budget went from 500M to 1B
     # steps. total_timesteps is declared optimizer intent, and it also sets the
     # update count and the peak league width, so an rl-fields run recorded under
     # the 500M budget reads as drifted against this profile.
     expected = {
         "rl": (
-            "bb68ab1fef9aa748859d7de9b79d7a33f5a9de501a8a5ca0f2882d884dd4d7f8",
-            "1a713e912c583443a82773da31942027c0abfe3484b66d8422e51500051d91f7",
+            "eb59a8de6759d6f558803c514d7d29a9b24ea10409c8aa5193bf61c4c389a1b8",
+            "445bea16a9a6215f62fd0ef66c9223e02b562597794abeb418b43c077fc3960f",
         ),
         "rl-fields": (
-            "1f806159565f9ac8e62363dee74663b56bbdcb87ba454fcf4dc77dd35e88afaf",
-            "d2d94e6ca68d88442c8fa281f1e7c17acd8f414808c5256f11e74672296b95a3",
+            "41f381fd0a48ec6a00dddb779a86e5afdb306843bc25d3b85e9186b996283266",
+            "3629108db34a16fc95b39e99559e999e5145a824293d4f105342cb3887d002c6",
         ),
         "bc": (
             "87432c0b1102fca6f00640358047e8ba3014b5d58906800e3aabed7094d01565",
