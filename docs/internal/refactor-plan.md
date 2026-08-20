@@ -36,20 +36,23 @@ needed. Bank the artifacts first.
 
 ## Steps
 
-### 1. Resume fix + provenance hygiene — CPU
+### 1. Resume fix + provenance hygiene — CPU — **DONE** (`c090f88`, `ea78e93`)
 
-- [ ] Split a pure `_apply_schedule_state(step)` out of `_refresh_training_schedule`
+- [x] Split a pure `_apply_schedule_state(step)` out of `_refresh_training_schedule`
       (resolve schedule at step, compute `bc_factor` from the restored eval
       window, set the three coefficients, set optimizer LR explicitly, apply
       group scales to component weights + `refresh_component_weights()`)
-- [ ] Call it at the end of `load_checkpoint`
-- [ ] Regression test: drive BC to zero, save, load into a fresh trainer,
+- [x] Call it at the end of `load_checkpoint`
+- [x] Regression test: drive BC to zero, save, load into a fresh trainer,
       assert coefficient-for-coefficient equality. **Must fail before the fix.**
-- [ ] Test that the first post-resume update is in-family (`bc_loss == 0`, KL normal)
-- [ ] `run.json` records git SHA + dirty flag
-- [ ] A hard crash records `status: failed` (today it still says `running`)
+- [x] Test that the first post-resume update is in-family (`bc_loss == 0`, KL normal)
+- [x] `run.json` records git SHA + dirty flag
+- [x] A hard crash records `status: failed` (today it still says `running`)
 
-Done when: new tests pass, full suite green, `bnb smoke` green.
+All three resume tests were confirmed failing before the fix and passing after;
+they live in `tests/train/test_checkpoint.py::TestResumeRestoresScheduleState`.
+Full suite 1575 passed, `bnb smoke` 17/17.
+
 Blocks: step 9.
 
 ### 2. 719 completes
@@ -102,7 +105,7 @@ Each sub-step independently shippable; run suite + smoke after each.
       `resolve.py`
 - [ ] **5c** Flatten schedules to `[step, value, interp]` keypoint tables
       (verified bit-identical on the real LR schedule — see Findings)
-- [ ] **5d** `runs/<name>/config.json` holding intent + source + overrides +
+- [ ] **5d** `checkpoints/<run>/config.json` holding intent + source + overrides +
       code provenance; written once, never rewritten; resume reads it
 - [ ] **5e** Positional `key=value` overrides; `--continue RUN`;
       `--from RUN [--at STEP]`. Unknown path / derived field / type mismatch → error
