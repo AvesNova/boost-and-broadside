@@ -24,8 +24,11 @@ import os
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from enum import StrEnum
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
+
+from boost_and_broadside.artifacts.provenance import code_provenance
 
 SCHEMA_VERSION = 1
 MANIFEST_NAME = "run.json"
@@ -37,6 +40,21 @@ class RunStatus(StrEnum):
     RUNNING = "running"
     INTERRUPTED = "interrupted"
     COMPLETE = "complete"
+    FAILED = "failed"
+
+
+@lru_cache(maxsize=1)
+def code_identity() -> tuple[str | None, bool | None]:
+    """The commit the running code came from, and whether it was modified.
+
+    Cached: a manifest is rewritten every update, and the checkout a live
+    process runs from cannot change under it. ``None`` for both means there was
+    no checkout to interrogate -- an installed wheel -- which is recorded as
+    unknown rather than guessed at.
+    """
+
+    code = code_provenance()
+    return code["git_commit"], code["git_dirty"]
 
 
 @dataclass(frozen=True)
@@ -62,6 +80,10 @@ class RunManifest:
     seed: int | None = None
     resolved_config_fingerprint: str | None = None
     wandb_run_id: str | None = None
+    # Which code produced the run. A dirty checkout means the commit alone does
+    # not describe what ran, so the two are only useful together.
+    git_commit: str | None = None
+    git_dirty: bool | None = None
 
     def document(self) -> dict[str, Any]:
         return {"schema_version": SCHEMA_VERSION, **asdict(self), "status": str(self.status)}

@@ -170,6 +170,13 @@ def _run_trainer(trainer: PPOTrainer) -> None:
         trainer.save_final_checkpoint()
         trainer.record_run_status(RunStatus.INTERRUPTED)
         trainer.shutdown()
+    except BaseException:
+        # A run that died leaves a manifest saying "running" otherwise, which
+        # reads as a live process to anything selecting a run to resume. No
+        # final save: the failure may be exactly what makes the trainer's state
+        # unsafe to write, and the last scheduled checkpoint is already on disk.
+        trainer.record_run_status(RunStatus.FAILED)
+        raise
 
 
 def _resume_subject_for(args: argparse.Namespace) -> str | None:
