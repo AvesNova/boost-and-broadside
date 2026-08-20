@@ -58,6 +58,7 @@ from boost_and_broadside.evaluation.agents import (
 from boost_and_broadside.evaluation.environment import (
     create_evaluation_field_map,
     resolve_evaluation_environment,
+    run_field_map,
 )
 from boost_and_broadside.evaluation.run_catalog import resolve_exact_run
 from boost_and_broadside.evaluation.subjects import (
@@ -416,7 +417,7 @@ def run_elo_calibrate_mode(
             raise FileNotFoundError(f"no roster.json in {run_dir}; nothing to calibrate")
 
         roster = json.loads(roster_path.read_text())
-        env_config, model_config, paradigm = load_run_config(run_dir)
+        env_config, model_config, paradigm, field_map_config = load_run_config(run_dir)
         print(f"\n=== Elo calibration: {run_dir.name} ===")
         print(
             f"  {env_config.num_ships} ships, {paradigm}, "
@@ -460,6 +461,7 @@ def run_elo_calibrate_mode(
             num_envs,
             device,
             include_bullets=model_config.reads_bullets,
+            field_map=run_field_map(ship_config, env_config, field_map_config, device),
         )
         pairs = len(players) * (len(players) - 1) // 2
         progress.stage(

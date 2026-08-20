@@ -61,6 +61,25 @@ def create_evaluation_field_map(
     )
 
 
+def run_field_map(
+    ship_config: ShipConfig,
+    env_config: EnvConfig,
+    field_map_config: FieldMapConfig | None,
+    device: str | torch.device,
+) -> FieldMapCache | None:
+    """Regenerate the map distribution a fields run trained on, or nothing.
+
+    Evaluation modes that rate a finished run read the run's own field-map
+    intent rather than a profile's: the run is the subject, and the maps it
+    trained on are part of what is being rated.
+    """
+
+    if field_map_config is None or env_config.num_fields <= 0:
+        return None
+    print(f"  generating field map cache ({field_map_config.cache_size} maps)...")
+    return create_evaluation_field_map(ship_config, env_config, field_map_config, device)
+
+
 def create_evaluation_env(
     num_envs: int,
     ship_config: ShipConfig,

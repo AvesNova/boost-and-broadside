@@ -15,7 +15,13 @@ from boost_and_broadside.agents.semi_random_scripted import (
 )
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
-from boost_and_broadside.config import EloCalibrateConfig, EnvConfig, ModelConfig, ShipConfig
+from boost_and_broadside.config import (
+    EloCalibrateConfig,
+    EnvConfig,
+    FieldMapConfig,
+    ModelConfig,
+    ShipConfig,
+)
 from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.evaluation.agents import ResolvedAgent
 from boost_and_broadside.evaluation.environment import create_evaluation_env
@@ -167,12 +173,17 @@ class BatchStat:
     ratings: list[float] = field(default_factory=list)
 
 
-def load_run_config(run_dir: Path) -> tuple[EnvConfig, ModelConfig, str]:
-    """Recover the environment, model, and paradigm the run actually trained under.
+def load_run_config(
+    run_dir: Path,
+) -> tuple[EnvConfig, ModelConfig, str, FieldMapConfig | None]:
+    """Recover the environment, model, paradigm, and field distribution a run trained under.
 
     Ladder snapshots are policy-only, so this reads the resumable checkpoint.
     Calibrating under a different ship count or paradigm than the run used would
-    measure a different game than the one the counts came from.
+    measure a different game than the one the counts came from -- and for a run
+    with fields, so would a different map distribution, which is why the
+    field-map intent comes back with the rest rather than being rebuilt from
+    whatever the current profile happens to say.
     """
     try:
         selected = select_final_training_checkpoint(run_dir)
@@ -185,8 +196,20 @@ def load_run_config(run_dir: Path) -> tuple[EnvConfig, ModelConfig, str]:
     require_observation_schema(checkpoint, str(selected.path))
     env_config = EnvConfig(**checkpoint["env_config"])
     model_config = ModelConfig(**checkpoint["model_config"])
-    paradigm = checkpoint.get("train_config", {}).get("paradigm", "ego_pass")
-    return env_config, model_config, paradigm
+    train_config = checkpoint.get("train_config", {})
+    paradigm = train_config.get("paradigm", "ego_pass")
+    field_map = train_config.get("field_map")
+    if env_config.num_fields > 0 and field_map is None:
+        raise InvalidCheckpointError(
+            f"{run_dir.name} trained with {env_config.num_fields} fields but records no "
+            f"field-map intent; it cannot be evaluated on the distribution it trained on"
+        )
+    return (
+        env_config,
+        model_config,
+        paradigm,
+        None if field_map is None else FieldMapConfig(**field_map),
+    )
 
 
 def load_ladder_policy(

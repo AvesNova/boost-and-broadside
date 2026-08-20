@@ -20,6 +20,7 @@ import torch
 
 from boost_and_broadside.artifacts import ArtifactRecipe, ArtifactStore, file_sha256
 from boost_and_broadside.config import EloCalibrateConfig, ShipConfig
+from boost_and_broadside.evaluation.environment import run_field_map
 from boost_and_broadside.evaluation.run_catalog import (
     InvalidCheckpointError,
     resolve_exact_run,
@@ -214,7 +215,7 @@ def run_elo_scale_mode(
     """Run or resume checkpoint tournaments across symmetric team sizes."""
     run_dir = resolve_exact_run(run_spec, checkpoint_dir).path
     roster = json.loads((run_dir / "roster.json").read_text())
-    base_env, model_config, paradigm = load_run_config(run_dir)
+    base_env, model_config, paradigm, field_map_config = load_run_config(run_dir)
     final_path = select_final_training_checkpoint(run_dir).path
     metadata = _player_metadata(run_dir, roster, final_path)
     labels = [record["label"] for record in metadata]
@@ -272,7 +273,13 @@ def run_elo_scale_mode(
             raise ValueError("loaded tournament field does not match stored metadata")
         env_config = replace(base_env, num_ships=total_ships)
         tournament = Tournament(
-            players, ship_config, env_config, paradigm, num_envs, device
+            players,
+            ship_config,
+            env_config,
+            paradigm,
+            num_envs,
+            device,
+            field_map=run_field_map(ship_config, env_config, field_map_config, device),
         )
         initial_stats = _restore_tournament(tournament, stored)
         random_index = labels.index("random")
