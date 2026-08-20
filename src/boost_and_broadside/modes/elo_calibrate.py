@@ -86,6 +86,12 @@ from boost_and_broadside.train.rl.bradley_terry import (
 # changes every update, exactly like the live policy it is measured against.
 _NON_STATIONARY = frozenset({"avg"})
 
+# The saved best-so-far policies, rated in the same tournament as the ladder and
+# the final checkpoint. Their frozen files *are* stationary -- unlike the live
+# "avg" opponent above -- and whether a run's final policy is actually its
+# strongest is only answerable inside a single fit.
+BEST_POLICY_NAMES: tuple[str, ...] = ("training", "avg")
+
 # How draws enter the likelihood.
 #
 #   "half_win" — a draw is half a win to each side. The default, and the
@@ -427,6 +433,7 @@ def run_elo_calibrate_mode(
             env_config.num_ships,
             device,
             reference_probabilities=config.reference_probabilities,
+            best_names=BEST_POLICY_NAMES,
         )
         progress.done(f"field ({len(players)}): {', '.join(p.label for p in players)}")
         anchor = next(i for i, p in enumerate(players) if p.label == "random")

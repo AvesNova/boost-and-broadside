@@ -360,6 +360,41 @@ class TestBuildPlayersField:
         ]
         assert all(p.agent.kind == "semi_random" for p in players[2:])
 
+    def test_best_policies_join_the_same_field(self, tmp_path):
+        """Ratings are only comparable within one fit, so "is the final policy
+        really the strongest one this run produced" has to be one tournament."""
+        from boost_and_broadside.config import ModelConfig
+        from boost_and_broadside.modes.elo_calibrate import BEST_POLICY_NAMES, build_players
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        trainer._global_step = 256
+        trainer._live_elo = 10.0
+        trainer._maybe_save_best_checkpoints()
+        trainer._active_best_thread.join(timeout=60)
+        run_dir = Path(tmp_path) / trainer.run_name
+        trainer.shutdown()
+
+        players = build_players(
+            run_dir,
+            {"entries": []},
+            ModelConfig(d_model=32, n_heads=4, n_yemong_blocks=1),
+            ShipConfig(),
+            4,
+            "cpu",
+            best_names=BEST_POLICY_NAMES,
+        )
+
+        # best_avg is absent -- the averaged model never started -- and an absent
+        # best policy is skipped rather than raised on.
+        assert [p.label for p in players] == ["random", "scripted", "best_training"]
+        best = players[-1]
+        assert best.agent.kind == "policy"
+        assert best.global_step == 256
+        # None: a best-so-far selection is not a point on the live trajectory,
+        # and the rung-to-rung report keys off a live rating to stay one.
+        assert best.live_elo is None
+
     def test_endpoint_probability_is_rejected(self, tmp_path):
         from boost_and_broadside.modes.elo_calibrate import build_players
 

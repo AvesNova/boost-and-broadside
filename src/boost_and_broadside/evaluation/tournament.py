@@ -228,17 +228,22 @@ def build_players(
     device: str,
     reference_probabilities: tuple[float, ...] = (),
     final_label: str | None = None,
+    best_names: tuple[str, ...] = (),
 ) -> list[Player]:
     """Assemble the tournament field.
 
     The field is random, the scripted controller, optional semi-random reference
-    rungs between them, every ladder snapshot, and the run's final checkpoint.
+    rungs between them, every ladder snapshot, the run's final checkpoint, and
+    any ``best_<name>.pt`` policies named in ``best_names``.
     The random anchor comes first so it can serve as the fallback rating gauge.
     The rungs cost batch budget but repair the field's weakest link: without
     them, random connects to everything else only through near-certain games.
     The final checkpoint is included so the endpoint of the calibrated curve is
     pinned by a full tournament rating rather than only by the last update's
-    online record.
+    online record. The best policies belong in the same tournament rather than a
+    separate one for the same reason a ladder does: ratings are only comparable
+    within a fit, so asking whether a run's final policy is really its strongest
+    means playing them against each other and the same field.
     """
     players = [Player("random", ResolvedAgent("random", None), 0.0, 0)]
     scripted = StochasticScriptedAgent(ship_config, StochasticAgentConfig())
@@ -311,6 +316,34 @@ def build_players(
                     final_step,
                 )
             )
+            ladder_steps.add(final_step)
+
+    # Best-so-far snapshots. live_elo stays None: they are selections out of the
+    # trajectory rather than points on it, and the rung-to-rung comparison keys
+    # off a live rating precisely so it reports the trajectory only.
+    for name in best_names:
+        try:
+            best = select_named_best_policy(run_dir, name)
+        except CheckpointNotFoundError:
+            print(f"  [warn] no best_{name}.pt in {run_dir.name}, skipping")
+            continue
+        bundle = load_policy_bundle(
+            str(best.path),
+            device=device,
+            num_ships=num_ships,
+            ship_config=ship_config,
+            model_config=model_config,
+        )
+        if bundle.global_step in ladder_steps:
+            print(
+                f"  [warn] best_{name}.pt is step {bundle.global_step}, already in the "
+                f"field; skipping"
+            )
+            continue
+        ladder_steps.add(bundle.global_step)
+        players.append(
+            Player(f"best_{name}", ResolvedAgent("policy", bundle.policy), None, bundle.global_step)
+        )
     return players
 
 
