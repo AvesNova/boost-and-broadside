@@ -16,6 +16,7 @@ import torch
 from boost_and_broadside.run_manifest import (
     RunManifest,
     RunStatus,
+    code_identity,
     read_manifest,
     write_manifest,
 )
@@ -348,6 +349,7 @@ class CheckpointMixin:
         launch = self.launch_provenance or {}
         resolved = self.resolved_config_document or {}
         run_id_path = self._run_directory() / "wandb_run_id.txt"
+        git_commit, git_dirty = code_identity()
         write_manifest(
             self._run_directory(),
             RunManifest(
@@ -364,6 +366,8 @@ class CheckpointMixin:
                 wandb_run_id=(
                     run_id_path.read_text().strip() if run_id_path.is_file() else None
                 ),
+                git_commit=git_commit,
+                git_dirty=git_dirty,
             ),
         )
 
@@ -849,6 +853,11 @@ class CheckpointMixin:
         if roster_path.exists():
             self.roster.load_json(roster_path)
             self._register_special_opponents()
+
+        # Schedule-derived state is not stored -- it is a pure function of the
+        # restored step and eval window, and rebuilding it here is what keeps the
+        # first post-resume update from running with step-zero coefficients.
+        self._apply_schedule_state(self._global_step)
 
         print(
             f"Checkpoint loaded from: {path} (resuming from update {self._start_update}, "

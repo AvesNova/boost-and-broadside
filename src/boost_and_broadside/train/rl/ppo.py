@@ -1145,9 +1145,19 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             logical_buffers.append(LogicalRolloutBuffer(stored_shards, adv_rms))
         return logical_buffers
 
-    def _refresh_training_schedule(self, metrics: dict, elo_eval: EloEvaluator) -> None:
-        """Refresh schedule-controlled optimization, reward, and averaging state."""
-        self._schedule_state = _resolve_schedule(self.cfg.schedule, self._global_step)
+    def _apply_schedule_state(self, step: int) -> float:
+        """Resolve the schedule at ``step`` and apply every value it controls.
+
+        Pure in the sense that matters: it reads ``step`` and the restored eval
+        window and writes the coefficients, the optimizer learning rate, and the
+        reward-component weights, without touching the averaging or league state
+        that only an update boundary should advance. That makes it safe to call
+        from ``load_checkpoint``, which must reproduce the coefficients the run
+        had when it stopped rather than inherit the step-zero values ``__init__``
+        computed. Returns the behavior-cloning decay factor, which the caller
+        needs for the cutoff streak.
+        """
+        self._schedule_state = _resolve_schedule(self.cfg.schedule, step)
         self._policy_gradient_coef = self._schedule_state.policy_gradient_coef
         # BC aux loss decays linearly with the win rate against the scripted
         # agent, reaching zero at bc_winrate_target (full strength before any
@@ -1166,6 +1176,12 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             raw_weight = getattr(self.cfg.rewards, f"{component.name}_weight")
             component.weight = raw_weight * getattr(self._schedule_state, _GROUP[component.name])
         self.wrapper.refresh_component_weights()
+        return bc_factor
+
+    def _refresh_training_schedule(self, metrics: dict, elo_eval: EloEvaluator) -> None:
+        """Refresh schedule-controlled optimization, reward, and averaging state."""
+        bc_factor = self._apply_schedule_state(self._global_step)
+        window_sc = self._eval_window_sc
 
         metrics["schedule/learning_rate"] = self._schedule_state.learning_rate
         metrics["schedule/policy_gradient_coef"] = self._policy_gradient_coef

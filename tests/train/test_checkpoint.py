@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 import torch
 
+from boost_and_broadside.config import constant, stepped
 from boost_and_broadside.train.rl.checkpoint import (
     OPTIONAL_CHECKPOINT_FIELDS,
     POLICY_CHECKPOINT_FIELDS,
@@ -957,6 +958,43 @@ class TestRunManifest:
         # The record it was tracking is untouched by the status change.
         assert (manifest.global_step, manifest.update) == (4096, 3)
 
+    def test_the_manifest_records_which_code_produced_the_run(self, tmp_path):
+        """A commit alone does not describe a run made from a modified checkout."""
+        from boost_and_broadside.run_manifest import code_identity, read_manifest
+
+        trainer = self._trainer(tmp_path)
+        trainer._global_step = 4096
+        trainer._maybe_save_checkpoint(update=3)
+        trainer._active_save_thread.join(timeout=60)
+
+        manifest = read_manifest(Path(tmp_path) / trainer.run_name)
+
+        assert manifest is not None
+        assert (manifest.git_commit, manifest.git_dirty) == code_identity()
+
+    def test_a_crashed_run_is_recorded_as_failed(self, tmp_path):
+        """Otherwise the manifest still says "running" and reads as a live process."""
+        from boost_and_broadside.cli_commands import _run_trainer
+        from boost_and_broadside.run_manifest import RunStatus, read_manifest
+
+        trainer = self._trainer(tmp_path)
+        trainer._global_step = 4096
+        trainer._maybe_save_checkpoint(update=3)
+        trainer._active_save_thread.join(timeout=60)
+
+        def explode():
+            raise RuntimeError("CUDA error: device-side assert triggered")
+
+        trainer.train = explode
+        with pytest.raises(RuntimeError, match="device-side assert"):
+            _run_trainer(trainer)
+
+        manifest = read_manifest(Path(tmp_path) / trainer.run_name)
+        assert manifest is not None
+        assert manifest.status is RunStatus.FAILED
+        # The record the last successful save made is left as it was.
+        assert (manifest.global_step, manifest.update) == (4096, 3)
+
     def test_a_run_with_no_checkpoint_gets_no_manifest(self, tmp_path):
         """Checkpointing switched off means nothing to resume, so nothing to list
         -- and no directory written for a trainer that only ever ran."""
@@ -1076,3 +1114,100 @@ class TestBestCheckpoints:
         # Save was skipped (slot busy), so the bar must not have moved.
         assert trainer._best_live_elo == mark_before
         blocker.join(timeout=60)
+
+
+class TestResumeRestoresScheduleState:
+    """Schedule-derived runtime state has to be rebuilt at the restored step.
+
+    ``__init__`` computes the coefficients from the schedule at step zero, and
+    the loop refreshes them only *after* an update. So a resume that restores
+    everything else still entered its first update holding step-zero values —
+    most damagingly a behavior-cloning coefficient the run had already decayed
+    to zero, reapplied at full strength against a policy that had long outgrown
+    the scripted controller. On run 717 that cost ~400 Elo and 20 updates.
+    """
+
+    @staticmethod
+    def _schedule():
+        """Step-dependent LR and live BC, so step-zero state is distinguishable."""
+        from tests.train.test_ppo import _make_schedule
+
+        return _make_schedule(
+            learning_rate=stepped((0, 3e-4), (256, 5e-5)),
+            behavior_cloning_coef=constant(2.0),
+        )
+
+    def _saved_run(self, tmp_path):
+        """A run that reached step 512 already beating the scripted agent."""
+        from tests.train.test_ppo import _make_trainer
+
+        source = _make_trainer(checkpoint_dir=str(tmp_path / "source"), schedule=self._schedule())
+        source._global_step = 512
+        # A full window of scripted wins: past bc_winrate_target (0.9), so the
+        # decay factor is zero and BC has switched itself off.
+        source._eval_window_sc.extend([1.0] * source._eval_window_sc.maxlen)
+        saved = tmp_path / "step.pt"
+        torch.save(clone_to_cpu(source.checkpoint_payload(update=0)), saved)
+        source.shutdown()
+        return saved
+
+    def test_resume_applies_the_schedule_at_the_restored_step(self, tmp_path):
+        from tests.train.test_ppo import _make_trainer
+
+        saved = self._saved_run(tmp_path)
+        resumed = _make_trainer(checkpoint_dir=str(tmp_path / "resume"), schedule=self._schedule())
+        assert resumed._behavior_cloning_coef == 2.0  # step-zero state, pre-load
+
+        resumed.load_checkpoint(str(saved))
+
+        assert resumed._scripted_win_rate == 1.0
+        assert resumed._behavior_cloning_coef == 0.0
+        assert resumed._schedule_state.learning_rate == 5e-5
+        assert resumed.optim.param_groups[0]["lr"] == 5e-5
+        resumed.shutdown()
+
+    def test_resume_matches_the_state_a_refresh_would_have_produced(self, tmp_path):
+        """Coefficient for coefficient, against the loop's own refresh path."""
+        from tests.train.test_ppo import _make_trainer
+
+        saved = self._saved_run(tmp_path)
+        resumed = _make_trainer(checkpoint_dir=str(tmp_path / "resume"), schedule=self._schedule())
+        resumed.load_checkpoint(str(saved))
+        restored = (
+            resumed._schedule_state,
+            resumed._policy_gradient_coef,
+            resumed._behavior_cloning_coef,
+            resumed._entropy_coef,
+            resumed._scripted_win_rate,
+            [c.weight for c in resumed.wrapper.reward_components],
+        )
+
+        # The refresh the loop runs at the end of an update, from the same step
+        # and the same window: the state a resume is trying to reproduce.
+        resumed._refresh_training_schedule({}, elo_eval=None)
+
+        assert restored == (
+            resumed._schedule_state,
+            resumed._policy_gradient_coef,
+            resumed._behavior_cloning_coef,
+            resumed._entropy_coef,
+            resumed._scripted_win_rate,
+            [c.weight for c in resumed.wrapper.reward_components],
+        )
+        resumed.shutdown()
+
+    def test_the_first_post_resume_update_takes_no_behavior_cloning_loss(self, tmp_path):
+        """The consequence, at the training loop rather than at the loader."""
+        from tests.train.test_ppo import _make_trainer
+
+        saved = self._saved_run(tmp_path)
+        resumed = _make_trainer(checkpoint_dir=str(tmp_path / "resume"), schedule=self._schedule())
+        resumed.load_checkpoint(str(saved))
+        assert resumed._start_update == 1  # the loop really does run an update
+
+        logged = []
+        resumed._log_training_update = lambda metrics, *a, **k: logged.append(metrics)
+        resumed.train()
+
+        assert logged
+        assert logged[0]["loss/behavioral_cloning"] == 0.0

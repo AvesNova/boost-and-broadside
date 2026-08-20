@@ -107,6 +107,7 @@ def _make_train_config(
     checkpoint_dir: str = "checkpoints",
     min_games_to_freeze: int = 0,
     rollouts_per_update: int = 1,
+    schedule: TrainingSchedule | None = None,
     **reward_overrides,
 ) -> TrainConfig:
     return TrainConfig(
@@ -117,7 +118,7 @@ def _make_train_config(
                 num_envs=4,
             ),
         ),
-        schedule=_make_schedule(league_fraction=constant(league_fraction)),
+        schedule=schedule or _make_schedule(league_fraction=constant(league_fraction)),
         rewards=_make_rewards(**reward_overrides),
         num_steps=16,
         rollouts_per_update=rollouts_per_update,
@@ -161,6 +162,7 @@ def _make_trainer(
     rollouts_per_update: int = 1,
     device: str = "cpu",
     model_config: ModelConfig | None = None,
+    schedule: TrainingSchedule | None = None,
     **reward_overrides,
 ) -> PPOTrainer:
     ship_config = ShipConfig()
@@ -178,6 +180,7 @@ def _make_trainer(
             checkpoint_dir=checkpoint_dir,
             min_games_to_freeze=min_games_to_freeze,
             rollouts_per_update=rollouts_per_update,
+            schedule=schedule,
             **reward_overrides,
         ),
         model_config=model_config
