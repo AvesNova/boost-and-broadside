@@ -19,6 +19,7 @@ import torch
 from boost_and_broadside.artifacts import Artifact, ArtifactRecipe, ArtifactStore, file_sha256
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.evaluation.agents import resolve_agent_spec
+from boost_and_broadside.evaluation.environment import resolve_evaluation_environment
 from boost_and_broadside.evaluation.match import evaluate_matchup
 from boost_and_broadside.evaluation.run_catalog import (
     resolve_exact_run,
@@ -99,6 +100,13 @@ def run_crossover_mode(
     require_observation_schema(checkpoint_data, str(checkpoint))
     base_env = EnvConfig(**checkpoint_data["env_config"])
 
+    trained = resolve_agent_spec(str(checkpoint), ship_config, model_config, device, num_ships=2)
+    scripted = resolve_agent_spec("scripted", ship_config, model_config, device)
+    # The trained policy's own provenance decides the field distribution, and the
+    # recipe has to record the environment actually played, so this resolves
+    # before the artifact is opened rather than at the first matchup.
+    base_env, field_map_config = resolve_evaluation_environment(base_env, (trained, scripted))
+
     store = store or ArtifactStore(checkpoint_root=checkpoint_dir)
     recipe = ArtifactRecipe(
         artifact_type="crossover",
@@ -125,8 +133,6 @@ def run_crossover_mode(
     artifact, resumed = store.open_resumable(recipe, store.run_owner(run_dir.name))
     by_trained = _load_progress(artifact) if resumed else {}
 
-    trained = resolve_agent_spec(str(checkpoint), ship_config, model_config, device, num_ships=2)
-    scripted = resolve_agent_spec("scripted", ship_config, model_config, device)
     print(f"\n=== crossover: {run_dir.name}  ({num_envs} games/matchup, {device}) ===\n")
 
     # Ascending order makes the crossover monotonic, so each size warm-starts from
@@ -155,6 +161,7 @@ def run_crossover_mode(
                     ship_config,
                     base_env,
                     device,
+                    field_map_config=field_map_config,
                 )
                 curve[scripted_n] = _outcome_record(
                     t0_wins, t1_wins, ties, games, mean_episode_steps
