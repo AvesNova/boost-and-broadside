@@ -93,21 +93,15 @@ this.
 with converged win rates. Revisit only if a rating-vs-fleet-size figure with
 error bars is wanted.
 
-### 5. 719 comparison writeup — CPU
+### 5. Prior-runs log — **DONE**
 
-- [ ] Short section: 719 vs 682. **The raw calibrated Elos cannot be compared**
-      — see [the scales are stretched differently](#682-and-719-are-not-on-one-elo-scale).
-      Report the normalised figure with the random→scripted span shown as the
-      evidence for it, and the physics table alongside.
-- [ ] Compare what survives a physics change: crossover ratio, transfer shape.
-- [ ] **Descriptive only** — the runs differ in physics, fields, reward schema,
-      learning rate and budget, so nothing here is causal.
-- [ ] This is the only place 682 survives as a result.
-
-**USER DECISION PENDING:** framing — normalised only (recommended), raw and
-normalised side by side, or drop the Elo comparison entirely.
-
-Blocks: step 6.
+- [x] `docs/training-runs.md`: one short entry per completed run — what it did,
+      its headline settings, links to its artifacts. Deliberately brief and not
+      a comparison; the point is to show progress and that more than one run
+      succeeded.
+- [x] Ratings stated per run, with one closing note on why 682's and 719's are
+      not the same scale. 716 and 719 share physics, so those two *are* compared.
+- [ ] Link it from `evaluation.md` and the README nav during step 6.
 
 ### 6. Docs changeover — after step 5
 
