@@ -101,7 +101,7 @@ output = "docs/noise_calibration"
 description = "Next-state prediction error: sigma, autocorrelation, and AR growth."
 
 [publications.noise_calibration.artifacts]
-noise = "checkpoints/good-leaf-719/artifacts/noise-calibration/20260821T034241Z-de3e3299"
+noise = "checkpoints/good-leaf-719/artifacts/noise-calibration/20260821T231432Z-de3e3299"
 
 [publications.policy_architecture]
 renderer = "external-asset-v1"

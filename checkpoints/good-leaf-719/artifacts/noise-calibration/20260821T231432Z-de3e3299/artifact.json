@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
   "artifact_type": "noise-calibration",
-  "artifact_id": "20260821T034241Z-de3e3299",
+  "artifact_id": "20260821T231432Z-de3e3299",
   "status": "complete",
-  "created_at": "2026-08-21T03:42:41Z",
-  "updated_at": "2026-08-21T03:42:42Z",
+  "created_at": "2026-08-21T23:14:32Z",
+  "updated_at": "2026-08-21T23:14:32Z",
   "owner": {
     "kind": "run",
     "run": "good-leaf-719"
@@ -58,7 +58,7 @@
   },
   "execution": {
     "device": "cuda",
-    "seed": 1241897563393576,
+    "seed": 6698001588402271104,
     "compile_mode": null,
     "allow_config_drift": false,
     "gradient_diagnostics": {
@@ -68,8 +68,8 @@
     }
   },
   "code": {
-    "git_commit": "6102a82ac6ffed6c2e30a57bb049dc77422d399e",
-    "git_dirty": true,
+    "git_commit": "5c1deb0e3b9fb8111dee9b6bc245cdda035f18aa",
+    "git_dirty": false,
     "repository_available": true,
     "uv_lock_sha256": "eff32a47a4f866e4b4864030845339fe79c57bb888bde3fab76347f8c8afba93"
   },
@@ -98,13 +98,13 @@
   "files": [
     {
       "path": "result.json",
-      "sha256": "833ea4a1666dfd3708983627a95bc0fa06e2115f2b2cce047322e92a70bbb83f",
-      "bytes": 10652
+      "sha256": "a6bb9bf31922a94fe1db3e1f0d0914dd2de38c6daf15891ae3c037a693e914fd",
+      "bytes": 10639
     },
     {
       "path": "samples/phase1_errors.npz",
-      "sha256": "0b6acd75fe42e7041ed763960c1ca94f93fd548d9b6be954e3d6868eb345f296",
-      "bytes": 8038018
+      "sha256": "3642a0e353741f499ef3dd6a15708cf1265eeeec4d07ebe87111f7c7cb7afc25",
+      "bytes": 8032068
     }
   ],
   "samples_present": true
