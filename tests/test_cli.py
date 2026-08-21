@@ -29,6 +29,7 @@ EXPECTED_COMMANDS = (
     "noise-calibration",
     "feature-stats",
     "runs",
+    "figures",
     "publish",
     "smoke",
 )
@@ -47,6 +48,7 @@ VALID_ARGV = {
     "noise-calibration": ["--team0", "model.pt", "--team1", "scripted"],
     "feature-stats": ["--team0", "scripted", "--team1", "random"],
     "runs": [],
+    "figures": ["--run", "exact-run"],
     "publish": [],
     "smoke": [],
 }

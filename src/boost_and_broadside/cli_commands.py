@@ -527,6 +527,18 @@ def runtime_command_names() -> tuple[str, ...]:
     return tuple(_HANDLERS)
 
 
+def _figures(args: argparse.Namespace) -> None:
+    """Render a run's charts beside its measurements.
+
+    Grouped with publish rather than with the measurement modes: it plays no
+    games, needs no device, and reads only artifacts already on disk.
+    """
+
+    from boost_and_broadside.modes.figures import render_run_figures
+
+    render_run_figures(args.run, only=tuple(args.only))
+
+
 def execute(command: str, args: argparse.Namespace, argv: Sequence[str] | None = None) -> None:
     """Execute one completely parsed command.
 
@@ -541,6 +553,9 @@ def execute(command: str, args: argparse.Namespace, argv: Sequence[str] | None =
         return
     if command == "runs":
         _runs(args)
+        return
+    if command == "figures":
+        _figures(args)
         return
     try:
         handler = _HANDLERS[command]

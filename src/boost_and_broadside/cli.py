@@ -512,6 +512,20 @@ COMMANDS: tuple[CommandSpec, ...] = (
         ),
     ),
     CommandSpec(
+        "figures",
+        "Render one run's figure set into that run's own artifacts.",
+        (
+            _RUN,
+            _option(
+                "--only",
+                nargs="+",
+                default=(),
+                metavar="NAME",
+                help="Render only these figures (default: the whole set).",
+            ),
+        ),
+    ),
+    CommandSpec(
         "publish",
         "Render manifest-selected canonical publications offline.",
         (
