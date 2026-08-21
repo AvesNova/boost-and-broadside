@@ -75,9 +75,7 @@ Cost five latent bug fixes; see [the fields gap](#the-fields-gap-step-7).
 
 ### 4. Close out the loose ends — CPU
 
-- [ ] Full test suite; it has not run since `bnb figures` and the subtitle
-      removal (`9f4808a`, `6d073d5`). Publication, viz, CLI and artifact
-      subsets are green.
+- [x] Full test suite — **1594 passed** at `b91b152`.
 - [x] **Figures artifacts accumulated when they should replace.** 719 had two,
       identical recipe digests, *both committed*, the older carrying the
       subtitles since removed. `ArtifactStore.create_stable` gives a derived
@@ -97,10 +95,17 @@ error bars is wanted.
 
 ### 5. 719 comparison writeup — CPU
 
-- [ ] Short section: 719 vs 682 on calibrated Elo, scale, and crossover, plus
-      the config deltas. **Descriptive only** — the runs differ in fields,
-      reward schema, learning rate and budget, so nothing here is causal.
+- [ ] Short section: 719 vs 682. **The raw calibrated Elos cannot be compared**
+      — see [the scales are stretched differently](#682-and-719-are-not-on-one-elo-scale).
+      Report the normalised figure with the random→scripted span shown as the
+      evidence for it, and the physics table alongside.
+- [ ] Compare what survives a physics change: crossover ratio, transfer shape.
+- [ ] **Descriptive only** — the runs differ in physics, fields, reward schema,
+      learning rate and budget, so nothing here is causal.
 - [ ] This is the only place 682 survives as a result.
+
+**USER DECISION PENDING:** framing — normalised only (recommended), raw and
+normalised side by side, or drop the Elo comparison entirely.
 
 Blocks: step 6.
 
@@ -245,10 +250,60 @@ rate at equal numbers falls 99.2% → 95.1%), so the degradation there is real
 rather than the noise the ±50 alone would suggest. It is still a policy trained
 at 4v4 winning 95% at sixteen times its training width.
 
-### Cross-run comparison is valid to ~10 Elo
+### 682 and 719 are not on one Elo scale
 
-719 and 716 were fitted in separate tournaments, so their scales are only
-comparable if the shared stationary field agrees. It does: every rung matches
+Elo is only defined within a pool playing one game, and these two played
+different games. The stationary rungs, which are the same agents in both fits,
+land in completely different places:
+
+| rung | 682 | 719 | diff |
+|---|---:|---:|---:|
+| random | **−335.3** | **+137.5** | +472.8 |
+| `semi_scripted_0p2` | −199.6 | 228.6 | +428.2 |
+| `semi_scripted_0p5` | 328.6 | 538.1 | +209.4 |
+| `semi_scripted_0p8` | 735.0 | 821.7 | +86.7 |
+| `semi_scripted_0p95` | 934.7 | 950.1 | +15.4 |
+| scripted | 1000.0 | 1000.0 | — |
+
+The random→scripted span is **1335 Elo under 682's physics and 862 under
+719's**. Anchoring scripted at 1000 pins one point; it does not fix the spacing.
+
+The cause is that the two runs trained under different physics, not merely
+different field counts:
+
+| | 682 | 719 |
+|---|---:|---:|
+| `bullet_min_damage_frac` | 0.1 | **1.0** |
+| `bullet_energy_cost` | 3.0 | **2** |
+| `max_bullets` | 20 | **10** |
+| `action_repeat` | 1 | **2** |
+| `spawn_resource_spread` | 0.0 | **0.25** |
+| `num_fields` | 0 | **4** |
+| bullet encoder | **none** | reads bullets |
+
+Under 719's rules every bullet hits for full damage and shooting is cheaper, so
+random flailing is far more dangerous and the ladder compresses. That is a
+property of the game, not of either policy.
+
+Consequently:
+
+```
+final, raw:             682  1772.2   719  1748.4   <- 682 higher by 23.8
+final, in ladder spans: 682   0.578   719   0.868   <- 719 ahead by 50%
+```
+
+Both come from the same data and point opposite ways. Normalised to the
+random→scripted distance, 719 sits 0.87 spans above scripted against 682's 0.58.
+
+This also killed the head-to-head idea: any arena is one run's home ground, and
+682 additionally has no bullet encoder, so it would be blind to bullets that now
+hit for full damage. It would have measured whose physics the arena used.
+
+### Cross-run comparison within one physics is valid to ~10 Elo
+
+719 and 716 share physics, unlike 682. They were fitted in separate tournaments,
+so their scales are only comparable if the shared stationary field agrees. It
+does — and this is the check that fails for 682: every rung matches
 between the two fits within **9.9 Elo** (`0p5`: 538.1 vs 529.1; `0p8`: 821.7 vs
 819.4). So **719 finishes +114 over 716** is a real statement — descriptively.
 The runs differ in learning rate, shoot-quality weighting and budget.
