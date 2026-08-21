@@ -6,6 +6,16 @@ __pycache__/
 checkpoints/*
 # Landmark runs (baselines future work forks from) are kept in-repo via git-lfs.
 !checkpoints/resilient-resonance-682/
+!checkpoints/good-leaf-719/
+# A landmark keeps the checkpoints something cites: the final resumable state,
+# the averaged model beside it, the ladder the calibration tournament rates, and
+# the two best-so-far policies. Checkpointing runs every update, so the rolling
+# prune leaves the two previous step/avg pairs on disk as well -- 159 MB that no
+# artifact, roster entry, or document refers to.
+checkpoints/good-leaf-719/step_000997318656.pt
+checkpoints/good-leaf-719/step_000998313984.pt
+checkpoints/good-leaf-719/avg_step_000997318656.pt
+checkpoints/good-leaf-719/avg_step_000998313984.pt
 *.zip
 *.log
 data/
