@@ -96,12 +96,7 @@ def plot_live_curve(result: dict, path: Path) -> Path:
     axes = figure.add_subplot(grid[0])
     lower = figure.add_subplot(grid[1], sharex=axes)
 
-    _style_axes(
-        axes,
-        f"Live Elo vs calibrated Elo  —  {_subject(result)}",
-        "Each update's rating refit from its own win/loss record against "
-        f"post-hoc measured opponents (reference: {result.get('reference', 'n/a')})",
-    )
+    _style_axes(axes, f"Live Elo vs calibrated Elo  —  {_subject(result)}")
     _draw_reference_lines(axes, _reference_lines(result))
     axes.fill_between(
         steps[good],
@@ -136,12 +131,7 @@ def plot_live_curve(result: dict, path: Path) -> Path:
 
     axes.tick_params(labelbottom=False)  # x is labelled once, on the lower panel
 
-    offset = result.get("anchor_offset_stderr")
-    _style_axes(
-        lower,
-        subtitle="Gap between the two curves — a near-constant offset means the shape is right "
-        + (f"(the anchor shift carries ±{offset:.0f} in common)" if offset else ""),
-    )
+    _style_axes(lower)
     drift = np.where(good, calibrated - training, np.nan)
     lower.axhline(0.0, color=INK_MUTED, linewidth=1.0, zorder=2)
     lower.plot(steps, drift, color=INK_SECONDARY, linewidth=1.6, zorder=3)
@@ -177,11 +167,7 @@ def plot_avg_curve(result: dict, path: Path) -> Path:
 
     figure = _new_figure((11.0, 6.0))
     axes = figure.add_subplot(111)
-    _style_axes(
-        axes,
-        f"Averaged-policy Elo: live vs calibrated  —  {_subject(result)}",
-        "Rated through the live policy it plays, so its error is the live curve's plus its own",
-    )
+    _style_axes(axes, f"Averaged-policy Elo: live vs calibrated  —  {_subject(result)}")
     _draw_reference_lines(axes, _reference_lines(result))
     axes.fill_between(
         steps[good],
@@ -259,11 +245,7 @@ def plot_live_and_avg(result: dict, path: Path) -> Path:
 
     figure = _new_figure((11.0, 6.0))
     axes = figure.add_subplot(111)
-    _style_axes(
-        axes,
-        f"Calibrated Elo: live vs averaged policy  —  {_subject(result)}",
-        f"Both refit from their own records ({_TIE_LABEL.get(result.get('tie_mode', ''), '')})",
-    )
+    _style_axes(axes, f"Calibrated Elo: live vs averaged policy  —  {_subject(result)}")
     _draw_reference_lines(axes, _reference_lines(result))
     ends = []
     for values, error, color, short, label in series:
@@ -343,12 +325,7 @@ def plot_tie_conventions(result: dict, path: Path) -> Path:
 
     figure = _new_figure((11.0, 6.4))
     axes = figure.add_subplot(111)
-    _style_axes(
-        axes,
-        f"Calibrated Elo under both draw conventions  —  {_subject(result)}",
-        "Ties as half a win puts the calibrated curve on the same scale the run "
-        "itself used; dropping them rescales the anchor",
-    )
+    _style_axes(axes, f"Calibrated Elo under both draw conventions  —  {_subject(result)}")
     _draw_reference_lines(axes, _reference_lines(result))
     ends = []
     for values, good, color, short, label in series:
@@ -392,11 +369,7 @@ def plot_calibrated_only(result: dict, path: Path, tie_mode: str) -> Path:
     figure = _new_figure((11.0, 6.0))
     axes = figure.add_subplot(111)
     _style_axes(
-        axes,
-        f"Calibrated Elo — {_TIE_LABEL.get(tie_mode, tie_mode)}  —  {_subject(result)}",
-        f"Refit from each update's own record; shaded band is ±1 SE "
-        f"(ratings pinned to ±{result['target_stderr']:.0f} against "
-        f"{result.get('reference', 'the reference')})",
+        axes, f"Calibrated Elo — {_TIE_LABEL.get(tie_mode, tie_mode)}  —  {_subject(result)}"
     )
     reference_key = "calibrated_elo" if is_primary else "calibrated_elo_alt"
     _draw_reference_lines(axes, _reference_lines(result, reference_key))
@@ -441,12 +414,7 @@ def plot_checkpoint_ratings(result: dict, path: Path) -> Path:
 
     figure = _new_figure((10.5, 0.52 * len(players) + 2.6))
     axes = figure.add_subplot(111)
-    _style_axes(
-        axes,
-        f"Ladder checkpoint ratings: live vs calibrated  —  {_subject(result)}",
-        "Each rung as the run recorded it, and as a full tournament measures it; "
-        f"errors are relative to {result.get('reference', 'the reference')}",
-    )
+    _style_axes(axes, f"Ladder checkpoint ratings: live vs calibrated  —  {_subject(result)}")
     for position, start, end in zip(positions, training, calibrated):
         axes.plot([start, end], [position, position], color=GRID, linewidth=2.4, zorder=2)
     axes.scatter(
@@ -516,12 +484,7 @@ def plot_convergence(result: dict, path: Path) -> Path:
 
     figure = _new_figure((10.0, 5.6))
     axes = figure.add_subplot(111)
-    _style_axes(
-        axes,
-        "Tournament convergence",
-        "Standard error after each adaptive batch; games are allocated to whichever "
-        "pairings reduce total rating variance most",
-    )
+    _style_axes(axes, "Tournament convergence")
     target = result["target_stderr"]
     axes.axhline(target, color=INK_MUTED, linewidth=1.2, linestyle=(0, (5, 4)), zorder=2)
     axes.annotate(
@@ -606,12 +569,8 @@ def plot_tie_rates(result: dict, path: Path) -> Path:
     grid = figure.add_gridspec(1, 2, wspace=0.2)
     left = figure.add_subplot(grid[0])
     right = figure.add_subplot(grid[1])
-    _style_axes(
-        left,
-        "Draw rate vs matchup level",
-        "Draws concentrate at the weak end, whatever the gap",
-    )
-    _style_axes(right, "Draw rate vs rating gap", "The same points, against difference instead")
+    _style_axes(left, "Draw rate vs matchup level")
+    _style_axes(right, "Draw rate vs rating gap")
 
     # Tournament pairs cover the trained ladder; the training record is what
     # reaches down to the near-random level, where every draw actually happened.

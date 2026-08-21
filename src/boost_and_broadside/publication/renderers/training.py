@@ -171,7 +171,6 @@ def _render_next_state_error(inputs: RenderInputs, out_dir: Path) -> list[Path]:
             ],
             out_dir / "next_state_error.png",
             title="Next-state prediction error by dimension",
-            subtitle="Symmetric spatial channels (x/y) averaged; normalised error, log scale",
             ylabel="prediction error (normalised)",
             log_y=True,
             size=(10.5, 6.2),

@@ -60,8 +60,14 @@ def new_figure(size=(11.0, 6.0)):
     return plt.figure(figsize=size, dpi=160, facecolor=SURFACE)
 
 
-def style_axes(axes, title: str = "", subtitle: str = "") -> None:
-    """Recessive grid and axes; titles in ink, never in a series colour."""
+def style_axes(axes, title: str = "") -> None:
+    """Recessive grid and axes; titles in ink, never in a series colour.
+
+    A title names the panel and nothing else. What the reader can see for
+    themselves is not worth the space, and a claim about the shape of the data
+    is prose -- it belongs in the document, where it can be revised without
+    re-rendering, and where it cannot go stale against the figure beneath it.
+    """
     axes.set_facecolor(SURFACE)
     axes.grid(True, color=GRID, linewidth=0.8, zorder=0)
     axes.set_axisbelow(True)
@@ -71,17 +77,7 @@ def style_axes(axes, title: str = "", subtitle: str = "") -> None:
         axes.spines[side].set_color(BASELINE)
     axes.tick_params(colors=INK_SECONDARY, labelsize=9, length=0)
     if title:
-        # Pad leaves room for the subtitle, offset in points rather than axes
-        # fractions so the gap does not shrink as the panel gets shorter.
-        axes.set_title(
-            title, color=INK, fontsize=13, fontweight="semibold", loc="left",
-            pad=30 if subtitle else 12,
-        )
-    if subtitle:
-        axes.annotate(
-            subtitle, xy=(0.0, 1.0), xycoords="axes fraction", xytext=(0, 7),
-            textcoords="offset points", color=INK_MUTED, fontsize=9.5, va="bottom",
-        )
+        axes.set_title(title, color=INK, fontsize=13, fontweight="semibold", loc="left", pad=12)
 
 
 def label_series_ends(axes, entries: list[tuple[float, float, str, str]]) -> None:

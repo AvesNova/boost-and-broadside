@@ -94,12 +94,7 @@ def ratio_chart(trained, beats, crossover, out: Path) -> Path:
     """Scripted-controlled ships beaten per policy-controlled ship."""
     figure = style.new_figure((10.0, 5.8))
     axes = figure.add_subplot(111)
-    style.style_axes(
-        axes,
-        "Numerical advantage per policy-controlled ship",
-        "Scripted-controlled ships defeated for each policy-controlled ship; the edge peaks for "
-        "mid-sized teams (~1.5x), then eases toward ~1.35x",
-    )
+    style.style_axes(axes, "Numerical advantage per policy-controlled ship")
     ratio = beats / trained
 
     axes.axhline(1.0, color=style.INK_MUTED, linewidth=1.3, linestyle=(0, (5, 4)), zorder=2)
