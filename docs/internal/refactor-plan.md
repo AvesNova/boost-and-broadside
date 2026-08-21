@@ -73,17 +73,22 @@ Cost five latent bug fixes; see [the fields gap](#the-fields-gap-step-7).
 
 ---
 
-### 4. Close out the loose ends — CPU, ~1 h
+### 4. Close out the loose ends — CPU
 
 - [ ] Full test suite; it has not run since `bnb figures` and the subtitle
-      removal (`9f4808a`, `6d073d5`). Publication, viz and CLI subsets are green.
-- [ ] **Figures artifacts accumulate when they should replace.** 719 has two,
-      `20260821T040737Z-4da049c9` and `20260821T122652Z-4da049c9`, identical
-      recipe digests, *both committed*, the older one carrying the subtitles
-      since removed. Give a run one `figures/` directory, rewritten in place.
-      A measurement is expensive and immutable; a figure is a pure function of
-      measurements and renderer code, so re-rendering must overwrite.
-- [ ] Delete the stale figures artifact from git.
+      removal (`9f4808a`, `6d073d5`). Publication, viz, CLI and artifact
+      subsets are green.
+- [x] **Figures artifacts accumulated when they should replace.** 719 had two,
+      identical recipe digests, *both committed*, the older carrying the
+      subtitles since removed. `ArtifactStore.create_stable` gives a derived
+      artifact a fixed path, replacing any prior one; measurements still
+      accumulate. Figures now live at `checkpoints/<run>/artifacts/figures`.
+- [x] Stale figures artifact removed from git.
+
+The deciding argument was not tidiness. `docs/publications.toml` has to *quote*
+the figures path, so a per-render identity would break the docs pointer on every
+re-render — the opposite of what a stable reference is for. Step 6 depends on
+this.
 
 **Not doing:** continuing the unconverged `elo-scale` sizes (16v16 ±15.1,
 32v32 ±32.5, 64v64 ±50.5). Crossover carries the same result at those widths

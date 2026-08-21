@@ -346,3 +346,72 @@ def test_attaching_refuses_an_absent_or_escaping_path(tmp_path):
         artifact.attach("never_written.json")
     with pytest.raises(ArtifactError):
         artifact.attach("../escaped.json")
+
+
+def _derived_recipe(**parameters) -> ArtifactRecipe:
+    return ArtifactRecipe(
+        artifact_type="figures",
+        result_schema_version=1,
+        subjects={"run": "synthetic-run"},
+        parameters={"figures": ["a.png"], **parameters},
+    )
+
+
+def test_a_derived_artifact_takes_a_stable_path_that_can_be_quoted(tmp_path):
+    """docs/publications.toml names this path; an id per render would break it."""
+
+    store = _store(tmp_path)
+    owner = store.run_owner("synthetic-run")
+
+    first = store.create_stable(_derived_recipe(), owner)
+    second = store.create_stable(_derived_recipe(), owner)
+
+    assert first.path == second.path == owner.type_root("figures")
+    assert first.path.name == "figures"
+
+
+def test_re_rendering_a_derived_artifact_replaces_rather_than_accumulates(tmp_path):
+    """The bug this exists for: two figure sets committed, the older one stale."""
+
+    store = _store(tmp_path)
+    owner = store.run_owner("synthetic-run")
+
+    first = store.create_stable(_derived_recipe(), owner)
+    first.write_json({"v": 1}, "stale.json")
+    first.complete()
+
+    second = store.create_stable(_derived_recipe(), owner)
+    second.write_json({"v": 2}, "fresh.json")
+    second.complete()
+
+    assert not (second.path / "stale.json").exists()
+    assert [record["path"] for record in second.manifest["files"]] == ["fresh.json"]
+    # One artifact, not a directory of them.
+    assert sorted(p.name for p in owner.type_root("figures").iterdir()) == [
+        "artifact.json",
+        "fresh.json",
+    ]
+
+
+def test_a_stable_artifact_still_records_when_it_was_rendered(tmp_path):
+    """The path holds still; the identity does not, so provenance is not lost."""
+
+    store = _store(tmp_path)
+    owner = store.run_owner("synthetic-run")
+
+    artifact = store.create_stable(_derived_recipe(), owner)
+
+    assert artifact.artifact_id.endswith(f"-{_derived_recipe().short_digest()}")
+    assert artifact.manifest["recipe_digest"] == _derived_recipe().digest()
+
+
+def test_measurements_still_accumulate(tmp_path):
+    """Only derived artifacts replace. Two tournaments are two pieces of evidence."""
+
+    store = _store(tmp_path)
+    owner = store.run_owner("synthetic-run")
+
+    first = store.create(_recipe(), owner)
+    second = store.create(_recipe(), owner)
+
+    assert first.path != second.path

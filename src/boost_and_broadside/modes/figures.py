@@ -60,7 +60,13 @@ def render_run_figures(
     only: tuple[str, ...] = (),
     store: ArtifactStore | None = None,
 ) -> Path:
-    """Render the figure set for one finished run and return the artifact path."""
+    """Render the figure set for one finished run and return the artifact path.
+
+    Always ``checkpoints/<run>/artifacts/figures``. Re-rendering replaces it:
+    figures are derived from the measurements beside them, so a second copy
+    would be a stale answer to the same question, and the path is quoted by
+    ``docs/publications.toml``.
+    """
 
     run_dir = resolve_exact_run(run_spec, checkpoint_dir).path
     selected: tuple[FigureSpec, ...] = (
@@ -78,7 +84,7 @@ def render_run_figures(
                 resolved[artifact_type] = _latest_artifact(run_dir, artifact_type)
 
     store = store or ArtifactStore(checkpoint_root=checkpoint_dir)
-    artifact = store.create(
+    artifact = store.create_stable(
         ArtifactRecipe(
             artifact_type="figures",
             result_schema_version=_SCHEMA_VERSION,

@@ -347,6 +347,32 @@ class ArtifactStore:
         artifact._save_manifest()
         return artifact
 
+    def create_stable(self, recipe: ArtifactRecipe, owner: ArtifactOwner) -> Artifact:
+        """Create a *derived* artifact at a fixed path, replacing any prior one.
+
+        A measurement is expensive, irreproducible in detail, and accumulates:
+        every tournament is its own evidence and gets its own identity. Something
+        rendered *from* measurements is not. It is a pure function of its sources
+        and the code that produced it, so a re-render supersedes its predecessor
+        rather than sitting beside it as a second answer to the same question.
+
+        The path is stable because it gets quoted. ``docs/publications.toml``
+        names the figures a document is built from, and an identity that changed
+        on every re-render would break that pointer each time -- which is the
+        opposite of what a stable reference is for. The manifest still records
+        the per-render ``artifact_id``, so when it was rendered and from which
+        recipe is not lost; only the directory name holds still.
+        """
+
+        created = _now()
+        path = owner.type_root(recipe.artifact_type)
+        if path.exists():
+            shutil.rmtree(path)
+        path.mkdir(parents=True)
+        artifact = Artifact(path, self._new_manifest(recipe, owner, created))
+        artifact._save_manifest()
+        return artifact
+
     def open_resumable(
         self, recipe: ArtifactRecipe, owner: ArtifactOwner
     ) -> tuple[Artifact, bool]:
