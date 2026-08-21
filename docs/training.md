@@ -10,27 +10,25 @@ they matter. Exact results and post-hoc methodology are in [evaluation](evaluati
 
 ## Reference run at a glance
 
-The preserved [run configuration](../checkpoints/resilient-resonance-682/wandb_export/config.json)
-records:
+The reference run is `good-leaf-719`. Its
+[stored configuration](../checkpoints/good-leaf-719/artifacts/wandb-export/) records:
 
 | Setting | Value |
 |---|---:|
 | Target environment steps | 1,000,000,000 |
-| Parallel environments | 7,808 |
-| Ships per environment | 8 total (4-vs-4) |
+| Parallel environments | 2,592 × 3 rollouts per update |
+| Ships per environment | 8 total (4-vs-4), plus 4 refractive fields |
 | Rollout length | 128 steps |
-| Decisions per second | 60 (`action_repeat=1`) |
+| Decisions per second | 30 (`action_repeat=2`) |
 | PPO minibatches | 32 |
 | Token width / attention heads / blocks | 128 / 4 / 2 |
 | Episode horizon | 1,024 physics ticks (17.1 s) |
 | Opponent paradigm | `ego_pass` |
 | Elo evaluation games per matchup slot | 512 |
 
-The run logged 999,424,000 steps before finishing. Today's profiles have continued to
-evolve, so where this page and the export disagree about that run, the export is what
-actually ran. In particular the reference run decided at 60 Hz; the current profile holds
-each action for two physics ticks (see [decision rate](#decision-rate)), so its step
-counts and discounts are not directly comparable.
+The run logged 999,309,312 steps over 1,004 updates before finishing. Where this page
+and the stored configuration disagree, the stored configuration is what actually ran.
+Earlier runs are listed in [training runs](training-runs.md).
 
 ## Recurrent PPO lifecycle
 
@@ -196,7 +194,7 @@ Each active component receives its own critic output and can have its own GAE ga
 horizon. Weights are magnitudes; each component carries its own sign, noted below. The
 reference policy activated these components:
 
-| Component | RL / fields weight | Role |
+| Component | Weight | Role |
 |---|---:|---|
 | `ally_win` | 1.5 | +1 to each surviving teammate on a win |
 | `enemy_win` | 1.5 | opponent's win signal, seen as −1 through a negative enemy lambda |
@@ -205,12 +203,12 @@ reference policy activated these components:
 | `shoot_quality` | off | firing opportunity quality (+); head retained at zero weight |
 | `kill_shot` | 1.0 | fatal-step credit (+), proportional to that step's damage; killing a friendly earns the negative share |
 | `kill_assist` | 1.0 | assist credit (+), proportional to cumulative episode damage |
-| `combat_damage_taken` | 0.5 / 0.5 | −applied projectile health loss |
-| `field_damage_taken` | off / 0.5 | −applied boundary health loss |
+| `combat_damage_taken` | 0.5 | −applied projectile health loss |
+| `field_damage_taken` | 0.5 | −applied boundary health loss |
 | `damage_dealt_enemy` | 0.5 | +proportional to damage dealt to enemies |
 | `damage_dealt_ally` | 0.5 | −proportional to friendly fire dealt |
-| `combat_death` | 1.0 / 1.0 | −1 when projectile damage kills this ship |
-| `field_death` | off / 1.0 | −1 when boundary damage kills this ship |
+| `combat_death` | 1.0 | −1 when projectile damage kills this ship |
+| `field_death` | 1.0 | −1 when boundary damage kills this ship |
 
 Weights are normalized by their absolute sum, and the wrapper divides component rewards
 by total ship count for team-size normalization. A lambda aggregation matrix then maps

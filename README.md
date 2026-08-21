@@ -15,7 +15,8 @@ zero-shot to fleets of one to 64 ships. A single recurrent network commands the
 whole fleet, producing an action for every ship on each forward pass.
 
 [Explore the results](docs/evaluation.md) · [Watch more replays](docs/replays.md) ·
-[Understand the architecture](docs/architecture.md) · [Get started](docs/getting-started.md)
+[Understand the architecture](docs/architecture.md) · [Get started](docs/getting-started.md) ·
+[Training runs](docs/training-runs.md)
 
 ## Zero-shot team-size transfer
 
@@ -25,30 +26,32 @@ recurrence carries information through time. Because the network operates over a
 variable-length token sequence, the same weights can run at fleet sizes never seen
 during training.
 
-![Zero-shot crossover against the scripted controller](docs/results/crossover_phase.png)
+![Calibrated rating across symmetric fleet sizes](docs/results/elo_scale_scripted_1000.png)
 
-*From three learned ships onward, the 4-vs-4 policy remains above 50% against a larger
-scripted fleet at every scale tested.*
+*Rated against the same scripted controller at every size, the 4-vs-4 policy is stronger
+the larger the fleet it is given — the coordination it learned scales further than the
+setting it learned it in.*
 
-Selected results from the [recorded crossover sweep](docs/crossover/crossover.json):
+Selected results from the [recorded crossover sweep](docs/crossover/crossover.json),
+each row the largest scripted fleet the policy still beats:
 
 | Learned ships | Scripted ships | Win rate |
 |---:|---:|---:|
-| 4 | 5 | **82.4%** |
-| 8 | 11 | **72.7%** |
-| 16 | 24 | **56.6%** |
-| 32 | 48 | **56.2%** |
-| 64 | 88 | **50.3%** |
+| 4 | 6 | **63.3%** |
+| 8 | 12 | **59.8%** |
+| 16 | 23 | **64.8%** |
+| 32 | 44 | **57.4%** |
+| 64 | 79 | **54.4%** |
 
 The [evaluation guide](docs/evaluation.md#zero-shot-crossover) covers the search method,
 sample sizes, raw artifacts, and limitations behind these measurements.
 
 ## Learning progression
 
-A one-billion-step training run completed in 7.5 hours on a single RTX 5090. Post-hoc
-calibration places the final checkpoint at about **1772 Elo** on a scale that fixes the
-scripted controller at 1000, a lead of roughly **772 points**, where 400 points
-already means ten-to-one odds.
+A one-billion-step training run completed in about four days on a single RTX 4070
+Laptop. Post-hoc calibration places the final checkpoint at about **1748 Elo** on a
+scale that fixes the scripted controller at 1000, a lead of roughly **748 points**,
+where 400 points already means ten-to-one odds.
 
 ![Post-hoc calibrated Elo over training](docs/results/elo_curve.png)
 
