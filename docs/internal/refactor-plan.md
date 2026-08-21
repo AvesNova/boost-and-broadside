@@ -133,6 +133,11 @@ Precedent exists: `scripts/migrate_682.py`, `tests/migration/`.
 
 - [ ] Hand-written, including the analysis prose. Scope depends on the step 4
       decision.
+- [ ] Repoint `docs/publications.toml` at the chosen run's **figures** artifact.
+      Charts now render per-run (`bnb figures --run RUN`, see `figure_set.py`),
+      so this edit is only the choice of which run illustrates the docs. 719's
+      set is already rendered at
+      `checkpoints/good-leaf-719/artifacts/figures/20260821T040737Z-4da049c9`.
 
 ### 8. Docs check — optional, recommended
 
