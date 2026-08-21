@@ -20,7 +20,7 @@ output = "docs/results/elo_curve.png"
 description = "Post-hoc calibrated Elo over training, against the scripted controller."
 
 [publications.elo_curve.artifacts]
-calibration = "checkpoints/resilient-resonance-682/artifacts/elo-calibration/20260811T162139Z-00c0e326"
+calibration = "checkpoints/good-leaf-719/artifacts/elo-calibration/20260820T215019Z-acbcb96e"
 
 [publications.win_rate_vs_scripted]
 renderer = "training-win-rate-v1"
@@ -28,7 +28,7 @@ output = "docs/results/win_rate_vs_scripted.png"
 description = "Win rate against the scripted controller over training."
 
 [publications.win_rate_vs_scripted.artifacts]
-wandb_export = "checkpoints/resilient-resonance-682/artifacts/wandb-export/20260811T193851Z-86b2417d"
+wandb_export = "checkpoints/good-leaf-719/artifacts/wandb-export/20260821T034850Z-6bb0d099"
 
 [publications.training_health]
 renderer = "training-health-v1"
@@ -36,7 +36,7 @@ output = "docs/results/training_health.png"
 description = "Critic fit, reward, KL, and clip fraction as one optimisation panel."
 
 [publications.training_health.artifacts]
-wandb_export = "checkpoints/resilient-resonance-682/artifacts/wandb-export/20260811T193851Z-86b2417d"
+wandb_export = "checkpoints/good-leaf-719/artifacts/wandb-export/20260821T034850Z-6bb0d099"
 
 [publications.next_state_error]
 renderer = "next-state-error-v1"
@@ -44,7 +44,7 @@ output = "docs/results/next_state_error.png"
 description = "Next-state prediction error per observation dimension."
 
 [publications.next_state_error.artifacts]
-wandb_export = "checkpoints/resilient-resonance-682/artifacts/wandb-export/20260811T193851Z-86b2417d"
+wandb_export = "checkpoints/good-leaf-719/artifacts/wandb-export/20260821T034850Z-6bb0d099"
 
 [publications.crossover_phase]
 renderer = "crossover-phase-v1"
@@ -52,7 +52,7 @@ output = "docs/results/crossover_phase.png"
 description = "Where the scripted fleet overtakes the policy, against equal counts."
 
 [publications.crossover_phase.artifacts]
-crossover = "checkpoints/resilient-resonance-682/artifacts/crossover/20260811T074317Z-7b876d99"
+crossover = "checkpoints/good-leaf-719/artifacts/crossover/20260821T012217Z-ecf96a55"
 
 [publications.crossover_ratio]
 renderer = "crossover-ratio-v1"
@@ -60,7 +60,7 @@ output = "docs/results/crossover_ratio.png"
 description = "Scripted ships beaten per policy ship."
 
 [publications.crossover_ratio.artifacts]
-crossover = "checkpoints/resilient-resonance-682/artifacts/crossover/20260811T074317Z-7b876d99"
+crossover = "checkpoints/good-leaf-719/artifacts/crossover/20260821T012217Z-ecf96a55"
 
 [publications.crossover_data]
 renderer = "crossover-data-v1"
@@ -68,7 +68,7 @@ output = "docs/crossover/crossover.json"
 description = "The measured crossover curves as published data."
 
 [publications.crossover_data.artifacts]
-crossover = "checkpoints/resilient-resonance-682/artifacts/crossover/20260811T074317Z-7b876d99"
+crossover = "checkpoints/good-leaf-719/artifacts/crossover/20260821T012217Z-ecf96a55"
 
 [publications.elo_scale]
 renderer = "elo-scale-v1"
@@ -76,8 +76,8 @@ output = "docs/results/elo_scale_scripted_1000.png"
 description = "Checkpoint strength across symmetric fleet sizes, scripted-anchored."
 
 [publications.elo_scale.artifacts]
-scale = "checkpoints/resilient-resonance-682/artifacts/elo-scale/20260811T114922Z-c68a8980"
-reference = "checkpoints/resilient-resonance-682/artifacts/semi-random-ladder/20260811T101433Z-a4ff2d80"
+scale = "checkpoints/good-leaf-719/artifacts/elo-scale/20260820T220608Z-7f272680"
+reference = "checkpoints/good-leaf-719/artifacts/semi-random-ladder/20260821T024527Z-8174e790"
 
 [publications.semi_random_connectivity]
 renderer = "semi-random-connectivity-v1"
@@ -85,7 +85,7 @@ output = "docs/results/semi_random_connectivity.png"
 description = "How informative each step of the random-to-scripted ladder is."
 
 [publications.semi_random_connectivity.artifacts]
-ladder = "checkpoints/resilient-resonance-682/artifacts/semi-random-ladder/20260811T101433Z-a4ff2d80"
+ladder = "checkpoints/good-leaf-719/artifacts/semi-random-ladder/20260821T024527Z-8174e790"
 
 [publications.ar_report]
 renderer = "ar-report-v1"
@@ -93,7 +93,7 @@ output = "docs/ar_report/4v4"
 description = "Closed- and open-loop imagined rollouts against ground truth, 4v4."
 
 [publications.ar_report.artifacts]
-ar_report = "checkpoints/resilient-resonance-682/artifacts/ar-report/20260811T162325Z-c36da470"
+ar_report = "checkpoints/good-leaf-719/artifacts/ar-report/20260821T034104Z-b831faa9"
 
 [publications.noise_calibration]
 renderer = "noise-calibration-v1"
@@ -101,7 +101,7 @@ output = "docs/noise_calibration"
 description = "Next-state prediction error: sigma, autocorrelation, and AR growth."
 
 [publications.noise_calibration.artifacts]
-noise = "checkpoints/resilient-resonance-682/artifacts/noise-calibration/20260811T162950Z-3c0bca32"
+noise = "checkpoints/good-leaf-719/artifacts/noise-calibration/20260821T034241Z-de3e3299"
 
 [publications.policy_architecture]
 renderer = "external-asset-v1"
