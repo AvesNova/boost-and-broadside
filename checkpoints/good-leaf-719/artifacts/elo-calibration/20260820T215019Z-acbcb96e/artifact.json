@@ -1,0 +1,264 @@
+{
+  "schema_version": 1,
+  "artifact_type": "elo-calibration",
+  "artifact_id": "20260820T215019Z-acbcb96e",
+  "status": "complete",
+  "created_at": "2026-08-20T21:50:19Z",
+  "updated_at": "2026-08-20T21:50:19Z",
+  "owner": {
+    "kind": "run",
+    "run": "good-leaf-719"
+  },
+  "recipe": {
+    "artifact_type": "elo-calibration",
+    "result_schema_version": 2,
+    "subjects": {
+      "paradigm": "ego_pass",
+      "players": [
+        {
+          "global_step": 0,
+          "label": "random"
+        },
+        {
+          "global_step": null,
+          "label": "scripted"
+        },
+        {
+          "global_step": null,
+          "label": "semi_scripted_0p2"
+        },
+        {
+          "global_step": null,
+          "label": "semi_scripted_0p3"
+        },
+        {
+          "global_step": null,
+          "label": "semi_scripted_0p4"
+        },
+        {
+          "global_step": null,
+          "label": "semi_scripted_0p5"
+        },
+        {
+          "global_step": null,
+          "label": "semi_scripted_0p6"
+        },
+        {
+          "global_step": null,
+          "label": "semi_scripted_0p7"
+        },
+        {
+          "global_step": null,
+          "label": "semi_scripted_0p8"
+        },
+        {
+          "global_step": null,
+          "label": "semi_scripted_0p9"
+        },
+        {
+          "global_step": null,
+          "label": "semi_scripted_0p95"
+        },
+        {
+          "global_step": 9953280,
+          "label": "ckpt_9953280"
+        },
+        {
+          "global_step": 11943936,
+          "label": "ckpt_11943936"
+        },
+        {
+          "global_step": 13934592,
+          "label": "ckpt_13934592"
+        },
+        {
+          "global_step": 39813120,
+          "label": "ckpt_39813120"
+        },
+        {
+          "global_step": 72658944,
+          "label": "ckpt_72658944"
+        },
+        {
+          "global_step": 132378624,
+          "label": "ckpt_132378624"
+        },
+        {
+          "global_step": 256794624,
+          "label": "ckpt_256794624"
+        },
+        {
+          "global_step": 999309312,
+          "label": "ckpt_999309312"
+        },
+        {
+          "global_step": 872902656,
+          "label": "best_training"
+        },
+        {
+          "global_step": 932622336,
+          "label": "best_avg"
+        }
+      ],
+      "run": "good-leaf-719",
+      "scripted": {
+        "kind": "scripted",
+        "scripted_config": {
+          "boost_speed_prob": [
+            0.68,
+            0.04
+          ],
+          "boost_speed_ramp": [
+            16,
+            32
+          ],
+          "close_range_prob": [
+            0.5,
+            0.05
+          ],
+          "close_range_ramp": [
+            10,
+            50
+          ],
+          "flat_action_sampling": false,
+          "prob_offset": 0.1,
+          "sharp_turn_angle_prob": [
+            0.05,
+            0.95
+          ],
+          "sharp_turn_angle_ramp": [
+            0.24,
+            0.42
+          ],
+          "shoot_angle_prob": [
+            0.95,
+            0.05
+          ],
+          "shoot_angle_ramp": [
+            1.0,
+            1.5
+          ],
+          "shoot_distance_prob": [
+            0.95,
+            0.05
+          ],
+          "shoot_distance_ramp": [
+            200,
+            500
+          ],
+          "team_target_distance_prob": [
+            0.0,
+            0.0
+          ],
+          "team_target_distance_ramp": [
+            60.0,
+            100.0
+          ],
+          "turn_angle_prob": [
+            0.068,
+            0.95
+          ],
+          "turn_angle_ramp": [
+            0.03,
+            0.12
+          ]
+        }
+      }
+    },
+    "parameters": {
+      "anchor_elo": 1000.0,
+      "environment": {
+        "max_bullets": 10,
+        "max_episode_steps": 1024,
+        "num_fields": 4,
+        "num_ships": 8
+      },
+      "max_batches": 12,
+      "num_envs": 16384,
+      "prior_games": 1.0,
+      "reference_probabilities": [
+        0.2,
+        0.3,
+        0.4,
+        0.5,
+        0.6,
+        0.7,
+        0.8,
+        0.9,
+        0.95
+      ],
+      "target_stderr": 10.0,
+      "tie_mode": "half_win"
+    },
+    "sources": {}
+  },
+  "recipe_digest": "acbcb96ee0f33ddac4f62a7c452f365de70df2a719effaf4f4ff03fb6f189cb8",
+  "result_schema_version": 2,
+  "invocation": {
+    "command": "elo-calibrate",
+    "argv": [
+      "/home/vizia/avesnova/boost-and-broadside/.venv/bin/bnb",
+      "elo-calibrate",
+      "--run",
+      "good-leaf-719"
+    ],
+    "normalized": "uv run bnb elo-calibrate --run good-leaf-719"
+  },
+  "execution": {
+    "device": "cuda",
+    "seed": 3686885162117627463,
+    "compile_mode": null,
+    "allow_config_drift": false,
+    "gradient_diagnostics": {
+      "level": "off",
+      "interval": 1,
+      "minibatches": 1
+    }
+  },
+  "code": {
+    "git_commit": "89c7c72c3a6653f5328120c220eb9cb9c069abc0",
+    "git_dirty": false,
+    "repository_available": true,
+    "uv_lock_sha256": "eff32a47a4f866e4b4864030845339fe79c57bb888bde3fab76347f8c8afba93"
+  },
+  "runtime": {
+    "python": "3.13.11",
+    "platform": "Linux-7.0.0-28-generic-x86_64-with-glibc2.39",
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "cudnn_benchmark": false,
+    "deterministic_algorithms": false,
+    "float32_matmul_precision": "highest",
+    "device": {
+      "requested": "cuda",
+      "name": "NVIDIA GeForce RTX 4070 Laptop GPU",
+      "index": 0,
+      "total_memory_bytes": 8186822656,
+      "capability": "8.9",
+      "uuid": "7161aed0-f7cd-9222-9196-257e42144f0d"
+    }
+  },
+  "environment": {},
+  "producer": {
+    "name": "boost-and-broadside",
+    "version": "0.1.0"
+  },
+  "files": [
+    {
+      "path": "chart_history.jsonl",
+      "sha256": "50eae36d5df41a0c338da2f52c8f42c8ad977a50048ab83425a28e13f54f9d7e",
+      "bytes": 313082
+    },
+    {
+      "path": "chart_summary.json",
+      "sha256": "04eefc73b6014f881bfe47db783dd3253534e9151ea42f23a4017758ba5487ab",
+      "bytes": 1550
+    },
+    {
+      "path": "result.json",
+      "sha256": "dcc74d38ea6e81f74ba0c8cd888fc8002fd7b22d5672abb060a5127c4727ccec",
+      "bytes": 1592713
+    }
+  ],
+  "samples_present": false
+}

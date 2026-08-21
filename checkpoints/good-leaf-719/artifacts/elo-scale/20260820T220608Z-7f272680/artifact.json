@@ -1,0 +1,241 @@
+{
+  "schema_version": 1,
+  "artifact_type": "elo-scale",
+  "artifact_id": "20260820T220608Z-7f272680",
+  "status": "complete",
+  "created_at": "2026-08-20T22:06:08Z",
+  "updated_at": "2026-08-21T01:21:33Z",
+  "owner": {
+    "kind": "run",
+    "run": "good-leaf-719"
+  },
+  "recipe": {
+    "artifact_type": "elo-scale",
+    "result_schema_version": 1,
+    "subjects": {
+      "players": [
+        {
+          "global_step": 0,
+          "kind": "random",
+          "label": "random",
+          "sha256": null,
+          "training_config": null
+        },
+        {
+          "global_step": null,
+          "kind": "scripted",
+          "label": "scripted",
+          "sha256": null,
+          "training_config": null
+        },
+        {
+          "global_step": 9953280,
+          "kind": "checkpoint",
+          "label": "ckpt_9953280",
+          "sha256": "7a75deccd34572278a5b342f4c8897acf4159598265b40f6d393da806c97b9bf",
+          "training_config": null
+        },
+        {
+          "global_step": 11943936,
+          "kind": "checkpoint",
+          "label": "ckpt_11943936",
+          "sha256": "187ccfe901dcf9daf828153666a9a7dc5ecc71cf4de9f9dcb379b89353bf0fbe",
+          "training_config": null
+        },
+        {
+          "global_step": 13934592,
+          "kind": "checkpoint",
+          "label": "ckpt_13934592",
+          "sha256": "2edb2eeca189d0f4ca1f9d1fd6cd956defc8140baeaa06a65f0c2f5d60f0ea10",
+          "training_config": null
+        },
+        {
+          "global_step": 39813120,
+          "kind": "checkpoint",
+          "label": "ckpt_39813120",
+          "sha256": "29c7c09db40474a86a880f2e0efb1dfa982992c9f1a21032d103aa00f3a9dce1",
+          "training_config": null
+        },
+        {
+          "global_step": 72658944,
+          "kind": "checkpoint",
+          "label": "ckpt_72658944",
+          "sha256": "60ccb6cd81cb9b602775e33060157a87f1d8d8154d98f3969c7682308312594e",
+          "training_config": null
+        },
+        {
+          "global_step": 132378624,
+          "kind": "checkpoint",
+          "label": "ckpt_132378624",
+          "sha256": "e2584a4ed34e76dbefa259d5ff25ac4b25ed30d691f53c125bfb8708d28e5b7c",
+          "training_config": null
+        },
+        {
+          "global_step": 256794624,
+          "kind": "checkpoint",
+          "label": "ckpt_256794624",
+          "sha256": "949c67e0abb400b244596bf34cbb7f549bb35754f6fd7898068e24350a084bce",
+          "training_config": null
+        },
+        {
+          "global_step": 999309312,
+          "kind": "checkpoint",
+          "label": "final",
+          "sha256": "04039c33835b098afb586905dab9325eeeb297e792093d2f644732eb859d2ddc",
+          "training_config": {
+            "profile": "rl-fields",
+            "profile_fingerprint": "41f381fd0a48ec6a00dddb779a86e5afdb306843bc25d3b85e9186b996283266",
+            "resolved_config_fingerprint": "3629108db34a16fc95b39e99559e999e5145a824293d4f105342cb3887d002c6"
+          }
+        }
+      ],
+      "run": "good-leaf-719",
+      "scripted": {
+        "kind": "scripted",
+        "scripted_config": {
+          "boost_speed_prob": [
+            0.68,
+            0.04
+          ],
+          "boost_speed_ramp": [
+            16,
+            32
+          ],
+          "close_range_prob": [
+            0.5,
+            0.05
+          ],
+          "close_range_ramp": [
+            10,
+            50
+          ],
+          "flat_action_sampling": false,
+          "prob_offset": 0.1,
+          "sharp_turn_angle_prob": [
+            0.05,
+            0.95
+          ],
+          "sharp_turn_angle_ramp": [
+            0.24,
+            0.42
+          ],
+          "shoot_angle_prob": [
+            0.95,
+            0.05
+          ],
+          "shoot_angle_ramp": [
+            1.0,
+            1.5
+          ],
+          "shoot_distance_prob": [
+            0.95,
+            0.05
+          ],
+          "shoot_distance_ramp": [
+            200,
+            500
+          ],
+          "team_target_distance_prob": [
+            0.0,
+            0.0
+          ],
+          "team_target_distance_ramp": [
+            60.0,
+            100.0
+          ],
+          "turn_angle_prob": [
+            0.068,
+            0.95
+          ],
+          "turn_angle_ramp": [
+            0.03,
+            0.12
+          ]
+        }
+      }
+    },
+    "parameters": {
+      "environment": {
+        "max_bullets": 10,
+        "max_episode_steps": 1024,
+        "num_fields": 4,
+        "num_ships": 8
+      },
+      "max_batches": 12,
+      "max_parallel_envs": 16384,
+      "prior_games": 1.0,
+      "seed_base": 682000,
+      "target_stderr": 10.0,
+      "team_sizes": [
+        1,
+        2,
+        4,
+        8,
+        16,
+        32,
+        64
+      ],
+      "tie_mode": "half_win"
+    },
+    "sources": {}
+  },
+  "recipe_digest": "7f272680ed7331063db7fa398e895c98354129d14b63a85ed22ddd8bfa4bf7ac",
+  "result_schema_version": 1,
+  "invocation": {
+    "command": "elo-scale",
+    "argv": [
+      "/home/vizia/avesnova/boost-and-broadside/.venv/bin/bnb",
+      "elo-scale",
+      "--run",
+      "good-leaf-719"
+    ],
+    "normalized": "uv run bnb elo-scale --run good-leaf-719"
+  },
+  "execution": {
+    "device": "cuda",
+    "seed": 2503334572185297098,
+    "compile_mode": null,
+    "allow_config_drift": false,
+    "gradient_diagnostics": {
+      "level": "off",
+      "interval": 1,
+      "minibatches": 1
+    }
+  },
+  "code": {
+    "git_commit": "89c7c72c3a6653f5328120c220eb9cb9c069abc0",
+    "git_dirty": false,
+    "repository_available": true,
+    "uv_lock_sha256": "eff32a47a4f866e4b4864030845339fe79c57bb888bde3fab76347f8c8afba93"
+  },
+  "runtime": {
+    "python": "3.13.11",
+    "platform": "Linux-7.0.0-28-generic-x86_64-with-glibc2.39",
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "cudnn_benchmark": false,
+    "deterministic_algorithms": false,
+    "float32_matmul_precision": "highest",
+    "device": {
+      "requested": "cuda",
+      "name": "NVIDIA GeForce RTX 4070 Laptop GPU",
+      "index": 0,
+      "total_memory_bytes": 8186822656,
+      "capability": "8.9",
+      "uuid": "7161aed0-f7cd-9222-9196-257e42144f0d"
+    }
+  },
+  "environment": {},
+  "producer": {
+    "name": "boost-and-broadside",
+    "version": "0.1.0"
+  },
+  "files": [
+    {
+      "path": "result.json",
+      "sha256": "93bd3ce360166b3c43dcd4e85c2d3f115a110da60347bd12f76f20328458da3e",
+      "bytes": 146089
+    }
+  ],
+  "samples_present": false
+}
