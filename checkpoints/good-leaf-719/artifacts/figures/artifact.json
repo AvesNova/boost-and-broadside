@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
   "artifact_type": "figures",
-  "artifact_id": "20260821T215252Z-4da049c9",
+  "artifact_id": "20260821T231738Z-c222a147",
   "status": "complete",
-  "created_at": "2026-08-21T21:52:52Z",
-  "updated_at": "2026-08-21T21:53:38Z",
+  "created_at": "2026-08-21T23:17:38Z",
+  "updated_at": "2026-08-21T23:18:21Z",
   "owner": {
     "kind": "run",
     "run": "good-leaf-719"
@@ -56,9 +56,9 @@
         "recipe_digest": "7f272680ed7331063db7fa398e895c98354129d14b63a85ed22ddd8bfa4bf7ac"
       },
       "noise-calibration": {
-        "artifact_id": "20260821T034241Z-de3e3299",
+        "artifact_id": "20260821T231432Z-de3e3299",
         "artifact_type": "noise-calibration",
-        "digest": "3c55cf3f252e315004ba18ef53ac7fb21bd13a7ac2456f4d716a9ed9ba282052",
+        "digest": "0c29093823bb22feed6454341dbfa27a8ce0dfdc557bef577a63a35981ad1b5b",
         "recipe_digest": "de3e3299ec1b6424eb95c7abd63af48257e81eae41a8e78871241893141c3f52"
       },
       "semi-random-ladder": {
@@ -68,14 +68,14 @@
         "recipe_digest": "8174e7905bcbabeda577d168f04f9a224fd2ea6c835a6991dc6ed225f6bb5212"
       },
       "wandb-export": {
-        "artifact_id": "20260821T034850Z-6bb0d099",
+        "artifact_id": "20260821T231524Z-6bb0d099",
         "artifact_type": "wandb-export",
-        "digest": "4a1266496bd2df8c0caa51a37e877b57d3764e27971c3fadcaf8be2d2c27ffe2",
+        "digest": "9e116833133e11476e445ec586f006780e1da233771b759a8f30fe99d8d2f664",
         "recipe_digest": "6bb0d0990af4f24e852a6f879030e49c43ebc787645d80b733d1abaf528f6988"
       }
     }
   },
-  "recipe_digest": "4da049c9bd1d649f44d0859828a844b88c62a2aee81d6ad75961fb47da65d0a6",
+  "recipe_digest": "c222a147099bcf681bfd753e0624fe40813e7a9f0465dda91f50591d7c767e74",
   "result_schema_version": 1,
   "invocation": {
     "command": null,
@@ -84,7 +84,7 @@
   },
   "execution": {},
   "code": {
-    "git_commit": "dcfe537fff3b9b73b6a1f6809b7c0ff888535566",
+    "git_commit": "d51298afdc5861f0c724dd79d78947aed6b80501",
     "git_dirty": true,
     "repository_available": true,
     "uv_lock_sha256": "eff32a47a4f866e4b4864030845339fe79c57bb888bde3fab76347f8c8afba93"
@@ -234,28 +234,28 @@
     },
     {
       "path": "noise_calibration/ar_growth.png",
-      "sha256": "e43c4cf5134ad4e6673532efea18e5a56610cb201d45606b4a19903340d5a430",
-      "bytes": 87973
+      "sha256": "7c1f271f84d519b062433240ed7209e22ffd2d53e7e019f2d9bc17d44e095879",
+      "bytes": 88961
     },
     {
       "path": "noise_calibration/autocorrelation.png",
-      "sha256": "6bfc811c51f1c156dd9f59e65211ba4a11b260495c7538d2bbc98fe7fc52debd",
-      "bytes": 39891
+      "sha256": "9de99b8309c67e4caea03bdfb4fa9fd466aff7c3a9a34b351622440ce25ce683",
+      "bytes": 39889
     },
     {
       "path": "noise_calibration/error_distributions.png",
-      "sha256": "ce998930aa1f2e11d55b0de4cdfebb9898efeb717d25754dca9a965f30fb77ec",
-      "bytes": 107835
+      "sha256": "6c7ecab33ad9753f02c8c07a89bb7b1f416521d5a02c13801077ff7b87ce4797",
+      "bytes": 106314
     },
     {
       "path": "noise_calibration/noise_params.json",
-      "sha256": "8564f466665c6163198bda0a0b8b67e84af9210532801d3f7c75cbaab6c91414",
-      "bytes": 10651
+      "sha256": "818172eda22b2d1a68982d61f332e35c9d31a55ffe7a544b73f9b61cc77d55d2",
+      "bytes": 10638
     },
     {
       "path": "noise_calibration/team_symmetry.png",
-      "sha256": "6e621f071cef1f388d03ca13e41442133cb7b05c02881fb65f6e9bdfda6fb048",
-      "bytes": 38517
+      "sha256": "5401c91fae2f3957026f94aaf35f7d8845d53624000bc51520ee4d8e36a1f637",
+      "bytes": 38510
     },
     {
       "path": "semi_random_connectivity.png",
