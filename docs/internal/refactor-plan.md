@@ -140,9 +140,17 @@ Each sub-step independently shippable; run suite + smoke after each.
 - [ ] **8c** Flatten schedules to `[step, value, interp]` keypoint tables
       (verified bit-identical on the real LR schedule)
 - [ ] **8d** `checkpoints/<run>/config.json` holding intent + source +
-      overrides + code provenance; written once, never rewritten; resume reads it
+      overrides + code provenance. **Append-only list of segments**, each keyed
+      by the `global_step` it takes effect at — not a single document. See
+      [continuation](#continuation-changes-a-runs-config-mid-flight-steps-8d-8e).
+      Readers ask for the config *at a step*, or the latest; `config_at(step)`
+      is the API, and evaluation modes rating a final checkpoint want the last
+      segment.
 - [ ] **8e** Positional `key=value` overrides; `--continue RUN`;
-      `--from RUN [--at STEP]`
+      `--from RUN [--at STEP]`. `--continue` extends the **same** run and logs
+      to the **same** W&B run; it appends a config segment and re-attaches via
+      `resume_wandb_run_id`. Emit the changed keys as a logged event at the
+      switch step so a chart shows where the settings moved.
 - [ ] **8f** Delete the fingerprint superstructure: drift guard,
       `--allow-config-drift` on the training path, the fingerprint pin test,
       the S01 snapshot tests, `_INTENDED_DIVERGENCE`
@@ -392,9 +400,36 @@ second CUDA process. Evaluation needs the GPU essentially alone. Note
 a host driver upgrade; new CUDA processes still initialise, but VRAM monitoring
 needs a reboot.
 
+### Continuation changes a run's config mid-flight (steps 8d, 8e)
+
+`--continue RUN key=value` extends the same run and logs to the same W&B run.
+Decided; the alternative was forking a new run so that no run ever held two
+configs.
+
+The cost is that "the run's config" stops being a value and becomes a function
+of step, and three things follow.
+
+`config.json` cannot be write-once. It is a list of segments, each recording the
+step it took effect at, the keys that changed, and the code provenance of the
+process that made the change — a continuation after a week of edits runs
+different code, and the segment is the only place that is visible.
+
+Anything that reads a run's config has to say *which* config it means. Rating a
+final checkpoint wants the last segment. The step 11 docs check wants the
+segment in force when the cited number was produced, which for a headline claim
+is again the last one. A bare `load_config(run)` returning "the" config is the
+shape to avoid.
+
+And the drift guard becomes actively wrong rather than merely costly: a
+deliberate mid-run config change is exactly what it is built to refuse. This
+strengthens step 8f — with `--continue`, config drift within a run is a
+supported operation, not a corruption to detect.
+
 ## Open questions
 
-- Does `--continue RUN key=value` fork a new W&B run or extend the existing one?
-  Leaning fork, so no run has two configs in its history.
 - Does ranking at 250M predict ranking at 1B? Step 10's gate check answers the
   50M→250M half; this half stays open.
+- Should a continuation that changes the *environment* (ship count, field
+  count) be refused rather than appended? Those are not hyperparameters — they
+  change the task, so the Elo history before and after would not be one series.
+  Leaning refuse, with `--from RUN` as the supported route.
