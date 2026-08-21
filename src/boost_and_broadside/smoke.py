@@ -204,11 +204,18 @@ def build_synthetic_run(
     *,
     seed: int = 7,
     run_name: str = _RUN_NAME,
+    profile: str = "rl",
 ) -> SyntheticRun:
-    """Create the smallest current-schema run through production serializers."""
+    """Create the smallest current-schema run through production serializers.
+
+    ``profile`` selects what kind of run it is. ``rl-fields`` produces one with
+    refractive fields and the map-generation intent that goes with them, which
+    is what the evaluation modes need to be exercised against: a field-free
+    fixture cannot catch a mode that fails to read a run's field distribution.
+    """
 
     root = Path(checkpoint_root).resolve()
-    resolved = _smoke_resolved_profile("rl", root, resolved_name="smoke-fixture")
+    resolved = _smoke_resolved_profile(profile, root, resolved_name="smoke-fixture")
     run_dir = root / run_name
     run_dir.mkdir(parents=True, exist_ok=True)
 

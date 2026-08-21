@@ -118,14 +118,20 @@ The gap that cost step 3 a day. No evaluation mode is exercised end to end
 against a run with fields, so all six passed smoke while being unable to
 measure the only kind of run currently trained.
 
-- [ ] A fields-run fixture — synthetic checkpoint with `num_fields > 0` and a
-      recorded `field_map` — reused across modes
-- [ ] Drive `elo-calibrate`, `elo-scale`, `semi-random`, `crossover`,
-      `ar-report`, `noise-calibration` against it
-- [ ] Assert the environment actually built carries the fields, not just that
-      the command exited zero. **Two of the five bugs failed silently**; an
-      exit-code test would have caught neither.
-- [ ] Consider a fields smoke case, since the synthetic smoke run is field-free
+- [x] `build_synthetic_run(..., profile="rl-fields")` — the existing smoke
+      fixture, parameterised by profile, so the fields run is built through the
+      same production serializers as the field-free one
+- [x] All six modes driven against it in `tests/modes/test_fields_evaluation.py`
+- [x] Assertions are on the environment actually built, via a `TensorEnv` spy —
+      patched at the simulator rather than at any one helper, because the modes
+      reach it by three different routes
+- [x] **Verified against the pre-fix code in a scratch worktree: all seven fail**,
+      three with `assert []` (no environment at all), two with
+      `num_fields=[0, 0]` (the silent ones), and one with `{2} == {6}` — the
+      hidden state sized for two ships instead of two ships and four fields.
+
+Not done: a fields smoke case. The matrix already runs `train-rl-fields`, and
+these tests cover the evaluation side more precisely than a smoke launch would.
 
 Blocks: nothing, but do it before step 8 rewrites the resolver these modes read.
 
