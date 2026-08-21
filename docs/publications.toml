@@ -28,7 +28,7 @@ output = "docs/results/win_rate_vs_scripted.png"
 description = "Win rate against the scripted controller over training."
 
 [publications.win_rate_vs_scripted.artifacts]
-wandb_export = "checkpoints/good-leaf-719/artifacts/wandb-export/20260821T034850Z-6bb0d099"
+wandb_export = "checkpoints/good-leaf-719/artifacts/wandb-export/20260821T231524Z-6bb0d099"
 
 [publications.training_health]
 renderer = "training-health-v1"
@@ -36,7 +36,7 @@ output = "docs/results/training_health.png"
 description = "Critic fit, reward, KL, and clip fraction as one optimisation panel."
 
 [publications.training_health.artifacts]
-wandb_export = "checkpoints/good-leaf-719/artifacts/wandb-export/20260821T034850Z-6bb0d099"
+wandb_export = "checkpoints/good-leaf-719/artifacts/wandb-export/20260821T231524Z-6bb0d099"
 
 [publications.next_state_error]
 renderer = "next-state-error-v1"
@@ -44,7 +44,7 @@ output = "docs/results/next_state_error.png"
 description = "Next-state prediction error per observation dimension."
 
 [publications.next_state_error.artifacts]
-wandb_export = "checkpoints/good-leaf-719/artifacts/wandb-export/20260821T034850Z-6bb0d099"
+wandb_export = "checkpoints/good-leaf-719/artifacts/wandb-export/20260821T231524Z-6bb0d099"
 
 [publications.crossover_phase]
 renderer = "crossover-phase-v1"

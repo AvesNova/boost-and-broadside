@@ -1,0 +1,2221 @@
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000000995328.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000001990656.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000002985984.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000003981312.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000004976640.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000005971968.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000006967296.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000007962624.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000008957952.pt
+update=10/1004  step=9,953,280  sps=3,998  ship_tps=31,987  loss=4.1090  live_elo=257  lifespan=394.6  field_dmg=0.0312  field_deaths/M=152.3
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000009953280.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000010948608.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000011943936.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000012939264.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000013934592.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000014929920.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000015925248.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000016920576.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000017915904.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000018911232.pt
+update=20/1004  step=19,906,560  sps=3,383  ship_tps=27,069  loss=0.2284  live_elo=913  lifespan=267.4  field_dmg=0.0363  field_deaths/M=222.5
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000019906560.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000020901888.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000021897216.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000022892544.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000023887872.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000024883200.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000025878528.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000026873856.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000027869184.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000028864512.pt
+update=30/1004  step=29,859,840  sps=3,148  ship_tps=25,184  loss=0.0841  live_elo=947  lifespan=258.3  field_dmg=0.0382  field_deaths/M=224.5
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000029859840.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000030855168.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000031850496.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000032845824.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000033841152.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000034836480.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000035831808.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000035831808.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000036827136.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000036827136.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000037822464.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000037822464.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000038817792.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000038817792.pt
+update=40/1004  step=39,813,120  sps=3,044  ship_tps=24,353  loss=0.0069  live_elo=1035  lifespan=252.3  field_dmg=0.0378  field_deaths/M=216.4
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000039813120.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000039813120.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000040808448.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000040808448.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000041803776.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000041803776.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000042799104.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000042799104.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000043794432.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000043794432.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000044789760.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000044789760.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000045785088.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000045785088.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000046780416.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000046780416.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000047775744.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000047775744.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000048771072.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000048771072.pt
+update=50/1004  step=49,766,400  sps=2,978  ship_tps=23,831  loss=0.0719  live_elo=1083  lifespan=242.3  field_dmg=0.0405  field_deaths/M=240.0
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000049766400.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000049766400.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000050761728.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000050761728.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000051757056.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000051757056.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000052752384.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000052752384.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000053747712.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000053747712.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000054743040.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000054743040.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000055738368.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000055738368.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000056733696.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000056733696.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000057729024.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000057729024.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000058724352.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000058724352.pt
+update=60/1004  step=59,719,680  sps=2,939  ship_tps=23,513  loss=0.0121  live_elo=1132  lifespan=236.0  field_dmg=0.0387  field_deaths/M=226.1
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000059719680.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000059719680.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000060715008.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000060715008.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000061710336.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000061710336.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000062705664.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000062705664.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000063700992.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000063700992.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000064696320.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000064696320.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000065691648.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000065691648.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000066686976.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000066686976.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000067682304.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000067682304.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000068677632.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000068677632.pt
+update=70/1004  step=69,672,960  sps=2,909  ship_tps=23,276  loss=0.0796  live_elo=1199  lifespan=233.2  field_dmg=0.0395  field_deaths/M=214.6
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000069672960.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000069672960.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000070668288.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000070668288.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000071663616.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000071663616.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000072658944.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000072658944.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000073654272.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000073654272.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000074649600.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000074649600.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000075644928.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000075644928.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000076640256.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000076640256.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000077635584.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000077635584.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000078630912.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000078630912.pt
+update=80/1004  step=79,626,240  sps=2,887  ship_tps=23,098  loss=0.0638  live_elo=1189  lifespan=238.3  field_dmg=0.0388  field_deaths/M=202.7
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000079626240.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000079626240.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000080621568.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000080621568.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000081616896.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000081616896.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000082612224.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000082612224.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000083607552.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000083607552.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000084602880.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000084602880.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000085598208.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000085598208.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000086593536.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000086593536.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000087588864.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000087588864.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000088584192.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000088584192.pt
+update=90/1004  step=89,579,520  sps=2,868  ship_tps=22,950  loss=0.0399  live_elo=1229  lifespan=243.7  field_dmg=0.0377  field_deaths/M=172.7
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000089579520.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000089579520.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000090574848.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000090574848.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000091570176.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000091570176.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000092565504.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000092565504.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000093560832.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000093560832.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000094556160.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000094556160.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000095551488.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000095551488.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000096546816.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000096546816.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000097542144.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000097542144.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000098537472.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000098537472.pt
+update=100/1004  step=99,532,800  sps=2,853  ship_tps=22,825  loss=0.0451  live_elo=1266  lifespan=250.4  field_dmg=0.0349  field_deaths/M=148.0
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000099532800.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000099532800.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000100528128.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000100528128.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000101523456.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000101523456.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000102518784.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000102518784.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000103514112.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000103514112.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000104509440.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000104509440.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000105504768.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000105504768.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000106500096.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000106500096.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000107495424.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000107495424.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000108490752.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000108490752.pt
+update=110/1004  step=109,486,080  sps=2,841  ship_tps=22,728  loss=0.0536  live_elo=1294  lifespan=250.1  field_dmg=0.0350  field_deaths/M=143.7
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000109486080.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000109486080.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000110481408.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000110481408.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000111476736.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000111476736.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000112472064.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000112472064.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000113467392.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000113467392.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000114462720.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000114462720.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000115458048.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000115458048.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000116453376.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000116453376.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000117448704.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000117448704.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000118444032.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000118444032.pt
+update=120/1004  step=119,439,360  sps=2,831  ship_tps=22,653  loss=0.0271  live_elo=1374  lifespan=251.0  field_dmg=0.0342  field_deaths/M=132.6
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000119439360.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000119439360.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000120434688.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000120434688.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000121430016.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000121430016.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000122425344.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000122425344.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000123420672.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000123420672.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000124416000.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000124416000.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000125411328.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000125411328.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000126406656.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000126406656.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000127401984.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000127401984.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000128397312.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000128397312.pt
+update=130/1004  step=129,392,640  sps=2,822  ship_tps=22,581  loss=0.0564  live_elo=1379  lifespan=267.1  field_dmg=0.0328  field_deaths/M=118.5
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000129392640.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000129392640.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000130387968.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000130387968.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000131383296.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000131383296.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000132378624.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000132378624.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000133373952.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000133373952.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000134369280.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000134369280.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000135364608.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000135364608.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000136359936.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000136359936.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000137355264.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000137355264.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000138350592.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000138350592.pt
+update=140/1004  step=139,345,920  sps=2,814  ship_tps=22,513  loss=0.0346  live_elo=1353  lifespan=287.9  field_dmg=0.0295  field_deaths/M=98.6
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000139345920.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000139345920.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000140341248.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000140341248.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000141336576.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000141336576.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000142331904.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000142331904.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000143327232.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000143327232.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000144322560.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000144322560.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000145317888.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000145317888.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000146313216.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000146313216.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000147308544.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000147308544.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000148303872.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000148303872.pt
+update=150/1004  step=149,299,200  sps=2,806  ship_tps=22,454  loss=0.0703  live_elo=1387  lifespan=278.4  field_dmg=0.0300  field_deaths/M=99.9
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000149299200.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000149299200.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000150294528.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000150294528.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000151289856.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000151289856.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000152285184.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000152285184.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000153280512.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000153280512.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000154275840.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000154275840.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000155271168.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000155271168.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000156266496.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000156266496.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000157261824.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000157261824.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000158257152.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000158257152.pt
+update=160/1004  step=159,252,480  sps=2,800  ship_tps=22,402  loss=0.0373  live_elo=1452  lifespan=298.0  field_dmg=0.0271  field_deaths/M=78.8
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000159252480.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000159252480.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000160247808.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000160247808.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000161243136.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000161243136.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000162238464.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000162238464.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000163233792.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000163233792.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000164229120.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000164229120.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000165224448.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000165224448.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000166219776.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000166219776.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000167215104.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000167215104.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000168210432.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000168210432.pt
+update=170/1004  step=169,205,760  sps=2,795  ship_tps=22,364  loss=0.0047  live_elo=1451  lifespan=295.5  field_dmg=0.0263  field_deaths/M=75.7
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000169205760.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000169205760.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000170201088.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000170201088.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000171196416.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000171196416.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000172191744.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000172191744.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000173187072.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000173187072.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000174182400.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000174182400.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000175177728.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000175177728.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000176173056.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000176173056.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000177168384.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000177168384.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000178163712.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000178163712.pt
+update=180/1004  step=179,159,040  sps=2,790  ship_tps=22,325  loss=0.0061  live_elo=1505  lifespan=297.1  field_dmg=0.0257  field_deaths/M=79.1
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000179159040.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000179159040.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000180154368.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000180154368.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000181149696.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000181149696.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000182145024.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000182145024.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000183140352.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000183140352.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000184135680.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000184135680.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000185131008.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000185131008.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000186126336.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000186126336.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000187121664.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000187121664.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000188116992.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000188116992.pt
+update=190/1004  step=189,112,320  sps=2,786  ship_tps=22,294  loss=0.0466  live_elo=1500  lifespan=304.5  field_dmg=0.0239  field_deaths/M=58.9
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000189112320.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000189112320.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000190107648.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000190107648.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000191102976.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000191102976.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000192098304.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000192098304.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000193093632.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000193093632.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000194088960.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000194088960.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000195084288.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000195084288.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000196079616.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000196079616.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000197074944.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000197074944.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000198070272.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000198070272.pt
+update=200/1004  step=199,065,600  sps=2,783  ship_tps=22,266  loss=-0.0238  live_elo=1474  lifespan=269.8  field_dmg=0.0261  field_deaths/M=77.2
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000199065600.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000199065600.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000200060928.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000200060928.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000201056256.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000201056256.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000202051584.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000202051584.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000203046912.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000203046912.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000204042240.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000204042240.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000205037568.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000205037568.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000206032896.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000206032896.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000207028224.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000207028224.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000208023552.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000208023552.pt
+update=210/1004  step=209,018,880  sps=2,779  ship_tps=22,238  loss=-0.0117  live_elo=1552  lifespan=280.6  field_dmg=0.0245  field_deaths/M=70.3
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000209018880.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000209018880.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000210014208.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000210014208.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000211009536.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000211009536.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000212004864.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000212004864.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000213000192.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000213000192.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000213995520.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000213995520.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000214990848.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000214990848.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000215986176.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000215986176.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000216981504.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000216981504.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000217976832.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000217976832.pt
+update=220/1004  step=218,972,160  sps=2,776  ship_tps=22,212  loss=0.0645  live_elo=1538  lifespan=280.1  field_dmg=0.0237  field_deaths/M=60.8
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000218972160.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000218972160.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000219967488.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000219967488.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000220962816.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000220962816.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000221958144.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000221958144.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000222953472.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000222953472.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000223948800.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000223948800.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000224944128.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000224944128.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000225939456.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000225939456.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000226934784.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000226934784.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000227930112.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000227930112.pt
+update=230/1004  step=228,925,440  sps=2,773  ship_tps=22,189  loss=0.0010  live_elo=1559  lifespan=275.0  field_dmg=0.0237  field_deaths/M=67.3
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000228925440.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000228925440.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000229920768.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000229920768.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000230916096.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000230916096.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000231911424.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000231911424.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000232906752.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000232906752.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000233902080.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000233902080.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000234897408.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000234897408.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000235892736.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000235892736.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000236888064.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000236888064.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000237883392.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000237883392.pt
+update=240/1004  step=238,878,720  sps=2,771  ship_tps=22,171  loss=0.0265  live_elo=1543  lifespan=276.6  field_dmg=0.0233  field_deaths/M=66.4
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000238878720.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000238878720.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000239874048.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000239874048.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000240869376.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000240869376.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000241864704.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000241864704.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000242860032.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000242860032.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000243855360.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000243855360.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000244850688.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000244850688.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000245846016.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000245846016.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000246841344.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000246841344.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000247836672.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000247836672.pt
+update=250/1004  step=248,832,000  sps=2,768  ship_tps=22,150  loss=0.0128  live_elo=1547  lifespan=279.3  field_dmg=0.0237  field_deaths/M=65.1
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000248832000.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000248832000.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000249827328.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000249827328.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000250822656.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000250822656.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000251817984.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000251817984.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000252813312.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000252813312.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000253808640.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000253808640.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000254803968.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000254803968.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000255799296.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000255799296.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000256794624.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000256794624.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000257789952.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000257789952.pt
+update=260/1004  step=258,785,280  sps=2,766  ship_tps=22,132  loss=0.0381  live_elo=1581  lifespan=298.6  field_dmg=0.0194  field_deaths/M=46.3
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000258785280.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000258785280.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000259780608.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000259780608.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000260775936.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000260775936.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000261771264.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000261771264.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000262766592.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000262766592.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000263761920.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000263761920.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000264757248.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000264757248.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000265752576.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000265752576.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000266747904.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000266747904.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000267743232.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000267743232.pt
+update=270/1004  step=268,738,560  sps=2,764  ship_tps=22,114  loss=0.0185  live_elo=1580  lifespan=314.9  field_dmg=0.0197  field_deaths/M=49.1
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000268738560.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000268738560.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000269733888.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000269733888.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000270729216.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000270729216.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000271724544.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000271724544.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000272719872.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000272719872.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000273715200.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000273715200.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000274710528.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000274710528.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000275705856.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000275705856.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000276701184.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000276701184.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000277696512.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000277696512.pt
+update=280/1004  step=278,691,840  sps=2,761  ship_tps=22,095  loss=0.0214  live_elo=1597  lifespan=302.8  field_dmg=0.0190  field_deaths/M=50.9
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000278691840.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000278691840.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000279687168.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000279687168.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000280682496.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000280682496.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000281677824.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000281677824.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000282673152.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000282673152.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000283668480.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000283668480.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000284663808.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000284663808.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000285659136.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000285659136.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000286654464.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000286654464.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000287649792.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000287649792.pt
+update=290/1004  step=288,645,120  sps=2,759  ship_tps=22,079  loss=-0.0090  live_elo=1582  lifespan=305.2  field_dmg=0.0200  field_deaths/M=55.1
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000288645120.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000288645120.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000289640448.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000289640448.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000290635776.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000290635776.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000291631104.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000291631104.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000292626432.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000292626432.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000293621760.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000293621760.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000294617088.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000294617088.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000295612416.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000295612416.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000296607744.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000296607744.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000297603072.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000297603072.pt
+update=300/1004  step=298,598,400  sps=2,758  ship_tps=22,064  loss=0.0129  live_elo=1592  lifespan=306.3  field_dmg=0.0184  field_deaths/M=45.9
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000298598400.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000298598400.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000299593728.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000299593728.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000300589056.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000300589056.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000301584384.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000301584384.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000302579712.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000302579712.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000303575040.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000303575040.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000304570368.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000304570368.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000305565696.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000305565696.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000306561024.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000306561024.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000307556352.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000307556352.pt
+update=310/1004  step=308,551,680  sps=2,756  ship_tps=22,050  loss=0.0178  live_elo=1610  lifespan=290.9  field_dmg=0.0191  field_deaths/M=50.9
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000308551680.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000308551680.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000309547008.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000309547008.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000310542336.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000310542336.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000311537664.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000311537664.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000312532992.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000312532992.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000313528320.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000313528320.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000314523648.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000314523648.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000315518976.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000315518976.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000316514304.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000316514304.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000317509632.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000317509632.pt
+update=320/1004  step=318,504,960  sps=2,754  ship_tps=22,037  loss=0.0302  live_elo=1618  lifespan=301.1  field_dmg=0.0182  field_deaths/M=41.0
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000318504960.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000318504960.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000319500288.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000319500288.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000320495616.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000320495616.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000321490944.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000321490944.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000322486272.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000322486272.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000323481600.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000323481600.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000324476928.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000324476928.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000325472256.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000325472256.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000326467584.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000326467584.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000327462912.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000327462912.pt
+update=330/1004  step=328,458,240  sps=2,752  ship_tps=22,023  loss=0.0330  live_elo=1622  lifespan=295.1  field_dmg=0.0176  field_deaths/M=38.2
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000328458240.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000328458240.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000329453568.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000329453568.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000330448896.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000330448896.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000331444224.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000331444224.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000332439552.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000332439552.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000333434880.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000333434880.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000334430208.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000334430208.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000335425536.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000335425536.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000336420864.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000336420864.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000337416192.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000337416192.pt
+update=340/1004  step=338,411,520  sps=2,751  ship_tps=22,011  loss=0.0073  live_elo=1667  lifespan=314.3  field_dmg=0.0188  field_deaths/M=43.3
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000338411520.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000338411520.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000339406848.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000339406848.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000340402176.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000340402176.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000341397504.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000341397504.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000342392832.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000342392832.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000343388160.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000343388160.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000344383488.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000344383488.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000345378816.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000345378816.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000346374144.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000346374144.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000347369472.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000347369472.pt
+update=350/1004  step=348,364,800  sps=2,750  ship_tps=22,000  loss=0.0213  live_elo=1648  lifespan=312.7  field_dmg=0.0183  field_deaths/M=43.4
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000348364800.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000348364800.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000349360128.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000349360128.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000350355456.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000350355456.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000351350784.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000351350784.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000352346112.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000352346112.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000353341440.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000353341440.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000354336768.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000354336768.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000355332096.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000355332096.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000356327424.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000356327424.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000357322752.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000357322752.pt
+update=360/1004  step=358,318,080  sps=2,748  ship_tps=21,988  loss=0.0134  live_elo=1629  lifespan=308.9  field_dmg=0.0182  field_deaths/M=41.6
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000358318080.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000358318080.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000359313408.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000359313408.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000360308736.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000360308736.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000361304064.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000361304064.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000362299392.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000362299392.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000363294720.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000363294720.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000364290048.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000364290048.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000365285376.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000365285376.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000366280704.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000366280704.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000367276032.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000367276032.pt
+update=370/1004  step=368,271,360  sps=2,747  ship_tps=21,977  loss=-0.0142  live_elo=1601  lifespan=291.6  field_dmg=0.0198  field_deaths/M=50.7
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000368271360.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000368271360.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000369266688.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000369266688.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000370262016.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000370262016.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000371257344.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000371257344.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000372252672.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000372252672.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000373248000.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000373248000.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000374243328.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000374243328.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000375238656.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000375238656.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000376233984.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000376233984.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000377229312.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000377229312.pt
+update=380/1004  step=378,224,640  sps=2,746  ship_tps=21,968  loss=0.0193  live_elo=1657  lifespan=308.5  field_dmg=0.0181  field_deaths/M=43.0
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000378224640.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000378224640.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000379219968.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000379219968.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000380215296.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000380215296.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000381210624.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000381210624.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000382205952.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000382205952.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000383201280.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000383201280.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000384196608.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000384196608.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000385191936.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000385191936.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000386187264.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000386187264.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000387182592.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000387182592.pt
+update=390/1004  step=388,177,920  sps=2,745  ship_tps=21,960  loss=-0.0144  live_elo=1628  lifespan=295.0  field_dmg=0.0185  field_deaths/M=54.5
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000388177920.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000388177920.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000389173248.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000389173248.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000390168576.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000390168576.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000391163904.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000391163904.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000392159232.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000392159232.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000393154560.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000393154560.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000394149888.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000394149888.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000395145216.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000395145216.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000396140544.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000396140544.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000397135872.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000397135872.pt
+update=400/1004  step=398,131,200  sps=2,744  ship_tps=21,952  loss=0.0085  live_elo=1658  lifespan=307.0  field_dmg=0.0181  field_deaths/M=41.6
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000398131200.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000398131200.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000399126528.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000399126528.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000400121856.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000400121856.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000401117184.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000401117184.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000402112512.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000402112512.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000403107840.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000403107840.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000404103168.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000404103168.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000405098496.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000405098496.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000406093824.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000406093824.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000407089152.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000407089152.pt
+update=410/1004  step=408,084,480  sps=2,742  ship_tps=21,943  loss=0.0223  live_elo=1670  lifespan=282.8  field_dmg=0.0191  field_deaths/M=49.0
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000408084480.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000408084480.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000409079808.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000409079808.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000410075136.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000410075136.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000411070464.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000411070464.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000412065792.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000412065792.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000413061120.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000413061120.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000414056448.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000414056448.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000415051776.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000415051776.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000416047104.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000416047104.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000417042432.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000417042432.pt
+update=420/1004  step=418,037,760  sps=2,742  ship_tps=21,936  loss=0.0310  live_elo=1670  lifespan=280.3  field_dmg=0.0181  field_deaths/M=42.8
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000418037760.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000418037760.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000419033088.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000419033088.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000420028416.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000420028416.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000421023744.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000421023744.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000422019072.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000422019072.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000423014400.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000423014400.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000424009728.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000424009728.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000425005056.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000425005056.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000426000384.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000426000384.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000426995712.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000426995712.pt
+update=430/1004  step=427,991,040  sps=2,741  ship_tps=21,929  loss=0.0176  live_elo=1647  lifespan=290.1  field_dmg=0.0177  field_deaths/M=41.9
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000427991040.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000427991040.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000428986368.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000428986368.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000429981696.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000429981696.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000430977024.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000430977024.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000431972352.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000431972352.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000432967680.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000432967680.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000433963008.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000433963008.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000434958336.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000434958336.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000435953664.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000435953664.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000436948992.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000436948992.pt
+update=440/1004  step=437,944,320  sps=2,740  ship_tps=21,924  loss=0.0139  live_elo=1689  lifespan=289.7  field_dmg=0.0172  field_deaths/M=41.3
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000437944320.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000437944320.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000438939648.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000438939648.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000439934976.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000439934976.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000440930304.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000440930304.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000441925632.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000441925632.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000442920960.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000442920960.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000443916288.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000443916288.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000444911616.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000444911616.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000445906944.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000445906944.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000446902272.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000446902272.pt
+update=450/1004  step=447,897,600  sps=2,739  ship_tps=21,917  loss=0.0354  live_elo=1682  lifespan=302.5  field_dmg=0.0161  field_deaths/M=34.0
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000447897600.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000447897600.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000448892928.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000448892928.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000449888256.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000449888256.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000450883584.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000450883584.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000451878912.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000451878912.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000452874240.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000452874240.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000453869568.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000453869568.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000454864896.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000454864896.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000455860224.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000455860224.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000456855552.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000456855552.pt
+update=460/1004  step=457,850,880  sps=2,724  ship_tps=21,794  loss=0.0179  live_elo=1684  lifespan=292.9  field_dmg=0.0167  field_deaths/M=38.0
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000457850880.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000457850880.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000458846208.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000458846208.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000459841536.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000459841536.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000460836864.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000460836864.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000461832192.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000461832192.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000462827520.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000462827520.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000463822848.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000463822848.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000464818176.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000464818176.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000465813504.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000465813504.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000466808832.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000466808832.pt
+update=470/1004  step=467,804,160  sps=2,705  ship_tps=21,645  loss=0.0446  live_elo=1677  lifespan=295.1  field_dmg=0.0163  field_deaths/M=31.2
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000467804160.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000467804160.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000468799488.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000468799488.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000469794816.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000469794816.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000470790144.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000470790144.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000471785472.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000471785472.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000472780800.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000472780800.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000473776128.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000473776128.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000474771456.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000474771456.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000475766784.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000475766784.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000476762112.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000476762112.pt
+update=480/1004  step=477,757,440  sps=2,705  ship_tps=21,643  loss=0.0064  live_elo=1653  lifespan=302.9  field_dmg=0.0156  field_deaths/M=33.9
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000477757440.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000477757440.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000478752768.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000478752768.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000479748096.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000479748096.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000480743424.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000480743424.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000481738752.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000481738752.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000482734080.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000482734080.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000483729408.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000483729408.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000484724736.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000484724736.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000485720064.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000485720064.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000486715392.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000486715392.pt
+update=490/1004  step=487,710,720  sps=2,705  ship_tps=21,644  loss=0.0203  live_elo=1685  lifespan=295.4  field_dmg=0.0165  field_deaths/M=36.1
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000487710720.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000487710720.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000488706048.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000488706048.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000489701376.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000489701376.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000490696704.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000490696704.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000491692032.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000491692032.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000492687360.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000492687360.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000493682688.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000493682688.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000494678016.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000494678016.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000495673344.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000495673344.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000496668672.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000496668672.pt
+update=500/1004  step=497,664,000  sps=2,705  ship_tps=21,641  loss=-0.0117  live_elo=1689  lifespan=291.8  field_dmg=0.0170  field_deaths/M=44.7
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000497664000.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000497664000.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000498659328.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000498659328.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000499654656.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000499654656.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000500649984.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000500649984.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000501645312.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000501645312.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000502640640.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000502640640.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000503635968.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000503635968.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000504631296.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000504631296.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000505626624.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000505626624.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000506621952.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000506621952.pt
+update=510/1004  step=507,617,280  sps=2,705  ship_tps=21,640  loss=0.0167  live_elo=1685  lifespan=282.6  field_dmg=0.0164  field_deaths/M=32.7
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000507617280.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000507617280.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000508612608.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000508612608.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000509607936.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000509607936.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000510603264.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000510603264.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000511598592.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000511598592.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000512593920.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000512593920.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000513589248.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000513589248.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000514584576.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000514584576.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000515579904.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000515579904.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000516575232.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000516575232.pt
+update=520/1004  step=517,570,560  sps=2,704  ship_tps=21,639  loss=0.0378  live_elo=1702  lifespan=284.7  field_dmg=0.0155  field_deaths/M=31.0
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000517570560.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000517570560.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000518565888.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000518565888.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000519561216.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000519561216.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000520556544.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000520556544.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000521551872.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000521551872.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000522547200.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000522547200.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000523542528.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000523542528.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000524537856.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000524537856.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000525533184.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000525533184.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000526528512.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000526528512.pt
+update=530/1004  step=527,523,840  sps=2,704  ship_tps=21,639  loss=0.0356  live_elo=1700  lifespan=286.8  field_dmg=0.0152  field_deaths/M=35.8
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000527523840.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000527523840.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000528519168.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000528519168.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000529514496.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000529514496.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000530509824.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000530509824.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000531505152.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000531505152.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000532500480.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000532500480.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000533495808.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000533495808.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000534491136.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000534491136.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000535486464.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000535486464.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000536481792.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000536481792.pt
+update=540/1004  step=537,477,120  sps=2,704  ship_tps=21,639  loss=0.0362  live_elo=1734  lifespan=287.2  field_dmg=0.0155  field_deaths/M=27.6
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000537477120.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000537477120.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000538472448.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000538472448.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000539467776.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000539467776.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000540463104.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000540463104.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000541458432.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000541458432.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000542453760.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000542453760.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000543449088.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000543449088.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000544444416.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000544444416.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000545439744.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000545439744.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000546435072.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000546435072.pt
+update=550/1004  step=547,430,400  sps=2,705  ship_tps=21,640  loss=0.0331  live_elo=1718  lifespan=291.3  field_dmg=0.0156  field_deaths/M=31.8
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000547430400.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000547430400.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000548425728.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000548425728.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000549421056.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000549421056.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000550416384.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000550416384.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000551411712.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000551411712.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000552407040.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000552407040.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000553402368.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000553402368.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000554397696.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000554397696.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000555393024.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000555393024.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000556388352.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000556388352.pt
+update=560/1004  step=557,383,680  sps=2,705  ship_tps=21,641  loss=0.0383  live_elo=1711  lifespan=279.9  field_dmg=0.0161  field_deaths/M=36.6
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000557383680.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000557383680.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000558379008.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000558379008.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000559374336.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000559374336.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000560369664.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000560369664.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000561364992.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000561364992.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000562360320.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000562360320.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000563355648.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000563355648.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000564350976.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000564350976.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000565346304.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000565346304.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000566341632.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000566341632.pt
+update=570/1004  step=567,336,960  sps=2,705  ship_tps=21,641  loss=0.0359  live_elo=1687  lifespan=284.3  field_dmg=0.0163  field_deaths/M=32.6
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000567336960.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000567336960.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000568332288.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000568332288.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000569327616.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000569327616.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000570322944.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000570322944.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000571318272.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000571318272.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000572313600.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000572313600.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000573308928.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000573308928.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000574304256.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000574304256.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000575299584.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000575299584.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000576294912.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000576294912.pt
+update=580/1004  step=577,290,240  sps=2,705  ship_tps=21,641  loss=-0.0127  live_elo=1704  lifespan=280.8  field_dmg=0.0179  field_deaths/M=45.9
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000577290240.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000577290240.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000578285568.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000578285568.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000579280896.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000579280896.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000580276224.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000580276224.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000581271552.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000581271552.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000582266880.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000582266880.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000583262208.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000583262208.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000584257536.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000584257536.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000585252864.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000585252864.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000586248192.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000586248192.pt
+update=590/1004  step=587,243,520  sps=2,705  ship_tps=21,640  loss=0.0148  live_elo=1700  lifespan=284.1  field_dmg=0.0163  field_deaths/M=34.1
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000587243520.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000587243520.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000588238848.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000588238848.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000589234176.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000589234176.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000590229504.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000590229504.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000591224832.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000591224832.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000592220160.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000592220160.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000593215488.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000593215488.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000594210816.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000594210816.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000595206144.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000595206144.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000596201472.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000596201472.pt
+update=600/1004  step=597,196,800  sps=2,704  ship_tps=21,637  loss=-0.0089  live_elo=1717  lifespan=282.8  field_dmg=0.0161  field_deaths/M=37.6
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000597196800.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000597196800.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000598192128.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000598192128.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000599187456.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000599187456.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000600182784.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000600182784.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000601178112.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000601178112.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000602173440.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000602173440.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000603168768.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000603168768.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000604164096.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000604164096.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000605159424.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000605159424.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000606154752.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000606154752.pt
+update=610/1004  step=607,150,080  sps=2,704  ship_tps=21,637  loss=0.0055  live_elo=1676  lifespan=266.6  field_dmg=0.0169  field_deaths/M=37.9
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000607150080.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000607150080.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000608145408.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000608145408.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000609140736.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000609140736.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000610136064.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000610136064.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000611131392.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000611131392.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000612126720.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000612126720.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000613122048.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000613122048.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000614117376.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000614117376.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000615112704.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000615112704.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000616108032.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000616108032.pt
+update=620/1004  step=617,103,360  sps=2,704  ship_tps=21,637  loss=0.0073  live_elo=1726  lifespan=270.7  field_dmg=0.0166  field_deaths/M=35.4
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000617103360.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000617103360.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000618098688.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000618098688.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000619094016.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000619094016.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000620089344.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000620089344.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000621084672.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000621084672.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000622080000.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000622080000.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000623075328.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000623075328.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000624070656.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000624070656.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000625065984.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000625065984.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000626061312.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000626061312.pt
+update=630/1004  step=627,056,640  sps=2,704  ship_tps=21,638  loss=0.0266  live_elo=1713  lifespan=279.4  field_dmg=0.0148  field_deaths/M=28.9
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000627056640.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000627056640.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000628051968.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000628051968.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000629047296.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000629047296.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000630042624.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000630042624.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000631037952.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000631037952.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000632033280.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000632033280.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000633028608.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000633028608.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000634023936.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000634023936.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000635019264.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000635019264.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000636014592.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000636014592.pt
+update=640/1004  step=637,009,920  sps=2,704  ship_tps=21,639  loss=0.0093  live_elo=1683  lifespan=274.7  field_dmg=0.0169  field_deaths/M=36.4
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000637009920.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000637009920.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000638005248.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000638005248.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000639000576.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000639000576.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000639995904.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000639995904.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000640991232.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000640991232.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000641986560.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000641986560.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000642981888.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000642981888.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000643977216.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000643977216.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000644972544.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000644972544.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000645967872.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000645967872.pt
+update=650/1004  step=646,963,200  sps=2,705  ship_tps=21,640  loss=0.0182  live_elo=1691  lifespan=284.2  field_dmg=0.0149  field_deaths/M=30.7
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000646963200.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000646963200.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000647958528.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000647958528.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000648953856.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000648953856.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000649949184.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000649949184.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000650944512.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000650944512.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000651939840.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000651939840.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000652935168.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000652935168.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000653930496.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000653930496.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000654925824.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000654925824.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000655921152.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000655921152.pt
+update=660/1004  step=656,916,480  sps=2,705  ship_tps=21,641  loss=0.0443  live_elo=1693  lifespan=274.9  field_dmg=0.0162  field_deaths/M=26.7
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000656916480.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000656916480.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000657911808.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000657911808.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000658907136.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000658907136.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000659902464.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000659902464.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000660897792.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000660897792.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000661893120.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000661893120.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000662888448.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000662888448.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000663883776.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000663883776.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000664879104.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000664879104.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000665874432.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000665874432.pt
+update=670/1004  step=666,869,760  sps=2,705  ship_tps=21,641  loss=0.0139  live_elo=1704  lifespan=258.6  field_dmg=0.0166  field_deaths/M=38.1
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000666869760.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000666869760.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000667865088.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000667865088.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000668860416.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000668860416.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000669855744.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000669855744.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000670851072.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000670851072.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000671846400.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000671846400.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000672841728.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000672841728.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000673837056.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000673837056.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000674832384.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000674832384.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000675827712.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000675827712.pt
+update=680/1004  step=676,823,040  sps=2,705  ship_tps=21,641  loss=0.0168  live_elo=1697  lifespan=268.4  field_dmg=0.0168  field_deaths/M=36.9
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000676823040.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000676823040.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000677818368.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000677818368.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000678813696.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000678813696.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000679809024.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000679809024.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000680804352.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000680804352.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000681799680.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000681799680.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000682795008.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000682795008.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000683790336.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000683790336.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000684785664.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000684785664.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000685780992.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000685780992.pt
+update=690/1004  step=686,776,320  sps=2,705  ship_tps=21,641  loss=0.0125  live_elo=1657  lifespan=266.2  field_dmg=0.0162  field_deaths/M=37.7
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000686776320.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000686776320.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000687771648.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000687771648.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000688766976.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000688766976.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000689762304.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000689762304.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000690757632.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000690757632.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000691752960.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000691752960.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000692748288.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000692748288.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000693743616.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000693743616.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000694738944.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000694738944.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000695734272.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000695734272.pt
+update=700/1004  step=696,729,600  sps=2,705  ship_tps=21,641  loss=0.0337  live_elo=1709  lifespan=269.5  field_dmg=0.0154  field_deaths/M=29.1
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000696729600.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000696729600.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000697724928.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000697724928.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000698720256.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000698720256.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000699715584.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000699715584.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000700710912.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000700710912.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000701706240.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000701706240.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000702701568.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000702701568.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000703696896.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000703696896.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000704692224.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000704692224.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000705687552.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000705687552.pt
+update=710/1004  step=706,682,880  sps=2,705  ship_tps=21,641  loss=0.0215  live_elo=1687  lifespan=267.2  field_dmg=0.0160  field_deaths/M=34.2
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000706682880.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000706682880.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000707678208.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000707678208.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000708673536.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000708673536.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000709668864.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000709668864.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000710664192.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000710664192.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000711659520.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000711659520.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000712654848.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000712654848.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000713650176.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000713650176.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000714645504.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000714645504.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000715640832.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000715640832.pt
+update=720/1004  step=716,636,160  sps=2,705  ship_tps=21,641  loss=0.0255  live_elo=1669  lifespan=268.0  field_dmg=0.0152  field_deaths/M=28.7
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000716636160.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000716636160.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000717631488.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000717631488.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000718626816.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000718626816.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000719622144.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000719622144.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000720617472.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000720617472.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000721612800.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000721612800.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000722608128.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000722608128.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000723603456.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000723603456.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000724598784.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000724598784.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000725594112.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000725594112.pt
+update=730/1004  step=726,589,440  sps=2,705  ship_tps=21,642  loss=0.0158  live_elo=1683  lifespan=269.4  field_dmg=0.0164  field_deaths/M=34.2
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000726589440.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000726589440.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000727584768.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000727584768.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000728580096.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000728580096.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000729575424.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000729575424.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000730570752.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000730570752.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000731566080.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000731566080.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000732561408.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000732561408.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000733556736.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000733556736.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000734552064.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000734552064.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000735547392.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000735547392.pt
+update=740/1004  step=736,542,720  sps=2,705  ship_tps=21,642  loss=-0.0020  live_elo=1719  lifespan=250.9  field_dmg=0.0175  field_deaths/M=40.8
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000736542720.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000736542720.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000737538048.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000737538048.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000738533376.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000738533376.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000739528704.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000739528704.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000740524032.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000740524032.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000741519360.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000741519360.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000742514688.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000742514688.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000743510016.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000743510016.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000744505344.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000744505344.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000745500672.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000745500672.pt
+update=750/1004  step=746,496,000  sps=2,705  ship_tps=21,642  loss=-0.0043  live_elo=1707  lifespan=258.2  field_dmg=0.0162  field_deaths/M=33.3
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000746496000.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000746496000.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000747491328.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000747491328.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000748486656.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000748486656.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000749481984.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000749481984.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000750477312.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000750477312.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000751472640.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000751472640.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000752467968.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000752467968.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000753463296.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000753463296.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000754458624.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000754458624.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000755453952.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000755453952.pt
+update=760/1004  step=756,449,280  sps=2,705  ship_tps=21,642  loss=0.0112  live_elo=1706  lifespan=253.5  field_dmg=0.0166  field_deaths/M=36.4
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000756449280.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000756449280.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000757444608.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000757444608.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000758439936.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000758439936.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000759435264.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000759435264.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000760430592.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000760430592.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000761425920.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000761425920.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000762421248.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000762421248.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000763416576.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000763416576.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000764411904.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000764411904.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000765407232.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000765407232.pt
+update=770/1004  step=766,402,560  sps=2,705  ship_tps=21,642  loss=0.0341  live_elo=1746  lifespan=259.7  field_dmg=0.0162  field_deaths/M=30.3
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000766402560.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000766402560.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000767397888.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000767397888.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000768393216.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000768393216.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000769388544.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000769388544.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000770383872.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000770383872.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000771379200.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000771379200.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000772374528.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000772374528.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000773369856.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000773369856.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000774365184.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000774365184.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000775360512.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000775360512.pt
+update=780/1004  step=776,355,840  sps=2,705  ship_tps=21,642  loss=0.0315  live_elo=1690  lifespan=263.3  field_dmg=0.0151  field_deaths/M=24.4
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000776355840.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000776355840.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000777351168.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000777351168.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000778346496.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000778346496.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000779341824.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000779341824.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000780337152.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000780337152.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000781332480.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000781332480.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000782327808.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000782327808.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000783323136.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000783323136.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000784318464.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000784318464.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000785313792.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000785313792.pt
+update=790/1004  step=786,309,120  sps=2,705  ship_tps=21,643  loss=0.0128  live_elo=1710  lifespan=250.9  field_dmg=0.0166  field_deaths/M=33.9
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000786309120.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000786309120.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000787304448.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000787304448.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000788299776.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000788299776.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000789295104.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000789295104.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000790290432.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000790290432.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000791285760.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000791285760.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000792281088.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000792281088.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000793276416.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000793276416.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000794271744.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000794271744.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000795267072.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000795267072.pt
+update=800/1004  step=796,262,400  sps=2,705  ship_tps=21,644  loss=0.0081  live_elo=1710  lifespan=249.5  field_dmg=0.0167  field_deaths/M=36.6
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000796262400.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000796262400.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000797257728.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000797257728.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000798253056.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000798253056.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000799248384.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000799248384.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000800243712.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000800243712.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000801239040.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000801239040.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000802234368.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000802234368.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000803229696.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000803229696.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000804225024.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000804225024.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000805220352.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000805220352.pt
+update=810/1004  step=806,215,680  sps=2,705  ship_tps=21,646  loss=0.0330  live_elo=1696  lifespan=256.5  field_dmg=0.0168  field_deaths/M=35.2
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000806215680.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000806215680.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000807211008.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000807211008.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000808206336.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000808206336.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000809201664.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000809201664.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000810196992.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000810196992.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000811192320.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000811192320.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000812187648.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000812187648.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000813182976.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000813182976.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000814178304.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000814178304.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000815173632.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000815173632.pt
+update=820/1004  step=816,168,960  sps=2,705  ship_tps=21,646  loss=-0.0087  live_elo=1700  lifespan=259.1  field_dmg=0.0165  field_deaths/M=36.2
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000816168960.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000816168960.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000817164288.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000817164288.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000818159616.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000818159616.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000819154944.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000819154944.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000820150272.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000820150272.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000821145600.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000821145600.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000822140928.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000822140928.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000823136256.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000823136256.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000824131584.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000824131584.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000825126912.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000825126912.pt
+update=830/1004  step=826,122,240  sps=2,706  ship_tps=21,649  loss=0.0515  live_elo=1710  lifespan=257.6  field_dmg=0.0150  field_deaths/M=28.0
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000826122240.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000826122240.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000827117568.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000827117568.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000828112896.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000828112896.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000829108224.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000829108224.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000830103552.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000830103552.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000831098880.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000831098880.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000832094208.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000832094208.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000833089536.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000833089536.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000834084864.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000834084864.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000835080192.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000835080192.pt
+update=840/1004  step=836,075,520  sps=2,706  ship_tps=21,649  loss=0.0088  live_elo=1717  lifespan=266.6  field_dmg=0.0156  field_deaths/M=30.5
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000836075520.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000836075520.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000837070848.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000837070848.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000838066176.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000838066176.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000839061504.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000839061504.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000840056832.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000840056832.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000841052160.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000841052160.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000842047488.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000842047488.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000843042816.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000843042816.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000844038144.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000844038144.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000845033472.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000845033472.pt
+update=850/1004  step=846,028,800  sps=2,706  ship_tps=21,650  loss=0.0526  live_elo=1723  lifespan=261.4  field_dmg=0.0147  field_deaths/M=24.4
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000846028800.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000846028800.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000847024128.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000847024128.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000848019456.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000848019456.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000849014784.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000849014784.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000850010112.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000850010112.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000851005440.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000851005440.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000852000768.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000852000768.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000852996096.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000852996096.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000853991424.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000853991424.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000854986752.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000854986752.pt
+update=860/1004  step=855,982,080  sps=2,706  ship_tps=21,651  loss=0.0227  live_elo=1704  lifespan=272.0  field_dmg=0.0148  field_deaths/M=28.3
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000855982080.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000855982080.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000856977408.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000856977408.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000857972736.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000857972736.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000858968064.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000858968064.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000859963392.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000859963392.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000860958720.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000860958720.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000861954048.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000861954048.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000862949376.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000862949376.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000863944704.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000863944704.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000864940032.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000864940032.pt
+update=870/1004  step=865,935,360  sps=2,706  ship_tps=21,652  loss=0.0326  live_elo=1749  lifespan=268.1  field_dmg=0.0152  field_deaths/M=25.3
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000865935360.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000865935360.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000866930688.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000866930688.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000867926016.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000867926016.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000868921344.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000868921344.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000869916672.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000869916672.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000870912000.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000870912000.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000871907328.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000871907328.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_training.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000872902656.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000872902656.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000873897984.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000873897984.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000874893312.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000874893312.pt
+update=880/1004  step=875,888,640  sps=2,706  ship_tps=21,653  loss=0.0349  live_elo=1748  lifespan=266.5  field_dmg=0.0155  field_deaths/M=29.3
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000875888640.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000875888640.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000876883968.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000876883968.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000877879296.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000877879296.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000878874624.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000878874624.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000879869952.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000879869952.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000880865280.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000880865280.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000881860608.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000881860608.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000882855936.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000882855936.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000883851264.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000883851264.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000884846592.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000884846592.pt
+update=890/1004  step=885,841,920  sps=2,706  ship_tps=21,653  loss=0.0240  live_elo=1706  lifespan=271.1  field_dmg=0.0163  field_deaths/M=34.4
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000885841920.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000885841920.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000886837248.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000886837248.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000887832576.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000887832576.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000888827904.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000888827904.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000889823232.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000889823232.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000890818560.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000890818560.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000891813888.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000891813888.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000892809216.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000892809216.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000893804544.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000893804544.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000894799872.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000894799872.pt
+update=900/1004  step=895,795,200  sps=2,706  ship_tps=21,655  loss=0.0192  live_elo=1713  lifespan=273.0  field_dmg=0.0161  field_deaths/M=34.0
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000895795200.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000895795200.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000896790528.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000896790528.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000897785856.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000897785856.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000898781184.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000898781184.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000899776512.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000899776512.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000900771840.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000900771840.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000901767168.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000901767168.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000902762496.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000902762496.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000903757824.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000903757824.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000904753152.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000904753152.pt
+update=910/1004  step=905,748,480  sps=2,707  ship_tps=21,656  loss=0.0263  live_elo=1759  lifespan=274.1  field_dmg=0.0153  field_deaths/M=27.2
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000905748480.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000905748480.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000906743808.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000906743808.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000907739136.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000907739136.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000908734464.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000908734464.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000909729792.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000909729792.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000910725120.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000910725120.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000911720448.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000911720448.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000912715776.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000912715776.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000913711104.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000913711104.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000914706432.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000914706432.pt
+update=920/1004  step=915,701,760  sps=2,707  ship_tps=21,657  loss=0.0081  live_elo=1725  lifespan=269.1  field_dmg=0.0161  field_deaths/M=34.8
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000915701760.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000915701760.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000916697088.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000916697088.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000917692416.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000917692416.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000918687744.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000918687744.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000919683072.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000919683072.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000920678400.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000920678400.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000921673728.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000921673728.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000922669056.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000922669056.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000923664384.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000923664384.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000924659712.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000924659712.pt
+update=930/1004  step=925,655,040  sps=2,707  ship_tps=21,660  loss=0.0347  live_elo=1686  lifespan=265.2  field_dmg=0.0154  field_deaths/M=29.5
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000925655040.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000925655040.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000926650368.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000926650368.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000927645696.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000927645696.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000928641024.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000928641024.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000929636352.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000929636352.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000930631680.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000930631680.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000931627008.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000931627008.pt
+Best checkpoint saved asynchronously: checkpoints/good-leaf-719/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000932622336.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000932622336.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000933617664.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000933617664.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000934612992.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000934612992.pt
+update=940/1004  step=935,608,320  sps=2,707  ship_tps=21,660  loss=0.0374  live_elo=1730  lifespan=268.0  field_dmg=0.0145  field_deaths/M=25.6
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000935608320.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000935608320.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000936603648.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000936603648.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000937598976.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000937598976.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000938594304.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000938594304.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000939589632.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000939589632.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000940584960.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000940584960.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000941580288.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000941580288.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000942575616.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000942575616.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000943570944.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000943570944.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000944566272.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000944566272.pt
+update=950/1004  step=945,561,600  sps=2,707  ship_tps=21,660  loss=0.0146  live_elo=1746  lifespan=273.1  field_dmg=0.0148  field_deaths/M=26.0
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000945561600.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000945561600.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000946556928.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000946556928.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000947552256.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000947552256.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000948547584.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000948547584.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000949542912.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000949542912.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000950538240.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000950538240.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000951533568.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000951533568.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000952528896.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000952528896.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000953524224.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000953524224.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000954519552.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000954519552.pt
+update=960/1004  step=955,514,880  sps=2,707  ship_tps=21,661  loss=0.0055  live_elo=1731  lifespan=270.5  field_dmg=0.0156  field_deaths/M=30.4
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000955514880.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000955514880.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000956510208.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000956510208.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000957505536.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000957505536.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000958500864.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000958500864.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000959496192.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000959496192.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000960491520.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000960491520.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000961486848.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000961486848.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000962482176.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000962482176.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000963477504.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000963477504.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000964472832.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000964472832.pt
+update=970/1004  step=965,468,160  sps=2,707  ship_tps=21,663  loss=0.0285  live_elo=1745  lifespan=270.5  field_dmg=0.0149  field_deaths/M=27.5
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000965468160.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000965468160.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000966463488.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000966463488.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000967458816.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000967458816.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000968454144.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000968454144.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000969449472.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000969449472.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000970444800.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000970444800.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000971440128.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000971440128.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000972435456.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000972435456.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000973430784.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000973430784.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000974426112.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000974426112.pt
+update=980/1004  step=975,421,440  sps=2,708  ship_tps=21,665  loss=0.0050  live_elo=1726  lifespan=271.5  field_dmg=0.0155  field_deaths/M=33.5
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000975421440.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000975421440.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000976416768.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000976416768.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000977412096.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000977412096.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000978407424.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000978407424.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000979402752.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000979402752.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000980398080.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000980398080.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000981393408.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000981393408.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000982388736.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000982388736.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000983384064.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000983384064.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000984379392.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000984379392.pt
+update=990/1004  step=985,374,720  sps=2,708  ship_tps=21,666  loss=0.0201  live_elo=1761  lifespan=278.0  field_dmg=0.0147  field_deaths/M=26.6
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000985374720.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000985374720.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000986370048.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000986370048.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000987365376.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000987365376.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000988360704.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000988360704.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000989356032.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000989356032.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000990351360.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000990351360.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000991346688.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000991346688.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000992342016.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000992342016.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000993337344.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000993337344.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000994332672.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000994332672.pt
+update=1000/1004  step=995,328,000  sps=2,708  ship_tps=21,669  loss=0.0257  live_elo=1728  lifespan=276.4  field_dmg=0.0147  field_deaths/M=29.0
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000995328000.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000995328000.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000996323328.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000996323328.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000997318656.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000997318656.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000998313984.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000998313984.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000999309312.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000999309312.pt
+Checkpoint saved asynchronously: checkpoints/good-leaf-719/step_000999309312.pt
+Avg checkpoint saved asynchronously: checkpoints/good-leaf-719/avg_step_000999309312.pt
