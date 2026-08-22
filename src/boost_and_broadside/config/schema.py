@@ -1,14 +1,16 @@
-"""Semantic profile intent and complete resolved training launches.
+"""Profile intent and complete resolved training launches.
 
-The existing :class:`TrainConfig` remains the trainer-facing shape.  The types
-in this module separate what a profile means from values which can be derived
-mechanically or selected for one launch.
+:class:`ProfileSpec` is what a person edits; :class:`TrainConfig` is what the
+trainer reads. The two still exist because a handful of values are genuinely
+derived rather than chosen -- discounts normalized to the decision rate, shard
+width and count, the compiled schedule -- and it is worth being able to see
+which is which. Everything else passes through unchanged.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Literal
 
@@ -33,28 +35,6 @@ RESOLVED_CONFIG_SCHEMA_VERSION = 1
 
 
 @dataclass(frozen=True)
-class EnvironmentSpec:
-    """Profile-owned environment intent before construction of ``EnvConfig``."""
-
-    num_ships: int
-    num_fields: int
-    max_bullets: int
-    max_episode_steps: int | None
-    action_repeat: int
-    spawn_resource_spread: float
-    single_team: bool = False
-
-
-@dataclass(frozen=True)
-class RolloutSpec:
-    """Semantic logical-batch intent, independent from device memory sizing."""
-
-    logical_batch_tokens: int
-    num_steps: int
-    num_minibatches: int
-
-
-@dataclass(frozen=True)
 class LaunchSizingSpec:
     """Legacy machine launch defaults excluded from the profile fingerprint."""
 
@@ -65,13 +45,80 @@ class LaunchSizingSpec:
 
 
 @dataclass(frozen=True)
-class DiscountSpec:
-    """Discounts expressed per physics tick, then normalized to decision time."""
+class ProfileSpec:
+    """A complete experiment intent, flat.
 
+    This used to be six nested sub-specs -- environment, rollout, discounts,
+    objective, optimizer, league -- whose only job was to be copied field by
+    field into ``TrainConfig``. The grouping bought nothing: no sub-spec was ever
+    passed anywhere on its own, and the nesting made adding a hyperparameter a
+    four-file edit. Flat, it is two.
+
+    Discounts are stated per 60 Hz physics tick and raised to ``action_repeat``
+    during resolution, so a horizon means the same amount of game time whatever
+    the decision rate. ``launch`` stays a sub-object because machine sizing is
+    genuinely a different kind of value -- it is excluded from the profile
+    fingerprint and may be overridden per launch.
+    """
+
+    name: str
+    ship_config: ShipConfig
+    model_config: ModelConfig
+
+    # --- Environment ---
+    num_ships: int
+    num_fields: int
+    max_bullets: int
+    max_episode_steps: int | None
+    action_repeat: int
+    spawn_resource_spread: float
+    field_map: FieldMapConfig | None
+
+    # --- Rollout shape ---
+    logical_batch_tokens: int
+    num_steps: int
+    num_minibatches: int
+
+    # --- Objective ---
+    paradigm: str
+    schedule: TrainingScheduleSpec
+    rewards: RewardConfig
+    next_state_coef: float
+    windowed_loss_coef: float
+
+    # --- Discounts, per physics tick ---
     gamma_per_tick: float
     gae_lambda_per_tick: float
     component_gammas_per_tick: Mapping[str, float]
     component_lambdas_per_tick: Mapping[str, float]
+
+    # --- Optimizer, scalers, budget ---
+    clip_coef: float
+    max_grad_norm: float
+    total_timesteps: int
+    return_ema_alpha: float
+    return_min_span: float
+    advantage_min_rms: float
+    return_quantile_samples: int | None
+
+    # --- League and live evaluation ---
+    league_size: int
+    league_slots: int
+    live_reference_probabilities: tuple[float, ...]
+    elo_milestone_gap: float
+    elo_temperature: float
+    league_uniform_sampling: bool
+    elo_eval: EloEvalConfig
+    bc_winrate_target: float
+
+    # --- Persistence and logging ---
+    checkpoint_dir: str
+    histogram_interval: int
+    log_interval: int
+
+    # --- Machine sizing, excluded from the profile fingerprint ---
+    launch: LaunchSizingSpec = field(default_factory=LaunchSizingSpec)
+    single_team: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -84,69 +131,6 @@ class DiscountSpec:
             "component_lambdas_per_tick",
             MappingProxyType(dict(self.component_lambdas_per_tick)),
         )
-
-
-@dataclass(frozen=True)
-class ObjectiveSpec:
-    """The objective and time-varying schedule a profile intends to optimize."""
-
-    paradigm: str
-    schedule: TrainingScheduleSpec
-    rewards: RewardConfig
-    next_state_coef: float
-    windowed_loss_coef: float
-
-
-@dataclass(frozen=True)
-class OptimizerSpec:
-    """Static optimizer, scaler, budget, and persistence intent."""
-
-    clip_coef: float
-    max_grad_norm: float
-    total_timesteps: int
-    return_ema_alpha: float
-    return_min_span: float
-    advantage_min_rms: float
-    return_quantile_samples: int | None
-    checkpoint_dir: str
-    histogram_interval: int
-    log_interval: int
-
-
-@dataclass(frozen=True)
-class LeagueSpec:
-    """League and live-evaluation intent.
-
-    The ladder is stated as the scripted-action probabilities of its rungs, not
-    as ratings: the live gauge assigns those (see ``config/live_elo``), so a
-    profile chooses which references exist and nothing else about the scale.
-    """
-
-    league_size: int
-    league_slots: int
-    live_reference_probabilities: tuple[float, ...]
-    elo_milestone_gap: float
-    elo_temperature: float
-    league_uniform_sampling: bool
-    elo_eval: EloEvalConfig
-    bc_winrate_target: float
-
-
-@dataclass(frozen=True)
-class ProfileSpec:
-    """Independent semantic experiment intent, not a launch-ready config."""
-
-    name: str
-    ship_config: ShipConfig
-    model_config: ModelConfig
-    environment: EnvironmentSpec
-    rollout: RolloutSpec
-    launch_defaults: LaunchSizingSpec
-    discounts: DiscountSpec
-    objective: ObjectiveSpec
-    optimizer: OptimizerSpec
-    league: LeagueSpec
-    field_map: FieldMapConfig | None
 
 
 @dataclass(frozen=True)

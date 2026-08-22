@@ -138,59 +138,41 @@ def _smoke_resolved_profile(
 
     base = PROFILES[profile_name]
     if num_fields is None:
-        num_fields = base.environment.num_fields
-    entity_tokens = 2 + num_fields
+        num_fields = base.num_fields
     num_steps = 2
-    environment = replace(
-        base.environment,
-        num_ships=2,
-        num_fields=num_fields,
-        max_bullets=2,
-        max_episode_steps=2,
+    return resolve_profile(
+        replace(
+            base,
+            name=resolved_name or f"smoke-{profile_name}",
+            num_ships=2,
+            num_fields=num_fields,
+            max_bullets=2,
+            max_episode_steps=2,
+            field_map=(
+                replace(base.field_map, cache_size=1, max_generation_attempts=256)
+                if num_fields and base.field_map is not None
+                else None
+            ),
+            logical_batch_tokens=(2 + num_fields) * num_steps,
+            num_steps=num_steps,
+            num_minibatches=1,
+            total_timesteps=num_steps,
+            checkpoint_dir=str(checkpoint_root),
+            histogram_interval=100,
+            log_interval=1,
+            league_slots=1,
+            live_reference_probabilities=(),
+            elo_milestone_gap=0.0,
+            elo_eval=replace(
+                base.elo_eval,
+                envs_per_matchup=1,
+                step_interval=1,
+                window_size=2,
+                min_games_to_freeze=0,
+            ),
+            launch=LaunchSizingSpec(num_envs=1),
+        )
     )
-    rollout = replace(
-        base.rollout,
-        logical_batch_tokens=entity_tokens * num_steps,
-        num_steps=num_steps,
-        num_minibatches=1,
-    )
-    launch = LaunchSizingSpec(num_envs=1)
-    optimizer = replace(
-        base.optimizer,
-        total_timesteps=num_steps,
-        checkpoint_dir=str(checkpoint_root),
-        histogram_interval=100,
-        log_interval=1,
-    )
-    league = replace(
-        base.league,
-        league_slots=1,
-        live_reference_probabilities=(),
-        elo_milestone_gap=0.0,
-        elo_eval=replace(
-            base.league.elo_eval,
-            envs_per_matchup=1,
-            step_interval=1,
-            window_size=2,
-            min_games_to_freeze=0,
-        ),
-    )
-    field_map = (
-        replace(base.field_map, cache_size=1, max_generation_attempts=256)
-        if num_fields and base.field_map is not None
-        else None
-    )
-    spec = replace(
-        base,
-        name=resolved_name or f"smoke-{profile_name}",
-        environment=environment,
-        rollout=rollout,
-        launch_defaults=launch,
-        optimizer=optimizer,
-        league=league,
-        field_map=field_map,
-    )
-    return resolve_profile(spec)
 
 
 def _active_value_layout(resolved: ResolvedTrainConfig) -> tuple[int, tuple[int, ...]]:

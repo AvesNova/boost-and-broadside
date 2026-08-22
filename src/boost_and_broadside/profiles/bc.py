@@ -26,7 +26,7 @@ from boost_and_broadside.config.schedule_spec import constant_spec, linear_spec
 from boost_and_broadside.profiles.rl import RL_PROFILE
 
 BC_SCHEDULE_SPEC = replace(
-    RL_PROFILE.objective.schedule,
+    RL_PROFILE.schedule,
     # Warm up to the project learning rate, then hold.  RL's decay tail is keyed
     # to keypoints at 100M and 500M steps -- the end of *its* budget -- and
     # means nothing on BC's own, much longer one.
@@ -52,10 +52,7 @@ BC_SCHEDULE_SPEC = replace(
 BC_PROFILE = replace(
     RL_PROFILE,
     name="bc",
-    objective=replace(
-        RL_PROFILE.objective,
-        schedule=BC_SCHEDULE_SPEC,
-        next_state_coef=1.0,
-    ),
-    optimizer=replace(RL_PROFILE.optimizer, total_timesteps=2_000_000_000),
+    schedule=BC_SCHEDULE_SPEC,
+    next_state_coef=1.0,
+    total_timesteps=2_000_000_000,
 )

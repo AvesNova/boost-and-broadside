@@ -137,12 +137,12 @@ def test_canonical_serialization_has_a_stable_golden_vector() -> None:
 def test_profile_fingerprint_includes_declarative_schedule_intent() -> None:
     profile = PROFILES["rl"]
     changed_schedule = replace(
-        profile.objective.schedule,
+        profile.schedule,
         entropy_coef=constant_spec(0.006),
     )
     changed = replace(
         profile,
-        objective=replace(profile.objective, schedule=changed_schedule),
+        schedule=changed_schedule,
     )
     changed_fingerprint = resolve_profile(changed).profile_fingerprint
     assert changed_fingerprint != resolve_profile(profile).profile_fingerprint
@@ -152,7 +152,7 @@ def test_profile_fingerprint_excludes_legacy_machine_launch_preset() -> None:
     profile = PROFILES["rl"]
     changed = replace(
         profile,
-        launch_defaults=replace(profile.launch_defaults, rollout_tokens=3_000_000),
+        launch=replace(profile.launch, rollout_tokens=3_000_000),
     )
     baseline = resolve_profile(profile)
     other_machine = resolve_profile(changed)
@@ -277,13 +277,13 @@ def test_invalid_launch_override_fails_after_precedence_is_applied() -> None:
         resolve_profile(PROFILES["rl"], LaunchOverrides(microbatch_tokens=0))
     invalid_fixed_width = replace(
         PROFILES["bc"],
-        launch_defaults=LaunchSizingSpec(num_envs=0),
+        launch=LaunchSizingSpec(num_envs=0),
     )
     with pytest.raises(ValueError, match="num_envs must be positive"):
         resolve_profile(invalid_fixed_width)
     invalid_optimizer = replace(
         PROFILES["rl"],
-        optimizer=replace(PROFILES["rl"].optimizer, clip_coef=-0.1),
+        clip_coef=-0.1,
     )
     with pytest.raises(ValueError, match="clip_coef"):
         resolve_profile(invalid_optimizer)
@@ -297,8 +297,8 @@ def test_fixed_environment_legacy_preset_has_honest_machine_source() -> None:
     """
     fixed_width = replace(
         PROFILES["rl"],
-        rollout=replace(PROFILES["rl"].rollout, logical_batch_tokens=11_943_936),
-        launch_defaults=LaunchSizingSpec(num_envs=864),
+        logical_batch_tokens=11_943_936,
+        launch=LaunchSizingSpec(num_envs=864),
     )
     resolved = resolve_profile(fixed_width)
 
@@ -351,12 +351,12 @@ def test_an_overlay_shares_the_bases_values_without_sharing_its_identity() -> No
     bc = PROFILES["bc"]
 
     assert rl is not bc
-    assert bc.environment is rl.environment
-    assert bc.rollout is rl.rollout
-    assert bc.discounts is rl.discounts
-    assert bc.league is rl.league
-    assert bc.objective.schedule is not rl.objective.schedule
+    assert bc.rewards is rl.rewards
+    assert bc.elo_eval is rl.elo_eval
+    assert bc.launch is rl.launch
+    assert bc.component_gammas_per_tick == rl.component_gammas_per_tick
+    assert bc.schedule is not rl.schedule
     assert set(PROFILES) == {"bc", "rl"}
     assert {profile.name for profile in PROFILES.values()} == set(PROFILES)
     with pytest.raises(TypeError):
-        rl.discounts.component_gammas_per_tick["ally_win"] = 0.5  # type: ignore[index]
+        rl.component_gammas_per_tick["ally_win"] = 0.5  # type: ignore[index]

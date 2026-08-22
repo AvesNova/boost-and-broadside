@@ -160,7 +160,7 @@ def derive_time_normalized_value(per_tick_value: float, *, action_repeat: int) -
 
 def _profile_fingerprint_payload(profile: ProfileSpec) -> dict[str, Any]:
     payload = canonical_data(profile)
-    del payload["launch_defaults"]
+    del payload["launch"]
     del payload["model_config"]["grad_checkpoint"]
     return {
         "schema_version": PROFILE_SCHEMA_VERSION,
@@ -179,7 +179,7 @@ def _resolved_fingerprint_payload(
     # Runtime closure names are characterization evidence, not schema.  The
     # resolved fingerprint binds the same final schedule through its declarative
     # intent instead.
-    train_payload["schedule"] = canonical_data(profile.objective.schedule)
+    train_payload["schedule"] = canonical_data(profile.schedule)
     return {
         "schema_version": RESOLVED_CONFIG_SCHEMA_VERSION,
         "profile_name": profile.name,
@@ -242,19 +242,19 @@ def _source_map(
 def _validate_profile(profile: ProfileSpec) -> None:
     if not profile.name or profile.name != profile.name.strip():
         raise ValueError(f"profile name must be non-empty and trimmed, got {profile.name!r}")
-    if profile.environment.num_ships < 1:
-        raise ValueError("environment.num_ships must be positive")
-    if profile.environment.num_fields < 0:
-        raise ValueError("environment.num_fields must be non-negative")
-    if profile.environment.max_bullets < 0:
-        raise ValueError("environment.max_bullets must be non-negative")
-    if profile.rollout.logical_batch_tokens < 1:
-        raise ValueError("rollout.logical_batch_tokens must be positive")
-    if profile.rollout.num_steps < 1:
-        raise ValueError("rollout.num_steps must be positive")
-    if profile.rollout.num_minibatches < 1:
-        raise ValueError("rollout.num_minibatches must be positive")
-    launch = profile.launch_defaults
+    if profile.num_ships < 1:
+        raise ValueError("profile.num_ships must be positive")
+    if profile.num_fields < 0:
+        raise ValueError("profile.num_fields must be non-negative")
+    if profile.max_bullets < 0:
+        raise ValueError("profile.max_bullets must be non-negative")
+    if profile.logical_batch_tokens < 1:
+        raise ValueError("profile.logical_batch_tokens must be positive")
+    if profile.num_steps < 1:
+        raise ValueError("profile.num_steps must be positive")
+    if profile.num_minibatches < 1:
+        raise ValueError("profile.num_minibatches must be positive")
+    launch = profile.launch
     if (launch.rollout_tokens is None) == (launch.num_envs is None):
         raise ValueError("launch defaults must define exactly one of rollout_tokens or num_envs")
     if launch.rollout_tokens is not None and launch.rollout_tokens < 1:
@@ -269,49 +269,47 @@ def _validate_profile(profile: ProfileSpec) -> None:
         raise ValueError("microbatches_per_minibatch must be positive")
     if launch.microbatch_tokens is not None and launch.microbatch_tokens < 1:
         raise ValueError("microbatch_tokens must be positive")
-    optimizer = profile.optimizer
-    if optimizer.total_timesteps < 1:
-        raise ValueError("optimizer.total_timesteps must be positive")
+    if profile.total_timesteps < 1:
+        raise ValueError("profile.total_timesteps must be positive")
     for name, value in (
-        ("optimizer.clip_coef", optimizer.clip_coef),
-        ("optimizer.max_grad_norm", optimizer.max_grad_norm),
-        ("optimizer.return_ema_alpha", optimizer.return_ema_alpha),
-        ("optimizer.return_min_span", optimizer.return_min_span),
-        ("optimizer.advantage_min_rms", optimizer.advantage_min_rms),
+        ("profile.clip_coef", profile.clip_coef),
+        ("profile.max_grad_norm", profile.max_grad_norm),
+        ("profile.return_ema_alpha", profile.return_ema_alpha),
+        ("profile.return_min_span", profile.return_min_span),
+        ("profile.advantage_min_rms", profile.advantage_min_rms),
     ):
         if not math.isfinite(value) or value <= 0.0:
             raise ValueError(f"{name} must be positive and finite, got {value}")
-    if optimizer.clip_coef >= 1.0:
-        raise ValueError("optimizer.clip_coef must be below 1")
-    if optimizer.return_ema_alpha > 1.0:
-        raise ValueError("optimizer.return_ema_alpha must be at most 1")
-    if optimizer.return_quantile_samples is not None and optimizer.return_quantile_samples < 1:
-        raise ValueError("optimizer.return_quantile_samples must be positive or None")
-    if optimizer.histogram_interval < 1 or optimizer.log_interval < 1:
+    if profile.clip_coef >= 1.0:
+        raise ValueError("profile.clip_coef must be below 1")
+    if profile.return_ema_alpha > 1.0:
+        raise ValueError("profile.return_ema_alpha must be at most 1")
+    if profile.return_quantile_samples is not None and profile.return_quantile_samples < 1:
+        raise ValueError("profile.return_quantile_samples must be positive or None")
+    if profile.histogram_interval < 1 or profile.log_interval < 1:
         raise ValueError("optimizer logging intervals must be positive")
-    if not optimizer.checkpoint_dir:
-        raise ValueError("optimizer.checkpoint_dir must be non-empty")
-    league = profile.league
-    if league.league_size < 1 or league.league_slots < 1:
+    if not profile.checkpoint_dir:
+        raise ValueError("profile.checkpoint_dir must be non-empty")
+    if profile.league_size < 1 or profile.league_slots < 1:
         raise ValueError("league size and slots must be positive")
-    if not math.isfinite(league.elo_milestone_gap) or league.elo_milestone_gap < 0.0:
-        raise ValueError("league.elo_milestone_gap must be finite and non-negative")
-    if not math.isfinite(league.elo_temperature) or league.elo_temperature <= 0.0:
-        raise ValueError("league.elo_temperature must be positive and finite")
-    elo_eval = league.elo_eval
+    if not math.isfinite(profile.elo_milestone_gap) or profile.elo_milestone_gap < 0.0:
+        raise ValueError("profile.elo_milestone_gap must be finite and non-negative")
+    if not math.isfinite(profile.elo_temperature) or profile.elo_temperature <= 0.0:
+        raise ValueError("profile.elo_temperature must be positive and finite")
+    elo_eval = profile.elo_eval
     if elo_eval.envs_per_matchup < 1 or elo_eval.step_interval < 1:
         raise ValueError("league Elo evaluation widths and intervals must be positive")
     if elo_eval.window_size < 1 or elo_eval.min_games_to_freeze < 0:
         raise ValueError("league Elo evaluation window/gate values are invalid")
     for name, value in (
-        ("league.elo_eval.k_factor", elo_eval.k_factor),
-        ("league.elo_eval.scripted_live_elo", elo_eval.scripted_live_elo),
+        ("profile.elo_eval.k_factor", elo_eval.k_factor),
+        ("profile.elo_eval.scripted_live_elo", elo_eval.scripted_live_elo),
     ):
         if not math.isfinite(value):
             raise ValueError(f"{name} must be finite, got {value}")
-    validate_live_reference_probabilities(league.live_reference_probabilities)
+    validate_live_reference_probabilities(profile.live_reference_probabilities)
     if elo_eval.k_factor <= 0.0:
-        raise ValueError("league.elo_eval.k_factor must be positive")
+        raise ValueError("profile.elo_eval.k_factor must be positive")
 
 
 def validate_resolved_config(config: TrainConfig) -> None:
@@ -358,31 +356,29 @@ def launch_geometry(profile: ProfileSpec) -> LaunchGeometry:
     """
 
     _validate_profile(profile)
-    environment = profile.environment
-    rollout = profile.rollout
-    launch = profile.launch_defaults
-    entity_tokens = environment.num_ships + environment.num_fields
+    launch = profile.launch
+    entity_tokens = profile.num_ships + profile.num_fields
 
     if launch.rollout_tokens is not None:
         default_num_envs = derive_aligned_num_envs(
             rollout_tokens=launch.rollout_tokens,
             entity_tokens=entity_tokens,
-            num_steps=rollout.num_steps,
-            num_minibatches=rollout.num_minibatches,
+            num_steps=profile.num_steps,
+            num_minibatches=profile.num_minibatches,
         )
-        if rollout.logical_batch_tokens % launch.rollout_tokens:
+        if profile.logical_batch_tokens % launch.rollout_tokens:
             raise ValueError("logical_batch_tokens must be divisible by rollout_tokens")
-        default_rollouts_per_update = rollout.logical_batch_tokens // launch.rollout_tokens
+        default_rollouts_per_update = profile.logical_batch_tokens // launch.rollout_tokens
         default_num_envs_source: ResolutionSource = "derived"
     else:
         assert launch.num_envs is not None
         default_num_envs = launch.num_envs
-        default_rollout_tokens = default_num_envs * entity_tokens * rollout.num_steps
-        if rollout.logical_batch_tokens % default_rollout_tokens:
+        default_rollout_tokens = default_num_envs * entity_tokens * profile.num_steps
+        if profile.logical_batch_tokens % default_rollout_tokens:
             raise ValueError(
                 "logical_batch_tokens must be divisible by the fixed-environment rollout size"
             )
-        default_rollouts_per_update = rollout.logical_batch_tokens // default_rollout_tokens
+        default_rollouts_per_update = profile.logical_batch_tokens // default_rollout_tokens
         default_num_envs_source = "vram-preset"
 
     if launch.microbatches_per_minibatch is not None:
@@ -390,7 +386,7 @@ def launch_geometry(profile: ProfileSpec) -> LaunchGeometry:
             raise ValueError("microbatches_per_minibatch requires a rollout token target")
         default_microbatch_tokens = (
             launch.rollout_tokens
-            // rollout.num_minibatches
+            // profile.num_minibatches
             // launch.microbatches_per_minibatch
         )
         default_microbatch_source: ResolutionSource = "vram-preset"
@@ -402,10 +398,10 @@ def launch_geometry(profile: ProfileSpec) -> LaunchGeometry:
 
     return LaunchGeometry(
         entity_tokens=entity_tokens,
-        num_steps=rollout.num_steps,
-        num_minibatches=rollout.num_minibatches,
+        num_steps=profile.num_steps,
+        num_minibatches=profile.num_minibatches,
         aligned_logical_batch_tokens=(
-            default_num_envs * entity_tokens * rollout.num_steps * default_rollouts_per_update
+            default_num_envs * entity_tokens * profile.num_steps * default_rollouts_per_update
         ),
         default_num_envs=default_num_envs,
         default_rollouts_per_update=default_rollouts_per_update,
@@ -423,8 +419,6 @@ def resolve_profile(
 
     geometry = launch_geometry(profile)
     overrides = overrides or LaunchOverrides()
-    environment = profile.environment
-    rollout = profile.rollout
     entity_tokens = geometry.entity_tokens
 
     num_envs = (
@@ -434,7 +428,7 @@ def resolve_profile(
         aligned_logical_batch_tokens=geometry.aligned_logical_batch_tokens,
         num_envs=num_envs,
         entity_tokens=entity_tokens,
-        num_steps=rollout.num_steps,
+        num_steps=profile.num_steps,
     )
     microbatch_tokens = (
         overrides.microbatch_tokens
@@ -459,71 +453,64 @@ def resolve_profile(
         grad_checkpoint_source = overrides.grad_checkpoint_source
 
     env_config = EnvConfig(
-        num_ships=environment.num_ships,
-        num_fields=environment.num_fields,
-        max_bullets=environment.max_bullets,
-        max_episode_steps=environment.max_episode_steps,
-        single_team=environment.single_team,
-        action_repeat=environment.action_repeat,
-        spawn_resource_spread=environment.spawn_resource_spread,
+        num_ships=profile.num_ships,
+        num_fields=profile.num_fields,
+        max_bullets=profile.max_bullets,
+        max_episode_steps=profile.max_episode_steps,
+        single_team=profile.single_team,
+        action_repeat=profile.action_repeat,
+        spawn_resource_spread=profile.spawn_resource_spread,
     )
-    action_repeat = environment.action_repeat
+    action_repeat = profile.action_repeat
     component_gammas = {
         name: derive_time_normalized_value(value, action_repeat=action_repeat)
-        for name, value in profile.discounts.component_gammas_per_tick.items()
+        for name, value in profile.component_gammas_per_tick.items()
     }
     component_lambdas = {
         name: derive_time_normalized_value(value, action_repeat=action_repeat)
-        for name, value in profile.discounts.component_lambdas_per_tick.items()
+        for name, value in profile.component_lambdas_per_tick.items()
     }
-    objective = profile.objective
-    optimizer = profile.optimizer
-    league = profile.league
     train_config = TrainConfig(
         scales=(ScaleConfig(env_config=env_config, num_envs=num_envs),),
-        paradigm=objective.paradigm,
-        schedule=objective.schedule.compile(),
-        rewards=objective.rewards,
-        num_steps=rollout.num_steps,
+        paradigm=profile.paradigm,
+        schedule=profile.schedule.compile(),
+        rewards=profile.rewards,
+        num_steps=profile.num_steps,
         rollouts_per_update=rollouts_per_update,
-        num_minibatches=rollout.num_minibatches,
-        gamma=derive_time_normalized_value(
-            profile.discounts.gamma_per_tick,
-            action_repeat=action_repeat,
-        ),
+        num_minibatches=profile.num_minibatches,
+        gamma=derive_time_normalized_value(profile.gamma_per_tick, action_repeat=action_repeat),
         gae_lambda=derive_time_normalized_value(
-            profile.discounts.gae_lambda_per_tick,
-            action_repeat=action_repeat,
+            profile.gae_lambda_per_tick, action_repeat=action_repeat
         ),
-        clip_coef=optimizer.clip_coef,
-        max_grad_norm=optimizer.max_grad_norm,
-        total_timesteps=optimizer.total_timesteps,
-        return_ema_alpha=optimizer.return_ema_alpha,
-        return_min_span=optimizer.return_min_span,
-        advantage_min_rms=optimizer.advantage_min_rms,
-        checkpoint_dir=optimizer.checkpoint_dir,
-        league_size=league.league_size,
-        league_slots=league.league_slots,
-        live_reference_probabilities=league.live_reference_probabilities,
-        elo_milestone_gap=league.elo_milestone_gap,
-        elo_temperature=league.elo_temperature,
-        league_uniform_sampling=league.league_uniform_sampling,
-        elo_eval=league.elo_eval,
-        bc_winrate_target=league.bc_winrate_target,
-        histogram_interval=optimizer.histogram_interval,
-        return_quantile_samples=optimizer.return_quantile_samples,
+        clip_coef=profile.clip_coef,
+        max_grad_norm=profile.max_grad_norm,
+        total_timesteps=profile.total_timesteps,
+        return_ema_alpha=profile.return_ema_alpha,
+        return_min_span=profile.return_min_span,
+        advantage_min_rms=profile.advantage_min_rms,
+        checkpoint_dir=profile.checkpoint_dir,
+        league_size=profile.league_size,
+        league_slots=profile.league_slots,
+        live_reference_probabilities=profile.live_reference_probabilities,
+        elo_milestone_gap=profile.elo_milestone_gap,
+        elo_temperature=profile.elo_temperature,
+        league_uniform_sampling=profile.league_uniform_sampling,
+        elo_eval=profile.elo_eval,
+        bc_winrate_target=profile.bc_winrate_target,
+        histogram_interval=profile.histogram_interval,
+        return_quantile_samples=profile.return_quantile_samples,
         microbatch_tokens=microbatch_tokens,
-        next_state_coef=objective.next_state_coef,
-        windowed_loss_coef=objective.windowed_loss_coef,
+        next_state_coef=profile.next_state_coef,
+        windowed_loss_coef=profile.windowed_loss_coef,
         field_map=profile.field_map,
-        log_interval=optimizer.log_interval,
+        log_interval=profile.log_interval,
         component_gammas=component_gammas,
         component_lambdas=component_lambdas,
     )
     validate_resolved_config(train_config)
 
     canonical_train_config = canonical_data(train_config)
-    canonical_train_config["schedule"] = canonical_data(profile.objective.schedule)
+    canonical_train_config["schedule"] = canonical_data(profile.schedule)
     config_payload = {
         "ship_config": canonical_data(profile.ship_config),
         "model_config": canonical_data(model_config),
@@ -549,7 +536,7 @@ def resolve_profile(
         ship_config=profile.ship_config,
         model_config=model_config,
         train_config=train_config,
-        schedule_spec=profile.objective.schedule,
+        schedule_spec=profile.schedule,
         value_sources=MappingProxyType(sources),
         profile_fingerprint=profile_digest,
         resolved_config_fingerprint=resolved_digest,

@@ -133,7 +133,7 @@ def test_a_profile_with_invalid_rungs_fails_to_resolve() -> None:
     profile = PROFILES["rl"]
     broken = replace(
         profile,
-        league=replace(profile.league, live_reference_probabilities=(0.5, 0.4)),
+        live_reference_probabilities=(0.5, 0.4),
     )
     with pytest.raises(ValueError, match="strictly increasing"):
         resolve_profile(broken)
@@ -155,8 +155,8 @@ def test_every_profile_rates_on_the_same_derived_gauge(name: str) -> None:
     assert train_config.elo_eval.scripted_live_elo == LIVE_SCRIPTED_ELO
     assert not hasattr(train_config, "reference_ladder")
     assert not hasattr(train_config, "random_elo")
-    assert not hasattr(PROFILES[name].league, "reference_ladder")
-    assert not hasattr(PROFILES[name].league, "random_elo")
+    assert not hasattr(PROFILES[name], "reference_ladder")
+    assert not hasattr(PROFILES[name], "random_elo")
 
 
 @pytest.mark.parametrize("probability", sorted(_ACCEPTED_ERROR))

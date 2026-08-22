@@ -124,17 +124,28 @@ there as un-reprobed rather than quietly restated.
 
 ### 8b — one schema
 
-Collapse `ProfileSpec` + 6 sub-specs and `TrainConfig` + 5 configs into one
-schema with explicit intent/derived pairs (`gamma_per_tick` stored, `gamma`
-derived). `resolve.py` becomes `derive(config) -> config`.
+Split at the seam the plan named. **8b-1 is done**; 8b-2 is next.
 
-This is the largest single change and the one most likely to want splitting
-again mid-flight — a reasonable seam is to land the merged schema with
-`resolve.py` still in place, then delete the resolver.
+**8b-1 — flatten the profile.** `EnvironmentSpec`, `RolloutSpec`,
+`DiscountSpec`, `ObjectiveSpec`, `OptimizerSpec` and `LeagueSpec` are gone;
+`ProfileSpec` holds their fields directly. No sub-spec was ever passed anywhere
+on its own, so the grouping bought nothing and cost a hop at every read. The
+resolved output is **identical for both profiles**, verified leaf by leaf
+against the previous commit.
 
-*Risk:* the resolved-config document changes shape, which is what
-`evaluation/subjects.py` and `policy_io.py` read out of old checkpoints.
-Those readers need a compatibility path before 8b lands, not after.
+Where this shows up: the smoke fixture went from six nested `replace()` calls to
+one, and BC's overlay from three to a flat list. `_validate_profile` lost its
+sub-object unpacking. Adding a hyperparameter is now two files rather than four.
+
+**8b-2 — merge into `TrainConfig`.** Intent and derived values in one dataclass
+with explicit pairs (`gamma_per_tick` stored, `gamma` derived), and the ~35-line
+pass-through block in `resolve_profile` deleted. This is the edit that gets to
+"one edit".
+
+*Risk, unchanged and now the whole risk:* 8b-2 changes the shape of the
+resolved-config document, which is what `evaluation/subjects.py` and
+`policy_io.py` read out of **old** checkpoints. 682, 716 and 719 all carry the
+current shape. The compatibility path has to land before 8b-2, not after.
 
 ### 8c — flat schedules
 
