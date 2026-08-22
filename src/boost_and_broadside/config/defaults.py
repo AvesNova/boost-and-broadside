@@ -4,14 +4,7 @@ from __future__ import annotations
 
 from boost_and_broadside.config.core import ModelConfig, RewardConfig, ShipConfig
 from boost_and_broadside.config.live_elo import LIVE_SCRIPTED_ELO
-from boost_and_broadside.config.schedule_spec import (
-    TrainingScheduleSpec,
-    constant_spec,
-    exponential_spec,
-    join_spec,
-    linear_spec,
-    stepped_spec,
-)
+from boost_and_broadside.config.schedule_spec import TrainingScheduleSpec, hold
 from boost_and_broadside.config.training import EloCalibrateConfig, EloEvalConfig
 
 SHIP_CONFIG = ShipConfig(bullet_energy_cost=2, bullet_min_damage_frac=1.0)
@@ -171,34 +164,35 @@ COMPONENT_LAMBDAS_PER_TICK: dict[str, float] = {
 
 
 def make_rl_schedule_spec() -> TrainingScheduleSpec:
-    """Return independent declarative intent for the current RL schedule."""
+    """The current RL schedule, as keypoint tables."""
 
     return TrainingScheduleSpec(
-        # Peak 4.5e-4, decaying to a third of it. The decay keypoints clamp, so a
-        # budget longer than 500M steps trains its tail at the floor rather than
+        # Peak 4.5e-4, decaying to a third of it. The last row holds, so a budget
+        # longer than 500M steps trains its tail at the floor rather than
         # continuing to decay.
-        learning_rate=join_spec(
-            (0, linear_spec((0, 1e-7), (5_000_000, 4.5e-4))),
-            (5_000_000, constant_spec(4.5e-4)),
-            (100_000_000, exponential_spec((100_000_000, 4.5e-4), (500_000_000, 1.5e-4))),
+        learning_rate=(
+            (0, 1e-7, "linear"),
+            (5_000_000, 4.5e-4, "hold"),
+            (100_000_000, 4.5e-4, "exponential"),
+            (500_000_000, 1.5e-4, "hold"),
         ),
-        policy_gradient_coef=constant_spec(1.0),
-        entropy_coef=constant_spec(0.005),
-        behavior_cloning_coef=constant_spec(2.0),
-        value_function_coef=constant_spec(1.0),
-        sigreg_coef=constant_spec(0.00),
-        true_reward_scale=constant_spec(1.0),
-        global_scale=constant_spec(1.0),
-        local_scale=constant_spec(1.0),
-        league_fraction=constant_spec(0.5),
+        policy_gradient_coef=hold(1.0),
+        entropy_coef=hold(0.005),
+        behavior_cloning_coef=hold(2.0),
+        value_function_coef=hold(1.0),
+        sigreg_coef=hold(0.00),
+        true_reward_scale=hold(1.0),
+        global_scale=hold(1.0),
+        local_scale=hold(1.0),
+        league_fraction=hold(0.5),
         # Every update.  A save costs ~48 ms of blocking device-to-host copy
         # against an update measured in minutes, and the writer already skips
         # itself rather than queueing when a previous save is still running, so
         # the interval buys no throughput -- it only decides how much progress
         # an interrupted run throws away.
-        checkpoint_interval=constant_spec(1),
-        num_epochs=stepped_spec((0, 4)),
-        target_kl=stepped_spec((0, 0.1)),
-        high_winrate_threshold=constant_spec(0.8),
-        high_winrate_target_kl=constant_spec(0.02),
+        checkpoint_interval=hold(1),
+        num_epochs=hold(4),
+        target_kl=hold(0.1),
+        high_winrate_threshold=hold(0.8),
+        high_winrate_target_kl=hold(0.02),
     )

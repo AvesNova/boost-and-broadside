@@ -1,117 +1,132 @@
-"""Declarative, serializable schedule intent compiled to runtime callables."""
+"""Schedules as data: a keypoint table per parameter, compiled to callables.
+
+Every time-varying parameter is a table of ``(step, value, interp)`` rows. Each
+row states a value and how to get from it to the next one, and the last row
+holds forever. That is the whole language::
+
+    learning_rate = (
+        (0, 1e-7, "linear"),            # warm up to ...
+        (5_000_000, 4.5e-4, "hold"),    # ... and sit there until ...
+        (100_000_000, 4.5e-4, "exponential"),  # ... decaying to ...
+        (500_000_000, 1.5e-4, "hold"),  # ... and staying.
+    )
+
+This replaced a tree of ``ScheduleSpec`` nodes -- ``join`` of ``linear``,
+``constant`` and ``exponential`` sub-specs -- that expressed the same four
+numbers as eleven nested objects, and stated every interior step twice because a
+segment's activation and its first keypoint had to agree by hand. The flat form
+cannot disagree with itself, and it is JSON: a run can record the schedule it is
+running under, which is what ``checkpoints/<run>/config.json`` needs.
+
+A schedule is a pure function of ``global_step``, so nothing about the current
+position is stored -- resuming evaluates the table at the restored step.
+"""
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, fields
 from typing import Any, Literal
 
-from boost_and_broadside.config.schedule import (
-    Schedule,
-    TrainingSchedule,
-    constant,
-    exponential,
-    join,
-    linear,
-    stepped,
-)
+from boost_and_broadside.config.schedule import Schedule, TrainingSchedule
 
-ScheduleKind = Literal["constant", "linear", "stepped", "exponential", "join"]
+Interp = Literal["hold", "linear", "exponential"]
+Keypoint = tuple[int, Any, Interp]
+Keypoints = tuple[Keypoint, ...]
+
+_INTERPOLATIONS = ("hold", "linear", "exponential")
 
 
-@dataclass(frozen=True)
-class ScheduleSpec:
-    """One schedule expression with no executable or process-local state."""
+def hold(value: Any) -> Keypoints:
+    """A table of one row: ``value`` at every step."""
 
-    kind: ScheduleKind
-    value: Any = None
-    keypoints: tuple[tuple[int, Any], ...] = ()
-    segments: tuple[tuple[int, ScheduleSpec], ...] = ()
-
-    def __post_init__(self) -> None:
-        if self.kind not in {"constant", "linear", "stepped", "exponential", "join"}:
-            raise ValueError(f"unknown schedule kind: {self.kind!r}")
-        populated = int(self.value is not None) + bool(self.keypoints) + bool(self.segments)
-        if self.kind == "constant":
-            if self.keypoints or self.segments:
-                raise ValueError("constant schedule cannot contain keypoints or segments")
-            return
-        if populated != 1:
-            raise ValueError(f"{self.kind} schedule must define exactly one payload")
-        if self.kind in {"linear", "exponential"} and len(self.keypoints) < 2:
-            raise ValueError(f"{self.kind} schedule requires at least two keypoints")
-        if self.kind == "stepped" and not self.keypoints:
-            raise ValueError("stepped schedule requires at least one keypoint")
-        if self.kind == "join" and not self.segments:
-            raise ValueError("join schedule requires at least one segment")
-        ordered = self.segments if self.kind == "join" else self.keypoints
-        for previous, current in zip(ordered, ordered[1:], strict=False):
-            if current[0] <= previous[0]:
-                raise ValueError(f"{self.kind} schedule steps must be strictly increasing")
-        if self.kind == "exponential" and any(value <= 0 for _, value in self.keypoints):
-            raise ValueError("exponential schedule values must be positive")
+    return ((0, value, "hold"),)
 
 
-def constant_spec(value: Any) -> ScheduleSpec:
-    return ScheduleSpec(kind="constant", value=value)
+def validate_keypoints(table: Sequence[Keypoint], *, name: str = "schedule") -> Keypoints:
+    """Check one table and return it normalized, or raise naming the problem."""
+
+    if not table:
+        raise ValueError(f"{name} must have at least one keypoint")
+    rows = tuple((int(step), value, interp) for step, value, interp in table)
+    for step, value, interp in rows:
+        if interp not in _INTERPOLATIONS:
+            raise ValueError(f"{name}: unknown interpolation {interp!r} at step {step}")
+        if interp != "hold" and not isinstance(value, int | float):
+            raise ValueError(f"{name}: {interp} interpolation needs a number at step {step}")
+        if interp == "exponential" and value <= 0:
+            raise ValueError(f"{name}: exponential interpolation needs a positive value")
+    for previous, current in zip(rows, rows[1:], strict=False):
+        if current[0] <= previous[0]:
+            raise ValueError(f"{name}: keypoint steps must strictly increase")
+        if previous[2] == "exponential" and current[1] <= 0:
+            raise ValueError(f"{name}: exponential interpolation needs a positive target")
+    return rows
 
 
-def linear_spec(*keypoints: tuple[int, float]) -> ScheduleSpec:
-    return ScheduleSpec(kind="linear", keypoints=keypoints)
+def compile_keypoints(table: Sequence[Keypoint], *, name: str = "schedule") -> Schedule:
+    """Compile one keypoint table into a ``(step) -> value`` callable."""
 
+    rows = validate_keypoints(table, name=name)
 
-def stepped_spec(*keypoints: tuple[int, Any]) -> ScheduleSpec:
-    return ScheduleSpec(kind="stepped", keypoints=keypoints)
+    def _schedule(step: int) -> Any:
+        if step <= rows[0][0]:
+            return rows[0][1]
+        for current, following in zip(rows, rows[1:], strict=False):
+            start, value, interp = current
+            end, target, _ = following
+            if step >= end:
+                continue
+            if interp == "hold" or step == start:
+                # Landing exactly on a keypoint returns the value written there.
+                # Without this an exponential row would answer
+                # exp(log(v)) != v -- 4.5e-4 read back as 0.0004499999999999998
+                # at the step where the decay starts.
+                return value
+            fraction = (step - start) / (end - start)
+            if interp == "linear":
+                return value + fraction * (target - value)
+            # Ratio-and-power, not exp-of-log-lerp. The two are equal in real
+            # arithmetic and differ in the last bits in floating point, and this
+            # is the spelling the schedules were tuned and measured under.
+            return value * (target / value) ** fraction
+        return rows[-1][1]
 
-
-def exponential_spec(*keypoints: tuple[int, float]) -> ScheduleSpec:
-    return ScheduleSpec(kind="exponential", keypoints=keypoints)
-
-
-def join_spec(*segments: tuple[int, ScheduleSpec]) -> ScheduleSpec:
-    return ScheduleSpec(kind="join", segments=segments)
-
-
-def compile_schedule(spec: ScheduleSpec) -> Schedule:
-    """Compile declarative intent through the established runtime primitives."""
-
-    match spec.kind:
-        case "constant":
-            return constant(spec.value)
-        case "linear":
-            return linear(*spec.keypoints)
-        case "stepped":
-            return stepped(*spec.keypoints)
-        case "exponential":
-            return exponential(*spec.keypoints)
-        case "join":
-            return join(*((step, compile_schedule(child)) for step, child in spec.segments))
-    raise AssertionError(f"unreachable schedule kind: {spec.kind}")
+    return _schedule
 
 
 @dataclass(frozen=True)
 class TrainingScheduleSpec:
-    """Serializable counterpart to every field in ``TrainingSchedule``."""
+    """One keypoint table per field of :class:`TrainingSchedule`."""
 
-    learning_rate: ScheduleSpec
-    policy_gradient_coef: ScheduleSpec
-    entropy_coef: ScheduleSpec
-    behavior_cloning_coef: ScheduleSpec
-    value_function_coef: ScheduleSpec
-    sigreg_coef: ScheduleSpec
-    true_reward_scale: ScheduleSpec
-    global_scale: ScheduleSpec
-    local_scale: ScheduleSpec
-    league_fraction: ScheduleSpec
-    checkpoint_interval: ScheduleSpec
-    num_epochs: ScheduleSpec
-    target_kl: ScheduleSpec
-    high_winrate_threshold: ScheduleSpec
-    high_winrate_target_kl: ScheduleSpec
+    learning_rate: Keypoints
+    policy_gradient_coef: Keypoints
+    entropy_coef: Keypoints
+    behavior_cloning_coef: Keypoints
+    value_function_coef: Keypoints
+    sigreg_coef: Keypoints
+    true_reward_scale: Keypoints
+    global_scale: Keypoints
+    local_scale: Keypoints
+    league_fraction: Keypoints
+    checkpoint_interval: Keypoints
+    num_epochs: Keypoints
+    target_kl: Keypoints
+    high_winrate_threshold: Keypoints
+    high_winrate_target_kl: Keypoints
+
+    def __post_init__(self) -> None:
+        for field in fields(self):
+            object.__setattr__(
+                self,
+                field.name,
+                validate_keypoints(getattr(self, field.name), name=field.name),
+            )
 
     def compile(self) -> TrainingSchedule:
         return TrainingSchedule(
             **{
-                field.name: compile_schedule(getattr(self, field.name))
+                field.name: compile_keypoints(getattr(self, field.name), name=field.name)
                 for field in fields(self)
             }
         )

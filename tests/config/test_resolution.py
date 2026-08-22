@@ -24,7 +24,7 @@ from boost_and_broadside.config.resolve import (
     derive_time_normalized_value,
     resolve_profile,
 )
-from boost_and_broadside.config.schedule_spec import compile_schedule, constant_spec, linear_spec
+from boost_and_broadside.config.schedule_spec import compile_keypoints, hold
 from boost_and_broadside.config.schema import LaunchSizingSpec, ProfileSpec
 from boost_and_broadside.config.service import format_resolved_config, resolved_profile_document
 from boost_and_broadside.config.training import TrainConfig
@@ -140,7 +140,7 @@ def test_profile_fingerprint_includes_declarative_schedule_intent() -> None:
     profile = PROFILES["rl"]
     changed_schedule = replace(
         profile.schedule_spec,
-        entropy_coef=constant_spec(0.006),
+        entropy_coef=hold(0.006),
     )
     changed = replace(
         profile,
@@ -179,14 +179,37 @@ def test_profile_fingerprint_excludes_gradient_checkpointing() -> None:
     assert other_machine.resolved_config_fingerprint != baseline.resolved_config_fingerprint
 
 
-def test_declarative_schedule_validation_and_boundaries() -> None:
-    with pytest.raises(ValueError, match="at least two"):
-        linear_spec((0, 1.0))
-    with pytest.raises(ValueError, match="strictly increasing"):
-        linear_spec((10, 1.0), (0, 3.0))
-    schedule = linear_spec((0, 1.0), (10, 3.0))
-    runtime = compile_schedule(schedule)
-    assert (runtime(-1), runtime(5), runtime(11)) == (1.0, 2.0, 3.0)
+def test_a_keypoint_table_interpolates_holds_and_clamps() -> None:
+    linear = compile_keypoints(((0, 1.0, "linear"), (10, 3.0, "hold")))
+    assert (linear(-1), linear(0), linear(5), linear(10), linear(11)) == (1.0, 1.0, 2.0, 3.0, 3.0)
+
+    # A row that holds ignores the next value entirely until its step arrives.
+    held = compile_keypoints(((0, 1.0, "hold"), (10, 3.0, "hold")))
+    assert (held(0), held(9), held(10)) == (1.0, 1.0, 3.0)
+
+    # Exponential interpolation returns the written value at the keypoint, not
+    # exp(log(v)): the round trip loses the last bits, and the schedules were
+    # tuned under the exact number.
+    decay = compile_keypoints(((0, 4.5e-4, "exponential"), (400, 1.5e-4, "hold")))
+    assert decay(0) == 4.5e-4
+    assert decay(400) == 1.5e-4
+    assert decay(200) == 4.5e-4 * (1.5e-4 / 4.5e-4) ** 0.5
+
+
+def test_a_malformed_keypoint_table_is_refused_by_name() -> None:
+    with pytest.raises(ValueError, match="at least one keypoint"):
+        compile_keypoints((), name="entropy_coef")
+    with pytest.raises(ValueError, match="strictly increase"):
+        compile_keypoints(((10, 1.0, "hold"), (0, 3.0, "hold")))
+    with pytest.raises(ValueError, match="unknown interpolation"):
+        compile_keypoints(((0, 1.0, "cosine"),))
+    with pytest.raises(ValueError, match="positive value"):
+        compile_keypoints(((0, 0.0, "exponential"), (10, 1.0, "hold")))
+    with pytest.raises(ValueError, match="needs a number"):
+        compile_keypoints(((0, None, "linear"), (10, 1.0, "hold")))
+    # A non-numeric value is fine as long as nothing interpolates through it:
+    # target_kl is None for the whole of BC.
+    assert compile_keypoints(hold(None))(5) is None
 
 
 def test_resolution_tracks_sources_and_cli_overrides() -> None:

@@ -159,8 +159,11 @@ Full plan, invariants and risks: [config-refactor.md](config-refactor.md).
       keyed on shared field names. Only the eight genuinely derived values are
       spelled out. Intent that is transformed is named differently on the two
       sides, and that convention is pinned by a test.
-- [ ] **8c** Flatten schedules to `[step, value, interp]` keypoint tables
-      (verified bit-identical on the real LR schedule)
+- [x] **8c** — **DONE.** Schedules are `(step, value, interp)` tables;
+      `ScheduleSpec`, the five `*_spec()` constructors and `compile_schedule`
+      are gone. Verified **bit-identical over 150,600 comparisons** — both
+      profiles, all 15 fields, boundary steps plus 5,000 random steps. Two
+      floating-point details had to be matched exactly, see the notes.
 - [ ] **8d** `checkpoints/<run>/config.json` holding intent + source +
       overrides + code provenance. **Append-only list of segments**, each keyed
       by the `global_step` it takes effect at — not a single document. See

@@ -161,10 +161,36 @@ stored fields anything reads back are `train_config.field_map`,
 unchanged. Verified directly: 682, 716 and 719 all load, and
 `tests/evaluation/test_landmark_runs.py` now checks that every commit.
 
-### 8c — flat schedules
+### 8c — flat schedules — **DONE**
 
-`[step, value, interp]` keypoint tables replacing the compiled-closure specs.
-Behaviour-preserving; verify at boundaries and past-the-end clamping.
+`(step, value, interp)` tables. Each row states a value and how to reach the
+next; the last row holds forever. `ScheduleSpec`, `constant_spec`, `linear_spec`,
+`stepped_spec`, `exponential_spec`, `join_spec` and `compile_schedule` are gone.
+
+The RL learning rate went from eleven nested objects to four rows. The old form
+stated every interior step twice — a `join` segment's activation step and its
+child's first keypoint had to agree by hand — and the flat form cannot disagree
+with itself.
+
+The point is not brevity. `canonical_json` now emits
+`"learning_rate":[[0,1e-07,"linear"],[5000000,0.00045,"hold"],...]`, so a run can
+record the schedule it is running under. 8d needs that; closures cannot be
+stored.
+
+**Verified bit-identical: 150,600 comparisons**, both profiles, all 15 fields,
+boundary steps plus 5,000 random ones, `max |flat − tree| = 0.000e+00`. Getting
+there took two floating-point corrections that a coarser check would have missed:
+
+- Landing exactly on an exponential keypoint must return the written value.
+  `exp(log(4.5e-4))` is `0.0004499999999999998`, so the first attempt was wrong
+  at the exact step the decay starts.
+- Exponential interpolation must be `v * (target/v) ** t`, not
+  `exp(log v + t·(log target − log v))`. Equal in real arithmetic, different in
+  the last bits, and the first spelling disagreed at every interior step.
+
+Neither would have changed training. Both would have made "behaviour-preserving"
+a false claim, which is the sort of thing that is worth one afternoon and never
+worth discovering later.
 
 ### 8d — `checkpoints/<run>/config.json`
 

@@ -22,7 +22,7 @@ drift here without drifting in RL too, which is the property the deleted
 
 from dataclasses import replace
 
-from boost_and_broadside.config.schedule_spec import constant_spec, linear_spec
+from boost_and_broadside.config.schedule_spec import hold
 from boost_and_broadside.profiles.rl import RL_PROFILE
 
 BC_SCHEDULE_SPEC = replace(
@@ -30,23 +30,23 @@ BC_SCHEDULE_SPEC = replace(
     # Warm up to the project learning rate, then hold.  RL's decay tail is keyed
     # to keypoints at 100M and 500M steps -- the end of *its* budget -- and
     # means nothing on BC's own, much longer one.
-    learning_rate=linear_spec((0, 1e-7), (6_000_000, 3e-4)),
+    learning_rate=((0, 1e-7, "linear"), (6_000_000, 3e-4, "hold")),
     # No policy gradient: the scripted controller supplies supervised action
     # targets and never takes a side in the rollout.
-    policy_gradient_coef=constant_spec(0.0),
+    policy_gradient_coef=hold(0.0),
     # In BC this is the policy head's only learning signal, deliberately
     # balanced one-to-one against the next-state auxiliary BC also weights at
     # 1.0.  RL's 2.0 is the strength of an *auxiliary* imitation term carried
     # alongside a live policy gradient.
-    behavior_cloning_coef=constant_spec(1.0),
+    behavior_cloning_coef=hold(1.0),
     # League opposition disabled: no roster opponent plays a BC rollout.  The
     # Elo evaluator still runs -- BC's own scripted win rate is what decays the
     # cloning weight -- and it rates against the same derived rungs RL uses.
-    league_fraction=constant_spec(0.0),
+    league_fraction=hold(0.0),
     # A KL trust region early-stops epochs when the policy moves away from the
     # one that produced the rollout.  Under supervision that movement is the
     # objective, so the PPO stopping criterion does not apply.
-    target_kl=constant_spec(None),
+    target_kl=hold(None),
 )
 
 BC_PROFILE = replace(
