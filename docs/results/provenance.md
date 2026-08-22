@@ -8,17 +8,17 @@ reading; the artifact directory holds the full recipe and provenance.
 
 | output | renderer | source | description |
 |---|---|---|---|
-| `docs/results/elo_curve.png` | training-elo-curve-v1 | calibration=checkpoints/good-leaf-719/artifacts/elo-calibration/20260820T215019Z-acbcb96e (cfb59fa15854) | Post-hoc calibrated Elo over training, against the scripted controller. |
-| `docs/results/win_rate_vs_scripted.png` | training-win-rate-v1 | wandb_export=checkpoints/good-leaf-719/artifacts/wandb-export/20260821T231524Z-6bb0d099 (9e116833133e) | Win rate against the scripted controller over training. |
-| `docs/results/training_health.png` | training-health-v1 | wandb_export=checkpoints/good-leaf-719/artifacts/wandb-export/20260821T231524Z-6bb0d099 (9e116833133e) | Critic fit, reward, KL, and clip fraction as one optimisation panel. |
-| `docs/results/next_state_error.png` | next-state-error-v1 | wandb_export=checkpoints/good-leaf-719/artifacts/wandb-export/20260821T231524Z-6bb0d099 (9e116833133e) | Next-state prediction error per observation dimension. |
-| `docs/results/crossover_phase.png` | crossover-phase-v1 | crossover=checkpoints/good-leaf-719/artifacts/crossover/20260821T012217Z-ecf96a55 (191921efbcda) | Where the scripted fleet overtakes the policy, against equal counts. |
-| `docs/results/crossover_ratio.png` | crossover-ratio-v1 | crossover=checkpoints/good-leaf-719/artifacts/crossover/20260821T012217Z-ecf96a55 (191921efbcda) | Scripted ships beaten per policy ship. |
-| `docs/crossover/crossover.json` | crossover-data-v1 | crossover=checkpoints/good-leaf-719/artifacts/crossover/20260821T012217Z-ecf96a55 (191921efbcda) | The measured crossover curves as published data. |
-| `docs/results/elo_scale_scripted_1000.png` | elo-scale-v1 | reference=checkpoints/good-leaf-719/artifacts/semi-random-ladder/20260821T024527Z-8174e790 (fd900249087d); scale=checkpoints/good-leaf-719/artifacts/elo-scale/20260820T220608Z-7f272680 (16ec02eaa29e) | Checkpoint strength across symmetric fleet sizes, scripted-anchored. |
-| `docs/results/semi_random_connectivity.png` | semi-random-connectivity-v1 | ladder=checkpoints/good-leaf-719/artifacts/semi-random-ladder/20260821T024527Z-8174e790 (fd900249087d) | How informative each step of the random-to-scripted ladder is. |
-| `docs/ar_report/4v4` | ar-report-v1 | ar_report=checkpoints/good-leaf-719/artifacts/ar-report/20260821T034104Z-b831faa9 (f1d052d8f01b) | Closed- and open-loop imagined rollouts against ground truth, 4v4. |
-| `docs/noise_calibration` | noise-calibration-v1 | noise=checkpoints/good-leaf-719/artifacts/noise-calibration/20260821T231432Z-de3e3299 (0c29093823bb) | Next-state prediction error: sigma, autocorrelation, and AR growth. |
+| `docs/results/elo_curve.png` | figure-copy-v1 | figures=checkpoints/good-leaf-719/artifacts/figures#elo_curve.png (6e17024e492f) | Post-hoc calibrated Elo over training, against the scripted controller. |
+| `docs/results/win_rate_vs_scripted.png` | figure-copy-v1 | figures=checkpoints/good-leaf-719/artifacts/figures#win_rate_vs_scripted.png (6e17024e492f) | Win rate against the scripted controller over training. |
+| `docs/results/training_health.png` | figure-copy-v1 | figures=checkpoints/good-leaf-719/artifacts/figures#training_health.png (6e17024e492f) | Critic fit, reward, KL, and clip fraction as one optimisation panel. |
+| `docs/results/next_state_error.png` | figure-copy-v1 | figures=checkpoints/good-leaf-719/artifacts/figures#next_state_error.png (6e17024e492f) | Next-state prediction error per observation dimension. |
+| `docs/results/crossover_phase.png` | figure-copy-v1 | figures=checkpoints/good-leaf-719/artifacts/figures#crossover_phase.png (6e17024e492f) | Where the scripted fleet overtakes the policy, against equal counts. |
+| `docs/results/crossover_ratio.png` | figure-copy-v1 | figures=checkpoints/good-leaf-719/artifacts/figures#crossover_ratio.png (6e17024e492f) | Scripted ships beaten per policy ship. |
+| `docs/crossover/crossover.json` | figure-copy-v1 | figures=checkpoints/good-leaf-719/artifacts/figures#crossover.json (6e17024e492f) | The measured crossover curves as published data. |
+| `docs/results/elo_scale_scripted_1000.png` | figure-copy-v1 | figures=checkpoints/good-leaf-719/artifacts/figures#elo_scale_scripted_1000.png (6e17024e492f) | Checkpoint strength across symmetric fleet sizes, scripted-anchored. |
+| `docs/results/semi_random_connectivity.png` | figure-copy-v1 | figures=checkpoints/good-leaf-719/artifacts/figures#semi_random_connectivity.png (6e17024e492f) | How informative each step of the random-to-scripted ladder is. |
+| `docs/ar_report/4v4` | figure-tree-copy-v1 | figures=checkpoints/good-leaf-719/artifacts/figures#ar_report_4v4 (6e17024e492f) | Closed- and open-loop imagined rollouts against ground truth, 4v4. |
+| `docs/noise_calibration` | figure-tree-copy-v1 | figures=checkpoints/good-leaf-719/artifacts/figures#noise_calibration (6e17024e492f) | Next-state prediction error: sigma, autocorrelation, and AR growth. |
 | `docs/policy_architecture.png` | external-asset-v1 | none | Policy architecture diagram; drawn by hand, with no producer in this repository. |
 | `docs/results/replays/self_16v16_seed00.gif` | media-copy-v1 | clip=out/self_16v16_seed00.gif (5ca87de8a577) | Curated seeded replay: self 16v16 seed00. |
 | `docs/results/replays/self_2v2_seed00.gif` | media-copy-v1 | clip=out/self_2v2_seed00.gif (e51b7f82e56d) | Curated seeded replay: self 2v2 seed00. |

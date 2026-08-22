@@ -59,7 +59,7 @@ def _render_promoted(inputs, out_dir: Path) -> list[Path]:
 
 @pytest.fixture
 def renderers(isolated_registry):
-    """One single-file, one directory, and one promoted-media renderer."""
+    """One single-file, one directory, one promoted-media, one figure-copy."""
 
     return {
         "summary": register(
@@ -87,6 +87,15 @@ def renderers(isolated_registry):
                 description="Promote a local clip.",
                 render=_render_promoted,
                 required_files=("clip",),
+            )
+        ),
+        "figure": register(
+            Renderer(
+                name="fixture-figure-copy-v1",
+                description="Copy one entry of a run's rendered figure set.",
+                render=_render_summary,
+                required_artifacts=("figures",),
+                names_a_figure=True,
             )
         ),
     }

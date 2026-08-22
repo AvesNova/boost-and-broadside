@@ -4,6 +4,9 @@
 
 ![Eight learned blue ships defeating eleven scripted red ships](docs/results/replays/vs_scripted_8v11_seed03.gif)
 
+<sub>Replay of <code>resilient-resonance-682</code>, the previous reference run; the
+figures below measure <code>good-leaf-719</code>. See <a href="docs/replays.md">replays</a>.</sub>
+
 *Outnumbered 11 ships to 8, the learned fleet wins with three ships to spare.*
 
 Boost and Broadside is a tensorized 2D dogfighting environment and reinforcement
@@ -85,8 +88,9 @@ emits one output per ship, however many there are.
   measurements with qualitative behavior. The crossover evaluator is
   [`crossover.py`](src/boost_and_broadside/modes/crossover.py).
 
-Headline claims are traceable to code and stored artifacts through the
-[evidence map](docs/internal/evidence.md).
+Every headline number names the artifact it came from, and
+[`docs/results/provenance.md`](docs/results/provenance.md) maps each published figure to
+the exact measurement behind it.
 
 ## Quick start
 

@@ -30,7 +30,9 @@ MANIFEST_RELATIVE_PATH = Path("docs") / "publications.toml"
 MANIFEST_SCHEMA_VERSION = 1
 PUBLICATION_ROOT = Path("docs")
 
-_ENTRY_KEYS = frozenset({"renderer", "output", "description", "artifacts", "files"})
+_ENTRY_KEYS = frozenset(
+    {"renderer", "output", "description", "artifacts", "files", "figure"}
+)
 _SHA256_LENGTH = 64
 
 
@@ -56,6 +58,9 @@ class PublicationEntry:
     description: str
     artifacts: Mapping[str, str] = field(default_factory=dict)
     files: Mapping[str, FileSource] = field(default_factory=dict)
+    # Which entry of a run's rendered figure set this publishes. Only the
+    # copying renderers read it; for everything else it stays None.
+    figure: str | None = None
 
     @property
     def renderer(self) -> Renderer:
@@ -148,6 +153,7 @@ def _entry(name: str, body: Any, root: str | Path) -> PublicationEntry:
     artifacts = _artifacts(name, body.get("artifacts", {}))
     files = _files(name, body.get("files", {}))
     _reject_unknown_sources(name, renderer, artifacts, files)
+    figure = _figure(name, renderer, body.get("figure"))
     return PublicationEntry(
         name=name,
         renderer_name=body["renderer"],
@@ -155,7 +161,30 @@ def _entry(name: str, body: Any, root: str | Path) -> PublicationEntry:
         description=body["description"],
         artifacts=artifacts,
         files=files,
+        figure=figure,
     )
+
+
+def _figure(name: str, renderer: Renderer, value: Any) -> str | None:
+    """Validate the figure name a copying renderer needs, and only it needs."""
+
+    if renderer.names_a_figure:
+        if not isinstance(value, str) or not value:
+            raise ManifestError(
+                f"publication {name!r} uses {renderer.name!r} and must name the "
+                "figure it publishes"
+            )
+        if "/" in value or value in {"", ".", ".."}:
+            raise ManifestError(
+                f"publication {name!r} figure {value!r} must be one entry of the figure set"
+            )
+        return value
+    if value is not None:
+        raise ManifestError(
+            f"publication {name!r} names a figure, but renderer {renderer.name!r} "
+            "renders its own output"
+        )
+    return None
 
 
 def publication_output_path(value: str, root: str | Path, *, described_as: str) -> str:

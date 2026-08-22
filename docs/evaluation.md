@@ -270,20 +270,25 @@ diagnostics rather than headline task-performance measures.
 
 ## Reproduce the figures
 
-Every canonical figure is rendered by `bnb publish` from the artifact that
-[`docs/publications.toml`](publications.toml) selects for it:
+Every canonical figure is rendered once, by `bnb figures`, into the artifacts of the run
+it describes. Publication then copies the ones
+[`docs/publications.toml`](publications.toml) selects:
 
 ```bash
-uv run bnb publish              # render every selected publication
+uv run bnb figures <run>        # render a run's whole figure set into that run
+uv run bnb publish              # copy every selected publication into docs/
 uv run bnb publish --target elo_curve
-uv run bnb publish --check      # render into a temporary tree and compare
+uv run bnb publish --check      # compare the tracked output against its source
 ```
 
-Publication is offline and runs no simulation, so it needs no GPU. It verifies each source
-artifact's hashes before rendering and refuses one produced from a dirty checkout or from a
-measurement that never finished. `--check` reports what would change without touching
-`docs/`. The renderer is the source of the axis labels and equal-scale geometry; the
-tracked rasters are regenerated from it rather than edited independently.
+Splitting it this way means a chart in `docs/` and the same chart in the run's own evidence
+are one file rather than two renders that happen to agree. It also makes a new run cheap:
+producing every chart for one is a single command that never touches `docs/`.
+
+Publication is offline and runs no simulation, so it needs no GPU. It verifies the source
+artifact's hashes before copying and refuses one that never finished, warning about one
+produced from a dirty checkout. `--check` reports what would change without touching
+`docs/`, which is also what catches a re-render that moved a published chart.
 
 Refitting a stored calibration also needs no GPU:
 `uv run bnb elo-calibrate --from-artifact <artifact directory>` refits the saved win/tie

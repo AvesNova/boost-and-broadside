@@ -24,6 +24,20 @@ Ideas under consideration, roughly ordered by interest. None are commitments.
   any checkpoint a run kept, but retention discards all but the newest few, so in
   practice only recent steps are reachable.
 
+## Results and presentation
+
+- **Recapture the replays against `good-leaf-719`**: all fifteen clips, including the
+  README hero, show `resilient-resonance-682`, which trained under different physics and
+  a different decision rate than the run every published figure now measures.
+- **Replay provenance**: the clips carry no sidecar and no poster frame, so nothing but the
+  filename says which checkpoint, seed, and commit produced one.
+- **A boundary or failure replay** near a measured crossover, so the qualitative page shows
+  a loss as well as wins.
+- **A count-agnostic system diagram**: simulation to observation to team policy to
+  training and evaluation, at a glance.
+- **Contribution guide and CI**: the setup and test claims in the README are currently
+  verified by hand.
+
 ## Interpretability
 
 - **Latent-space visualization**: UMAP projections of ship token embeddings

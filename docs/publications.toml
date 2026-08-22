@@ -5,103 +5,114 @@
 # it. Nothing else decides what belongs in docs/, and `bnb publish` writes
 # nothing that is not declared below.
 #
-# Every entry names its exact source. The computed figures come from artifacts
-# under the reference run, each recording the command, seeds, checkpoint hashes,
-# and clean commit it was produced from. The curated replays are scratch clips
-# promoted by content hash: `out/` is never tracked, so the sha256 below is what
-# makes a published clip citable, and it is checked against the tracked output
-# whether or not the scratch copy is still on this machine.
+# Every entry names its exact source. The computed figures are copied from a
+# run's `figures` artifact, which `bnb figures` renders once from that run's own
+# measurements; publishing chooses which run illustrates the documents and does
+# not re-render anything. The curated replays are scratch clips promoted by
+# content hash: `out/` is never tracked, so the sha256 below is what makes a
+# published clip citable, and it is checked against the tracked output whether
+# or not the scratch copy is still on this machine.
 
 schema_version = 1
 
 [publications.elo_curve]
-renderer = "training-elo-curve-v1"
+renderer = "figure-copy-v1"
 output = "docs/results/elo_curve.png"
+figure = "elo_curve.png"
 description = "Post-hoc calibrated Elo over training, against the scripted controller."
 
 [publications.elo_curve.artifacts]
-calibration = "checkpoints/good-leaf-719/artifacts/elo-calibration/20260820T215019Z-acbcb96e"
+figures = "checkpoints/good-leaf-719/artifacts/figures"
 
 [publications.win_rate_vs_scripted]
-renderer = "training-win-rate-v1"
+renderer = "figure-copy-v1"
 output = "docs/results/win_rate_vs_scripted.png"
+figure = "win_rate_vs_scripted.png"
 description = "Win rate against the scripted controller over training."
 
 [publications.win_rate_vs_scripted.artifacts]
-wandb_export = "checkpoints/good-leaf-719/artifacts/wandb-export/20260821T231524Z-6bb0d099"
+figures = "checkpoints/good-leaf-719/artifacts/figures"
 
 [publications.training_health]
-renderer = "training-health-v1"
+renderer = "figure-copy-v1"
 output = "docs/results/training_health.png"
+figure = "training_health.png"
 description = "Critic fit, reward, KL, and clip fraction as one optimisation panel."
 
 [publications.training_health.artifacts]
-wandb_export = "checkpoints/good-leaf-719/artifacts/wandb-export/20260821T231524Z-6bb0d099"
+figures = "checkpoints/good-leaf-719/artifacts/figures"
 
 [publications.next_state_error]
-renderer = "next-state-error-v1"
+renderer = "figure-copy-v1"
 output = "docs/results/next_state_error.png"
+figure = "next_state_error.png"
 description = "Next-state prediction error per observation dimension."
 
 [publications.next_state_error.artifacts]
-wandb_export = "checkpoints/good-leaf-719/artifacts/wandb-export/20260821T231524Z-6bb0d099"
+figures = "checkpoints/good-leaf-719/artifacts/figures"
 
 [publications.crossover_phase]
-renderer = "crossover-phase-v1"
+renderer = "figure-copy-v1"
 output = "docs/results/crossover_phase.png"
+figure = "crossover_phase.png"
 description = "Where the scripted fleet overtakes the policy, against equal counts."
 
 [publications.crossover_phase.artifacts]
-crossover = "checkpoints/good-leaf-719/artifacts/crossover/20260821T012217Z-ecf96a55"
+figures = "checkpoints/good-leaf-719/artifacts/figures"
 
 [publications.crossover_ratio]
-renderer = "crossover-ratio-v1"
+renderer = "figure-copy-v1"
 output = "docs/results/crossover_ratio.png"
+figure = "crossover_ratio.png"
 description = "Scripted ships beaten per policy ship."
 
 [publications.crossover_ratio.artifacts]
-crossover = "checkpoints/good-leaf-719/artifacts/crossover/20260821T012217Z-ecf96a55"
+figures = "checkpoints/good-leaf-719/artifacts/figures"
 
 [publications.crossover_data]
-renderer = "crossover-data-v1"
+renderer = "figure-copy-v1"
 output = "docs/crossover/crossover.json"
+figure = "crossover.json"
 description = "The measured crossover curves as published data."
 
 [publications.crossover_data.artifacts]
-crossover = "checkpoints/good-leaf-719/artifacts/crossover/20260821T012217Z-ecf96a55"
+figures = "checkpoints/good-leaf-719/artifacts/figures"
 
 [publications.elo_scale]
-renderer = "elo-scale-v1"
+renderer = "figure-copy-v1"
 output = "docs/results/elo_scale_scripted_1000.png"
+figure = "elo_scale_scripted_1000.png"
 description = "Checkpoint strength across symmetric fleet sizes, scripted-anchored."
 
 [publications.elo_scale.artifacts]
-scale = "checkpoints/good-leaf-719/artifacts/elo-scale/20260820T220608Z-7f272680"
-reference = "checkpoints/good-leaf-719/artifacts/semi-random-ladder/20260821T024527Z-8174e790"
+figures = "checkpoints/good-leaf-719/artifacts/figures"
 
 [publications.semi_random_connectivity]
-renderer = "semi-random-connectivity-v1"
+renderer = "figure-copy-v1"
 output = "docs/results/semi_random_connectivity.png"
+figure = "semi_random_connectivity.png"
 description = "How informative each step of the random-to-scripted ladder is."
 
 [publications.semi_random_connectivity.artifacts]
-ladder = "checkpoints/good-leaf-719/artifacts/semi-random-ladder/20260821T024527Z-8174e790"
+figures = "checkpoints/good-leaf-719/artifacts/figures"
 
 [publications.ar_report]
-renderer = "ar-report-v1"
+renderer = "figure-tree-copy-v1"
 output = "docs/ar_report/4v4"
+figure = "ar_report_4v4"
 description = "Closed- and open-loop imagined rollouts against ground truth, 4v4."
 
 [publications.ar_report.artifacts]
-ar_report = "checkpoints/good-leaf-719/artifacts/ar-report/20260821T034104Z-b831faa9"
+figures = "checkpoints/good-leaf-719/artifacts/figures"
 
 [publications.noise_calibration]
-renderer = "noise-calibration-v1"
+renderer = "figure-tree-copy-v1"
 output = "docs/noise_calibration"
+figure = "noise_calibration"
 description = "Next-state prediction error: sigma, autocorrelation, and AR growth."
 
 [publications.noise_calibration.artifacts]
-noise = "checkpoints/good-leaf-719/artifacts/noise-calibration/20260821T231432Z-de3e3299"
+figures = "checkpoints/good-leaf-719/artifacts/figures"
 
 [publications.policy_architecture]
 renderer = "external-asset-v1"

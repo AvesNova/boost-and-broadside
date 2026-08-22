@@ -611,6 +611,89 @@ def test_an_external_asset_is_verified_rather_than_rendered(tmp_path) -> None:
         renderer.render(RenderInputs(), tmp_path)
 
 
+def _figures_artifact(tmp_path):
+    """A run's rendered figure set: one file, one directory, as the real one has."""
+
+    store = _store(tmp_path)
+    artifact = store.create(ArtifactRecipe("figures", 1), store.standalone_owner())
+    (artifact.path / "elo_curve.png").write_bytes(b"\x89PNG chart bytes")
+    (artifact.path / "ar_report_4v4").mkdir()
+    (artifact.path / "ar_report_4v4" / "report.md").write_text("# report\n")
+    (artifact.path / "ar_report_4v4" / "panel.png").write_bytes(b"\x89PNG panel")
+    artifact.attach("elo_curve.png")
+    artifact.attach("ar_report_4v4/report.md")
+    artifact.attach("ar_report_4v4/panel.png")
+    artifact.complete()
+    return artifact
+
+
+def test_publishing_a_figure_copies_the_bytes_the_run_already_rendered(tmp_path) -> None:
+    """Publication must not re-render. Two renders are equal only by convention.
+
+    Copying is what makes the published chart and the run's own evidence the
+    same artifact rather than two that happen to agree today.
+    """
+
+    artifact = _figures_artifact(tmp_path)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    get_renderer("figure-copy-v1").render(
+        RenderInputs(artifacts={"figures": artifact}, figure="elo_curve.png"), out_dir
+    )
+
+    assert (out_dir / "elo_curve.png").read_bytes() == (
+        artifact.path / "elo_curve.png"
+    ).read_bytes()
+
+
+def test_publishing_a_figure_tree_copies_every_file_under_it(tmp_path) -> None:
+    artifact = _figures_artifact(tmp_path)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    written = get_renderer("figure-tree-copy-v1").render(
+        RenderInputs(artifacts={"figures": artifact}, figure="ar_report_4v4"), out_dir
+    )
+
+    assert sorted(path.relative_to(out_dir).as_posix() for path in written) == [
+        "panel.png",
+        "report.md",
+    ]
+    assert (out_dir / "report.md").read_text() == "# report\n"
+
+
+def test_publishing_a_figure_the_run_does_not_have_says_what_it_does_have(tmp_path) -> None:
+    artifact = _figures_artifact(tmp_path)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    with pytest.raises(PublicationError, match="holds no figure named 'nope.png'"):
+        get_renderer("figure-copy-v1").render(
+            RenderInputs(artifacts={"figures": artifact}, figure="nope.png"), out_dir
+        )
+
+
+@pytest.mark.parametrize(
+    ("renderer", "figure", "expected"),
+    (
+        ("figure-copy-v1", "ar_report_4v4", "publish it with figure-tree-copy-v1"),
+        ("figure-tree-copy-v1", "elo_curve.png", "publish it with figure-copy-v1"),
+    ),
+)
+def test_a_figure_copied_by_the_wrong_renderer_names_the_right_one(
+    tmp_path, renderer: str, figure: str, expected: str
+) -> None:
+    artifact = _figures_artifact(tmp_path)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    with pytest.raises(PublicationError, match=expected):
+        get_renderer(renderer).render(
+            RenderInputs(artifacts={"figures": artifact}, figure=figure), out_dir
+        )
+
+
 def test_every_registered_renderer_is_named_by_a_test() -> None:
     """A tripwire for the claim that these tests cover the renderer inventory.
 

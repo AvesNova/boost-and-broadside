@@ -30,6 +30,9 @@ class RenderInputs:
 
     artifacts: Mapping[str, Artifact] = field(default_factory=dict)
     files: Mapping[str, Path] = field(default_factory=dict)
+    # Set only for the copying renderers, which publish one named entry of a
+    # run's already-rendered figure set rather than producing anything.
+    figure: str | None = None
 
     def artifact(self, name: str) -> Artifact:
         try:
@@ -58,6 +61,11 @@ class Renderer:
     # A directory entry installs a whole rendered tree and prunes what the
     # renderer no longer produces; a file entry must produce exactly one file.
     multi_file: bool = False
+    # This renderer publishes one named entry of a run's rendered figure set,
+    # so its manifest entry has to say which. Charts are rendered once, by
+    # ``bnb figures``, into the run they describe; publication then chooses
+    # which run illustrates the documents, and copying is the whole of it.
+    names_a_figure: bool = False
     # An external output has no producer here: publication verifies that the
     # tracked file exists and records it in the index, and never renders it.
     # Claiming otherwise would make the inventory look reproducible when it is

@@ -148,6 +148,23 @@ def test_a_renderer_with_no_required_source_is_always_selected(repository, isola
             'output = "docs/a.json"\ndescription = "y"\n',
             "both own",
         ),
+        (
+            'schema_version = 1\n[publications.a]\nrenderer = "fixture-figure-copy-v1"\n'
+            'output = "docs/a.png"\ndescription = "x"\n'
+            '[publications.a.artifacts]\nfigures = "checkpoints/r/artifacts/figures"\n',
+            "must name the figure it publishes",
+        ),
+        (
+            'schema_version = 1\n[publications.a]\nrenderer = "fixture-figure-copy-v1"\n'
+            'output = "docs/a.png"\ndescription = "x"\nfigure = "sub/a.png"\n'
+            '[publications.a.artifacts]\nfigures = "checkpoints/r/artifacts/figures"\n',
+            "must be one entry of the figure set",
+        ),
+        (
+            'schema_version = 1\n[publications.a]\nrenderer = "fixture-summary-v1"\n'
+            'output = "docs/a.json"\ndescription = "x"\nfigure = "a.png"\n',
+            "renders its own output",
+        ),
         ("this is not toml =", "not valid TOML"),
     ],
 )

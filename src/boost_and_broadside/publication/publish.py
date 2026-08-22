@@ -367,7 +367,7 @@ def _resolve_sources(
             )
         files[name] = path
         digests[name] = actual
-    return RenderInputs(artifacts=artifacts, files=files), digests
+    return RenderInputs(artifacts=artifacts, files=files, figure=entry.figure), digests
 
 
 def _warn_unclean_source(entry: PublicationEntry, name: str, artifact: Artifact) -> None:
@@ -549,8 +549,13 @@ def _prune_unowned(
 
 
 def _index_row(entry: PublicationEntry, digests: dict[str, str]) -> str:
+    # A copied figure names the entry it copied. Without it every chart from one
+    # run would read as the same source row, and the table would stop
+    # distinguishing the outputs it exists to distinguish. What produced the
+    # figure is recorded one hop away, in the figures artifact's own manifest.
+    within = f"#{entry.figure}" if entry.figure else ""
     sources = "; ".join(
-        f"{name}={location} ({digests.get(name, '')[:12]})"
+        f"{name}={location}{within} ({digests.get(name, '')[:12]})"
         for name, location in sorted(entry.artifacts.items())
     )
     promoted = "; ".join(

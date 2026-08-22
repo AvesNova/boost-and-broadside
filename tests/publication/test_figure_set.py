@@ -1,9 +1,9 @@
 """The figure set is what a run can show; the manifest is what the docs show.
 
 Two questions, deliberately answered in two places. These tests hold the two in
-agreement so the split does not become drift: every computed figure the manifest
-publishes has to exist in the set, rendered the same way from the same kinds of
-measurement.
+agreement so the split does not become drift: every chart the manifest publishes
+has to be one the figure set knows how to produce, and publication has to get it
+by copying that run's rendered copy rather than by rendering its own.
 """
 
 from __future__ import annotations
@@ -44,22 +44,35 @@ def test_figure_names_are_unique():
 def test_the_set_covers_every_computed_publication():
     """A published figure with no entry here could not be reproduced for a new run."""
 
-    by_renderer = {figure.renderer: figure for figure in FIGURES}
     missing = [
-        entry.name for entry in _computed_entries() if entry.renderer_name not in by_renderer
+        entry.name
+        for entry in _computed_entries()
+        if entry.figure is not None and entry.figure not in FIGURES_BY_NAME
     ]
     assert missing == []
 
 
-def test_published_figures_read_the_same_artifact_kinds_the_set_declares():
-    """The manifest pins exact artifact ids; the set pins their types. The source
-    *names* must still line up, or a repointed manifest would feed a renderer
-    something the set never intended."""
+def test_no_publication_renders_a_chart_the_figure_set_already_renders():
+    """Publishing copies; it does not render a second time.
 
-    by_renderer = {figure.renderer: figure for figure in FIGURES}
+    Two independent renders of one chart agree only by convention, and nothing
+    compares them, so a manifest entry naming a chart renderer directly could
+    put one image in a run's own evidence and another in `docs/` under the same
+    claim. The published output is a copy of the run's, or it is not published.
+    """
+
+    chart_renderers = {figure.renderer for figure in FIGURES}
+    rendered_twice = [
+        entry.name for entry in _computed_entries() if entry.renderer_name in chart_renderers
+    ]
+    assert rendered_twice == []
+
+
+def test_every_published_figure_is_copied_from_one_runs_figure_set():
     for entry in _computed_entries():
-        figure = by_renderer[entry.renderer_name]
-        assert set(entry.artifacts) == set(figure.sources), entry.name
+        assert set(entry.artifacts) == {"figures"}, entry.name
+        assert entry.figure is not None, entry.name
+        assert entry.artifacts["figures"].endswith("/artifacts/figures"), entry.name
 
 
 def test_required_artifact_types_are_what_a_finished_run_produces():
