@@ -59,6 +59,15 @@ class ProfileSpec:
     the decision rate. ``launch`` stays a sub-object because machine sizing is
     genuinely a different kind of value -- it is excluded from the profile
     fingerprint and may be overridden per launch.
+
+    **Naming is load-bearing.** A field with the same name here and on
+    :class:`TrainConfig` is passed through untouched, and ``resolve_profile``
+    copies it by name rather than listing it. Anything the resolver *transforms*
+    must therefore be named differently on each side -- ``gamma_per_tick`` for
+    the stated value against ``gamma`` for the normalized one, ``schedule_spec``
+    for declarative intent against ``schedule`` for the compiled closure. Giving
+    a transformed value the same name on both sides would silently pass the
+    intent through as if it were the result.
     """
 
     name: str
@@ -81,7 +90,7 @@ class ProfileSpec:
 
     # --- Objective ---
     paradigm: str
-    schedule: TrainingScheduleSpec
+    schedule_spec: TrainingScheduleSpec
     rewards: RewardConfig
     next_state_coef: float
     windowed_loss_coef: float

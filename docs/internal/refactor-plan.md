@@ -154,9 +154,11 @@ Full plan, invariants and risks: [config-refactor.md](config-refactor.md).
       snapshots, `_INTENDED_DIVERGENCE`, and the fingerprint pin test.
       `num_fields` is now a parameter of the smoke fixture, so the zero-field
       width run 682 trained at keeps a regression test.
-- [ ] **8b** Collapse Spec + Config into one schema with explicit
-      intent/derived field pairs (`gamma_per_tick` stored, `gamma` derived).
-      Derivation becomes `derive(config) -> config`
+- [x] **8b** — **DONE.** `ProfileSpec` flattened (six sub-specs deleted), then
+      the 25-field pass-through block in `resolve_profile` replaced by a copy
+      keyed on shared field names. Only the eight genuinely derived values are
+      spelled out. Intent that is transformed is named differently on the two
+      sides, and that convention is pinned by a test.
 - [ ] **8c** Flatten schedules to `[step, value, interp]` keypoint tables
       (verified bit-identical on the real LR schedule)
 - [ ] **8d** `checkpoints/<run>/config.json` holding intent + source +

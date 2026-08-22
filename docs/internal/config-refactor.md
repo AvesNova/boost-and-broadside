@@ -124,7 +124,7 @@ there as un-reprobed rather than quietly restated.
 
 ### 8b — one schema
 
-Split at the seam the plan named. **8b-1 is done**; 8b-2 is next.
+Split at the seam the plan named. Both halves are done.
 
 **8b-1 — flatten the profile.** `EnvironmentSpec`, `RolloutSpec`,
 `DiscountSpec`, `ObjectiveSpec`, `OptimizerSpec` and `LeagueSpec` are gone;
@@ -137,15 +137,29 @@ Where this shows up: the smoke fixture went from six nested `replace()` calls to
 one, and BC's overlay from three to a flat list. `_validate_profile` lost its
 sub-object unpacking. Adding a hyperparameter is now two files rather than four.
 
-**8b-2 — merge into `TrainConfig`.** Intent and derived values in one dataclass
-with explicit pairs (`gamma_per_tick` stored, `gamma` derived), and the ~35-line
-pass-through block in `resolve_profile` deleted. This is the edit that gets to
-"one edit".
+**8b-2 — delete the pass-through. DONE.** 25 of the 33 `TrainConfig` fields were
+being copied from the profile one line at a time. They are now copied by name:
+`resolve_profile` takes every field whose name appears on both schemas, and
+spells out only the eight that are genuinely derived.
 
-*Risk, unchanged and now the whole risk:* 8b-2 changes the shape of the
-resolved-config document, which is what `evaluation/subjects.py` and
-`policy_io.py` read out of **old** checkpoints. 682, 716 and 719 all carry the
-current shape. The compatibility path has to land before 8b-2, not after.
+Adding a plain hyperparameter is a two-line change — one field on each dataclass
+— with nothing to edit in the resolver.
+
+**The naming convention became load-bearing**, which is the price. A transformed
+value must be named differently on the two sides (`gamma_per_tick`/`gamma`,
+`schedule_spec`/`schedule`), or it would be copied straight through and the
+trainer would read stated intent as a derived result — a per-tick discount
+silently becoming a per-decision one. The eight derived names are pinned in
+`test_only_untransformed_intent_shares_a_name_with_the_resolved_config`, so
+arriving in that set by accident fails loudly.
+
+*The compatibility risk this step was supposed to carry did not exist.*
+`TrainConfig` is never reconstructed from stored data — `_rebuild_config` is only
+applied to `ModelConfig`, `ShipConfig`, `EnvConfig` and `FieldMapConfig`. The only
+stored fields anything reads back are `train_config.field_map`,
+`train_config.paradigm`, and three document-level keys, all via `.get()` and all
+unchanged. Verified directly: 682, 716 and 719 all load, and
+`tests/evaluation/test_landmark_runs.py` now checks that every commit.
 
 ### 8c — flat schedules
 

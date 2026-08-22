@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, replace
+from dataclasses import fields as dataclass_fields
 from decimal import Decimal
 from types import MappingProxyType
 from typing import Any
@@ -158,6 +159,19 @@ def derive_time_normalized_value(per_tick_value: float, *, action_repeat: int) -
     return float(Decimal(str(per_tick_value)) ** action_repeat)
 
 
+# Fields TrainConfig takes from the profile verbatim: the names that appear in
+# both schemas. Deriving this rather than listing it is what makes adding a plain
+# hyperparameter a two-line change -- one field on each dataclass -- with nothing
+# to edit here. A transformed value is kept out by being named differently on the
+# two sides, which ``tests/config/test_resolution.py`` pins.
+_PASS_THROUGH: tuple[str, ...] = tuple(
+    sorted(
+        {field.name for field in dataclass_fields(ProfileSpec)}
+        & {field.name for field in dataclass_fields(TrainConfig)}
+    )
+)
+
+
 def _profile_fingerprint_payload(profile: ProfileSpec) -> dict[str, Any]:
     payload = canonical_data(profile)
     del payload["launch"]
@@ -179,7 +193,7 @@ def _resolved_fingerprint_payload(
     # Runtime closure names are characterization evidence, not schema.  The
     # resolved fingerprint binds the same final schedule through its declarative
     # intent instead.
-    train_payload["schedule"] = canonical_data(profile.schedule)
+    train_payload["schedule"] = canonical_data(profile.schedule_spec)
     return {
         "schema_version": RESOLVED_CONFIG_SCHEMA_VERSION,
         "profile_name": profile.name,
@@ -471,46 +485,24 @@ def resolve_profile(
         for name, value in profile.component_lambdas_per_tick.items()
     }
     train_config = TrainConfig(
+        # Everything named the same on both sides is intent the resolver does not
+        # touch; see ProfileSpec on why that convention is enforceable.
+        **{name: getattr(profile, name) for name in _PASS_THROUGH},
         scales=(ScaleConfig(env_config=env_config, num_envs=num_envs),),
-        paradigm=profile.paradigm,
-        schedule=profile.schedule.compile(),
-        rewards=profile.rewards,
-        num_steps=profile.num_steps,
-        rollouts_per_update=rollouts_per_update,
-        num_minibatches=profile.num_minibatches,
+        schedule=profile.schedule_spec.compile(),
         gamma=derive_time_normalized_value(profile.gamma_per_tick, action_repeat=action_repeat),
         gae_lambda=derive_time_normalized_value(
             profile.gae_lambda_per_tick, action_repeat=action_repeat
         ),
-        clip_coef=profile.clip_coef,
-        max_grad_norm=profile.max_grad_norm,
-        total_timesteps=profile.total_timesteps,
-        return_ema_alpha=profile.return_ema_alpha,
-        return_min_span=profile.return_min_span,
-        advantage_min_rms=profile.advantage_min_rms,
-        checkpoint_dir=profile.checkpoint_dir,
-        league_size=profile.league_size,
-        league_slots=profile.league_slots,
-        live_reference_probabilities=profile.live_reference_probabilities,
-        elo_milestone_gap=profile.elo_milestone_gap,
-        elo_temperature=profile.elo_temperature,
-        league_uniform_sampling=profile.league_uniform_sampling,
-        elo_eval=profile.elo_eval,
-        bc_winrate_target=profile.bc_winrate_target,
-        histogram_interval=profile.histogram_interval,
-        return_quantile_samples=profile.return_quantile_samples,
-        microbatch_tokens=microbatch_tokens,
-        next_state_coef=profile.next_state_coef,
-        windowed_loss_coef=profile.windowed_loss_coef,
-        field_map=profile.field_map,
-        log_interval=profile.log_interval,
         component_gammas=component_gammas,
         component_lambdas=component_lambdas,
+        rollouts_per_update=rollouts_per_update,
+        microbatch_tokens=microbatch_tokens,
     )
     validate_resolved_config(train_config)
 
     canonical_train_config = canonical_data(train_config)
-    canonical_train_config["schedule"] = canonical_data(profile.schedule)
+    canonical_train_config["schedule"] = canonical_data(profile.schedule_spec)
     config_payload = {
         "ship_config": canonical_data(profile.ship_config),
         "model_config": canonical_data(model_config),
@@ -536,7 +528,7 @@ def resolve_profile(
         ship_config=profile.ship_config,
         model_config=model_config,
         train_config=train_config,
-        schedule_spec=profile.schedule,
+        schedule_spec=profile.schedule_spec,
         value_sources=MappingProxyType(sources),
         profile_fingerprint=profile_digest,
         resolved_config_fingerprint=resolved_digest,

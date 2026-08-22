@@ -11,21 +11,23 @@ enforcement cost more than it caught.
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, replace
+from dataclasses import asdict, fields, replace
 from pathlib import Path
 
 import pytest
 
 from boost_and_broadside.config.fingerprint import canonical_data, canonical_json, fingerprint
 from boost_and_broadside.config.resolve import (
+    _PASS_THROUGH,
     LaunchOverrides,
     derive_aligned_num_envs,
     derive_time_normalized_value,
     resolve_profile,
 )
 from boost_and_broadside.config.schedule_spec import compile_schedule, constant_spec, linear_spec
-from boost_and_broadside.config.schema import LaunchSizingSpec
+from boost_and_broadside.config.schema import LaunchSizingSpec, ProfileSpec
 from boost_and_broadside.config.service import format_resolved_config, resolved_profile_document
+from boost_and_broadside.config.training import TrainConfig
 from boost_and_broadside.profiles import PROFILES
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -137,12 +139,12 @@ def test_canonical_serialization_has_a_stable_golden_vector() -> None:
 def test_profile_fingerprint_includes_declarative_schedule_intent() -> None:
     profile = PROFILES["rl"]
     changed_schedule = replace(
-        profile.schedule,
+        profile.schedule_spec,
         entropy_coef=constant_spec(0.006),
     )
     changed = replace(
         profile,
-        schedule=changed_schedule,
+        schedule_spec=changed_schedule,
     )
     changed_fingerprint = resolve_profile(changed).profile_fingerprint
     assert changed_fingerprint != resolve_profile(profile).profile_fingerprint
@@ -355,8 +357,39 @@ def test_an_overlay_shares_the_bases_values_without_sharing_its_identity() -> No
     assert bc.elo_eval is rl.elo_eval
     assert bc.launch is rl.launch
     assert bc.component_gammas_per_tick == rl.component_gammas_per_tick
-    assert bc.schedule is not rl.schedule
+    assert bc.schedule_spec is not rl.schedule_spec
     assert set(PROFILES) == {"bc", "rl"}
     assert {profile.name for profile in PROFILES.values()} == set(PROFILES)
     with pytest.raises(TypeError):
         rl.component_gammas_per_tick["ally_win"] = 0.5  # type: ignore[index]
+
+
+def test_only_untransformed_intent_shares_a_name_with_the_resolved_config() -> None:
+    """The pass-through set is derived from the two schemas, so naming decides it.
+
+    ``resolve_profile`` copies every field whose name appears on both
+    ``ProfileSpec`` and ``TrainConfig``, which is what makes adding a plain
+    hyperparameter a two-line change with nothing to edit in the resolver. The
+    hazard that buys is a *transformed* value being given the same name on both
+    sides -- it would then be copied straight through, and the trainer would read
+    the stated intent as if it were the derived result. A per-tick discount would
+    silently become a per-decision one.
+
+    So the derived names are pinned here. Adding to this list is a real decision;
+    arriving in it by accident is the bug.
+    """
+
+    profile_names = {field.name for field in fields(ProfileSpec)}
+    resolved_names = {field.name for field in fields(TrainConfig)}
+
+    assert resolved_names - profile_names == {
+        "gamma",  # gamma_per_tick raised to action_repeat
+        "gae_lambda",  # likewise
+        "component_gammas",  # likewise, per component
+        "component_lambdas",  # likewise
+        "schedule",  # schedule_spec compiled to closures
+        "scales",  # env intent plus the derived shard width
+        "rollouts_per_update",  # derived from the fixed logical batch
+        "microbatch_tokens",  # machine sizing, resolved from launch/VRAM/CLI
+    }
+    assert set(_PASS_THROUGH) == profile_names & resolved_names

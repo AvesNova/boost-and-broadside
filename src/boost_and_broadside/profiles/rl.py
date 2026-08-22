@@ -51,7 +51,7 @@ RL_PROFILE = ProfileSpec(
     num_minibatches=32,
     # --- Objective ---
     paradigm="ego_pass",
-    schedule=make_rl_schedule_spec(),
+    schedule_spec=make_rl_schedule_spec(),
     rewards=REWARDS,
     next_state_coef=0.2,
     windowed_loss_coef=0.1,
