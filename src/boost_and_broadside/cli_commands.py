@@ -12,11 +12,14 @@ from boost_and_broadside.artifacts import ArtifactStore, Invocation
 from boost_and_broadside.config import EnvConfig
 from boost_and_broadside.config.defaults import ELO_CALIBRATE, MODEL_CONFIG, REWARDS, SHIP_CONFIG
 from boost_and_broadside.config.diagnostics import GradientDiagnosticsConfig
+from boost_and_broadside.config.overrides import parse_override
 from boost_and_broadside.config.service import resolved_profile_document
 from boost_and_broadside.constants import DEFAULT_MAX_BULLETS_PER_SHIP
+from boost_and_broadside.errors import UserFacingError
 from boost_and_broadside.evaluation.run_catalog import (
     resolve_exact_run,
     resolve_explicit_checkpoint,
+    select_checkpoint_at_step,
     select_latest_resumable_checkpoint,
     select_latest_resumable_run,
     summarize_runs,
@@ -137,6 +140,12 @@ def _resume_checkpoint(subject: str, checkpoint_dir: str = "checkpoints") -> tup
     return str(checkpoint), run_id
 
 
+def config_overrides_from_args(args: argparse.Namespace) -> dict[str, str]:
+    """The ``key=value`` arguments of one launch, in the order they were given."""
+
+    return dict(parse_override(text) for text in getattr(args, "overrides", ()) or ())
+
+
 def _make_trainer(
     launch: TrainingLaunch,
     args: argparse.Namespace,
@@ -158,7 +167,13 @@ def _make_trainer(
         resolved_config_document=resolved_profile_document(resolved),
         # The complete launch record, including which VRAM decision chose the
         # rollout width, the microbatch, and gradient checkpointing.
-        launch_provenance=launch.document(),
+        launch_provenance={
+            **launch.document(),
+            # What the command line changed, kept beside the resolved values so a
+            # run's config segment can say what was asked for as well as what
+            # came out.
+            "overrides": config_overrides_from_args(args),
+        },
     )
 
 
@@ -177,6 +192,30 @@ def _run_trainer(trainer: PPOTrainer) -> None:
         # unsafe to write, and the last scheduled checkpoint is already on disk.
         trainer.record_run_status(RunStatus.FAILED)
         raise
+
+
+def _fork_checkpoint(args: argparse.Namespace) -> str | None:
+    """The checkpoint ``--from RUN [--at STEP]`` names, as a warm-start path.
+
+    A fork is not a resume: only weights cross over, so the new run gets its own
+    history, its own W&B run, and its own config segments. That is the supported
+    way to change the *task* -- ship count, field count -- which a continuation
+    deliberately is not, because the Elo series either side would not be one
+    series.
+    """
+
+    if args.from_run is None:
+        if args.from_step is not None:
+            raise UserFacingError("--at names a step within --from; pass both or neither")
+        return None
+    run = resolve_exact_run(args.from_run, "checkpoints")
+    selected = (
+        select_checkpoint_at_step(run, args.from_step)
+        if args.from_step is not None
+        else select_latest_resumable_checkpoint(run)
+    )
+    print(f"Forking from {run.name} at step {selected.step}: {selected.path}")
+    return str(selected.path)
 
 
 def _resume_subject_for(args: argparse.Namespace) -> str | None:
@@ -199,7 +238,7 @@ def _train(args: argparse.Namespace, prepare: ContextFactory) -> None:
     resume_path, run_id = (
         _resume_checkpoint(resume_subject) if resume_subject is not None else (None, None)
     )
-    pretrain_path = (
+    pretrain_path = _fork_checkpoint(args) or (
         str(resolve_explicit_checkpoint(args.pretrain_from).path)
         if args.pretrain_from is not None
         else None
@@ -219,6 +258,7 @@ def _train(args: argparse.Namespace, prepare: ContextFactory) -> None:
         microbatch_tokens=args.microbatch_tokens,
         report=print,
         resolve=resolve_named_profile,
+        overrides=config_overrides_from_args(args),
     )
     context = prepare()
     device = context.device

@@ -21,6 +21,7 @@ import threading
 import time
 from collections import deque
 from collections.abc import Callable, Generator, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from queue import Queue
 
@@ -585,6 +586,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             self._log_thread.start()
 
         self._global_step = 0
+        # Where this process's configuration starts applying. A fresh run owns
+        # the whole history; a resume owns everything from the step it restored
+        # at, which is what makes `--continue` with changed settings recordable.
+        self._start_step = 0
+        self._segment_recorded_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         self._start_update = 1
         # Last update the loop carried all the way through. An interrupt lands
         # mid-update, so this -- not the update in progress -- is the only index
@@ -623,8 +629,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             run_id_path.parent.mkdir(parents=True, exist_ok=True)
             run_id_path.write_text(_wandb.run.id)
         else:
-            from datetime import datetime
-
             self.run_name = datetime.now().strftime("%Y%m%d-%H%M%S")
 
         # Schedule state — evaluated from the schedule functions each update.

@@ -88,11 +88,16 @@ def resolve_training_launch(
     runner: Callable[..., Any] | None = None,
     report: Callable[[str], None] | None = None,
     resolve: ProfileResolver = resolve_named_profile,
+    overrides: dict[str, str] | None = None,
 ) -> TrainingLaunch:
     """Resolve a complete launch without constructing a trainer or environment.
 
     ``allow_probe`` is false for ``--print-config``: printing what a launch
     would do must not spend an hour measuring the card.
+
+    ``overrides`` are ``key=value`` edits to the profile, applied before anything
+    is derived from it, so a changed ``num_fields`` or ``num_steps`` resizes the
+    launch the way the profile would have.
     """
 
     policy = parse_vram_policy(vram)
@@ -121,7 +126,7 @@ def resolve_training_launch(
     # The semantic fingerprint keys the VRAM cache and does not depend on any
     # launch sizing, so resolving the profile at its defaults is enough to ask
     # the cache a question about it.
-    intent = resolve(profile)
+    intent = resolve(profile, overrides=overrides)
 
     from boost_and_broadside.vram_probe import resolve_vram
 

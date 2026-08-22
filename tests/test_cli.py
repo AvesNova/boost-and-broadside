@@ -810,6 +810,8 @@ def test_trainer_receives_complete_resolved_and_launch_provenance(monkeypatch) -
         "wandb": False,
         "allow_config_drift": False,
         "gradient_diagnostics": {"level": "off", "interval": 1, "minibatches": 1},
+        # What the command line changed, recorded beside what it resolved to.
+        "overrides": {},
     }
     # The launch record names the VRAM decision, not just the execution settings.
     assert provenance["vram"]["policy"] == "auto"

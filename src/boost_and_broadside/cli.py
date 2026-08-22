@@ -174,6 +174,16 @@ COMMANDS: tuple[CommandSpec, ...] = (
         "Train one exact registered profile.",
         (
             _option(
+                "overrides",
+                nargs="*",
+                default=(),
+                metavar="KEY=VALUE",
+                help=(
+                    "Profile values to change for this launch, e.g. clip_coef=0.2 "
+                    "elo_eval.window_size=64. Applied before anything is derived."
+                ),
+            ),
+            _option(
                 "--profile",
                 choices=tuple(sorted(PROFILES)),
                 required=True,
@@ -201,6 +211,24 @@ COMMANDS: tuple[CommandSpec, ...] = (
                 exclusive_group="training-source",
                 metavar="PATH",
                 help="Warm-start policy/scaler weights from an explicit .pt checkpoint.",
+            ),
+            _option(
+                "--from",
+                dest="from_run",
+                exclusive_group="training-source",
+                metavar="RUN",
+                help=(
+                    "Fork: start a new run from an existing run's weights. Unlike "
+                    "--resume this keeps no history and logs to a new W&B run."
+                ),
+            ),
+            _option(
+                "--at",
+                dest="from_step",
+                type=_positive_int,
+                default=None,
+                metavar="STEP",
+                help="With --from, fork at the newest checkpoint at or before STEP.",
             ),
             _option(
                 "--compile",
@@ -596,11 +624,15 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         if args.command == "train" and args.print_config:
-            from boost_and_broadside.cli_commands import gradient_diagnostics_from_args
+            from boost_and_broadside.cli_commands import (
+                config_overrides_from_args,
+                gradient_diagnostics_from_args,
+            )
             from boost_and_broadside.config.service import print_resolved_config
             from boost_and_broadside.launch import resolve_training_launch
 
             launch = resolve_training_launch(
+                overrides=config_overrides_from_args(args),
                 profile=args.profile,
                 vram=args.vram,
                 device=args.device,

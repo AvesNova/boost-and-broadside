@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from types import MappingProxyType
 
+from boost_and_broadside.config.overrides import apply_overrides
 from boost_and_broadside.config.resolve import LaunchOverrides, resolve_profile
 from boost_and_broadside.config.schema import ProfileSpec, ResolvedTrainConfig
 from boost_and_broadside.profiles.bc import BC_PROFILE
@@ -29,9 +30,22 @@ def get_profile(name: str) -> ProfileSpec:
 
 def resolve_named_profile(
     name: str,
-    overrides: LaunchOverrides | None = None,
+    launch_overrides: LaunchOverrides | None = None,
+    *,
+    overrides: dict[str, str] | None = None,
 ) -> ResolvedTrainConfig:
-    return resolve_profile(get_profile(name), overrides)
+    """Resolve a registered profile, with optional ``key=value`` edits applied first.
+
+    Config overrides land on the profile before resolution so that everything
+    derived from them -- token width, shard count, normalized discounts -- is
+    derived from what was asked for. ``launch_overrides`` is the separate,
+    later-applied machine sizing.
+    """
+
+    profile = get_profile(name)
+    if overrides:
+        profile = apply_overrides(profile, overrides)
+    return resolve_profile(profile, launch_overrides)
 
 
 RL_RESOLVED_CONFIG = resolve_named_profile("rl")

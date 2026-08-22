@@ -164,18 +164,20 @@ Full plan, invariants and risks: [config-refactor.md](config-refactor.md).
       are gone. Verified **bit-identical over 150,600 comparisons** — both
       profiles, all 15 fields, boundary steps plus 5,000 random steps. Two
       floating-point details had to be matched exactly, see the notes.
-- [ ] **8d** `checkpoints/<run>/config.json` holding intent + source +
-      overrides + code provenance. **Append-only list of segments**, each keyed
-      by the `global_step` it takes effect at — not a single document. See
-      [continuation](#continuation-changes-a-runs-config-mid-flight-steps-8d-8e).
-      Readers ask for the config *at a step*, or the latest; `config_at(step)`
-      is the API, and evaluation modes rating a final checkpoint want the last
-      segment.
-- [ ] **8e** Positional `key=value` overrides; `--continue RUN`;
-      `--from RUN [--at STEP]`. `--continue` extends the **same** run and logs
-      to the **same** W&B run; it appends a config segment and re-attaches via
-      `resume_wandb_run_id`. Emit the changed keys as a logged event at the
-      switch step so a chart shows where the settings moved.
+- [x] **8d** — **DONE.** `config/run_config.py`: append-only segments keyed by
+      the step they take effect at, with `config_at(step)` and `latest_config`.
+      Written from the save path, so a run that never checkpoints records
+      nothing. Re-recording the newest step replaces it, which is what keeps
+      per-update saving from writing a row per save.
+- [x] **8e** — **DONE**, minus one flag that turned out to be a synonym.
+      Positional `key=value` applied to the profile *before* derivation, so
+      `num_fields=0` re-derives the shard width. Unknown keys are refused with
+      the nearest real one. `--from RUN [--at STEP]` forks.
+      **No `--continue`:** `--resume RUN` already extends the same run and
+      re-attaches the same W&B run, so `--resume RUN key=value` is the
+      continuation form and a second name for it would be surface.
+      **Not done:** logging the changed keys as a W&B event at the switch step.
+      The segment records them; the chart annotation is cosmetic and unbuilt.
 - [x] **8f** — **DONE, ahead of 8b.** Config drift guard deleted;
       `resolved_config_fingerprint` is now a pure record. `--allow-config-drift`
       survives with one meaning: the physics guard's escape hatch, which is

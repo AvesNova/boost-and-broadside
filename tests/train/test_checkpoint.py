@@ -1153,3 +1153,68 @@ class TestResumeRestoresScheduleState:
 
         assert logged
         assert logged[0]["loss/behavioral_cloning"] == 0.0
+
+
+class TestRecordedConfigHistory:
+    """``config.json`` beside the checkpoints: what this run trained under, when."""
+
+    def test_a_saving_run_records_the_config_it_is_training_under(self, tmp_path):
+        from boost_and_broadside.config.run_config import latest_config, read_segments
+        from boost_and_broadside.run_manifest import RunStatus
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        trainer.resolved_config_document = {
+            "profile": "rl",
+            "config": {"train_config": {"clip_coef": 0.15}},
+        }
+        trainer.launch_provenance = {"overrides": {"clip_coef": "0.15"}}
+        trainer._write_run_manifest(1, RunStatus.RUNNING)
+
+        segments = read_segments(tmp_path / trainer.run_name)
+        assert len(segments) == 1
+        assert segments[0].from_step == 0
+        assert segments[0].profile == "rl"
+        assert segments[0].overrides == {"clip_coef": "0.15"}
+        assert (
+            latest_config(tmp_path / trainer.run_name).config["train_config"]["clip_coef"] == 0.15
+        )
+        trainer.shutdown()
+
+    def test_saving_every_update_rewrites_one_segment_rather_than_growing(self, tmp_path):
+        """Checkpointing every update must not write a config row every update."""
+
+        from boost_and_broadside.config.run_config import read_segments
+        from boost_and_broadside.run_manifest import RunStatus
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        trainer.resolved_config_document = {"profile": "rl", "config": {}}
+        for update in range(1, 6):
+            trainer._write_run_manifest(update, RunStatus.RUNNING)
+
+        assert len(read_segments(tmp_path / trainer.run_name)) == 1
+        trainer.shutdown()
+
+    def test_continuing_past_a_recorded_step_appends_a_new_segment(self, tmp_path):
+        """A resume owns the history from the step it restored at, not before."""
+
+        from boost_and_broadside.config.run_config import config_at, read_segments
+        from boost_and_broadside.run_manifest import RunStatus
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        trainer.resolved_config_document = {"profile": "rl", "config": {"clip_coef": 0.15}}
+        trainer._write_run_manifest(1, RunStatus.RUNNING)
+
+        # What load_checkpoint does: the restored step becomes this stretch's start.
+        trainer._start_step = 250_000_000
+        trainer.resolved_config_document = {"profile": "rl", "config": {"clip_coef": 0.2}}
+        trainer.launch_provenance = {"overrides": {"clip_coef": "0.2"}}
+        trainer._write_run_manifest(2, RunStatus.RUNNING)
+
+        run_dir = tmp_path / trainer.run_name
+        assert [segment.from_step for segment in read_segments(run_dir)] == [0, 250_000_000]
+        assert config_at(run_dir, 100).config["clip_coef"] == 0.15
+        assert config_at(run_dir, 250_000_001).config["clip_coef"] == 0.2
+        trainer.shutdown()

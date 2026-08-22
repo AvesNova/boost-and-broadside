@@ -12,6 +12,7 @@ from typing import Any
 
 import torch
 
+from boost_and_broadside.config.run_config import ConfigSegment, append_segment
 from boost_and_broadside.run_manifest import (
     RunManifest,
     RunStatus,
@@ -326,6 +327,7 @@ class CheckpointMixin:
         resolved = self.resolved_config_document or {}
         run_id_path = self._run_directory() / "wandb_run_id.txt"
         git_commit, git_dirty = code_identity()
+        self._record_config_segment(resolved, git_commit, git_dirty)
         write_manifest(
             self._run_directory(),
             RunManifest(
@@ -344,6 +346,37 @@ class CheckpointMixin:
                 ),
                 git_commit=git_commit,
                 git_dirty=git_dirty,
+            ),
+        )
+
+    def _record_config_segment(
+        self,
+        resolved: Mapping[str, object],
+        git_commit: str | None,
+        git_dirty: bool | None,
+    ) -> None:
+        """Record what this stretch of the run is training under, once.
+
+        Written from the same place as the manifest and for the same reason: a
+        run that never checkpoints has no history worth keeping. ``append_segment``
+        replaces a repeat of the newest step, so the ordinary case of saving
+        every update rewrites one entry rather than growing a row per save; a
+        resume that has advanced past it appends instead, which is what makes
+        the file a history rather than a snapshot.
+        """
+
+        if not resolved:
+            return
+        append_segment(
+            self._run_directory(),
+            ConfigSegment(
+                from_step=self._start_step,
+                profile=str(resolved.get("profile") or ""),
+                config=dict(resolved.get("config") or {}),
+                overrides=dict((self.launch_provenance or {}).get("overrides") or {}),
+                git_commit=git_commit,
+                git_dirty=git_dirty,
+                recorded_at=self._segment_recorded_at,
             ),
         )
 
@@ -804,6 +837,7 @@ class CheckpointMixin:
         self._eval_window_floating = deque(ckpt["eval_window_floating"], maxlen=window)
         self._eval_window_live_vs_avg = deque(ckpt["eval_window_live_vs_avg"], maxlen=window)
         self._global_step = ckpt["global_step"]
+        self._start_step = ckpt["global_step"]
         self._start_update = ckpt["update"] + 1
         # An interrupt before the resumed run finishes an update of its own has
         # nothing newer to write than the file it just loaded.

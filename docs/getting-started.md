@@ -267,6 +267,30 @@ earlier naming convention, such as `recent_avg.pt`.)
 
 A full checkpoint is written every update, and the newest few of each family are kept.
 
+`config.json` beside them records what the run trained under, as a list of segments
+each keyed by the step it took effect at. A run resumed with changed settings appends
+a segment rather than overwriting, so `config_at(step)` answers what was in force when
+a given checkpoint was written, and the newest segment is what a final checkpoint was
+produced under. Runs from before this file existed do not have one.
+
+## Changing settings for one launch
+
+Any profile value can be changed positionally, before anything is derived from it:
+
+```bash
+uv run bnb train --profile rl clip_coef=0.2 elo_eval.window_size=64
+uv run bnb train --profile rl num_fields=0 field_map=none   # re-derives the shard width
+```
+
+An unknown key is refused with the nearest real one rather than ignored. Overrides are
+recorded in the run's config segment alongside the values they produced.
+
+`--resume RUN` continues the same run and logs to the same W&B run, so
+`--resume RUN key=value` is how a run is extended with different settings.
+`--from RUN [--at STEP]` is the other thing: a fork, taking only weights into a new run
+with its own history. Use `--from` when the change is to the task itself — ship count,
+field count — because the ratings either side of such a change are not one series.
+
 Each run that writes a checkpoint also writes `run.json` beside it: the profile, the
 status, the update and step reached, elapsed training time, and the latest live rating.
 It exists so a run can be identified without loading a checkpoint. Runs from before it
