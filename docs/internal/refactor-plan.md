@@ -195,7 +195,8 @@ Blocks: step 9.
       `field_damage_taken_weight` and no `total_timesteps`
 - [ ] Regression test loading 682, 716, 719
 
-Precedent: `scripts/migrate_682.py`, `tests/migration/`.
+Both the previous migration script and its regression suite have been deleted;
+`git log -- scripts/migrate_682.py` is the precedent if one is wanted.
 
 ### 10. Hyperparameter search
 
