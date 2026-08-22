@@ -58,10 +58,15 @@ than a convention:
 1. **719, 716 and 682 stay loadable and stay rateable.** The evaluation modes
    must keep producing the same numbers; 682 in particular is field-free and
    predates `resolved_config` entirely.
-2. **`num_fields=0` keeps working as a *configuration*.** 8a drops the
-   field-free *profile*, not the degenerate case. The `num_fields == 0`
-   branches in `env/`, `observation.py`, `physics.py` and `renderer.py` are how
-   682 is evaluated and they stay. Only the config-layer branching goes.
+2. **`num_fields` is a sequence length, not an architecture switch.** The
+   network is identical at 0, 1 and 8 fields: `num_fields` only sets the token
+   count `N + M`, and no weight shape depends on it — `encoder_split` splits on
+   the ship/field *boundary*, which is well defined when the field slice is
+   empty. So there is no "field-free model" to support, which is the whole
+   argument for 8a. What must keep working is `num_fields=0` as a
+   *configuration*: the `num_fields == 0` branches in `env/`, `observation.py`,
+   `physics.py` and `renderer.py` are how 682 is still evaluated, and they stay.
+   Only the config-layer branching goes.
 3. **Schedules stay bit-identical.** 8c is verified numerically, not by
    inspection — the existing probe showed `max |flat − current| = 0.000e+00`
    and that is the acceptance bar.
