@@ -132,7 +132,7 @@ _SEED = _option(
 _ALLOW_DRIFT = _option(
     "--allow-config-drift",
     action="store_true",
-    help="Allow checkpoint physics/config drift, with warnings.",
+    help="Load a checkpoint whose physics constants differ from this run, with warnings.",
 )
 _TEAM0 = _option(
     "--team0", type=_exact_agent, required=True, metavar="AGENT", help="Exact team-0 agent."

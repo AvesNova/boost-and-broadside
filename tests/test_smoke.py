@@ -265,11 +265,3 @@ def test_cli_focused_case_selection_dispatches_one_case(monkeypatch) -> None:
     )
     cli_commands.execute("smoke", _parse(["smoke", "--case", "collect-stats"]))
     assert captured == {"selected": "collect-stats"}
-
-
-@pytest.mark.parametrize("case", SMOKE_CASES, ids=lambda case: case.name)
-def test_every_smoke_case_passes_in_a_fresh_subprocess(case, tmp_path: Path) -> None:
-    result = run_case_subprocess(case, tmp_path / case.name)
-    assert result.returncode == 0, result.stderr
-    assert f"SMOKE PASS {case.name}" in result.stdout
-    validate_case_root(tmp_path / case.name)

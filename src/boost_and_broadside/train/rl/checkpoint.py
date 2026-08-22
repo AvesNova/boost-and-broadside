@@ -4,7 +4,6 @@ import copy
 import dataclasses
 import threading
 import time
-import warnings
 from collections import deque
 from collections.abc import Callable, Mapping
 from dataclasses import replace
@@ -235,29 +234,6 @@ def require_resumable_checkpoint(checkpoint: Mapping[str, Any], path: str | None
         f"{', '.join(missing)}.{predates} Resume requires a complete step_*.pt payload; "
         "start from a policy-only checkpoint with --pretrain-from instead."
     )
-
-
-def _check_resolved_config_provenance(
-    checkpoint: Mapping[str, Any],
-    current: Mapping[str, object] | None,
-    *,
-    allow_config_drift: bool,
-) -> None:
-    """Reject a resume whose complete recorded launch config changed."""
-    recorded = checkpoint.get("resolved_config")
-    if current is None or not isinstance(recorded, Mapping):
-        return
-    recorded_fingerprint = recorded.get("resolved_config_fingerprint")
-    current_fingerprint = current.get("resolved_config_fingerprint")
-    if recorded_fingerprint == current_fingerprint:
-        return
-    message = (
-        "Checkpoint resolved configuration does not match this launch: "
-        f"recorded={recorded_fingerprint!r}, current={current_fingerprint!r}"
-    )
-    if not allow_config_drift:
-        raise ValueError(f"{message}. Pass --allow-config-drift to override explicitly.")
-    warnings.warn(f"{message}; continuing because config drift is allowed", stacklevel=2)
 
 
 def _load_checkpoint_state(
@@ -785,16 +761,7 @@ class CheckpointMixin:
         """
         ckpt = load_checkpoint_payload(path, map_location=self.device)
         require_observation_schema(ckpt, path)
-        # Before the drift check, which returns early on a payload that records
-        # no resolved config — the shape of every pre-branch checkpoint.
         require_resumable_checkpoint(ckpt, path)
-        _check_resolved_config_provenance(
-            ckpt,
-            self.resolved_config_document,
-            allow_config_drift=bool(
-                self.launch_provenance and self.launch_provenance.get("allow_config_drift")
-            ),
-        )
         recorded_config = ckpt["train_config"]
         if not isinstance(recorded_config, Mapping):
             raise ValueError(

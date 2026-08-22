@@ -2,8 +2,9 @@
 
 Publication is the only writer under ``docs/``, and it is deliberately the
 dullest step in the system: it plays no games, fits nothing, and reaches no
-network. It verifies that each source artifact is intact and was produced from a
-clean commit, renders into a temporary directory, and installs the result.
+network. It verifies that each source artifact is intact, renders into a
+temporary directory, and installs the result. A source produced from an unclean
+checkout is noted in the provenance table and warned about, not refused.
 
 ``--check`` renders exactly the same way and installs nothing, so a stale or
 hand-edited canonical output is a failure rather than a surprise.
@@ -15,6 +16,7 @@ import os
 import shutil
 import socket
 import tempfile
+import warnings
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -66,6 +68,10 @@ STALE = "stale"
 INDEX_DRIFT = "index-drift"
 
 _PIXEL_SUFFIXES = frozenset({".png"})
+
+
+class PublicationProvenanceWarning(UserWarning):
+    """A source's provenance is weaker than ideal, but not a reason to refuse it."""
 
 
 @dataclass(frozen=True)
@@ -342,7 +348,7 @@ def _resolve_sources(
             require_complete(artifact)
         except ArtifactError as error:
             raise PublicationError(f"publication {entry.name!r}: {error}") from error
-        _require_clean_source(entry, name, artifact)
+        _warn_unclean_source(entry, name, artifact)
         _require_supported_schema(entry, renderer, name, artifact)
         artifacts[name] = artifact
         digests[name] = artifact_digest(artifact)
@@ -364,18 +370,35 @@ def _resolve_sources(
     return RenderInputs(artifacts=artifacts, files=files), digests
 
 
-def _require_clean_source(entry: PublicationEntry, name: str, artifact: Artifact) -> None:
+def _warn_unclean_source(entry: PublicationEntry, name: str, artifact: Artifact) -> None:
+    """Note, but do not refuse, a source produced from an unclean checkout.
+
+    This used to raise. It was a poor trade: ``code_provenance`` shells
+    ``git status --porcelain``, which counts *untracked* files, so generating one
+    artifact leaves the tree dirty and blocks generating the next -- a serialised
+    commit-then-generate dance for every measurement. It also only ever policed
+    the input artifacts, while the render that produced the committed figures
+    went unchecked, so the guarantee it appeared to give was not one it gave.
+
+    The commit and the dirty bit are still recorded in the artifact and printed
+    in the provenance table. That is what a reader needs to judge the output;
+    refusing to produce it was not.
+    """
+
     code = artifact.manifest.get("code", {})
-    if not code.get("git_commit"):
-        raise PublicationError(
-            f"publication {entry.name!r} source {name!r} records no commit; canonical "
-            "output must come from committed code"
+    commit = code.get("git_commit")
+    if not commit:
+        warnings.warn(
+            f"publication {entry.name!r} source {name!r} records no commit",
+            PublicationProvenanceWarning,
+            stacklevel=2,
         )
-    if code.get("git_dirty"):
-        raise PublicationError(
+    elif code.get("git_dirty"):
+        warnings.warn(
             f"publication {entry.name!r} source {name!r} was produced from a dirty "
-            f"checkout at {code['git_commit'][:12]}; canonical output must come from a "
-            "clean commit"
+            f"checkout at {commit[:12]}",
+            PublicationProvenanceWarning,
+            stacklevel=2,
         )
 
 

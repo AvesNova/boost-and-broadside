@@ -142,7 +142,15 @@ def test_every_selected_artifacts_payload_is_tracked_or_a_raw_sample(manifest) -
     assert sorted(set(untracked)) == []
 
 
+@pytest.mark.slow
 def test_the_repository_checks_clean_against_its_selected_sources() -> None:
+    """Deselected by default: this re-renders every published figure.
+
+    It was the second-slowest test in the suite at 45s, paid on every commit to
+    verify a tree that changes a few times a year. ``pytest -m slow`` before
+    publishing is the same check at the moment it can actually fail.
+    """
+
     report = run_publish(_ROOT, check=True)
 
     assert not report.failed

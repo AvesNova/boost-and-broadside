@@ -22,6 +22,7 @@ from boost_and_broadside.publication.publish import (
     UNCHANGED,
     UNRESOLVED,
     UNSELECTED,
+    PublicationProvenanceWarning,
     run_publish,
 )
 from boost_and_broadside.publication.renderer_api import (
@@ -441,11 +442,23 @@ def test_targeting_an_unselected_entry_is_a_loud_error(repository, renderers) ->
         run_publish(repository, target="summary")
 
 
-def test_a_dirty_source_is_refused(repository, renderers) -> None:
+def test_a_dirty_source_is_published_with_a_warning(repository, renderers) -> None:
+    """Noted, not refused.
+
+    Refusing cost more than it bought: ``code_provenance`` counts untracked
+    files, so generating one artifact blocked generating the next, and the check
+    only ever covered the input artifacts while the render that produced the
+    committed figures went unchecked. The commit and the dirty bit are still
+    recorded and still printed in the provenance table.
+    """
+
     location = build_artifact(repository, {"value": 1}, clean=False)
     write_manifest(repository, _SUMMARY.format(location=location))
 
-    _refused(run_publish(repository), "dirty checkout")
+    with pytest.warns(PublicationProvenanceWarning, match="dirty checkout"):
+        report = run_publish(repository)
+
+    assert not report.failed
 
 
 def test_a_tampered_source_payload_is_refused(repository, renderers) -> None:

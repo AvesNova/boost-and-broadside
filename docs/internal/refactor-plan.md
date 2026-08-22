@@ -171,11 +171,13 @@ Full plan, invariants and risks: [config-refactor.md](config-refactor.md).
       to the **same** W&B run; it appends a config segment and re-attaches via
       `resume_wandb_run_id`. Emit the changed keys as a logged event at the
       switch step so a chart shows where the settings moved.
-- [ ] **8f** Delete the fingerprint superstructure: drift guard,
-      `--allow-config-drift` on the training path. The fingerprint pin test, the
-      S01 snapshot tests and `_INTENDED_DIVERGENCE` already went with 8a.
+- [x] **8f** — **DONE, ahead of 8b.** Config drift guard deleted;
+      `resolved_config_fingerprint` is now a pure record. `--allow-config-drift`
+      survives with one meaning: the physics guard's escape hatch, which is
+      still needed to pretrain across a `ShipConfig` change. The fingerprint pin
+      test, the S01 snapshots and `_INTENDED_DIVERGENCE` went with 8a.
       `profile_fingerprint` through `launch.py`/`vram_probe.py` is a VRAM cache
-      key, not a guard — it stays, and wants renaming to say so.
+      key, not a guard — it stays, and still wants renaming to say so.
 
 **Keep:** `canonical_json`, the feature/physics guard in `policy_io`, a local
 `hash(dict)` inside `vram.py`. **Also keep** the artifact recipe digest — it is

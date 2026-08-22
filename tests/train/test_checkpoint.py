@@ -17,7 +17,6 @@ from boost_and_broadside.train.rl.checkpoint import (
     OPTIONAL_CHECKPOINT_FIELDS,
     POLICY_CHECKPOINT_FIELDS,
     RESUMABLE_CHECKPOINT_FIELDS,
-    _check_resolved_config_provenance,
     build_policy_checkpoint_payload,
     build_training_checkpoint_payload,
     clone_to_cpu,
@@ -278,63 +277,6 @@ class TestObservationSchema:
     def test_legacy_obstacle_checkpoint_fails_clearly(self):
         with pytest.raises(ValueError, match="Observation feature semantics are incompatible"):
             require_observation_schema({"policy_state_dict": {}}, "legacy.pt")
-
-
-class TestResolvedConfigProvenance:
-    def test_resume_rejects_a_different_complete_resolved_config(self):
-        checkpoint = {
-            "resolved_config": {"resolved_config_fingerprint": "recorded"},
-        }
-        current = {"resolved_config_fingerprint": "current"}
-        with pytest.raises(ValueError, match="--allow-config-drift"):
-            _check_resolved_config_provenance(
-                checkpoint,
-                current,
-                allow_config_drift=False,
-            )
-
-    def test_explicit_drift_override_is_loud(self):
-        checkpoint = {
-            "resolved_config": {"resolved_config_fingerprint": "recorded"},
-        }
-        current = {"resolved_config_fingerprint": "current"}
-        with pytest.warns(UserWarning, match="config drift is allowed"):
-            _check_resolved_config_provenance(
-                checkpoint,
-                current,
-                allow_config_drift=True,
-            )
-
-    def test_real_resume_loader_enforces_drift_while_pretraining_allows_it(self, tmp_path):
-        from tests.train.test_ppo import _make_trainer
-
-        source = _make_trainer(checkpoint_dir=str(tmp_path / "source"))
-        payload = source.checkpoint_payload(0)
-        payload["resolved_config"] = {"resolved_config_fingerprint": "recorded-bc"}
-        checkpoint = tmp_path / "cross-profile.pt"
-        torch.save(payload, checkpoint)
-
-        resumed = _make_trainer(checkpoint_dir=str(tmp_path / "resume"))
-        resumed.resolved_config_document = {"resolved_config_fingerprint": "current-rl"}
-        resumed.launch_provenance = {"allow_config_drift": False}
-        with pytest.raises(ValueError, match="--allow-config-drift"):
-            resumed.load_checkpoint(str(checkpoint))
-
-        allowed = _make_trainer(checkpoint_dir=str(tmp_path / "allowed"))
-        allowed.resolved_config_document = {"resolved_config_fingerprint": "current-rl"}
-        allowed.launch_provenance = {"allow_config_drift": True}
-        with pytest.warns(UserWarning, match="config drift is allowed"):
-            assert allowed.load_checkpoint(str(checkpoint)) == 0
-
-        pretrained = _make_trainer(checkpoint_dir=str(tmp_path / "pretrain"))
-        pretrained.resolved_config_document = {"resolved_config_fingerprint": "current-rl"}
-        pretrained.launch_provenance = {"allow_config_drift": False}
-        pretrained.load_pretrained_weights(str(checkpoint))
-
-        source.shutdown()
-        resumed.shutdown()
-        allowed.shutdown()
-        pretrained.shutdown()
 
 
 class TestResumableCheckpointContract:

@@ -266,8 +266,6 @@ the current filenames. (The included reference-run directory retains files from 
 earlier naming convention, such as `recent_avg.pt`.)
 
 A full checkpoint is written every update, and the newest few of each family are kept.
-Runs started before that cadence recorded the wider interval in their resolved
-configuration, so resuming one reports config drift and needs `--allow-config-drift`.
 
 Each run that writes a checkpoint also writes `run.json` beside it: the profile, the
 status, the update and step reached, elapsed training time, and the latest live rating.

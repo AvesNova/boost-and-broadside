@@ -1,10 +1,16 @@
-"""Contracts for the profile-intent and resolved-configuration boundary."""
+"""Contracts for the profile-intent and resolved-configuration boundary.
+
+Three source-scanning tests were removed from this file: an ``ast`` check that
+the base profile imports no overlay, an ``ast`` check that ``config/`` imports no
+runtime engine module, and a regex sweep for references to the deleted ``runs/``
+package. Each stated a real rule by pattern-matching over source text, which
+fires on renames and misses anything phrased differently. The rules hold; the
+enforcement cost more than it caught.
+"""
 
 from __future__ import annotations
 
-import ast
 import json
-import re
 from dataclasses import asdict, replace
 from pathlib import Path
 
@@ -23,10 +29,6 @@ from boost_and_broadside.config.service import format_resolved_config, resolved_
 from boost_and_broadside.profiles import PROFILES
 
 _ROOT = Path(__file__).resolve().parents[2]
-_PROFILE_MODULES = (
-    _ROOT / "src" / "boost_and_broadside" / "profiles" / "rl.py",
-    _ROOT / "src" / "boost_and_broadside" / "profiles" / "bc.py",
-)
 
 
 def test_bc_overlays_rl_on_exactly_the_named_objective_differences() -> None:
@@ -70,107 +72,6 @@ def test_bc_overlays_rl_on_exactly_the_named_objective_differences() -> None:
         # the point of override in profiles/bc.py.
         "schedule",
     }
-
-
-def _imported_modules(path: Path) -> set[str]:
-    tree = ast.parse(path.read_text(), filename=str(path))
-    imported = {
-        node.module
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom) and node.module is not None
-    }
-    imported.update(
-        alias.name
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Import)
-        for alias in node.names
-    )
-    return imported
-
-
-def test_the_base_profile_does_not_import_an_overlay() -> None:
-    """Overlays depend on the base, never the reverse.
-
-    An overlay importing ``rl`` is how BC gets the shared values by construction
-    instead of restating them, so the old rule that no profile may import another
-    is exactly inverted for overlays. What must hold is that the direction stays
-    one-way: the moment the base reads an overlay there is a cycle, and "what RL
-    trains with" stops being answerable without knowing what else is registered.
-    """
-
-    base = _ROOT / "src" / "boost_and_broadside" / "profiles" / "rl.py"
-    overlays = {
-        f"boost_and_broadside.profiles.{path.stem}" for path in _PROFILE_MODULES if path != base
-    }
-
-    assert _imported_modules(base).isdisjoint(overlays)
-    assert "boost_and_broadside.profiles.rl" in _imported_modules(
-        _ROOT / "src" / "boost_and_broadside" / "profiles" / "bc.py"
-    )
-    assert not (_ROOT / "runs").exists()
-
-
-def test_deleted_runs_profile_path_has_no_live_references() -> None:
-    # Files that name `runs/` as *history* rather than as a path in this tree. The
-    # two 682 migration scripts read the landmark run's own training commit, where
-    # the profiles still lived at `runs/shared.py`; that commit is recorded in the
-    # run's W&B export and is an ancestor of main, so the reference is to a real
-    # location in a real checkout, just not this one. Nothing here imports `runs` at
-    # runtime: landmark_682_reference.py does so only inside a subprocess-style entry
-    # point that has already put the historical checkout first on sys.path, and
-    # asserts it.
-    historical_references = {
-        _ROOT / "scripts" / "migrate_682.py",
-        _ROOT / "scripts" / "landmark_682_reference.py",
-    }
-    candidates = [
-        _ROOT / "src" / "boost_and_broadside" / "cli.py",
-        _ROOT / "src" / "boost_and_broadside" / "cli_commands.py",
-        _ROOT / "README.md",
-        _ROOT / "STYLE_GUIDE.md",
-        _ROOT / "pyproject.toml",
-    ]
-    for root in (_ROOT / "src", _ROOT / "scripts", _ROOT / "docs"):
-        candidates.extend(
-            path
-            for path in root.rglob("*")
-            if path.suffix in {".md", ".py", ".toml"}
-            and path not in historical_references
-        )
-
-    stale_reference = re.compile(r"\b(?:from|import)\s+runs\b|\bruns/")
-    offenders = {
-        str(path.relative_to(_ROOT)): sorted(set(stale_reference.findall(path.read_text())))
-        for path in candidates
-        if stale_reference.search(path.read_text())
-    }
-    assert offenders == {}
-
-
-def test_config_foundation_has_no_runtime_engine_dependencies() -> None:
-    roots = (
-        _ROOT / "src" / "boost_and_broadside" / "config",
-        _ROOT / "src" / "boost_and_broadside" / "profiles",
-    )
-    forbidden = (
-        "boost_and_broadside.env",
-        "boost_and_broadside.modes",
-        "boost_and_broadside.train",
-    )
-    for path in (path for root in roots for path in root.glob("*.py")):
-        tree = ast.parse(path.read_text(), filename=str(path))
-        modules = [
-            node.module
-            for node in ast.walk(tree)
-            if isinstance(node, ast.ImportFrom) and node.module is not None
-        ]
-        modules.extend(
-            alias.name
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Import)
-            for alias in node.names
-        )
-        assert not [module for module in modules if module.startswith(forbidden)], path
 
 
 def test_token_and_discount_derivations_are_named_and_exact() -> None:

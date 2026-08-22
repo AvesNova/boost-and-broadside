@@ -486,7 +486,8 @@ Three compatibility rules follow from that:
 - **Physics constants.** Eleven `ShipConfig` fields set the encoders' normalizers, so
   weights trained under different ones were fitted to differently-scaled inputs. A
   mismatch is refused by name; `--allow-config-drift` downgrades it to a warning, and the
-  policy then reads the world through the constants it trained on.
+  policy then reads the world through the constants it trained on. This is the only thing
+  that flag now does.
 - **Architecture.** Nothing needs to match. Nothing in the policy is sized by ship count,
   and each entry is rebuilt from its own config, so a league or rating field can hold
   checkpoints of different widths and depths. An entry whose architecture differs from the
@@ -498,11 +499,11 @@ Three compatibility rules follow from that:
 Payloads written before provenance existed still load; the loader falls back to the
 caller's configs and warns, naming what it assumed.
 
-Full checkpoints also carry the complete resolved launch: every configuration value, both
-fingerprints, the source that chose each value, and the execution and VRAM record. That
-makes the memory decision part of a run's history rather than a property of whichever
-machine happened to start it. Resuming onto a card that sizes the launch differently is a
-resolved-config difference, and is refused unless `--allow-config-drift` is passed.
+Full checkpoints also carry the complete resolved launch: every configuration value, the
+source that chose each value, and the execution and VRAM record. That makes the memory
+decision part of a run's history rather than a property of whichever machine happened to
+start it. It is recorded, not enforced: resuming onto a card that sizes the launch
+differently is expected, and so is resuming with a deliberately changed hyperparameter.
 
 Resuming is stricter than reloading a policy. `load_checkpoint` requires every field a full
 payload writes and refuses one that lacks any of them, naming it. A resume restores the
