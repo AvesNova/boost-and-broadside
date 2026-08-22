@@ -30,7 +30,6 @@ EXPECTED_COMMANDS = (
     "feature-stats",
     "runs",
     "figures",
-    "publish",
     "smoke",
 )
 
@@ -49,7 +48,6 @@ VALID_ARGV = {
     "feature-stats": ["--team0", "scripted", "--team1", "random"],
     "runs": [],
     "figures": ["--run", "exact-run"],
-    "publish": [],
     "smoke": [],
 }
 
@@ -297,66 +295,31 @@ def test_print_config_rejects_an_unavailable_execution_backend(capsys, monkeypat
     assert "Traceback" not in error
 
 
-def test_publish_reports_a_missing_manifest_concisely(tmp_path, monkeypatch, capsys) -> None:
+def test_figures_reports_an_unknown_run_concisely(tmp_path, monkeypatch, capsys) -> None:
     monkeypatch.chdir(tmp_path)
 
     with pytest.raises(SystemExit) as exit_info:
-        cli.main(["publish", "--check"])
+        cli.main(["figures", "--run", "no-such-run"])
 
     assert exit_info.value.code == 2
     error = capsys.readouterr().err
-    assert "publications.toml" in error
+    assert "no-such-run" in error
     assert "Traceback" not in error
 
 
-_UNSELECTED_MANIFEST = """
-schema_version = 1
+def test_figures_reports_a_missing_measurement_concisely(tmp_path, monkeypatch, capsys) -> None:
+    """A run that has not been evaluated yet says which artifact it lacks."""
 
-[publications.pending]
-renderer = "crossover-phase-v1"
-output = "docs/results/crossover_phase.png"
-description = "An entry whose measurement has not been made yet."
-"""
-
-
-def test_publish_check_succeeds_when_an_entry_is_still_unselected(
-    tmp_path, monkeypatch, capsys
-) -> None:
-    """An entry with no source is part of the inventory, not an error."""
-
-    docs = tmp_path / "docs"
-    docs.mkdir()
-    (docs / "publications.toml").write_text(_UNSELECTED_MANIFEST)
-    monkeypatch.chdir(tmp_path)
-
-    assert cli.main(["publish", "--check"]) == 0
-    assert "unselected" in capsys.readouterr().out
-
-
-def test_publish_reports_a_selected_source_that_is_absent_concisely(
-    tmp_path, monkeypatch, capsys
-) -> None:
-    """The shipped manifest names real artifacts; without them, say so plainly.
-
-    Each entry says which source it could not resolve, rather than one entry's
-    failure standing in for the whole inventory, so the naming happens in the
-    report on stdout and stderr carries the summary. Both stay concise.
-    """
-
-    docs = tmp_path / "docs"
-    docs.mkdir()
-    (docs / "publications.toml").write_text(Path("docs/publications.toml").read_text())
-    (docs / "policy_architecture.png").write_bytes(b"fixture")
+    (tmp_path / "checkpoints" / "half-done").mkdir(parents=True)
     monkeypatch.chdir(tmp_path)
 
     with pytest.raises(SystemExit) as exit_info:
-        cli.main(["publish", "--check"])
+        cli.main(["figures", "--run", "half-done", "--only", "crossover_ratio.png"])
 
     assert exit_info.value.code == 2
-    captured = capsys.readouterr()
-    assert "artifact.json" in captured.out
-    assert "unresolved" in captured.out
-    assert "Traceback" not in captured.err and "Traceback" not in captured.out
+    error = capsys.readouterr().err
+    assert "no crossover artifact" in error
+    assert "Traceback" not in error
 
 
 def test_print_config_bypasses_runtime_dispatch_and_records_cli_sources(

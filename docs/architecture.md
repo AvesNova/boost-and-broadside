@@ -241,8 +241,8 @@ Training applies:
   multi-step drift more strongly than zero-mean step noise.
 
 The measured channel errors are shown in [evaluation](evaluation.md#auxiliary-dynamics-learning),
-with deeper autoregressive diagnostics under [`docs/ar_report/`](ar_report/) and noise
-analysis under [`docs/noise_calibration/`](noise_calibration/).
+with deeper autoregressive diagnostics under [`docs/ar_report/`](../checkpoints/good-leaf-719/artifacts/figures/ar_report_4v4/) and noise
+analysis under [`docs/noise_calibration/`](../checkpoints/good-leaf-719/artifacts/figures/noise_calibration/).
 
 ## Why team size can change
 

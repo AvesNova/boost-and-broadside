@@ -554,18 +554,6 @@ COMMANDS: tuple[CommandSpec, ...] = (
         ),
     ),
     CommandSpec(
-        "publish",
-        "Render manifest-selected canonical publications offline.",
-        (
-            _option("--target", metavar="NAME", help="Render one manifest entry."),
-            _option(
-                "--check",
-                action="store_true",
-                help="Check without modifying canonical output.",
-            ),
-        ),
-    ),
-    CommandSpec(
         "smoke",
         "Run the isolated smoke matrix.",
         (

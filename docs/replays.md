@@ -79,17 +79,14 @@ uv run bnb capture \
   --gif
 ```
 
-Capture writes to `out/`, which is scratch and is never tracked. The curated subset is
-promoted into `docs/results/replays/` by `bnb publish`.
+Capture writes to `out/`, which is scratch and is never tracked. The curated subset was
+copied into `docs/results/replays/` and committed; those committed files are the clips.
 
 ## Provenance
 
 A GIF encodes frames and nothing else, so a clip carries no record of where it came from.
-That record lives beside it. Each one is declared in
-[`docs/publications.toml`](publications.toml) with the sha256 of the exact file that was
-reviewed, and [`docs/results/provenance.md`](results/provenance.md) lists that digest
-beside the output it owns. `bnb publish --check` compares the tracked GIF against its pin,
-so a replaced or re-encoded clip fails the check instead of passing unnoticed.
+Git carries it instead: the tracked file is the reviewed file, and its history says when
+it changed and why.
 
 All fifteen come from `resilient-resonance-682`'s final checkpoint, captured with the
 command above and the seed named in each filename. The clips do not record their own

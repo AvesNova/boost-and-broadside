@@ -335,7 +335,7 @@ def validate_case_root(root: str | Path) -> None:
     )
     if rendered:
         raise SmokeIsolationError(
-            "smoke cases must disable report/publication rendering: " + ", ".join(rendered)
+            "smoke cases must disable report and figure rendering: " + ", ".join(rendered)
         )
 
 

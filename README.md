@@ -29,13 +29,13 @@ recurrence carries information through time. Because the network operates over a
 variable-length token sequence, the same weights can run at fleet sizes never seen
 during training.
 
-![Calibrated rating across symmetric fleet sizes](docs/results/elo_scale_scripted_1000.png)
+![Calibrated rating across symmetric fleet sizes](checkpoints/good-leaf-719/artifacts/figures/elo_scale_scripted_1000.png)
 
 *Rated against the same scripted controller at every size, the 4-vs-4 policy is stronger
 the larger the fleet it is given — the coordination it learned scales further than the
 setting it learned it in.*
 
-Selected results from the [recorded crossover sweep](docs/crossover/crossover.json),
+Selected results from the [recorded crossover sweep](checkpoints/good-leaf-719/artifacts/figures/crossover.json),
 each row the largest scripted fleet the policy still beats:
 
 | Learned ships | Scripted ships | Win rate |
@@ -56,7 +56,7 @@ Laptop. Post-hoc calibration places the final checkpoint at about **1748 Elo** o
 scale that fixes the scripted controller at 1000, a lead of roughly **748 points**,
 where 400 points already means ten-to-one odds.
 
-![Post-hoc calibrated Elo over training](docs/results/elo_curve.png)
+![Post-hoc calibrated Elo over training](checkpoints/good-leaf-719/artifacts/figures/elo_curve.png)
 
 *The calibrated rating keeps rising long after wins against the scripted controller
 stop being informative.*
@@ -88,9 +88,9 @@ emits one output per ship, however many there are.
   measurements with qualitative behavior. The crossover evaluator is
   [`crossover.py`](src/boost_and_broadside/modes/crossover.py).
 
-Every headline number names the artifact it came from, and
-[`docs/results/provenance.md`](docs/results/provenance.md) maps each published figure to
-the exact measurement behind it.
+Every headline number names the artifact it came from. The figures are linked from
+[the reference run's own directory](checkpoints/good-leaf-719/artifacts/figures/), which
+records the measurement behind each one.
 
 ## Quick start
 

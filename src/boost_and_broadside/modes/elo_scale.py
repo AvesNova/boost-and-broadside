@@ -7,7 +7,7 @@ adaptive batch, so an interrupted sweep resumes where it stopped.
 
 Reporting anchors are pure post-processing and never require replaying a match.
 The published fleet-scale figure — including the join through an independently
-measured semi-random reference ladder — is rendered by ``bnb publish`` from this
+measured semi-random reference ladder — is rendered by ``bnb figures`` from this
 artifact, not written here.
 """
 

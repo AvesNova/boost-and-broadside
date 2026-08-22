@@ -14,7 +14,7 @@ The measurement writes one ``noise-calibration`` artifact: ``result.json`` holds
 the aggregates every report is built from, and an optional ignored
 ``samples/phase1_errors.npz`` retains a bounded prefix of the raw single-step
 errors so a later estimator can be tried without replaying the environment. The
-figures are rendered from the artifact by ``bnb publish``.
+figures are rendered from the artifact by ``bnb figures``.
 """
 
 import datetime

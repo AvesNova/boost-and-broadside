@@ -149,7 +149,7 @@ def test_case_root_rejects_writes_outside_managed_roots(tmp_path: Path) -> None:
         validate_case_root(tmp_path)
 
 
-def test_case_root_rejects_rendered_publication_outputs(tmp_path: Path) -> None:
+def test_case_root_rejects_rendered_report_outputs(tmp_path: Path) -> None:
     for managed in ("checkpoints", "artifacts", "out", "tmp"):
         (tmp_path / managed).mkdir()
     (tmp_path / "artifacts" / "unexpected.png").touch()

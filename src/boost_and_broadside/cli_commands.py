@@ -523,28 +523,6 @@ def _runs(args: argparse.Namespace) -> None:
         print("  ".join(value.ljust(width) for value, width in zip(row, widths, strict=True)))
 
 
-def _publish(args: argparse.Namespace) -> None:
-    """Render manifest-selected canonical views. Never simulates, never plays."""
-
-    from pathlib import Path
-
-    from boost_and_broadside.publication.publish import UNRESOLVED, run_publish
-    from boost_and_broadside.publication.renderer_api import PublicationError
-
-    report = run_publish(Path.cwd(), target=args.target, check=args.check)
-    print(report.render())
-    if report.by_status(UNRESOLVED):
-        # Re-running publish cannot repair a source that is damaged, absent, or
-        # was produced from a dirty checkout, so do not suggest it.
-        raise PublicationError(
-            "a publication source could not be verified; see the entries reported above"
-        )
-    if report.failed:
-        raise PublicationError(
-            "canonical output does not match the manifest; run bnb publish to update it"
-        )
-
-
 _HANDLERS = {
     "train": _train,
     "play": _play,
@@ -562,7 +540,7 @@ _HANDLERS = {
 
 
 def runtime_command_names() -> tuple[str, ...]:
-    """Commands that own runtime smoke cases (excluding orchestration/publication)."""
+    """Commands that own runtime smoke cases (excluding orchestration)."""
 
     return tuple(_HANDLERS)
 
@@ -570,8 +548,8 @@ def runtime_command_names() -> tuple[str, ...]:
 def _figures(args: argparse.Namespace) -> None:
     """Render a run's charts beside its measurements.
 
-    Grouped with publish rather than with the measurement modes: it plays no
-    games, needs no device, and reads only artifacts already on disk.
+    Grouped with the orchestration commands rather than the measurement modes:
+    it plays no games, needs no device, and reads only artifacts already on disk.
     """
 
     from boost_and_broadside.modes.figures import render_run_figures
@@ -587,9 +565,6 @@ def execute(command: str, args: argparse.Namespace, argv: Sequence[str] | None =
     """
     if command == "smoke":
         _smoke(args)
-        return
-    if command == "publish":
-        _publish(args)
         return
     if command == "runs":
         _runs(args)

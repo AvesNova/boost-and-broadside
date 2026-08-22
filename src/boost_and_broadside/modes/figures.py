@@ -3,8 +3,7 @@
 A run's charts belong beside the measurements they came from, for the same
 reason its Elo calibration does: they are evidence about that run, and a run
 directory that carries them is self-describing. Publication is then a choice of
-which run to illustrate the documents with, made in ``docs/publications.toml``,
-rather than a re-render.
+which run the documents link at, rather than a second copy of the charts.
 
 That split is what makes a new run cheap. Producing every chart for one is a
 single command against the artifacts already on disk, and it never touches
@@ -13,6 +12,7 @@ single command against the artifacts already on disk, and it never touches
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 
 from boost_and_broadside.artifacts import (
@@ -22,15 +22,15 @@ from boost_and_broadside.artifacts import (
     load_artifact,
     require_complete,
 )
-from boost_and_broadside.evaluation.run_catalog import resolve_exact_run
-from boost_and_broadside.evaluation.subjects import describe_source_artifact
-from boost_and_broadside.publication import renderers  # noqa: F401  (registers them)
-from boost_and_broadside.publication.figure_set import FIGURES, FigureSpec
-from boost_and_broadside.publication.renderer_api import (
+from boost_and_broadside.charts import renderers  # noqa: F401  (registers them)
+from boost_and_broadside.charts.figure_set import FIGURES, FigureSpec
+from boost_and_broadside.charts.renderer_api import (
     PublicationError,
     RenderInputs,
     get_renderer,
 )
+from boost_and_broadside.evaluation.run_catalog import resolve_exact_run
+from boost_and_broadside.evaluation.subjects import describe_source_artifact
 
 _SCHEMA_VERSION = 1
 _ARTIFACT_DIR = "artifacts"
@@ -53,6 +53,27 @@ def _latest_artifact(run_dir: Path, artifact_type: str):
     return artifact
 
 
+def _require_supported_schemas(figure: FigureSpec, resolved: Mapping[str, object]) -> None:
+    """Refuse a measurement written under a shape this renderer does not read.
+
+    Artifacts outlive the code that reads them, so an old run can hold a
+    crossover result from before a schema change. Rendering it anyway would
+    produce a chart from fields that no longer mean what the renderer thinks.
+    """
+
+    renderer = get_renderer(figure.renderer)
+    for source, artifact_type in figure.sources.items():
+        supported = renderer.supported_schemas.get(source)
+        if supported is None:
+            continue
+        version = resolved[artifact_type].manifest["recipe"]["result_schema_version"]
+        if version not in supported:
+            raise PublicationError(
+                f"{figure.name}: {artifact_type} artifact is schema {version}, but "
+                f"{renderer.name} reads {', '.join(str(item) for item in supported)}"
+            )
+
+
 def render_run_figures(
     run_spec: str,
     *,
@@ -64,8 +85,8 @@ def render_run_figures(
 
     Always ``checkpoints/<run>/artifacts/figures``. Re-rendering replaces it:
     figures are derived from the measurements beside them, so a second copy
-    would be a stale answer to the same question, and the path is quoted by
-    ``docs/publications.toml``.
+    would be a stale answer to the same question, and the documents link at this
+    path directly.
     """
 
     run_dir = resolve_exact_run(run_spec, checkpoint_dir).path
@@ -82,6 +103,8 @@ def render_run_figures(
         for artifact_type in figure.sources.values():
             if artifact_type not in resolved:
                 resolved[artifact_type] = _latest_artifact(run_dir, artifact_type)
+    for figure in selected:
+        _require_supported_schemas(figure, resolved)
 
     store = store or ArtifactStore(checkpoint_root=checkpoint_dir)
     artifact = store.create_stable(
