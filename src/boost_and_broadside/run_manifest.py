@@ -78,7 +78,6 @@ class RunManifest:
     live_elo: float | None = None
     device: str | None = None
     seed: int | None = None
-    resolved_config_fingerprint: str | None = None
     wandb_run_id: str | None = None
     # Which code produced the run. A dirty checkout means the commit alone does
     # not describe what ran, so the two are only useful together.

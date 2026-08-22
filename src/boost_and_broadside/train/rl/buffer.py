@@ -15,7 +15,6 @@ Shape conventions throughout:
 from collections.abc import Generator
 from typing import NamedTuple
 
-import numpy as np
 import torch
 
 from boost_and_broadside.env.observation import BulletObsKey, ObsKey, YemongObservation
@@ -803,7 +802,7 @@ class RolloutBuffer:
         assert self.initial_hidden is not None, "Call store_initial_hidden() before iterating."
 
         envs_per_batch = self.num_envs // num_minibatches
-        env_order = np.random.permutation(self.num_envs)
+        env_order = torch.randperm(self.num_envs)
         D = self.initial_hidden.shape[-1]
 
         tokens_per_env = self.num_steps * self.num_tokens
@@ -818,7 +817,7 @@ class RolloutBuffer:
         for start in range(0, self.num_envs, envs_per_batch):
             end = start + envs_per_batch
             chunks = []
-            for idx in np.array_split(env_order[start:end], n_micro):
+            for idx in torch.tensor_split(env_order[start:end], n_micro):
                 # T+1 obs for this micro-batch
                 mb_obs = YemongObservation(
                     data={k: v[:, idx] for k, v in self.obs.items()},
@@ -942,7 +941,7 @@ class StoredRollout:
 
         del microbatch_tokens  # device staging performs the split after one host gather
         envs_per_batch = self.num_envs // num_minibatches
-        env_order = np.random.permutation(self.num_envs)
+        env_order = torch.randperm(self.num_envs)
 
         n_layers = self.initial_hidden.shape[0]
         hidden_width = self.initial_hidden.shape[-1]

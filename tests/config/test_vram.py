@@ -41,7 +41,7 @@ from boost_and_broadside.config.vram import (
     write_cache_entry,
 )
 from boost_and_broadside.launch import profile_knobs
-from boost_and_broadside.profiles import PROFILES
+from boost_and_broadside.profiles import PROFILES, named_profile_spec
 
 _DEVICE = {
     "name": "NVIDIA GeForce RTX 4070 Laptop GPU",
@@ -56,8 +56,7 @@ _SOFTWARE = {"python": "3.13.11", "torch": "2.9.0", "cuda": "12.8", "cudnn": 910
 
 def _identity(**changes):
     base = {
-        "profile_name": "rl",
-        "profile_fingerprint": resolve_profile(PROFILES["rl"]).profile_fingerprint,
+        "profile": PROFILES["rl"],
         "geometry": launch_geometry(PROFILES["rl"]),
         "compile_mode": "reduce-overhead",
         "device": _DEVICE,
@@ -198,7 +197,6 @@ def test_the_eight_gigabyte_row_is_exactly_the_shipped_launch(name: str) -> None
     sized = resolve_profile(profile, launch_overrides_for(knobs))
     assert canonical_data(sized.train_config) == canonical_data(baseline.train_config)
     assert canonical_data(sized.model_config) == canonical_data(baseline.model_config)
-    assert sized.resolved_config_fingerprint == baseline.resolved_config_fingerprint
     # And it must not claim it moved anything either.
     assert knobs.tiers(profile_knobs(baseline)) == ()
 
@@ -291,12 +289,58 @@ def test_identity_is_stable_and_order_independent() -> None:
     (
         ("compile_mode", None),
         ("compile_mode", "max-autotune"),
-        ("profile_name", "bc"),
-        ("profile_fingerprint", "0" * 64),
+        ("profile", named_profile_spec("rl", {"num_fields": "0", "field_map": "none"})),
+        ("profile", named_profile_spec("rl", {"model_config.d_model": "512"})),
     ),
 )
 def test_a_changed_launch_question_invalidates_the_entry(field: str, value) -> None:
     assert identity_fingerprint(_identity(**{field: value})) != identity_fingerprint(_identity())
+
+
+def test_the_knob_the_probe_chooses_is_not_part_of_the_question() -> None:
+    """`grad_checkpoint` is what a probe decides, so keying on it is circular.
+
+    A cache keyed on it could never be read: the reader does not know the value
+    until the entry it is looking for tells it.
+    """
+
+    flipped = replace(
+        PROFILES["rl"],
+        model_config=replace(PROFILES["rl"].model_config, grad_checkpoint=True),
+    )
+    assert identity_fingerprint(_identity(profile=flipped)) == identity_fingerprint(_identity())
+
+
+def test_the_default_shard_width_is_not_part_of_the_question() -> None:
+    """A probe picks the width, so the width it started from cannot key the cache.
+
+    What does key it is the logical batch, because that decides which widths are
+    legal at all -- resizing it is a tier 3 experiment change, not a launch one.
+    """
+
+    def identity_for(rollout_tokens: int) -> str:
+        spec = replace(
+            PROFILES["rl"],
+            launch=replace(PROFILES["rl"].launch, rollout_tokens=rollout_tokens),
+        )
+        return identity_fingerprint(_identity(profile=spec, geometry=launch_geometry(spec)))
+
+    # 1536 envs over 5 shards against 1280 over 6: the same 11,796,480 tokens.
+    assert identity_for(2_400_000) == identity_for(2_000_000)
+    # 2592 over 3 aligns to a different batch, so it is a different question.
+    assert identity_for(4_000_000) != identity_for(2_000_000)
+
+
+def test_two_profiles_that_ask_the_same_question_share_one_measurement() -> None:
+    """`bc` differs from `rl` in objective, not in architecture or token count.
+
+    Nothing about the difference can change what fits on a card, so measuring
+    one card twice would be measuring the same thing twice.
+    """
+
+    assert identity_fingerprint(_identity(profile=PROFILES["bc"])) == identity_fingerprint(
+        _identity()
+    )
 
 
 @pytest.mark.parametrize(
@@ -339,7 +383,7 @@ def test_cache_round_trips_and_keeps_unrelated_entries(tmp_path: Path) -> None:
     assert read_cache(path) == {}
 
     first = _entry()
-    second = _entry(profile_name="bc")
+    second = _entry(compile_mode="max-autotune")
     write_cache_entry(path, first)
     write_cache_entry(path, second)
 
@@ -374,7 +418,7 @@ def test_a_failed_write_leaves_the_previous_cache_intact(tmp_path: Path, monkeyp
         lambda *_: (_ for _ in ()).throw(OSError("disk full")),
     )
     with pytest.raises(OSError, match="disk full"):
-        write_cache_entry(path, _entry(profile_name="bc"))
+        write_cache_entry(path, _entry(compile_mode="max-autotune"))
 
     assert path.read_text() == before
     assert sorted(item.name for item in tmp_path.iterdir()) == [".vram.json"]
@@ -483,7 +527,7 @@ def test_an_unresolved_policy_changes_nothing() -> None:
 
     baseline = resolve_profile(PROFILES["rl"])
     unchanged = resolve_profile(PROFILES["rl"], overrides)
-    assert unchanged.resolved_config_fingerprint == baseline.resolved_config_fingerprint
+    assert canonical_data(unchanged.train_config) == canonical_data(baseline.train_config)
     assert unchanged.value_sources["train_config.scales.0.num_envs"] == "derived"
     assert unchanged.value_sources["model_config.grad_checkpoint"] == "profile"
 

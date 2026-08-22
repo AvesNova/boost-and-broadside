@@ -801,7 +801,7 @@ def test_trainer_receives_complete_resolved_and_launch_provenance(monkeypatch) -
 
     document = captured["resolved_config_document"]
     assert document["profile"] == "rl"
-    assert document["resolved_config_fingerprint"] == launch.resolved.resolved_config_fingerprint
+    assert document["config"]["train_config"]["num_steps"] == launch.resolved.train_config.num_steps
     provenance = captured["launch_provenance"]
     assert {key: provenance[key] for key in provenance if key != "vram"} == {
         "device": "cpu",

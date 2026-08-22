@@ -597,7 +597,7 @@ class TestMinibatchIterator:
         assert batch.expert_probs.shape == (T, B_mb, N, 12)
 
     def test_the_env_order_repeats_for_a_seeded_process(self):
-        """Minibatch grouping is drawn from NumPy's global RNG, which is seeded.
+        """Minibatch grouping is drawn from the Torch RNG that ``--seed`` sets.
 
         Paired comparisons between two runs of one configuration depend on this:
         an unseeded permutation groups the same environments differently each
@@ -630,19 +630,6 @@ class TestMinibatchIterator:
         initialize_execution(settings)
         assert env_order() == first
         assert sorted(first) == list(range(B))
-
-    def test_a_seed_beyond_numpys_range_is_still_usable(self):
-        """--seed accepts the full 64-bit range; NumPy's global RNG takes 32 bits."""
-
-        initialize_execution(
-            ExecutionSettings(
-                device="cpu",
-                seed=2**63,
-                compile_mode=None,
-                wandb=False,
-                allow_config_drift=False,
-            )
-        )
 
     def test_requires_initial_hidden(self):
         T, B, N, D = 4, 4, 4, 16

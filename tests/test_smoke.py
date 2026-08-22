@@ -65,7 +65,6 @@ def test_synthetic_run_uses_current_loadable_checkpoint_schema(tmp_path: Path) -
     assert checkpoint["ship_config"]
     assert checkpoint["env_config"]["num_ships"] == 2
     assert checkpoint["resolved_config"]["profile"] == "smoke-fixture"
-    assert checkpoint["resolved_config"]["resolved_config_fingerprint"]
     assert checkpoint["optimizer_state_dict"]["param_groups"]
     assert checkpoint["avg_policy_state_dict"]
     assert checkpoint["launch"] == {

@@ -84,8 +84,8 @@ Resolve a launch before constructing the trainer:
 uv run bnb train --profile rl --print-config
 ```
 
-The printed document includes the complete configuration, its semantic and launch
-fingerprints, and the source of every resolved value. `--num-envs` and
+The printed document includes the complete configuration and the source of every resolved
+value. `--num-envs` and
 `--microbatch-tokens` are explicit launch overrides and are validated before printing.
 
 Production entry points:

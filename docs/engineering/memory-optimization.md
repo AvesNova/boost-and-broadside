@@ -88,11 +88,19 @@ numerically exact and only costs time, and narrows the rollout shard only after 
 first candidate that survives a full update wins.
 
 The result lands in `.vram.json` beside the working tree, gitignored and recomputable rather
-than an artifact. An entry applies only to a fingerprint covering GPU name, UUID, MIG status,
-total memory, compute capability and SM count, the Torch/CUDA/cuDNN/Python versions, the
-autocast dtype, the compile mode, the profile's semantic fingerprint, and its token
-geometry. Change any of those and the entry stops matching, so `auto` falls back to the
-profile's own sizing instead of reusing a measurement of a different question.
+than an artifact. Each entry carries the question it answered, written out: GPU name, UUID,
+MIG status, total memory, compute capability and SM count; the Torch/CUDA/cuDNN/Python
+versions; the autocast dtype and compile mode; the network architecture; the arena the
+tokens come from; and the token geometry. Change any of those and the entry stops matching,
+so `auto` falls back to the profile's own sizing instead of reusing a measurement of a
+different question.
+
+The list is deliberately short of a whole profile. A learning rate or a reward weight cannot
+move a byte, so a measurement of this card survives editing them, and `rl` and `bc` share
+one entry because they differ in objective rather than in architecture. What does invalidate
+an entry is anything that changes the shape of the work: token width, network size, the
+logical batch. The stored hash is only the dictionary key; the identity beside it is what
+says whether an entry still applies, and it is readable.
 
 A cache file that cannot be read is an error naming `--vram reprobe` or `--vram off`, never
 a silent resize. A reprobe reaches the file only after it has measured the card, so it
@@ -107,7 +115,7 @@ microbatch chosen on the command line does claim its tier, since the cost is the
 whoever picked it. `proposed`, `applied`, and the per-value source map record who did.
 
 `--compile` changes the reserved workspace, which is why compile mode is part of the cache
-fingerprint: a measurement taken under one mode does not answer for another. Probe with the
+identity: a measurement taken under one mode does not answer for another. Probe with the
 flags you intend to train with. `bnb train --profile rl --vram probe` uses the run's own
 compile mode, so one command line probes and then trains against its own measurement.
 Switching `--compile` afterwards is a cache miss, and `auto` says so instead of reusing the

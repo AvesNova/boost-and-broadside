@@ -30,7 +30,7 @@ from boost_and_broadside.config.vram import (
 )
 from boost_and_broadside.errors import UserFacingError
 from boost_and_broadside.execution import ExecutionSettings, resolve_execution_settings
-from boost_and_broadside.profiles import resolve_named_profile
+from boost_and_broadside.profiles import named_profile_spec, resolve_named_profile
 
 ProfileResolver = Callable[..., ResolvedTrainConfig]
 
@@ -123,17 +123,18 @@ def resolve_training_launch(
         allow_config_drift=allow_config_drift,
         gradient_diagnostics=gradient_diagnostics,
     )
-    # The semantic fingerprint keys the VRAM cache and does not depend on any
-    # launch sizing, so resolving the profile at its defaults is enough to ask
-    # the cache a question about it.
+    # The VRAM question is asked of the profile as edited but before any launch
+    # sizing: sizing is the answer, so it cannot also be part of the question.
     intent = resolve(profile, overrides=overrides)
+    spec = named_profile_spec(profile, overrides)
 
     from boost_and_broadside.vram_probe import resolve_vram
 
     resolution = resolve_vram(
         policy,
         profile_name=profile,
-        profile_fingerprint=intent.profile_fingerprint,
+        profile=spec,
+        overrides=overrides,
         device=execution.device,
         compile_mode=execution.compile_mode,
         cache_file=cache_file,

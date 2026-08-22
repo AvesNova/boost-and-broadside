@@ -197,7 +197,7 @@ class TestObservationSchema:
             env_config=EnvConfig(num_ships=2, max_bullets=4, max_episode_steps=8),
             ship_config=ShipConfig(),
             paradigm="ego_pass",
-            resolved_config={"resolved_config_fingerprint": "abc"},
+            resolved_config={"profile": "abc"},
             launch={"device": "cpu", "seed": 7},
         )
 
@@ -205,7 +205,7 @@ class TestObservationSchema:
         assert payload["num_value_components"] == 3
         assert payload["team_pma_k"] == (0, 2)
         assert payload["global_step"] == 17
-        assert payload["resolved_config"]["resolved_config_fingerprint"] == "abc"
+        assert payload["resolved_config"]["profile"] == "abc"
         assert payload["launch"] == {"device": "cpu", "seed": 7}
 
     def test_full_payload_builder_matches_resumable_checkpoint_schema(self, tmp_path):
@@ -354,12 +354,12 @@ class TestResumableCheckpointContract:
         payload["training_elo"] = payload.pop("live_elo")
         payload["avg_training_elo"] = payload.pop("avg_live_elo")
         if with_resolved_config:
-            payload["resolved_config"] = {"resolved_config_fingerprint": "recorded"}
+            payload["resolved_config"] = {"profile": "recorded"}
         legacy = tmp_path / "legacy.pt"
         torch.save(payload, legacy)
 
         resumed = _make_trainer(checkpoint_dir=str(tmp_path / "resume"))
-        resumed.resolved_config_document = {"resolved_config_fingerprint": "recorded"}
+        resumed.resolved_config_document = {"profile": "recorded"}
         resumed.launch_provenance = {"allow_config_drift": False}
         before = (
             resumed._live_elo,
@@ -847,10 +847,7 @@ class TestRunManifest:
 
         trainer = _make_trainer(checkpoint_dir=str(tmp_path))
         trainer._schedule_state.checkpoint_interval = 1
-        trainer.resolved_config_document = {
-            "profile": "rl",
-            "resolved_config_fingerprint": "0bf3a3b5",
-        }
+        trainer.resolved_config_document = {"profile": "rl"}
         trainer.launch_provenance = {"device": "cpu", "seed": 7}
         return trainer
 
@@ -869,7 +866,6 @@ class TestRunManifest:
         assert (manifest.profile, manifest.device, manifest.seed) == ("rl", "cpu", 7)
         assert (manifest.global_step, manifest.update) == (4096, 3)
         assert manifest.status is RunStatus.RUNNING
-        assert manifest.resolved_config_fingerprint == "0bf3a3b5"
 
     def test_the_final_save_records_the_run_it_wrote(self, tmp_path):
         from boost_and_broadside.run_manifest import read_manifest

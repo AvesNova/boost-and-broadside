@@ -31,7 +31,6 @@ def test_written_manifest_round_trips(tmp_path):
         live_elo=879.76,
         device="cuda",
         seed=1,
-        resolved_config_fingerprint="0bf3a3b5",
         wandb_run_id="abcd1234",
     )
 

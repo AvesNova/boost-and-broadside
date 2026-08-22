@@ -30,7 +30,9 @@ from typing import Any
 
 import torch
 
+from boost_and_broadside.config.overrides import parse_override
 from boost_and_broadside.config.resolve import LaunchGeometry, LaunchOverrides, launch_geometry
+from boost_and_broadside.config.schema import ProfileSpec
 from boost_and_broadside.config.vram import (
     PROBE_VERSION,
     VRAM_PRESETS,
@@ -161,6 +163,7 @@ def _child_command(
     knobs: VramKnobs,
     *,
     profile: str,
+    overrides: Mapping[str, str],
     device: str,
     compile_mode: str | None,
 ) -> list[str]:
@@ -182,6 +185,10 @@ def _child_command(
     ]
     if knobs.grad_checkpoint:
         command.append("--grad-checkpoint")
+    # The child has to measure the profile the launch actually asked for. An
+    # override that changes token width changes the answer, so dropping them
+    # here would store a measurement of a configuration nobody is running.
+    command.extend(f"{key}={value}" for key, value in sorted(overrides.items()))
     return command
 
 
@@ -190,13 +197,18 @@ def subprocess_runner(
     profile: str,
     device: str,
     compile_mode: str | None,
+    overrides: Mapping[str, str] | None = None,
     timeout: float = DEFAULT_CANDIDATE_TIMEOUT_SECONDS,
 ) -> CandidateRunner:
     """Measure candidates in fresh interpreters rooted in a scratch directory."""
 
     def run(knobs: VramKnobs) -> ProbeOutcome:
         command = _child_command(
-            knobs, profile=profile, device=device, compile_mode=compile_mode
+            knobs,
+            profile=profile,
+            overrides=overrides or {},
+            device=device,
+            compile_mode=compile_mode,
         )
         with tempfile.TemporaryDirectory(prefix="bnb-vram-probe-") as scratch:
             try:
@@ -254,7 +266,8 @@ def probe_profile(
     *,
     device: str,
     compile_mode: str | None,
-    profile_fingerprint: str,
+    profile: ProfileSpec | None = None,
+    overrides: Mapping[str, str] | None = None,
     runner: CandidateRunner | None = None,
     identity: Mapping[str, Any] | None = None,
 ) -> tuple[VramCacheEntry, tuple[ProbeOutcome, ...]]:
@@ -262,22 +275,28 @@ def probe_profile(
 
     Returns the cache entry to store along with every attempt, so a caller can
     report the rejected candidates instead of hiding them.
+
+    ``profile`` is the spec after any ``key=value`` edits.  It defaults to the
+    registered one, which is only correct when there are no edits.
     """
 
     if profile_name not in PROFILES:
         raise VramError(f"unknown profile {profile_name!r}")
-    geometry = launch_geometry(PROFILES[profile_name])
+    spec = PROFILES[profile_name] if profile is None else profile
+    geometry = launch_geometry(spec)
     device_record = dict(identity) if identity is not None else device_identity(device)
     full_identity = cache_identity(
-        profile_name=profile_name,
-        profile_fingerprint=profile_fingerprint,
+        profile=spec,
         geometry=geometry,
         compile_mode=compile_mode,
         device=device_record,
         software=software_identity(),
     )
     run = runner or subprocess_runner(
-        profile=profile_name, device=device, compile_mode=compile_mode
+        profile=profile_name,
+        device=device,
+        compile_mode=compile_mode,
+        overrides=overrides,
     )
     attempts: list[ProbeOutcome] = []
     for knobs in candidate_knobs(
@@ -311,7 +330,8 @@ def resolve_vram(
     policy: VramPolicy,
     *,
     profile_name: str,
-    profile_fingerprint: str,
+    profile: ProfileSpec | None = None,
+    overrides: Mapping[str, str] | None = None,
     device: str,
     compile_mode: str | None,
     cache_file: Path | None = None,
@@ -327,11 +347,12 @@ def resolve_vram(
     """
 
     announce = report or (lambda _message: None)
+    spec = PROFILES[profile_name] if profile is None else profile
     if policy.mode == "off":
         return unresolved(policy, "--vram off: the profile's own derived sizing is used")
     if policy.mode == "preset":
         assert policy.preset_gigabytes is not None
-        geometry = launch_geometry(PROFILES[profile_name])
+        geometry = launch_geometry(spec)
         resolution = resolution_from_preset(
             policy, VRAM_PRESETS[policy.preset_gigabytes], geometry
         )
@@ -363,11 +384,10 @@ def resolve_vram(
             "or --vram 8|16|24|32 for a provisional preset",
         )
 
-    geometry = launch_geometry(PROFILES[profile_name])
+    geometry = launch_geometry(spec)
     device_record = device_identity(device)
     identity = cache_identity(
-        profile_name=profile_name,
-        profile_fingerprint=profile_fingerprint,
+        profile=spec,
         geometry=geometry,
         compile_mode=compile_mode,
         device=device_record,
@@ -391,7 +411,8 @@ def resolve_vram(
         profile_name,
         device=device,
         compile_mode=compile_mode,
-        profile_fingerprint=profile_fingerprint,
+        profile=spec,
+        overrides=overrides,
         runner=runner,
         # The device was already identified above; asking the driver twice
         # cannot improve the answer and could only disagree with it.
@@ -421,6 +442,7 @@ def measure_candidate(
     *,
     device: str,
     compile_mode: str | None,
+    overrides: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Run one complete PPO update at this sizing and report the peak.
 
@@ -444,6 +466,7 @@ def measure_candidate(
             microbatch_tokens_source="vram-preset",
             grad_checkpoint_source="vram-preset",
         ),
+        overrides=dict(overrides or {}),
     )
     train_config = resolved.train_config
     # Exactly one update: `_num_updates` is the timestep budget divided by the
@@ -488,6 +511,7 @@ def _child_parser() -> argparse.ArgumentParser:
     parser.add_argument("--microbatch-tokens", type=int, required=True)
     parser.add_argument("--grad-checkpoint", action="store_true")
     parser.add_argument("--compile", dest="compile_mode", default="none")
+    parser.add_argument("overrides", nargs="*", metavar="KEY=VALUE")
     return parser
 
 
@@ -512,7 +536,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     compile_mode = None if args.compile_mode == "none" else args.compile_mode
     try:
         result = measure_candidate(
-            args.profile, knobs, device=args.device, compile_mode=compile_mode
+            args.profile,
+            knobs,
+            device=args.device,
+            compile_mode=compile_mode,
+            overrides=dict(parse_override(item) for item in args.overrides),
         )
     except torch.cuda.OutOfMemoryError as error:
         print(

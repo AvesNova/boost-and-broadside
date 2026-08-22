@@ -81,9 +81,7 @@ def test_the_manifest_identifies_subjects_command_and_machine(tmp_path, syntheti
     assert subjects["trained"]["global_step"] == 1
     assert "scripted_config" in subjects["scripted"]
 
-    training_config = subjects["trained"]["training_config"]
-    assert len(training_config["resolved_config_fingerprint"]) == 64
-    assert len(training_config["profile_fingerprint"]) == 64
+    assert subjects["trained"]["training_config"] == {"profile": "smoke-fixture"}
 
     assert manifest["invocation"]["normalized"].startswith("uv run bnb crossover")
     assert manifest["execution"]["device"] == "cpu"

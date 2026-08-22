@@ -340,7 +340,6 @@ class CheckpointMixin:
                 live_elo=self._live_elo,
                 device=launch.get("device"),
                 seed=launch.get("seed"),
-                resolved_config_fingerprint=resolved.get("resolved_config_fingerprint"),
                 wandb_run_id=(
                     run_id_path.read_text().strip() if run_id_path.is_file() else None
                 ),

@@ -33,7 +33,6 @@ from boost_and_broadside.config.schedule_spec import (
     hold,
 )
 from boost_and_broadside.config.schema import (
-    PROFILE_SCHEMA_VERSION,
     RESOLVED_CONFIG_SCHEMA_VERSION,
     LaunchSizingSpec,
     ProfileSpec,
@@ -72,7 +71,6 @@ __all__ = [
     "LaunchOverrides",
     "LaunchSizingSpec",
     "ProfileSpec",
-    "PROFILE_SCHEMA_VERSION",
     "RESOLVED_CONFIG_SCHEMA_VERSION",
     "ResolvedTrainConfig",
     "TrainingScheduleSpec",

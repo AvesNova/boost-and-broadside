@@ -19,18 +19,20 @@ import pytest
 
 from boost_and_broadside import execution, vram_probe
 from boost_and_broadside.config.resolve import launch_geometry, resolve_profile
+from boost_and_broadside.config.service import resolved_profile_document
 from boost_and_broadside.config.vram import (
     VRAM_PRESETS,
     VramError,
     VramKnobs,
     VramPolicy,
+    memory_identity,
     preset_knobs,
     read_cache,
     write_cache_entry,
 )
 from boost_and_broadside.errors import UserFacingError
 from boost_and_broadside.launch import resolve_training_launch
-from boost_and_broadside.profiles import PROFILES
+from boost_and_broadside.profiles import PROFILES, named_profile_spec
 from boost_and_broadside.vram_probe import (
     OOM_EXIT_CODE,
     ProbeOutcome,
@@ -49,7 +51,6 @@ _IDENTITY = {
     "capability": "8.9",
     "multi_processor_count": 36,
 }
-_RL_FINGERPRINT = resolve_profile(PROFILES["rl"]).profile_fingerprint
 
 
 @pytest.fixture
@@ -151,7 +152,6 @@ def test_the_first_candidate_that_fits_wins_and_the_rest_are_recorded() -> None:
         "rl",
         device="cuda",
         compile_mode=None,
-        profile_fingerprint=_RL_FINGERPRINT,
         runner=run,
         identity=_IDENTITY,
     )
@@ -173,7 +173,6 @@ def test_a_card_that_fits_nothing_fails_with_every_rejection_named() -> None:
             "rl",
             device="cuda",
             compile_mode=None,
-            profile_fingerprint=_RL_FINGERPRINT,
             runner=_runner(),
             identity=_IDENTITY,
         )
@@ -184,7 +183,11 @@ def test_each_candidate_is_measured_in_a_fresh_interpreter() -> None:
     allocator fragmented for the next attempt."""
 
     command = _child_command(
-        VramKnobs(2592, 25_000, True), profile="rl", device="cuda:0", compile_mode=None
+        VramKnobs(2592, 25_000, True),
+        profile="rl",
+        overrides={},
+        device="cuda:0",
+        compile_mode=None,
     )
     assert command[:3] == [sys.executable, "-m", "boost_and_broadside.vram_probe"]
     assert command[3:] == [
@@ -201,8 +204,25 @@ def test_each_candidate_is_measured_in_a_fresh_interpreter() -> None:
         "--grad-checkpoint",
     ]
     assert "--grad-checkpoint" not in _child_command(
-        VramKnobs(2592, 25_000, False), profile="rl", device="cuda", compile_mode="default"
+        VramKnobs(2592, 25_000, False),
+        profile="rl",
+        overrides={},
+        device="cuda",
+        compile_mode="default",
     )
+
+
+def test_the_child_is_told_the_overrides_the_launch_asked_for() -> None:
+    """Dropping them would measure a configuration nobody is about to run."""
+
+    command = _child_command(
+        VramKnobs(2592, 25_000, False),
+        profile="rl",
+        overrides={"num_fields": "0", "field_map": "none"},
+        device="cuda",
+        compile_mode=None,
+    )
+    assert command[-2:] == ["field_map=none", "num_fields=0"]
 
 
 def test_the_child_refuses_a_device_it_cannot_measure(tmp_path: Path) -> None:
@@ -210,7 +230,11 @@ def test_the_child_refuses_a_device_it_cannot_measure(tmp_path: Path) -> None:
 
     completed = subprocess.run(
         _child_command(
-            VramKnobs(2592, 25_000, False), profile="rl", device="cpu", compile_mode=None
+            VramKnobs(2592, 25_000, False),
+            profile="rl",
+            overrides={},
+            device="cpu",
+            compile_mode=None,
         ),
         capture_output=True,
         text=True,
@@ -294,7 +318,6 @@ def test_auto_without_a_cache_keeps_the_profile_sizing(tmp_path: Path, fake_cuda
     resolution = resolve_vram(
         VramPolicy("auto"),
         profile_name="rl",
-        profile_fingerprint=_RL_FINGERPRINT,
         device="cuda",
         compile_mode=None,
         cache_file=tmp_path / ".vram.json",
@@ -310,7 +333,6 @@ def test_auto_uses_a_matching_measurement(tmp_path: Path, fake_cuda) -> None:
         "rl",
         device="cuda",
         compile_mode=None,
-        profile_fingerprint=_RL_FINGERPRINT,
         runner=_runner(VramKnobs(864, 25_000, True)),
         identity=_IDENTITY,
     )
@@ -319,7 +341,6 @@ def test_auto_uses_a_matching_measurement(tmp_path: Path, fake_cuda) -> None:
     resolution = resolve_vram(
         VramPolicy("auto"),
         profile_name="rl",
-        profile_fingerprint=_RL_FINGERPRINT,
         device="cuda",
         compile_mode=None,
         cache_file=cache,
@@ -329,34 +350,53 @@ def test_auto_uses_a_matching_measurement(tmp_path: Path, fake_cuda) -> None:
     assert resolution.applied == VramKnobs(864, 25_000, True)
 
 
-@pytest.mark.parametrize(
-    ("field", "value"),
-    (("profile_fingerprint", "0" * 64), ("compile_mode", "max-autotune")),
-)
-def test_auto_refuses_a_measurement_that_answered_another_question(
-    tmp_path: Path, fake_cuda, field: str, value
-) -> None:
+def _measured_cache(tmp_path: Path) -> Path:
     cache = tmp_path / ".vram.json"
     entry, _ = probe_profile(
         "rl",
         device="cuda",
         compile_mode=None,
-        profile_fingerprint=_RL_FINGERPRINT,
         runner=_runner(VramKnobs(864, 25_000, True)),
         identity=_IDENTITY,
     )
     write_cache_entry(cache, entry)
+    return cache
 
-    arguments = {
-        "profile_name": "rl",
-        "profile_fingerprint": _RL_FINGERPRINT,
-        "device": "cuda",
-        "compile_mode": None,
-        field: value,
-    }
-    resolution = resolve_vram(VramPolicy("auto"), cache_file=cache, **arguments)
+
+@pytest.mark.parametrize(
+    "arguments",
+    (
+        pytest.param({"compile_mode": "max-autotune"}, id="compile-mode"),
+        pytest.param(
+            {"profile": named_profile_spec("rl", {"num_fields": "0"})},
+            id="token-width",
+        ),
+    ),
+)
+def test_auto_refuses_a_measurement_that_answered_another_question(
+    tmp_path: Path, fake_cuda, arguments: dict
+) -> None:
+    resolution = resolve_vram(
+        VramPolicy("auto"),
+        cache_file=_measured_cache(tmp_path),
+        **{"profile_name": "rl", "device": "cuda", "compile_mode": None, **arguments},
+    )
     assert resolution.status == "unresolved"
     assert "none matching this machine" in resolution.notes[0]
+
+
+def test_auto_reuses_a_measurement_across_a_change_that_cannot_move_memory() -> None:
+    """A learning rate cannot change what fits, so it must not discard a probe.
+
+    The cache used to key on a hash of the whole profile, which threw away a
+    real measurement of this card every time any hyperparameter moved.
+    """
+
+    baseline = memory_identity(PROFILES["rl"])
+    assert memory_identity(named_profile_spec("rl", {"clip_coef": "0.3"})) == baseline
+    assert memory_identity(named_profile_spec("rl", {"max_grad_norm": "1.0"})) == baseline
+    # Token width is a different question and has to read as one.
+    assert memory_identity(named_profile_spec("rl", {"num_ships": "16"})) != baseline
 
 
 def test_probe_reuses_a_stored_measurement_but_reprobe_replaces_it(
@@ -367,7 +407,6 @@ def test_probe_reuses_a_stored_measurement_but_reprobe_replaces_it(
     resolve_vram(
         VramPolicy("probe"),
         profile_name="rl",
-        profile_fingerprint=_RL_FINGERPRINT,
         device="cuda",
         compile_mode=None,
         cache_file=cache,
@@ -380,7 +419,6 @@ def test_probe_reuses_a_stored_measurement_but_reprobe_replaces_it(
     reused = resolve_vram(
         VramPolicy("probe"),
         profile_name="rl",
-        profile_fingerprint=_RL_FINGERPRINT,
         device="cuda",
         compile_mode=None,
         cache_file=cache,
@@ -393,7 +431,6 @@ def test_probe_reuses_a_stored_measurement_but_reprobe_replaces_it(
     replaced = resolve_vram(
         VramPolicy("reprobe"),
         profile_name="rl",
-        profile_fingerprint=_RL_FINGERPRINT,
         device="cuda",
         compile_mode=None,
         cache_file=cache,
@@ -410,7 +447,6 @@ def test_probing_writes_the_cache_and_reports_what_it_rejected(tmp_path: Path, f
     resolve_vram(
         VramPolicy("probe"),
         profile_name="rl",
-        profile_fingerprint=_RL_FINGERPRINT,
         device="cuda",
         compile_mode=None,
         cache_file=cache,
@@ -434,7 +470,6 @@ def test_off_and_a_non_accelerator_never_look_at_a_device(tmp_path: Path, monkey
     off = resolve_vram(
         VramPolicy("off"),
         profile_name="rl",
-        profile_fingerprint=_RL_FINGERPRINT,
         device="cuda",
         compile_mode=None,
         cache_file=cache,
@@ -444,7 +479,6 @@ def test_off_and_a_non_accelerator_never_look_at_a_device(tmp_path: Path, monkey
     on_cpu = resolve_vram(
         VramPolicy("auto"),
         profile_name="rl",
-        profile_fingerprint=_RL_FINGERPRINT,
         device="cpu",
         compile_mode=None,
         cache_file=cache,
@@ -457,7 +491,6 @@ def test_probing_without_an_accelerator_fails_loudly(monkeypatch) -> None:
         resolve_vram(
             VramPolicy("probe"),
             profile_name="rl",
-            profile_fingerprint=_RL_FINGERPRINT,
             device="cpu",
             compile_mode=None,
         )
@@ -472,7 +505,6 @@ def test_a_preset_needs_no_device_at_all(monkeypatch) -> None:
     resolution = resolve_vram(
         VramPolicy("preset", 16),
         profile_name="rl",
-        profile_fingerprint=_RL_FINGERPRINT,
         device="cpu",
         compile_mode=None,
     )
@@ -493,21 +525,25 @@ def test_a_default_cpu_launch_resolves_exactly_as_the_profile_does() -> None:
     launch = resolve_training_launch(profile="rl", device="cpu")
     baseline = resolve_profile(PROFILES["rl"])
 
-    assert launch.resolved.resolved_config_fingerprint == baseline.resolved_config_fingerprint
+    assert resolved_profile_document(launch.resolved) == resolved_profile_document(baseline)
     assert launch.vram.status == "unresolved"
     assert launch.document()["vram"]["tiers"] == {}
     assert launch.resolved.value_sources["train_config.scales.0.num_envs"] == "derived"
 
 
 def test_the_shipped_row_records_no_tier_because_it_moves_nothing() -> None:
-    """`--vram 8` is the shipped launch down to the fingerprint, so the record
-    must not warn about tier 2's different minibatch composition."""
+    """`--vram 8` is the shipped launch value for value, so the record must not
+    warn about tier 2's different minibatch composition."""
 
     launch = resolve_training_launch(profile="rl", vram="8", device="cpu")
     baseline = resolve_profile(PROFILES["rl"])
     record = launch.document()["vram"]
 
-    assert launch.resolved.resolved_config_fingerprint == baseline.resolved_config_fingerprint
+    # Same values; only the record of who chose grad_checkpoint differs.
+    assert (
+        resolved_profile_document(launch.resolved)["config"]
+        == resolved_profile_document(baseline)["config"]
+    )
     assert record["applied"] == launch.baseline.document()
     assert record["tiers"] == {}
     # The proposal is still recorded in full; only the claim about it changed.
@@ -551,7 +587,6 @@ def test_a_measured_launch_records_every_source(tmp_path: Path, fake_cuda) -> No
         "rl",
         device="cuda",
         compile_mode=None,
-        profile_fingerprint=_RL_FINGERPRINT,
         runner=_runner(VramKnobs(864, 25_000, True)),
         identity=_IDENTITY,
     )
@@ -590,7 +625,6 @@ def test_the_vram_decision_is_stored_in_the_checkpoint(tmp_path: Path, fake_cuda
         "rl",
         device="cuda",
         compile_mode=None,
-        profile_fingerprint=_RL_FINGERPRINT,
         runner=_runner(VramKnobs(864, 25_000, True)),
         identity=_IDENTITY,
     )
@@ -631,7 +665,6 @@ def test_an_explicit_override_outranks_a_measurement(tmp_path: Path, fake_cuda) 
         "rl",
         device="cuda",
         compile_mode=None,
-        profile_fingerprint=_RL_FINGERPRINT,
         runner=_runner(VramKnobs(864, 25_000, True)),
         identity=_IDENTITY,
     )

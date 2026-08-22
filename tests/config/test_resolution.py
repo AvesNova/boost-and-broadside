@@ -109,20 +109,16 @@ def test_every_profile_checkpoints_on_every_update(name: str) -> None:
         assert schedule.checkpoint_interval(step) == 1
 
 
-def test_fingerprints_are_canonical_and_separate_intent_from_launch() -> None:
+def test_resolving_one_profile_twice_gives_the_same_configuration() -> None:
     base = resolve_profile(PROFILES["rl"])
+    second = resolve_profile(PROFILES["rl"])
     overridden = resolve_profile(
         PROFILES["rl"],
         LaunchOverrides(num_envs=864, microbatch_tokens=20_000),
     )
 
-    assert fingerprint({"b": 2, "a": 1}) == fingerprint({"a": 1, "b": 2})
-    assert base.profile_fingerprint == overridden.profile_fingerprint
-    assert base.resolved_config_fingerprint != overridden.resolved_config_fingerprint
-    second = resolve_profile(PROFILES["rl"])
     assert canonical_data(second.train_config) == canonical_data(base.train_config)
-    assert second.profile_fingerprint == base.profile_fingerprint
-    assert second.resolved_config_fingerprint == base.resolved_config_fingerprint
+    assert canonical_data(overridden.train_config) != canonical_data(base.train_config)
 
 
 def test_canonical_serialization_has_a_stable_golden_vector() -> None:
@@ -136,47 +132,13 @@ def test_canonical_serialization_has_a_stable_golden_vector() -> None:
         canonical_json(object())
 
 
-def test_profile_fingerprint_includes_declarative_schedule_intent() -> None:
+def test_a_changed_schedule_intent_reaches_the_compiled_schedule() -> None:
     profile = PROFILES["rl"]
-    changed_schedule = replace(
-        profile.schedule_spec,
-        entropy_coef=hold(0.006),
-    )
-    changed = replace(
-        profile,
-        schedule_spec=changed_schedule,
-    )
-    changed_fingerprint = resolve_profile(changed).profile_fingerprint
-    assert changed_fingerprint != resolve_profile(profile).profile_fingerprint
+    changed_schedule = replace(profile.schedule_spec, entropy_coef=hold(0.006))
+    changed = replace(profile, schedule_spec=changed_schedule)
 
-
-def test_profile_fingerprint_excludes_legacy_machine_launch_preset() -> None:
-    profile = PROFILES["rl"]
-    changed = replace(
-        profile,
-        launch=replace(profile.launch, rollout_tokens=3_000_000),
-    )
-    baseline = resolve_profile(profile)
-    other_machine = resolve_profile(changed)
-    assert other_machine.profile_fingerprint == baseline.profile_fingerprint
-    assert other_machine.resolved_config_fingerprint != baseline.resolved_config_fingerprint
-
-
-def test_profile_fingerprint_excludes_gradient_checkpointing() -> None:
-    profile = PROFILES["rl"]
-    changed = replace(
-        profile,
-        model_config=replace(
-            profile.model_config,
-            grad_checkpoint=not profile.model_config.grad_checkpoint,
-        ),
-    )
-    baseline = resolve_profile(profile)
-    other_machine = resolve_profile(changed)
-
-    assert canonical_data(other_machine.train_config) == canonical_data(baseline.train_config)
-    assert other_machine.profile_fingerprint == baseline.profile_fingerprint
-    assert other_machine.resolved_config_fingerprint != baseline.resolved_config_fingerprint
+    assert resolve_profile(changed).train_config.schedule.entropy_coef(0) == 0.006
+    assert resolve_profile(profile).train_config.schedule.entropy_coef(0) != 0.006
 
 
 def test_a_keypoint_table_interpolates_holds_and_clamps() -> None:
@@ -290,7 +252,7 @@ def test_equal_explicit_values_keep_value_fingerprint_but_record_cli_source() ->
         PROFILES["rl"],
         LaunchOverrides(num_envs=2592, microbatch_tokens=25_000),
     )
-    assert explicit.resolved_config_fingerprint == baseline.resolved_config_fingerprint
+    assert canonical_data(explicit.train_config) == canonical_data(baseline.train_config)
     assert explicit.value_sources["train_config.scales.0.num_envs"] == "cli"
     assert explicit.value_sources["train_config.microbatch_tokens"] == "cli"
 
@@ -342,8 +304,6 @@ def test_format_resolved_config_is_complete_stable_json(tmp_path, monkeypatch, c
     assert document["profile"] == "rl"
     assert document["config"]["train_config"]["scales"][0]["num_envs"] == 2592
     assert document["sources"]["train_config.scales.0.num_envs"] == "derived"
-    assert len(document["profile_fingerprint"]) == 64
-    assert len(document["resolved_config_fingerprint"]) == 64
     assert list(tmp_path.iterdir()) == []
     assert capsys.readouterr() == ("", "")
 

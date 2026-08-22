@@ -30,7 +30,6 @@ type ResolutionSource = Literal[
     "cli",
 ]
 
-PROFILE_SCHEMA_VERSION = 1
 RESOLVED_CONFIG_SCHEMA_VERSION = 1
 
 
@@ -152,8 +151,6 @@ class ResolvedTrainConfig:
     train_config: TrainConfig
     schedule_spec: TrainingScheduleSpec
     value_sources: Mapping[str, ResolutionSource]
-    profile_fingerprint: str
-    resolved_config_fingerprint: str
 
     @property
     def env_config(self) -> EnvConfig:

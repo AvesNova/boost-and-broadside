@@ -9,12 +9,10 @@ from decimal import Decimal
 from types import MappingProxyType
 from typing import Any
 
-from boost_and_broadside.config.core import EnvConfig, ModelConfig
-from boost_and_broadside.config.fingerprint import canonical_data, fingerprint
+from boost_and_broadside.config.core import EnvConfig
+from boost_and_broadside.config.fingerprint import canonical_data
 from boost_and_broadside.config.live_elo import validate_live_reference_probabilities
 from boost_and_broadside.config.schema import (
-    PROFILE_SCHEMA_VERSION,
-    RESOLVED_CONFIG_SCHEMA_VERSION,
     ProfileSpec,
     ResolutionSource,
     ResolvedTrainConfig,
@@ -170,38 +168,6 @@ _PASS_THROUGH: tuple[str, ...] = tuple(
         & {field.name for field in dataclass_fields(TrainConfig)}
     )
 )
-
-
-def _profile_fingerprint_payload(profile: ProfileSpec) -> dict[str, Any]:
-    payload = canonical_data(profile)
-    del payload["launch"]
-    del payload["model_config"]["grad_checkpoint"]
-    return {
-        "schema_version": PROFILE_SCHEMA_VERSION,
-        "profile": payload,
-    }
-
-
-def _resolved_fingerprint_payload(
-    profile: ProfileSpec,
-    *,
-    model_config: ModelConfig,
-    env_config: EnvConfig,
-    train_config: TrainConfig,
-) -> dict[str, Any]:
-    train_payload = canonical_data(train_config)
-    # Runtime closure names are characterization evidence, not schema.  The
-    # resolved fingerprint binds the same final schedule through its declarative
-    # intent instead.
-    train_payload["schedule"] = canonical_data(profile.schedule_spec)
-    return {
-        "schema_version": RESOLVED_CONFIG_SCHEMA_VERSION,
-        "profile_name": profile.name,
-        "ship_config": canonical_data(profile.ship_config),
-        "model_config": canonical_data(model_config),
-        "env_config": canonical_data(env_config),
-        "train_config": train_payload,
-    }
 
 
 def _leaf_paths(value: Any, prefix: str = "") -> set[str]:
@@ -514,15 +480,6 @@ def resolve_profile(
         microbatch_source=microbatch_source,
         grad_checkpoint_source=grad_checkpoint_source,
     )
-    profile_digest = fingerprint(_profile_fingerprint_payload(profile))
-    resolved_digest = fingerprint(
-        _resolved_fingerprint_payload(
-            profile,
-            model_config=model_config,
-            env_config=env_config,
-            train_config=train_config,
-        )
-    )
     return ResolvedTrainConfig(
         profile_name=profile.name,
         ship_config=profile.ship_config,
@@ -530,6 +487,4 @@ def resolve_profile(
         train_config=train_config,
         schedule_spec=profile.schedule_spec,
         value_sources=MappingProxyType(sources),
-        profile_fingerprint=profile_digest,
-        resolved_config_fingerprint=resolved_digest,
     )

@@ -18,8 +18,6 @@ def resolved_profile_document(resolved: ResolvedTrainConfig) -> dict:
     return {
         "schema_version": RESOLVED_CONFIG_SCHEMA_VERSION,
         "profile": resolved.profile_name,
-        "profile_fingerprint": resolved.profile_fingerprint,
-        "resolved_config_fingerprint": resolved.resolved_config_fingerprint,
         "config": {
             "ship_config": canonical_data(resolved.ship_config),
             "model_config": canonical_data(resolved.model_config),

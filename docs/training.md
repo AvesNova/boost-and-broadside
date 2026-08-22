@@ -513,13 +513,12 @@ does not happen. Only the resolved-config and launch blocks are optional, and bo
 provenance rather than state. Policy-only files (`best_*.pt`, `ladder_step_*.pt`) are
 consequently not resumable; `--pretrain-from` is the path that takes one.
 
-`--seed` seeds Python's `random`, NumPy's global RNG, and Torch on the CPU and every
-CUDA device. NumPy's is the one that matters when comparing two runs: it draws the PPO
-minibatch order, so an unseeded process groups its environments differently and the runs
-then differ for a reason unrelated to whatever was being tested. The flag accepts the
-full 64-bit range and is narrowed to 32 bits for NumPy, which takes no more. This is not
-bit-exact reproducibility: nothing forces deterministic CUDA kernels, and reductions on
-the GPU are free to reassociate. It removes the avoidable variance, not all of it.
+`--seed` seeds Python's `random` and Torch on the CPU and every CUDA device. Every draw
+the trainer makes comes from Torch, including the permutation that orders PPO
+minibatches, so one seed covers the run; a second RNG would be a second thing to
+remember to seed. This is not bit-exact reproducibility: nothing forces deterministic
+CUDA kernels, and reductions on the GPU are free to reassociate. It removes the variance
+that is avoidable, which is what makes two runs of one configuration comparable.
 
 W&B logging runs off the main training path. The reference run's sampled metric history,
 configuration, summary, and run metadata are exported under

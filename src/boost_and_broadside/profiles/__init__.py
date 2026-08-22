@@ -42,10 +42,22 @@ def resolve_named_profile(
     later-applied machine sizing.
     """
 
+    return resolve_profile(named_profile_spec(name, overrides), launch_overrides)
+
+
+def named_profile_spec(name: str, overrides: dict[str, str] | None = None) -> ProfileSpec:
+    """The registered profile after ``key=value`` edits, before any resolution.
+
+    VRAM sizing asks its questions of this rather than of the registered
+    profile: an edit to ``num_fields`` or ``num_steps`` changes how much memory
+    a launch needs, and a measurement taken without it describes a different
+    configuration.
+    """
+
     profile = get_profile(name)
     if overrides:
         profile = apply_overrides(profile, overrides)
-    return resolve_profile(profile, launch_overrides)
+    return profile
 
 
 RL_RESOLVED_CONFIG = resolve_named_profile("rl")
@@ -63,5 +75,6 @@ __all__ = [
     "RL_RESOLVED_CONFIG",
     "RL_TRAIN_CONFIG",
     "get_profile",
+    "named_profile_spec",
     "resolve_named_profile",
 ]
