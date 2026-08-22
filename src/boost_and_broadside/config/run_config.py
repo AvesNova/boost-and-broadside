@@ -23,6 +23,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from boost_and_broadside.config.fingerprint import canonical_data
+
 SCHEMA_VERSION = 1
 CONFIG_FILENAME = "config.json"
 
@@ -44,6 +46,9 @@ class ConfigSegment:
     recorded_at: str | None = None
 
     def document(self) -> dict[str, Any]:
+        # canonical_data, not the raw value: a stored config can hold frozensets
+        # (the reward component groups do), and a save that crashes on one would
+        # take the training run with it.
         return {
             "from_step": self.from_step,
             "profile": self.profile,
@@ -51,7 +56,7 @@ class ConfigSegment:
             "git_commit": self.git_commit,
             "git_dirty": self.git_dirty,
             "recorded_at": self.recorded_at,
-            "config": self.config,
+            "config": canonical_data(self.config),
         }
 
     @classmethod

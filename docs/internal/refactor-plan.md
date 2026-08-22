@@ -195,12 +195,25 @@ point where a digest actually gates an action.
 Done when: changing a config value is one edit.
 Blocks: step 9.
 
-### 9. Migrate 682 and 719 configs — CPU
+### 9. Migrate 682 and 719 configs — **DONE**
 
-- [ ] One-time script emitting new-format `config.json` for both runs
-- [ ] **Preserve absence, do not backfill.** 682 genuinely had no
-      `field_damage_taken_weight` and no `total_timesteps`
-- [ ] Regression test loading 682, 716, 719
+- [x] `config.json` written for 682 and 719 (and 716 locally; 716 has no
+      tracked checkpoints, so its file stays out of the repo).
+- [x] **Absence preserved.** 682 predates `resolved_config` entirely, so its
+      segment is assembled from the three configs its checkpoint does name. It
+      has no `field_damage_taken_weight`, no `field_death_weight`, no
+      `field_map` — it still carries the old `obstacle_cache` — and its profile
+      reads `unrecorded` rather than being guessed. 716 and 719 keep
+      `rl-fields`, the name the profile had when they ran.
+- [x] Regression test: `tests/evaluation/test_landmark_runs.py`.
+
+**Correction to this plan's own note:** 682 *does* record `total_timesteps`
+(1,000,000,000). What it lacks is the seven field-related and later-added keys.
+
+No migration script is committed. The last one
+(`scripts/migrate_682.py`) was deleted for being dead weight the moment it had
+run, and this one has the same shape: the output is the artifact, the inputs are
+in-repo, and `git log` has the command.
 
 Both the previous migration script and its regression suite have been deleted;
 `git log -- scripts/migrate_682.py` is the precedent if one is wanted.
