@@ -5,6 +5,7 @@ import math
 import pytest
 import torch
 
+from boost_and_broadside.execution import ExecutionSettings, initialize_execution
 from boost_and_broadside.train.rl.buffer import (
     AdvantageScaler,
     ReturnScaler,
@@ -594,6 +595,54 @@ class TestMinibatchIterator:
         assert batch.hidden.shape == (1, B_mb * N, D)
         assert batch.actor_mask.shape == (T, B_mb, N)
         assert batch.expert_probs.shape == (T, B_mb, N, 12)
+
+    def test_the_env_order_repeats_for_a_seeded_process(self):
+        """Minibatch grouping is drawn from NumPy's global RNG, which is seeded.
+
+        Paired comparisons between two runs of one configuration depend on this:
+        an unseeded permutation groups the same environments differently each
+        process, so the runs differ for a reason unrelated to what changed.
+        """
+        T, B, N, D = 4, 8, 4, 16
+        settings = ExecutionSettings(
+            device="cpu",
+            seed=1234,
+            compile_mode=None,
+            wandb=False,
+            allow_config_drift=False,
+        )
+
+        def env_order() -> list[int]:
+            buf, _, _, _, _ = _make_buffer(T=T, B=B, N=N, D=D)
+            _fill_buffer(buf, T, B, N, D)
+            # Stamp each env with its index so the grouping is readable downstream.
+            marks = torch.arange(B, dtype=torch.float32).repeat_interleave(N)
+            buf.store_initial_hidden(marks.reshape(1, B * N, 1).expand(1, B * N, D).clone())
+            buf.compute_gae(torch.zeros(B, N, buf.num_components), torch.zeros(B))
+            order = []
+            for chunks in buf.get_minibatch_iterator(num_minibatches=2):
+                for chunk in chunks:
+                    order.extend(chunk.hidden[0, ::N, 0].to(torch.int64).tolist())
+            return order
+
+        initialize_execution(settings)
+        first = env_order()
+        initialize_execution(settings)
+        assert env_order() == first
+        assert sorted(first) == list(range(B))
+
+    def test_a_seed_beyond_numpys_range_is_still_usable(self):
+        """--seed accepts the full 64-bit range; NumPy's global RNG takes 32 bits."""
+
+        initialize_execution(
+            ExecutionSettings(
+                device="cpu",
+                seed=2**63,
+                compile_mode=None,
+                wandb=False,
+                allow_config_drift=False,
+            )
+        )
 
     def test_requires_initial_hidden(self):
         T, B, N, D = 4, 4, 4, 16

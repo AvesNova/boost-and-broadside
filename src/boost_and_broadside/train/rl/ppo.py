@@ -1650,10 +1650,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # Both terms land on the same trunk, so max_grad_norm renormalizes them
         # together: whichever sends more gradient takes a larger share of every
         # clipped step, and the other loses it. Inferring that split from the
-        # total norm is how a 3.4x imbalance survived two full runs -- see the
-        # categorical-critic entry in docs/internal/training-plan.md. Costs two
-        # extra backward passes, so it runs on one micro-batch per update at the
-        # histogram cadence.
+        # total norm is how a 3.4x imbalance in the categorical critic's favor
+        # survived two full runs unnoticed. Costs two extra backward passes, so
+        # it runs on one micro-batch per update at the histogram cadence.
         if measure_grad_split:
             params = [p for p in self._policy_module.parameters() if p.requires_grad]
             terms = {

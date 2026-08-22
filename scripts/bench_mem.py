@@ -109,11 +109,9 @@ def _lean_config(
     num_ships=None,
     epochs=None,
 ):
-    """Reduce to a policy-only benchmark: no scripted/avg/league opponents, tiny eval."""
+    """Reduce to a policy-only benchmark: no league opponents, tiny eval."""
     schedule = replace(
         base.schedule,
-        scripted_fraction=constant(0.0),
-        avg_model_fraction=constant(0.0),
         league_fraction=constant(0.0),
         behavior_cloning_coef=constant(0.0),
     )
@@ -131,7 +129,6 @@ def _lean_config(
         microbatch_tokens=microbatch_tokens,
         rollouts_per_update=rollouts_per_update,
         elo_eval=replace(base.elo_eval, envs_per_matchup=4),
-        obstacle_cache=None,
     )
 
 
