@@ -138,12 +138,14 @@ Blocks: nothing, but do it before step 8 rewrites the resolver these modes read.
 ### 8. Config refactor — CPU, the large block
 
 Each sub-step independently shippable; run suite + smoke after each.
+Full plan, invariants and risks: [config-refactor.md](config-refactor.md).
 
 - [ ] **8a** Drop non-field support; merge `rl`/`rl-fields`; BC becomes an
       overlay; hoist the 19 duplicated values into one base.
       Deletes: `profiles/rl.py`, `profiles/bc.py`, `make_bc_schedule_spec`,
       `tests/config/test_bc_profile.py`, the `REWARDS`/`FIELD_REWARDS` split,
-      `field_map is None` branches
+      the config-layer `field_map is None` branches. The `num_fields == 0`
+      branches in `env/` stay — that is how 682 is evaluated.
 - [ ] **8b** Collapse Spec + Config into one schema with explicit
       intent/derived field pairs (`gamma_per_tick` stored, `gamma` derived).
       Derivation becomes `derive(config) -> config`
